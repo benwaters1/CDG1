@@ -14271,6 +14271,10 @@ def build_overview(conn, view, anchor, fetch_window=None):
 
     lo, hi = query_start.isoformat(), query_end.isoformat()
 
+    def nights_of(arrival, departure):
+        came, goes = parse_date(arrival), parse_date(departure)
+        return (goes - came).days if came and goes and goes > came else 0
+
     def staying(row, arrival, departure, guest, room):
         """The nights after the first, as one row: the first night is the
         arrival's, and the departure morning is not a night. A stay of 9 to 12
@@ -14283,7 +14287,8 @@ def build_overview(conn, view, anchor, fetch_window=None):
         nights = (goes - came).days
         second = (came + timedelta(days=1)).isoformat()
         last = (goes - timedelta(days=1)).isoformat()
-        here = dict(row, title=f"{guest} in residence — {room}", short=guest, staying=True)
+        here = dict(row, title=f"{guest} in residence — {room}", short=guest, staying=True,
+                    badge="")
         return _spanning_row(here, {"first": arrival, "count": nights, "unit": "night"},
                              second, last, lo, hi)
 
@@ -14298,6 +14303,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
     ).fetchall()
     for b in bookings:
         booking_link = url_for("admin_bookings", q=b["reference_code"])
+        n = nights_of(b["arrival_date"], b["departure_date"])
         # The stay as a whole, on both of its rows, so a calendar that wants
         # one event per stay (the house calendar) builds it from this list
         # rather than asking the database a second way.
@@ -14306,7 +14312,12 @@ def build_overview(conn, view, anchor, fetch_window=None):
                 "party": b["party_size"], "ref": b["reference_code"],
                 "eta": b["estimated_arrival_time"] or "",
                 "flight": " ".join(x for x in (b["transfer_flight_number"] or "",
-                                               b["transfer_arrival_time"] or "") if x)}
+                                               b["transfer_arrival_time"] or "") if x),
+                "nights": n, "booking_id": b["id"], "requests": b["special_requests"] or ""}
+        # Which night of how many, on the arrival itself: it is night 1, and a
+        # calendar that only started counting on the second night read as
+        # though the first was somebody else's.
+        night_one = f" · night 1 of {n}" if n else ""
         if query_start.isoformat() <= b["arrival_date"] < query_end.isoformat():
             arrival_detail = f"Party of {b['party_size']}"
             if b["special_requests"]:
@@ -14319,8 +14330,8 @@ def build_overview(conn, view, anchor, fetch_window=None):
                 "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
                 "scheduled": True, "status": b["status"], "acknowledgment_status": None,
                 "priority": None, "repeat_weekly": 0, "date": b["arrival_date"],
-                "title": f"{b['guest_name']} arrives — {b['room_name']}",
-                "short": f"↓ {b['guest_name']}",
+                "title": f"{b['guest_name']} arrives — {b['room_name']}{night_one}",
+                "short": f"↓ {b['guest_name']}", "badge": f"1/{n}" if n else "",
                 "detail": arrival_detail,
                 "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
                 "facts": stay,
@@ -14329,8 +14340,8 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
             "scheduled": True, "status": b["status"], "acknowledgment_status": None,
             "priority": None, "repeat_weekly": 0, "date": b["departure_date"],
-            "title": f"{b['guest_name']} departs — {b['room_name']}",
-            "short": f"↑ {b['guest_name']}",
+            "title": f"{b['guest_name']} departs — {b['room_name']} · by {CHECK_OUT_TIME}",
+            "short": f"↑ {b['guest_name']}", "badge": "out",
             "detail": f"Party of {b['party_size']}",
             "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
             "facts": stay,
@@ -14352,21 +14363,25 @@ def build_overview(conn, view, anchor, fetch_window=None):
         party = (f"Party of {st['party_size']}" if st["party_size"]
                  else "Party size not stated")
         made = None
-        for day, verb, arrow in ((st["arrival_date"], "arrives", "↓"),
-                                 (st["departure_date"], "departs", "↑")):
+        n = nights_of(st["arrival_date"], st["departure_date"])
+        for day, verb, arrow, badge, when in (
+                (st["arrival_date"], "arrives", "↓", f"1/{n}" if n else "",
+                 f" · night 1 of {n}" if n else ""),
+                (st["departure_date"], "departs", "↑", "out", f" · by {CHECK_OUT_TIME}")):
             made = {
                 "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
                 "scheduled": True, "status": "confirmed", "acknowledgment_status": None,
                 "priority": None, "repeat_weekly": 0, "date": day,
-                "title": f"{st['guest_name']} {verb} — {room} · {st['channel']}",
-                "short": f"{arrow} {st['guest_name']}",
+                "title": f"{st['guest_name']} {verb} — {room} · {st['channel']}{when}",
+                "short": f"{arrow} {st['guest_name']}", "badge": badge,
                 "detail": f"{party} · booked through {st['channel']}",
                 "assignee_id": None, "assignee_name": None,
                 "id": f"ota{st['ota_reservation_id']}", "link": link,
                 "facts": {"arrival": st["arrival_date"], "departure": st["departure_date"],
                           "room": st["room_name"] or "", "guest": st["guest_name"],
                           "party": st["party_size"], "ref": st["reference_code"] or "",
-                          "channel": st["channel"], "eta": "", "flight": ""},
+                          "channel": st["channel"], "eta": "", "flight": "", "nights": n,
+                          "booking_id": None, "requests": ""},
             }
             if lo <= day < hi:
                 rows.append(made)
@@ -14464,35 +14479,54 @@ def build_overview(conn, view, anchor, fetch_window=None):
         if running:
             rows.append(running)
 
-    # What the house has promised a guest for a particular day: a board on
-    # arrival, a transfer on the Tuesday. Here because it is work on a date
-    # like anything else, and a promise that lives only on its own page is one
-    # somebody has to remember to open.
+    # What the house has promised a guest: a board on arrival, a transfer on
+    # the Tuesday. Here because it is work on a date like anything else, and a
+    # promise that lives only on its own page is one somebody has to remember
+    # to open.
+    #
+    # EXTRAS ARE THEIR OWN LANE, with their own colour and filter. They used to
+    # share the bookings' colour and say only what they were -- "Board" in a
+    # cell full of arrivals, for whom nobody could tell -- and to drop off the
+    # calendar entirely when no day was chosen. Now each says what, how many
+    # and for whom; one with no day is on the stay's first day, "for the stay";
+    # one the guest asked for and nobody has confirmed says so; one delivered
+    # is ticked; and one whose day has passed undelivered is overdue, as the
+    # extras due list has it.
+    owed_by = service_day().isoformat()
     for x in conn.execute(
             """SELECT booking_extras.*, bookings.guest_name, bookings.reference_code AS stay_ref,
+                      bookings.arrival_date, bookings.status AS stay_status,
                       rooms.name AS room_name
                  FROM booking_extras
                  JOIN bookings ON bookings.id = booking_extras.booking_id
                  LEFT JOIN rooms ON rooms.id = bookings.room_id
                 WHERE booking_extras.category = 'room'
-                  AND booking_extras.status IN ('confirmed', 'delivered')
-                  AND bookings.status = 'confirmed'
-                  AND booking_extras.scheduled_for >= ?
-                  AND booking_extras.scheduled_for < ?""",
+                  AND booking_extras.status IN ('requested', 'confirmed', 'delivered')
+                  AND bookings.status IN ('pending', 'confirmed')
+                  AND COALESCE(NULLIF(booking_extras.scheduled_for, ''), bookings.arrival_date) >= ?
+                  AND COALESCE(NULLIF(booking_extras.scheduled_for, ''), bookings.arrival_date) < ?""",
             (query_start.isoformat(), query_end.isoformat())).fetchall():
         qty = x["quantity"] or 1
+        what = f"{x['name']}{f' ×{qty}' if qty > 1 else ''}"
+        for_stay = not x["scheduled_for"]
+        day = x["scheduled_for"] or x["arrival_date"]
+        overdue = (x["status"] == "confirmed" and not for_stay and day < owed_by)
+        state = {"delivered": "delivered", "requested": "to confirm"}.get(x["status"], "")
         rows.append({
-            "kind": "extra", "lane": "booking", "is_guest": True, "origin": "booking",
+            "kind": "extra", "lane": "extra", "is_guest": True, "origin": "booking",
             "scheduled": True, "status": x["status"], "acknowledgment_status": None,
-            "priority": None, "repeat_weekly": 0, "date": x["scheduled_for"],
-            "title": (f"{x['name']}{f' ×{qty}' if qty > 1 else ''} — "
-                      f"{x['guest_name']}, {x['room_name'] or 'room TBC'}"),
-            "short": x["name"],
+            "priority": None, "repeat_weekly": 0, "date": day,
+            "title": (f"{what} — {x['guest_name']}, {x['room_name'] or 'room TBC'}"
+                      + (" · for the stay" if for_stay else "")
+                      + (f" · {state}" if state else "") + (" · overdue" if overdue else "")),
+            "short": f"{what} · {x['guest_name']}", "badge": "✓" if x["status"] == "delivered" else "",
             "detail": x["notes"] or "",
             "assignee_id": None, "assignee_name": None, "id": x["id"],
-            "link": url_for("extras_due_page"),
+            "link": url_for("extras_due_page"), "overdue": overdue,
             "facts": {"guest": x["guest_name"], "room": x["room_name"] or "",
-                      "ref": x["stay_ref"], "what": x["name"], "quantity": qty},
+                      "ref": x["stay_ref"], "what": x["name"], "quantity": qty,
+                      "booking_id": x["booking_id"], "for_stay": for_stay, "day": day,
+                      "state": x["status"], "stay_pending": x["stay_status"] == "pending"},
         })
 
     # EVENTS, WEDDINGS AND PARTIES, which were on no calendar at all: a
@@ -14675,8 +14709,22 @@ def build_calendar(conn, view, anchor, viewer=None):
         # "What I Need To Do" list actually lives, and leave the rest as plain
         # information rather than links into pages they can't open.
         rows = [dict(r, link=(url_for("dashboard") if r["kind"] == "task"
-                              else url_for("my_shifts") if r["kind"] == "shift" else None))
+                              else url_for("my_shifts") if r["kind"] == "shift"
+                              # The extras due list is theirs: they carry them.
+                              else url_for("extras_due_page") if r["kind"] == "extra" else None))
                 for r in rows]
+    else:
+        # The owner's own tasks and the staff's were the only things on the
+        # calendar that opened nothing: build_overview gives a task no link.
+        rows = [dict(r, link=url_for("admin_tasks", view="day", date=r["date"]))
+                if r["kind"] == "task" and not r.get("link") and r["date"] else r
+                for r in rows]
+    # What a click opens: everything about it, in a panel over the calendar,
+    # with the way to its own page. One card per thing, shared by every chip
+    # of it -- the arrival, each night and the departure open the same stay.
+    owner_view = viewer is None or viewer["role"] == "owner"
+    cards = calendar_cards(conn, rows, owner_view)
+    rows = [dict(r, card=calendar_uid(r)) for r in rows]
 
     # Each row in every cell it covers, not just the first: a row that lasts
     # (see _spanning_row) is copied into each of its days, saying which day of
@@ -14696,9 +14744,15 @@ def build_calendar(conn, view, anchor, viewer=None):
             copy = row
             if run and run["count"] > 1:
                 k = (day - parse_date(run["first"])).days + 1
+                # A night says which of how many in a badge of its own, so a
+                # long name ellipsing away in a month cell cannot take the
+                # count with it.
+                nightly = run["unit"] == "night"
                 copy = dict(row, date=iso, until=iso,
                             title=f"{run['title']} · {run['unit']} {k} of {run['count']}",
-                            short=f"{run['short']} · {run['unit']} {k}")
+                            short=(run["short"] if nightly
+                                   else f"{run['short']} · {run['unit']} {k}"),
+                            badge=f"{k}/{run['count']}" if nightly else row.get("badge", ""))
             later = bool(run) and iso > run["first"]
             (carried if later else begins).setdefault(iso, []).append(copy)
             source[id(copy)] = id(row)
@@ -14729,7 +14783,193 @@ def build_calendar(conn, view, anchor, viewer=None):
         "employees": sheet["employees"], "owner_id": sheet["owner_id"],
         # Things, not cells: a four-day atelier is one item in the week.
         "total_events": len({source[id(e)] for c in cells if c["in_span"] for e in c["events"]}),
+        "cards": list(cards.values()),
     }
+
+
+def calendar_uid(row):
+    """The one name a calendar row's card goes by, and the anchor a link to it
+    carries (/calendar?view=day&date=...#ev-<uid>). Every chip of one thing
+    shares it: a stay's arrival, nights and departure; an atelier's places and
+    its later days, which are all the one sitting."""
+    f = row.get("facts") or {}
+    if row["kind"] == "workshop" and f.get("session"):
+        return f"workshop-s{f['session']}"
+    return f"{row['kind']}-{row['id']}"
+
+
+def _cal_day(iso):
+    d = parse_date(iso) if isinstance(iso, str) else iso
+    return f"{d:%a} {d.day} {d:%b}" if d else ""
+
+
+def _plural(n, word):
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def calendar_cards(conn, rows, owner_view):
+    """{uid: card} for the rows the calendar is about to draw: what a click on
+    a chip opens. A card is everything about one thing -- heading, the facts
+    as label and value, a stay's nights one by one, the extras that go with
+    it, and the ways to its own pages -- so the click answers the question
+    instead of opening a list to search.
+
+    Only what the viewer may see. The rows arrive already cut to the viewer
+    (build_calendar), and their links already point only where the viewer can
+    go; the owner-only pages are added here only for the owner. Ticking an
+    extra off is anybody's, as on the extras due list."""
+    cards = {}
+    stay_ids = {(r.get("facts") or {}).get("booking_id") for r in rows if r["kind"] == "booking"}
+    stay_ids |= {(r.get("facts") or {}).get("booking_id") for r in rows if r["kind"] == "extra"}
+    stay_ids.discard(None)
+    dinner_ids = {r["id"] for r in rows if r["kind"] == "dinner"}
+    extras = {}
+    for category, ids in (("room", stay_ids), ("restaurant", dinner_ids)):
+        if not ids:
+            continue
+        marks = ",".join("?" * len(ids))
+        for x in conn.execute(
+                f"""SELECT * FROM booking_extras
+                     WHERE category = ? AND booking_id IN ({marks})
+                       AND COALESCE(status, '') != 'cancelled'
+                     ORDER BY COALESCE(NULLIF(scheduled_for, ''), '0000'), id""",
+                (category, *ids)).fetchall():
+            qty = x["quantity"] or 1
+            extras.setdefault((category, x["booking_id"]), []).append({
+                "id": x["id"], "what": f"{x['name']}{f' ×{qty}' if qty > 1 else ''}",
+                "when": _cal_day(x["scheduled_for"]) if x["scheduled_for"] else "for the stay",
+                "state": {"delivered": "delivered", "requested": "to confirm"}.get(
+                    x["status"], "to do"),
+                "tick": x["status"] == "confirmed", "undo": x["status"] == "delivered",
+                "notes": x["notes"] or ""})
+    settings = get_restaurant_settings(conn) if dinner_ids else None
+    dinner_at = _clock(settings["dinner_time"] if settings else "") or "19:30"
+    sessions = {}
+
+    def card(r, heading, sub="", facts=(), **more):
+        uid = calendar_uid(r)
+        open_words = more.pop("open_words", None) or "Open"
+        kicker = {"booking": "Stay", "extra": "Extra", "dinner": "Restaurant",
+                  "workshop": "Atelier", "event": "Event", "closure": "Room closed",
+                  "shift": "Rota"}.get(r["kind"], "My task" if r["lane"] == "owner" else "Task")
+        made = {"uid": uid, "lane": r["lane"], "kicker": kicker, "heading": heading, "sub": sub,
+                "status": r["status"], "facts": [(k, v) for k, v in facts if v not in ("", None)],
+                "timeline": [], "names": [], "extras": [], "actions": [], "overdue": False}
+        made.update(more)
+        if r.get("link"):
+            made["actions"].insert(0, (open_words, r["link"]))
+        cards[uid] = made
+        return made
+
+    for r in rows:
+        uid = calendar_uid(r)
+        f = r.get("facts") or {}
+        kind = r["kind"]
+        if kind == "workshop" and f.get("session"):
+            s = sessions.setdefault(uid, {"row": r, "places": [], "running": None})
+            if f.get("running"):
+                s["running"] = f
+            else:
+                s["places"].append(r)
+            continue
+        if uid in cards:
+            continue
+        if kind == "booking" and f.get("arrival"):
+            n = f.get("nights") or 0
+            channel = f.get("channel") or ""
+            c = card(r, f.get("guest") or r["short"],
+                     " · ".join(x for x in (f.get("room") or "room not stated", channel) if x),
+                     [("Dates", f"{_cal_day(f['arrival'])} → {_cal_day(f['departure'])}"
+                                + (f" · {_plural(n, 'night')}" if n else "")),
+                      ("Guests", f.get("party") or ""),
+                      ("Arriving", f"about {f['eta']}" if f.get("eta") else ""),
+                      ("Flight", f.get("flight") or ""),
+                      ("Requests", f.get("requests") or ""),
+                      ("Booked through", channel),
+                      ("Reference", f.get("ref") or "")],
+                     open_words="Booking.com page" if channel else "Open the booking")
+            first = parse_date(f["arrival"])
+            days = [(first + timedelta(days=i), "Arrives, from " + CHECK_IN_TIME + " · night 1"
+                     if i == 0 else f"Night {i + 1}") for i in range(n)]
+            if len(days) > 10:
+                # A fortnight's stay is its first nights, its last, and a
+                # line for the run between rather than a page of "Night 7".
+                days = days[:3] + [(None, f"Nights 4–{n - 1}")] + days[-1:]
+            c["timeline"] = [(_cal_day(d) if d else "", words) for d, words in days]
+            c["timeline"].append((_cal_day(f["departure"]), f"Leaves, by {CHECK_OUT_TIME}"))
+            c["extras"] = extras.get(("room", f.get("booking_id")), [])
+            if owner_view and f.get("booking_id"):
+                c["actions"] += [("Edit", url_for("edit_booking", booking_id=f["booking_id"])),
+                                 ("Arrival card", url_for("arrival_card", booking_id=f["booking_id"])),
+                                 ("Letters", url_for("booking_correspondence",
+                                                     booking_id=f["booking_id"]))]
+        elif kind == "extra":
+            c = card(r, f.get("what") + (f" ×{f['quantity']}" if (f.get("quantity") or 1) > 1 else ""),
+                     f"for {f.get('guest')}, {f.get('room') or 'room TBC'}",
+                     [("When", "for the stay, from " + _cal_day(f.get("day"))
+                       if f.get("for_stay") else _cal_day(f.get("day"))),
+                      ("Note", r.get("detail") or ""),
+                      ("Stay", "not confirmed yet" if f.get("stay_pending") else ""),
+                      ("Reference", f.get("ref") or "")],
+                     open_words="Extras due")
+            c["extras"] = [x for x in extras.get(("room", f.get("booking_id")), [])
+                           if x["id"] == r["id"]]
+            c["overdue"] = bool(r.get("overdue"))
+            if owner_view and f.get("ref"):
+                c["actions"].append(("Open the booking", url_for("admin_bookings", q=f["ref"])))
+        elif kind == "dinner":
+            c = card(r, f"Dinner · {f.get('guest') or ''}", f"{_cal_day(r['date'])}, {dinner_at}",
+                     [("Guests", f.get("party") or ""), ("Notes", r.get("detail") or ""),
+                      ("Reference", f.get("ref") or "")], open_words="Restaurant bookings")
+            c["extras"] = extras.get(("restaurant", r["id"]), [])
+        elif kind == "event":
+            c = card(r, ("Held: " if f.get("held") else "") + (f.get("what") or "event").capitalize()
+                     + f" · {f.get('contact') or ''}",
+                     f"{_cal_day(f.get('start'))}" + (f" → {_cal_day(f['end'])}"
+                                                    if f.get("end") and f["end"] != f.get("start") else ""),
+                     [("Guests", f.get("guests") or ""), ("Arriving", f.get("arrival_time") or ""),
+                      ("Dates held until", f.get("held_until") or ""),
+                      ("Spaces", r.get("detail") if not f.get("held") else ""),
+                      ("Reference", f.get("ref") or "")], open_words="Open the event")
+        elif kind == "closure":
+            card(r, f"Closed: {f.get('room')}", "",
+                 [("Closed from", _cal_day(f.get("start"))),
+                  ("Back on sale", _cal_day(f.get("end"))),
+                  ("Why", f.get("why") or "")], open_words="Close rooms")
+        elif kind == "task":
+            card(r, r["title"], "",
+                 [("Due", _cal_day(r["date"]) if r["date"] else ""),
+                  ("For", "me" if r["lane"] == "owner" else (r.get("assignee_name") or "nobody yet")),
+                  ("Priority", r.get("priority") if r.get("priority") not in (None, "", "normal") else ""),
+                  ("Notes", r.get("detail") or "")],
+                 open_words="Open in tasks" if owner_view else "My list")
+        elif kind == "shift":
+            hours = "–".join(x for x in (f.get("start") or "", f.get("end") or "") if x)
+            card(r, f"{f.get('who')} on" + (f" {hours}" if hours else ""), _cal_day(r["date"]),
+                 [("Role", f.get("role") or "")], open_words="Rota" if owner_view else "My shifts")
+        else:
+            card(r, r["title"], _cal_day(r["date"]) if r["date"] else "",
+                 [("Notes", r.get("detail") or "")])
+    for uid, s in sessions.items():
+        r, run = s["row"], s["running"] or {}
+        f = r.get("facts") or {}
+        start, end = f.get("start") or run.get("start"), f.get("end") or run.get("end")
+        people = sum((p.get("facts") or {}).get("party") or 1 for p in s["places"])
+        places = len(s["places"]) or run.get("places") or 0
+        pending = sum(1 for p in s["places"] if p["status"] == "pending") or run.get("pending") or 0
+        c = card(r, f.get("workshop") or r["short"],
+                 _cal_day(start) + (f" → {_cal_day(end)}" if end and end != start else ""),
+                 [("Places", places), ("People", people or run.get("people") or ""),
+                  ("To confirm", pending or "")], open_words="Registrations")
+        c["status"] = "pending" if places and pending == places else "confirmed"
+        c["names"] = ([f"{(p.get('facts') or {}).get('guest')}"
+                       + (f" ×{p['facts']['party']}" if ((p.get('facts') or {}).get('party') or 1) > 1 else "")
+                       + (" (to confirm)" if p["status"] == "pending" else "") for p in s["places"]]
+                      or [n.strip() for n in (r.get("detail") or "").split(",") if n.strip()])
+        if owner_view:
+            c["actions"].append(("Register to print",
+                                 url_for("workshop_register_print", session_id=f["session"])))
+    return cards
 
 
 DEFAULT_ONBOARDING_ITEMS = [
@@ -94511,16 +94751,30 @@ def house_calendar_items(conn, start, end, areas=None):
     dinner_at = _clock(settings["dinner_time"] if settings else "") or "19:30"
     items, sessions = {}, {}
 
-    def link_line(path):
-        return f"\nIn the app: {path}" if path else ""
-
-    def full_link(path):
-        if not path:
-            return ""
-        return path if path.startswith("http") else (request.host_url.rstrip("/") + path)
+    # Every item carries "link": Outlook is sent it as a link it can click
+    # (graph_event_body), and the .ics feed as a line and a URL.
+    def card_link(r, day):
+        """The app's calendar on that day, with this thing's card open: the
+        one page every member of staff can open, where the owner also finds
+        the way to the booking itself."""
+        return (url_for("ops_calendar", view="day", date=day, _external=True)
+                + "#ev-" + calendar_uid(r))
 
     def day_after(iso):
         return (parse_date(iso) + timedelta(days=1)).isoformat()
+
+    # The extras of each stay, to list in the stay's own event: names, how
+    # many and the day -- never a price or a note, which can hold a diet.
+    stay_extras = {}
+    for r in sheet["rows"]:
+        f = r.get("facts") or {}
+        if r["kind"] == "extra" and f.get("booking_id"):
+            qty = f.get("quantity") or 1
+            stay_extras.setdefault(f["booking_id"], []).append(
+                f"{f.get('what')}{f' ×{qty}' if qty > 1 else ''} ("
+                + ("for the stay" if f.get("for_stay") else _cal_day(f.get("day")))
+                + (", delivered" if f.get("state") == "delivered" else "")
+                + (", to confirm" if f.get("state") == "requested" else "") + ")")
 
     for r in sheet["rows"]:
         f = r.get("facts") or {}
@@ -94530,31 +94784,57 @@ def house_calendar_items(conn, start, end, areas=None):
             if key in items:
                 continue
             channel = f.get("channel") or ""
+            n = f.get("nights") or 0
             subject = (f"{marks['rooms']} {f['guest']}"
                        + (f" ×{f['party']}" if f.get("party") else "")
                        + (f" · {f['room']}" if f.get("room") else "")
+                       + (f" · {_plural(n, 'night')}" if n else "")
                        + (" · to confirm" if r["status"] == "pending" else "")
                        + (f" · {channel}" if channel else ""))
+            # One event for the stay, as Outlook draws it: a bar from arrival
+            # to departure. Which night is which is in the event itself, as
+            # the app's own calendar has it on each day.
+            first = parse_date(f["arrival"])
+            nights = [first + timedelta(days=i) for i in range(n)]
+            if len(nights) <= 7:
+                which = ", ".join(f"{d:%a} {d.day}" for d in nights)
+            else:
+                which = f"{_cal_day(nights[0])} to {_cal_day(nights[-1])}"
+            extras_here = stay_extras.get(f.get("booking_id"), [])
             body = "\n".join(x for x in (
-                f"Reference {f['ref']}" if f.get("ref") else "",
-                f"{f['party']} guest(s)" if f.get("party") else "",
-                f"Arriving about {f['eta']}" if f.get("eta") else "",
+                f"Arrives {_cal_day(f['arrival'])}, from {HOUSE_CALENDAR_CHECK_IN}"
+                + (f" (about {f['eta']})" if f.get("eta") else ""),
                 f"Flight {f['flight']}" if f.get("flight") else "",
+                f"{_plural(n, 'night')}: {which}" if n else "",
+                f"Leaves {_cal_day(f['departure'])}, by {HOUSE_CALENDAR_CHECK_OUT}",
+                f"{f['party']} guest(s)" if f.get("party") else "",
+                ("Extras: " + "; ".join(extras_here)) if extras_here else "",
                 f"Booked through {channel}" if channel else "",
-                "Not confirmed yet" if r["status"] == "pending" else "") if x)
+                "Not confirmed yet" if r["status"] == "pending" else "",
+                f"Reference {f['ref']}" if f.get("ref") else "") if x)
             items[key] = {"key": key, "area": "rooms", "subject": subject, "all_day": False,
                           "start": f"{f['arrival']}T{HOUSE_CALENDAR_CHECK_IN}:00",
                           "end": f"{f['departure']}T{HOUSE_CALENDAR_CHECK_OUT}:00",
-                          "location": f.get("room") or "",
-                          "body": body + link_line(full_link(r.get("link")))}
+                          "location": f.get("room") or "", "body": body,
+                          "link": card_link(r, f["arrival"])}
         elif kind == "extra" and "rooms" in areas and r.get("date"):
             key = f"extra:{r['id']}"
+            qty = f.get("quantity") or 1
             items[key] = {"key": key, "area": "rooms", "all_day": True,
-                          "subject": f"{marks['rooms']} {r['title']}",
+                          "subject": (f"{marks['rooms']} Extra: {f.get('what')}"
+                                      + (f" ×{qty}" if qty > 1 else "")
+                                      + f" · {f.get('guest')}"
+                                      + (f" · {f['room']}" if f.get("room") else "")
+                                      + (" · for the stay" if f.get("for_stay") else "")
+                                      + (" · to confirm" if f.get("state") == "requested" else "")
+                                      + (" ✓" if f.get("state") == "delivered" else "")),
                           "start": f"{r['date']}T00:00:00", "end": f"{day_after(r['date'])}T00:00:00",
                           "location": f.get("room") or "",
-                          "body": (f"For the stay {f['ref']}" if f.get("ref") else "")
-                          + link_line(full_link(r.get("link")))}
+                          "body": "\n".join(x for x in (
+                              "Whenever suits during the stay" if f.get("for_stay") else "",
+                              "Delivered" if f.get("state") == "delivered" else "",
+                              f"For the stay {f['ref']}" if f.get("ref") else "") if x),
+                          "link": card_link(r, r["date"])}
         elif kind == "dinner" and "restaurant" in areas and r.get("date"):
             key = f"dinner:{r['id']}"
             begins = datetime.fromisoformat(f"{r['date']}T{dinner_at}:00")
@@ -94565,13 +94845,13 @@ def house_calendar_items(conn, start, end, areas=None):
                           "start": begins.isoformat(),
                           "end": (begins + timedelta(hours=HOUSE_CALENDAR_DINNER_HOURS)).isoformat(),
                           "location": "La Table",
-                          "body": (f"Reference {f['ref']}" if f.get("ref") else "")
-                          + link_line(full_link(r.get("link")))}
+                          "body": (f"Reference {f['ref']}" if f.get("ref") else ""),
+                          "link": card_link(r, r["date"])}
         elif kind == "workshop" and "ateliers" in areas and f.get("session"):
             s = sessions.setdefault(f["session"], {"title": f.get("workshop") or "Atelier",
                                                    "start": f.get("start"), "end": f.get("end"),
                                                    "places": 0, "people": 0, "pending": 0,
-                                                   "link": r.get("link"), "running": None})
+                                                   "link": card_link(r, r["date"]), "running": None})
             if f.get("running"):
                 # The sitting's own row for its later days: it carries the
                 # whole sitting's numbers, and is not another place on it.
@@ -94588,8 +94868,8 @@ def house_calendar_items(conn, start, end, areas=None):
                           "subject": f"{marks['rooms']} Closed: {f['room']}",
                           "start": f"{f['start']}T00:00:00", "end": f"{f['end']}T00:00:00",
                           "location": "", "body": "\n".join(x for x in (
-                              f"Back on sale {format_date_short(f['end'])}", f.get("why") or "") if x)
-                          + link_line(full_link(r.get("link")))}
+                              f"Back on sale {format_date_short(f['end'])}", f.get("why") or "") if x),
+                          "link": card_link(r, f["start"])}
         elif kind == "event" and "events" in areas and f.get("start"):
             key = f"hold:{str(r['id'])[4:]}" if f.get("held") else f"event:{r['id']}"
             last = f.get("end") or f["start"]
@@ -94602,8 +94882,8 @@ def house_calendar_items(conn, start, end, areas=None):
                           "location": "", "body": "\n".join(x for x in (
                               f"Reference {f['ref']}" if f.get("ref") else "",
                               f"Guests arrive {f['arrival_time']}" if f.get("arrival_time") else "",
-                              f"Dates held until {f['held_until']}" if f.get("held") else "") if x)
-                          + link_line(full_link(r.get("link")))}
+                              f"Dates held until {f['held_until']}" if f.get("held") else "") if x),
+                          "link": card_link(r, f["start"])}
         elif kind == "task" and "tasks" in areas and r.get("date") and r["lane"] != "owner" \
                 and r["status"] != "done":
             key = f"task:{r['id']}"
@@ -94612,7 +94892,8 @@ def house_calendar_items(conn, start, end, areas=None):
                                      + (f" · {r['assignee_name']}" if r.get("assignee_name") else ""),
                           "start": f"{r['date']}T00:00:00", "end": f"{day_after(r['date'])}T00:00:00",
                           "location": "", "body": ("For " + r["assignee_name"]
-                                                   if r.get("assignee_name") else "Not assigned yet")}
+                                                   if r.get("assignee_name") else "Not assigned yet"),
+                          "link": card_link(r, r["date"])}
         elif kind == "shift" and "rota" in areas and r.get("date"):
             key = f"shift:{r['id']}"
             starts, ends = _clock(f.get("start")), _clock(f.get("end"))
@@ -94628,7 +94909,8 @@ def house_calendar_items(conn, start, end, areas=None):
                                      + (f" · {f['role']}" if f.get("role") else ""),
                           "start": begin.isoformat() if timed else f"{r['date']}T00:00:00",
                           "end": finish.isoformat() if timed else f"{day_after(r['date'])}T00:00:00",
-                          "location": "", "body": f.get("role") or ""}
+                          "location": "", "body": f.get("role") or "",
+                          "link": card_link(r, r["date"])}
     for session_id, s in sessions.items():
         if not s["start"]:
             continue
@@ -94644,7 +94926,7 @@ def house_calendar_items(conn, start, end, areas=None):
                                  + (f" ({s['pending']} to confirm)" if s["pending"] else ""),
                       "start": f"{s['start']}T00:00:00",
                       "end": f"{day_after(s['end'] or s['start'])}T00:00:00",
-                      "location": "", "body": link_line(full_link(s["link"])).strip()}
+                      "location": "", "body": "", "link": s["link"]}
     # The day each begins and ends, in the house's own time already, so a
     # page can show it without cutting a timestamp to ten characters.
     for i in items.values():
@@ -94661,10 +94943,18 @@ def house_category(area):
 def graph_event_body(item):
     """An item as the event Graph is sent. Busy-ness is 'free': the house
     calendar describes the house, it does not block anybody's own diary."""
+    from html import escape as html_escape
     tz = graph_house_timezone()
+    # HTML, so the way back into the app is a link a finger can press in
+    # Outlook on a phone, not an address to copy. The text is escaped: it is
+    # names and rooms that people typed.
+    content = "<br>".join(html_escape(line) for line in (item["body"] or "").split("\n"))
+    if item.get("link"):
+        content += (("<br><br>" if content else "")
+                    + f'<a href="{html_escape(item["link"])}">Open in the app</a>')
     return {
         "subject": item["subject"][:255],
-        "body": {"contentType": "text", "content": item["body"] or ""},
+        "body": {"contentType": "html", "content": content},
         "start": {"dateTime": item["start"], "timeZone": tz},
         "end": {"dateTime": item["end"], "timeZone": tz},
         "isAllDay": bool(item["all_day"]),
@@ -95222,8 +95512,12 @@ def house_calendar_ics_text(items, name):
                   "TRANSP:TRANSPARENT"]
         if i.get("location"):
             lines.append(f"LOCATION:{ical_escape(i['location'])}")
-        if i.get("body"):
-            lines.append(f"DESCRIPTION:{ical_escape(i['body'])}")
+        described = "\n".join(x for x in (i.get("body") or "",
+                                          f"In the app: {i['link']}" if i.get("link") else "") if x)
+        if described:
+            lines.append(f"DESCRIPTION:{ical_escape(described)}")
+        if i.get("link"):
+            lines.append(f"URL:{i['link']}")
         lines.append("END:VEVENT")
     lines.append("END:VCALENDAR")
     return "\r\n".join(_ics_fold(line) for line in lines) + "\r\n"

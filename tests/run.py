@@ -495,6 +495,7 @@ SUITES = [
     "test_send_check",
     "test_house_calendar",
     "test_house_calendar_default",
+    "test_calendar_cards",
     # Brief of 15 October 2026.
     "test_tech_email",
     "test_staff_accounts",
