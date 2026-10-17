@@ -4,8 +4,16 @@
 
 <div class="page-head">
   <h1>Booking Extras</h1>
-  <a href="{{ url_for('admin_bookings') }}" class="btn-mini">Booking requests</a>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('extras_due_page') }}" class="btn-mini">Extras to prepare</a>
+    <a href="{{ url_for('management_extras_performance') }}" class="small-link">What they earn</a>
+  </div>
 </div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  {{ coming_up }} on stays still to come &middot; {{ year_value|money }} sold on stays in the last
+  twelve months, gross. Withdraw an extra to stop it being ordered; one nobody has ever had can
+  be deleted.
+</p>
 
 <details class="refund-box">
   <summary>+ Add an extra</summary>
@@ -106,21 +114,64 @@
     {% endif %}
   </div>
 {% else %}
-  <div class="doc-list">
+  {#- What each extra is DOING, beside what it is: the question the owner
+      opens this page with is "is anybody having the transfer, and when is the
+      next one", and a name and a price per line could not answer it. -#}
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead><tr>
+      <th>Extra</th><th>Who can order it</th><th>Notice</th><th class="num">Price</th>
+      <th>Coming up</th><th class="num">Last 12 months</th><th></th>
+    </tr></thead>
+    <tbody>
     {% for e in extras %}
-    <div class="doc-row">
-      <span style="flex:1;">{{ e['name'] }} — {{ e['price']|money }} {% if not e['active'] %}<span class="mini-status status-inactive">hidden</span>{% endif %}</span>
-      <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleExtraEdit({{ e['id'] }})">Edit</span>
-      <form method="post" action="{{ url_for('toggle_extra', extra_id=e['id']) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-mini">{{ 'Show' if not e['active'] else 'Hide' }}</button>
-      </form>
-      <form method="post" action="{{ url_for('delete_extra', extra_id=e['id']) }}" onsubmit="return confirm('Remove this extra?');">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="doc-delete" aria-label="Remove {{ e['name'] }}" title="Remove this extra">×</button>
-      </form>
-    </div>
-    <form method="post" action="{{ url_for('edit_extra', extra_id=e['id']) }}" id="edit-extra-{{ e['id'] }}" class="search-bar" style="display:none; margin-top:6px;">
+    {% set f = figures[e['id']] %}
+    <tr>
+      <td>
+        <strong>{{ e['name'] }}</strong>
+        {% if not e['active'] %}<span class="mini-status status-inactive">withdrawn</span>{% endif %}
+        <span class="upload-hint">{{ categories.get(e['category'] or 'other', 'Other') }}
+          {%- if e['description'] %} &middot; {{ e['description'] }}{% endif %}</span>
+      </td>
+      <td>
+        {%- set where = [] %}
+        {%- if e['guest_bookable'] %}{% set _ = where.append('guests online') %}{% endif %}
+        {%- if e['sold_in_pos'] %}{% set _ = where.append('the till') %}{% endif %}
+        {{ (where|join(' and '))|capitalize if where else 'Staff add it' }}
+        {% if e['ask_when'] %}<span class="upload-hint">asks the guest which day</span>{% endif %}
+        {% if e['max_qty'] %}<span class="upload-hint">at most {{ e['max_qty'] }} a stay</span>{% endif %}
+      </td>
+      <td>{% if (e['lead_time_days'] or 0) > 0 %}{{ e['lead_time_days'] }} day{{ '' if e['lead_time_days'] == 1 else 's' }}{% else %}<span class="upload-hint">none</span>{% endif %}</td>
+      <td class="num">{{ e['price']|money }}
+        <span class="upload-hint">VAT {{ '%g'|format(e['vat_rate'] if e['vat_rate'] is not none else extras_vat_default) }}%
+          {%- if e['vat_part_amount'] %}, {{ e['vat_part_amount']|money }} at {{ '%g'|format(e['vat_part_rate']) }}%{% endif %}</span>
+      </td>
+      <td>
+        {% if f.upcoming %}
+          <a href="{{ url_for('extras_due_page', q=e['name']) }}">{{ f.upcoming }} on stays to come</a>
+          {% if f.next_on %}<span class="upload-hint">next {{ f.next_on|date_short }}</span>{% endif %}
+        {% else %}<span class="upload-hint">none</span>{% endif %}
+      </td>
+      <td class="num">{% if f.year_count %}{{ f.year_count }} &middot; {{ f.year_value|money }}{% else %}<span class="upload-hint">none</span>{% endif %}</td>
+      <td>
+        <div style="display:flex; gap:8px; align-items:center; justify-content:flex-end;">
+          <button type="button" class="btn-mini" onclick="toggleExtraEdit({{ e['id'] }})">Edit</button>
+          <form method="post" action="{{ url_for('toggle_extra', extra_id=e['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">{{ 'Offer again' if not e['active'] else 'Withdraw' }}</button>
+          </form>
+          {% if not f.ever %}
+          <form method="post" action="{{ url_for('delete_extra', extra_id=e['id']) }}" onsubmit="return confirm('Delete {{ e['name']|e }}? Nobody has ever had it, so nothing points at it.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="doc-delete" aria-label="Delete {{ e['name'] }}" title="Delete: nobody has ever had it">&times;</button>
+          </form>
+          {% endif %}
+        </div>
+      </td>
+    </tr>
+    <tr id="edit-row-{{ e['id'] }}" style="display:none;">
+      <td colspan="7">
+    <form method="post" action="{{ url_for('edit_extra', extra_id=e['id']) }}" id="edit-extra-{{ e['id'] }}" class="search-bar" style="margin:4px 0;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div style="flex:1;">
         <input aria-label="Name" type="text" name="name" value="{{ e['name'] }}" placeholder="Name" required>
@@ -202,14 +253,18 @@
       </div>
       <button type="submit" class="btn-mini">Save</button>
     </form>
+      </td>
+    </tr>
     {% endfor %}
+    </tbody>
+  </table>
   </div>
 {% endif %}
 
 <script>
 function toggleExtraEdit(id) {
-  var el = document.getElementById('edit-extra-' + id);
-  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+  var el = document.getElementById('edit-row-' + id);
+  el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 </script>
 

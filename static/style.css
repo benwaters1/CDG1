@@ -32,6 +32,10 @@
   --status-info-bg:#DCE8F0;
   --status-warn-bg:#F0E6C8;
   --status-neutral-bg:#EEE8DA;
+  /* The calendar's extras lane: its own colour, so a hamper is not read as
+     one more arrival. */
+  --cal-extra-bg:#ECE3F2;
+  --cal-extra-ink:#6B4C8A;
   --flash-error-bg:#F7DEDE; --flash-error-border:#E0B0B0;
   --flash-success-bg:#DCEBDC; --flash-success-border:#B7D6B7;
   --cal-free-bg:#fff; --cal-pending-bg:#F0E6C8; --cal-confirmed-bg:#B7D6B7;
@@ -760,6 +764,7 @@ body.staff-shell a.mini-row:hover{
 .lane-badge.lane-workshop{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .lane-badge.lane-event{ background:var(--status-danger-bg); color:var(--danger); }
 .lane-badge.lane-shift{ background:var(--status-neutral-bg); color:var(--steel-deep); }
+.lane-badge.lane-extra{ background:var(--cal-extra-bg); color:var(--cal-extra-ink); }
 .origin-badge{ font-size:10.5px; color:var(--ink-soft); }
 .overview-filters{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
 .overview-filters select, .overview-filters input[type="text"]{ font-size:12.5px; padding:5px 8px; }
@@ -1495,6 +1500,60 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
 .cal-ev-event .cal-ev-dot, .cal-ev-dot.cal-ev-event{ background:var(--danger); }
 .cal-ev-shift{ background:var(--status-neutral-bg); }
 .cal-ev-shift .cal-ev-dot, .cal-ev-dot.cal-ev-shift{ background:var(--steel-deep); }
+.cal-ev-extra{ background:var(--cal-extra-bg); }
+.cal-ev-extra .cal-ev-dot, .cal-ev-dot.cal-ev-extra{ background:var(--cal-extra-ink); }
+
+/* Every chip opens its card, so a chip with no page of its own to go to is a
+   button rather than a dead span -- and looks like the links beside it. */
+button.cal-ev{ border:none; font-family:inherit; text-align:left; width:100%; cursor:pointer; }
+button.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:0 2px 8px rgba(43,38,32,0.12); }
+.cal-ev:focus-visible{ outline:2px solid var(--gold); outline-offset:1px; }
+/* Which night of how many, out of reach of the ellipsis that eats a long
+   name in a month cell. */
+.cal-ev-badge{
+  flex:none; margin-left:auto; padding:0 5px; border-radius:8px;
+  font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; line-height:1.6;
+  background:rgba(255,255,255,0.65); color:var(--ink-soft);
+}
+.cal-week .cal-ev-badge{ margin-left:4px; }
+/* Asked for and not yet agreed: a stay to confirm, an extra the guest
+   requested, dates held for an enquiry. Dashed, so it reads before the words. */
+.cal-ev-pending{ box-shadow:inset 0 0 0 1px var(--ink-soft); background-image:repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,0.45) 6px 9px); }
+
+/* THE CARD a chip opens. A native dialog: Escape closes it, focus stays in
+   it, and the page behind keeps its place. On a phone it is a sheet from the
+   bottom, where a thumb reaches its buttons. */
+.cal-card-dialog{
+  border:none; border-radius:16px; padding:0; color:var(--ink); background:var(--surface);
+  width:min(520px, calc(100vw - 32px)); max-height:min(86vh, 760px);
+  box-shadow:0 18px 50px rgba(43,38,32,0.28);
+}
+.cal-card-dialog::backdrop{ background:rgba(43,38,32,0.38); }
+.cal-card-close{ position:sticky; top:0; display:flex; justify-content:flex-end; padding:10px 12px 0; background:var(--surface); }
+.cal-card{ padding:0 22px 20px; }
+.cal-card-kicker{ display:flex; align-items:center; gap:7px; margin:0 0 4px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-soft); }
+.cal-card-title{ margin:0; font-size:20px; line-height:1.25; overflow-wrap:anywhere; }
+.cal-card-sub{ margin:4px 0 0; color:var(--ink-soft); font-size:13.5px; }
+.cal-card h3{ margin:18px 0 6px; font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-soft); }
+.cal-card-facts{ display:grid; grid-template-columns:max-content 1fr; gap:6px 14px; margin:14px 0 0; font-size:13.5px; }
+.cal-card-facts dt{ color:var(--ink-soft); }
+.cal-card-facts dd{ margin:0; overflow-wrap:anywhere; }
+.cal-card-nights, .cal-card-list{ list-style:none; margin:0; padding:0; font-size:13.5px; }
+.cal-card-nights li{ display:grid; grid-template-columns:7.5em 1fr; gap:10px; padding:5px 0; border-bottom:1px solid var(--parchment-line); }
+.cal-card-nights li:last-child{ border-bottom:none; }
+.cal-card-nights li span{ font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--ink-soft); }
+.cal-card-list li{ padding:4px 0; }
+.cal-card-extras li{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:8px 0; border-bottom:1px solid var(--parchment-line); }
+.cal-card-extras li:last-child{ border-bottom:none; }
+.cal-card-extras form{ margin-left:auto; }
+.cal-card-extra-note{ flex-basis:100%; }
+.cal-card-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+.cal-card-overdue{ color:var(--danger); font-weight:600; }
+@media (max-width: 560px){
+  .cal-card-dialog{ width:100%; max-width:100%; margin:auto 0 0; border-radius:16px 16px 0 0; max-height:88vh; }
+  .cal-card{ padding:0 16px 18px; }
+  .cal-month .cal-ev-badge{ display:none; }
+}
 
 .cal-more{ font-size:10.5px; color:var(--steel); text-decoration:none; padding-left:6px; }
 .cal-more:hover{ text-decoration:underline; }
@@ -2730,7 +2789,7 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   /* A cell this narrow cannot hold a label, so it holds the shape of the day:
      one dot per item, in the lane colour, and the day number. The words are
      one tap away in the day view rather than truncated to nothing here. */
-  .cal-month .cal-ev{ min-height:0; padding:0; background:none; border-radius:0; }
+  .cal-month .cal-ev{ min-height:0; padding:0; background:none; border-radius:0; width:auto; }
   .cal-month .cal-ev-text,
   .cal-month .cal-ev-who{ display:none; }
   .cal-month .cal-day-events{ flex-direction:row; flex-wrap:wrap; gap:3px; align-items:center; }

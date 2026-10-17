@@ -5766,6 +5766,16 @@ def init_db():
          "ALTER TABLE booking_extras ADD COLUMN delivered_at TEXT"),
         ("booking_extras_delivered_by_user_id",
          "ALTER TABLE booking_extras ADD COLUMN delivered_by_user_id INTEGER"),
+        # ARRANGED, the step before handed over: the board ordered from the
+        # supplier, the car booked. Without it "confirmed" meant both "a guest
+        # asked" and "somebody has sorted it", and the only way to know which
+        # was to ask around (owner, 17 October 2026).
+        ("booking_extras_arranged_at",
+         "ALTER TABLE booking_extras ADD COLUMN arranged_at TEXT"),
+        ("booking_extras_arranged_by_user_id",
+         "ALTER TABLE booking_extras ADD COLUMN arranged_by_user_id INTEGER"),
+        ("booking_extras_arranged_note",
+         "ALTER TABLE booking_extras ADD COLUMN arranged_note TEXT"),
         # 1 when the line's price is already inside bookings.total_price,
         # because it was chosen with the stay. See create_booking.
         ("booking_extras_in_booking_total",
@@ -14278,6 +14288,10 @@ def build_overview(conn, view, anchor, fetch_window=None):
 
     lo, hi = query_start.isoformat(), query_end.isoformat()
 
+    def nights_of(arrival, departure):
+        came, goes = parse_date(arrival), parse_date(departure)
+        return (goes - came).days if came and goes and goes > came else 0
+
     def staying(row, arrival, departure, guest, room):
         """The nights after the first, as one row: the first night is the
         arrival's, and the departure morning is not a night. A stay of 9 to 12
@@ -14290,7 +14304,8 @@ def build_overview(conn, view, anchor, fetch_window=None):
         nights = (goes - came).days
         second = (came + timedelta(days=1)).isoformat()
         last = (goes - timedelta(days=1)).isoformat()
-        here = dict(row, title=f"{guest} in residence — {room}", short=guest, staying=True)
+        here = dict(row, title=f"{guest} in residence — {room}", short=guest, staying=True,
+                    badge="")
         return _spanning_row(here, {"first": arrival, "count": nights, "unit": "night"},
                              second, last, lo, hi)
 
@@ -14305,6 +14320,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
     ).fetchall()
     for b in bookings:
         booking_link = url_for("admin_bookings", q=b["reference_code"])
+        n = nights_of(b["arrival_date"], b["departure_date"])
         # The stay as a whole, on both of its rows, so a calendar that wants
         # one event per stay (the house calendar) builds it from this list
         # rather than asking the database a second way.
@@ -14313,7 +14329,12 @@ def build_overview(conn, view, anchor, fetch_window=None):
                 "party": b["party_size"], "ref": b["reference_code"],
                 "eta": b["estimated_arrival_time"] or "",
                 "flight": " ".join(x for x in (b["transfer_flight_number"] or "",
-                                               b["transfer_arrival_time"] or "") if x)}
+                                               b["transfer_arrival_time"] or "") if x),
+                "nights": n, "booking_id": b["id"], "requests": b["special_requests"] or ""}
+        # Which night of how many, on the arrival itself: it is night 1, and a
+        # calendar that only started counting on the second night read as
+        # though the first was somebody else's.
+        night_one = f" · night 1 of {n}" if n else ""
         if query_start.isoformat() <= b["arrival_date"] < query_end.isoformat():
             arrival_detail = f"Party of {b['party_size']}"
             if b["special_requests"]:
@@ -14326,8 +14347,8 @@ def build_overview(conn, view, anchor, fetch_window=None):
                 "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
                 "scheduled": True, "status": b["status"], "acknowledgment_status": None,
                 "priority": None, "repeat_weekly": 0, "date": b["arrival_date"],
-                "title": f"{b['guest_name']} arrives — {b['room_name']}",
-                "short": f"↓ {b['guest_name']}",
+                "title": f"{b['guest_name']} arrives — {b['room_name']}{night_one}",
+                "short": f"↓ {b['guest_name']}", "badge": f"1/{n}" if n else "",
                 "detail": arrival_detail,
                 "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
                 "facts": stay,
@@ -14336,8 +14357,8 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
             "scheduled": True, "status": b["status"], "acknowledgment_status": None,
             "priority": None, "repeat_weekly": 0, "date": b["departure_date"],
-            "title": f"{b['guest_name']} departs — {b['room_name']}",
-            "short": f"↑ {b['guest_name']}",
+            "title": f"{b['guest_name']} departs — {b['room_name']} · by {CHECK_OUT_TIME}",
+            "short": f"↑ {b['guest_name']}", "badge": "out",
             "detail": f"Party of {b['party_size']}",
             "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
             "facts": stay,
@@ -14359,21 +14380,25 @@ def build_overview(conn, view, anchor, fetch_window=None):
         party = (f"Party of {st['party_size']}" if st["party_size"]
                  else "Party size not stated")
         made = None
-        for day, verb, arrow in ((st["arrival_date"], "arrives", "↓"),
-                                 (st["departure_date"], "departs", "↑")):
+        n = nights_of(st["arrival_date"], st["departure_date"])
+        for day, verb, arrow, badge, when in (
+                (st["arrival_date"], "arrives", "↓", f"1/{n}" if n else "",
+                 f" · night 1 of {n}" if n else ""),
+                (st["departure_date"], "departs", "↑", "out", f" · by {CHECK_OUT_TIME}")):
             made = {
                 "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
                 "scheduled": True, "status": "confirmed", "acknowledgment_status": None,
                 "priority": None, "repeat_weekly": 0, "date": day,
-                "title": f"{st['guest_name']} {verb} — {room} · {st['channel']}",
-                "short": f"{arrow} {st['guest_name']}",
+                "title": f"{st['guest_name']} {verb} — {room} · {st['channel']}{when}",
+                "short": f"{arrow} {st['guest_name']}", "badge": badge,
                 "detail": f"{party} · booked through {st['channel']}",
                 "assignee_id": None, "assignee_name": None,
                 "id": f"ota{st['ota_reservation_id']}", "link": link,
                 "facts": {"arrival": st["arrival_date"], "departure": st["departure_date"],
                           "room": st["room_name"] or "", "guest": st["guest_name"],
                           "party": st["party_size"], "ref": st["reference_code"] or "",
-                          "channel": st["channel"], "eta": "", "flight": ""},
+                          "channel": st["channel"], "eta": "", "flight": "", "nights": n,
+                          "booking_id": None, "requests": ""},
             }
             if lo <= day < hi:
                 rows.append(made)
@@ -14471,35 +14496,54 @@ def build_overview(conn, view, anchor, fetch_window=None):
         if running:
             rows.append(running)
 
-    # What the house has promised a guest for a particular day: a board on
-    # arrival, a transfer on the Tuesday. Here because it is work on a date
-    # like anything else, and a promise that lives only on its own page is one
-    # somebody has to remember to open.
+    # What the house has promised a guest: a board on arrival, a transfer on
+    # the Tuesday. Here because it is work on a date like anything else, and a
+    # promise that lives only on its own page is one somebody has to remember
+    # to open.
+    #
+    # EXTRAS ARE THEIR OWN LANE, with their own colour and filter. They used to
+    # share the bookings' colour and say only what they were -- "Board" in a
+    # cell full of arrivals, for whom nobody could tell -- and to drop off the
+    # calendar entirely when no day was chosen. Now each says what, how many
+    # and for whom; one with no day is on the stay's first day, "for the stay";
+    # one the guest asked for and nobody has confirmed says so; one delivered
+    # is ticked; and one whose day has passed undelivered is overdue, as the
+    # extras due list has it.
+    owed_by = service_day().isoformat()
     for x in conn.execute(
             """SELECT booking_extras.*, bookings.guest_name, bookings.reference_code AS stay_ref,
+                      bookings.arrival_date, bookings.status AS stay_status,
                       rooms.name AS room_name
                  FROM booking_extras
                  JOIN bookings ON bookings.id = booking_extras.booking_id
                  LEFT JOIN rooms ON rooms.id = bookings.room_id
                 WHERE booking_extras.category = 'room'
-                  AND booking_extras.status IN ('confirmed', 'delivered')
-                  AND bookings.status = 'confirmed'
-                  AND booking_extras.scheduled_for >= ?
-                  AND booking_extras.scheduled_for < ?""",
+                  AND booking_extras.status IN ('requested', 'confirmed', 'delivered')
+                  AND bookings.status IN ('pending', 'confirmed')
+                  AND COALESCE(NULLIF(booking_extras.scheduled_for, ''), bookings.arrival_date) >= ?
+                  AND COALESCE(NULLIF(booking_extras.scheduled_for, ''), bookings.arrival_date) < ?""",
             (query_start.isoformat(), query_end.isoformat())).fetchall():
         qty = x["quantity"] or 1
+        what = f"{x['name']}{f' ×{qty}' if qty > 1 else ''}"
+        for_stay = not x["scheduled_for"]
+        day = x["scheduled_for"] or x["arrival_date"]
+        overdue = (x["status"] == "confirmed" and not for_stay and day < owed_by)
+        state = {"delivered": "delivered", "requested": "to confirm"}.get(x["status"], "")
         rows.append({
-            "kind": "extra", "lane": "booking", "is_guest": True, "origin": "booking",
+            "kind": "extra", "lane": "extra", "is_guest": True, "origin": "booking",
             "scheduled": True, "status": x["status"], "acknowledgment_status": None,
-            "priority": None, "repeat_weekly": 0, "date": x["scheduled_for"],
-            "title": (f"{x['name']}{f' ×{qty}' if qty > 1 else ''} — "
-                      f"{x['guest_name']}, {x['room_name'] or 'room TBC'}"),
-            "short": x["name"],
+            "priority": None, "repeat_weekly": 0, "date": day,
+            "title": (f"{what} — {x['guest_name']}, {x['room_name'] or 'room TBC'}"
+                      + (" · for the stay" if for_stay else "")
+                      + (f" · {state}" if state else "") + (" · overdue" if overdue else "")),
+            "short": f"{what} · {x['guest_name']}", "badge": "✓" if x["status"] == "delivered" else "",
             "detail": x["notes"] or "",
             "assignee_id": None, "assignee_name": None, "id": x["id"],
-            "link": url_for("extras_due_page"),
+            "link": url_for("extras_due_page"), "overdue": overdue,
             "facts": {"guest": x["guest_name"], "room": x["room_name"] or "",
-                      "ref": x["stay_ref"], "what": x["name"], "quantity": qty},
+                      "ref": x["stay_ref"], "what": x["name"], "quantity": qty,
+                      "booking_id": x["booking_id"], "for_stay": for_stay, "day": day,
+                      "state": x["status"], "stay_pending": x["stay_status"] == "pending"},
         })
 
     # EVENTS, WEDDINGS AND PARTIES, which were on no calendar at all: a
@@ -14682,8 +14726,22 @@ def build_calendar(conn, view, anchor, viewer=None):
         # "What I Need To Do" list actually lives, and leave the rest as plain
         # information rather than links into pages they can't open.
         rows = [dict(r, link=(url_for("dashboard") if r["kind"] == "task"
-                              else url_for("my_shifts") if r["kind"] == "shift" else None))
+                              else url_for("my_shifts") if r["kind"] == "shift"
+                              # The extras due list is theirs: they carry them.
+                              else url_for("extras_due_page") if r["kind"] == "extra" else None))
                 for r in rows]
+    else:
+        # The owner's own tasks and the staff's were the only things on the
+        # calendar that opened nothing: build_overview gives a task no link.
+        rows = [dict(r, link=url_for("admin_tasks", view="day", date=r["date"]))
+                if r["kind"] == "task" and not r.get("link") and r["date"] else r
+                for r in rows]
+    # What a click opens: everything about it, in a panel over the calendar,
+    # with the way to its own page. One card per thing, shared by every chip
+    # of it -- the arrival, each night and the departure open the same stay.
+    owner_view = viewer is None or viewer["role"] == "owner"
+    cards = calendar_cards(conn, rows, owner_view)
+    rows = [dict(r, card=calendar_uid(r)) for r in rows]
 
     # Each row in every cell it covers, not just the first: a row that lasts
     # (see _spanning_row) is copied into each of its days, saying which day of
@@ -14703,9 +14761,15 @@ def build_calendar(conn, view, anchor, viewer=None):
             copy = row
             if run and run["count"] > 1:
                 k = (day - parse_date(run["first"])).days + 1
+                # A night says which of how many in a badge of its own, so a
+                # long name ellipsing away in a month cell cannot take the
+                # count with it.
+                nightly = run["unit"] == "night"
                 copy = dict(row, date=iso, until=iso,
                             title=f"{run['title']} · {run['unit']} {k} of {run['count']}",
-                            short=f"{run['short']} · {run['unit']} {k}")
+                            short=(run["short"] if nightly
+                                   else f"{run['short']} · {run['unit']} {k}"),
+                            badge=f"{k}/{run['count']}" if nightly else row.get("badge", ""))
             later = bool(run) and iso > run["first"]
             (carried if later else begins).setdefault(iso, []).append(copy)
             source[id(copy)] = id(row)
@@ -14736,7 +14800,193 @@ def build_calendar(conn, view, anchor, viewer=None):
         "employees": sheet["employees"], "owner_id": sheet["owner_id"],
         # Things, not cells: a four-day atelier is one item in the week.
         "total_events": len({source[id(e)] for c in cells if c["in_span"] for e in c["events"]}),
+        "cards": list(cards.values()),
     }
+
+
+def calendar_uid(row):
+    """The one name a calendar row's card goes by, and the anchor a link to it
+    carries (/calendar?view=day&date=...#ev-<uid>). Every chip of one thing
+    shares it: a stay's arrival, nights and departure; an atelier's places and
+    its later days, which are all the one sitting."""
+    f = row.get("facts") or {}
+    if row["kind"] == "workshop" and f.get("session"):
+        return f"workshop-s{f['session']}"
+    return f"{row['kind']}-{row['id']}"
+
+
+def _cal_day(iso):
+    d = parse_date(iso) if isinstance(iso, str) else iso
+    return f"{d:%a} {d.day} {d:%b}" if d else ""
+
+
+def _plural(n, word):
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def calendar_cards(conn, rows, owner_view):
+    """{uid: card} for the rows the calendar is about to draw: what a click on
+    a chip opens. A card is everything about one thing -- heading, the facts
+    as label and value, a stay's nights one by one, the extras that go with
+    it, and the ways to its own pages -- so the click answers the question
+    instead of opening a list to search.
+
+    Only what the viewer may see. The rows arrive already cut to the viewer
+    (build_calendar), and their links already point only where the viewer can
+    go; the owner-only pages are added here only for the owner. Ticking an
+    extra off is anybody's, as on the extras due list."""
+    cards = {}
+    stay_ids = {(r.get("facts") or {}).get("booking_id") for r in rows if r["kind"] == "booking"}
+    stay_ids |= {(r.get("facts") or {}).get("booking_id") for r in rows if r["kind"] == "extra"}
+    stay_ids.discard(None)
+    dinner_ids = {r["id"] for r in rows if r["kind"] == "dinner"}
+    extras = {}
+    for category, ids in (("room", stay_ids), ("restaurant", dinner_ids)):
+        if not ids:
+            continue
+        marks = ",".join("?" * len(ids))
+        for x in conn.execute(
+                f"""SELECT * FROM booking_extras
+                     WHERE category = ? AND booking_id IN ({marks})
+                       AND COALESCE(status, '') != 'cancelled'
+                     ORDER BY COALESCE(NULLIF(scheduled_for, ''), '0000'), id""",
+                (category, *ids)).fetchall():
+            qty = x["quantity"] or 1
+            extras.setdefault((category, x["booking_id"]), []).append({
+                "id": x["id"], "what": f"{x['name']}{f' ×{qty}' if qty > 1 else ''}",
+                "when": _cal_day(x["scheduled_for"]) if x["scheduled_for"] else "for the stay",
+                "state": {"delivered": "delivered", "requested": "to confirm"}.get(
+                    x["status"], "to do"),
+                "tick": x["status"] == "confirmed", "undo": x["status"] == "delivered",
+                "notes": x["notes"] or ""})
+    settings = get_restaurant_settings(conn) if dinner_ids else None
+    dinner_at = _clock(settings["dinner_time"] if settings else "") or "19:30"
+    sessions = {}
+
+    def card(r, heading, sub="", facts=(), **more):
+        uid = calendar_uid(r)
+        open_words = more.pop("open_words", None) or "Open"
+        kicker = {"booking": "Stay", "extra": "Extra", "dinner": "Restaurant",
+                  "workshop": "Atelier", "event": "Event", "closure": "Room closed",
+                  "shift": "Rota"}.get(r["kind"], "My task" if r["lane"] == "owner" else "Task")
+        made = {"uid": uid, "lane": r["lane"], "kicker": kicker, "heading": heading, "sub": sub,
+                "status": r["status"], "facts": [(k, v) for k, v in facts if v not in ("", None)],
+                "timeline": [], "names": [], "extras": [], "actions": [], "overdue": False}
+        made.update(more)
+        if r.get("link"):
+            made["actions"].insert(0, (open_words, r["link"]))
+        cards[uid] = made
+        return made
+
+    for r in rows:
+        uid = calendar_uid(r)
+        f = r.get("facts") or {}
+        kind = r["kind"]
+        if kind == "workshop" and f.get("session"):
+            s = sessions.setdefault(uid, {"row": r, "places": [], "running": None})
+            if f.get("running"):
+                s["running"] = f
+            else:
+                s["places"].append(r)
+            continue
+        if uid in cards:
+            continue
+        if kind == "booking" and f.get("arrival"):
+            n = f.get("nights") or 0
+            channel = f.get("channel") or ""
+            c = card(r, f.get("guest") or r["short"],
+                     " · ".join(x for x in (f.get("room") or "room not stated", channel) if x),
+                     [("Dates", f"{_cal_day(f['arrival'])} → {_cal_day(f['departure'])}"
+                                + (f" · {_plural(n, 'night')}" if n else "")),
+                      ("Guests", f.get("party") or ""),
+                      ("Arriving", f"about {f['eta']}" if f.get("eta") else ""),
+                      ("Flight", f.get("flight") or ""),
+                      ("Requests", f.get("requests") or ""),
+                      ("Booked through", channel),
+                      ("Reference", f.get("ref") or "")],
+                     open_words="Booking.com page" if channel else "Open the booking")
+            first = parse_date(f["arrival"])
+            days = [(first + timedelta(days=i), "Arrives, from " + CHECK_IN_TIME + " · night 1"
+                     if i == 0 else f"Night {i + 1}") for i in range(n)]
+            if len(days) > 10:
+                # A fortnight's stay is its first nights, its last, and a
+                # line for the run between rather than a page of "Night 7".
+                days = days[:3] + [(None, f"Nights 4–{n - 1}")] + days[-1:]
+            c["timeline"] = [(_cal_day(d) if d else "", words) for d, words in days]
+            c["timeline"].append((_cal_day(f["departure"]), f"Leaves, by {CHECK_OUT_TIME}"))
+            c["extras"] = extras.get(("room", f.get("booking_id")), [])
+            if owner_view and f.get("booking_id"):
+                c["actions"] += [("Edit", url_for("edit_booking", booking_id=f["booking_id"])),
+                                 ("Arrival card", url_for("arrival_card", booking_id=f["booking_id"])),
+                                 ("Letters", url_for("booking_correspondence",
+                                                     booking_id=f["booking_id"]))]
+        elif kind == "extra":
+            c = card(r, f.get("what") + (f" ×{f['quantity']}" if (f.get("quantity") or 1) > 1 else ""),
+                     f"for {f.get('guest')}, {f.get('room') or 'room TBC'}",
+                     [("When", "for the stay, from " + _cal_day(f.get("day"))
+                       if f.get("for_stay") else _cal_day(f.get("day"))),
+                      ("Note", r.get("detail") or ""),
+                      ("Stay", "not confirmed yet" if f.get("stay_pending") else ""),
+                      ("Reference", f.get("ref") or "")],
+                     open_words="Extras due")
+            c["extras"] = [x for x in extras.get(("room", f.get("booking_id")), [])
+                           if x["id"] == r["id"]]
+            c["overdue"] = bool(r.get("overdue"))
+            if owner_view and f.get("ref"):
+                c["actions"].append(("Open the booking", url_for("admin_bookings", q=f["ref"])))
+        elif kind == "dinner":
+            c = card(r, f"Dinner · {f.get('guest') or ''}", f"{_cal_day(r['date'])}, {dinner_at}",
+                     [("Guests", f.get("party") or ""), ("Notes", r.get("detail") or ""),
+                      ("Reference", f.get("ref") or "")], open_words="Restaurant bookings")
+            c["extras"] = extras.get(("restaurant", r["id"]), [])
+        elif kind == "event":
+            c = card(r, ("Held: " if f.get("held") else "") + (f.get("what") or "event").capitalize()
+                     + f" · {f.get('contact') or ''}",
+                     f"{_cal_day(f.get('start'))}" + (f" → {_cal_day(f['end'])}"
+                                                    if f.get("end") and f["end"] != f.get("start") else ""),
+                     [("Guests", f.get("guests") or ""), ("Arriving", f.get("arrival_time") or ""),
+                      ("Dates held until", f.get("held_until") or ""),
+                      ("Spaces", r.get("detail") if not f.get("held") else ""),
+                      ("Reference", f.get("ref") or "")], open_words="Open the event")
+        elif kind == "closure":
+            card(r, f"Closed: {f.get('room')}", "",
+                 [("Closed from", _cal_day(f.get("start"))),
+                  ("Back on sale", _cal_day(f.get("end"))),
+                  ("Why", f.get("why") or "")], open_words="Close rooms")
+        elif kind == "task":
+            card(r, r["title"], "",
+                 [("Due", _cal_day(r["date"]) if r["date"] else ""),
+                  ("For", "me" if r["lane"] == "owner" else (r.get("assignee_name") or "nobody yet")),
+                  ("Priority", r.get("priority") if r.get("priority") not in (None, "", "normal") else ""),
+                  ("Notes", r.get("detail") or "")],
+                 open_words="Open in tasks" if owner_view else "My list")
+        elif kind == "shift":
+            hours = "–".join(x for x in (f.get("start") or "", f.get("end") or "") if x)
+            card(r, f"{f.get('who')} on" + (f" {hours}" if hours else ""), _cal_day(r["date"]),
+                 [("Role", f.get("role") or "")], open_words="Rota" if owner_view else "My shifts")
+        else:
+            card(r, r["title"], _cal_day(r["date"]) if r["date"] else "",
+                 [("Notes", r.get("detail") or "")])
+    for uid, s in sessions.items():
+        r, run = s["row"], s["running"] or {}
+        f = r.get("facts") or {}
+        start, end = f.get("start") or run.get("start"), f.get("end") or run.get("end")
+        people = sum((p.get("facts") or {}).get("party") or 1 for p in s["places"])
+        places = len(s["places"]) or run.get("places") or 0
+        pending = sum(1 for p in s["places"] if p["status"] == "pending") or run.get("pending") or 0
+        c = card(r, f.get("workshop") or r["short"],
+                 _cal_day(start) + (f" → {_cal_day(end)}" if end and end != start else ""),
+                 [("Places", places), ("People", people or run.get("people") or ""),
+                  ("To confirm", pending or "")], open_words="Registrations")
+        c["status"] = "pending" if places and pending == places else "confirmed"
+        c["names"] = ([f"{(p.get('facts') or {}).get('guest')}"
+                       + (f" ×{p['facts']['party']}" if ((p.get('facts') or {}).get('party') or 1) > 1 else "")
+                       + (" (to confirm)" if p["status"] == "pending" else "") for p in s["places"]]
+                      or [n.strip() for n in (r.get("detail") or "").split(",") if n.strip()])
+        if owner_view:
+            c["actions"].append(("Register to print",
+                                 url_for("workshop_register_print", session_id=f["session"])))
+    return cards
 
 
 DEFAULT_ONBOARDING_ITEMS = [
@@ -19241,6 +19491,68 @@ def extras_delivered_today(conn, today=None):
         (start, end)).fetchall()]
 
 
+# The run sheet's sections, in the order a shift reads them. Overdue first,
+# because a transfer that was for yesterday is a different problem from one
+# for this afternoon; "for the stay" last, because a hamper with no day is
+# for whenever suits rather than for a moment.
+EXTRAS_DUE_GROUPS = (
+    ("overdue", "Overdue"),
+    ("today", "Today"),
+    ("tomorrow", "Tomorrow"),
+    ("week", "This week"),
+    ("later", "Later"),
+    ("stay", "For the stay, no day given"),
+)
+
+
+def extra_is_transfer(category, name, revenue_category=None):
+    """Whether a sold extra is somebody to be driven somewhere.
+
+    Three ways in, because the catalogue says it three ways: the Transfers
+    category, the Transport revenue line, or -- the airport transfer the house
+    actually sells was filed under Other -- the word in its name, which is
+    also how the Transfers page has always found them.
+    """
+    return ((category or "") == "transfer"
+            or (revenue_category or "") == "transport"
+            or "transfer" in (name or "").lower())
+
+
+def mark_booking_extra_arranged(conn, line_id, user_id=None, note="", undo=False):
+    """Say that something the house owes a guest has been sorted. (ok, message).
+
+    The step between a guest asking and it being handed over: the board
+    ordered in, the car booked, the masseuse confirmed. It changes no money
+    and no stock -- the sale did both -- and anybody on shift can do it, like
+    ticking off a delivery. Cancelling stays the owner's.
+    """
+    line = conn.execute("SELECT * FROM booking_extras WHERE id = ?", (line_id,)).fetchone()
+    if not line:
+        return False, "No such line."
+    if (line["status"] or "") == "cancelled":
+        return False, "That was cancelled — nothing to arrange."
+    if undo:
+        if not line["arranged_at"]:
+            return False, "That is not marked arranged."
+        conn.execute("UPDATE booking_extras SET arranged_at = NULL, arranged_by_user_id = NULL, "
+                     "arranged_note = NULL WHERE id = ?", (line_id,))
+        return True, f"{line['name']} is back to needing arranging."
+    if (line["status"] or "") == "delivered":
+        return False, "That has already been handed over."
+    note = (note or "").strip()[:EXTRA_NOTE_MAX] or None
+    if line["arranged_at"]:
+        # Saying more about it -- the driver's name, a time -- is allowed;
+        # restamping who and when is not.
+        if note and note != line["arranged_note"]:
+            conn.execute("UPDATE booking_extras SET arranged_note = ? WHERE id = ?", (note, line_id))
+            return True, f"Note on {line['name']} updated."
+        return False, "Already arranged."
+    conn.execute(
+        "UPDATE booking_extras SET arranged_at = ?, arranged_by_user_id = ?, arranged_note = ? "
+        "WHERE id = ?", (datetime.now(timezone.utc).isoformat(), user_id, note, line_id))
+    return True, f"{line['name']} marked arranged."
+
+
 def extras_due(conn, today=None):
     """What the house still owes its guests, soonest first.
 
@@ -19255,31 +19567,85 @@ def extras_due(conn, today=None):
     """
     today = today or service_day()
     today_iso = today.isoformat()
-    rows = []
+    tomorrow_iso = (today + timedelta(days=1)).isoformat()
+    week_iso = (today + timedelta(days=7)).isoformat()
+    rows, unconfirmed = [], []
     for line in conn.execute(
             """SELECT booking_extras.*, bookings.guest_name, bookings.reference_code,
                       bookings.arrival_date, bookings.departure_date,
-                      rooms.name AS room_name
+                      bookings.status AS booking_status, bookings.guest_phone,
+                      bookings.party_size, bookings.transfer_flight_number,
+                      bookings.transfer_arrival_time,
+                      rooms.name AS room_name,
+                      extras.lead_time_days, extras.category AS extra_category,
+                      extras.revenue_category AS extra_revenue_category,
+                      arranger.name AS arranged_by,
+                      EXISTS (SELECT 1 FROM vehicle_transfers vt
+                               WHERE vt.booking_id = bookings.id) AS has_run
                  FROM booking_extras
                  JOIN bookings ON bookings.id = booking_extras.booking_id
                  LEFT JOIN rooms ON rooms.id = bookings.room_id
+                 LEFT JOIN extras ON extras.id = booking_extras.extra_id
+                 LEFT JOIN users arranger ON arranger.id = booking_extras.arranged_by_user_id
                 WHERE booking_extras.category = 'room'
                   AND COALESCE(booking_extras.status, '') = 'confirmed'
-                  AND bookings.status = 'confirmed'
+                  AND bookings.status IN ('confirmed', 'pending')
                   AND bookings.departure_date >= ?
                 ORDER BY booking_extras.scheduled_for IS NULL,
-                         booking_extras.scheduled_for""", (today_iso,)).fetchall():
+                         booking_extras.scheduled_for, bookings.arrival_date""",
+            (today_iso,)).fetchall():
         when = line["scheduled_for"] or None
-        rows.append({
+        transfer = extra_is_transfer(line["extra_category"], line["name"],
+                                     line["revenue_category"] or line["extra_revenue_category"])
+        notice = int(line["lead_time_days"] or 0)
+        # Arranged by a person saying so, or -- for a transfer -- by a run on
+        # the Transfers page for the stay, which is the same test that page
+        # uses to take a stay off "asked for, nothing arranged".
+        arranged = bool(line["arranged_at"]) or (transfer and bool(line["has_run"]))
+        # Only what needs doing ahead has an "arrange by": a transfer, or
+        # anything the catalogue gives notice for. A bottle from the cellar
+        # does not need arranging; it needs carrying upstairs.
+        needs_arranging = transfer or notice > 0
+        # A car is never arranged the morning it is needed: a transfer the
+        # catalogue gives no notice for is still to be booked the day before.
+        if transfer:
+            notice = max(notice, 1)
+        target = when or line["arrival_date"]
+        arrange_by = ((parse_date(target) - timedelta(days=notice)).isoformat()
+                      if needs_arranging and target and parse_date(target) else None)
+        row = {
             "line": line,
             "when": when,
             "overdue": bool(when) and when < today_iso,
             "today": when == today_iso,
             "in_house": (line["arrival_date"] or "") <= today_iso
                         < (line["departure_date"] or ""),
-        })
+            "transfer": transfer,
+            "needs_arranging": needs_arranging,
+            "arranged": arranged,
+            # Arranged on the Transfers page rather than ticked here.
+            "arranged_by_run": transfer and bool(line["has_run"]) and not line["arranged_at"],
+            "arrange_by": arrange_by,
+            "arrange_now": needs_arranging and not arranged and bool(arrange_by)
+                           and arrange_by <= today_iso,
+            "value": round(float(line["unit_price"] or 0) * float(line["quantity"] or 1), 2),
+            "group": ("overdue" if when and when < today_iso
+                      else "today" if when == today_iso
+                      else "tomorrow" if when == tomorrow_iso
+                      else "week" if when and when <= week_iso
+                      else "later" if when
+                      else "stay"),
+        }
+        # A stay not yet confirmed is not a job yet, but it is not nothing:
+        # a paid stay waiting on the owner with a car to Toulouse on it was
+        # on no list at all.
+        (rows if line["booking_status"] == "confirmed" else unconfirmed).append(row)
     return {
         "rows": rows,
+        "groups": [(key, label, [r for r in rows if r["group"] == key])
+                   for key, label in EXTRAS_DUE_GROUPS],
+        "arrange_now": [r for r in rows if r["arrange_now"]],
+        "unconfirmed": unconfirmed,
         "overdue": [r for r in rows if r["overdue"]],
         "today": [r for r in rows if r["today"]],
         "count": len(rows),
@@ -23903,9 +24269,35 @@ def extras_performance(conn, start=None, end=None):
               AND bookings.arrival_date >= ? AND bookings.arrival_date < ?""",
         (start.isoformat(), end.isoformat())).fetchone()["c"]
 
+    # ON THE BOOKS: what is already sold on stays still to arrive. The window
+    # above is stays that have begun, which is right for an attach rate and
+    # left out the one thing the owner asks after a booking comes in -- what
+    # have they had with it -- so the first real stay's extras were on this
+    # page nowhere at all (owner, 17 October 2026).
+    today_iso = house_today().isoformat()
+    ahead_stays = conn.execute(
+        "SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed' AND arrival_date >= ?",
+        (today_iso,)).fetchone()["c"]
+    ahead = [{"name": r["name"] or "Unnamed", "stays": r["stays"], "units": r["units"],
+              "revenue": round(float(r["revenue"] or 0), 2), "next_on": r["next_on"]}
+             for r in conn.execute(
+                 f"""SELECT booking_extras.name AS name,
+                            COUNT(DISTINCT booking_extras.booking_id) AS stays,
+                            COALESCE(SUM(booking_extras.quantity), 0) AS units,
+                            COALESCE(SUM(booking_extras.quantity * booking_extras.unit_price), 0) AS revenue,
+                            MIN(COALESCE(booking_extras.scheduled_for, bookings.arrival_date)) AS next_on
+                       FROM booking_extras
+                       JOIN bookings ON bookings.id = booking_extras.booking_id
+                      WHERE bookings.status = 'confirmed' AND {EXTRAS_COUNTED_SQL}
+                        AND bookings.arrival_date >= ?
+                      GROUP BY booking_extras.name
+                      ORDER BY revenue DESC""", (today_iso,)).fetchall()]
+
     # Offered and never taken. Only extras a guest can actually choose count
-    # as a failure to sell -- one the staff add by hand is not on offer.
-    sold = {r["name"] for r in rows}
+    # as a failure to sell -- one the staff add by hand is not on offer. And
+    # not one already booked on a stay to come: "never taken" beside an
+    # airport transfer somebody has just paid for reads as a fault.
+    sold = {r["name"] for r in rows} | {r["name"] for r in ahead}
     never = [r["name"] for r in conn.execute(
         "SELECT name FROM extras WHERE active = 1 AND guest_bookable = 1 ORDER BY name").fetchall()
         if r["name"] not in sold]
@@ -23922,6 +24314,8 @@ def extras_performance(conn, start=None, end=None):
         "revenue": round(revenue, 2),
         "per_stay": round(revenue / stays, 2) if stays else None,
         "never_sold": never,
+        "ahead": ahead, "ahead_stays": ahead_stays,
+        "ahead_revenue": round(sum(r["revenue"] for r in ahead), 2),
         "csv": [{"extra": r["name"], "stays": r["stays"], "units": r["units"],
                  "revenue": r["revenue"], "attach_pct": r["attach"]} for r in out],
     }
@@ -30189,8 +30583,15 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                     stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                     total_price_override=None, discount_amount_override=None,
                    guests_under_18=0, source="direct", confirm_now=False,
-                   extra_details=None, reference_code=None):
+                   extra_details=None, reference_code=None, record_payment=None):
     """Write a stay down. With confirm_now, it is booked rather than requested.
+
+    record_payment(conn, booking_id), when given, puts the money received on
+    the stay BEFORE anything is written to the guest. The confirmation reads
+    the bill, and the bill reads what has been received: recorded after it, a
+    guest who had paid in full by card was told the whole amount was still to
+    pay (GUD-CZ1XOG, 17 October 2026), while the house letter, which reads the
+    payment status, said "Paid in full".
 
     THE HOUSE TAKES BOOKINGS, NOT REQUESTS FOR BOOKINGS. Every stay used to
     land as 'pending' and wait for the owner to press confirm, which meant a
@@ -30324,6 +30725,9 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                               scheduled_for=detail.get("on"),
                               notes=detail.get("notes"), in_booking_total=True)
     conn.commit()
+    if record_payment and new_row:
+        record_payment(conn, new_row["id"])
+        conn.commit()
 
     # Booked, not requested. confirm_booking_by_id commits and sends the
     # confirmation itself, so if this succeeds the letters below are the wrong
@@ -30423,6 +30827,52 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
     return reference_code, manage_token
 
 
+def card_payment_recorder(session):
+    """What create_booking runs to put a paid checkout's money on the new stay.
+
+    Its own function, outside create_booking_from_stripe_session, so that
+    function reads in the order things happen: the money is written and
+    committed inside create_booking, before the confirmation is sent.
+    """
+
+    def record_the_card_payment(conn, booking_id):
+        # Record the amount, not just the fact. Without this the stay shows as
+        # paid with nothing received against it, so adding a night later would
+        # look like the whole stay was owed again. And BEFORE the confirmation
+        # goes (create_booking calls this first): the letter's balance line
+        # reads the bill, so a payment recorded after it told a guest who had
+        # paid in full that all of it was still to pay.
+        received = (sval(session, "amount_total") or 0) / 100.0
+        # A ROW SAYING HOW IT ARRIVED, not only that it did.
+        #
+        # Every other way money reaches a stay writes one -- the balance paid
+        # online, cash at the desk, a voucher spent, all of them go in as a
+        # booking_payments row AND through record_booking_payment. This path,
+        # the first payment on a brand-new booking, only ever did the second
+        # half. So a stay showed as paid with nothing to account for it, and
+        # the card-fee report reads booking_payments: the fees the house pays
+        # on the one kind of payment that always carries a fee were the fees
+        # it could not see.
+        #
+        # The UNIQUE session id is the guard, exactly as in
+        # mark_booking_payment_paid: the success redirect and the webhook can
+        # be in flight together, and losing that race is the correct outcome
+        # rather than a 500 for a guest who has just paid.
+        try:
+            conn.execute(
+                """INSERT INTO booking_payments (booking_id, amount, method,
+                   stripe_session_id, stripe_payment_intent_id, created_at)
+                   VALUES (?, ?, 'stripe', ?, ?, ?)""",
+                (booking_id, round(received, 2), session["id"], _intent_id(session),
+                 datetime.now(timezone.utc).isoformat()))
+        except sqlite3.IntegrityError:
+            return
+        record_booking_payment(conn, booking_id, received,
+                               reference=sval(session, "payment_intent"))
+
+    return record_the_card_payment
+
+
 def create_booking_from_stripe_session(conn, session):
     """Rebuilds a booking from a completed Stripe Checkout Session's
     metadata. Used by both the success redirect and the webhook — whichever
@@ -30450,6 +30900,7 @@ def create_booking_from_stripe_session(conn, session):
         ).fetchall()
     arrival, departure = parse_date(meta["arrival_date"]), parse_date(meta["departure_date"])
     available, conflict_reason = claim_range(conn, room["id"], arrival, departure, include_pending=False)
+
     reference_code, manage_token = create_booking(
         conn, room, meta["guest_name"], meta["guest_email"], meta.get("guest_phone", ""),
         arrival, departure, int(meta["party_size"]), meta.get("special_requests", ""),
@@ -30466,42 +30917,10 @@ def create_booking_from_stripe_session(conn, session):
         extra_details=unpack_extra_details(meta.get("extra_when", "")),
         # The reference the payment in Stripe was labelled with.
         reference_code=(meta.get("reference_code") or "").strip() or None,
+        record_payment=card_payment_recorder(session),
     )
     # The guest's address and arrival time, carried through the card page as metadata.
     store_booking_guest_details(conn, "bookings", "reference_code", reference_code, read_guest_details(meta, ROOM_GUEST_DETAILS))
-    # Record the amount, not just the fact. Without this the stay shows as paid
-    # with nothing received against it, so adding a night later would look like
-    # the whole stay was owed again.
-    paid_row = conn.execute(
-        "SELECT id FROM bookings WHERE reference_code = ?", (reference_code,)).fetchone()
-    if paid_row:
-        received = (sval(session, "amount_total") or 0) / 100.0
-        # A ROW SAYING HOW IT ARRIVED, not only that it did.
-        #
-        # Every other way money reaches a stay writes one -- the balance paid
-        # online, cash at the desk, a voucher spent, all of them go in as a
-        # booking_payments row AND through record_booking_payment. This path,
-        # the first payment on a brand-new booking, only ever did the second
-        # half. So a stay showed as paid with nothing to account for it, and
-        # the card-fee report reads booking_payments: the fees the house pays
-        # on the one kind of payment that always carries a fee were the fees
-        # it could not see.
-        #
-        # The UNIQUE session id is the guard, exactly as in
-        # mark_booking_payment_paid: the success redirect and the webhook can
-        # be in flight together, and losing that race is the correct outcome
-        # rather than a 500 for a guest who has just paid.
-        try:
-            conn.execute(
-                """INSERT INTO booking_payments (booking_id, amount, method,
-                   stripe_session_id, stripe_payment_intent_id, created_at)
-                   VALUES (?, ?, 'stripe', ?, ?, ?)""",
-                (paid_row["id"], round(received, 2), session["id"], _intent_id(session),
-                 datetime.now(timezone.utc).isoformat()))
-        except sqlite3.IntegrityError:
-            pass
-        record_booking_payment(conn, paid_row["id"], received,
-                               reference=sval(session, "payment_intent"))
     # SAVED HERE, not left for the caller. create_booking commits the booking
     # itself, part way through; everything after it -- the guest's address and
     # arrival time, the payment row, the amount received -- sat in an open
@@ -35310,6 +35729,30 @@ def owner_home_warnings(conn, today):
             "Outlook gives the whole check five, and past three the add-in gives up and "
             "asks the person to check by eye.",
             speed["count"], "admin_outlook_addin", _anchor="send-checks")
+
+    # EXTRAS THE HOUSE HAS PROMISED AND NOT SORTED. The run sheet knew, and
+    # nobody opens a run sheet to find out whether there is a problem on it.
+    # Both close themselves: arranged, handed over or cancelled, and the line
+    # goes.
+    due = extras_due(conn, today)
+
+    def named(rows):
+        first = "; ".join(f"{r['line']['name']} for {r['line']['guest_name']}"
+                          + (f" by {format_date_short(r['arrange_by'])}" if r.get("arrange_by")
+                             and not r["overdue"] else "")
+                          for r in rows[:2])
+        return first + (f", and {len(rows) - 2} more" if len(rows) > 2 else "")
+
+    if due["overdue"]:
+        n = len(due["overdue"])
+        add("blocker", f"{n} extra{'' if n == 1 else 's'} past {'its' if n == 1 else 'their'} "
+            "day and not handed over",
+            named(due["overdue"]) + ". Hand it over or tick it off, or take it off the bill "
+            "if it is not happening.", n, "extras_due_page", _anchor="due-overdue")
+    if due["arrange_now"]:
+        n = len(due["arrange_now"])
+        add("warn", f"{n} extra{'' if n == 1 else 's'} to arrange now",
+            named(due["arrange_now"]) + ".", n, "extras_due_page", state="Arrange now")
 
     order = {"blocker": 0, "warn": 1}
     out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
@@ -45875,6 +46318,7 @@ def guests():
 
     lv, stay_counts, tags = guests_list_view(conn, request.args)
     known_tags = sorted({t for ts in tags.values() for t in ts})
+    history = guest_stay_summaries(conn, today)
     conn.close()
     # The who-is-here lists follow the same search, so one box narrows the
     # whole page rather than only the half below it.
@@ -45886,10 +46330,53 @@ def guests():
                     if lowered in (x["name"] or "").lower()]
     return render_template(
         "guests.html", in_residence=in_residence, upcoming=upcoming,
-        profiles=lv["rows"], lv=lv, stay_counts=stay_counts,
+        profiles=lv["rows"], lv=lv, stay_counts=stay_counts, history=history,
         overview=overview, period=period, tags=tags, known_tags=known_tags,
         export_args=request.args.to_dict(),
     )
+
+
+def guest_stay_summaries(conn, today=None):
+    """{guest_id: {"stays", "nights", "last", "next"}} for every profile, in one pass.
+
+    The list counted only stays LINKED to a profile, so a guest whose booking
+    matched them by address -- every one that came in before the link was
+    made -- read "First time" on the list while their own page showed two
+    stays. guest_record is the definition: linked stays, and unlinked ones
+    under their address. This is that, for the profile's own address, in a
+    query instead of one per guest; addresses from profiles merged into it are
+    on their own page, not here.
+
+    Stays that have begun count (a no-show does not); `next` is the soonest
+    confirmed stay still to arrive. No money: what a guest is worth is
+    guest_record's to say, from each stay's bill, and a cheaper sum shown on a
+    list would be a second answer.
+    """
+    today_iso = (today or house_today()).isoformat()
+    emails = {}
+    for g in conn.execute("SELECT id, email FROM guests WHERE merged_into_id IS NULL").fetchall():
+        addr = (g["email"] or "").strip().lower()
+        if addr:
+            emails.setdefault(addr, []).append(g["id"])
+    out = {}
+    for b in conn.execute(
+            """SELECT linked_guest_id, guest_email, arrival_date, departure_date, no_show_at
+                 FROM bookings WHERE status = 'confirmed'""").fetchall():
+        owners = ([b["linked_guest_id"]] if b["linked_guest_id"]
+                  else emails.get((b["guest_email"] or "").strip().lower(), []))
+        for gid in owners:
+            h = out.setdefault(gid, {"stays": 0, "nights": 0, "last": None, "next": None})
+            arrive, leave = b["arrival_date"] or "", b["departure_date"] or ""
+            if arrive and arrive <= today_iso and not b["no_show_at"]:
+                h["stays"] += 1
+                start, end = parse_date(arrive), parse_date(leave)
+                if start and end and end > start:
+                    h["nights"] += (end - start).days
+                if not h["last"] or arrive > h["last"]:
+                    h["last"] = arrive
+            elif arrive > today_iso and (not h["next"] or arrive < h["next"]):
+                h["next"] = arrive
+    return out
 
 
 def guests_list_view(conn, args):
@@ -45903,15 +46390,10 @@ def guests_list_view(conn, args):
     profiles = conn.execute(
         "SELECT * FROM guests WHERE merged_into_id IS NULL ORDER BY vip DESC, name").fetchall()
 
-    # How many past stays each profile has, so the list conveys "returning guest"
-    # at a glance rather than needing a click-through.
-    stay_counts = {
-        r["linked_guest_id"]: r["c"] for r in conn.execute(
-            """SELECT linked_guest_id, COUNT(*) AS c FROM bookings
-               WHERE linked_guest_id IS NOT NULL AND status = 'confirmed'
-               GROUP BY linked_guest_id"""
-        ).fetchall()
-    }
+    # Each profile's stays, so the list says "returning guest", when they were
+    # last here and when they are next due without a click-through.
+    history = guest_stay_summaries(conn)
+    stay_counts = {gid: h["stays"] for gid, h in history.items() if h["stays"]}
     tags = tags_by_guest(conn)
     lv = list_view(
         profiles, args,
@@ -59040,6 +59522,57 @@ def save_room_photos_multi(files):
     return stored
 
 
+def extras_catalogue_figures(conn, today=None):
+    """What each extra in the catalogue is doing: {extra_id: figures}.
+
+    The catalogue was a price list -- a name and a price per line -- so the
+    one question the owner opens it with, "is anybody having the transfer, and
+    when is the next one", meant going through the bookings one by one.
+
+    `upcoming` is every line not cancelled on a stay still to finish (pending
+    or confirmed), `next_on` the soonest day one of them is for. The year is
+    the twelve months of stays that have begun, counted the way every total of
+    extras counts (EXTRAS_COUNTED_SQL), and in gross. `ever` is any line at
+    all, on a stay or at the till, which is what decides whether an extra can
+    be deleted or only withdrawn.
+    """
+    today = today or house_today()
+    today_iso = today.isoformat()
+    year_ago = (today - timedelta(days=365)).isoformat()
+    out = {}
+    for r in conn.execute(
+            f"""SELECT booking_extras.extra_id,
+                       SUM(CASE WHEN bookings.departure_date >= ?
+                                 AND bookings.status IN ('confirmed', 'pending')
+                                THEN 1 ELSE 0 END) AS upcoming,
+                       MIN(CASE WHEN bookings.departure_date >= ?
+                                 AND bookings.status IN ('confirmed', 'pending')
+                                THEN MAX(COALESCE(booking_extras.scheduled_for,
+                                                  bookings.arrival_date), ?) END) AS next_on,
+                       SUM(CASE WHEN bookings.arrival_date >= ? AND bookings.arrival_date <= ?
+                                 AND bookings.status = 'confirmed'
+                                THEN COALESCE(booking_extras.quantity, 1) ELSE 0 END) AS year_count,
+                       SUM(CASE WHEN bookings.arrival_date >= ? AND bookings.arrival_date <= ?
+                                 AND bookings.status = 'confirmed'
+                                THEN COALESCE(booking_extras.unit_price, 0)
+                                     * COALESCE(booking_extras.quantity, 1) ELSE 0 END) AS year_value
+                  FROM booking_extras
+                  JOIN bookings ON bookings.id = booking_extras.booking_id
+                 WHERE booking_extras.category = 'room' AND booking_extras.extra_id IS NOT NULL
+                   AND {EXTRAS_COUNTED_SQL}
+                 GROUP BY booking_extras.extra_id""",
+            (today_iso, today_iso, today_iso, year_ago, today_iso, year_ago, today_iso)).fetchall():
+        out[r["extra_id"]] = {"upcoming": int(r["upcoming"] or 0), "next_on": r["next_on"],
+                              "year_count": int(r["year_count"] or 0),
+                              "year_value": round(float(r["year_value"] or 0), 2), "ever": 0}
+    for table in ("booking_extras", "pos_order_lines"):
+        for r in conn.execute(f"SELECT extra_id, COUNT(*) AS n FROM {table} "
+                              "WHERE extra_id IS NOT NULL GROUP BY extra_id").fetchall():
+            out.setdefault(r["extra_id"], {"upcoming": 0, "next_on": None, "year_count": 0,
+                                           "year_value": 0.0, "ever": 0})["ever"] += int(r["n"])
+    return out
+
+
 @app.route("/admin/extras")
 @owner_required
 def admin_extras():
@@ -59048,6 +59581,7 @@ def admin_extras():
     revenue_options = revenue_categories(conn)
     # The rate an extra with no VAT of its own is charged at, for the placeholder.
     extras_vat_default = tax_rate(conn, "vat_extras")
+    figures = extras_catalogue_figures(conn)
     conn.close()
     lv = list_view(
         extras, request.args,
@@ -59088,10 +59622,14 @@ def admin_extras():
         ],
         default_sort="order",
     )
+    blank = {"upcoming": 0, "next_on": None, "year_count": 0, "year_value": 0.0, "ever": 0}
     return render_template("admin_extras.html", extras=lv["rows"], lv=lv,
                            categories=EXTRA_CATEGORIES,
                            revenue_categories=revenue_options,
-                           extras_vat_default=extras_vat_default)
+                           extras_vat_default=extras_vat_default,
+                           figures={e["id"]: figures.get(e["id"], blank) for e in extras},
+                           coming_up=sum(f["upcoming"] for f in figures.values()),
+                           year_value=round(sum(f["year_value"] for f in figures.values()), 2))
 
 
 def extra_fields_from_form():
@@ -59259,11 +59797,28 @@ def toggle_extra(extra_id):
 @app.route("/admin/extras/<int:extra_id>/delete", methods=["POST"])
 @owner_required
 def delete_extra(extra_id):
+    """Delete an extra nobody has ever had. One that has been sold is withdrawn
+    instead. Its lines keep their own name and price (both are copied when it
+    is sold), but extra_id is ON DELETE SET NULL, so deleting it cut every
+    sold line loose from the catalogue: the run sheet could no longer read the
+    notice it needs or what kind of thing it is, and its sales dropped out of
+    the catalogue's figures. Withdrawing stops new orders and loses nothing."""
     conn = get_db()
+    extra = conn.execute("SELECT * FROM extras WHERE id = ?", (extra_id,)).fetchone()
+    if not extra:
+        conn.close()
+        abort(404)
+    sold = extras_catalogue_figures(conn).get(extra_id, {}).get("ever", 0)
+    if sold:
+        conn.close()
+        flash(f"{extra['name']} has been sold {sold} time{'' if sold == 1 else 's'}, so it "
+              "stays in the catalogue for those bills. Withdraw it instead, and nobody "
+              "can order it again.", "error")
+        return redirect(url_for("admin_extras"))
     conn.execute("DELETE FROM extras WHERE id = ?", (extra_id,))
     conn.commit()
     conn.close()
-    flash("Extra removed.", "success")
+    flash(f"{extra['name']} removed.", "success")
     return redirect(url_for("admin_extras"))
 
 
@@ -61782,8 +62337,68 @@ def extras_due_page():
     # invisible everywhere -- so "was that one done, and by whom" had no
     # answer at all.
     done = extras_delivered_today(conn, day)
+    user = current_user()
+    # The owner sees what each line is worth and the stays not yet confirmed;
+    # the shift sees the jobs. Who can arrange a car is the owner too, as on
+    # the Transfers page.
+    owner = bool(user and user["role"] == "owner")
+    vehicles = conn.execute("SELECT id, name FROM vehicles ORDER BY name").fetchall() if owner else []
     conn.close()
-    return render_template("extras_due.html", due=due, done=done, today=day)
+    lv = list_view(
+        due["rows"], request.args,
+        search=[lambda r: r["line"]["name"], lambda r: r["line"]["guest_name"],
+                lambda r: r["line"]["reference_code"], lambda r: r["line"]["room_name"],
+                lambda r: r["line"]["notes"]],
+        search_hint="Search extra, guest, room or reference",
+        facets=[
+            facet("kind", "Kind", extras_due_kind,
+                  order=["Transfers"] + [v for k, v in EXTRA_CATEGORIES.items()
+                                         if k != "transfer"]),
+            facet("state", "Where it is", extras_due_state,
+                  order=["Arrange now", "To arrange", "Arranged", "Ready to hand over"]),
+        ],
+        sorts=[
+            sort_option("soonest", "Soonest first",
+                        lambda r: (r["when"] or "9999", r["line"]["arrival_date"] or "")),
+            sort_option("arrange_by", "Arrange by",
+                        lambda r: (r["arrange_by"] or "9999", r["when"] or "9999")),
+            sort_option("guest", "Guest", lambda r: (r["line"]["guest_name"] or "").lower()),
+        ],
+        default_sort="soonest",
+    )
+    shown = {id(r) for r in lv["rows"]}
+    order = {id(r): i for i, r in enumerate(lv["rows"])}
+    groups = [(key, label, sorted([r for r in rows if id(r) in shown], key=lambda r: order[id(r)]))
+              for key, label, rows in due["groups"]]
+    return render_template("extras_due.html", due=due, done=done, today=day, lv=lv,
+                           groups=groups, owner=owner, vehicles=vehicles,
+                           booking_href=booking_href)
+
+
+def extras_due_kind(row):
+    """The run sheet's Kind chip: transfers on their own, then the catalogue's words."""
+    if row["transfer"]:
+        return "Transfers"
+    return EXTRA_CATEGORIES.get((row["line"]["extra_category"] or "").strip(), "Other")
+
+
+def extras_due_state(row):
+    """Where a line has got to, in the words the shift uses."""
+    if row["arranged"]:
+        return "Arranged"
+    if row["arrange_now"]:
+        return "Arrange now"
+    if row["needs_arranging"]:
+        return "To arrange"
+    return "Ready to hand over"
+
+
+def booking_href(booking_id, reference=None):
+    """Where a line about one stay links to: the stay's own page where it
+    exists, the bookings list searched by its reference where it does not."""
+    if "admin_booking" in app.view_functions:
+        return url_for("admin_booking", booking_id=booking_id)
+    return url_for("admin_bookings", q=reference or "")
 
 
 @app.route("/extras/<int:line_id>/delivered", methods=["POST"])
@@ -61794,6 +62409,21 @@ def mark_extra_delivered(line_id):
     conn = get_db()
     ok, message = mark_booking_extra_delivered(
         conn, line_id, user_id=(user["id"] if user else None), undo=undo)
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(request.referrer or url_for("extras_due_page"))
+
+
+@app.route("/extras/<int:line_id>/arranged", methods=["POST"])
+@login_required
+def mark_extra_arranged(line_id):
+    """The board ordered in, the car booked: anybody on shift can say so."""
+    user = current_user()
+    conn = get_db()
+    ok, message = mark_booking_extra_arranged(
+        conn, line_id, user_id=(user["id"] if user else None),
+        note=request.form.get("note", ""), undo=request.form.get("undo") == "1")
     conn.commit()
     conn.close()
     flash(message, "success" if ok else "error")
@@ -78965,6 +79595,7 @@ WATCH_TASK_KINDS = {
     "letters": "A guest letter out of step with the house rules on payment",
     "sendcheck": "An Outlook the check on Send cannot run in",
     "terms": "Booking terms that give a different arrival or departure time",
+    "extras": "An extra a guest has paid for, to arrange or hand over",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -80899,10 +81530,23 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
         # The date whenever the house has set one: "before you arrive" leaves
         # the guest to work out which day, and the reminder goes on a schedule.
         due_on = bill.get("balance_due_date") if bill else None
-        details.append(
-            f"{balance_due} still to pay"
-            + (f", by {format_date_human(due_on)}" if due_on else "")
-            + ". You can settle it online on your booking page.")
+        paid_so_far = bill["paid"] if bill else 0
+        if paid_so_far > 0.005:
+            # 17 October (owner): part paid says both halves, so a guest who
+            # paid the deposit is not left wondering whether it arrived.
+            details.append(
+                f"Paid: {money(paid_so_far)}. Still to pay: {balance_due}"
+                + (f", by {format_date_human(due_on)}" if due_on else "")
+                + ". You can settle it online on your booking page.")
+        else:
+            details.append(
+                f"{balance_due} still to pay"
+                + (f", by {format_date_human(due_on)}" if due_on else "")
+                + ". You can settle it online on your booking page.")
+    elif bill and bill["paid"] > 0.005:
+        # Paid in full, said so (owner, 17 October): saying nothing about money
+        # to somebody who has just paid reads as though it had not arrived.
+        details.append(f"Paid in full: {money(bill['paid'])}. There is nothing more to pay.")
     details += ["", "Your booking page:", manage_url, "",
                 "Check in online \u2014 confirm your arrival time, tell us about "
                 "any requests" + (" and your airport transfer details"
@@ -82235,6 +82879,31 @@ def watch_task_findings(conn, today=None):
             today.isoformat(), "high"))
     found.extend(take("sendcheck", unchecked))
 
+    # AN EXTRA TO ARRANGE OR HAND OVER. On the calendar on the day it has to be
+    # arranged by, so the transfer is booked the day before rather than found
+    # on the morning. Titled by the extra, the guest and the reference and
+    # nothing that moves; arranged, handed over or cancelled, and it closes.
+    extras_jobs = []
+    board = extras_due(conn, today)
+    for r in board["rows"]:
+        line = r["line"]
+        who = f"{line['name']} for {line['guest_name']} ({line['reference_code']})"
+        stay = (f"{line['room_name'] or 'Room to be chosen'}, "
+                f"{format_date_range(line['arrival_date'], line['departure_date'])}"
+                + (f". The guest wrote: {line['notes']}" if line["notes"] else ""))
+        if r["overdue"]:
+            extras_jobs.append((
+                "extras", f"Hand over or take off: {who}",
+                f"It was for {format_date_human(r['when'])}. {stay}.",
+                today.isoformat(), "high"))
+        elif r["needs_arranging"] and not r["arranged"] and r["arrange_by"]                 and r["arrange_by"] <= horizon.isoformat():
+            extras_jobs.append((
+                "extras", f"Arrange {who}",
+                f"For {format_date_human(r['when'] or line['arrival_date'])}. {stay}. "
+                "Mark it arranged on Extras to prepare once it is booked.",
+                max(r["arrange_by"], today.isoformat()), "high" if r["arrange_now"] else "normal"))
+    found.extend(take("extras", extras_jobs))
+
     return found, dropped
 
 
@@ -83419,11 +84088,28 @@ def transfers_asked_for(conn, today=None):
         """SELECT bookings.id, bookings.guest_name, bookings.arrival_date,
                   bookings.party_size, bookings.extras_summary,
                   bookings.transfer_flight_number, bookings.transfer_arrival_time,
-                  bookings.transfer_notes, rooms.name AS room_name
+                  bookings.transfer_notes, rooms.name AS room_name,
+                  -- What the guest wrote when they chose the transfer. The
+                  -- flight is often THERE ("AF7520 lands 14:35") rather than
+                  -- on their booking page, and this said "no flight given yet"
+                  -- beside it.
+                  (SELECT GROUP_CONCAT(be.notes, ' · ') FROM booking_extras be
+                    WHERE be.booking_id = bookings.id
+                      AND COALESCE(be.status, '') != 'cancelled'
+                      AND LOWER(COALESCE(be.name, '')) LIKE '%transfer%'
+                      AND TRIM(COALESCE(be.notes, '')) != '') AS transfer_extra_notes
              FROM bookings JOIN rooms ON rooms.id = bookings.room_id
             WHERE bookings.status = 'confirmed' AND bookings.arrival_date >= ?
               AND (LOWER(COALESCE(bookings.extras_summary, '')) LIKE '%transfer%'
-                   OR TRIM(COALESCE(bookings.transfer_flight_number, '')) != '')
+                   OR TRIM(COALESCE(bookings.transfer_flight_number, '')) != ''
+                   -- A transfer added to the stay afterwards -- from the
+                   -- booking page or at the desk. extras_summary is written
+                   -- once, when the guest books, so those were on no list.
+                   OR EXISTS (SELECT 1 FROM booking_extras be
+                               WHERE be.booking_id = bookings.id
+                                 AND COALESCE(be.status, '') != 'cancelled'
+                                 AND (LOWER(COALESCE(be.name, '')) LIKE '%transfer%'
+                                      OR be.revenue_category = 'transport')))
               AND NOT EXISTS (SELECT 1 FROM vehicle_transfers vt
                                WHERE vt.booking_id = bookings.id)
             ORDER BY bookings.arrival_date, bookings.guest_name""", (day,)).fetchall()
@@ -88612,6 +89298,11 @@ def staff_today():
     announcements_current = current_announcements(conn, today)
     arrivals_today = [c for c in guests_here if c["arriving_today"]]
     departures_today = [c for c in guests_here if c["leaving_today"]]
+    # What the house owes a guest today, on the page the shift actually opens.
+    # The run sheet had it and nobody on shift opens a run sheet to find out
+    # whether there is a hamper to carry up.
+    due_board = extras_due(conn)
+    extras_today = due_board["overdue"] + due_board["today"]
     conn.close()
 
     # The board, on the page somebody actually opens. It is derived from the
@@ -88628,6 +89319,7 @@ def staff_today():
         announcements_current=announcements_current, today=today,
         arrivals_today=arrivals_today, departures_today=departures_today,
         open_count=sum(1 for t in my_tasks if t["status"] != "done"),
+        extras_today=extras_today,
     )
 
 
@@ -94516,16 +95208,30 @@ def house_calendar_items(conn, start, end, areas=None):
     dinner_at = _clock(settings["dinner_time"] if settings else "") or "19:30"
     items, sessions = {}, {}
 
-    def link_line(path):
-        return f"\nIn the app: {path}" if path else ""
-
-    def full_link(path):
-        if not path:
-            return ""
-        return path if path.startswith("http") else (request.host_url.rstrip("/") + path)
+    # Every item carries "link": Outlook is sent it as a link it can click
+    # (graph_event_body), and the .ics feed as a line and a URL.
+    def card_link(r, day):
+        """The app's calendar on that day, with this thing's card open: the
+        one page every member of staff can open, where the owner also finds
+        the way to the booking itself."""
+        return (url_for("ops_calendar", view="day", date=day, _external=True)
+                + "#ev-" + calendar_uid(r))
 
     def day_after(iso):
         return (parse_date(iso) + timedelta(days=1)).isoformat()
+
+    # The extras of each stay, to list in the stay's own event: names, how
+    # many and the day -- never a price or a note, which can hold a diet.
+    stay_extras = {}
+    for r in sheet["rows"]:
+        f = r.get("facts") or {}
+        if r["kind"] == "extra" and f.get("booking_id"):
+            qty = f.get("quantity") or 1
+            stay_extras.setdefault(f["booking_id"], []).append(
+                f"{f.get('what')}{f' ×{qty}' if qty > 1 else ''} ("
+                + ("for the stay" if f.get("for_stay") else _cal_day(f.get("day")))
+                + (", delivered" if f.get("state") == "delivered" else "")
+                + (", to confirm" if f.get("state") == "requested" else "") + ")")
 
     for r in sheet["rows"]:
         f = r.get("facts") or {}
@@ -94535,31 +95241,57 @@ def house_calendar_items(conn, start, end, areas=None):
             if key in items:
                 continue
             channel = f.get("channel") or ""
+            n = f.get("nights") or 0
             subject = (f"{marks['rooms']} {f['guest']}"
                        + (f" ×{f['party']}" if f.get("party") else "")
                        + (f" · {f['room']}" if f.get("room") else "")
+                       + (f" · {_plural(n, 'night')}" if n else "")
                        + (" · to confirm" if r["status"] == "pending" else "")
                        + (f" · {channel}" if channel else ""))
+            # One event for the stay, as Outlook draws it: a bar from arrival
+            # to departure. Which night is which is in the event itself, as
+            # the app's own calendar has it on each day.
+            first = parse_date(f["arrival"])
+            nights = [first + timedelta(days=i) for i in range(n)]
+            if len(nights) <= 7:
+                which = ", ".join(f"{d:%a} {d.day}" for d in nights)
+            else:
+                which = f"{_cal_day(nights[0])} to {_cal_day(nights[-1])}"
+            extras_here = stay_extras.get(f.get("booking_id"), [])
             body = "\n".join(x for x in (
-                f"Reference {f['ref']}" if f.get("ref") else "",
-                f"{f['party']} guest(s)" if f.get("party") else "",
-                f"Arriving about {f['eta']}" if f.get("eta") else "",
+                f"Arrives {_cal_day(f['arrival'])}, from {HOUSE_CALENDAR_CHECK_IN}"
+                + (f" (about {f['eta']})" if f.get("eta") else ""),
                 f"Flight {f['flight']}" if f.get("flight") else "",
+                f"{_plural(n, 'night')}: {which}" if n else "",
+                f"Leaves {_cal_day(f['departure'])}, by {HOUSE_CALENDAR_CHECK_OUT}",
+                f"{f['party']} guest(s)" if f.get("party") else "",
+                ("Extras: " + "; ".join(extras_here)) if extras_here else "",
                 f"Booked through {channel}" if channel else "",
-                "Not confirmed yet" if r["status"] == "pending" else "") if x)
+                "Not confirmed yet" if r["status"] == "pending" else "",
+                f"Reference {f['ref']}" if f.get("ref") else "") if x)
             items[key] = {"key": key, "area": "rooms", "subject": subject, "all_day": False,
                           "start": f"{f['arrival']}T{HOUSE_CALENDAR_CHECK_IN}:00",
                           "end": f"{f['departure']}T{HOUSE_CALENDAR_CHECK_OUT}:00",
-                          "location": f.get("room") or "",
-                          "body": body + link_line(full_link(r.get("link")))}
+                          "location": f.get("room") or "", "body": body,
+                          "link": card_link(r, f["arrival"])}
         elif kind == "extra" and "rooms" in areas and r.get("date"):
             key = f"extra:{r['id']}"
+            qty = f.get("quantity") or 1
             items[key] = {"key": key, "area": "rooms", "all_day": True,
-                          "subject": f"{marks['rooms']} {r['title']}",
+                          "subject": (f"{marks['rooms']} Extra: {f.get('what')}"
+                                      + (f" ×{qty}" if qty > 1 else "")
+                                      + f" · {f.get('guest')}"
+                                      + (f" · {f['room']}" if f.get("room") else "")
+                                      + (" · for the stay" if f.get("for_stay") else "")
+                                      + (" · to confirm" if f.get("state") == "requested" else "")
+                                      + (" ✓" if f.get("state") == "delivered" else "")),
                           "start": f"{r['date']}T00:00:00", "end": f"{day_after(r['date'])}T00:00:00",
                           "location": f.get("room") or "",
-                          "body": (f"For the stay {f['ref']}" if f.get("ref") else "")
-                          + link_line(full_link(r.get("link")))}
+                          "body": "\n".join(x for x in (
+                              "Whenever suits during the stay" if f.get("for_stay") else "",
+                              "Delivered" if f.get("state") == "delivered" else "",
+                              f"For the stay {f['ref']}" if f.get("ref") else "") if x),
+                          "link": card_link(r, r["date"])}
         elif kind == "dinner" and "restaurant" in areas and r.get("date"):
             key = f"dinner:{r['id']}"
             begins = datetime.fromisoformat(f"{r['date']}T{dinner_at}:00")
@@ -94570,13 +95302,13 @@ def house_calendar_items(conn, start, end, areas=None):
                           "start": begins.isoformat(),
                           "end": (begins + timedelta(hours=HOUSE_CALENDAR_DINNER_HOURS)).isoformat(),
                           "location": "La Table",
-                          "body": (f"Reference {f['ref']}" if f.get("ref") else "")
-                          + link_line(full_link(r.get("link")))}
+                          "body": (f"Reference {f['ref']}" if f.get("ref") else ""),
+                          "link": card_link(r, r["date"])}
         elif kind == "workshop" and "ateliers" in areas and f.get("session"):
             s = sessions.setdefault(f["session"], {"title": f.get("workshop") or "Atelier",
                                                    "start": f.get("start"), "end": f.get("end"),
                                                    "places": 0, "people": 0, "pending": 0,
-                                                   "link": r.get("link"), "running": None})
+                                                   "link": card_link(r, r["date"]), "running": None})
             if f.get("running"):
                 # The sitting's own row for its later days: it carries the
                 # whole sitting's numbers, and is not another place on it.
@@ -94593,8 +95325,8 @@ def house_calendar_items(conn, start, end, areas=None):
                           "subject": f"{marks['rooms']} Closed: {f['room']}",
                           "start": f"{f['start']}T00:00:00", "end": f"{f['end']}T00:00:00",
                           "location": "", "body": "\n".join(x for x in (
-                              f"Back on sale {format_date_short(f['end'])}", f.get("why") or "") if x)
-                          + link_line(full_link(r.get("link")))}
+                              f"Back on sale {format_date_short(f['end'])}", f.get("why") or "") if x),
+                          "link": card_link(r, f["start"])}
         elif kind == "event" and "events" in areas and f.get("start"):
             key = f"hold:{str(r['id'])[4:]}" if f.get("held") else f"event:{r['id']}"
             last = f.get("end") or f["start"]
@@ -94607,8 +95339,8 @@ def house_calendar_items(conn, start, end, areas=None):
                           "location": "", "body": "\n".join(x for x in (
                               f"Reference {f['ref']}" if f.get("ref") else "",
                               f"Guests arrive {f['arrival_time']}" if f.get("arrival_time") else "",
-                              f"Dates held until {f['held_until']}" if f.get("held") else "") if x)
-                          + link_line(full_link(r.get("link")))}
+                              f"Dates held until {f['held_until']}" if f.get("held") else "") if x),
+                          "link": card_link(r, f["start"])}
         elif kind == "task" and "tasks" in areas and r.get("date") and r["lane"] != "owner" \
                 and r["status"] != "done":
             key = f"task:{r['id']}"
@@ -94617,7 +95349,8 @@ def house_calendar_items(conn, start, end, areas=None):
                                      + (f" · {r['assignee_name']}" if r.get("assignee_name") else ""),
                           "start": f"{r['date']}T00:00:00", "end": f"{day_after(r['date'])}T00:00:00",
                           "location": "", "body": ("For " + r["assignee_name"]
-                                                   if r.get("assignee_name") else "Not assigned yet")}
+                                                   if r.get("assignee_name") else "Not assigned yet"),
+                          "link": card_link(r, r["date"])}
         elif kind == "shift" and "rota" in areas and r.get("date"):
             key = f"shift:{r['id']}"
             starts, ends = _clock(f.get("start")), _clock(f.get("end"))
@@ -94633,7 +95366,8 @@ def house_calendar_items(conn, start, end, areas=None):
                                      + (f" · {f['role']}" if f.get("role") else ""),
                           "start": begin.isoformat() if timed else f"{r['date']}T00:00:00",
                           "end": finish.isoformat() if timed else f"{day_after(r['date'])}T00:00:00",
-                          "location": "", "body": f.get("role") or ""}
+                          "location": "", "body": f.get("role") or "",
+                          "link": card_link(r, r["date"])}
     for session_id, s in sessions.items():
         if not s["start"]:
             continue
@@ -94649,7 +95383,7 @@ def house_calendar_items(conn, start, end, areas=None):
                                  + (f" ({s['pending']} to confirm)" if s["pending"] else ""),
                       "start": f"{s['start']}T00:00:00",
                       "end": f"{day_after(s['end'] or s['start'])}T00:00:00",
-                      "location": "", "body": link_line(full_link(s["link"])).strip()}
+                      "location": "", "body": "", "link": s["link"]}
     # The day each begins and ends, in the house's own time already, so a
     # page can show it without cutting a timestamp to ten characters.
     for i in items.values():
@@ -94666,10 +95400,18 @@ def house_category(area):
 def graph_event_body(item):
     """An item as the event Graph is sent. Busy-ness is 'free': the house
     calendar describes the house, it does not block anybody's own diary."""
+    from html import escape as html_escape
     tz = graph_house_timezone()
+    # HTML, so the way back into the app is a link a finger can press in
+    # Outlook on a phone, not an address to copy. The text is escaped: it is
+    # names and rooms that people typed.
+    content = "<br>".join(html_escape(line) for line in (item["body"] or "").split("\n"))
+    if item.get("link"):
+        content += (("<br><br>" if content else "")
+                    + f'<a href="{html_escape(item["link"])}">Open in the app</a>')
     return {
         "subject": item["subject"][:255],
-        "body": {"contentType": "text", "content": item["body"] or ""},
+        "body": {"contentType": "html", "content": content},
         "start": {"dateTime": item["start"], "timeZone": tz},
         "end": {"dateTime": item["end"], "timeZone": tz},
         "isAllDay": bool(item["all_day"]),
@@ -95227,8 +95969,12 @@ def house_calendar_ics_text(items, name):
                   "TRANSP:TRANSPARENT"]
         if i.get("location"):
             lines.append(f"LOCATION:{ical_escape(i['location'])}")
-        if i.get("body"):
-            lines.append(f"DESCRIPTION:{ical_escape(i['body'])}")
+        described = "\n".join(x for x in (i.get("body") or "",
+                                          f"In the app: {i['link']}" if i.get("link") else "") if x)
+        if described:
+            lines.append(f"DESCRIPTION:{ical_escape(described)}")
+        if i.get("link"):
+            lines.append(f"URL:{i['link']}")
         lines.append("END:VEVENT")
     lines.append("END:VCALENDAR")
     return "\r\n".join(_ics_fold(line) for line in lines) + "\r\n"
