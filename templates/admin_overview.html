@@ -31,6 +31,7 @@
     <select id="f-lane">
       <option value="">All</option>
       <option value="booking">Bookings</option>
+      <option value="extra">Extras</option>
       <option value="restaurant">Restaurant</option>
       <option value="workshop">Workshops</option>
       <option value="event">Events</option>
@@ -175,6 +176,12 @@
   <div class="task-row" data-kind="closure" data-lane="booking" data-guest="guest" data-scheduled="1" data-employee="" data-status="closed">
     <span class="lane-badge lane-booking">Closed</span>
     <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail|house_words }}</span>{% endif %}</span>
+  </div>
+  {% elif r.kind == 'extra' %}
+  <div class="task-row {{ 'task-done' if r.status == 'delivered' }}" data-kind="extra" data-lane="extra" data-guest="guest" data-scheduled="1" data-employee="" data-status="{{ 'done' if r.status == 'delivered' else r.status }}">
+    <span class="lane-badge lane-extra">Extra</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail|house_words }}</span>{% endif %}</span>
+    <span class="mini-status status-{{ 'overdue' if r.overdue else {'delivered': 'confirmed', 'requested': 'pending'}.get(r.status, 'upcoming') }}">{{ 'overdue' if r.overdue else {'delivered': 'delivered', 'requested': 'to confirm'}.get(r.status, 'to do') }}</span>
   </div>
   {% elif r.kind == 'shift' %}
   <div class="task-row" data-kind="shift" data-lane="shift" data-guest="employee" data-scheduled="1" data-employee="{{ r.assignee_id or '' }}" data-status="{{ r.status }}">

@@ -6,12 +6,18 @@
 {# One macro for every event chip, so a task looks and behaves the same in
    day, week and month view. data-* attributes drive the client-side filters
    below — same instant-filter pattern the Overview list already uses. #}
-{# Renders as <a> only when there is somewhere the viewer can actually go.
-   This used to fall back to admin_tasks, which is owner-only, so an
-   employee clicking their own task landed on a 403. #}
+{# Every chip opens its card (calendar_cards): a click shows everything about
+   the thing over the calendar, with the way to its own page. It is an <a>
+   when there is a page the viewer can open -- a ctrl- or middle-click still
+   goes straight there -- and a button when there is not, so a booking an
+   employee cannot open is still one they can read in full. The link never
+   falls back to an owner-only page: an employee clicking their own task used
+   to land on a 403. #}
 {% macro event_chip(e, compact=False) %}
-<{{ 'a' if e.link else 'span' }} class="cal-ev cal-ev-{{ e.lane }} {{ 'cal-ev-static' if not e.link }} {{ 'cal-ev-done' if e.kind == 'task' and e.status == 'done' }} {{ 'cal-ev-overdue' if e.kind == 'task' and e.status != 'done' and e.date and e.date < today.isoformat() }}"
-   {% if e.link %}href="{{ e.link }}"{% endif %}
+{% set tag = 'a' if e.link else 'button' %}
+<{{ tag }} class="cal-ev cal-ev-{{ e.lane }} {{ 'cal-ev-pending' if e.status in ('pending', 'requested', 'held') }} {{ 'cal-ev-done' if (e.kind == 'task' and e.status == 'done') or (e.kind == 'extra' and e.status == 'delivered') }} {{ 'cal-ev-overdue' if (e.kind == 'task' and e.status != 'done' and e.date and e.date < today.isoformat()) or e.overdue }}"
+   {% if e.link %}href="{{ e.link }}"{% else %}type="button"{% endif %}
+   data-card="{{ e.card }}"
    data-lane="{{ e.lane }}"
    data-employee="{{ e.assignee_id or '' }}"
    data-status="{{ e.status }}"
@@ -21,8 +27,57 @@
      Name, party of 2") ellipse away the only part that matters. Compact
      form there; full title in day/week where there's room. #}
   <span class="cal-ev-text">{{ (e.short or e.title) if compact else e.title }}</span>
+  {% if e.badge %}<span class="cal-ev-badge">{{ e.badge }}</span>{% endif %}
   {% if not compact and e.assignee_name %}<span class="cal-ev-who">{{ e.assignee_name }}</span>{% endif %}
-</{{ 'a' if e.link else 'span' }}>
+</{{ tag }}>
+{% endmacro %}
+
+{% macro calendar_card(c) %}
+<section class="cal-card" data-card-for="{{ c.uid }}">
+  <p class="cal-card-kicker"><span class="cal-ev-dot cal-ev-{{ c.lane }}"></span>{{ c.kicker }}{% if c.status in ('pending', 'requested') %} · to confirm{% elif c.status == 'held' %} · dates held{% elif c.status == 'delivered' %} · delivered{% elif c.status == 'done' %} · done{% endif %}{% if c.overdue %} · <span class="cal-card-overdue">overdue</span>{% endif %}</p>
+  <h2 class="cal-card-title">{{ c.heading }}</h2>
+  {% if c.sub %}<p class="cal-card-sub">{{ c.sub }}</p>{% endif %}
+  {% if c.facts %}
+  <dl class="cal-card-facts">
+    {% for label, value in c.facts %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}
+  </dl>
+  {% endif %}
+  {% if c.timeline %}
+  <h3>Night by night</h3>
+  <ol class="cal-card-nights">
+    {% for day, words in c.timeline %}<li><span>{{ day }}</span>{{ words }}</li>{% endfor %}
+  </ol>
+  {% endif %}
+  {% if c.names %}
+  <h3>Who is coming</h3>
+  <ul class="cal-card-list">{% for n in c.names %}<li>{{ n }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if c.extras %}
+  <h3>Extras</h3>
+  <ul class="cal-card-list cal-card-extras">
+    {% for x in c.extras %}
+    <li>
+      <strong>{{ x.what }}</strong>
+      <span class="upload-hint">{{ x.when }}</span>
+      <span class="mini-status {{ {'delivered': 'status-confirmed', 'to confirm': 'status-pending'}.get(x.state, 'status-upcoming') }}">{{ x.state }}</span>
+      {% if x.tick or x.undo %}
+      <form method="post" action="{{ url_for('mark_extra_delivered', line_id=x.id) }}" data-reopen="{{ c.uid }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if x.undo %}<input type="hidden" name="undo" value="1">{% endif %}
+        <button type="submit" class="btn-mini">{{ 'Mark delivered' if x.tick else 'Not delivered after all' }}</button>
+      </form>
+      {% endif %}
+      {% if x.notes %}<span class="upload-hint cal-card-extra-note">{{ x.notes }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if c.actions %}
+  <div class="cal-card-actions">
+    {% for label, href in c.actions %}<a class="btn-mini" href="{{ href }}">{{ label }}</a>{% endfor %}
+  </div>
+  {% endif %}
+</section>
 {% endmacro %}
 
 <div class="page-head">
@@ -58,7 +113,7 @@
 
 <div class="cal-filters" id="cal-filters">
   <span class="cal-filter-label">Show</span>
-  {% for key, label in [('booking','Bookings'), ('restaurant','Restaurant'), ('workshop','Workshops'), ('event','Events'), ('task','Staff tasks'), ('shift','Rota'), ('date','Dates'), ('owner','My tasks')] %}
+  {% for key, label in [('booking','Bookings'), ('extra','Extras'), ('restaurant','Restaurant'), ('workshop','Workshops'), ('event','Events'), ('task','Staff tasks'), ('shift','Rota'), ('date','Dates'), ('owner','My tasks')] %}
   <button type="button" class="cal-chip is-on" data-filter-lane="{{ key }}" onclick="toggleCalLane(this)">
     <span class="cal-ev-dot cal-ev-{{ key }}"></span>{{ label }}
   </button>
@@ -130,6 +185,56 @@
 
 <p class="upload-hint" id="cal-empty-note" style="display:none; margin-top:14px;">Nothing matches those filters.</p>
 
+<dialog class="cal-card-dialog" id="cal-card-dialog">
+  <form method="dialog" class="cal-card-close"><button type="submit" class="btn-mini">Close</button></form>
+  <div id="cal-card-body"></div>
+</dialog>
+{# The cards themselves, one per thing, copied into the dialog on a click. #}
+<div hidden id="cal-cards">
+  {% for c in cal.cards %}{{ calendar_card(c) }}{% endfor %}
+</div>
+
+<script>
+// A click on a chip opens its card over the calendar. A click with ctrl,
+// cmd, shift or the middle button is left alone, so a chip that is a link
+// still opens its page in a new tab the ordinary way.
+(function() {
+  var dialog = document.getElementById('cal-card-dialog');
+  var body = document.getElementById('cal-card-body');
+  function openCard(uid) {
+    var card = document.querySelector('#cal-cards [data-card-for="' + uid + '"]');
+    if (!card || !dialog.showModal) return false;
+    body.innerHTML = '';
+    var copy = card.cloneNode(true);
+    body.appendChild(copy);
+    var heading = copy.querySelector('.cal-card-title');
+    dialog.setAttribute('aria-label', heading ? heading.textContent : 'Details');
+    if (!dialog.open) dialog.showModal();
+    return true;
+  }
+  document.addEventListener('click', function(ev) {
+    var chip = ev.target.closest('.cal-ev[data-card]');
+    if (!chip || ev.button !== 0 || ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey) return;
+    if (openCard(chip.dataset.card)) ev.preventDefault();
+  });
+  dialog.addEventListener('click', function(ev) {
+    if (ev.target === dialog) dialog.close();   // a click on the backdrop
+  });
+  // Ticking an extra off reloads the calendar; open the same card again so
+  // the next one can be ticked without finding it twice.
+  dialog.addEventListener('submit', function(ev) {
+    var form = ev.target.closest('form[data-reopen]');
+    if (!form) return;
+    try { sessionStorage.setItem('calReopen', form.dataset.reopen); } catch (e) {}
+  });
+  var again = null;
+  try { again = sessionStorage.getItem('calReopen'); sessionStorage.removeItem('calReopen'); } catch (e) {}
+  // A link from Outlook carries the card it means: #ev-<uid>.
+  var wanted = again || (location.hash.indexOf('#ev-') === 0 ? decodeURIComponent(location.hash.slice(4)) : null);
+  if (wanted) openCard(wanted);
+})();
+</script>
+
 <script>
 // Filters run client-side against the data-* attributes on each chip, so
 // switching them is instant and never loses your place in the month.
@@ -149,7 +254,7 @@ function applyCalFilters() {
   var shown = 0;
   document.querySelectorAll('.cal-ev').forEach(function(ev) {
     var ok = lanes[ev.dataset.lane] !== false;
-    if (ok && hideDone && ev.dataset.status === 'done') ok = false;
+    if (ok && hideDone && (ev.dataset.status === 'done' || ev.dataset.status === 'delivered')) ok = false;
     // Employee filter only narrows things that are actually assignable;
     // a booking or dinner has no assignee and shouldn't vanish.
     if (ok && emp && ev.dataset.employee && ev.dataset.employee !== emp) ok = false;

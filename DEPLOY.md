@@ -708,7 +708,10 @@ One Microsoft 365 calendar — the house mailbox's own default calendar, listed
 as "House" in Outlook's directory — that the app writes
 every thirty seconds — stays, dinners, ateliers, events, tasks and the rota,
 exactly as `/calendar` shows them — and everybody reads in Outlook on their
-computer and phone. Names, rooms and dates only. Checked against Microsoft's
+computer and phone. Names, rooms, dates and extras only: a stay's event lists
+its nights and what the house is to have ready, never a price or a note. Each
+event's "Open in the app" link opens `/calendar` on that day with the event's
+card showing (`#ev-<card>`). Checked against Microsoft's
 copy each night between 02:00 and 06:00. Failures show on the owner home and
 become a task.
 
