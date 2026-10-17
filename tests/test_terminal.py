@@ -66,6 +66,16 @@ class FakeStripe:
                 return FakeStripeObject({"id": reader_id})
 
             @staticmethod
+            def retrieve(reader_id):
+                # Busy with the last payment handed to it. The till only clears
+                # the reader while it is asking for the payment being cancelled.
+                last = outer.sent_to_reader[-1][1] if outer.sent_to_reader else None
+                return FakeStripeObject({"id": reader_id, "action": FakeStripeObject({
+                    "type": "process_payment_intent", "status": "in_progress",
+                    "process_payment_intent": FakeStripeObject({"payment_intent": last}),
+                }) if last else None})
+
+            @staticmethod
             def list(limit=50):
                 return FakeStripeObject({"data": [FakeStripeObject({
                     "id": READER, "label": "Restaurant", "device_type": "stripe_s700",
