@@ -59356,9 +59356,11 @@ def toggle_extra(extra_id):
 @owner_required
 def delete_extra(extra_id):
     """Delete an extra nobody has ever had. One that has been sold is withdrawn
-    instead: its lines on stays and at the till name it, and deleting it would
-    leave a guest's bill pointing at nothing -- or fail on the foreign key, as
-    a 500, with nothing said."""
+    instead. Its lines keep their own name and price (both are copied when it
+    is sold), but extra_id is ON DELETE SET NULL, so deleting it cut every
+    sold line loose from the catalogue: the run sheet could no longer read the
+    notice it needs or what kind of thing it is, and its sales dropped out of
+    the catalogue's figures. Withdrawing stops new orders and loses nothing."""
     conn = get_db()
     extra = conn.execute("SELECT * FROM extras WHERE id = ?", (extra_id,)).fetchone()
     if not extra:
