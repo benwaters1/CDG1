@@ -45,6 +45,7 @@ EVENTS = [
     "charge.dispute.created",
     "charge.dispute.updated",
     "charge.dispute.closed",
+    "payment_intent.succeeded",
 ]
 
 
