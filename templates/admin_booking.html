@@ -139,10 +139,28 @@
         <td class="num" data-label="Each">{{ x.unit_price|money }}</td>
         <td class="num" data-label="Total">{{ x.total|money }}</td>
         <td data-label="State">
-          <span class="mini-status status-{{ 'paid' if x.status == 'delivered' else 'cancelled' if x.status == 'cancelled' else 'pending' if x.status == 'requested' else 'confirmed' }}">{{ x.status }}</span>
-          {% if x.delivered_at %}<span class="cell-note">{{ x.delivered_at|house_day|date_short }}</span>{% endif %}
+          <span class="mini-status status-{{ 'paid' if x.status == 'delivered' else 'cancelled' if x.status == 'cancelled' else 'pending' if x.status == 'requested' else 'confirmed' }}">{{ 'handed over' if x.status == 'delivered' else x.status }}</span>
+          {% if x.arranged_at %}<span class="cell-note">Arranged {{ x.arranged_at|house_day|date_short }}{% if x.arranged_by %} by {{ x.arranged_by }}{% endif %}{% if x.arranged_note %}: {{ x.arranged_note }}{% endif %}</span>
+          {% elif x.status not in ('cancelled', 'delivered') %}<span class="cell-note">Not arranged yet</span>{% endif %}
+          {% if x.delivered_at %}<span class="cell-note">Handed over {{ x.delivered_at|house_day|date_short }}{% if x.delivered_by %} by {{ x.delivered_by }}{% endif %}</span>{% endif %}
         </td>
         <td class="bk-line-actions">
+          {% if x.status not in ('cancelled', 'delivered') %}
+          {% if not x.arranged_at %}
+          <details class="bk-fold">
+            <summary>Mark arranged</summary>
+            <form method="post" action="{{ url_for('mark_extra_arranged', line_id=x.id) }}" class="bk-inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="note" maxlength="200" placeholder="Ordered from…, car booked with…" aria-label="How it was arranged">
+              <button type="submit" class="btn-mini">Arranged</button>
+            </form>
+          </details>
+          {% endif %}
+          <form method="post" action="{{ url_for('mark_extra_delivered', line_id=x.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-ghost">Handed over</button>
+          </form>
+          {% endif %}
           {% if x.status not in ('cancelled', 'delivered') and stay_day_choices %}
           <details class="bk-fold">
             <summary>Change day</summary>

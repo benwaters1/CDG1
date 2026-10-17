@@ -254,6 +254,8 @@ SUITES = [
     "test_pennylane_split",
     "test_revenue_categories",
     "test_extras_due",
+    "test_extras_board",
+    "test_guest_list_history",
     "test_extras_at_booking",
     "test_chateau_tour",
     "test_no_control_characters",
@@ -494,6 +496,7 @@ SUITES = [
     "test_send_check",
     "test_house_calendar",
     "test_house_calendar_default",
+    "test_calendar_cards",
     # Brief of 15 October 2026.
     "test_tech_email",
     "test_staff_accounts",

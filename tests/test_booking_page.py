@@ -377,6 +377,21 @@ def run():
     s.check("but not to a day they are not here",
             _q("SELECT scheduled_for FROM booking_extras WHERE id = ?",
                added[0]["id"])[0][0] == a.isoformat())
+    # The run sheet's two steps, from the stay's own page: arranged (with how),
+    # then handed over -- each saying who and when, and coming back here.
+    here = {"Referer": f"http://localhost/admin/bookings/{stay['id']}"}
+    r = oc.post(f"/extras/{added[0]['id']}/arranged", data={"note": f"{TAG} booked with Marc"},
+                headers=here)
+    page = html.unescape(oc.get(f"/admin/bookings/{stay['id']}").get_data(as_text=True))
+    s.check("arranged, how and by whom, is on the line",
+            f"{TAG} booked with Marc" in page and "Arranged " in page
+            and r.headers.get("Location", "").endswith(f"/admin/bookings/{stay['id']}"),
+            detail=r.headers.get("Location"))
+    oc.post(f"/extras/{added[0]['id']}/delivered", headers=here)
+    page = html.unescape(oc.get(f"/admin/bookings/{stay['id']}").get_data(as_text=True))
+    s.check("and handed over, with when",
+            "Handed over " + m.format_date_short(m.house_today_iso()) in page,
+            detail="the line should say it reached the guest, and on which day")
 
     s.section("Letters and texts, kept with the stay")
     r = oc.post(f"/admin/bookings/{stay['id']}/write",
