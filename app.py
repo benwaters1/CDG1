@@ -40847,10 +40847,40 @@ def pos_take_card(order_id):
     # Resume rather than restart. A second press must not ask the guest to tap
     # for a second charge.
     if order["payment_intent_id"]:
-        state, _msg, _intent = terminal_payment_state(order["payment_intent_id"])
+        replacing = order["payment_intent_id"]
+        state, why, _intent = terminal_payment_state(replacing)
         if state in ("waiting", "succeeded"):
             conn.close()
             return redirect(url_for("pos_order", order_id=order_id))
+        if state == "unknown":
+            # Stripe could not say where the charge on this tab has got to: it
+            # may still be on the reader, or tapped a moment ago. A new one
+            # started here used to overwrite it, and the till forgot a charge
+            # the guest could still pay -- asked to pay twice. It stays.
+            conn.close()
+            flash("Stripe could not be reached to check the card payment already on "
+                  "this tab, so no second one was started — try again in a minute, "
+                  "or cancel that one.", "error")
+            return redirect(url_for("pos_order", order_id=order_id))
+        # Declined or cancelled -- or so it looks. Stripe answers
+        # requires_payment_method both for a declined charge and for one the
+        # reader is still asking for, and either can still be paid. Its rule
+        # for starting a fresh one is to cancel the old one first, or risk
+        # charging twice. So it comes off the way Cancel takes it off: Stripe
+        # accepts the cancel, or refuses because the guest has just tapped,
+        # and the tap is recorded instead.
+        who = current_user()
+        answer = pos_reader_settle(conn, order_id, stop=True,
+                                   user_id=who["id"] if who else None)
+        if answer["state"] != "failed" or answer["settled"]:
+            conn.close()
+            pos_reader_flash(answer)
+            return redirect(url_for("pos_order", order_id=order_id))
+        # The tab no longer names it, so this line is where the till still
+        # does: two charges for one table in Stripe, and here is why.
+        log_audit(conn, "pos_reader_replaced", target=order["table_label"],
+                  details=f"{replacing} · {why}")
+        conn.commit()
 
     intent_id, error = terminal_collect_payment(
         conn, order_id, total, f"Table {order['table_label']}", reader)
@@ -41230,6 +41260,16 @@ def pos_cancel_card(order_id):
                   f"charge is in Stripe as {intent_id} and is not on the books here.", "error")
             return redirect(url_for("pos_order", order_id=order_id))
     conn.close()
+    pos_reader_flash(answer)
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+def pos_reader_flash(answer):
+    """Tell the waiter what pos_reader_settle found when it stopped a charge.
+
+    Cancel, and Take card replacing a declined charge, both ask it to stop
+    one, and either can find the guest had tapped after all.
+    """
     if answer["recorded"] and not answer["paid_twice"]:
         flash("The guest had already tapped, so the payment went through: "
               + answer["message"], "success")
@@ -41237,7 +41277,6 @@ def pos_cancel_card(order_id):
         flash(answer["message"], "success")
     else:
         flash(answer["message"], "error")
-    return redirect(url_for("pos_order", order_id=order_id))
 
 
 PIN_ATTEMPT_LIMIT = 5
