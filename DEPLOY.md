@@ -313,9 +313,21 @@ these events:
 - `charge.dispute.created`, `charge.dispute.updated` and
   `charge.dispute.closed` — a card dispute becomes a task with its deadline,
   and a lost one a refund in the record
+- `payment_intent.succeeded` — a tap on the restaurant's card reader reaches
+  the books even when no till page is open to notice it. Without it the till
+  only learns of a tap by asking, from a tab left open on a screen. Every
+  payment on the account fires this event; the app acts only on the till's own
+  reader charges and ignores the rest.
 
 Without the refund and dispute events nothing breaks, but money that leaves
 through Stripe other than by the refund page goes unseen here.
+
+**An endpoint made before 17 Oct 2026 does not send `payment_intent.succeeded`.**
+Add it to the existing one: Dashboard → Developers → Webhooks, open the
+endpoint, edit it and add the event. Then run `python tools/stripe_webhook.py
+--list` the way step 2 above runs `--create` (the key needs Webhook Endpoints:
+Read for it) and check the endpoint still shows version 2026-07-29.dahlia and
+one more event than before.
 
 Why the webhook matters: the booking is created both when the guest returns
 from Stripe *and* by the webhook, so a guest who pays and immediately closes

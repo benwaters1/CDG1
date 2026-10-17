@@ -183,6 +183,7 @@ SUITES = [
     "test_terminal",
     "test_reader_charge_once",
     "test_reader_while_settled",
+    "test_reader_webhook",
     "test_arrive",
     "test_timesheet_repair",
     "test_staff_lifecycle",

@@ -566,6 +566,10 @@
                 // Part-paid on the card: reload so the rest of the bill is right.
                 if (d.state === 'succeeded') { window.location.reload(); return; }
                 if (d.state === 'failed') { window.location.reload(); return; }
+                // Nothing on the reader for this tab any more: Stripe's own
+                // report recorded the tap first, or another device did. The
+                // page is out of date, not the payment.
+                if (d.state === 'idle') { window.location.reload(); return; }
                 if (d.message) el.textContent = d.message;
                 setTimeout(check, 2000);
               })
