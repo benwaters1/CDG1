@@ -16046,9 +16046,199 @@ def _availability_picture(conn, *, fresh=False):
         picture["night_label"][why] = (
             f"Provisionally held for a private {row['kind'] or 'event'}")
 
+    # Which rooms are let on which night, for the five-rooms-a-night limit.
+    _rooms_let_index(conn, picture)
+
     if has_request_context():
         g._availability_picture = picture
     return picture
+
+
+# FIVE ROOMS LET A NIGHT, NEVER SIX. Chambres d'hôtes are limited to five rooms
+# and fifteen guests (Code du tourisme L324-3, D324-13). The house has six
+# since 17 October 2026, and the owner's answer was "never more than five rooms
+# let on any one night" (z28 item 1). The guest ceiling is house_guest_capacity;
+# this is the room one. One value, shown on the owner's Rooms page.
+MAX_ROOMS_LET_PER_NIGHT = 5
+app.jinja_env.globals["max_rooms_let"] = MAX_ROOMS_LET_PER_NIGHT
+# What a guest is told, on the room page's calendar and in a search.
+HOUSE_FULL_NIGHT = "The house is full that night"
+# How far ahead the index is built. Nothing is sold more than a year ahead
+# (generate_room_ics), and a channel's long closure is cut to this.
+LET_INDEX_DAYS = 800
+
+
+def house_full_reason(night):
+    """'The house is full on 12 December.' -- a stay refused for this."""
+    return f"The house is full on {night.day} {night.strftime('%B')}."
+
+
+def is_house_full_reason(why):
+    return bool(why) and why.startswith("The house is full")
+
+
+def own_feed_spans(conn, picture):
+    """{room_id: {(first night, DTEND)}} -- and None for every room -- for the
+    closures this house's own calendars send the channels.
+
+    A channel set to export "booked and closed dates" sends those straight
+    back, and in what is stored (dates, no summary) a closure coming back is
+    indistinguishable from a guest's booking. One that matches a span sent
+    out, exactly, is ours coming home and is not a room let. The spans are
+    generate_room_ics's: test_rooms_let_a_night holds the two together.
+    """
+    spans = {None: set()}
+    for rid, rows in picture["manual"].items():
+        for a, b, _mode, _note in rows:
+            if a and b:
+                spans.setdefault(rid, set()).add((a, b))
+    for s in sessions_holding_the_house(conn):
+        w_start, w_end = parse_date(s["start_date"]), parse_date(s["end_date"])
+        if w_start and w_end:
+            spans[None].add((w_start - timedelta(days=1),
+                             max(w_end, w_start) + timedelta(days=1)))
+    for h_start, h_end, why in picture["house"]:
+        if h_start and h_end and not why.startswith("Those dates are held for a workshop"):
+            spans[None].add((h_start, h_end + timedelta(days=1)))
+    return spans
+
+
+def _rooms_let_index(conn, picture):
+    """picture["let"] = {night: {room_id: [(kind, booking_id, status)]}}, and
+    picture["channel_echoes"] = [(room_id, start, end)] left out of it.
+
+    TAKEN: this site's pending and confirmed bookings, in any room, and a
+    channel's imported nights in a room on sale. NOT TAKEN: the owner's
+    closures ("Resting for the winter") -- a room shut is not a room let --
+    and a channel range that is one of the house's own closures sent back.
+
+    The owner's "keep this open here" choice is not honoured in this count:
+    it reopens a channel's nights for sale on THIS site, but if the stay on
+    the channel is real the room is let, and the limit is the law's.
+    """
+    today = house_today()
+    first, last = today - timedelta(days=1), today + timedelta(days=LET_INDEX_DAYS)
+    index = {}
+
+    def add(rid, a, b, entry):
+        if not (a and b):
+            return
+        day, stop = max(a, first), min(b, last)
+        while day < stop:
+            index.setdefault(day, {}).setdefault(rid, []).append(entry)
+            day += timedelta(days=1)
+
+    for rid, rows in picture["bookings"].items():
+        for bid, status, a, b in rows:
+            add(rid, a, b, ("booking", bid, status))
+    on_sale = {r["id"] for r in conn.execute("SELECT id FROM rooms WHERE active = 1")}
+    ours = own_feed_spans(conn, picture)
+    echoes = []
+    for row in conn.execute("SELECT room_id, start_date, end_date FROM blocked_dates"):
+        rid = row["room_id"]
+        a, b = parse_date(row["start_date"]), parse_date(row["end_date"])
+        if rid not in on_sale or not (a and b):
+            continue
+        if (a, b) in ours.get(rid, ()) or (a, b) in ours[None]:
+            echoes.append((rid, a, b))
+            continue
+        add(rid, a, b, ("channel", None, "confirmed"))
+    picture["let"] = index
+    picture["channel_echoes"] = echoes
+
+
+def rooms_let_on(picture, night, *, besides=None, exclude_booking_id=None,
+                 include_pending=True):
+    """The rooms let on one night, other than `besides`, as a set of ids."""
+    taken = set()
+    for rid, entries in picture["let"].get(night, {}).items():
+        if rid == besides:
+            continue
+        for _kind, bid, status in entries:
+            if exclude_booking_id and bid == exclude_booking_id:
+                continue
+            if not include_pending and status != "confirmed":
+                continue
+            taken.add(rid)
+            break
+    return taken
+
+
+def rooms_over_the_limit(conn, today=None, days=400):
+    """[{'night', 'rooms': [names]}] for each night ahead with more than five
+    rooms let, soonest first. [] when the house keeps to the limit.
+
+    The gate cannot stop this one: two channel bookings inside one calendar
+    sync can make six, because neither channel knows of the other's booking
+    until the house's feed is read again. So it is looked for, every night
+    ahead, and said the same day (owner home, and a task that closes itself).
+    A workshop's own rooming counts too -- the guests it puts in rooms are
+    rooms let -- though the gate does not refuse a workshop: whether the limit
+    binds an atelier is the owner's to say (z28 item 1).
+    """
+    today = today or house_today()
+    picture = _availability_picture(conn)
+    names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    extra = {}
+    for row in conn.execute(
+            """SELECT DISTINCT workshop_bookings.assigned_room_id AS room_id,
+                      workshop_sessions.start_date, workshop_sessions.end_date
+                 FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                WHERE workshop_bookings.assigned_room_id IS NOT NULL
+                  AND workshop_bookings.status IN ('pending', 'confirmed')
+                  AND {SESSION_IS_LIVE}
+                  AND workshop_sessions.end_date >= ?""".format(SESSION_IS_LIVE=SESSION_IS_LIVE),
+            (today.isoformat(),)):
+        a, b = parse_date(row["start_date"]), parse_date(row["end_date"])
+        day = a
+        while a and b and day < b:
+            extra.setdefault(day, set()).add(row["room_id"])
+            day += timedelta(days=1)
+    out = []
+    for i in range(days):
+        night = today + timedelta(days=i)
+        let = rooms_let_on(picture, night) | extra.get(night, set())
+        if len(let) > MAX_ROOMS_LET_PER_NIGHT:
+            out.append({"night": night,
+                        "rooms": sorted(names.get(r, f"room {r}") for r in let)})
+    return out
+
+
+def rooms_limit_problem(conn, today=None):
+    """(title, detail) for the owner home and its task, or None. One sentence,
+    so the two cannot word it apart."""
+    over = rooms_over_the_limit(conn, today)
+    if not over:
+        return None
+    first = over[0]
+    when = f"{first['night'].day} {first['night'].strftime('%B')}"
+    title = (f"{len(first['rooms'])} rooms are let on {when}" if len(over) == 1
+             else f"More than five rooms are let on {len(over)} nights, from {when}")
+    shown = "; ".join(f"{o['night'].day} {o['night'].strftime('%b')}: "
+                      + ", ".join(o["rooms"]) for o in over[:4])
+    return (title,
+            f"The house lets no more than {MAX_ROOMS_LET_PER_NIGHT} rooms on any one "
+            f"night (chambres d'hôtes). {shown}"
+            + (f"; and {len(over) - 4} more" if len(over) > 4 else "")
+            + ". Usually two channel bookings arriving between calendar syncs: "
+              "one of them has to be moved or cancelled.")
+
+
+def channel_echo_problem(conn):
+    """(title, detail) when a channel is sending the house's own closures back,
+    or None. Those are left out of the count -- but they mean the channel's
+    export carries closed dates, and a date closed ON the channel is then
+    indistinguishable from a booking, and counts as a room let."""
+    echoes = _availability_picture(conn).get("channel_echoes") or []
+    if not echoes:
+        return None
+    return (f"Booking.com is sending back {len(echoes)} of the house's own closures",
+            "Its calendar export is set to booked AND closed dates, and what it sends is "
+            "dates only, so a closure cannot be told from a booking. The house's own "
+            "closures coming back are recognised and left out of the five-rooms-a-night "
+            "count; a date closed on Booking.com itself is not, and counts as a room let. "
+            "In Booking.com: Sync calendars, Decide what to export, Booked dates only.")
 
 
 def atelier_holding_the_house(conn, arrival, departure):
@@ -16141,6 +16331,18 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
     for h_start, h_end, why in picture["house"]:
         if h_start and h_end and arrival <= h_end and h_start < departure:
             return False, why
+
+    # And the house's own limit: five rooms let on any one night, whichever
+    # five. Asked here, the one check the search, the room page, the quote,
+    # "What Is Open Next" and the booking itself all refuse from, so none of
+    # them can offer a sixth room the others would turn down (z28 item 1).
+    day = arrival
+    while day < departure:
+        if len(rooms_let_on(picture, day, besides=room_id,
+                            exclude_booking_id=exclude_booking_id,
+                            include_pending=include_pending)) >= MAX_ROOMS_LET_PER_NIGHT:
+            return False, house_full_reason(day)
+        day += timedelta(days=1)
 
     return True, None
 
@@ -16521,6 +16723,15 @@ def unavailable_nights(conn, room_id, start, end):
     # sessions_holding_the_house, like the gate.
     for h_start, h_end, why in picture["house"]:
         hold(h_start, h_end, picture["night_label"].get(why, why))
+
+    # Five other rooms let that night: the gate refuses a sixth, so the
+    # calendar greys it, in the same words (z28 item 1).
+    day = start
+    while day < end:
+        iso = day.isoformat()
+        if iso not in out and len(rooms_let_on(picture, day, besides=room_id)) >= MAX_ROOMS_LET_PER_NIGHT:
+            out[iso] = HOUSE_FULL_NIGHT
+        day += timedelta(days=1)
 
     # And the legal ceiling: a night already holding the maximum has no room
     # for even one more guest, whatever this particular room's own state is.
@@ -28918,6 +29129,30 @@ def generate_room_ics(conn, room):
         window_end = today.replace(year=today.year + 3, day=28)
     closed("window", today + timedelta(days=365), window_end, "Not yet open")
 
+    # A room taken off sale here is off sale everywhere (z28 item 2). The feed
+    # ignored `active`, so a room hidden in Admin still exported every date
+    # open, and a channel reading it could sell it. One span over the whole
+    # window, rather than nothing: an empty calendar reads as all open.
+    if "active" in room.keys() and not room["active"]:
+        closed("off-sale", today, window_end, "Closed — " + room["name"])
+
+    # Five other rooms let on a night: this one closes on the channels for it,
+    # so Booking.com stops selling the sixth (z28 item 1). Nights run together
+    # into one span each, so a full week is one event and not seven. The
+    # house's own count, from the picture the booking check refuses from.
+    picture = _availability_picture(conn)
+    run_start, day, stop = None, today, today + timedelta(days=365)
+    while day <= stop:
+        full = day < stop and len(rooms_let_on(picture, day, besides=room["id"])) \
+            >= MAX_ROOMS_LET_PER_NIGHT
+        if full and run_start is None:
+            run_start = day
+        elif not full and run_start is not None:
+            closed(f"full-{run_start.isoformat()}-{day.isoformat()}", run_start, day,
+                   "Closed — the house is full")
+            run_start = None
+        day += timedelta(days=1)
+
     lines.append("END:VCALENDAR")
     return "\r\n".join(lines) + "\r\n"
 
@@ -35755,6 +35990,20 @@ def owner_home_warnings(conn, today):
     clash = terms_times_problem(conn)
     if clash:
         add("warn", clash[0], clash[1], 1, "admin_terms")
+
+    # MORE THAN FIVE ROOMS LET ON A NIGHT. The law's limit, and the one thing
+    # the booking check cannot stop: two channel bookings inside one sync.
+    # Any night ahead, not a fortnight's -- a breach in March is fixed by
+    # moving somebody now. Closes itself when the night is down to five.
+    over = rooms_limit_problem(conn, today)
+    if over:
+        first = rooms_over_the_limit(conn, today)[0]["night"]
+        add("blocker", over[0], over[1], 1, "admin_calendar",
+            month=first.strftime("%Y-%m"))
+    # A channel sending the house's own closures back as if they were stays.
+    echo = channel_echo_problem(conn)
+    if echo:
+        add("warn", echo[0], echo[1], 1, "channel_stays_page")
 
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
     # the next pass that writes cleanly takes the line away.
@@ -48046,6 +48295,11 @@ def book_rooms():
                 # Closed for the season: the owner's own line, "The Gold
                 # Suite reopens on 1 April."
                 unavailable_reason[room["id"]] = why
+            elif not ok and is_house_full_reason(why):
+                # Five other rooms let on a night of the stay: said plainly,
+                # because "not available" sends somebody hunting for another
+                # room that is not there either (z28 item 1).
+                unavailable_reason[room["id"]] = why.rstrip(".")
             elif not ok:
                 unavailable_reason[room["id"]] = "Not available these dates"
             # A room closed for the season over these nights is RESTING: its
@@ -48373,8 +48627,12 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
         return quote
     free, why = is_range_available(conn, room["id"], arrival, departure)
     if not free:
+        # A season closure's own note, and the house being full (z28 item 1),
+        # are said as they are; anything about another booking is the one
+        # plain sentence.
         quote.update(available=False,
-                     reason=(why if why and why == season_note_for(conn, room["id"], arrival, departure)
+                     reason=(why if why and (why == season_note_for(conn, room["id"], arrival, departure)
+                                             or is_house_full_reason(why))
                              else GUEST_DATES_TAKEN))
         return quote
     # On request: priced as ever, booked as a request the house answers.
@@ -54888,6 +55146,19 @@ def rooming_plan(conn, session_id):
                 "kind": "solo_shared", "who": solo[0],
                 "detail": f"{solo[0]['guest_name']} paid for a room alone and "
                           f"is sharing {solo[0]['room_name']}"})
+
+    # More rooms in use than the house lets a night (z28 item 1). Said, not
+    # refused: whether the five-room limit binds a workshop is the owner's to
+    # decide. Named by whoever is in the room placed last, which is the one
+    # to move if it does.
+    if len(by_room) > MAX_ROOMS_LET_PER_NIGHT:
+        order = {r["id"]: i for i, r in enumerate(rooms)}
+        last = max(by_room, key=lambda rid: order.get(rid, -1))
+        problems.append({
+            "kind": "sixth_room", "who": by_room[last][0],
+            "detail": f"this session puts guests in {len(by_room)} rooms, and the "
+                      f"house lets no more than {MAX_ROOMS_LET_PER_NIGHT} on any one "
+                      f"night; {by_room[last][0]['room_name']} is the one over"})
 
     beds = sum(r["max_occupancy"] or 0 for r in rooms)
     heads = sum(_room_party(p) for p in people)
@@ -79708,6 +79979,7 @@ WATCH_TASK_KINDS = {
     "sendcheck": "An Outlook the check on Send cannot run in",
     "terms": "Booking terms that give a different arrival or departure time",
     "extras": "An extra a guest has paid for, to arrange or hand over",
+    "rooms_let": "A night with more than five rooms let",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -82962,6 +83234,17 @@ def watch_task_findings(conn, today=None):
         found.append(("terms", clash[0],
                       clash[1] + "\n\nManagement → Terms and conditions, section 6.",
                       today.isoformat(), "normal"))
+
+    # A night with more than five rooms let, one task per night and titled by
+    # it, so moving one guest closes that night's task and leaves the others.
+    for o in rooms_over_the_limit(conn, today):
+        when = f"{o['night'].day} {o['night'].strftime('%B %Y')}"
+        found.append(("rooms_let",
+                      f"More than five rooms let on {when}",
+                      f"{len(o['rooms'])} rooms are let that night: {', '.join(o['rooms'])}. "
+                      f"The house lets no more than {MAX_ROOMS_LET_PER_NIGHT} on any one "
+                      "night (chambres d'hôtes); one stay has to be moved or cancelled.",
+                      today.isoformat(), "high"))
 
     # A stored guest letter out of step with the house rules on payment. One
     # per letter, titled by the letter, so putting one right closes that one

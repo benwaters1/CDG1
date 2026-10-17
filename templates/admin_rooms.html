@@ -17,6 +17,11 @@
   Airbnb, Booking.com or VRBO's calendar import so they see what is booked here and do not sell
   the same nights twice; add theirs to a room and it stops this site selling nights they have sold.
   Dates off sale are for maintenance, family, or anything else that keeps a room empty.</p>
+{# z28 item 1: the limit, said where the rooms are set up. MAX_ROOMS_LET_PER_NIGHT in app.py. #}
+<p class="pay-disclaimer">No more than <b>{{ max_rooms_let }} rooms let on any one night</b>,
+  whichever {{ max_rooms_let }} (chambres d'hôtes). This site refuses a booking that would be the
+  {{ 'sixth' if max_rooms_let == 5 else 'next' }}, and on a night five are let every other room's
+  calendar link tells the channels it is closed. Your own closures do not count as let.</p>
 
 {% if not rooms %}
   <div class="empty-state">No rooms yet. Add one to start taking bookings.</div>

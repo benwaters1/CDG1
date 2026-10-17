@@ -507,6 +507,8 @@ SUITES = [
     "test_calendar_every_day",
     # The winter rest read from the rooms' own closures, z27 item 17.
     "test_winter_rest",
+    # Five rooms let a night, never six: the sixth room, z28 item 1.
+    "test_rooms_let_a_night",
 ]
 
 
