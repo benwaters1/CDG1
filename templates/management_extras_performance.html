@@ -78,11 +78,43 @@
 <div class="empty-state">{% if data.stays %}No extras were taken on stays arriving in this window.{% else %}No stays arriving in this window, so there is nothing to measure extras against.{% endif %}</div>
 {% endif %}
 
+{# What is already sold on stays still to arrive. The window above is stays
+   that have begun, which is right for an attach rate and left out the very
+   thing the owner asks when a booking comes in. #}
+<h2 class="section-heading">On the books: stays still to come</h2>
+<p class="field-hint" style="max-width:760px;">
+  Extras already chosen on the {{ data.ahead_stays }} confirmed stay{{ '' if data.ahead_stays == 1 else 's' }}
+  still to arrive, gross. They are not in the figures above until the stay begins.
+  <a href="{{ url_for('extras_due_page') }}">What has to be prepared</a>
+</p>
+{% if data.ahead %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Extra</th><th class="num">Stays</th><th class="num">Units</th><th>Next</th><th class="num">Gross</th></tr></thead>
+    <tbody>
+      {% for r in data.ahead %}
+      <tr>
+        <td>{{ r.name }}</td>
+        <td class="num">{{ r.stays }}</td>
+        <td class="num">{{ r.units }}</td>
+        <td>{{ r.next_on|date_short if r.next_on else '' }}</td>
+        <td class="num">{{ r.revenue|money }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td>Total</td><td></td><td></td><td></td><td class="num">{{ data.ahead_revenue|money }}</td></tr></tfoot>
+  </table>
+</div>
+{% else %}
+  <div class="empty-state">Nothing chosen yet on the stays still to come.</div>
+{% endif %}
+
 {% if data.never_sold %}
 <h2 class="section-heading">Offered and never taken</h2>
 <p class="field-hint" style="max-width:760px;">
-  These are on the booking form and nobody in this window chose them. Only guest-bookable extras
-  count &mdash; one the staff add by hand was never on offer, so it cannot have failed to sell.
+  These are on the booking form and nobody in this window chose them, nor on any stay still to
+  come. Only guest-bookable extras count &mdash; one the staff add by hand was never on offer, so
+  it cannot have failed to sell.
 </p>
 <ul>
   {% for name in data.never_sold %}<li>{{ name }}</li>{% endfor %}
