@@ -41,7 +41,7 @@
   ] %}
   {%- set _is_family = room_name(room['name']) == 'The Family Suite' %}
   <div class="{{ 'g-room--family' if _is_family }}">
-  <img loading="eager" fetchpriority="high" decoding="async" class="g-roomhero"{% if room_name(room['name']) == 'The King Room' %} style="object-position: 22% 70%"{% endif %}
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-roomhero"{% if room_name(room['name']) == 'The King Suite' %} style="object-position: 22% 70%"{% endif %}
        src="{% set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% elif _rp %}{{ _rp[0][0] }}{% else %}{{ ROOM_FALLBACKS[room['id'] % 3] }}{% endif %}"
        alt="{{ room_name(room['name']) }}">
 
@@ -82,7 +82,7 @@
     <dl class="g-glance">
       <div><dt>Sleeps</dt><dd>{% if (room['max_children'] or 0)|int > 0 %}{{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Up to {{ room['max_occupancy'] }}{% endif %}</dd></div>
       {% if _bl %}<div><dt>The bed</dt><dd>{{ _bl }}</dd></div>{% endif %}
-      {% if _rn == 'The King Room' %}<div><dt>In the room</dt><dd>A bath and a basin of its own</dd></div>{% endif %}
+      {% if _rn == 'The King Suite' %}<div><dt>In the room</dt><dd>A bath and a basin of its own</dd></div>{% endif %}
       <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ 'Private, and yours alone, ' if _private else '' }}on the ground floor<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span></dd></div>
       <div><dt>Check-in / out</dt><dd>From {{ check_in_at }} &middot; by {{ check_out_at }}<span class="g-glance__sub">Early check-in on request</span></dd></div>
       <div><dt>Breakfast</dt><dd>Included</dd></div>

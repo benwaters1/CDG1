@@ -21,6 +21,17 @@ def _rooms(conn):
     return {r["name"]: r for r in conn.execute("SELECT * FROM rooms WHERE active = 1")}
 
 
+# Three of the line-up's names were changed again on 16 October, by
+# apply_room_names_2026_10_16, which runs after it on every boot. What a
+# line-up room is called NOW: the Queen Room is the King Room, the King Room
+# the King Suite, the Gold Suite the Marquis Suite.
+NOW = {old: new for old, new, _channel in m.ROOM_NAMES_2026_10_16}
+
+
+def now(name):
+    return NOW.get(name, name)
+
+
 TOUCHED = ("name", "price_per_night", "bathroom", "max_occupancy", "bed_setup",
            "sort_order", "description")
 
@@ -35,8 +46,8 @@ def run():
     # rooms for their own purposes, so the figures are checked below, on rows
     # this suite puts back to their old selves and watches being changed.
     for old, new, *_rest in m.ROOM_LINEUP:
-        s.check(f"{new} exists", new in rooms,
-                detail=f"no room called {new}; {old} was not renamed")
+        s.check(f"{now(new)} exists", now(new) in rooms,
+                detail=f"no room called {now(new)}; {old} was not renamed")
     s.check("no room is left with its old name",
             not [old for old, *_rest in m.ROOM_LINEUP if old in rooms],
             detail=str([old for old, *_rest in m.ROOM_LINEUP if old in rooms]))
@@ -47,18 +58,18 @@ def run():
     try:
         # Each row back to its old name, with values the line-up must replace.
         for old, new, *_rest in m.ROOM_LINEUP:
-            if new in ids:
+            if now(new) in ids:
                 conn.execute(
                     """UPDATE rooms SET name = ?, price_per_night = 1, bathroom = 'shared',
                        max_occupancy = 9, bed_setup = 'x', sort_order = 99,
                        description = 'sharing a bathroom downstairs' WHERE id = ?""",
-                    (old, ids[new]))
+                    (old, ids[now(new)]))
         conn.commit()
         changed = m.apply_room_lineup(conn)
         s.check("all five are changed", changed == len(m.ROOM_LINEUP), detail=str(changed))
         after = {r["id"]: r for r in conn.execute("SELECT * FROM rooms")}
         for old, new, price, sleeps, beds, order in m.ROOM_LINEUP:
-            r = after.get(ids.get(new))
+            r = after.get(ids.get(now(new)))
             if not r:
                 continue
             s.check(f"{old} is now {new}", r["name"] == new, detail=r["name"])
@@ -88,7 +99,7 @@ def run():
     rooms = _rooms(conn)
 
     s.section("Once, and never again over the owner's own edits")
-    queen = rooms.get("The Queen Room")
+    queen = rooms.get(now("The Queen Room"))
     if queen:
         was = queen["price_per_night"]
         conn.execute("UPDATE rooms SET price_per_night = 310 WHERE id = ?", (queen["id"],))
@@ -106,35 +117,37 @@ def run():
     s.section("It renames the row it finds, and only that one")
     # An old name that comes back -- a room re-added by hand -- is renamed and
     # repriced like the others; the row keeps its id, so its bookings follow.
+    # Proved on the Twin Room, which kept its name on 16 October. The Queen
+    # Room's name has been free since then (that room is the King Room now),
+    # so a Chambre Cerise re-added by hand would take it without making two
+    # rooms answer to one name -- it can no longer prove the guard.
     probe = conn.execute(
         "INSERT INTO rooms (name, price_per_night, active, bathroom, max_occupancy, "
-        "export_token) VALUES ('Chambre Cerise', 999, 0, 'shared', 4, 'zz-lineup-probe')")
+        "export_token) VALUES ('Chambre Tilleul', 999, 0, 'shared', 4, 'zz-lineup-probe')")
     probe_id = probe.lastrowid
-    queen_row = rooms.get("The Queen Room")
+    twin_row = rooms.get("The Twin Room")
     conn.commit()
     try:
         changed = m.apply_room_lineup(conn)
         row = conn.execute("SELECT * FROM rooms WHERE id = ?", (probe_id,)).fetchone()
         s.check("a second room is never given a name one already has",
-                changed == 0 and row["name"] == "Chambre Cerise",
+                changed == 0 and row["name"] == "Chambre Tilleul",
                 detail=f"{changed} changed; the probe is now called {row['name']!r}"
                        " -- two rooms answering to one name")
-        if queen_row:
+        if twin_row:
             conn.execute("DELETE FROM rooms WHERE id = ?", (probe_id,))
-            conn.execute("UPDATE rooms SET name = 'Chambre Cerise' WHERE id = ?",
-                         (queen_row["id"],))
+            conn.execute("UPDATE rooms SET name = 'Chambre Tilleul' WHERE id = ?",
+                         (twin_row["id"],))
             conn.commit()
             changed = m.apply_room_lineup(conn)
             back = conn.execute("SELECT * FROM rooms WHERE id = ?",
-                                (queen_row["id"],)).fetchone()
+                                (twin_row["id"],)).fetchone()
             s.check("an old name is renamed in place, keeping its row",
-                    changed == 1 and back["name"] == "The Queen Room"
+                    changed == 1 and back["name"] == "The Twin Room"
                     and back["bathroom"] == "private",
                     detail=f"{changed} changed; {back['name']!r} {back['bathroom']}")
-            conn.execute("""UPDATE rooms SET price_per_night = ?, sort_order = ?,
-                            description = ? WHERE id = ?""",
-                         (queen_row["price_per_night"], queen_row["sort_order"],
-                          queen_row["description"], queen_row["id"]))
+            conn.execute("UPDATE rooms SET %s WHERE id = ?" % ", ".join(
+                f"{col} = ?" for col in TOUCHED), [twin_row[col] for col in TOUCHED] + [twin_row["id"]])
             conn.commit()
     finally:
         conn.execute("DELETE FROM rooms WHERE id = ?", (probe_id,))
@@ -163,11 +176,13 @@ def run():
     s.section("And the room page says what the row says")
     anon = m.app.test_client()
     conn = db()
-    gold = conn.execute("SELECT * FROM rooms WHERE name = 'The Gold Suite'").fetchone()
+    gold = conn.execute("SELECT * FROM rooms WHERE name = ?", (now("The Gold Suite"),)).fetchone()
     conn.close()
+    s.check("the Gold Suite is there, as the Marquis Suite", gold is not None,
+            detail="reported rather than skipped")
     if gold:
         page = _harness.visible_text(anon.get(f"/book/{gold['id']}").get_data(as_text=True))
-        s.check("the room page is headed with its new name", "The Gold Suite" in page)
+        s.check("the room page is headed with its new name", now("The Gold Suite") in page)
         s.check("and prices it as the row does", "480" in page)
         s.check("and does not say its bathroom is shared",
                 "shared bathroom" not in page.lower() and "Shared bathroom" not in page)

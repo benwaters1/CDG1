@@ -185,15 +185,15 @@
    below rotates by position, which meant the Suite could be illustrated with
    a photo of the Classic Double. Rooms not named here still rotate. #}
 {# RM_FOR is keyed by the old and the new room names (Tilleul -> Twin, Cerise -> Double, du Levant -> King,
-   Émeraude -> Gold Suite, Les Deux Chambres -> Family Suite), so photos survive the rename. #}
+   Émeraude -> Marquis Suite, Les Deux Chambres -> Family Suite), so photos survive the rename. #}
 {% set RM_FOR = {
   'Chambre Émeraude': RM_IMG[5],
   'Chambre du Levant': RM_IMG[0],
   'Les Deux Chambres': RM_IMG[4],
   'Chambre Cerise': RM_IMG[3],
   'Chambre Tilleul': RM_IMG[1],
-  'The Twin Room': RM_IMG[1], 'The Queen Room': RM_IMG[3], 'The King Room': RM_IMG[0],
-  'The Gold Suite': RM_IMG[5], 'The Family Suite': RM_IMG[4]
+  'The Twin Room': RM_IMG[1], 'The King Room': RM_IMG[3], 'The King Suite': RM_IMG[0],
+  'The Marquis Suite': RM_IMG[5], 'The Family Suite': RM_IMG[4]
 } %}
 {#- 5 Oct: each room's own photograph (Booking.com) wins over the old mapping. -#}
 {%- for _n, _ph in ROOM_PHOTOS.items() %}{% set _ = RM_FOR.update({_n: (_ph[0][0])}) %}{% endfor %}
@@ -204,7 +204,17 @@
       <div class="g-card__b">
         {{ emblem(room['name']) }}
         <h3 class="g-card__name">{{ room_name(room['name']) }}</h3>
-        {% if room['price_per_night'] %}
+        {#- 16 Oct (owner): the two suites close from 1 December to mid-February - "too large to heat". The dates are held by
+            Admin room blocks ("Resting for the winter"), which the booking check refuses; this only says so gracefully.
+            Nights from 1 Dec to 14 Feb: a stay overlaps if it arrives on or after 1 Dec or before 15 Feb, or departs after
+            1 Dec. FOR-CODE 17: a room field, and the block's reason from book_rooms(), would replace the names below. -#}
+        {%- set _winter_room = room_name(room['name']) in ['The Marquis Suite', 'The Family Suite'] %}
+        {%- set _am = (arrival or '')[5:] %}{%- set _dm = (departure or '')[5:] %}
+        {#- 16 Oct (owner): option A, and only when winter dates are chosen; the other rooms then say how they are kept warm. -#}
+        {%- set _wdates = searched and _am and _dm and (_am >= '12-01' or _am < '02-15' or _dm > '12-01' or (_dm > '01-01' and _dm <= '02-15')) %}
+        {%- set _wstay = _winter_room and _wdates and not availability.get(room['id']) %}
+        {% if _wstay %}<p class="g-card__season">Kept for the warmer months</p>{% endif %}
+        {% if room['price_per_night'] and not _wstay %}
         {# When dates are set, lead with the total for the stay — the figure a
            guest is actually deciding on — and keep the nightly rate beneath. #}
         {% set _n = stay_nights | default(0) | int %}
@@ -261,12 +271,22 @@
             {% if room['bathroom'] %}<li>{{ ci('bath') }}{{ 'Private bathroom, on the ground floor' if (room['bathroom']|lower) == 'private' else (room['bathroom']|capitalize ~ ' bathroom') }}</li>{% endif %}{#- 15 Oct (owner): say it is not attached - the room page says each is on the ground floor -#}
             {% if room['outlook'] %}<li>{{ ci('view') }}{{ room['outlook']|capitalize }} view</li>{% endif %}
             <li>{{ ci('cup') }}Breakfast included</li>
+            {% if _wdates and not _winter_room %}<li>{{ ci('bed') }}Space heater and electric blankets</li>{% endif %}
             {% if (room['min_nights'] or 1) > 1 %}<li>{{ ci('nights') }}{{ room['min_nights'] }}-night minimum</li>{% endif %}
           {% endif %}
         </ul>
         {% if searched %}
           {% if availability.get(room['id']) %}
             <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}">Book this room</a>
+          {% elif _wstay %}
+            <div class="g-winter">
+              <p class="g-winter__fr" lang="fr">Une suite pour la belle saison</p>
+              {#- The owner's own line for a closure kept as a season ("The Marquis Suite reopens on 15 February."), from
+                  book_rooms()'s unavailable_reason. z26 put this box where that line was, so it went; it stays, first. -#}
+              {%- set _why = unavailable_reason.get(room['id']) %}
+              {% if _why and _why != 'Not available these dates' %}<p class="g-winter__p">{{ _why }}</p>{% endif %}
+              <p class="g-winter__p">The suites are open from mid-February to the end of November. For winter dates, the Twin Room, the King Room and the King Suite are open, each with a space heater and electric blankets.</p>
+            </div>
           {% else %}
             <span class="g-btn g-btn--off g-card__cta">
               {{ unavailable_reason.get(room['id'], 'Not available these dates') }}
@@ -335,7 +355,7 @@
   <h2 class="g-place">Your Room, Breakfast and the Lounge</h2>
   <p class="g-p g-intro">Five guest rooms, breakfast in the morning, and the lounge to come back to.</p>
   <ul class="g-befgrid g-gallery g-lb-scope">
-    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w" alt="The Gold Suite, the four-poster bed" loading="lazy"><figcaption>The Gold Suite</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w" alt="The Marquis Suite, the four-poster bed" loading="lazy"><figcaption>The Marquis Suite</figcaption></figure></li>
     <li><figure><img src="{{ url_for('static', filename='img/views/chair-flowers-window-800.jpg') }}" srcset="{{ url_for('static', filename='img/views/chair-flowers-window-800.jpg') }} 800w, {{ url_for('static', filename='img/views/chair-flowers-window.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A chair by the window, the mountains beyond" loading="lazy"><figcaption>A chair by the window, the mountains beyond</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w" alt="One of the ground-floor bathrooms" loading="lazy"><figcaption>A bathroom of your own</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dedda173-4be1-4989-a43b-79662a5deb95/Bathrooms+-+After+Work+Dressing+Room+2.jpg?format=1000w" alt="A bathroom dressing room, roses by the window" loading="lazy"><figcaption>Its dressing room</figcaption></figure></li>
