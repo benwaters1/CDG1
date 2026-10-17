@@ -203,6 +203,15 @@ def run():
                 and f"{TAG} B" not in searched)
         s.check("every table is wrapped for a phone", page.count("<table") == page.count('class="table-wrap"'))
 
+        s.section("And the shift sees today's on the page it opens")
+        hamper = _sell(stay, wine, today, notes="With two glasses")
+        today_page = ec.get("/today").get_data(as_text=True)
+        s.check("Today lists what is to hand over today",
+                "Extras to hand over today" in today_page and "With two glasses" in today_page)
+        s.check("with the button to say it was handed over",
+                f"/extras/{hamper}/delivered" in today_page)
+        s.check("and no prices", "€" not in today_page.split("Extras to hand over today")[1].split("My list")[0])
+
         s.section("It reaches the owner, and the calendar, and closes itself")
         conn = db()
         with m.app.test_request_context("/"):
@@ -280,7 +289,11 @@ def run():
         conn.close()
         ahead = {r["name"]: r for r in perf["ahead"]}
         s.check("the earnings page counts the stays still to come",
-                f"{TAG} bottle of wine" in ahead and ahead[f"{TAG} bottle of wine"]["revenue"] == 40)
+                # Two bottles by now: the one sold with the stay and the one for
+                # today, both on a stay still to arrive.
+                f"{TAG} bottle of wine" in ahead and ahead[f"{TAG} bottle of wine"]["revenue"] == 80
+                and ahead[f"{TAG} bottle of wine"]["units"] == 2,
+                detail=str(ahead.get(f"{TAG} bottle of wine")))
         s.check("and does not call an extra booked ahead 'never taken'",
                 f"{TAG} airport transfer" not in perf["never_sold"])
 

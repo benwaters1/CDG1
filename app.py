@@ -45564,6 +45564,7 @@ def guests():
 
     lv, stay_counts, tags = guests_list_view(conn, request.args)
     known_tags = sorted({t for ts in tags.values() for t in ts})
+    history = guest_stay_summaries(conn, today)
     conn.close()
     # The who-is-here lists follow the same search, so one box narrows the
     # whole page rather than only the half below it.
@@ -45575,10 +45576,53 @@ def guests():
                     if lowered in (x["name"] or "").lower()]
     return render_template(
         "guests.html", in_residence=in_residence, upcoming=upcoming,
-        profiles=lv["rows"], lv=lv, stay_counts=stay_counts,
+        profiles=lv["rows"], lv=lv, stay_counts=stay_counts, history=history,
         overview=overview, period=period, tags=tags, known_tags=known_tags,
         export_args=request.args.to_dict(),
     )
+
+
+def guest_stay_summaries(conn, today=None):
+    """{guest_id: {"stays", "nights", "last", "next"}} for every profile, in one pass.
+
+    The list counted only stays LINKED to a profile, so a guest whose booking
+    matched them by address -- every one that came in before the link was
+    made -- read "First time" on the list while their own page showed two
+    stays. guest_record is the definition: linked stays, and unlinked ones
+    under their address. This is that, for the profile's own address, in a
+    query instead of one per guest; addresses from profiles merged into it are
+    on their own page, not here.
+
+    Stays that have begun count (a no-show does not); `next` is the soonest
+    confirmed stay still to arrive. No money: what a guest is worth is
+    guest_record's to say, from each stay's bill, and a cheaper sum shown on a
+    list would be a second answer.
+    """
+    today_iso = (today or house_today()).isoformat()
+    emails = {}
+    for g in conn.execute("SELECT id, email FROM guests WHERE merged_into_id IS NULL").fetchall():
+        addr = (g["email"] or "").strip().lower()
+        if addr:
+            emails.setdefault(addr, []).append(g["id"])
+    out = {}
+    for b in conn.execute(
+            """SELECT linked_guest_id, guest_email, arrival_date, departure_date, no_show_at
+                 FROM bookings WHERE status = 'confirmed'""").fetchall():
+        owners = ([b["linked_guest_id"]] if b["linked_guest_id"]
+                  else emails.get((b["guest_email"] or "").strip().lower(), []))
+        for gid in owners:
+            h = out.setdefault(gid, {"stays": 0, "nights": 0, "last": None, "next": None})
+            arrive, leave = b["arrival_date"] or "", b["departure_date"] or ""
+            if arrive and arrive <= today_iso and not b["no_show_at"]:
+                h["stays"] += 1
+                start, end = parse_date(arrive), parse_date(leave)
+                if start and end and end > start:
+                    h["nights"] += (end - start).days
+                if not h["last"] or arrive > h["last"]:
+                    h["last"] = arrive
+            elif arrive > today_iso and (not h["next"] or arrive < h["next"]):
+                h["next"] = arrive
+    return out
 
 
 def guests_list_view(conn, args):
@@ -45592,15 +45636,10 @@ def guests_list_view(conn, args):
     profiles = conn.execute(
         "SELECT * FROM guests WHERE merged_into_id IS NULL ORDER BY vip DESC, name").fetchall()
 
-    # How many past stays each profile has, so the list conveys "returning guest"
-    # at a glance rather than needing a click-through.
-    stay_counts = {
-        r["linked_guest_id"]: r["c"] for r in conn.execute(
-            """SELECT linked_guest_id, COUNT(*) AS c FROM bookings
-               WHERE linked_guest_id IS NOT NULL AND status = 'confirmed'
-               GROUP BY linked_guest_id"""
-        ).fetchall()
-    }
+    # Each profile's stays, so the list says "returning guest", when they were
+    # last here and when they are next due without a click-through.
+    history = guest_stay_summaries(conn)
+    stay_counts = {gid: h["stays"] for gid, h in history.items() if h["stays"]}
     tags = tags_by_guest(conn)
     lv = list_view(
         profiles, args,
@@ -88459,6 +88498,11 @@ def staff_today():
     announcements_current = current_announcements(conn, today)
     arrivals_today = [c for c in guests_here if c["arriving_today"]]
     departures_today = [c for c in guests_here if c["leaving_today"]]
+    # What the house owes a guest today, on the page the shift actually opens.
+    # The run sheet had it and nobody on shift opens a run sheet to find out
+    # whether there is a hamper to carry up.
+    due_board = extras_due(conn)
+    extras_today = due_board["overdue"] + due_board["today"]
     conn.close()
 
     # The board, on the page somebody actually opens. It is derived from the
@@ -88475,6 +88519,7 @@ def staff_today():
         announcements_current=announcements_current, today=today,
         arrivals_today=arrivals_today, departures_today=departures_today,
         open_count=sum(1 for t in my_tasks if t["status"] != "done"),
+        extras_today=extras_today,
     )
 
 

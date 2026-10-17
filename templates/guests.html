@@ -162,6 +162,16 @@
       {{ g['email'] or '' }}{% if g['email'] and g['phone'] %} · {% endif %}{{ g['phone'] or '' }}
     </p>
     {% endif %}
+    {#- Their history with the house at a glance: how often, how long, when last
+        and when next. What they have been worth is on their own page, from each
+        stay's bill, rather than a cheaper sum here. -#}
+    {% set h = history.get(g['id']) %}
+    <p class="manual-body upload-hint">
+      {% if h and h.stays %}{{ h.stays }} stay{{ '' if h.stays == 1 else 's' }}, {{ h.nights }} night{{ '' if h.nights == 1 else 's' }}
+        &middot; last here {{ h.last|date_short }}
+      {%- else %}Not stayed yet{% endif %}
+      {%- if h and h.next %} &middot; <strong>next arriving {{ h.next|date_short }}</strong>{% endif %}
+    </p>
     {% if g['dietary_notes'] %}<p class="manual-body"><strong>Dietary:</strong> {{ g['dietary_notes'] }}</p>{% endif %}
     {% if g['preferences'] %}<p class="manual-body"><strong>Prefers:</strong> {{ g['preferences'] }}</p>{% endif %}
     {% if g['notes'] %}<p class="manual-body">{{ g['notes'] }}</p>{% endif %}

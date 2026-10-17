@@ -163,6 +163,30 @@
   </div>
 {% endif %}
 
+{# ---- What the house owes a guest today: the hamper, the car, the board.
+   Only when there is something, and no prices, as on the run sheet. ---- #}
+{% if extras_today %}
+<h2 class="section-heading">
+  {{ t('Extras to hand over today') }}
+  <span class="today-count">{{ extras_today|length }}</span>
+</h2>
+<div class="mini-list">
+  {% for r in extras_today %}
+  <div class="mini-row">
+    {% if r.overdue %}<span class="mini-status status-unpaid">{{ t('overdue') }}</span>{% endif %}
+    <span class="mini-name">{{ r.line['name'] }}{% if r.line['quantity'] and r.line['quantity'] > 1 %} &times;{{ r.line['quantity'] }}{% endif %}</span>
+    <span class="mini-role">{{ r.line['guest_name'] }} &middot; {{ r.line['room_name'] or '' }}
+      {%- if r.line['notes'] %} &middot; {{ r.line['notes'] }}{% endif %}</span>
+    <form method="post" action="{{ url_for('mark_extra_delivered', line_id=r.line['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini">{{ t('Handed over') }}</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+<p class="upload-hint"><a href="{{ url_for('extras_due_page') }}">{{ t('Everything still to prepare') }}</a></p>
+{% endif %}
+
 {# ---- The checklist. One tap is done, and the list is today only. ---- #}
 <h2 class="section-heading">
   My list
