@@ -61,6 +61,7 @@ NUM = "9753100001"          # matched to one room
 NUM2 = "9753100002"         # two rooms start the same day
 NUM3 = "9753100003"         # names its room in the body
 NUM4 = "9753100004"         # typed in by hand
+NUM5 = "9753100005"         # read before the subject's day counted
 FEED = "https://ical.booking.com/v1/export?t=" + TAG
 
 
@@ -426,6 +427,44 @@ def _run(s, oc, ec, conn):
             response=r, detail=str(flashes(r)))
     r = ec.post("/admin/channel-stays/sync")
     s.check("and an employee cannot press it", r.status_code in (302, 403), response=r)
+
+    # ------------------------------------------------------------------
+    s.section("A stay whose email was read before this is read again")
+    # As on live the evening this shipped: the email for 5979778151 had been
+    # read that morning, the stay kept no day, and an email is never read
+    # twice -- so the fix never reached it.
+    f_day = base + timedelta(days=45)
+    src2 = conn.execute("SELECT id FROM ical_sources WHERE url = ?", (sources[one["id"]],)).fetchone()
+    conn.execute("INSERT INTO blocked_dates (room_id, ical_source_id, start_date, end_date) "
+                 "VALUES (?, ?, ?, ?)", (one["id"], src2["id"], f_day.isoformat(),
+                                         (f_day + timedelta(days=1)).isoformat()))
+    then = (_now() - timedelta(days=1)).isoformat()
+    cur = conn.execute(
+        """INSERT INTO ota_reservations (channel, reservation_number, status, first_seen_at,
+               last_event_at, updated_at)
+           VALUES ('booking.com', ?, 'confirmed', ?, ?, ?)""", (NUM5, then, then, then))
+    early = "https://admin.booking.com/hotel/manage/booking.html?res_id=" + NUM5
+    conn.execute(
+        """INSERT INTO ota_mail (channel, source, source_id, received_at, from_address,
+               from_name, reply_to, subject, kind, reservation_number, body_text, links,
+               from_booking_com, created_at, ota_reservation_id, house_told_at)
+           VALUES ('booking.com', 'graph', ?, ?, 'noreply@booking.com', 'Booking.com', '', ?,
+                   'reservation_new', ?, 'You have a new booking.', ?, 1, ?, ?, ?)""",
+        (f"<{TAG}early@booking.com>", then, _subject("New booking", NUM5, f_day), NUM5,
+         m.json.dumps([{"text": "View booking", "href": early}]), then, cur.lastrowid, then))
+    conn.commit()
+    s.check("set up: it has no day, as it was saved", _stay(conn, NUM5)["arrival_date"] is None)
+    m.pair_booking_com_stays(conn)
+    stay5 = _stay(conn, NUM5)
+    s.check("its kept email is read again for the day it arrives",
+            stay5["arrival_date"] == f_day.isoformat(), detail=str(dict(stay5)))
+    s.check("and it is matched to its room and nights like any other",
+            stay5["room_id"] == one["id"]
+            and stay5["departure_date"] == (f_day + timedelta(days=1)).isoformat())
+    s.check("with the extranet link from that email", stay5["extranet_url"] == early)
+    text = visible_text(oc.get("/admin/channel-stays?q=" + NUM5).get_data(as_text=True))
+    s.check("and the page has it still to come, not been and gone",
+            "Still to come" in text and "Been and gone" not in text, detail=text[:600])
 
     # ------------------------------------------------------------------
     s.section("A stay only the calendar knows about is a stay")

@@ -360,13 +360,17 @@ def _run(s, oc, ec, owner, emp, sent):
     s.section("Every booking leads to its history")
     cancelled = _one("SELECT id, reference_code FROM bookings WHERE guest_name = ?",
                      f"{TAG} Cancelled")
-    listing = oc.get(f"/admin/bookings?q={cancelled['reference_code']}").get_data(as_text=True)
+    # Through the stay's own page: the list leads to it, and it leads to the
+    # history, whatever became of the stay.
+    listing = oc.get(f"/admin/bookings?q={cancelled['reference_code']}&when=all").get_data(as_text=True)
+    own = oc.get(f"/admin/bookings/{cancelled['id']}").get_data(as_text=True)
     s.check("a cancelled stay, which cannot be edited, still leads to its history",
-            f"/admin/history/booking/{cancelled['id']}" in listing)
+            f'href="/admin/bookings/{cancelled["id"]}"' in listing
+            and f"/admin/history/booking/{cancelled['id']}" in own)
     page = oc.get(f"/admin/history/booking/{cancelled['id']}").get_data(as_text=True)
     s.check("and its history leads back to it, not to an edit page that refuses it",
             f"/admin/bookings/{cancelled['id']}/edit" not in page
-            and "/admin/bookings?q=" in page)
+            and f'"/admin/bookings/{cancelled["id"]}"' in page)
     now = _harness.datetime_now()
     conn = db()
     conn.execute("""INSERT INTO workshops (title, description, price_per_person, default_capacity,
