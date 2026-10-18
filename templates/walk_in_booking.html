@@ -100,6 +100,14 @@
   <p class="upload-hint">Without one there is nothing to send them — no statement,
   no account link, and no way to chase a balance later. Worth asking for, not worth
   refusing the booking over.</p>
+  {#- 18 Oct (owner): a booking taken from an email or the telephone, "then send a payment
+      link". Their statement, with its Pay now button, goes to the address above. -#}
+  <label class="field-label" style="display:flex; gap:8px; align-items:center;">
+    <input type="checkbox" name="send_pay_link" value="1" {{ 'checked' if form.get('send_pay_link') }}>
+    Email them a link to pay online
+  </label>
+  <p class="upload-hint">For a booking made by email or telephone: they get their statement with a
+  Pay now button for whatever is still owed. Nothing is sent if they have paid it all here.</p>
 
   <label class="field-label" for="wi_price">Price for the stay (optional)</label>
   <input id="wi_price" type="number" name="total_price" step="0.01" min="0"

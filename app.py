@@ -8112,6 +8112,8 @@ def init_db():
     apply_room_views_2026_10_16(conn)
     # Transfers filed as transfers, at the transport rate, once.
     apply_extras_transfers_2026_10_18(conn)
+    # The Booking.com stay that never arrived, on The Twin Room, once.
+    apply_stray_channel_stay_2026_10_18(conn)
     # And the names of 16 October, once, LAST: the three above find the rooms
     # by the names they had before it.
     apply_room_names_2026_10_16(conn)
@@ -52361,6 +52363,49 @@ def apply_extras_transfers_2026_10_18(conn):
     return changed
 
 
+def apply_stray_channel_stay_2026_10_18(conn):
+    """Once: a Booking.com stay that never arrived, put on The Twin Room.
+
+    Facundo Pérez-Taboada Vázquez booked the night of 30 October 2026 on
+    Booking.com (6152762234, 2 adults, EUR 300, booked 22 September) in a room
+    the house no longer lists there -- "Double or Twin Room with Shared
+    Bathroom" -- so nothing brought it in, and the site went on offering The
+    Twin Room that night to a guest who wrote to ask for it (owner, 18 October
+    2026: "you need to block off the normal twin room"). The stay goes in as a
+    Booking.com reservation on The Twin Room, so it is seen where those are,
+    and the night is closed as booked, so the site cannot sell it twice.
+    Once, by the flag; skipped if the room has already been taken that night.
+    """
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'stray_channel_stay_2026_10_18'").fetchone():
+        return 0
+    room = conn.execute("SELECT id FROM rooms WHERE name = 'The Twin Room'").fetchone()
+    done = 0
+    if room:
+        now = datetime.now(timezone.utc).isoformat()
+        if not conn.execute("SELECT 1 FROM ota_reservations WHERE channel = 'booking.com' "
+                            "AND reservation_number = '6152762234'").fetchone():
+            conn.execute(
+                """INSERT INTO ota_reservations (channel, reservation_number, status, guest_name,
+                       arrival_date, departure_date, room_label, room_id, guests, amount, currency,
+                       matched_by, match_note, first_seen_at, updated_at)
+                   VALUES ('booking.com', '6152762234', 'confirmed', 'Facundo Pérez-Taboada Vázquez',
+                           '2026-10-30', '2026-10-31', 'Double or Twin Room with Shared Bathroom', ?, 2,
+                           300, 'EUR', 'hand',
+                           'Booked in a room no longer listed on Booking.com; put on The Twin Room by the owner',
+                           ?, ?)""", (room["id"], now, now))
+            done += 1
+        closed, _skipped = close_rooms(
+            conn, [room["id"]], date(2026, 10, 30), date(2026, 10, 31), "booked",
+            "Booking.com 6152762234, Facundo Pérez-Taboada Vázquez", "Booking.com stay", None)
+        done += len(closed)
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('stray_channel_stay_2026_10_18', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if done:
+        print("[rooms] the Booking.com stay of 30 October put on The Twin Room")
+    return done
+
+
 def apply_room_views_2026_10_16(conn):
     """Once: put back a view the old room form wiped. Returns how many rooms."""
     if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_views_2026_10_16'").fetchone():
@@ -72600,6 +72645,11 @@ def walk_in_booking():
             discount_amount_override=discount or None,
             guests_under_18=under_18,
             source="desk",
+            # Booked, not requested: the desk has decided. Left as a request,
+            # create_booking wrote the guest "your request is awaiting
+            # confirmation" and the house "Needs you -- review and confirm"
+            # about a stay this route then confirmed a line later.
+            confirm_now=True,
         )
         booking = conn.execute("SELECT * FROM bookings WHERE reference_code = ?",
                                (reference_code,)).fetchone()
@@ -72627,9 +72677,31 @@ def walk_in_booking():
                           + (f", {money(taken)} taken" if taken else ""))
         conn.commit()
 
+        # THEN A LINK TO PAY, for a booking taken from an email or the telephone
+        # (owner, 18 October 2026). Their statement, which carries the Pay now
+        # button for what is owed; sent after the commit, never with a write
+        # open across the network.
+        link_note = ""
+        if request.form.get("send_pay_link") == "1":
+            bill = booking_bill(conn, booking["id"])
+            stay = conn.execute("""SELECT bookings.*, rooms.name AS room_name FROM bookings
+                                     JOIN rooms ON rooms.id = bookings.room_id
+                                    WHERE bookings.id = ?""", (booking["id"],)).fetchone()
+            if "@" not in email:
+                link_note = " No link sent: there is no email address."
+            elif not bill or bill["owed"] <= 0.005:
+                link_note = " No link sent: nothing is owed."
+            else:
+                sent = send_room_statement(conn, stay)
+                link_note = (f" A link to pay {money(bill['owed'])} has gone to {sent['address']}."
+                             if sent["delivered"] else
+                             " The link to pay is written and held, and goes when mail to guests is on.")
+                conn.commit()
         conn.close()
         flash(f"{name} is in — {reference_code}."
-              + (f" {money(taken)} taken." if taken else ""), "success")
+              + (f" {money(taken)} taken." if taken else "") + link_note, "success")
+        if request.form.get("send_pay_link") == "1" and "admin_booking" in app.view_functions:
+            return redirect(url_for("admin_booking", booking_id=booking["id"]))
         return redirect(url_for("management_outstanding")
                         if not taken else url_for("admin_bookings"))
 
