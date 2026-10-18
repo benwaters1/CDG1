@@ -190,13 +190,14 @@ def _run(s, conn):
     for i, rid in enumerate(for_sale):
         kinds[i % len(kinds)](rid, mixed)
     # One room, three rows: a booking, a block and a channel stay on the
-    # same night. The last room is free, so the house is not full -- however
-    # many rows there are.
+    # same night, and one room short of the house's nightly limit in all. The
+    # rows reach the limit and the rooms do not, so the house is not full.
     rows_not_rooms = free_run(1)
     book(first, rows_not_rooms)
     block(first, rows_not_rooms)
     channel(first, rows_not_rooms)
-    for rid in for_sale[1:-1]:
+    let_rooms = for_sale[1:max(1, m.MAX_ROOMS_LET_PER_NIGHT - 1)]
+    for rid in let_rooms:
         book(rid, rows_not_rooms)
     conn.commit()
     taken = _taken(conn)
@@ -208,8 +209,8 @@ def _run(s, conn):
                    "check and both calendars read it")
     s.check("rooms are counted, not rows",
             rows_not_rooms.isoformat() not in taken,
-            detail=f"{rows_not_rooms}: {len(for_sale) + 1} rows on "
-                   f"{len(for_sale) - 1} rooms, and room {last} free")
+            detail=f"{rows_not_rooms}: {len(let_rooms) + 3} rows on "
+                   f"{len(let_rooms) + 1} rooms, and room {last} free")
 
     s.section("Only the rooms the house sells by the night")
     cur = conn.execute(

@@ -19,9 +19,10 @@
   Dates off sale are for maintenance, family, or anything else that keeps a room empty.</p>
 {# z28 item 1: the limit, said where the rooms are set up. MAX_ROOMS_LET_PER_NIGHT in app.py. #}
 <p class="pay-disclaimer">No more than <b>{{ max_rooms_let }} rooms let on any one night</b>,
-  whichever {{ max_rooms_let }} (chambres d'hôtes). This site refuses a booking that would be the
-  {{ 'sixth' if max_rooms_let == 5 else 'next' }}, and on a night five are let every other room's
-  calendar link tells the channels it is closed. Your own closures do not count as let.</p>
+  whichever {{ max_rooms_let }}: every room is sold with its own bathroom. This site refuses a booking
+  that would be one more, and on a night {{ max_rooms_let }} are let every other room shows as booked,
+  with the next free date, and its calendar link tells the channels it is closed. Your own closures do
+  not count as let. The law would allow five.</p>
 
 {% if not rooms %}
   <div class="empty-state">No rooms yet. Add one to start taking bookings.</div>

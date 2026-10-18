@@ -16271,7 +16271,14 @@ def _availability_picture(conn, *, fresh=False):
 # since 17 October 2026, and the owner's answer was "never more than five rooms
 # let on any one night" (z28 item 1). The guest ceiling is house_guest_capacity;
 # this is the room one. One value, shown on the owner's Rooms page.
-MAX_ROOMS_LET_PER_NIGHT = 5
+#
+# THREE since 18 October 2026 (owner: "make it so 3 rooms only can be sold ...
+# its as we are saying private bathroom ... 3 is fine for the moment"). Every
+# room is sold with a private bathroom, and there are bathrooms for three. The
+# legal ceiling stays five; this is the house's own, lower. The gate, the
+# calendars, the search and the feed the channels read all take it from here,
+# so Booking.com is closed on a night the house has let three.
+MAX_ROOMS_LET_PER_NIGHT = 3
 app.jinja_env.globals["max_rooms_let"] = MAX_ROOMS_LET_PER_NIGHT
 # What a guest is told, on the room page's calendar and in a search.
 HOUSE_FULL_NIGHT = "The house is full that night"
@@ -16410,12 +16417,12 @@ def rooms_limit_problem(conn, today=None):
     first = over[0]
     when = f"{first['night'].day} {first['night'].strftime('%B')}"
     title = (f"{len(first['rooms'])} rooms are let on {when}" if len(over) == 1
-             else f"More than five rooms are let on {len(over)} nights, from {when}")
+             else f"More than {MAX_ROOMS_LET_PER_NIGHT} rooms are let on {len(over)} nights, from {when}")
     shown = "; ".join(f"{o['night'].day} {o['night'].strftime('%b')}: "
                       + ", ".join(o["rooms"]) for o in over[:4])
     return (title,
             f"The house lets no more than {MAX_ROOMS_LET_PER_NIGHT} rooms on any one "
-            f"night (chambres d'hôtes). {shown}"
+            f"night, one bathroom each. {shown}"
             + (f"; and {len(over) - 4} more" if len(over) > 4 else "")
             + ". Usually two channel bookings arriving between calendar syncs: "
               "one of them has to be moved or cancelled.")
@@ -48610,12 +48617,15 @@ def book_rooms():
                 # Suite reopens on 1 April."
                 unavailable_reason[room["id"]] = why
             elif not ok and is_house_full_reason(why):
-                # Five other rooms let on a night of the stay: said plainly,
-                # because "not available" sends somebody hunting for another
-                # room that is not there either (z28 item 1).
-                unavailable_reason[room["id"]] = why.rstrip(".")
+                # The house's rooms all let on a night of the stay: said
+                # plainly, because "not available" sends somebody hunting for
+                # another room that is not there either (z28 item 1) -- and
+                # with the next night it can be had (owner, 18 October 2026).
+                unavailable_reason[room["id"]] = why.rstrip(".") + next_free_words(
+                    conn, room, arrival, stay_nights)
             elif not ok:
-                unavailable_reason[room["id"]] = "Not available these dates"
+                unavailable_reason[room["id"]] = "Not available these dates" + next_free_words(
+                    conn, room, arrival, stay_nights)
             # A room closed for the season over these nights is RESTING: its
             # card draws the winter box, in the owner's words, and the rooms
             # still open say how they are kept warm. This used to be the
@@ -48945,8 +48955,9 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
         # are said as they are; anything about another booking is the one
         # plain sentence.
         quote.update(available=False,
-                     reason=(why if why and (why == season_note_for(conn, room["id"], arrival, departure)
-                                             or is_house_full_reason(why))
+                     reason=(why.rstrip(".") + next_free_words(conn, room, arrival, nights) + "."
+                             if is_house_full_reason(why)
+                             else why if why and why == season_note_for(conn, room["id"], arrival, departure)
                              else GUEST_DATES_TAKEN))
         return quote
     # On request: priced as ever, booked as a request the house answers.
@@ -52981,6 +52992,21 @@ def run_weather_job(conn):
         (WEATHER_SETTING, json.dumps(snap)))
     conn.commit()
     return f"{snap['c']}\u00b0C, {WEATHER_WORDS.get(snap['code'], snap['code'])}"
+
+
+def next_free_words(conn, room, arrival, nights, horizon=60):
+    """' · next free from 31 October' -- the soonest arrival, within two
+    months of the one asked for, when this room can be had for as many
+    nights -- or '' if there is none that soon. Asked of is_range_available,
+    the gate itself, so the date offered is one the booking will take."""
+    nights = max(int(nights or 1), int(room["min_nights"] or 1), 1)
+    day = arrival + timedelta(days=1)
+    stop = arrival + timedelta(days=horizon)
+    while day <= stop:
+        if is_range_available(conn, room["id"], day, day + timedelta(days=nights))[0]:
+            return f" · next free from {format_date_short(day.isoformat())}"
+        day += timedelta(days=1)
+    return ""
 
 
 def next_free_nights(conn, *, limit=6, today=None):
@@ -81300,7 +81326,7 @@ WATCH_TASK_KINDS = {
     "sendcheck": "An Outlook the check on Send cannot run in",
     "terms": "Booking terms that give a different arrival or departure time",
     "extras": "An extra a guest has paid for, to arrange or hand over",
-    "rooms_let": "A night with more than five rooms let",
+    "rooms_let": "A night with more rooms let than the house has bathrooms for",
     "inbox": "One of the house's own inboxes is not getting its mail",
 }
 
@@ -84570,10 +84596,10 @@ def watch_task_findings(conn, today=None):
     for o in rooms_over_the_limit(conn, today):
         when = f"{o['night'].day} {o['night'].strftime('%B %Y')}"
         found.append(("rooms_let",
-                      f"More than five rooms let on {when}",
+                      f"More than {MAX_ROOMS_LET_PER_NIGHT} rooms let on {when}",
                       f"{len(o['rooms'])} rooms are let that night: {', '.join(o['rooms'])}. "
                       f"The house lets no more than {MAX_ROOMS_LET_PER_NIGHT} on any one "
-                      "night (chambres d'hôtes); one stay has to be moved or cancelled.",
+                      "night, one bathroom each; one stay has to be moved or cancelled.",
                       today.isoformat(), "high"))
 
     # A stored guest letter out of step with the house rules on payment. One
