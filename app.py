@@ -8079,6 +8079,8 @@ def init_db():
     apply_room_facts_2026_10_15(conn)
     # And the view the old room form wiped, once.
     apply_room_views_2026_10_16(conn)
+    # Transfers filed as transfers, at the transport rate, once.
+    apply_extras_transfers_2026_10_18(conn)
     # And the names of 16 October, once, LAST: the three above find the rooms
     # by the names they had before it.
     apply_room_names_2026_10_16(conn)
@@ -19450,6 +19452,12 @@ def extra_revenue_category(extra):
     catalogue = (extra["category"] if "category" in keys else None) or ""
     return EXTRA_CATEGORY_REVENUE.get(catalogue, "extras")
 
+
+# A transfer is passenger transport, which France charges at the 10% rate,
+# not the 20% the house's other extras carry (owner, 18 October 2026). Stamped
+# on the catalogue entry -- a transfer with no rate of its own takes this one --
+# so it is copied onto every line sold from now on, like any extra's rate.
+TRANSFER_VAT_RATE = 10.0
 
 EXTRA_CATEGORIES = {
     "drinks": "Drinks",
@@ -51844,6 +51852,39 @@ def apply_room_facts_2026_10_15(conn):
 ROOM_VIEWS_2026_10_16 = {"The Gold Suite": "mountain"}
 
 
+def apply_extras_transfers_2026_10_18(conn):
+    """Once: transfers filed as transfers, and at the transport rate.
+
+    The airport transfer was added when the catalogue could hold only a name
+    and a price, so it was saved under Other and has carried the extras' 20%
+    ever since (owner, 18 October 2026: "why would transfers not be under
+    transfers, and make it 10%"). Any extra that is a transfer by
+    extra_is_transfer's test goes into Transfers, and one on no rate of its own
+    or the house's 20% goes to TRANSFER_VAT_RATE. Lines already sold keep the
+    rate they were sold at -- each is copied at the sale, and a receipt may
+    already say it. Once, by the flag, so a rate the owner sets later stands.
+    Returns how many extras changed.
+    """
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'extras_transfers_2026_10_18'").fetchone():
+        return 0
+    changed = 0
+    for e in conn.execute("SELECT * FROM extras").fetchall():
+        if not extra_is_transfer(e["category"], e["name"], e["revenue_category"]):
+            continue
+        rate = e["vat_rate"]
+        new_rate = TRANSFER_VAT_RATE if rate is None or float(rate) == float(TAX_DEFAULTS["vat_extras"]) else rate
+        if e["category"] != "transfer" or new_rate != rate:
+            conn.execute("UPDATE extras SET category = 'transfer', vat_rate = ? WHERE id = ?",
+                         (new_rate, e["id"]))
+            changed += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('extras_transfers_2026_10_18', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[extras] {changed} transfer(s) filed under Transfers at {TRANSFER_VAT_RATE:g}% VAT")
+    return changed
+
+
 def apply_room_views_2026_10_16(conn):
     """Once: put back a view the old room form wiped. Returns how many rooms."""
     if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_views_2026_10_16'").fetchone():
@@ -59899,7 +59940,10 @@ def extra_fields_from_form():
                             if (request.form.get("vat_part_amount", "") or "").strip()
                             else None),
         "vat_part_rate": _vat_rate_field("vat_part_rate"),
-    }
+    } | ({"vat_rate": TRANSFER_VAT_RATE}
+         # A transfer left on the house's rate is passenger transport at 10%,
+         # not an extra at 20%: blank means the transport rate here.
+         if category == "transfer" and _vat_rate_field("vat_rate") is None else {})
 
 
 def _vat_rate_field(name):

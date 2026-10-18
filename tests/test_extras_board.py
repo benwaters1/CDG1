@@ -305,6 +305,56 @@ def run():
         s.check("and does not call an extra booked ahead 'never taken'",
                 f"{TAG} airport transfer" not in perf["never_sold"])
 
+        s.section("A transfer is a transfer, at the transport rate (owner, 18 October)")
+        conn = db()
+        put_flag = _harness.keep_rows(conn, "app_settings", "key = 'extras_transfers_2026_10_18'")
+        try:
+            conn.execute("DELETE FROM app_settings WHERE key = 'extras_transfers_2026_10_18'")
+            # As the house's was: added when the catalogue held only a name and
+            # a price, so filed under Other, on the house's extras rate.
+            conn.execute("""INSERT INTO extras (name, price, active, sort_order, category, vat_rate)
+                            VALUES (?, 250, 1, 901, 'other', NULL)""",
+                         (f"{TAG} Airport Transfer (Toulouse)",))
+            conn.execute("""INSERT INTO extras (name, price, active, sort_order, category, vat_rate)
+                            VALUES (?, 30, 1, 902, 'food', NULL)""", (f"{TAG} picnic",))
+            conn.commit()
+            m.apply_extras_transfers_2026_10_18(conn)
+            fixed = conn.execute("SELECT * FROM extras WHERE name = ?",
+                                 (f"{TAG} Airport Transfer (Toulouse)",)).fetchone()
+            picnic = conn.execute("SELECT * FROM extras WHERE name = ?", (f"{TAG} picnic",)).fetchone()
+            s.check("the transfer filed under Other is moved to Transfers", fixed["category"] == "transfer")
+            s.check("and charged at 10%", fixed["vat_rate"] == 10, detail=str(fixed["vat_rate"]))
+            s.check("nothing else moves", picnic["category"] == "food" and picnic["vat_rate"] is None)
+            conn.execute("UPDATE extras SET vat_rate = 5.5 WHERE id = ?", (fixed["id"],))
+            conn.commit()
+            s.check("once: a rate set afterwards stands",
+                    m.apply_extras_transfers_2026_10_18(conn) == 0
+                    and conn.execute("SELECT vat_rate FROM extras WHERE id = ?",
+                                     (fixed["id"],)).fetchone()["vat_rate"] == 5.5)
+        finally:
+            put_flag()
+            conn.close()
+        oc.post("/admin/extras/new", data={"name": f"{TAG} station run", "price": "60",
+                                            "category": "transfer", "vat_rate": ""})
+        conn = db()
+        run_row = conn.execute("SELECT * FROM extras WHERE name = ?", (f"{TAG} station run",)).fetchone()
+        s.check("a new transfer with no rate given is charged at 10%",
+                run_row is not None and run_row["vat_rate"] == 10,
+                detail=str(run_row and run_row["vat_rate"]))
+        sold = m.add_booking_extra(conn, "room", stay["id"], run_row)
+        conn.commit()
+        line = conn.execute("SELECT * FROM booking_extras WHERE id = ?", (sold,)).fetchone()
+        s.check("and a sale of it carries 10% on the line",
+                m.extra_vat_parts(conn, line) == [(60.0, 10.0)], detail=str(m.extra_vat_parts(conn, line)))
+        conn.close()
+        oc.post("/admin/extras/new", data={"name": f"{TAG} bubbles", "price": "40",
+                                            "category": "drinks", "vat_rate": ""})
+        conn = db()
+        bubbles = conn.execute("SELECT vat_rate FROM extras WHERE name = ?", (f"{TAG} bubbles",)).fetchone()
+        conn.close()
+        s.check("anything else left blank stays on the house's rate",
+                bubbles is not None and bubbles["vat_rate"] is None)
+
         s.section("Transfers reads what the guest wrote")
         conn = db()
         asked = m.transfers_asked_for(conn)
