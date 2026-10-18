@@ -8932,7 +8932,7 @@ NAV_AREAS = {
         "add_workshop_material", "add_workshop_transaction_route", "apply_workshop_rooming", "assign_workshop_room",
         "consume_workshop_materials", "delete_workshop_custom_field", "edit_workshop_session", "mark_workshop_balance_paid",
         "mark_workshop_deposit_paid", "new_workshop_custom_field", "remove_workshop_material", "set_workshop_occupancy",
-        "toggle_workshop_do_not_email", "workshop_rooming",
+        "toggle_workshop_do_not_email", "workshop_rooming", "admin_workshop_session",
         # The register's own: printing it, adding somebody by hand, moving or
         # correcting a registration.
         "workshop_register_print", "add_workshop_registration",
@@ -69060,6 +69060,68 @@ def workshop_register_rows(conn, today=None):
     return out
 
 
+def workshop_return():
+    """Where a registration action goes back to: the session page it was
+    pressed on, or the registrations list it always went to. Every action
+    sent people to the list, so confirming somebody from a session lost the
+    session (the pattern booking_return set for stays)."""
+    sid = (request.form.get("back_session") or "").strip()
+    if sid.isdigit():
+        return url_for("admin_workshop_session", session_id=int(sid))
+    return url_for("admin_workshop_registrations")
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>")
+@owner_required
+def admin_workshop_session(session_id):
+    """One sitting of a workshop, everything about it on one page.
+
+    There was a register of every registration as a card each -- right for
+    one person, and twenty-two people long for a session -- a running sheet
+    for the shift, and a rooming page, and nowhere that said how this sitting
+    stands: how many places, how much is in and how much is owed, who is still
+    without a room, what the kitchen needs to know (owner, 17-18 October 2026:
+    "the original features ... are too basic on a management level").
+
+    Money is the register's (workshop_register_rows, the ledger's sums), and
+    the places are workshop_session_remaining_capacity's, so this cannot
+    disagree with the register or the workshops page.
+    """
+    conn = get_db()
+    today = house_today()
+    session = conn.execute(
+        """SELECT ws.*, w.title, w.id AS workshop_id FROM workshop_sessions ws
+             JOIN workshops w ON w.id = ws.workshop_id WHERE ws.id = ?""", (session_id,)).fetchone()
+    if not session:
+        conn.close()
+        abort(404)
+    regs = [r for r in workshop_register_rows(conn, today) if r["session_id"] == session_id]
+    live = [r for r in regs if r["live"]]
+    free = workshop_session_remaining_capacity(conn, session_id)
+    rooms = conn.execute("SELECT id, name, max_occupancy FROM rooms WHERE active = 1 "
+                         "ORDER BY sort_order, name").fetchall()
+    conn.close()
+    order = {"pending": 0, "confirmed": 1}
+    live.sort(key=lambda r: (order.get(r["status"], 2), (r["who"] or "").lower()))
+    today_iso = today.isoformat()
+    figures = {
+        "confirmed": sum(r["party_size"] for r in live if r["status"] == "confirmed"),
+        "pending": sum(r["party_size"] for r in live if r["status"] == "pending"),
+        "free": free,
+        "charged": round(sum(r["charged"] for r in live), 2),
+        "paid": round(sum(r["paid"] for r in live), 2),
+        "owed": round(sum(max(r["owed"], 0) for r in live), 2),
+        "deposits_unpaid": [r for r in live if r["money"] == "Deposit unpaid"],
+        "overdue": [r for r in live if r["owed"] > 0.005 and r["due_date"]
+                    and r["due_date"] < today_iso],
+        "no_room": [r for r in live if not r["room"]],
+        "kitchen": [r for r in live if r["row"]["dietary_notes"] or r["row"]["medical_notes"]],
+    }
+    gone = [r for r in regs if not r["live"]]
+    return render_template("admin_workshop_session.html", session=session, live=live,
+                           gone=gone, figures=figures, rooms=rooms, today=today)
+
+
 def workshop_register_view(conn, args, today=None):
     """The register's rows and toolbar for a set of query arguments -- shared by
     the page and its CSV, so "export this view" exports this view.
@@ -70116,9 +70178,9 @@ def confirm_workshop_registration(registration_id):
         if reason in ("not found", "not found or not pending"):
             abort(404)
         flash(f"Could not confirm: {reason}", "error")
-        return redirect(url_for("admin_workshop_registrations"))
+        return redirect(workshop_return())
     flash("Registration confirmed." + capacity_note, "success" if not capacity_note else "error")
-    return redirect(url_for("admin_workshop_registrations"))
+    return redirect(workshop_return())
 
 
 @app.route("/admin/workshops/registrations/<int:registration_id>/decline", methods=["POST"])
@@ -70431,7 +70493,7 @@ def assign_workshop_room(registration_id):
         if room["max_occupancy"] < booking["party_size"]:
             conn.close()
             flash(f"{room['name']} sleeps up to {room['max_occupancy']} — this booking is a party of {booking['party_size']}.", "error")
-            return redirect(url_for("admin_workshop_registrations"))
+            return redirect(workshop_return())
         conflict = workshop_room_conflict(
             conn, room_id, parse_date(booking["start_date"]), parse_date(booking["end_date"]),
             booking["session_id"], exclude_registration_id=registration_id,
@@ -70439,13 +70501,13 @@ def assign_workshop_room(registration_id):
         if conflict:
             conn.close()
             flash(conflict, "error")
-            return redirect(url_for("admin_workshop_registrations"))
+            return redirect(workshop_return())
 
     conn.execute("UPDATE workshop_bookings SET assigned_room_id = ? WHERE id = ?", (room_id, registration_id))
     conn.commit()
     conn.close()
     flash("Room assignment updated.", "success")
-    return redirect(url_for("admin_workshop_registrations"))
+    return redirect(workshop_return())
 
 
 @app.route("/admin/workshops/registrations/<int:registration_id>/mark-deposit-paid", methods=["POST"])
@@ -70486,7 +70548,7 @@ def mark_workshop_deposit_paid(registration_id):
         conn.close()
         flash(f"What has been paid ({money(paid)}) already covers the deposit, so nothing "
               "more was recorded.", "success")
-        return redirect(url_for("admin_workshop_registrations"))
+        return redirect(workshop_return())
     if cur.rowcount and deposit_left > 0.005:
         add_workshop_transaction(conn, registration_id, "payment", "Deposit", deposit_left,
                                   method=method, user_id=current_user()["id"])
@@ -70510,7 +70572,7 @@ def mark_workshop_deposit_paid(registration_id):
     conn.close()
     flash(f"Deposit of {money(deposit_left)} marked as paid." if cur.rowcount
           else "The deposit was already marked as paid.", "success")
-    return redirect(url_for("admin_workshop_registrations"))
+    return redirect(workshop_return())
 
 
 @app.route("/admin/workshops/registrations/<int:registration_id>/mark-balance-paid", methods=["POST"])
@@ -70535,7 +70597,7 @@ def mark_workshop_balance_paid(registration_id):
     if due <= 0.005:
         conn.close()
         flash("Nothing is owed on this registration, so nothing was recorded.", "error")
-        return redirect(url_for("admin_workshop_registrations"))
+        return redirect(workshop_return())
     add_workshop_transaction(conn, registration_id, "payment", "Balance", due,
                              method=method, user_id=current_user()["id"])
     log_audit(conn, "workshop_balance_marked_paid",
@@ -70543,7 +70605,7 @@ def mark_workshop_balance_paid(registration_id):
     conn.commit()
     conn.close()
     flash(f"{money(due)} recorded as received. Nothing is owed now.", "success")
-    return redirect(url_for("admin_workshop_registrations"))
+    return redirect(workshop_return())
 
 
 @app.route("/admin/workshops/registrations/<int:registration_id>/add-transaction", methods=["POST"])

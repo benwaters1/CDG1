@@ -52,7 +52,7 @@
           {# The whole first line: when it is and how full. The links follow it
              rather than squeezing it into a column of its own. #}
           <span style="flex:1 1 100%;">
-            {{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}
+            <a href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">{{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}</a>
             {% if not s['cancelled_at'] %}
             · {{ row.remaining }}/{{ s['capacity'] }} spots left
             {% if row.remaining <= 0 %}<span class="mini-status status-inactive" style="margin-left:6px;">full</span>{% endif %}

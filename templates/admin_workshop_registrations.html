@@ -40,6 +40,7 @@
        leaves out anybody who asked not to be written to, and files the
        letter on each registration's history. #}
     <a href="{{ url_for('workshop_session_email', session_id=panel.session_id) }}" class="btn-mini">Email everyone on this session</a>
+    <a href="{{ url_for('admin_workshop_session', session_id=panel.session_id) }}" class="btn-mini">The session at a glance</a>
     {% endif %}
     {% if panel.owed > 0.005 and can('workshop_session_statements') %}
     <a href="{{ url_for('workshop_session_statements', session_id=panel.session_id) }}" class="btn-mini">Send statements to everyone</a>
