@@ -94831,6 +94831,52 @@ def booking_com_blocks(conn):
              ORDER BY start_date, room_id""", ids)]
 
 
+def reread_undated_booking_com_stays(conn):
+    """Read again the emails of every Booking.com stay that has no arrival day.
+
+    An email is read once: its Message-ID keeps it from being filed twice. So
+    a stay whose email was read BEFORE the subject's day counted as the
+    arrival (17 October 2026) kept no date for ever. Reservation 5979778151
+    was "been and gone" on the page the evening the fix went live, because
+    its email had been read that morning. The text of each email is kept
+    (ota_mail.body_text, .links), so it is read again here from what is
+    kept, and only a gap is filled: a day the stay already has is never
+    changed. The ids of stays that gained an arrival are returned.
+    """
+    rooms = [(r["id"], r["name"], r["channel_name"])
+             for r in conn.execute("SELECT id, name, channel_name FROM rooms").fetchall()]
+    kinds = ",".join("?" * len(OTA_RESERVATION_KINDS))
+    filled, now_iso = [], datetime.now(timezone.utc).isoformat()
+    for stay in conn.execute(
+            "SELECT * FROM ota_reservations WHERE COALESCE(arrival_date, '') = ''").fetchall():
+        arrival = extranet = None
+        for mail in conn.execute(
+                f"""SELECT * FROM ota_mail WHERE ota_reservation_id = ? AND kind IN ({kinds})
+                     ORDER BY received_at, id""", (stay["id"], *OTA_RESERVATION_KINDS)).fetchall():
+            try:
+                links = json.loads(mail["links"] or "[]")
+            except ValueError:
+                links = []
+            got = parse_booking_com_email(mail["subject"], mail["from_address"],
+                                          mail["from_name"], mail["reply_to"],
+                                          mail["body_text"], links, rooms)
+            if got["arrival_date"]:
+                arrival = got["arrival_date"]       # the latest email that says
+                if not mail["arrival_date"]:
+                    conn.execute("UPDATE ota_mail SET arrival_date = ? WHERE id = ?",
+                                 (arrival, mail["id"]))
+            extranet = got.get("extranet_url") or extranet
+        if arrival:
+            conn.execute(
+                """UPDATE ota_reservations SET arrival_date = ?,
+                          extranet_url = COALESCE(extranet_url, ?), updated_at = ?
+                    WHERE id = ?""", (arrival, extranet, now_iso, stay["id"]))
+            filled.append(stay["id"])
+    if filled:
+        conn.commit()
+    return filled
+
+
 def pair_booking_com_stays(conn):
     """Give each Booking.com stay its room and departure from the calendars.
 
@@ -94851,6 +94897,7 @@ def pair_booking_com_stays(conn):
     room the email named is kept, and so is anything the owner typed. The ids
     of stays that gained a room are returned.
     """
+    reread_undated_booking_com_stays(conn)
     blocks = booking_com_blocks(conn)
     rooms = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
     stays = conn.execute(
