@@ -260,6 +260,7 @@ SUITES = [
     "test_guest_list_history",
     "test_workshop_session_page",
     "test_events_pipeline",
+    "test_every_country",
     "test_extras_at_booking",
     "test_chateau_tour",
     "test_no_control_characters",
