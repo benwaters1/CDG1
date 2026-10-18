@@ -518,6 +518,10 @@ SUITES = [
     "test_booking_com_subject_stays",
     # Five rooms let a night, never six: the sixth room, z28 item 1.
     "test_rooms_let_a_night",
+    # Brief of 17 October 2026: forms that post without a token, and the
+    # house's own inboxes in the mail log and the delivery reports.
+    "test_form_csrf_tokens",
+    "test_house_inbox_delivery",
 ]
 
 

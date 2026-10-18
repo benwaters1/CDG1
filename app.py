@@ -29894,9 +29894,19 @@ def send_email_via_resend(to_address, subject, body, ics_content=None,
 
 RESEND_EVENT_DELIVERY = {"email.delivered": "delivered", "email.bounced": "bounced",
                          "email.complained": "complained",
-                         "email.delivery_delayed": "delayed"}
+                         "email.delivery_delayed": "delayed",
+                         "email.suppressed": "suppressed"}
+# "Suppressed": Resend accepted the letter and then would not send it, because
+# the address is on its own suppression list -- put there by an earlier bounce
+# or complaint. On 11 Oct 2026 a letter to reservations@ bounced while that
+# mailbox was being moved, and every letter to it after that was accepted,
+# logged as Sent, and never delivered, including the 17 Oct "Booked" notice.
 DELIVERY_WORDS = {"delivered": "Delivered", "bounced": "Bounced",
-                  "complained": "Marked as spam", "delayed": "Delayed"}
+                  "complained": "Marked as spam", "delayed": "Delayed",
+                  "suppressed": "Refused by the provider"}
+# The reports that settle what became of a letter: a late "delayed" never
+# overwrites one of these.
+DELIVERY_SETTLED = ("delivered", "bounced", "complained", "suppressed")
 SUPPRESSION_WORDS = {"bounced": "this address bounced",
                      "complained": "they marked a letter from the house as spam"}
 # How old a signed report may be before it is refused as a replay.
@@ -29945,6 +29955,11 @@ def record_delivery_report(conn, event):
         return None
     now = datetime.now(timezone.utc).isoformat()
     detail, stop = None, kind == "complained"
+    if kind == "suppressed":
+        held_back = data.get("suppressed") or {}
+        detail = ((held_back.get("message") or held_back.get("type") or "").strip()
+                  or "on the provider's suppression list")
+        stop = True
     if kind == "bounced":
         bounce = data.get("bounce") or {}
         detail = (bounce.get("message") or bounce.get("subType") or "").strip() or None
@@ -29956,27 +29971,103 @@ def record_delivery_report(conn, event):
             stop = True
     line = conn.execute("SELECT * FROM mail_log WHERE provider_id = ? ORDER BY id DESC LIMIT 1",
                         (provider_id,)).fetchone()
-    if line and not (kind == "delayed" and line["delivery"] in ("delivered", "bounced",
-                                                                "complained")):
+    if line and not (kind == "delayed" and line["delivery"] in DELIVERY_SETTLED):
         conn.execute("UPDATE mail_log SET delivery = ?, delivery_at = ?, delivery_detail = ? "
                      "WHERE id = ?", (kind, now, detail, line["id"]))
     address = ((line["to_address"] if line else None)
                or next(iter(data.get("to") or []), "") or "").strip().lower()
-    if stop and address:
+    # One of the house's own inboxes is never put on the stop list: that would
+    # quietly hold every booking notice the house sends itself. A bounce there
+    # is a fault to clear, and house_inbox_delivery_faults puts it in front of
+    # the owner instead.
+    if stop and address and address not in house_inboxes(conn):
+        # The stop list knows two reasons. Resend suppresses an address only
+        # after it bounced or complained, so a suppression is filed as the
+        # bounce it stands for, with the provider's words as the detail.
+        reason = "bounced" if kind == "suppressed" else kind
         held = conn.execute("SELECT id, cleared_at FROM email_suppressions WHERE email = ?",
                             (address,)).fetchone()
         if not held:
             conn.execute(
                 """INSERT INTO email_suppressions (email, reason, detail, mail_log_id, created_at)
                    VALUES (?, ?, ?, ?, ?)""",
-                (address, kind, detail, line["id"] if line else None, now))
+                (address, reason, detail, line["id"] if line else None, now))
         elif held["cleared_at"]:
             # Allowed again, and it has done it again.
             conn.execute(
                 """UPDATE email_suppressions SET reason = ?, detail = ?, mail_log_id = ?,
                           created_at = ?, cleared_at = NULL, cleared_by_user_id = NULL
-                    WHERE id = ?""", (kind, detail, line["id"] if line else None, now, held["id"]))
+                    WHERE id = ?""", (reason, detail, line["id"] if line else None, now, held["id"]))
     return kind
+
+
+# How far back the house's own inboxes are looked at for a letter that did not
+# arrive. Long enough that an inbox written to once a week is still seen; the
+# fault closes the moment a later letter to it is delivered, not by age.
+HOUSE_INBOX_FAULT_DAYS = 60
+HOUSE_INBOX_FAULT_WORDS = {
+    "suppressed": "was refused by the email provider, because the address is on its "
+                  "suppression list",
+    "bounced": "bounced",
+    "complained": "was marked as spam there",
+}
+
+
+def house_inbox_delivery_faults(conn):
+    """The house's own inboxes whose latest delivery report says the letter did
+    not arrive: [{address, kind, words, subject, when, detail}], worst first.
+
+    WHY THIS EXISTS. On 11 Oct 2026 a letter to reservations@ bounced while the
+    mailbox was being moved, and Resend put the address on its suppression
+    list. Every letter to it after that was accepted, logged as Sent, and never
+    delivered -- including the 17 Oct "Booked -- The King Suite" notice -- and
+    nothing in the house said so. A guest address that bounces is the guest's
+    problem; the house's own inbox bouncing means the house stops hearing about
+    its own bookings.
+
+    Self-closing: the latest REPORT for each address decides, so the next
+    letter to it that is delivered takes it off the list. Nobody ticks it.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(days=HOUSE_INBOX_FAULT_DAYS)).isoformat()
+    house = house_inboxes(conn)
+    latest = {}
+    for r in conn.execute(
+            f"""SELECT id, to_address, subject, delivery, delivery_at, delivery_detail,
+                       created_at FROM mail_log
+                 WHERE delivery IN ({','.join('?' * len(DELIVERY_SETTLED))})
+                   AND created_at >= ?
+                 ORDER BY created_at DESC, id DESC""",
+            DELIVERY_SETTLED + (since,)).fetchall():
+        address = (r["to_address"] or "").strip().lower()
+        if address and address not in latest:
+            latest[address] = r
+    out = []
+    for address, r in latest.items():
+        if r["delivery"] not in HOUSE_INBOX_FAULT_WORDS:
+            continue
+        if address not in house and writes_outside_the_house(address):
+            continue
+        out.append({"address": address, "kind": r["delivery"],
+                    "words": HOUSE_INBOX_FAULT_WORDS[r["delivery"]],
+                    "subject": r["subject"] or "a letter",
+                    "when": r["delivery_at"] or r["created_at"],
+                    "detail": r["delivery_detail"]})
+    out.sort(key=lambda f: f["address"])
+    return out
+
+
+def house_inbox_fault_sentence(fault):
+    """What happened, and the step that puts it right, in words."""
+    when = local_datetime_str(fault["when"]) if fault["when"] else "recently"
+    said = f" Resend said: {fault['detail']}." if fault["detail"] else ""
+    step = ("In Resend, open Suppressions, find this address and remove it. "
+            if fault["kind"] in ("suppressed", "bounced") else
+            "In Resend, find this address under Suppressions and remove it, and check "
+            "the mailbox's junk-mail rules. ")
+    return (f"The last letter to it, “{fault['subject']}” ({when}), "
+            f"{fault['words']}.{said} Until that is cleared the site's letters to "
+            f"this inbox are accepted and never arrive. {step}"
+            "This goes by itself the next time a letter to it is delivered.")
 
 
 def address_suppressed(address):
@@ -35625,6 +35716,13 @@ def owner_home_warnings(conn, today):
     def add(severity, title, detail, count, endpoint, **url_args):
         out.append({"severity": severity, "title": title, "detail": detail,
                     "count": count, "href": url_for(endpoint, **url_args)})
+
+    # ONE OF THE HOUSE'S OWN INBOXES IS NOT GETTING ITS MAIL. A blocker: every
+    # booking notice to it is lost without a word, which is how the 17 Oct 2026
+    # "Booked" notice for the King Suite reached nobody.
+    for fault in house_inbox_delivery_faults(conn):
+        add("blocker", f"Mail to {fault['address']} is not arriving",
+            house_inbox_fault_sentence(fault), 1, "mail_log", q=fault["address"])
 
     # A guest said the stay was poor and nobody has answered. It closes
     # itself: replying or marking it read takes it off this list, which is
@@ -56851,7 +56949,7 @@ def email_health(conn):
             "sent": sum(1 for r in week if r["status"] == "sent"),
             "delivered": sum(1 for r in week if r["delivery"] == "delivered"),
             "failed": sum(1 for r in week if r["status"] == "failed"),
-            "bounced": sum(1 for r in week if r["delivery"] == "bounced"),
+            "bounced": sum(1 for r in week if r["delivery"] in ("bounced", "suppressed")),
             "complained": sum(1 for r in week if r["delivery"] == "complained"),
         },
     }
@@ -81131,6 +81229,7 @@ WATCH_TASK_KINDS = {
     "terms": "Booking terms that give a different arrival or departure time",
     "extras": "An extra a guest has paid for, to arrange or hand over",
     "rooms_let": "A night with more than five rooms let",
+    "inbox": "One of the house's own inboxes is not getting its mail",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -84378,6 +84477,12 @@ def watch_task_findings(conn, today=None):
     if door:
         found.append(("door", "Look at the front door lock", door, today.isoformat(), "high"))
 
+    # One of the house's own inboxes not getting its mail. Titled by the
+    # address, so it closes when a letter to that inbox is next delivered.
+    for fault in house_inbox_delivery_faults(conn):
+        found.append(("inbox", f"Mail to {fault['address']} is not arriving",
+                      house_inbox_fault_sentence(fault), today.isoformat(), "high"))
+
     # The booking terms naming an arrival or departure time the pages
     # contradict. Titled by what is wrong and nothing that moves, so saving
     # terms that agree closes it. Never rewritten here: they are the owner's
@@ -87251,6 +87356,19 @@ def record_history_page(kind, record_id):
 # The mail log: every letter the house sends.
 # ---------------------------------------------------------------------------
 
+def house_inboxes(conn):
+    """Every address the house reads its own mail at, as configured today.
+
+    Read from where each one is set -- the addresses guests are given, the
+    connected mailboxes, where each area's notices go, the owner, the
+    technical address, the house calendar -- never a typed list, which would
+    go stale the first time an inbox is added. Lower-cased."""
+    found = list(PUBLIC_CONTACT.values()) + list(MS_GRAPH_MAILBOXES)
+    found += [house_address_for(conn, area) for area in REPLY_TO_AREAS]
+    found += [owner_email(conn), tech_email_setting(conn), HOUSE_CALENDAR_MAILBOX]
+    return {a.strip().lower() for a in found if a and a.strip()}
+
+
 def mail_audience_reader(conn):
     """A function saying who a letter is for: a guest, the house, a colleague
     or somebody else.
@@ -87260,17 +87378,22 @@ def mail_audience_reader(conn):
     the Write to guests switch cannot afford. The rules and their history are
     in mail_log_list_view, where they were first written.
     """
-    house = {a.strip().lower() for a in list(PUBLIC_CONTACT.values()) + list(MS_GRAPH_MAILBOXES)
-             + [owner_email(conn) or ""] if a and a.strip()}
+    house = house_inboxes(conn)
     staff = {(r["email"] or "").strip().lower() for r in conn.execute(
         "SELECT email FROM users WHERE role != 'owner' AND email IS NOT NULL").fetchall()}
     profiles = _profile_ids_by_address(conn)
 
+    # THE HOUSE'S OWN INBOXES ARE THE HOUSE, whatever the letter was about. The
+    # guest test used to come first, so "Booked -- The King Suite" to
+    # reservations@ (filed against the booking) and "Your daily summary" to
+    # accounts@ (which has a guest profile, from a booking the owner made to
+    # try the site) were both counted as letters to "A guest" (17 Oct 2026).
+    # No guest is ever reached at one of the house's own addresses.
     def audience(address, kept=None, about_category=None):
         address = (address or "").strip().lower()
-        return ("A guest" if (kept == "correspondence" or address in profiles)
-                else "The house" if (address in house
-                                     or not writes_outside_the_house(address))
+        return ("The house" if (address in house
+                                or (address and not writes_outside_the_house(address)))
+                else "A guest" if (kept == "correspondence" or address in profiles)
                 else "A colleague" if address in staff
                 else "A guest" if about_category else "Somebody else")
 
@@ -87358,7 +87481,8 @@ def mail_log_list_view(conn, args):
         search_hint="Search who it went to, the subject, what it was about",
         facets=[
             facet("status", "Status", lambda r: r["status_words"],
-                  order=["Delivered", "Sent", "Delayed", "Bounced", "Marked as spam",
+                  order=["Delivered", "Sent", "Delayed", "Bounced", "Refused by the provider",
+                         "Marked as spam",
                          "Held", "Did not go", "Thrown away"]),
             facet("to", "To", lambda r: r["audience"], order=MAIL_AUDIENCES),
             facet("type", "Letter", lambda r: r["type"], limit=12),
