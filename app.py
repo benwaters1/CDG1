@@ -8117,6 +8117,9 @@ def init_db():
     # And the names of 16 October, once, LAST: the three above find the rooms
     # by the names they had before it.
     apply_room_names_2026_10_16(conn)
+    # And the Family Suite's beds as the owner gave them on 18 October, once,
+    # by its 16 October name.
+    apply_family_beds_2026_10_18(conn)
 
     # WHERE THE GATES ARE.
     #
@@ -52494,6 +52497,29 @@ def apply_room_names_2026_10_16(conn):
     conn.commit()
     if changed:
         print(f"[rooms] the 16 October names: {changed} room(s) renamed")
+    return changed
+
+
+# The Family Suite's beds, as the owner set them on Booking.com and asked for
+# here on 18 October 2026: two double beds in one bedroom and three in the
+# other. It said "Queen and doubles", which was the seed's guess and not the
+# room. Once, by a flag, so a later edit in the room admin stands; and on the
+# room by its own name, after apply_room_names_2026_10_16.
+FAMILY_SUITE_BEDS = "Two double beds in one bedroom, three in the other"
+
+
+def apply_family_beds_2026_10_18(conn):
+    """Once: the Family Suite's beds as the owner gave them. Returns rooms changed."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'family_beds_2026_10_18'").fetchone():
+        return 0
+    changed = conn.execute(
+        "UPDATE rooms SET bed_setup = ? WHERE name = 'The Family Suite' "
+        "AND COALESCE(bed_setup, '') != ?", (FAMILY_SUITE_BEDS, FAMILY_SUITE_BEDS)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('family_beds_2026_10_18', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print("[rooms] the Family Suite's beds, as the owner gave them on 18 October")
     return changed
 
 
@@ -101315,9 +101341,10 @@ ACCESS_NEEDS_RETENTION_MONTHS = 12
 # Suite (owner, 15 October 2026); a room's own value is offered as well, so
 # a bed the list does not name is never lost on a save. "Queen bed and double
 # bed" is The Twin Room (Ground Floor) (owner, 17 October 2026, z28 item 5).
+# The last is the Family Suite since 18 October (FAMILY_SUITE_BEDS).
 BED_SETUPS = ["Emperor bed", "King bed", "Queen bed", "Double bed", "Two double beds",
               "Twin beds", "Twin or double", "Queen and doubles", "Queen bed and double bed",
-              "Two bedrooms", "Bunk room"]
+              "Two bedrooms", "Bunk room", FAMILY_SUITE_BEDS]
 # STORED AS THE WORD THE GUEST PAGES READ. The Stay cards, the room page and
 # the comparison table all test for "private" and "shared", and this used to
 # offer "En-suite / Private, not en-suite / Shared" -- none of which they
