@@ -14769,7 +14769,9 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "detail": hd["note"] or "",
             "assignee_id": None, "assignee_name": None, "id": hd["id"],
             "link": url_for("admin_house_calendar") + f"#date-{hd['id']}",
-            "facts": {"start": hd["start_date"], "end": hd["end_date"],
+            # The name as typed: a date that lasts has "· 16 days" added to
+            # its title for the lists, which Outlook already shows as a span.
+            "facts": {"name": hd["title"], "start": hd["start_date"], "end": hd["end_date"],
                       "note": hd["note"] or ""},
         }, hd["start_date"], hd["end_date"])] if r)
 
@@ -15165,7 +15167,7 @@ def calendar_cards(conn, rows, owner_view):
             card(r, f"{f.get('who')} on" + (f" {hours}" if hours else ""), _cal_day(r["date"]),
                  [("Role", f.get("role") or "")], open_words="Rota" if owner_view else "My shifts")
         elif kind == "date":
-            card(r, r["title"],
+            card(r, f.get("name") or r["title"],
                  _cal_day(f.get("start")) + (f" → {_cal_day(f['end'])}"
                                             if f.get("end") and f["end"] != f.get("start") else ""),
                  [("Note", f.get("note") or "")], open_words="Dates for the house")
@@ -96725,7 +96727,7 @@ def house_calendar_items(conn, start, end, areas=None):
         elif kind == "date" and "dates" in areas and f.get("start"):
             key = f"date:{r['id']}"
             items[key] = {"key": key, "area": "dates", "all_day": True,
-                          "subject": f"{marks['dates']} {r['title']}",
+                          "subject": f"{marks['dates']} {f.get('name') or r['title']}",
                           "start": f"{f['start']}T00:00:00",
                           "end": f"{day_after(f.get('end') or f['start'])}T00:00:00",
                           "location": "", "body": f.get("note") or "",
