@@ -150,6 +150,9 @@ UNREADABLE = {
     # The house calendar's .ics link is a 404 without the key the owner makes
     # on its page, by design; test_house_calendar reads it with one.
     "house_calendar_ics": "needs the feed key",
+    # Only a room reserved for a guest has a page to finish it on; any other
+    # stay's token is a 404 there, by design. test_reserve_a_room reads it.
+    "booking_finish": "needs a reserved stay",
 }
 
 # The pages somebody who does not work here has to get through on their own.

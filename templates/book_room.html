@@ -4,6 +4,7 @@
 {% from '_country.html' import country_field %}
 {% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO, BATH_PHOTOS, ROOM_EXTRA %}
 {% from '_phone.html' import phone_field %}
+{% from '_occupancy.html' import party_fields with context %}
 {% from '_room_copy.html' import room_copy, room_name, room_note, room_bath_where, room_stairs %}
 {% set crumbs = [('Stay', url_for('book_rooms')), (room_name(room['name']), None)] %}
 {% block title %}Book {{ room_name(room['name']) }}{% endblock %}
@@ -182,26 +183,11 @@
             <div class="g-cal__months" id="cal_months"></div>
             <p class="g-hint" id="cal_status" aria-live="polite"></p>
           </div>
-          <div class="g-row">
-            <p class="g-field g-field--narrow">
-              <label for="br_adults">Adults<span class="g-req" aria-hidden="true">*</span></label>
-              {# max falls back to 6 when a room has no max_occupancy set, so the cap
-                 is never silently absent and a guest cannot enter twelve into a double. #}
-              <input type="number" inputmode="numeric" id="br_adults" name="adults"
-                     min="1" max="{{ room['max_occupancy'] or 6 }}"
-                     value="{{ prefill_adults or prefill_party_size or 2 }}" required>
-            </p>
-            <p class="g-field g-field--narrow">
-              <label for="br_under18">Under 18</label>
-              <input type="number" inputmode="numeric" id="br_under18" name="guests_under_18"
-                     min="0" max="{{ room['max_occupancy'] or 6 }}" value="{{ prefill_under_18 or 0 }}">
-            </p>
-          </div>
-          {# Beneath both fields, not inside one — it describes the party. #}
-          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s pay no taxe de séjour.</p>
-          {# party_size is what the route already reads, so it is kept and
-             filled from the two fields above rather than replaced. #}
-          <input type="hidden" name="party_size" id="party_size" value="{{ prefill_party_size or 2 }}">
+          {#- 18 Oct (owner): adults and under-18s held to the room's three limits, as
+              Booking.com does -- the most guests, the most adults, the most children.
+              _occupancy.html; party_size is still what the route reads, filled from these. -#}
+          {%- set _u18 = (prefill_under_18 or 0)|int -%}
+          {{ party_fields(room, prefill_adults or ((prefill_party_size or 2)|int - _u18) or 2, _u18) }}
         
           <p class="g-second">
   <span class="g-second__k">More than one room?</span>
@@ -915,22 +901,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 
 
-<script>
-/* Adults + children are what a guest thinks in; party_size is what the route
-   reads. Keep the hidden total in step, and never let it fall below one. */
-(function(){
-  var a=document.getElementById('br_adults'), c=document.getElementById('br_under18'),
-      t=document.getElementById('party_size');
-  if(!a||!t) return;
-  function sync(){
-    var n=(parseInt(a.value,10)||0)+(parseInt(c&&c.value,10)||0);
-    t.value = n > 0 ? n : 1;
-  }
-  a.addEventListener('input', sync);
-  if(c) c.addEventListener('input', sync);
-  sync();
-})();
-</script>
+{#- The adults/children total is kept by _occupancy.html now (18 Oct). -#}
 
 {# Below two columns the panel sits at the foot of a long page, so the button
    is unreachable without scrolling back. This bar carries the total and the

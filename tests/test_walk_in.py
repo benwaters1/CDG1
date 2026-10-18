@@ -55,7 +55,7 @@ def _accom(bill):
 
     A walk-in now carries a stamped city tax, so bill["total"] is the room plus
     the tax. Every check in this file is about ROOM pricing -- the rate card
-    honoured, a desk discount applied, an over-price ignored -- so comparing the
+    honoured, a desk discount applied, an agreed higher price charged -- so comparing the
     whole total against a rack rate measures two things and reports on one.
     """
     return round(sum(l["amount"] for l in bill["lines"]
@@ -169,7 +169,10 @@ def run():
                 abs(sum(l["amount"] for l in bill["lines"]) - bill["total"]) < 0.01,
                 detail=f"{[l['amount'] for l in bill['lines']]} vs {bill['total']}")
 
-    s.section("More than the rate card is ignored, not charged")
+    # 18 October 2026 (owner): "i need to be able to enter the amount for the
+    # booking". It used to be ignored above the rate card; the figure agreed
+    # is now the figure charged, either side of it.
+    s.section("More than the rate card is charged as agreed")
     a3 = a + timedelta(days=20)
     d3 = a3 + timedelta(days=2)
     rack3 = _rack(room, a3, d3)
@@ -177,9 +180,11 @@ def run():
     over = _made("Over")
     s.check("it is taken", bool(over))
     if over:
-        s.check("at the rate card, not above it",
-                abs(_accom(_bill(over["id"])) - rack3) < 0.01,
-                detail=f"{_accom(_bill(over['id']))} vs {rack3}")
+        s.check("at the price typed, above the rate card",
+                abs(_accom(_bill(over["id"])) - (rack3 + 500)) < 0.01,
+                detail=f"{_accom(_bill(over['id']))} vs {rack3 + 500}")
+        s.check("with no discount line to make it add up",
+                not (over["discount_amount"] or 0))
 
     s.section("Money handed over at the desk goes on with it")
     a4 = a + timedelta(days=30)

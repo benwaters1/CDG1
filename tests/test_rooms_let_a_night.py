@@ -129,7 +129,7 @@ def _checks(s, conn, put_back):
         conn.commit()
         rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, id").fetchall()
     rooms = [dict(r) for r in rooms]
-    full, spare = rooms[:N], rooms[N]
+    let_rooms, spare = rooms[:N], rooms[N]
     s.check("there are six rooms on sale to test with", len(rooms) >= 6)
 
     # Two nights nothing else holds: well inside the year the feed sells.
@@ -147,7 +147,7 @@ def _checks(s, conn, put_back):
     if a is None:
         return
     b = a + timedelta(days=2)
-    ids = [_book(conn, r["id"], a, b) for r in full]
+    ids = [_book(conn, r["id"], a, b) for r in let_rooms]
     anon = m.app.test_client()
 
     s.section("The full set taken: the next room is refused, and says why")
@@ -184,7 +184,7 @@ def _checks(s, conn, put_back):
     s.check("and a booking for it is not taken",
             conn.execute("SELECT COUNT(*) FROM bookings WHERE guest_name = ?",
                          (f"{TAG} Sixth",)).fetchone()[0] == 0)
-    ok_own, _ = _ask(m.is_range_available, full[0]["id"], a, b, exclude_booking_id=ids[0])
+    ok_own, _ = _ask(m.is_range_available, let_rooms[0]["id"], a, b, exclude_booking_id=ids[0])
     s.check("a booking being changed does not count against itself", ok_own)
 
     s.section("The channels are told")
@@ -193,7 +193,7 @@ def _checks(s, conn, put_back):
     s.check("the spare room's calendar closes those nights, as one span",
             [(x, y) for _u, x, y in full] == [(a, b)], detail=str(full))
     s.check("in the house's own words", "SUMMARY:Closed — the house is full" in feed)
-    booked = _ask(m.generate_room_ics, full[0])
+    booked = _ask(m.generate_room_ics, let_rooms[0])
     s.check("a room that is one of the let ones is not closed for being full",
             not [u for u, *_r in _ics_spans(booked) if u.startswith("full-")])
 
@@ -205,7 +205,7 @@ def _checks(s, conn, put_back):
             not [u for u, *_r in _ics_spans(_ask(m.generate_room_ics, spare)) if u.startswith("full-")])
 
     s.section("A pending request counts, until confirming decides")
-    pend = _book(conn, full[-1]["id"], a, b, status="pending", n=1)
+    pend = _book(conn, let_rooms[-1]["id"], a, b, status="pending", n=1)
     s.check("a pending request takes the room on the site",
             not _ask(m.is_range_available, spare["id"], a, b)[0])
     s.check("but confirming a rival is weighed on confirmed stays only",
@@ -214,18 +214,18 @@ def _checks(s, conn, put_back):
     conn.commit()
 
     s.section("The owner's closures are not rooms let")
-    done, _skipped = m.close_rooms(conn, [full[-1]["id"]], a, b, "season", "", TAG + " rest", None)
+    done, _skipped = m.close_rooms(conn, [let_rooms[-1]["id"]], a, b, "season", "", TAG + " rest", None)
     conn.commit()
     s.check("a closure for the season, on the fifth room", bool(done))
     s.check("leaves the spare room for sale", _ask(m.is_range_available, spare["id"], a, b)[0])
 
     s.section("A channel's nights are rooms let, and the house's own coming back are not")
     conn.execute("INSERT INTO ical_sources (room_id, label, url) VALUES (?, ?, ?)",
-                 (full[-1]["id"], TAG + " Booking.com", "https://example.invalid/zzlet.ics"))
+                 (let_rooms[-1]["id"], TAG + " Booking.com", "https://example.invalid/zzlet.ics"))
     src = conn.execute("SELECT id FROM ical_sources WHERE label = ?", (TAG + " Booking.com",)).fetchone()["id"]
     # The closure above, sent back exactly as it went out.
     conn.execute("INSERT INTO blocked_dates (room_id, ical_source_id, start_date, end_date) "
-                 "VALUES (?, ?, ?, ?)", (full[-1]["id"], src, a.isoformat(), b.isoformat()))
+                 "VALUES (?, ?, ?, ?)", (let_rooms[-1]["id"], src, a.isoformat(), b.isoformat()))
     conn.commit()
     s.check("the house's closure sent back is not a room let",
             _ask(m.is_range_available, spare["id"], a, b)[0])
@@ -237,24 +237,24 @@ def _checks(s, conn, put_back):
     s.check("with the closure gone, the same nights are a stay on the channel, and count",
             not _ask(m.is_range_available, spare["id"], a, b)[0])
     s.check("and the echo warning has closed itself", _ask(m.channel_echo_problem) is None)
-    conn.execute("UPDATE rooms SET active = 0 WHERE id = ?", (full[-1]["id"],))
+    conn.execute("UPDATE rooms SET active = 0 WHERE id = ?", (let_rooms[-1]["id"],))
     conn.commit()
     s.check("a channel's nights on a room taken off sale here are not counted",
             _ask(m.is_range_available, spare["id"], a, b)[0])
     off = _ask(m.generate_room_ics, conn.execute(
-        "SELECT * FROM rooms WHERE id = ?", (full[-1]["id"],)).fetchone())
+        "SELECT * FROM rooms WHERE id = ?", (let_rooms[-1]["id"],)).fetchone())
     whole = [(x, y) for u, x, y in _ics_spans(off) if u.startswith("off-sale")]
     s.check("and that room's own calendar is closed from today, whole (z28 item 2)",
             len(whole) == 1 and whole[0][0] == house_today()
             and (whole[0][1] - whole[0][0]).days >= 3 * 365 - 1, detail=str(whole))
     s.check("while a room on sale has no such span",
             not [u for u, *_r in _ics_spans(_ask(m.generate_room_ics, spare)) if u.startswith("off-sale")])
-    conn.execute("UPDATE rooms SET active = 1 WHERE id = ?", (full[-1]["id"],))
+    conn.execute("UPDATE rooms SET active = 1 WHERE id = ?", (let_rooms[-1]["id"],))
     conn.execute("DELETE FROM blocked_dates WHERE ical_source_id = ?", (src,))
     conn.commit()
 
     s.section("One more let anyway: said the same day, and closed when it is not")
-    ids[-1] = _book(conn, full[-1]["id"], a, b, n=2)
+    ids[-1] = _book(conn, let_rooms[-1]["id"], a, b, n=2)
     _book(conn, spare["id"], a, b, n=3)      # past the gate, as a channel race would be
     over = _ask(m.rooms_over_the_limit)
     s.check("the nights are found", [o["night"] for o in over] == [a, a + timedelta(days=1)],

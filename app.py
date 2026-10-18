@@ -2298,6 +2298,15 @@ DEFAULT_EMAIL_TEMPLATES = [
      "Reference code: {reference_code}\n"
      "Check in online, manage your booking, or send us a request: {checkin_url}\n\n"
      "— Château de Gudanes"),
+    ("room_reserved", "Rooms: A room reserved for them, to finish and pay",
+     "Your room is reserved — {room_name}",
+     "Hello {guest_name},\n\nAs agreed, we are holding {room_name} for you.\n\n"
+     "{stay_lines}\n\n"
+     "To secure it, add your details and pay here — it takes a couple of minutes:\n"
+     "{finish_url}\n\n"
+     "We hold the room until {held_until}; after that it goes back on sale.\n\n"
+     "Reference: {reference_code}\n\n"
+     "— Château de Gudanes"),
     ("room_paid_awaiting", "Rooms: Paid online, dates being confirmed",
      "Payment received — {room_name}",
      "Hi {guest_name},\n\nThank you — your payment of {total_price} has been "
@@ -5336,6 +5345,11 @@ def init_db():
         # The guest's home address, asked on the booking form (owner, 5 Oct: as Booking.com asks it) - its own columns,
         # not the special requests. Also what the guest register (police_register) needs for visitors from abroad.
         ("bookings_guest_address", "ALTER TABLE bookings ADD COLUMN guest_address TEXT"),
+        # A room reserved for one guest at an agreed price, held until they
+        # finish the details and pay (owner, 18 October 2026). reserved_until
+        # is a UTC moment; details_done_at says the guest has filled them in.
+        ("bookings_reserved_until", "ALTER TABLE bookings ADD COLUMN reserved_until TEXT"),
+        ("bookings_details_done_at", "ALTER TABLE bookings ADD COLUMN details_done_at TEXT"),
         ("bookings_guest_city", "ALTER TABLE bookings ADD COLUMN guest_city TEXT"),
         ("bookings_guest_postcode", "ALTER TABLE bookings ADD COLUMN guest_postcode TEXT"),
         ("bookings_guest_country", "ALTER TABLE bookings ADD COLUMN guest_country TEXT"),
@@ -8117,6 +8131,9 @@ def init_db():
     # And the names of 16 October, once, LAST: the three above find the rooms
     # by the names they had before it.
     apply_room_names_2026_10_16(conn)
+    # Who fits each room, as Booking.com has it -- by the names of 16 October,
+    # so after them.
+    apply_room_occupancy_2026_10_18(conn)
 
     # WHERE THE GATES ARE.
     #
@@ -8675,7 +8692,7 @@ NAV_AREAS = {
         "write_about_booking", "text_about_booking", "add_extra_to_booking",
         "change_extra_when",
         "arrivals_sheet_page", "issue_access_code", "access_code_returned",
-        "walk_in_booking", "arrival_card",
+        "walk_in_booking", "resend_reservation_link", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
         "guest_by_email",
         "save_list_view", "delete_list_view",
@@ -11283,6 +11300,9 @@ def bookings_awaiting_answer(conn, now=None, hours=None):
              FROM bookings
              LEFT JOIN rooms ON rooms.id = bookings.room_id
             WHERE bookings.status = 'pending' AND bookings.created_at <= ?
+              -- A room reserved for a guest waits on the guest, not the
+              -- house: it has its own hold (release_lapsed_reservations).
+              AND bookings.reserved_until IS NULL
             ORDER BY bookings.created_at""", (cutoff,)).fetchall()
     out = []
     for row in rows:
@@ -11377,7 +11397,10 @@ def expire_stale_pending_bookings(conn, hours=STALE_PENDING_BOOKING_HOURS):
     every dashboard load like auto_prep_upcoming_arrivals."""
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
     stale = conn.execute(
-        "SELECT * FROM bookings WHERE status = 'pending' AND created_at <= ?",
+        # Not a room reserved for a guest: that waits on them, until its
+        # own hold runs out (release_lapsed_reservations).
+        "SELECT * FROM bookings WHERE status = 'pending' AND created_at <= ? "
+        "AND reserved_until IS NULL",
         (cutoff,),
     ).fetchall()
     count = 0
@@ -11386,6 +11409,36 @@ def expire_stale_pending_bookings(conn, hours=STALE_PENDING_BOOKING_HOURS):
             continue
         declined, _refunded, _refund_error = decline_booking_by_id(
             conn, row["id"], refund=False, via=f"no answer within {hours} hours")
+        if declined:
+            count += 1
+    if count:
+        conn.commit()
+    return count
+
+
+def release_lapsed_reservations(conn, now=None):
+    """Give back a room reserved for a guest who let the hold run out with
+    nothing paid. Returns how many.
+
+    The owner reserves a room at an agreed price and the guest is sent a link
+    to finish and pay (reserve_room_for_guest). Until then the room is off
+    sale -- a pending stay counts as taken -- so a hold nobody takes up has to
+    end, or a guest who went quiet keeps a room empty. Anything with money on
+    it is left for a person, as with any pending stay.
+
+    Declined without the guest's "request declined" letter: they asked for
+    nothing to be declined. Their link says the hold has ended.
+    """
+    now = (now or datetime.now(timezone.utc)).isoformat()
+    count = 0
+    for row in conn.execute(
+            "SELECT * FROM bookings WHERE status = 'pending' AND reserved_until IS NOT NULL "
+            "AND reserved_until <= ?", (now,)).fetchall():
+        if amount_paid_for(conn, "room", row) > 0.005:
+            continue
+        declined, _refunded, _error = decline_booking_by_id(
+            conn, row["id"], refund=False, via="reservation not taken up in time",
+            tell_guest=False)
         if declined:
             count += 1
     if count:
@@ -20817,6 +20870,11 @@ def mark_booking_payment_paid(conn, session):
     # take a write lock while this transaction is open — the same way a
     # workshop deposit receipt was being lost to "database is locked".
     conn.commit()
+    # A room reserved for this guest is theirs the moment they pay: confirmed
+    # as any booking is, with its confirmation letter (owner, 18 October 2026).
+    if booking and booking["status"] == "pending" and booking["reserved_until"]:
+        confirm_booking_by_id(conn, booking_id, online="the site, paid for online")
+        conn.commit()
     if booking:
         bill = booking_bill(conn, booking_id)
         portal_token = guest_portal_token(conn, booking["guest_email"])
@@ -31177,8 +31235,12 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                     stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                     total_price_override=None, discount_amount_override=None,
                    guests_under_18=0, source="direct", confirm_now=False,
-                   extra_details=None, reference_code=None, record_payment=None):
+                   extra_details=None, reference_code=None, record_payment=None,
+                   quiet=False):
     """Write a stay down. With confirm_now, it is booked rather than requested.
+
+    quiet writes it and sends nothing -- for a room the house reserves for a
+    guest, whose one letter is the link to finish (reserve_room_for_guest).
 
     record_payment(conn, booking_id), when given, puts the money received on
     the stay BEFORE anything is written to the guest. The confirmation reads
@@ -31337,6 +31399,8 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
         # claim_range's lock held. Released here, before the letters below go
         # over the network with every other booking queued behind it.
         conn.commit()
+    if quiet:
+        return reference_code, manage_token
 
     checkin_url = url_for("guest_checkin", manage_token=manage_token, _external=True)
     detail_lines = [
@@ -46688,6 +46752,124 @@ def send_room_statement(conn, booking):
             "copies": copies}
 
 
+def reservation_held_until(booking):
+    """'21 October at 16:30', the hold's end in the house's own time, or ''."""
+    stamp = booking["reserved_until"] if "reserved_until" in booking.keys() else None
+    when = parse_datetime_iso(stamp) if stamp else None
+    if not when:
+        return ""
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    local = when.astimezone(LOCAL_TZ)
+    return f"{format_date_human(local.date().isoformat())} at {local.strftime('%H:%M')}"
+
+
+def send_reservation_link(conn, booking_id):
+    """The one letter a reserved room sends: what is held, for how much, until
+    when, and the link to finish and pay. Commits nothing; call it after the
+    write is committed. Returns whether it was delivered."""
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+        (booking_id,)).fetchone()
+    if not booking or "@" not in (booking["guest_email"] or ""):
+        return False
+    bill = booking_bill(conn, booking_id)
+    lines = [f"Arriving: {format_date_human(booking['arrival_date'])}",
+             f"Leaving: {format_date_human(booking['departure_date'])}"]
+    if bill:
+        lines.append(f"For the stay: €{bill['total']:,.2f}"
+                     + (" including taxe de séjour" if (booking["city_tax"] or 0) > 0 else ""))
+    subject, body, letter = render_email_template(conn, "room_reserved", {
+        "guest_name": (booking["guest_name"] if booking["guest_name"] != booking["guest_email"]
+                       else "there"),
+        "room_name": booking["room_name"],
+        "stay_lines": "\n".join(lines),
+        "total_price": f"€{(bill['total'] if bill else booking['total_price'] or 0):,.2f}",
+        "held_until": reservation_held_until(booking) or "the end of the hold",
+        "finish_url": url_for("booking_finish", manage_token=booking["manage_token"], _external=True),
+        "reference_code": booking["reference_code"],
+    })
+    return bool(subject) and bool(write_about_stay(booking, subject, body, html=letter))
+
+
+@app.route("/booking/<manage_token>/finish", methods=["GET", "POST"])
+def booking_finish(manage_token):
+    """A room the house reserved for this guest: they add their details here,
+    then go to the card page (owner, 18 October 2026: "they fill in the rest
+    of the details ... then they pay").
+
+    The same details the booking form asks, checked the same way, and the
+    party checked against the room's three limits. The taxe de sejour is
+    stamped again for the party they give, because it is charged per adult
+    and the house only guessed at two. Paying confirms the stay
+    (mark_booking_payment_paid), with the usual confirmation letter.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.manage_token = ?""",
+        (manage_token,)).fetchone()
+    if not booking or not booking["reserved_until"]:
+        conn.close()
+        abort(404)
+    room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
+    if booking["status"] in ("declined", "cancelled"):
+        state = "lapsed"
+    elif booking["details_done_at"] or booking["status"] == "confirmed":
+        state = "done"
+    else:
+        state = "open"
+    form = request.form if request.method == "POST" else {}
+    details = (read_guest_details(request.form, ROOM_GUEST_DETAILS) if request.method == "POST"
+               else {k: booking[k] for k in ROOM_GUEST_DETAILS if k in booking.keys()})
+
+    if request.method == "POST" and state == "open":
+        name = (request.form.get("guest_name", "") or "").strip()[:120]
+        phone = (request.form.get("guest_phone", "") or "").strip()[:40]
+        notes = (request.form.get("special_requests", "") or "").strip()[:2000]
+        try:
+            adults = max(0, int(request.form.get("adults", "") or 0))
+            children = max(0, int(request.form.get("guests_under_18", "") or 0))
+        except ValueError:
+            adults, children = 0, 0
+        party = adults + children
+        error = None
+        if not name:
+            error = "Please give your name."
+        elif adults < 1:
+            error = "Please say how many adults are coming."
+        elif room_party_problem(room, party, children):
+            error = room_party_problem(room, party, children)
+        elif missing_guest_details(details, ROOM_GUEST_DETAILS_REQUIRED):
+            error = "Please fill in your address, country and arrival time."
+        elif request.form.get("agree_terms") != "on":
+            error = "Please agree to the booking terms."
+        if error:
+            flash(error, "error")
+        else:
+            nights = (parse_date(booking["departure_date"]) - parse_date(booking["arrival_date"])).days
+            city_tax, _adults, _rate = compute_city_tax(conn, party, children, nights)
+            conn.execute(
+                """UPDATE bookings SET guest_name = ?, guest_phone = ?, party_size = ?,
+                       guests_under_18 = ?, special_requests = ?, city_tax = ?,
+                       details_done_at = ? WHERE id = ? AND status = 'pending'""",
+                (name, phone or booking["guest_phone"], party, children, notes or None,
+                 city_tax, datetime.now(timezone.utc).isoformat(), booking["id"]))
+            store_booking_guest_details(conn, "bookings", "id", booking["id"], details)
+            log_audit(conn, "reservation_details_given", target=booking["reference_code"],
+                      via="the guest's link")
+            conn.commit()
+            conn.close()
+            return redirect(url_for("booking_pay", manage_token=manage_token))
+
+    bill = booking_bill(conn, booking["id"])
+    conn.close()
+    return render_template("booking_finish.html", booking=booking, room=room, state=state,
+                           held_until=reservation_held_until(booking), bill=bill,
+                           form=form, details=details)
+
+
 @app.route("/booking/<manage_token>/statement")
 def booking_statement(manage_token):
     """The guest's bill.
@@ -48909,6 +49091,41 @@ def api_validate_promo_code():
     })
 
 
+def room_party_problem(room, party_size, guests_under_18=0):
+    """None if this party fits the room, else the sentence that says why not.
+
+    WHO FITS, AS BOOKING.COM ASKS IT (owner, 18 October 2026): three limits,
+    each its own -- the most guests, the most adults, the most children. "A
+    guest can do 2 adults 1 children in a room but not 3 adults": a room for
+    three that takes two adults and two children. max_occupancy is the most
+    guests, and is no longer just the adults and the children added up.
+    Under-18s are the children, as the forms and the taxe de sejour count them.
+    """
+    try:
+        party = int(party_size or 0)
+        children = max(0, int(guests_under_18 or 0))
+    except (TypeError, ValueError):
+        return None
+    if party < 1:
+        return None
+    children = min(children, party)
+    adults = party - children
+    most = int(room["max_occupancy"] or 0)
+    most_adults = int(room["max_adults"] or 0) or most
+    most_children = int(room["max_children"] or 0)
+    if adults < 1:
+        return "A child needs an adult with them in the room."
+    if most and party > most:
+        return f"This room sleeps up to {most}."
+    if most_adults and adults > most_adults:
+        return (f"This room takes up to {most_adults} adult{'' if most_adults == 1 else 's'}"
+                + (f" (and up to {most_children} under 18)." if most_children else "."))
+    if children > most_children:
+        return ("This room does not take children." if not most_children else
+                f"This room takes up to {most_children} under 18.")
+    return None
+
+
 def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code="",
                      party_size=None, guests_under_18=None):
     """What this stay costs, itemised.
@@ -48945,9 +49162,9 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
                             f"{' on these dates' if rules['min_nights'] > (room['min_nights'] or 1) else ''}, "
                             f"and you have chosen {nights}.")
         return quote
-    if party_size and room["max_occupancy"] and party_size > room["max_occupancy"]:
-        quote.update(available=False,
-                     reason=f"This room sleeps up to {room['max_occupancy']}.")
+    misfit = room_party_problem(room, party_size, guests_under_18)
+    if misfit:
+        quote.update(available=False, reason=misfit)
         return quote
     free, why = is_range_available(conn, room["id"], arrival, departure)
     if not free:
@@ -49326,8 +49543,8 @@ def book_room(room_id):
             error = "Choose an arrival date in the future."
         elif not party_size or party_size < 1:
             error = "Party size is required."
-        elif party_size > room["max_occupancy"]:
-            error = f"This room sleeps up to {room['max_occupancy']}."
+        elif room_party_problem(room, party_size, guests_under_18):
+            error = room_party_problem(room, party_size, guests_under_18)
         elif departure <= arrival:
             # Checked before the minimum-stay branch below, which compares a
             # NEGATIVE night count against min_nights and therefore caught this
@@ -52371,6 +52588,39 @@ def apply_extras_transfers_2026_10_18(conn):
     conn.commit()
     if changed:
         print(f"[extras] {changed} transfer(s) filed under Transfers at {TRANSFER_VAT_RATE:g}% VAT")
+    return changed
+
+
+# Who fits each room, as Booking.com has it (owner, 18 October 2026, with the
+# extranet's own figures): (most guests, most adults, most children). By
+# current name, once.
+ROOM_OCCUPANCY_2026_10_18 = {
+    "The King Suite": (2, 2, 1),
+    "The Marquis Suite": (2, 2, 1),
+    "The Family Suite": (5, 2, 3),
+    "The King Room": (2, 2, 1),
+    "The Twin Room": (2, 2, 1),
+    "The Twin Room (Ground Floor)": (3, 2, 2),
+}
+
+
+def apply_room_occupancy_2026_10_18(conn):
+    """Once: each room's three limits set to Booking.com's, so the two sell the
+    same parties. Returns how many rooms changed; a later edit by hand stays."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_occupancy_2026_10_18'").fetchone():
+        return 0
+    changed = 0
+    for room in conn.execute("SELECT id, name, max_occupancy, max_adults, max_children FROM rooms"):
+        want = ROOM_OCCUPANCY_2026_10_18.get(room["name"])
+        if want and (room["max_occupancy"], room["max_adults"], room["max_children"]) != want:
+            conn.execute("UPDATE rooms SET max_occupancy = ?, max_adults = ?, max_children = ? "
+                         "WHERE id = ?", (*want, room["id"]))
+            changed += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('room_occupancy_2026_10_18', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[rooms] who fits, as on Booking.com: {changed} room(s) set")
     return changed
 
 
@@ -56124,6 +56374,8 @@ EMAIL_TEMPLATE_TAGS = {
                               "room_name", "stay_lines"),
     "room_paid_awaiting": ("checkin_url", "guest_name", "reference_code", "room_name",
                            "stay_lines", "total_price"),
+    "room_reserved": ("finish_url", "guest_name", "held_until", "reference_code",
+                      "room_name", "stay_lines", "total_price"),
     "room_declined": ("arrival_date", "departure_date", "guest_name", "reference_code",
                       "refund_note", "room_name"),
     "room_cancelled": ("arrival_date", "departure_date", "guest_name",
@@ -56171,6 +56423,7 @@ REQUIRED_MERGE_TAGS = {
                                        "reference and the link to their booking"},
     "room_request_received": {"reference_code": "it is how they quote the booking to us"},
     "room_paid_awaiting": {"reference_code": "it is how they quote the booking to us"},
+    "room_reserved": {"finish_url": "it is the only way for them to finish the booking and pay"},
     "room_updated": {"arrival_date": "it is the date that changed",
                      "departure_date": "it is the date that changed"},
     "room_statement": {"statement_url": "it is the only way to open the statement and settle it"},
@@ -62039,6 +62292,7 @@ def admin_booking(booking_id):
 
     return render_template(
         "admin_booking.html", b=booking, bill=bill, refund=refund, nights=nights,
+        reserved_until_words=reservation_held_until(booking),
         extras=extras, live_extras=live_extras, addable=addable,
         stay_day_choices=stay_day_choices,
         messages=messages, waiting=waiting, texts=texts,
@@ -64942,7 +65196,8 @@ def prepare_arrival(booking_id):
     return redirect(booking_return(booking_id))
 
 
-def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None, via=None):
+def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None, via=None,
+                          tell_guest=True):
     """Core decline logic shared by the single-booking and bulk-decline
     routes. Only acts on a still-pending booking, mirroring
     confirm_booking_by_id's guard against re-processing. Returns a
@@ -65003,6 +65258,8 @@ def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None, via=No
     # cannot write while this transaction is open. Safe for bulk_decline too:
     # each booking being durable as the loop goes is what you want if it dies.
     conn.commit()
+    if not tell_guest:
+        return True, refunded, refund_error
     subject, body, letter = render_email_template(conn, "room_declined", {
         "guest_name": booking["guest_name"],
         "room_name": booking["room_name"],
@@ -65904,7 +66161,8 @@ def booking_edit_changes(before, after):
 def edit_booking(booking_id):
     conn = get_db()
     booking = conn.execute(
-        """SELECT bookings.*, rooms.name AS room_name, rooms.price_per_night, rooms.max_occupancy
+        """SELECT bookings.*, rooms.name AS room_name, rooms.price_per_night, rooms.max_occupancy,
+                  rooms.max_adults, rooms.max_children
            FROM bookings JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
         (booking_id,),
     ).fetchone()
@@ -65962,8 +66220,10 @@ def edit_booking(booking_id):
             error = "Choose valid arrival and departure dates."
         elif not party_size or party_size < 1:
             error = "Party size is required."
-        elif party_size > booking["max_occupancy"]:
-            error = f"This room sleeps up to {booking['max_occupancy']}."
+        elif room_party_problem(booking, party_size, int(under_18_raw) if under_18_raw.isdigit()
+                                else (booking["guests_under_18"] or 0)):
+            error = room_party_problem(booking, party_size, int(under_18_raw) if under_18_raw.isdigit()
+                                       else (booking["guests_under_18"] or 0))
         else:
             ok, reason = claim_range(conn, booking["room_id"], arrival, departure, exclude_booking_id=booking_id)
             if not ok:
@@ -72522,6 +72782,28 @@ def send_revenue_to_pennylane(booking_id):
     return redirect(url_for("revenue_to_send"))
 
 
+@app.route("/admin/bookings/<int:booking_id>/reservation-link", methods=["POST"])
+@owner_required
+def resend_reservation_link(booking_id):
+    """Send a reserved room's link to finish and pay again, to the address on
+    the stay. Only while it is still waiting on them."""
+    conn = get_db()
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    if booking["status"] != "pending" or not booking["reserved_until"]:
+        conn.close()
+        flash("This booking is not waiting on the guest, so there is no link to send.", "error")
+        return redirect(url_for("admin_booking", booking_id=booking_id))
+    sent = send_reservation_link(conn, booking_id)
+    conn.close()
+    flash(f"Sent to {booking['guest_email']}." if sent
+          else "Not sent: there is no address, or guest mail is held until it is switched on.",
+          "success" if sent else "error")
+    return redirect(url_for("admin_booking", booking_id=booking_id))
+
+
 @app.route("/admin/bookings/walk-in", methods=["GET", "POST"])
 @owner_required
 def walk_in_booking():
@@ -72589,6 +72871,12 @@ def walk_in_booking():
         name = (request.form.get("guest_name", "") or "").strip()
         email = (request.form.get("guest_email", "") or "").strip()
         phone = (request.form.get("guest_phone", "") or "").strip()
+        # RESERVE IT FOR THEM (owner, 18 October 2026): a stay agreed by email
+        # at a price the house sets, held while the guest fills in the rest
+        # and pays. The room is taken from now; they finish it on a link.
+        reserve = request.form.get("mode") == "reserve"
+        if reserve and not name:
+            name = email
         try:
             party = max(1, int(request.form.get("party_size", "2") or 2))
         except ValueError:
@@ -72629,6 +72917,10 @@ def walk_in_booking():
             problem = "The departure has to be after the arrival."
         elif email and not EMAIL_RE.match(email):
             problem = "That email address does not look right — or leave it blank."
+        elif reserve and not email:
+            problem = "A reservation needs their email address: the link to finish goes there."
+        elif room_party_problem(room, party, under_18):
+            problem = f"{room['name']}: {room_party_problem(room, party, under_18)}"
         if not problem:
             # Unpacked, not tested for truth: is_range_available returns
             # (ok, reason), and a two-item tuple is always truthy — so
@@ -72654,15 +72946,18 @@ def walk_in_booking():
             charge = round(float(charge_raw), 2) if charge_raw else rack
         except ValueError:
             charge = rack
-        charge = max(0.0, min(charge, rack))
-        # As a discount, not a rewritten room total: booking_bill builds the
+        # Whatever was agreed, above the rate card as well as below it (owner,
+        # 18 October 2026: "i need to be able to enter the amount for the
+        # booking"). Above it is the room line itself, at the agreed figure.
+        charge = max(0.0, charge)
+        # Below it, as a discount, not a rewritten room total: booking_bill builds the
         # room line from what was agreed for these nights and reads
         # discount_amount separately, so a smaller total_price on its own
         # would simply be ignored by everything that asks the guest for money.
         # (create_booking backs the room line out of the override and the
         # discount, so the stamp is the rack rate and the difference stays
         # visible as the discount it is.)
-        discount = round(rack - charge, 2)
+        discount = round(max(0.0, rack - charge), 2)
 
         reference_code, manage_token = create_booking(
             conn, room, name, email, phone, arrival, departure, party, notes, [],
@@ -72675,12 +72970,24 @@ def walk_in_booking():
             # create_booking wrote the guest "your request is awaiting
             # confirmation" and the house "Needs you -- review and confirm"
             # about a stay this route then confirmed a line later.
-            confirm_now=True,
+            # A reservation stays pending, quietly, until the guest pays: its
+            # one letter is the link to finish, sent below.
+            confirm_now=not reserve,
+            quiet=reserve,
         )
         booking = conn.execute("SELECT * FROM bookings WHERE reference_code = ?",
                                (reference_code,)).fetchone()
-        conn.execute("UPDATE bookings SET status = 'confirmed' WHERE id = ?",
-                     (booking["id"],))
+        if reserve:
+            try:
+                hold_days = max(1, min(14, int(request.form.get("hold_days", "3") or 3)))
+            except ValueError:
+                hold_days = 3
+            conn.execute("UPDATE bookings SET reserved_until = ? WHERE id = ?",
+                         ((datetime.now(timezone.utc) + timedelta(days=hold_days)).isoformat(),
+                          booking["id"]))
+        else:
+            conn.execute("UPDATE bookings SET status = 'confirmed' WHERE id = ?",
+                         (booking["id"],))
 
         taken_raw = (request.form.get("amount_taken", "") or "").strip().replace(",", ".")
         try:
@@ -72698,10 +73005,22 @@ def walk_in_booking():
                  session.get("user_id"), datetime.now(timezone.utc).isoformat()))
             record_booking_payment(conn, booking["id"], taken)
 
-        log_audit(conn, "walk_in_booking", target=reference_code,
-                  details=f"{room['name']}, {arrival} to {departure}"
+        log_audit(conn, "reserved_for_guest" if reserve else "walk_in_booking",
+                  target=reference_code,
+                  details=f"{room['name']}, {arrival} to {departure}, {money(charge)}"
                           + (f", {money(taken)} taken" if taken else ""))
         conn.commit()
+
+        if reserve:
+            sent = send_reservation_link(conn, booking["id"])
+            conn.close()
+            flash(f"{room['name']} reserved for {email}, {money(charge)} for the stay"
+                  + (f" ({money(charge - rack)} above the rate card)" if charge > rack + 0.005 else "")
+                  + ". " + ("The link to finish and pay has gone to them."
+                            if sent else "The link is held until guest mail is switched on.")
+                  + " It goes back on sale if they have not paid by the end of the hold.",
+                  "success")
+            return redirect(url_for("admin_booking", booking_id=booking["id"]))
 
         # THEN A LINK TO PAY, for a booking taken from an email or the telephone
         # (owner, 18 October 2026). Their statement, which carries the Pay now
@@ -86114,6 +86433,8 @@ EMAIL_TEMPLATE_INFO = {
                               "on the spot, with nothing paid", "The guest"),
     "room_paid_awaiting": ("A booking paid by card that could not be confirmed on "
                            "the spot", "The guest"),
+    "room_reserved": ("When you reserve a room for a guest from Add a booking, at a "
+                      "price you agreed with them", "The guest"),
     "room_declined": ("When you decline a booking request", "The guest, and anyone "
                                                             "they asked us to copy"),
     "room_cancelled": ("When the house cancels a booking from the bookings list",
@@ -93214,10 +93535,12 @@ def run_housekeeping_job(conn):
     # which of those two sentences they get.
     told = notify_bookings_awaiting_answer(conn)
     expired = expire_stale_pending_bookings(conn)
+    released = release_lapsed_reservations(conn)
     prepped = auto_prep_upcoming_arrivals(conn, today)
     turned = prep_channel_departures(conn, today)
     return (f"told about {told} waiting request(s), expired {expired} stale "
-            f"booking(s), prepped {prepped} arrival(s), "
+            f"booking(s), released {released} reservation(s) not taken up, "
+            f"prepped {prepped} arrival(s), "
             f"{turned} Booking.com room(s) to turn round")
 
 
@@ -101419,6 +101742,14 @@ def room_fields_from_form():
 
     adults = _i("max_adults", 2) or 2
     children = _i("max_children", 0) or 0
+    # THE MOST GUESTS, its own number (owner, 18 October 2026, "like
+    # booking.com"): a room for three can take two adults and two children,
+    # but not all four at once. Blank, or more than the two limits allow,
+    # means the two added up -- which is what it always was before. Never
+    # fewer than the adults, or the room could not be let to the adults it
+    # says it takes.
+    guests = _i("max_occupancy", 0) or (adults + children)
+    guests = max(adults, min(guests, adults + children))
     return {
         "name": (request.form.get("name", "") or "").strip(),
         # Blank means "the same as the house name", which is the common case
@@ -101427,9 +101758,7 @@ def room_fields_from_form():
                          or None),
         "description": (request.form.get("description", "") or "").strip(),
         "max_adults": adults, "max_children": children,
-        # Kept in step with the split so every existing availability and
-        # party-size check keeps working untouched.
-        "max_occupancy": adults + children,
+        "max_occupancy": guests,
         "price_per_night": _f("price_per_night") or 0,
         "min_nights": _i("min_nights", 1) or 1,
         "size_sqm": _f("size_sqm"),

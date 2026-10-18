@@ -19,6 +19,33 @@
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+  {#- 18 Oct (owner): "like a reserve room option" -- a stay agreed by email at a
+      price you set, held while the guest fills in their details and pays on a
+      link. The room is off sale from the moment it is reserved. -#}
+  {% set _mode = form.get('mode', 'book') %}
+  <fieldset class="form-section" style="border:0; padding:0; margin:0 0 14px;">
+    <legend class="field-label">What kind of booking</legend>
+    <label style="display:flex; gap:8px; align-items:baseline;">
+      <input type="radio" name="mode" value="book" {{ 'checked' if _mode != 'reserve' }}>
+      <span><b>Book it now</b> — they are here, or on the telephone, and it is decided.</span>
+    </label>
+    <label style="display:flex; gap:8px; align-items:baseline; margin-top:6px;">
+      <input type="radio" name="mode" value="reserve" {{ 'checked' if _mode == 'reserve' }}>
+      <span><b>Reserve it and send them a link</b> — agreed by email: they fill in their
+      details and pay, and it confirms itself when they have paid.</span>
+    </label>
+    <div style="margin:8px 0 0 26px;">
+      <label class="field-label" for="wi_hold">Hold it for</label>
+      <select id="wi_hold" name="hold_days">
+        {% for d in [1, 2, 3, 5, 7, 14] %}
+        <option value="{{ d }}" {{ 'selected' if form.get('hold_days', '3')|string == d|string }}>{{ d }} day{{ '' if d == 1 else 's' }}</option>
+        {% endfor %}
+      </select>
+      <p class="upload-hint">Reservations only. If they have not paid by then, the room goes back on
+      sale by itself. Their email address is needed; the name can wait for them to fill in.</p>
+    </div>
+  </fieldset>
+
   {# Dates first, then the rooms that are actually free for them. Reception
      was choosing from a list of every room and being told "taken" only after
      pressing the button, with somebody standing in front of them.
@@ -85,7 +112,7 @@
   <div class="field-row-2">
     <div>
       <label class="field-label" for="wi_name">Name</label>
-      <input id="wi_name" type="text" name="guest_name" required
+      <input id="wi_name" type="text" name="guest_name"
              value="{{ form.get('guest_name', '') }}" placeholder="A surname is enough" autocomplete="name" spellcheck="false" autocapitalize="words">
     </div>
     <div>
@@ -109,13 +136,13 @@
   <p class="upload-hint">For a booking made by email or telephone: they get their statement with a
   Pay now button for whatever is still owed. Nothing is sent if they have paid it all here.</p>
 
-  <label class="field-label" for="wi_price">Price for the stay (optional)</label>
+  <label class="field-label" for="wi_price">Price for the stay (optional — the amount agreed)</label>
   <input id="wi_price" type="number" name="total_price" step="0.01" min="0"
          value="{{ form.get('total_price', '') }}" placeholder="Leave blank for the rate card">
-  <p class="upload-hint">Fill this in only to charge less than the advertised rate —
-  a room sold late on a night it would otherwise sit empty. It goes on the bill as a
-  discount, so the nights still show at the price they are advertised at. More than
-  the rate card is ignored.</p>
+  <p class="upload-hint">Leave it blank for the rate card, or put in what you agreed. Less than
+  the rate card goes on the bill as a discount, so the nights still show at the advertised
+  price; more than it is charged as the room price you typed. Taxe de séjour is added on
+  top, per adult.</p>
 
   <div class="field-row-2">
     <div>
@@ -137,7 +164,7 @@
   <label class="field-label" for="wi_notes">Anything to note</label>
   <textarea id="wi_notes" name="special_requests" rows="2">{{ form.get('special_requests', '') }}</textarea>
 
-  <button type="submit" class="btn-primary" style="margin-top:14px;">Book them in</button>
+  <button type="submit" class="btn-primary" style="margin-top:14px;">Book them in, or reserve it</button>
 </form>
 
 {% endblock %}
