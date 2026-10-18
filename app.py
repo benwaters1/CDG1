@@ -51286,8 +51286,6 @@ def admin_events():
     """Weddings and private hire: every enquiry, and where each one stands."""
     conn = get_db()
     everything = conn.execute("SELECT * FROM event_inquiries ORDER BY created_at DESC").fetchall()
-    new_count = sum(1 for e in everything if e["status"] == "new")
-    confirmed_count = sum(1 for e in everything if e["status"] == "confirmed")
     types = event_types(conn)
     # What each one has actually been paid, read before the close like
     # everything else here. The route to record a payment existed and
@@ -51297,15 +51295,53 @@ def admin_events():
     # Read before the close, like everything else on this page.
     terms_text = event_terms(conn)
     conn.close()
+    pipeline = events_pipeline(everything, bills)
     lv = events_view(everything, request.args, bills)
     return render_template(
         "admin_events.html", inquiries=lv["rows"], lv=lv, today=house_today(),
-        new_count=new_count, confirmed_count=confirmed_count,
-        current_count=sum(1 for e in everything if _event_when(e) == "Current"),
         event_types=types, bills=bills, payment_methods=MANUAL_PAYMENT_METHODS,
-        event_terms_text=terms_text,
+        event_terms_text=terms_text, pipeline=pipeline, days_waiting=event_days_waiting,
         export_q=request.query_string.decode("utf-8", "replace"),
     )
+
+
+def event_days_waiting(e, today=None):
+    """Whole days since the enquiry arrived, by the house's calendar."""
+    arrived = house_date(e["created_at"])
+    return max(((today or house_today()) - arrived).days, 0) if arrived else 0
+
+
+def events_pipeline(rows, bills, today=None):
+    """Where the events business stands, in money as well as in counts.
+
+    The page counted enquiries -- one new, two confirmed -- and said nothing of
+    what was riding on them: what the quotes still out are worth, what the
+    confirmed events are, what is still to collect and whether any of it is
+    late (owner, 18 October 2026, "do the rest of the back office"). Each
+    figure is summed from event_bill, the one definition of an event's money.
+    """
+    today = today or house_today()
+    iso = today.isoformat()
+    current = [e for e in rows if _event_when(e) == "Current"]
+
+    def bill(e, key):
+        b = bills.get(e["id"])
+        return float(b[key]) if b else 0.0
+
+    new = sorted((e for e in rows if e["status"] == "new"), key=lambda e: e["created_at"] or "")
+    quoted = [e for e in current if e["status"] == "quoted"]
+    confirmed = [e for e in current if e["status"] == "confirmed"]
+    owing = [e for e in confirmed if bill(e, "owed") > 0.005]
+    return {
+        "new": len(new),
+        "oldest_wait": event_days_waiting(new[0], today) if new else 0,
+        "quotes_out": len(quoted),
+        "quotes_value": round(sum(bill(e, "quoted") for e in quoted), 2),
+        "confirmed": len(confirmed),
+        "confirmed_value": round(sum(bill(e, "quoted") for e in confirmed), 2),
+        "to_collect": round(sum(bill(e, "owed") for e in owing), 2),
+        "overdue": len([e for e in owing if e["balance_due_date"] and e["balance_due_date"] < iso]),
+    }
 
 
 def _event_when(e):
