@@ -54,7 +54,9 @@
 {% from '_emblems.html' import emblem %}
 
 <section class="g-hero">
-<img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" style="object-position: center 45%" src="{{ url_for('static', filename='img/more/blue-bedroom-2400.jpg') }}" alt="The Family Suite, the blue bedroom">
+{#- 18 Oct (owner): "use a photo of the 2 beds in the room with wallpaper new side by side, it's much nicer" - the Family
+    Suite's two beds side by side under the new wallpaper, in place of the blue bedroom with its peeling paper. -#}
+<img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" style="object-position: center 45%" src="https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432953.jpg?k=bfe46237a062c76163feac464aa8a8aa65e4f2d55d0bebc5842f0b5f785c5fa6&o=" alt="The Family Suite, two beds side by side under the new wallpaper">
 <div class="g-hero__wash"></div>
 <div class="g-hero__in">
   {#- 17 Oct: the room count, here and below, is the rooms table's (house_rooms) - five until The Twin Room (Ground Floor)
