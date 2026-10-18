@@ -2421,7 +2421,8 @@ _ROOM_CONFIRMED_BODY_5OCT = (
 _ROOM_CONFIRMED_BODY = (
     _ROOM_CONFIRMED_BODY_5OCT
     .replace("Five bedrooms are open to guests, and one of them is yours",
-             "Five guest rooms are open, and one of them is yours")
+             # The count from the rooms on sale, not written (z28 item 6).
+             "{Room_count_word} guest rooms are open, and one of them is yours")
     .replace("the beds, the floors and the bathrooms are new.",
              "the floors and the bathrooms are new, and the rooms are furnished from the brocantes."))
 
@@ -2566,6 +2567,22 @@ _RETIRED_ROOM_COUNT = re.compile(r"\bninety[- ]four\b", re.I)
 # brocantes. "The bedrooms are reached by the original staircase" is neither.
 _RETIRED_ROOM_WORDS = re.compile(r"\bfive bedrooms\b", re.I)
 _NEW_BEDS = re.compile(r"\bnew beds?\b|\bbeds?\b[^.]{0,60}?\b(?:are|is) new\b", re.I)
+# How many guest rooms a letter says the house has, in words. (?<![-\w]) so
+# "ninety-four guest rooms" is not read as four -- that one has its own rule.
+_GUEST_ROOM_COUNT = re.compile(
+    r"(?<![-\w])(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
+    r"\s+guest\s+rooms\b", re.I)
+# The tags that say it for the letter, filled from the rooms on sale when the
+# letter is made (z28 item 6): "{Room_count_word} guest rooms are open" says
+# five while the sixth room is hidden and six the day it is ticked Bookable.
+# The capital one is for the start of a sentence.
+HOUSE_MERGE_TAGS = ("room_count_word", "Room_count_word")
+
+
+def house_merge_values():
+    """{tag: value} for the tags any letter may use about the house itself."""
+    word = house_room_facts_cached()["count_word"]
+    return {"room_count_word": word, "Room_count_word": word[:1].upper() + word[1:]}
 
 
 def _squash(text):
@@ -2619,6 +2636,19 @@ def letter_rule_breaches(template_key, subject, body):
         out.append({"rule": "new_beds", "untrue": True, "said": (
             "it says the beds are new, and the rooms are furnished from the "
             "brocantes, antiques beside new pieces (owner, 15 October)")})
+    # A count written into the letter, when the rooms on sale say otherwise.
+    # The day the sixth room goes on sale, a letter still saying "Five guest
+    # rooms are open" is named here, and so on the owner home, rather than
+    # found by a guest. Only asked when the letter states a count.
+    said_counts = {m_.group(1).lower() for m_ in _GUEST_ROOM_COUNT.finditer(text)}
+    if said_counts:
+        lets = house_room_facts_cached()["count_word"]
+        wrong = sorted(c for c in said_counts if c != lets)
+        if wrong:
+            out.append({"rule": "guest_room_count", "untrue": True, "said": (
+                f"it says “{wrong[0]} guest rooms”, and the house lets {lets}. "
+                "{Room_count_word} says it for you, and stays right when a room "
+                "goes on or off sale")})
     return out
 
 
@@ -5540,20 +5570,16 @@ def init_db():
         ("rooms_bed_setup", "ALTER TABLE rooms ADD COLUMN bed_setup TEXT"),
         ("rooms_bathroom", "ALTER TABLE rooms ADD COLUMN bathroom TEXT"),
         ("rooms_outlook", "ALTER TABLE rooms ADD COLUMN outlook TEXT"),
-        # NO BEDROOM IS ON THE GROUND FLOOR. The bedrooms are upstairs and
-        # the bathrooms are down, confirmed by the owner. One room carried
-        # floor = 'ground', and _roompick reads that column to answer the
-        # question "how are you with stairs?" -- so somebody who said stairs
-        # were difficult was recommended that room with the words "it is on
-        # the ground floor, so no staircase". A wrong fact in a column is a
-        # promise the app then makes in its own voice.
-        #
-        # Cleared rather than rewritten: "not the ground floor" is what is
-        # known, and the picker treats an empty floor as upstairs, which is
-        # the safe side. The owner sets the real one per room at
-        # /admin/rooms/<id>/edit, where this field already lives.
-        ("rooms_floor_no_ground",
-         "UPDATE rooms SET floor = NULL WHERE LOWER(COALESCE(floor, '')) = 'ground'"),
+        # "rooms_floor_no_ground" stood here: an UPDATE, run on every boot,
+        # clearing any room whose floor was 'ground', because no bedroom was
+        # on the ground floor and the picker had told a guest who found stairs
+        # difficult "it is on the ground floor, so no staircase". On 17 October
+        # 2026 the house added one that is (The Twin Room (Ground Floor), z28
+        # item 4), so the premise went and so did the migration. It was saved
+        # as "Ground floor" and survived only because this matched 'ground'
+        # exactly. What still holds is the reason it was written: that room is
+        # on the ground floor and STILL REACHED BY STAIRS, so nothing may call
+        # it step-free -- test_confirmed_facts holds the picker to that.
         # The bathroom in the words the guest pages read. The old drop-down
         # wrote "Shared" and "Private, not en-suite", which the comparison
         # table and the Stay cards do not recognise (see BATHROOM_TYPES).
@@ -7901,7 +7927,9 @@ def init_db():
         room_cols = {c["name"] for c in conn.execute("PRAGMA table_info(rooms)").fetchall()}
         for room in DEFAULT_ROOMS:
             fields = {k: v for k, v in room.items() if k in room_cols}
-            fields["active"] = 1
+            # On sale unless the seed says otherwise: the sixth room is seeded
+            # off sale, as it is on the live site until the owner ticks it.
+            fields["active"] = room.get("active", 1)
             fields["export_token"] = secrets.token_urlsafe(20)
             conn.execute(
                 f"INSERT INTO rooms ({', '.join(fields)}) "
@@ -8063,7 +8091,10 @@ def init_db():
 
     if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
                         ("rooms_initial_order_set",)).fetchone():
-        for position, room_name in enumerate(HOME_ROOM_ORDER):
+        # From 1, the line-up's own numbering (ROOM_LINEUP places the five at
+        # 1..5): counted from 0 here, the sixth room took 5 on a fresh install,
+        # level with the Family Suite, and sorted ahead of it by price.
+        for position, room_name in enumerate(HOME_ROOM_ORDER, 1):
             conn.execute("UPDATE rooms SET sort_order = ? WHERE name = ?",
                          (position, room_name))
         conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)",
@@ -10979,6 +11010,10 @@ app.jinja_env.globals["contact_address"] = lambda area: contact_address(area)
 app.jinja_env.globals["check_in_at"] = CHECK_IN_WORDS
 app.jinja_env.globals["check_out_at"] = CHECK_OUT_WORDS
 app.jinja_env.globals["check_in_hour"] = int(CHECK_IN_TIME[:2])
+# The same two, as "15:00", for the LodgingBusiness structured data: schema.org
+# reads checkinTime as a clock time, not "3pm" (z27 item 4).
+app.jinja_env.globals["check_in_time"] = CHECK_IN_TIME
+app.jinja_env.globals["check_out_time"] = CHECK_OUT_TIME
 app.jinja_env.globals["clock_words"] = clock_words
 # Money on a page was formatted inline, template by template, with
 # '%.2f'|format and a euro sign typed next to it. One definition instead, so a
@@ -13421,6 +13456,8 @@ HOME_ROOM_ORDER = [
     "The King Suite",
     "The Marquis Suite",
     "The Family Suite",
+    # The sixth room, last (owner, 17 October 2026, z28 item 6).
+    "The Twin Room (Ground Floor)",
 ]
 
 # Giving the rooms their own names, and moving what the old names carried into
@@ -13452,14 +13489,12 @@ ROOM_IDENTITY = [
      "King bed", "private", "mountain", None, None),
     ("Family Suite with Mountain View", "Les Deux Chambres",
      "Queen and doubles", "private", "mountain", 140, None),
-    # floor None, NOT "ground". No bedroom is on the ground floor -- the
-    # owner confirmed it and rooms_floor_no_ground clears the column -- but
-    # that migration runs while the table is still EMPTY on a fresh install,
-    # and this rename runs after the seed, so it wrote "ground" straight back.
-    # The live database was fine, because its rooms are already renamed and
-    # this is skipped. A new deploy, a restore to an empty volume, or the test
-    # copy got a room picker telling somebody who said stairs were difficult
-    # "it is on the ground floor, so no staircase".
+    # floor None, NOT "ground": this room is upstairs, like every bedroom
+    # but one. It once seeded "ground" here, and a fresh install's room
+    # picker told somebody who said stairs were difficult "it is on the
+    # ground floor, so no staircase". The one room that IS on the ground
+    # floor, The Twin Room (Ground Floor) since 17 October 2026, is seeded
+    # by apply_room_six_2026_10_17 -- and is still reached by stairs.
     ("Double with Shared Bathroom", "Chambre Cerise",
      "Double bed", "shared", None, None, None),
     ("Twin/Double with Shared Bathroom", "Chambre Tilleul",
@@ -13515,6 +13550,30 @@ DEFAULT_ROOMS = [
         "sort_order": 4,
         "max_children": 0,
         "description": "A generous 70 sq m suite with sweeping mountain views. Sit in comfort by the fireplace.",
+    },
+    # The sixth room (owner, 17 October 2026, z28 item 6), under its own name
+    # from the start: nothing renames it, and the five above reach theirs
+    # through ROOM_IDENTITY, ROOM_LINEUP and ROOM_NAMES_2026_10_16. Seeded OFF
+    # SALE, as it is on the live site, because it cannot be let until the
+    # five-rooms-a-night limit is live (MAX_ROOMS_LET_PER_NIGHT). On the ground
+    # floor and still reached by stairs.
+    {
+        "name": "The Twin Room (Ground Floor)",
+        "channel_name": "Twin Room with Mountain View",
+        "price_per_night": 270.0,
+        "max_occupancy": 2,
+        "min_nights": 1,
+        "sort_order": 6,
+        "max_adults": 2,
+        "max_children": 0,
+        "bed_setup": "Queen bed and double bed",
+        "bathroom": "private",
+        "outlook": "mountain",
+        "floor": "Ground floor",
+        "workshop_room": 1,
+        "active": 0,
+        "description": ("A queen bed and a double bed, with a private bathroom of its own "
+                        "next door. On the ground floor, though still reached by stairs."),
     },
 ]
 
@@ -16197,9 +16256,183 @@ def _availability_picture(conn, *, fresh=False):
         picture["night_label"][why] = (
             f"Provisionally held for a private {row['kind'] or 'event'}")
 
+    # Which rooms are let on which night, for the five-rooms-a-night limit.
+    _rooms_let_index(conn, picture)
+
     if has_request_context():
         g._availability_picture = picture
     return picture
+
+
+# FIVE ROOMS LET A NIGHT, NEVER SIX. Chambres d'hôtes are limited to five rooms
+# and fifteen guests (Code du tourisme L324-3, D324-13). The house has six
+# since 17 October 2026, and the owner's answer was "never more than five rooms
+# let on any one night" (z28 item 1). The guest ceiling is house_guest_capacity;
+# this is the room one. One value, shown on the owner's Rooms page.
+MAX_ROOMS_LET_PER_NIGHT = 5
+app.jinja_env.globals["max_rooms_let"] = MAX_ROOMS_LET_PER_NIGHT
+# What a guest is told, on the room page's calendar and in a search.
+HOUSE_FULL_NIGHT = "The house is full that night"
+# How far ahead the index is built. Nothing is sold more than a year ahead
+# (generate_room_ics), and a channel's long closure is cut to this.
+LET_INDEX_DAYS = 800
+
+
+def house_full_reason(night):
+    """'The house is full on 12 December.' -- a stay refused for this."""
+    return f"The house is full on {night.day} {night.strftime('%B')}."
+
+
+def is_house_full_reason(why):
+    return bool(why) and why.startswith("The house is full")
+
+
+def own_feed_spans(conn, picture):
+    """{room_id: {(first night, DTEND)}} -- and None for every room -- for the
+    closures this house's own calendars send the channels.
+
+    A channel set to export "booked and closed dates" sends those straight
+    back, and in what is stored (dates, no summary) a closure coming back is
+    indistinguishable from a guest's booking. One that matches a span sent
+    out, exactly, is ours coming home and is not a room let. The spans are
+    generate_room_ics's: test_rooms_let_a_night holds the two together.
+    """
+    spans = {None: set()}
+    for rid, rows in picture["manual"].items():
+        for a, b, _mode, _note in rows:
+            if a and b:
+                spans.setdefault(rid, set()).add((a, b))
+    for s in sessions_holding_the_house(conn):
+        w_start, w_end = parse_date(s["start_date"]), parse_date(s["end_date"])
+        if w_start and w_end:
+            spans[None].add((w_start - timedelta(days=1),
+                             max(w_end, w_start) + timedelta(days=1)))
+    for h_start, h_end, why in picture["house"]:
+        if h_start and h_end and not why.startswith("Those dates are held for a workshop"):
+            spans[None].add((h_start, h_end + timedelta(days=1)))
+    return spans
+
+
+def _rooms_let_index(conn, picture):
+    """picture["let"] = {night: {room_id: [(kind, booking_id, status)]}}, and
+    picture["channel_echoes"] = [(room_id, start, end)] left out of it.
+
+    TAKEN: this site's pending and confirmed bookings, in any room, and a
+    channel's imported nights in a room on sale. NOT TAKEN: the owner's
+    closures ("Resting for the winter") -- a room shut is not a room let --
+    and a channel range that is one of the house's own closures sent back.
+
+    The owner's "keep this open here" choice is not honoured in this count:
+    it reopens a channel's nights for sale on THIS site, but if the stay on
+    the channel is real the room is let, and the limit is the law's.
+    """
+    today = house_today()
+    first, last = today - timedelta(days=1), today + timedelta(days=LET_INDEX_DAYS)
+    index = {}
+
+    def add(rid, a, b, entry):
+        if not (a and b):
+            return
+        day, stop = max(a, first), min(b, last)
+        while day < stop:
+            index.setdefault(day, {}).setdefault(rid, []).append(entry)
+            day += timedelta(days=1)
+
+    for rid, rows in picture["bookings"].items():
+        for bid, status, a, b in rows:
+            add(rid, a, b, ("booking", bid, status))
+    on_sale = {r["id"] for r in conn.execute("SELECT id FROM rooms WHERE active = 1")}
+    ours = own_feed_spans(conn, picture)
+    echoes = []
+    for row in conn.execute("SELECT room_id, start_date, end_date FROM blocked_dates"):
+        rid = row["room_id"]
+        a, b = parse_date(row["start_date"]), parse_date(row["end_date"])
+        if rid not in on_sale or not (a and b):
+            continue
+        if (a, b) in ours.get(rid, ()) or (a, b) in ours[None]:
+            echoes.append((rid, a, b))
+            continue
+        add(rid, a, b, ("channel", None, "confirmed"))
+    picture["let"] = index
+    picture["channel_echoes"] = echoes
+
+
+def rooms_let_on(picture, night, *, besides=None, exclude_booking_id=None,
+                 include_pending=True):
+    """The rooms let on one night, other than `besides`, as a set of ids."""
+    taken = set()
+    for rid, entries in picture["let"].get(night, {}).items():
+        if rid == besides:
+            continue
+        for _kind, bid, status in entries:
+            if exclude_booking_id and bid == exclude_booking_id:
+                continue
+            if not include_pending and status != "confirmed":
+                continue
+            taken.add(rid)
+            break
+    return taken
+
+
+def rooms_over_the_limit(conn, today=None, days=400):
+    """[{'night', 'rooms': [names]}] for each night ahead with more than five
+    rooms let, soonest first. [] when the house keeps to the limit.
+
+    The gate cannot stop this one: two channel bookings inside one calendar
+    sync can make six, because neither channel knows of the other's booking
+    until the house's feed is read again. So it is looked for, every night
+    ahead, and said the same day (owner home, and a task that closes itself).
+    Nightly lettings only: workshops are a separate thing, their rooms not
+    the nightly rooms nor assigned the same way, and the limit does not count
+    them (owner, 18 October 2026, z28).
+    """
+    today = today or house_today()
+    picture = _availability_picture(conn)
+    names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    out = []
+    for i in range(days):
+        night = today + timedelta(days=i)
+        let = rooms_let_on(picture, night)
+        if len(let) > MAX_ROOMS_LET_PER_NIGHT:
+            out.append({"night": night,
+                        "rooms": sorted(names.get(r, f"room {r}") for r in let)})
+    return out
+
+
+def rooms_limit_problem(conn, today=None):
+    """(title, detail) for the owner home and its task, or None. One sentence,
+    so the two cannot word it apart."""
+    over = rooms_over_the_limit(conn, today)
+    if not over:
+        return None
+    first = over[0]
+    when = f"{first['night'].day} {first['night'].strftime('%B')}"
+    title = (f"{len(first['rooms'])} rooms are let on {when}" if len(over) == 1
+             else f"More than five rooms are let on {len(over)} nights, from {when}")
+    shown = "; ".join(f"{o['night'].day} {o['night'].strftime('%b')}: "
+                      + ", ".join(o["rooms"]) for o in over[:4])
+    return (title,
+            f"The house lets no more than {MAX_ROOMS_LET_PER_NIGHT} rooms on any one "
+            f"night (chambres d'hôtes). {shown}"
+            + (f"; and {len(over) - 4} more" if len(over) > 4 else "")
+            + ". Usually two channel bookings arriving between calendar syncs: "
+              "one of them has to be moved or cancelled.")
+
+
+def channel_echo_problem(conn):
+    """(title, detail) when a channel is sending the house's own closures back,
+    or None. Those are left out of the count -- but they mean the channel's
+    export carries closed dates, and a date closed ON the channel is then
+    indistinguishable from a booking, and counts as a room let."""
+    echoes = _availability_picture(conn).get("channel_echoes") or []
+    if not echoes:
+        return None
+    return (f"Booking.com is sending back {len(echoes)} of the house's own closures",
+            "Its calendar export is set to booked AND closed dates, and what it sends is "
+            "dates only, so a closure cannot be told from a booking. The house's own "
+            "closures coming back are recognised and left out of the five-rooms-a-night "
+            "count; a date closed on Booking.com itself is not, and counts as a room let. "
+            "In Booking.com: Sync calendars, Decide what to export, Booked dates only.")
 
 
 def atelier_holding_the_house(conn, arrival, departure):
@@ -16292,6 +16525,18 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
     for h_start, h_end, why in picture["house"]:
         if h_start and h_end and arrival <= h_end and h_start < departure:
             return False, why
+
+    # And the house's own limit: five rooms let on any one night, whichever
+    # five. Asked here, the one check the search, the room page, the quote,
+    # "What Is Open Next" and the booking itself all refuse from, so none of
+    # them can offer a sixth room the others would turn down (z28 item 1).
+    day = arrival
+    while day < departure:
+        if len(rooms_let_on(picture, day, besides=room_id,
+                            exclude_booking_id=exclude_booking_id,
+                            include_pending=include_pending)) >= MAX_ROOMS_LET_PER_NIGHT:
+            return False, house_full_reason(day)
+        day += timedelta(days=1)
 
     return True, None
 
@@ -16658,17 +16903,29 @@ def unavailable_nights(conn, room_id, start, end):
     for b_start, b_end in picture["blocked"].get(room_id, ()):
         if b_start and b_end:
             hold(b_start, b_end - timedelta(days=1), "Booked on another channel")
-    # A closure says what its mode says: closed for the season, or not
-    # available. Never why -- the reason is the house's own.
-    for b_start, b_end, mode, _note in picture["manual"].get(room_id, ()):
+    # A closure says what its mode says: closed for the season, in the words
+    # the owner wrote for guests ("The Marquis Suite reopens on 15 February"),
+    # or not available. Never the reason -- that field is "for the house only"
+    # on the Close rooms page ("family visit"), so it is not a guest's to read.
+    for b_start, b_end, mode, note in picture["manual"].get(room_id, ()):
         if b_start and b_end:
             hold(b_start, b_end - timedelta(days=1),
-                 "Closed for the season" if mode == "season" else "Not available")
+                 ((note or "").strip().rstrip(".") or "Closed for the season")
+                 if mode == "season" else "Not available")
 
     # Called-off sittings are already out: the picture asks
     # sessions_holding_the_house, like the gate.
     for h_start, h_end, why in picture["house"]:
         hold(h_start, h_end, picture["night_label"].get(why, why))
+
+    # Five other rooms let that night: the gate refuses a sixth, so the
+    # calendar greys it, in the same words (z28 item 1).
+    day = start
+    while day < end:
+        iso = day.isoformat()
+        if iso not in out and len(rooms_let_on(picture, day, besides=room_id)) >= MAX_ROOMS_LET_PER_NIGHT:
+            out[iso] = HOUSE_FULL_NIGHT
+        day += timedelta(days=1)
 
     # And the legal ceiling: a night already holding the maximum has no room
     # for even one more guest, whatever this particular room's own state is.
@@ -29072,6 +29329,30 @@ def generate_room_ics(conn, room):
         window_end = today.replace(year=today.year + 3, day=28)
     closed("window", today + timedelta(days=365), window_end, "Not yet open")
 
+    # A room taken off sale here is off sale everywhere (z28 item 2). The feed
+    # ignored `active`, so a room hidden in Admin still exported every date
+    # open, and a channel reading it could sell it. One span over the whole
+    # window, rather than nothing: an empty calendar reads as all open.
+    if "active" in room.keys() and not room["active"]:
+        closed("off-sale", today, window_end, "Closed — " + room["name"])
+
+    # Five other rooms let on a night: this one closes on the channels for it,
+    # so Booking.com stops selling the sixth (z28 item 1). Nights run together
+    # into one span each, so a full week is one event and not seven. The
+    # house's own count, from the picture the booking check refuses from.
+    picture = _availability_picture(conn)
+    run_start, day, stop = None, today, today + timedelta(days=365)
+    while day <= stop:
+        full = day < stop and len(rooms_let_on(picture, day, besides=room["id"])) \
+            >= MAX_ROOMS_LET_PER_NIGHT
+        if full and run_start is None:
+            run_start = day
+        elif not full and run_start is not None:
+            closed(f"full-{run_start.isoformat()}-{day.isoformat()}", run_start, day,
+                   "Closed — the house is full")
+            run_start = None
+        day += timedelta(days=1)
+
     lines.append("END:VCALENDAR")
     return "\r\n".join(lines) + "\r\n"
 
@@ -32478,6 +32759,20 @@ def nights_already_taken(conn, *, days=None):
             gone.setdefault(day, set()).add(room_id)
             day += timedelta(days=1)
     taken.update(day for day, rooms in gone.items() if rooms == for_sale)
+
+    # And a night the five-rooms limit closes (z28 item 1): five let, so the
+    # gate refuses every room that is not one of them, for "the house is
+    # full". Asked room by room, as is_range_available is, so the picker
+    # strikes out a night exactly when every room would refuse it.
+    if for_sale:
+        day = today
+        while day <= horizon:
+            let = rooms_let_on(picture, day)
+            if day not in taken and len(let) >= MAX_ROOMS_LET_PER_NIGHT and all(
+                    r in gone.get(day, ()) or len(let - {r}) >= MAX_ROOMS_LET_PER_NIGHT
+                    for r in for_sale):
+                taken.add(day)
+            day += timedelta(days=1)
     return sorted(day.isoformat() for day in taken)
 
 
@@ -35909,6 +36204,20 @@ def owner_home_warnings(conn, today):
     clash = terms_times_problem(conn)
     if clash:
         add("warn", clash[0], clash[1], 1, "admin_terms")
+
+    # MORE THAN FIVE ROOMS LET ON A NIGHT. The law's limit, and the one thing
+    # the booking check cannot stop: two channel bookings inside one sync.
+    # Any night ahead, not a fortnight's -- a breach in March is fixed by
+    # moving somebody now. Closes itself when the night is down to five.
+    over = rooms_limit_problem(conn, today)
+    if over:
+        first = rooms_over_the_limit(conn, today)[0]["night"]
+        add("blocker", over[0], over[1], 1, "admin_calendar",
+            month=first.strftime("%Y-%m"))
+    # A channel sending the house's own closures back as if they were stays.
+    echo = channel_echo_problem(conn)
+    if echo:
+        add("warn", echo[0], echo[1], 1, "channel_stays_page")
 
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
     # the next pass that writes cleanly takes the line away.
@@ -48146,6 +48455,9 @@ def book_rooms():
 
     availability = {}
     unavailable_reason = {}
+    # {room_id: the owner's note} for rooms closed for the season on these
+    # nights. See below.
+    resting = {}
     # What THESE nights cost, room by room (owner, 15 October 2026, after the
     # live one-euro test booking). The cards multiplied the standard rate by
     # the nights, so a night the rate card sold at one euro read "265 for 1
@@ -48197,8 +48509,22 @@ def book_rooms():
                 # Closed for the season: the owner's own line, "The Gold
                 # Suite reopens on 1 April."
                 unavailable_reason[room["id"]] = why
+            elif not ok and is_house_full_reason(why):
+                # Five other rooms let on a night of the stay: said plainly,
+                # because "not available" sends somebody hunting for another
+                # room that is not there either (z28 item 1).
+                unavailable_reason[room["id"]] = why.rstrip(".")
             elif not ok:
                 unavailable_reason[room["id"]] = "Not available these dates"
+            # A room closed for the season over these nights is RESTING: its
+            # card draws the winter box, in the owner's words, and the rooms
+            # still open say how they are kept warm. This used to be the
+            # template knowing the two suites by name and the winter by
+            # comparing month strings (z27 item 17), so renaming a suite or
+            # resting a room in March said nothing. The closure is the fact.
+            season = season_note_for(conn, room["id"], arrival, departure)
+            if season and not availability[room["id"]]:
+                resting[room["id"]] = season
             # compute_room_total is the one definition of a stay's room price;
             # the nightly rates are read only to say whether they differ, so
             # "a night" is not printed beside an average as though it were
@@ -48261,6 +48587,7 @@ def book_rooms():
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
         returning_guest=welcome, extras=stay_extras,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
+        resting=resting,
         stay_nights=stay_nights, room_quotes=room_quotes,
         nothing_available=nothing_available, next_free=next_free,
         blocking_atelier=blocking_atelier,
@@ -48514,8 +48841,12 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
         return quote
     free, why = is_range_available(conn, room["id"], arrival, departure)
     if not free:
+        # A season closure's own note, and the house being full (z28 item 1),
+        # are said as they are; anything about another booking is the one
+        # plain sentence.
         quote.update(available=False,
-                     reason=(why if why and why == season_note_for(conn, room["id"], arrival, departure)
+                     reason=(why if why and (why == season_note_for(conn, room["id"], arrival, departure)
+                                             or is_house_full_reason(why))
                              else GUEST_DATES_TAKEN))
         return quote
     # On request: priced as ever, booked as a request the house answers.
@@ -51755,11 +52086,17 @@ DINING_MODES = {
 # The Twin Room's two beds are doubles and it sleeps two, and the Queen Room's
 # bed is a king (owner, 15 October 2026; see apply_room_facts_2026_10_15,
 # which puts the same on a database that already has the line-up).
+#
+# The prices are the live site's of 17 October 2026 (z28 item 6), so a fresh
+# install, a restore to an empty volume and the test seed price the rooms as
+# guests see them: 270, 270, 350, 440, 580. They were the 24 September figures
+# (280, 280, 380, 480), which the owner has since changed in Admin. A database
+# that already has the line-up is not touched -- this matches old names only.
 ROOM_LINEUP = [
-    ("Chambre Tilleul", "The Twin Room", 280, 2, "Two double beds", 1),
-    ("Chambre Cerise", "The Queen Room", 280, 2, "King bed", 2),
-    ("Chambre du Levant", "The King Room", 380, 2, "King bed", 3),
-    ("Chambre \u00c9meraude", "The Gold Suite", 480, 2, "Emperor bed", 4),
+    ("Chambre Tilleul", "The Twin Room", 270, 2, "Two double beds", 1),
+    ("Chambre Cerise", "The Queen Room", 270, 2, "King bed", 2),
+    ("Chambre du Levant", "The King Room", 350, 2, "King bed", 3),
+    ("Chambre \u00c9meraude", "The Gold Suite", 440, 2, "Emperor bed", 4),
     ("Les Deux Chambres", "The Family Suite", 580, 5, "Queen and doubles", 5),
 ]
 # The words each room is described in, the same as _room_copy.html's. The
@@ -51786,6 +52123,13 @@ ROOM_LINEUP_WORDS = {
     "The Family Suite": "Two bedrooms opening into one another, sleeping five, "
                         "with the valley on both sides. Children of eight and over "
                         "are welcome. A private bathroom on the first floor.",
+    # _room_copy.html's words (z28). Not in ROOM_LINEUP, so no rename uses it;
+    # it is here so this table has every room. DEFAULT_ROOMS carries the same
+    # sentence, because it is defined above this and seeds the room by it;
+    # test_room_lineup holds the two together.
+    "The Twin Room (Ground Floor)": "A queen bed and a double bed, with a private "
+                                    "bathroom of its own next door. On the ground "
+                                    "floor, though still reached by stairs.",
 }
 
 
@@ -55606,7 +55950,7 @@ EMAIL_TEMPLATE_TAGS = {
     "workshop_waitlist_opening": ("dates", "name", "register_url", "workshop_title"),
     "room_confirmed": ("arrival_date", "checkin_url", "departure_date", "door_url", "first_name",
                        "guest_name", "manage_url", "party_size", "reference_code",
-                       "room_name", "stay_details"),
+                       "room_name", "stay_details") + HOUSE_MERGE_TAGS,
     "room_request_received": ("checkin_url", "guest_name", "reference_code",
                               "room_name", "stay_lines"),
     "room_paid_awaiting": ("checkin_url", "guest_name", "reference_code", "room_name",
@@ -55742,6 +56086,15 @@ def merge_email_text(source, context):
     Three or more line breaks are closed to two: a block tag with nothing to
     say (no add-ons, no account link) otherwise leaves a hole in the letter.
     """
+    # The house's own facts, filled here for every letter that names one, so
+    # no send site, preview or test has to remember to pass them -- and they
+    # win over the context, because they are facts about the house and never
+    # about one letter (a preview's stand-in "{room_count_word}" included).
+    if source and any("{%s}" % tag in source for tag in HOUSE_MERGE_TAGS):
+        try:
+            context = {**context, **house_merge_values()}
+        except Exception:           # pragma: no cover - a letter still goes
+            pass
     try:
         text = (source or "").format(**context)
     except (KeyError, IndexError, ValueError, AttributeError):
@@ -60138,16 +60491,20 @@ def new_room():
             """INSERT INTO rooms (name, channel_name, description, max_occupancy, max_adults, max_children,
                price_per_night, min_nights, size_sqm, bed_setup, bathroom, outlook, floor,
                access_steps, access_car_metres, access_bathroom, access_notes,
-               export_token, sort_order, photo_filename, amenities)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               export_token, sort_order, photo_filename, amenities, active)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
             (f["name"], f["channel_name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
              f["access_steps"], f["access_car_metres"], f["access_bathroom"],
              f["access_notes"],
-             # workshop_room defaults to 0. The checkbox is on the edit form
-             # only, like Bookable: a new room starts off both lists and
-             # putting it on either is a deliberate act afterwards.
+             # Off both lists. The checkboxes are on the edit form only: a new
+             # room starts off sale and off the workshops, and putting it on
+             # either is a deliberate act afterwards. `active` is said here
+             # rather than left to the column, which defaults to 1 -- so the
+             # comment said "off" while the room went on sale the moment it
+             # was saved. The sixth room did, on 17 October, and had to be
+             # hidden by hand (z28 item 3). workshop_room defaults to 0.
              secrets.token_urlsafe(20), max_order + 1, photo_filename, f["amenities"]),
         )
         conn.commit()
@@ -61936,8 +62293,16 @@ def remember_guest_language(conn, email):
 def current_language():
     """The language to render in, for whoever is reading.
 
-    Three sources, most specific first:
+    Four sources, most specific first:
 
+      0. The address itself: ?lang=fr. public_base.html advertises the French
+         and Spanish pages to search engines at exactly that address, and
+         nothing read it, so /?lang=fr was the English page with a French
+         address -- "Eight centuries at Gudanes" in the footer of the French
+         homepage (z27 item 8), and every word around it in English too. A
+         language in the address is what the link promised, so it wins for
+         that page, and a guest who followed it stays in it (the session,
+         never a signed-in person's saved choice).
       1. A signed-in person's saved language. Staff read the app every day, so
          the choice belongs to the account rather than the browser session — a
          housekeeper should not re-pick French each login, and must not inherit
@@ -61959,6 +62324,12 @@ def current_language():
     if cached:
         return cached
     lang = None
+    asked = request.args.get("lang")
+    if asked in translations.LANGUAGES:
+        lang = asked
+        session["lang"] = asked
+        g._lang = lang
+        return lang
     user = current_user()
     if user is not None:
         try:
@@ -80759,6 +81130,7 @@ WATCH_TASK_KINDS = {
     "sendcheck": "An Outlook the check on Send cannot run in",
     "terms": "Booking terms that give a different arrival or departure time",
     "extras": "An extra a guest has paid for, to arrange or hand over",
+    "rooms_let": "A night with more than five rooms let",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -84015,6 +84387,17 @@ def watch_task_findings(conn, today=None):
         found.append(("terms", clash[0],
                       clash[1] + "\n\nManagement → Terms and conditions, section 6.",
                       today.isoformat(), "normal"))
+
+    # A night with more than five rooms let, one task per night and titled by
+    # it, so moving one guest closes that night's task and leaves the others.
+    for o in rooms_over_the_limit(conn, today):
+        when = f"{o['night'].day} {o['night'].strftime('%B %Y')}"
+        found.append(("rooms_let",
+                      f"More than five rooms let on {when}",
+                      f"{len(o['rooms'])} rooms are let that night: {', '.join(o['rooms'])}. "
+                      f"The house lets no more than {MAX_ROOMS_LET_PER_NIGHT} on any one "
+                      "night (chambres d'hôtes); one stay has to be moved or cancelled.",
+                      today.isoformat(), "high"))
 
     # A stored guest letter out of step with the house rules on payment. One
     # per letter, titled by the letter, so putting one right closes that one
@@ -100389,7 +100772,7 @@ DRAFT_SCHEMA = {
     },
 }
 DRAFT_SYSTEM = """\
-You draft email replies for the people who answer the guests of Château de Gudanes, a restored château in the Ariège, France, with five guest rooms, a table d'hôte dinner and ateliers (craft workshops). A person reads every draft and sends it themselves; you never send anything.
+You draft email replies for the people who answer the guests of Château de Gudanes, a restored château in the Ariège, France, with {room_count} guest rooms, a table d'hôte dinner and ateliers (craft workshops). A person reads every draft and sends it themselves; you never send anything.
 
 How to write:
 - Write in the guest's language: the language of their most recent message, or the language on their profile if there is no message. When translating, use the target language given.
@@ -100421,7 +100804,10 @@ def draft_reply_with_claude(context, compose_text):
     if not claude_configured():
         return None
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, timeout=120)
-    stable = DRAFT_SYSTEM.format(rules=HOUSE_DRAFTING_RULES)
+    # The room count is read, not written: it said "five" in prose, and the
+    # house lets six the day the sixth room is ticked Bookable (z28 item 6).
+    stable = DRAFT_SYSTEM.format(rules=HOUSE_DRAFTING_RULES,
+                                 room_count=house_room_facts_cached()["count_word"])
     house = json.dumps(context.get("house") or {}, default=str, sort_keys=True)
     request_part = {k: v for k, v in context.items() if k not in ("house",)}
     user_content = (
@@ -100705,10 +101091,11 @@ ACCESS_NEEDS_RETENTION_MONTHS = 12
 
 # "Two double beds" and "Queen and doubles" are the Twin Room and the Family
 # Suite (owner, 15 October 2026); a room's own value is offered as well, so
-# a bed the list does not name is never lost on a save.
+# a bed the list does not name is never lost on a save. "Queen bed and double
+# bed" is The Twin Room (Ground Floor) (owner, 17 October 2026, z28 item 5).
 BED_SETUPS = ["Emperor bed", "King bed", "Queen bed", "Double bed", "Two double beds",
-              "Twin beds", "Twin or double", "Queen and doubles", "Two bedrooms",
-              "Bunk room"]
+              "Twin beds", "Twin or double", "Queen and doubles", "Queen bed and double bed",
+              "Two bedrooms", "Bunk room"]
 # STORED AS THE WORD THE GUEST PAGES READ. The Stay cards, the room page and
 # the comparison table all test for "private" and "shared", and this used to
 # offer "En-suite / Private, not en-suite / Shared" -- none of which they

@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
 {% from '_roomslides.html' import room_slides with context %}
 {% from '_chipicons.html' import ci %}
-{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO %}
+{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO, ROOM_STANDIN %}
 {% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {% from '_facilities.html' import facilities with context %}
 {% from '_illus.html' import illus %}
@@ -11,10 +11,10 @@
 {% set sticky_bar = 'none' %}
 {% set crumbs = [('Stay', None)] %}
 {% block title_fr %}Séjourner au château{% endblock %}
-{% block description_fr %}Cinq chambres dans un Monument Historique classé des Pyrénées ariégeoises, en restauration depuis 2013. {% if house_rooms and house_rooms.from_price %}À partir de {{ house_rooms.from_price }} € la nuit, {% endif %}petit-déjeuner compris.{% endblock %}
+{% block description_fr %}{{ {'five': 'Cinq', 'six': 'Six', 'seven': 'Sept'}.get((house_rooms.count_word if house_rooms and house_rooms.count_word else 'five'), 'Cinq') }} chambres dans un Monument Historique classé des Pyrénées ariégeoises, en restauration depuis 2013. {% if house_rooms and house_rooms.from_price %}À partir de {{ house_rooms.from_price }} € la nuit, {% endif %}petit-déjeuner compris.{% endblock %}
 {% block title %}Stay the Night in a French Château{% endblock %}
-{% block description %}Five guest rooms inside a château under restoration in the French Pyrénées. Antique French beds, breakfast included, and the pool and parkland with them.{% endblock %}
-{% block og_desc %}Five guest rooms inside a château under restoration in the French Pyrénées. Antique French beds, breakfast included, and the pool and parkland with them.{% endblock %}
+{% block description %}{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms inside a château under restoration in the French Pyrénées. Antique French beds, breakfast included, and the pool and parkland with them.{% endblock %}
+{% block og_desc %}{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms inside a château under restoration in the French Pyrénées. Antique French beds, breakfast included, and the pool and parkland with them.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
@@ -27,7 +27,7 @@
 {% from '_weekcost.html' import week_cost %}
 {% from '_flexible.html' import flexible %}
 {% from '_availcal.html' import avail_cal %}
-{% from '_room_copy.html' import room_copy, room_name, room_note %}
+{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_compare_rooms.html' import compare_rooms %}
 
@@ -57,7 +57,9 @@
 <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" style="object-position: center 45%" src="{{ url_for('static', filename='img/more/blue-bedroom-2400.jpg') }}" alt="The Family Suite, the blue bedroom">
 <div class="g-hero__wash"></div>
 <div class="g-hero__in">
-  <p class="g-hero__eyebrow">Cinq Chambres · Ariège</p>
+  {#- 17 Oct: the room count, here and below, is the rooms table's (house_rooms) - five until The Twin Room (Ground Floor)
+      goes on sale, six after, with nothing to edit on the day. -#}
+  <p class="g-hero__eyebrow">{{ {'five': 'Cinq', 'six': 'Six', 'seven': 'Sept'}.get((house_rooms.count_word if house_rooms and house_rooms.count_word else 'five'), 'Cinq') }} Chambres · Ariège</p>
     <h1 class="g-hero__title">Stay the Night</h1>
     {# The page's first priority had a title and a button and nothing between them. #}
     <p class="g-hero__lede">The walls as the centuries left them, the rooms furnished from the brocantes, old pieces beside new.</p>
@@ -85,7 +87,7 @@
    restoration". It said nothing about availability. The lede carries it. #}
 
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-lede-first">Five guest rooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room, breakfast and the lounge, with the pool, tennis and the grounds outside.</p>
+  <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room, breakfast and the lounge, with the pool, tennis and the grounds outside.</p>
   <p class="g-p">It is a restoration, not a renovation. The walls stay as they are, by law, while the beds and the bathrooms are new: the comforts on which nothing has been compromised. Every stay helps bring the château back to life.</p>
 </div></section>
 
@@ -94,7 +96,8 @@
   <p class="g-fr">Une nuit au château <span class="g-fr__en">A night at the château</span></p>
   <p class="g-eyebrow">Your Stay</p>
   <h2 class="g-place">A Night at Gudanes</h2>
-  <p class="g-p g-lede-first">You come through the gates and up the drive, and the château rises at the end of it. Your room is up the original staircase: antiques from the brocantes beside new pieces, walls the centuries left as they are, and a bathroom of your own on the ground floor.</p>
+  <p class="g-p g-lede-first">You come through the gates and up the drive, and the château rises at the end of it. {% set _gf = namespace(on=false) %}{% for _r in rooms %}{% if ((_r['floor'] or '')|lower).startswith('ground') or 'Ground Floor' in _r['name'] %}{% set _gf.on = true %}{% endif %}{% endfor -%}
+  Your room is up the original staircase{% if _gf.on %}, or on the ground floor (still reached by stairs){% endif %}: antiques from the brocantes beside new pieces, walls the centuries left as they are, and a bathroom of your own on the ground floor.</p>
   <p class="g-p">The morning begins with breakfast. The day is yours: the pool, the tennis court, the grounds, or the valley below, and the lounge to come back to. In the evening the château goes quiet.</p>
 </div></section>
 
@@ -134,8 +137,8 @@
   <span class="g-hill" aria-hidden="true">{{ illus('fourposter') }}</span>
   <p class="g-fr">Les chambres <span class="g-fr__en">The rooms</span></p>
   <p class="g-eyebrow">The Rooms</p>
-  <h2 id="rooms" class="g-place">Five Rooms, Each Its Own</h2>
-  <p class="g-p g-lede-first">Each room is different, because the château is: its own shape, its own light, its own view of the valley and the mountains. All five share what matters most: antiques from the brocantes beside new pieces, a bathroom of your own on the ground floor, and walls left as the centuries made them.</p>
+  <h2 id="rooms" class="g-place">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} Rooms, Each Its Own</h2>
+  <p class="g-p g-lede-first">Each room is different, because the château is: its own shape, its own light, its own view of the valley and the mountains. All {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} share what matters most: antiques from the brocantes beside new pieces, a bathroom of your own on the ground floor, and walls left as the centuries made them.</p>
   {% if searched %}
   <div class="g-searched" role="status">
     <p class="g-searched__dates">
@@ -193,26 +196,28 @@
   'Chambre Cerise': RM_IMG[3],
   'Chambre Tilleul': RM_IMG[1],
   'The Twin Room': RM_IMG[1], 'The King Room': RM_IMG[3], 'The King Suite': RM_IMG[0],
-  'The Marquis Suite': RM_IMG[5], 'The Family Suite': RM_IMG[4]
+  'The Marquis Suite': RM_IMG[5], 'The Family Suite': RM_IMG[4],
+  'The Twin Room (Ground Floor)': ROOM_STANDIN[0]
 } %}
 {#- 5 Oct: each room's own photograph (Booking.com) wins over the old mapping. -#}
 {%- for _n, _ph in ROOM_PHOTOS.items() %}{% set _ = RM_FOR.update({_n: (_ph[0][0])}) %}{% endfor %}
 {# Written descriptions per room, used when the database field is thin.
    Anything entered in the admin overrides these. #}
-      {%- set _first %}{% set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% elif _rp %}{{ _rp[0][0] }}{% else %}{{ RM_FOR.get(room['name'], RM_IMG[loop.index0 % RM_IMG|length]) }}?format=1000w{% endif %}{% endset %}
+      {%- set _first %}{% set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% elif _rp %}{{ _rp[0][0] }}{% elif RM_FOR.get(room['name']) %}{{ RM_FOR.get(room['name']).split('?')[0] }}?format=1000w{% else %}{{ ROOM_STANDIN[0] }}{% endif %}{% endset %}
       {{ room_slides(room_name(room['name']), _first|trim, 'g-card__img', room_name(room['name']), skip='img/more/blue-bedroom') }}
       <div class="g-card__b">
         {{ emblem(room['name']) }}
         <h3 class="g-card__name">{{ room_name(room['name']) }}</h3>
         {#- 16 Oct (owner): the two suites close from 1 December to mid-February - "too large to heat". The dates are held by
-            Admin room blocks ("Resting for the winter"), which the booking check refuses; this only says so gracefully.
-            Nights from 1 Dec to 14 Feb: a stay overlaps if it arrives on or after 1 Dec or before 15 Feb, or departs after
-            1 Dec. FOR-CODE 17: a room field, and the block's reason from book_rooms(), would replace the names below. -#}
-        {%- set _winter_room = room_name(room['name']) in ['The Marquis Suite', 'The Family Suite'] %}
-        {%- set _am = (arrival or '')[5:] %}{%- set _dm = (departure or '')[5:] %}
-        {#- 16 Oct (owner): option A, and only when winter dates are chosen; the other rooms then say how they are kept warm. -#}
-        {%- set _wdates = searched and _am and _dm and (_am >= '12-01' or _am < '02-15' or _dm > '12-01' or (_dm > '01-01' and _dm <= '02-15')) %}
-        {%- set _wstay = _winter_room and _wdates and not availability.get(room['id']) %}
+            the rooms' own closures (Admin > Close rooms, "Closed for the season"), which the booking check refuses; this only
+            says so gracefully. z27 item 17: which rooms are resting, and in what words, comes from book_rooms() as
+            `resting` ({room id: the owner's note}) - never the suites' names or the months, so a renamed suite, or a room
+            resting in March, still reads right. test_winter_rest fails on a name or a month string here. -#}
+        {%- set _rest = resting if resting is defined else {} %}
+        {%- set _winter_room = room['id'] in _rest %}
+        {#- 16 Oct (owner): option A, and only when a room is resting on the dates chosen; the other rooms then say how they are kept warm. -#}
+        {%- set _wdates = searched and _rest %}
+        {%- set _wstay = searched and _winter_room and not availability.get(room['id']) %}
         {% if _wstay %}<p class="g-card__season">Kept for the warmer months</p>{% endif %}
         {% if room['price_per_night'] and not _wstay %}
         {# When dates are set, lead with the total for the stay — the figure a
@@ -256,7 +261,10 @@
                 card that costs an apology when it is wrong, and imported amenities on two rooms
                 still said "Shared bathroom" after every room became private. The column decides. -#}
             {% for tag in room['amenities'].split(',') if 'bathroom' not in tag|lower %}<li>{{ tag.strip() }}</li>{% endfor %}
-            {% if room['bathroom'] %}<li>{{ 'Private bathroom, on the ground floor' if (room['bathroom']|lower) == 'private' else (room['bathroom']|capitalize ~ ' bathroom') }}</li>{% endif %}
+            {% if room['bathroom'] %}<li>{{ room_bath(room_name(room['name'])|trim, room['bathroom']) }}</li>{% endif %}
+            {#- z27: the winter line in this branch too. It lived only in the derived list below, so a room with
+                features typed in Admin - four of the five on the house's own data - never said how it is kept warm. -#}
+            {% if _wdates and not _winter_room %}<li>Space heater and electric blankets</li>{% endif %}
           {% else %}
             {#- Read from the room's own columns. This used to sniff the
                 NAME for 'shared', 'king' and 'mountain', so renaming a room
@@ -268,7 +276,7 @@
             {% if room['size_sqm'] %}<li>{{ ci('size') }}{{ room['size_sqm']|int }} m²</li>{% endif %}
             {% if room['bed_setup'] %}<li>{{ ci('bed') }}{{ room['bed_setup'] }}</li>
             {% else %}{# Was "Double bed" on every card, whatever the room. A room it does not recognise gets no bed line rather than a guess - set bed_setup. #}{%- set _rn = room_name(room['name']) %}{%- set _bl = 'Twin beds' if ('Twin' in _rn or 'Tilleul' in _rn) else ('Queen bed' if ('Queen' in _rn or 'Cerise' in _rn) else ('King bed' if ('King' in _rn or 'Levant' in _rn) else ('Emperor bed' if ('Gold' in _rn or 'Émeraude' in _rn) else ('Two bedrooms' if ('Family' in _rn or 'Deux' in _rn) else '')))) %}{% if _bl %}<li>{{ ci('bed') }}{{ _bl }}</li>{% endif %}{% endif %}
-            {% if room['bathroom'] %}<li>{{ ci('bath') }}{{ 'Private bathroom, on the ground floor' if (room['bathroom']|lower) == 'private' else (room['bathroom']|capitalize ~ ' bathroom') }}</li>{% endif %}{#- 15 Oct (owner): say it is not attached - the room page says each is on the ground floor -#}
+            {% if room['bathroom'] %}<li>{{ ci('bath') }}{{ room_bath(room_name(room['name'])|trim, room['bathroom']) }}</li>{% endif %}{#- 15 Oct (owner): say it is not attached - the room page says each is on the ground floor -#}
             {% if room['outlook'] %}<li>{{ ci('view') }}{{ room['outlook']|capitalize }} view</li>{% endif %}
             <li>{{ ci('cup') }}Breakfast included</li>
             {% if _wdates and not _winter_room %}<li>{{ ci('bed') }}Space heater and electric blankets</li>{% endif %}
@@ -282,10 +290,14 @@
             <div class="g-winter">
               <p class="g-winter__fr" lang="fr">Une suite pour la belle saison</p>
               {#- The owner's own line for a closure kept as a season ("The Marquis Suite reopens on 15 February."), from
-                  book_rooms()'s unavailable_reason. z26 put this box where that line was, so it went; it stays, first. -#}
-              {%- set _why = unavailable_reason.get(room['id']) %}
-              {% if _why and _why != 'Not available these dates' %}<p class="g-winter__p">{{ _why }}</p>{% endif %}
-              <p class="g-winter__p">The suites are open from mid-February to the end of November. For winter dates, the Twin Room, the King Room and the King Suite are open, each with a space heater and electric blankets.</p>
+                  book_rooms()'s `resting`. z26 put this box where that line was, so it went; it stays, first. -#}
+              {%- set _why = _rest.get(room['id']) %}
+              {% if _why %}<p class="g-winter__p">{{ _why }}</p>{% endif %}
+              {#- 17 Oct: the open rooms are read from the rooms on sale rather than written out, so The Twin Room (Ground Floor)
+                  joins the list the day it goes on sale. The rooms resting on these dates are left out by their closures,
+                  not by name (z27 item 17); every other room stays open. -#}
+              {%- set _wo = [] %}{% for _r in rooms if _r['id'] not in _rest %}{% set _ = _wo.append('the ' ~ (room_name(_r['name'])|trim)[4:] if (room_name(_r['name'])|trim).startswith('The ') else room_name(_r['name'])|trim) %}{% endfor %}
+              <p class="g-winter__p">The suites are open from mid-February to the end of November.{% if _wo %} For winter dates, {{ (_wo[:-1]|join(', ') ~ ' and ' ~ _wo[-1]) if _wo|length > 1 else _wo[0] }} {{ 'are' if _wo|length > 1 else 'is' }} open, each with a space heater and electric blankets.{% endif %}</p>
             </div>
           {% else %}
             <span class="g-btn g-btn--off g-card__cta">
@@ -353,7 +365,7 @@
 <section class="g-sec g-gallery-sec"><div class="g-wrap">
   <p class="g-fr">Une nuit ici <span class="g-fr__en">A night here</span></p>
   <h2 class="g-place">Your Room, Breakfast and the Lounge</h2>
-  <p class="g-p g-intro">Five guest rooms, breakfast in the morning, and the lounge to come back to.</p>
+  <p class="g-p g-intro">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms, breakfast in the morning, and the lounge to come back to.</p>
   <ul class="g-befgrid g-gallery g-lb-scope">
     <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w" alt="The Marquis Suite, the four-poster bed" loading="lazy"><figcaption>The Marquis Suite</figcaption></figure></li>
     <li><figure><img src="{{ url_for('static', filename='img/views/chair-flowers-window-800.jpg') }}" srcset="{{ url_for('static', filename='img/views/chair-flowers-window-800.jpg') }} 800w, {{ url_for('static', filename='img/views/chair-flowers-window.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A chair by the window, the mountains beyond" loading="lazy"><figcaption>A chair by the window, the mountains beyond</figcaption></figure></li>
@@ -624,7 +636,7 @@
   ('When do I pay?',
    'When you book. Your room is confirmed as soon as the payment goes through.'),
   ('Is there a lift?',
-   'No. The bedrooms are reached by the original staircase, so pack lightly.'),
+   'No. Every bedroom is reached by stairs, so pack lightly.'),
   ('Can I bring children?',
    'Children of eight and over are welcome.'),
   ('Can I bring my dog?',
@@ -697,7 +709,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">The stairs</p>
-      <p class="g-key__v">No lift: the bedrooms are reached by the original staircase. Pack lightly</p>
+      <p class="g-key__v">No lift: every bedroom is reached by stairs{% if _gf.on %}, the one on the ground floor included{% endif %}. Pack lightly</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Children</p>
@@ -776,6 +788,8 @@
   },
   "telephone": "+33628069776",
   "petsAllowed": false,
+  "checkinTime": "{{ check_in_time }}",
+  "checkoutTime": "{{ check_out_time }}",
   "numberOfRooms": {{ rooms|length }},
   "amenityFeature": [
     {"@type": "LocationFeatureSpecification", "name": "Swimming pool", "value": true},

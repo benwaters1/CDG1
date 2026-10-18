@@ -203,7 +203,9 @@ def run():
         actual = passed.get(key)
         if not actual:
             continue          # sender uses a shape this reader cannot see
-        missing = sorted(set(declared) - actual)
+        # The house's own tags ({Room_count_word}) are filled by
+        # merge_email_text for every letter, so no sender passes them.
+        missing = sorted(set(declared) - actual - set(m.HOUSE_MERGE_TAGS))
         extra = sorted(actual - set(declared))
         if missing or extra:
             drift.append((key, {"declared not passed": missing,

@@ -52,7 +52,10 @@ def run():
             continue
         want_subject, want_body = defaults[r["template_key"]]
         import re
-        expected = set(re.findall(r"\{(\w+)\}", want_subject + want_body))
+        # Less the house's own tags ({Room_count_word}, z28): optional, and
+        # a stored letter that writes the count in words has lost nothing --
+        # the guest_room_count rule is what says when that count is wrong.
+        expected = set(re.findall(r"\{(\w+)\}", want_subject + want_body)) - set(m.HOUSE_MERGE_TAGS)
         have = set(re.findall(r"\{(\w+)\}", (r["subject"] or "") + (r["body"] or "")))
         missing = expected - have
         if missing:

@@ -64,8 +64,14 @@ def run():
     # later suite in this run looking at a château with no rooms.
     was_active_ids = [r["id"] for r in conn.execute(
         "SELECT id FROM rooms WHERE active = 1").fetchall()]
+    # And the rooms a workshop may use without being on sale: since z28 the
+    # sixth room is seeded off sale and allowed for workshops, and its two
+    # beds were counted among this suite's own.
+    was_workshop_ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM rooms WHERE workshop_room = 1").fetchall()]
     try:
         conn.execute("UPDATE rooms SET active = 0 WHERE active = 1")
+        conn.execute("UPDATE rooms SET workshop_room = 0 WHERE workshop_room = 1")
         made_rooms = []
         for name, cap, order in (("Attic", 1, 1), ("Blue", 2, 2), ("Court", 2, 3),
                                  ("Dovecote", 4, 4)):
@@ -354,6 +360,11 @@ def run():
             conn.execute(
                 f"UPDATE rooms SET active = 1 WHERE id IN ({marks})",
                 was_active_ids)
+        if was_workshop_ids:
+            marks = ",".join("?" * len(was_workshop_ids))
+            conn.execute(
+                f"UPDATE rooms SET workshop_room = 1 WHERE id IN ({marks})",
+                was_workshop_ids)
         conn.commit()
         conn.close()
     return s

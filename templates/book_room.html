@@ -4,7 +4,7 @@
 {% from '_country.html' import country_field %}
 {% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO, BATH_PHOTOS, ROOM_EXTRA %}
 {% from '_phone.html' import phone_field %}
-{% from '_room_copy.html' import room_copy, room_name, room_note %}
+{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath_where, room_stairs %}
 {% set crumbs = [('Stay', url_for('book_rooms')), (room_name(room['name']), None)] %}
 {% block title %}Book {{ room_name(room['name']) }}{% endblock %}
 {# Named, and priced, per room. One template serves five bedrooms, so a
@@ -83,10 +83,13 @@
       <div><dt>Sleeps</dt><dd>{% if (room['max_children'] or 0)|int > 0 %}{{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Up to {{ room['max_occupancy'] }}{% endif %}</dd></div>
       {% if _bl %}<div><dt>The bed</dt><dd>{{ _bl }}</dd></div>{% endif %}
       {% if _rn == 'The King Suite' %}<div><dt>In the room</dt><dd>A bath and a basin of its own</dd></div>{% endif %}
-      <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ 'Private, and yours alone, ' if _private else '' }}on the ground floor<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span></dd></div>
+      {#- 17 Oct: where the bathroom is comes from _room_copy (next door for The Twin Room (Ground Floor)); the upstairs
+          powder room is only worth saying to a room upstairs. -#}
+      {%- set _bw = room_bath_where(_rn)|trim %}
+      <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ 'Private, and yours alone, ' if _private else '' }}{{ _bw }}{% if _bw != 'next door' %}<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span>{% endif %}</dd></div>
       <div><dt>Check-in / out</dt><dd>From {{ check_in_at }} &middot; by {{ check_out_at }}<span class="g-glance__sub">Early check-in on request</span></dd></div>
       <div><dt>Breakfast</dt><dd>Included</dd></div>
-      <div><dt>Stairs</dt><dd>No lift; the bedrooms are on the top floor</dd></div>
+      <div><dt>Stairs</dt><dd>{{ room_stairs(_rn) }}</dd></div>
     </dl>
     <p class="g-room__note">Walls left as the centuries made them &mdash; under Class I protection, they stay that way. Within them, antiques from the brocantes sit beside what has to be new: the beds and the bathrooms.</p>
     {% if not (arrival and departure) %}<p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Choose your dates</a></p>{% endif %}
@@ -202,9 +205,11 @@
         
           <p class="g-second">
   <span class="g-second__k">More than one room?</span>
-  {# Fifteen is the chambres d'hôtes limit (owner, 24 Sept): the five rooms take fifteen with an extra bed. #}
+  {# Fifteen is the chambres d'hôtes limit (owner, 24 Sept). 17 Oct: six rooms, and never more than five let on one night
+     (also the chambres d'hôtes limit) - the app refuses the sixth, so this line needs no number. #}
   You can book them together: choose each room for the same dates.
-  <a href="{{ url_for('book_rooms') }}#rooms">See the other four</a>
+  {%- set _others = ((house_rooms.count if house_rooms and house_rooms.count else 5) - 1) %}
+  <a href="{{ url_for('book_rooms') }}#rooms">See the other {{ {1:'one',2:'two',3:'three',4:'four',5:'five',6:'six',7:'seven'}.get(_others, _others) }}</a>
 </p>
         </section>
 
@@ -854,7 +859,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         <div><dt>Your reference</dt><dd>Emailed at once, with a link to see your booking and add to it</dd></div>
         <div><dt>Breakfast</dt><dd>Included every morning, in the rate you see</dd></div>
         <div><dt>Minimum stay</dt><dd>{% set _mn = (room['min_nights'] if room and room['min_nights'] else 1)|int %}{{ _mn }} night{{ 's' if _mn != 1 }}</dd></div>
-        <div><dt>Luggage</dt><dd>Pack lightly: the bedrooms are reached by the original staircase, and there is no lift</dd></div>
+        <div><dt>Luggage</dt><dd>Pack lightly: every bedroom is reached by stairs, and there is no lift</dd></div>
         {#- It said "charged locally on departure". The checkout adds it to the
             card payment as its own line, so a guest who read this expected to
             pay it twice. The rate is the one the checkout charges. -#}
@@ -900,7 +905,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Not this room?</h2>
-  <p class="g-close__p">There are five, and they are not alike. The comparison table is the quickest way to see which suits.</p>
+  <p class="g-close__p">There are {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }}, and they are not alike. The comparison table is the quickest way to see which suits.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See every room</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us</a>

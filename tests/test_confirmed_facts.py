@@ -17,7 +17,9 @@ retired claim back is named by file.
   THE ESTATE. Ten acres, about four hectares. Not six, not 2.4, and not "six
   hectares" in French either.
 
-  THE STAIRS. Every bedroom is upstairs and every bathroom is downstairs.
+  THE STAIRS. Every bedroom is reached by stairs, the one on the ground floor
+  included (z28, 17 October 2026), and nothing may call a room step-free.
+  Before z28: every bedroom upstairs and every bathroom downstairs.
   This is the one that costs somebody something. The house told an arriving
   guest "tell us if the staircase is a problem and we will put you on the
   ground floor" — to precisely the guest who needs that promise kept, about a
@@ -55,7 +57,7 @@ RETIRED = {
     "two dogs": "one dog, Bruce",
     "six cats": "four cats",
     "chickens": "there are none",
-    "put you on the ground floor": "no bedroom is on the ground floor",
+    "put you on the ground floor": "the one room on the ground floor is still reached by stairs",
     "along the corridor": "the bathrooms are downstairs",
     # 2 October: the design side wrote "tennis or padel" into the free-time
     # copy. There is no padel court -- padel needs a walled court of its own.
@@ -142,17 +144,32 @@ def run():
     rooms = conn.execute("SELECT name, floor, price_per_night FROM rooms "
                          "WHERE active = 1").fetchall()
     conn.close()
+    # Since 17 October 2026 one room IS on the ground floor: The Twin Room
+    # (Ground Floor), z28. It is still reached by stairs. So the fact to hold
+    # is no longer "no bedroom down there" but "nothing calls a room step-free",
+    # which is the promise the old fault made to the guest who needed it kept.
     grounded = [r["name"] for r in rooms if (r["floor"] or "").lower() == "ground"]
-    s.check("no bedroom is on the ground floor, even on a fresh install",
+    s.check("no room on sale carries the floor the picker reads as step-free",
             not grounded,
-            detail=f"{grounded} — the room picker reads this column and tells a "
+            detail=f"{grounded} — the room picker reads 'ground' and tells a "
                    "guest who said stairs were difficult \"it is on the ground "
-                   "floor, so no staircase\"")
+                   "floor, so no staircase\"; the ground-floor room is saved as "
+                   "'Ground floor' and is still reached by stairs")
     seeded = [row for row in m.ROOM_IDENTITY if (row[6] or "").lower() == "ground"]
     s.check("and nothing seeds one there",
             not seeded,
-            detail=f"{[r[1] for r in seeded]} — the migration that clears it runs "
-                   "on an empty table, and the rename runs after the seed")
+            detail=f"{[r[1] for r in seeded]} — the rename runs after the seed")
+    six = [r for r in m.DEFAULT_ROOMS if "ground" in (r.get("floor") or "").lower()]
+    s.check("the ground-floor room is seeded off sale, and says it is reached by stairs",
+            len(six) == 1 and six[0].get("active") == 0
+            and "still reached by stairs" in six[0]["description"]
+            and (six[0].get("floor") or "").lower() != "ground",
+            detail=str([(r["name"], r.get("floor"), r.get("active")) for r in six]))
+    picker = anon.get("/book").get_data(as_text=True)
+    s.check("and the Stay page never says a room has no stairs",
+            not re.search(r"(?i)\b(no staircase|no stairs|step[- ]free|without (?:any )?stairs)\b",
+                          COMMENTS.sub("", picker)),
+            detail="the ground floor is not the same as no stairs")
 
     s.section("A price comparison in prose names the right room")
     cheapest = min(rooms, key=lambda r: r["price_per_night"] or 1e9)["name"] if rooms else None
