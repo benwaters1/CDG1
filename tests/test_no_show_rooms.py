@@ -161,8 +161,14 @@ def run():
             detail="a confirmed stay nobody came for looks exactly like one "
                    "that happened; the button offering the action is not the "
                    "same thing as the row saying it happened")
+    # The action lives on the stay's own page, under arrival and departure.
+    # Asked both ways round, so a page that offered it to nobody would fail.
+    soon_page = oc.get(f"/admin/bookings/{soon['id']}").get_data(as_text=True)
+    late = _booking("LATE", room_id=room["id"])
+    late_page = oc.get(f"/admin/bookings/{late['id']}").get_data(as_text=True)
     s.check("and a stay still to come is not offered the action",
-            f"{TAG}-SOON" not in body or "Did not arrive" in body,
+            f"/admin/bookings/{soon['id']}/no-show" not in soon_page
+            and f"/admin/bookings/{late['id']}/no-show" in late_page,
             detail="offered only once the arrival has passed")
 
     s.section("Guards")

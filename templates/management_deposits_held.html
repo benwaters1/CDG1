@@ -45,7 +45,7 @@
         <td>{{ r.departed }}</td>
         <td class="num">{% if r.days_since is not none %}{{ r.days_since }}{% else %}&mdash;{% endif %}</td>
         <td class="num">{{ euro(r.amount) }}</td>
-        <td><a href="{{ url_for('edit_booking', booking_id=r.id) }}" class="btn-mini">Open</a></td>
+        <td><a href="{{ url_for('admin_booking', booking_id=r.id) }}" class="btn-mini">Open</a></td>
       </tr>
       {% endfor %}
     </tbody>

@@ -130,7 +130,9 @@ def run():
                 stays and any(ref in h["line"] for h in stays["hits"]),
                 detail=str(stays["hits"] if stays else None))
         s.check("with somewhere to go from it",
-                stays and stays["hits"][0]["href"].endswith(f"/{bid}/edit"),
+                # The stay's own page, which opens whatever its status --
+                # the edit page refuses a cancelled one.
+                stays and stays["hits"][0]["href"].endswith(f"/admin/bookings/{bid}"),
                 detail=stays["hits"][0]["href"] if stays else "")
         s.check("and by its reference code as well",
                 _group(_find(ref), "bookings") is not None,
