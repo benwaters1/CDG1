@@ -17,8 +17,8 @@ WHAT THIS PINS.
     room taken off sale here closes every night there.
   - Six let anyway -- two channel bookings inside one sync -- is said on the
     owner home and raised as a task, which closes itself.
-  - A workshop putting guests in a sixth room is said on its rooming page,
-    and not refused.
+  - Nightly lettings only: a workshop's rooming is not counted, refused or
+    warned about (owner, 18 October -- workshops are a separate thing).
 """
 import re
 from datetime import timedelta
@@ -279,7 +279,10 @@ def _checks(s, conn, put_back):
     s.check("every closure the feed sends is one the count would recognise",
             sent and all(x in known for x in sent), detail=str([x for x in sent if x not in known]))
 
-    s.section("A workshop in a sixth room is said, not refused")
+    s.section("Workshops are not counted (owner, 18 October)")
+    # "Workshops are a separate thing: their rooms aren't the nightly rooms or
+    # assigned the same way. The limit counts nightly lettings only." A
+    # session with guests in six rooms raises nothing.
     now = _harness.datetime_now()
     conn.execute("INSERT INTO workshops (title, description, price_per_person, default_capacity, "
                  "active, created_at) VALUES (?, '', 400, 12, 1, ?)", (TAG + " Atelier", now))
@@ -297,9 +300,10 @@ def _checks(s, conn, put_back):
             (sid, f"{TAG} Maker {i}", f"zzlet.maker{i}@example.invalid", r["id"],
              f"{TAG}W{i}", f"tok-{TAG.lower()}-w-{i}", now))
     conn.commit()
+    over = [o["night"] for o in _ask(m.rooms_over_the_limit)]
+    s.check("the limit does not count it: nightly lettings only",
+            not [n for n in over if w_a <= n < w_a + timedelta(days=3)], detail=str(over))
     plan = _ask(m.rooming_plan, sid)
-    said = [p for p in plan["problems"] if p["kind"] == "sixth_room"]
-    s.check("its rooming page names the sixth room", len(said) == 1
-            and "6 rooms" in said[0]["detail"], detail=str([p["detail"] for p in said]))
-    s.check("and the owner home counts the nights it covers",
-            w_a in [o["night"] for o in _ask(m.rooms_over_the_limit)])
+    s.check("and its rooming page says nothing about five rooms",
+            not [p for p in plan["problems"] if "five" in p["detail"] or "rooms, and" in p["detail"]],
+            detail=str([p["detail"] for p in plan["problems"]]))

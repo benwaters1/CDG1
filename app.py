@@ -16373,33 +16373,17 @@ def rooms_over_the_limit(conn, today=None, days=400):
     sync can make six, because neither channel knows of the other's booking
     until the house's feed is read again. So it is looked for, every night
     ahead, and said the same day (owner home, and a task that closes itself).
-    A workshop's own rooming counts too -- the guests it puts in rooms are
-    rooms let -- though the gate does not refuse a workshop: whether the limit
-    binds an atelier is the owner's to say (z28 item 1).
+    Nightly lettings only: workshops are a separate thing, their rooms not
+    the nightly rooms nor assigned the same way, and the limit does not count
+    them (owner, 18 October 2026, z28).
     """
     today = today or house_today()
     picture = _availability_picture(conn)
     names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
-    extra = {}
-    for row in conn.execute(
-            """SELECT DISTINCT workshop_bookings.assigned_room_id AS room_id,
-                      workshop_sessions.start_date, workshop_sessions.end_date
-                 FROM workshop_bookings
-                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
-                WHERE workshop_bookings.assigned_room_id IS NOT NULL
-                  AND workshop_bookings.status IN ('pending', 'confirmed')
-                  AND {SESSION_IS_LIVE}
-                  AND workshop_sessions.end_date >= ?""".format(SESSION_IS_LIVE=SESSION_IS_LIVE),
-            (today.isoformat(),)):
-        a, b = parse_date(row["start_date"]), parse_date(row["end_date"])
-        day = a
-        while a and b and day < b:
-            extra.setdefault(day, set()).add(row["room_id"])
-            day += timedelta(days=1)
     out = []
     for i in range(days):
         night = today + timedelta(days=i)
-        let = rooms_let_on(picture, night) | extra.get(night, set())
+        let = rooms_let_on(picture, night)
         if len(let) > MAX_ROOMS_LET_PER_NIGHT:
             out.append({"night": night,
                         "rooms": sorted(names.get(r, f"room {r}") for r in let)})
@@ -55361,19 +55345,6 @@ def rooming_plan(conn, session_id):
                 "kind": "solo_shared", "who": solo[0],
                 "detail": f"{solo[0]['guest_name']} paid for a room alone and "
                           f"is sharing {solo[0]['room_name']}"})
-
-    # More rooms in use than the house lets a night (z28 item 1). Said, not
-    # refused: whether the five-room limit binds a workshop is the owner's to
-    # decide. Named by whoever is in the room placed last, which is the one
-    # to move if it does.
-    if len(by_room) > MAX_ROOMS_LET_PER_NIGHT:
-        order = {r["id"]: i for i, r in enumerate(rooms)}
-        last = max(by_room, key=lambda rid: order.get(rid, -1))
-        problems.append({
-            "kind": "sixth_room", "who": by_room[last][0],
-            "detail": f"this session puts guests in {len(by_room)} rooms, and the "
-                      f"house lets no more than {MAX_ROOMS_LET_PER_NIGHT} on any one "
-                      f"night; {by_room[last][0]['room_name']} is the one over"})
 
     beds = sum(r["max_occupancy"] or 0 for r in rooms)
     heads = sum(_room_party(p) for p in people)
