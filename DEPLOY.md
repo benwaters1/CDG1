@@ -636,8 +636,10 @@ point the same kind of scheduler at:
 https://<your-domain>/api/owner-digest?token=<your DIGEST_TOKEN>
 ```
 
-This emails the owner a short plain-text summary — pending approvals, who's
-on shift, open room issues, leave starting in the next week — using whatever
+This emails a short plain-text summary — pending approvals, who's on shift,
+open room issues, leave starting in the next week — to the technical address
+set on the Guest email page (website@), or to the owner while that box is
+empty. Not to accounts@, which is money only. It uses whatever
 `SMTP_*` settings are already configured for booking emails. Without
 `SMTP_*` set, the request still returns `200 {"sent": false, ...}` rather
 than erroring; without `DIGEST_TOKEN` set, the endpoint 404s and nothing is

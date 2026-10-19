@@ -17,10 +17,8 @@
   <tr><td style="{{ cell }} white-space:nowrap;">{{ x.day|date_short }}</td><td style="{{ cell }}">{{ x.what }}</td>
       <td style="{{ money }}">{% if x.charge < 0 %}−€{{ '{:,.2f}'.format(-x.charge) }}{% else %}€{{ '{:,.2f}'.format(x.charge) }}{% endif %}</td></tr>
   {% endfor %}
-  {% if statement.reductions %}
-  <tr><td></td><td style="{{ cell }}">Subtotal</td><td style="{{ money }}">€{{ '{:,.2f}'.format(statement.subtotal) }}</td></tr>
-  <tr><td></td><td style="{{ cell }}">Discounts and reductions</td><td style="{{ money }}">−€{{ '{:,.2f}'.format(statement.reductions) }}</td></tr>
-  {% endif %}
+  {# Straight to the total. The discount is a line above; a subtotal and a
+     second discount figure under it read as €30 off twice. #}
   <tr><td></td><td style="{{ cell }} font-weight:600;">Total</td><td style="{{ money }} font-weight:600;">€{{ '{:,.2f}'.format(statement.total) }}</td></tr>
 </table>
 <p style="margin:20px 0 8px; font-family:Helvetica,Arial,sans-serif; font-size:11px;

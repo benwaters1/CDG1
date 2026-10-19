@@ -15,7 +15,7 @@
     <div style="text-align:right;">
       <div class="g-hint">
         Château de Gudanes
-        {% if company and company['registered_address'] %}<br>{{ company['registered_address'] }}{% endif %}
+        {% if company|company_address %}<br>{{ company|company_address }}{% endif %}
         {% if company and company['registration_number'] %}<br>SIRET {{ company['registration_number'] }}{% endif %}
         {% if company and company['vat_number'] %}<br>TVA {{ company['vat_number'] }}{% endif %}
         {% if company|legal_mentions %}<br>{{ company|legal_mentions }}{% endif %}

@@ -52,7 +52,7 @@
     <button type="button" class="g-btn g-btn--sm" onclick="window.print()">{{ t('Print') }}</button>
   </p>
   {% if company and company['legal_name'] %}
-  <p class="g-hint">{{ company['legal_name'] }}{% if company['registered_address'] %} · {{ company['registered_address'] }}{% endif %}{% if company['vat_number'] %} · TVA {{ company['vat_number'] }}{% endif %}</p>
+  <p class="g-hint">{{ company['legal_name'] }}{% if company|company_address %} · {{ company|company_address }}{% endif %}{% if company['vat_number'] %} · TVA {{ company['vat_number'] }}{% endif %}</p>
   {% endif %}
 </div>
 

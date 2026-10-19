@@ -16,10 +16,8 @@
     {% endfor %}
   </tbody>
   <tfoot>
-    {% if v.reductions %}
-    <tr><th scope="row" colspan="2">Subtotal</th><td class="num">€{{ '{:,.2f}'.format(v.subtotal) }}</td></tr>
-    <tr><th scope="row" colspan="2">Discounts and reductions</th><td class="num">−€{{ '{:,.2f}'.format(v.reductions) }}</td></tr>
-    {% endif %}
+    {# Straight to the total. The discount is a line above; a subtotal and a
+       second discount figure under it read as the discount taken twice. #}
     <tr><th scope="row" colspan="2"><strong>Total</strong></th><td class="num"><strong>€{{ '{:,.2f}'.format(v.total) }}</strong></td></tr>
   </tfoot>
   </table>

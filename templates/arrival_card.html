@@ -55,8 +55,8 @@ we send goes by email.</p>
   <p class="arrival-card__owed">Settled in full — thank you.</p>
   {% endif %}
 
-  {% if company and company['registered_address'] %}
-  <p class="arrival-card__foot">{{ company['registered_address'] }}</p>
+  {% if company|company_address %}
+  <p class="arrival-card__foot">{{ company|company_address }}</p>
   {% endif %}
 </div>
 
