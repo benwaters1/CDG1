@@ -421,6 +421,7 @@ SUITES = [
     "test_paid_letter_balance",
     "test_family_suite_beds",
     "test_contact_enquiry_spam",
+    "test_contact_form_guard",
     "test_workshops_fifteen",
     "test_languages_page",
     "test_share_images",

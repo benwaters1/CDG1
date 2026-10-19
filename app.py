@@ -3091,7 +3091,7 @@ def init_db():
             desired_departure TEXT,
             party_size INTEGER,
             notes TEXT,
-            status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','contacted','booked','closed')),
+            status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','enquiry','contacted','booked','closed')),
             created_at TEXT NOT NULL
         );
 
@@ -8175,6 +8175,9 @@ def init_db():
     apply_family_beds_2026_10_18(conn)
     # Every atelier takes fifteen (owner, 18 October), once.
     apply_workshops_fifteen_2026_10_18(conn)
+    # The waitlist learns the status 'enquiry', once, before the tidy below
+    # moves the Contact page's open enquiries onto it.
+    widen_waitlist_statuses(conn)
     # The Contact page's enquiries and their tasks, tied together and the
     # sales pitches set aside: on every boot, and only where nothing is set.
     tidy_contact_enquiries(conn)
@@ -11376,15 +11379,19 @@ def bot_guard_fields():
 app.jinja_env.globals["bot_guard"] = bot_guard_fields
 
 
-def bot_guard_refusal(form, now=None):
+def bot_guard_refusal(form, now=None, require_stamp=False):
     """Why this post looks like a script, or None if it looks like a person.
 
-    The reason is for the log, never for the page.
+    The reason is for the log, never for the page. `require_stamp` refuses a
+    post with no stamp at all, for a form where only a script would send one
+    (the Contact page's: contact_post_refusal).
     """
     if (form.get(BOT_HONEYPOT_FIELD) or "").strip():
         return "filled the hidden field"
     stamp = form.get(BOT_STAMP_FIELD)
     if stamp is None:
+        if require_stamp:
+            return "no stamp: it never had the form in front of it"
         return None                     # a page drawn before the check existed
     ts, _dot, sig = str(stamp).partition(".")
     if not ts.isdigit() or not hmac.compare_digest(sig, _form_stamp_signature(ts)):
@@ -11406,6 +11413,13 @@ def refused_as_bot(conn, action, form):
     reason = bot_guard_refusal(form)
     if not reason:
         return False
+    note_bot_refusal(conn, action, reason)
+    return True
+
+
+def note_bot_refusal(conn, action, reason):
+    """Write down that `action` turned a script away, as '<action>:bot' in
+    submission_log, and say why in the log."""
     already_open = conn.in_transaction
     conn.execute("INSERT INTO submission_log (ip_address, action, created_at) VALUES (?, ?, ?)",
                  (request.remote_addr or "unknown", f"{action}:bot",
@@ -11413,7 +11427,6 @@ def refused_as_bot(conn, action, form):
     if not already_open:
         conn.commit()
     print(f"[bot guard] {action} refused: {reason}")
-    return True
 
 
 BOT_REFUSAL_MESSAGE = ("That did not go through. Please check your details and send the form "
@@ -17424,13 +17437,18 @@ def matching_waitlist_entries(conn, arrival_iso, departure_iso):
     """Open/contacted waitlist entries whose desired range overlaps the
     given dates — not room-specific, since a waitlist request is for
     'anything available', so this is a nudge to go check, not a guarantee
-    the freed room fits their party size."""
+    the freed room fits their party size.
+
+    And the Contact page's unanswered enquiries: the owner is reminded of
+    "sometime in May" when a night in May frees up, which is what the waitlist
+    page promises. Reminded, never written to on their behalf --
+    notify_room_waitlist_opening takes only the 'open' ones from this."""
     arrival, departure = parse_date(arrival_iso), parse_date(departure_iso)
     if not arrival or not departure:
         return []
     matches = []
     for row in conn.execute(
-        "SELECT * FROM waitlist_entries WHERE status IN ('open', 'contacted') "
+        "SELECT * FROM waitlist_entries WHERE status IN ('open', 'enquiry', 'contacted') "
         "AND desired_arrival IS NOT NULL AND desired_departure IS NOT NULL"
     ).fetchall():
         w_start, w_end = parse_date(row["desired_arrival"]), parse_date(row["desired_departure"])
@@ -37295,7 +37313,8 @@ def staff_dashboard():
             "SELECT COUNT(*) AS c FROM guest_feedback WHERE submitted_at >= ?", (recent_30,)
         ).fetchone()["c"]
         stats["waitlist_open"] = conn.execute(
-            "SELECT COUNT(*) AS c FROM waitlist_entries WHERE status IN ('open', 'contacted')"
+            "SELECT COUNT(*) AS c FROM waitlist_entries "
+            "WHERE status IN ('open', 'enquiry', 'contacted')"
         ).fetchone()["c"]
         last_backup = conn.execute(
             "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', 'backup_auto_sent') "
@@ -49523,10 +49542,12 @@ def waitlist_view(rows, args, wanted, *, extra_search=()):
                   order=["Current", "History", "Spam"], default="Current"),
             facet("state", "Status",
                   lambda e: "Spam" if _is_spam(e) else (e["status"] or "").capitalize(),
-                  order=["Open", "Contacted", "Booked", "Closed", "Spam"]),
+                  order=["Open", "Enquiry", "Contacted", "Booked", "Closed", "Spam"]),
         ],
         sorts=[
-            sort_option("open", "Open first, newest first", lambda e: e["status"] != "open"),
+            # An enquiry not yet answered is as open as an open entry.
+            sort_option("open", "Open first, newest first",
+                        lambda e: e["status"] not in ("open", "enquiry")),
             sort_option("wanted", "Soonest wanted", lambda e: wanted(e) or "9999"),
             sort_option("name", "By name", lambda e: (e["name"] or "").casefold()),
         ],
@@ -49586,9 +49607,16 @@ def update_waitlist_status(entry_id):
     if status not in WAITLIST_STATUSES:
         abort(400)
     conn = get_db()
-    if not conn.execute("SELECT 1 FROM waitlist_entries WHERE id = ?", (entry_id,)).fetchone():
+    entry = conn.execute("SELECT * FROM waitlist_entries WHERE id = ?", (entry_id,)).fetchone()
+    if not entry:
         conn.close()
         abort(404)
+    # Still waiting is 'enquiry' for one from the Contact page and 'open' for
+    # everybody else, whichever of the two words was posted. An enquiry put
+    # back to open would be offered rooms by letter for a month somebody only
+    # mentioned -- and only the boot's tidy would ever take it off again.
+    if status in ("open", "enquiry"):
+        status = enquiry_status(conn) if entry["source"] == "contact" else "open"
     close_enquiry(conn, entry_id, status)
     conn.commit()
     conn.close()
@@ -49600,7 +49628,7 @@ def update_waitlist_status(entry_id):
 
 # Spam is the Contact page's sales pitches: kept, out of sight, and the
 # sender's next enquiry set aside with it (enquiry_is_pitch).
-WAITLIST_STATUSES = ("open", "contacted", "booked", "closed", "spam")
+WAITLIST_STATUSES = ("open", "enquiry", "contacted", "booked", "closed", "spam")
 
 
 @app.route("/api/validate-promo-code", methods=["POST"])
@@ -53782,10 +53810,20 @@ def tidy_contact_enquiries(conn):
             conn.execute("UPDATE waitlist_entries SET source = COALESCE(source, 'contact') WHERE id = ?",
                          (entry["id"],))
             tied += 1
+    # An enquiry still waiting for its answer is an ENQUIRY, not an open
+    # waitlist entry. Open is what notify_room_waitlist_opening writes to the
+    # guest about, and a month somebody mentioned is not a pair of nights they
+    # asked to be offered. Every enquiry saved before 19 October went in as
+    # open, and so does one tied just above, so this runs on every boot; the
+    # waitlist page cannot set a Contact enquiry back to open, so nothing the
+    # owner chose is undone by it. Only once the table allows the word.
+    if waitlist_allows_enquiry(conn):
+        conn.execute("UPDATE waitlist_entries SET status = 'enquiry' "
+                     "WHERE source = 'contact' AND status = 'open'")
     aside = 0
     for e in conn.execute(
             "SELECT id, name, notes FROM waitlist_entries WHERE source = 'contact' "
-            "AND status = 'open' AND spam_at IS NULL").fetchall():
+            "AND status IN ('open', 'enquiry') AND spam_at IS NULL").fetchall():
         if ENQUIRY_PITCH.search("%s %s" % (e["name"] or "", e["notes"] or "")):
             close_enquiry(conn, e["id"], "spam")
             aside += 1
@@ -53795,11 +53833,86 @@ def tidy_contact_enquiries(conn):
     return tied, aside
 
 
+def waitlist_allows_enquiry(conn):
+    """Whether waitlist_entries' CHECK takes the status 'enquiry' yet."""
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' "
+                       "AND name = 'waitlist_entries'").fetchone()
+    return bool(row) and "'enquiry'" in (row[0] or "")
+
+
+def enquiry_status(conn):
+    """The status a Contact enquiry waiting for its answer is saved with.
+    'open' only on a table widen_waitlist_statuses could not rebuild, where
+    'enquiry' would fail the CHECK and the guest would get an error page."""
+    return "enquiry" if waitlist_allows_enquiry(conn) else "open"
+
+
+def widen_waitlist_statuses(conn):
+    """Let waitlist_entries hold the status 'enquiry'. Once; True if it ran.
+
+    The Contact page's docstring has said since it was written that an
+    enquiry is stored as 'enquiry' rather than 'open', and the INSERT wrote
+    'open' -- because the table's CHECK allows four statuses and SQLite cannot
+    alter a CHECK in place. So every rough "sometime in May" sat on the
+    waitlist as somebody waiting for nights, eligible for the letter that
+    tells a guest a room has come free.
+
+    Rebuilt the way promo_codes was: the stored CREATE copied with only the
+    CHECK widened, so a column a later migration added is never dropped by a
+    hand-written list going stale; built under a new name, filled, the
+    original dropped and the new one renamed into place, because nothing
+    references waitlist_entries by foreign key but a RENAME of a referenced
+    table rewrites other tables' keys. Two more things a plain copy loses:
+    the status index goes with the dropped table, and so does its
+    AUTOINCREMENT high-water mark -- and tasks.waitlist_entry_id points at
+    these ids, so an id freed by a deleted entry must never be handed to a
+    new one, or an old task would open somebody else's enquiry."""
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' "
+                       "AND name = 'waitlist_entries'").fetchone()
+    if not row or "'enquiry'" in (row[0] or ""):
+        return False
+    widened, found = re.subn(
+        r"CHECK\s*\(\s*status\s+IN\s*\(\s*'open'\s*,",
+        "CHECK(status IN ('open','enquiry',", row[0], count=1)
+    if not found:
+        print("[init_db] waitlist_entries: the status CHECK is not in the shape "
+              "expected, so 'enquiry' was not added; Contact enquiries stay open")
+        return False
+    cols = ", ".join(r[1] for r in conn.execute("PRAGMA table_info(waitlist_entries)"))
+    conn.commit()
+    try:
+        seq = conn.execute("SELECT seq FROM sqlite_sequence WHERE name = 'waitlist_entries'").fetchone()
+        conn.execute("BEGIN")
+        conn.execute(re.sub(r"(?i)^\s*CREATE TABLE\s+(?:\"?waitlist_entries\"?)",
+                            "CREATE TABLE waitlist_entries_rebuilt", widened, count=1))
+        conn.execute(f"INSERT INTO waitlist_entries_rebuilt ({cols}) "
+                     f"SELECT {cols} FROM waitlist_entries")
+        conn.execute("DROP TABLE waitlist_entries")
+        conn.execute("ALTER TABLE waitlist_entries_rebuilt RENAME TO waitlist_entries")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_waitlist_entries_status "
+                     "ON waitlist_entries(status)")
+        if seq:
+            # The copy leaves a counter row behind, at the highest id it
+            # copied; one is written here if it ever does not.
+            if not conn.execute("UPDATE sqlite_sequence SET seq = MAX(seq, ?) "
+                                "WHERE name = 'waitlist_entries'", (seq[0],)).rowcount:
+                conn.execute("INSERT INTO sqlite_sequence (name, seq) "
+                             "VALUES ('waitlist_entries', ?)", (seq[0],))
+        conn.commit()
+    except sqlite3.Error as e:
+        conn.rollback()
+        print(f"[init_db] waitlist_entries: could not add 'enquiry' ({e}); "
+              "Contact enquiries stay open")
+        return False
+    return True
+
+
 def close_enquiry(conn, entry_id, status):
     """Set a waitlist entry's status, and settle the task it made.
 
     Answered (contacted), booked or closed ticks the task done; spam deletes
-    it, because a pitch was never work. Back to open reopens a ticked task.
+    it, because a pitch was never work. Back to open, or to enquiry for one
+    from the Contact page, reopens a ticked task.
     A task CLOSES ITSELF here rather than waiting for a tick that has nowhere
     to be made -- the day's list showed it with no way to open it at all.
 
@@ -53810,7 +53923,7 @@ def close_enquiry(conn, entry_id, status):
                   entry_id))
     if status == "spam":
         conn.execute("DELETE FROM tasks WHERE waitlist_entry_id = ? AND status != 'done'", (entry_id,))
-    elif status == "open":
+    elif status in ("open", "enquiry"):
         conn.execute("UPDATE tasks SET status = 'open', completed_at = NULL "
                      "WHERE waitlist_entry_id = ?", (entry_id,))
     else:
@@ -61468,7 +61581,8 @@ def build_owner_digest(conn):
         (soon,),
     ).fetchall()
     waitlist_open = conn.execute(
-        "SELECT COUNT(*) AS c FROM waitlist_entries WHERE status IN ('open', 'contacted')"
+        "SELECT COUNT(*) AS c FROM waitlist_entries "
+        "WHERE status IN ('open', 'enquiry', 'contacted')"
     ).fetchone()["c"]
     last_backup = conn.execute(
         "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', 'backup_auto_sent') "
@@ -96575,6 +96689,10 @@ def notify_room_waitlist_opening(conn, arrival_iso, departure_iso, *, skip_entry
     # Nobody is offered the same nights twice in a row either: the entry whose
     # offer has just lapsed is skipped, or a lapse would hand it straight back
     # to the person who let it run out.
+    #
+    # Open ONLY. A Contact enquiry ('enquiry') matches too, so the owner is
+    # reminded of it, but a month somebody mentioned is not nights they asked
+    # to be offered, and this letter tells them a room is theirs to take.
     matches = [e for e in matching_waitlist_entries(conn, arrival_iso, departure_iso)
                if e["status"] == "open" and e["id"] != skip_entry_id]
     matches.sort(key=lambda e: (e["created_at"] or "", e["id"]))
@@ -107857,13 +107975,128 @@ MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
                "August", "September", "October", "November", "December"]
 
 
-def contact_notify_me():
+# ---------------------------------------------------------------------------
+# The two forms that post to /contact, and the machines that post to them.
+#
+# Both were open to anything that could send a POST, and something did: a
+# "rough month" of 1970-05 with a phone number in the notes, and an Albanian
+# "what is your price" from a campaign that writes the same line to every
+# contact form it finds. Each landed on the room waitlist as somebody waiting,
+# with a task on the owner's day and a letter to reservations@.
+#
+# The honeypot and the drawn-at stamp are the public forms' own
+# (bot_guard_refusal), with two differences here:
+#   - a post with NO stamp is refused. The booking forms let one through, for
+#     a page drawn before the check existed; on this form the only thing that
+#     sends none is a script posting without ever fetching the page;
+#   - the refusal is the THANK-YOU, not "that did not go through". Nothing is
+#     saved, no task, no letter -- and the reply is the one a real enquiry
+#     gets, so a script learns nothing from it, and a person whose browser
+#     somehow filled the hidden field still writes in some other way. The
+#     owner asked for exactly this, 19 October.
+# And a third check, Cloudflare Turnstile, which does nothing until the owner
+# adds its two keys (TURNSTILE_SITEKEY and TURNSTILE_SECRET), and is then an
+# invisible check Cloudflare makes in the browser.
+#
+# Each refusal is noted as "contact_enquiry:bot" in submission_log, as the
+# other forms' are, and is a line in the log.
+# ---------------------------------------------------------------------------
+
+# How far ahead "roughly when" may be. The picker offers the same window; only
+# a post made without the page can send anything else.
+CONTACT_MONTHS_AHEAD = 24
+
+TURNSTILE_SITEKEY = (os.environ.get("TURNSTILE_SITEKEY") or "").strip()
+TURNSTILE_SECRET = (os.environ.get("TURNSTILE_SECRET") or "").strip()
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+def turnstile_enabled():
+    """Both keys, or nothing at all: a site key without its secret would draw
+    a check nobody could ever pass, and every enquiry would be lost."""
+    return bool(TURNSTILE_SITEKEY and TURNSTILE_SECRET)
+
+
+def turnstile_siteverify(token, ip):
+    """Cloudflare's answer on one Turnstile token: True, False, or None when
+    Cloudflare could not be asked. Stdlib only, like every other call out."""
+    body = urlencode({"secret": TURNSTILE_SECRET, "response": token or "",
+                      "remoteip": ip or ""}).encode()
+    try:
+        with urlopen(Request(TURNSTILE_VERIFY_URL, data=body, method="POST"),
+                     timeout=8) as resp:
+            return bool(json.loads(resp.read().decode("utf-8")).get("success"))
+    except (URLError, HTTPError, OSError, ValueError) as e:
+        print(f"[enquiries] Turnstile could not be asked: {e}")
+        return None
+
+
+def contact_month_window(today=None):
+    """(first, last) month a "roughly when" may name, as YYYY-MM: this one,
+    and CONTACT_MONTHS_AHEAD after it."""
+    today = today or house_today()
+    last = today.year * 12 + today.month - 1 + CONTACT_MONTHS_AHEAD
+    return "%04d-%02d" % (today.year, today.month), "%04d-%02d" % (last // 12, last % 12 + 1)
+
+
+def turnstile_check():
+    """Cloudflare Turnstile's widget for a form, or nothing while it has no keys.
+
+    _flexible.html and _notify.html call this beside {{ bot_guard() }}."""
+    from markupsafe import Markup, escape
+    if not turnstile_enabled():
+        return Markup("")
+    # No integrity hash: Cloudflare changes api.js without notice and says not
+    # to pin or copy it, so a pinned hash would break the form the day they
+    # ship. It runs only once the owner has chosen to add the keys.
+    return Markup(f'<div class="cf-turnstile" data-sitekey="{escape(TURNSTILE_SITEKEY)}"></div>'
+                  '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" '
+                  'async defer></script>')
+
+
+app.jinja_env.globals["turnstile_check"] = turnstile_check
+app.jinja_env.globals["contact_month_window"] = contact_month_window
+
+
+def contact_post_refusal(form, now=None):
+    """Why a post to /contact was not made by a person, or "" when it was.
+
+    The reason is for the log only; the visitor is never told it."""
+    reason = bot_guard_refusal(form, now=now, require_stamp=True)
+    if reason:
+        return reason
+    if turnstile_enabled():
+        verdict = turnstile_siteverify(form.get("cf-turnstile-response"),
+                                       request.remote_addr if has_request_context() else None)
+        # None is Cloudflare unreachable: a guest is not turned away for
+        # somebody else's outage, and the other two checks still stand.
+        if verdict is False:
+            return "Turnstile did not pass it"
+    return ""
+
+
+def contact_turned_away(reason, thanks, back):
+    """The quiet refusal: the thank-you a real enquiry gets, the page a real
+    one goes back to, a note of it where the other forms keep theirs, and
+    nothing else."""
+    conn = get_db()
+    note_bot_refusal(conn, "contact_enquiry", reason)
+    conn.close()
+    flash(thanks, "success")
+    return redirect(back)
+
+
+def contact_notify_me(refusal=""):
     """"Tell me when that month opens" — one month, one address, one email back.
 
     The same record as the flexible enquiry, because it is the same person: a
     guest who looked in February for a September week and found nothing to do.
     Kept as a waitlist entry over the whole month, so the nudge when a night
     frees up finds them.
+
+    And kept OPEN, unlike the rough enquiry beside it: this guest asked in so
+    many words to be written to when that month has room, which is exactly
+    the letter notify_room_waitlist_opening sends.
     """
     email = (request.form.get("notify_email") or "").strip().lower()
     if not EMAIL_RE.match(email):
@@ -107871,14 +108104,29 @@ def contact_notify_me():
               "to tell you.", "error")
         return redirect(request.referrer or url_for("contact_page"))
     name = (request.form.get("notify_month") or "").strip()
+    today = house_today()
     try:
         year = int((request.form.get("notify_year") or "").strip())
     except (TypeError, ValueError):
-        year = house_today().year
+        year = today.year
     month_no = MONTH_NAMES.index(name) + 1 if name in MONTH_NAMES else 0
     if not month_no:
         flash("Please choose a month and we will tell you when it opens.", "error")
         return redirect(request.referrer or url_for("contact_page"))
+    # The years the form offers, and no others. Anything else was not chosen
+    # from it -- and year 0 used to reach date() and answer with a 500.
+    if not today.year <= year <= today.year + 3:
+        refusal = refusal or "a year the form does not offer (%d)" % year
+    elif (year, month_no) < (today.year, today.month):
+        # The month list does not know the year chosen, so a person can pick
+        # a month already gone. Said, because a person would want to know.
+        flash("%s %d has already gone — choose a month still to come." % (name, year),
+              "error")
+        return redirect(request.referrer or url_for("contact_page"))
+    thanks = "We will write to you once, when %s %d opens. Nothing else." % (name, year)
+    if refusal:
+        return contact_turned_away(refusal, thanks,
+                                   request.referrer or url_for("contact_page"))
     start = date(year, month_no, 1)
     end = date(year + 1, 1, 1) if month_no == 12 else date(year, month_no + 1, 1)
     wants_atelier = bool(request.form.get("notify_kind"))
@@ -107890,10 +108138,6 @@ def contact_notify_me():
         flash("That is a lot of requests from one connection — please give it "
               "a few minutes.", "error")
         return redirect(request.referrer or url_for("contact_page"))
-    if refused_as_bot(conn, "contact_enquiry", request.form):
-        conn.close()
-        flash(BOT_REFUSAL_MESSAGE, "error")
-        return redirect(request.referrer or url_for("contact_page"))
     notes = "Asked to be told when %s %d opens%s." % (
         name, year, " — an atelier week rather than a stay" if wants_atelier else "")
     conn.execute(
@@ -107904,8 +108148,7 @@ def contact_notify_me():
          datetime.now(timezone.utc).isoformat()))
     conn.commit()
     conn.close()
-    flash("We will write to you once, when %s %d opens. Nothing else."
-          % (name, year), "success")
+    flash(thanks, "success")
     return redirect(request.referrer or url_for("contact_page"))
 
 
@@ -107927,8 +108170,10 @@ def contact_page():
     a month and a rough length has a question, and the answer is a person
     writing back -- so this records it, raises a task so it reaches the
     calendar, and tells the house. Stored with status 'enquiry' rather than
-    'open': the waitlist offer flow matches on open and contacted, and a rough
-    month is not a date anybody should be offered against.
+    'open': the letter offering a freed room goes to open entries, and a rough
+    month is not a date anybody should be offered against. (Said here from the
+    start and written as 'open' until 19 October 2026, because the table's
+    CHECK did not allow the word -- widen_waitlist_statuses.)
     """
     if request.method != "POST":
         return render_template("contact.html")
@@ -107940,8 +108185,14 @@ def contact_page():
     # of field names meant the second form was answered with "that email
     # address does not look right", which is a rude way to say "I was not
     # written to read you".
+    #
+    # Both are checked for a machine first, and both carry the verdict to the
+    # point where they would save anything: until then a refused post is
+    # answered exactly as a real one would be, a bad address included, so
+    # nothing about the reply says which it was.
+    refusal = contact_post_refusal(request.form)
     if (request.form.get("action") or "").strip() == "notify":
-        return contact_notify_me()
+        return contact_notify_me(refusal)
 
     email = (request.form.get("email") or "").strip().lower()
     name = (request.form.get("name") or "").strip()[:120]
@@ -107956,6 +108207,36 @@ def contact_page():
               "to answer you.", "error")
         return redirect(url_for("contact_page"))
 
+    # A month is what they typed; a pair of dates is what the column holds, so
+    # the range is the WHOLE MONTH rather than a guessed window inside it.
+    # matching_waitlist_entries overlaps this against a night that frees up and
+    # reminds the owner -- it does not write to the guest -- so a month-wide
+    # range means the reminder comes for any night they might have wanted, and
+    # a five-night guess starting on the first would have missed most of them.
+    #
+    # The month has to be one somebody could come in: this one or one of the
+    # next CONTACT_MONTHS_AHEAD. The picker offers nothing else, so only a post
+    # made without the page sends 1970-05 or 2099-13 -- and 1970-05 is what
+    # came, with a phone number in the notes. A browser with no month picker
+    # shows a plain box, and what a person types there ("September") is not in
+    # this shape: it is kept in words, with no dates, as it always was.
+    start = month_end = None
+    if re.fullmatch(r"\d{4}-\d{2}", month):
+        first, last = contact_month_window()
+        start = parse_date(month + "-01")
+        if not start or not first <= month <= last:
+            refusal = refusal or "a month nobody can come in (%s)" % month
+            start = None
+        else:
+            month_end = (date(start.year + 1, 1, 1) if start.month == 12
+                         else date(start.year, start.month + 1, 1))
+    else:
+        month = month[:40]
+    thanks = ("Thank you — that is exactly the kind of enquiry we would rather "
+              "have than nothing. We will write back.")
+    if refusal:
+        return contact_turned_away(refusal, thanks, url_for("contact_page"))
+
     conn = get_db()
     if rate_limited(conn, "contact_enquiry", BOOKING_RATE_LIMIT_PER_HOUR):
         conn.commit()
@@ -107963,25 +108244,11 @@ def contact_page():
         flash("That is a lot of enquiries from one connection — please give it "
               "a few minutes, or write to us directly.", "error")
         return redirect(url_for("contact_page"))
-    if refused_as_bot(conn, "contact_enquiry", request.form):
-        conn.close()
-        flash(BOT_REFUSAL_MESSAGE, "error")
-        return redirect(url_for("contact_page"))
 
-    # A month is what they typed; a pair of dates is what the column holds, so
-    # the range is the WHOLE MONTH rather than a guessed window inside it.
-    # matching_waitlist_entries overlaps this against a night that frees up and
-    # nudges somebody to go and check -- it does not write to the guest -- so a
-    # month-wide range means the nudge fires for any night they might have
-    # wanted, and a five-night guess starting on the first would have missed
-    # most of them. The rough length and the flexibility stay in words, because
-    # "September, five nights, give or take a week" is the enquiry and any one
-    # pair of dates is a guess about it.
-    start = parse_date(month + "-01") if re.fullmatch(r"\d{4}-\d{2}", month) else None
-    month_end = None
-    if start:
-        month_end = (date(start.year + 1, 1, 1) if start.month == 12
-                     else date(start.year, start.month + 1, 1))
+    # The rough length and the flexibility stay in words, because "September,
+    # five nights, give or take a week" is the enquiry and any one pair of
+    # dates is a guess about it.
+    #
     # "Not decided" posts 0, and max(1, ...) turned it into ONE NIGHT -- so an
     # enquiry that said "we have not decided" reached the owner as a request
     # for a single night. None means not decided and is said as such.
@@ -108011,6 +108278,11 @@ def contact_page():
     # further: no task on the owner's day and no letter to the house. The
     # visitor is thanked all the same -- telling a spammer which words were
     # caught teaches the next one what to leave out.
+    #
+    # A real one waits as 'enquiry', not 'open'. Open is a guest waiting for
+    # nights, and notify_room_waitlist_opening writes to them -- "a room has
+    # come free, first to book has it" -- when a night in their range frees up.
+    # Somebody who said "around May" asked a question; a person answers it.
     aside = enquiry_is_pitch(conn, email, name, message)
     now_iso = datetime.now(timezone.utc).isoformat()
     entry_id = conn.execute(
@@ -108019,14 +108291,13 @@ def contact_page():
            VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, 'contact', ?)""",
         (name, email, start.isoformat() if start else None,
          month_end.isoformat() if month_end else None,
-         party, notes, "closed" if aside else "open", now_iso,
+         party, notes, "closed" if aside else enquiry_status(conn), now_iso,
          now_iso if aside else None)).lastrowid
     if aside:
         conn.commit()
         conn.close()
         print(f"[enquiries] set aside as spam: {email} ({aside})")
-        flash("Thank you — that is exactly the kind of enquiry we would rather "
-              "have than nothing. We will write back.", "success")
+        flash(thanks, "success")
         return redirect(url_for("contact_page"))
     # A task, because anything that becomes a task reaches the calendar by
     # itself. An enquiry that lives only in a list somebody has to remember to
@@ -108044,8 +108315,7 @@ def contact_page():
     if to:
         send_email(to, "Someone asked about staying",
                    "%s\n\nThey left this address: %s" % (notes, email))
-    flash("Thank you — that is exactly the kind of enquiry we would rather "
-          "have than nothing. We will write back.", "success")
+    flash(thanks, "success")
     return redirect(url_for("contact_page"))
 
 

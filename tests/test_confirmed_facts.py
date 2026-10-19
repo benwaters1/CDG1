@@ -238,7 +238,8 @@ def run():
     r = anon.post("/contact", data={
         "action": "flexible", "email": "zzfact.flex@example.invalid",
         "name": TAG + " Margot", "rough_month": "", "rough_nights": "0",
-        "rough_guests": "2", "flexibility": "any", "message": ""},
+        "rough_guests": "2", "flexibility": "any", "message": "",
+        **_harness.contact_form_fields()},
         follow_redirects=True)
     conn = db()
     row = conn.execute("SELECT * FROM waitlist_entries WHERE email = ?",

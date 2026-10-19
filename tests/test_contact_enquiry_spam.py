@@ -46,7 +46,8 @@ def _send(anon, who, message, name=None):
         r = anon.post("/contact", data={
             "action": "flexible", "email": f"{TAG.lower()}.{who}@example.invalid",
             "name": name or f"{TAG} {who}", "rough_month": "", "rough_nights": "0",
-            "rough_guests": "2", "flexibility": "any", "message": message},
+            "rough_guests": "2", "flexibility": "any", "message": message,
+            **_harness.contact_form_fields()},
             follow_redirects=True)
     finally:
         m.send_email = real
@@ -75,8 +76,8 @@ def run():
     try:
         s.section("A real enquiry")
         r, entry, task, letters = _send(anon, "guest", "Two of us, a week in June, any chance?")
-        s.check("is saved as an open enquiry from the Contact page",
-                entry is not None and entry["status"] == "open" and entry["source"] == "contact",
+        s.check("is saved as an enquiry from the Contact page",
+                entry is not None and entry["status"] == "enquiry" and entry["source"] == "contact",
                 detail=str(entry and dict(entry)))
         s.check("with a task tied to it", task is not None and task["status"] == "open")
         s.check("and the house is written to", len(letters) == 1, detail=str(len(letters)))
