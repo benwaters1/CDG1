@@ -71670,6 +71670,17 @@ def admin_workshop_session(session_id):
     free = workshop_session_remaining_capacity(conn, session_id)
     rooms = conn.execute("SELECT id, name, max_occupancy FROM rooms WHERE active = 1 "
                          "ORDER BY sort_order, name").fetchall()
+    # How it stands as a whole -- what it needs, its minimum, what to have
+    # ready -- in the same words the workshops list gives it, from the same
+    # reckoning. The sitting's own page said none of it, so a sitting below
+    # its minimum read as fine once it was opened.
+    programme = conn.execute("SELECT * FROM workshops WHERE id = ?",
+                             (session["workshop_id"],)).fetchone()
+    reckoned = workshop_sitting_rows(conn, [programme], today)
+    standing = next((r for rows in (reckoned["upcoming"], reckoned["past"])
+                     for r in rows.get(programme["id"], []) if r["session"]["id"] == session_id), None)
+    registered_ever = conn.execute(
+        "SELECT COUNT(*) AS c FROM workshop_bookings WHERE session_id = ?", (session_id,)).fetchone()["c"]
     conn.close()
     order = {"pending": 0, "confirmed": 1}
     live.sort(key=lambda r: (order.get(r["status"], 2), (r["who"] or "").lower()))
@@ -71691,7 +71702,8 @@ def admin_workshop_session(session_id):
     }
     gone = [r for r in regs if not r["live"]]
     return render_template("admin_workshop_session.html", session=session, live=live,
-                           gone=gone, figures=figures, rooms=rooms, today=today)
+                           gone=gone, figures=figures, rooms=rooms, today=today,
+                           standing=standing, registered_ever=registered_ever)
 
 
 def workshop_register_view(conn, args, today=None):

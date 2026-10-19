@@ -59,6 +59,41 @@
   </a>
 </div>
 
+{#- What it needs and what to have ready, as the workshops list says it
+    (19 October 2026): opened, a sitting below its minimum read as fine. -#}
+{% if standing and standing.needs %}
+<div class="ws-need" style="margin-bottom:16px;">
+  <span class="ws-need-head"><b>Needs you</b></span>
+  <ul class="ws-need-list">
+    {% for n in standing.needs %}<li>{{ n }}</li>{% endfor %}
+    {% if standing.at_risk %}{% set r = standing.at_risk %}
+    <li>{% if r.waitlist_could_fill %}<a href="{{ url_for('admin_workshop_waitlist') }}">{{ r.waiting }} waiting could cover it: ring them</a> before calling it off.{% elif r.waiting %}{{ r.waiting }} waiting, not enough to cover it.{% else %}Nobody is waiting.{% endif %}</li>
+    {% endif %}
+  </ul>
+</div>
+{% endif %}
+
+{% if standing and standing.materials and standing.materials.lines %}{% set mp = standing.materials %}
+<section class="detail-card" style="margin-bottom:16px;">
+  <h2 class="section-heading">What to have ready</h2>
+  <p>For {{ mp.heads }} {{ 'place' if mp.heads == 1 else 'places' }}:
+    {% for l in mp.lines %}{{ '%g'|format(l.need) }} {{ l.unit }} {{ l.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+    {%- if mp.cost %} &middot; {{ mp.cost|money }}{% endif %}.</p>
+  {% if mp.taken_out %}
+    <p><span class="mini-status status-inactive">taken out of stock</span></p>
+  {% else %}
+    {% if mp.short %}<p class="ws-short">Short {% for l in mp.short %}{{ '%g'|format(l.shortfall) }} {{ l.unit }} of {{ l.name }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+    {#- A button, not automatic on the end date: only somebody who was there
+        knows it ran. -#}
+    <form method="post" action="{{ url_for('consume_workshop_materials', session_id=session['id']) }}" onsubmit="return confirm('Take these materials out of stock? This cannot be undone from here.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="back_session" value="{{ session['id'] }}">
+      <button type="submit" class="btn-mini">Take them out of stock</button>
+    </form>
+  {% endif %}
+</section>
+{% endif %}
+
 <h2 class="section-heading" id="roster">Who is coming — {{ live|length }}</h2>
 {% if not live %}
   <div class="empty-state">Nobody has registered for this sitting yet.</div>
@@ -248,12 +283,19 @@ added on the person's card, where the ledger is.</p>
       <button type="submit" class="btn-mini btn-mini-danger">Call it off</button>
     </form>
 
+    {#- Only while nobody has ever registered: the route refuses otherwise, and
+        a button that can only be refused is one more thing to read. With
+        people on it, calling it off is the way. -#}
+    {% if not registered_ever %}
     <form method="post" action="{{ url_for('delete_workshop_session', session_id=session['id']) }}"
-          onsubmit="return confirm('Remove this sitting altogether? Only possible while nobody is registered.');">
+          onsubmit="return confirm('Remove this sitting altogether? Nobody is registered on it.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="back_workshop" value="{{ session['workshop_id'] }}">
       <button type="submit" class="btn-text-danger">Remove this sitting</button>
     </form>
+    {% else %}
+    <p class="upload-hint">People have registered, so it cannot be removed: call it off instead.</p>
+    {% endif %}
   </div>
   {% endif %}
 </section>

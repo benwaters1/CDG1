@@ -117,6 +117,19 @@ def run():
                 and f"/admin/workshops/sessions/{quiet}\"" not in listed)
         found = oc.get("/admin/workshops", query_string={"q": TAG}).get_data(as_text=True)
         s.check("and a search finds by workshop", f"/admin/workshops/sessions/{quiet}" in found)
+
+        s.section("The sitting's own page says the same")
+        # Opened, a sitting below its minimum read as fine: the needs were on
+        # the list and nowhere on the sitting.
+        sit = oc.get(f"/admin/workshops/sessions/{short}").get_data(as_text=True)
+        s.check("what it needs, in the list's words", "1 of 3 needed to run" in sit
+                and bool(re.search(r"deposits? not paid", sit)) and "Nobody is waiting." in sit)
+        s.check("and with people registered it offers calling off, not removing",
+                f"/admin/workshops/sessions/{short}/delete" not in sit and "call it off instead" in sit)
+        empty = oc.get(f"/admin/workshops/sessions/{quiet}").get_data(as_text=True)
+        s.check("a sitting nobody has registered on can still be removed",
+                f"/admin/workshops/sessions/{quiet}/delete" in empty)
+        s.check("and one that needs nothing says nothing", "Needs you" not in empty.split("Who is coming")[0])
     finally:
         conn.close()
         _cleanup()
