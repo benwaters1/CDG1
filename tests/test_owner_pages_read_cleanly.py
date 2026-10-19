@@ -57,7 +57,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Opening these is not reading them: one ends the session the rest of the
 # sweep is using, one changes the language every later page is read in, and
 # one builds a zip of the whole database.
-NOT_OPENED = {"logout", "set_language", "download_backup", "static"}
+NOT_OPENED = {"logout", "set_language", "download_backup", "static",
+              # The dashboard again, at the name admin./ opens on. It is read
+              # as "/", and read twice it only ever finds itself.
+              "admin_home"}
 
 # Pages whose first words are not their title, on purpose, and why. Checked
 # both ways: a page that starts putting its title first comes off the list.
