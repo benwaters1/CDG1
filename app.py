@@ -1309,6 +1309,19 @@ GUEST_LOOKUP_TOKEN = os.environ.get("GUEST_LOOKUP_TOKEN", "")
 ADDIN_CLIENT_ID = (os.environ.get("ADDIN_CLIENT_ID") or "").strip()
 ADDIN_TENANT_ID = (os.environ.get("ADDIN_TENANT_ID") or "").strip()
 
+# THE ADD-IN'S OWN ADDRESS: where Outlook loads it from, and so the address the
+# manifest names and the add-in page offers. Everybody's Outlook has it at the
+# Railway address, and it must stay there whichever name the page offering it
+# was opened on -- a manifest built from admin.chateaugudanes.com, installed,
+# moves the add-in off Railway for the whole house. See addin_base_url().
+#
+# Unset, Railway's own variable stands in, but only when it holds a
+# *.railway.app name: Railway documents it as "the public service or customer
+# domain", so with a custom domain attached it may hold one of the house's
+# names instead, which is exactly the wrong answer.
+ADDIN_BASE_URL = (os.environ.get("ADDIN_BASE_URL") or "").strip().rstrip("/")
+RAILWAY_PUBLIC_DOMAIN = (os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "").strip().lower()
+
 # THE HOUSE CALENDAR, written by the app into one Microsoft 365 mailbox.
 #
 # A second app registration, NOT the mail reader's, and on purpose: an Exchange
@@ -92148,6 +92161,19 @@ def readiness_checks(conn, *, include_slow=True):
               "be the original. Set PUBLIC_BASE_URL to https://www.chateaugudanes.com "
               "(or the bare domain, whichever the house uses).")
 
+    # Asked without the request's name: this page may be open on admin. or on
+    # Railway, and the answer must not depend on which.
+    addin_known = addin_base_source(from_request=False)[0]
+    add("warn" if staff_address() else "info", "Core", "The Outlook add-in's address",
+        bool(addin_known),
+        f"{addin_known}, on every manifest whichever address it is fetched from."
+        if addin_known else
+        "Not set. ADDIN_BASE_URL is " + ("not an address" if ADDIN_BASE_URL else "unset")
+        + (f" and RAILWAY_PUBLIC_DOMAIN is {RAILWAY_PUBLIC_DOMAIN}, not a Railway address"
+           if RAILWAY_PUBLIC_DOMAIN else "")
+        + ", so the add-in page opened on admin.chateaugudanes.com cannot offer the "
+          "manifest. Set ADDIN_BASE_URL to https://cdg1-production-9186.up.railway.app.")
+
     email_ok = email_enabled()
     held = conn.execute(
         "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
@@ -108346,19 +108372,64 @@ def addin_page_config():
     }
 
 
+def _addin_setting_base():
+    """ADDIN_BASE_URL as an origin, or "" if it is unset or is not an address."""
+    parsed = urlparse(ADDIN_BASE_URL)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def addin_base_source(from_request=True):
+    """(origin, where it came from) for the add-in. `where` is one of:
+
+      "setting"  ADDIN_BASE_URL
+      "railway"  RAILWAY_PUBLIC_DOMAIN, holding a *.railway.app name
+      "request"  the name this request came in on, which is not the house's
+      "unknown"  none of those: the request is on one of the house's names and
+                 nothing says where the add-in lives (origin is then None)
+
+    The request's own name is the last resort, and never one of the house's:
+    a laptop or a staging copy serves its own add-in, as it always has, but
+    www. and admin. are not where everybody's Outlook has it. from_request=False
+    leaves it out, for a check whose answer must not depend on the name asked.
+    """
+    if _addin_setting_base():
+        return _addin_setting_base(), "setting"
+    if RAILWAY_PUBLIC_DOMAIN.endswith(".railway.app"):
+        return "https://" + RAILWAY_PUBLIC_DOMAIN, "railway"
+    if from_request and has_request_context() and not on_house_domain():
+        return request.host_url.rstrip("/"), "request"
+    return None, "unknown"
+
+
+def addin_base_url():
+    """The add-in's origin, or None when it cannot be known from here."""
+    return addin_base_source()[0]
+
+
+def addin_url(base, endpoint, **values):
+    """A full address on the add-in's origin, whatever name the request is on."""
+    return base + url_for(endpoint, **values)
+
+
 @app.route("/outlook-addin/manifest.xml")
 def outlook_addin_manifest():
-    base = request.host_url.rstrip("/")
-    icon = lambda size: url_for("static", filename=f"addin/icon-{size}.png", _external=True)  # noqa: E731
+    # Answered on every name as it always was; only the addresses inside are
+    # the add-in's own. With nothing to say where that is (only possible on
+    # the house's names), the name asked on stands in, as it always did, and
+    # the add-in page says what to set.
+    base = addin_base_url() or request.host_url.rstrip("/")
+    icon = lambda size: addin_url(base, "static", filename=f"addin/icon-{size}.png")  # noqa: E731
     xml = render_template(
         "outlook_addin_manifest.xml", guid=OUTLOOK_ADDIN_GUID, version=OUTLOOK_ADDIN_VERSION,
         icons={size: icon(size) for size in (16, 25, 32, 48, 64, 80, 128)},
-        taskpane_url=url_for("outlook_addin_taskpane", _external=True),
-        support_url=url_for("contact_page", _external=True),
+        taskpane_url=addin_url(base, "outlook_addin_taskpane"),
+        support_url=addin_url(base, "contact_page"),
         app_domain=base,
-        launchevent_html_url=url_for("outlook_addin_launchevent_html", _external=True),
-        launchevent_js_url=url_for("outlook_addin_launchevent_js", _external=True),
-        compose_taskpane_url=url_for("outlook_addin_compose", _external=True),
+        launchevent_html_url=addin_url(base, "outlook_addin_launchevent_html"),
+        launchevent_js_url=addin_url(base, "outlook_addin_launchevent_js"),
+        compose_taskpane_url=addin_url(base, "outlook_addin_compose"),
     )
     return app.response_class(xml, mimetype="application/xml")
 
@@ -108514,14 +108585,20 @@ def _admin_addin_context(conn):
                           "owner_only": mailbox_is_owner_only(r)})
     notes = conn.execute("SELECT value FROM app_settings WHERE key = ?",
                          (ADDIN_HOUSE_NOTES_SETTING,)).fetchone()
+    # The add-in's own address, not this page's: opened on admin., a manifest
+    # link built from the request would move everybody's Outlook off Railway.
+    addin_base, addin_from = addin_base_source()
     return {
-        "manifest_url": url_for("outlook_addin_manifest", _external=True),
+        "manifest_url": (addin_url(addin_base, "outlook_addin_manifest")
+                         if addin_base else None),
+        "addin_base_from": addin_from,
+        "railway_public_domain": RAILWAY_PUBLIC_DOMAIN,
         "manifest_version": OUTLOOK_ADDIN_VERSION,
         "token_configured": bool(GUEST_LOOKUP_TOKEN),
         "shared_key_allowed": addin_shared_key_allowed(conn),
         "sso_configured": addin_sso_configured(), "sso_client_id": ADDIN_CLIENT_ID,
         "sso_tenant": addin_tenant_id(), "sso_scope": addin_scope(),
-        "addin_origin": request.host_url.rstrip("/"),
+        "addin_origin": addin_base,
         "claude_on": claude_configured(), "graph_on": graph_enabled(),
         "graph_mailboxes": MS_GRAPH_MAILBOXES,
         "users": users, "sessions": sessions, "unmatched": addin_unmatched(conn),
