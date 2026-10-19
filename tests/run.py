@@ -456,6 +456,7 @@ SUITES = [
     "test_offline_actions",
     "test_html_email",
     "test_letters_drawn",
+    "test_letter_design",
     "test_mail_redirect",
     "test_not_live_yet",
     "test_chef_program",
