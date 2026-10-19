@@ -130,6 +130,8 @@ def run():
                 f"mailto:{fresh['contact_email']}?subject=" in page
                 and fresh["reference_code"] in page[page.find("mailto:"):page.find("mailto:") + 200])
         s.check("no step's button is just 'Go'", ">Go</a>" not in page)
+        s.check("confirming one with no price agreed says so before it is pressed",
+                "No price is agreed yet" in page)
         s.check("the last stage is 'Took place', not 'Held' beside 'Hold the date'",
                 "Took place" in page and ">Held<" not in page)
 
@@ -247,6 +249,8 @@ def run():
                 "Write to them" in page[page.find("Get their final numbers"):page.find("Get their final numbers") + 900])
         s.check("and the balance step's button says it records a payment",
                 "Record a payment" in page and ">Go</a>" not in page)
+        s.check("a price agreed by hand is said, not 'No quote yet'",
+                "No quote sent" in page and "agreed" in page and "No quote yet" not in page)
         s.check("and the run sheet, guest list and margin are there",
                 all(w in page for w in ("Run sheet", "Guest list", "What it made")))
         r = oc.post(f"/admin/events/{due['id']}/payment",
