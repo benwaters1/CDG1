@@ -11533,6 +11533,11 @@ def bot_guard_fields():
     template: {{ bot_guard() }} inside the <form>."""
     from markupsafe import Markup
     ts = str(int(time.time()))
+    # An id of its own each time, the name the same. Since 19 October every
+    # public page carries the newsletter sign-up in its menu and its footer
+    # (and some a third), so one id on every copy was the same id three times
+    # on a page -- which leaves each label pointing at the first box only.
+    field_id = f"{BOT_HONEYPOT_FIELD}-{secrets.token_hex(3)}"
     # Off the page rather than display:none, which some scripts know to skip;
     # out of the tab order and hidden from screen readers, with a label that
     # says what to do in case anything does reach it. autocomplete off and a
@@ -11540,8 +11545,8 @@ def bot_guard_fields():
     return Markup(
         '<div aria-hidden="true" style="position:absolute;left:-10000px;top:auto;'
         'width:1px;height:1px;overflow:hidden;">'
-        f'<label for="{BOT_HONEYPOT_FIELD}">Leave this empty</label>'
-        f'<input type="text" id="{BOT_HONEYPOT_FIELD}" name="{BOT_HONEYPOT_FIELD}" value="" '
+        f'<label for="{field_id}">Leave this empty</label>'
+        f'<input type="text" id="{field_id}" name="{BOT_HONEYPOT_FIELD}" value="" '
         'tabindex="-1" autocomplete="off"></div>'
         f'<input type="hidden" name="{BOT_STAMP_FIELD}" value="{ts}.{_form_stamp_signature(ts)}">')
 
