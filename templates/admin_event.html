@@ -98,7 +98,9 @@
       {% if event['status'] in ('new', 'contacted', 'quoted') %}
         {{ to_status('confirmed', 'Confirm the event', 'btn-mini btn-mini-go',
                      'Confirm? ' ~ ('This closes the house on those dates and writes to ' ~ event['contact_name'] ~ ' to say it is confirmed.' if event['contact_email'] else 'This closes the house on those dates.')
-                     ~ (' Also on those dates: ' ~ clashes.count ~ ' other booking(s) — see the list on the right.' if clashes and clashes.count else '')) }}
+                     ~ (' Also on those dates: ' ~ clashes.count ~ ' other booking(s) — see the list on the right.' if clashes and clashes.count else '')
+                     ~ (' No price is agreed yet, so no deposit can be asked for: put one on it under Money first if you can.' if not event['quoted_price'] else '')
+                     ~ (' It has no date yet.' if not event['preferred_date'] else '')) }}
         {{ to_status('declined', 'Decline', 'btn-mini btn-mini-danger',
                      'Decline? ' ~ ('They are written to to say so.' if event['contact_email'] else '')) }}
       {% endif %}
@@ -320,6 +322,7 @@
         <a href="{{ url_for('event_agreement', inquiry_id=event['id']) }}">Quote &amp; dates</a>
         <span>{% if live %}Quote {{ live['version'] }}, {{ live['status'] }} · {{ live['quoted_price']|money(0) }}
               {% elif quotes %}{% set q = quotes[0] %}Quote {{ q['version'] }} {{ q['status'] }}
+              {% elif event['quoted_price'] %}No quote sent · {{ event['quoted_price']|money(0) }} agreed
               {% else %}No quote yet{% endif %}
               {%- if schedule and schedule.instalments %} · {{ schedule.instalments|length }} payment stage{{ '' if schedule.instalments|length == 1 else 's' }}{% endif %}</span>
       </li>
