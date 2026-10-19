@@ -36,7 +36,10 @@ T = {
     "airport": (43.6293, 1.3638), "toulouse": (43.6045, 1.4440),
     "pamiers": (43.1167, 1.6108), "foix": (42.9653, 1.6075),
     "tarascon": (42.8456, 1.6050), "cabannes": (42.7856, 1.6856),
-    "chateau": (42.7905, 1.6700), "ax": (42.7194, 1.8389),
+    # The gates, to the drawing's precision: the pin app.py seeds, which the
+    # owner confirmed. At this scale a kilometre is about seven units, so the
+    # mark is where the house is, not a place to navigate to.
+    "chateau": (42.7838, 1.6803), "ax": (42.7194, 1.8389),
     "mirepoix": (43.0878, 1.8744), "carcassonne": (43.2130, 2.3491),
     "andorra": (42.5063, 1.5218), "pasdelacase": (42.5428, 1.7333),
     "hospitalet": (42.5890, 1.8010), "puigcerda": (42.4317, 1.9283),
