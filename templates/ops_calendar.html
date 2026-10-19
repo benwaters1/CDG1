@@ -160,6 +160,62 @@
   {% endif %}
 </div>
 
+{#- One day of the phone list (cal2-agenda, below). -#}
+{% macro agenda_day(c) %}
+  {% set busy = c.house or c.happening or c.noted or c.sections %}
+  <section class="cal2-aday {{ 'is-today' if c.is_today }} {{ 'is-quiet' if not busy }}" id="aday-{{ c.iso }}">
+    <div class="cal2-aday-head">
+      <a class="cal2-aday-date" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}">
+        <span class="cal2-aday-dow">{{ c.date.strftime('%a') }}</span>
+        <span class="cal2-num">{{ c.date.day }}</span>
+        <span class="cal2-aday-mon">{{ c.date.strftime('%b') }}</span>
+      </a>
+      {{ day_sum(c) }}
+      {% if not busy %}<span class="cal2-aday-none">Nothing on</span>{% endif %}
+      <button type="button" class="cal2-add cal-add-open" data-add-date="{{ c.iso }}" aria-label="Add something on {{ c.date.strftime('%A %d %B') }}">+</button>
+    </div>
+    {% for grp in c.house %}
+    <div class="cal2-sec" data-sec="booking">
+      <p class="cal2-sec-head"><span>{{ grp.label }}</span><span class="cal2-sec-count">{{ grp.things|length }}</span></p>
+      {% if grp.label == 'Staying on' %}
+      {#- Every night of a stay would list every guest again on every day;
+          the names are one tap away on the day, as the month's dinners are. -#}
+      <div class="cal2-folded">{% for e in grp.things %}{{ event_chip(e) }}{% endfor %}</div>
+      <a class="cal2-aday-staying" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}">
+        {%- for e in grp.things %}{{ (e.facts or {}).get('guest') or e.short or e.title }}{% if (e.facts or {}).get('room') %} ({{ e.facts.room }}){% endif %}{{ ', ' if not loop.last }}{% endfor -%}
+      </a>
+      {% else %}
+      {% for e in grp.things %}{{ event_chip(e) }}{% endfor %}
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if c.happening %}
+    <div class="cal2-sec" data-sec="happening">
+      <p class="cal2-sec-head"><span>Ateliers and events</span><span class="cal2-sec-count">{{ c.happening|length }}</span></p>
+      {% for e in c.happening %}{{ event_chip(e) }}{% endfor %}
+    </div>
+    {% endif %}
+    {% for sec in c.sections %}
+    {% set limit = 3 if cal.view == 'month' else 6 %}
+    <div class="cal2-sec cal2-sec-{{ sec.key }}" data-sec="{{ sec.key }}">
+      <p class="cal2-sec-head"><span>{{ sec.label }}</span><span class="cal2-sec-count">{{ sec.count }}</span></p>
+      {% if cal.view == 'week' or sec.key in ('task', 'extra') %}
+      {% for e in sec.things[:limit] %}{{ event_chip(e) }}{% endfor %}
+      {% if sec.things|length > limit %}<a class="cal-more" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}">+{{ sec.things|length - limit }} more</a>{% endif %}
+      {% else %}
+      <div class="cal2-folded">{% for e in sec.things %}{{ event_chip(e) }}{% endfor %}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if c.noted %}
+    <div class="cal2-sec" data-sec="noted">
+      <p class="cal2-sec-head"><span>Dates and closed rooms</span><span class="cal2-sec-count">{{ c.noted|length }}</span></p>
+      {% for e in c.noted %}{{ event_chip(e) }}{% endfor %}
+    </div>
+    {% endif %}
+  </section>
+{% endmacro %}
+
 {% if cal.view in ('week', 'month') %}
 {#- THE WEEK, AND THE MONTH AS ITS WEEKS. Each row of seven days: the day
     headings, the bars of what lasts across them, then each day's one-day
@@ -221,7 +277,31 @@
 </div>
 </div>
 
-{% else %}
+{#- THE SAME DAYS, ONE UNDER ANOTHER, for a phone (the owner, 19 October
+    2026: "not readable on phone, it's very hard"). Seven columns of bars and
+    chips need 820px, so on a phone the grid was a sideways scroll showing two
+    and a half days with every name cut to "Change the be…". Below 640px the
+    grid gives way to this, and each day reads the way the day view does: who
+    arrives and leaves by name, how many are staying on, then the day's things
+    under their headings. Same chips, so the filters, the cards and the "+" all
+    work as they do on the grid. A month leaves out the days around it. -#}
+<div class="cal2-agenda cal2-agenda-{{ cal.view }}" aria-label="{{ 'This week' if cal.view == 'week' else cal.span_start.strftime('%B %Y') }}, day by day">
+  {#- In this month, the days already gone fold into one line, so the page
+      opens on today rather than on a screenful of what is over. -#}
+  {% set gone = cal.cells|selectattr('in_span')|selectattr('date', 'lt', today)|list if cal.view == 'month' else [] %}
+  {% if gone %}
+  <details class="cal2-agenda-gone">
+    <summary>Earlier in {{ cal.span_start.strftime('%B') }} · {{ gone|length }} day{{ '' if gone|length == 1 else 's' }}</summary>
+    <div class="cal2-agenda">{% for c in gone %}{{ agenda_day(c) }}{% endfor %}</div>
+  </details>
+  {% endif %}
+  {% for c in cal.cells if c.in_span and c not in gone %}{{ agenda_day(c) }}{% endfor %}
+</div>
+{% endif %}
+
+
+
+{% if cal.view == 'day' %}
 {#- ONE DAY, in the order the house meets it: who arrives and leaves, what is
     on, the kitchen, what was promised, the jobs, who is in. -#}
 {% set c = cal.cells[0] %}

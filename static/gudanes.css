@@ -11596,3 +11596,35 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-barony__n{ font-family: var(--serif); font-size: clamp(1.5rem, 2.6vw, 2rem); line-height: 1.1; color: #14305E; }
 .g .g-barony__l{ font-size: 14px; line-height: 1.4; color: #3F4A5A; }
 @media (min-width: 900px){ .g .g-barony .g-hist__grid{ grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); } }
+
+/* ---------------------------------------------------------------------------
+   HOUSE ADDITION, not from a handover (19 October 2026). Keep it when a new
+   gudanes.css arrives: the owner found the room calendar "very hard" to read
+   on a phone. The free nights were 13px numbers with no box, the taken ones
+   grey squares with a strike through them, so the page read as a block of
+   grey with the bookable nights the faintest thing on it. On a phone the
+   bookable nights are now the boxed, full-strength figures, and the taken
+   and past ones step back.
+   --------------------------------------------------------------------------- */
+@media (max-width: 640px){
+  .g .g-cal{ padding: var(--s3); }
+  .g .g-cal .g-dates__grid{ gap: 4px; }
+  .g .g-cal .g-dates__dow{ font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+  .g .g-cal .g-cal__title{ font-size: 16px; color: var(--ink); margin-top: var(--s2); }
+  .g .g-cal .g-dates__day{
+    font-size: 17px; font-weight: 500; height: 2.9rem;
+    background: var(--white); border: 1px solid var(--line); color: var(--ink);
+  }
+  .g .g-cal .g-dates__day.is-empty{ background: transparent; border-color: transparent; }
+  .g .g-cal .g-dates__day.is-off{
+    background: transparent; border-color: transparent;
+    color: rgba(20, 48, 95, .42); font-weight: 400;
+    text-decoration: line-through; text-decoration-color: rgba(20, 48, 95, .35);
+  }
+  .g .g-cal .g-dates__day:disabled{ text-decoration: none; }
+  .g .g-cal .g-dates__day.is-range{ background: var(--gold-wash); border-color: var(--gold); }
+  .g .g-cal .g-dates__day.is-sel{ background: var(--ink); border-color: var(--ink); color: var(--sand); font-weight: 600; }
+  .g .g-cal .g-cal__swatch{ background: transparent; border: 0; width: auto; height: auto; }
+  .g .g-cal .g-cal__swatch::before{ content: "12"; font-size: 13px; color: rgba(20, 48, 95, .42); text-decoration: line-through; }
+  .g .g-cal .g-cal__key{ font-size: 14px; }
+}
