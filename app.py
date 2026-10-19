@@ -36747,6 +36747,15 @@ def owner_home_warnings(conn, today):
     return out
 
 
+def _day_link(endpoint, **values):
+    """Where a row of the day opens, or "" when there is no page to open it on.
+
+    owner_home_day is also read by the assistant, outside any request, where
+    url_for raises -- and did, as soon as a task was due that day (found by a
+    full run, d222f51). A row read out by the assistant has nowhere to link."""
+    return url_for(endpoint, **values) if has_request_context() else ""
+
+
 def owner_home_day(conn, today, user):
     """Today, in the order it happens. Arrivals, departures, dinner, tasks."""
     rows = []
@@ -36759,7 +36768,7 @@ def owner_home_day(conn, today, user):
                      "title": f"{b['guest_name']} arriving",
                      "detail": f"{b['room_name']} · party of {b['party_size']}",
                      "assignee": None, "done": bool(b["arrival_prepped_at"]),
-                     "href": url_for("admin_booking", booking_id=b["id"])})
+                     "href": _day_link("admin_booking", booking_id=b["id"])})
     for b in conn.execute(
             """SELECT bookings.*, rooms.name AS room_name FROM bookings
                JOIN rooms ON rooms.id = bookings.room_id
@@ -36769,7 +36778,7 @@ def owner_home_day(conn, today, user):
                      "title": f"{b['guest_name']} departing",
                      "detail": b["room_name"], "assignee": None,
                      "done": bool(b["checked_out_at"]),
-                     "href": url_for("admin_booking", booking_id=b["id"])})
+                     "href": _day_link("admin_booking", booking_id=b["id"])})
     # Booking.com's arrivals and departures are part of the day as much as the
     # house's own. Nothing in the app marks them done, so they are never shown
     # ticked -- a tick nobody made would be the worse mistake.
@@ -36802,8 +36811,8 @@ def owner_home_day(conn, today, user):
         # Every row opens something. A task that came from an enquiry opens
         # the enquiry, where answering or marking it spam settles the task;
         # any other task opens the task list at it.
-        href = (url_for("admin_waitlist", when="all") + f"#entry-{t['waitlist_entry_id']}"
-                if t["waitlist_entry_id"] else url_for("admin_tasks"))
+        href = (_day_link("admin_waitlist", when="all") + f"#entry-{t['waitlist_entry_id']}"
+                if t["waitlist_entry_id"] else _day_link("admin_tasks"))
         rows.append({"time": "", "kind": "task", "title": t["title"],
                      "detail": t["room_note"] or "",
                      "assignee": "Mine" if t["assigned_to_user_id"] == user["id"] else t["who"],
