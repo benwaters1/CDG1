@@ -60,11 +60,18 @@
       {% for head, why, tone, anchor in steps %}
       <li class="ev-step ev-step-{{ tone }}">
         <div><strong>{{ head }}</strong><span>{{ why }}</span></div>
+        {#- Each step's button says what it does (19 October 2026): there was a
+            "Go" on the money and the details, and nothing on "Reply to them". -#}
         {% if anchor == 'agreement' %}<a class="btn-mini" href="{{ url_for('event_agreement', inquiry_id=event['id']) }}">Open the quote</a>
+        {% elif anchor in ('write', 'numbers') and event['contact_email'] %}<a class="btn-mini" href="mailto:{{ event['contact_email'] }}?subject={{ ('Your ' ~ (event['event_type'] or 'event')|lower ~ ' at Château de Gudanes (' ~ event['reference_code'] ~ ')')|urlencode }}">Write to them</a>
+        {%- if anchor == 'numbers' %} <a class="btn-mini" href="{{ url_for('event_run_sheet_page', event_id=event['id']) }}#final_numbers">Run sheet</a>{% endif %}
+        {% elif anchor == 'numbers' %}<a class="btn-mini" href="{{ url_for('event_run_sheet_page', event_id=event['id']) }}#final_numbers">Run sheet</a>
         {% elif anchor == 'plan' and 'numbers' in head %}<a class="btn-mini" href="{{ url_for('event_run_sheet_page', event_id=event['id']) }}#final_numbers">Run sheet</a>
         {% elif anchor == 'plan' and 'guest' in head %}<a class="btn-mini" href="{{ url_for('event_guest_list_page', event_id=event['id']) }}">Guest list</a>
         {% elif anchor == 'plan' %}<a class="btn-mini" href="{{ url_for('event_margin_page', event_id=event['id']) }}">What it made</a>
-        {% elif anchor != 'stage' %}<a class="btn-mini" href="#{{ anchor }}">Go</a>{% endif %}
+        {% elif anchor == 'money' %}<a class="btn-mini" href="#money">{{ 'Change the price' if head.startswith('Put a price') else 'See the money' if head.startswith('Decide') else 'Record a payment' }}</a>
+        {% elif anchor == 'details' %}<a class="btn-mini" href="#details">Change the details</a>
+        {% elif anchor not in ('stage', 'write') %}<a class="btn-mini" href="#{{ anchor }}">Open</a>{% endif %}
       </li>
       {% endfor %}
     </ol>
@@ -91,7 +98,9 @@
       {% if event['status'] in ('new', 'contacted', 'quoted') %}
         {{ to_status('confirmed', 'Confirm the event', 'btn-mini btn-mini-go',
                      'Confirm? ' ~ ('This closes the house on those dates and writes to ' ~ event['contact_name'] ~ ' to say it is confirmed.' if event['contact_email'] else 'This closes the house on those dates.')
-                     ~ (' Also on those dates: ' ~ clashes.count ~ ' other booking(s) — see the list on the right.' if clashes and clashes.count else '')) }}
+                     ~ (' Also on those dates: ' ~ clashes.count ~ ' other booking(s) — see the list on the right.' if clashes and clashes.count else '')
+                     ~ (' No price is agreed yet, so no deposit can be asked for: put one on it under Money first if you can.' if not event['quoted_price'] else '')
+                     ~ (' It has no date yet.' if not event['preferred_date'] else '')) }}
         {{ to_status('declined', 'Decline', 'btn-mini btn-mini-danger',
                      'Decline? ' ~ ('They are written to to say so.' if event['contact_email'] else '')) }}
       {% endif %}
@@ -313,6 +322,7 @@
         <a href="{{ url_for('event_agreement', inquiry_id=event['id']) }}">Quote &amp; dates</a>
         <span>{% if live %}Quote {{ live['version'] }}, {{ live['status'] }} · {{ live['quoted_price']|money(0) }}
               {% elif quotes %}{% set q = quotes[0] %}Quote {{ q['version'] }} {{ q['status'] }}
+              {% elif event['quoted_price'] %}No quote sent · {{ event['quoted_price']|money(0) }} agreed
               {% else %}No quote yet{% endif %}
               {%- if schedule and schedule.instalments %} · {{ schedule.instalments|length }} payment stage{{ '' if schedule.instalments|length == 1 else 's' }}{% endif %}</span>
       </li>
