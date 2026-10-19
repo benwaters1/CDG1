@@ -27,7 +27,7 @@
     {% elif data.kind == 'restaurant_booking' %}
     <a href="{{ url_for('admin_restaurant', q=data.row['reference_code']) }}" class="btn-ghost">The table</a>
     {% elif data.kind == 'event' %}
-    <a href="{{ url_for('admin_events', q=data.row['reference_code']) }}" class="btn-ghost">The event</a>
+    <a href="{{ url_for('admin_event', event_id=data.row['id']) }}" class="btn-ghost">The event</a>
     {% elif data.kind == 'vendor' %}
     <a href="{{ url_for('edit_vendor', vendor_id=data.row['id']) }}" class="btn-ghost">The supplier</a>
     {% elif data.kind == 'employee' %}

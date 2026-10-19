@@ -106,6 +106,36 @@ def run():
                 and f"/admin/workshops/{a}/custom-fields/new" not in page)
         s.check("adding a sitting still is, folded", f"/admin/workshops/{a}/sessions/new" in page)
 
+        s.section("A place held for its deposit is not one to decide")
+        # A hold is a pending row that waits on the GUEST -- it confirms when the
+        # deposit lands or lets go on its own -- so the owner is not asked to
+        # decide it. The column arrives with the deposit holds; the scratch
+        # copy is given it here if it has not, exactly as that migration adds it.
+        conn = db()
+        try:
+            conn.execute("ALTER TABLE workshop_bookings ADD COLUMN deposit_hold_until TEXT")
+        except Exception:
+            pass
+        for i, (status, held) in enumerate([("confirmed", None), ("pending", None),
+                                            ("pending", _now()), ("pending", _now())]):
+            conn.execute(
+                """INSERT INTO workshop_bookings (session_id, reference_code, manage_token, guest_name,
+                   guest_email, party_size, status, total_price, created_at, deposit_hold_until)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, 1500, ?, ?)""",
+                (b_mid, f"{TAG}H{i}", f"tok{TAG}h{i}", f"{TAG} Holder {i}",
+                 f"{TAG.lower()}.h{i}@example.invalid", status, _now(), held))
+        conn.commit()
+        rows = m.workshop_sitting_rows(conn, conn.execute(
+            "SELECT * FROM workshops WHERE id = ?", (b,)).fetchall(), today)["upcoming"][b]
+        conn.close()
+        row = next((r for r in rows if r["session"]["id"] == b_mid), None)
+        s.check("one to decide, two waiting for their deposits, one confirmed",
+                row and (row["confirmed"], row["pending"], row["holding"]) == (1, 1, 2),
+                detail=str(row and (row["confirmed"], row["pending"], row["holding"])))
+        page = oc.get("/admin/workshops").get_data(as_text=True)
+        s.check("and the workshops page says so",
+                "1 to decide" in page and "2 waiting for the deposit" in page)
+
         s.section("A programme's page")
         r = oc.get(f"/admin/workshops/{a}")
         prog = r.get_data(as_text=True)

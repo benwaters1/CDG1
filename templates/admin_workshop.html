@@ -54,7 +54,7 @@
           {% if s['notes'] %}<br><span class="upload-hint">{{ s['notes'] }}</span>{% endif %}
           {% if row.at_risk %}<br><span class="ws-short">{{ row.at_risk.confirmed }} of {{ row.at_risk.minimum }} needed to run · decide by {{ row.at_risk.decide_by }}</span>{% endif %}</td>
         <td>{% if s['cancelled_at'] %}<span class="mini-status status-declined">called off</span>
-            {% else %}{{ row.confirmed }} confirmed{% if row.pending %} · {{ row.pending }} to decide{% endif %} · {{ row.remaining }} of {{ s['capacity'] }} free{% endif %}</td>
+            {% else %}{{ row.confirmed }} confirmed{% if row.pending %} · {{ row.pending }} to decide{% endif %}{% if row.holding %} · {{ row.holding }} waiting for the deposit{% endif %} · {{ row.remaining }} of {{ s['capacity'] }} free{% endif %}</td>
         <td class="num">{{ row.register.paid|money(0) }} in{% if row.register.owed %}<br><span class="upload-hint">{{ row.register.owed|money(0) }} owed</span>{% endif %}</td>
         <td><a class="btn-mini" href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">Open</a></td>
       </tr>
@@ -90,7 +90,7 @@
   {% endif %}
 </section>
 
-<div class="ev-layout ws-setup">
+<div class="ev-layout">
 <section class="detail-card" id="materials">
   <h2 class="section-heading">What it uses up</h2>
   <p class="upload-hint" style="margin-top:-6px;">Each sitting works out what to have ready from this, and takes it out of stock when it has run.</p>

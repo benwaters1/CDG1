@@ -1513,7 +1513,6 @@ body.staff-shell .month-cal-badge-dinner{ color:var(--steel); }
 .cal-daynum:hover{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .cal-day-today .cal-daynum{ background:var(--gold); color:var(--chestnut-deep); border-radius:999px; min-width:24px; height:22px; line-height:20px; }
 .cal-day-events{ display:flex; flex-direction:column; gap:2px; min-width:0; overflow:hidden; }
-.cal-day-empty{ font-size:11px; color:var(--ink-soft); opacity:0.5; }
 
 .cal-ev{
   display:flex; align-items:center; gap:6px; min-width:0;
@@ -3569,7 +3568,10 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .ev-facts{ display:grid; grid-template-columns:max-content 1fr; gap:8px 18px; margin:0; font-size:14px; }
 .ev-facts dt{ color:var(--ink-soft); }
 .ev-facts dd{ margin:0; overflow-wrap:anywhere; }
-.ev-facts[hidden], .ev-form[hidden]{ display:none; }
+.ev-facts dd.ev-prose{ white-space:pre-line; }
+.ev-main, .ev-side{ min-width:0; }
+.ev-next{ border-top:3px solid var(--gold); }
+.ev-change{ margin-top:14px; }
 .ev-form{ margin-top:4px; }
 .ev-form-actions{ display:flex; gap:10px; align-items:center; margin-top:14px; }
 .ev-money td{ text-align:right; font-family:'IBM Plex Mono', monospace; white-space:nowrap; }
@@ -3629,6 +3631,9 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .ws-bar{ display:flex; height:8px; border-radius:4px; overflow:hidden; background:var(--status-neutral-bg); max-width:420px; }
 .ws-bar-in{ background:var(--success); }
 .ws-bar-wait{ background:var(--gold); }
+/* Held while the guest pays: theirs to settle, not the house's, so paler. */
+.ws-bar-hold{ background:repeating-linear-gradient(135deg, var(--gold-soft) 0 4px, transparent 4px 7px); }
+.ws-holding{ color:var(--ink-soft); }
 .ws-sit-counts{ margin:6px 0 0; font-size:13px; }
 .ws-decide{ color:var(--gold-on-warn); font-weight:600; }
 .ws-sit-risk{ margin:8px 0 0; font-size:13px; color:var(--steel-deep); }
@@ -3688,16 +3693,16 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .cal2-daysum{ display:inline-flex; gap:5px; font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--ink-soft); white-space:nowrap; overflow:hidden; }
 .cal2-in{ color:var(--success); font-weight:600; }
 .cal2-out{ color:var(--rust); font-weight:600; }
-/* The "+" on a day: quiet until the day is pointed at, always there on a
-   touch screen, where there is no pointing. */
+.cal2-let{ color:var(--ink-soft); }
+/* The "+" on a day: always there, because adding was the hard part. Bigger
+   on a touch screen. */
 .cal2-add{
   margin-left:auto; flex:none; width:24px; height:24px; padding:0; border-radius:50%;
   border:1px solid var(--parchment-line); background:var(--surface); color:var(--ink-soft);
-  font-size:15px; line-height:1; cursor:pointer; opacity:0; transition:opacity .12s ease;
+  font-size:15px; line-height:1; cursor:pointer;
 }
-.cal2-head:hover .cal2-add, .cal2-add:focus-visible{ opacity:1; }
-.cal2-add:hover{ border-color:var(--gold); color:var(--ink); }
-@media (pointer: coarse){ .cal2-add{ opacity:1; width:32px; height:32px; } }
+.cal2-add:hover, .cal2-add:focus-visible{ border-color:var(--gold); background:var(--status-warn-bg); color:var(--ink); }
+@media (pointer: coarse){ .cal2-add{ width:32px; height:32px; } }
 /* The bars. Dense auto-placement packs them into as few lines as they fit,
    and gives a line back when a filter hides one. */
 .cal2-bars{ display:grid; grid-template-columns:repeat(14, minmax(0, 1fr)); grid-auto-flow:row dense; row-gap:3px; padding:2px 0 6px; }

@@ -56,14 +56,15 @@
         <span class="mini-status status-declined">called off {{ s['cancelled_at']|house_day|date_short }}{% if s['cancelled_reason'] %} — {{ s['cancelled_reason'] }}{% endif %}</span>
       {% else %}
         {#- How full, at a glance: confirmed, waiting on a decision, free. -#}
-        <div class="ws-bar" role="img" aria-label="{{ row.confirmed }} confirmed, {{ row.pending }} waiting on a decision, {{ row.remaining }} free of {{ cap }}">
+        <div class="ws-bar" role="img" aria-label="{{ row.confirmed }} confirmed, {{ row.pending }} waiting on a decision{% if row.holding %}, {{ row.holding }} waiting for the deposit{% endif %}, {{ row.remaining }} free of {{ cap }}">
           {% if cap %}
-          <span class="ws-bar-in" style="width:{{ (row.confirmed / cap * 100)|round(1) }}%"></span><span class="ws-bar-wait" style="width:{{ (row.pending / cap * 100)|round(1) }}%"></span>
+          <span class="ws-bar-in" style="width:{{ (row.confirmed / cap * 100)|round(1) }}%"></span><span class="ws-bar-wait" style="width:{{ (row.pending / cap * 100)|round(1) }}%"></span><span class="ws-bar-hold" style="width:{{ (row.holding / cap * 100)|round(1) }}%"></span>
           {% endif %}
         </div>
         <p class="ws-sit-counts">
           <b>{{ row.confirmed }}</b> confirmed
           {%- if row.pending %} · <a class="ws-decide" href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">{{ row.pending }} to decide</a>{% endif %}
+          {%- if row.holding %} · <span class="ws-holding">{{ row.holding }} waiting for the deposit</span>{% endif %}
           · {{ row.remaining }} free
           {%- if row.remaining <= 0 %} <span class="mini-status status-inactive">full</span>{% endif %}
           · {{ row.rooms_assigned }} room{{ '' if row.rooms_assigned == 1 else 's' }} given out

@@ -8995,7 +8995,7 @@ NAV_AREAS = {
         "workshop_session_email", "workshop_session_statements",
         "send_workshop_registration_statement",
         "admin_workshop_feedback", "admin_workshop_registrations", "admin_workshop_waitlist",
-        "admin_workshops", "cancel_workshop_registration_admin",
+        "admin_workshops", "admin_workshop", "cancel_workshop_registration_admin",
         "confirm_workshop_registration", "decline_workshop_registration", "delete_workshop",
         "delete_workshop_session", "edit_workshop", "export_workshop_feedback_csv",
         "export_workshop_registrations_csv", "export_workshop_waitlist_csv", "new_workshop",
@@ -9043,6 +9043,7 @@ NAV_AREAS = {
         "new_event_hold", "release_event_hold", "new_event_instalment",
         "delete_event_instalment", "save_event_terms",
         "admin_events", "export_events_csv", "update_event_inquiry",
+        "admin_event", "edit_event_details",
         "event_run_sheet_page", "export_event_run_sheet_csv",
         "add_event_moment", "delete_event_moment",
         "add_event_supplier", "confirm_event_supplier", "delete_event_supplier",
@@ -52649,7 +52650,7 @@ def admin_event(event_id):
         "admin_event.html", event=event, bill=bill, live=live, quotes=quotes, holds=holds,
         schedule=schedule, guests=guests, readiness=readiness, moments=moments,
         payments=payments, clashes=clashes, caution=caution, event_types=types,
-        stage=stage, stages=EVENT_STAGES, status_words=EVENT_STATUS_WORDS,
+        stage=stage, stages=EVENT_STAGES,
         steps=event_next_steps(event, bill, live, holds, guests, today, quotes),
         staff_down=staff, payment_methods=MANUAL_PAYMENT_METHODS,
         waited=event_days_waiting(event, today), today=today,
@@ -66558,7 +66559,7 @@ def refund_desk_context(conn, category, booking):
                 "what": (booking["event_type"] or "event").capitalize(),
                 "when": (format_date_human(booking["preferred_date"])
                          if booking["preferred_date"] else "No date yet"),
-                "back": url_for("admin_events", q=ref, when=LIST_ALL)}
+                "back": url_for("admin_event", event_id=bid)}
         money = {"cost": bill["quoted"], "received": bill["paid"], "refunded": bill["refunded"],
                  "owed": bill["owed"], "credit": bill["overpaid"]}
     else:
@@ -69841,7 +69842,6 @@ def admin_workshops():
     today = house_today()
     period = period_from_request()
     overview = workshops_overview(conn, period, today)
-    total_rooms = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
     sittings = workshop_sitting_rows(conn, workshops, today)
     sessions_by_workshop = sittings["upcoming"]
     # Every programme's sittings still to come, in one list by date: the
@@ -69860,7 +69860,7 @@ def admin_workshops():
     return render_template(
         "admin_workshops.html", workshops=workshops, sessions_by_workshop=sessions_by_workshop,
         past_by_workshop=sittings["past"], coming=coming,
-        today=today, total_rooms=total_rooms,
+        today=today,
         overview=overview, period=period,
         upcoming_count=upcoming_count, spots_remaining=spots_remaining,
     )
@@ -69889,13 +69889,21 @@ def workshop_sitting_rows(conn, workshops, today):
             tally["booked"] += 1
             tally["owed"] = round(tally["owed"] + max(reg_row["owed"], 0), 2)
             tally["paid"] = round(tally["paid"] + max(reg_row["paid"], 0), 2)
-    # People, not registrations: a couple is two places.
+    # People, not registrations: a couple is two places. A place held while
+    # the guest pays their deposit is pending but waits on the GUEST, not the
+    # owner -- it confirms or lets go on its own -- so it is counted apart
+    # from the ones to decide. Asked of the columns first, so this reads the
+    # same before and after holds exist.
+    holds = "deposit_hold_until" in {c["name"] for c in conn.execute(
+        "PRAGMA table_info(workshop_bookings)").fetchall()}
+    state = ("CASE WHEN status = 'pending' AND deposit_hold_until IS NOT NULL "
+             "THEN 'holding' ELSE status END" if holds else "status")
     people = {}
     for r in conn.execute(
-            """SELECT session_id, status, COALESCE(SUM(party_size), 0) AS n
-                 FROM workshop_bookings WHERE status IN ('pending', 'confirmed')
-                GROUP BY session_id, status""").fetchall():
-        people.setdefault(r["session_id"], {})[r["status"]] = r["n"]
+            f"""SELECT session_id, {state} AS state, COALESCE(SUM(party_size), 0) AS n
+                  FROM workshop_bookings WHERE status IN ('pending', 'confirmed')
+                 GROUP BY session_id, {state}""").fetchall():
+        people.setdefault(r["session_id"], {})[r["state"]] = r["n"]
     rooms_by_session = {r["session_id"]: r["c"] for r in conn.execute(
         """SELECT session_id, COUNT(DISTINCT assigned_room_id) AS c FROM workshop_bookings
             WHERE status IN ('pending', 'confirmed') AND assigned_room_id IS NOT NULL
@@ -69914,6 +69922,7 @@ def workshop_sitting_rows(conn, workshops, today):
                 "session": s, "workshop": w,
                 "remaining": workshop_session_remaining_capacity(conn, s["id"]),
                 "confirmed": here.get("confirmed", 0), "pending": here.get("pending", 0),
+                "holding": here.get("holding", 0),
                 "rooms_assigned": rooms_by_session.get(s["id"], 0),
                 "at_risk": at_risk_by_session.get(s["id"]),
                 "register": register_by_session.get(
@@ -69985,7 +69994,7 @@ def admin_workshop(workshop_id):
         past=sittings["past"][workshop_id], materials=materials,
         stock_choices=stock_choices, fields=fields, today=today,
         instructor=instructor["name"] if instructor else None, waiting=waiting,
-        sold=sum(r["confirmed"] + r["pending"] for r in upcoming
+        sold=sum(r["confirmed"] + r["pending"] + r["holding"] for r in upcoming
                  if not r["session"]["cancelled_at"]),
     )
 
@@ -85735,7 +85744,7 @@ def watch_task_findings(conn, today=None):
     for c in take("certification", clashes):
         found.append((
             "certification",
-            f"Not qualified for the shift — {c['employee_name']}, {c['shift_date']}",
+            f"Not qualified for the shift — {c['employee_name']}, {format_date_short(c['shift_date'])}",
             f"{c['detail']}\n\nMove the shift or get the certificate renewed before then.",
             c["shift_date"], "high"))
 
@@ -85746,7 +85755,7 @@ def watch_task_findings(conn, today=None):
                else f"{g['arrivals']} arriving")
         found.append((
             "cover",
-            f"Nobody rostered — {g['date']}",
+            f"Nobody rostered — {format_date_short(g['date'])}",
             f"{who}, and nobody on the rota who can work that day.",
             g["date"], "high"))
 

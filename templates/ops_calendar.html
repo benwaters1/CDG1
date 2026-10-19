@@ -38,7 +38,8 @@
     the same room starts where it stops. -#}
 {% macro span_bar(b) %}
 {% set tag = 'a' if b.link else 'button' %}
-<{{ tag }} class="cal-ev cal2-bar cal2-bar-{{ b.kind }} cal-ev-{{ b.lane }} {{ 'cal-ev-channel' if b.channel }} {{ 'cal-ev-pending' if b.status in ('pending', 'requested', 'held') }} {{ 'from-before' if b.from_before }} {{ 'goes-on' if b.goes_on }}"
+{% set kind_class = 'cal2-bar-' ~ b.kind %}
+<{{ tag }} class="cal-ev cal2-bar {{ kind_class }} cal-ev-{{ b.lane }} {{ 'cal-ev-channel' if b.channel }} {{ 'cal-ev-pending' if b.status in ('pending', 'requested', 'held') }} {{ 'from-before' if b.from_before }} {{ 'goes-on' if b.goes_on }}"
    {% if b.link %}href="{{ b.link }}"{% else %}type="button"{% endif %}
    style="grid-column:{{ b.col_start }} / {{ b.col_end }};"
    data-card="{{ b.uid }}" data-lane="{{ b.lane }}" data-employee="" data-status="{{ b.status }}"
@@ -480,14 +481,22 @@
   if (!dlg || !dlg.showModal) return;
   var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  function iso(d) { return d.toISOString().slice(0, 10); }
+  // The day is the house's day, as the page gave it; the day after is worked
+  // out on the calendar alone, never through a clock, which near midnight
+  // would be another day somewhere.
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function dayAfter(day) {
+    var p = day.split('-');
+    var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + 1));
+    return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+  }
   function setDay(day) {
-    var d = new Date(day + 'T12:00:00Z');
-    var next = new Date(d.getTime() + 86400000);
+    var p = day.split('-');
+    var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
     dlg.querySelector('[data-add-label]').textContent = days[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + months[d.getUTCMonth()];
     dlg.querySelectorAll('[data-add-day]').forEach(function(i) { i.value = day; });
     dlg.querySelectorAll('[data-add-href]').forEach(function(a) {
-      a.href = a.dataset.addHref.replace('{day}', day).replace('{next}', iso(next));
+      a.href = a.dataset.addHref.replace('{day}', day).replace('{next}', dayAfter(day));
     });
   }
   function showTab(key) {

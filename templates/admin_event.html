@@ -115,8 +115,8 @@
         {%- if event['alternate_date'] %}<br><span class="upload-hint">or {{ event['alternate_date']|date_human }}</span>{% endif %}</dd>
       <dt>Guests</dt><dd>{{ event['guest_count'] or '—' }}{% if event['final_numbers'] is not none %} <span class="upload-hint">· final {{ event['final_numbers'] }}</span>{% endif %}</dd>
       <dt>Spaces</dt><dd>{{ event['spaces'] or '—' }}</dd>
-      <dt>Asked for</dt><dd class="wraps">{{ event['message'] or '—' }}</dd>
-      <dt>Private note</dt><dd class="wraps">{{ event['owner_note'] or '—' }}</dd>
+      <dt>Asked for</dt><dd class="ev-prose">{{ event['message'] or '—' }}</dd>
+      <dt>Private note</dt><dd class="ev-prose">{{ event['owner_note'] or '—' }}</dd>
       <dt>Came in</dt><dd>{{ event['created_at']|house_day|date_short }}{% if event['status'] == 'new' %} <span class="upload-hint">· {{ 'today' if not waited else ('%d day%s ago' % (waited, '' if waited == 1 else 's')) }}</span>{% endif %}</dd>
     </dl>
     {#- Folded, like every card's forms: the facts read first. -#}
