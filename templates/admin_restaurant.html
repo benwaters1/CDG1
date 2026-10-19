@@ -91,7 +91,7 @@
     </div>
     <div class="table-wrap">
       <table class="data-table rs-table">
-        <thead><tr><th>Who</th><th>Party</th><th>Notes</th><th>Money</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th class="rs-c-who">Who</th><th class="rs-c-party">Party</th><th class="rs-c-notes">Notes</th><th class="rs-c-money">Money</th><th class="rs-c-status">Status</th><th class="rs-c-acts"></th></tr></thead>
         <tbody>
           {% for r in n.rows %}
           <tr class="{{ 'rs-off' if r['status'] in ('declined', 'cancelled') }}">

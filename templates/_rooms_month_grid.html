@@ -18,7 +18,11 @@
 {% else %}
 <div style="overflow-x:auto;">
   <div class="table-wrap">
-<table class="cal-table">
+{#- Every day the same width (19 October 2026): the columns sized themselves
+    to the names in the bars, so a busy week was wide and a quiet one a sliver,
+    and the grid was no longer a timeline anybody could read across. -#}
+<table class="cal-table cal-fixed">
+    <colgroup><col class="cal-col-room">{% for d in days %}<col class="cal-col-day">{% endfor %}</colgroup>
     <thead>
       <tr>
         <th class="cal-room-col">Room</th>
@@ -43,9 +47,9 @@
              vanish entirely. Free days deliberately render nothing. #}
           {% if seg.status != 'free' %}
             {% if seg.link %}
-            <a href="{{ seg.link }}" class="cal-bar" aria-label="{{ seg.label }}">{% if seg.span > 1 %}{{ seg.label }}{% endif %}</a>
+            <a href="{{ seg.link }}" class="cal-bar" aria-label="{{ seg.label }}" title="{{ seg.label }}">{% if seg.span > 1 %}{{ seg.label }}{% endif %}</a>
             {% else %}
-            <span class="cal-bar">{% if seg.span > 1 %}{{ seg.label }}{% endif %}</span>
+            <span class="cal-bar" title="{{ seg.label }}">{% if seg.span > 1 %}{{ seg.label }}{% endif %}</span>
             {% endif %}
           {% endif %}
         </td>
