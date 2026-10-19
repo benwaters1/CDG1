@@ -152,6 +152,9 @@ def run():
         s.check("with the Dates mark and its note", it is not None
                 and it["subject"].startswith("📅 ") and title in it["subject"]
                 and it["body"] == "Classes resume the Monday after", detail=str(it))
+        s.check("named exactly as typed, with no '· 4 days' on the end -- Outlook "
+                "already shows how long it lasts", it is not None
+                and it["subject"] == f"📅 {title}", detail=str(it and it["subject"]))
         one = items.get(f"date:{single['id']}") if single else None
         s.check("a one-day date ends the next morning", one is not None
                 and one["end"] == f"{(first + m.timedelta(days=1)).isoformat()}T00:00:00",

@@ -7169,6 +7169,16 @@ def init_db():
         # translating in their heads every time an arrival comes off a feed.
         # Free text, never matched on -- a label for a person to read.
         ("rooms_channel_name", "ALTER TABLE rooms ADD COLUMN channel_name TEXT"),
+        # An enquiry's task knows its enquiry, so it can be opened from the
+        # day's list and closes when the enquiry is answered, closed or spam.
+        ("tasks_waitlist_entry_id", "ALTER TABLE tasks ADD COLUMN waitlist_entry_id INTEGER"),
+        # Where a waitlist entry came from: 'contact' for the Contact page's
+        # rough enquiry, which is saved here but is not somebody waiting.
+        ("waitlist_entries_source", "ALTER TABLE waitlist_entries ADD COLUMN source TEXT"),
+        # When an entry was marked spam. A column, not a status: the table's
+        # CHECK allows four statuses and SQLite cannot widen it without
+        # rebuilding the table. A spam entry is closed, and stamped here.
+        ("waitlist_entries_spam_at", "ALTER TABLE waitlist_entries ADD COLUMN spam_at TEXT"),
 
         # Which way a message actually went. Without it the outbox cannot
         # answer "did this guest get a WhatsApp or a text", which is the first
@@ -8140,6 +8150,11 @@ def init_db():
     # And the Family Suite's beds as the owner gave them on 18 October, once,
     # by its 16 October name.
     apply_family_beds_2026_10_18(conn)
+    # Every atelier takes fifteen (owner, 18 October), once.
+    apply_workshops_fifteen_2026_10_18(conn)
+    # The Contact page's enquiries and their tasks, tied together and the
+    # sales pitches set aside: on every boot, and only where nothing is set.
+    tidy_contact_enquiries(conn)
     # Who fits each room, as Booking.com has it -- by the names of 16 October,
     # so after them.
     apply_room_occupancy_2026_10_18(conn)
@@ -8701,7 +8716,7 @@ NAV_AREAS = {
         "write_about_booking", "text_about_booking", "add_extra_to_booking",
         "change_extra_when",
         "arrivals_sheet_page", "issue_access_code", "access_code_returned",
-        "walk_in_booking", "resend_reservation_link", "arrival_card",
+        "walk_in_booking", "walk_in_options_json", "resend_reservation_link", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
         "guest_by_email",
         "save_list_view", "delete_list_view",
@@ -14896,7 +14911,9 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "detail": hd["note"] or "",
             "assignee_id": None, "assignee_name": None, "id": hd["id"],
             "link": url_for("admin_house_calendar") + f"#date-{hd['id']}",
-            "facts": {"start": hd["start_date"], "end": hd["end_date"],
+            # The name as typed: a date that lasts has "· 16 days" added to
+            # its title for the lists, which Outlook already shows as a span.
+            "facts": {"name": hd["title"], "start": hd["start_date"], "end": hd["end_date"],
                       "note": hd["note"] or ""},
         }, hd["start_date"], hd["end_date"])] if r)
 
@@ -15517,7 +15534,7 @@ def calendar_cards(conn, rows, owner_view):
             card(r, f"{f.get('who')} on" + (f" {hours}" if hours else ""), _cal_day(r["date"]),
                  [("Role", f.get("role") or "")], open_words="Rota" if owner_view else "My shifts")
         elif kind == "date":
-            card(r, r["title"],
+            card(r, f.get("name") or r["title"],
                  _cal_day(f.get("start")) + (f" → {_cal_day(f['end'])}"
                                             if f.get("end") and f["end"] != f.get("start") else ""),
                  [("Note", f.get("note") or "")], open_words="Dates for the house")
@@ -36740,7 +36757,8 @@ def owner_home_day(conn, today, user):
         rows.append({"time": b["estimated_arrival_time"] or "", "kind": "arrival",
                      "title": f"{b['guest_name']} arriving",
                      "detail": f"{b['room_name']} · party of {b['party_size']}",
-                     "assignee": None, "done": bool(b["arrival_prepped_at"])})
+                     "assignee": None, "done": bool(b["arrival_prepped_at"]),
+                     "href": url_for("admin_booking", booking_id=b["id"])})
     for b in conn.execute(
             """SELECT bookings.*, rooms.name AS room_name FROM bookings
                JOIN rooms ON rooms.id = bookings.room_id
@@ -36749,7 +36767,8 @@ def owner_home_day(conn, today, user):
         rows.append({"time": "", "kind": "departure",
                      "title": f"{b['guest_name']} departing",
                      "detail": b["room_name"], "assignee": None,
-                     "done": bool(b["checked_out_at"])})
+                     "done": bool(b["checked_out_at"]),
+                     "href": url_for("admin_booking", booking_id=b["id"])})
     # Booking.com's arrivals and departures are part of the day as much as the
     # house's own. Nothing in the app marks them done, so they are never shown
     # ticked -- a tick nobody made would be the worse mistake.
@@ -36779,10 +36798,15 @@ def owner_home_day(conn, today, user):
                LEFT JOIN users ON users.id = tasks.assigned_to_user_id
                WHERE tasks.due_date = ? ORDER BY tasks.status, tasks.id""",
             (today.isoformat(),)).fetchall():
+        # Every row opens something. A task that came from an enquiry opens
+        # the enquiry, where answering or marking it spam settles the task;
+        # any other task opens the task list at it.
+        href = (url_for("admin_waitlist", when="all") + f"#entry-{t['waitlist_entry_id']}"
+                if t["waitlist_entry_id"] else url_for("admin_tasks"))
         rows.append({"time": "", "kind": "task", "title": t["title"],
                      "detail": t["room_note"] or "",
                      "assignee": "Mine" if t["assigned_to_user_id"] == user["id"] else t["who"],
-                     "done": t["status"] == "done"})
+                     "done": t["status"] == "done", "href": href})
     # Timed things first, in clock order; untimed after, since "no time given"
     # is not the same as midnight and must not sort to the top of the day.
     rows.sort(key=lambda r: (r["time"] == "", r["time"]))
@@ -41817,10 +41841,40 @@ def pos_take_card(order_id):
     # Resume rather than restart. A second press must not ask the guest to tap
     # for a second charge.
     if order["payment_intent_id"]:
-        state, _msg, _intent = terminal_payment_state(order["payment_intent_id"])
+        replacing = order["payment_intent_id"]
+        state, why, _intent = terminal_payment_state(replacing)
         if state in ("waiting", "succeeded"):
             conn.close()
             return redirect(url_for("pos_order", order_id=order_id))
+        if state == "unknown":
+            # Stripe could not say where the charge on this tab has got to: it
+            # may still be on the reader, or tapped a moment ago. A new one
+            # started here used to overwrite it, and the till forgot a charge
+            # the guest could still pay -- asked to pay twice. It stays.
+            conn.close()
+            flash("Stripe could not be reached to check the card payment already on "
+                  "this tab, so no second one was started — try again in a minute, "
+                  "or cancel that one.", "error")
+            return redirect(url_for("pos_order", order_id=order_id))
+        # Declined or cancelled -- or so it looks. Stripe answers
+        # requires_payment_method both for a declined charge and for one the
+        # reader is still asking for, and either can still be paid. Its rule
+        # for starting a fresh one is to cancel the old one first, or risk
+        # charging twice. So it comes off the way Cancel takes it off: Stripe
+        # accepts the cancel, or refuses because the guest has just tapped,
+        # and the tap is recorded instead.
+        who = current_user()
+        answer = pos_reader_settle(conn, order_id, stop=True,
+                                   user_id=who["id"] if who else None)
+        if answer["state"] != "failed" or answer["settled"]:
+            conn.close()
+            pos_reader_flash(answer)
+            return redirect(url_for("pos_order", order_id=order_id))
+        # The tab no longer names it, so this line is where the till still
+        # does: two charges for one table in Stripe, and here is why.
+        log_audit(conn, "pos_reader_replaced", target=order["table_label"],
+                  details=f"{replacing} · {why}")
+        conn.commit()
 
     intent_id, error = terminal_collect_payment(
         conn, order_id, total, f"Table {order['table_label']}", reader)
@@ -42200,6 +42254,16 @@ def pos_cancel_card(order_id):
                   f"charge is in Stripe as {intent_id} and is not on the books here.", "error")
             return redirect(url_for("pos_order", order_id=order_id))
     conn.close()
+    pos_reader_flash(answer)
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+def pos_reader_flash(answer):
+    """Tell the waiter what pos_reader_settle found when it stopped a charge.
+
+    Cancel, and Take card replacing a declined charge, both ask it to stop
+    one, and either can find the guest had tapped after all.
+    """
     if answer["recorded"] and not answer["paid_twice"]:
         flash("The guest had already tapped, so the payment went through: "
               + answer["message"], "success")
@@ -42207,7 +42271,6 @@ def pos_cancel_card(order_id):
         flash(answer["message"], "success")
     else:
         flash(answer["message"], "error")
-    return redirect(url_for("pos_order", order_id=order_id))
 
 
 PIN_ATTEMPT_LIMIT = 5
@@ -42493,8 +42556,9 @@ PALETTE_PAGES = [
      "sync rota events"),
     ("Revenue to send", "revenue_to_send",
      "pennylane accountant invoices revenue income takings bookkeeping"),
-    ("Walk-in booking", "walk_in_booking",
-     "desk telephone book a room tonight arrival no reservation walk in"),
+    ("Add a booking", "walk_in_booking",
+     "desk telephone email book a room tonight arrival no reservation walk in walk-in "
+     "reserve hold payment link agreed price"),
     ("Why they cancel", "management_cancellations",
      "cancellation reason why cancelled enquiry conversion events won lost"),
     ("Shift handover", "shift_handover",
@@ -49232,11 +49296,15 @@ def waitlist_view(rows, args, wanted, *, extra_search=()):
         search=["name", "email", "phone", "notes", *extra_search],
         search_hint="Search name, email, telephone or notes",
         facets=[
+            # Spam is a "when" of its own, so the default view never shows it
+            # and one chip finds it, to put back anything set aside wrongly.
             facet("when", "When",
-                  lambda e: "History" if (wanted(e) or "9999") < today_iso else "Current",
-                  order=["Current", "History"], default="Current"),
-            facet("state", "Status", lambda e: (e["status"] or "").capitalize(),
-                  order=["Open", "Contacted", "Booked", "Closed"]),
+                  lambda e: "Spam" if _is_spam(e)
+                  else ("History" if (wanted(e) or "9999") < today_iso else "Current"),
+                  order=["Current", "History", "Spam"], default="Current"),
+            facet("state", "Status",
+                  lambda e: "Spam" if _is_spam(e) else (e["status"] or "").capitalize(),
+                  order=["Open", "Contacted", "Booked", "Closed", "Spam"]),
         ],
         sorts=[
             sort_option("open", "Open first, newest first", lambda e: e["status"] != "open"),
@@ -49245,6 +49313,11 @@ def waitlist_view(rows, args, wanted, *, extra_search=()):
         ],
         default_sort="open",
     )
+
+
+def _is_spam(e):
+    """A waitlist row marked spam. Only the room waitlist carries the column."""
+    return "spam_at" in e.keys() and bool(e["spam_at"])
 
 
 def _room_waitlist_wanted(e):
@@ -49291,13 +49364,24 @@ def export_waitlist_csv():
 @owner_required
 def update_waitlist_status(entry_id):
     status = request.form.get("status", "")
-    if status not in ("open", "contacted", "booked", "closed"):
+    if status not in WAITLIST_STATUSES:
         abort(400)
     conn = get_db()
-    conn.execute("UPDATE waitlist_entries SET status = ? WHERE id = ?", (status, entry_id))
+    if not conn.execute("SELECT 1 FROM waitlist_entries WHERE id = ?", (entry_id,)).fetchone():
+        conn.close()
+        abort(404)
+    close_enquiry(conn, entry_id, status)
     conn.commit()
     conn.close()
+    if status == "spam":
+        flash("Marked as spam: its task is gone from the day, and anything more "
+              "from that address is set aside.", "success")
     return redirect(url_for("admin_waitlist"))
+
+
+# Spam is the Contact page's sales pitches: kept, out of sight, and the
+# sender's next enquiry set aside with it (enquiry_is_pitch).
+WAITLIST_STATUSES = ("open", "contacted", "booked", "closed", "spam")
 
 
 @app.route("/api/validate-promo-code", methods=["POST"])
@@ -53374,6 +53458,130 @@ def apply_family_beds_2026_10_18(conn):
     if changed:
         print("[rooms] the Family Suite's beds, as the owner gave them on 18 October")
     return changed
+
+
+# FIFTEEN TO AN ATELIER (owner, 18 October 2026: "all workshops are 15
+# guests"). Sessions were made at ten, the old default, and a workshop's own
+# default is what a new session starts from. Once, by a flag, so a session the
+# owner later sets to twelve for a reason stays at twelve; and only sessions
+# still to finish -- a past atelier's capacity is a record, not an offer. Never
+# lowers one: a session set above fifteen was set on purpose.
+WORKSHOP_GUESTS = 15
+
+
+def apply_workshops_fifteen_2026_10_18(conn):
+    """Once: every atelier to come, and every workshop's default, at fifteen.
+    Returns (sessions, workshops) changed."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'workshops_fifteen_2026_10_18'").fetchone():
+        return 0, 0
+    sessions = conn.execute(
+        "UPDATE workshop_sessions SET capacity = ? WHERE capacity < ? "
+        "AND COALESCE(end_date, start_date) >= ?",
+        (WORKSHOP_GUESTS, WORKSHOP_GUESTS, house_today_iso())).rowcount
+    workshops = conn.execute(
+        "UPDATE workshops SET default_capacity = ? WHERE COALESCE(default_capacity, 0) < ?",
+        (WORKSHOP_GUESTS, WORKSHOP_GUESTS)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('workshops_fifteen_2026_10_18', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if sessions or workshops:
+        print(f"[workshops] fifteen guests: {sessions} session(s), {workshops} workshop(s)")
+    return sessions, workshops
+
+
+# A SALES PITCH IS NOT AN ENQUIRY. The Contact page's "tell us roughly when"
+# form is open to anybody, and what arrived through it on 18 October was an
+# offer of SEO services, filed as somebody waiting for a room, with a task on
+# the owner's day that could not be opened, ticked or deleted. These are the
+# words those letters are made of; a guest asking about a stay uses none of
+# them. Matched on the message and the name, case-insensitively.
+ENQUIRY_PITCH = re.compile(
+    r"\bSEO\b|search engine optimi[sz]|website traffic|web ?site'?s? (?:traffic|ranking|design)"
+    r"|backlinks?|guest posts?|rank(?:ing)? (?:on|in|higher on) google|first page of google"
+    r"|digital marketing|marketing (?:services|agency|campaign)|lead generation"
+    r"|online (?:performance|presence|visibility)|target keywords?|grow your (?:business|traffic|website)"
+    r"|web development services|app development|social media management", re.I)
+
+
+def enquiry_is_pitch(conn, email, name, message):
+    """Why an enquiry is set aside, or "" when it is somebody asking to stay.
+
+    Either the owner has marked the sender as spam before, or it reads as a
+    pitch. Set aside, not thrown away: it is kept on the waitlist as Spam,
+    where the owner can find it and put it back, but it makes no task and no
+    letter."""
+    if email and conn.execute(
+            "SELECT 1 FROM waitlist_entries WHERE spam_at IS NOT NULL AND lower(email) = ? LIMIT 1",
+            (email.strip().lower(),)).fetchone():
+        return "a sender already marked as spam"
+    if ENQUIRY_PITCH.search("%s %s" % (name or "", message or "")):
+        return "it reads as a sales pitch"
+    return ""
+
+
+def tidy_contact_enquiries(conn):
+    """Tie the Contact page's enquiries to their tasks, and set the pitches aside.
+
+    For the ones made before either existed. An enquiry's task was found only
+    by its title, "Answer an enquiry from <name> (<email>)", made the same day.
+    Tied where the task has no enquiry yet. Any OPEN enquiry that reads as a
+    pitch is marked spam and its open task taken off the day, because nothing
+    else would ever take it off. Returns (tied, set aside)."""
+    tied = 0
+    for t in conn.execute(
+            "SELECT id, title, created_at FROM tasks WHERE origin = 'enquiry' "
+            "AND waitlist_entry_id IS NULL").fetchall():
+        m_ = re.search(r"\(([^()\s]+@[^()\s]+)\)\s*$|^Answer an enquiry from (\S+@\S+)$",
+                       t["title"] or "")
+        email = (m_.group(1) or m_.group(2)).lower() if m_ else None
+        if not email:
+            continue
+        # The same house day, not the same first ten characters: a stamp is
+        # UTC, and between midnight and two in the Ariège that is yesterday.
+        day = house_date_iso(t["created_at"])
+        entry = next((e for e in conn.execute(
+            "SELECT id, created_at FROM waitlist_entries WHERE lower(email) = ? ORDER BY id DESC",
+            (email,)).fetchall() if day and house_date_iso(e["created_at"]) == day), None)
+        if entry:
+            conn.execute("UPDATE tasks SET waitlist_entry_id = ? WHERE id = ?", (entry["id"], t["id"]))
+            conn.execute("UPDATE waitlist_entries SET source = COALESCE(source, 'contact') WHERE id = ?",
+                         (entry["id"],))
+            tied += 1
+    aside = 0
+    for e in conn.execute(
+            "SELECT id, name, notes FROM waitlist_entries WHERE source = 'contact' "
+            "AND status = 'open' AND spam_at IS NULL").fetchall():
+        if ENQUIRY_PITCH.search("%s %s" % (e["name"] or "", e["notes"] or "")):
+            close_enquiry(conn, e["id"], "spam")
+            aside += 1
+    conn.commit()
+    if tied or aside:
+        print(f"[enquiries] {tied} task(s) tied to their enquiry, {aside} pitch(es) set aside")
+    return tied, aside
+
+
+def close_enquiry(conn, entry_id, status):
+    """Set a waitlist entry's status, and settle the task it made.
+
+    Answered (contacted), booked or closed ticks the task done; spam deletes
+    it, because a pitch was never work. Back to open reopens a ticked task.
+    A task CLOSES ITSELF here rather than waiting for a tick that has nowhere
+    to be made -- the day's list showed it with no way to open it at all.
+
+    Spam is stored as closed with spam_at stamped (see the migration)."""
+    conn.execute("UPDATE waitlist_entries SET status = ?, spam_at = ? WHERE id = ?",
+                 ("closed" if status == "spam" else status,
+                  datetime.now(timezone.utc).isoformat() if status == "spam" else None,
+                  entry_id))
+    if status == "spam":
+        conn.execute("DELETE FROM tasks WHERE waitlist_entry_id = ? AND status != 'done'", (entry_id,))
+    elif status == "open":
+        conn.execute("UPDATE tasks SET status = 'open', completed_at = NULL "
+                     "WHERE waitlist_entry_id = ?", (entry_id,))
+    else:
+        conn.execute("UPDATE tasks SET status = 'done', completed_at = ? "
+                     "WHERE waitlist_entry_id = ? AND status != 'done'",
+                     (datetime.now(timezone.utc).isoformat(), entry_id))
 
 
 def dining_mode(conn):
@@ -73048,24 +73256,68 @@ def management_outlook():
     return redirect(url_for("money_ahead_page", days=days))
 
 
-def walk_in_options(conn, rooms, arrival, departure):
-    """Each room with what it would cost for these nights and whether it is free.
+def walk_in_options(conn, rooms, arrival, departure, party=None, under_18=0):
+    """Each room with what it would cost for these nights and whether it can be
+    had -- free, and able to take this party.
 
     Reception should be choosing from what is actually available, not from a
     list of every room with the answer arriving after they press the button
     with somebody standing in front of them. `why` carries the reason a room is
-    out, because "taken" and "closed for the season" want different responses.
+    out, because "taken", "the house is full" and "takes two adults" want
+    different responses; `note` is anything worth knowing about one that is
+    in (a minimum stay the guest's own form would ask for -- the desk may
+    still sell it).
     """
+    nights = (departure - arrival).days if arrival and departure else 0
     out = []
     for room in rooms:
         free, why = (False, "Enter both dates.")
         price = 0.0
+        note = ""
         if arrival and departure and departure > arrival:
             free, why = is_range_available(conn, room["id"], arrival, departure)
             price = compute_room_total(conn, room, arrival, departure)
-        out.append({"room": room, "free": bool(free), "why": why or "",
-                    "price": price, "sleeps": room["max_occupancy"]})
+            if not free and is_house_full_reason(why):
+                why = why.rstrip(".") + next_free_words(conn, room, arrival, nights)
+            least = stay_rules(conn, room, arrival, departure)["min_nights"]
+            if free and nights < least:
+                note = f"Online it needs {least} nights; you can still book it here."
+        elif arrival and departure:
+            why = "The departure has to be after the arrival."
+        misfit = room_party_problem(room, party, under_18) if party else None
+        out.append({"room": room, "free": bool(free), "fits": not misfit,
+                    "why": (why or "") if not free else (misfit or ""),
+                    "note": note, "price": price, "nights": nights,
+                    "per_night": round(price / nights, 2) if nights else 0.0,
+                    "sleeps": room["max_occupancy"],
+                    "adults": room["max_adults"] or room["max_occupancy"],
+                    "children": room["max_children"] or 0})
     return out
+
+
+@app.route("/admin/bookings/walk-in/options.json")
+@owner_required
+def walk_in_options_json():
+    """The desk page's rooms for the dates and party on screen, so they change
+    as reception types rather than after a button. Read-only."""
+    arrival = parse_date((request.args.get("arrival_date", "") or "").strip())
+    departure = parse_date((request.args.get("departure_date", "") or "").strip())
+    try:
+        party = max(1, int(request.args.get("party_size", "2") or 2))
+        under_18 = max(0, min(party, int(request.args.get("guests_under_18", "0") or 0)))
+    except ValueError:
+        party, under_18 = 2, 0
+    conn = get_db()
+    rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    options = walk_in_options(conn, rooms, arrival, departure, party, under_18)
+    nights = options[0]["nights"] if options else 0
+    tax = compute_city_tax(conn, party, under_18, nights)[0] if nights > 0 else 0.0
+    conn.close()
+    return jsonify(nights=nights, tax=round(tax or 0, 2), rooms=[
+        {"id": o["room"]["id"], "name": o["room"]["name"], "free": o["free"], "fits": o["fits"],
+         "why": o["why"], "note": o["note"], "price": o["price"], "per_night": o["per_night"],
+         "sleeps": o["sleeps"], "adults": o["adults"], "children": o["children"]}
+        for o in options])
 
 
 def send_booking_to_pennylane(conn, booking, user_id=None):
@@ -73622,7 +73874,12 @@ def walk_in_booking():
         parse_date((source.get("departure_date", "") or "").strip())
         or (shown_arrival + timedelta(days=1)))
     arrival, departure = shown_arrival, shown_departure
-    options = walk_in_options(conn, rooms, shown_arrival, shown_departure)
+    try:
+        shown_party = max(1, int(source.get("party_size", "2") or 2))
+        shown_under = max(0, min(shown_party, int(source.get("guests_under_18", "0") or 0)))
+    except ValueError:
+        shown_party, shown_under = 2, 0
+    options = walk_in_options(conn, rooms, shown_arrival, shown_departure, shown_party, shown_under)
 
     if request.method == "POST":
         room_raw = (request.form.get("room_id", "") or "").strip()
@@ -73638,10 +73895,26 @@ def walk_in_booking():
         # at a price the house sets, held while the guest fills in the rest
         # and pays. The room is taken from now; they finish it on a link.
         reserve = request.form.get("mode") == "reserve"
+        # "Book it and send a payment link" is the third way, and the old
+        # tick box still means the same.
+        send_link = request.form.get("mode") == "paylink" or request.form.get("send_pay_link") == "1"
+        if send_link and not reserve and not EMAIL_RE.match(email or ""):
+            conn.close()
+            flash("A payment link needs their email address.", "error")
+            return render_template(
+                "walk_in_booking.html", rooms=rooms, today=today,
+                options=options, arrival=shown_arrival, departure=shown_departure,
+                shown_arrival=shown_arrival, shown_departure=shown_departure,
+                form=request.form)
         if reserve and not name:
             name = email
         try:
             party = max(1, int(request.form.get("party_size", "2") or 2))
+            # The page's own adults box, when it sent one: the total beside it
+            # is kept by script, and without script it is the one on load.
+            if (request.form.get("adults", "") or "").strip().isdigit():
+                party = max(1, int(request.form["adults"])) + max(
+                    0, int(request.form.get("guests_under_18", "0") or 0))
         except ValueError:
             party = 2
         try:
@@ -73790,7 +74063,7 @@ def walk_in_booking():
         # button for what is owed; sent after the commit, never with a write
         # open across the network.
         link_note = ""
-        if request.form.get("send_pay_link") == "1":
+        if send_link:
             bill = booking_bill(conn, booking["id"])
             stay = conn.execute("""SELECT bookings.*, rooms.name AS room_name FROM bookings
                                      JOIN rooms ON rooms.id = bookings.room_id
@@ -73808,10 +74081,9 @@ def walk_in_booking():
         conn.close()
         flash(f"{name} is in — {reference_code}."
               + (f" {money(taken)} taken." if taken else "") + link_note, "success")
-        if request.form.get("send_pay_link") == "1" and "admin_booking" in app.view_functions:
-            return redirect(url_for("admin_booking", booking_id=booking["id"]))
-        return redirect(url_for("management_outstanding")
-                        if not taken else url_for("admin_bookings"))
+        # To the stay itself, every time: that is where its bill, its letters
+        # and everything that can still be done to it are.
+        return redirect(url_for("admin_booking", booking_id=booking["id"]))
 
     conn.close()
     return render_template(
@@ -98608,7 +98880,7 @@ def house_calendar_items(conn, start, end, areas=None):
         elif kind == "date" and "dates" in areas and f.get("start"):
             key = f"date:{r['id']}"
             items[key] = {"key": key, "area": "dates", "all_day": True,
-                          "subject": f"{marks['dates']} {r['title']}",
+                          "subject": f"{marks['dates']} {f.get('name') or r['title']}",
                           "start": f"{f['start']}T00:00:00",
                           "end": f"{day_after(f.get('end') or f['start'])}T00:00:00",
                           "location": "", "body": f.get("note") or "",
@@ -107004,22 +107276,37 @@ def contact_page():
         said.append(message)
     notes = ". ".join(said)
 
-    conn.execute(
+    # A pitch, or a sender already marked as spam, is kept as Spam and goes no
+    # further: no task on the owner's day and no letter to the house. The
+    # visitor is thanked all the same -- telling a spammer which words were
+    # caught teaches the next one what to leave out.
+    aside = enquiry_is_pitch(conn, email, name, message)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    entry_id = conn.execute(
         """INSERT INTO waitlist_entries (name, email, phone, desired_arrival,
-             desired_departure, party_size, notes, status, created_at)
-           VALUES (?, ?, '', ?, ?, ?, ?, 'open', ?)""",
+             desired_departure, party_size, notes, status, created_at, source, spam_at)
+           VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, 'contact', ?)""",
         (name, email, start.isoformat() if start else None,
          month_end.isoformat() if month_end else None,
-         party, notes, datetime.now(timezone.utc).isoformat()))
+         party, notes, "closed" if aside else "open", now_iso,
+         now_iso if aside else None)).lastrowid
+    if aside:
+        conn.commit()
+        conn.close()
+        print(f"[enquiries] set aside as spam: {email} ({aside})")
+        flash("Thank you — that is exactly the kind of enquiry we would rather "
+              "have than nothing. We will write back.", "success")
+        return redirect(url_for("contact_page"))
     # A task, because anything that becomes a task reaches the calendar by
     # itself. An enquiry that lives only in a list somebody has to remember to
-    # open is the shape this whole page was in five minutes ago.
+    # open is the shape this whole page was in five minutes ago. It carries
+    # its enquiry, so the day's list opens it and answering it ticks the task.
     conn.execute(
         """INSERT INTO tasks (title, notes, priority, due_date, status, origin,
-             created_at)
-           VALUES (?, ?, 'normal', ?, 'open', 'enquiry', ?)""",
+             created_at, waitlist_entry_id)
+           VALUES (?, ?, 'normal', ?, 'open', 'enquiry', ?, ?)""",
         ("Answer an enquiry from %s" % ("%s (%s)" % (name, email) if name else email),
-         notes, house_today_iso(), datetime.now(timezone.utc).isoformat()))
+         notes, house_today_iso(), datetime.now(timezone.utc).isoformat(), entry_id))
     conn.commit()
     to = house_address_for(conn, "rooms")
     conn.close()
