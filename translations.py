@@ -385,6 +385,7 @@ FR = {
     # -- The employee's own screens ---------------------------------------
     "Clock out": "Pointer la sortie",
     "Clock in": "Pointer l'arrivée",
+    "Home screen": "Écran d'accueil",
     "Nobody staying right now.": "Aucun client sur place actuellement.",
     "Rooms": "Chambres",
     "Occupied": "Occupée",
@@ -1114,6 +1115,7 @@ ES = {
     # -- The employee's own screens ---------------------------------------
     "Clock out": "Fichar salida",
     "Clock in": "Fichar entrada",
+    "Home screen": "Pantalla de inicio",
     "Nobody staying right now.": "Ningún huésped alojado ahora mismo.",
     "Rooms": "Habitaciones",
     "Occupied": "Ocupada",

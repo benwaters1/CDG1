@@ -392,6 +392,7 @@ SUITES = [
     "test_voids",
     "test_old_addresses",
     "test_staff_address",
+    "test_addin_address",
     "test_reports_index",
     "test_reopened_bills",
     "test_guest_keys_and_photos",
@@ -548,6 +549,8 @@ SUITES = [
     "test_bot_registrations_listed",
     "test_newsletter_signup",
     "test_route_map",
+    # 19 October 2026: the phone's home screen the owner expected and never got.
+    "test_phone_home",
 ]
 
 

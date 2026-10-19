@@ -2,7 +2,7 @@
   "name": "Château de Gudanes — Staff",
   "short_name": "Gudanes Staff",
   "description": "Clock in, today's tasks, and who's here — for Château de Gudanes staff.",
-  "start_url": "/",
+  "start_url": "/app",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
