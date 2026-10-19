@@ -7178,6 +7178,16 @@ def init_db():
         # translating in their heads every time an arrival comes off a feed.
         # Free text, never matched on -- a label for a person to read.
         ("rooms_channel_name", "ALTER TABLE rooms ADD COLUMN channel_name TEXT"),
+        # An enquiry's task knows its enquiry, so it can be opened from the
+        # day's list and closes when the enquiry is answered, closed or spam.
+        ("tasks_waitlist_entry_id", "ALTER TABLE tasks ADD COLUMN waitlist_entry_id INTEGER"),
+        # Where a waitlist entry came from: 'contact' for the Contact page's
+        # rough enquiry, which is saved here but is not somebody waiting.
+        ("waitlist_entries_source", "ALTER TABLE waitlist_entries ADD COLUMN source TEXT"),
+        # When an entry was marked spam. A column, not a status: the table's
+        # CHECK allows four statuses and SQLite cannot widen it without
+        # rebuilding the table. A spam entry is closed, and stamped here.
+        ("waitlist_entries_spam_at", "ALTER TABLE waitlist_entries ADD COLUMN spam_at TEXT"),
 
         # Which way a message actually went. Without it the outbox cannot
         # answer "did this guest get a WhatsApp or a text", which is the first
@@ -8157,6 +8167,11 @@ def init_db():
     # And the Family Suite's beds as the owner gave them on 18 October, once,
     # by its 16 October name.
     apply_family_beds_2026_10_18(conn)
+    # Every atelier takes fifteen (owner, 18 October), once.
+    apply_workshops_fifteen_2026_10_18(conn)
+    # The Contact page's enquiries and their tasks, tied together and the
+    # sales pitches set aside: on every boot, and only where nothing is set.
+    tidy_contact_enquiries(conn)
     # Who fits each room, as Booking.com has it -- by the names of 16 October,
     # so after them.
     apply_room_occupancy_2026_10_18(conn)
@@ -36671,7 +36686,8 @@ def owner_home_day(conn, today, user):
         rows.append({"time": b["estimated_arrival_time"] or "", "kind": "arrival",
                      "title": f"{b['guest_name']} arriving",
                      "detail": f"{b['room_name']} · party of {b['party_size']}",
-                     "assignee": None, "done": bool(b["arrival_prepped_at"])})
+                     "assignee": None, "done": bool(b["arrival_prepped_at"]),
+                     "href": url_for("admin_booking", booking_id=b["id"])})
     for b in conn.execute(
             """SELECT bookings.*, rooms.name AS room_name FROM bookings
                JOIN rooms ON rooms.id = bookings.room_id
@@ -36680,7 +36696,8 @@ def owner_home_day(conn, today, user):
         rows.append({"time": "", "kind": "departure",
                      "title": f"{b['guest_name']} departing",
                      "detail": b["room_name"], "assignee": None,
-                     "done": bool(b["checked_out_at"])})
+                     "done": bool(b["checked_out_at"]),
+                     "href": url_for("admin_booking", booking_id=b["id"])})
     # Booking.com's arrivals and departures are part of the day as much as the
     # house's own. Nothing in the app marks them done, so they are never shown
     # ticked -- a tick nobody made would be the worse mistake.
@@ -36710,10 +36727,15 @@ def owner_home_day(conn, today, user):
                LEFT JOIN users ON users.id = tasks.assigned_to_user_id
                WHERE tasks.due_date = ? ORDER BY tasks.status, tasks.id""",
             (today.isoformat(),)).fetchall():
+        # Every row opens something. A task that came from an enquiry opens
+        # the enquiry, where answering or marking it spam settles the task;
+        # any other task opens the task list at it.
+        href = (url_for("admin_waitlist", when="all") + f"#entry-{t['waitlist_entry_id']}"
+                if t["waitlist_entry_id"] else url_for("admin_tasks"))
         rows.append({"time": "", "kind": "task", "title": t["title"],
                      "detail": t["room_note"] or "",
                      "assignee": "Mine" if t["assigned_to_user_id"] == user["id"] else t["who"],
-                     "done": t["status"] == "done"})
+                     "done": t["status"] == "done", "href": href})
     # Timed things first, in clock order; untimed after, since "no time given"
     # is not the same as midnight and must not sort to the top of the day.
     rows.sort(key=lambda r: (r["time"] == "", r["time"]))
@@ -49167,11 +49189,15 @@ def waitlist_view(rows, args, wanted, *, extra_search=()):
         search=["name", "email", "phone", "notes", *extra_search],
         search_hint="Search name, email, telephone or notes",
         facets=[
+            # Spam is a "when" of its own, so the default view never shows it
+            # and one chip finds it, to put back anything set aside wrongly.
             facet("when", "When",
-                  lambda e: "History" if (wanted(e) or "9999") < today_iso else "Current",
-                  order=["Current", "History"], default="Current"),
-            facet("state", "Status", lambda e: (e["status"] or "").capitalize(),
-                  order=["Open", "Contacted", "Booked", "Closed"]),
+                  lambda e: "Spam" if _is_spam(e)
+                  else ("History" if (wanted(e) or "9999") < today_iso else "Current"),
+                  order=["Current", "History", "Spam"], default="Current"),
+            facet("state", "Status",
+                  lambda e: "Spam" if _is_spam(e) else (e["status"] or "").capitalize(),
+                  order=["Open", "Contacted", "Booked", "Closed", "Spam"]),
         ],
         sorts=[
             sort_option("open", "Open first, newest first", lambda e: e["status"] != "open"),
@@ -49180,6 +49206,11 @@ def waitlist_view(rows, args, wanted, *, extra_search=()):
         ],
         default_sort="open",
     )
+
+
+def _is_spam(e):
+    """A waitlist row marked spam. Only the room waitlist carries the column."""
+    return "spam_at" in e.keys() and bool(e["spam_at"])
 
 
 def _room_waitlist_wanted(e):
@@ -49226,13 +49257,24 @@ def export_waitlist_csv():
 @owner_required
 def update_waitlist_status(entry_id):
     status = request.form.get("status", "")
-    if status not in ("open", "contacted", "booked", "closed"):
+    if status not in WAITLIST_STATUSES:
         abort(400)
     conn = get_db()
-    conn.execute("UPDATE waitlist_entries SET status = ? WHERE id = ?", (status, entry_id))
+    if not conn.execute("SELECT 1 FROM waitlist_entries WHERE id = ?", (entry_id,)).fetchone():
+        conn.close()
+        abort(404)
+    close_enquiry(conn, entry_id, status)
     conn.commit()
     conn.close()
+    if status == "spam":
+        flash("Marked as spam: its task is gone from the day, and anything more "
+              "from that address is set aside.", "success")
     return redirect(url_for("admin_waitlist"))
+
+
+# Spam is the Contact page's sales pitches: kept, out of sight, and the
+# sender's next enquiry set aside with it (enquiry_is_pitch).
+WAITLIST_STATUSES = ("open", "contacted", "booked", "closed", "spam")
 
 
 @app.route("/api/validate-promo-code", methods=["POST"])
@@ -52996,6 +53038,130 @@ def apply_family_beds_2026_10_18(conn):
     if changed:
         print("[rooms] the Family Suite's beds, as the owner gave them on 18 October")
     return changed
+
+
+# FIFTEEN TO AN ATELIER (owner, 18 October 2026: "all workshops are 15
+# guests"). Sessions were made at ten, the old default, and a workshop's own
+# default is what a new session starts from. Once, by a flag, so a session the
+# owner later sets to twelve for a reason stays at twelve; and only sessions
+# still to finish -- a past atelier's capacity is a record, not an offer. Never
+# lowers one: a session set above fifteen was set on purpose.
+WORKSHOP_GUESTS = 15
+
+
+def apply_workshops_fifteen_2026_10_18(conn):
+    """Once: every atelier to come, and every workshop's default, at fifteen.
+    Returns (sessions, workshops) changed."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'workshops_fifteen_2026_10_18'").fetchone():
+        return 0, 0
+    sessions = conn.execute(
+        "UPDATE workshop_sessions SET capacity = ? WHERE capacity < ? "
+        "AND COALESCE(end_date, start_date) >= ?",
+        (WORKSHOP_GUESTS, WORKSHOP_GUESTS, house_today_iso())).rowcount
+    workshops = conn.execute(
+        "UPDATE workshops SET default_capacity = ? WHERE COALESCE(default_capacity, 0) < ?",
+        (WORKSHOP_GUESTS, WORKSHOP_GUESTS)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('workshops_fifteen_2026_10_18', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if sessions or workshops:
+        print(f"[workshops] fifteen guests: {sessions} session(s), {workshops} workshop(s)")
+    return sessions, workshops
+
+
+# A SALES PITCH IS NOT AN ENQUIRY. The Contact page's "tell us roughly when"
+# form is open to anybody, and what arrived through it on 18 October was an
+# offer of SEO services, filed as somebody waiting for a room, with a task on
+# the owner's day that could not be opened, ticked or deleted. These are the
+# words those letters are made of; a guest asking about a stay uses none of
+# them. Matched on the message and the name, case-insensitively.
+ENQUIRY_PITCH = re.compile(
+    r"\bSEO\b|search engine optimi[sz]|website traffic|web ?site'?s? (?:traffic|ranking|design)"
+    r"|backlinks?|guest posts?|rank(?:ing)? (?:on|in|higher on) google|first page of google"
+    r"|digital marketing|marketing (?:services|agency|campaign)|lead generation"
+    r"|online (?:performance|presence|visibility)|target keywords?|grow your (?:business|traffic|website)"
+    r"|web development services|app development|social media management", re.I)
+
+
+def enquiry_is_pitch(conn, email, name, message):
+    """Why an enquiry is set aside, or "" when it is somebody asking to stay.
+
+    Either the owner has marked the sender as spam before, or it reads as a
+    pitch. Set aside, not thrown away: it is kept on the waitlist as Spam,
+    where the owner can find it and put it back, but it makes no task and no
+    letter."""
+    if email and conn.execute(
+            "SELECT 1 FROM waitlist_entries WHERE spam_at IS NOT NULL AND lower(email) = ? LIMIT 1",
+            (email.strip().lower(),)).fetchone():
+        return "a sender already marked as spam"
+    if ENQUIRY_PITCH.search("%s %s" % (name or "", message or "")):
+        return "it reads as a sales pitch"
+    return ""
+
+
+def tidy_contact_enquiries(conn):
+    """Tie the Contact page's enquiries to their tasks, and set the pitches aside.
+
+    For the ones made before either existed. An enquiry's task was found only
+    by its title, "Answer an enquiry from <name> (<email>)", made the same day.
+    Tied where the task has no enquiry yet. Any OPEN enquiry that reads as a
+    pitch is marked spam and its open task taken off the day, because nothing
+    else would ever take it off. Returns (tied, set aside)."""
+    tied = 0
+    for t in conn.execute(
+            "SELECT id, title, created_at FROM tasks WHERE origin = 'enquiry' "
+            "AND waitlist_entry_id IS NULL").fetchall():
+        m_ = re.search(r"\(([^()\s]+@[^()\s]+)\)\s*$|^Answer an enquiry from (\S+@\S+)$",
+                       t["title"] or "")
+        email = (m_.group(1) or m_.group(2)).lower() if m_ else None
+        if not email:
+            continue
+        # The same house day, not the same first ten characters: a stamp is
+        # UTC, and between midnight and two in the Ariège that is yesterday.
+        day = house_date_iso(t["created_at"])
+        entry = next((e for e in conn.execute(
+            "SELECT id, created_at FROM waitlist_entries WHERE lower(email) = ? ORDER BY id DESC",
+            (email,)).fetchall() if day and house_date_iso(e["created_at"]) == day), None)
+        if entry:
+            conn.execute("UPDATE tasks SET waitlist_entry_id = ? WHERE id = ?", (entry["id"], t["id"]))
+            conn.execute("UPDATE waitlist_entries SET source = COALESCE(source, 'contact') WHERE id = ?",
+                         (entry["id"],))
+            tied += 1
+    aside = 0
+    for e in conn.execute(
+            "SELECT id, name, notes FROM waitlist_entries WHERE source = 'contact' "
+            "AND status = 'open' AND spam_at IS NULL").fetchall():
+        if ENQUIRY_PITCH.search("%s %s" % (e["name"] or "", e["notes"] or "")):
+            close_enquiry(conn, e["id"], "spam")
+            aside += 1
+    conn.commit()
+    if tied or aside:
+        print(f"[enquiries] {tied} task(s) tied to their enquiry, {aside} pitch(es) set aside")
+    return tied, aside
+
+
+def close_enquiry(conn, entry_id, status):
+    """Set a waitlist entry's status, and settle the task it made.
+
+    Answered (contacted), booked or closed ticks the task done; spam deletes
+    it, because a pitch was never work. Back to open reopens a ticked task.
+    A task CLOSES ITSELF here rather than waiting for a tick that has nowhere
+    to be made -- the day's list showed it with no way to open it at all.
+
+    Spam is stored as closed with spam_at stamped (see the migration)."""
+    conn.execute("UPDATE waitlist_entries SET status = ?, spam_at = ? WHERE id = ?",
+                 ("closed" if status == "spam" else status,
+                  datetime.now(timezone.utc).isoformat() if status == "spam" else None,
+                  entry_id))
+    if status == "spam":
+        conn.execute("DELETE FROM tasks WHERE waitlist_entry_id = ? AND status != 'done'", (entry_id,))
+    elif status == "open":
+        conn.execute("UPDATE tasks SET status = 'open', completed_at = NULL "
+                     "WHERE waitlist_entry_id = ?", (entry_id,))
+    else:
+        conn.execute("UPDATE tasks SET status = 'done', completed_at = ? "
+                     "WHERE waitlist_entry_id = ? AND status != 'done'",
+                     (datetime.now(timezone.utc).isoformat(), entry_id))
 
 
 def dining_mode(conn):
@@ -106852,22 +107018,37 @@ def contact_page():
         said.append(message)
     notes = ". ".join(said)
 
-    conn.execute(
+    # A pitch, or a sender already marked as spam, is kept as Spam and goes no
+    # further: no task on the owner's day and no letter to the house. The
+    # visitor is thanked all the same -- telling a spammer which words were
+    # caught teaches the next one what to leave out.
+    aside = enquiry_is_pitch(conn, email, name, message)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    entry_id = conn.execute(
         """INSERT INTO waitlist_entries (name, email, phone, desired_arrival,
-             desired_departure, party_size, notes, status, created_at)
-           VALUES (?, ?, '', ?, ?, ?, ?, 'open', ?)""",
+             desired_departure, party_size, notes, status, created_at, source, spam_at)
+           VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, 'contact', ?)""",
         (name, email, start.isoformat() if start else None,
          month_end.isoformat() if month_end else None,
-         party, notes, datetime.now(timezone.utc).isoformat()))
+         party, notes, "closed" if aside else "open", now_iso,
+         now_iso if aside else None)).lastrowid
+    if aside:
+        conn.commit()
+        conn.close()
+        print(f"[enquiries] set aside as spam: {email} ({aside})")
+        flash("Thank you — that is exactly the kind of enquiry we would rather "
+              "have than nothing. We will write back.", "success")
+        return redirect(url_for("contact_page"))
     # A task, because anything that becomes a task reaches the calendar by
     # itself. An enquiry that lives only in a list somebody has to remember to
-    # open is the shape this whole page was in five minutes ago.
+    # open is the shape this whole page was in five minutes ago. It carries
+    # its enquiry, so the day's list opens it and answering it ticks the task.
     conn.execute(
         """INSERT INTO tasks (title, notes, priority, due_date, status, origin,
-             created_at)
-           VALUES (?, ?, 'normal', ?, 'open', 'enquiry', ?)""",
+             created_at, waitlist_entry_id)
+           VALUES (?, ?, 'normal', ?, 'open', 'enquiry', ?, ?)""",
         ("Answer an enquiry from %s" % ("%s (%s)" % (name, email) if name else email),
-         notes, house_today_iso(), datetime.now(timezone.utc).isoformat()))
+         notes, house_today_iso(), datetime.now(timezone.utc).isoformat(), entry_id))
     conn.commit()
     to = house_address_for(conn, "rooms")
     conn.close()
