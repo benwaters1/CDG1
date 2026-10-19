@@ -265,6 +265,13 @@ def run():
             any("enough to cover it" in f[2] for f in ours),
             detail="the sentence that stops the owner cancelling a session "
                    "they could have filled")
+    # The day as the title writes it, the house's way. The check below finds
+    # the filled session by it, so it has to be shown to match first: a key
+    # that matches nothing would read as the task having closed.
+    soon_start = m.format_date_short((today + timedelta(days=24)).isoformat())
+    s.check("the title carries the session's day, written the house's way",
+            any(soon_start in f[1] for f in ours),
+            detail=f"{soon_start!r} in none of {[f[1] for f in ours][:3]}")
 
     # Fill it and the finding goes, without anybody ticking anything.
     _register(conn, soon, "Helene", "confirmed", 4)
@@ -274,7 +281,6 @@ def run():
     # second, overdue session of the same workshop alive for the check above,
     # and matching on the title alone would find that one instead -- passing
     # or failing on the wrong session.
-    soon_start = (today + timedelta(days=24)).isoformat()
     still = [f for f in found_after
              if f[0] == "workshop" and soon_start in f[1]]
     s.check("one more booking and the task closes itself", not still,

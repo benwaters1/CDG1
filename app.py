@@ -86329,6 +86329,11 @@ def watch_task_findings(conn, today=None):
     an age in days, a countdown — belongs in a title; it goes in the note,
     which is rewritten in place instead.
 
+    A day in a title or a note is written the house's way, '20 October 2026',
+    never '2026-10-20'. The title is what the task list, the calendar and the
+    house calendar page print, and seven of them printed the database's day
+    until the house calendar began listing tasks and made it visible.
+
     The kind is who it goes to: see WATCH_TASK_KINDS.
     """
     today = today or house_today()
@@ -86439,7 +86444,7 @@ def watch_task_findings(conn, today=None):
         row = c["shift"]
         clocks.append((
             "clocks",
-            f"{c['who']} on {row['shift_date']} — the clocks change that night",
+            f"{c['who']} on {format_date_short(row['shift_date'])} — the clocks change that night",
             (f"The roster reads {row['start_time']} to {row['end_time']}, which "
              f"is {c['rostered']:g} hours. That night it is {c['worked']:g}: the "
              + ("clocks go back, so the hour between two and three happens twice"
@@ -86452,7 +86457,7 @@ def watch_task_findings(conn, today=None):
                "paying, and tell them."
              # The till's night is the same fact seen from the other side, and
              # the person cashing up is the person who needs it.
-             + (f"\n\nThe till's {change['service_day'].isoformat()} is a "
+             + (f"\n\nThe till's {format_date_human(change['service_day'])} is a "
                 f"{change['service_hours']:g}-hour service for the same reason, "
                 "so the cash-up covers "
                 + ("an extra hour" if change["service_hours"] > 24
@@ -86476,8 +86481,8 @@ def watch_task_findings(conn, today=None):
             f"{c['policy']['provider']} \u2014 {c['what']} "
             + ("has run out" if gone else "runs out soon"),
             (f"Policy {c['policy']['policy_number'] or '(no number)'}"
-             + (f" ran out on {c['expires'].isoformat()}." if gone and c["expires"]
-                else f" runs out on {c['expires'].isoformat()}." if c["expires"] else ".")
+             + (f" ran out on {format_date_human(c['expires'])}." if gone and c["expires"]
+                else f" runs out on {format_date_human(c['expires'])}." if c["expires"] else ".")
              + ("\n\nThe house is open to the public. This is cover it does not "
                 "have, today." if gone else
                 "\n\nRenew it, or record the new dates when the renewal comes in.")),
@@ -86496,7 +86501,7 @@ def watch_task_findings(conn, today=None):
         found.append((
             "filing",
             f"{ob['name']} \u2014 "
-            + ("was due " if f["late"] else "due ") + f["due"].isoformat(),
+            + ("was due " if f["late"] else "due ") + format_date_short(f["due"]),
             ((f"{-f['days']} day{'' if f['days'] == -1 else 's'} late. "
               "A late return is penalties and interest, not a telling-off."
               if f["late"] else
@@ -86513,7 +86518,7 @@ def watch_task_findings(conn, today=None):
             for l in plan["short"][:4])
         found.append((
             "materials",
-            f"{plan['session']['title']} on {plan['session']['start_date']} "
+            f"{plan['session']['title']} on {format_date_short(plan['session']['start_date'])} "
             f"\u2014 not enough to run it",
             (f"Short of: {missing}"
              + (f", and {len(plan['short']) - 4} more" if len(plan["short"]) > 4
@@ -86528,7 +86533,7 @@ def watch_task_findings(conn, today=None):
         ring = w["waitlist_could_fill"]
         found.append((
             "workshop",
-            f"{w['title']} on {w['start'].isoformat()} \u2014 {w['confirmed']} of "
+            f"{w['title']} on {format_date_short(w['start'])} \u2014 {w['confirmed']} of "
             f"{w['minimum']} needed",
             (f"Short by {w['short']}. "
              + (f"{w['pending']} more registered without paying a deposit; "
@@ -86540,9 +86545,9 @@ def watch_task_findings(conn, today=None):
                 f"\n\n{w['waiting']} on the waiting list, not enough to cover it."
                 if w["waiting"] else
                 "\n\nNobody is on the waiting list.")
-             + (f"\n\nThe date for deciding passed on {w['decide_by'].isoformat()}."
+             + (f"\n\nThe date for deciding passed on {format_date_human(w['decide_by'])}."
                 if w["overdue"] else
-                f"\n\nDecide by {w['decide_by'].isoformat()}.")
+                f"\n\nDecide by {format_date_human(w['decide_by'])}.")
              + f"\n\nRunning it as it stands takes \u20ac{w['taken']:,.2f} against "
                f"\u20ac{w['at_minimum']:,.2f} at the minimum."),
             w["decide_by"].isoformat(),
@@ -86556,8 +86561,8 @@ def watch_task_findings(conn, today=None):
             "vehicle",
             f"{v['name']} \u2014 {what} {'has expired' if gone else 'runs out soon'}",
             (f"{what.capitalize()} "
-             + (f"expired on {when.isoformat()}." if gone and when
-                else f"expires on {when.isoformat()}." if when else "date not recorded.")
+             + (f"expired on {format_date_human(when)}." if gone and when
+                else f"expires on {format_date_human(when)}." if when else "date not recorded.")
              + ("\n\nAn insurer can decline a claim on a vehicle with no valid "
                 "contr\u00f4le technique, so this is not only a fine \u2014 it is a car "
                 "carrying guests uninsured." if "technique" in what and gone
@@ -86595,7 +86600,7 @@ def watch_task_findings(conn, today=None):
             f"Open fault in a sold room — {f['room_name']}, {f['reference_code']}",
             f"{f['title']}. {f['guest_name']} "
             + ("is in the room now." if f["in_house"]
-               else f"arrives {f['arrival_date']}.")
+               else f"arrives {format_date_human(f['arrival_date'])}.")
             + "\n\nFix it, move them, or tell them.",
             (today.isoformat() if f["in_house"] else f["arrival_date"]), "high"))
 
@@ -86643,7 +86648,7 @@ def watch_task_findings(conn, today=None):
         found.append((
             "job", f"Automation stopped working — {j['job_name']}",
             f"{label}.\n\nFailed {j['fails']} runs in a row. Last worked: "
-            + (house_date_iso(j["last_ok_at"]) or "not recorded")
+            + (format_date_human(j["last_ok_at"]) or "not recorded")
             + f".\nIt reports: {j['last_message'] or 'no message'}"
             + "\n\nAdmin → Automation has the switch and a Run now button to "
               "try it while you watch.",
@@ -86656,7 +86661,7 @@ def watch_task_findings(conn, today=None):
     for day in take("changeover", turn["heavy"]):
         found.append((
             "changeover",
-            f"Whole-house changeover on {day['day'].isoformat()}",
+            f"Whole-house changeover on {format_date_short(day['day'])}",
             f"{day['count']} rooms out and in again that day: "
             + ", ".join(sorted(day["rooms"]))
             + ".\n\nOne pair of hands does not do three rooms between a "
@@ -86673,7 +86678,7 @@ def watch_task_findings(conn, today=None):
         found.append((
             "numbers",
             f"Final numbers not given — {ev['reference']}",
-            f"{ev['who']}'s {ev['kind'] or 'event'} on {ev['date']}, in "
+            f"{ev['who']}'s {ev['kind'] or 'event'} on {format_date_human(ev['date'])}, in "
             f"{ev['days_away']} day{'' if ev['days_away'] == 1 else 's'}. "
             f"Quoted for {ev['quoted_for'] or 'an unknown number'}."
             + chr(92) + "n" + chr(92) + "n"
@@ -86688,7 +86693,7 @@ def watch_task_findings(conn, today=None):
         found.append((
             "detail",
             f"Arriving without details — {r['reference']}",
-            f"{r['guest']} arrives {r['arrival']} into {r['room']}, and the "
+            f"{r['guest']} arrives {format_date_human(r['arrival'])} into {r['room']}, and the "
             f"booking has {', '.join(r['missing']).lower()}."
             "\n\nAn arrival with no time is a dinner that cannot be planned "
             "and a gate nobody is at; one with no telephone number is a guest "
@@ -86752,7 +86757,7 @@ def watch_task_findings(conn, today=None):
     # answered, and when the fortnight Booking.com allows for a reply is up.
     written = booking_com_waiting(conn)
     if written:
-        names = "; ".join(f"{r['guest_name'] or 'a guest'} ({house_date_iso(r['received_at'])})"
+        names = "; ".join(f"{r['guest_name'] or 'a guest'} ({format_date_short(r['received_at'])})"
                           for r in written[:8])
         if len(written) > 8:
             names += f"; and {len(written) - 8} more"
