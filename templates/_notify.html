@@ -18,6 +18,8 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {{ bot_guard() }}{# a field only scripts fill, and when the form was drawn: bot_guard_refusal #}
     <input type="hidden" name="action" value="notify">
+    {# Cloudflare's check, once the owner has added its keys; nothing before. #}
+    {{ turnstile_check() }}
     <p class="g-field">
       <label for="nf_month">Which month</label>
       <select id="nf_month" name="notify_month" required>
