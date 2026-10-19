@@ -13,19 +13,26 @@
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">One-off venue hire — weddings, photoshoots, corporate offsites. Every event is bespoke, so this is a follow-up-and-quote queue rather than an instant-book calendar. Enquiries arriving by phone or email go in here too.</p>
 
+{#- Where the business stands in money as well as in counts: what the quotes
+    out are worth, what is confirmed, what is still to collect and whether any
+    of it is late. Every figure is event_bill's. -#}
 <div class="stat-tiles">
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ new_count }}</span><span class="stat-tile-label">New {{ 'enquiry' if new_count == 1 else 'enquiries' }}</span></span>
-  </div>
-  <div class="stat-tile">
+  <a class="stat-tile" href="{{ url_for('admin_events', state='New') }}">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-gold' if pipeline.new else 'stat-tile-icon-success' }}">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pipeline.new }}</span><span class="stat-tile-label">New {{ 'enquiry' if pipeline.new == 1 else 'enquiries' }}{% if pipeline.new %} &middot; {% if pipeline.oldest_wait %}oldest waiting {{ pipeline.oldest_wait }} day{{ '' if pipeline.oldest_wait == 1 else 's' }}{% else %}came in today{% endif %}{% endif %}</span></span>
+  </a>
+  <a class="stat-tile" href="{{ url_for('admin_events', state='Quoted') }}">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pipeline.quotes_value|money(0) }}</span><span class="stat-tile-label">In {{ pipeline.quotes_out }} quote{{ '' if pipeline.quotes_out == 1 else 's' }} still out</span></span>
+  </a>
+  <a class="stat-tile" href="{{ url_for('admin_events', state='Confirmed') }}">
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('megaphone', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ confirmed_count }}</span><span class="stat-tile-label">Confirmed events</span></span>
-  </div>
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ current_count }}</span><span class="stat-tile-label">Upcoming &amp; undated</span></span>
-  </div>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pipeline.confirmed_value|money(0) }}</span><span class="stat-tile-label">{{ pipeline.confirmed }} confirmed event{{ '' if pipeline.confirmed == 1 else 's' }} to come</span></span>
+  </a>
+  <a class="stat-tile" href="{{ url_for('admin_events', money='Owes money') }}">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if pipeline.overdue else ('stat-tile-icon-gold' if pipeline.to_collect else 'stat-tile-icon-success') }}">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pipeline.to_collect|money(0) }}</span><span class="stat-tile-label">Still to collect{% if pipeline.overdue %} &middot; {{ pipeline.overdue }} past due{% endif %}</span></span>
+  </a>
 </div>
 
 {# Owner-side intake. Until this existed the only way an event could be
@@ -124,6 +131,8 @@
     <div>
       <strong>{{ e['contact_name'] }}</strong> — {{ e['event_type']|capitalize }}
       <span class="mini-status status-{{ e['status'] }}" style="margin-left:8px;">{{ e['status'] }}</span>
+      {%- if e['status'] == 'new' %}{% set waited = days_waiting(e) %}
+      <span class="mini-status {{ 'status-unpaid' if waited >= 2 else 'status-pending' }}" style="margin-left:4px;">{{ 'came in today' if not waited else 'waiting %d day%s for a reply' % (waited, '' if waited == 1 else 's') }}</span>{% endif %}
       {# Over when its LAST day has passed. Reading the first day only put a
          "past" badge on a three-day wedding on its second day. #}
       {% if (e['end_date'] or e['preferred_date']) and (e['end_date'] or e['preferred_date']) < today.isoformat() %}
@@ -141,6 +150,8 @@
     {%- set bill = bills.get(e['id']) if bills else None %}
     {%- if bill and bill.paid %} · {{ bill.paid|money }} received{% endif %}
     {%- if bill and bill.owed %} · <strong>{{ bill.owed|money }} still to pay</strong>
+      {%- if e['status'] == 'confirmed' and e['balance_due_date'] %} by {{ e['balance_due_date']|date_short }}
+        {%- if e['balance_due_date'] < today.isoformat() %} <span class="mini-status status-unpaid">past due</span>{% endif %}{% endif %}
     {%- elif bill and bill.quoted and bill.settled %} · settled{% endif %}
   {%- if bill and bill.discount %} · <span class="upload-hint">{{ bill.gross_quote|money }} before</span> · <span class="mini-status status-approved">code
     {{ e['promo_code'] }} \u2212{{ bill.discount|money }}</span>{% endif %}
@@ -187,10 +198,15 @@
   <p style="margin:8px 0 0;">
     {#- The quote somebody accepted, the dates being held, and the stages the
         money arrives in. All three lived nowhere before this page. -#}
-    <a href="{{ url_for('event_agreement', inquiry_id=e['id']) }}" class="btn-mini">Agreement</a>
+    {#- What fits the stage: an enquiry has nothing to run yet, and a declined
+        one nothing to plan. The agreement once there is a quote; the guest
+        list, run sheet and margin once it is happening. -#}
+    {% if e['status'] in ('quoted', 'confirmed') %}<a href="{{ url_for('event_agreement', inquiry_id=e['id']) }}" class="btn-mini">Agreement</a>{% endif %}
+    {% if e['status'] == 'confirmed' %}
     <a href="{{ url_for('event_guest_list_page', event_id=e['id']) }}" class="btn-mini">Guest list</a>
-    <a href="{{ url_for('event_margin_page', event_id=e['id']) }}" class="btn-mini">What it made</a>
     <a href="{{ url_for('event_run_sheet_page', event_id=e['id']) }}" class="btn-mini">Run sheet</a>
+    <a href="{{ url_for('event_margin_page', event_id=e['id']) }}" class="btn-mini">What it made</a>
+    {% endif %}
     {%- if e['status'] == 'confirmed' and e['final_numbers'] is none %}
     <span class="field-hint" style="margin-left:8px;">no final numbers yet</span>{% endif %}
   </p>

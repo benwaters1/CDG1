@@ -1,135 +1,400 @@
 {% extends "base.html" %}
-{% block title %}Walk-in booking{% endblock %}
+{% block title %}Add a booking{% endblock %}
 {% block content %}
+{#
+  Add a booking (owner, 19 October 2026: "it doesn't look nice, it's difficult
+  to use, it's not clear -- improve it all"). One page for the three ways a
+  stay reaches the house without the guest's own form:
+
+    BOOK IT NOW          somebody at the door or on the telephone; decided.
+    BOOK IT, SEND A LINK decided, and they pay online from their statement.
+    RESERVE IT           agreed by email: held while they fill in their
+                         details and pay, confirmed when they have.
+
+  In five steps, in the order reception thinks them, with a summary beside
+  them that says what the stay costs and exactly what will be sent before the
+  button is pressed. The rooms change as the dates and the party are typed
+  (walk_in_options_json), so nobody chooses a room that is gone or too small
+  and finds out afterwards. Without script the page still works: "Show what's
+  free" asks it again.
+
+  The email is optional when booking it now on purpose: a walk-in is standing
+  in front of you, and a booking with a name and no address is worth far more
+  than no booking at all.
+#}
+{%- set f = form -%}
+{%- set mode = f.get('mode') or ('paylink' if f.get('send_pay_link') == '1' else 'book') -%}
+{%- set under = (f.get('guests_under_18') or '0')|int -%}
+{%- set adults = (f.get('adults') or ((f.get('party_size') or '2')|int - under) or 2)|int -%}
 
 <div class="page-head">
-  <h1>Take a booking at the desk</h1>
+  <div>
+    <h1>Add a booking</h1>
+    <p class="upload-hint" style="margin:4px 0 0;">For a guest at the door, on the telephone or by email.</p>
+  </div>
   <a href="{{ url_for('admin_bookings') }}" class="btn-mini">All bookings</a>
 </div>
 
-{#
-  For somebody at the door, or on the telephone. Until now a room booking could
-  only be made through the guest's own form or a Stripe session, so the house
-  had to pretend to be the guest to write one down.
-
-  The email is optional on purpose and sits below the things that matter. A
-  walk-in is standing in front of you; a booking with a name and no address is
-  worth far more than no booking at all.
-#}
-<form method="post">
+<form method="post" class="nb" id="nb" data-options-url="{{ url_for('walk_in_options_json') }}"
+      data-today="{{ today.isoformat() }}" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="nb-grid">
+  <div class="nb-main">
 
-  {# Dates first, then the rooms that are actually free for them. Reception
-     was choosing from a list of every room and being told "taken" only after
-     pressing the button, with somebody standing in front of them.
+    {# 1 ------------------------------------------------------------------ #}
+    <section class="nb-step" aria-labelledby="nb-h1">
+      <h2 class="nb-step__h" id="nb-h1"><span class="nb-num" aria-hidden="true">1</span> How is it being booked?</h2>
+      <div class="nb-modes" role="radiogroup" aria-labelledby="nb-h1">
+        <label class="nb-mode">
+          <input type="radio" name="mode" value="book" {{ 'checked' if mode == 'book' }}>
+          <span class="nb-mode__t">Book it now</span>
+          <span class="nb-mode__d">They are here or on the telephone, and it is decided. Confirmed straight away.</span>
+        </label>
+        <label class="nb-mode">
+          <input type="radio" name="mode" value="paylink" {{ 'checked' if mode == 'paylink' }}>
+          <span class="nb-mode__t">Book it and send a payment link</span>
+          <span class="nb-mode__d">Confirmed now. They are emailed their bill with a Pay now button.</span>
+        </label>
+        <label class="nb-mode">
+          <input type="radio" name="mode" value="reserve" {{ 'checked' if mode == 'reserve' }}>
+          <span class="nb-mode__t">Reserve it for them</span>
+          <span class="nb-mode__d">Agreed by email. Held while they add their details and pay; confirmed once they have.</span>
+        </label>
+      </div>
+      <div class="nb-inline" data-for="reserve">
+        <label class="field-label" for="nb_hold">Hold the room for</label>
+        <select id="nb_hold" name="hold_days" class="nb-short">
+          {% for d in [1, 2, 3, 5, 7, 14] %}
+          <option value="{{ d }}" {{ 'selected' if (f.get('hold_days') or '3')|string == d|string }}>{{ d }} day{{ '' if d == 1 else 's' }}</option>
+          {% endfor %}
+        </select>
+        <p class="upload-hint">If they have not paid by then, it goes back on sale by itself.</p>
+      </div>
+    </section>
 
-     Changing the dates re-asks this same page — a plain GET, no script — so
-     the answer is always for the nights on screen. #}
-  <div class="field-row-2">
-    <div>
-      <label class="field-label" for="wi_arrival">Arriving</label>
-      <input id="wi_arrival" type="date" name="arrival_date" required
-             value="{{ form.get('arrival_date') or (arrival.isoformat() if arrival else '') }}">
-    </div>
-    <div>
-      <label class="field-label" for="wi_departure">Leaving</label>
-      <input id="wi_departure" type="date" name="departure_date" required
-             value="{{ form.get('departure_date') or (departure.isoformat() if departure else '') }}">
-    </div>
+    {# 2 ------------------------------------------------------------------ #}
+    <section class="nb-step" aria-labelledby="nb-h2">
+      <h2 class="nb-step__h" id="nb-h2"><span class="nb-num" aria-hidden="true">2</span> When, and who is coming</h2>
+      <div class="nb-dates">
+        <div>
+          <label class="field-label" for="wi_arrival">Arriving</label>
+          <input id="wi_arrival" type="date" name="arrival_date" required
+                 value="{{ f.get('arrival_date') or (shown_arrival.isoformat() if shown_arrival else '') }}">
+        </div>
+        <div>
+          <label class="field-label" for="wi_departure">Leaving</label>
+          <input id="wi_departure" type="date" name="departure_date" required
+                 value="{{ f.get('departure_date') or (shown_departure.isoformat() if shown_departure else '') }}">
+        </div>
+        <p class="nb-nights" id="nb_nights" aria-live="polite">
+          {%- set n = (shown_departure - shown_arrival).days if shown_arrival and shown_departure else 0 -%}
+          {{ n }} night{{ '' if n == 1 else 's' }}</p>
+      </div>
+      <p class="nb-quick">
+        <button type="button" class="btn-mini" data-quick="0">Tonight</button>
+        <button type="button" class="btn-mini" data-quick="1">Tomorrow</button>
+        <button type="button" class="btn-mini" data-quick="weekend">This weekend</button>
+      </p>
+
+      <div class="nb-party">
+        <div class="nb-count">
+          <label class="field-label" for="wi_adults">Adults</label>
+          <div class="nb-stepper">
+            <button type="button" class="btn-mini" data-step="-1" data-target="wi_adults" aria-label="One adult fewer">&minus;</button>
+            <input id="wi_adults" type="number" name="adults" min="1" step="1" inputmode="numeric" value="{{ adults }}">
+            <button type="button" class="btn-mini" data-step="1" data-target="wi_adults" aria-label="One adult more">+</button>
+          </div>
+        </div>
+        <div class="nb-count">
+          <label class="field-label" for="wi_under18">Under 18</label>
+          <div class="nb-stepper">
+            <button type="button" class="btn-mini" data-step="-1" data-target="wi_under18" aria-label="One child fewer">&minus;</button>
+            <input id="wi_under18" type="number" name="guests_under_18" min="0" step="1" inputmode="numeric" value="{{ under }}">
+            <button type="button" class="btn-mini" data-step="1" data-target="wi_under18" aria-label="One child more">+</button>
+          </div>
+        </div>
+        <input type="hidden" name="party_size" id="wi_party" value="{{ adults + under }}">
+      </div>
+      <p class="upload-hint">Under-18s pay no taxe de séjour. Children are welcome from eight.</p>
+    </section>
+
+    {# 3 ------------------------------------------------------------------ #}
+    <section class="nb-step" aria-labelledby="nb-h3">
+      <h2 class="nb-step__h" id="nb-h3"><span class="nb-num" aria-hidden="true">3</span> Room</h2>
+      <p class="upload-hint" id="nb_rooms_for" aria-live="polite">
+        For {{ shown_arrival.isoformat()|date_short }} → {{ shown_departure.isoformat()|date_short }}.
+      </p>
+      <div class="room-pick" id="nb_rooms">
+        {% for o in options %}
+        {% set ok = o.free and o.fits %}
+        <label class="room-pick__tile {{ 'is-taken' if not ok }}">
+          <input type="radio" name="room_id" value="{{ o.room['id'] }}" data-price="{{ o.price }}"
+                 data-name="{{ o.room['name'] }}"
+                 {{ 'disabled' if not ok }}
+                 {{ 'checked' if f.get('room_id')|string == o.room['id']|string and ok }}>
+          <span class="room-pick__name">{{ o.room['name'] }}</span>
+          {% if ok %}
+          <span class="room-pick__price">{{ o.price|money }}</span>
+          <span class="room-pick__note">{{ o.per_night|money }} a night · sleeps {{ o.sleeps }}{% if o.children %} · up to {{ o.children }} under 18{% endif %}</span>
+          {% if o.note %}<span class="room-pick__note">{{ o.note }}</span>{% endif %}
+          {% else %}
+          <span class="room-pick__note">{{ o.why or 'Not free' }}</span>
+          {% endif %}
+        </label>
+        {% endfor %}
+      </div>
+      <p class="upload-hint" id="nb_rooms_none" {{ 'hidden' if options|selectattr('free')|selectattr('fits')|list }}>
+        Nothing free for those nights and that party. Try other dates, or
+        <a href="{{ url_for('admin_waitlist') }}">put them on the waiting list</a>.</p>
+      <noscript>
+        <p><button type="submit" formmethod="get" class="btn-mini">Show what's free for these dates</button></p>
+      </noscript>
+    </section>
+
+    {# 4 ------------------------------------------------------------------ #}
+    <section class="nb-step" aria-labelledby="nb-h4">
+      <h2 class="nb-step__h" id="nb-h4"><span class="nb-num" aria-hidden="true">4</span> The guest</h2>
+      <div class="field-row-2">
+        <div>
+          <label class="field-label" for="wi_name">Name <span class="nb-opt" data-for="reserve">(optional — they add it)</span></label>
+          <input id="wi_name" type="text" name="guest_name" value="{{ f.get('guest_name', '') }}"
+                 placeholder="A surname is enough" autocomplete="off" spellcheck="false" autocapitalize="words">
+        </div>
+        <div>
+          <label class="field-label" for="wi_phone">Telephone <span class="nb-opt">(optional)</span></label>
+          <input id="wi_phone" type="tel" name="guest_phone" value="{{ f.get('guest_phone', '') }}" autocomplete="off">
+        </div>
+      </div>
+      <label class="field-label" for="wi_email">Email
+        <span class="nb-opt" data-for="book">(optional)</span><span class="nb-opt" data-for="paylink reserve">(needed — the link goes here)</span></label>
+      <input id="wi_email" type="email" name="guest_email" value="{{ f.get('guest_email', '') }}" autocomplete="off">
+      <p class="upload-hint" data-for="book">With an address they get their confirmation, and you can send their bill or chase a balance later. Worth asking for, not worth refusing the booking over.</p>
+      <p class="upload-hint" data-for="paylink">They get their confirmation and their bill with a Pay now button for whatever is still owed.</p>
+      <p class="upload-hint" data-for="reserve">They get one email: what is held, for how much, until when, and a link to finish and pay.</p>
+    </section>
+
+    {# 5 ------------------------------------------------------------------ #}
+    <section class="nb-step" aria-labelledby="nb-h5">
+      <h2 class="nb-step__h" id="nb-h5"><span class="nb-num" aria-hidden="true">5</span> Price and payment</h2>
+      <div class="field-row-2">
+        <div>
+          <label class="field-label" for="wi_price">Price for the stay</label>
+          <input id="wi_price" type="number" name="total_price" step="0.01" min="0" inputmode="decimal"
+                 value="{{ f.get('total_price', '') }}" placeholder="The rate card">
+          <p class="upload-hint" id="nb_price_note" aria-live="polite">Leave it blank for the rate card, or put in what you agreed.</p>
+        </div>
+        <div data-for="book paylink">
+          <label class="field-label" for="wi_taken">Paid here now <span class="nb-opt">(optional)</span></label>
+          <div class="nb-pay">
+            <input id="wi_taken" type="number" name="amount_taken" step="0.01" min="0" inputmode="decimal"
+                   value="{{ f.get('amount_taken', '') }}" placeholder="0.00">
+            <select id="wi_method" name="method" aria-label="How it was paid">
+              {% for v, label in [('cash', 'Cash'), ('card_in_person', 'Card, in person'), ('bank_transfer', 'Bank transfer'), ('other', 'Something else')] %}
+              <option value="{{ v }}" {{ 'selected' if f.get('method') == v }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+      <label class="field-label" for="wi_notes">Anything to note</label>
+      <textarea id="wi_notes" name="special_requests" rows="2" placeholder="Arriving late, a cot, an anniversary…">{{ f.get('special_requests', '') }}</textarea>
+    </section>
   </div>
-  <p class="upload-hint" style="margin-top:4px;">
-    <a href="{{ url_for('walk_in_booking') }}">Tonight</a> ·
-    changed the dates? <button type="submit" formmethod="get" class="btn-mini">Show what's free</button>
-  </p>
 
-  <label class="field-label" style="margin-top:14px;">
-    Free for {{ shown_arrival.isoformat()|date_short }} → {{ shown_departure.isoformat()|date_short }}
-  </label>
-  <div class="room-pick">
-    {% for o in options %}
-    <label class="room-pick__tile {{ 'is-taken' if not o.free }}">
-      <input type="radio" name="room_id" value="{{ o.room['id'] }}"
-             {{ 'disabled' if not o.free }}
-             {{ 'checked' if form.get('room_id')|string == o.room['id']|string and o.free }}
-             required>
-      <span class="room-pick__name">{{ o.room['name'] }}</span>
-      {% if o.free %}
-      <span class="room-pick__price">{{ o.price|money }}</span>
-      <span class="room-pick__note">sleeps {{ o.sleeps }}</span>
-      {% else %}
-      <span class="room-pick__note">{{ o.why or 'Not free' }}</span>
-      {% endif %}
-    </label>
-    {% endfor %}
+  {# The summary: what the stay costs and what pressing the button does. #}
+  <aside class="nb-summary" aria-labelledby="nb-sum-h">
+    <div class="nb-card">
+      <h2 class="nb-card__h" id="nb-sum-h">Summary</h2>
+      <dl class="nb-sum" aria-live="polite">
+        <div><dt>Room</dt><dd id="s_room">Choose a room</dd></div>
+        <div><dt>Dates</dt><dd id="s_dates">—</dd></div>
+        <div><dt>Guests</dt><dd id="s_party">—</dd></div>
+        <div class="nb-sum__money"><dt>Room price</dt><dd id="s_price">—</dd></div>
+        <div class="nb-sum__money"><dt>Taxe de séjour</dt><dd id="s_tax">—</dd></div>
+        <div class="nb-sum__money nb-sum__total"><dt>Total</dt><dd id="s_total">—</dd></div>
+        <div class="nb-sum__money" data-for="book paylink"><dt>Paid now</dt><dd id="s_paid">—</dd></div>
+        <div class="nb-sum__money nb-sum__owed"><dt>Still to pay</dt><dd id="s_owed">—</dd></div>
+      </dl>
+      <h3 class="nb-card__sub">When you press the button</h3>
+      <ul class="nb-what" data-for="book">
+        <li>The room is booked and confirmed.</li>
+        <li id="w_book_mail">With an email address they get their confirmation; without one, nothing is sent.</li>
+        <li>You go to the booking, to add extras or take a payment.</li>
+      </ul>
+      <ul class="nb-what" data-for="paylink">
+        <li>The room is booked and confirmed.</li>
+        <li>They are emailed their confirmation, and their bill with a Pay now button.</li>
+        <li>You go to the booking, where the payment shows when it lands.</li>
+      </ul>
+      <ul class="nb-what" data-for="reserve">
+        <li>The room comes off sale now, held for <b id="w_hold">3 days</b>.</li>
+        <li>They are emailed a link to add their details and pay.</li>
+        <li>Paying confirms it. Unpaid by the end of the hold, the room goes back on sale.</li>
+      </ul>
+      <button type="submit" class="btn-primary nb-go" id="nb_go">Book it</button>
+      <p class="nb-problem" id="nb_problem" role="status" hidden></p>
+    </div>
+  </aside>
   </div>
-  {% if options and not options|selectattr('free')|list %}
-  <p class="upload-hint">Nothing free for those nights. Try different dates, or
-  put them on the waiting list.</p>
-  {% endif %}
-
-  <label class="field-label" for="wi_party">Guests</label>
-  <div class="field-row-2">
-    <div>
-      <input id="wi_party" type="number" name="party_size" min="1" step="1"
-             value="{{ form.get('party_size', '2') }}">
-    </div>
-    <div>
-      <label class="field-label" for="wi_under18">Of those, under 18</label>
-      <input id="wi_under18" type="number" name="guests_under_18" min="0" step="1"
-             value="{{ form.get('guests_under_18', '0') }}">
-    </div>
-  </div>
-  <p class="upload-hint">Under-18s are exempt from the taxe de séjour, so this
-  changes what the stay owes and what the commune is told.</p>
-
-  <div class="field-row-2">
-    <div>
-      <label class="field-label" for="wi_name">Name</label>
-      <input id="wi_name" type="text" name="guest_name" required
-             value="{{ form.get('guest_name', '') }}" placeholder="A surname is enough" autocomplete="name" spellcheck="false" autocapitalize="words">
-    </div>
-    <div>
-      <label class="field-label" for="wi_phone">Telephone (optional)</label>
-      <input id="wi_phone" type="tel" name="guest_phone" value="{{ form.get('guest_phone', '') }}" autocomplete="tel">
-    </div>
-  </div>
-
-  <label class="field-label" for="wi_email">Email (optional)</label>
-  <input id="wi_email" type="email" name="guest_email" value="{{ form.get('guest_email', '') }}"
-         placeholder="Leave blank if they would rather not" autocomplete="email">
-  <p class="upload-hint">Without one there is nothing to send them — no statement,
-  no account link, and no way to chase a balance later. Worth asking for, not worth
-  refusing the booking over.</p>
-
-  <label class="field-label" for="wi_price">Price for the stay (optional)</label>
-  <input id="wi_price" type="number" name="total_price" step="0.01" min="0"
-         value="{{ form.get('total_price', '') }}" placeholder="Leave blank for the rate card">
-  <p class="upload-hint">Fill this in only to charge less than the advertised rate —
-  a room sold late on a night it would otherwise sit empty. It goes on the bill as a
-  discount, so the nights still show at the price they are advertised at. More than
-  the rate card is ignored.</p>
-
-  <div class="field-row-2">
-    <div>
-      <label class="field-label" for="wi_taken">Taken now (optional)</label>
-      <input id="wi_taken" type="number" name="amount_taken" step="0.01" min="0"
-             value="{{ form.get('amount_taken', '') }}" placeholder="0.00">
-    </div>
-    <div>
-      <label class="field-label" for="wi_method">How</label>
-      <select id="wi_method" name="method">
-        <option value="cash">Cash</option>
-        <option value="card_in_person">Card, in person</option>
-        <option value="bank_transfer">Bank transfer</option>
-        <option value="other">Something else</option>
-      </select>
-    </div>
-  </div>
-
-  <label class="field-label" for="wi_notes">Anything to note</label>
-  <textarea id="wi_notes" name="special_requests" rows="2">{{ form.get('special_requests', '') }}</textarea>
-
-  <button type="submit" class="btn-primary" style="margin-top:14px;">Book them in</button>
 </form>
 
+<script>
+(function(){
+  var form = document.getElementById('nb'); if(!form) return;
+  var $ = function(id){ return document.getElementById(id); };
+  var arrival = $('wi_arrival'), departure = $('wi_departure'), adults = $('wi_adults'),
+      under = $('wi_under18'), party = $('wi_party'), price = $('wi_price'), taken = $('wi_taken'),
+      email = $('wi_email'), name = $('wi_name'), hold = $('nb_hold');
+  var tax = null, nights = 0, timer = null, asked = 0;
+
+  function euro(n){ return '€' + (Math.round(n * 100) / 100).toLocaleString('en-GB', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+  function num(el){ var v = parseFloat((el && el.value || '').replace(',', '.')); return isNaN(v) ? null : v; }
+  function int(el){ return Math.max(0, parseInt(el.value, 10) || 0); }
+  function mode(){ var r = form.querySelector('[name=mode]:checked'); return r ? r.value : 'book'; }
+  /* Dates as the calendar has them, counted in UTC parts so no clock's
+     time of day can move one: the house's today comes from the server. */
+  function pad(n){ return (n < 10 ? '0' : '') + n; }
+  function day(d){ return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); }
+  function at(iso){ var p = String(iso).split('-'); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])); }
+  function pretty(iso){
+    if(!iso) return ''; var p = iso.split('-');
+    var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+    return d.toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC'});
+  }
+  function chosen(){ return form.querySelector('[name=room_id]:checked'); }
+
+  /* The three ways: what shows, what is needed, what the button says. */
+  function showMode(){
+    var m = mode();
+    form.querySelectorAll('[data-for]').forEach(function(el){
+      el.hidden = el.getAttribute('data-for').split(' ').indexOf(m) < 0;
+    });
+    $('nb_go').textContent = m === 'reserve' ? 'Reserve it and email the link'
+                           : m === 'paylink' ? 'Book it and email the link' : 'Book it';
+    var h = hold.value | 0; $('w_hold').textContent = h + (h === 1 ? ' day' : ' days');
+    sums();
+  }
+
+  /* The party: one total for the route, never below one adult. */
+  function partySync(){
+    if(int(adults) < 1) adults.value = 1;
+    party.value = int(adults) + int(under);
+  }
+
+  function sums(){
+    var r = chosen(), rack = r ? parseFloat(r.getAttribute('data-price')) : null;
+    var agreed = num(price), cost = agreed !== null ? agreed : rack;
+    $('s_room').textContent = r ? r.getAttribute('data-name') : 'Choose a room';
+    $('s_dates').textContent = arrival.value && departure.value && nights > 0
+      ? pretty(arrival.value) + ' → ' + pretty(departure.value) + ' · ' + nights + (nights === 1 ? ' night' : ' nights') : '—';
+    var a = int(adults), u = int(under);
+    $('s_party').textContent = a + (a === 1 ? ' adult' : ' adults') + (u ? ', ' + u + ' under 18' : '');
+    var note = 'Leave it blank for the rate card, or put in what you agreed.';
+    if(rack !== null && agreed !== null){
+      var d = Math.round((agreed - rack) * 100) / 100;
+      note = d < 0 ? euro(-d) + ' off the rate card (' + euro(rack) + '). It shows on the bill as a discount.'
+           : d > 0 ? euro(d) + ' above the rate card (' + euro(rack) + '). It is charged as the room price.'
+           : 'The rate card, ' + euro(rack) + '.';
+    } else if(rack !== null){ note = 'The rate card for these nights is ' + euro(rack) + '. Leave it blank for that, or put in what you agreed.'; }
+    $('nb_price_note').textContent = note;
+    $('s_price').textContent = cost !== null ? euro(cost) : '—';
+    $('s_tax').textContent = tax !== null ? (tax ? euro(tax) : 'none') : '—';
+    var total = cost !== null ? cost + (tax || 0) : null;
+    $('s_total').textContent = total !== null ? euro(total) : '—';
+    var paid = mode() === 'reserve' ? 0 : (num(taken) || 0);
+    $('s_paid').textContent = paid ? euro(paid) : 'nothing';
+    $('s_owed').textContent = total !== null ? euro(Math.max(0, total - paid)) : '—';
+    $('w_book_mail').textContent = (email.value.indexOf('@') > 0)
+      ? 'They get their confirmation at ' + email.value + '.'
+      : 'No email address, so nothing is sent. They can be given the arrival card.';
+  }
+
+  /* The rooms, asked again for the dates and party on screen. */
+  function tile(o){
+    var ok = o.free && o.fits, lab = document.createElement('label');
+    lab.className = 'room-pick__tile' + (ok ? '' : ' is-taken');
+    var inp = document.createElement('input');
+    inp.type = 'radio'; inp.name = 'room_id'; inp.value = o.id; inp.disabled = !ok;
+    inp.setAttribute('data-price', o.price); inp.setAttribute('data-name', o.name);
+    lab.appendChild(inp);
+    function span(cls, text){ var s = document.createElement('span'); s.className = cls; s.textContent = text; lab.appendChild(s); }
+    span('room-pick__name', o.name);
+    if(ok){
+      span('room-pick__price', euro(o.price));
+      span('room-pick__note', euro(o.per_night) + ' a night · sleeps ' + o.sleeps + (o.children ? ' · up to ' + o.children + ' under 18' : ''));
+      if(o.note) span('room-pick__note', o.note);
+    } else { span('room-pick__note', o.why || 'Not free'); }
+    return lab;
+  }
+  function ask(){
+    clearTimeout(timer);
+    timer = setTimeout(function(){
+      var was = chosen(), keep = was ? was.value : null, n = ++asked;
+      var q = new URLSearchParams({arrival_date: arrival.value, departure_date: departure.value,
+                                   party_size: party.value, guests_under_18: int(under)});
+      fetch(form.getAttribute('data-options-url') + '?' + q.toString(), {credentials: 'same-origin'})
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(d){
+          if(!d || n !== asked) return;
+          nights = d.nights; tax = d.nights > 0 ? d.tax : null;
+          $('nb_nights').textContent = nights > 0 ? nights + (nights === 1 ? ' night' : ' nights') : 'Check the dates';
+          $('nb_rooms_for').textContent = nights > 0 ? 'For ' + pretty(arrival.value) + ' → ' + pretty(departure.value) + '.' : 'Choose the dates first.';
+          var box = $('nb_rooms'); box.innerHTML = ''; var any = false;
+          d.rooms.forEach(function(o){
+            var t = tile(o); box.appendChild(t);
+            if(o.free && o.fits){ any = true; if(String(o.id) === keep) t.querySelector('input').checked = true; }
+          });
+          $('nb_rooms_none').hidden = any || nights <= 0;
+          sums();
+        }).catch(function(){});
+    }, 180);
+  }
+
+  form.addEventListener('change', function(e){
+    if(e.target.name === 'mode' || e.target === hold) showMode();
+    else if(e.target.name === 'room_id') sums();
+  });
+  [arrival, departure].forEach(function(el){ el.addEventListener('change', function(){
+    if(el === arrival && arrival.value && (!departure.value || departure.value <= arrival.value)){
+      var d = at(arrival.value); d.setUTCDate(d.getUTCDate() + 1); departure.value = day(d);
+    }
+    ask();
+  }); });
+  [adults, under].forEach(function(el){ el.addEventListener('input', function(){ partySync(); ask(); sums(); }); });
+  [price, taken, email].forEach(function(el){ el.addEventListener('input', sums); });
+
+  form.querySelectorAll('[data-step]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var t = $(b.getAttribute('data-target')), min = parseInt(t.min, 10) || 0;
+      t.value = Math.max(min, int(t) + parseInt(b.getAttribute('data-step'), 10));
+      t.dispatchEvent(new Event('input', {bubbles: true}));
+    });
+  });
+  form.querySelectorAll('[data-quick]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var k = b.getAttribute('data-quick'), a = at(form.getAttribute('data-today'));
+      var stay = 1;
+      if(k === 'weekend'){ a.setUTCDate(a.getUTCDate() + (5 - a.getUTCDay() + 7) % 7); stay = 2; }
+      else { a.setUTCDate(a.getUTCDate() + parseInt(k, 10)); }
+      var d = new Date(a); d.setUTCDate(d.getUTCDate() + stay);
+      arrival.value = day(a); departure.value = day(d); ask();
+    });
+  });
+
+  /* Said beside the button, rather than after a round trip. The server
+     checks all of it again. */
+  form.addEventListener('submit', function(e){
+    if(e.submitter && e.submitter.getAttribute('formmethod') === 'get') return;
+    var why = '';
+    if(!chosen()) why = 'Choose a room.';
+    else if(mode() !== 'reserve' && !name.value.trim()) why = 'Put a name on it, even if it is only a surname.';
+    else if(mode() !== 'book' && email.value.indexOf('@') < 1) why = 'Their email address is needed: the link goes there.';
+    var p = $('nb_problem');
+    if(why){ e.preventDefault(); p.textContent = why; p.hidden = false; }
+    else { p.hidden = true; $('nb_go').disabled = true; $('nb_go').textContent = 'Saving…'; }
+  });
+
+  partySync(); showMode(); ask();
+})();
+</script>
 {% endblock %}

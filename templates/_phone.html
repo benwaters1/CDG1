@@ -4,6 +4,9 @@
     With no saved number, the code is picked from the browser's language region (en-AU -> +61), else France.
     Import: {% from '_phone.html' import phone_field %} -#}
 
+{#- 18 Oct (owner): every country, the commonest first. Ukraine was missing - and with it most of the world - so a
+    guest from there could not give a telephone number, and the number is required, so could not book. The
+    country of residence list is this list sorted by name. test_every_country holds it. -#}
 {%- set PHONE_CODES = [
   ('FR','France','+33'), ('GB','United Kingdom','+44'), ('IE','Ireland','+353'), ('US','United States','+1'),
   ('CA','Canada','+1'), ('AU','Australia','+61'), ('NZ','New Zealand','+64'), ('DE','Germany','+49'),
@@ -16,7 +19,69 @@
   ('SG','Singapore','+65'), ('HK','Hong Kong','+852'), ('JP','Japan','+81'), ('KR','South Korea','+82'),
   ('CN','China','+86'), ('TW','Taiwan','+886'), ('IN','India','+91'), ('TH','Thailand','+66'),
   ('MY','Malaysia','+60'), ('ID','Indonesia','+62'), ('PH','Philippines','+63'), ('BR','Brazil','+55'),
-  ('MX','Mexico','+52'), ('AR','Argentina','+54'), ('CL','Chile','+56'), ('CO','Colombia','+57')
+  ('MX','Mexico','+52'), ('AR','Argentina','+54'), ('CL','Chile','+56'), ('CO','Colombia','+57'),
+  ("AF", "Afghanistan", "+93"), ("AL", "Albania", "+355"), ("DZ", "Algeria", "+213"),
+  ("AS", "American Samoa", "+1"), ("AO", "Angola", "+244"), ("AI", "Anguilla", "+1"),
+  ("AG", "Antigua and Barbuda", "+1"), ("AM", "Armenia", "+374"), ("AW", "Aruba", "+297"),
+  ("AZ", "Azerbaijan", "+994"), ("BS", "Bahamas", "+1"), ("BH", "Bahrain", "+973"),
+  ("BD", "Bangladesh", "+880"), ("BB", "Barbados", "+1"), ("BY", "Belarus", "+375"),
+  ("BZ", "Belize", "+501"), ("BJ", "Benin", "+229"), ("BM", "Bermuda", "+1"),
+  ("BT", "Bhutan", "+975"), ("BO", "Bolivia", "+591"), ("BA", "Bosnia and Herzegovina", "+387"),
+  ("BW", "Botswana", "+267"), ("VG", "British Virgin Islands", "+1"), ("BN", "Brunei", "+673"),
+  ("BG", "Bulgaria", "+359"), ("BF", "Burkina Faso", "+226"), ("BI", "Burundi", "+257"),
+  ("KH", "Cambodia", "+855"), ("CM", "Cameroon", "+237"), ("CV", "Cape Verde", "+238"),
+  ("KY", "Cayman Islands", "+1"), ("CF", "Central African Republic", "+236"), ("TD", "Chad", "+235"),
+  ("KM", "Comoros", "+269"), ("CG", "Congo", "+242"), ("CD", "Congo (Democratic Republic)", "+243"),
+  ("CK", "Cook Islands", "+682"), ("CR", "Costa Rica", "+506"), ("HR", "Croatia", "+385"),
+  ("CU", "Cuba", "+53"), ("CW", "Curaçao", "+599"), ("CY", "Cyprus", "+357"),
+  ("CI", "Côte d'Ivoire", "+225"), ("DJ", "Djibouti", "+253"), ("DM", "Dominica", "+1"),
+  ("DO", "Dominican Republic", "+1"), ("EC", "Ecuador", "+593"), ("EG", "Egypt", "+20"),
+  ("SV", "El Salvador", "+503"), ("GQ", "Equatorial Guinea", "+240"), ("ER", "Eritrea", "+291"),
+  ("EE", "Estonia", "+372"), ("SZ", "Eswatini", "+268"), ("ET", "Ethiopia", "+251"),
+  ("FK", "Falkland Islands", "+500"), ("FO", "Faroe Islands", "+298"), ("FJ", "Fiji", "+679"),
+  ("GF", "French Guiana", "+594"), ("PF", "French Polynesia", "+689"), ("GA", "Gabon", "+241"),
+  ("GM", "Gambia", "+220"), ("GE", "Georgia", "+995"), ("GH", "Ghana", "+233"),
+  ("GI", "Gibraltar", "+350"), ("GL", "Greenland", "+299"), ("GD", "Grenada", "+1"),
+  ("GP", "Guadeloupe", "+590"), ("GU", "Guam", "+1"), ("GT", "Guatemala", "+502"),
+  ("GG", "Guernsey", "+44"), ("GN", "Guinea", "+224"), ("GW", "Guinea-Bissau", "+245"),
+  ("GY", "Guyana", "+592"), ("HT", "Haiti", "+509"), ("HN", "Honduras", "+504"),
+  ("IR", "Iran", "+98"), ("IQ", "Iraq", "+964"), ("IM", "Isle of Man", "+44"),
+  ("JM", "Jamaica", "+1"), ("JE", "Jersey", "+44"), ("JO", "Jordan", "+962"),
+  ("RU", "Russia", "+7"), ("KZ", "Kazakhstan", "+7"), ("KE", "Kenya", "+254"),
+  ("KI", "Kiribati", "+686"), ("XK", "Kosovo", "+383"), ("KW", "Kuwait", "+965"),
+  ("KG", "Kyrgyzstan", "+996"), ("LA", "Laos", "+856"), ("LV", "Latvia", "+371"),
+  ("LB", "Lebanon", "+961"), ("LS", "Lesotho", "+266"), ("LR", "Liberia", "+231"),
+  ("LY", "Libya", "+218"), ("LI", "Liechtenstein", "+423"), ("LT", "Lithuania", "+370"),
+  ("MO", "Macao", "+853"), ("MG", "Madagascar", "+261"), ("MW", "Malawi", "+265"),
+  ("MV", "Maldives", "+960"), ("ML", "Mali", "+223"), ("MT", "Malta", "+356"),
+  ("MH", "Marshall Islands", "+692"), ("MQ", "Martinique", "+596"), ("MR", "Mauritania", "+222"),
+  ("MU", "Mauritius", "+230"), ("YT", "Mayotte", "+262"), ("FM", "Micronesia", "+691"),
+  ("MD", "Moldova", "+373"), ("MN", "Mongolia", "+976"), ("ME", "Montenegro", "+382"),
+  ("MS", "Montserrat", "+1"), ("MA", "Morocco", "+212"), ("MZ", "Mozambique", "+258"),
+  ("MM", "Myanmar", "+95"), ("NA", "Namibia", "+264"), ("NR", "Nauru", "+674"),
+  ("NP", "Nepal", "+977"), ("NC", "New Caledonia", "+687"), ("NI", "Nicaragua", "+505"),
+  ("NE", "Niger", "+227"), ("NG", "Nigeria", "+234"), ("NU", "Niue", "+683"),
+  ("KP", "North Korea", "+850"), ("MK", "North Macedonia", "+389"), ("MP", "Northern Mariana Islands", "+1"),
+  ("OM", "Oman", "+968"), ("PK", "Pakistan", "+92"), ("PW", "Palau", "+680"),
+  ("PS", "Palestine", "+970"), ("PA", "Panama", "+507"), ("PG", "Papua New Guinea", "+675"),
+  ("PY", "Paraguay", "+595"), ("PE", "Peru", "+51"), ("PR", "Puerto Rico", "+1"),
+  ("RO", "Romania", "+40"), ("RW", "Rwanda", "+250"), ("RE", "Réunion", "+262"),
+  ("BL", "Saint Barthélemy", "+590"), ("SH", "Saint Helena", "+290"), ("KN", "Saint Kitts and Nevis", "+1"),
+  ("LC", "Saint Lucia", "+1"), ("MF", "Saint Martin", "+590"), ("PM", "Saint Pierre and Miquelon", "+508"),
+  ("VC", "Saint Vincent and the Grenadines", "+1"), ("WS", "Samoa", "+685"), ("SM", "San Marino", "+378"),
+  ("SN", "Senegal", "+221"), ("RS", "Serbia", "+381"), ("SC", "Seychelles", "+248"),
+  ("SL", "Sierra Leone", "+232"), ("SX", "Sint Maarten", "+1"), ("SK", "Slovakia", "+421"),
+  ("SI", "Slovenia", "+386"), ("SB", "Solomon Islands", "+677"), ("SO", "Somalia", "+252"),
+  ("SS", "South Sudan", "+211"), ("LK", "Sri Lanka", "+94"), ("SD", "Sudan", "+249"),
+  ("SR", "Suriname", "+597"), ("SY", "Syria", "+963"), ("ST", "São Tomé and Príncipe", "+239"),
+  ("TJ", "Tajikistan", "+992"), ("TZ", "Tanzania", "+255"), ("TL", "Timor-Leste", "+670"),
+  ("TG", "Togo", "+228"), ("TO", "Tonga", "+676"), ("TT", "Trinidad and Tobago", "+1"),
+  ("TN", "Tunisia", "+216"), ("TM", "Turkmenistan", "+993"), ("TC", "Turks and Caicos Islands", "+1"),
+  ("TV", "Tuvalu", "+688"), ("TR", "Türkiye", "+90"), ("VI", "US Virgin Islands", "+1"),
+  ("UG", "Uganda", "+256"), ("UA", "Ukraine", "+380"), ("UY", "Uruguay", "+598"),
+  ("UZ", "Uzbekistan", "+998"), ("VU", "Vanuatu", "+678"), ("VA", "Vatican City", "+39"),
+  ("VE", "Venezuela", "+58"), ("VN", "Vietnam", "+84"), ("WF", "Wallis and Futuna", "+681"),
+  ("YE", "Yemen", "+967"), ("ZM", "Zambia", "+260"), ("ZW", "Zimbabwe", "+263")
 ] -%}
 
 {%- macro phone_field(id, name, value='', label='Telephone', wrap='p', extra_class='') -%}
@@ -30,9 +95,10 @@
 <{{ wrap }} class="g-field g-phone {{ extra_class }}">
   <label for="{{ id }}">{{ label }}<span class="g-req" aria-hidden="true">*</span></label>
   <span class="g-phone__row">
-    <select class="g-phone__cc" id="{{ id }}_cc" aria-label="Country code" data-phone-cc="{{ id }}" {{ 'data-chosen' if ns.iso }}>
-      {%- for iso, country, code in PHONE_CODES %}
-      <option value="{{ code }}" data-iso="{{ iso }}" {{ 'selected' if (ns.iso == iso) or (not ns.iso and iso == 'FR') }}>{{ country }} {{ code }}</option>
+    <select class="g-phone__cc" id="{{ id }}_cc" aria-label="Country code" data-phone-cc="{{ id }}" {{ 'data-chosen' if ns.iso }}
+            data-searchable data-search-hint="Country or +code">
+      {%- for iso, country, code in PHONE_CODES|sort(attribute=1) %}
+      <option value="{{ code }}" data-iso="{{ iso }}" data-rank="{{ PHONE_CODES.index((iso, country, code)) }}" {{ 'selected' if (ns.iso == iso) or (not ns.iso and iso == 'FR') }}>{{ country }} {{ code }}</option>
       {%- endfor %}
     </select>
     <input type="tel" inputmode="tel" id="{{ id }}" name="{{ name }}" autocomplete="tel-national" value="{{ v }}" required
@@ -47,7 +113,7 @@
     var region = ((navigator.language || '').split('-')[1] || '').toUpperCase();
     document.querySelectorAll('[data-phone-cc]').forEach(function(sel){
       if (!sel.hasAttribute('data-chosen') && region){
-        var o = sel.querySelector('option[data-iso="' + region + '"]'); if (o) sel.value = o.value;
+        var o = sel.querySelector('option[data-iso="' + region + '"]'); if (o) o.selected = true;
       }
       // SPLIT WHAT THE SERVER SENT. The input carries the whole
       // international number so that it survives a re-render with no script
@@ -57,10 +123,13 @@
       if (num && (num.value || '').trim().charAt(0) === '+'){
         var whole = num.value.replace(/\s+/g, ''), best = null;
         Array.prototype.forEach.call(sel.options, function(o){
-          if (whole.indexOf(o.value) === 0 && (!best || o.value.length > best.value.length)) best = o;
+          // Longest code first; on a code countries share (+1, +44, +7) the commonest, which is
+          // the United States, not American Samoa, now the list is alphabetical.
+          if (whole.indexOf(o.value) === 0 && (!best || o.value.length > best.value.length
+              || (o.value.length === best.value.length && +o.dataset.rank < +best.dataset.rank))) best = o;
         });
         if (best){
-          sel.value = best.value;
+          best.selected = true;
           sel.setAttribute('data-chosen', '');
           num.value = whole.slice(best.value.length);
         }
@@ -78,6 +147,77 @@
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
+</script>
+{{ search_select_script() }}
+{%- endmacro -%}
+
+{#- 18 Oct (owner: "the list of countries is impossible to use ... it should have a search thing where u put your
+    country code or type the name and it selects it"). Any <select data-searchable> becomes a box to type in: a name,
+    part of one, or a dialling code ("ukr", "Ukraine", "+380", "380"), with the browser's own suggestions as you type.
+    The select stays underneath and is what the form posts, so nothing changes for the server, and it still works with
+    no script at all. Used by the telephone code and the country of residence. -#}
+{%- macro search_select_script() -%}
+<script>
+(function(){
+  if (window.__gSearchSelect) return; window.__gSearchSelect = true;
+  function norm(s){ return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim(); }
+  function enhance(sel){
+    if (sel.__gSearch) return; sel.__gSearch = true;
+    var opts = Array.prototype.filter.call(sel.options, function(o){ return o.value; });
+    var list = document.createElement('datalist');
+    list.id = (sel.id || 'g-select') + '_list';
+    opts.forEach(function(o){ var d = document.createElement('option'); d.value = o.text.trim(); list.appendChild(d); });
+    var inp = document.createElement('input');
+    inp.type = 'text'; inp.autocomplete = 'off'; inp.setAttribute('list', list.id);
+    inp.className = sel.className + ' g-search-select';
+    inp.id = (sel.id || 'g-select') + '_search';
+    inp.setAttribute('aria-label', (sel.getAttribute('aria-label') || 'Choose') + ': type to search');
+    inp.placeholder = sel.getAttribute('data-search-hint') || 'Type to search';
+    // A label pointing at the select now points at the box people use.
+    if (sel.id){ var lab = document.querySelector('label[for="' + sel.id + '"]'); if (lab) lab.setAttribute('for', inp.id); }
+    if (sel.required){ inp.required = true; sel.required = false; }
+    function label(){ var o = sel.selectedOptions[0]; return o && o.value ? o.text.trim() : ''; }
+    function find(q){
+      var n = norm(q); if (!n) return null;
+      var isCode = /^\+?[\d\s]+$/.test(q.trim()), digits = q.replace(/\D/g, '');
+      var exact = null, code = null, starts = null, word = null, contains = null;
+      opts.forEach(function(o){
+        var t = norm(o.text);
+        if (t === n) exact = exact || o;
+        if (isCode && digits && (o.getAttribute('value') || '').replace(/\D/g, '') === digits
+            && (!code || +(o.dataset.rank || 1e9) < +(code.dataset.rank || 1e9))) code = o;
+        if (t.indexOf(n) === 0) starts = starts || o;
+        else if ((' ' + t).indexOf(' ' + n) > -1) word = word || o;
+        else if (t.indexOf(n) > -1) contains = contains || o;
+      });
+      return exact || code || starts || word || contains;
+    }
+    function pick(o){
+      if (!o || sel.selectedOptions[0] === o) return;
+      o.selected = true;
+      sel.dispatchEvent(new Event('change', {bubbles: true}));
+    }
+    inp.addEventListener('input', function(){
+      var o = find(inp.value);
+      if (o && norm(o.text) === norm(inp.value)) pick(o);   // a suggestion was taken
+    });
+    function settle(){ var o = find(inp.value); if (o) pick(o); inp.value = inp.value.trim() ? label() : ''; }
+    inp.addEventListener('change', settle);
+    inp.addEventListener('blur', settle);
+    inp.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ settle(); e.preventDefault(); } });
+    sel.addEventListener('change', function(){ if (document.activeElement !== inp) inp.value = label(); });
+    sel.addEventListener('g-sync', function(){ inp.value = label(); });
+    if (sel.form) sel.form.addEventListener('submit', settle, true);
+    inp.value = label();
+    sel.style.display = 'none';
+    sel.parentNode.insertBefore(inp, sel);
+    sel.parentNode.insertBefore(list, sel);
+  }
+  function init(){ document.querySelectorAll('select[data-searchable]').forEach(enhance); }
+  // After the fields' own scripts have set their starting values.
+  function later(){ setTimeout(init, 0); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', later); else later();
 })();
 </script>
 {%- endmacro -%}

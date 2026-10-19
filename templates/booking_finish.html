@@ -1,0 +1,86 @@
+{% extends "public_base.html" %}
+{% from '_country.html' import country_field %}
+{% from '_phone.html' import phone_field %}
+{% from '_occupancy.html' import party_fields %}
+{% set sticky_bar = 'none' %}
+{% block title %}Finish your booking — Château de Gudanes{% endblock %}
+{# A room the house has reserved for one guest, at a price agreed by email or
+   on the telephone (owner, 18 October 2026: "like a reserve room option ...
+   they pay and fill out the details"). One guest's stay on a link they were
+   sent, so never indexed. #}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+
+<div class="g-short"><div class="g-wrap" style="padding-top:var(--s5); padding-bottom:var(--s6);">
+  <div>
+    <div>
+      <h1 class="g-place" style="margin:0;">Your room is reserved</h1>
+      <p class="g-hint" style="margin:var(--s1) 0 0;">
+        {{ booking['room_name'] }} · {{ booking['arrival_date']|date_short }} to {{ booking['departure_date']|date_short }}
+        · {{ booking['reference_code'] }}
+      </p>
+    </div>
+  </div>
+
+  {% if state == 'lapsed' %}
+  <p>This reservation was held until {{ held_until }} and has now been released.
+  If you would still like to stay, reply to the email it came in and we will look at the dates again.</p>
+  {% elif state == 'done' %}
+  <p>Thank you — your details are in{% if bill and bill.owed > 0.005 %}, and
+  <strong>&euro;{{ '{:,.2f}'.format(bill.owed) }}</strong> is still to pay{% endif %}.</p>
+  {% if bill and bill.owed > 0.005 %}
+  <form method="post" action="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}">
+    <button type="submit" class="g-btn g-btn--solid">Pay &euro;{{ '{:,.2f}'.format(bill.owed) }} by card</button>
+  </form>
+  {% endif %}
+  <p class="g-hint"><a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}">Your booking</a></p>
+  {% else %}
+  <p>We are holding this room for you{% if held_until %} until <strong>{{ held_until }}</strong>{% endif %},
+  at <strong>&euro;{{ '{:,.2f}'.format(booking['total_price'] or 0) }}</strong> for the stay.
+  Add your details below, then pay to secure it. The taxe de séjour is added for each adult,
+  so the card page shows the total once you have said who is coming.</p>
+
+  <form method="post" class="g-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="g-row g-namerow">
+      <p class="g-field">
+        <label for="guest_name">Full name<span class="g-req" aria-hidden="true">*</span></label>
+        <input type="text" id="guest_name" name="guest_name" autocomplete="name" required
+               value="{{ form.get('guest_name', booking['guest_name'] if booking['guest_name'] != booking['guest_email'] else '') }}"
+               spellcheck="false" autocapitalize="words">
+      </p>
+    </div>
+    {{ party_fields(room, form.get('adults') or ((booking['party_size'] or 2) - (booking['guests_under_18'] or 0)),
+                    form.get('guests_under_18') or (booking['guests_under_18'] or 0)) }}
+    <div class="g-stack">
+      {{ country_field(details) }}
+      {{ phone_field('guest_phone', 'guest_phone', form.get('guest_phone') or booking['guest_phone'] or '') }}
+    </div>
+    <p class="g-field g-eta">
+      <label for="estimated_arrival_time">Estimated arrival time<span class="g-req" aria-hidden="true">*</span></label>
+      {%- set _eta = details.get('estimated_arrival_time') or '' -%}
+      {%- set _early = 'Before ' ~ check_in_at ~ ' (early check-in requested)' %}
+      <select id="estimated_arrival_time" name="estimated_arrival_time" required>
+        <option value="">Choose a time</option>
+        <option value="{{ _early }}" {{ 'selected' if _eta == _early }}>Before {{ check_in_at }} &mdash; early check-in, on request</option>
+        {%- for _h in range(check_in_hour, 22) %}{% set _slot = clock_words(_h) ~ '-' ~ clock_words(_h + 1) %}
+        <option value="{{ _slot }}" {{ 'selected' if _eta == _slot }}>{{ clock_words(_h) }} &ndash; {{ clock_words(_h + 1) }}</option>
+        {%- endfor %}
+        <option value="After 10pm" {{ 'selected' if _eta == 'After 10pm' }}>After 10pm</option>
+      </select>
+      <span class="g-hint">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}.</span>
+    </p>
+    <p class="g-field">
+      <label for="special_requests">Anything we should know</label>
+      <textarea id="special_requests" name="special_requests" rows="3">{{ form.get('special_requests', booking['special_requests'] or '') }}</textarea>
+    </p>
+    <label class="g-check">
+      <input type="checkbox" name="agree_terms" value="on" required {{ 'checked' if form.get('agree_terms') }}>
+      <span class="g-check__t">I agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">booking terms</a>.</span>
+    </label>
+    <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">Save and go to payment</button>
+  </form>
+  {% endif %}
+</div></div>
+
+{% endblock %}

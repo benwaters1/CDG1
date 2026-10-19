@@ -259,7 +259,9 @@ def _spots_row(first, last):
     the ISO pair it printed until 9 October 2026."""
     said = (m.format_date_range(first.isoformat(), last.isoformat()) if first != last
             else m.format_date_short(first.isoformat()))
-    return re.compile(re.escape(said) + r"\s*·\s*\d+/\d+ spots left")
+    # The dates link to the sitting's own page since 18 October, so the
+    # closing tag may sit between them and the count.
+    return re.compile(re.escape(said) + r"(?:</a>)?\s*·\s*\d+/\d+ spots left")
 
 
 def _standing_line(html):

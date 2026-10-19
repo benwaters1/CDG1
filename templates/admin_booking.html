@@ -26,6 +26,20 @@
       {% if caution %}<a href="{{ url_for('guest_detail', guest_id=caution['id']) }}" class="mini-status status-declined" title="{{ caution['caution'] }}">{{ caution_levels[caution['caution_level']] }}</a>{% endif %}
       <span class="bk-ref">{{ b['reference_code'] }}</span>
     </p>
+    {#- 18 Oct: a room reserved for a guest from Add a booking, waiting on them. -#}
+    {% if b['reserved_until'] and b['status'] == 'pending' %}
+    <p class="pay-disclaimer" style="margin-top:6px;">
+      <b>Reserved for them</b>, held until {{ reserved_until_words }}.
+      {% if b['details_done_at'] %}They have filled in their details; it confirms itself when they pay.
+      {% else %}Waiting for them to fill in their details and pay.{% endif %}
+      If they have not paid by then the room goes back on sale.
+      Their link: <a href="{{ url_for('booking_finish', manage_token=b['manage_token'], _external=True) }}">{{ url_for('booking_finish', manage_token=b['manage_token'], _external=True) }}</a>
+    </p>
+    <form method="post" action="{{ url_for('resend_reservation_link', booking_id=b['id']) }}" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini">Email the link again</button>
+    </form>
+    {% endif %}
   </div>
   <div class="bk-head-actions">
     {% if b['status'] == 'pending' %}

@@ -36,6 +36,16 @@ def _order(active_only=True):
         conn.close()
 
 
+def _expected(on_sale):
+    """HOME_ROOM_ORDER, as far as the rooms on sale go. The sixth room is in
+    the order (z28) and off sale until the owner ticks it, so the list the
+    front page shows is the owner's order with the hidden rooms left out --
+    and nothing on sale may be missing from the order."""
+    if set(on_sale) - set(m.HOME_ROOM_ORDER):
+        return None
+    return [name for name in m.HOME_ROOM_ORDER if name in on_sale]
+
+
 def _ids():
     conn = db()
     try:
@@ -183,8 +193,10 @@ def run():
     s.section("The order is the one the owner asked for")
     # Suite, Double, King, Family Suite, Twin/Double — applied once as a
     # correction to the arbitrary order the rooms were seeded in.
-    s.check("it matches HOME_ROOM_ORDER", rooms == m.HOME_ROOM_ORDER,
+    s.check("it matches HOME_ROOM_ORDER", rooms == _expected(rooms),
             detail=f"got {rooms}")
+    s.check("which ends with the sixth room, off sale until it is ticked",
+            m.HOME_ROOM_ORDER[-1] == "The Twin Room (Ground Floor)", detail=str(m.HOME_ROOM_ORDER))
     positions = [html.index(name) for name in rooms if name in html]
     s.check("and the page renders them in that order",
             positions == sorted(positions),
@@ -238,6 +250,7 @@ def run():
         conn.execute("UPDATE rooms SET sort_order = ? WHERE name = ?", (position, name))
     conn.commit()
     conn.close()
+    expected = _expected(_order())
 
     s.section("A deploy does not overwrite an order somebody set")
     # The one-time correction is keyed in app_settings. If that key were ever
@@ -254,7 +267,7 @@ def run():
     s.check("an employee cannot reorder the rooms",
             ec.post(f"/admin/rooms/{_ids()[0]}/move",
                     data={"direction": "down"}).status_code in (302, 403))
-    s.check("and the order is untouched by the attempt", _order() == m.HOME_ROOM_ORDER,
+    s.check("and the order is untouched by the attempt", _order() == expected,
             detail=f"got {_order()}")
     s.check("an invented direction is refused",
             oc.post(f"/admin/rooms/{_ids()[0]}/move",
@@ -262,7 +275,7 @@ def run():
     s.check("a room that does not exist is a 404, not a 500",
             oc.post("/admin/rooms/999999/move",
                     data={"direction": "up"}).status_code == 404)
-    s.check("and the order survived all of that", _order() == m.HOME_ROOM_ORDER,
+    s.check("and the order survived all of that", _order() == expected,
             detail=f"got {_order()}")
 
     return s

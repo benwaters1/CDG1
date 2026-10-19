@@ -37,6 +37,7 @@ def _cleanup():
     conn.execute("DELETE FROM booking_payments WHERE booking_id IN "
                  "(SELECT id FROM bookings WHERE guest_name LIKE ?)", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM mail_log WHERE to_address LIKE 'zzwalkin.%'")
     conn.commit()
     conn.close()
 
@@ -54,7 +55,7 @@ def _accom(bill):
 
     A walk-in now carries a stamped city tax, so bill["total"] is the room plus
     the tax. Every check in this file is about ROOM pricing -- the rate card
-    honoured, a desk discount applied, an over-price ignored -- so comparing the
+    honoured, a desk discount applied, an agreed higher price charged -- so comparing the
     whole total against a rack rate measures two things and reports on one.
     """
     return round(sum(l["amount"] for l in bill["lines"]
@@ -168,7 +169,10 @@ def run():
                 abs(sum(l["amount"] for l in bill["lines"]) - bill["total"]) < 0.01,
                 detail=f"{[l['amount'] for l in bill['lines']]} vs {bill['total']}")
 
-    s.section("More than the rate card is ignored, not charged")
+    # 18 October 2026 (owner): "i need to be able to enter the amount for the
+    # booking". It used to be ignored above the rate card; the figure agreed
+    # is now the figure charged, either side of it.
+    s.section("More than the rate card is charged as agreed")
     a3 = a + timedelta(days=20)
     d3 = a3 + timedelta(days=2)
     rack3 = _rack(room, a3, d3)
@@ -176,9 +180,11 @@ def run():
     over = _made("Over")
     s.check("it is taken", bool(over))
     if over:
-        s.check("at the rate card, not above it",
-                abs(_accom(_bill(over["id"])) - rack3) < 0.01,
-                detail=f"{_accom(_bill(over['id']))} vs {rack3}")
+        s.check("at the price typed, above the rate card",
+                abs(_accom(_bill(over["id"])) - (rack3 + 500)) < 0.01,
+                detail=f"{_accom(_bill(over['id']))} vs {rack3 + 500}")
+        s.check("with no discount line to make it add up",
+                not (over["discount_amount"] or 0))
 
     s.section("Money handed over at the desk goes on with it")
     a4 = a + timedelta(days=30)
@@ -259,6 +265,43 @@ def run():
             html2.count("is-taken") < html.count("is-taken"),
             detail=f"{html2.count('is-taken')} taken then vs "
                    f"{html.count('is-taken')} taken now")
+
+    s.section("Booked from an email, then a link to pay (owner, 18 October 2026)")
+    day = _harness.free_window(room["id"], 1, after_days=500)
+    addr = "zzwalkin.paylink@example.invalid"
+    r = oc.post("/admin/bookings/walk-in", data={
+        "room_id": str(room["id"]), "arrival_date": day.isoformat(),
+        "departure_date": (day + timedelta(days=1)).isoformat(), "guest_name": f"{TAG} Paylink",
+        "guest_email": addr, "party_size": "2", "send_pay_link": "1"}, follow_redirects=True)
+    body = r.get_data(as_text=True)
+    conn = db()
+    mail = conn.execute("SELECT * FROM mail_log WHERE to_address = ? AND template_key = 'room_statement'",
+                        (addr,)).fetchone()
+    waiting = conn.execute("SELECT COUNT(*) AS c FROM mail_log WHERE to_address = ? "
+                           "AND template_key = 'room_request_received'", (addr,)).fetchone()["c"]
+    stay = conn.execute("SELECT * FROM bookings WHERE guest_email = ?", (addr,)).fetchone()
+    conn.close()
+    s.check("the stay is booked and confirmed", stay is not None and stay["status"] == "confirmed")
+    s.check("and their statement, with its link to pay, is written to them",
+            mail is not None and mail["template_key"] == "room_statement",
+            detail=str(mail and dict(mail).get("template_key")))
+    s.check("and they are not told their booking is waiting to be confirmed", waiting == 0,
+            detail="the online 'request received' letter, for a stay the desk has just confirmed")
+    s.check("the page says it went, or that it is held until mail to guests is on",
+            "link to pay" in body, detail="; ".join(_harness.flashes(r)[:2]))
+    day2 = _harness.free_window(room["id"], 1, after_days=520)
+    r = oc.post("/admin/bookings/walk-in", data={
+        "room_id": str(room["id"]), "arrival_date": day2.isoformat(),
+        "departure_date": (day2 + timedelta(days=1)).isoformat(), "guest_name": f"{TAG} Paidup",
+        "guest_email": "zzwalkin.paidup@example.invalid", "party_size": "2",
+        "amount_taken": "100000", "method": "cash", "send_pay_link": "1"}, follow_redirects=True)
+    conn = db()
+    none_sent = conn.execute("SELECT COUNT(*) AS c FROM mail_log WHERE to_address = ? "
+                             "AND template_key = 'room_statement'",
+                             ("zzwalkin.paidup@example.invalid",)).fetchone()["c"]
+    conn.close()
+    s.check("nothing is sent to somebody who has paid it all at the desk",
+            none_sent == 0 and "nothing is owed" in r.get_data(as_text=True))
 
     s.section("Guards")
     before = _count()

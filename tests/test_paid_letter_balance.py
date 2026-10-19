@@ -123,6 +123,46 @@ def run():
                 f"Paid: €240.00. Still to pay: €{owed:,.2f}" in text, detail=text[:400])
         s.check("and does not say the whole price is owed",
                 f"€{bill['total']:,.2f} still to pay" not in text, detail=text[:400])
+
+        s.section("Paid in full, the guest landing on the success page first")
+        # The other way a paid checkout becomes a stay: the guest's browser
+        # reaches /book/stripe-success before the webhook does. Stripe's lookup
+        # of the session is stood in; nothing reaches Stripe.
+        conn = db()
+        arrival = _free(conn, room["id"], start + timedelta(days=80))
+        conn.close()
+        session = _session(room["id"], arrival, 500.0, 500.0 + float(tax or 0))
+        session["payment_status"] = "paid"
+        sent = []
+
+        def capture(to, subject, body, *a, **kw):
+            sent.append((to if isinstance(to, str) else " ".join(to), body))
+            return True
+
+        saved = (m.send_email, m.email_enabled, m.stripe_enabled,
+                 m.stripe.checkout.Session.retrieve)
+        m.send_email, m.email_enabled = capture, (lambda: True)
+        m.stripe_enabled = lambda: True
+        m.stripe.checkout.Session.retrieve = (
+            lambda sid, *a, **k: session if sid == session["id"] else None)
+        try:
+            r = m.app.test_client().get(f"/book/stripe-success?session_id={session['id']}")
+        finally:
+            (m.send_email, m.email_enabled, m.stripe_enabled,
+             m.stripe.checkout.Session.retrieve) = saved
+        conn = db()
+        row = conn.execute("SELECT * FROM bookings WHERE stripe_session_id = ?",
+                           (session["id"],)).fetchone()
+        bill = m.booking_bill(conn, row["id"]) if row else None
+        conn.close()
+        s.check("the page books the stay and sends the guest on",
+                r.status_code in (302, 303) and row is not None and bill and bill["owed"] < 0.01,
+                detail=f"HTTP {r.status_code}, {bill and (bill['total'], bill['paid'])}")
+        text = "\n".join(b for to, b in sent if session["metadata"]["guest_email"] in to)
+        s.check("the guest's letter says it is paid in full",
+                bool(bill) and f"Paid in full: €{bill['paid']:,.2f}." in text, detail=text[:400])
+        s.check("and never that any of it is still to pay",
+                bool(text) and "still to pay" not in text.lower(), detail=text[:400])
     finally:
         _cleanup()
     return s

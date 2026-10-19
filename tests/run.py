@@ -258,6 +258,12 @@ SUITES = [
     "test_extras_due",
     "test_extras_board",
     "test_guest_list_history",
+    "test_workshop_session_page",
+    "test_events_pipeline",
+    "test_every_country",
+    "test_who_fits",
+    "test_reserve_a_room",
+    "test_add_a_booking",
     "test_extras_at_booking",
     "test_chateau_tour",
     "test_no_control_characters",
@@ -412,6 +418,9 @@ SUITES = [
     "test_corrections_2026_10_16",
     "test_room_names_2026_10_16",
     "test_paid_letter_balance",
+    "test_family_suite_beds",
+    "test_contact_enquiry_spam",
+    "test_workshops_fifteen",
     "test_languages_page",
     "test_share_images",
     "test_stripe_webhook_tool",
@@ -508,10 +517,18 @@ SUITES = [
     "test_check_in_times",
     # Ateliers and stays on every day they cover, 15 October 2026.
     "test_calendar_every_day",
+    # The winter rest read from the rooms' own closures, z27 item 17.
+    "test_winter_rest",
     # Booking.com's subject-only booking email, paired with the room's
     # calendar; every Booking.com block drawn; one atelier chip a day
     # (handover z27, 17 October 2026).
     "test_booking_com_subject_stays",
+    # Five rooms let a night, never six: the sixth room, z28 item 1.
+    "test_rooms_let_a_night",
+    # Brief of 17 October 2026: forms that post without a token, and the
+    # house's own inboxes in the mail log and the delivery reports.
+    "test_form_csrf_tokens",
+    "test_house_inbox_delivery",
 ]
 
 

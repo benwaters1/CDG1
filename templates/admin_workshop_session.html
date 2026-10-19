@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ session['title'] }} · {{ date_range(session['start_date'], session['end_date']) }}{% endblock %}
+{% block content %}
+
+{#
+  One sitting of a workshop, as the owner runs it: the places, the money, the
+  rooms, the kitchen, and everybody coming, one row each.
+
+  The register of every registration keeps the full card for one person --
+  the ledger, the refund, the corrections -- and each row here opens it. The
+  money and the places come from the same helpers as the register and the
+  workshops page, so the three cannot disagree.
+#}
+<div class="page-head">
+  <div>
+    <h1>{{ session['title'] }}</h1>
+    <p class="pay-disclaimer" style="margin:2px 0 0;">
+      {{ date_range(session['start_date'], session['end_date']) }}
+      {%- if session['cancelled_at'] %} &middot; <strong>called off</strong>{% endif %}
+    </p>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    {% if not session['cancelled_at'] %}<a href="{{ url_for('admin_workshop_registrations', session_id=session['id']) }}" class="btn-mini">+ Add somebody by hand</a>{% endif %}
+    <a href="{{ url_for('workshop_register_print', session_id=session['id']) }}" class="small-link">Printable register</a>
+    <a href="{{ url_for('workshop_session_email', session_id=session['id']) }}" class="small-link">Write to the group</a>
+    <a href="{{ url_for('workshop_session_statements', session_id=session['id']) }}" class="small-link">Statements</a>
+    <a href="{{ url_for('workshop_rooming', session_id=session['id']) }}" class="small-link">Rooming</a>
+    <a href="{{ url_for('workshop_running_sheet', session_id=session['id']) }}" class="small-link">Running sheet</a>
+    <a href="{{ url_for('admin_workshops') }}" class="small-link">All workshops</a>
+  </div>
+</div>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('guests', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ figures.confirmed }} of {{ session['capacity'] }}</span>
+      <span class="stat-tile-label">Places confirmed{% if figures.pending %} &middot; {{ figures.pending }} waiting on you{% endif %} &middot; {{ figures.free }} free</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ figures.paid|money(0) }}</span>
+      <span class="stat-tile-label">Collected of {{ figures.charged|money(0) }}</span></span>
+  </div>
+  <a class="stat-tile" href="#roster">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if figures.overdue else ('stat-tile-icon-gold' if figures.owed else 'stat-tile-icon-success') }}">{{ icon('receipt', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ figures.owed|money(0) }}</span>
+      <span class="stat-tile-label">Still owed{% if figures.overdue %} &middot; {{ figures.overdue|length }} past due{% endif %}</span></span>
+  </a>
+  <a class="stat-tile" href="#roster">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-gold' if figures.deposits_unpaid else 'stat-tile-icon-success' }}">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ figures.deposits_unpaid|length }}</span>
+      <span class="stat-tile-label">Deposit{{ '' if figures.deposits_unpaid|length == 1 else 's' }} not paid</span></span>
+  </a>
+  <a class="stat-tile" href="{{ url_for('workshop_rooming', session_id=session['id']) }}">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-gold' if figures.no_room else 'stat-tile-icon-success' }}">{{ icon('rooms', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ figures.no_room|length }}</span>
+      <span class="stat-tile-label">Without a room</span></span>
+  </a>
+</div>
+
+<h2 class="section-heading" id="roster">Who is coming — {{ live|length }}</h2>
+{% if not live %}
+  <div class="empty-state">Nobody has registered for this sitting yet.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr>
+      <th>Who</th><th>Place</th><th>Money</th><th>Room</th><th>Kitchen</th><th></th>
+    </tr></thead>
+    <tbody>
+      {% for r in live %}
+      {% set row = r.row %}
+      <tr>
+        <td>
+          <a href="{{ url_for('admin_workshop_registrations', session_id=session['id'], q=r.reference) }}"><strong>{{ r.who }}</strong></a>
+          {%- if r.party_size > 1 %} <span class="upload-hint">party of {{ r.party_size }}{% if r.party_names %}: {{ r.party_names|join(', ') }}{% endif %}</span>{% endif %}
+          <span class="upload-hint">{{ r.reference }}
+            {%- if r.phone %} &middot; <a class="small-link" href="tel:{{ r.phone|replace(' ', '') }}">{{ r.phone }}</a>{% endif %}</span>
+        </td>
+        <td>
+          {% if r.status == 'pending' %}<span class="mini-status status-pending">waiting on you</span>
+          {% else %}<span class="mini-status status-confirmed">confirmed</span>{% endif %}
+          <span class="upload-hint">{{ 'a room to themselves' if row['occupancy_type'] == 'single' else 'sharing' }}
+            {%- if row['requested_roommate'] %} &middot; with {{ row['requested_roommate'] }}{% endif %}</span>
+        </td>
+        <td>
+          {% if r.money == 'Paid in full' %}<span class="mini-status status-confirmed">paid in full</span>
+          {% elif r.money == 'Deposit unpaid' %}<span class="mini-status status-unpaid">deposit not paid</span>
+          {% elif r.money == 'In credit' %}<span class="mini-status status-pending">in credit</span>
+          {% else %}<span class="mini-status {{ 'status-unpaid' if r.due_date and r.due_date < today.isoformat() else 'status-pending' }}">owes {{ r.owed|money }}</span>{% endif %}
+          <span class="upload-hint">{{ r.paid|money }} of {{ r.charged|money }} in
+            {%- if r.owed > 0.005 and r.due_date %} &middot; due {{ r.due_date|date_short }}{% endif %}
+            &middot; {{ r.card|lower }}</span>
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('assign_workshop_room', registration_id=r.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="back_session" value="{{ session['id'] }}">
+            <select name="room_id" aria-label="Room for {{ r.who }}" onchange="this.form.submit()">
+              <option value="">To choose</option>
+              {% for room in rooms %}
+              <option value="{{ room['id'] }}" {{ 'selected' if row['assigned_room_id'] == room['id'] }}>{{ room['name'] }}</option>
+              {% endfor %}
+            </select>
+            <noscript><button type="submit" class="btn-mini">Set</button></noscript>
+          </form>
+        </td>
+        <td>
+          {% if row['dietary_notes'] %}<span>{{ row['dietary_notes'] }}</span>{% endif %}
+          {% if row['medical_notes'] %}<span class="upload-hint">Health: {{ row['medical_notes'] }}</span>{% endif %}
+          {% if not row['dietary_notes'] and not row['medical_notes'] %}<span class="upload-hint">nothing said</span>{% endif %}
+        </td>
+        <td>
+          <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
+            {% if r.status == 'pending' %}
+            <form method="post" action="{{ url_for('confirm_workshop_registration', registration_id=r.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="back_session" value="{{ session['id'] }}">
+              <button type="submit" class="btn-mini">Confirm</button>
+            </form>
+            {% endif %}
+            {% if r.money == 'Deposit unpaid' %}
+            <form method="post" action="{{ url_for('mark_workshop_deposit_paid', registration_id=r.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="method" value="other">
+              <input type="hidden" name="back_session" value="{{ session['id'] }}">
+              <button type="submit" class="small-link" style="background:none; border:0; padding:0; cursor:pointer;" title="Paid outside the website: by transfer, in cash or at the desk">Deposit paid</button>
+            </form>
+            {% endif %}
+            <a class="small-link" href="{{ url_for('admin_workshop_registrations', session_id=session['id'], q=r.reference) }}">Open their card</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="upload-hint">A payment by transfer or in cash, a charge, a discount or a refund is
+added on the person's card, where the ledger is.</p>
+{% endif %}
+
+{% if figures.kitchen %}
+<h2 class="section-heading">For the kitchen</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Who</th><th>Dietary</th><th>Health</th></tr></thead>
+    <tbody>
+      {% for r in figures.kitchen %}
+      <tr><td>{{ r.who }}</td><td>{{ r.row['dietary_notes'] or '' }}</td><td>{{ r.row['medical_notes'] or '' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if gone %}
+<details class="refund-box" style="margin-top:18px;">
+  <summary>Cancelled or declined — {{ gone|length }}</summary>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Who</th><th>What happened</th><th>Money</th></tr></thead>
+      <tbody>
+        {% for r in gone %}
+        <tr>
+          <td><a href="{{ url_for('admin_workshop_registrations', session_id=session['id'], q=r.reference) }}">{{ r.who }}</a></td>
+          <td>{{ r.status }}</td>
+          <td>{% if r.paid > 0.005 %}{{ r.paid|money }} still held{% else %}<span class="upload-hint">nothing held</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+
+{% endblock %}

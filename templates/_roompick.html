@@ -75,7 +75,10 @@
       var fam=R.filter(function(r){ return r.bed==='family'; })[0];
       show(fam? fam.n : 'Three rooms', 'For two adults and three children of eight or over, the Family Suite. For five adults, three rooms.' , fam? fam.url : STAY, fam? 'See this room' : 'See the rooms'); return; }
     if(n===4){ show('Two Rooms', 'For three or four of you, take two rooms. Each sleeps two, and each has its own private bathroom, on the ground floor.', STAY, 'See the rooms'); return; }
-    var pick=R.filter(function(r){ return r.bed===b; })[0];
+    /* 17 Oct: two rooms have two separate beds - The Twin Room (two doubles) and The Twin Room (Ground Floor) (a queen and
+       a double, on the ground floor but still reached by stairs). With both on sale, name both and send to the cards. */
+    var picks=R.filter(function(r){ return r.bed===b; }), pick=picks[0];
+    if(picks.length>1){ show(picks.map(function(r){ return r.n; }).join(' or '), 'Both have two separate beds. Each has its own private bathroom; the ground-floor room is still reached by stairs.', STAY+'#rooms', 'See the rooms'); return; }
     if(!pick){ show('Ask us', 'Tell us how many of you there are, and we will suggest the right room.', {{ url_for('contact_page')|tojson }}, 'Write to us'); return; }
     show(pick.n, 'Because '+WHY[b]+'.'+BATH, pick.url, 'See this room');
   }

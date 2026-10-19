@@ -188,10 +188,22 @@ def run():
     # changed once under this line.
     room = _harness.ensure_room(min_occupancy=4)
     pub = m.app.test_client()
+
+    # Split into adults and under-18s the room takes (18 October 2026: the
+    # room's adult limit is its own, as on Booking.com), so what refuses or
+    # admits these is the house's ceiling and not the room's adult count.
+    _c = db()
+    limits = _c.execute("SELECT max_adults, max_occupancy FROM rooms WHERE id = ?",
+                        (room["id"],)).fetchone()
+    _c.close()
+
+    def party(n):
+        adults = min(n, limits["max_adults"] or limits["max_occupancy"] or n)
+        return {"party_size": str(n), "adults": str(adults), "guests_under_18": str(n - adults)}
     r = pub.post(f"/book/{room['id']}", data={
         "guest_name": f"{TAG} overflow", "guest_email": f"{TAG.lower()}o@example.invalid",
         "arrival_date": start.isoformat(), "departure_date": (start + timedelta(days=3)).isoformat(),
-        "party_size": "4", "agree_terms": "on",
+        **party(4), "agree_terms": "on",
      **BOOKING_DETAILS})
     conn = db()
     created = conn.execute("SELECT 1 FROM bookings WHERE guest_name = ?", (f"{TAG} overflow",)).fetchone()
@@ -201,7 +213,7 @@ def run():
     r2 = pub.post(f"/book/{room['id']}", data={
         "guest_name": f"{TAG} fits", "guest_email": f"{TAG.lower()}i@example.invalid",
         "arrival_date": start.isoformat(), "departure_date": (start + timedelta(days=3)).isoformat(),
-        "party_size": "3", "agree_terms": "on",
+        **party(3), "agree_terms": "on",
      **BOOKING_DETAILS})
     conn = db()
     fits_row = conn.execute("SELECT 1 FROM bookings WHERE guest_name = ?", (f"{TAG} fits",)).fetchone()

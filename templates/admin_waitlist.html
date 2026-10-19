@@ -6,7 +6,7 @@
   <h1>Waitlist</h1>
   <a href="{{ url_for('export_waitlist_csv') }}{{ '?' + export_q if export_q }}" class="btn-mini">Export this view</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Guests who wanted dates with nothing available — reach out if a cancellation frees them up.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">Guests who wanted dates with nothing available — reach out if a cancellation frees them up. The Contact page's "tell us roughly when" enquiries land here too, so a night that frees up reminds you of them. Answering one, or marking it Closed, ticks its task; Spam takes the task away and sets aside anything more from that address.</p>
 
 {% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
 
@@ -14,11 +14,15 @@
   <div class="empty-state">{% if lv['total'] %}Nothing matches that. <a href="{{ url_for('admin_waitlist', when='all') }}">Show all {{ lv['total'] }}</a>.{% else %}Nobody on the waitlist right now.{% endif %}</div>
 {% else %}
   {% for e in entries %}
-  <div class="expense-card">
+  <div class="expense-card" id="entry-{{ e['id'] }}">
     <div class="expense-head">
       <div>
         <strong>{{ e['name'] }}</strong>
-        <span class="mini-status status-{{ 'onshift' if e['status'] == 'booked' else ('inactive' if e['status'] == 'closed' else ('pending' if e['status'] == 'open' else 'current')) }}" style="margin-left:8px;">{{ e['status'] }}</span>
+        {%- set _st = 'spam' if e['spam_at'] else e['status'] %}
+        <span class="mini-status status-{{ 'onshift' if _st == 'booked' else ('inactive' if _st in ('closed', 'spam') else ('pending' if _st == 'open' else 'current')) }}" style="margin-left:8px;">{{ _st }}</span>
+        {%- if e['source'] == 'contact' %}
+        <span class="mini-status status-current" style="margin-left:4px;">Enquiry from the Contact page</span>
+        {%- endif %}
         {#- An offer with no visible deadline is no better than no offer: the
             whole point is that one person has it for a fixed time and then
             the next is told. #}
@@ -45,8 +49,8 @@
       <form method="post" action="{{ url_for('update_waitlist_status', entry_id=e['id']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="status" onchange="this.form.submit()">
-          {% for s in ['open','contacted','booked','closed'] %}
-          <option value="{{ s }}" {{ 'selected' if e['status'] == s }}>{{ s|capitalize }}</option>
+          {% for s in ['open','contacted','booked','closed','spam'] %}
+          <option value="{{ s }}" {{ 'selected' if _st == s }}>{{ s|capitalize }}</option>
           {% endfor %}
         </select>
       </form>

@@ -124,8 +124,8 @@ def run():
     s.check("the search lists it, saying it reopens",
             f'data-room-url="/book/{big[0]["id"]}"' in search and shut[0][0]["note"] in search)
     nights = _ask(m.unavailable_nights, big[0]["id"], inside_a, inside_b)
-    s.check("the room page's calendar says closed for the season",
-            set(nights.values()) == {"Closed for the season"}, detail=str(nights))
+    s.check("the room page's calendar says it reopens, in the owner's words",
+            set(nights.values()) == {shut[0][0]["note"].rstrip(".")}, detail=str(nights))
     feed = _ask(m.generate_room_ics, big[0])
     s.check("and the calendar the channels read closes it there too",
             f"DTSTART;VALUE=DATE:{first.strftime('%Y%m%d')}" in feed and "Closed" in feed,

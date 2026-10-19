@@ -66,8 +66,13 @@ def run():
     s.check("it records that it has run",
             conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (FLAG,)).fetchone()
             is not None, detail="without the flag it is keyed on names it has just reused")
+    # Every room on sale is in the order, under its new name. Not the other
+    # way round since z28: the order also names the sixth room, which is off
+    # sale until the owner ticks it (and absent from an older database).
     s.check("the order the site starts from uses the new names",
-            set(m.HOME_ROOM_ORDER) <= set(rooms), detail=str(m.HOME_ROOM_ORDER))
+            set(rooms) <= set(m.HOME_ROOM_ORDER)
+            and not ({"The Queen Room", "The Gold Suite"} & set(m.HOME_ROOM_ORDER)),
+            detail=f"{sorted(set(rooms) - set(m.HOME_ROOM_ORDER))} not in {m.HOME_ROOM_ORDER}")
 
     src = io.open(os.path.join(_harness.ROOT, "app.py"), encoding="utf-8").read()
     body = src[src.find("def init_db():"):]
@@ -219,8 +224,13 @@ def run():
         lost = [b for b in offered if not any(bed(n) == b for n in names)]
         s.check("every bed a guest can choose finds a room", not lost,
                 detail=f"no room for {lost} -- the guest is told to write in")
-        twice = [b for b in offered if sum(bed(n) == b for n in names) > 1]
-        s.check("and no bed finds two", not twice, detail=str(twice))
+        # Except two separate beds, once the sixth room is on sale: z28 (owner,
+        # 17 October 2026) has the picker name both twin rooms and send the
+        # guest to the cards. Any other bed finding two is the old fault.
+        twin_rooms = [n for n in names if bed(n) == "twin"]
+        twice = [b for b in offered if sum(bed(n) == b for n in names) > 1
+                 and not (b == "twin" and all("Twin Room" in n for n in twin_rooms))]
+        s.check("and no bed finds two, but for the two twin rooms", not twice, detail=str(twice))
 
     s.section("Booking.com mail finds the room it names")
     conn = db()

@@ -191,6 +191,11 @@ def run():
                          (main_id,)).fetchone()["party_id"] is not None)
 
     s.section("A room that has gone says what else is free")
+    # The sister's room given back first. With it, their room and the one
+    # somebody else has, three are let -- the house's nightly limit since 18
+    # October 2026 -- and nothing is free to name.
+    conn.execute("DELETE FROM bookings WHERE guest_name = ?", (TAG + " Sister",))
+    conn.commit()
     r = guest.post(manage, data={"action": "add_room", "room_id": str(taken),
                                  "guest_name": TAG + " Cousin",
                                  "party_size": "2"},

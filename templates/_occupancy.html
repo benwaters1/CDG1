@@ -1,0 +1,71 @@
+{#- WHO FITS A ROOM, as Booking.com asks it (owner, 18 October 2026): three
+    numbers, each its own limit -- the most guests, the most adults, the most
+    children. Two adults and a child can share a room for three that takes
+    two adults; three adults cannot. The fields hold each other in: adding a
+    child lowers what the adults may go up to, and the other way round, so the
+    form never offers a party the booking would refuse. The same three rules
+    are checked again on the server (room_party_problem in app.py). -#}
+
+{%- macro who_fits(room) -%}
+{%- set g = room['max_occupancy'] or 0 -%}
+{%- set a = room['max_adults'] or g -%}
+{%- set c = room['max_children'] or 0 -%}
+{%- if c <= 0 -%}
+For up to {{ a }} adult{{ '' if a == 1 else 's' }}; no children in this room.
+{%- elif a + c <= g -%}
+For up to {{ a }} adult{{ '' if a == 1 else 's' }} and {{ c }} child{{ '' if c == 1 else 'ren' }}.
+{%- else -%}
+Up to {{ g }} guests, with no more than {{ a }} adult{{ '' if a == 1 else 's' }} and no more than {{ c }} child{{ '' if c == 1 else 'ren' }}.
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro party_fields(room, adults=2, children=0, id_prefix='br') -%}
+{%- set g = room['max_occupancy'] or 6 -%}
+{%- set a_max = room['max_adults'] or g -%}
+{%- set c_max = room['max_children'] or 0 -%}
+<div class="g-row" data-party data-max-guests="{{ g }}" data-max-adults="{{ a_max }}" data-max-children="{{ c_max }}">
+  <p class="g-field g-field--narrow">
+    <label for="{{ id_prefix }}_adults">Adults<span class="g-req" aria-hidden="true">*</span></label>
+    <input type="number" inputmode="numeric" id="{{ id_prefix }}_adults" name="adults" data-party-adults
+           min="1" max="{{ [a_max, g]|min }}" value="{{ adults or 2 }}" required>
+  </p>
+  {%- if c_max > 0 %}
+  <p class="g-field g-field--narrow">
+    <label for="{{ id_prefix }}_under18">Under 18</label>
+    <input type="number" inputmode="numeric" id="{{ id_prefix }}_under18" name="guests_under_18" data-party-children
+           min="0" max="{{ [c_max, g - 1]|min }}" value="{{ children or 0 }}">
+  </p>
+  {%- else %}
+  <input type="hidden" name="guests_under_18" value="0" data-party-children>
+  {%- endif %}
+</div>
+<p class="g-hint g-hint--row" data-party-hint>{{ who_fits(room) }}{% if c_max > 0 %} Children are welcome from eight. Under-18s pay no taxe de séjour.{% endif %}</p>
+<input type="hidden" name="party_size" id="party_size" data-party-total value="{{ (adults or 2)|int + (children or 0)|int }}">
+<script>
+(function(){
+  var box=document.currentScript.parentNode.querySelector('[data-party]:not([data-party-on])');
+  if(!box) return; box.setAttribute('data-party-on','1');
+  var form=box.closest('form')||document;
+  var a=box.querySelector('[data-party-adults]'),
+      c=form.querySelector('[data-party-children]'),
+      t=form.querySelector('[data-party-total]');
+  var G=+box.dataset.maxGuests, A=+box.dataset.maxAdults, C=+box.dataset.maxChildren;
+  function n(el){ return Math.max(0, parseInt(el && el.value, 10) || 0); }
+  function sync(){
+    // Each field's ceiling is its own limit or what the other leaves of the
+    // room's total, whichever is lower; a value already over it comes down.
+    var kids=n(c), grown=Math.max(1, n(a));
+    a.max = Math.max(1, Math.min(A, G - kids));
+    if(grown > +a.max){ grown=+a.max; a.value=grown; }
+    if(c && c.type !== 'hidden'){
+      c.max = Math.max(0, Math.min(C, G - grown));
+      if(kids > +c.max){ kids=+c.max; c.value=kids; }
+    }
+    if(t) t.value = grown + kids;
+  }
+  a.addEventListener('input', sync);
+  if(c) c.addEventListener('input', sync);
+  sync();
+})();
+</script>
+{%- endmacro -%}

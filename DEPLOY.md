@@ -205,7 +205,7 @@ left behind that survives a password change:
 | `STRIPE_WEBHOOK_SECRET` | Stripe → Developers → Webhooks → the endpoint → **Roll secret**. |
 | `STRIPE_PUBLISHABLE_KEY` | Public by design (it is in every checkout page), so nothing to do. |
 | `RESEND_API_KEY` | Resend → API Keys → Create (sending access, domain `send.chateaugudanes.com`). |
-| `RESEND_WEBHOOK_SECRET` | Resend → Webhooks → the endpoint. If it offers no way to renew the secret, delete the endpoint and add it again (same URL, same four events). |
+| `RESEND_WEBHOOK_SECRET` | Resend → Webhooks → the endpoint. If it offers no way to renew the secret, delete the endpoint and add it again (same URL, same five events). |
 | `PENNYLANE_API_TOKEN` | Pennylane → Settings → Developers (API tokens): a new token with the same permissions. **This one is live.** |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API keys → Create. Look at Usage since 5 October while you're there — spending you didn't do is the tell of a stolen key. |
 | `MS_GRAPH_CLIENT_SECRET` | entra.microsoft.com → App registrations → *Chateau de Gudanes - inbox reader* → Certificates & secrets → New client secret. Copy the **Value**, not the Secret ID. |
@@ -801,14 +801,25 @@ to the login page.
 ## Resend delivery reports (bounces and spam complaints)
 
 Without this, "Sent" in the mail log means only that Resend accepted a letter.
-With it, each letter's line says Delivered, Bounced, Marked as spam or Delayed,
-and an address that bounces for good (or whose owner marks a letter as spam) is
-put on the stop list on Guest email, so the house stops writing to it until
-somebody chooses "Write to them again".
+With it, each letter's line says Delivered, Bounced, Refused by the provider,
+Marked as spam or Delayed, and a guest's address that bounces for good (or whose
+owner marks a letter as spam, or that Resend has suppressed) is put on the stop
+list on Guest email, so the house stops writing to it until somebody chooses
+"Write to them again".
+
+One of the house's OWN inboxes is never put on the stop list. If a letter to
+reservations@, experience@, accounts@, website@ or any other house address
+bounces or is refused, it goes on the owner's home page as a blocker, and as a
+task, saying which letter and the step to take in Resend (Suppressions → the
+address → remove). It clears itself the next time a letter to that inbox is
+delivered. This is what would have caught 11–18 Oct 2026, when reservations@
+sat on Resend's suppression list and every booking notice to it was logged
+Sent and never arrived.
 
 1. In Resend: **Webhooks → Add endpoint**. URL:
    `https://<your site>/webhooks/resend`. Events: `email.delivered`,
-   `email.bounced`, `email.complained`, `email.delivery_delayed`.
+   `email.bounced`, `email.complained`, `email.delivery_delayed`,
+   `email.suppressed`.
 2. Copy the endpoint's **signing secret** (it starts `whsec_`).
 3. Set it on Railway as `RESEND_WEBHOOK_SECRET`, and redeploy.
 4. Guest email → "Is mail going out?" says **Reporting**, and shows when the

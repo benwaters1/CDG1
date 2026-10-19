@@ -19,15 +19,20 @@ the design side rewrites on every handover. Turning all of it into template
 tags would fight every one of those handovers and turn readable sentences into
 soup, and the next handover would put the sentences back.
 
-So the count is CHECKED instead. This suite reads the rooms table and asserts
-every public page agrees with it, naming the exact lines that need changing
-when it does not. The site cannot quietly lie about how many rooms it lets;
-somebody has to go and change the sentences, and the run tells them where.
+So the count was CHECKED instead: this suite read the rooms table and named
+every template line that disagreed with it.
 
-That is the same shape as `test_table_overflow`, which enforces a convention
-on the source because nothing else can.
+17 OCTOBER 2026 (z28): THE DESIGN SIDE TEMPLATED IT AFTER ALL, for the sixth
+room. Every claim now reads house_rooms.count_word, so the site says five
+while the sixth room is hidden and six the moment it is ticked Bookable, with
+nothing to edit on the day. The source check stays and still names any count
+a handover types back into a sentence; the claims themselves are now checked
+in the pages AS SERVED, and a room is put on sale to prove they follow it.
+That is stronger than the source check was: a template can no longer
+disagree with the table at all.
 """
 import glob
+import html as htmllib
 import os
 import re
 
@@ -81,6 +86,31 @@ CLAIM = re.compile(
 # The restoration timeline's 2022 entry went in the 1 October handover's cuts,
 # so nothing is excused now. The machinery stays for the next piece of history.
 HISTORICAL = {}
+
+
+# The pages as a visitor is served them. Paths, not endpoints: these are the
+# addresses on the menu. The room page is added at run time, by id.
+RENDERED = [
+    "/", "/book", "/workshops", "/restoration", "/facilities", "/events/weddings",
+    "/contact", "/press", "/story", "/history", "/gallery", "/social",
+]
+
+
+# A lettings claim as the served pages make it: "six guest rooms", "The Six
+# Rooms", "all six rooms". Not "bedrooms" here: the Family Suite is "two
+# bedrooms" on every card, which is the suite, not the house. Not bare
+# "N rooms" either: "the Family Suite or three rooms" is a party's size.
+_N = r"(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
+SERVED_CLAIM = re.compile(
+    r"(?<![-\w])" + _N + r"\s+guest\s+rooms\b"
+    r"|\b(?:the|all)\s+" + _N + r"\s+rooms\b", re.I)
+
+
+def _visible(page):
+    """The words a visitor reads: scripts, styles and tags out, entities read."""
+    text = re.sub(r"<(script|style)\b.*?</\1>", " ", page, flags=re.S | re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return " ".join(htmllib.unescape(text).split())
 
 
 def _blank(match):
@@ -276,11 +306,46 @@ def run():
             detail=("; ".join(wrong[:6]) + (f" (+{len(wrong) - 6} more)"
                                             if len(wrong) > 6 else ""))
                    or f"checked against {facts['count']} active room(s)")
-    s.check("and the check found real sentences to check",
-            sum(1 for _ in claims()) >= 8,
-            detail=f"{sum(1 for _ in claims())} — if it matched nothing the "
-                   "check above would pass on an empty list, which is the "
-                   "shape this whole suite exists to prevent")
+    # The source check above still names any count typed into a sentence.
+    # Since z28 there should be none to find: every claim reads
+    # house_rooms.count_word, so the claims are checked where they now live --
+    # on the pages as served (below).
+
+    s.section("The pages as served say how many rooms are on sale (z28 item 7)")
+    # z28 made every "five guest rooms / Five Rooms / Cinq Chambres" read the
+    # count of rooms on sale, so the site says five while the sixth room is
+    # hidden and six the moment it is ticked, with no template edit on the
+    # day. The claim is checked in the response, which is stronger than the
+    # source: a template can no longer disagree with the table at all, and a
+    # count typed back in by a handover is named here as well as above.
+    conn = db()   # the workshop section above closed its own
+    first_room = conn.execute(
+        "SELECT id FROM rooms WHERE active = 1 ORDER BY sort_order, id LIMIT 1").fetchone()
+    urls = list(RENDERED) + ([f"/book/{first_room['id']}"] if first_room else [])
+
+    def served_claims():
+        """(url, count said) for every lettings claim in the visible text."""
+        anon = m.app.test_client()
+        found, answered = [], []
+        for url in urls:
+            r = anon.get(url)
+            if r.status_code != 200:
+                continue
+            answered.append(url)
+            for hit in SERVED_CLAIM.finditer(_visible(r.get_data(as_text=True))):
+                found.append((url, COUNTS[(hit.group(1) or hit.group(2)).lower()]))
+        return found, answered
+
+    said, answered = served_claims()
+    s.check("the public pages answer", len(answered) >= len(urls) - 2,
+            detail=f"answered: {answered}")
+    s.check("and they make real claims to check", len(said) >= 8,
+            detail=f"{len(said)} — if they matched nothing the check below would "
+                   "pass on an empty list, which is the shape this whole suite "
+                   "exists to prevent")
+    off = [f"{u} says {n}" for u, n in said if n != facts["count"]]
+    s.check(f"every one of them says {facts['count_word']}", not off,
+            detail="; ".join(off[:6]))
 
     s.section("The one exception is still an exception")
     stale = set(HISTORICAL) - seen_exceptions
@@ -292,26 +357,29 @@ def run():
         s.check(f"{page}'s {marker} line is history, not a claim", bool(why),
                 detail=why)
 
-    s.section("And it would notice if the house opened another room")
-    # The point of the whole suite. Proven by asking the same question with
-    # a different answer, rather than by trusting that it would.
-    pretend = dict(facts, count=facts["count"] + 1,
-                   count_word=WORD.get(facts["count"] + 1))
-    would_flag = [f"{name}:{i}" for name, i, line, said in claims()
-                  if not historical(name, line) and said != pretend["count"]]
-    # Seven since 24 September: the home page's room section dropped the
-    # sentence that repeated its own heading ("Five Rooms, Opened One at a
-    # Time"). Fewer sentences, all still saying five -- the floor follows the
-    # copy, and the check above is what proves they agree.
-    s.check("a sixth room would red the run and name the lines",
-            len(would_flag) >= 7,
-            detail=f"{len(would_flag)} line(s) would need changing — the "
-                   "site cannot quietly lie about how many rooms it lets, "
-                   "and the run says where to go")
-    s.check("and the pages it names are real files",
-            all(os.path.exists("templates/%s.html" % f.split(":")[0])
-                for f in would_flag),
-            detail=str(would_flag[:4]))
+    s.section("And the pages follow the day another room goes on sale")
+    # The point of the whole suite, proven by doing it: a room is put on sale
+    # and every claim on every page must move with it. Taken away again --
+    # the rooms are live data.
+    conn.execute(
+        """INSERT INTO rooms (name, export_token, active, max_occupancy,
+                   price_per_night, sort_order)
+           VALUES ('zz one more', 'zz-one-more-token', 1, 2, 300.0, 98)""")
+    conn.commit()
+    try:
+        more = m.house_room_facts(conn)
+        said_more, _ = served_claims()
+    finally:
+        conn.execute("DELETE FROM rooms WHERE export_token = 'zz-one-more-token'")
+        conn.commit()
+    s.check("the house counts it", more["count"] == facts["count"] + 1, detail=str(more))
+    s.check("and every claim on the pages now says so",
+            len(said_more) >= 8 and all(n == more["count"] for _u, n in said_more),
+            detail="; ".join(f"{u} says {n}" for u, n in said_more
+                             if n != more["count"])[:300] or f"{len(said_more)} claim(s)")
+    s.check("and they go back when it comes off sale",
+            m.house_room_facts(conn) == facts
+            and all(n == facts["count"] for _u, n in served_claims()[0]))
 
     conn.close()
     return s
