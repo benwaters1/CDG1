@@ -55,7 +55,7 @@
         <label class="field-label" for="admin_events-status">Status</label>
         <select id="admin_events-status" name="status">
           {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
-          <option value="{{ s }}">{{ s|capitalize }}</option>
+          <option value="{{ s }}">{{ {'new': 'New enquiry', 'contacted': 'Replied to'}.get(s, s|capitalize) }}</option>
           {% endfor %}
         </select>
       </div>

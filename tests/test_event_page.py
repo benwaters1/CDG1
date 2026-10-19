@@ -125,6 +125,13 @@ def run():
         s.check("it says nothing else is on the date", "Nothing else in the house." in page)
         s.check("and no run sheet or guest list before it is confirmed",
                 "Run sheet" not in page and "Guest list" not in page)
+        # 19 October 2026 review: every step's button says what it does.
+        s.check("replying is a button that writes to them, with the reference",
+                f"mailto:{fresh['contact_email']}?subject=" in page
+                and fresh["reference_code"] in page[page.find("mailto:"):page.find("mailto:") + 200])
+        s.check("no step's button is just 'Go'", ">Go</a>" not in page)
+        s.check("the last stage is 'Took place', not 'Held' beside 'Hold the date'",
+                "Took place" in page and ">Held<" not in page)
 
         s.section("Its details can be changed")
         moved_to = far + timedelta(days=7)
@@ -236,6 +243,10 @@ def run():
         s.check("a deposit not in says to collect it", "Collect the deposit" in page)
         s.check("a balance past its day says it is late", "Collect the balance — it is late" in page)
         s.check("final numbers inside a fortnight are asked for", "Get their final numbers" in page)
+        s.check("with a way to write to them and the run sheet",
+                "Write to them" in page[page.find("Get their final numbers"):page.find("Get their final numbers") + 900])
+        s.check("and the balance step's button says it records a payment",
+                "Record a payment" in page and ">Go</a>" not in page)
         s.check("and the run sheet, guest list and margin are there",
                 all(w in page for w in ("Run sheet", "Guest list", "What it made")))
         r = oc.post(f"/admin/events/{due['id']}/payment",
@@ -252,6 +263,11 @@ def run():
         s.check("every line opens its event",
                 f'href="/admin/events/{fresh["id"]}"' in listed and f'href="/admin/events/{due["id"]}"' in listed)
         s.check("and says the next thing to do", "Collect the balance — it is late" in listed)
+        chips = oc.get("/admin/events", query_string={"state": "Contacted", "when": "all"}).get_data(as_text=True)
+        import re as _re
+        chip = _re.search(r'<a[^>]*\?[^"]*state=Contacted"[^>]*class="chip[^"]*"[^>]*>([^<]*)<', chips) or             _re.search(r'<a href="[^"]*state=Contacted"\s*class="chip[^"]*">([^<]*)<', chips)
+        s.check("its status chip says 'Replied to', as the rows do, and old links still filter",
+                bool(chip) and chip.group(1).strip() == "Replied to", detail=chip.group(1) if chip else "no chip")
         s.check("there are no forms on the list but the add and the settings",
                 listed.count("/payment\"") == 0 and "/update\"" not in listed)
 

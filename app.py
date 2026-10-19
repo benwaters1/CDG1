@@ -52673,8 +52673,11 @@ def events_view(rows, args, bills):
         search_hint="Search name, email, telephone, reference or what it is",
         facets=[
             facet("when", "When", _event_when, order=["Current", "History"], default="Current"),
+            # The chip says "Replied to", as the badge on every row does; the
+            # value stays "Contacted" so links already made still filter.
             facet("state", "Status", lambda e: (e["status"] or "").capitalize(),
-                  order=["New", "Contacted", "Quoted", "Confirmed", "Declined", "Cancelled"]),
+                  order=["New", "Contacted", "Quoted", "Confirmed", "Declined", "Cancelled"],
+                  labels={"New": "New enquiry", "Contacted": "Replied to"}),
             facet("kind", "Event type", lambda e: (e["event_type"] or "").capitalize() or None, limit=8),
             facet("money", "Money", money),
         ],
@@ -52695,11 +52698,12 @@ def events_view(rows, args, bills):
 
 
 # THE STEPS AN EVENT GOES THROUGH, in the words the stage bar on its page uses.
-# "Held" is not a status anybody sets: it is a confirmed event whose last day
+# "held" is not a status anybody sets: it is a confirmed event whose last day
 # has passed, which is when the questions change from "is it paid" to "what
-# did it make".
+# did it make". Said "Took place" (19 October 2026): "Held" sat on the same
+# page as "Hold the date", which means something else entirely.
 EVENT_STAGES = (("new", "Enquiry"), ("contacted", "Replied"), ("quoted", "Quoted"),
-                ("confirmed", "Confirmed"), ("held", "Held"))
+                ("confirmed", "Confirmed"), ("held", "Took place"))
 EVENT_STATUS_WORDS = {"new": "New enquiry", "contacted": "Replied to", "quoted": "Quoted",
                       "confirmed": "Confirmed", "declined": "Declined",
                       "cancelled": "Cancelled"}
@@ -52800,7 +52804,7 @@ def event_next_steps(event, bill, live_quote, holds, guests, today=None, quotes=
         steps.append(("Reply to them",
                       "It came in today." if not waited else
                       f"They have been waiting {_plural(waited, 'day')} for an answer.",
-                      "danger" if waited >= 2 else "warn", "stage"))
+                      "danger" if waited >= 2 else "warn", "write"))
     if not day:
         steps.append(("Agree a date", "Nothing can be held or quoted for without one.",
                       "warn", "details"))
@@ -52850,7 +52854,7 @@ def event_next_steps(event, bill, live_quote, holds, guests, today=None, quotes=
             if event["final_numbers"] is None and away <= FINAL_NUMBERS_DAYS:
                 steps.append(("Get their final numbers",
                               f"The event is {_plural(away, 'day')} away and the kitchen "
-                              "orders from the final figure.", "danger", "plan"))
+                              "orders from the final figure.", "danger", "numbers"))
             if guests and guests["gap"] and guests["gap"] > 0 and away <= 60:
                 steps.append(("Fill in the guest list",
                               f"{guests['named']} named of {guests['told']}.", "info", "plan"))
