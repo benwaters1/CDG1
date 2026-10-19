@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}{{ workshop['title'] }}{% endblock %}
+{% block content %}
+{#- ONE PROGRAMME. Its sittings, the stock it uses and the questions it asks,
+    which all used to sit under it on the workshops page -- so that page can be
+    about what is coming up, and this one about how the programme is set up. -#}
+
+<div class="page-head">
+  <div>
+    <h1>{{ workshop['title'] }}</h1>
+    <p class="ev-sub">
+      {% if workshop['price_per_person'] %}{{ workshop['price_per_person']|money(0) }} a person{% else %}No price set{% endif %}
+      {%- if workshop['instructor_name'] or instructor %} · taught by {{ workshop['instructor_name'] or instructor }}{% endif %}
+      · places {{ workshop['default_capacity'] }} unless a sitting says otherwise
+      · <span class="mini-status {{ 'status-active' if workshop['active'] else 'status-inactive' }}">{{ 'open for registration' if workshop['active'] else 'hidden' }}</span>
+    </p>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('edit_workshop', workshop_id=workshop['id']) }}" class="btn-primary" style="margin-top:0;">Change the details</a>
+    <a href="{{ url_for('workshop_detail', workshop_id=workshop['id']) }}" class="btn-ghost">Its public page</a>
+    <a href="{{ url_for('admin_workshops') }}" class="btn-ghost">All workshops</a>
+  </div>
+</div>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ upcoming|rejectattr('session.cancelled_at')|list|length }}</span>
+    <span class="stat-tile-label">Sittings to come</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ sold }}</span>
+    <span class="stat-tile-label">Places taken across them</span></span></div>
+  <a class="stat-tile" href="{{ url_for('admin_workshop_waitlist') }}"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ waiting }}</span>
+    <span class="stat-tile-label">On the waiting list</span></span></a>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ past|length }}</span>
+    <span class="stat-tile-label">Sittings already run</span></span></div>
+</div>
+
+<section class="detail-card" id="sittings">
+  <div class="ev-card-head">
+    <h2 class="section-heading">Sittings</h2>
+  </div>
+  {% if not upcoming %}
+    <p class="empty-inline">None to come.</p>
+  {% else %}
+  <div class="table-wrap">
+  <table class="data-table ws-prog-sits">
+    <thead><tr><th>When</th><th>Places</th><th class="num">Money</th><th>Open</th></tr></thead>
+    <tbody>
+      {% for row in upcoming %}{% set s = row.session %}
+      <tr class="{{ 'is-off' if s['cancelled_at'] }}">
+        <td><a href="{{ url_for('admin_workshop_session', session_id=s['id']) }}"><strong>{{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}</strong></a>
+          {% if s['notes'] %}<br><span class="upload-hint">{{ s['notes'] }}</span>{% endif %}
+          {% if row.at_risk %}<br><span class="ws-short">{{ row.at_risk.confirmed }} of {{ row.at_risk.minimum }} needed to run · decide by {{ row.at_risk.decide_by }}</span>{% endif %}</td>
+        <td>{% if s['cancelled_at'] %}<span class="mini-status status-declined">called off</span>
+            {% else %}{{ row.confirmed }} confirmed{% if row.pending %} · {{ row.pending }} to decide{% endif %}{% if row.holding %} · {{ row.holding }} waiting for the deposit{% endif %} · {{ row.remaining }} of {{ s['capacity'] }} free{% endif %}</td>
+        <td class="num">{{ row.register.paid|money(0) }} in{% if row.register.owed %}<br><span class="upload-hint">{{ row.register.owed|money(0) }} owed</span>{% endif %}</td>
+        <td><a class="btn-mini" href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">Open</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+  <details class="refund-box">
+    <summary>+ Add a session</summary>
+    {% with w = workshop, back_to_programme = True %}{% include "_workshop_add_sitting.html" %}{% endwith %}
+  </details>
+  {% if past %}
+  <details style="margin-top:12px;">
+    <summary class="small-link" style="cursor:pointer;">Past sittings ({{ past|length }})</summary>
+    <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>When</th><th>Came</th><th class="num">Money</th><th>Pages</th></tr></thead>
+      <tbody>
+        {% for row in past %}{% set s = row.session %}
+        <tr>
+          <td><a href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">{{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}</a>{% if s['cancelled_at'] %} <span class="mini-status status-declined">called off</span>{% endif %}</td>
+          <td>{{ row.attended }} of {{ s['capacity'] }}</td>
+          <td class="num">{{ row.register.paid|money(0) }}{% if row.register.owed %}<br><span class="upload-hint">{{ row.register.owed|money(0) }} owed</span>{% endif %}</td>
+          <td><a class="small-link" href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}">Who came ({{ row.register.booked }})</a> ·
+              <a class="small-link" href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}">Running sheet</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+  {% endif %}
+</section>
+
+<div class="ev-layout">
+<section class="detail-card" id="materials">
+  <h2 class="section-heading">What it uses up</h2>
+  <p class="upload-hint" style="margin-top:-6px;">Each sitting works out what to have ready from this, and takes it out of stock when it has run.</p>
+  {% if not materials %}
+    <p class="empty-inline">Nothing recorded.</p>
+  {% else %}
+    <div class="doc-list">
+      {% for mt in materials %}
+      <div class="doc-row">
+        <span style="flex:1;">
+          {{ mt['name'] }}
+          {%- if mt['qty_per_person'] %} · {{ '%g'|format(mt['qty_per_person']) }} {{ mt['unit'] }} per person{% endif %}
+          {%- if mt['qty_per_session'] %} · {{ '%g'|format(mt['qty_per_session']) }} {{ mt['unit'] }} per session{% endif %}
+          {%- if not mt['item_active'] %} <span class="mini-status status-inactive">item retired</span>{% endif %}
+          {%- if mt['note'] %} <span class="upload-hint">— {{ mt['note'] }}</span>{% endif %}
+        </span>
+        <form method="post" action="{{ url_for('remove_workshop_material', material_id=mt['id']) }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="back_workshop" value="{{ workshop['id'] }}">
+          <button type="submit" class="doc-delete" aria-label="Stop listing {{ mt['name'] }}" title="Stop listing this">×</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% if stock_choices %}
+  <details class="refund-box">
+  <summary>+ Add something it uses up</summary>
+  <form method="post" action="{{ url_for('add_workshop_material', workshop_id=workshop['id']) }}" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="back_workshop" value="{{ workshop['id'] }}">
+    <div class="field-row-2">
+      <select name="stock_item_id" required aria-label="What, from stock">
+        <option value="">Something from stock…</option>
+        {% for it in stock_choices %}
+        <option value="{{ it['id'] }}">{{ it['name'] }} ({{ it['unit'] }})</option>
+        {% endfor %}
+      </select>
+      <input aria-label="Note (optional)" type="text" name="note" placeholder="Note (optional)">
+    </div>
+    <div class="field-row-2">
+      <input aria-label="Per person (e.g. 2)" type="text" name="qty_per_person" placeholder="Per person (e.g. 2)">
+      <input aria-label="Per session (e.g. 8)" type="text" name="qty_per_session" placeholder="Per session (e.g. 8)">
+    </div>
+    <p class="pay-disclaimer">Per person scales with who comes; per session does not — eight aprons is eight aprons whether four people come or ten. Set either or both.</p>
+    <button type="submit" class="btn-mini">Add it</button>
+  </form>
+  </details>
+  {% endif %}
+</section>
+
+<section class="detail-card" id="questions">
+  <h2 class="section-heading">What people registering are asked</h2>
+  <p class="upload-hint" style="margin-top:-6px;">On top of the standard questions — name, numbers, room, diet.</p>
+  {% if not fields %}
+    <p class="empty-inline">None &mdash; the standard questions only.</p>
+  {% else %}
+    <div class="doc-list">
+      {% for f in fields %}
+      <div class="doc-row">
+        <span style="flex:1;">{{ f['label'] }} <span class="upload-hint">({{ f['field_type'] }}{% if f['required'] %} · required{% endif %}{% if f['options'] %} · {{ f['options'] }}{% endif %})</span></span>
+        <form method="post" action="{{ url_for('delete_workshop_custom_field', field_id=f['id']) }}" onsubmit="return confirm('Remove this question?');" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="back_workshop" value="{{ workshop['id'] }}">
+          <button type="submit" class="doc-delete" aria-label="Stop asking: {{ f['label'] }}" title="Stop asking this">×</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  <details class="refund-box">
+  <summary>+ Ask the people registering something extra</summary>
+  <form method="post" action="{{ url_for('new_workshop_custom_field', workshop_id=workshop['id']) }}" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="back_workshop" value="{{ workshop['id'] }}">
+    <div class="field-row-2">
+      <input aria-label="Question (e.g. Shuttle pickup time)" type="text" name="label" placeholder="Question (e.g. Shuttle pickup time)" required>
+      <select name="field_type" aria-label="How they answer">
+        <option value="text">Short text</option>
+        <option value="textarea">Long text</option>
+        <option value="select">Choice (comma-separated options)</option>
+        <option value="checkbox">Yes/No</option>
+      </select>
+    </div>
+    <div class="field-row-2">
+      <input aria-label="Options, comma-separated (only for Choice)" type="text" name="options" placeholder="Options, comma-separated (only for Choice)">
+      <label class="field-label" style="flex-direction:row; align-items:center; gap:6px;">
+        <input type="checkbox" name="required"> Required
+      </label>
+    </div>
+    <button type="submit" class="btn-mini">Add question</button>
+  </form>
+  </details>
+</section>
+</div>
+
+{% if workshop['description'] %}
+<section class="detail-card">
+  <div class="ev-card-head">
+    <h2 class="section-heading">What guests read</h2>
+    <a class="btn-mini" href="{{ url_for('edit_workshop', workshop_id=workshop['id']) }}">Change it</a>
+  </div>
+  <p class="manual-body">{{ workshop['description'] }}</p>
+</section>
+{% endif %}
+{% endblock %}

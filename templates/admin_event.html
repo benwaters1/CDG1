@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+{% block title %}{{ event['contact_name'] }} — {{ event['event_type']|capitalize }}{% endblock %}
+{% block content %}
+{#- ONE EVENT, ALL OF IT. Where it stands, what to do next, what it is, its
+    money, and what else the house has on its dates -- the questions asked
+    every time anybody opens an event, answered on the page they open. The
+    quote, the guest list, the run sheet and the margin keep their own pages
+    and are a tab away. -#}
+{% set closed = event['status'] in ('declined', 'cancelled') %}
+
+<div class="page-head">
+  <div>
+    <h1>{{ event['contact_name'] }}</h1>
+    <p class="ev-sub">
+      {{ event['event_type']|capitalize }}
+      · {% if event['preferred_date'] %}{{ event['preferred_date']|date_short }}{% if event['end_date'] and event['end_date'] != event['preferred_date'] %} – {{ event['end_date']|date_short }}{% endif %}{% else %}no date yet{% endif %}
+      {%- if event['guest_count'] %} · {{ event['guest_count'] }} guests{% endif %}
+      · <span class="ev-ref">{{ event['reference_code'] }}</span>
+    </p>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    {% if can('record_history_page') %}<a href="{{ url_for('record_history_page', kind='event', record_id=event['id']) }}" class="btn-ghost">What changed</a>{% endif %}
+  </div>
+</div>
+
+{% with ev = event, here = 'admin_event' %}{% include "_event_nav.html" %}{% endwith %}
+
+{% if caution %}
+<div class="ev-banner ev-banner-danger" role="alert">
+  <strong>Standing instruction on {{ caution['name'] }}:</strong> {{ caution['caution'] }}
+  {% if caution['caution_level'] == 'refuse' %}— confirming is refused until it is lifted on their profile.{% endif %}
+</div>
+{% endif %}
+
+{#- Where it is on the road from enquiry to held, or that it is closed. -#}
+{% if closed %}
+<div class="ev-banner">This {{ event['event_type'] }} was {{ event['status'] }}{% if event['decided_at'] %} on {{ event['decided_at']|house_day|date_short }}{% endif %}. Nothing is held for it.</div>
+{% else %}
+{% set order = stages|map(attribute=0)|list %}
+{% set at = order.index(stage) if stage in order else 0 %}
+<ol class="ev-stages" aria-label="Where it stands">
+  {% for key, label in stages %}
+  <li class="{{ 'is-done' if loop.index0 < at else ('is-here' if loop.index0 == at else '') }}"
+      {% if loop.index0 == at %}aria-current="step"{% endif %}>
+    <span class="ev-stage-dot">{% if loop.index0 < at %}✓{% else %}{{ loop.index }}{% endif %}</span>{{ label }}
+  </li>
+  {% endfor %}
+</ol>
+{% endif %}
+
+<div class="ev-layout">
+<div class="ev-main">
+
+  {#- What to do now. Worked out from the facts (event_next_steps), so doing
+      the thing takes it off. -#}
+  <section class="detail-card ev-next" id="stage">
+    <h2 class="section-heading">{{ 'Next' if steps else 'Nothing waiting' }}</h2>
+    {% if steps %}
+    <ol class="ev-steps">
+      {% for head, why, tone, anchor in steps %}
+      <li class="ev-step ev-step-{{ tone }}">
+        <div><strong>{{ head }}</strong><span>{{ why }}</span></div>
+        {% if anchor == 'agreement' %}<a class="btn-mini" href="{{ url_for('event_agreement', inquiry_id=event['id']) }}">Open the quote</a>
+        {% elif anchor == 'plan' and 'numbers' in head %}<a class="btn-mini" href="{{ url_for('event_run_sheet_page', event_id=event['id']) }}#final_numbers">Run sheet</a>
+        {% elif anchor == 'plan' and 'guest' in head %}<a class="btn-mini" href="{{ url_for('event_guest_list_page', event_id=event['id']) }}">Guest list</a>
+        {% elif anchor == 'plan' %}<a class="btn-mini" href="{{ url_for('event_margin_page', event_id=event['id']) }}">What it made</a>
+        {% elif anchor != 'stage' %}<a class="btn-mini" href="#{{ anchor }}">Go</a>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="upload-hint">Everything this page can check is done.</p>
+    {% endif %}
+
+    {#- Moving it on. Each button is the status and nothing else, through the
+        same route as ever: confirming still reads the standing instructions,
+        sets the deposit, writes to them and names any clash; declining still
+        writes to them. -#}
+    <div class="ev-stage-actions">
+      {% macro to_status(value, label, kind='btn-mini', ask=None) %}
+      <form method="post" action="{{ url_for('update_event_inquiry', inquiry_id=event['id']) }}"
+            {% if ask %}onsubmit="return confirm({{ ask|tojson|forceescape }});"{% endif %}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="status" value="{{ value }}">
+        <input type="hidden" name="back" value="event">
+        <button type="submit" class="{{ kind }}">{{ label }}</button>
+      </form>
+      {% endmacro %}
+      {% if event['status'] == 'new' %}{{ to_status('contacted', 'I have replied') }}{% endif %}
+      {% if event['status'] in ('new', 'contacted') %}{{ to_status('quoted', 'Mark as quoted') }}{% endif %}
+      {% if event['status'] in ('new', 'contacted', 'quoted') %}
+        {{ to_status('confirmed', 'Confirm the event', 'btn-mini btn-mini-go',
+                     'Confirm? ' ~ ('This closes the house on those dates and writes to ' ~ event['contact_name'] ~ ' to say it is confirmed.' if event['contact_email'] else 'This closes the house on those dates.')
+                     ~ (' Also on those dates: ' ~ clashes.count ~ ' other booking(s) — see the list on the right.' if clashes and clashes.count else '')) }}
+        {{ to_status('declined', 'Decline', 'btn-mini btn-mini-danger',
+                     'Decline? ' ~ ('They are written to to say so.' if event['contact_email'] else '')) }}
+      {% endif %}
+      {% if event['status'] == 'confirmed' %}
+        {{ to_status('cancelled', 'Call it off', 'btn-mini btn-mini-danger',
+                     'Call this event off? The dates go back on the market. Nobody is written to and no money moves — refunds are made on their own page.') }}
+      {% endif %}
+      {% if closed %}{{ to_status('new', 'Reopen it as an enquiry') }}{% endif %}
+    </div>
+  </section>
+
+  {#- WHAT IT IS. Read first, changed in place. Before this page none of it
+      could be changed once typed in. -#}
+  <section class="detail-card" id="details">
+    <div class="ev-card-head">
+      <h2 class="section-heading">The event</h2>
+    </div>
+    <dl class="ev-facts">
+      <dt>What</dt><dd>{{ event['event_type']|capitalize }}</dd>
+      <dt>When</dt><dd>{% if event['preferred_date'] %}{{ event['preferred_date']|date_human }}{% if event['end_date'] and event['end_date'] != event['preferred_date'] %} to {{ event['end_date']|date_human }}{% endif %}{% else %}<span class="upload-hint">no date yet</span>{% endif %}
+        {%- if event['alternate_date'] %}<br><span class="upload-hint">or {{ event['alternate_date']|date_human }}</span>{% endif %}</dd>
+      <dt>Guests</dt><dd>{{ event['guest_count'] or '—' }}{% if event['final_numbers'] is not none %} <span class="upload-hint">· final {{ event['final_numbers'] }}</span>{% endif %}</dd>
+      <dt>Spaces</dt><dd>{{ event['spaces'] or '—' }}</dd>
+      <dt>Asked for</dt><dd class="ev-prose">{{ event['message'] or '—' }}</dd>
+      <dt>Private note</dt><dd class="ev-prose">{{ event['owner_note'] or '—' }}</dd>
+      <dt>Came in</dt><dd>{{ event['created_at']|house_day|date_short }}{% if event['status'] == 'new' %} <span class="upload-hint">· {{ 'today' if not waited else ('%d day%s ago' % (waited, '' if waited == 1 else 's')) }}</span>{% endif %}</dd>
+    </dl>
+    {#- Folded, like every card's forms: the facts read first. -#}
+    <details class="refund-box ev-change">
+    <summary>Change any of it — the date, the numbers, who to deal with</summary>
+    <form method="post" action="{{ url_for('edit_event_details', event_id=event['id']) }}" class="ev-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-row-2">
+        <div>
+          <label class="field-label" for="ev-type">What</label>
+          <select id="ev-type" name="event_type">
+            {% for t in event_types %}<option value="{{ t }}" {{ 'selected' if t == event['event_type'] }}>{{ t|capitalize }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="field-label" for="ev-guests">Guests expected</label>
+          <input id="ev-guests" type="number" name="guest_count" min="1" value="{{ event['guest_count'] or '' }}">
+        </div>
+      </div>
+      <div class="field-row-3">
+        <div>
+          <label class="field-label" for="ev-start">First day</label>
+          <input id="ev-start" type="date" name="preferred_date" value="{{ event['preferred_date'] or '' }}">
+        </div>
+        <div>
+          <label class="field-label" for="ev-end">Last day <span class="upload-hint">(blank for one day)</span></label>
+          <input id="ev-end" type="date" name="end_date" value="{{ event['end_date'] or '' }}">
+        </div>
+        <div>
+          <label class="field-label" for="ev-alt">Or, failing that</label>
+          <input id="ev-alt" type="date" name="alternate_date" value="{{ event['alternate_date'] or '' }}">
+        </div>
+      </div>
+      <label class="field-label" for="ev-spaces">Spaces</label>
+      <input id="ev-spaces" type="text" name="spaces" maxlength="300" value="{{ event['spaces'] or '' }}" placeholder="South lawn, orangery, four bedrooms…">
+      <div class="field-row-3">
+        <div>
+          <label class="field-label" for="ev-name">Who to deal with</label>
+          <input id="ev-name" type="text" name="contact_name" required value="{{ event['contact_name'] }}" autocomplete="off">
+        </div>
+        <div>
+          <label class="field-label" for="ev-email">Email</label>
+          <input id="ev-email" type="email" name="contact_email" value="{{ event['contact_email'] or '' }}" autocomplete="off">
+        </div>
+        <div>
+          <label class="field-label" for="ev-phone">Telephone</label>
+          <input id="ev-phone" type="tel" name="contact_phone" value="{{ event['contact_phone'] or '' }}" autocomplete="off">
+        </div>
+      </div>
+      <label class="field-label" for="ev-message">What they have asked for</label>
+      <textarea id="ev-message" name="message" rows="3">{{ event['message'] or '' }}</textarea>
+      <label class="field-label" for="ev-note">Private note <span class="upload-hint">(only the house sees it)</span></label>
+      <textarea id="ev-note" name="owner_note" rows="2">{{ event['owner_note'] or '' }}</textarea>
+      <div class="ev-form-actions">
+        <button type="submit" class="btn-primary" style="margin-top:0;">Save</button>
+      </div>
+    </form>
+    </details>
+  </section>
+
+  {#- THE MONEY, from event_bill, the one definition of it. -#}
+  <section class="detail-card" id="money">
+    <div class="ev-card-head">
+      <h2 class="section-heading">Money</h2>
+    </div>
+    {% if bill and (bill.gross_quote or bill.paid or bill.refunded) %}
+    <div class="table-wrap">
+    <table class="data-table ev-money">
+      <tbody>
+        <tr><th scope="row">Agreed{% if bill.discount %} <span class="upload-hint">({{ bill.gross_quote|money }} less code {{ event['promo_code'] }})</span>{% endif %}</th><td>{{ bill.quoted|money }}</td></tr>
+        {% if bill.deposit %}<tr><th scope="row">Deposit asked</th><td>{{ bill.deposit|money }} {% if bill.deposit_paid %}<span class="mini-status status-confirmed">in</span>{% else %}<span class="mini-status status-pending">not yet</span>{% endif %}</td></tr>{% endif %}
+        <tr><th scope="row">Received</th><td>{{ bill.paid|money }}</td></tr>
+        {% if bill.refunded %}<tr><th scope="row">Given back</th><td>{{ bill.refunded|money }}</td></tr>{% endif %}
+        <tr class="ev-money-total"><th scope="row">Still to pay{% if bill.due_date and bill.owed > 0.005 %} <span class="upload-hint">by {{ bill.due_date|date_short }}</span>{% endif %}</th>
+          <td>{{ bill.owed|money }}{% if bill.due_date and bill.owed > 0.005 and bill.due_date < today.isoformat() %} <span class="mini-status status-unpaid">late</span>{% endif %}</td></tr>
+        {% if bill.overpaid %}<tr><th scope="row">Paid over the agreed figure</th><td>{{ bill.overpaid|money }}</td></tr>{% endif %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="upload-hint">No price agreed yet{% if not closed %} — raise a quote on <a href="{{ url_for('event_agreement', inquiry_id=event['id']) }}">Quote &amp; dates</a>, or put a figure on it under “Change the price” below{% endif %}.</p>
+    {% endif %}
+
+    {% if payments %}
+    <h3 class="ev-h3">What has come in</h3>
+    <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>When</th><th>How</th><th>Reference</th><th class="num">Amount</th></tr></thead>
+      <tbody>
+        {% for p in payments %}
+        <tr><td>{{ p['created_at']|house_day|date_short }}</td><td>{{ (payment_methods or {}).get(p['method'], p['method'] or '')|replace('_', ' ') }}</td>
+            <td>{{ p['reference'] or '' }}{% if p['taken_by'] %} <span class="upload-hint">· {{ p['taken_by'] }}</span>{% endif %}</td><td class="num">{{ p['amount']|money }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+
+    <div class="ev-money-actions">
+      {% if bill and bill.quoted > 0 and bill.owed > 0.005 %}
+      <form method="post" action="{{ url_for('record_event_payment_route', inquiry_id=event['id']) }}" class="ev-inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="back" value="event">
+        <label class="field-label" for="ev-pay">Record money in</label>
+        <div class="ev-inline-row">
+          <input id="ev-pay" type="number" name="amount" step="0.01" min="0.01"
+                 max="{{ '%.2f'|format(bill.owed) }}" placeholder="{{ '%.2f'|format(bill.deposit if bill.deposit and not bill.deposit_paid else bill.owed) }}" required>
+          <select name="method" aria-label="How it arrived">
+            {% for key, label in (payment_methods or {}).items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+          </select>
+          <input type="text" name="reference" placeholder="Reference (optional)" aria-label="Reference">
+          <button type="submit" class="btn-mini">Record</button>
+        </div>
+      </form>
+      {% endif %}
+      {% if bill and (bill.paid > 0 or bill.refunded > 0) %}
+        {% with refund_url = url_for('refund_desk', category='event', booking_id=event['id']),
+                already_refunded = bill.refunded, remaining = bill.paid %}
+          {% include "_refund_form.html" %}
+        {% endwith %}
+      {% endif %}
+    </div>
+
+    {% if not closed %}
+    <details class="refund-box ev-change">
+    <summary>Change the price, the deposit or when the balance is due</summary>
+    <form method="post" action="{{ url_for('update_event_inquiry', inquiry_id=event['id']) }}" class="ev-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="status" value="{{ event['status'] }}">
+      <input type="hidden" name="back" value="event">
+      <div class="field-row-3">
+        <div>
+          <label class="field-label" for="ev-price">Agreed price (€)</label>
+          <input id="ev-price" type="number" name="quoted_price" step="0.01" min="0" value="{{ event['quoted_price']|box(2) }}">
+        </div>
+        <div>
+          <label class="field-label" for="ev-deposit">Deposit (€)</label>
+          <input id="ev-deposit" type="number" name="deposit_amount" step="0.01" min="0"
+                 value="{{ '%.2f'|format(event['deposit_amount']) if event['deposit_amount'] is not none else '' }}"
+                 placeholder="set when confirmed">
+        </div>
+        <div>
+          <label class="field-label" for="ev-due">Balance due</label>
+          <input id="ev-due" type="date" name="balance_due_date" value="{{ event['balance_due_date'] or '' }}">
+        </div>
+      </div>
+      <label class="field-label" for="ev-promo">Promo code</label>
+      <input id="ev-promo" type="text" name="promo_code" style="max-width:220px;"
+             value="{{ event['promo_code'] or '' }}" placeholder="{{ 'applied' if event['promo_code_id'] else 'none' }}"
+             {{ 'readonly' if event['promo_code_id'] }} spellcheck="false" autocapitalize="characters">
+      <p class="upload-hint">A price agreed through a quote is set when they accept it; change it here only for a figure agreed some other way. Left blank, the deposit and due date are worked out when the event is confirmed.</p>
+      <div class="ev-form-actions">
+        <button type="submit" class="btn-primary" style="margin-top:0;">Save</button>
+      </div>
+    </form>
+    </details>
+    {% endif %}
+  </section>
+</div>
+
+<aside class="ev-side">
+  {#- WHAT ELSE IS ON. Named, before anybody presses Confirm. -#}
+  <section class="detail-card">
+    <h2 class="section-heading">On those dates</h2>
+    {% if not clashes %}
+      <p class="upload-hint">No date yet.</p>
+    {% else %}
+      <p class="ev-when">{{ clashes.first|date_human }}{% if clashes.last != clashes.first %} to {{ clashes.last|date_human }}{% endif %}
+        {%- set away = (clashes.first - today).days %}
+        <span class="upload-hint">· {% if away > 0 %}in {{ away }} day{{ '' if away == 1 else 's' }}{% elif away == 0 %}today{% else %}{{ -away }} day{{ '' if away == -1 else 's' }} ago{% endif %}</span></p>
+      {% if holds %}
+        {% for h in holds %}<p class="mini-status status-pending">Held until {{ h['expires_at']|house_day|date_short }}</p>{% endfor %}
+      {% endif %}
+      {% if not clashes.count %}
+        <p class="ev-clear">Nothing else in the house.</p>
+      {% else %}
+        <ul class="ev-clashes">
+          {% for s in clashes.stays %}<li><a href="{{ url_for('admin_booking', booking_id=s['id']) }}">{{ s['guest_name'] }}</a> <span class="upload-hint">{{ s['room_name'] or 'room' }} · {{ s['arrival_date']|date_short }} – {{ s['departure_date']|date_short }}{% if s['status'] == 'pending' %} · to confirm{% endif %}</span></li>{% endfor %}
+          {% for w in clashes.sittings %}<li><a href="{{ url_for('admin_workshop_session', session_id=w['id']) }}">{{ w['title'] }}</a> <span class="upload-hint">atelier · {{ w['start_date']|date_short }} – {{ w['end_date']|date_short }}</span></li>{% endfor %}
+          {% for e in clashes.events %}<li><a href="{{ url_for('admin_event', event_id=e['id']) }}">{{ e['contact_name'] }}</a> <span class="upload-hint">{{ e['event_type'] }} · confirmed</span></li>{% endfor %}
+          {% for h in clashes.holds %}<li><a href="{{ url_for('admin_event', event_id=h['event_id']) }}">{{ h['contact_name'] }}</a> <span class="upload-hint">dates held for their {{ h['event_type'] }}</span></li>{% endfor %}
+        </ul>
+      {% endif %}
+      <p><a class="small-link" href="{{ url_for('ops_calendar', view='week', date=event['preferred_date']) }}">See the week on the calendar</a></p>
+    {% endif %}
+  </section>
+
+  {#- THE PLAN, one line per page that holds part of it. -#}
+  <section class="detail-card" id="plan">
+    <h2 class="section-heading">The plan</h2>
+    <ul class="ev-plan">
+      {% if not closed %}
+      <li>
+        <a href="{{ url_for('event_agreement', inquiry_id=event['id']) }}">Quote &amp; dates</a>
+        <span>{% if live %}Quote {{ live['version'] }}, {{ live['status'] }} · {{ live['quoted_price']|money(0) }}
+              {% elif quotes %}{% set q = quotes[0] %}Quote {{ q['version'] }} {{ q['status'] }}
+              {% else %}No quote yet{% endif %}
+              {%- if schedule and schedule.instalments %} · {{ schedule.instalments|length }} payment stage{{ '' if schedule.instalments|length == 1 else 's' }}{% endif %}</span>
+      </li>
+      {% endif %}
+      {#- What fits the stage: an enquiry has nothing to run yet, and a closed
+          one nothing to plan. -#}
+      {% if event['status'] != 'confirmed' %}
+      <li><span>{% if closed %}Nothing to plan: it was {{ event['status'] }}.{% else %}The guest list, the run sheet and what it made open once it is confirmed.{% endif %}</span></li>
+      {% else %}
+      <li>
+        <a href="{{ url_for('event_guest_list_page', event_id=event['id']) }}">Guest list</a>
+        <span>{% if guests and guests.named %}{{ guests.named }} named{% if guests.told %} of {{ guests.told }}{% endif %}{% if guests.dietary %} · {{ guests.dietary|length }} with a diet{% endif %}{% else %}Nobody named yet{% endif %}</span>
+      </li>
+      <li>
+        <a href="{{ url_for('event_run_sheet_page', event_id=event['id']) }}">Run sheet</a>
+        <span>{{ moments }} moment{{ '' if moments == 1 else 's' }} ·
+              {% if readiness and readiness.suppliers %}{{ readiness.suppliers|length }} supplier{{ '' if readiness.suppliers|length == 1 else 's' }}{% else %}no suppliers{% endif %}
+              · {{ staff_down }} on the rota</span>
+      </li>
+      <li>
+        <a href="{{ url_for('event_run_sheet_page', event_id=event['id']) }}#final_numbers">Final numbers</a>
+        <span>{% if event['final_numbers'] is not none %}{{ event['final_numbers'] }} given{% elif numbers_due %}due by {{ numbers_due|date_short }}{% else %}—{% endif %}</span>
+      </li>
+      <li>
+        <a href="{{ url_for('event_margin_page', event_id=event['id']) }}">What it made</a>
+        <span>Suppliers, staff and the margin</span>
+      </li>
+      {% endif %}
+    </ul>
+  </section>
+
+  <section class="detail-card">
+    <h2 class="section-heading">Who to deal with</h2>
+    <p class="ev-contact"><strong>{{ event['contact_name'] }}</strong>
+      {% if event['contact_email'] %}<br><a href="mailto:{{ event['contact_email'] }}">{{ event['contact_email'] }}</a>{% endif %}
+      {% if event['contact_phone'] %}<br><a href="tel:{{ event['contact_phone']|replace(' ', '') }}">{{ event['contact_phone'] }}</a>{% endif %}
+      {% if not event['contact_email'] and not event['contact_phone'] %}<br><span class="upload-hint">No way to reach them is on file — add one under The event.</span>{% endif %}
+    </p>
+    {% if event['contact_email'] %}<p><a class="small-link" href="{{ url_for('guest_by_email', email=event['contact_email']) }}">Their record</a></p>{% endif %}
+  </section>
+</aside>
+</div>
+
+{% endblock %}

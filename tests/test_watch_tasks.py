@@ -102,8 +102,10 @@ def run():
     r = _run(conn)
     s.check("a task was raised", len(_of_kind(conn, "Not qualified")) == 1, detail=str(r))
     titles = _open_titles(conn)
+    # The day as the house writes it (19 October 2026): "22 October 2026",
+    # not the database's 2026-10-22, which is how it sat on the calendar.
     s.check("it names the person and the day",
-            any("Lapsed" in t and _iso(3) in t for t in titles), detail=str(titles))
+            any("Lapsed" in t and m.format_date_short(_iso(3)) in t for t in titles), detail=str(titles))
     task = conn.execute(
         """SELECT * FROM tasks WHERE origin = 'watch' AND status != 'done'
              AND title LIKE 'Not qualified%' LIMIT 1""").fetchone()

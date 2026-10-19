@@ -263,7 +263,7 @@ def run():
         # Read again here rather than taken from the sweep, which reads every
         # page once per run and shares them: in a full run it has already
         # read these before the rows above existed.
-        fresh = {"dashboard": "/", "admin_workshops": "/admin/workshops",
+        fresh = {"dashboard": "/", "admin_workshops": "/admin/workshops", "admin_workshop": "",
                  "admin_tasks": "/admin/tasks", "breakfast": "/breakfast",
                  "revenue_to_send": REVENUE}
         pages = [(ep, url, html) for ep, url, html in sweep.owner_pages(oc)
@@ -272,11 +272,19 @@ def run():
         s.check("the owner home renders with something waiting on it",
                 home.status_code == 200 and TAG in home.get_data(as_text=True), home)
         pages.append(("dashboard", "/", home.get_data(as_text=True)))
-        ateliers = oc.get("/admin/workshops")
-        s.check("the ateliers page renders with something in stock to use",
+        # The stock a programme uses is chosen on the programme's own page
+        # since 19 October 2026, so that is the page with the picker on it.
+        look = _harness.db()
+        first_workshop = look.execute("SELECT id FROM workshops ORDER BY id LIMIT 1").fetchone()
+        look.close()
+        programme = f"/admin/workshops/{first_workshop['id']}" if first_workshop else "/admin/workshops"
+        ateliers = oc.get(programme)
+        s.check("a programme's page renders with something in stock to use",
                 ateliers.status_code == 200 and TAG + " Aprons" in ateliers.get_data(as_text=True),
                 ateliers)
-        pages.append(("admin_workshops", "/admin/workshops", ateliers.get_data(as_text=True)))
+        pages.append(("admin_workshop", programme, ateliers.get_data(as_text=True)))
+        pages.append(("admin_workshops", "/admin/workshops",
+                      oc.get("/admin/workshops").get_data(as_text=True)))
         tasks = oc.get("/admin/tasks")
         s.check("the Tasks page renders with a week of long titles on it",
                 tasks.status_code == 200 and tasks.get_data(as_text=True).count(TAG) >= 2, tasks)

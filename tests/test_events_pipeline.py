@@ -67,22 +67,33 @@ def run():
         page = oc.get("/admin/events", query_string={"q": TAG}).get_data(as_text=True)
         s.check("the page shows the money tiles",
                 "still out" in page and "Still to collect" in page and "past due" in page)
-        s.check("a new enquiry says how long it has waited", "waiting 3 days for a reply" in page)
+        s.check("a new enquiry says how long it has waited", "waiting 3 days" in page)
+
+        # Since 19 October 2026 each event has a page of its own, and the list
+        # is one line an event that opens it. What fits the stage is held to
+        # that page: its tabs and its plan.
+        conn = db()
+        ids = {r["contact_name"]: r["id"] for r in conn.execute(
+            "SELECT id, contact_name FROM event_inquiries WHERE contact_name LIKE ?",
+            (TAG + "%",)).fetchall()}
+        conn.close()
 
         def card(key):
-            at = page.find(f"{TAG} {key}</strong>")
-            nxt = page.find('class="expense-card"', at + 1)
-            return page[at:nxt if nxt > 0 else len(page)]
+            eid = ids.get(f"{TAG} {key}")
+            return oc.get(f"/admin/events/{eid}").get_data(as_text=True) if eid else ""
 
+        s.check("every line on the list opens its event's page",
+                all(f'href="/admin/events/{eid}"' in page for eid in ids.values()) and bool(ids))
         s.check("a new enquiry offers no run sheet or guest list",
                 "Run sheet" not in card("new") and "Guest list" not in card("new"))
         s.check("a declined one neither", "Run sheet" not in card("declined"))
         s.check("a quote offers its agreement and nothing to run yet",
-                "Agreement" in card("quoted") and "Run sheet" not in card("quoted"))
+                f"/admin/events/{ids.get(TAG + ' quoted')}/agreement" in card("quoted")
+                and "Run sheet" not in card("quoted"))
         s.check("a confirmed event has its run sheet, guest list and margin",
                 all(w in card("late") for w in ("Run sheet", "Guest list", "What it made")))
-        s.check("and says its balance is past due", "past due" in card("late")
-                and "past due" not in card("ontime"))
+        s.check("and says its balance is late", "Collect the balance — it is late" in card("late")
+                and "it is late" not in card("ontime"))
     finally:
         _cleanup()
     return s

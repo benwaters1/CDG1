@@ -10,12 +10,9 @@
    goes over a year. #}
 
 <div class="page-head">
-  <h1>The agreement</h1>
-  <div style="display:flex; gap:10px; align-items:center;">
-    <a href="{{ url_for('event_run_sheet_page', event_id=event['id']) }}" class="btn-ghost">Run sheet</a>
-    <a href="{{ url_for('admin_events') }}" class="btn-ghost">All enquiries</a>
-  </div>
+  <h1>{{ event['contact_name'] }} — quote &amp; dates</h1>
 </div>
+{% with ev = event, here = 'event_agreement' %}{% include "_event_nav.html" %}{% endwith %}
 
 <p class="page-intro">
   {{ event['event_type']|capitalize }} · {{ event['contact_name'] }} ·

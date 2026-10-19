@@ -190,14 +190,14 @@ def run():
     # answer, so nobody has to rediscover them — and the number is a ceiling
     # that may fall and must not rise, the same as the undescribed pages.
     #
-    # Four of them are money and want a page before they want a name:
-    # booking_payments, event_payments and voucher_redemptions are only ever
-    # read as totals, never listed per booking with who took the money, and
+    # Three of them are money and want a page before they want a name:
+    # booking_payments and voucher_redemptions are only ever read as totals,
+    # never listed per booking with who took the money, and
     # workshop_transactions the same. Joining a name onto a SUM shows nobody
-    # anything.
+    # anything. (event_payments came off on 19 October 2026: each event's own
+    # page lists what came in, and who recorded it.)
     STILL_ANONYMOUS = {
         "booking_payments.taken_by_user_id": "who took a guest's money",
-        "event_payments.taken_by_user_id": "who took an event payment",
         "voucher_redemptions.taken_by_user_id": "who honoured a voucher",
         "workshop_transactions.created_by_user_id": "who wrote the ledger line",
         "booking_extras.added_by_user_id": "who put an extra on a bill",
