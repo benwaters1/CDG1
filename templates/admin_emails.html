@@ -7,6 +7,7 @@
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
     <a href="{{ url_for('admin_email_outbox') }}" class="btn-ghost">Held email{% if held %} ({{ held }}){% endif %}</a>
     <a href="{{ url_for('mail_log') }}" class="btn-ghost">Mail log</a>
+    <a href="{{ url_for('newsletter_subscribers_page') }}" class="btn-ghost">Newsletter</a>
     <a href="{{ url_for('management_email_templates') }}" class="btn-ghost">Email wording</a>
   </div>
 </div>

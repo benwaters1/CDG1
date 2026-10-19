@@ -346,6 +346,11 @@ WORKSHOP_DEPOSIT_HOLD_MINUTES = 60
 # purpose: a guest whose browser fills in the name and address still has to
 # choose dates and read the page.
 PUBLIC_FORM_MIN_SECONDS = 4
+# One newsletter confirmation per address in this long, however many times it
+# is typed into a sign-up box. A day: long enough that a script, or a person
+# pressing twice, cannot make the house write to one inbox again and again;
+# short enough that somebody whose first letter went astray can ask tomorrow.
+NEWSLETTER_CONFIRM_RESEND_HOURS = 24
 # Password resets per hour from one address. Higher than it sounds: a person
 # who mistypes their address, then tries again, then finds the first mail in
 # spam and asks once more is at three, and locking them out of their own
@@ -7512,6 +7517,11 @@ def init_db():
          "ALTER TABLE workshop_bookings ADD COLUMN hold_released_at TEXT"),
         ("workshop_bookings_bot_check_cleared_at",
          "ALTER TABLE workshop_bookings ADD COLUMN bot_check_cleared_at TEXT"),
+        # When the newsletter's confirmation letter last went to this address,
+        # so a second sign-up inside NEWSLETTER_CONFIRM_RESEND_HOURS sends
+        # nothing. Rows from before it read their created_at instead.
+        ("newsletter_subscribers_confirm_sent_at",
+         "ALTER TABLE newsletter_subscribers ADD COLUMN confirm_sent_at TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -29155,7 +29165,9 @@ def edit_gallery_section(section_id):
 
 @app.route("/newsletter/subscribe", methods=["POST"])
 def newsletter_subscribe():
-    """The newsletter box in the public menu panel.
+    """Every newsletter box on the public site: the menu panel, the footer,
+    the Contact page and the Journal bands, all drawn by _newsletter.html.
+    There is one newsletter, so a sign-up is an address and nothing else.
 
     Deliberately says the same thing whichever branch it takes. Telling a
     stranger "you are already subscribed" turns the box into a way to test
@@ -29173,6 +29185,14 @@ def newsletter_subscribe():
         conn.commit()
         conn.close()
         flash("Too many attempts from this connection — please try again shortly.", "error")
+        return redirect(request.referrer or url_for("preview_home"))
+    # Every box that posts here carries {{ bot_guard() }} (the _newsletter.html
+    # partial, and the booking page's "tell me when they open"). A script
+    # typing other people's addresses into it is the house mailing strangers
+    # on demand, which is exactly what the Resend log showed in October.
+    if refused_as_bot(conn, "newsletter_subscribe", request.form):
+        conn.close()
+        flash(BOT_REFUSAL_MESSAGE, "error")
         return redirect(request.referrer or url_for("preview_home"))
 
     email = (request.form.get("email", "") or "").strip().lower()
@@ -29229,22 +29249,55 @@ def newsletter_subscribe():
         "SELECT id, token, confirmed_at FROM newsletter_subscribers WHERE email = ?",
         (email,)).fetchone()
 
+    fresh = False
     if row is None:
         token = secrets.token_urlsafe(32)
-        conn.execute(
-            """INSERT INTO newsletter_subscribers (email, token, source, created_at)
-               VALUES (?, ?, 'site', ?)""", (email, token, now_iso))
-        record_consent(conn, "newsletter", None,
-                       "asked to join on the site, and was sent a link to confirm",
-                       email=email, at=now_iso)
-    else:
-        token = row["token"]
+        # OR IGNORE: two posts of one address arriving together both find no
+        # row. One inserts; the other is then an address already signed up,
+        # and the window below stops it sending a second letter.
+        fresh = conn.execute(
+            """INSERT OR IGNORE INTO newsletter_subscribers (email, token, source, created_at)
+               VALUES (?, ?, 'site', ?)""", (email, token, now_iso)).rowcount == 1
+        if fresh:
+            record_consent(conn, "newsletter", None,
+                           "asked to join on the site, and was sent a link to confirm",
+                           email=email, at=now_iso)
+        row = conn.execute(
+            "SELECT id, token, confirmed_at FROM newsletter_subscribers WHERE email = ?",
+            (email,)).fetchone()
+    token = row["token"]
 
+    # ONE CONFIRMATION A DAY, PER ADDRESS. Every post for an address still
+    # waiting to confirm used to send the letter again, so each address that
+    # signed up twice got two: four addresses in a row in October's Resend
+    # log, each pair two minutes apart. The ticks on the form were never the
+    # cause -- nothing ever read them.
+    #
+    # Claimed by one UPDATE rather than read-then-write, so two posts racing
+    # each other cannot both pass. Already confirmed or on the opt-out list
+    # claims nothing either: re-sending to them is a way to have the château
+    # email somebody repeatedly on demand. Rows from before confirm_sent_at
+    # existed read their created_at, the one send they are known to have had.
+    send = False
+    if not opted_out:
+        if fresh:
+            send = conn.execute(
+                """UPDATE newsletter_subscribers SET confirm_sent_at = ?
+                    WHERE id = ? AND confirm_sent_at IS NULL AND confirmed_at IS NULL""",
+                (now_iso, row["id"])).rowcount == 1
+        else:
+            cutoff = (datetime.now(timezone.utc)
+                      - timedelta(hours=NEWSLETTER_CONFIRM_RESEND_HOURS)).isoformat()
+            send = conn.execute(
+                """UPDATE newsletter_subscribers SET confirm_sent_at = ?
+                    WHERE id = ? AND confirmed_at IS NULL
+                      AND COALESCE(confirm_sent_at, created_at) < ?""",
+                (now_iso, row["id"], cutoff)).rowcount == 1
+    # Committed before the letter, which goes across the network: a write
+    # held open over that call is "database is locked" for every other writer.
     conn.commit()
-    # Already confirmed, or previously unsubscribed: say the same thing, send
-    # nothing. Re-sending a confirmation to a confirmed address is a way to
-    # have the château email somebody repeatedly on demand.
-    if (row and row["confirmed_at"]) or opted_out:
+    # Whichever happened, the page says the same thing (see above).
+    if not send:
         conn.close()
         flash(thanks, "success")
         return redirect(request.referrer or url_for("preview_home"))
@@ -29348,6 +29401,79 @@ def newsletter_recipients(conn):
            ORDER BY confirmed_at""").fetchall()
         # Nor anybody who asked us to stop using their details.
         if (r["email"] or "").strip().lower() not in held_back]
+
+
+NEWSLETTER_STATES = ["On the list", "Waiting to confirm", "Not written to", "Left"]
+
+
+def newsletter_rows(conn):
+    """Everybody who has typed an address into a sign-up box, and where each
+    one stands. "On the list" is newsletter_recipients itself, not a second
+    definition that agrees most of the time: a confirmed address the owner has
+    put on the do-not-write list, or whose owner asked us to stop using their
+    details, is "Not written to"."""
+    on_list = {(r["email"] or "").strip().lower() for r in newsletter_recipients(conn)}
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM newsletter_subscribers ORDER BY created_at DESC, id DESC").fetchall()]
+    for r in rows:
+        email = (r["email"] or "").strip().lower()
+        if r["unsubscribed_at"]:
+            r["state"] = "Left"
+        elif email in on_list:
+            r["state"] = "On the list"
+        elif r["confirmed_at"]:
+            r["state"] = "Not written to"
+        else:
+            r["state"] = "Waiting to confirm"
+        r["signed_up"] = local_datetime_str(r["created_at"])
+        r["confirmed"] = local_datetime_str(r["confirmed_at"]) if r["confirmed_at"] else ""
+        r["letter_sent"] = (local_datetime_str(r.get("confirm_sent_at"))
+                            if r.get("confirm_sent_at") else "")
+        r["left"] = local_datetime_str(r["unsubscribed_at"]) if r["unsubscribed_at"] else ""
+    return rows
+
+
+def newsletter_list_view(rows, args):
+    return list_view(
+        rows, args,
+        search=["email"],
+        search_hint="Search an address",
+        facets=[facet("state", "Where they stand", lambda r: r["state"],
+                      order=NEWSLETTER_STATES)],
+        sorts=[
+            sort_option("recent", "Newest first",
+                        lambda r: (r["created_at"] or "", r["id"]), reverse=True),
+            sort_option("oldest", "Oldest first", lambda r: (r["created_at"] or "", r["id"])),
+            sort_option("email", "By address", lambda r: (r["email"] or "").lower()),
+        ],
+        default_sort="recent",
+    )
+
+
+@app.route("/admin/newsletter")
+@owner_required
+def newsletter_subscribers_page():
+    """The newsletter's list. There was no page for it: the addresses lived
+    in newsletter_subscribers, and the only sign of them was a count on the
+    Public Gallery page and a box in the campaign sender."""
+    conn = get_db()
+    rows = newsletter_rows(conn)
+    counts = {s: sum(1 for r in rows if r["state"] == s) for s in NEWSLETTER_STATES}
+    lv = list_page(newsletter_list_view(rows, request.args), request.args)
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    bots = conn.execute(
+        "SELECT COUNT(*) AS c FROM submission_log WHERE action = 'newsletter_subscribe:bot' "
+        "AND created_at >= ?", (week_ago,)).fetchone()["c"]
+    conn.close()
+    overview = [
+        overview_cell("On the list", counts["On the list"], hint="confirmed, and written to"),
+        overview_cell("Waiting to confirm", counts["Waiting to confirm"],
+                      hint=f"one letter each, at most every {NEWSLETTER_CONFIRM_RESEND_HOURS} hours"),
+        overview_cell("Left", counts["Left"]),
+        overview_cell("Scripts turned away", bots, hint="this week, by the bot guard"),
+    ]
+    return render_template("admin_newsletter.html", lv=lv, rows=lv["rows"],
+                           overview=overview, resend_hours=NEWSLETTER_CONFIRM_RESEND_HOURS)
 
 
 @app.route("/admin/emails/optout", methods=["POST"])
@@ -49657,6 +49783,11 @@ def join_waitlist():
         conn.commit()
         conn.close()
         flash("Too many attempts from this connection — please try again in a bit.", "error")
+        return redirect(url_for("book_rooms", arrival=desired_arrival, departure=desired_departure))
+    # A sign-up like the newsletter's, and it writes to the address it is given.
+    if refused_as_bot(conn, "join_waitlist", request.form):
+        conn.close()
+        flash(BOT_REFUSAL_MESSAGE, "error")
         return redirect(url_for("book_rooms", arrival=desired_arrival, departure=desired_departure))
 
     if not name or not email:

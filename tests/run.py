@@ -545,6 +545,7 @@ SUITES = [
     "test_workshop_deposit_hold",
     "test_form_bot_guard",
     "test_bot_registrations_listed",
+    "test_newsletter_signup",
 ]
 
 

@@ -1878,6 +1878,98 @@ def repair_retired_addresses():
     return n
 
 
+# THE NEWSLETTER SIGN-UP (19 October 2026). One newsletter, one form, drawn by
+# templates/_newsletter.html in the menu panel, the footer of every public page,
+# the Contact page and the Journal bands. A handover built on an older copy
+# brings back what that replaced: the three topic ticks nothing ever read, an
+# inline form with no bot guard, and public_base.html and contact.html without
+# the sign-up the owner asked for. test_newsletter_signup goes red on each.
+NEWSLETTER_FOOTER_CALL = ("{% from '_newsletter.html' import newsletter_block with context %}\n"
+                          "    {{ newsletter_block('footer') }}\n    ")
+NEWSLETTER_CONTACT_CALL = (
+    "{% from '_newsletter.html' import newsletter_block with context %}\n"
+    "<section class=\"g-sec g-sec--sand g-journal\" id=\"newsletter\"><div class=\"g-wrap\">\n"
+    "  {{ newsletter_block('contact') }}\n"
+    "</div></section>\n\n")
+NEWSLETTER_TICKS = re.compile(r"[ \t]*<fieldset class=\"g-interests\">.*?</fieldset>[ \t]*\r?\n?", re.S)
+SIGNUP_FORM = re.compile(
+    r"(<form\b[^>]*action=\"\{\{ url_for\('(?:newsletter_subscribe|join_waitlist)'\) \}\}\"[^>]*>)"
+    r"(.*?)(</form>)", re.S)
+CSRF_LINE = re.compile(r"(<input type=\"hidden\" name=\"csrf_token\" value=\"\{\{ csrf_token\(\) \}\}\">)")
+
+
+def repair_newsletter_signup():
+    """The newsletter's one form: footer, Contact page, no ticks, bot guard on."""
+    n = 0
+    rel = "templates/public_base.html"
+    src = _read(rel)
+    if "newsletter_block('footer')" not in src:
+        anchor = '<div class="g-footer__grid">'
+        if anchor in src:
+            src = src.replace(anchor, NEWSLETTER_FOOTER_CALL + anchor, 1)
+            _write(rel, src)
+            n += 1
+        else:
+            print("  ! public_base.html: no .g-footer__grid to put the newsletter above")
+    rel = "templates/contact.html"
+    try:
+        src = _read(rel)
+    except FileNotFoundError:
+        src = None
+    if src is not None and "newsletter_block('contact')" not in src:
+        for anchor in ('<div class="g-band">', '<section class="g-sec g-close">',
+                       '{% endblock %}'):
+            # The last {% endblock %} is the content block's close.
+            at = src.rfind(anchor) if anchor == '{% endblock %}' else src.find(anchor)
+            if at != -1:
+                _write(rel, src[:at] + NEWSLETTER_CONTACT_CALL + src[at:])
+                n += 1
+                break
+        else:
+            print("  ! contact.html: nowhere to put the newsletter")
+
+    for name in sorted(os.listdir(TEMPLATE_DIR)):
+        if not name.endswith(".html"):
+            continue
+        rel = "templates/" + name
+        src = _read(rel)
+        fixed, k = NEWSLETTER_TICKS.subn("", src)
+        n += k
+
+        def guard(mt):
+            head, body, tail = mt.groups()
+            if "bot_guard()" in body:
+                return mt.group(0)
+            if CSRF_LINE.search(body):
+                body = CSRF_LINE.sub(lambda c: c.group(1) + "\n{{ bot_guard() }}", body, count=1)
+            else:
+                body = "\n{{ bot_guard() }}" + body
+            return head + body + tail
+        guarded = SIGNUP_FORM.sub(guard, fixed)
+        n += guarded.count("bot_guard()") - fixed.count("bot_guard()")
+        if guarded != src:
+            _write(rel, guarded)
+
+    # The footer band's rules, taken from git like the .g-plate__row rule: a
+    # literal copied here would go stale the first time the rule is improved.
+    rel = "static/gudanes.css"
+    css = _read(rel)
+    if ".g-news--footer{" not in css:
+        try:
+            head = subprocess.run(
+                ["git", "show", f"HEAD:{rel}"], cwd=ROOT, capture_output=True,
+                text=True, encoding="utf-8", check=True).stdout.replace("\r\n", "\n")
+            at = head.index(".g-news--footer{")
+            start = head.rindex("/* ====", 0, at)
+            end = head.find("\n/* ====", at)
+            block = head[start:end if end != -1 else len(head)].rstrip("\n") + "\n"
+            _write(rel, css.rstrip("\n") + "\n\n" + block)
+            n += 1
+        except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+            print("  ! could not read the newsletter footer rules from git")
+    return n
+
+
 def main():
     steps = [
         ("the robots block in public_base", repair_parent_robots_block),
@@ -1930,6 +2022,8 @@ def main():
         ("the Gold Suite, shown as the kitchen", repair_gold_suite_photograph),
         ("the rest-to-come lines the owner ruled out", repair_room_count_lines),
         ("the address the owner retired, ariege@", repair_retired_addresses),
+        ("the one newsletter form: footer, Contact, no ticks, bot guard",
+         repair_newsletter_signup),
     ]
     total, failed = 0, []
     for label, fn in steps:

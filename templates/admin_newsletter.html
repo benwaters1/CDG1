@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Newsletter{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Newsletter</h1>
+  <a href="{{ url_for('admin_emails') }}" class="btn-ghost">Back to emails</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  One list. An address joins from the sign-up box in the site's menu, its footer, the
+  Contact page or a Journal band, is sent one letter asking it to confirm, and is on the
+  list once it has. Nobody is sent that letter twice in {{ resend_hours }} hours, however many times
+  the address is typed in. To write to the list, send a campaign to
+  <a href="{{ url_for('admin_emails') }}">Newsletter subscribers</a>.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% include "_list_toolbar.html" %}
+
+{% if not rows %}
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that. <a href="{{ url_for('newsletter_subscribers_page') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      Nobody has signed up yet.
+    {% endif %}
+  </div>
+{% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Address</th><th>Where they stand</th><th>Signed up</th>
+        <th>Confirmation letter sent</th><th>Confirmed</th><th>Left</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.email }}</td>
+          <td>{{ r.state }}</td>
+          <td>{{ r.signed_up }}</td>
+          <td>{{ r.letter_sent or '—' }}</td>
+          <td>{{ r.confirmed or '—' }}</td>
+          <td>{{ r.left or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% with lv = lv %}{% include "_list_pager.html" %}{% endwith %}
+{% endif %}
+
+{% endblock %}

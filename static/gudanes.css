@@ -11596,3 +11596,49 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-barony__n{ font-family: var(--serif); font-size: clamp(1.5rem, 2.6vw, 2rem); line-height: 1.1; color: #14305E; }
 .g .g-barony__l{ font-size: 14px; line-height: 1.4; color: #3F4A5A; }
 @media (min-width: 900px){ .g .g-barony .g-hist__grid{ grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); } }
+
+/* ==========================================================================
+   THE NEWSLETTER IN THE FOOTER (_newsletter.html, newsletter_block('footer'))
+   19 Oct 2026, the owner: the sign-up "down the bottom of the site on the
+   footer too". A band across the top of the footer on every public page,
+   above the address and the link columns. The Contact page and the Journal
+   bands use .g-journal__form; the menu panel uses .g-navwrap__news. This is
+   the footer's own look, light on navy. tools/repair_handover.py puts this
+   block back from git if a handover's stylesheet arrives without it.
+   ========================================================================== */
+.g-news--footer{
+  display: grid; gap: var(--s4);
+  padding: 0 0 var(--s6); margin: 0 0 var(--s6);
+  border-bottom: 1px solid rgba(255,255,255,.14);
+}
+.g-news--footer h2{ margin: 0 0 var(--s2); }
+.g-news--footer .g-news__p{
+  margin: 0; max-width: 34rem;
+  font-size: 15px; line-height: 1.6; color: rgba(226,214,192,.95);
+}
+.g-news__form{ display: flex; flex-wrap: wrap; gap: var(--s3); align-items: center; position: relative; }
+/* Hidden children take no flex slot (the Journal form learnt this the hard way). */
+.g-news__form > input[type="hidden"], .g-news__form > .g-vh{ position: absolute; }
+.g-news__form input[type="email"]{
+  flex: 1 1 14rem; min-width: 0; height: 48px; padding: 0 var(--s4);
+  border: 1px solid rgba(226,214,192,.55); border-radius: 0;
+  background: rgba(255,255,255,.06); color: #fff;
+  font-family: var(--ui); font-size: 16px;
+}
+.g-news__form input[type="email"]::placeholder{ color: rgba(226,214,192,.8); }
+.g-news__form input[type="email"]:focus-visible{ outline: 2px solid var(--gilt-leaf); outline-offset: 2px; }
+.g .g-news--footer .g-btn--solid{
+  height: 48px; flex: 0 0 auto;
+  background: var(--sand); color: var(--blue-deep); border-color: var(--sand);
+}
+.g .g-news--footer .g-btn--solid:hover{ background: var(--gilt-leaf); border-color: var(--gilt-leaf); color: var(--blue-deep); }
+@media (min-width: 48rem){
+  .g-news--footer{
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
+    align-items: center; column-gap: var(--s7);
+  }
+}
+@media (max-width: 34rem){
+  .g-news__form input[type="email"]{ flex-basis: 100%; }
+  .g .g-news--footer .g-btn--solid{ width: 100%; }
+}

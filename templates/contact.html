@@ -178,6 +178,14 @@
   </div>
 </div></section>
 
+<!-- ============ THE JOURNAL ============ -->
+{# 19 Oct (owner): the newsletter on the Contact page. The one form, from the
+   partial; test_newsletter_signup goes red if a handover drops it. #}
+{% from '_newsletter.html' import newsletter_block with context %}
+<section class="g-sec g-sec--sand g-journal" id="newsletter"><div class="g-wrap">
+  {{ newsletter_block('contact') }}
+</div></section>
+
 <div class="g-band">
   <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fad6453b-f801-43fb-b3bc-6ed223ec09e0/Rebecca%26Ken_Preview_paulinaweddings.com-1_websize.jpg?format=1000w" alt="The château, the gardens and the pool from above" loading="lazy">
   <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aabd8580-5420-43e7-92c9-779b82294ee3/home-7.jpg?format=1000w" alt="The château in its meadow, mist on the hills" loading="lazy">

@@ -1,0 +1,66 @@
+{# ==========================================================================
+   THE NEWSLETTER SIGN-UP. One form, drawn wherever the site asks for an
+   address: the menu panel, the footer of every public page, the Contact
+   page, and the Journal band near the foot of eight pages.
+
+       {% from '_newsletter.html' import newsletter_form, newsletter_block with context %}
+       {{ newsletter_form('journal') }}      the form alone, under a page's own heading
+       {{ newsletter_block('footer') }}      heading, form and the line under it
+
+   There is ONE newsletter. It used to ask "What would you like to hear
+   about?" with three ticks -- rooms, workshop dates, the restoration -- which
+   nothing ever read and nothing ever sent by. The owner (19 Oct 2026): "it
+   should just be 1 thing. We wouldn't send out multiple different things."
+   test_newsletter_signup fails if a tick comes back into any template, and
+   tools/repair_handover.py takes one out if a handover brings it.
+
+   Every copy carries {{ bot_guard() }}: newsletter_subscribe refuses a post
+   that filled the hidden field or came back faster than a person types.
+   ========================================================================== #}
+
+{% macro newsletter_form(place='footer', prefill='') %}
+{#- One id per place, not a random number: the footer and the Journal band
+    are on the same page, and a label must point at its own field. -#}
+{%- set _id = 'nl-email-' ~ place -%}
+{%- set _cls = {'panel': 'g-navwrap__news', 'journal': 'g-journal__form',
+                'contact': 'g-journal__form'}.get(place, 'g-news__form') -%}
+<form class="{{ _cls }} g-news__one" method="post" action="{{ url_for('newsletter_subscribe') }}"
+      data-newsletter="{{ place }}"
+      onsubmit="var b=this.querySelector('button[type=submit]');if(b){if(b.dataset.sent)return false;b.dataset.sent='1';b.setAttribute('aria-busy','true');}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {{ bot_guard() }}{# a field only scripts fill, and when the form was drawn: bot_guard_refusal #}
+  <label class="g-vh" for="{{ _id }}">{{ t('Email address') }}</label>
+  <input type="email" inputmode="email" name="email" id="{{ _id }}"
+         placeholder="{{ t('Email') if place == 'panel' else t('Your email') }}"
+         required autocomplete="email"{% if prefill %} value="{{ prefill }}"{% endif %}>
+  {%- if place == 'panel' %}
+  <button type="submit" aria-label="{{ t('Subscribe') }}">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+  </button>
+  {%- else %}
+  <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
+  {%- endif %}
+</form>
+{% endmacro %}
+
+{% macro newsletter_block(place='footer') %}
+{%- if place == 'contact' %}
+{#- The Journal band's own look, so Contact matches the eight pages that have
+    one. contact.html wraps it in <section class="g-sec g-sec--sand g-journal">. -#}
+<div class="g-journal__in g-news g-news--contact">
+  <p class="g-eyebrow">The Journal</p>
+  <h2 class="g-journal__h">Follow the Restoration</h2>
+  <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
+  {{ newsletter_form(place) }}
+  <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
+</div>
+{%- else %}
+<div class="g-news g-news--{{ place }}">
+  <div class="g-news__txt">
+    <h2>{{ t('Subscribe to our newsletter') }}</h2>
+    <p class="g-news__p">{{ t('The restoration, the rooms as they open, and the workshop dates. No more than a few times a year; unsubscribe in one click.') }}</p>
+  </div>
+  {{ newsletter_form(place) }}
+</div>
+{%- endif %}
+{% endmacro %}
