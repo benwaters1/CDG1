@@ -10,10 +10,13 @@ this app closes when somebody does the work and says so; nothing here has a
 become a record of every problem the house has ever had — which nobody reads
 twice, including the morning it lists a real one.
 """
+import html
+import re
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db
 import _harness
+import test_owner_pages_read_cleanly as owner_sweep
 
 m = _harness.m
 TAG = "ztest-wt-"
@@ -296,6 +299,55 @@ def run():
     conn.execute("DELETE FROM audit_log WHERE target = ?", (TAG + "backup",))
     # The section below counts on exactly the eight clashes it makes itself.
     conn.execute("DELETE FROM shifts WHERE role_note = ?", (TAG + "shift",))
+    conn.commit()
+
+    s.section("A day in a title is written the house's way")
+    # The title is what the task list, the calendar and the house calendar
+    # page print. Seven of them printed the database's day -- 'Nobody rostered
+    # — 2026-10-20' -- which nobody saw until the house calendar began listing
+    # tasks, and then only on a run that left a guest arriving with nobody on.
+    # Seeded here rather than left to whatever an earlier suite left behind:
+    # the first day in the fortnight with no shift on it, and a guest arriving.
+    gap_day = next((_iso(d) for d in range(1, 14) if not conn.execute(
+        "SELECT 1 FROM shifts WHERE shift_date = ? LIMIT 1", (_iso(d),)).fetchone()), None)
+    s.check("a day in the fortnight with nobody rostered, to seed the gap on",
+            gap_day is not None, detail="every day has a shift on it")
+    gap_day = gap_day or _iso(13)
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+           guest_email, arrival_date, departure_date, party_size, status,
+           total_price, created_at)
+           VALUES (?, ?, ?, 'Uncovered', 'g@example.invalid', ?, ?, 2, 'confirmed', 200, ?)""",
+        (room, TAG + "GAP", TAG + "tk2", gap_day,
+         (m.parse_date(gap_day) + timedelta(days=1)).isoformat(), now))
+    conn.commit()
+    _run(conn)
+    gap_title = "Nobody rostered — " + m.format_date_short(gap_day)
+    s.check("the cover gap is raised, its day written out",
+            len(_of_kind(conn, gap_title)) == 1,
+            detail=f"wanted {gap_title!r}; open: {_of_kind(conn, 'Nobody rostered')}")
+    # Every open one, not only the kind seeded: a title is a title wherever it
+    # came from, and this is the list the house calendar reads.
+    iso_day = re.compile(r"(?<![\w-])20\d\d-\d\d-\d\d(?![\w-])")
+    dated = [t for t in _open_titles(conn) if iso_day.search(t)]
+    s.check("no open watch task is titled with the database's day", not dated,
+            detail=str(dated[:3]))
+    # A note is printed under the title on the task's own page. The fault
+    # raised above, two days out, says when they arrive.
+    fault = _watch_task(conn, "Open fault%")
+    s.check("and the note says the day the house's way too",
+            fault is not None and m.format_date_human(_iso(2)) in (fault["notes"] or "")
+            and not iso_day.search(fault["notes"] or ""),
+            detail="no such task" if fault is None else str(fault["notes"])[:90])
+
+    # The page the fault was seen on. The rule it broke is test_rendered_markup's,
+    # and checked here with the same reader so the gap is certainly on it.
+    page = html.unescape(_oc.get("/admin/house-calendar").get_data(as_text=True))
+    s.check("the house calendar lists the task by that title",
+            gap_title in page, detail="not in the fortnight's preview")
+    on_page = owner_sweep.read(page).iso_dates
+    s.check("and prints no day the database's way", not on_page, detail=str(on_page[:3]))
+    conn.execute("DELETE FROM bookings WHERE reference_code = ?", (TAG + "GAP",))
     conn.commit()
 
     s.section("The list is capped, and says so")
