@@ -98,6 +98,12 @@ from flask import request  # noqa: E402
 
 m.app.config["WTF_CSRF_ENABLED"] = False
 
+# The public forms refuse a post sent sooner after the page was drawn than a
+# person could fill it in (bot_guard_refusal). Suites that read a form off the
+# page and post it back are a person typing in no time at all, so the minimum
+# is nothing here. test_form_bot_guard puts it back while it checks it.
+m.PUBLIC_FORM_MIN_SECONDS = 0
+
 # ---------------------------------------------------------------------------
 # Outbound isolation.
 #

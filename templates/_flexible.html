@@ -19,6 +19,7 @@
 
   <form method="post" action="{{ url_for('contact_page') }}" class="g-flex__f">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ bot_guard() }}{# a field only scripts fill, and when the form was drawn: bot_guard_refusal #}
     <input type="hidden" name="action" value="flexible">
 
     <div class="g-flex__row">

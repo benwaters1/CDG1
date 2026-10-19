@@ -137,6 +137,7 @@
   {% from '_stay_or_workshop.html' import night_notice %}
   <form id="book-form" method="post" class="g-form-full" style="margin-top:clamp(1.5rem,4vw,2.5rem);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ bot_guard() }}{# a field only scripts fill, and when the form was drawn: bot_guard_refusal #}
 
     <div class="g-cols">
       <div>

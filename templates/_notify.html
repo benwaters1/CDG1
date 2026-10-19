@@ -16,6 +16,7 @@
        production, the form is not weakly protected -- it is unusable: the
        guest presses "Let me know" and is handed the session-timeout page. #}
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ bot_guard() }}{# a field only scripts fill, and when the form was drawn: bot_guard_refusal #}
     <input type="hidden" name="action" value="notify">
     <p class="g-field">
       <label for="nf_month">Which month</label>

@@ -35,7 +35,7 @@
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('guests', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">{{ figures.confirmed }} of {{ session['capacity'] }}</span>
-      <span class="stat-tile-label">Places confirmed{% if figures.pending %} &middot; {{ figures.pending }} waiting on you{% endif %} &middot; {{ figures.free }} free</span></span>
+      <span class="stat-tile-label">Places confirmed{% if figures.pending %} &middot; {{ figures.pending }} waiting on you{% endif %}{% if figures.holding %} &middot; {{ figures.holding }} waiting for the deposit{% endif %} &middot; {{ figures.free }} free</span></span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('financial', 19) }}</span>
@@ -79,7 +79,8 @@
             {%- if r.phone %} &middot; <a class="small-link" href="tel:{{ r.phone|replace(' ', '') }}">{{ r.phone }}</a>{% endif %}</span>
         </td>
         <td>
-          {% if r.status == 'pending' %}<span class="mini-status status-pending">waiting on you</span>
+          {% if r.holding %}<span class="mini-status status-pending">waiting for the deposit until {{ r.hold_until|house_when }}</span>
+          {% elif r.status == 'pending' %}<span class="mini-status status-pending">waiting on you</span>
           {% else %}<span class="mini-status status-confirmed">confirmed</span>{% endif %}
           <span class="upload-hint">{{ 'a room to themselves' if row['occupancy_type'] == 'single' else 'sharing' }}
             {%- if row['requested_roommate'] %} &middot; with {{ row['requested_roommate'] }}{% endif %}</span>

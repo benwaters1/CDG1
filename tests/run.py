@@ -526,6 +526,9 @@ SUITES = [
     # house's own inboxes in the mail log and the delivery reports.
     "test_form_csrf_tokens",
     "test_house_inbox_delivery",
+    "test_workshop_deposit_hold",
+    "test_form_bot_guard",
+    "test_bot_registrations_listed",
 ]
 
 

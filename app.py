@@ -332,6 +332,19 @@ MAX_UPLOAD_MB = 15
 LOGIN_LOCKOUT_THRESHOLD = 5
 LOGIN_LOCKOUT_MINUTES = 15
 BOOKING_RATE_LIMIT_PER_HOUR = 5
+# How long a place on an atelier is held while the guest is at Stripe paying
+# the deposit. The place counts as taken for that long and no longer: it is
+# confirmed when the deposit arrives, and given back by the housekeeping run
+# (release_lapsed_workshop_holds) if it does not. Before the hold, the place
+# was confirmed first and paid for after, so anybody who closed the card page
+# kept a confirmed place with no deposit and no card -- a bot did, on 18
+# October 2026, with two of ten places on a June atelier.
+WORKSHOP_DEPOSIT_HOLD_MINUTES = 60
+# A person takes longer than this to fill in a booking form; a script posting
+# the form it has just fetched does not (see bot_guard_refusal). Short on
+# purpose: a guest whose browser fills in the name and address still has to
+# choose dates and read the page.
+PUBLIC_FORM_MIN_SECONDS = 4
 # Password resets per hour from one address. Higher than it sounds: a person
 # who mistypes their address, then tries again, then finds the first mail in
 # spam and asks once more is at three, and locking them out of their own
@@ -7380,6 +7393,16 @@ def init_db():
               revoked_at TEXT,
               revoked_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
             )"""),
+        # A place on an atelier held while the guest is at Stripe paying the
+        # deposit: until when, and when a hold nobody paid for was given back
+        # (see WORKSHOP_DEPOSIT_HOLD_MINUTES). And the owner's word that a
+        # registration flagged as looking like a bot is a real person.
+        ("workshop_bookings_deposit_hold_until",
+         "ALTER TABLE workshop_bookings ADD COLUMN deposit_hold_until TEXT"),
+        ("workshop_bookings_hold_released_at",
+         "ALTER TABLE workshop_bookings ADD COLUMN hold_released_at TEXT"),
+        ("workshop_bookings_bot_check_cleared_at",
+         "ALTER TABLE workshop_bookings ADD COLUMN bot_check_cleared_at TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -8976,6 +8999,9 @@ NAV_AREAS = {
         "admin_workshop_feedback", "admin_workshop_registrations", "admin_workshop_waitlist",
         "admin_workshops", "cancel_workshop_registration_admin",
         "confirm_workshop_registration", "decline_workshop_registration", "delete_workshop",
+        # A late deposit given its place back, and a registration flagged as a
+        # bot said to be a real person: both the registrations desk.
+        "take_back_released_registration", "clear_registration_bot_check",
         "delete_workshop_session", "edit_workshop", "export_workshop_feedback_csv",
         "export_workshop_registrations_csv", "export_workshop_waitlist_csv", "new_workshop",
         "new_workshop_session", "toggle_workshop_feedback_featured",
@@ -11274,6 +11300,104 @@ def rate_limited(conn, action, limit, window_hours=1):
     return count >= limit
 
 
+# KEEPING SCRIPTS OFF THE PUBLIC FORMS.
+#
+# CSRF and the hourly limit per address were all there was, and neither stops
+# a script: it fetches the page (and with it a CSRF token), fills every field
+# with random letters and posts it, once per address. That is how a CONFIRMED
+# registration made entirely of random letters came to hold two of ten places
+# on a June atelier (18 October 2026). Two checks a person never notices:
+#
+#   - a field nobody can see, which a person leaves empty and a script that
+#     fills every field it finds does not;
+#   - the moment the form was drawn, signed so it cannot be made up, because a
+#     person takes longer than PUBLIC_FORM_MIN_SECONDS to fill a booking form
+#     and a script posting what it has just fetched does not.
+#
+# Refused QUIETLY: nothing written, nobody told, and the page comes back as it
+# would after any mistake, so a script learns nothing from it. A person caught
+# by mistake -- a browser that filled the hidden field -- reads "please check
+# and send it again", does, and is through.
+#
+# A form posted with no stamp at all is let through. That is a page drawn
+# before this check existed, and CSRF already ends those within the hour; the
+# test that every guarded form carries the fields is what keeps a handover
+# from dropping them (test_form_bot_guard).
+BOT_HONEYPOT_FIELD = "leave_this_empty"
+BOT_STAMP_FIELD = "form_drawn"
+
+
+def _form_stamp_signature(ts):
+    key = app.secret_key
+    key = key.encode("utf-8") if isinstance(key, str) else bytes(key or b"")
+    return hmac.new(key, f"form-drawn:{ts}".encode("ascii"), hashlib.sha256).hexdigest()[:24]
+
+
+def bot_guard_fields():
+    """The two fields every guarded public form carries, as markup for its
+    template: {{ bot_guard() }} inside the <form>."""
+    from markupsafe import Markup
+    ts = str(int(time.time()))
+    # Off the page rather than display:none, which some scripts know to skip;
+    # out of the tab order and hidden from screen readers, with a label that
+    # says what to do in case anything does reach it. autocomplete off and a
+    # name no browser fills, so autofill leaves it alone.
+    return Markup(
+        '<div aria-hidden="true" style="position:absolute;left:-10000px;top:auto;'
+        'width:1px;height:1px;overflow:hidden;">'
+        f'<label for="{BOT_HONEYPOT_FIELD}">Leave this empty</label>'
+        f'<input type="text" id="{BOT_HONEYPOT_FIELD}" name="{BOT_HONEYPOT_FIELD}" value="" '
+        'tabindex="-1" autocomplete="off"></div>'
+        f'<input type="hidden" name="{BOT_STAMP_FIELD}" value="{ts}.{_form_stamp_signature(ts)}">')
+
+
+app.jinja_env.globals["bot_guard"] = bot_guard_fields
+
+
+def bot_guard_refusal(form, now=None):
+    """Why this post looks like a script, or None if it looks like a person.
+
+    The reason is for the log, never for the page.
+    """
+    if (form.get(BOT_HONEYPOT_FIELD) or "").strip():
+        return "filled the hidden field"
+    stamp = form.get(BOT_STAMP_FIELD)
+    if stamp is None:
+        return None                     # a page drawn before the check existed
+    ts, _dot, sig = str(stamp).partition(".")
+    if not ts.isdigit() or not hmac.compare_digest(sig, _form_stamp_signature(ts)):
+        return "the form's time was made up"
+    age = (now if now is not None else time.time()) - int(ts)
+    if age < PUBLIC_FORM_MIN_SECONDS:
+        return f"sent {max(age, 0):.0f}s after the form was drawn"
+    return None
+
+
+def refused_as_bot(conn, action, form):
+    """True if this post is a script's, having written down that it was.
+
+    The note goes where the hourly limit keeps its own (submission_log), as
+    '<action>:bot', so how often each form is tried is one query away. Saved
+    at once, like the limit's: the caller turns the post away without
+    committing anything.
+    """
+    reason = bot_guard_refusal(form)
+    if not reason:
+        return False
+    already_open = conn.in_transaction
+    conn.execute("INSERT INTO submission_log (ip_address, action, created_at) VALUES (?, ?, ?)",
+                 (request.remote_addr or "unknown", f"{action}:bot",
+                  datetime.now(timezone.utc).isoformat()))
+    if not already_open:
+        conn.commit()
+    print(f"[bot guard] {action} refused: {reason}")
+    return True
+
+
+BOT_REFUSAL_MESSAGE = ("That did not go through. Please check your details and send the form "
+                       "again, or write to the château directly.")
+
+
 # What the booking page promises: "The château confirms within a day."
 # Past this a request has already broken that promise, which is a different
 # thing from being close to the 48 hours at which the app answers instead.
@@ -11443,6 +11567,46 @@ def release_lapsed_reservations(conn, now=None):
             conn, row["id"], refund=False, via="reservation not taken up in time",
             tell_guest=False)
         if declined:
+            count += 1
+    if count:
+        conn.commit()
+    return count
+
+
+def release_lapsed_workshop_holds(conn, now=None):
+    """Give back a place on an atelier held for a deposit that never came.
+    Returns how many.
+
+    The registration form holds the place while the guest is at Stripe
+    (WORKSHOP_DEPOSIT_HOLD_MINUTES) and confirms it when the deposit arrives.
+    One whose deadline has passed with nothing paid is cancelled here, marked
+    as a hold that lapsed rather than as anybody's decision, and the places
+    count as free again on every page.
+
+    It writes to NOBODY. The guest was never told they had a place -- the hold
+    sends no letter -- and a script filling the form in is exactly who leaves
+    one to lapse. Anything with money on the ledger is left for a person, as
+    with any pending stay; and a deposit that arrives after this has run is
+    settled by settle_workshop_deposit_hold, never refunded on a timer.
+    """
+    now = (now or datetime.now(timezone.utc)).isoformat()
+    count = 0
+    for row in conn.execute(
+            """SELECT id, reference_code FROM workshop_bookings
+                WHERE status = 'pending' AND deposit_hold_until IS NOT NULL
+                  AND deposit_hold_until <= ? AND deposit_paid_at IS NULL""",
+            (now,)).fetchall():
+        if amount_paid_for(conn, "workshop", row) > 0.005:
+            continue
+        cur = conn.execute(
+            """UPDATE workshop_bookings SET status = 'cancelled', decided_at = ?,
+                      hold_released_at = ?
+                WHERE id = ? AND status = 'pending' AND deposit_paid_at IS NULL""",
+            (now, now, row["id"]))
+        if cur.rowcount:
+            log_audit(conn, "workshop_hold_released", target=row["reference_code"],
+                      via=f"no deposit within {WORKSHOP_DEPOSIT_HOLD_MINUTES} minutes",
+                      actor=None)
             count += 1
     if count:
         conn.commit()
@@ -13170,7 +13334,8 @@ def workshops_overview(conn, period, today):
         (period["start_at"], period["end_at"]),
     ).fetchone()["t"]
     pending = conn.execute(
-        "SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending'"
+        "SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending' "
+        "AND deposit_hold_until IS NULL"
     ).fetchone()["c"]
     fill = round(seats / capacity * 100, 1) if capacity else 0
     return [
@@ -13180,7 +13345,7 @@ def workshops_overview(conn, period, today):
         # page and every session's "spots left" already count it as taken.
         # Left out here, the band said 22 free above sessions that were full.
         overview_cell("Seats free", max(0, capacity - seats - held),
-                      hint=(f"{held} more held, awaiting a decision" if held else None)),
+                      hint=(f"{held} more held, awaiting a decision or a deposit" if held else None)),
         overview_cell("Full", fill, sub="%"),
         overview_cell("Revenue", euro(revenue - refunded), hint="net of refunds"),
         overview_cell("Awaiting a decision", pending, alert=pending),
@@ -17220,7 +17385,10 @@ def build_office_display_queues(conn, today):
         """SELECT workshop_bookings.*, workshops.title FROM workshop_bookings
            JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-           WHERE workshop_bookings.status = 'pending' ORDER BY workshop_sessions.start_date"""
+           WHERE workshop_bookings.status = 'pending'
+             -- A place held while the guest pays is not waiting on anybody here.
+             AND workshop_bookings.deposit_hold_until IS NULL
+           ORDER BY workshop_sessions.start_date"""
     ).fetchall()
     queues.append({
         "key": "pending_workshops", "label": "Workshop regs to confirm", "link": url_for("admin_workshop_registrations"),
@@ -33257,7 +33425,8 @@ def inject_user():
                 "SELECT COUNT(*) FROM restaurant_bookings WHERE status = 'pending'"
             ).fetchone()[0]
             pending_workshop_count = conn.execute(
-                "SELECT COUNT(*) FROM workshop_bookings WHERE status = 'pending'"
+                "SELECT COUNT(*) FROM workshop_bookings WHERE status = 'pending' "
+                "AND deposit_hold_until IS NULL"
             ).fetchone()[0]
             pending_events_count = conn.execute(
                 "SELECT COUNT(*) FROM event_inquiries WHERE status = 'new'"
@@ -35960,6 +36129,42 @@ def owner_home_warnings(conn, today):
                f"somebody has checked Stripe" if held else "")
             + ".", len(balances), "balances_to_collect")
 
+    # A GUEST WHO HAS PAID AND HAS NO PLACE. Their hold ran out, the atelier
+    # filled, and the deposit came anyway. Nothing is refunded on its own:
+    # it stays here until the owner takes them back or gives the money back.
+    unplaced = late_deposits_without_a_place(conn)
+    if unplaced:
+        first = unplaced[0]
+        add("blocker",
+            (f"{first['guest_name']} paid a deposit for a place that had been released"
+             if len(unplaced) == 1 else
+             f"{len(unplaced)} guests paid a deposit for a place that had been released"),
+            f"{euro(sum(r['held'] for r in unplaced))} received and no place on "
+            f"{first['title'] if len(unplaced) == 1 else 'the ateliers they chose'}. "
+            "Take them back from the registration, or refund it.",
+            len(unplaced), "admin_workshop_registrations",
+            **({"q": first["reference_code"]} if len(unplaced) == 1 else {}),
+            when=LIST_ALL)
+
+    # CONFIRMED PLACES THAT LOOK LIKE A SCRIPT'S. From before the deposit
+    # hold, when a form filled with random letters kept a confirmed place with
+    # nothing paid and no card. Listed, never cancelled: the owner decides,
+    # and cancelling it, a deposit, or "this is a real person" closes it.
+    suspects = suspect_unpaid_registrations(conn, today)
+    if suspects:
+        places = sum(r["party_size"] or 0 for r in suspects)
+        first = suspects[0]
+        add("attention",
+            (f"A confirmed place on {first['title']} looks like a bot"
+             if len(suspects) == 1 else
+             f"{len(suspects)} confirmed registrations look like a bot"),
+            f"{places} place{'' if places == 1 else 's'} held with no deposit and no card, "
+            "and the name, email and address look like random letters. Cancel "
+            "it if nobody real is behind it, or say it is a real person.",
+            len(suspects), "admin_workshop_registrations",
+            **({"q": first["reference_code"]} if len(suspects) == 1 else
+               {"state": "Confirmed", "money": "Deposit unpaid"}))
+
     # Lines taken off a bill that was already settled. The till records who
     # voided what, when and why, and has done since it was written; until the
     # voids page there was nowhere to read any of it, so this is a fortnight
@@ -36727,6 +36932,9 @@ def staff_dashboard():
         # opening the page at 00:05 should not see a room called Ready.
         prep_channel_departures(conn, today)
         expired_count = expire_stale_pending_bookings(conn)
+        # Here as well as on the housekeeping timer, as the line above is, so
+        # a lapsed hold is given back even where that timer is switched off.
+        release_lapsed_workshop_holds(conn)
         if expired_count:
             flash(
                 f"Auto-declined {expired_count} pending booking{'' if expired_count == 1 else 's'} "
@@ -36881,7 +37089,8 @@ def staff_dashboard():
             if opening and today < opening <= today + timedelta(days=14):
                 restaurant_alerts.append({"title": "Restaurant opens soon", "detail": f"{in_words((opening - today).days)} — {format_date_short(opening.isoformat())}", "link": url_for("admin_restaurant")})
         pending_workshop_regs = conn.execute(
-            "SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending'"
+            "SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending' "
+        "AND deposit_hold_until IS NULL"
         ).fetchone()["c"]
         if pending_workshop_regs:
             restaurant_alerts.append({"title": "Workshop registrations awaiting a decision", "detail": str(pending_workshop_regs), "link": url_for("admin_workshop_registrations")})
@@ -49486,6 +49695,16 @@ def book_room(room_id):
             conn.close()
             flash("Too many booking attempts from this connection — please try again in a bit, or contact the château directly.", "error")
             return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **prefill)
+        if refused_as_bot(conn, "book_room", request.form):
+            prefill = book_room_prefill(request.form, conn)
+            conn.close()
+            flash(BOT_REFUSAL_MESSAGE, "error")
+            return render_template("book_room.html", room=room,
+                                   arrival=request.form.get("arrival_date", "").strip(),
+                                   departure=request.form.get("departure_date", "").strip(),
+                                   extras=extras, stripe_enabled=stripe_enabled(),
+                                   gallery_photos=gallery_photos, deposit_shown=deposit_shown,
+                                   **prefill)
         arrival_raw = request.form.get("arrival_date", "").strip()
         departure_raw = request.form.get("departure_date", "").strip()
         guest_name = request.form.get("guest_name", "").strip()
@@ -51556,6 +51775,12 @@ def submit_event_inquiry():
         types = event_types(conn)     # read before closing, not after
         conn.close()
         flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
+        return render_template("events_info.html", event_types=types,
+                               **public_form_prefill(request.form, EVENT_PREFILL))
+    if refused_as_bot(conn, "event_inquiry", request.form):
+        types = event_types(conn)
+        conn.close()
+        flash(BOT_REFUSAL_MESSAGE, "error")
         return render_template("events_info.html", event_types=types,
                                **public_form_prefill(request.form, EVENT_PREFILL))
 
@@ -56024,8 +56249,12 @@ def session_room_error(conn, session_id, occupancy_type, party_size, exclude_id=
 def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email, guest_phone, party_size,
                              notes, occupancy_type="double", requested_roommate=None, dietary_notes=None,
                              medical_notes=None, special_occasion=None, booking_id=None, promo_code=None,
-                             confirm_now=False):
+                             confirm_now=False, hold_for_deposit=False):
     """Take a place on an atelier. With confirm_now, it is taken rather than asked for.
+
+    With hold_for_deposit as well, and a deposit about to be taken by card, it
+    is only HELD until the deposit arrives -- see WORKSHOP_DEPOSIT_HOLD_MINUTES
+    -- and confirm_now applies when it does.
 
     The places are already claimed before this is reached — claim_workshop_places
     takes the lock on the public path — so the capacity promise is kept whether
@@ -56072,18 +56301,48 @@ def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email
         record_promo_redemption(conn, promo, "workshop", reference_code, guest_email, subtotal, discount_amount)
     conn.commit()
 
-    date_line = format_date_human(session_row["start_date"])
-    if session_row["end_date"] != session_row["start_date"]:
-        date_line += f" to {format_date_human(session_row['end_date'])}"
+    # HELD, NOT CONFIRMED, while the guest is at Stripe. The place counts as
+    # taken -- a pending registration does, on every page that asks -- but
+    # nobody is told anything until the deposit arrives
+    # (settle_workshop_deposit_hold), and the housekeeping run gives the place
+    # back if it does not. Only where a card payment really is about to be
+    # taken: with Stripe off, or nothing to pay now, there is no card page to
+    # walk away from, and the registration is confirmed as it always was.
+    if hold_for_deposit and stripe_enabled() and (deposit_amount or 0) > 0.005:
+        until = datetime.now(timezone.utc) + timedelta(minutes=WORKSHOP_DEPOSIT_HOLD_MINUTES)
+        conn.execute("UPDATE workshop_bookings SET deposit_hold_until = ? WHERE id = ?",
+                     (until.isoformat(), booking_row_id))
+        conn.commit()
+        return reference_code, manage_token, booking_row_id
 
+    announce_workshop_registration(conn, booking_row_id, confirm_now=confirm_now)
+    return reference_code, manage_token, booking_row_id
+
+
+def announce_workshop_registration(conn, booking_row_id, confirm_now=False, note=None):
+    """Confirm a registration if asked, and tell the guest, the owner and the
+    instructor. Returns True if it was confirmed.
+
+    Split from create_workshop_booking so a place held for a deposit is
+    announced when the deposit arrives, through exactly the steps a place
+    confirmed on the spot goes through, rather than a second copy of them.
+    `note` is added to the owner's notice: why it is arriving now.
+    """
     booking_row = conn.execute(
-        """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
+        """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date,
+                  workshops.title, workshops.instructor_user_id
            FROM workshop_bookings
            JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_bookings.id = ?""",
         (booking_row_id,),
     ).fetchone()
+    if not booking_row:
+        return False
+    date_line = format_date_human(booking_row["start_date"])
+    if booking_row["end_date"] != booking_row["start_date"]:
+        date_line += f" to {format_date_human(booking_row['end_date'])}"
+
     confirmed_now = False
     if confirm_now:
         confirmed_now, _why, _cap = confirm_workshop_registration_by_id(
@@ -56097,18 +56356,19 @@ def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email
         conn.commit()
 
     notify_title = (
-        f"Atelier booked — {workshop['title']}, {guest_name} ({date_line})"
+        f"Atelier booked — {booking_row['title']}, {booking_row['guest_name']} ({date_line})"
         if confirmed_now else
-        f"Needs you — {workshop['title']}, {guest_name} ({date_line})")
+        f"Needs you — {booking_row['title']}, {booking_row['guest_name']} ({date_line})")
+    body = " ".join(p for p in (note, booking_row["notes"]) if p) or None
     notified_ids = set()
     owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
     if owner_row:
-        send_notification(conn, owner_row["id"], "workshop_booking", notify_title, body=notes, link="/admin/workshops/registrations")
+        send_notification(conn, owner_row["id"], "workshop_booking", notify_title, body=body, link="/admin/workshops/registrations")
         notified_ids.add(owner_row["id"])
-    if workshop["instructor_user_id"] and workshop["instructor_user_id"] not in notified_ids:
-        send_notification(conn, workshop["instructor_user_id"], "workshop_booking", notify_title, body=notes, link="/admin/workshops/registrations")
-
-    return reference_code, manage_token, booking_row_id
+    instructor = booking_row["instructor_user_id"]
+    if instructor and instructor not in notified_ids:
+        send_notification(conn, instructor, "workshop_booking", notify_title, body=body, link="/admin/workshops/registrations")
+    return confirmed_now
 
 
 def workshop_balance_due(conn, booking_id):
@@ -57594,12 +57854,18 @@ def workshop_email_context(booking):
     }
 
 
-def start_workshop_stripe_payment(conn, booking_id, kind, amount_override=None):
+def start_workshop_stripe_payment(conn, booking_id, kind, amount_override=None, expires_at=None):
     """Builds a Stripe Checkout Session for a workshop registration's
     deposit or balance and returns its URL, or None if Stripe isn't
     configured, nothing is due, or that amount is already paid — callers
     fall back to the non-payment confirmation flow in that case, same as
-    the room-booking path when Stripe is off."""
+    the room-booking path when Stripe is off.
+
+    `expires_at` (a stored UTC moment) closes the card page then rather than
+    after Stripe's default day: the end of a deposit hold. Stripe will not
+    close one sooner than half an hour, so a hold with less left than that
+    gets the half hour, and a deposit arriving after the hold has gone is
+    settled by settle_workshop_deposit_hold like any other late one."""
     if not stripe_enabled():
         return None
     booking = conn.execute(
@@ -57654,6 +57920,13 @@ def start_workshop_stripe_payment(conn, booking_id, kind, amount_override=None):
         booking["title"], booking["session_start"], booking["session_end"],
         reference=booking["reference_code"], kind=f"workshop_{kind}",
         part=label.lower(), workshop_booking_id=booking_id), **keep_card}
+    closes = {}
+    closing = parse_datetime_iso(expires_at) if expires_at else None
+    if closing:
+        if closing.tzinfo is None:
+            closing = closing.replace(tzinfo=timezone.utc)
+        soonest = datetime.now(timezone.utc) + timedelta(minutes=31)
+        closes = {"expires_at": int(max(closing, soonest).timestamp())}
     try:
         checkout_session = stripe.checkout.Session.create(
             mode="payment",
@@ -57671,6 +57944,7 @@ def start_workshop_stripe_payment(conn, booking_id, kind, amount_override=None):
             metadata={"workshop_booking_id": str(booking_id), "kind": f"workshop_{kind}"},
             payment_intent_data=intent,
             **payer,
+            **closes,
         )
     except Exception:
         return None
@@ -57824,13 +58098,121 @@ def mark_workshop_payment_paid(conn, session):
         conn.commit()
         remember_card(conn, session_id)
         conn.commit()
-        send_workshop_email(conn, booking, "workshop_deposit_receipt",
-                            workshop_email_context(booking), statement=True)
+        # The deposit is what a held place was waiting for: confirmed now,
+        # with the guest's letter and the owner's notice that the hold kept
+        # back. A place already given back is re-taken if there is room, and
+        # put in front of the owner if there is not.
+        outcome = settle_workshop_deposit_hold(conn, booking_id)
+        if outcome != "unplaced":
+            # No receipt for a place the guest does not have. It would read
+            # as a confirmation; the owner writes to them instead.
+            send_workshop_email(conn, booking, "workshop_deposit_receipt",
+                                workshop_email_context(booking), statement=True)
     else:
+        outcome = None
         # A second payment towards the deposit, or one after it: its own receipt.
         send_workshop_payment_receipt(conn, booking_id, amount, session_id)
     tell_house_of_payment(conn, "workshop", booking_id, amount, session_id)
     conn.commit()
+    return outcome
+
+
+def workshop_hold_length_words():
+    """How long a deposit hold lasts, as a guest is told it."""
+    n = WORKSHOP_DEPOSIT_HOLD_MINUTES
+    if n % 60 == 0:
+        hours = n // 60
+        return "an hour" if hours == 1 else f"{hours} hours"
+    return f"{n} minutes"
+
+
+def settle_workshop_deposit_hold(conn, booking_id, via=None):
+    """What a deposit does to a place that was held for it.
+
+    Returns None when the registration was never held, and otherwise:
+      "confirmed"   -- the hold was live: confirmed, with the letter and the
+                       owner's notice the hold kept back;
+      "needs_you"   -- the hold was live but confirming it was refused (a
+                       standing instruction about the guest): left pending,
+                       and the owner told, as the form always did;
+      "reconfirmed" -- the hold had been given back and there was still room,
+                       so the place is taken again and confirmed;
+      "unplaced"    -- the hold had been given back and the atelier has filled
+                       since. Nothing is refunded: that is the owner's call.
+                       They are told at once, and the owner home says so until
+                       the money is given back or the guest is placed.
+
+    Called by every path a deposit arrives by -- the Stripe return page, the
+    webhook and the owner marking it paid by hand -- so none of them can
+    confirm a held place without the others' rules.
+    """
+    row = conn.execute(
+        """SELECT wb.id, wb.status, wb.deposit_hold_until, wb.hold_released_at, wb.session_id,
+                  wb.party_size, wb.occupancy_type, wb.guest_name, wb.reference_code,
+                  ws.start_date, ws.end_date, ws.cancelled_at, w.title
+             FROM workshop_bookings wb
+             JOIN workshop_sessions ws ON ws.id = wb.session_id
+             JOIN workshops w ON w.id = ws.workshop_id
+            WHERE wb.id = ?""", (booking_id,)).fetchone()
+    if not row:
+        return None
+    if row["status"] == "pending" and row["deposit_hold_until"]:
+        conn.execute("UPDATE workshop_bookings SET deposit_hold_until = NULL WHERE id = ?",
+                     (booking_id,))
+        conn.commit()
+        confirmed = announce_workshop_registration(conn, booking_id, confirm_now=True)
+        conn.commit()
+        return "confirmed" if confirmed else "needs_you"
+    if row["status"] != "cancelled" or not row["hold_released_at"]:
+        return None
+
+    # A DEPOSIT FOR A PLACE ALREADY GIVEN BACK. The card page closes with the
+    # hold, but Stripe will not close one in under half an hour, and a payment
+    # can be in flight as the housekeeping run passes. The guest has paid in
+    # good faith, so the place is theirs if it can still be had -- asked
+    # under the same lock the registration form takes.
+    why = None
+    start = parse_date(row["start_date"])
+    if row["cancelled_at"]:
+        why = "the session has since been called off"
+    elif not start or start < house_today():
+        why = "the session has already started"
+    elif claim_workshop_places(conn, row["session_id"], exclude_id=booking_id) < row["party_size"]:
+        why = "the places have been taken since"
+    else:
+        session_end = parse_date(row["end_date"] or row["start_date"])
+        why = (session_room_error(conn, row["session_id"], row["occupancy_type"],
+                                  row["party_size"], exclude_id=booking_id)
+               or house_capacity_error(conn, start, session_end + timedelta(days=1),
+                                       row["party_size"]))
+    if not why:
+        conn.execute(
+            "UPDATE workshop_bookings SET status = 'pending', decided_at = NULL "
+            "WHERE id = ? AND status = 'cancelled'", (booking_id,))
+        log_audit(conn, "workshop_hold_retaken", target=row["reference_code"], via=via,
+                  details="deposit arrived after the hold was released; there was still room")
+        conn.commit()
+        confirmed = announce_workshop_registration(
+            conn, booking_id, confirm_now=True,
+            note="The deposit arrived after the hold had been released, and there was still room.")
+        conn.commit()
+        return "reconfirmed" if confirmed else "needs_you"
+
+    conn.commit()                      # let go of the lock claim_workshop_places took
+    log_audit(conn, "workshop_hold_paid_too_late", target=row["reference_code"], via=via,
+              details=why)
+    title = (f"Deposit paid for a released place — {row['title']}, {row['guest_name']} "
+             f"({row['reference_code']})")
+    body = (f"The deposit arrived after the {workshop_hold_length_words()} hold had run out "
+            f"and {why}, so the guest has paid and has no place. Nothing has been refunded "
+            "and nothing has been sent to them. Take them back from the registration (over "
+            "the cap, if you choose), or give the money back from it.")
+    for owner in conn.execute("SELECT id FROM users WHERE role = 'owner'").fetchall():
+        send_notification(conn, owner["id"], "workshop_booking", title, body=body,
+                          link=url_for("admin_workshop_registrations", q=row["reference_code"],
+                                       when=LIST_ALL))
+    conn.commit()
+    return "unplaced"
 
 
 @app.route("/workshops/stripe-success")
@@ -57846,9 +58228,23 @@ def workshop_stripe_success():
         abort(404)
     if sval(session, "payment_status") == "paid":
         conn = get_db()
-        mark_workshop_payment_paid(conn, session)
+        outcome = mark_workshop_payment_paid(conn, session)
+        # The webhook may have credited it a moment earlier, in which case
+        # this call found it done and said nothing: read where it stands.
+        now = conn.execute("SELECT status, hold_released_at FROM workshop_bookings "
+                           "WHERE manage_token = ?", (manage_token,)).fetchone()
         conn.close()
-        flash("Payment received, thank you.", "success")
+        if outcome is None and now and kind == "deposit":
+            outcome = ("unplaced" if now["status"] == "cancelled" and now["hold_released_at"]
+                       else "confirmed" if now["status"] == "confirmed" else None)
+        if outcome == "unplaced":
+            flash("Your payment has reached us, but the place we were holding had already been "
+                  "released and the atelier has filled since. The château has been told and "
+                  "will write to you about it.", "error")
+        elif outcome in ("confirmed", "reconfirmed"):
+            flash("Deposit received, thank you — your place is confirmed.", "success")
+        else:
+            flash("Payment received, thank you.", "success")
     else:
         flash("That payment wasn't completed.", "error")
     return redirect(url_for("workshop_manage", manage_token=manage_token))
@@ -57856,18 +58252,39 @@ def workshop_stripe_success():
 
 @app.route("/workshops/stripe-cancel/<manage_token>")
 def workshop_stripe_cancel(manage_token):
-    flash("Payment was cancelled.", "error")
+    conn = get_db()
+    row = conn.execute(
+        "SELECT status, deposit_hold_until FROM workshop_bookings WHERE manage_token = ?",
+        (manage_token,)).fetchone()
+    conn.close()
+    if row and row["status"] == "pending" and row["deposit_hold_until"]:
+        flash(f"Payment was cancelled. We are holding your place until "
+              f"{local_time_str(row['deposit_hold_until'])} French time — pay the deposit before then "
+              "to confirm it.", "error")
+    else:
+        flash("Payment was cancelled.", "error")
     return redirect(url_for("workshop_manage", manage_token=manage_token))
 
 
 @app.route("/workshops/pay-deposit/<manage_token>")
 def workshop_pay_deposit(manage_token):
     conn = get_db()
-    booking = conn.execute("SELECT id FROM workshop_bookings WHERE manage_token = ?", (manage_token,)).fetchone()
+    booking = conn.execute(
+        "SELECT id, status, deposit_hold_until, hold_released_at, session_id "
+        "FROM workshop_bookings WHERE manage_token = ?", (manage_token,)).fetchone()
     if not booking:
         conn.close()
         abort(404)
-    checkout_url = start_workshop_stripe_payment(conn, booking["id"], "deposit")
+    if booking["status"] == "cancelled" and booking["hold_released_at"]:
+        session_id = booking["session_id"]
+        conn.close()
+        flash(f"We held this place for {workshop_hold_length_words()} while the deposit was "
+              "paid, and it has been released. If the dates still suit you, please "
+              "register again.", "error")
+        return redirect(url_for("workshop_register", session_id=session_id))
+    checkout_url = start_workshop_stripe_payment(
+        conn, booking["id"], "deposit",
+        expires_at=booking["deposit_hold_until"] if booking["status"] == "pending" else None)
     conn.close()
     if not checkout_url:
         flash("This deposit can't be paid online right now — contact the château directly.", "error")
@@ -58111,6 +58528,17 @@ def workshop_register(session_id):
             return render_template(
                 "workshop_register.html", **page, fully_booked=False,
                 **public_form_prefill(request.form, WORKSHOP_PREFILL))
+        if refused_as_bot(conn, "register_workshop", request.form):
+            conn.close()
+            flash(BOT_REFUSAL_MESSAGE, "error")
+            return render_template(
+                "workshop_register.html", **page, fully_booked=False,
+                **public_form_prefill(request.form, WORKSHOP_PREFILL))
+
+        # A hold past its deadline is given back before the places are
+        # counted, not up to ten minutes later when housekeeping passes, so a
+        # guest is never turned away by a place nobody paid for.
+        release_lapsed_workshop_holds(conn)
 
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
@@ -58212,7 +58640,7 @@ def workshop_register(session_id):
             conn, session_row, workshop, guest_name, guest_email, guest_phone or None, party_size, notes,
             occupancy_type=occupancy_type, requested_roommate=requested_roommate, dietary_notes=dietary_notes,
             medical_notes=medical_notes, special_occasion=special_occasion, promo_code=promo_code or None,
-            confirm_now=True,
+            confirm_now=True, hold_for_deposit=True,
         )
         store_booking_guest_details(conn, "workshop_bookings", "id", booking_row_id, guest_details)
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -58233,7 +58661,20 @@ def workshop_register(session_id):
                 )
         conn.commit()
 
-        checkout_url = start_workshop_stripe_payment(conn, booking_row_id, "deposit")
+        held = conn.execute("SELECT deposit_hold_until FROM workshop_bookings WHERE id = ?",
+                            (booking_row_id,)).fetchone()["deposit_hold_until"]
+        # The card page closes when the hold does, so a deposit cannot be
+        # taken for a place that has already been given back.
+        checkout_url = start_workshop_stripe_payment(conn, booking_row_id, "deposit",
+                                                     expires_at=held)
+        if held and not checkout_url:
+            # Stripe would not give us a card page. There is nothing for the
+            # guest to walk away from, so the place is confirmed as it was
+            # before the hold existed, and the deposit is asked for after.
+            conn.execute("UPDATE workshop_bookings SET deposit_hold_until = NULL WHERE id = ?",
+                         (booking_row_id,))
+            conn.commit()
+            announce_workshop_registration(conn, booking_row_id, confirm_now=True)
         conn.close()
         if checkout_url:
             return redirect(checkout_url, code=303)
@@ -60297,7 +60738,8 @@ def build_owner_digest(conn):
             lines.append(f"Restaurant: {tonight_covers} confirmed covers tonight, {pending_dinners} reservation(s) awaiting a decision.")
 
     pending_workshop_regs = conn.execute(
-        "SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending'"
+        "SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending' "
+        "AND deposit_hold_until IS NULL"
     ).fetchone()["c"]
     # Only sittings still running: one called off would be reported as
     # starting this week with nobody confirmed.
@@ -69844,6 +70286,115 @@ def workshop_running_sheet(session_id):
 REGISTER_MONEY = ("Deposit unpaid", "Balance owed", "In credit", "Paid in full", "Money held")
 
 
+_VOWELS = set("aeiouy")
+
+
+def word_looks_random(word):
+    """True for a word typed by a script rather than a person.
+
+    Three shapes, each something names, streets and towns do not do:
+    capitals scattered through the middle with no vowel between them
+    (xKqPzT -- McDonald has one, DeLaCruz has vowels), five letters or more
+    with no vowel at all (kjhsd), and a word that is nearly all consonants
+    (aksjdhfg). The limits are set so Knightsbridge, Schwarzkopf and
+    Hirschsprung, the hardest real ones, stay out.
+    """
+    letters = "".join(ch for ch in unicodedata.normalize("NFKD", word) if ch.isalpha())
+    if len(letters) < 5 or not letters.isascii():
+        return False
+    if not letters.isupper() and sum(1 for ch in letters[1:] if ch.isupper()) >= 2:
+        # DeLaCruz has two, but every piece between its capitals has a vowel.
+        pieces = re.findall(r"[A-Z][a-z]*", letters)
+        if any(len(p) >= 2 and not (set(p.lower()) & _VOWELS) for p in pieces):
+            return True
+    low = letters.lower()
+    vowels = sum(1 for ch in low if ch in _VOWELS)
+    if not vowels:
+        return True
+    run = longest = 0
+    for ch in low:
+        run = 0 if ch in _VOWELS else run + 1
+        longest = max(longest, run)
+    return longest >= 8 or (len(low) >= 8 and vowels / len(low) < 0.15 and longest >= 5)
+
+
+def text_looks_random(text):
+    """True if a field is made of script-typed words: most of its longer
+    words are, and there is at least one."""
+    words = [w for w in re.split(r"[^\w]+", text or "") if len(w) >= 5 and not w.isdigit()]
+    if not words:
+        return False
+    odd = sum(1 for w in words if word_looks_random(w))
+    return odd >= 1 and odd * 2 >= len(words)
+
+
+def registration_looks_random(row):
+    """True if a registration's own words look typed by a script.
+
+    Several fields have to agree -- three, or every one that was filled in if
+    only two were -- because one odd surname is a person and a whole form of
+    them is not. This is a reason for the owner to look, never a decision.
+    """
+    keys = row.keys()
+    email = (row["guest_email"] or "").split("@")[0] if "guest_email" in keys else ""
+    fields = [row[k] for k in ("guest_name", "guest_address", "guest_city", "notes",
+                               "requested_roommate", "special_occasion")
+              if k in keys and (row[k] or "").strip()]
+    if email.strip():
+        fields.append(re.sub(r"\d+", " ", email.replace(".", " ").replace("_", " ")))
+    odd = sum(1 for f in fields if text_looks_random(f))
+    return odd >= 3 or (odd >= 2 and odd == len(fields))
+
+
+def suspect_unpaid_registrations(conn, today=None):
+    """Confirmed places with no deposit, no card and nothing paid, on a session
+    still to come, whose details look typed by a script.
+
+    For what was confirmed before the deposit hold existed, when a script
+    could take a place and keep it (one did, 18 October 2026). Nothing here is
+    cancelled: the owner home lists them and the owner decides. It closes
+    itself -- cancelling one, a deposit arriving, or the owner saying it is a
+    real person (bot_check_cleared_at) takes it off.
+    """
+    today = today or house_today()
+    rows = conn.execute(
+        f"""SELECT wb.*, ws.start_date, w.title
+              FROM workshop_bookings wb
+              JOIN workshop_sessions ws ON ws.id = wb.session_id
+              JOIN workshops w ON w.id = ws.workshop_id
+             WHERE wb.status = 'confirmed' AND wb.deposit_paid_at IS NULL
+               AND COALESCE(wb.deposit_amount, 0) > 0
+               AND wb.stripe_payment_method_id IS NULL
+               AND wb.bot_check_cleared_at IS NULL
+               AND ws.start_date >= ? AND {SESSION_IS_LIVE.replace('workshop_sessions.', 'ws.')}
+               AND NOT EXISTS (SELECT 1 FROM workshop_transactions t
+                                WHERE t.workshop_booking_id = wb.id AND t.kind = 'payment')
+             ORDER BY ws.start_date, wb.id""",
+        (today.isoformat(),)).fetchall()
+    return [r for r in rows if registration_looks_random(r)]
+
+
+def late_deposits_without_a_place(conn):
+    """Registrations whose hold was given back and whose deposit arrived
+    anyway, with the money still held. Each is a guest who has paid and has
+    no place; it closes itself once they are taken back or refunded."""
+    return conn.execute(
+        """SELECT wb.id, wb.reference_code, wb.guest_name, w.title,
+                  COALESCE(SUM(CASE t.kind WHEN 'payment' THEN t.amount
+                                           WHEN 'refund' THEN -t.amount END), 0) AS held
+             FROM workshop_bookings wb
+             JOIN workshop_sessions ws ON ws.id = wb.session_id
+             JOIN workshops w ON w.id = ws.workshop_id
+             JOIN workshop_transactions t ON t.workshop_booking_id = wb.id
+            WHERE wb.status = 'cancelled' AND wb.hold_released_at IS NOT NULL
+            GROUP BY wb.id HAVING held > 0.005
+            ORDER BY wb.id""").fetchall()
+
+
+WORKSHOP_STATE_HOLDING = "Waiting for the deposit"
+WORKSHOP_STATE_RELEASED = "Released, deposit never came"
+
+
 def workshop_register_rows(conn, today=None):
     """Every registration, as the register shows it.
 
@@ -69906,6 +70457,12 @@ def workshop_register_rows(conn, today=None):
         else:
             card = "No card kept"
         last_day = r["end_date"] or r["start_date"] or ""
+        # A place held while the guest pays the deposit is not waiting on
+        # the owner, and is not confirmed: it says which, and until when.
+        holding = r["status"] == "pending" and bool(r["deposit_hold_until"])
+        released = r["status"] == "cancelled" and bool(r["hold_released_at"])
+        state = (WORKSHOP_STATE_HOLDING if holding else WORKSHOP_STATE_RELEASED if released
+                 else r["status"].capitalize())
         out.append({
             "row": r, "id": r["id"], "who": r["guest_name"], "email": r["guest_email"],
             "phone": r["guest_phone"], "reference": r["reference_code"], "what": r["title"],
@@ -69913,7 +70470,10 @@ def workshop_register_rows(conn, today=None):
             "session_label": f"{r['title']} · {format_date_short(r['start_date'])}",
             "start_date": r["start_date"], "end_date": r["end_date"],
             "when": "History" if last_day < iso else "Current",
-            "status": r["status"], "live": live, "party_size": r["party_size"] or 0,
+            "status": r["status"], "state": state, "holding": holding,
+            "hold_until": r["deposit_hold_until"] if holding else None,
+            "released": released,
+            "live": live, "party_size": r["party_size"] or 0,
             "party_names": party.get(r["id"], []),
             "charged": charged, "paid": paid, "owed": owed, "money": money_state,
             "card": card, "due_date": r["balance_due_date"],
@@ -69968,7 +70528,9 @@ def admin_workshop_session(session_id):
     today_iso = today.isoformat()
     figures = {
         "confirmed": sum(r["party_size"] for r in live if r["status"] == "confirmed"),
-        "pending": sum(r["party_size"] for r in live if r["status"] == "pending"),
+        "pending": sum(r["party_size"] for r in live
+                       if r["status"] == "pending" and not r["holding"]),
+        "holding": sum(r["party_size"] for r in live if r["holding"]),
         "free": free,
         "charged": round(sum(r["charged"] for r in live), 2),
         "paid": round(sum(r["paid"] for r in live), 2),
@@ -70014,8 +70576,9 @@ def workshop_register_view(conn, args, today=None):
                   default="Current"),
             facet("session", "Session", lambda r: r["session_label"],
                   order=[label for _d, label in by_date], limit=10),
-            facet("state", "Status", lambda r: r["status"].capitalize(),
-                  order=["Pending", "Confirmed", "Declined", "Cancelled"]),
+            facet("state", "Status", lambda r: r["state"],
+                  order=["Pending", WORKSHOP_STATE_HOLDING, "Confirmed", "Declined",
+                         "Cancelled", WORKSHOP_STATE_RELEASED]),
             facet("money", "Money", lambda r: r["money"], order=list(REGISTER_MONEY)),
         ],
         sorts=[
@@ -70047,7 +70610,9 @@ def workshop_session_panel(conn, items, label):
         "capacity": first["row"]["session_capacity"],
         "places_left": workshop_session_remaining_capacity(conn, first["session_id"]),
         "people": sum(r["party_size"] for r in live),
-        "confirmed": len(confirmed), "pending": len(live) - len(confirmed),
+        "confirmed": len(confirmed),
+        "pending": sum(1 for r in live if r["status"] == "pending" and not r["holding"]),
+        "holding": sum(1 for r in live if r["holding"]),
         "gone": len(mine) - len(live),
         "charged": round(sum(r["charged"] for r in live), 2),
         "paid": round(sum(r["paid"] for r in live), 2),
@@ -70531,7 +71096,7 @@ def admin_workshop_registrations():
     shown_ids = [r["id"] for r in lv["rows"]]
     panel = (workshop_session_panel(conn, items, lv["chosen"]["session"])
              if lv["chosen"].get("session") else None)
-    pending_count = sum(1 for r in items if r["status"] == "pending")
+    pending_count = sum(1 for r in items if r["status"] == "pending" and not r["holding"])
     owed_shown = round(sum(max(r["owed"], 0) for r in lv["rows"] if r["live"]), 2)
     rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
     # Where each registration could be moved to: the same atelier's other
@@ -70587,6 +71152,9 @@ def admin_workshop_registrations():
                WHERE kind = 'payment' GROUP BY workshop_booking_id"""
         ).fetchall()
     }
+    # Confirmed places that look typed by a script: flagged on the card, with
+    # the owner's way of saying otherwise (the owner home lists the same).
+    suspect_ids = {r["id"] for r in suspect_unpaid_registrations(conn, today)}
     conn.close()
     return render_template(
         "admin_workshop_registrations.html", registrations=registrations, lv=lv, panel=panel,
@@ -70596,6 +71164,7 @@ def admin_workshop_registrations():
         transactions_by_booking=transactions_by_booking, balance_by_booking=balance_by_booking,
         messages_by_booking=messages_by_booking,
         refunded_by_registration=refunded_by_registration, paid_by_registration=paid_by_registration,
+        suspect_ids=suspect_ids,
         export_q=request.query_string.decode("utf-8", "replace"),
     )
 
@@ -70998,8 +71567,11 @@ def confirm_workshop_registration_by_id(conn, registration_id, via=None):
                        f"from {caution['name']} ({caution['caution']}) — lift it "
                        "on their profile if that has changed"), ""
 
+    # A place held for a deposit stops being held once it is confirmed,
+    # whether the deposit confirmed it or the owner did without one.
     cur = conn.execute(
-        "UPDATE workshop_bookings SET status = 'confirmed', decided_at = ? WHERE id = ? AND status = 'pending'",
+        "UPDATE workshop_bookings SET status = 'confirmed', decided_at = ?, deposit_hold_until = NULL "
+        "WHERE id = ? AND status = 'pending'",
         (datetime.now(timezone.utc).isoformat(), registration_id),
     )
     if cur.rowcount == 0:
@@ -71042,6 +71614,62 @@ def confirm_workshop_registration(registration_id):
         flash(f"Could not confirm: {reason}", "error")
         return redirect(workshop_return())
     flash("Registration confirmed." + capacity_note, "success" if not capacity_note else "error")
+    return redirect(workshop_return())
+
+
+@app.route("/admin/workshops/registrations/<int:registration_id>/not-a-bot", methods=["POST"])
+@owner_required
+def clear_registration_bot_check(registration_id):
+    """The owner's word that a registration flagged as a script's is a person.
+
+    Only the flag: the registration is not touched, and the owner home stops
+    listing it (suspect_unpaid_registrations).
+    """
+    conn = get_db()
+    row = conn.execute("SELECT reference_code FROM workshop_bookings WHERE id = ?",
+                       (registration_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE workshop_bookings SET bot_check_cleared_at = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), registration_id))
+    log_audit(conn, "workshop_registration_not_a_bot", target=row["reference_code"])
+    conn.commit()
+    conn.close()
+    flash("Noted as a real person. It will not be flagged again.", "success")
+    return redirect(workshop_return())
+
+
+@app.route("/admin/workshops/registrations/<int:registration_id>/take-back", methods=["POST"])
+@owner_required
+def take_back_released_registration(registration_id):
+    """Give a guest back a place whose hold lapsed before their deposit came.
+
+    The one case it is for: settle_workshop_deposit_hold found the atelier
+    full when a late deposit arrived, so the guest has paid and has no place.
+    The owner decides -- this, or a refund from the same registration. It is a
+    staff override like confirming by hand, so it may go over the cap, and
+    says so when it does.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT id, status, hold_released_at FROM workshop_bookings WHERE id = ?",
+                       (registration_id,)).fetchone()
+    if (not row or row["status"] != "cancelled" or not row["hold_released_at"]
+            or amount_paid_for(conn, "workshop", row) <= 0.005):
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE workshop_bookings SET status = 'pending', decided_at = NULL "
+                 "WHERE id = ? AND status = 'cancelled'", (registration_id,))
+    conn.commit()
+    ok, reason, capacity_note = confirm_workshop_registration_by_id(
+        conn, registration_id, via="taken back after a late deposit")
+    conn.commit()
+    conn.close()
+    if not ok:
+        flash(f"Put back as pending, but could not confirm: {reason}", "error")
+    else:
+        flash("Taken back and confirmed." + capacity_note,
+              "success" if not capacity_note else "error")
     return redirect(workshop_return())
 
 
@@ -71407,6 +72035,9 @@ def mark_workshop_deposit_paid(registration_id):
     )
     if cur.rowcount and deposit_left <= 0.005:
         conn.commit()
+        # A place held for this deposit is confirmed by it, whichever way
+        # it arrived (settle_workshop_deposit_hold).
+        settle_workshop_deposit_hold(conn, registration_id, via="deposit marked paid")
         conn.close()
         flash(f"What has been paid ({money(paid)}) already covers the deposit, so nothing "
               "more was recorded.", "success")
@@ -71422,6 +72053,7 @@ def mark_workshop_deposit_paid(registration_id):
         # this route's Stripe twin and sends the identical template; this is the
         # bank-transfer and cash path, where a receipt is the guest's only proof.
         conn.commit()
+        settle_workshop_deposit_hold(conn, registration_id, via="deposit marked paid")
         # The receipt names what was received, and what is left by the
         # ledger: the figures stamped at booking are not what this guest owes.
         receipt = workshop_email_context(booking)
@@ -93562,10 +94194,12 @@ def run_housekeeping_job(conn):
     told = notify_bookings_awaiting_answer(conn)
     expired = expire_stale_pending_bookings(conn)
     released = release_lapsed_reservations(conn)
+    unheld = release_lapsed_workshop_holds(conn)
     prepped = auto_prep_upcoming_arrivals(conn, today)
     turned = prep_channel_departures(conn, today)
     return (f"told about {told} waiting request(s), expired {expired} stale "
             f"booking(s), released {released} reservation(s) not taken up, "
+            f"released {unheld} atelier place(s) held for a deposit that never came, "
             f"prepped {prepped} arrival(s), "
             f"{turned} Booking.com room(s) to turn round")
 
@@ -106101,6 +106735,10 @@ def contact_notify_me():
         flash("That is a lot of requests from one connection — please give it "
               "a few minutes.", "error")
         return redirect(request.referrer or url_for("contact_page"))
+    if refused_as_bot(conn, "contact_enquiry", request.form):
+        conn.close()
+        flash(BOT_REFUSAL_MESSAGE, "error")
+        return redirect(request.referrer or url_for("contact_page"))
     notes = "Asked to be told when %s %d opens%s." % (
         name, year, " — an atelier week rather than a stay" if wants_atelier else "")
     conn.execute(
@@ -106169,6 +106807,10 @@ def contact_page():
         conn.close()
         flash("That is a lot of enquiries from one connection — please give it "
               "a few minutes, or write to us directly.", "error")
+        return redirect(url_for("contact_page"))
+    if refused_as_bot(conn, "contact_enquiry", request.form):
+        conn.close()
+        flash(BOT_REFUSAL_MESSAGE, "error")
         return redirect(url_for("contact_page"))
 
     # A month is what they typed; a pair of dates is what the column holds, so

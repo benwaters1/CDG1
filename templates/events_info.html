@@ -114,6 +114,7 @@
 
       <form method="post" action="{{ url_for('submit_event_inquiry') }}" class="g-panel" style="background:var(--white); border:1px solid var(--line);">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {{ bot_guard() }}{# a field only scripts fill, and when the form was drawn: bot_guard_refusal #}
         <h3 id="enquire" class="g-h3">Make an enquiry</h3>
 
         <p class="g-field">
