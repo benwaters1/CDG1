@@ -34,7 +34,6 @@ partly filled. That is what makes it possible to ship a page at a time.
 
 FR = {
     # -- The shell every public page carries ----------------------------
-    "Workshop dates": "Dates des ateliers",
     "See what it looks like first": "Voir à quoi cela ressemble",
     "Subscribe": "S'abonner",
     "Groups": "Groupes",
@@ -42,7 +41,6 @@ FR = {
 
 ES = {
     # -- The shell every public page carries ----------------------------
-    "Workshop dates": "Fechas de los talleres",
     "See what it looks like first": "Ver primero cómo es",
     "Subscribe": "Suscribirse",
     "Groups": "Grupos",
