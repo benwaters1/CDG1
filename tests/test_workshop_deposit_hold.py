@@ -230,6 +230,15 @@ def run():
                             "AND deposit_hold_until IS NULL AND id = ?", (bid,)).fetchone()[0]
     conn.close()
     s.check("a hold is not counted among registrations awaiting a decision", awaiting == 0)
+    conn = db()
+    wrow = conn.execute("SELECT w.* FROM workshops w JOIN workshop_sessions ws ON ws.workshop_id = w.id "
+                        "WHERE ws.id = ?", (sid,)).fetchone()
+    upcoming = m.workshop_sitting_rows(conn, [wrow], house_today())["upcoming"]
+    conn.close()
+    entry = next(e for e in upcoming[wrow["id"]] if e["session"]["id"] == sid)
+    s.check("the workshops page does not say the sitting needs the owner for it",
+            entry["needs"] == [] and entry["holding"] == 2,
+            detail=f"needs={entry['needs']} holding={entry['holding']}")
     manage = m.app.test_client().get(f"/workshops/manage/{row['manage_token']}")
     s.check("the guest's own page says the place is held, and until when",
             "We are holding your place until" in manage.get_data(as_text=True), response=manage)

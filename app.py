@@ -70402,7 +70402,8 @@ def workshop_sitting_rows(conn, workshops, today):
             tally["paid"] = round(tally["paid"] + max(reg_row["paid"], 0), 2)
             # What needs chasing, counted here so the page can say it rather
             # than leave it to be found one registration at a time.
-            if reg_row["money"] == "Deposit unpaid":
+            # A place held while the guest pays is not a deposit to chase.
+            if reg_row["money"] == "Deposit unpaid" and not reg_row["holding"]:
                 tally["no_deposit"] += 1
             if reg_row["owed"] > 0.005 and reg_row["due_date"] and reg_row["due_date"] < iso:
                 tally["past_due"] = round(tally["past_due"] + reg_row["owed"], 2)
@@ -71569,7 +71570,8 @@ def admin_workshop_session(session_id):
         "charged": round(sum(r["charged"] for r in live), 2),
         "paid": round(sum(r["paid"] for r in live), 2),
         "owed": round(sum(max(r["owed"], 0) for r in live), 2),
-        "deposits_unpaid": [r for r in live if r["money"] == "Deposit unpaid"],
+        # Not a place held while the guest pays: that one is not to chase.
+        "deposits_unpaid": [r for r in live if r["money"] == "Deposit unpaid" and not r["holding"]],
         "overdue": [r for r in live if r["owed"] > 0.005 and r["due_date"]
                     and r["due_date"] < today_iso],
         "no_room": [r for r in live if not r["room"]],
