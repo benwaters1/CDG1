@@ -24,6 +24,8 @@ reads those rows to it:
     the office screen, and the house calendar in Outlook, which counts the
     places on a sitting and must not count the sitting's own row as another.
 """
+import html as htmllib
+import re
 from datetime import date, timedelta
 
 from _harness import Suite, clients, db, visible_text
@@ -229,12 +231,26 @@ def _run(s, mail, conn):
             detail=f"{week['total_events']} things, {sum(len(c['events']) for c in week['cells'])} chips")
 
     s.section("The pages themselves")
-    text = visible_text(oc.get(f"/calendar?view=week&date={mon.isoformat()}").get_data(as_text=True))
-    s.check("the owner's week page shows day 2, 3 and 4",
-            all(f"{TAG} Plaster — 2 bookings, 2 people · day {k} of 4" in text for k in (2, 3, 4)),
-            detail=text[:300])
-    text = visible_text(oc.get(f"/calendar?view=month&date={mon.isoformat()}").get_data(as_text=True))
-    s.check("the month page shows it on its later days", f"{TAG} Plaster · day 4" in text)
+    # Since 19 October 2026 the week and the month draw what lasts as ONE bar
+    # over the days it covers (the owner: the calendar was "difficult to
+    # read", a heap of chips a day). So the page is held to the bar: over
+    # Monday to Thursday -- grid lines 1 to 9 of fourteen half-days -- and
+    # saying what it is. The day view still lists it by name, day by day.
+    uid = f"workshop-s{session_id}"
+    page = oc.get(f"/calendar?view=week&date={mon.isoformat()}").get_data(as_text=True)
+    bar = re.search(r'<a[^>]*class="cal-ev cal2-bar[^"]*"[^>]*style="grid-column:(\d+) / (\d+);"'
+                    r'[^>]*data-card="' + re.escape(uid) + r'"[^>]*title="([^"]*)"', page)
+    s.check("the owner's week page draws the atelier across Monday to Thursday",
+            bar and (bar.group(1), bar.group(2)) == ("1", "9")
+            and f"{TAG} Plaster — 2 bookings, 2 people" in htmllib.unescape(bar.group(3))
+            and "4 days" in bar.group(3),
+            detail=str(bar and bar.groups()))
+    drawn = re.findall(r'class="cal-ev cal2-bar[^"]*"[^>]*data-card="' + re.escape(uid) + '"', page)
+    s.check("once, not once a day", len(drawn) == 1, detail=f"{len(drawn)} bars")
+    page = oc.get(f"/calendar?view=month&date={mon.isoformat()}").get_data(as_text=True)
+    bar = re.search(r'style="grid-column:(\d+) / (\d+);"[^>]*data-card="' + re.escape(uid) + '"', page)
+    s.check("the month page draws it across its four days too",
+            bar and (bar.group(1), bar.group(2)) == ("1", "9"), detail=str(bar and bar.groups()))
     text = visible_text(ec.get(f"/calendar?view=day&date={thu.isoformat()}").get_data(as_text=True))
     s.check("the staff calendar has it on the Thursday",
             f"{TAG} Plaster — 2 bookings, 2 people · day 4 of 4" in text, detail=text[:300])
@@ -289,10 +305,19 @@ def _run(s, mail, conn):
             == [0, 1, 1, 0]
             and not any("in residence" in e["title"] for c in mc.values()
                         for e in _mine(c, f"Una {TAG}One")))
-    text = visible_text(oc.get(f"/calendar?view=week&date={(nine + timedelta(days=1)).isoformat()}")
-                        .get_data(as_text=True))
-    s.check("the week page says so", f"{guest} in residence — {room['name']} · night 2 of 3" in text,
-            detail=text[:300])
+    # The week page draws the stay as one bar, from the afternoon of the 9th
+    # to the morning of the 12th: half-days 2 to 8 of the week of the 9th
+    # when the 9th is a Monday, and wherever the 9th falls, three nights.
+    page = oc.get(f"/calendar?view=week&date={(nine + timedelta(days=1)).isoformat()}").get_data(as_text=True)
+    week_start = nine - timedelta(days=nine.weekday())
+    first_line = 2 * (nine - week_start).days + 2
+    last_line = min(2 * (twelve - week_start).days + 2, 15)
+    bar = re.search(r'style="grid-column:(\d+) / (\d+);"[^>]*data-card="booking-' + str(stay)
+                    + r'"[^>]*title="([^"]*)"', page)
+    s.check("the week page draws it from the 9th to the morning of the 12th",
+            bar and (int(bar.group(1)), int(bar.group(2))) == (first_line, last_line)
+            and guest in htmllib.unescape(bar.group(3)) and "3 nights" in bar.group(3),
+            detail=str(bar and bar.groups()))
     text = visible_text(ec.get(f"/calendar?view=day&date={(nine + timedelta(days=2)).isoformat()}")
                         .get_data(as_text=True))
     s.check("and so does the staff calendar's day", f"{guest} in residence" in text)

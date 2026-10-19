@@ -5642,6 +5642,10 @@ def init_db():
         ("extras_stock_item_id", "ALTER TABLE extras ADD COLUMN stock_item_id INTEGER REFERENCES stock_items(id) ON DELETE SET NULL"),
         ("extras_stock_qty", "ALTER TABLE extras ADD COLUMN stock_qty_per_unit REAL NOT NULL DEFAULT 1"),
         ("extras_lead_time_days", "ALTER TABLE extras ADD COLUMN lead_time_days INTEGER NOT NULL DEFAULT 0"),
+        # The days of the week an extra cannot be ordered on -- a charcutier
+        # shut on Sunday -- as weekday numbers, Monday 0, joined by commas.
+        # Its "arrange by" steps back off them (extra_arrange_by).
+        ("extras_arrange_days_off", "ALTER TABLE extras ADD COLUMN arrange_days_off TEXT NOT NULL DEFAULT ''"),
         ("extras_max_qty", "ALTER TABLE extras ADD COLUMN max_qty INTEGER"),
         ("extras_guest_bookable", "ALTER TABLE extras ADD COLUMN guest_bookable INTEGER NOT NULL DEFAULT 1"),
         ("extras_sold_in_pos", "ALTER TABLE extras ADD COLUMN sold_in_pos INTEGER NOT NULL DEFAULT 0"),
@@ -8126,6 +8130,8 @@ def init_db():
     apply_room_views_2026_10_16(conn)
     # Transfers filed as transfers, at the transport rate, once.
     apply_extras_transfers_2026_10_18(conn)
+    # The charcuterie board, never arranged on a Sunday, once.
+    apply_extras_sunday_2026_10_19(conn)
     # The Booking.com stay that never arrived, on The Twin Room, once.
     apply_stray_channel_stay_2026_10_18(conn)
     # And the names of 16 October, once, LAST: the three above find the rooms
@@ -13762,6 +13768,8 @@ ADDED_EXTRAS = [
                         "stay you choose."),
         "price": 80.0, "category": "food", "sort_order": 2,
         "guest_bookable": 1, "lead_time_days": 3, "ask_when": 1,
+        # Ordered from a charcutier who is shut on Sunday.
+        "arrange_days_off": "6",
     }),
     # From the 1 October launch checklist: the tour every workshop includes,
     # bookable with a stay. Per booking -- one price whatever the size of the
@@ -14683,7 +14691,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "short": r["title"],
             "detail": r["notes"] or "",
             "assignee_id": None, "assignee_name": None, "id": r["id"],
-            "link": url_for("admin_workshop_registrations"),
+            "link": url_for("admin_workshop_session", session_id=r["session_id"]),
             "facts": {"session": r["session_id"], "workshop": r["title"],
                       "start": r["start_date"], "end": r["end_date"],
                       "guest": r["guest_name"], "party": r["party_size"],
@@ -14726,7 +14734,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "short": ses["title"],
             "detail": ses["names"] or "",
             "assignee_id": None, "assignee_name": None, "id": f"session{ses['id']}",
-            "link": url_for("admin_workshop_registrations"),
+            "link": url_for("admin_workshop_session", session_id=ses["id"]),
             "facts": {"session": ses["id"], "workshop": ses["title"], "running": True,
                       "start": ses["start_date"], "end": ses["end_date"],
                       "places": places, "people": people, "pending": pending},
@@ -14816,7 +14824,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
                 f"arriving {e['arrival_time']}" if e["arrival_time"] else "",
                 e["spaces"] or "") if x),
             "assignee_id": None, "assignee_name": None, "id": e["id"],
-            "link": url_for("admin_events", q=e["reference_code"]),
+            "link": url_for("admin_event", event_id=e["id"]),
             "facts": {"what": what, "contact": e["contact_name"], "guests": e["guest_count"],
                       "start": e["preferred_date"], "end": e["end_date"] or e["preferred_date"],
                       "arrival_time": e["arrival_time"] or "", "ref": e["reference_code"],
@@ -14841,7 +14849,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "short": f"Held: {h['contact_name']}",
             "detail": f"held until {house_date_iso(h['expires_at'])}",
             "assignee_id": None, "assignee_name": None, "id": f"hold{h['id']}",
-            "link": url_for("admin_events", q=h["reference_code"]),
+            "link": url_for("admin_event", event_id=h["event_id"]),
             "facts": {"what": what, "contact": h["contact_name"], "guests": h["guest_count"],
                       "start": h["start_date"], "end": h["end_date"], "arrival_time": "",
                       "ref": h["reference_code"], "held": True,
@@ -15000,6 +15008,9 @@ def build_calendar(conn, view, anchor, viewer=None):
     owner_view = viewer is None or viewer["role"] == "owner"
     cards = calendar_cards(conn, rows, owner_view)
     rows = [dict(r, card=calendar_uid(r)) for r in rows]
+    # Everything that lasts, once each, before the places on a sitting are
+    # merged into one chip a day: the bars count its people from them.
+    spans = calendar_spans(rows)
     if view != "day":
         rows = one_chip_per_workshop_day(rows)
 
@@ -15052,9 +15063,15 @@ def build_calendar(conn, view, anchor, viewer=None):
         d += timedelta(days=1)
 
     weeks = [cells[i:i + 7] for i in range(0, len(cells), 7)] if view == "month" else [cells]
+    calendar_lay_out(cells, spans, view)
+    # The week and month drawn as rows of seven days, each with the bars of
+    # what lasts across it laid over the days they cover.
+    rows_of_days = ([{"cells": w, "bars": calendar_bars(spans, w[0]["date"])} for w in weeks]
+                    if view != "day" else [])
 
     return {
         "view": view, "anchor": anchor, "cells": cells, "weeks": weeks,
+        "rows_of_days": rows_of_days,
         "span_start": span_start, "span_end": span_end - timedelta(days=1),
         "prev_anchor": sheet["prev_anchor"], "next_anchor": sheet["next_anchor"],
         "employees": sheet["employees"], "owner_id": sheet["owner_id"],
@@ -15107,6 +15124,222 @@ def one_chip_per_workshop_day(rows):
             status="pending" if g["pending"] == g["places"] else "confirmed",
             detail=""))
     return merged
+
+
+# THE CALENDAR AS DRAWN. The owner, 19 October 2026: "difficult to read".
+# Every day was a heap of look-alike chips in no particular order -- each
+# night of each stay, each sitting's day, each dinner, each person on the rota
+# and each job -- so a week with five rooms let showed thirty "in residence"
+# chips and the one job that mattered was somewhere among them. What lasts is
+# now a bar across the days it covers, the way a hotel's tape chart draws it;
+# what happens on one day is grouped under a heading on that day.
+CAL_SPAN_ORDER = {"event": 0, "atelier": 1, "date": 2, "stay": 3, "closure": 4}
+CAL_SECTIONS = (("restaurant", "Restaurant"), ("extra", "Extras"),
+                ("task", "To do"), ("shift", "On the rota"))
+CAL_SINGLE_DAY = {"dinner": "restaurant", "extra": "extra", "task": "task", "shift": "shift"}
+
+
+def calendar_spans(rows):
+    """{uid: span} for everything on the calendar that lasts more than a
+    moment -- a stay, a sitting, an event or a hold, a date for the house, a
+    room closed -- ONCE each, with its first and last day.
+
+    Built from the rows the calendar already has, so a bar can never say
+    something the chips and the cards do not. A stay runs from its arrival to
+    its departure and is drawn from the afternoon of the one to the morning of
+    the other (`half`), so two stays in a room meet on the changeover day
+    rather than overlap; everything else covers whole days.
+    """
+    spans = {}
+    for r in rows:
+        f = r.get("facts") or {}
+        kind = r["kind"]
+        uid = r.get("card") or calendar_uid(r)
+        if kind == "booking" and f.get("arrival") and f.get("departure"):
+            if uid in spans:
+                continue
+            room = f.get("room") or "room not stated"
+            channel = r.get("channel") or f.get("channel")
+            guest = f.get("guest") if (not channel or f.get("named")) else ""
+            name = guest or room
+            party = f.get("party")
+            nights = f.get("nights") or 0
+            spans[uid] = {
+                "uid": uid, "kind": "stay", "lane": "booking", "half": True,
+                "first": f["arrival"], "last": f["departure"],
+                "label": (f"{channel[:1]}. {name}" if channel else name),
+                "sub": (room if guest else "") + (f" · {party}" if party else ""),
+                "title": (f"{name} — {room}" + (f", party of {party}" if party else "")
+                          + f" · {format_date_range(f['arrival'], f['departure'])}"
+                          + (f" · {_plural(nights, 'night')}" if nights else "")
+                          + (f" · booked through {channel}" if channel else "")),
+                "status": r["status"], "channel": channel, "link": r.get("link"),
+                "assignee_id": None, "nights": nights,
+            }
+        elif kind == "workshop" and f.get("session"):
+            s = spans.get(uid)
+            if not s:
+                s = spans[uid] = {
+                    "uid": uid, "kind": "atelier", "lane": "workshop", "half": False,
+                    "first": f.get("start") or r["date"], "last": f.get("end") or f.get("start") or r["date"],
+                    "label": f.get("workshop") or r["short"], "sub": "", "title": "",
+                    "status": "confirmed", "channel": None, "link": r.get("link"),
+                    "assignee_id": None, "people": 0, "places": 0, "pending": 0,
+                    "running": None,
+                }
+            if f.get("running"):
+                s["running"] = f
+            else:
+                s["people"] += f.get("party") or 1
+                s["places"] += 1
+                s["pending"] += r["status"] == "pending"
+        elif kind == "event" and f.get("start"):
+            if uid in spans:
+                continue
+            held = f.get("held")
+            who = f.get("contact") or ""
+            what = (f.get("what") or "event").capitalize()
+            spans[uid] = {
+                "uid": uid, "kind": "event", "lane": "event", "half": False,
+                "first": f["start"], "last": f.get("end") or f["start"],
+                "label": (f"Held: {who}" if held else f"{what}: {who}"),
+                "sub": f"{f['guests']} guests" if f.get("guests") else "",
+                "title": ((f"Dates held for {who}'s {what.lower()}" if held else f"{what} — {who}")
+                          + (f", {f['guests']} guests" if f.get("guests") else "")
+                          + f" · {format_date_range(f['start'], f.get('end') or f['start'])}"
+                          + (f" · held until {format_date_short(f['held_until'])}"
+                             if held and f.get("held_until") else "")),
+                "status": "held" if held else r["status"], "channel": None,
+                "link": r.get("link"), "assignee_id": None,
+            }
+        elif kind == "date" and f.get("start"):
+            if uid in spans:
+                continue
+            spans[uid] = {
+                "uid": uid, "kind": "date", "lane": "date", "half": False,
+                "first": f["start"], "last": f.get("end") or f["start"],
+                "label": r["short"], "sub": "", "title": r["short"]
+                + (f" — {f['note']}" if f.get("note") else ""),
+                "status": "noted", "channel": None, "link": r.get("link"), "assignee_id": None,
+            }
+        elif kind == "closure" and f.get("start") and f.get("end"):
+            if uid in spans:
+                continue
+            back = parse_date(f["end"])
+            spans[uid] = {
+                "uid": uid, "kind": "closure", "lane": "booking", "half": False,
+                "first": f["start"],
+                # The end of a closure is the day it is back on sale.
+                "last": (back - timedelta(days=1)).isoformat() if back else f["start"],
+                "label": r["short"], "sub": "", "title": r["title"],
+                "status": "closed", "channel": None, "link": r.get("link"), "assignee_id": None,
+            }
+    for s in spans.values():
+        if s["kind"] != "atelier":
+            continue
+        run = s["running"] or {}
+        people = run.get("people") or s["people"]
+        places = run.get("places") or s["places"]
+        pending = run.get("pending") if run else s["pending"]
+        s["sub"] = _plural(people, "guest") if people else ""
+        s["status"] = "pending" if places and pending == places else "confirmed"
+        first, last = parse_date(s["first"]), parse_date(s["last"])
+        days = (last - first).days + 1 if first and last else 1
+        s["title"] = (f"{s['label']} — {_plural(places, 'booking')}, "
+                      f"{people} {'person' if people == 1 else 'people'}"
+                      + (f" ({pending} to confirm)" if pending else "")
+                      + f" · {format_date_range(s['first'], s['last'])} · {_plural(days, 'day')}")
+    return spans
+
+
+def calendar_bars(spans, week_start):
+    """The bars drawn across one row of seven days from `week_start`.
+
+    Each says where it starts and ends on a grid of fourteen half-days -- a
+    stay from the afternoon it arrives to the morning it leaves, anything else
+    from the start of its first day to the end of its last -- and whether it
+    carries on from the week before or into the next. In order of what matters
+    most to see first: events, sittings, dates for the house, stays, closures.
+    The browser packs them into as few lines as they fit (grid-auto-flow:
+    dense), so a bar hidden by a filter gives its line back.
+    """
+    bars = []
+    for s in spans.values():
+        first, last = parse_date(s["first"]), parse_date(s["last"])
+        if not (first and last):
+            continue
+        i, j = (first - week_start).days, (last - week_start).days
+        if s["half"]:
+            if i > 6 or j < 0:
+                continue
+            start = 1 if i < 0 else 2 * i + 2
+            end = 15 if j > 6 else 2 * j + 2
+        else:
+            if i > 6 or j < 0:
+                continue
+            start = 1 if i < 0 else 2 * i + 1
+            end = 15 if j > 6 else 2 * j + 3
+        if end <= start:
+            continue
+        bars.append(dict(s, col_start=start, col_end=end,
+                         from_before=i < 0, goes_on=(j > 6), arrives=0 <= i <= 6,
+                         leaves=s["half"] and 0 <= j <= 6))
+    bars.sort(key=lambda b: (CAL_SPAN_ORDER.get(b["kind"], 9), b["first"], b["label"]))
+    return bars
+
+
+def calendar_lay_out(cells, spans, view):
+    """Each day's groups: the one-day things under a heading each, and what
+    the stays come to that day -- who arrives, who leaves, rooms let that
+    night -- for the line at the top of the day.
+
+    The rows are the same rows the cells already carry, so the groups hold
+    nothing the calendar did not; they only put it in an order a person can
+    read: what the house is cooking, what it has promised, the jobs, who is in.
+    """
+    stays = [s for s in spans.values() if s["kind"] == "stay"]
+    for c in cells:
+        iso = c["iso"]
+        groups = {key: [] for key, _label in CAL_SECTIONS}
+        for e in c["events"]:
+            key = CAL_SINGLE_DAY.get(e["kind"])
+            if key:
+                groups[key].append(e)
+        groups["task"].sort(key=lambda e: (e["status"] == "done", e.get("priority") != "high",
+                                           (e["title"] or "").casefold()))
+        groups["shift"].sort(key=lambda e: ((e.get("facts") or {}).get("start") or "99", e["title"]))
+        groups["extra"].sort(key=lambda e: (e["status"] == "delivered", e["title"]))
+        covers = sum((e.get("facts") or {}).get("party") or 0 for e in groups["restaurant"])
+        c["sections"] = []
+        for key, label in CAL_SECTIONS:
+            items = groups[key]
+            if not items:
+                continue
+            if key == "restaurant":
+                # Covers, which is what the kitchen cooks for; the tables are
+                # the chips underneath.
+                count = f"{covers} cover{'' if covers == 1 else 's'}"
+            elif key == "task":
+                left = sum(1 for e in items if e["status"] != "done")
+                count = f"{left} open" if left != len(items) else str(len(items))
+            else:
+                count = str(len(items))
+            c["sections"].append({"key": key, "label": label, "things": items, "count": count})
+        c["arrive"] = sum(1 for s in stays if s["first"] == iso)
+        c["leave"] = sum(1 for s in stays if s["last"] == iso)
+        c["let"] = sum(1 for s in stays if s["first"] <= iso < s["last"])
+        if view == "day":
+            # The day view lists what lasts by name, in the order the house
+            # meets it: who arrives, who leaves, who is staying on.
+            c["house"] = []
+            for label, test in (("Arriving", lambda e: (e.get("facts") or {}).get("arrival") == iso and not e.get("staying")),
+                                ("Leaving", lambda e: (e.get("facts") or {}).get("departure") == iso and not e.get("staying")),
+                                ("Staying on", lambda e: e.get("staying"))):
+                these = [e for e in c["events"] if e["kind"] == "booking" and test(e)]
+                if these:
+                    c["house"].append({"label": label, "things": these})
+            c["happening"] = [e for e in c["events"] if e["kind"] in ("workshop", "event")]
+            c["noted"] = [e for e in c["events"] if e["kind"] in ("date", "closure")]
 
 
 def calendar_uid(row):
@@ -20040,6 +20273,44 @@ EXTRAS_DUE_GROUPS = (
 )
 
 
+def extra_days_off(value):
+    """The weekdays (Monday 0) an extra cannot be ordered on, from its column."""
+    return frozenset(int(p) for p in str(value or "").split(",")
+                     if p.strip().isdigit() and int(p) < 7)
+
+
+def extra_arrange_by(target, notice, days_off=frozenset()):
+    """The day something has to be arranged by: `notice` days before it is
+    wanted, stepped back off any day the supplier is shut.
+
+    The owner, 19 October 2026: the charcuterie reminder cannot be on a Sunday.
+    Three days before a Wednesday board is a Sunday, when the charcutier is
+    shut, so a reminder that day is one nobody can act on. Back, not forward:
+    the Saturday still leaves the notice, the Monday would not. Seven days
+    off would loop for ever, so the step is bounded and gives up on the day
+    the notice alone gives.
+    """
+    day = target - timedelta(days=notice)
+    for _ in range(7):
+        if day.weekday() not in days_off:
+            return day
+        day -= timedelta(days=1)
+    return target - timedelta(days=notice)
+
+
+def extra_open_day(day, days_off=frozenset()):
+    """`day`, or the first day after it the supplier is open.
+
+    For a reminder that is already late: an arrange-by that has passed lands on
+    today, and if today is the Sunday the charcutier is shut, the reminder is
+    for the Monday -- the first morning anybody can ring them.
+    """
+    for step in range(7):
+        if (day + timedelta(days=step)).weekday() not in days_off:
+            return day + timedelta(days=step)
+    return day
+
+
 def extra_is_transfer(category, name, revenue_category=None):
     """Whether a sold extra is somebody to be driven somewhere.
 
@@ -20114,6 +20385,7 @@ def extras_due(conn, today=None):
                       rooms.name AS room_name,
                       extras.lead_time_days, extras.category AS extra_category,
                       extras.revenue_category AS extra_revenue_category,
+                      extras.arrange_days_off,
                       arranger.name AS arranged_by,
                       EXISTS (SELECT 1 FROM vehicle_transfers vt
                                WHERE vt.booking_id = bookings.id) AS has_run
@@ -20146,7 +20418,8 @@ def extras_due(conn, today=None):
         if transfer:
             notice = max(notice, 1)
         target = when or line["arrival_date"]
-        arrange_by = ((parse_date(target) - timedelta(days=notice)).isoformat()
+        days_off = extra_days_off(line["arrange_days_off"])
+        arrange_by = (extra_arrange_by(parse_date(target), notice, days_off).isoformat()
                       if needs_arranging and target and parse_date(target) else None)
         row = {
             "line": line,
@@ -20161,6 +20434,7 @@ def extras_due(conn, today=None):
             # Arranged on the Transfers page rather than ticked here.
             "arranged_by_run": transfer and bool(line["has_run"]) and not line["arranged_at"],
             "arrange_by": arrange_by,
+            "days_off": days_off,
             "arrange_now": needs_arranging and not arranged and bool(arrange_by)
                            and arrange_by <= today_iso,
             "value": round(float(line["unit_price"] or 0) * float(line["quantity"] or 1), 2),
@@ -51956,13 +52230,24 @@ def admin_events():
     bills = {e["id"]: event_bill(conn, e["id"]) for e in everything}
     # Read before the close, like everything else on this page.
     terms_text = event_terms(conn)
-    conn.close()
     pipeline = events_pipeline(everything, bills)
     lv = events_view(everything, request.args, bills)
+    # The one thing to do next on each row shown, from the same reckoning as
+    # the event's own page, so the list and the page cannot disagree.
+    today = house_today()
+    nexts = {}
+    for e in lv["rows"]:
+        quotes = event_quotes(conn, e["id"])
+        steps = event_next_steps(e, bills.get(e["id"]), live_event_quote(conn, e["id"]),
+                                 event_holds(conn, e["id"]), event_guest_list(conn, e["id"]),
+                                 today, quotes)
+        nexts[e["id"]] = steps[0] if steps else None
+    conn.close()
     return render_template(
-        "admin_events.html", inquiries=lv["rows"], lv=lv, today=house_today(),
-        event_types=types, bills=bills, payment_methods=MANUAL_PAYMENT_METHODS,
+        "admin_events.html", inquiries=lv["rows"], lv=lv, today=today,
+        event_types=types, bills=bills, nexts=nexts,
         event_terms_text=terms_text, pipeline=pipeline, days_waiting=event_days_waiting,
+        stage_of=event_stage, status_words=EVENT_STATUS_WORDS,
         export_q=request.query_string.decode("utf-8", "replace"),
     )
 
@@ -52062,6 +52347,312 @@ def events_view(rows, args, bills):
     )
 
 
+# THE STEPS AN EVENT GOES THROUGH, in the words the stage bar on its page uses.
+# "Held" is not a status anybody sets: it is a confirmed event whose last day
+# has passed, which is when the questions change from "is it paid" to "what
+# did it make".
+EVENT_STAGES = (("new", "Enquiry"), ("contacted", "Replied"), ("quoted", "Quoted"),
+                ("confirmed", "Confirmed"), ("held", "Held"))
+EVENT_STATUS_WORDS = {"new": "New enquiry", "contacted": "Replied to", "quoted": "Quoted",
+                      "confirmed": "Confirmed", "declined": "Declined",
+                      "cancelled": "Cancelled"}
+
+
+def event_stage(e, today_iso=None):
+    """Which step of EVENT_STAGES an event is on, or its closed status."""
+    status = e["status"] or "new"
+    last = e["end_date"] or e["preferred_date"] or ""
+    if status == "confirmed" and last and last < (today_iso or house_today_iso()):
+        return "held"
+    return status
+
+
+def event_date_clashes(conn, event):
+    """Everything else the house has on an event's dates, by name.
+
+    Confirming used to flash "2 room booking(s) overlap" after the fact, and
+    holding the date said only that it was taken. Neither said WHAT, so the
+    owner had to go and find it on the calendar. This names each one, for the
+    event's page to show BEFORE anybody presses Confirm, and for the confirm
+    and date-change warnings to quote.
+    """
+    first = parse_date(event["preferred_date"] or "")
+    if not first:
+        return None
+    last = max(parse_date(event["end_date"] or "") or first, first)
+    a, z = first.isoformat(), last.isoformat()
+    stays = conn.execute(
+        """SELECT bookings.id, bookings.guest_name, bookings.arrival_date,
+                  bookings.departure_date, bookings.status, rooms.name AS room_name
+             FROM bookings LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status IN ('pending', 'confirmed')
+              AND bookings.arrival_date <= ? AND bookings.departure_date > ?
+            ORDER BY bookings.arrival_date""", (z, a)).fetchall()
+    sittings = sessions_holding_the_house(conn, a, z)
+    events = conn.execute(
+        """SELECT id, contact_name, event_type, preferred_date, end_date, status
+             FROM event_inquiries
+            WHERE id != ? AND status = 'confirmed' AND preferred_date IS NOT NULL
+              AND preferred_date <= ? AND COALESCE(NULLIF(end_date, ''), preferred_date) >= ?
+            ORDER BY preferred_date""", (event["id"], z, a)).fetchall()
+    holds = conn.execute(
+        """SELECT event_holds.*, event_inquiries.contact_name, event_inquiries.event_type
+             FROM event_holds JOIN event_inquiries ON event_inquiries.id = event_holds.event_id
+            WHERE event_holds.event_id != ? AND event_holds.released_at IS NULL
+              AND event_holds.expires_at > ?
+              AND event_holds.start_date <= ? AND event_holds.end_date >= ?
+            ORDER BY event_holds.start_date""",
+        (event["id"], datetime.now(timezone.utc).isoformat(), z, a)).fetchall()
+    return {"first": first, "last": last, "stays": stays, "sittings": sittings,
+            "events": events, "holds": holds,
+            "count": len(stays) + len(sittings) + len(events) + len(holds)}
+
+
+def event_clash_words(clashes):
+    """The clashes as one sentence for a flash, naming what they are."""
+    if not clashes or not clashes["count"]:
+        return ""
+    parts = []
+    if clashes["stays"]:
+        names = ", ".join(f"{s['guest_name']} ({s['room_name'] or 'a room'})"
+                          for s in clashes["stays"][:3])
+        more = len(clashes["stays"]) - 3
+        parts.append(f"{_plural(len(clashes['stays']), 'stay')} — {names}"
+                     + (f" and {more} more" if more > 0 else ""))
+    if clashes["sittings"]:
+        parts.append(", ".join(f"the {s['title']} atelier" for s in clashes["sittings"]))
+    if clashes["events"]:
+        parts.append(", ".join(f"{e['contact_name']}'s {e['event_type']}"
+                               for e in clashes["events"]))
+    if clashes["holds"]:
+        parts.append(", ".join(f"a hold for {h['contact_name']}" for h in clashes["holds"]))
+    return "; ".join(parts)
+
+
+def event_next_steps(event, bill, live_quote, holds, guests, today=None, quotes=()):
+    """What has to happen next on an event, most pressing first.
+
+    Each is (headline, detail, tone, anchor): what to do, why, how loud, and
+    which part of the event's page does it. Worked out from the facts rather
+    than kept as a to-do list, so it cannot fall out of step with them: record
+    the deposit and "record the deposit" goes.
+    """
+    today = today or house_today()
+    iso = today.isoformat()
+    status = event["status"] or "new"
+    day = parse_date(event["preferred_date"] or "")
+    steps = []
+    if status in ("declined", "cancelled"):
+        if bill and bill["paid"] > 0.005:
+            steps.append(("Decide about the money received",
+                          f"{money(bill['paid'])} came in and the event is {status}. "
+                          "Refunds are a manual call.", "warn", "money"))
+        return steps
+    if status == "new":
+        waited = event_days_waiting(event, today)
+        steps.append(("Reply to them",
+                      "It came in today." if not waited else
+                      f"They have been waiting {_plural(waited, 'day')} for an answer.",
+                      "danger" if waited >= 2 else "warn", "stage"))
+    if not day:
+        steps.append(("Agree a date", "Nothing can be held or quoted for without one.",
+                      "warn", "details"))
+    accepted = next((q for q in quotes if q["status"] == "accepted"), None)
+    if accepted and status in ("new", "contacted", "quoted"):
+        # Accepting does not confirm: confirming closes the house on those
+        # dates, which is the house's act. So it is the first thing to do.
+        steps.insert(0, ("They accepted — confirm it",
+                         f"{accepted['accepted_name'] or 'They'} accepted quote "
+                         f"{accepted['version']}. Look at what else is on the dates, then confirm.",
+                         "danger", "stage"))
+    elif status in ("new", "contacted", "quoted"):
+        if live_quote and live_quote["status"] == "draft":
+            steps.append(("Send the quote",
+                          f"Quote {live_quote['version']} is written and has not gone to them.",
+                          "warn", "agreement"))
+        elif live_quote:
+            sent = house_date(live_quote["sent_at"]) if live_quote["sent_at"] else None
+            steps.append(("Waiting for their answer",
+                          f"Quote {live_quote['version']} went to them"
+                          + (f" on {format_date_short(sent.isoformat())}." if sent else "."),
+                          "info", "agreement"))
+        elif status != "quoted":
+            steps.append(("Put a price to them",
+                          "Raise a quote on the agreement page; it goes out only when you send it.",
+                          "info", "agreement"))
+    if status == "quoted":
+        if day and day.isoformat() >= iso and not holds:
+            steps.append(("Hold the date while they decide",
+                          "Nothing stops a room being sold on it until it is held or confirmed.",
+                          "info", "agreement"))
+    if status in ("quoted", "confirmed") and bill and bill["quoted"] <= 0:
+        steps.append(("Put a price on it", "There is no agreed figure, so nothing can be "
+                      "collected.", "warn", "money"))
+    if status == "confirmed" and bill and bill["quoted"] > 0:
+        if bill["deposit"] and not bill["deposit_paid"]:
+            steps.append(("Collect the deposit",
+                          f"{money(bill['deposit'])} asked for, {money(bill['paid'])} in.",
+                          "warn", "money"))
+        if bill["owed"] > 0.005 and bill["due_date"]:
+            late = bill["due_date"] < iso
+            steps.append(("Collect the balance" + (" — it is late" if late else ""),
+                          f"{money(bill['owed'])} due {format_date_short(bill['due_date'])}.",
+                          "danger" if late else "info", "money"))
+        if day and day.isoformat() >= iso:
+            away = (day - today).days
+            if event["final_numbers"] is None and away <= FINAL_NUMBERS_DAYS:
+                steps.append(("Get their final numbers",
+                              f"The event is {_plural(away, 'day')} away and the kitchen "
+                              "orders from the final figure.", "danger", "plan"))
+            if guests and guests["gap"] and guests["gap"] > 0 and away <= 60:
+                steps.append(("Fill in the guest list",
+                              f"{guests['named']} named of {guests['told']}.", "info", "plan"))
+    if event_stage(event, iso) == "held":
+        steps.append(("See what it made", "The day has passed; the margin page names "
+                      "anything it does not yet know.", "info", "plan"))
+    return steps
+
+
+def _event_back(event_id):
+    """Where a form on an event goes back to: its own page when it came from
+    there, the list when it came from the list. Read from a field the page
+    sets rather than from the Referer, which a browser supplies and somebody
+    else can aim."""
+    if (request.form.get("back") or "") == "event" and event_id:
+        return url_for("admin_event", event_id=event_id)
+    return url_for("admin_events")
+
+
+@app.route("/admin/events/<int:event_id>")
+@owner_required
+def admin_event(event_id):
+    """One event, all of it: where it stands, what to do next, its details,
+    its money and what else the house has on its dates.
+
+    The owner, 19 October 2026: the event manager was "impossible to use".
+    Every event was a card on one long list, with its quote, its guest list,
+    its run sheet and its money each on a page of its own and nothing to say
+    which mattered now -- and nowhere at all to change its date, its numbers or
+    who to ring once it had been typed in.
+    """
+    conn = get_db()
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (event_id,)).fetchone()
+    if not event:
+        conn.close()
+        abort(404)
+    today = house_today()
+    bill = event_bill(conn, event_id)
+    live = live_event_quote(conn, event_id)
+    quotes = event_quotes(conn, event_id)
+    holds = event_holds(conn, event_id)
+    schedule = event_schedule(conn, event_id)
+    guests = event_guest_list(conn, event_id)
+    readiness = event_supplier_readiness(conn, event_id)
+    moments = conn.execute("SELECT COUNT(*) AS c FROM event_timeline WHERE event_id = ?",
+                           (event_id,)).fetchone()["c"]
+    payments = conn.execute(
+        """SELECT event_payments.*, users.name AS taken_by
+             FROM event_payments LEFT JOIN users ON users.id = event_payments.taken_by_user_id
+            WHERE event_id = ? ORDER BY created_at""", (event_id,)).fetchall()
+    clashes = event_date_clashes(conn, event)
+    caution = guest_caution_for(conn, email=event["contact_email"], name=event["contact_name"])
+    types = known_event_types(conn)
+    staff = conn.execute(
+        "SELECT COUNT(*) AS c FROM shifts WHERE event_id = ?", (event_id,)).fetchone()["c"]
+    conn.close()
+    stage = event_stage(event, today.isoformat())
+    return render_template(
+        "admin_event.html", event=event, bill=bill, live=live, quotes=quotes, holds=holds,
+        schedule=schedule, guests=guests, readiness=readiness, moments=moments,
+        payments=payments, clashes=clashes, caution=caution, event_types=types,
+        stage=stage, stages=EVENT_STAGES, status_words=EVENT_STATUS_WORDS,
+        steps=event_next_steps(event, bill, live, holds, guests, today, quotes),
+        staff_down=staff, payment_methods=MANUAL_PAYMENT_METHODS,
+        waited=event_days_waiting(event, today), today=today,
+        numbers_due=((parse_date(event["preferred_date"] or "")
+                      - timedelta(days=FINAL_NUMBERS_DAYS)).isoformat()
+                     if parse_date(event["preferred_date"] or "") else None),
+    )
+
+
+@app.route("/admin/events/<int:event_id>/details", methods=["POST"])
+@owner_required
+def edit_event_details(event_id):
+    """Change what an event IS: its kind, its dates, its numbers, who to ring.
+
+    None of these could be changed once typed in. A couple moving their
+    wedding a week, or the organiser's new phone number, meant deleting
+    nothing and changing nothing -- the old date stayed on the calendar and
+    held the house.
+    """
+    conn = get_db()
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (event_id,)).fetchone()
+    if not event:
+        conn.close()
+        abort(404)
+    back = url_for("admin_event", event_id=event_id, _anchor="details")
+    form = request.form
+    event_type = (form.get("event_type", "") or "").strip()
+    name = (form.get("contact_name", "") or "").strip()[:120]
+    email = (form.get("contact_email", "") or "").strip().lower()
+    phone = (form.get("contact_phone", "") or "").strip()[:40]
+    start = (form.get("preferred_date", "") or "").strip()
+    end = (form.get("end_date", "") or "").strip()
+    alt = (form.get("alternate_date", "") or "").strip()
+    count_raw = (form.get("guest_count", "") or "").strip()
+    problem = None
+    if event_type not in known_event_types(conn):
+        problem = "Choose an event type."
+    elif not name:
+        problem = "Somebody's name has to be on it."
+    elif email and not EMAIL_RE.match(email):
+        problem = "That email address doesn't look right."
+    elif any(v and not parse_date(v) for v in (start, end, alt)):
+        problem = "One of those dates isn't a date."
+    elif end and not start:
+        problem = "Give the first day as well as the last."
+    elif start and end and end < start:
+        problem = "The last day is before the first."
+    elif count_raw and not count_raw.isdigit():
+        problem = "Guests is a whole number."
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return redirect(back)
+    end = "" if end == start else end
+    changes = []
+    for column, value in (("event_type", event_type), ("contact_name", name),
+                          ("contact_email", email), ("contact_phone", phone or None),
+                          ("preferred_date", start or None), ("end_date", end or None),
+                          ("alternate_date", alt or None),
+                          ("guest_count", int(count_raw) if count_raw else None),
+                          ("spaces", (form.get("spaces", "") or "").strip()[:300] or None),
+                          ("message", (form.get("message", "") or "").strip()[:2000] or None),
+                          ("owner_note", (form.get("owner_note", "") or "").strip()[:2000] or None)):
+        if str(event[column] if event[column] is not None else "") != str(value if value is not None else ""):
+            changes.append(column)
+            conn.execute(f"UPDATE event_inquiries SET {column} = ? WHERE id = ?", (value, event_id))
+    if not changes:
+        conn.close()
+        flash("Nothing had changed.", "success")
+        return redirect(back)
+    log_audit(conn, "event_details_changed", target=event["reference_code"],
+              details=", ".join(changes))
+    conn.commit()
+    after = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (event_id,)).fetchone()
+    moved = {"preferred_date", "end_date"} & set(changes)
+    clash = event_clash_words(event_date_clashes(conn, after)) if moved else ""
+    conn.close()
+    flash("Saved.", "success")
+    if moved and after["status"] == "confirmed" and after["balance_due_date"]:
+        flash(f"The date has moved; the balance is still due "
+              f"{format_date_short(after['balance_due_date'])}. Change it under Money if it "
+              "should move too.", "success")
+    if clash:
+        flash(f"Also on those dates: {clash}.", "error")
+    return redirect(back)
+
+
 @app.route("/admin/events/types", methods=["POST"])
 @owner_required
 def update_event_types():
@@ -52141,7 +52732,7 @@ def new_event_inquiry():
     now = datetime.now(timezone.utc).isoformat()
     conn = get_db()
     try:
-        conn.execute(
+        cur = conn.execute(
             """INSERT INTO event_inquiries (reference_code, manage_token, event_type, contact_name,
                contact_email, contact_phone, preferred_date, alternate_date, end_date, spaces,
                guest_count, message, status, quoted_price, owner_note, created_at, decided_at)
@@ -52156,13 +52747,15 @@ def new_event_inquiry():
              message or None, status, quoted_price, owner_note or None, now,
              now if status in ("confirmed", "declined") else None),
         )
+        new_id = cur.lastrowid
         conn.commit()
     finally:
         # Without this, an insert that raises leaves the connection open and
         # the next write fails with "database is locked".
         conn.close()
     flash(f"{contact_name}'s {event_type} added.", "success")
-    return redirect(url_for("admin_events"))
+    # To its page, where the next thing to do with it is.
+    return redirect(url_for("admin_event", event_id=new_id))
 
 
 @app.route("/admin/events/<int:inquiry_id>/payment", methods=["POST"])
@@ -52188,16 +52781,16 @@ def record_event_payment_route(inquiry_id):
     if amount <= 0:
         conn.close()
         flash("Enter how much was received.", "error")
-        return redirect(url_for("admin_events"))
+        return redirect(_event_back(inquiry_id))
     if bill["quoted"] <= 0:
         conn.close()
         flash("Put a price on the event before recording money against it.", "error")
-        return redirect(url_for("admin_events"))
+        return redirect(_event_back(inquiry_id))
     if amount > bill["owed"] + 0.01:
         conn.close()
         flash(f"That is more than the {money(bill['owed'])} outstanding on this event.",
               "error")
-        return redirect(url_for("admin_events"))
+        return redirect(_event_back(inquiry_id))
     method = (request.form.get("method", "") or "bank_transfer").strip()
     if method not in MANUAL_PAYMENT_METHODS:
         method = "bank_transfer"
@@ -52213,7 +52806,7 @@ def record_event_payment_route(inquiry_id):
     flash(f"{money(amount)} recorded."
           + (f" {money(left)} still to pay." if left > 0.005 else " Settled."),
           "success")
-    return redirect(url_for("admin_events"))
+    return redirect(_event_back(inquiry_id))
 
 
 @app.route("/admin/events/<int:inquiry_id>/update", methods=["POST"])
@@ -52221,7 +52814,9 @@ def record_event_payment_route(inquiry_id):
 def update_event_inquiry(inquiry_id):
     status = request.form.get("status", "").strip()
     quoted_price_raw = request.form.get("quoted_price", "").strip()
-    owner_note = request.form.get("owner_note", "").strip()
+    # Absent is "leave it": the stage buttons on the event's page send a status
+    # and nothing else, and must not wipe the note on the way past.
+    owner_note = request.form.get("owner_note")
     promo_raw = request.form.get("promo_code", "").strip()
     deposit_raw = request.form.get("deposit_amount", "").strip().replace(",", ".")
     due_raw = request.form.get("balance_due_date", "").strip()
@@ -52239,8 +52834,10 @@ def update_event_inquiry(inquiry_id):
         quoted_price = float(quoted_price_raw) if quoted_price_raw else inquiry["quoted_price"]
     except ValueError:
         quoted_price = inquiry["quoted_price"]
+    owner_note = inquiry["owner_note"] if owner_note is None else owner_note.strip()
 
     status_changed_to_decided = status in ("confirmed", "declined") and inquiry["status"] != status
+    was_status = inquiry["status"]
     decided_at = datetime.now(timezone.utc).isoformat() if status_changed_to_decided else inquiry["decided_at"]
 
     # A standing instruction is read before a date is promised, as it is for a
@@ -52253,7 +52850,7 @@ def update_event_inquiry(inquiry_id):
             flash(f"Not confirmed: there is a standing instruction not to accept a booking "
                   f"from {caution['name']} ({caution['caution']}) — lift it on their profile "
                   "if that has changed.", "error")
-            return redirect(url_for("admin_events"))
+            return redirect(_event_back(inquiry_id))
 
     # A promo code, honoured against the quote.
     #
@@ -52334,34 +52931,17 @@ def update_event_inquiry(inquiry_id):
     # session, or another confirmed event already sits on this date. Flag
     # it (don't block — the owner might already know, or be moving things
     # around) the same way new_workshop_session warns on its own overlaps.
-    if status == "confirmed" and inquiry["preferred_date"]:
-        event_date = inquiry["preferred_date"]
-        clashing_bookings = conn.execute(
-            """SELECT COUNT(*) AS c FROM bookings WHERE status IN ('pending','confirmed')
-               AND arrival_date <= ? AND departure_date > ?""",
-            (event_date, event_date),
-        ).fetchone()["c"]
-        # Only sittings still running: one called off is no clash at all.
-        clashing_sessions = len(sessions_holding_the_house(conn, event_date, event_date))
-        clashing_events = conn.execute(
-            "SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'confirmed' AND preferred_date = ? AND id != ?",
-            (event_date, inquiry_id),
-        ).fetchone()["c"]
-        parts = []
-        if clashing_bookings:
-            parts.append(f"{clashing_bookings} room booking(s)")
-        if clashing_sessions:
-            parts.append(f"{clashing_sessions} workshop session(s)")
-        if clashing_events:
-            parts.append(f"{clashing_events} other confirmed event(s)")
-        if parts:
-            flash(f"Inquiry updated — heads up, {' and '.join(parts)} overlap {format_date_human(event_date)}.", "error")
+    if status == "confirmed" and status_changed_to_decided:
+        clash = event_clash_words(event_date_clashes(conn, inquiry))
+        if clash:
+            flash(f"Confirmed — and also on those dates: {clash}.", "error")
             conn.close()
-            return redirect(url_for("admin_events"))
+            return redirect(_event_back(inquiry_id))
 
     conn.close()
-    flash("Inquiry updated.", "success")
-    return redirect(url_for("admin_events"))
+    flash(f"Now {EVENT_STATUS_WORDS.get(status, status).lower()}." if status != was_status
+          else "Saved.", "success")
+    return redirect(_event_back(inquiry_id))
 
 
 @app.route("/admin/events/export.csv")
@@ -52591,6 +53171,29 @@ def apply_extras_transfers_2026_10_18(conn):
     conn.commit()
     if changed:
         print(f"[extras] {changed} transfer(s) filed under Transfers at {TRANSFER_VAT_RATE:g}% VAT")
+    return changed
+
+
+def apply_extras_sunday_2026_10_19(conn):
+    """Once: the charcuterie board is not arranged on a Sunday.
+
+    The owner, 19 October 2026: "the charcuterie reminder can't be on a
+    Sunday". The board went into the catalogue before an extra could say which
+    days its supplier is shut, so it says so now -- on any extra with
+    charcuterie in its name, and only where no days have been set, so a choice
+    made on the catalogue page stands. Once, by the flag: untick it later and
+    it stays unticked. Returns how many extras changed.
+    """
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'extras_sunday_2026_10_19'").fetchone():
+        return 0
+    changed = conn.execute(
+        """UPDATE extras SET arrange_days_off = '6'
+            WHERE LOWER(name) LIKE '%charcut%' AND COALESCE(arrange_days_off, '') = ''""").rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('extras_sunday_2026_10_19', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[extras] {changed} charcuterie extra(s) no longer arranged on a Sunday")
     return changed
 
 
@@ -60763,6 +61366,10 @@ def extra_fields_from_form():
         # without anybody looking is a decision, not a default.
         "guest_bookable": 1 if request.form.get("guest_bookable") == "on" else 0,
         "lead_time_days": whole("lead_time_days", blank=0),
+        # The days the supplier is shut, ticked: Monday 0 to Sunday 6.
+        "arrange_days_off": ",".join(sorted(
+            {d for d in request.form.getlist("arrange_days_off")
+             if d.isdigit() and int(d) < 7})),
         "max_qty": whole("max_qty", blank=None),
         # Blank means "work it out" -- a transfer goes to transport and anything
         # else to extras. Set it only to send something somewhere of its own,
@@ -60829,14 +61436,14 @@ def new_extra():
     conn.execute(
         """INSERT INTO extras (name, price, description, category, guest_bookable,
            lead_time_days, max_qty, revenue_category, ask_when, vat_rate,
-           vat_part_amount, vat_part_rate, sort_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           vat_part_amount, vat_part_rate, sort_order, arrange_days_off)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (fields["name"], fields["price"] or 0, fields["description"],
          fields["category"], fields["guest_bookable"], fields["lead_time_days"],
          fields["max_qty"], fields["revenue_category"], fields["ask_when"],
          fields["vat_rate"], fields["vat_part_amount"] or None,
          fields["vat_part_rate"] if fields["vat_part_amount"] else None,
-         max_order + 1),
+         max_order + 1, fields["arrange_days_off"]),
     )
     conn.commit()
     conn.close()
@@ -60863,13 +61470,13 @@ def edit_extra(extra_id):
         """UPDATE extras SET name = ?, price = ?, description = ?, category = ?,
            guest_bookable = ?, lead_time_days = ?, max_qty = ?,
            revenue_category = ?, ask_when = ?, vat_rate = ?, vat_part_amount = ?,
-           vat_part_rate = ? WHERE id = ?""",
+           vat_part_rate = ?, arrange_days_off = ? WHERE id = ?""",
         (fields["name"], fields["price"] or 0, fields["description"],
          fields["category"], fields["guest_bookable"], fields["lead_time_days"],
          fields["max_qty"], fields["revenue_category"], fields["ask_when"],
          fields["vat_rate"], fields["vat_part_amount"] or None,
          fields["vat_part_rate"] if fields["vat_part_amount"] else None,
-         extra_id),
+         fields["arrange_days_off"], extra_id),
     )
     conn.commit()
     conn.close()
@@ -69011,40 +69618,81 @@ def workshop_session_remaining_capacity(conn, session_id, exclude_id=None):
 @app.route("/admin/workshops")
 @owner_required
 def admin_workshops():
-    """The ateliers the house runs, their sessions, and how each is filling."""
+    """The ateliers the house runs: what is coming up, and the programmes.
+
+    The owner, 19 October 2026: "impossible to use". Every programme was a
+    card holding its description, its sittings, its stock and its
+    registration questions, so the one question asked every morning -- what
+    is coming up and how is it filling -- meant reading every card in turn,
+    past two test programmes and the setup of each. The sittings now come
+    first, every programme's together in date order; each programme's setup
+    is on its own page.
+    """
     conn = get_db()
     workshops = conn.execute("SELECT * FROM workshops ORDER BY sort_order, title").fetchall()
     today = house_today()
     period = period_from_request()
     overview = workshops_overview(conn, period, today)
     total_rooms = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
+    sittings = workshop_sitting_rows(conn, workshops, today)
+    sessions_by_workshop = sittings["upcoming"]
+    # Every programme's sittings still to come, in one list by date: the
+    # list the page leads with.
+    coming = sorted((r for rows in sessions_by_workshop.values() for r in rows),
+                    key=lambda r: (r["session"]["start_date"], r["workshop"]["title"]))
+    # Totalled here rather than in the template: the old version accumulated
+    # inside a Jinja {% for %}, where a {% set %} doesn't escape the loop, so
+    # both figures always came out as zero however many sessions were listed.
+    # A sitting called off stays listed -- why it did not run is worth
+    # knowing -- but it is not an upcoming session with places free.
+    upcoming_rows = [r for r in coming if not r["session"]["cancelled_at"]]
+    upcoming_count = len(upcoming_rows)
+    spots_remaining = sum(r["remaining"] for r in upcoming_rows)
+    conn.close()
+    return render_template(
+        "admin_workshops.html", workshops=workshops, sessions_by_workshop=sessions_by_workshop,
+        past_by_workshop=sittings["past"], coming=coming,
+        today=today, total_rooms=total_rooms,
+        overview=overview, period=period,
+        upcoming_count=upcoming_count, spots_remaining=spots_remaining,
+    )
+
+
+def workshop_sitting_rows(conn, workshops, today):
+    """Each programme's sittings, still to come and past, with how each stands.
+
+    One reckoning for the workshops page and each programme's own page, so the
+    two cannot disagree about a sitting's places, its money or its stock.
+    """
     # Sessions used to be filtered to end_date >= today, so a workshop that had
     # already run vanished from the admin page entirely — no way to see who
-    # attended or what it took. Past sessions are now loaded too and split out
-    # below, with attendance so the history is worth having. The PUBLIC
-    # workshops page still shows upcoming only, which is correct there.
-    # Read once for the whole page and keyed by session, rather than asked
-    # per session inside the loop below.
+    # attended or what it took. Past sessions are loaded too and split out,
+    # with attendance so the history is worth having. The PUBLIC workshops
+    # page still shows upcoming only, which is correct there. Everything is
+    # read once and keyed by session, rather than asked per session.
     at_risk_by_session = {w["session"]["id"]: w for w in sessions_at_risk(conn, today)}
-    materials_by_workshop = {}
-    for row in conn.execute(
-        """SELECT workshop_materials.*, stock_items.name, stock_items.unit,
-                  stock_items.active AS item_active
-             FROM workshop_materials
-             JOIN stock_items ON stock_items.id = workshop_materials.stock_item_id
-            ORDER BY stock_items.name""").fetchall():
-        materials_by_workshop.setdefault(row["workshop_id"], []).append(row)
-    # Only offered where there is something to pick from.
-    stock_choices = conn.execute(
-        "SELECT id, name, unit FROM stock_items WHERE active = 1 ORDER BY name"
-    ).fetchall()
+    with_materials = {r["workshop_id"] for r in conn.execute(
+        "SELECT DISTINCT workshop_id FROM workshop_materials").fetchall()}
     register_by_session = {}
     for reg_row in workshop_register_rows(conn, today):
         if reg_row["live"]:
-            tally = register_by_session.setdefault(reg_row["session_id"], {"booked": 0, "owed": 0.0})
+            tally = register_by_session.setdefault(
+                reg_row["session_id"], {"booked": 0, "owed": 0.0, "paid": 0.0})
             tally["booked"] += 1
             tally["owed"] = round(tally["owed"] + max(reg_row["owed"], 0), 2)
-    sessions_by_workshop, past_by_workshop = {}, {}
+            tally["paid"] = round(tally["paid"] + max(reg_row["paid"], 0), 2)
+    # People, not registrations: a couple is two places.
+    people = {}
+    for r in conn.execute(
+            """SELECT session_id, status, COALESCE(SUM(party_size), 0) AS n
+                 FROM workshop_bookings WHERE status IN ('pending', 'confirmed')
+                GROUP BY session_id, status""").fetchall():
+        people.setdefault(r["session_id"], {})[r["status"]] = r["n"]
+    rooms_by_session = {r["session_id"]: r["c"] for r in conn.execute(
+        """SELECT session_id, COUNT(DISTINCT assigned_room_id) AS c FROM workshop_bookings
+            WHERE status IN ('pending', 'confirmed') AND assigned_room_id IS NOT NULL
+            GROUP BY session_id""").fetchall()}
+    upcoming, past = {}, {}
     for w in workshops:
         sessions = conn.execute(
             "SELECT * FROM workshop_sessions WHERE workshop_id = ? ORDER BY start_date",
@@ -69052,60 +69700,103 @@ def admin_workshops():
         ).fetchall()
         rows, past_rows = [], []
         for s in sessions:
-            rooms_assigned = conn.execute(
-                """SELECT COUNT(DISTINCT assigned_room_id) AS c FROM workshop_bookings
-                   WHERE session_id = ? AND status IN ('pending', 'confirmed') AND assigned_room_id IS NOT NULL""",
-                (s["id"],),
-            ).fetchone()["c"]
+            here = people.get(s["id"], {})
+            first, last = parse_date(s["start_date"] or ""), parse_date(s["end_date"] or "")
             entry = {
-                "session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"]),
-                "rooms_assigned": rooms_assigned,
+                "session": s, "workshop": w,
+                "remaining": workshop_session_remaining_capacity(conn, s["id"]),
+                "confirmed": here.get("confirmed", 0), "pending": here.get("pending", 0),
+                "rooms_assigned": rooms_by_session.get(s["id"], 0),
                 "at_risk": at_risk_by_session.get(s["id"]),
-                "register": register_by_session.get(s["id"], {"booked": 0, "owed": 0.0}),
+                "register": register_by_session.get(
+                    s["id"], {"booked": 0, "owed": 0.0, "paid": 0.0}),
+                "nights": max((last - first).days, 0) if first and last else 0,
+                "first": first,
                 # Only where there is a list to plan against, so a workshop
                 # with no materials costs nothing per session.
                 # Nor for a sitting that has been called off: it needs
                 # nothing from the shelf, and the button that takes it out
                 # must not be offered for an atelier that did not run.
                 "materials": (session_materials(conn, s["id"])
-                              if materials_by_workshop.get(w["id"])
+                              if w["id"] in with_materials
                               and not s["cancelled_at"] else None),
             }
             if (s["end_date"] or s["start_date"]) >= today.isoformat():
                 rows.append(entry)
             else:
-                entry["attended"] = conn.execute(
-                    """SELECT COALESCE(SUM(party_size), 0) AS c FROM workshop_bookings
-                       WHERE session_id = ? AND status = 'confirmed'""",
-                    (s["id"],),
-                ).fetchone()["c"]
+                entry["attended"] = here.get("confirmed", 0)
                 past_rows.append(entry)
         past_rows.reverse()  # most recent first
-        sessions_by_workshop[w["id"]] = rows
-        past_by_workshop[w["id"]] = past_rows
-    custom_fields_by_workshop = {}
-    for row in conn.execute("SELECT * FROM workshop_custom_fields ORDER BY sort_order").fetchall():
-        custom_fields_by_workshop.setdefault(row["workshop_id"], []).append(row)
-    # Totalled here rather than in the template: the old version accumulated
-    # inside a Jinja {% for %}, where a {% set %} doesn't escape the loop, so
-    # both figures always came out as zero however many sessions were listed.
-    # A sitting called off stays listed -- why it did not run is worth
-    # knowing -- but it is not an upcoming session with places free.
-    upcoming_rows = [r for rows in sessions_by_workshop.values() for r in rows
-                     if not r["session"]["cancelled_at"]]
-    upcoming_count = len(upcoming_rows)
-    spots_remaining = sum(r["remaining"] for r in upcoming_rows)
+        upcoming[w["id"]] = rows
+        past[w["id"]] = past_rows
+    return {"upcoming": upcoming, "past": past}
+
+
+@app.route("/admin/workshops/<int:workshop_id>")
+@owner_required
+def admin_workshop(workshop_id):
+    """One programme: what it is, its sittings, what it uses and what it asks.
+
+    The setup that used to sit on the workshops page under every programme --
+    the stock it uses up, the questions people registering are asked -- is
+    here, beside the sittings it belongs to, so the workshops page can be
+    about what is coming up.
+    """
+    conn = get_db()
+    workshop = conn.execute("SELECT * FROM workshops WHERE id = ?", (workshop_id,)).fetchone()
+    if not workshop:
+        conn.close()
+        abort(404)
+    today = house_today()
+    sittings = workshop_sitting_rows(conn, [workshop], today)
+    materials = conn.execute(
+        """SELECT workshop_materials.*, stock_items.name, stock_items.unit,
+                  stock_items.active AS item_active
+             FROM workshop_materials
+             JOIN stock_items ON stock_items.id = workshop_materials.stock_item_id
+            WHERE workshop_materials.workshop_id = ?
+            ORDER BY stock_items.name""", (workshop_id,)).fetchall()
+    stock_choices = conn.execute(
+        "SELECT id, name, unit FROM stock_items WHERE active = 1 ORDER BY name").fetchall()
+    fields = conn.execute(
+        "SELECT * FROM workshop_custom_fields WHERE workshop_id = ? ORDER BY sort_order",
+        (workshop_id,)).fetchall()
+    instructor = (conn.execute("SELECT name FROM users WHERE id = ?",
+                               (workshop["instructor_user_id"],)).fetchone()
+                  if workshop["instructor_user_id"] else None)
+    waiting = conn.execute(
+        """SELECT COUNT(*) AS c FROM workshop_waitlist
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_waitlist.session_id
+            WHERE workshop_sessions.workshop_id = ?
+              AND workshop_waitlist.status IN ('open', 'contacted')""",
+        (workshop_id,)).fetchone()["c"]
     conn.close()
+    upcoming = sittings["upcoming"][workshop_id]
     return render_template(
-        "admin_workshops.html", workshops=workshops, sessions_by_workshop=sessions_by_workshop,
-        past_by_workshop=past_by_workshop,
-        today=today, total_rooms=total_rooms,
-        custom_fields_by_workshop=custom_fields_by_workshop,
-                           materials_by_workshop=materials_by_workshop,
-                           stock_choices=stock_choices,
-        overview=overview, period=period,
-        upcoming_count=upcoming_count, spots_remaining=spots_remaining,
+        "admin_workshop.html", workshop=workshop, upcoming=upcoming,
+        past=sittings["past"][workshop_id], materials=materials,
+        stock_choices=stock_choices, fields=fields, today=today,
+        instructor=instructor["name"] if instructor else None, waiting=waiting,
+        sold=sum(r["confirmed"] + r["pending"] for r in upcoming
+                 if not r["session"]["cancelled_at"]),
     )
+
+def workshop_admin_return():
+    """Where a change to a sitting or a programme goes back to: the sitting's
+    page or the programme's page it was made on, or the workshops page.
+
+    Every one of these went to the workshops page, wherever it was pressed --
+    so changing a sitting's places from its own page threw the owner back to
+    the top of a list of every programme. Read from fields the page sets, never
+    from the Referer, which a browser supplies and somebody else can aim.
+    """
+    sid = (request.form.get("back_session") or "").strip()
+    if sid.isdigit():
+        return url_for("admin_workshop_session", session_id=int(sid))
+    wid = (request.form.get("back_workshop") or "").strip()
+    if wid.isdigit():
+        return url_for("admin_workshop", workshop_id=int(wid))
+    return url_for("admin_workshops")
 
 
 @app.route("/admin/workshops/new", methods=["GET", "POST"])
@@ -69136,7 +69827,7 @@ def new_workshop():
             return render_template("workshop_form.html", workshop=None,
                                    instructors=known_instructor_list())
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM workshops").fetchone()["m"]
-        conn.execute(
+        cur = conn.execute(
             """INSERT INTO workshops (title, description, instructor_name, instructor_user_id, price_per_person,
                default_capacity, sort_order, deposit_percent, inclusions, itinerary, single_supplement,
                transfers_included, excursions_included, created_at)
@@ -69153,10 +69844,11 @@ def new_workshop():
              1 if request.form.get("excursions_included") else 0,
              datetime.now(timezone.utc).isoformat()),
         )
+        new_id = cur.lastrowid
         conn.commit()
         conn.close()
-        flash(f"{title} added.", "success")
-        return redirect(url_for("admin_workshops"))
+        flash(f"{title} added. Add its first sitting below.", "success")
+        return redirect(url_for("admin_workshop", workshop_id=new_id))
 
     return render_template("workshop_form.html", workshop=None, instructors=known_instructor_list())
 
@@ -69215,7 +69907,7 @@ def edit_workshop(workshop_id):
         conn.commit()
         conn.close()
         flash("Workshop updated.", "success")
-        return redirect(url_for("admin_workshops"))
+        return redirect(url_for("admin_workshop", workshop_id=workshop_id))
 
     instructors = conn.execute("SELECT * FROM users WHERE role IN ('owner', 'employee') ORDER BY role DESC, name").fetchall()
     conn.close()
@@ -69326,14 +70018,14 @@ def add_workshop_material(workshop_id):
     if not item:
         conn.close()
         flash("Choose something from the stock list.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
 
     # An entry that consumes nothing is a line on a list that will be read
     # every time the workshop runs and mean nothing every time.
     if (per_person or 0) <= 0 and (per_session or 0) <= 0:
         conn.close()
         flash("Set how much it uses — per person, per session, or both.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
 
     existing = conn.execute(
         """SELECT id FROM workshop_materials
@@ -69357,7 +70049,7 @@ def add_workshop_material(workshop_id):
         flash(f"{item['name']} added to what this workshop uses.", "success")
     conn.commit()
     conn.close()
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshop_admin_return())
 
 
 @app.route("/admin/workshops/materials/<int:material_id>/remove", methods=["POST"])
@@ -69379,7 +70071,7 @@ def remove_workshop_material(material_id):
     # somebody edited a list afterwards.
     flash(f"{row['name']} removed. Anything already taken out of stock stays out.",
           "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshop_admin_return())
 
 
 @app.route("/admin/workshops/sessions/<int:session_id>/consume", methods=["POST"])
@@ -69395,24 +70087,24 @@ def consume_workshop_materials(session_id):
     if result["already"]:
         conn.close()
         flash("Already taken out of stock for this session.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
     if result.get("called_off"):
         conn.close()
         flash("That sitting was called off, so nothing was used — nothing "
               "taken out of stock.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
     if not result["written"]:
         conn.close()
         flash("Nothing to take out — this workshop has no materials against it, "
               "or nobody confirmed a place.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
 
     log_audit(conn, "workshop_materials_consumed", target=str(session_id),
               details=f"{result['written']} item(s)")
     conn.commit()
     conn.close()
     flash(f"{result['written']} item(s) taken out of stock.", "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshop_admin_return())
 
 
 @app.route("/admin/workshops/session/<int:session_id>/call-off", methods=["POST"])
@@ -69437,7 +70129,7 @@ def call_off_workshop_session(session_id):
     conn.close()
     if result["already"]:
         flash("That sitting was already called off.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
     # The one reporter, so anybody it could not cancel is NAMED.
     message, category = bulk_message("Cancelled", "place", len(result["done"]),
                                      result["skipped"])
@@ -69464,7 +70156,7 @@ def call_off_workshop_session(session_id):
     if extra:
         message = message.rstrip(".") + ". " + ". ".join(extra) + "."
     flash(message, category)
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshop_admin_return())
 
 
 @app.route("/admin/workshops/session/<int:session_id>/instructor-link", methods=["POST"])
@@ -69484,7 +70176,7 @@ def workshop_instructor_link(session_id):
         conn.close()
         flash("The link no longer works. Anyone you sent it to will see "
               "nothing.", "success")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
     token = row["instructor_token"] or secrets.token_urlsafe(24)
     conn.execute("UPDATE workshop_sessions SET instructor_token = ? WHERE id = ?",
                  (token, session_id))
@@ -69492,7 +70184,7 @@ def workshop_instructor_link(session_id):
     conn.close()
     flash("Send them this: "
           + url_for("instructor_page", token=token, _external=True), "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshop_admin_return())
 
 
 @app.route("/workshops/teaching/<token>")
@@ -69529,11 +70221,11 @@ def new_workshop_session(workshop_id):
     if not start_date:
         conn.close()
         flash("Choose a valid start date.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
     if end_date < start_date:
         conn.close()
         flash("End date can't be before the start date.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
 
     capacity = (int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0
                 else workshop["default_capacity"])
@@ -69556,29 +70248,18 @@ def new_workshop_session(workshop_id):
     conn.commit()
 
     # A workshop session takes over the whole château, so flag it (don't
-    # block it — the owner might be moving guests or already knows) if any
-    # room booking already overlaps those dates.
-    clashing = conn.execute(
-        """SELECT COUNT(*) AS c FROM bookings WHERE status IN ('pending', 'confirmed')
-           AND arrival_date < ? AND departure_date > ?""",
-        ((end_date + timedelta(days=1)).isoformat(), start_date.isoformat()),
-    ).fetchone()["c"]
-    clashing_events = conn.execute(
-        """SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'confirmed'
-           AND preferred_date >= ? AND preferred_date <= ?""",
-        (start_date.isoformat(), end_date.isoformat()),
-    ).fetchone()["c"]
+    # block it — the owner might be moving guests or already knows) if
+    # anything already has those dates -- by name, so nobody has to go and
+    # find what "2 existing room booking(s)" meant.
+    new_id = conn.execute("SELECT MAX(id) AS i FROM workshop_sessions WHERE workshop_id = ?",
+                          (workshop_id,)).fetchone()["i"]
+    clash = sitting_clash_words(conn, start_date, end_date, new_id)
     conn.close()
-    if clashing or clashing_events:
-        parts = []
-        if clashing:
-            parts.append(f"{clashing} existing room booking(s)")
-        if clashing_events:
-            parts.append(f"{clashing_events} confirmed event(s)")
-        flash(f"Session added — heads up, {' and '.join(parts)} overlap these dates.", "error")
+    if clash:
+        flash(f"Session added — heads up, also on those dates: {clash}.", "error")
     else:
         flash("Session added.", "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshop_admin_return())
 
 
 @app.route("/admin/workshops/sessions/<int:session_id>/edit", methods=["POST"])
@@ -69613,26 +70294,51 @@ def edit_workshop_session(session_id):
     if not raw.isdigit() or int(raw) < 1:
         conn.close()
         flash("Capacity has to be a whole number of places.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
     capacity = int(raw)
     if capacity < taken:
         conn.close()
         flash(f"{taken} place(s) are already booked on that session, so it "
               f"cannot be set to {capacity}.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
 
     start = parse_date(request.form.get("start_date", "")) or parse_date(session_row["start_date"])
     end = parse_date(request.form.get("end_date", "")) or start
     if end < start:
         conn.close()
         flash("End date can't be before the start date.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
+
+    # The fewest it runs with and when that is decided: set when the sitting
+    # was made and never again, so a minimum typed wrong stayed on the home
+    # page as a sitting at risk until its own start date. Absent from the form
+    # is "leave it" -- the places box on the workshops page sends neither.
+    minimum = session_row["min_participants"] or 0
+    raw_min = request.form.get("min_participants")
+    if raw_min is not None:
+        raw_min = raw_min.strip()
+        if raw_min and not raw_min.isdigit():
+            conn.close()
+            flash("The fewest it can run with is a whole number, or blank for no minimum.", "error")
+            return redirect(workshop_admin_return())
+        minimum = min(int(raw_min) if raw_min else 0, capacity)
+    decide_by = session_row["decide_by_days"]
+    raw_decide = request.form.get("decide_by_days")
+    if raw_decide is not None:
+        raw_decide = raw_decide.strip()
+        if raw_decide and not raw_decide.isdigit():
+            conn.close()
+            flash("Days before is a whole number.", "error")
+            return redirect(workshop_admin_return())
+        decide_by = int(raw_decide) if raw_decide else WORKSHOP_DECIDE_BY_DAYS
+    notes = request.form.get("notes")
+    notes = session_row["notes"] if notes is None else (notes.strip() or None)
 
     conn.execute(
-        """UPDATE workshop_sessions SET capacity = ?, start_date = ?, end_date = ?, notes = ?
+        """UPDATE workshop_sessions SET capacity = ?, start_date = ?, end_date = ?, notes = ?,
+                  min_participants = ?, decide_by_days = ?
             WHERE id = ?""",
-        (capacity, start.isoformat(), end.isoformat(),
-         (request.form.get("notes") or "").strip() or None, session_id))
+        (capacity, start.isoformat(), end.isoformat(), notes, minimum, decide_by, session_id))
     # NEW DATES MOVE THE MONEY. A balance falls due thirty days before the
     # atelier, and this changed the atelier's date and not one balance's --
     # so the notice that they had fallen due, the reminder and the list of
@@ -69656,12 +70362,43 @@ def edit_workshop_session(session_id):
                       + (f"; dates {session_row['start_date']} -> {start.isoformat()}, "
                          f"{moved} balance(s) re-dated" if moved else ""))
     conn.commit()
+    # New dates are a new claim on the house: say what else is on them, by
+    # name, as adding a sitting does -- warned, not blocked.
+    clash = ""
+    if (start.isoformat(), end.isoformat()) != (session_row["start_date"], session_row["end_date"]):
+        clash = sitting_clash_words(conn, start, end, session_id)
     conn.close()
     flash("Session updated." + (
         f" {moved} registration{'' if moved == 1 else 's'} now fall{'s' if moved == 1 else ''} due "
         f"thirty days before the new date. They have not been told: the register's "
         f"\"Email everyone\" is the way to." if moved else ""), "success")
-    return redirect(url_for("admin_workshops"))
+    if clash:
+        flash(f"Also on the new dates: {clash}.", "error")
+    return redirect(workshop_admin_return())
+
+
+def sitting_clash_words(conn, start, end, session_id=None):
+    """What else the house has on a sitting's dates, named, for a warning."""
+    a, z = start.isoformat(), end.isoformat()
+    stays = conn.execute(
+        """SELECT bookings.guest_name, rooms.name AS room_name FROM bookings
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status IN ('pending', 'confirmed')
+              AND bookings.arrival_date <= ? AND bookings.departure_date > ?
+            ORDER BY bookings.arrival_date""", (z, a)).fetchall()
+    events = conn.execute(
+        """SELECT contact_name, event_type FROM event_inquiries
+            WHERE status = 'confirmed' AND preferred_date <= ?
+              AND COALESCE(NULLIF(end_date, ''), preferred_date) >= ?""", (z, a)).fetchall()
+    sittings = [x for x in sessions_holding_the_house(conn, a, z) if x["id"] != session_id]
+    parts = []
+    if stays:
+        names = ", ".join(f"{r['guest_name']} ({r['room_name'] or 'a room'})" for r in stays[:3])
+        parts.append(f"{_plural(len(stays), 'stay')} — {names}"
+                     + (f" and {len(stays) - 3} more" if len(stays) > 3 else ""))
+    parts += [f"{e['contact_name']}'s {e['event_type']}" for e in events]
+    parts += [f"the {x['title']} atelier" for x in sittings]
+    return "; ".join(parts)
 
 
 @app.route("/admin/workshops/sessions/<int:session_id>/delete", methods=["POST"])
@@ -69674,12 +70411,12 @@ def delete_workshop_session(session_id):
     if in_use:
         conn.close()
         flash("Can't delete a session with existing registrations — cancel them first.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
     conn.execute("DELETE FROM workshop_sessions WHERE id = ?", (session_id,))
     conn.commit()
     conn.close()
     flash("Session removed.", "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshop_admin_return())
 
 
 @app.route("/admin/workshops/<int:workshop_id>/custom-fields/new", methods=["POST"])
@@ -69691,7 +70428,7 @@ def new_workshop_custom_field(workshop_id):
     required = 1 if request.form.get("required") == "on" else 0
     if not label:
         flash("A question label is required.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshop_admin_return())
     if field_type not in ("text", "textarea", "select", "checkbox"):
         field_type = "text"
     conn = get_db()
@@ -69706,7 +70443,7 @@ def new_workshop_custom_field(workshop_id):
     conn.commit()
     conn.close()
     flash("Question added.", "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshop_admin_return())
 
 
 @app.route("/admin/workshops/custom-fields/<int:field_id>/delete", methods=["POST"])
@@ -69717,7 +70454,7 @@ def delete_workshop_custom_field(field_id):
     conn.commit()
     conn.close()
     flash("Question removed.", "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshop_admin_return())
 
 
 def matching_workshop_waitlist_entries(conn, session_id):
@@ -74128,6 +74865,12 @@ def send_event_quote(quote_id):
         conn.execute(
             "UPDATE event_quotes SET status = 'sent', sent_at = ? WHERE id = ?",
             (datetime.now(timezone.utc).isoformat(), quote_id))
+        # A quote in their hands IS the quoted stage. Nothing moved the event
+        # there, so an enquiry with a price in front of the couple still read
+        # "new, waiting for a reply" on every list.
+        conn.execute("""UPDATE event_inquiries SET status = 'quoted'
+                         WHERE id = ? AND status IN ('new', 'contacted')""",
+                     (quote["event_id"],))
         conn.commit()
     conn.close()
     flash(f"Quote {quote['version']} sent to {event['contact_email']}." if sent
@@ -84997,7 +85740,11 @@ def watch_task_findings(conn, today=None):
                 "extras", f"Arrange {who}",
                 f"For {format_date_human(r['when'] or line['arrival_date'])}. {stay}. "
                 "Mark it arranged on Extras to prepare once it is booked.",
-                max(r["arrange_by"], today.isoformat()), "high" if r["arrange_now"] else "normal"))
+                # Never on a day the supplier is shut: a late one moves to the
+                # next day they open, not to a Sunday nobody can ring them.
+                extra_open_day(max(parse_date(r["arrange_by"]), today),
+                               r["days_off"]).isoformat(),
+                "high" if r["arrange_now"] else "normal"))
     found.extend(take("extras", extras_jobs))
 
     return found, dropped
@@ -90835,10 +91582,50 @@ def ops_calendar():
     user = current_user()
     conn = get_db()
     cal = build_calendar(conn, view, anchor, viewer=user)
+    # What the Add dialog offers to put a sitting on. Owner only, like the
+    # routes it posts to.
+    programmes = (conn.execute(
+        """SELECT id, title, default_capacity FROM workshops
+            WHERE active = 1 ORDER BY sort_order, title""").fetchall()
+        if user["role"] == "owner" else [])
     conn.close()
     return render_template(
-        "ops_calendar.html", cal=cal, today=house_today(),
+        "ops_calendar.html", cal=cal, today=house_today(), programmes=programmes,
     )
+
+
+@app.route("/calendar/my-task", methods=["POST"])
+@login_required
+def calendar_my_task():
+    """A job of one's own, put on the calendar from the calendar.
+
+    The owner, 19 October 2026: adding things to the calendar was difficult --
+    for anybody, and for the staff impossible, because the only way to put a
+    job on a day was the owner's Tasks page. This is the one thing anybody may
+    add: something for themselves to do, on a day. It lands on their own list
+    and their own calendar, and on the owner's, like any task.
+    """
+    user = current_user()
+    title = " ".join((request.form.get("title") or "").split())[:200]
+    due = parse_date((request.form.get("due_date") or "").strip())
+    notes = (request.form.get("notes") or "").strip()[:2000]
+    view = (request.form.get("view") or "").strip()
+    back = url_for("ops_calendar", view=view if view in ("day", "week", "month") else "week",
+                   date=(due or house_today()).isoformat())
+    if not title or not due:
+        flash("Say what it is and which day.", "error")
+        return redirect(back)
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                              created_at, origin)
+           VALUES (?, ?, ?, 'normal', ?, ?, 'manual')""",
+        (user["id"], title, notes or None, due.isoformat(),
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash(f"On your list for {format_date_human(due.isoformat())}.", "success")
+    return redirect(back)
 
 
 @app.route("/admin/overview")
@@ -98721,6 +99508,9 @@ def admin_house_dates_add():
     problems = house_date_problems(title, start, end)
     if problems:
         flash("Not added: " + "; ".join(problems) + ".", "error")
+        if (request.form.get("back_calendar") or "") in ("day", "week", "month"):
+            return redirect(url_for("ops_calendar", view=request.form["back_calendar"],
+                                    date=(start or house_today()).isoformat()))
         return redirect(url_for("admin_house_calendar") + "#dates")
     user = current_user()
     conn = get_db()
@@ -98740,6 +99530,10 @@ def admin_house_dates_add():
         "It is on the app's calendar now and in the house calendar within a minute."
         if on else "It is on the app's calendar. Dates is unticked under What it carries, "
                    "so it is not going into the house calendar."), "success")
+    # Added from the calendar's Add dialog: back to the calendar, on its day.
+    back_view = (request.form.get("back_calendar") or "").strip()
+    if back_view in ("day", "week", "month"):
+        return redirect(url_for("ops_calendar", view=back_view, date=start.isoformat()))
     return redirect(url_for("admin_house_calendar") + f"#date-{cur.lastrowid}")
 
 

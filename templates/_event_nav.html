@@ -1,0 +1,23 @@
+{#- The pages one event has, as tabs, on every one of them. Each was a page of
+    its own reached from a button on a card on a long list, with no way from
+    one to the next but back to the list. Callers pass `ev` (the event row)
+    and `here`, the endpoint of the page they are.
+
+    What fits the stage, as the list had it: the quote and its dates until an
+    event is closed; the guest list, the run sheet and what it made once it is
+    confirmed. The page somebody is on is always shown. -#}
+{% set open_ = ev['status'] not in ('declined', 'cancelled') %}
+{% set running = ev['status'] == 'confirmed' %}
+<nav class="ev-tabs" aria-label="This event">
+  {% for endpoint, label, arg, fits in [('admin_event', 'The event', 'event_id', true),
+                                        ('event_agreement', 'Quote & dates', 'inquiry_id', open_),
+                                        ('event_guest_list_page', 'Guest list', 'event_id', running),
+                                        ('event_run_sheet_page', 'Run sheet', 'event_id', running),
+                                        ('event_margin_page', 'What it made', 'event_id', running)] %}
+  {% if fits or here == endpoint %}
+  <a href="{{ url_for(endpoint, **{arg: ev['id']}) }}" class="{{ 'is-here' if here == endpoint }}"
+     {% if here == endpoint %}aria-current="page"{% endif %}>{{ label }}</a>
+  {% endif %}
+  {% endfor %}
+  <a href="{{ url_for('admin_events') }}" class="ev-tabs-all">All events</a>
+</nav>

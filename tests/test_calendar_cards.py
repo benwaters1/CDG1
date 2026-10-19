@@ -104,7 +104,9 @@ def run():
     as_staff = conn.execute("SELECT * FROM users WHERE id = ?", (emp["id"],)).fetchone()
     with m.app.test_request_context("/"):
         cal = m.build_calendar(conn, "month", arrive, viewer=as_owner)
-        week = m.build_calendar(conn, "week", today, viewer=as_owner)
+        # The week holding YESTERDAY, where the late extra is. Anchored on
+        # today it went red every Monday: yesterday is last week's Sunday.
+        week = m.build_calendar(conn, "week", today - timedelta(days=1), viewer=as_owner)
         staff = m.build_calendar(conn, "month", arrive, viewer=as_staff)
     events = _all_events(cal)
     mine = {iso: e for iso, e in events if e["kind"] == "booking" and e["id"] == bid}

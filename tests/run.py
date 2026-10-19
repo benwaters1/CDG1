@@ -514,6 +514,12 @@ SUITES = [
     "test_check_in_times",
     # Ateliers and stays on every day they cover, 15 October 2026.
     "test_calendar_every_day",
+    # The owner, 19 October 2026: the calendar hard to read and to add to,
+    # the charcuterie reminder on a Sunday, the event and workshop manager.
+    "test_extras_days_off",
+    "test_event_page",
+    "test_workshop_programme_page",
+    "test_calendar_drawn",
     # The winter rest read from the rooms' own closures, z27 item 17.
     "test_winter_rest",
     # Booking.com's subject-only booking email, paired with the room's

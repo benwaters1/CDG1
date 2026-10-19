@@ -8,10 +8,10 @@
 <div class="page-head">
   <h1>{{ data.event.event_type|capitalize if data.event.event_type else 'Event' }} &mdash; {{ data.event.contact_name }}</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <a href="{{ url_for('admin_events') }}" class="btn-ghost">All events</a>
     <a href="{{ url_for('export_event_run_sheet_csv', event_id=data.event.id) }}" class="btn-ghost">Export CSV</a>
   </div>
 </div>
+{% with ev = data.event, here = 'event_run_sheet_page' %}{% include "_event_nav.html" %}{% endwith %}
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
   An event went enquiry, quote, deposit, balance &mdash; and then nothing. The plan for the most

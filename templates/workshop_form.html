@@ -3,6 +3,7 @@
 {% block content %}
 
 <div class="narrow-card">
+  {% if workshop %}<p style="margin:0 0 6px;"><a class="small-link" href="{{ url_for('admin_workshop', workshop_id=workshop['id']) }}">&larr; Back to {{ workshop['title'] }}</a></p>{% endif %}
   <h1>{% if workshop %}Edit {{ workshop['title'] }}{% else %}Add Workshop{% endif %}</h1>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

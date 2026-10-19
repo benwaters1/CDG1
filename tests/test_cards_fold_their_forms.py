@@ -178,8 +178,15 @@ def run():
                  (f"{TAG}@example.invalid", TAG.upper() + " held", now))
     conn.commit()
 
+    # Since 19 October 2026 a programme's stock and its questions are on its
+    # own page, and an event's edit forms on the event's: read those too.
+    event_id = conn.execute("SELECT id FROM event_inquiries WHERE reference_code = 'ZZFEVT'"
+                            ).fetchone()["id"]
+    workshop_id = conn.execute("SELECT id FROM workshops ORDER BY id LIMIT 1").fetchone()["id"]
+    read_these = dict(PAGES, **{"A workshop": f"/admin/workshops/{workshop_id}",
+                                "An event": f"/admin/events/{event_id}"})
     pages = {}
-    for title, url in PAGES.items():
+    for title, url in read_these.items():
         r = oc.get(url)
         pages[title] = r.get_data(as_text=True)
         s.check(f"{title} draws", r.status_code == 200, detail=str(r.status_code))
@@ -202,7 +209,8 @@ def run():
     s.section("The forms that change a card are folded")
     folds = {
         "Rooms": (r"/ical-sources/new$", r"/blocks/new$"),
-        "Workshops": (r"/sessions/new$", r"/custom-fields/new$", r"/materials$"),
+        "Workshops": (r"/sessions/new$",),
+        "A workshop": (r"/sessions/new$", r"/custom-fields/new$", r"/materials$"),
         "Vehicles": (r"/checkout$", r"/maintenance/new$", r"/insurance/new$",
                      r"/vehicles/\d+/edit$", r"/vehicles/\d+/delete$"),
         # The add forms the read-through found drawn open, 12 October.
@@ -219,7 +227,8 @@ def run():
         "Overview": (r"/tasks/new$",),
         "Expenses": (r"/expenses/submit$", r"/regenerate-supplier-link$"),
         "What's On": (r"/whats-on/save$",),
-        "Events": (r"/events/\d+/update$",),
+        # The list is one line an event now; the forms are on its page.
+        "An event": (r"/events/\d+/details$",),
     }
     for title, actions in folds.items():
         forms = read(pages[title]).forms
@@ -279,7 +288,7 @@ def run():
             "once email is connected" not in emails)
 
     s.section("An employee sees none of it")
-    for title, url in PAGES.items():
+    for title, url in read_these.items():
         s.check(f"{title} is not theirs", ec.get(url).status_code in (302, 403))
 
     _cleanup(conn)

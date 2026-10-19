@@ -231,9 +231,13 @@ def run():
     # cannot see this: it is a POST, and POSTs are not browsed to.
     fresh = _event("G", price=1200.0)
     # All of it: this event is dated in the past, which is History now.
-    html = oc.get("/admin/events?when=all").get_data(as_text=True)
-    s.check("the page opens with an event on it", f"{TAG} G" in html,
+    listed = oc.get("/admin/events?when=all").get_data(as_text=True)
+    s.check("the page opens with an event on it", f"{TAG} G" in listed,
             detail="nothing below is being looked at")
+    # Each line opens the event's own page, where its money is.
+    s.check("and each line leads to the event's page",
+            f'href="/admin/events/{fresh["id"]}"' in listed)
+    html = oc.get(f"/admin/events/{fresh['id']}").get_data(as_text=True)
     s.check("it shows what is still owed", "still to pay" in html.lower(),
             detail="a quote with no balance beside it tells you nothing")
     s.check("and offers somewhere to record a payment",

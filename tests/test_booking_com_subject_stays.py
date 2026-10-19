@@ -287,7 +287,9 @@ def _run(s, oc, ec, conn):
     s.check("and where its guest's name is, with the link",
             "Guest name: in the Booking.com extranet" in text and extranet in page)
     month = visible_text(oc.get(f"/calendar?view=month&date={a.isoformat()}").get_data(as_text=True))
-    s.check("the calendar page draws it", f"B. ↓ {one['name']}" in month)
+    # Drawn as a bar over its nights since 19 October 2026, labelled with the
+    # channel's letter and, the guest being unnamed, the room.
+    s.check("the calendar page draws it", f"B. {one['name']}" in month)
 
     # ------------------------------------------------------------------
     s.section("Two rooms with a Booking.com stay starting the same day: not guessed")

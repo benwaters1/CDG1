@@ -2,6 +2,7 @@
 {% from "_icons.html" import icon %}
 {% block title %}Calendar{% endblock %}
 {% block content %}
+{% set is_owner = user['role'] == 'owner' %}
 
 {# One macro for every event chip, so a task looks and behaves the same in
    day, week and month view. data-* attributes drive the client-side filters
@@ -15,7 +16,7 @@
    to land on a 403. #}
 {% macro event_chip(e, compact=False) %}
 {% set tag = 'a' if e.link else 'button' %}
-<{{ tag }} class="cal-ev cal-ev-{{ e.lane }} {{ 'cal-ev-channel' if e.channel }} {{ 'cal-ev-pending' if e.status in ('pending', 'requested', 'held') }} {{ 'cal-ev-done' if (e.kind == 'task' and e.status == 'done') or (e.kind == 'extra' and e.status == 'delivered') }} {{ 'cal-ev-overdue' if (e.kind == 'task' and e.status != 'done' and e.date and e.date < today.isoformat()) or e.overdue }}"
+<{{ tag }} class="cal-ev cal-ev-{{ e.lane }} {{ 'cal-ev-channel' if e.channel }} {{ 'cal-ev-pending' if e.status in ('pending', 'requested', 'held') }} {{ 'cal-ev-done' if (e.kind == 'task' and e.status == 'done') or (e.kind == 'extra' and e.status == 'delivered') }} {{ 'cal-ev-overdue' if (e.kind == 'task' and e.status != 'done' and e.date and e.date < today.isoformat()) or e.overdue }} {{ 'cal-ev-high' if e.kind == 'task' and e.priority == 'high' and e.status != 'done' }}"
    {% if e.link %}href="{{ e.link }}"{% else %}type="button"{% endif %}
    data-card="{{ e.card }}"
    data-lane="{{ e.lane }}"
@@ -23,12 +24,28 @@
    data-status="{{ e.status }}"
    title="{{ e.title }}{% if e.detail %} — {{ e.detail }}{% endif %}">
   <span class="cal-ev-dot"></span>
-  {# Month cells are ~160px wide, where the list-style titles ("Dinner —
-     Name, party of 2") ellipse away the only part that matters. Compact
-     form there; full title in day/week where there's room. #}
+  {# Month cells are narrow, where the list-style titles ("Dinner — Name,
+     party of 2") ellipse away the only part that matters. Compact form there;
+     the full title where there's room. #}
   <span class="cal-ev-text">{{ (e.short or e.title) if compact else e.title }}</span>
   {% if e.badge %}<span class="cal-ev-badge">{{ e.badge }}</span>{% endif %}
-  {% if not compact and e.assignee_name %}<span class="cal-ev-who">{{ e.assignee_name }}</span>{% endif %}
+  {% if not compact and e.assignee_name and e.kind != 'shift' %}<span class="cal-ev-who">{{ e.assignee_name }}</span>{% endif %}
+</{{ tag }}>
+{% endmacro %}
+
+{#- A thing that lasts, as one bar over the days it covers. A stay runs from
+    the afternoon it arrives to the morning it leaves, so the next guest in
+    the same room starts where it stops. -#}
+{% macro span_bar(b) %}
+{% set tag = 'a' if b.link else 'button' %}
+<{{ tag }} class="cal-ev cal2-bar cal2-bar-{{ b.kind }} cal-ev-{{ b.lane }} {{ 'cal-ev-channel' if b.channel }} {{ 'cal-ev-pending' if b.status in ('pending', 'requested', 'held') }} {{ 'from-before' if b.from_before }} {{ 'goes-on' if b.goes_on }}"
+   {% if b.link %}href="{{ b.link }}"{% else %}type="button"{% endif %}
+   style="grid-column:{{ b.col_start }} / {{ b.col_end }};"
+   data-card="{{ b.uid }}" data-lane="{{ b.lane }}" data-employee="" data-status="{{ b.status }}"
+   title="{{ b.title }}">
+  {% if b.from_before %}<span class="cal2-bar-cont" aria-hidden="true">‹</span>{% endif %}
+  <span class="cal2-bar-label">{{ b.label }}</span>{% if b.sub %}<span class="cal2-bar-sub">{{ b.sub }}</span>{% endif %}
+  {% if b.goes_on %}<span class="cal2-bar-cont cal2-bar-cont-end" aria-hidden="true">›</span>{% endif %}
 </{{ tag }}>
 {% endmacro %}
 
@@ -80,10 +97,23 @@
 </section>
 {% endmacro %}
 
+{#- The day's line: who arrives, who leaves, how many rooms are let that
+    night. The arrows read before the words. -#}
+{% macro day_sum(c) %}
+{% if c.arrive or c.leave or c.let %}
+<span class="cal2-daysum" title="{{ c.arrive }} arriving, {{ c.leave }} leaving, {{ c.let }} room{{ '' if c.let == 1 else 's' }} let that night">
+  {%- if c.arrive %}<span class="cal2-in">↓{{ c.arrive }}</span>{% endif %}
+  {%- if c.leave %}<span class="cal2-out">↑{{ c.leave }}</span>{% endif %}
+  {%- if c.let %}<span class="cal2-let">{{ c.let }} let</span>{% endif %}
+</span>
+{% endif %}
+{% endmacro %}
+
 <div class="page-head">
   <h1>Calendar</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    {% if user['role'] == 'owner' %}
+    <button type="button" class="btn-primary cal-add-open" style="margin-top:0;" data-add-date="{{ (cal.anchor if cal.view == 'day' else today).isoformat() }}">+ Add</button>
+    {% if is_owner %}
     <a href="{{ url_for('admin_overview', view=cal.view, date=cal.anchor.isoformat()) }}" class="btn-mini">List view</a>
     <a href="{{ url_for('admin_calendar') }}" class="btn-mini">Room grid</a>
     {% endif %}
@@ -113,73 +143,119 @@
 
 <div class="cal-filters" id="cal-filters">
   <span class="cal-filter-label">Show</span>
-  {% for key, label in [('booking','Bookings'), ('extra','Extras'), ('restaurant','Restaurant'), ('workshop','Workshops'), ('event','Events'), ('task','Staff tasks'), ('shift','Rota'), ('date','Dates'), ('owner','My tasks')] %}
-  <button type="button" class="cal-chip is-on" data-filter-lane="{{ key }}" onclick="toggleCalLane(this)">
+  {% for key, label in [('booking','Stays'), ('extra','Extras'), ('restaurant','Restaurant'), ('workshop','Ateliers'), ('event','Events'), ('task','Staff tasks'), ('shift','Rota'), ('date','Dates'), ('owner','My tasks')] %}
+  <button type="button" class="cal-chip is-on" data-filter-lane="{{ key }}" onclick="toggleCalLane(this)" aria-pressed="true">
     <span class="cal-ev-dot cal-ev-{{ key }}"></span>{{ label }}
   </button>
   {% endfor %}
   <label class="cal-chip cal-chip-plain">
-    <input type="checkbox" id="cal-hide-done" onchange="applyCalFilters()"> Hide completed
+    <input type="checkbox" id="cal-hide-done" onchange="applyCalFilters()"> Hide done
   </label>
-  {% if user['role'] == 'owner' and cal.employees %}
-  <select id="cal-employee" onchange="applyCalFilters()" class="cal-select">
+  {% if is_owner and cal.employees %}
+  <select id="cal-employee" onchange="applyCalFilters()" class="cal-select" aria-label="Whose tasks and shifts">
     <option value="">Everyone</option>
     {% for e in cal.employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
   </select>
   {% endif %}
 </div>
 
-{% if cal.view == 'month' %}
-<div class="cal-month">
-  <div class="cal-month-head">
+{% if cal.view in ('week', 'month') %}
+{#- THE WEEK, AND THE MONTH AS ITS WEEKS. Each row of seven days: the day
+    headings, the bars of what lasts across them, then each day's one-day
+    things under a heading each. -#}
+<div class="cal2-scroll">
+<div class="cal2 cal2-view-{{ cal.view }}">
+  <div class="cal2-dows" aria-hidden="true">
     {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<span>{{ d }}</span>{% endfor %}
   </div>
-  {% for week in cal.weeks %}
-  <div class="cal-month-row">
-    {% for c in week %}
-    <div class="cal-day {{ 'cal-day-out' if not c.in_span }} {{ 'cal-day-today' if c.is_today }} {{ 'cal-day-weekend' if c.is_weekend }}">
-      <a class="cal-daynum" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}" title="Open {{ c.date.strftime('%d %B') }}">{{ c.date.day }}</a>
-      <div class="cal-day-events">
-        {% for e in c.events[:4] %}{{ event_chip(e, compact=True) }}{% endfor %}
-        {% if c.events|length > 4 %}
-        <a class="cal-more" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}">+{{ c.events|length - 4 }} more</a>
-        {% endif %}
-      </div>
+  {% for wk in cal.rows_of_days %}
+  <section class="cal2-week" aria-label="Week of {{ wk.cells[0].date.strftime('%d %B') }}">
+    <div class="cal2-cols" aria-hidden="true">
+      {% for c in wk.cells %}<span class="{{ 'is-today' if c.is_today }} {{ 'is-weekend' if c.is_weekend }} {{ 'is-out' if not c.in_span }}"></span>{% endfor %}
     </div>
-    {% endfor %}
-  </div>
+    <div class="cal2-heads">
+      {% for c in wk.cells %}
+      <div class="cal2-head {{ 'is-today' if c.is_today }} {{ 'is-out' if not c.in_span }}">
+        <a class="cal2-daynum" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}" title="Open {{ c.date.strftime('%A %d %B') }}">
+          {%- if cal.view == 'week' %}<span class="cal2-dow">{{ c.date.strftime('%a') }}</span> {% endif %}<span class="cal2-num">{{ c.date.day }}</span>
+        </a>
+        {{ day_sum(c) }}
+        <button type="button" class="cal2-add cal-add-open" data-add-date="{{ c.iso }}" aria-label="Add something on {{ c.date.strftime('%A %d %B') }}" title="Add something on {{ c.date.strftime('%a %d %b') }}">+</button>
+      </div>
+      {% endfor %}
+    </div>
+    {% if wk.bars %}
+    <div class="cal2-bars">
+      {% for b in wk.bars %}{{ span_bar(b) }}{% endfor %}
+    </div>
+    {% endif %}
+    <div class="cal2-days">
+      {% for c in wk.cells %}
+      <div class="cal2-day {{ 'is-out' if not c.in_span }}">
+        {% for sec in c.sections %}
+        {#- Six a heading in a week, three in a month: the house's own checks
+            can put twenty jobs on one morning, and a column twenty chips
+            long pushed the rest of the week out of sight. The day has them
+            all. -#}
+        {% set limit = 3 if cal.view == 'month' else 6 %}
+        <div class="cal2-sec cal2-sec-{{ sec.key }}" data-sec="{{ sec.key }}">
+          <p class="cal2-sec-head"><span>{{ sec.label }}</span><span class="cal2-sec-count">{{ sec.count }}</span></p>
+          {% if cal.view == 'week' or sec.key in ('task', 'extra') %}
+          {% for e in sec.things[:limit] %}{{ event_chip(e, compact=True) }}{% endfor %}
+          {% if sec.things|length > limit %}<a class="cal-more" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}">+{{ sec.things|length - limit }} more</a>{% endif %}
+          {% else %}
+          {#- In a month, the dinners and the rota are counted, not listed: the
+              names are a click away on the day, and eight chips a day pushed
+              everything else off the cell. They are still chips -- hidden --
+              so the filters and the cards work the same. -#}
+          <div class="cal2-folded">{% for e in sec.things %}{{ event_chip(e, compact=True) }}{% endfor %}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
   {% endfor %}
 </div>
-
-{% elif cal.view == 'week' %}
-<div class="cal-week">
-  {% for c in cal.cells %}
-  <div class="cal-day {{ 'cal-day-today' if c.is_today }} {{ 'cal-day-weekend' if c.is_weekend }}">
-    <a class="cal-col-head" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}">
-      <span class="cal-col-dow">{{ c.date.strftime('%a') }}</span>
-      <span class="cal-col-num">{{ c.date.day }}</span>
-    </a>
-    <div class="cal-day-events">
-      {% for e in c.events %}{{ event_chip(e) }}{% endfor %}
-      {# Purely a placeholder glyph: an empty cell already says "nothing on".
-         Hidden from screen readers so it isn't announced as content. #}
-      {% if not c.events %}<span class="cal-day-empty" aria-hidden="true">—</span>{% endif %}
-    </div>
-  </div>
-  {% endfor %}
 </div>
 
 {% else %}
-<div class="cal-dayview">
-  {% for c in cal.cells %}
-    {% if not c.events %}
-      <div class="empty-state">Nothing scheduled for {{ c.date.strftime('%A %d %B') }}.</div>
-    {% else %}
-      <div class="cal-day-events cal-day-events-list">
-        {% for e in c.events %}{{ event_chip(e) }}{% endfor %}
-      </div>
-    {% endif %}
+{#- ONE DAY, in the order the house meets it: who arrives and leaves, what is
+    on, the kitchen, what was promised, the jobs, who is in. -#}
+{% set c = cal.cells[0] %}
+<div class="cal2-dayview">
+  <div class="cal2-dayview-head">
+    {{ day_sum(c) }}
+    <button type="button" class="btn-mini cal-add-open" data-add-date="{{ c.iso }}">+ Add to {{ c.date.strftime('%A %d %B') }}</button>
+  </div>
+  {% if not c.events %}
+    <div class="empty-state">Nothing scheduled for {{ c.date.strftime('%A %d %B') }}.</div>
+  {% endif %}
+  {% for grp in c.house %}
+  <section class="cal2-dsec" data-sec="booking">
+    <h2 class="cal2-dsec-head">{{ grp.label }} <span>{{ grp.things|length }}</span></h2>
+    <div class="cal-day-events-list">{% for e in grp.things %}{{ event_chip(e) }}{% endfor %}</div>
+  </section>
   {% endfor %}
+  {% if c.happening %}
+  <section class="cal2-dsec" data-sec="happening">
+    <h2 class="cal2-dsec-head">Ateliers and events <span>{{ c.happening|length }}</span></h2>
+    <div class="cal-day-events-list">{% for e in c.happening %}{{ event_chip(e) }}{% endfor %}</div>
+  </section>
+  {% endif %}
+  {% for sec in c.sections %}
+  <section class="cal2-dsec cal2-sec-{{ sec.key }}" data-sec="{{ sec.key }}">
+    <h2 class="cal2-dsec-head">{{ sec.label }} <span>{{ sec.count }}</span></h2>
+    <div class="cal-day-events-list">{% for e in sec.things %}{{ event_chip(e) }}{% endfor %}</div>
+  </section>
+  {% endfor %}
+  {% if c.noted %}
+  <section class="cal2-dsec" data-sec="noted">
+    <h2 class="cal2-dsec-head">Dates and closed rooms <span>{{ c.noted|length }}</span></h2>
+    <div class="cal-day-events-list">{% for e in c.noted %}{{ event_chip(e) }}{% endfor %}</div>
+  </section>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -194,9 +270,172 @@
   {% for c in cal.cards %}{{ calendar_card(c) }}{% endfor %}
 </div>
 
+{#- ADDING TO THE CALENDAR, from the calendar. There was no way to: a job went
+    on through the Tasks page, a date through the House calendar page, a shift
+    through the rota, and none of them knew which day had been looked at. The
+    "+" on a day opens this with that day filled in; each form posts to the
+    page that has always made that thing, and comes back here. -#}
+<dialog class="cal-card-dialog cal-add-dialog" id="cal-add-dialog" aria-labelledby="cal-add-title">
+  <form method="dialog" class="cal-card-close"><button type="submit" class="btn-mini">Close</button></form>
+  <div class="cal-card">
+    <p class="cal-card-kicker">Add to the calendar</p>
+    <h2 class="cal-card-title" id="cal-add-title">On <span data-add-label>this day</span></h2>
+    {% if is_owner %}
+    <div class="segmented cal-add-tabs" role="tablist">
+      {% for key, label in [('job', 'A job'), ('date', 'A date'), ('rota', 'The rota'), ('more', 'More')] %}
+      <button type="button" role="tab" class="{{ 'is-active' if loop.first }}" data-add-tab="{{ key }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+
+    <form method="post" action="{{ url_for('new_task') }}" class="cal-add-pane" data-add-pane="job">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-label" for="add-job-title">What needs doing</label>
+      <input id="add-job-title" type="text" name="title" required maxlength="200" placeholder="Flowers in the salon, check the boiler…">
+      <div class="field-row-2">
+        <div>
+          <label class="field-label" for="add-job-who">Whose</label>
+          <select id="add-job-who" name="assigned_to_user_id" required>
+            {% if cal.owner_id %}<option value="{{ cal.owner_id }}">Mine</option>{% endif %}
+            {% for e in cal.employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="field-label" for="add-job-day">Day</label>
+          <input id="add-job-day" type="date" name="due_date" required data-add-day>
+        </div>
+      </div>
+      <div class="field-row-2">
+        <div>
+          <label class="field-label" for="add-job-priority">How urgent</label>
+          <select id="add-job-priority" name="priority">
+            <option value="normal">Normal</option><option value="high">High</option><option value="low">Low</option>
+          </select>
+        </div>
+        <div style="align-self:end;">
+          <label class="checkbox-row"><input type="checkbox" name="repeat_weekly" value="1"> <span>Every week on this day</span></label>
+        </div>
+      </div>
+      <label class="field-label" for="add-job-notes">Notes <span class="upload-hint">(optional)</span></label>
+      <textarea id="add-job-notes" name="notes" rows="2"></textarea>
+      <button type="submit" class="btn-primary">Add the job</button>
+    </form>
+
+    <form method="post" action="{{ url_for('admin_house_dates_add') }}" class="cal-add-pane" data-add-pane="date" hidden>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="back_calendar" value="{{ cal.view }}">
+      <label class="field-label" for="add-date-title">What</label>
+      <input id="add-date-title" type="text" name="title" required maxlength="200" placeholder="School holidays, the market, a family visit…">
+      <div class="field-row-2">
+        <div>
+          <label class="field-label" for="add-date-first">First day</label>
+          <input id="add-date-first" type="date" name="start_date" required data-add-day>
+        </div>
+        <div>
+          <label class="field-label" for="add-date-last">Last day <span class="upload-hint">(blank for one day)</span></label>
+          <input id="add-date-last" type="date" name="end_date">
+        </div>
+      </div>
+      <label class="field-label" for="add-date-note">Note <span class="upload-hint">(optional)</span></label>
+      <textarea id="add-date-note" name="note" rows="2"></textarea>
+      <p class="upload-hint">It goes on this calendar and, if Dates is ticked on the House calendar page, into the house calendar in Outlook.</p>
+      <button type="submit" class="btn-primary">Add the date</button>
+    </form>
+
+    <form method="post" action="{{ url_for('new_shift') }}" class="cal-add-pane" data-add-pane="rota" hidden>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <fieldset class="cal-add-people">
+        <legend class="field-label">Who</legend>
+        {% for e in cal.employees %}
+        <label class="checkbox-row"><input type="checkbox" name="user_ids" value="{{ e['id'] }}"> <span>{{ e['name'] }}</span></label>
+        {% else %}<p class="upload-hint">Nobody on the team yet.</p>{% endfor %}
+      </fieldset>
+      <div class="field-row-3">
+        <div>
+          <label class="field-label" for="add-shift-day">Day</label>
+          <input id="add-shift-day" type="date" name="shift_date" required data-add-day>
+        </div>
+        <div>
+          <label class="field-label" for="add-shift-from">From</label>
+          <input id="add-shift-from" type="time" name="start_time" value="08:00">
+        </div>
+        <div>
+          <label class="field-label" for="add-shift-to">To</label>
+          <input id="add-shift-to" type="time" name="end_time" value="16:00">
+        </div>
+      </div>
+      <label class="field-label" for="add-shift-note">Doing what <span class="upload-hint">(optional)</span></label>
+      <input id="add-shift-note" type="text" name="role_note" placeholder="Breakfast, rooms, the wedding…">
+      <button type="submit" class="btn-primary">Put them on</button>
+    </form>
+
+    <div class="cal-add-pane" data-add-pane="more" hidden>
+      <ul class="cal-add-links">
+        <li><a data-add-href="{{ url_for('walk_in_booking') }}?arrival_date={day}&amp;departure_date={next}" href="{{ url_for('walk_in_booking') }}">A stay for a guest</a><span class="upload-hint">Take a booking or reserve a room, arriving this day</span></li>
+        <li><a data-add-href="{{ url_for('admin_events') }}?add=1&amp;date={day}" href="{{ url_for('admin_events') }}">An event</a><span class="upload-hint">A wedding, a party, a shoot — an enquiry for this day</span></li>
+        <li><a href="{{ url_for('admin_restaurant') }}">A table at the restaurant</a><span class="upload-hint">On the restaurant page</span></li>
+      </ul>
+      {% if programmes %}
+      <form method="post" action="" class="cal-add-sitting" data-sitting-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p class="field-label" style="margin-top:14px;">A workshop sitting</p>
+        <div class="field-row-2">
+          <div>
+            <label class="field-label" for="add-sit-prog">Which workshop</label>
+            <select id="add-sit-prog" required data-sitting-programme>
+              {% for p in programmes %}<option value="{{ url_for('new_workshop_session', workshop_id=p['id']) }}" data-back="{{ p['id'] }}">{{ p['title'] }}</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="add-sit-places">Places</label>
+            <input id="add-sit-places" type="number" name="capacity" min="1" placeholder="as the workshop says">
+          </div>
+        </div>
+        <div class="field-row-2">
+          <div>
+            <label class="field-label" for="add-sit-first">First day</label>
+            <input id="add-sit-first" type="date" name="start_date" required data-add-day>
+          </div>
+          <div>
+            <label class="field-label" for="add-sit-last">Last day</label>
+            <input id="add-sit-last" type="date" name="end_date">
+          </div>
+        </div>
+        <input type="hidden" name="back_workshop" value="" data-sitting-back>
+        <button type="submit" class="btn-mini">Add the sitting</button>
+      </form>
+      {% endif %}
+    </div>
+    {% else %}
+    {#- For the staff, the one thing anybody may add: a job of their own. -#}
+    <form method="post" action="{{ url_for('calendar_my_task') }}" class="cal-add-pane" data-add-pane="job">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="view" value="{{ cal.view }}">
+      <label class="field-label" for="add-mine-title">Something for me to do</label>
+      <input id="add-mine-title" type="text" name="title" required maxlength="200">
+      <label class="field-label" for="add-mine-day">Day</label>
+      <input id="add-mine-day" type="date" name="due_date" required data-add-day>
+      <label class="field-label" for="add-mine-notes">Notes <span class="upload-hint">(optional)</span></label>
+      <textarea id="add-mine-notes" name="notes" rows="2"></textarea>
+      <button type="submit" class="btn-primary">Add it to my list</button>
+    </form>
+    {% endif %}
+  </div>
+</dialog>
+
 <script>
-// A click on a chip opens its card over the calendar. A click with ctrl,
-// cmd, shift or the middle button is left alone, so a chip that is a link
+// On a phone the calendar opens on the day: a week is seven columns that have
+// to scroll sideways at that width, and the day is a list that reads down.
+// Only when no view was asked for, so the Week and Month buttons still work.
+(function() {
+  if (/[?&]view=/.test(location.search) || !window.matchMedia) return;
+  if (window.matchMedia('(max-width: 600px)').matches) {
+    var q = location.search ? location.search + '&view=day' : '?view=day';
+    location.replace(location.pathname + q + location.hash);
+  }
+})();
+
+// A click on a chip or a bar opens its card over the calendar. A click with
+// ctrl, cmd, shift or the middle button is left alone, so one that is a link
 // still opens its page in a new tab the ordinary way.
 (function() {
   var dialog = document.getElementById('cal-card-dialog');
@@ -233,13 +472,68 @@
   var wanted = again || (location.hash.indexOf('#ev-') === 0 ? decodeURIComponent(location.hash.slice(4)) : null);
   if (wanted) openCard(wanted);
 })();
-</script>
 
-<script>
-// Filters run client-side against the data-* attributes on each chip, so
-// switching them is instant and never loses your place in the month.
+// The Add dialog: opened from the button at the top or the "+" on a day,
+// with that day filled into every form in it.
+(function() {
+  var dlg = document.getElementById('cal-add-dialog');
+  if (!dlg || !dlg.showModal) return;
+  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  function iso(d) { return d.toISOString().slice(0, 10); }
+  function setDay(day) {
+    var d = new Date(day + 'T12:00:00Z');
+    var next = new Date(d.getTime() + 86400000);
+    dlg.querySelector('[data-add-label]').textContent = days[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + months[d.getUTCMonth()];
+    dlg.querySelectorAll('[data-add-day]').forEach(function(i) { i.value = day; });
+    dlg.querySelectorAll('[data-add-href]').forEach(function(a) {
+      a.href = a.dataset.addHref.replace('{day}', day).replace('{next}', iso(next));
+    });
+  }
+  function showTab(key) {
+    dlg.querySelectorAll('[data-add-tab]').forEach(function(t) {
+      var on = t.dataset.addTab === key;
+      t.classList.toggle('is-active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    dlg.querySelectorAll('[data-add-pane]').forEach(function(p) { p.hidden = p.dataset.addPane !== key; });
+    var first = dlg.querySelector('[data-add-pane="' + key + '"] input[type=text]');
+    if (first) first.focus();
+  }
+  document.addEventListener('click', function(ev) {
+    var opener = ev.target.closest('.cal-add-open');
+    if (opener) {
+      ev.preventDefault();
+      setDay(opener.dataset.addDate);
+      if (!dlg.open) dlg.showModal();
+      var shown = dlg.querySelector('[data-add-pane]:not([hidden]) input[type=text]');
+      if (shown) shown.focus();
+      return;
+    }
+    var tab = ev.target.closest('[data-add-tab]');
+    if (tab) showTab(tab.dataset.addTab);
+  });
+  dlg.addEventListener('click', function(ev) { if (ev.target === dlg) dlg.close(); });
+  // The sitting form posts to the workshop chosen, and comes back to it.
+  var sit = dlg.querySelector('[data-sitting-form]');
+  if (sit) {
+    var pick = sit.querySelector('[data-sitting-programme]');
+    var aim = function() {
+      var opt = pick.options[pick.selectedIndex];
+      sit.action = pick.value;
+      sit.querySelector('[data-sitting-back]').value = opt ? opt.dataset.back : '';
+    };
+    pick.addEventListener('change', aim);
+    aim();
+  }
+})();
+
+// Filters run client-side against the data-* attributes on each chip and
+// bar, so switching them is instant and never loses your place. A heading
+// whose things are all hidden goes too.
 function toggleCalLane(btn) {
   btn.classList.toggle('is-on');
+  btn.setAttribute('aria-pressed', btn.classList.contains('is-on') ? 'true' : 'false');
   applyCalFilters();
 }
 function applyCalFilters() {
@@ -253,6 +547,7 @@ function applyCalFilters() {
 
   var shown = 0;
   document.querySelectorAll('.cal-ev').forEach(function(ev) {
+    if (ev.closest('#cal-cards')) return;
     var ok = lanes[ev.dataset.lane] !== false;
     if (ok && hideDone && (ev.dataset.status === 'done' || ev.dataset.status === 'delivered')) ok = false;
     // Employee filter only narrows things that are actually assignable;
@@ -261,6 +556,10 @@ function applyCalFilters() {
     if (ok && emp && !ev.dataset.employee) ok = false;
     ev.style.display = ok ? '' : 'none';
     if (ok) shown++;
+  });
+  document.querySelectorAll('[data-sec]').forEach(function(sec) {
+    var any = Array.prototype.some.call(sec.querySelectorAll('.cal-ev'), function(e) { return e.style.display !== 'none'; });
+    sec.style.display = any ? '' : 'none';
   });
   document.getElementById('cal-empty-note').style.display = shown ? 'none' : '';
 }

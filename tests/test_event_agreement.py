@@ -834,12 +834,13 @@ def run():
         s.check("an event with no price says why there is no plan, under its heading",
                 "no price has been agreed" in plan[:600], detail=" ".join(plan[:400].split()))
 
+        # The list leads to the event's page, and the event's page to its
+        # agreement: one click more than the old card's button, and the page
+        # in between says which of its pages matters now.
         s.check("it is reachable from the enquiries list",
-
-                f"/admin/events/{e['id']}/agreement"
-
-                in oc.get("/admin/events").get_data(as_text=True),
-
+                f'href="/admin/events/{e["id"]}"' in oc.get("/admin/events").get_data(as_text=True)
+                and f"/admin/events/{e['id']}/agreement"
+                in oc.get(f"/admin/events/{e['id']}").get_data(as_text=True),
                 detail="a page nobody can get to is a page nobody uses")
 
 

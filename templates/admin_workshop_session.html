@@ -174,4 +174,87 @@ added on the person's card, where the ledger is.</p>
 </details>
 {% endif %}
 
+{#- CHANGING THE SITTING ITSELF, on the sitting's own page. Its places could be
+    changed only from the workshops page, its dates from nowhere at all, and
+    its minimum and the day it is decided never again once it was made; the
+    teaching link and calling it off were three folds down the workshops page,
+    under the programme. -#}
+<section class="detail-card ws-change" id="change">
+  <div class="ev-card-head">
+    <h2 class="section-heading">Change this sitting</h2>
+    <a class="small-link" href="{{ url_for('admin_workshop', workshop_id=session['workshop_id']) }}">The programme: {{ session['title'] }}</a>
+  </div>
+  {% if session['cancelled_at'] %}
+    <p><span class="mini-status status-declined">called off {{ session['cancelled_at']|house_day|date_short }}{% if session['cancelled_reason'] %} — {{ session['cancelled_reason'] }}{% endif %}</span></p>
+  {% else %}
+  <form method="post" action="{{ url_for('edit_workshop_session', session_id=session['id']) }}" class="ev-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="back_session" value="{{ session['id'] }}">
+    <div class="field-row-3">
+      <div>
+        <label class="field-label" for="ws-start">First day</label>
+        <input id="ws-start" type="date" name="start_date" value="{{ session['start_date'] }}" required>
+      </div>
+      <div>
+        <label class="field-label" for="ws-end">Last day</label>
+        <input id="ws-end" type="date" name="end_date" value="{{ session['end_date'] }}">
+      </div>
+      <div>
+        <label class="field-label" for="ws-cap">Places</label>
+        <input id="ws-cap" type="number" name="capacity" min="1" step="1" value="{{ session['capacity'] }}" required>
+      </div>
+    </div>
+    <div class="field-row-3">
+      <div>
+        <label class="field-label" for="ws-min">Fewest it can run with</label>
+        <input id="ws-min" type="number" name="min_participants" min="0" step="1" value="{{ session['min_participants'] or '' }}" placeholder="No minimum">
+      </div>
+      <div>
+        <label class="field-label" for="ws-decide">Decide this many days before</label>
+        <input id="ws-decide" type="number" name="decide_by_days" min="0" step="1" value="{{ session['decide_by_days'] if session['decide_by_days'] is not none else '' }}">
+      </div>
+      <div>
+        <label class="field-label" for="ws-notes">Note</label>
+        <input id="ws-notes" type="text" name="notes" value="{{ session['notes'] or '' }}">
+      </div>
+    </div>
+    <p class="upload-hint">Places cannot go below the number already taken. Moving the dates moves every balance to thirty days before the new first day; nobody is written to until you do it from “Write to the group”.</p>
+    <div class="ev-form-actions"><button type="submit" class="btn-primary" style="margin-top:0;">Save</button></div>
+  </form>
+
+  <div class="ws-change-more">
+    {#- A read-only page for whoever is teaching: who is coming, what they
+        cannot eat, the materials. No money on it. -#}
+    <form method="post" action="{{ url_for('workshop_instructor_link', session_id=session['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="back_session" value="{{ session['id'] }}">
+      {% if session['instructor_token'] %}<input type="hidden" name="off" value="1">{% endif %}
+      <button type="submit" class="btn-mini">{{ 'Stop the teaching link' if session['instructor_token'] else 'Make a link for whoever teaches' }}</button>
+    </form>
+
+    {#- CALLING IT OFF, which deleting could never be: every place cancelled
+        through the same follow-up as one cancellation, the waiting list told,
+        and who is owed money back named without moving any unless asked. -#}
+    <form method="post" action="{{ url_for('call_off_workshop_session', session_id=session['id']) }}"
+          onsubmit="return confirm('Call this sitting off? Everybody registered is cancelled and written to, and the waiting list is told it is not running.');"
+          class="ws-calloff">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="back_session" value="{{ session['id'] }}">
+      <input aria-label="Why (they are told)" type="text" name="reason" placeholder="Why (they are told)">
+      {% if can('refund_desk') %}
+      <label class="checkbox-row"><input type="checkbox" name="refund" value="1"> <span>and refund what each paid, to their cards</span></label>
+      {% endif %}
+      <button type="submit" class="btn-mini btn-mini-danger">Call it off</button>
+    </form>
+
+    <form method="post" action="{{ url_for('delete_workshop_session', session_id=session['id']) }}"
+          onsubmit="return confirm('Remove this sitting altogether? Only possible while nobody is registered.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="back_workshop" value="{{ session['workshop_id'] }}">
+      <button type="submit" class="btn-text-danger">Remove this sitting</button>
+    </form>
+  </div>
+  {% endif %}
+</section>
+
 {% endblock %}

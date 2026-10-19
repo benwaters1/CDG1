@@ -12,12 +12,9 @@
    next wedding off this page. #}
 
 <div class="page-head">
-  <h1>What it made</h1>
-  <div style="display:flex; gap:10px; align-items:center;">
-    <a href="{{ url_for('event_run_sheet_page', event_id=data.event['id']) }}" class="btn-ghost">Run sheet</a>
-    <a href="{{ url_for('event_agreement', inquiry_id=data.event['id']) }}" class="btn-ghost">The agreement</a>
-  </div>
+  <h1>{{ data.event['contact_name'] }} — what it made</h1>
 </div>
+{% with ev = data.event, here = 'event_margin_page' %}{% include "_event_nav.html" %}{% endwith %}
 
 <p class="page-intro">
   {{ data.event['event_type']|capitalize }} · {{ data.event['contact_name'] }} ·

@@ -496,8 +496,8 @@ def _run(s, oc, ec, sent):
     s.check("and an atelier's", wpage.status_code == 200, wpage)
 
     s.section("The lists lead to it")
-    lst = oc.get("/admin/events?when=all").get_data(as_text=True)
-    s.check("the events list has a way to refund an event that took money",
+    lst = oc.get(f"/admin/events/{ev['id']}").get_data(as_text=True)
+    s.check("the event's page has a way to refund an event that took money",
             f"/admin/refunds/event/{ev['id']}" in lst)
     reg_page = oc.get(f"/admin/workshops/registrations?q={TAG}GOODW&when=all").get_data(as_text=True)
     s.check("the register's ledger no longer offers a refund around the engine",
