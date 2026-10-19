@@ -510,6 +510,7 @@ SUITES = [
     "test_reply_drafting",
     "test_outlook_addin",
     "test_send_check",
+    "test_send_check_french_reply",
     "test_house_calendar",
     "test_house_calendar_default",
     "test_calendar_cards",
