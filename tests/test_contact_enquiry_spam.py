@@ -103,6 +103,18 @@ def run():
                 detail=str(row and row.get("href")))
         s.check("every row on the day opens something", all(x.get("href") for x in day),
                 detail=str([x["title"] for x in day if not x.get("href")][:3]))
+        # The assistant reads the same day outside any request, where url_for
+        # raises. d222f51 broke it the moment a task was due; a full run found
+        # it, depending on what an earlier suite had left on the day.
+        conn = db()
+        try:
+            bare = m.owner_home_day(conn, m.house_today(), owner)
+            err = None
+        except RuntimeError as e:
+            bare, err = [], str(e)
+        conn.close()
+        s.check("and the assistant can still read the day, outside a request",
+                err is None and any(x["title"] == task["title"] for x in bare), detail=err)
         page = oc.get(row["href"].split("#")[0]).get_data(as_text=True) if row else ""
         s.check("where the enquiry is, labelled as one",
                 f'id="entry-{entry["id"]}"' in page and "Enquiry from the Contact page" in page)

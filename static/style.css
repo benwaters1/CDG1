@@ -607,6 +607,71 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
 .room-pick__name{ display:block; font-weight:600; }
 .room-pick__price{ display:block; font-variant-numeric:tabular-nums; font-size:19px; }
 .room-pick__note{ display:block; font-size:12px; color:var(--steel); }
+/* Add a booking (19 October 2026): five steps and a summary beside them.
+   The summary sits to the right on a wide screen and follows the steps on
+   a narrow one, so the price and what will be sent are always in reach of
+   the button. */
+.nb{ margin:0; }
+.nb-count{ display:flex; flex-direction:column; gap:4px; }
+#nb_rooms .room-pick__tile.is-taken{ min-height:0; padding-top:9px; padding-bottom:9px; }
+.nb-grid{ display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:22px; align-items:start; }
+.nb-main{ min-width:0; }
+.nb-step{ background:var(--surface); border:1px solid var(--parchment-line); border-radius:12px;
+  padding:18px 20px 16px; margin-bottom:14px; }
+.nb-step__h{ display:flex; align-items:center; gap:10px; font-size:17px; margin:0 0 12px; }
+.nb-num{ display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px;
+  border-radius:50%; background:var(--gold); color:var(--chestnut-deep); font-size:13px; font-weight:700;
+  flex-shrink:0; }
+.nb-modes{ display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:10px; }
+.nb-mode{ display:block; position:relative; padding:12px 12px 12px 38px; border:1px solid var(--parchment-line);
+  border-radius:10px; cursor:pointer; background:var(--parchment); }
+.nb-mode input{ position:absolute; left:13px; top:15px; }
+.nb-mode:has(input:checked){ border-color:var(--gold); background:var(--status-warn-bg);
+  box-shadow:0 0 0 2px var(--focus-ring); }
+.nb-mode__t{ display:block; font-weight:600; margin-bottom:3px; }
+.nb-mode__d{ display:block; font-size:13px; color:var(--ink-soft); line-height:1.4; }
+.nb-inline{ margin-top:12px; }
+.nb-short{ max-width:12em; }
+.nb-dates{ display:grid; grid-template-columns:1fr 1fr auto; gap:12px; align-items:end; }
+.nb-nights{ margin:0 0 10px; font-weight:600; white-space:nowrap; color:var(--ink); }
+.nb-quick{ display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 14px; }
+.nb-party{ display:flex; flex-wrap:wrap; gap:18px; }
+.nb-stepper{ display:inline-flex; align-items:center; gap:6px; }
+.nb-stepper input{ width:4.2em; text-align:center; }
+.nb-stepper .btn-mini{ min-width:36px; font-size:17px; line-height:1; }
+.nb-opt{ font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink-soft); }
+.nb-pay{ display:flex; gap:8px; }
+.nb-pay input{ flex:1 1 7em; min-width:0; }
+.nb-pay select{ flex:1 1 9em; min-width:0; }
+.nb-summary{ position:sticky; top:16px; }
+.nb-card{ background:var(--surface); border:1px solid var(--gold); border-radius:12px; padding:18px 18px 16px;
+  box-shadow:var(--shadow); }
+.nb-card__h{ font-size:17px; margin:0 0 10px; }
+.nb-card__sub{ font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft);
+  margin:16px 0 6px; }
+.nb-sum{ margin:0; }
+.nb-sum > div{ display:flex; justify-content:space-between; gap:12px; padding:6px 0;
+  border-bottom:1px solid var(--parchment-line); }
+.nb-sum dt{ color:var(--ink-soft); }
+.nb-sum dd{ margin:0; text-align:right; font-weight:500; min-width:0; overflow-wrap:anywhere; }
+.nb-sum__money dd{ font-variant-numeric:tabular-nums; }
+.nb-sum__total dt, .nb-sum__total dd{ font-weight:700; color:var(--ink); }
+.nb-sum__owed{ border-bottom:0 !important; }
+.nb-sum__owed dd{ font-weight:700; color:var(--gold-on-warn); }
+.nb-what{ margin:0 0 14px; padding-left:18px; font-size:13px; line-height:1.45; }
+.nb-what li{ margin-bottom:4px; }
+.nb-go{ width:100%; }
+.nb-problem{ margin:10px 0 0; padding:8px 10px; border-radius:8px; background:var(--flash-error-bg);
+  border:1px solid var(--flash-error-border); font-size:13px; }
+@media (max-width: 900px){
+  .nb-grid{ grid-template-columns:1fr; }
+  .nb-summary{ position:static; }
+}
+@media (max-width: 520px){
+  .nb-step{ padding:14px 14px 12px; }
+  .nb-dates{ grid-template-columns:1fr 1fr; }
+  .nb-nights{ grid-column:1 / -1; margin:0; }
+}
 .stat-tiles{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:12px; margin-bottom:22px; }
 .stat-tile{
   display:flex; align-items:center; gap:13px;

@@ -17,6 +17,12 @@ Nothing else may settle a tab while the reader asks; what nothing can refuse
 on a settled tab anyway is written there, shown on the tab, and put in front
 of the owner -- never refunded by the till.
 
+Pressing Take card again keeps the same rule. A charge Stripe could not be
+asked about used to be overwritten by a new one, so the till forgot a charge
+the guest could still pay and asked them to pay twice; it now stays on the
+tab. A declined one is cancelled at Stripe before a fresh one replaces it,
+and the audit log names it.
+
 Nothing here reaches Stripe. The reader's three calls are stood in, and the
 stripe module itself is swapped for one that raises on any use, so a path that
 went round the stand-ins fails here rather than charging anybody. One section
@@ -54,6 +60,8 @@ class FakeReader:
         self.cancelled = []        # intents Stripe accepted a cancel for
         self.offline = False       # Stripe cannot be reached at all
         self.meanwhile = None      # runs while Stripe is being asked to collect
+        self.declined = {}         # intent id -> the reason Stripe gave
+        self.after_ask = None      # runs once, after the next answer about a charge
 
     def collect(self, conn, order_id, total, description, reader_id):
         pid = f"pi_{TAG.lower()}_{len(self.asked) + 1}"
@@ -71,10 +79,17 @@ class FakeReader:
         intent = {"id": intent_id, "status": status, "amount": cents,
                   "amount_received": cents if status == "succeeded" else 0}
         if status == "succeeded":
-            return "succeeded", "Paid.", intent
-        if status == "canceled":
-            return "failed", "The payment was cancelled.", intent
-        return "waiting", "Waiting for the guest to tap.", intent
+            answer = "succeeded", "Paid.", intent
+        elif status == "canceled":
+            answer = "failed", "The payment was cancelled.", intent
+        elif intent_id in self.declined:
+            answer = "failed", self.declined[intent_id], intent
+        else:
+            answer = "waiting", "Waiting for the guest to tap.", intent
+        if self.after_ask:
+            then, self.after_ask = self.after_ask, None
+            then()
+        return answer
 
     def cancel(self, reader_id, intent_id):
         if self.offline:
@@ -492,6 +507,94 @@ def run():
                                                         "reference": None}], detail=str(b["rows"]))
         s.check("and the waiter is told", any("settled while the reader" in f for f in flashes(r)),
                 r, detail=str(flashes(r)))
+
+        # ------------------------------------------------------------------
+        s.section("Take card pressed again with a charge already on the tab")
+        oid13 = _open_tab(f"{TAG}-again", ("lunch", 24.00))
+        oc.post(f"/pos/{oid13}/take-card")
+        first = fake.last()
+        oc.post(f"/pos/{oid13}/take-card")
+        s.check("while the reader asks, a second press resumes the same charge",
+                fake.last() == first and _books(oid13)["intent"] == first,
+                detail=str(list(fake.asked)))
+
+        # Stripe would not answer about the charge, though it would have
+        # taken a new one: the flaky middle, not a dead line.
+        fake.offline = True
+        try:
+            r = oc.post(f"/pos/{oid13}/take-card", follow_redirects=True)
+        finally:
+            fake.offline = False
+        b = _books(oid13)
+        s.check("with Stripe out of reach, no second charge is started",
+                fake.last() == first, detail=str(list(fake.asked)))
+        s.check("and the one already asked for stays on the tab, not cancelled",
+                b["intent"] == first and b["status"] == "open" and first not in fake.cancelled,
+                detail=str(b))
+        said = [f for f in flashes(r) if "could not be reached to check" in f]
+        s.check("saying so in one sentence: try again in a minute, or cancel",
+                len(said) == 1 and "try again in a minute" in said[0]
+                and "cancel" in said[0] and said[0].count(".") == 1,
+                r, detail=str(flashes(r)))
+        s.check("nothing is put down as replaced", _audit("pos_reader_replaced", first) is None)
+        fake.status[first] = "succeeded"            # the guest had tapped meanwhile
+        oc.get(f"/pos/{oid13}/card-status")
+        b = _books(oid13)
+        s.check("so the tap that was on its way is the one the till records, once",
+                b["rows"] == [{"amount": 24.00, "method": "card_terminal", "reference": first}]
+                and b["status"] == "paid", detail=str(b["rows"]))
+
+        oid14 = _open_tab(f"{TAG}-declined", ("dinner", 38.00))
+        oc.post(f"/pos/{oid14}/take-card")
+        declined = fake.last()
+        fake.declined[declined] = "Your card was declined."
+        r = oc.post(f"/pos/{oid14}/take-card", follow_redirects=True)
+        b = _books(oid14)
+        fresh = fake.last()
+        s.check("after a decline, a press puts a fresh charge on the reader for what is owed",
+                fresh != declined and fake.asked.get(fresh) == 38.00 and b["intent"] == fresh,
+                detail=f"{fake.asked} / {b['intent']!r}")
+        s.check("having cancelled the declined one at Stripe first, so it can't be taken too",
+                declined in fake.cancelled and fake.status[declined] == "canceled",
+                detail=str(fake.cancelled))
+        s.check("with no message: the reader asking again is the answer", flashes(r) == [],
+                r, detail=str(flashes(r)))
+        line = _audit("pos_reader_replaced", declined)
+        s.check("and the audit log names the charge it replaced, and why",
+                line is not None and "Your card was declined." in line, detail=repr(line))
+        fake.status[fresh] = "succeeded"
+        oc.get(f"/pos/{oid14}/card-status")
+        b = _books(oid14)
+        s.check("the second card settles the tab, with one charge on the books",
+                b["rows"] == [{"amount": 38.00, "method": "card_terminal", "reference": fresh}]
+                and b["status"] == "paid", detail=str(b["rows"]))
+
+        # requires_payment_method is what a charge the reader is still asking
+        # for looks like too, so a "declined" can be a tap a second away.
+        # Stripe refuses to cancel a charge that has gone through.
+        oid15 = _open_tab(f"{TAG}-beatdecline", ("wine", 26.00))
+        oc.post(f"/pos/{oid15}/take-card")
+        late = fake.last()
+        fake.declined[late] = "Your card was declined."
+
+        def tapped_meanwhile():
+            fake.declined.pop(late, None)
+            fake.status[late] = "succeeded"
+        fake.after_ask = tapped_meanwhile
+        try:
+            r = oc.post(f"/pos/{oid15}/take-card", follow_redirects=True)
+        finally:
+            fake.after_ask = None
+        b = _books(oid15)
+        s.check("a 'declined' that went through before the cancel is recorded, not replaced",
+                b["rows"] == [{"amount": 26.00, "method": "card_terminal", "reference": late}]
+                and b["status"] == "paid", detail=str(b["rows"]))
+        s.check("and no second charge goes on the reader", fake.last() == late,
+                detail=str(list(fake.asked)))
+        s.check("the waiter is told the guest had already tapped",
+                any("already tapped" in f for f in flashes(r)), r, detail=str(flashes(r)))
+        s.check("and nothing is put down as replaced",
+                _audit("pos_reader_replaced", late) is None)
 
         # ------------------------------------------------------------------
         s.section("Stopping the reader never stops another table's tap")
