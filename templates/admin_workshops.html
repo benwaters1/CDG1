@@ -28,12 +28,31 @@
     saying how full it is, what is still to decide, the money, and the way
     in. It was the question asked every morning and the one the page made
     hardest: a sitting was four levels down a programme's card. -#}
-<h2 class="section-heading" style="margin-top:0;">Coming up</h2>
+{#- What needs somebody, before the list (19 October 2026): each sitting with
+    the jobs on it in words, so nobody opens every one to find out which. -#}
+{% if needs_you %}
+<h2 class="section-heading" style="margin-top:0;">Needs you</h2>
+<div class="ws-needs">
+  {% for row in needs_you %}{% set s = row.session %}
+  <a class="ws-need" href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">
+    <span class="ws-need-head"><b>{{ row.workshop['title'] }}</b>
+      <span class="upload-hint">{{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}</span></span>
+    <ul class="ws-need-list">{% for n in row.needs %}<li>{{ n }}</li>{% endfor %}</ul>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-heading" {% if not needs_you %}style="margin-top:0;"{% endif %} id="coming">Coming up</h2>
 {% if not coming %}
   <div class="empty-state">No sittings to come. Add one to a programme below.</div>
 {% else %}
+{% include "_list_toolbar.html" %}
+{% if not lv.rows %}
+  <div class="empty-state">Nothing matches that. <a href="{{ url_for('admin_workshops') }}">Show all {{ coming|length }}</a></div>
+{% endif %}
 <div class="ws-sits">
-  {% for row in coming %}
+  {% for row in lv.rows %}
   {% set s = row.session %}
   {% set off = s['cancelled_at'] %}
   {% set cap = s['capacity'] or 0 %}
@@ -73,7 +92,7 @@
       {% if row.at_risk %}{% set r = row.at_risk %}
       <p class="ws-sit-risk {{ 'is-urgent' if r.urgent and not r.waitlist_could_fill }}">
         <b>{{ r.confirmed }} of {{ r.minimum }} needed</b> to run{% if r.pending %} ({{ r.pending }} more registered without paying, not counted){% endif %}.
-        {% if r.overdue %}The date for deciding passed {{ r.decide_by }}.{% else %}Decide by {{ r.decide_by }}.{% endif %}
+        {% if r.overdue %}The date for deciding passed {{ r.decide_by.isoformat()|date_short }}.{% else %}Decide by {{ r.decide_by.isoformat()|date_short }}.{% endif %}
         {% if r.waitlist_could_fill %}<a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link">{{ r.waiting }} waiting could cover it — ring them</a> before calling it off.
         {% elif r.waiting %}{{ r.waiting }} waiting, not enough to cover it.
         {% else %}Nobody is waiting.{% endif %}

@@ -3764,3 +3764,11 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .cal-add-links li{ display:flex; flex-direction:column; gap:2px; padding:10px 0; border-bottom:1px solid var(--parchment-line); }
 .cal-add-links li a{ font-weight:600; }
 .cal-add-sitting{ border-top:1px solid var(--parchment-line); margin-top:6px; }
+
+/* What needs somebody, above the workshops list (19 October 2026). */
+.ws-needs{ display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:10px; margin-bottom:22px; }
+.ws-need{ display:block; background:var(--status-warn-bg); border:1px solid var(--gold); border-radius:12px;
+  padding:12px 14px; color:inherit; text-decoration:none; }
+.ws-need:hover{ box-shadow:var(--shadow); }
+.ws-need-head{ display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
+.ws-need-list{ margin:0; padding-left:18px; font-size:14px; line-height:1.45; }
