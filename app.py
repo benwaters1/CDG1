@@ -1309,6 +1309,19 @@ GUEST_LOOKUP_TOKEN = os.environ.get("GUEST_LOOKUP_TOKEN", "")
 ADDIN_CLIENT_ID = (os.environ.get("ADDIN_CLIENT_ID") or "").strip()
 ADDIN_TENANT_ID = (os.environ.get("ADDIN_TENANT_ID") or "").strip()
 
+# THE ADD-IN'S OWN ADDRESS: where Outlook loads it from, and so the address the
+# manifest names and the add-in page offers. Everybody's Outlook has it at the
+# Railway address, and it must stay there whichever name the page offering it
+# was opened on -- a manifest built from admin.chateaugudanes.com, installed,
+# moves the add-in off Railway for the whole house. See addin_base_url().
+#
+# Unset, Railway's own variable stands in, but only when it holds a
+# *.railway.app name: Railway documents it as "the public service or customer
+# domain", so with a custom domain attached it may hold one of the house's
+# names instead, which is exactly the wrong answer.
+ADDIN_BASE_URL = (os.environ.get("ADDIN_BASE_URL") or "").strip().rstrip("/")
+RAILWAY_PUBLIC_DOMAIN = (os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "").strip().lower()
+
 # THE HOUSE CALENDAR, written by the app into one Microsoft 365 mailbox.
 #
 # A second app registration, NOT the mail reader's, and on purpose: an Exchange
@@ -8279,6 +8292,14 @@ def init_db():
     # Who fits each room, as Booking.com has it -- by the names of 16 October,
     # so after them.
     apply_room_occupancy_2026_10_18(conn)
+    # Every confirmed stay has a guest profile (19 October 2026). A repair
+    # that runs at every start must never be what stops the house starting:
+    # anything it cannot do is said in the log and left for the next start.
+    try:
+        link_stays_to_profiles(conn)
+    except sqlite3.Error as exc:
+        conn.rollback()
+        print(f"[guests] could not link every stay to a profile: {exc}")
 
     # WHERE THE GATES ARE.
     #
@@ -9441,21 +9462,21 @@ NAV_AREA_OF.update({e: a for e, a in OWNER_ONLY_AREAS.items() if a})
 # (heading or None, items). An item: (endpoint, label, icon, also, badge),
 # `also` being the other pages that light it up -- "area:x" for every page in
 # access area x.
-def _nav(endpoint, label, icon_name, also=(), badge=None):
+def _nav(endpoint, label, icon_name, also=(), badge=None, phone=False):
     return {"endpoint": endpoint, "label": label, "icon": icon_name,
-            "also": tuple(also), "badge": badge}
+            "also": tuple(also), "badge": badge, "phone": phone}
 
 
 NAV_TOP = [
     # Today first for everyone: who is in and what am I meant to be doing is
     # the question a member of staff has when they open this on a phone.
-    _nav("staff_today", "Today", "home"),
+    _nav("staff_today", "Today", "home", phone=True),
     _nav("dashboard", "Home", "home", ("admin_home",)),
-    _nav("ops_calendar", "Calendar", "calendar"),
+    _nav("ops_calendar", "Calendar", "calendar", phone=True),
     # High, and for both roles: the one page here people are meant to open
     # unprompted, and a message nobody sees is worse than none.
     _nav("chat_home", "Chat", "contacts", ("chat_channel", "chat_with"),
-         "chat_unread_count"),
+         "chat_unread_count", phone=True),
 ]
 
 OWNER_MENU = [
@@ -9465,13 +9486,13 @@ OWNER_MENU = [
                  ("confirm_booking", "decline_booking", "checkout_booking", "edit_booking",
                   "admin_booking")),
             _nav("admin_calendar", "Booking Calendar", "calendar"),
-            _nav("front_desk", "Front Desk", "bookings", ("check_in_booking",)),
-            _nav("arrivals_sheet_page", "Arrivals", "calendar"),
+            _nav("front_desk", "Front Desk", "bookings", ("check_in_booking",), phone=True),
+            _nav("arrivals_sheet_page", "Arrivals", "calendar", phone=True),
             _nav("admin_rooms", "Rooms", "rooms", ("new_room", "edit_room")),
             _nav("admin_waitlist", "Room Waitlist", "leave"),
         ]),
         ("While they are here", [
-            _nav("breakfast", "Breakfast", "coffee"),
+            _nav("breakfast", "Breakfast", "coffee", phone=True),
             _nav("extras_due_page", "Extras Due", "receipt"),
             _nav("all_transfers", "Transfers", "truck",
                  ("vehicle_transfers_page", "new_vehicle_transfer")),
@@ -9493,9 +9514,9 @@ OWNER_MENU = [
     ]),
     ("restaurant", "Restaurant", "restaurant", ("till",), ("pending_restaurant_count",), [
         ("Service", [
-            _nav("pos_home", "Till", "receipt", ("area:till",)),
+            _nav("pos_home", "Till", "receipt", ("area:till",), phone=True),
             _nav("admin_restaurant", "Reservations", "restaurant", (),
-                 "pending_restaurant_count"),
+                 "pending_restaurant_count", phone=True),
             _nav("admin_restaurant_waitlist", "Waitlist", "leave"),
             _nav("restaurant_tables", "Tables", "restaurant"),
             _nav("restaurant_covers", "Covers Ahead", "restaurant"),
@@ -9529,11 +9550,11 @@ OWNER_MENU = [
     ]),
     ("daily", "Day to Day", "tasks", (), (), [
         (None, [
-            _nav("shift_handover", "Handover", "receipt"),
-            _nav("admin_tasks", "Tasks", "tasks"),
+            _nav("shift_handover", "Handover", "receipt", phone=True),
+            _nav("admin_tasks", "Tasks", "tasks", phone=True),
             _nav("announcements", "Announcements", "receipt",
                  ("new_announcement", "edit_announcement", "delete_announcement")),
-            _nav("shopping_list", "Shopping", "shopping"),
+            _nav("shopping_list", "Shopping", "shopping", phone=True),
             _nav("contacts", "Contacts", "contacts"),
             _nav("manual", "Manual", "manual"),
         ]),
@@ -9607,7 +9628,8 @@ OWNER_MENU = [
     # rebuild: it was already in headings, and the owner reads it daily.
     ("financial", "Financial", "financial", (), (), [
         ("Waiting on you", [
-            _nav("admin_approvals", "Approvals", "approvals", (), "pending_approvals_count"),
+            _nav("admin_approvals", "Approvals", "approvals", (), "pending_approvals_count",
+                 phone=True),
             _nav("expenses", "Expenses & Invoices", "receipt", ("decide_expense",)),
             _nav("admin_refunds", "Refunds", "receipt"),
         ]),
@@ -9677,7 +9699,7 @@ STAFF_MENU = [
     ("s_guests", "Guests", "guests", (), (), [
         (None, [
             _nav("guests", "Guest List", "guests"),
-            _nav("breakfast", "Breakfast", "coffee"),
+            _nav("breakfast", "Breakfast", "coffee", phone=True),
             _nav("all_transfers", "Transfers", "truck"),
             _nav("extras_due_page", "Extras Due", "receipt"),
             _nav("guest_dates", "Dates Worth Knowing", "calendar"),
@@ -9685,7 +9707,7 @@ STAFF_MENU = [
     ]),
     ("s_restaurant", "Restaurant", "restaurant", (), (), [
         (None, [
-            _nav("pos_home", "Till", "receipt", ("pos_order", "pos_kitchen")),
+            _nav("pos_home", "Till", "receipt", ("pos_order", "pos_kitchen"), phone=True),
             _nav("restaurant_covers", "Covers Ahead", "restaurant"),
             _nav("restaurant_tables", "Tables", "restaurant"),
             _nav("kitchen_prep", "Prep List", "restaurant", ("prep_item_done",)),
@@ -9694,8 +9716,8 @@ STAFF_MENU = [
     ]),
     ("house", "The House", "wrench", (), (), [
         (None, [
-            _nav("shift_handover", "Handover", "receipt"),
-            _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",)),
+            _nav("shift_handover", "Handover", "receipt", phone=True),
+            _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",), phone=True),
             _nav("room_issues", "Room Issues", "wrench"),
             _nav("management_cleaning", "Cleaning Rounds", "wrench", ("cleaning_round_done",)),
             _nav("management_visitors", "Visitors On Site", "guests", ("sign_out_visitor",)),
@@ -9707,9 +9729,9 @@ STAFF_MENU = [
     ]),
     ("me", "My Work", "shifts", (), (), [
         (None, [
-            _nav("my_shifts", "My Shifts", "shifts"),
+            _nav("my_shifts", "My Shifts", "shifts", phone=True),
             _nav("my_hours", "My Hours", "shifts"),
-            _nav("my_leave", "Time Off", "leave"),
+            _nav("my_leave", "Time Off", "leave", phone=True),
             _nav("my_availability", "My Availability", "calendar"),
             _nav("my_expenses", "Expenses", "receipt", ("submit_expense",)),
             _nav("mileage", "Mileage", "car"),
@@ -9726,7 +9748,7 @@ STAFF_MENU = [
                  ("new_announcement", "edit_announcement", "delete_announcement")),
             _nav("manual", "Manual", "manual"),
             _nav("contacts", "Contacts", "contacts"),
-            _nav("shopping_list", "Shopping", "shopping"),
+            _nav("shopping_list", "Shopping", "shopping", phone=True),
         ]),
     ]),
 ]
@@ -9788,6 +9810,7 @@ def build_nav(user, endpoint, badges):
         lit = endpoint == item["endpoint"] or endpoint in item["also"] or any(
             o == f"area:{NAV_AREA_OF.get(endpoint)}" for o in item["also"])
         return {"url": url, "label": item["label"], "icon": item["icon"],
+                "endpoint": item["endpoint"], "phone": item["phone"],
                 "active": lit, "badge": badges.get(item["badge"]) if item["badge"] else None}
 
     top = [d for d in (drawn(i) for i in NAV_TOP) if d]
@@ -9805,6 +9828,41 @@ def build_nav(user, endpoint, badges):
                        "url": out[0][1][0]["url"], "sections": out,
                        "open": here == key or here in opens, "badge": total or None})
     return {"top": top, "groups": groups}
+
+
+# THE PHONE'S HOME SCREEN (/app), which the home-screen app opens on.
+#
+# The owner expected big icons to tap, like an app, and what the home-screen
+# app opened was the full dashboard: a page written for a desk, with a sidebar
+# of a hundred links behind a menu button. On a phone in a corridor nobody
+# needs that much; they need the six things they came for, large.
+#
+# The tiles are the sidebar's own items marked `phone=True` -- not a second
+# list -- so a tile has the sidebar's label, icon and badge, and it is drawn
+# only when build_nav would draw that link for this person. An employee with
+# no areas gets STAFF_MENU's tiles; somebody with the till gets the till; the
+# owner gets the business. One more check rides on top of that: a tile to a
+# guarded page needs can_reach, so a flag set on the wrong item can never put
+# an owner-only door on an employee's phone.
+def phone_tiles(nav, user=None):
+    """The home-screen tiles for this person, from what build_nav drew."""
+    user = user or current_user()
+    tiles, seen = [], set()
+    items = list(nav.get("top", []))
+    for g in nav.get("groups", []):
+        for _heading, links in g["sections"]:
+            items.extend(links)
+    for it in items:
+        if not it.get("phone") or it["url"] in seen:
+            continue
+        if view_is_guarded(it["endpoint"]) and not can_reach(user, it["endpoint"]):
+            continue
+        seen.add(it["url"])
+        tiles.append(it)
+    return tiles
+
+
+app.jinja_env.globals["phone_tiles"] = phone_tiles
 
 
 def user_access(user):
@@ -65106,6 +65164,69 @@ def send_new_link(conn, to, name, link_for, link):
     return False, why.get("why") or "it could not be sent"
 
 
+def profile_for_stay(conn, booking):
+    """The guest profile a stay belongs to, found or made: the one it is linked
+    to, else the one with its address, else a new one with its name, address
+    and telephone. Returns the profile's id. Writes nothing to the booking --
+    the caller links it.
+
+    One definition for confirming a stay and for repairing one confirmed
+    without (link_stays_to_profiles): every confirmed stay has a profile
+    (owner, 19 October 2026: "it should have guest profile").
+    """
+    guest_email = (booking["guest_email"] or "").strip().lower() or None
+    guest_id = booking["linked_guest_id"]
+    if guest_id and not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        guest_id = None
+    if not guest_id and guest_email:
+        existing = conn.execute(
+            "SELECT id, merged_into_id FROM guests WHERE email = ? COLLATE NOCASE "
+            "ORDER BY merged_into_id IS NOT NULL, id", (guest_email,)
+        ).fetchone()
+        if existing:
+            guest_id = existing["merged_into_id"] or existing["id"]
+    if not guest_id:
+        cur = conn.execute(
+            """INSERT INTO guests (name, email, phone, notes, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (booking["guest_name"], guest_email,
+             booking["guest_phone"] or None, None,
+             datetime.now(timezone.utc).isoformat()),
+        )
+        guest_id = cur.lastrowid
+    return guest_id
+
+
+def link_stays_to_profiles(conn):
+    """Give every confirmed stay without a profile its profile, and link it.
+    Returns how many were linked. Safe to run on every start: it touches only
+    confirmed stays whose link is empty, or points at a profile that is gone.
+
+    A stay could be confirmed without one: one made before profiles existed,
+    one imported, and a desk booking whose confirmation was refused and then
+    written as confirmed regardless. Each sat outside the guest list.
+    """
+    rows = conn.execute(
+        """SELECT * FROM bookings WHERE status = 'confirmed'
+             AND (linked_guest_id IS NULL
+                  OR linked_guest_id NOT IN (SELECT id FROM guests))
+           ORDER BY id""").fetchall()
+    done = 0
+    for b in rows:
+        # One at a time, so a stay that cannot be linked (an address another
+        # profile holds in another spelling, say) does not stop the rest.
+        try:
+            conn.execute("UPDATE bookings SET linked_guest_id = ? WHERE id = ?",
+                         (profile_for_stay(conn, b), b["id"]))
+            done += 1
+        except sqlite3.IntegrityError as exc:
+            print(f"[guests] stay {b['reference_code']} left without a profile: {exc}")
+    if done:
+        conn.commit()
+        print(f"[guests] {done} confirmed stay(s) given their guest profile")
+    return done
+
+
 def ensure_guest_profile(conn, name, email, phone=None):
     """The standing profile of whoever a booking is for, made if there is none.
 
@@ -65512,22 +65633,7 @@ def confirm_booking_by_id(conn, booking_id, *, online=None):
     # an identity -- matching on it would either fail or, worse, mint a brand
     # new profile on every single confirm, reinstating the per-stay pile-up this
     # refactor removed. Lower-cased so casing can't split one person in two.
-    guest_email = (booking["guest_email"] or "").strip().lower() or None
-    guest_id = booking["linked_guest_id"]
-    if not guest_id and guest_email:
-        existing = conn.execute(
-            "SELECT id FROM guests WHERE email = ? COLLATE NOCASE", (guest_email,)
-        ).fetchone()
-        guest_id = existing["id"] if existing else None
-    if not guest_id:
-        cur = conn.execute(
-            """INSERT INTO guests (name, email, phone, notes, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (booking["guest_name"], guest_email,
-             booking["guest_phone"] or None, None,
-             datetime.now(timezone.utc).isoformat()),
-        )
-        guest_id = cur.lastrowid
+    guest_id = profile_for_stay(conn, booking)
 
     cur = conn.execute(
         "UPDATE bookings SET status='confirmed', decided_at=?, linked_guest_id=? WHERE id=? AND status='pending'",
@@ -75335,6 +75441,9 @@ def walk_in_booking():
         else:
             conn.execute("UPDATE bookings SET status = 'confirmed' WHERE id = ?",
                          (booking["id"],))
+            if not booking["linked_guest_id"]:
+                conn.execute("UPDATE bookings SET linked_guest_id = ? WHERE id = ?",
+                             (profile_for_stay(conn, booking), booking["id"]))
 
         taken_raw = (request.form.get("amount_taken", "") or "").strip().replace(",", ".")
         try:
@@ -92206,6 +92315,19 @@ def readiness_checks(conn, *, include_slow=True):
               "be the original. Set PUBLIC_BASE_URL to https://www.chateaugudanes.com "
               "(or the bare domain, whichever the house uses).")
 
+    # Asked without the request's name: this page may be open on admin. or on
+    # Railway, and the answer must not depend on which.
+    addin_known = addin_base_source(from_request=False)[0]
+    add("warn" if staff_address() else "info", "Core", "The Outlook add-in's address",
+        bool(addin_known),
+        f"{addin_known}, on every manifest whichever address it is fetched from."
+        if addin_known else
+        "Not set. ADDIN_BASE_URL is " + ("not an address" if ADDIN_BASE_URL else "unset")
+        + (f" and RAILWAY_PUBLIC_DOMAIN is {RAILWAY_PUBLIC_DOMAIN}, not a Railway address"
+           if RAILWAY_PUBLIC_DOMAIN else "")
+        + ", so the add-in page opened on admin.chateaugudanes.com cannot offer the "
+          "manifest. Set ADDIN_BASE_URL to https://cdg1-production-9186.up.railway.app.")
+
     email_ok = email_enabled()
     held = conn.execute(
         "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
@@ -93827,6 +93949,37 @@ def staff_today():
         open_count=sum(1 for t in my_tasks if t["status"] != "done"),
         extras_today=extras_today,
     )
+
+
+@app.route("/app")
+@login_required
+def phone_home():
+    """The home-screen app's front page: big tiles, nothing else.
+
+    static/manifest.json starts here, so this is what opens when somebody taps
+    the château's icon on their phone. The computer's dashboard is unchanged
+    and one tile away. The tiles come from the sidebar (phone_tiles), so each
+    person sees only what they can open. Clocking in or out is the one thing
+    done from here directly, because it is the first and last tap of a shift.
+    """
+    user = current_user()
+    today = house_today()
+    conn = get_db()
+    try:
+        clocked_in = conn.execute(
+            "SELECT id FROM time_entries WHERE user_id = ? AND clock_out_at IS NULL",
+            (user["id"],)).fetchone()
+        # The same tasks the Today page lists as still to do, so the number on
+        # its tile is the number of things waiting behind it.
+        open_tasks = conn.execute(
+            """SELECT COUNT(*) FROM tasks
+               WHERE assigned_to_user_id = ? AND status != 'done'
+                 AND (due_date IS NULL OR due_date <= ?)""",
+            (user["id"], today.isoformat())).fetchone()[0]
+    finally:
+        conn.close()
+    return render_template("phone_home.html", clocked_in=clocked_in,
+                           open_tasks=open_tasks, today=today)
 
 
 def mark_task_done(conn, task, done=True):
@@ -108411,19 +108564,64 @@ def addin_page_config():
     }
 
 
+def _addin_setting_base():
+    """ADDIN_BASE_URL as an origin, or "" if it is unset or is not an address."""
+    parsed = urlparse(ADDIN_BASE_URL)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def addin_base_source(from_request=True):
+    """(origin, where it came from) for the add-in. `where` is one of:
+
+      "setting"  ADDIN_BASE_URL
+      "railway"  RAILWAY_PUBLIC_DOMAIN, holding a *.railway.app name
+      "request"  the name this request came in on, which is not the house's
+      "unknown"  none of those: the request is on one of the house's names and
+                 nothing says where the add-in lives (origin is then None)
+
+    The request's own name is the last resort, and never one of the house's:
+    a laptop or a staging copy serves its own add-in, as it always has, but
+    www. and admin. are not where everybody's Outlook has it. from_request=False
+    leaves it out, for a check whose answer must not depend on the name asked.
+    """
+    if _addin_setting_base():
+        return _addin_setting_base(), "setting"
+    if RAILWAY_PUBLIC_DOMAIN.endswith(".railway.app"):
+        return "https://" + RAILWAY_PUBLIC_DOMAIN, "railway"
+    if from_request and has_request_context() and not on_house_domain():
+        return request.host_url.rstrip("/"), "request"
+    return None, "unknown"
+
+
+def addin_base_url():
+    """The add-in's origin, or None when it cannot be known from here."""
+    return addin_base_source()[0]
+
+
+def addin_url(base, endpoint, **values):
+    """A full address on the add-in's origin, whatever name the request is on."""
+    return base + url_for(endpoint, **values)
+
+
 @app.route("/outlook-addin/manifest.xml")
 def outlook_addin_manifest():
-    base = request.host_url.rstrip("/")
-    icon = lambda size: url_for("static", filename=f"addin/icon-{size}.png", _external=True)  # noqa: E731
+    # Answered on every name as it always was; only the addresses inside are
+    # the add-in's own. With nothing to say where that is (only possible on
+    # the house's names), the name asked on stands in, as it always did, and
+    # the add-in page says what to set.
+    base = addin_base_url() or request.host_url.rstrip("/")
+    icon = lambda size: addin_url(base, "static", filename=f"addin/icon-{size}.png")  # noqa: E731
     xml = render_template(
         "outlook_addin_manifest.xml", guid=OUTLOOK_ADDIN_GUID, version=OUTLOOK_ADDIN_VERSION,
         icons={size: icon(size) for size in (16, 25, 32, 48, 64, 80, 128)},
-        taskpane_url=url_for("outlook_addin_taskpane", _external=True),
-        support_url=url_for("contact_page", _external=True),
+        taskpane_url=addin_url(base, "outlook_addin_taskpane"),
+        support_url=addin_url(base, "contact_page"),
         app_domain=base,
-        launchevent_html_url=url_for("outlook_addin_launchevent_html", _external=True),
-        launchevent_js_url=url_for("outlook_addin_launchevent_js", _external=True),
-        compose_taskpane_url=url_for("outlook_addin_compose", _external=True),
+        launchevent_html_url=addin_url(base, "outlook_addin_launchevent_html"),
+        launchevent_js_url=addin_url(base, "outlook_addin_launchevent_js"),
+        compose_taskpane_url=addin_url(base, "outlook_addin_compose"),
     )
     return app.response_class(xml, mimetype="application/xml")
 
@@ -108579,14 +108777,20 @@ def _admin_addin_context(conn):
                           "owner_only": mailbox_is_owner_only(r)})
     notes = conn.execute("SELECT value FROM app_settings WHERE key = ?",
                          (ADDIN_HOUSE_NOTES_SETTING,)).fetchone()
+    # The add-in's own address, not this page's: opened on admin., a manifest
+    # link built from the request would move everybody's Outlook off Railway.
+    addin_base, addin_from = addin_base_source()
     return {
-        "manifest_url": url_for("outlook_addin_manifest", _external=True),
+        "manifest_url": (addin_url(addin_base, "outlook_addin_manifest")
+                         if addin_base else None),
+        "addin_base_from": addin_from,
+        "railway_public_domain": RAILWAY_PUBLIC_DOMAIN,
         "manifest_version": OUTLOOK_ADDIN_VERSION,
         "token_configured": bool(GUEST_LOOKUP_TOKEN),
         "shared_key_allowed": addin_shared_key_allowed(conn),
         "sso_configured": addin_sso_configured(), "sso_client_id": ADDIN_CLIENT_ID,
         "sso_tenant": addin_tenant_id(), "sso_scope": addin_scope(),
-        "addin_origin": request.host_url.rstrip("/"),
+        "addin_origin": addin_base,
         "claude_on": claude_configured(), "graph_on": graph_enabled(),
         "graph_mailboxes": MS_GRAPH_MAILBOXES,
         "users": users, "sessions": sessions, "unmatched": addin_unmatched(conn),

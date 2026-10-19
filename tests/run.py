@@ -267,6 +267,7 @@ SUITES = [
     "test_workshops_needs",
     "test_restaurant_desk",
     "test_front_desk",
+    "test_every_stay_has_a_profile",
     "test_extras_at_booking",
     "test_chateau_tour",
     "test_no_control_characters",
@@ -391,6 +392,7 @@ SUITES = [
     "test_voids",
     "test_old_addresses",
     "test_staff_address",
+    "test_addin_address",
     "test_reports_index",
     "test_reopened_bills",
     "test_guest_keys_and_photos",
@@ -550,6 +552,8 @@ SUITES = [
     "test_workshop_deposit_hold",
     "test_form_bot_guard",
     "test_bot_registrations_listed",
+    # 19 October 2026: the phone's home screen the owner expected and never got.
+    "test_phone_home",
 ]
 
 

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Gudanes{% endblock %}
+{% block content %}
+{#- THE PHONE'S HOME SCREEN. What the home-screen app opens on (start_url in
+    static/manifest.json). Big tiles and nothing else: on a phone nobody needs
+    the dashboard's figures, they need the door they came for.
+
+    Every tile is a sidebar item marked phone=True in app.py, through
+    phone_tiles(), so the label, icon, badge and who may see it are the
+    sidebar's own. To add a tile, mark the item there; nothing here names a
+    page except the clock and the way back to the full site. -#}
+<div class="ph">
+  <div class="ph-head">
+    <div class="ph-hello">
+      <h1 class="ph-name">{{ (user['name'] or '').split(' ')[0] }}</h1>
+      <span class="ph-date">{{ today.strftime('%A %d %B') }}</span>
+    </div>
+    <form method="post" action="{{ url_for('clock_out_action' if clocked_in else 'clock_in_action') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="ph-clock {{ 'ph-clock--in' if clocked_in }}">
+        {{ icon('shifts', 22) }}{{ t('Clock out') if clocked_in else t('Clock in') }}
+      </button>
+    </form>
+  </div>
+
+  <nav class="ph-grid" aria-label="Home screen">
+    {% for it in phone_tiles(nav_menu()) %}
+    {% set count = open_tasks if it.endpoint == 'staff_today' else it.badge %}
+    <a href="{{ it.url }}" class="ph-tile" data-endpoint="{{ it.endpoint }}">
+      <span class="ph-icon">{{ icon(it.icon, 34) }}</span>
+      <span class="ph-label">{{ it.label }}</span>
+      {% if count %}<span class="ph-badge" aria-label="{{ count }} waiting">{{ count }}</span>{% endif %}
+    </a>
+    {% endfor %}
+    <a href="{{ url_for('admin_home') }}" class="ph-tile ph-tile--quiet" data-endpoint="admin_home">
+      <span class="ph-icon">{{ icon('eye', 34) }}</span>
+      <span class="ph-label">Everything</span>
+    </a>
+  </nav>
+</div>
+{% endblock %}
