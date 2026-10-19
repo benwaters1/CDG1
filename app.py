@@ -8998,6 +8998,7 @@ NAV_AREAS = {
         "dinner_covers_page", "export_dinner_covers_csv",
         "admin_restaurant_waitlist", "admin_stock", "cancel_restaurant_booking_admin",
         "confirm_restaurant_booking", "decline_restaurant_booking", "export_restaurant_csv",
+        "add_restaurant_reservation",
         "export_restaurant_waitlist_csv", "move_stock", "new_stock_item",
         "update_restaurant_waitlist_status",
         # Pages that had no area at all until now, so they were
@@ -55282,7 +55283,10 @@ def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner
                                dietary_notes, booking_id=None, payment_status="unpaid",
                                stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                                deposit_amount=None, total_price_override=None, discount_amount_override=None,
-                               reference_code=None):
+                               reference_code=None, quiet=False):
+    """Write a dinner reservation down. `quiet` sends nothing -- no "request
+    received" letter, no notification -- for a table the house is taking
+    itself (add_restaurant_reservation), which says what it sends."""
     settings = get_restaurant_settings(conn)
     # Handed in from the card page, which labelled the payment with it. Kept
     # only while no other reservation holds it.
@@ -55329,6 +55333,8 @@ def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner
     if promo:
         record_promo_redemption(conn, promo, "restaurant", reference_code, guest_email, subtotal, discount_amount)
     conn.commit()
+    if quiet:
+        return reference_code, manage_token
 
     booking_row = conn.execute("SELECT * FROM restaurant_bookings WHERE manage_token = ?", (manage_token,)).fetchone()
     send_restaurant_email(conn, booking_row, "restaurant_reservation_received", restaurant_email_context(booking_row))
@@ -68021,9 +68027,30 @@ def admin_restaurant():
         others = history.get((r["guest_email"] or "").lower(), 0) - (1 if r["no_show_at"] else 0)
         if others > 0:
             no_show_history[r["id"]] = others
+    # BY NIGHT (19 October 2026). Every reservation was a card of its own in
+    # one column, so "how is Saturday looking" meant adding up cards. Each
+    # night now heads its tables, with its covers against what the room seats,
+    # what is still to decide and who is working.
+    capacity = (settings["capacity"] if settings else 0) or 0
+    covers_by_night = {r["dinner_date"]: r["covers"] for r in conn.execute(
+        """SELECT dinner_date, COALESCE(SUM(party_size), 0) AS covers FROM restaurant_bookings
+            WHERE status IN ('pending', 'confirmed') GROUP BY dinner_date""").fetchall()}
+    nights = []
+    for r in reservations:
+        if not nights or nights[-1]["date"] != r["dinner_date"]:
+            nights.append({"date": r["dinner_date"], "rows": [],
+                           "covers": covers_by_night.get(r["dinner_date"], 0),
+                           "capacity": capacity,
+                           "staff": [s["employee_name"] for s in shifts_by_date.get(r["dinner_date"], [])]})
+        nights[-1]["rows"].append(r)
+    for n in nights:
+        n["pending"] = sum(1 for r in n["rows"] if r["status"] == "pending")
+        n["diets"] = sum(1 for r in n["rows"] if (r["dietary_notes"] or "").strip()
+                         and r["status"] in ("pending", "confirmed"))
     conn.close()
     return render_template(
         "admin_restaurant.html", reservations=reservations, lv=lv, status_filter=status_filter,
+        nights=nights, adding=request.args.get("add") == "1",
         pending_count=pending_count, upcoming_covers=upcoming_covers, settings=settings,
         employees=employees, today=today, profit=profit, prev_month=prev_month, next_month=next_month,
         shifts_by_date=shifts_by_date, no_show_count=no_show_count,
@@ -68075,6 +68102,86 @@ def delete_restaurant_shift(shift_id):
     conn.close()
     flash("Shift removed.", "success")
     return redirect(url_for("admin_restaurant"))
+
+
+@app.route("/admin/restaurant/new", methods=["POST"])
+@owner_required
+def add_restaurant_reservation():
+    """A table taken by the house: on the telephone, at the bar, by email
+    (owner, 19 October 2026). Online reservations are switched off, and there
+    was no other way to write one down, so a dinner booked by telephone had
+    nowhere to go and the kitchen was never told.
+
+    Confirmed at once -- the house has decided -- through the same checks a
+    confirmation makes: a standing instruction not to accept them refuses
+    it, the guest's profile is made, and covers past the night's capacity
+    are said. Nothing is sent unless "Email them a confirmation" is ticked
+    and there is an address.
+    """
+    conn = get_db()
+    form = request.form
+    name = (form.get("guest_name") or "").strip()[:120]
+    email = (form.get("guest_email") or "").strip().lower()[:200]
+    phone = (form.get("guest_phone") or "").strip()[:40]
+    notes = (form.get("dietary_notes") or "").strip()[:500]
+    day = parse_date((form.get("dinner_date") or "").strip())
+    try:
+        party = int(form.get("party_size") or 0)
+    except ValueError:
+        party = 0
+    price_raw = (form.get("total_price") or "").strip().replace(",", ".")
+    try:
+        price = round(float(price_raw), 2) if price_raw else None
+    except ValueError:
+        price = None
+    problem = None
+    if not name:
+        problem = "Put a name on it, even if it is only a surname."
+    elif not day:
+        problem = "Choose the night."
+    elif day < service_day():
+        problem = "That night has gone."
+    elif party < 1:
+        problem = "How many are coming?"
+    elif email and not EMAIL_RE.match(email):
+        problem = "That email address does not look right, or leave it blank."
+    if not problem:
+        caution = guest_caution_for(conn, email=email, name=name)
+        if caution and caution["caution_level"] == "refuse":
+            problem = (f"There is a standing instruction not to accept a booking from "
+                       f"{caution['name']} ({caution['caution']}): lift it on their profile "
+                       "if that has changed.")
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return redirect(url_for("admin_restaurant", add=1))
+    reference, token = create_restaurant_booking(
+        conn, name, email, phone, day.isoformat(), party, notes,
+        total_price_override=price, quiet=True)
+    conn.execute("UPDATE restaurant_bookings SET status = 'confirmed', decided_at = ? "
+                 "WHERE reference_code = ?", (datetime.now(timezone.utc).isoformat(), reference))
+    if email:
+        ensure_guest_profile(conn, name, email, phone)
+    log_audit(conn, "restaurant_booking_added", target=reference,
+              details=f"{day.isoformat()}, party of {party}")
+    conn.commit()
+    booking = conn.execute("SELECT * FROM restaurant_bookings WHERE reference_code = ?",
+                           (reference,)).fetchone()
+    covers = conn.execute(
+        "SELECT COALESCE(SUM(party_size), 0) AS t FROM restaurant_bookings "
+        "WHERE dinner_date = ? AND status = 'confirmed'", (day.isoformat(),)).fetchone()["t"]
+    settings = get_restaurant_settings(conn)
+    told = ""
+    if form.get("tell_them") and email:
+        send_restaurant_email(conn, booking, "restaurant_confirmed", restaurant_email_context(booking))
+        told = f" Their confirmation has gone to {email}."
+    conn.close()
+    over = settings and settings["capacity"] and covers > settings["capacity"]
+    flash(f"{name}, party of {party}, on {format_date_short(day.isoformat())} ({reference})."
+          + told + (f" That night is now {covers} covers, over the {settings['capacity']} it seats."
+                    if over else f" {covers} covers that night."),
+          "error" if over else "success")
+    return redirect(url_for("admin_restaurant", _anchor="night-" + day.strftime("%Y%m%d")))
 
 
 @app.route("/admin/restaurant/<int:reservation_id>/confirm", methods=["POST"])

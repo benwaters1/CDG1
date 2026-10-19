@@ -3772,3 +3772,24 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .ws-need:hover{ box-shadow:var(--shadow); }
 .ws-need-head{ display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
 .ws-need-list{ margin:0; padding-left:18px; font-size:14px; line-height:1.45; }
+
+/* The restaurant's reservations, by night (19 October 2026). */
+.rs-add{ margin-bottom:16px; }
+.rs-night{ margin-bottom:18px; }
+.rs-night__head{ display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:6px 16px;
+  margin:0 0 6px; }
+.rs-night__h{ font-size:18px; margin:0; }
+.rs-night.is-tonight .rs-night__h{ color:var(--gold-on-warn); }
+.rs-night__figs{ font-size:14px; }
+.rs-wait{ color:var(--rust); font-weight:600; }
+.rs-table td{ vertical-align:top; }
+.rs-table .upload-hint, .rs-table .no-show-warning{ display:block; }
+.rs-off td{ opacity:.6; }
+.rs-acts{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+/* The same columns every night, so the eye runs down one. */
+@media (min-width: 760px){
+  .rs-table{ table-layout:fixed; width:100%; }
+  .rs-table th:nth-child(1){ width:30%; } .rs-table th:nth-child(2){ width:7%; }
+  .rs-table th:nth-child(3){ width:21%; } .rs-table th:nth-child(4){ width:13%; }
+  .rs-table th:nth-child(5){ width:11%; } .rs-table th:nth-child(6){ width:18%; }
+}
