@@ -161,7 +161,8 @@
         <p class="oh-empty">Nothing on today.</p>
         {% else %}
         {% for r in day %}
-        <div class="oh-drow{{ ' is-done' if r['done'] }}">
+        {#- Every row opens what it is about (owner, 18 Oct: an enquiry's task "I can't click it or anything"). -#}
+        <a class="oh-drow{{ ' is-done' if r['done'] }}" href="{{ r['href'] or url_for('admin_calendar') }}" style="color:inherit; text-decoration:none;">
           <span class="oh-mono oh-dtime">{{ r['time'] or '—' }}</span>
           {% set kindcls = {"arrival":"oh-bar--arrival","departure":"oh-bar--departure","dinner":"oh-bar--dinner","task":"oh-bar--task"} %}
           <span class="oh-bar {{ kindcls.get(r["kind"], "oh-bar--task") }}"></span>
@@ -175,7 +176,7 @@
             </span>
             {% endif %}
           </span>
-        </div>
+        </a>
         {% endfor %}
         {% endif %}
       </div>
