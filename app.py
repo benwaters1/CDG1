@@ -95201,17 +95201,51 @@ _MONEY_RE = re.compile(
     r"|" + _MONEY_NUMBER + r"\s?(?:€|EUR\b|euros?\b)",
     re.IGNORECASE,
 )
-_MONTH_NAMES = {
-    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
-    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+# Month names as a guest or the house writes them, in English and in French,
+# with the short forms ("30 oct.", "1er déc."). One map: the send check and the
+# channel-mail reader (ota_dates) both read it. The send check knew English
+# only, so a reply in French named no date at all, and the only dates it found
+# were the subject's and the quoted thread's (19 Oct 2026).
+_OTA_MONTHS = {
+    "january": 1, "janvier": 1, "janv": 1, "jan": 1,
+    "february": 2, "février": 2, "fevrier": 2, "févr": 2, "fevr": 2, "feb": 2, "fév": 2, "fev": 2,
+    "march": 3, "mars": 3, "mar": 3,
+    "april": 4, "avril": 4, "avr": 4, "apr": 4,
+    "may": 5, "mai": 5,
+    "june": 6, "juin": 6, "jun": 6,
+    "july": 7, "juillet": 7, "juil": 7, "jul": 7,
+    "august": 8, "août": 8, "aout": 8, "aug": 8,
+    "september": 9, "septembre": 9, "sept": 9, "sep": 9,
+    "october": 10, "octobre": 10, "oct": 10,
+    "november": 11, "novembre": 11, "nov": 11,
+    "december": 12, "décembre": 12, "decembre": 12, "déc": 12, "dec": 12,
 }
+# Month before day ("October 30") is how English writes it and French never
+# does, and a short form there is too easily a word ("mar 5", "sept 2").
+_MONTH_FIRST_NAMES = ("january", "february", "march", "april", "may", "june", "july",
+                      "august", "september", "october", "november", "december")
 _DATE_ISO_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _DATE_DMY_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
+_ANY_MONTH = "|".join(sorted((re.escape(k) for k in _OTA_MONTHS), key=len, reverse=True))
+_FIRST_MONTH = "|".join(_MONTH_FIRST_NAMES)
+_DAY_OF = r"(\d{1,2})(?:st|nd|rd|th|er)?"
+# Between the two days of a stay: "30-31 October", "du 30 au 31 octobre",
+# "30 to 31 October", "le 30 et le 31". The first day has no month of its own.
+_DAY_TO_DAY = (r"\s*(?:[-–—]|&|\b(?:to|till|until|through|au|et|and)\b)"
+               r"\s*(?:(?:le|the)\s+)?")
 _DATE_DAY_MONTH_RE = re.compile(
-    r"\b(\d{1,2})(?:st|nd|rd|th)?\s+(" + "|".join(_MONTH_NAMES) + r")\b", re.IGNORECASE,
+    r"\b" + _DAY_OF + r"\s+(?:of\s+)?(" + _ANY_MONTH + r")(?![a-zà-ÿ])", re.IGNORECASE,
 )
 _DATE_MONTH_DAY_RE = re.compile(
-    r"\b(" + "|".join(_MONTH_NAMES) + r")\s+(\d{1,2})(?:st|nd|rd|th)?\b", re.IGNORECASE,
+    r"\b(" + _FIRST_MONTH + r")\s+(\d{1,2})(?:st|nd|rd|th)?\b", re.IGNORECASE,
+)
+_DATE_DAY_RANGE_RE = re.compile(
+    r"\b" + _DAY_OF + _DAY_TO_DAY + _DAY_OF + r"\s+(?:of\s+)?(" + _ANY_MONTH + r")(?![a-zà-ÿ])",
+    re.IGNORECASE,
+)
+_DATE_MONTH_DAY_RANGE_RE = re.compile(
+    r"\b(" + _FIRST_MONTH + r")\s+(\d{1,2})(?:st|nd|rd|th)?" + _DAY_TO_DAY
+    + r"(\d{1,2})(?:st|nd|rd|th)?\b(?![/:.,]?\d)", re.IGNORECASE,
 )
 EVENT_INQUIRY_KEYWORDS = (
     "wedding", "photoshoot", "photo shoot", "elopement", "engagement shoot",
@@ -95239,7 +95273,10 @@ def extract_dates(text, received_at_iso):
     to the email's received year, rolling forward a year if that would
     otherwise land more than a month in the past (an email about 'March 3rd'
     received in November almost certainly means next March)."""
-    text = text or ""
+    # A composed "é" and an "e" with its accent alongside are one letter to a
+    # reader and two strings to a regex; and "30\xa0octobre" is how French
+    # typography often spaces a date.
+    text = unicodedata.normalize("NFC", text or "").replace("\xa0", " ").replace(" ", " ")
     # house_date_iso even here. Only the year and the month are read, so an
     # hour either way changes nothing -- but two spellings for one idea is
     # how the UTC-as-a-day fault survived 125 times, and this is the second
@@ -95257,11 +95294,38 @@ def extract_dates(text, received_at_iso):
         except ValueError:
             continue
     for m in _DATE_DAY_MONTH_RE.finditer(text):
-        day, month = int(m.group(1)), _MONTH_NAMES[m.group(2).lower()]
+        day, month = int(m.group(1)), _OTA_MONTHS[m.group(2).lower()]
         found.append(_anchor_year(day, month, received_date))
     for m in _DATE_MONTH_DAY_RE.finditer(text):
-        month, day = _MONTH_NAMES[m.group(1).lower()], int(m.group(2))
+        month, day = _OTA_MONTHS[m.group(1).lower()], int(m.group(2))
         found.append(_anchor_year(day, month, received_date))
+    # The day a range starts on, which names no month: "30" in "30-31
+    # October", or "du 30 au 31 octobre". The day it ends is found above.
+    # "30-2 November" starts in the month before.
+    for m in _DATE_DAY_RANGE_RE.finditer(text):
+        first, last, month = int(m.group(1)), int(m.group(2)), _OTA_MONTHS[m.group(3).lower()]
+        ends = _anchor_year(last, month, received_date)
+        if first <= last:
+            found.append(_anchor_year(first, month, received_date))
+        else:
+            before = ends.replace(day=1) - timedelta(days=1)
+            if first <= before.day:
+                found.append(before.replace(day=first))
+    # And "October 30-31": the day it ends.
+    for m in _DATE_MONTH_DAY_RANGE_RE.finditer(text):
+        month, first, last = _OTA_MONTHS[m.group(1).lower()], int(m.group(2)), int(m.group(3))
+        starts = _anchor_year(first, month, received_date)
+        if last > first:
+            try:
+                found.append(starts.replace(day=last))
+            except ValueError:
+                continue
+        elif last < first:
+            after = (starts.replace(day=28) + timedelta(days=4)).replace(day=1)
+            try:
+                found.append(after.replace(day=last))
+            except ValueError:
+                continue
     return found
 
 
@@ -95284,22 +95348,123 @@ def _anchor_year(day, month, received_date):
 #
 # A bare "From:" is NOT a quote header -- "From: 12 August" is how a stay is
 # written in a quote -- so it counts only with a Sent or Date line under it.
+#
+# The header is not always written plainly, and a header missed is the whole
+# thread read as the sender's words: on 19 Oct 2026 a right reply in French was
+# stopped for a stay "18 - 31 October", the 18th being the quoted "Sent:" line.
+# So it is found however the text came out of the HTML: in bold ("*From:*"),
+# with French typography's space before the colon ("De\xa0:", "Envoyé :"),
+# with its lines broken by Word's soft break (\v) rather than a newline, run
+# together on one line, or with the Sent line first.
+_QH = r"[ \t\xa0  ]"          # a space on the line, however typed
+_QLEAD = r"^[ \t\xa0 >*_]*"         # quote marks and bold before a label
+_QLABEL_END = r"[*_]*" + _QH + r"*:"     # "From:", "*From:*", "De :", "De\xa0:"
 _QUOTED_FROM_HERE = re.compile(
-    r"^[ \t>]*(?:"
-    r"_{20,}[ \t]*$"
-    r"|-{3,}[ \t]*(?:original message|message d'origine|forwarded message"
-    r"|message transf[ée]r[ée])[ \t]*-{3,}"
-    r"|(?:from|de)[ \t]*:[^\n]*\n(?:[^\n]*\n){0,3}?[ \t>]*(?:sent|date|envoy[ée])[ \t]*:"
-    r"|on\b[^\n]{4,200}(?:\n[^\n]{0,120})?\bwrote:[ \t]*$"
-    r"|le\b[^\n]{4,200}(?:\n[^\n]{0,120})?\ba [ée]crit[ \t]*:[ \t]*$"
+    _QLEAD + r"(?:"
+    r"_{20,}" + _QH + r"*$"
+    r"|-{3,}" + _QH + r"*(?:original message|message d'origine|forwarded message"
+    r"|message transf[ée]r[ée])" + _QH + r"*-{3,}"
+    r"|(?:begin forwarded message|d[ée]but du message r[ée]exp[ée]di[ée])" + _QH + r"*:"
+    r"|(?:from|de)" + _QLABEL_END + r"[^\n]*\n(?:[^\n]*\n){0,3}?"
+    + _QLEAD + r"(?:sent|date|envoy[ée])" + _QLABEL_END +
+    r"|(?:from|de)" + _QLABEL_END + r"[^\n]{1,300}?" + _QH + r"[*_]*(?:sent|envoy[ée])" + _QLABEL_END +
+    r"|(?:sent|envoy[ée])" + _QLABEL_END + r"[^\n]*\n(?:[^\n]*\n){0,2}?"
+    + _QLEAD + r"(?:to|[àa]|subject|objet)" + _QLABEL_END +
+    r"|on\b[^\n]{4,200}(?:\n[^\n]{0,120})?\bwrote" + _QH + r"*:" + _QH + r"*$"
+    r"|le\b[^\n]{4,200}(?:\n[^\n]{0,120})?\ba" + _QH + r"[ée]crit" + _QH + r"*:" + _QH + r"*$"
     r")", re.IGNORECASE | re.MULTILINE)
+# Every way a line can end in a plain-text body: Word's soft break (\v) is how
+# classic Outlook writes the <br> between the lines of its reply header.
+_LINE_BREAKS = re.compile(r"\r\n|[\r\v\f\x85  ]")
 
 
 def own_words(body_text):
     """What the person writing wrote: the body down to the quoted conversation."""
-    text = (body_text or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = _LINE_BREAKS.sub("\n", body_text or "")
     found = _QUOTED_FROM_HERE.search(text)
     return text[:found.start()] if found else text
+
+
+# A line that looks like the start of a quote header ("*From:*", "De\xa0:")
+# although no quote was found. Only the label and the marks around it, never
+# what follows, so the log learns the shape and nothing a guest wrote.
+_HEADER_LIKE = re.compile(r"^[^\w\n]{0,6}(?:from|de|sent|envoy[ée]|date)[^\w\n:]{0,4}:[^\w\n]{0,3}",
+                          re.IGNORECASE | re.MULTILINE)
+
+
+def unrecognised_quote_header(body_text):
+    """The shape of a header-like line in a body own_words found no quote in,
+    or None. A reply header in a form not yet known reads the whole thread as
+    the sender's own words; this says which form it was."""
+    text = _LINE_BREAKS.sub("\n", body_text or "")
+    if _QUOTED_FROM_HERE.search(text):
+        return None
+    found = _HEADER_LIKE.search(text)
+    return found.group(0) if found else None
+
+
+# How the words in brackets after a room's name are written in French, so
+# "la Twin Room au rez-de-chaussée" is the ground-floor room.
+_ROOM_QUALIFIERS_FR = {
+    "ground floor": ("rez de chaussee",),
+}
+
+
+def _plain_words(text):
+    """Lower case, no accents, every run of anything but letters and digits
+    one space, and a space at each end: so a phrase found in it is found as
+    whole words, however it was punctuated or hyphenated."""
+    text = unicodedata.normalize("NFKD", (text or "").lower())
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    return " " + " ".join(re.findall(r"[a-z0-9]+", text)) + " "
+
+
+def rooms_named_in(rooms, text):
+    """The rooms text names, the most specific first.
+
+    The names nest: "The Twin Room" is inside "The Twin Room (Ground Floor)".
+    Taking the first room whose name appeared anywhere checked an email that
+    named the ground-floor room in full against the other one, whenever the
+    other came first in the table. So a name counts only where it is not part
+    of a longer room's name at the same place in the text, and the longest
+    comes first.
+
+    A name is matched without its "The" ("la Twin Room"), and a name with
+    words in brackets also as they are said: "Twin Room on the ground floor",
+    "ground floor Twin Room", "Twin Room au rez-de-chaussée". The bare name
+    before the brackets stands for that room only when no other room has it.
+    """
+    def core(name):
+        words = _plain_words(name).strip()
+        return words[4:] if words.startswith("the ") else words
+
+    plain = _plain_words(text)
+    cores = {r["id"]: core(r["name"].split("(")[0]) for r in rooms}
+    spans = []
+    for r in rooms:
+        name = r["name"]
+        phrases = {core(name)}
+        if "(" in name:
+            base = core(name.split("(")[0])
+            qualifier = _plain_words(name.split("(", 1)[1]).strip()
+            phrases |= {f"{base} {qualifier}", f"{base} on the {qualifier}", f"{qualifier} {base}"}
+            for fr in _ROOM_QUALIFIERS_FR.get(qualifier, ()):
+                phrases |= {f"{base} {join} {fr}" for join in ("au", "du", "en")} | {f"{base} {fr}"}
+            if not any(c == base for rid, c in cores.items() if rid != r["id"]):
+                phrases.add(base)
+        for phrase in phrases:
+            if not phrase:
+                continue
+            for m in re.finditer(re.escape(f" {phrase} "), plain):
+                spans.append((m.start(), m.end(), r))
+    kept = [(a, b, r) for a, b, r in spans
+            if not any(a2 <= a and b <= b2 and (b2 - a2) > (b - a) and r2["id"] != r["id"]
+                       for a2, b2, r2 in spans)]
+    best = {}
+    for a, b, r in kept:
+        if r["id"] not in best or (b - a, -a) > best[r["id"]][0]:
+            best[r["id"]] = ((b - a, -a), r)
+    return [r for _key, r in sorted(best.values(), key=lambda kv: kv[0], reverse=True)]
 
 
 def _nights(n):
@@ -95341,30 +95506,57 @@ def guess_email_conflict(conn, from_address, subject, body_text, received_at_iso
     # begins, and whether that figure is per person).
     priced_as = None
 
-    room = next((r for r in conn.execute("SELECT * FROM rooms WHERE active = 1").fetchall() if r["name"].lower() in lowered), None)
-    if room:
+    named = rooms_named_in(conn.execute(
+        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, id").fetchall(), text)
+    if named:
+        room = named[0]
         category = f"Room: {room['name']}"
-        if len(dates) >= 2:
-            arrival, departure = sorted(dates)[0], sorted(dates)[-1]
-            if departure > arrival:
-                stay = (f"{room['name']}, "
-                        f"{format_date_range(arrival.isoformat(), departure.isoformat())} "
-                        f"({_nights((departure - arrival).days)})")
+        # A stay cannot begin before the day the email is written. A date
+        # before it is the thread's own "Sent:" line, or a stay that is over;
+        # either way it is not the stay offered, and taking it for the arrival
+        # stopped a right reply for "18 - 31 October" (19 Oct 2026).
+        written = parse_date(house_date_iso(received_at_iso)) or house_today()
+        ahead = sorted(d for d in dates if d >= written)
+        if len(ahead) >= 2 and ahead[-1] > ahead[0]:
+            arrival, departure = ahead[0], ahead[-1]
+
+            def priced_right(price):
+                return extracted_price is None or abs(price - extracted_price) <= max(1.0, price * 0.02)
+
+            # An email naming two rooms ("the Twin Room is taken, but the
+            # ground-floor one is free") is offering one of them, so it is
+            # stopped only when none of them fits what it says; and then it
+            # is told about the most specific one it named.
+            for r in named:
+                price = compute_room_total(conn, r, arrival, departure)
+                available, why = is_range_available(conn, r["id"], arrival, departure)
+                if available and priced_right(price):
+                    room, computed_price = r, price
+                    break
+            else:
                 computed_price = compute_room_total(conn, room, arrival, departure)
-                priced_as = (f"for {stay}", "The room's price for those nights is", False)
                 available, why = is_range_available(conn, room["id"], arrival, departure)
-                if not available:
-                    availability_conflict = True
-                    free = rooms_free_for(conn, arrival, departure, exclude_room_ids=(room["id"],))
-                    availability_note = (
-                        f"{stay} is not free. " + (f"{why} " if why else "")
-                        + ("Free for those nights: " + ", ".join(
-                            f"{r['name']} ({money(compute_room_total(conn, r, arrival, departure))})"
-                            for r in free[:3]) + "."
-                           if free else "No other room is free for those nights."))
+            category = f"Room: {room['name']}"
+            stay = (f"{room['name']}, "
+                    f"{format_date_range(arrival.isoformat(), departure.isoformat())} "
+                    f"({_nights((departure - arrival).days)})")
+            priced_as = (f"for {stay}", "The room's price for those nights is", False)
+            if not available:
+                availability_conflict = True
+                free = rooms_free_for(conn, arrival, departure, exclude_room_ids=(room["id"],))
+                availability_note = (
+                    f"{stay} is not free. " + (f"{why} " if why else "")
+                    + ("Free for those nights: " + ", ".join(
+                        f"{r['name']} ({money(compute_room_total(conn, r, arrival, departure))})"
+                        for r in free[:3]) + "."
+                       if free else "No other room is free for those nights."))
 
     if not category:
-        workshop = next((w for w in conn.execute("SELECT * FROM workshops WHERE active = 1").fetchall() if w["title"].lower() in lowered), None)
+        # The longest title named, for the same reason as the rooms: one
+        # title can sit inside another.
+        workshop = max((w for w in conn.execute("SELECT * FROM workshops WHERE active = 1").fetchall()
+                        if w["title"] and w["title"].lower() in lowered),
+                       key=lambda w: len(w["title"]), default=None)
         if workshop:
             category = f"Workshop: {workshop['title']}"
             computed_price = workshop["price_per_person"] or None
@@ -97378,20 +97570,6 @@ def mail_html_to_text(html):
     return "\n".join(out).strip(), parser.links
 
 
-_OTA_MONTHS = {
-    "january": 1, "janvier": 1, "janv": 1, "jan": 1,
-    "february": 2, "février": 2, "fevrier": 2, "févr": 2, "fevr": 2, "feb": 2, "fév": 2, "fev": 2,
-    "march": 3, "mars": 3, "mar": 3,
-    "april": 4, "avril": 4, "avr": 4, "apr": 4,
-    "may": 5, "mai": 5,
-    "june": 6, "juin": 6, "jun": 6,
-    "july": 7, "juillet": 7, "juil": 7, "jul": 7,
-    "august": 8, "août": 8, "aout": 8, "aug": 8,
-    "september": 9, "septembre": 9, "sept": 9, "sep": 9,
-    "october": 10, "octobre": 10, "oct": 10,
-    "november": 11, "novembre": 11, "nov": 11,
-    "december": 12, "décembre": 12, "decembre": 12, "déc": 12, "dec": 12,
-}
 _OTA_MONTH_RE = "|".join(sorted((re.escape(k) for k in _OTA_MONTHS), key=len, reverse=True))
 _OTA_DATE_RES = (
     (re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b"), "ymd"),
@@ -107286,6 +107464,13 @@ def api_check_send_conflict():
         if recipients and not outside:
             conflict, internal = None, True
         else:
+            # A reply header in a form own_words does not know makes the whole
+            # thread the sender's words. Its shape goes to the log -- the
+            # label and the marks round it, nothing a guest wrote -- so the
+            # next form is learned from the first one met.
+            shape = unrecognised_quote_header(body_text)
+            if shape:
+                print(f"[send check] a line starts {shape!r} but no quoted thread was found")
             conflict, internal = guess_email_conflict(
                 conn, outside, subject, own_words(body_text),
                 datetime.now(timezone.utc).isoformat()), False
