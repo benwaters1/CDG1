@@ -69866,13 +69866,71 @@ def admin_workshops():
     upcoming_count = len(upcoming_rows)
     spots_remaining = sum(r["remaining"] for r in upcoming_rows)
     conn.close()
+    # Every list gets the house's toolbar: search, counted chips, sort.
+    lv = list_view(
+        coming, request.args,
+        search=[lambda r: r["workshop"]["title"], lambda r: r["session"]["notes"],
+                lambda r: " ".join(r["needs"])],
+        search_hint="Search workshop, note or what it needs",
+        facets=[
+            facet("state", "How it stands", lambda r: r["state"], order=WORKSHOP_SITTING_STATES),
+            facet("workshop", "Workshop", lambda r: r["workshop"]["title"],
+                  order=[w["title"] for w in workshops], limit=8),
+        ],
+        sorts=[
+            sort_option("soonest", "Soonest first",
+                        lambda r: (r["session"]["start_date"], r["workshop"]["title"])),
+            sort_option("owed", "Most owed", lambda r: -r["register"]["owed"]),
+            sort_option("emptiest", "Most places free", lambda r: -r["remaining"]),
+        ],
+        default_sort="soonest",
+    )
+    needs_you = [r for r in coming if r["needs"]]
     return render_template(
         "admin_workshops.html", workshops=workshops, sessions_by_workshop=sessions_by_workshop,
-        past_by_workshop=sittings["past"], coming=coming,
+        past_by_workshop=sittings["past"], coming=coming, lv=lv, needs_you=needs_you,
         today=today,
         overview=overview, period=period,
         upcoming_count=upcoming_count, spots_remaining=spots_remaining,
     )
+
+
+# How far ahead guests without a room are worth raising: inside a month,
+# rooming is a job; further out, an unassigned room is just early.
+WORKSHOP_ROOMING_DAYS = 30
+# How a sitting stands, for the chips on the workshops page.
+WORKSHOP_SITTING_STATES = ["Needs you", "Filling", "Full", "Called off"]
+
+
+def workshop_sitting_needs(entry, today):
+    """What a coming sitting needs from somebody, in words: below its minimum,
+    registrations to decide, deposits not paid, balances past due, guests
+    inside a month with no room, materials short. [] when nothing does, or
+    when it is over or called off (owner, 19 October 2026)."""
+    s, reg = entry["session"], entry["register"]
+    if s["cancelled_at"] or (s["end_date"] or s["start_date"]) < today.isoformat():
+        return []
+    out = []
+    risk = entry["at_risk"]
+    if risk:
+        out.append(f"{risk['confirmed']} of {risk['minimum']} needed to run, "
+                   + (f"the date for deciding passed {format_date_short(risk['decide_by'].isoformat())}"
+                      if risk["overdue"] else
+                      f"decide by {format_date_short(risk['decide_by'].isoformat())}"))
+    if entry["pending"]:
+        out.append(f"{entry['pending']} to decide")
+    if reg.get("no_deposit"):
+        n = reg["no_deposit"]
+        out.append(f"{n} deposit{'' if n == 1 else 's'} not paid")
+    if reg.get("past_due"):
+        out.append(f"{money(reg['past_due'])} past due")
+    first = entry["first"]
+    if reg.get("no_room") and first and (first - today).days <= WORKSHOP_ROOMING_DAYS:
+        out.append(f"{reg['no_room']} without a room")
+    mp = entry["materials"]
+    if mp and mp["short"] and not mp["taken_out"]:
+        out.append("short of materials")
+    return out
 
 
 def workshop_sitting_rows(conn, workshops, today):
@@ -69891,13 +69949,23 @@ def workshop_sitting_rows(conn, workshops, today):
     with_materials = {r["workshop_id"] for r in conn.execute(
         "SELECT DISTINCT workshop_id FROM workshop_materials").fetchall()}
     register_by_session = {}
+    iso = today.isoformat()
     for reg_row in workshop_register_rows(conn, today):
         if reg_row["live"]:
             tally = register_by_session.setdefault(
-                reg_row["session_id"], {"booked": 0, "owed": 0.0, "paid": 0.0})
+                reg_row["session_id"], {"booked": 0, "owed": 0.0, "paid": 0.0,
+                                        "no_deposit": 0, "past_due": 0.0, "no_room": 0})
             tally["booked"] += 1
             tally["owed"] = round(tally["owed"] + max(reg_row["owed"], 0), 2)
             tally["paid"] = round(tally["paid"] + max(reg_row["paid"], 0), 2)
+            # What needs chasing, counted here so the page can say it rather
+            # than leave it to be found one registration at a time.
+            if reg_row["money"] == "Deposit unpaid":
+                tally["no_deposit"] += 1
+            if reg_row["owed"] > 0.005 and reg_row["due_date"] and reg_row["due_date"] < iso:
+                tally["past_due"] = round(tally["past_due"] + reg_row["owed"], 2)
+            if not reg_row["room"]:
+                tally["no_room"] += 1
     # People, not registrations: a couple is two places. A place held while
     # the guest pays their deposit is pending but waits on the GUEST, not the
     # owner -- it confirms or lets go on its own -- so it is counted apart
@@ -69947,6 +70015,9 @@ def workshop_sitting_rows(conn, workshops, today):
                               if w["id"] in with_materials
                               and not s["cancelled_at"] else None),
             }
+            entry["needs"] = workshop_sitting_needs(entry, today)
+            entry["state"] = ("Called off" if s["cancelled_at"] else "Needs you" if entry["needs"]
+                              else "Full" if entry["remaining"] <= 0 else "Filling")
             if (s["end_date"] or s["start_date"]) >= today.isoformat():
                 rows.append(entry)
             else:

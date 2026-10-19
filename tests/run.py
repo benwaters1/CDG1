@@ -264,6 +264,7 @@ SUITES = [
     "test_who_fits",
     "test_reserve_a_room",
     "test_add_a_booking",
+    "test_workshops_needs",
     "test_extras_at_booking",
     "test_chateau_tour",
     "test_no_control_characters",
