@@ -107,20 +107,18 @@ across both: sign in on admin. and the public pages show a slim bar with
 **Admin** and, where there is one, **Edit this page**. The Railway address is
 left exactly as it was, for the Outlook add-in.
 
-**Do these BEFORE the code that does this is deployed.** Once it is, every
-"please sign in" and every staff link in an email points at admin., and until
-that name answers they lead nowhere.
+**These must be in place BEFORE the code that does this is deployed.** Once
+it is, every "please sign in" and every staff link in an email points at
+admin., and until that name answers they lead nowhere. Steps 1 and 2 were
+done by the owner by 19 October 2026 (Google setup notes, z30):
 
-1. **In Railway** (*CDG1 → Settings → Networking → Custom domain*): add
-   `admin.chateaugudanes.com`, port 8080, the same as www. Railway then shows a
-   `CNAME` target (something like `xxxxxxxx.up.railway.app`) and a `TXT`
-   record named `_railway-verify.admin`. Copy both exactly.
-2. **At the DNS** (the cPanel zone editor of the "Unlimited Email" product, or
-   Cloudflare if it has moved): add those two records — `CNAME` `admin` → the
-   target Railway gave, and the `TXT` `_railway-verify.admin`. Touch nothing
-   else.
-3. **Wait until Railway shows admin.chateaugudanes.com with a certificate**
-   and `https://admin.chateaugudanes.com/login` opens the sign-in page.
+1. **In Railway** (*CDG1 → Settings → Networking → Custom domain*):
+   `admin.chateaugudanes.com`, port 8080, the same as www. *Done.*
+2. **In Cloudflare DNS:** `CNAME` `admin` → `vhu44j7a.up.railway.app`, **DNS
+   only** (grey cloud, not proxied), and the `TXT` `_railway-verify.admin`
+   Railway gave. *Done.*
+3. **Check Railway shows admin.chateaugudanes.com with a certificate** and
+   that `https://admin.chateaugudanes.com/login` opens the sign-in page.
 4. **Then deploy.** Nothing in Railway's variables needs setting: the defaults
    are `ADMIN_HOST=admin.chateaugudanes.com` and
    `SESSION_COOKIE_DOMAIN=.chateaugudanes.com`. Set `ADMIN_HOST` to an empty
@@ -136,8 +134,15 @@ What it does, so nobody is surprised: `admin./` goes to `/admin`, the staff
 home. A public page asked for on admin. goes to the same page on www (301).
 A staff page asked for on www or the bare domain goes to the same page on
 admin. (302, so it can be changed back). Every response on admin. says
-`X-Robots-Tag: noindex` and its robots.txt is `Disallow: /`. None of this
-applies on the Railway address, nor to `/outlook-addin/*` or
+`X-Robots-Tag: noindex` and its robots.txt is `Disallow: /`. Every page on
+any other name that is not www — the Railway address included — says
+`X-Robots-Tag: noindex` too, and the Railway address serves the same
+robots.txt as www, so a crawler can read the noindex and the 301s there
+rather than being kept away from them. The bare domain `chateaugudanes.com`
+is sent to www (301, or 308 for a form) before anything else runs —
+Cloudflare does that at the edge already; the app does the same should it
+ever get through. The staff side's moves do not apply on the Railway
+address, nor to `/outlook-addin/*` or
 `/webhooks/stripe` anywhere, and none of it sends anybody to admin. from a
 copy that is not live (`SITE_IS_LIVE` off, or `PUBLIC_BASE_URL` not the house's).
 

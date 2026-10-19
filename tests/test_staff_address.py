@@ -94,6 +94,8 @@ def run():
         _admin_bar(s, owner, emp)
         _never_indexed(s, owner)
         _railway_untouched(s, owner)
+        _off_www_not_indexed(s, owner)
+        _bare_domain_first(s, owner)
         _one_setting(s, owner)
     finally:
         (m.SITE_IS_LIVE, m.PUBLIC_BASE_URL, m.ADMIN_HOST, m.SHARED_COOKIE_DOMAIN) = was
@@ -165,10 +167,12 @@ def _host_routing(s, owner):
     s.check("a staff page on www goes to the same page on admin.",
             r.status_code == 302 and r.headers.get("Location") == ADMIN + "/admin/rooms?show=all",
             detail=f"{r.status_code} {r.headers.get('Location')}")
+    s.check("a 302, never a 301 a browser keeps for good",
+            wc.get("/admin/rooms", base_url=HOUSE).status_code == 302)
     r = wc.get("/admin/rooms", base_url=APEX)
-    s.check("and from the bare domain too",
-            r.headers.get("Location") == ADMIN + "/admin/rooms", detail=str(r.headers.get("Location")))
-    s.check("a 302, never a 301 a browser keeps for good", r.status_code == 302)
+    s.check("from the bare domain it goes to www first, like everything there",
+            r.status_code == 301 and r.headers.get("Location") == HOUSE + "/admin/rooms",
+            detail=f"{r.status_code} {r.headers.get('Location')}")
     # The language switch answers a POST? No -- clock-in is the staff POST to
     # hand, but it writes a shift. A POST to a staff page is checked only for
     # NOT being moved: the redirect would drop what was sent.
@@ -384,8 +388,6 @@ def _railway_untouched(s, owner):
     r = guest.get("/admin/rooms", base_url=RAILWAY)
     s.check("signing in on Railway stays on Railway",
             r.headers.get("Location") == "/login", detail=str(r.headers.get("Location")))
-    s.check("no noindex header added there",
-            not guest.get("/login", base_url=RAILWAY).headers.get("X-Robots-Tag"))
     with m.app.test_request_context("/", base_url=RAILWAY):
         link = m.url_for("admin_feedback", _external=True)
     s.check("a link built on Railway is a Railway link", link.startswith(RAILWAY), detail=link)
@@ -393,7 +395,7 @@ def _railway_untouched(s, owner):
     addin = ("/outlook-addin/taskpane", "/outlook-addin/compose",
              "/outlook-addin/launchevent.html", "/outlook-addin/manifest.xml")
     moved = []
-    for base in (RAILWAY, ADMIN, HOUSE):
+    for base in (RAILWAY, ADMIN, HOUSE, APEX):
         for client in (guest, _signed_in(owner["id"], base)):
             for p in addin:
                 r = client.get(p, base_url=base)
@@ -402,13 +404,96 @@ def _railway_untouched(s, owner):
     s.check("the Outlook add-in is never redirected, on any address", not moved,
             detail="; ".join(moved[:4]))
     moved = []
-    for base in (RAILWAY, ADMIN, HOUSE):
+    for base in (RAILWAY, ADMIN, HOUSE, APEX):
         r = guest.post("/webhooks/stripe", data=b"{}", base_url=base,
                        headers={"Stripe-Signature": "t=1,v1=0"},
                        content_type="application/json")
         if r.status_code in (301, 302, 303, 307, 308):
             moved.append(f"{base} -> {r.headers.get('Location')}")
     s.check("nor is Stripe's webhook", not moved, detail="; ".join(moved))
+
+
+def _off_www_not_indexed(s, owner):
+    s.section("Off www, every page says noindex (z30, G3)")
+    guest = m.app.test_client()
+    rc = _signed_in(owner["id"], RAILWAY)
+    for label, r in (("the sign-in page on Railway", guest.get("/login", base_url=RAILWAY)),
+                     ("a staff page on Railway", rc.get("/admin/rooms", base_url=RAILWAY)),
+                     ("a page that is not there, on Railway",
+                      guest.get("/nothing-here", base_url=RAILWAY)),
+                     ("a page on a name nobody configured",
+                      guest.get("/story", base_url="https://some-other-name.example"))):
+        s.check(f"{label} says noindex", "noindex" in (r.headers.get("X-Robots-Tag") or ""),
+                detail=f"{r.status_code} {r.headers.get('X-Robots-Tag')}")
+    r = guest.get("/static/style.css", base_url=RAILWAY)
+    s.check("pages only: a stylesheet there is left as it was",
+            not r.headers.get("X-Robots-Tag"), detail=str(r.headers.get("X-Robots-Tag")))
+    r = guest.get("/outlook-addin/taskpane", base_url=RAILWAY)
+    s.check("and the Outlook add-in's pages are not touched",
+            not r.headers.get("X-Robots-Tag"),
+            detail=f"{r.status_code} {r.headers.get('X-Robots-Tag')}")
+    for path in ("/", "/story", "/book"):
+        r = guest.get(path, base_url=HOUSE)
+        s.check(f"while www{path} carries no such header",
+                r.status_code == 200 and not r.headers.get("X-Robots-Tag"),
+                detail=str(r.headers.get("X-Robots-Tag")))
+    body = guest.get("/robots.txt", base_url=RAILWAY).get_data(as_text=True)
+    s.check("Railway's robots.txt lets crawlers in, to read the noindex and the 301s",
+            "Disallow: /admin" in body and "Disallow: /\n" not in body, detail=body[:200])
+    s.check("and names www's sitemap, not its own", f"Sitemap: {HOUSE}/sitemap.xml" in body,
+            detail=body[-120:])
+    s.check("while admin. keeps every crawler out",
+            guest.get("/robots.txt", base_url=ADMIN).get_data(as_text=True).strip()
+            .endswith("Disallow: /"))
+    m.SITE_IS_LIVE = False
+    try:
+        body = guest.get("/robots.txt", base_url=RAILWAY).get_data(as_text=True)
+        s.check("before the site is live, Railway still keeps them out of everything",
+                body.strip().splitlines() == ["User-agent: *", "Disallow: /"], detail=body[:80])
+        s.check("and www's pages say noindex too, being no house's yet",
+                "noindex" in (guest.get("/story", base_url=HOUSE).headers.get("X-Robots-Tag") or ""))
+    finally:
+        m.SITE_IS_LIVE = True
+
+
+def _bare_domain_first(s, owner):
+    s.section("The bare domain goes to www before anything else (z30, G4)")
+    guest = m.app.test_client()
+    for path in ("/", "/story?utm_source=newsletter", "/login", "/robots.txt",
+                 "/sitemap.xml", "/nothing-here", "/static/style.css"):
+        r = guest.get(path, base_url=APEX)
+        s.check(f"{path} on the bare domain is a 301 to the same on www",
+                r.status_code == 301 and r.headers.get("Location") == HOUSE + path,
+                detail=f"{r.status_code} {r.headers.get('Location')}")
+    r = _signed_in(owner["id"], APEX).get("/admin/rooms", base_url=APEX)
+    s.check("a staff page too: www first, the staff move after",
+            r.headers.get("Location") == HOUSE + "/admin/rooms",
+            detail=f"{r.status_code} {r.headers.get('Location')}")
+    m.app.config["WTF_CSRF_ENABLED"] = True
+    try:
+        r = guest.post("/events/find?x=1", data={"q": "a"}, base_url=APEX)
+        s.check("a form sent there is passed on whole (308), ahead of its CSRF check",
+                r.status_code == 308 and r.headers.get("Location") == HOUSE + "/events/find?x=1",
+                detail=f"{r.status_code} {r.headers.get('Location')}")
+    finally:
+        m.app.config["WTF_CSRF_ENABLED"] = False
+    s.check("it is the very first thing the app asks",
+            m.app.before_request_funcs[None][0] is m.bare_domain_goes_to_www,
+            detail=str([f.__name__ for f in m.app.before_request_funcs[None][:3]]))
+    m.SITE_IS_LIVE = False
+    try:
+        r = guest.get("/story", base_url=APEX)
+        s.check("not before the site is live", r.status_code == 200,
+                detail=f"{r.status_code} {r.headers.get('Location')}")
+    finally:
+        m.SITE_IS_LIVE = True
+    m.PUBLIC_BASE_URL = APEX
+    try:
+        r = guest.get("/story", base_url=APEX)
+        s.check("nor if the house ever chooses the bare domain itself",
+                r.status_code == 200, detail=f"{r.status_code} {r.headers.get('Location')}")
+    finally:
+        m.PUBLIC_BASE_URL = HOUSE
 
 
 def _one_setting(s, owner):

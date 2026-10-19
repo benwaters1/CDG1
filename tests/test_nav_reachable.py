@@ -24,6 +24,8 @@ OFF_NAV = {
     "profile", "edit_employee", "admin_report", "view_document",
     # Public, kiosk and print surfaces have their own chrome entirely.
     "office_display", "staff_today", "privacy_page", "terms_page",
+    # The dashboard Home already links to, at the address admin./ opens on.
+    "admin_home",
 }
 
 

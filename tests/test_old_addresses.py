@@ -329,9 +329,14 @@ def _one_address(s, c):
                 HOUSE + "/story" in body and "railway" not in body,
                 detail=body[:300])
 
+        # z30 (G3): not Disallow: / any more. A crawler kept off the Railway
+        # copy can never read its noindex or its 301s, so it keeps whatever it
+        # already filed there. It reads the house's own rules, and its pages
+        # say noindex (test_staff_address).
         robots = c.get("/robots.txt", base_url=RAILWAY).get_data(as_text=True)
-        s.check("the Railway copy asks crawlers to keep out of all of it",
-                robots.strip().endswith("Disallow: /"), detail=robots[:200])
+        s.check("the Railway copy lets crawlers in to read its noindex and redirects",
+                "Disallow: /admin" in robots and HOUSE + "/sitemap.xml" in robots
+                and "Disallow: /\n" not in robots, detail=robots[:200])
         robots = c.get("/robots.txt", base_url=HOUSE).get_data(as_text=True)
         s.check("while the house's own robots.txt opens the public site",
                 "Disallow: /admin" in robots and HOUSE + "/sitemap.xml" in robots,

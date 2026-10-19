@@ -1733,6 +1733,32 @@ app.session_interface = HouseSessionInterface()
 # value is an empty string on every page, public and staff alike.
 app.jinja_env.finalize = lambda value: "" if value is None else value
 
+
+@app.before_request
+def bare_domain_goes_to_www():
+    """chateaugudanes.com is www.chateaugudanes.com, before anything else is asked.
+
+    Cloudflare does this at the edge (z30, G4); this is the same rule should
+    the bare domain ever reach the app. Registered FIRST, ahead of the CSRF
+    check and every other hook, so nothing answers on the bare domain at all:
+    not a sign-in redirect, not a form refused for its token. A 301 for
+    pages, a 308 for anything sent, so a form posted there arrives with what
+    was in it rather than as an empty GET.
+
+    Only when the house's address is www.<the bare domain> and the site is
+    live, and never the add-in or Stripe (NEVER_MOVED_PREFIXES).
+    """
+    home = house_address()
+    if home is None or not home[1].startswith("www."):
+        return None
+    if _request_hostname() != home[1][len("www."):]:
+        return None
+    if request.path.startswith(NEVER_MOVED_PREFIXES):
+        return None
+    code = 301 if request.method in ("GET", "HEAD") else 308
+    return redirect(_with_query(f"{home[0]}://{home[1]}{request.path}"), code=code)
+
+
 csrf = CSRFProtect(app)
 
 
@@ -109074,14 +109100,30 @@ def staff_side_at_its_own_address():
 
 
 @app.after_request
-def staff_address_is_never_indexed(response):
-    """Nothing on the staff address belongs in a search engine, whatever it is.
+def only_the_house_address_is_indexed(response):
+    """www is the one name a search engine should file the house under.
 
-    A header rather than a meta tag, so it covers what has no <head> -- the
-    CSVs, the JSON, a redirect -- and pages that forgot.
+    On the staff address nothing belongs in one, whatever it is: a header
+    rather than a meta tag, so it covers what has no <head> -- the CSVs, the
+    JSON, a redirect -- and pages that forgot.
+
+    On any other name that is not www -- the Railway address, a stray one
+    -- every page says noindex too (z30, G3). That address answers with the
+    house's words and photographs, and a page of it filed in a search engine
+    competes with www under the house's own name. Pages only there, and not
+    the Outlook add-in's, which is left exactly as it is. Before the site is
+    live no name is the house's, so every page says it, as the meta tag does.
     """
     if on_admin_host():
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        return response
+    if not (response.content_type or "").startswith("text/html"):
+        return response
+    if request.path.startswith(NEVER_MOVED_PREFIXES):
+        return response
+    home = house_address()
+    if home is None or _request_hostname() != home[1]:
+        response.headers["X-Robots-Tag"] = "noindex"
     return response
 
 
@@ -109274,11 +109316,14 @@ def robots():
     if not SITE_IS_LIVE or on_admin_host():
         return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
     # Live, but asked on an address that is not the house's -- the Railway
-    # one, say. The public pages there already redirect; this keeps a crawler
-    # off everything else on that copy too.
+    # one, say. Until z30 (G3) this said Disallow: / there, which kept a
+    # crawler from ever FETCHING the pages that say noindex and the 301s to
+    # www -- so whatever it already held under that address it kept. Now it
+    # reads the same as www's, sitemap and all, and every page it fetches
+    # there either sends it to www or tells it not to file the page.
     home = house_address()
-    if home and _asked_host() != home[1]:
-        return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
+    sitemap = (f"{home[0]}://{home[1]}/sitemap.xml" if home
+               else url_for("sitemap", _external=True))
     body = "\n".join([
         "User-agent: *",
         "Disallow: /admin",
@@ -109308,7 +109353,7 @@ def robots():
         "Disallow: /login",
         "Disallow: /api",
         "",
-        f"Sitemap: {url_for('sitemap', _external=True)}",
+        f"Sitemap: {sitemap}",
         "",
     ])
     return Response(body, mimetype="text/plain")
