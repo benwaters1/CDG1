@@ -462,7 +462,8 @@ window.houseDay = (function () {
     {# Was url_for('dashboard') — the only place on the site that route appears; every
        other home link uses preview_home. If dashboard is the admin, this sent guests
        there from every breadcrumb. #}
-    <li><a href="{{ url_for('preview_home') }}">Château</a></li>
+    {#- 19 Oct (z30, G5): the front page, at /. /preview is the template on an address of its own and is noindex. -#}
+    <li><a href="/">Château</a></li>
     {% for label, href in crumbs %}
       <li>{% if href and not loop.last %}<a href="{{ href }}">{{ label }}</a>{% else %}<span aria-current="page">{{ label }}</span>{% endif %}
 {# Breadcrumbs. Pages set them with:
@@ -1376,5 +1377,12 @@ document.addEventListener('click', function(e){
   try { el.showPicker(); } catch (err) {}
 }, true);  /* capture: the drawer stops clicks from bubbling, so listen on the way down */
 </script>
+{#- Cloudflare Web Analytics (owner, 19 Oct, z30 G7): no cookie, so no banner. cf_beacon is empty off the house's own
+    address, for staff, and for a browser that asks not to be tracked (inject_cf_beacon). A page about one guest's
+    booking, bill or account says noindex, and is not counted either. -#}
+{%- set _robots_here %}{{ self.robots() }}{% endset %}
+{%- if cf_beacon and 'noindex' not in _robots_here %}
+<script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "{{ cf_beacon }}"}'></script>
+{%- endif %}
 </body>
 </html>

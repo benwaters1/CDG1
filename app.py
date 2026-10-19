@@ -33483,6 +33483,39 @@ def house_windows():
     }
 
 
+# CLOUDFLARE WEB ANALYTICS (owner, 19 October 2026, z30 G7): free, and it
+# sets no cookie, so it needs no consent banner. The token is not a secret --
+# it is printed in every page that carries the beacon -- but it is a setting,
+# so another deployment can count somewhere else or nowhere.
+CF_BEACON_TOKEN = os.environ.get("CF_BEACON_TOKEN", "43c97abe49854a78896cb9b5cdbac275").strip()
+
+
+@app.context_processor
+def inject_cf_beacon():
+    """The Cloudflare beacon's token for a page it may count, or "".
+
+    Only the public site at the house's own address: never the admin or the
+    Railway host, never a member of staff, and never a browser that asks not
+    to be tracked (Global Privacy Control, Do Not Track) -- the privacy notice
+    promises that browser is not counted at all, and the house's own count
+    already keeps that promise (record_page_view). Pages about one guest's
+    booking, bill or account are left out in public_base, by their noindex.
+    """
+    try:
+        if not CF_BEACON_TOKEN or not request.endpoint:
+            return {"cf_beacon": ""}
+        home = house_address()
+        if not home or _asked_host() != home[1]:
+            return {"cf_beacon": ""}
+        if request.headers.get("Sec-GPC") == "1" or request.headers.get("DNT") == "1":
+            return {"cf_beacon": ""}
+        if current_user():
+            return {"cf_beacon": ""}
+    except Exception:
+        return {"cf_beacon": ""}
+    return {"cf_beacon": CF_BEACON_TOKEN}
+
+
 @app.context_processor
 def inject_exchange_rates():
     """Rates on every public page, for the same reason the pin is.
@@ -46370,7 +46403,7 @@ def legal_page():
 
 # Bumped by hand when the wording changes. A privacy notice with no date on it
 # tells a reader nothing about whether it still describes the software.
-PRIVACY_LAST_REVIEWED = "13 October 2026"
+PRIVACY_LAST_REVIEWED = "19 October 2026"  # Cloudflare Web Analytics added (z30, G7)
 
 
 @app.route("/privacy")
@@ -108769,7 +108802,13 @@ def contact_page():
 
 @app.route('/preview')
 def preview_home():
-    return render_template('home.html')
+    """The front page's template on an address of its own, which several
+    "Back to the château" links still use. Not the front page: noindex, so
+    search engines keep one homepage, at / (z30, G5 -- Google was offering
+    this as a second one)."""
+    response = app.make_response(render_template("home.html"))
+    response.headers["X-Robots-Tag"] = "noindex"
+    return response
 
 
 # The addresses this site had on Squarespace, and where each one goes now.
@@ -108837,6 +108876,34 @@ LEGACY_PATHS = [
     ("/weddings", "events_weddings", True),
     ("/contact-us", "contact_page", True),
     ("/visit", "facilities_page", True),
+    # Found 404ing while Search Console was set up, 17 October 2026 (z30, G1):
+    # pages of the old site, or addresses Google still lists.
+    ("/staynow", "book_rooms", True),
+    ("/stay-with-us", "book_rooms", True),
+    ("/stay-with-us-1", "book_rooms", True),
+    ("/photoshoots", "events_photoshoots", True),
+    ("/the-restoration-story", "restoration_page", True),
+    ("/the-chateau-and-its-grounds", "facilities_page", True),
+    ("/inside-the-chateau", "gallery_page", True),
+    ("/life-at-the-chateau", "gallery_page", True),
+    ("/gallery-overview", "gallery_page", True),
+    ("/nestled-within-a-mountainous-valley", "gallery_page", True),
+    ("/follow", "contact_page", True),
+]
+
+# Old addresses that were ONE atelier, sent to it by the words of its title,
+# as legacy_atelier_product finds a product page's (z30, G1). Not by its id:
+# the ids live in each deployment's own database, and the design side's
+# "/workshops/9" is a number on the live one only. Temporary for the same
+# reason as there -- the answer is read from data that changes, and a 301 to
+# an atelier later taken off sale would sit in browsers for good. One match
+# and it goes there; none, or two, and it goes to the list of ateliers.
+LEGACY_ATELIERS = [
+    ("/stay-autumn-2026", "Immersive Artisan"),
+    ("/stay-christmas-2026", "Noel"),
+    ("/3-nights", "Antique Finds"),
+    ("/the-weekender", "Antique Finds"),
+    ("/7-nights", "Seven Starry Nights"),
 ]
 
 # Whole sections of the old site, for the pages under them that no sitemap
@@ -108945,6 +109012,20 @@ def legacy_atelier_product(slug):
     return redirect(_with_query(at_house_address(target)), code=302)
 
 
+def legacy_atelier_target(words):
+    """Where an old one-atelier address goes: that atelier, or the list."""
+    wanted = _name_words(words)
+    conn = get_db()
+    try:
+        rows = conn.execute("SELECT id, title FROM workshops WHERE active = 1").fetchall()
+    finally:
+        conn.close()
+    found = [r["id"] for r in rows if wanted and wanted <= _name_words(r["title"])]
+    if len(found) == 1:
+        return url_for("workshop_detail", workshop_id=found[0])
+    return url_for("workshops_public")
+
+
 def register_legacy_paths():
     """Wire up LEGACY_PATHS, refusing to shadow anything that already exists.
 
@@ -108972,10 +109053,23 @@ def register_legacy_paths():
         name = re.sub(r"[^a-z0-9]+", "_", path.replace("<path:_rest>", "any").lower())
         app.add_url_rule(path, "legacy" + name.rstrip("_"), view)
         wired.append(path)
+    for path, words in LEGACY_ATELIERS:
+        if path in taken:
+            continue
+
+        def atelier_view(_words=words):
+            return redirect(_with_query(at_house_address(legacy_atelier_target(_words))),
+                            code=302)
+
+        name = re.sub(r"[^a-z0-9]+", "_", path.lower())
+        app.add_url_rule(path, "legacy_atelier" + name.rstrip("_"), atelier_view)
+        wired.append(path)
     return wired
 
 
 LEGACY_WIRED = register_legacy_paths()
+# The old addresses as typed, for the not-found handler's second look.
+LEGACY_LOOKUP = {p.lower() for p in LEGACY_WIRED if "<" not in p}
 
 
 @app.after_request
@@ -109029,6 +109123,14 @@ def not_found(e):
     """
     if request.path.startswith("/api/"):
         return jsonify(error="not found"), 404
+    # An old address as people type and paste it: /StayNow, /staynow/. Flask
+    # matches exactly, and Squarespace did not, so the links in old emails and
+    # on other people's pages come in every case and with a trailing slash
+    # (z30, G1). Retried once, lower-case and without the slash, and only
+    # against the old addresses -- never a guess at a page of this site.
+    plain = request.path.rstrip("/").lower()
+    if plain and plain != request.path and plain in LEGACY_LOOKUP:
+        return redirect(_with_query(plain), code=301)
     return render_template("error.html", code=404), 404
 
 
