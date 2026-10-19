@@ -545,6 +545,8 @@ SUITES = [
     "test_workshop_deposit_hold",
     "test_form_bot_guard",
     "test_bot_registrations_listed",
+    # 19 October 2026: the phone's home screen the owner expected and never got.
+    "test_phone_home",
 ]
 
 

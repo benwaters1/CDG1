@@ -5,6 +5,9 @@
 <div class="page-head">
   <h1>{{ t('Today') }}</h1>
   <div>
+    {# The big-icon screen the home-screen app opens on, for somebody using the
+       site in a phone's browser who has not added it to their home screen. #}
+    <a href="{{ url_for('phone_home') }}" class="small-link">{{ t('Home screen') }}</a>
     {% if clocked_in %}
       <form method="post" action="{{ url_for('clock_out_action') }}" style="display:inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

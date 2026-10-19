@@ -9441,21 +9441,21 @@ NAV_AREA_OF.update({e: a for e, a in OWNER_ONLY_AREAS.items() if a})
 # (heading or None, items). An item: (endpoint, label, icon, also, badge),
 # `also` being the other pages that light it up -- "area:x" for every page in
 # access area x.
-def _nav(endpoint, label, icon_name, also=(), badge=None):
+def _nav(endpoint, label, icon_name, also=(), badge=None, phone=False):
     return {"endpoint": endpoint, "label": label, "icon": icon_name,
-            "also": tuple(also), "badge": badge}
+            "also": tuple(also), "badge": badge, "phone": phone}
 
 
 NAV_TOP = [
     # Today first for everyone: who is in and what am I meant to be doing is
     # the question a member of staff has when they open this on a phone.
-    _nav("staff_today", "Today", "home"),
+    _nav("staff_today", "Today", "home", phone=True),
     _nav("dashboard", "Home", "home", ("admin_home",)),
-    _nav("ops_calendar", "Calendar", "calendar"),
+    _nav("ops_calendar", "Calendar", "calendar", phone=True),
     # High, and for both roles: the one page here people are meant to open
     # unprompted, and a message nobody sees is worse than none.
     _nav("chat_home", "Chat", "contacts", ("chat_channel", "chat_with"),
-         "chat_unread_count"),
+         "chat_unread_count", phone=True),
 ]
 
 OWNER_MENU = [
@@ -9465,13 +9465,13 @@ OWNER_MENU = [
                  ("confirm_booking", "decline_booking", "checkout_booking", "edit_booking",
                   "admin_booking")),
             _nav("admin_calendar", "Booking Calendar", "calendar"),
-            _nav("front_desk", "Front Desk", "bookings", ("check_in_booking",)),
-            _nav("arrivals_sheet_page", "Arrivals", "calendar"),
+            _nav("front_desk", "Front Desk", "bookings", ("check_in_booking",), phone=True),
+            _nav("arrivals_sheet_page", "Arrivals", "calendar", phone=True),
             _nav("admin_rooms", "Rooms", "rooms", ("new_room", "edit_room")),
             _nav("admin_waitlist", "Room Waitlist", "leave"),
         ]),
         ("While they are here", [
-            _nav("breakfast", "Breakfast", "coffee"),
+            _nav("breakfast", "Breakfast", "coffee", phone=True),
             _nav("extras_due_page", "Extras Due", "receipt"),
             _nav("all_transfers", "Transfers", "truck",
                  ("vehicle_transfers_page", "new_vehicle_transfer")),
@@ -9493,9 +9493,9 @@ OWNER_MENU = [
     ]),
     ("restaurant", "Restaurant", "restaurant", ("till",), ("pending_restaurant_count",), [
         ("Service", [
-            _nav("pos_home", "Till", "receipt", ("area:till",)),
+            _nav("pos_home", "Till", "receipt", ("area:till",), phone=True),
             _nav("admin_restaurant", "Reservations", "restaurant", (),
-                 "pending_restaurant_count"),
+                 "pending_restaurant_count", phone=True),
             _nav("admin_restaurant_waitlist", "Waitlist", "leave"),
             _nav("restaurant_tables", "Tables", "restaurant"),
             _nav("restaurant_covers", "Covers Ahead", "restaurant"),
@@ -9529,11 +9529,11 @@ OWNER_MENU = [
     ]),
     ("daily", "Day to Day", "tasks", (), (), [
         (None, [
-            _nav("shift_handover", "Handover", "receipt"),
-            _nav("admin_tasks", "Tasks", "tasks"),
+            _nav("shift_handover", "Handover", "receipt", phone=True),
+            _nav("admin_tasks", "Tasks", "tasks", phone=True),
             _nav("announcements", "Announcements", "receipt",
                  ("new_announcement", "edit_announcement", "delete_announcement")),
-            _nav("shopping_list", "Shopping", "shopping"),
+            _nav("shopping_list", "Shopping", "shopping", phone=True),
             _nav("contacts", "Contacts", "contacts"),
             _nav("manual", "Manual", "manual"),
         ]),
@@ -9607,7 +9607,8 @@ OWNER_MENU = [
     # rebuild: it was already in headings, and the owner reads it daily.
     ("financial", "Financial", "financial", (), (), [
         ("Waiting on you", [
-            _nav("admin_approvals", "Approvals", "approvals", (), "pending_approvals_count"),
+            _nav("admin_approvals", "Approvals", "approvals", (), "pending_approvals_count",
+                 phone=True),
             _nav("expenses", "Expenses & Invoices", "receipt", ("decide_expense",)),
             _nav("admin_refunds", "Refunds", "receipt"),
         ]),
@@ -9677,7 +9678,7 @@ STAFF_MENU = [
     ("s_guests", "Guests", "guests", (), (), [
         (None, [
             _nav("guests", "Guest List", "guests"),
-            _nav("breakfast", "Breakfast", "coffee"),
+            _nav("breakfast", "Breakfast", "coffee", phone=True),
             _nav("all_transfers", "Transfers", "truck"),
             _nav("extras_due_page", "Extras Due", "receipt"),
             _nav("guest_dates", "Dates Worth Knowing", "calendar"),
@@ -9685,7 +9686,7 @@ STAFF_MENU = [
     ]),
     ("s_restaurant", "Restaurant", "restaurant", (), (), [
         (None, [
-            _nav("pos_home", "Till", "receipt", ("pos_order", "pos_kitchen")),
+            _nav("pos_home", "Till", "receipt", ("pos_order", "pos_kitchen"), phone=True),
             _nav("restaurant_covers", "Covers Ahead", "restaurant"),
             _nav("restaurant_tables", "Tables", "restaurant"),
             _nav("kitchen_prep", "Prep List", "restaurant", ("prep_item_done",)),
@@ -9694,8 +9695,8 @@ STAFF_MENU = [
     ]),
     ("house", "The House", "wrench", (), (), [
         (None, [
-            _nav("shift_handover", "Handover", "receipt"),
-            _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",)),
+            _nav("shift_handover", "Handover", "receipt", phone=True),
+            _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",), phone=True),
             _nav("room_issues", "Room Issues", "wrench"),
             _nav("management_cleaning", "Cleaning Rounds", "wrench", ("cleaning_round_done",)),
             _nav("management_visitors", "Visitors On Site", "guests", ("sign_out_visitor",)),
@@ -9707,9 +9708,9 @@ STAFF_MENU = [
     ]),
     ("me", "My Work", "shifts", (), (), [
         (None, [
-            _nav("my_shifts", "My Shifts", "shifts"),
+            _nav("my_shifts", "My Shifts", "shifts", phone=True),
             _nav("my_hours", "My Hours", "shifts"),
-            _nav("my_leave", "Time Off", "leave"),
+            _nav("my_leave", "Time Off", "leave", phone=True),
             _nav("my_availability", "My Availability", "calendar"),
             _nav("my_expenses", "Expenses", "receipt", ("submit_expense",)),
             _nav("mileage", "Mileage", "car"),
@@ -9726,7 +9727,7 @@ STAFF_MENU = [
                  ("new_announcement", "edit_announcement", "delete_announcement")),
             _nav("manual", "Manual", "manual"),
             _nav("contacts", "Contacts", "contacts"),
-            _nav("shopping_list", "Shopping", "shopping"),
+            _nav("shopping_list", "Shopping", "shopping", phone=True),
         ]),
     ]),
 ]
@@ -9788,6 +9789,7 @@ def build_nav(user, endpoint, badges):
         lit = endpoint == item["endpoint"] or endpoint in item["also"] or any(
             o == f"area:{NAV_AREA_OF.get(endpoint)}" for o in item["also"])
         return {"url": url, "label": item["label"], "icon": item["icon"],
+                "endpoint": item["endpoint"], "phone": item["phone"],
                 "active": lit, "badge": badges.get(item["badge"]) if item["badge"] else None}
 
     top = [d for d in (drawn(i) for i in NAV_TOP) if d]
@@ -9805,6 +9807,41 @@ def build_nav(user, endpoint, badges):
                        "url": out[0][1][0]["url"], "sections": out,
                        "open": here == key or here in opens, "badge": total or None})
     return {"top": top, "groups": groups}
+
+
+# THE PHONE'S HOME SCREEN (/app), which the home-screen app opens on.
+#
+# The owner expected big icons to tap, like an app, and what the home-screen
+# app opened was the full dashboard: a page written for a desk, with a sidebar
+# of a hundred links behind a menu button. On a phone in a corridor nobody
+# needs that much; they need the six things they came for, large.
+#
+# The tiles are the sidebar's own items marked `phone=True` -- not a second
+# list -- so a tile has the sidebar's label, icon and badge, and it is drawn
+# only when build_nav would draw that link for this person. An employee with
+# no areas gets STAFF_MENU's tiles; somebody with the till gets the till; the
+# owner gets the business. One more check rides on top of that: a tile to a
+# guarded page needs can_reach, so a flag set on the wrong item can never put
+# an owner-only door on an employee's phone.
+def phone_tiles(nav, user=None):
+    """The home-screen tiles for this person, from what build_nav drew."""
+    user = user or current_user()
+    tiles, seen = [], set()
+    items = list(nav.get("top", []))
+    for g in nav.get("groups", []):
+        for _heading, links in g["sections"]:
+            items.extend(links)
+    for it in items:
+        if not it.get("phone") or it["url"] in seen:
+            continue
+        if view_is_guarded(it["endpoint"]) and not can_reach(user, it["endpoint"]):
+            continue
+        seen.add(it["url"])
+        tiles.append(it)
+    return tiles
+
+
+app.jinja_env.globals["phone_tiles"] = phone_tiles
 
 
 def user_access(user):
@@ -93769,6 +93806,37 @@ def staff_today():
         open_count=sum(1 for t in my_tasks if t["status"] != "done"),
         extras_today=extras_today,
     )
+
+
+@app.route("/app")
+@login_required
+def phone_home():
+    """The home-screen app's front page: big tiles, nothing else.
+
+    static/manifest.json starts here, so this is what opens when somebody taps
+    the château's icon on their phone. The computer's dashboard is unchanged
+    and one tile away. The tiles come from the sidebar (phone_tiles), so each
+    person sees only what they can open. Clocking in or out is the one thing
+    done from here directly, because it is the first and last tap of a shift.
+    """
+    user = current_user()
+    today = house_today()
+    conn = get_db()
+    try:
+        clocked_in = conn.execute(
+            "SELECT id FROM time_entries WHERE user_id = ? AND clock_out_at IS NULL",
+            (user["id"],)).fetchone()
+        # The same tasks the Today page lists as still to do, so the number on
+        # its tile is the number of things waiting behind it.
+        open_tasks = conn.execute(
+            """SELECT COUNT(*) FROM tasks
+               WHERE assigned_to_user_id = ? AND status != 'done'
+                 AND (due_date IS NULL OR due_date <= ?)""",
+            (user["id"], today.isoformat())).fetchone()[0]
+    finally:
+        conn.close()
+    return render_template("phone_home.html", clocked_in=clocked_in,
+                           open_tasks=open_tasks, today=today)
 
 
 def mark_task_done(conn, task, done=True):
