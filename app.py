@@ -69214,104 +69214,188 @@ def workshop_session_remaining_capacity(conn, session_id, exclude_id=None):
     return session["capacity"] - used
 
 
+def workshop_session_figures(live, free, today_iso):
+    """How one sitting stands, from its live registrations: places, money,
+    rooms and the kitchen. One definition, read by the session page and the
+    workshops list, so the two cannot disagree."""
+    return {
+        "confirmed": sum(r["party_size"] for r in live if r["status"] == "confirmed"),
+        "pending": sum(r["party_size"] for r in live if r["status"] == "pending"),
+        "people": sum(r["party_size"] for r in live),
+        "free": free,
+        "charged": round(sum(r["charged"] for r in live), 2),
+        "paid": round(sum(r["paid"] for r in live), 2),
+        "owed": round(sum(max(r["owed"], 0) for r in live), 2),
+        "deposits_unpaid": [r for r in live if r["money"] == "Deposit unpaid"],
+        "overdue": [r for r in live if r["owed"] > 0.005 and r["due_date"]
+                    and r["due_date"] < today_iso],
+        "no_room": [r for r in live if not r["room"]],
+        "kitchen": [r for r in live if r["row"]["dietary_notes"] or r["row"]["medical_notes"]],
+    }
+
+
+# How a sitting stands, for the chips on the workshops page, in the order
+# somebody running them works through.
+WORKSHOP_SESSION_STATES = ["Needs you", "Filling", "Full", "Called off", "Over"]
+# How far ahead a sitting's guests without a room are worth raising: inside a
+# month, rooming is a job; further out, an unassigned room is just early.
+WORKSHOP_ROOMING_DAYS = 30
+WORKSHOP_STATE_CLASSES = {"Needs you": "status-overdue", "Filling": "status-pending",
+                          "Full": "status-confirmed", "Called off": "status-declined",
+                          "Over": "status-past"}
+app.jinja_env.globals["ws_state_class"] = lambda state: WORKSHOP_STATE_CLASSES.get(state, "")
+
+
+def workshop_sessions_board(conn, today=None):
+    """Every sitting of every workshop, each with how it stands and what it
+    needs from somebody -- the workshops page's one list.
+
+    `needs` is a list of short sentences, each a job: below its minimum,
+    waiting on a decision, a deposit or a balance not paid, guests inside a
+    month with no room, materials short. A sitting with any is "Needs you";
+    the sentences say why, so nobody opens six pages to find out which.
+    """
+    today = today or house_today()
+    iso = today.isoformat()
+    regs_by = {}
+    for r in workshop_register_rows(conn, today):
+        regs_by.setdefault(r["session_id"], []).append(r)
+    at_risk = {w["session"]["id"]: w for w in sessions_at_risk(conn, today)}
+    with_materials = {r["workshop_id"] for r in conn.execute(
+        "SELECT DISTINCT workshop_id FROM workshop_materials")}
+    out = []
+    for s in conn.execute(
+            """SELECT ws.*, w.title, w.active AS workshop_active, w.price_per_person
+                 FROM workshop_sessions ws JOIN workshops w ON w.id = ws.workshop_id
+                ORDER BY ws.start_date, w.title""").fetchall():
+        live = [r for r in regs_by.get(s["id"], []) if r["live"]]
+        free = workshop_session_remaining_capacity(conn, s["id"])
+        fig = workshop_session_figures(live, free, iso)
+        past = (s["end_date"] or s["start_date"]) < iso
+        days_to = (date.fromisoformat(s["start_date"]) - today).days
+        materials = (session_materials(conn, s["id"])
+                     if s["workshop_id"] in with_materials and not s["cancelled_at"] else None)
+        risk = at_risk.get(s["id"])
+        needs = []
+        if not past and not s["cancelled_at"]:
+            if risk:
+                # Confirmed heads only, as sessions_at_risk counts them; the
+                # unpaid are said, never added in.
+                needs.append(f"{risk['confirmed']} of {risk['minimum']} needed to run"
+                             + (f" ({risk['pending']} more registered without paying, not counted)"
+                                if risk["pending"] else "")
+                             + (f", decide by {format_date_short(str(risk['decide_by']))}"
+                                if not risk["overdue"]
+                                else f", the date for deciding passed "
+                                     f"{format_date_short(str(risk['decide_by']))}"))
+            if fig["pending"]:
+                needs.append(f"{fig['pending']} waiting on you to confirm")
+            if fig["deposits_unpaid"]:
+                n = len(fig["deposits_unpaid"])
+                needs.append(f"{n} deposit{'' if n == 1 else 's'} not paid")
+            if fig["overdue"]:
+                needs.append(f"{money(sum(r['owed'] for r in fig['overdue']))} past due")
+            if fig["no_room"] and days_to <= WORKSHOP_ROOMING_DAYS:
+                needs.append(f"{len(fig['no_room'])} without a room")
+            if materials and materials["short"] and not materials["taken_out"]:
+                needs.append("short of materials")
+        if s["cancelled_at"]:
+            state = "Called off"
+        elif past:
+            state = "Over"
+        elif needs:
+            state = "Needs you"
+        elif free <= 0:
+            state = "Full"
+        else:
+            state = "Filling"
+        out.append({"session": s, "fig": fig, "state": state, "past": past,
+                    "days_to": days_to, "risk": risk, "needs": needs,
+                    "materials": materials,
+                    "fill": (min(100, round(100 * fig["people"] / s["capacity"]))
+                             if s["capacity"] else 0)})
+    return out
+
+
+def workshops_back():
+    """Where a workshop or sitting action goes back to: the page it was pressed
+    on. The setting-up forms are on the workshop's own page and the running
+    ones on the sitting's, and every one of them used to land on the workshops
+    list -- so changing a sitting's places lost the sitting. A hidden `back`
+    of "session:12" or "workshop:3" says which; anything else is the list."""
+    back = (request.form.get("back") or "").strip()
+    kind, _, ident = back.partition(":")
+    if ident.isdigit():
+        if kind == "session" and "admin_workshop_session" in app.view_functions:
+            return url_for("admin_workshop_session", session_id=int(ident))
+        if kind == "workshop":
+            return url_for("edit_workshop", workshop_id=int(ident))
+    return url_for("admin_workshops")
+
+
 @app.route("/admin/workshops")
 @owner_required
 def admin_workshops():
-    """The ateliers the house runs, their sessions, and how each is filling."""
+    """The ateliers, as somebody running them needs them (owner, 19 October
+    2026: "the workshop page needs full overhaul").
+
+    It was every workshop as a long card, each holding its sessions, its
+    materials form, its questions form and every action on every session --
+    so finding which sitting needed a telephone call meant reading all of it.
+    Now: what needs somebody first, then every coming sitting in one list
+    with its places, money and rooms (searchable, with counted chips), then
+    the ateliers themselves. Setting a workshop up -- its sessions, what it
+    uses up, the questions it asks -- is on the workshop's own page; running a
+    sitting is on the sitting's page.
+    """
     conn = get_db()
-    workshops = conn.execute("SELECT * FROM workshops ORDER BY sort_order, title").fetchall()
     today = house_today()
     period = period_from_request()
     overview = workshops_overview(conn, period, today)
-    total_rooms = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
-    # Sessions used to be filtered to end_date >= today, so a workshop that had
-    # already run vanished from the admin page entirely — no way to see who
-    # attended or what it took. Past sessions are now loaded too and split out
-    # below, with attendance so the history is worth having. The PUBLIC
-    # workshops page still shows upcoming only, which is correct there.
-    # Read once for the whole page and keyed by session, rather than asked
-    # per session inside the loop below.
-    at_risk_by_session = {w["session"]["id"]: w for w in sessions_at_risk(conn, today)}
-    materials_by_workshop = {}
-    for row in conn.execute(
-        """SELECT workshop_materials.*, stock_items.name, stock_items.unit,
-                  stock_items.active AS item_active
-             FROM workshop_materials
-             JOIN stock_items ON stock_items.id = workshop_materials.stock_item_id
-            ORDER BY stock_items.name""").fetchall():
-        materials_by_workshop.setdefault(row["workshop_id"], []).append(row)
-    # Only offered where there is something to pick from.
-    stock_choices = conn.execute(
-        "SELECT id, name, unit FROM stock_items WHERE active = 1 ORDER BY name"
-    ).fetchall()
-    register_by_session = {}
-    for reg_row in workshop_register_rows(conn, today):
-        if reg_row["live"]:
-            tally = register_by_session.setdefault(reg_row["session_id"], {"booked": 0, "owed": 0.0})
-            tally["booked"] += 1
-            tally["owed"] = round(tally["owed"] + max(reg_row["owed"], 0), 2)
-    sessions_by_workshop, past_by_workshop = {}, {}
-    for w in workshops:
-        sessions = conn.execute(
-            "SELECT * FROM workshop_sessions WHERE workshop_id = ? ORDER BY start_date",
-            (w["id"],),
-        ).fetchall()
-        rows, past_rows = [], []
-        for s in sessions:
-            rooms_assigned = conn.execute(
-                """SELECT COUNT(DISTINCT assigned_room_id) AS c FROM workshop_bookings
-                   WHERE session_id = ? AND status IN ('pending', 'confirmed') AND assigned_room_id IS NOT NULL""",
-                (s["id"],),
-            ).fetchone()["c"]
-            entry = {
-                "session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"]),
-                "rooms_assigned": rooms_assigned,
-                "at_risk": at_risk_by_session.get(s["id"]),
-                "register": register_by_session.get(s["id"], {"booked": 0, "owed": 0.0}),
-                # Only where there is a list to plan against, so a workshop
-                # with no materials costs nothing per session.
-                # Nor for a sitting that has been called off: it needs
-                # nothing from the shelf, and the button that takes it out
-                # must not be offered for an atelier that did not run.
-                "materials": (session_materials(conn, s["id"])
-                              if materials_by_workshop.get(w["id"])
-                              and not s["cancelled_at"] else None),
-            }
-            if (s["end_date"] or s["start_date"]) >= today.isoformat():
-                rows.append(entry)
-            else:
-                entry["attended"] = conn.execute(
-                    """SELECT COALESCE(SUM(party_size), 0) AS c FROM workshop_bookings
-                       WHERE session_id = ? AND status = 'confirmed'""",
-                    (s["id"],),
-                ).fetchone()["c"]
-                past_rows.append(entry)
-        past_rows.reverse()  # most recent first
-        sessions_by_workshop[w["id"]] = rows
-        past_by_workshop[w["id"]] = past_rows
-    custom_fields_by_workshop = {}
-    for row in conn.execute("SELECT * FROM workshop_custom_fields ORDER BY sort_order").fetchall():
-        custom_fields_by_workshop.setdefault(row["workshop_id"], []).append(row)
-    # Totalled here rather than in the template: the old version accumulated
-    # inside a Jinja {% for %}, where a {% set %} doesn't escape the loop, so
-    # both figures always came out as zero however many sessions were listed.
-    # A sitting called off stays listed -- why it did not run is worth
-    # knowing -- but it is not an upcoming session with places free.
-    upcoming_rows = [r for rows in sessions_by_workshop.values() for r in rows
-                     if not r["session"]["cancelled_at"]]
-    upcoming_count = len(upcoming_rows)
-    spots_remaining = sum(r["remaining"] for r in upcoming_rows)
+    workshops = conn.execute("SELECT * FROM workshops ORDER BY sort_order, title").fetchall()
+    board = workshop_sessions_board(conn, today)
     conn.close()
-    return render_template(
-        "admin_workshops.html", workshops=workshops, sessions_by_workshop=sessions_by_workshop,
-        past_by_workshop=past_by_workshop,
-        today=today, total_rooms=total_rooms,
-        custom_fields_by_workshop=custom_fields_by_workshop,
-                           materials_by_workshop=materials_by_workshop,
-                           stock_choices=stock_choices,
-        overview=overview, period=period,
-        upcoming_count=upcoming_count, spots_remaining=spots_remaining,
+    coming = [b for b in board if not b["past"]]
+    past = [b for b in board if b["past"]]
+    past.reverse()
+    lv = list_view(
+        coming, request.args,
+        search=[lambda b: b["session"]["title"], lambda b: b["session"]["notes"],
+                lambda b: " ".join(b["needs"])],
+        search_hint="Search workshop or note",
+        facets=[
+            facet("state", "How it stands", lambda b: b["state"], order=WORKSHOP_SESSION_STATES),
+            facet("workshop", "Workshop", lambda b: b["session"]["title"],
+                  order=[w["title"] for w in workshops], limit=8),
+        ],
+        sorts=[
+            sort_option("soonest", "Soonest first", lambda b: b["session"]["start_date"]),
+            sort_option("owed", "Most owed", lambda b: -b["fig"]["owed"]),
+            sort_option("emptiest", "Most places free", lambda b: -b["fig"]["free"]),
+        ],
+        default_sort="soonest",
     )
+    needs_you = [b for b in coming if b["needs"]][:8]
+    ateliers = []
+    for w in workshops:
+        mine = [b for b in coming if b["session"]["workshop_id"] == w["id"]
+                and not b["session"]["cancelled_at"]]
+        ateliers.append({
+            "w": w, "next": mine[0] if mine else None, "sittings": len(mine),
+            "people": sum(b["fig"]["people"] for b in mine),
+            "places": sum(b["session"]["capacity"] or 0 for b in mine),
+            "owed": round(sum(b["fig"]["owed"] for b in mine), 2),
+            "ran": sum(1 for b in past if b["session"]["workshop_id"] == w["id"]
+                       and not b["session"]["cancelled_at"]),
+        })
+    live_coming = [b for b in coming if not b["session"]["cancelled_at"]]
+    totals = {"sittings": len(live_coming),
+              "free": sum(max(b["fig"]["free"], 0) for b in live_coming),
+              "owed": round(sum(b["fig"]["owed"] for b in live_coming), 2),
+              "needs": len([b for b in coming if b["needs"]])}
+    return render_template(
+        "admin_workshops.html", overview=overview, period=period, lv=lv, coming=coming,
+        needs_you=needs_you, ateliers=ateliers, past=past, totals=totals, today=today)
 
 
 @app.route("/admin/workshops/new", methods=["GET", "POST"])
@@ -69421,11 +69505,29 @@ def edit_workshop(workshop_id):
         conn.commit()
         conn.close()
         flash("Workshop updated.", "success")
-        return redirect(url_for("admin_workshops"))
+        return redirect(url_for("edit_workshop", workshop_id=workshop_id))
 
     instructors = conn.execute("SELECT * FROM users WHERE role IN ('owner', 'employee') ORDER BY role DESC, name").fetchall()
+    # Its setting-up, here on its own page rather than in a long card on the
+    # workshops list (owner, 19 October 2026): when it runs, what it uses up,
+    # and what it asks the people registering.
+    sittings = [b for b in workshop_sessions_board(conn) if b["session"]["workshop_id"] == workshop_id]
+    materials = conn.execute(
+        """SELECT workshop_materials.*, stock_items.name, stock_items.unit,
+                  stock_items.active AS item_active
+             FROM workshop_materials
+             JOIN stock_items ON stock_items.id = workshop_materials.stock_item_id
+            WHERE workshop_materials.workshop_id = ? ORDER BY stock_items.name""",
+        (workshop_id,)).fetchall()
+    stock_choices = conn.execute(
+        "SELECT id, name, unit FROM stock_items WHERE active = 1 ORDER BY name").fetchall()
+    questions = conn.execute(
+        "SELECT * FROM workshop_custom_fields WHERE workshop_id = ? ORDER BY sort_order",
+        (workshop_id,)).fetchall()
     conn.close()
-    return render_template("workshop_form.html", workshop=workshop, instructors=instructors)
+    return render_template("workshop_form.html", workshop=workshop, instructors=instructors,
+                           sittings=sittings, materials=materials, stock_choices=stock_choices,
+                           questions=questions)
 
 
 @app.route("/admin/workshops/<int:workshop_id>/delete", methods=["POST"])
@@ -69532,14 +69634,14 @@ def add_workshop_material(workshop_id):
     if not item:
         conn.close()
         flash("Choose something from the stock list.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
 
     # An entry that consumes nothing is a line on a list that will be read
     # every time the workshop runs and mean nothing every time.
     if (per_person or 0) <= 0 and (per_session or 0) <= 0:
         conn.close()
         flash("Set how much it uses — per person, per session, or both.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
 
     existing = conn.execute(
         """SELECT id FROM workshop_materials
@@ -69563,7 +69665,7 @@ def add_workshop_material(workshop_id):
         flash(f"{item['name']} added to what this workshop uses.", "success")
     conn.commit()
     conn.close()
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshops_back())
 
 
 @app.route("/admin/workshops/materials/<int:material_id>/remove", methods=["POST"])
@@ -69585,7 +69687,7 @@ def remove_workshop_material(material_id):
     # somebody edited a list afterwards.
     flash(f"{row['name']} removed. Anything already taken out of stock stays out.",
           "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshops_back())
 
 
 @app.route("/admin/workshops/sessions/<int:session_id>/consume", methods=["POST"])
@@ -69601,24 +69703,24 @@ def consume_workshop_materials(session_id):
     if result["already"]:
         conn.close()
         flash("Already taken out of stock for this session.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
     if result.get("called_off"):
         conn.close()
         flash("That sitting was called off, so nothing was used — nothing "
               "taken out of stock.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
     if not result["written"]:
         conn.close()
         flash("Nothing to take out — this workshop has no materials against it, "
               "or nobody confirmed a place.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
 
     log_audit(conn, "workshop_materials_consumed", target=str(session_id),
               details=f"{result['written']} item(s)")
     conn.commit()
     conn.close()
     flash(f"{result['written']} item(s) taken out of stock.", "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshops_back())
 
 
 @app.route("/admin/workshops/session/<int:session_id>/call-off", methods=["POST"])
@@ -69643,7 +69745,7 @@ def call_off_workshop_session(session_id):
     conn.close()
     if result["already"]:
         flash("That sitting was already called off.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
     # The one reporter, so anybody it could not cancel is NAMED.
     message, category = bulk_message("Cancelled", "place", len(result["done"]),
                                      result["skipped"])
@@ -69670,7 +69772,7 @@ def call_off_workshop_session(session_id):
     if extra:
         message = message.rstrip(".") + ". " + ". ".join(extra) + "."
     flash(message, category)
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshops_back())
 
 
 @app.route("/admin/workshops/session/<int:session_id>/instructor-link", methods=["POST"])
@@ -69690,7 +69792,7 @@ def workshop_instructor_link(session_id):
         conn.close()
         flash("The link no longer works. Anyone you sent it to will see "
               "nothing.", "success")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
     token = row["instructor_token"] or secrets.token_urlsafe(24)
     conn.execute("UPDATE workshop_sessions SET instructor_token = ? WHERE id = ?",
                  (token, session_id))
@@ -69698,7 +69800,7 @@ def workshop_instructor_link(session_id):
     conn.close()
     flash("Send them this: "
           + url_for("instructor_page", token=token, _external=True), "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshops_back())
 
 
 @app.route("/workshops/teaching/<token>")
@@ -69735,11 +69837,11 @@ def new_workshop_session(workshop_id):
     if not start_date:
         conn.close()
         flash("Choose a valid start date.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
     if end_date < start_date:
         conn.close()
         flash("End date can't be before the start date.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
 
     capacity = (int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0
                 else workshop["default_capacity"])
@@ -69784,7 +69886,7 @@ def new_workshop_session(workshop_id):
         flash(f"Session added — heads up, {' and '.join(parts)} overlap these dates.", "error")
     else:
         flash("Session added.", "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshops_back())
 
 
 @app.route("/admin/workshops/sessions/<int:session_id>/edit", methods=["POST"])
@@ -69819,26 +69921,39 @@ def edit_workshop_session(session_id):
     if not raw.isdigit() or int(raw) < 1:
         conn.close()
         flash("Capacity has to be a whole number of places.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
     capacity = int(raw)
     if capacity < taken:
         conn.close()
         flash(f"{taken} place(s) are already booked on that session, so it "
               f"cannot be set to {capacity}.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
 
     start = parse_date(request.form.get("start_date", "")) or parse_date(session_row["start_date"])
     end = parse_date(request.form.get("end_date", "")) or start
     if end < start:
         conn.close()
         flash("End date can't be before the start date.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
 
     conn.execute(
         """UPDATE workshop_sessions SET capacity = ?, start_date = ?, end_date = ?, notes = ?
             WHERE id = ?""",
         (capacity, start.isoformat(), end.isoformat(),
          (request.form.get("notes") or "").strip() or None, session_id))
+    # The fewest it runs with, and how long before to decide, when the form
+    # sent them (the sitting's own page does; the old quick form did not, and
+    # an absent field must not wipe a minimum). Blank is 0, "no minimum", and
+    # never more than the places, as a new sitting is made.
+    if "min_participants" in request.form:
+        raw_min = (request.form.get("min_participants") or "").strip()
+        conn.execute("UPDATE workshop_sessions SET min_participants = ? WHERE id = ?",
+                     (min(int(raw_min), capacity) if raw_min.isdigit() else 0, session_id))
+    if "decide_by_days" in request.form:
+        raw_days = (request.form.get("decide_by_days") or "").strip()
+        if raw_days.isdigit():
+            conn.execute("UPDATE workshop_sessions SET decide_by_days = ? WHERE id = ?",
+                         (int(raw_days), session_id))
     # NEW DATES MOVE THE MONEY. A balance falls due thirty days before the
     # atelier, and this changed the atelier's date and not one balance's --
     # so the notice that they had fallen due, the reminder and the list of
@@ -69867,7 +69982,7 @@ def edit_workshop_session(session_id):
         f" {moved} registration{'' if moved == 1 else 's'} now fall{'s' if moved == 1 else ''} due "
         f"thirty days before the new date. They have not been told: the register's "
         f"\"Email everyone\" is the way to." if moved else ""), "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshops_back())
 
 
 @app.route("/admin/workshops/sessions/<int:session_id>/delete", methods=["POST"])
@@ -69897,7 +70012,7 @@ def new_workshop_custom_field(workshop_id):
     required = 1 if request.form.get("required") == "on" else 0
     if not label:
         flash("A question label is required.", "error")
-        return redirect(url_for("admin_workshops"))
+        return redirect(workshops_back())
     if field_type not in ("text", "textarea", "select", "checkbox"):
         field_type = "text"
     conn = get_db()
@@ -69912,7 +70027,7 @@ def new_workshop_custom_field(workshop_id):
     conn.commit()
     conn.close()
     flash("Question added.", "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshops_back())
 
 
 @app.route("/admin/workshops/custom-fields/<int:field_id>/delete", methods=["POST"])
@@ -69923,7 +70038,7 @@ def delete_workshop_custom_field(field_id):
     conn.commit()
     conn.close()
     flash("Question removed.", "success")
-    return redirect(url_for("admin_workshops"))
+    return redirect(workshops_back())
 
 
 def matching_workshop_waitlist_entries(conn, session_id):
@@ -70168,26 +70283,17 @@ def admin_workshop_session(session_id):
     free = workshop_session_remaining_capacity(conn, session_id)
     rooms = conn.execute("SELECT id, name, max_occupancy FROM rooms WHERE active = 1 "
                          "ORDER BY sort_order, name").fetchall()
-    conn.close()
     order = {"pending": 0, "confirmed": 1}
     live.sort(key=lambda r: (order.get(r["status"], 2), (r["who"] or "").lower()))
-    today_iso = today.isoformat()
-    figures = {
-        "confirmed": sum(r["party_size"] for r in live if r["status"] == "confirmed"),
-        "pending": sum(r["party_size"] for r in live if r["status"] == "pending"),
-        "free": free,
-        "charged": round(sum(r["charged"] for r in live), 2),
-        "paid": round(sum(r["paid"] for r in live), 2),
-        "owed": round(sum(max(r["owed"], 0) for r in live), 2),
-        "deposits_unpaid": [r for r in live if r["money"] == "Deposit unpaid"],
-        "overdue": [r for r in live if r["owed"] > 0.005 and r["due_date"]
-                    and r["due_date"] < today_iso],
-        "no_room": [r for r in live if not r["room"]],
-        "kitchen": [r for r in live if r["row"]["dietary_notes"] or r["row"]["medical_notes"]],
-    }
+    figures = workshop_session_figures(live, free, today.isoformat())
     gone = [r for r in regs if not r["live"]]
+    # And how it stands as a whole -- the same sentences the workshops list
+    # gives it -- with what it uses up, for the "Running this sitting" panel.
+    board = next((b for b in workshop_sessions_board(conn, today)
+                  if b["session"]["id"] == session_id), None)
+    conn.close()
     return render_template("admin_workshop_session.html", session=session, live=live,
-                           gone=gone, figures=figures, rooms=rooms, today=today)
+                           gone=gone, figures=figures, rooms=rooms, today=today, board=board)
 
 
 def workshop_register_view(conn, args, today=None):

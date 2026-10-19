@@ -263,7 +263,7 @@ def run():
         # Read again here rather than taken from the sweep, which reads every
         # page once per run and shares them: in a full run it has already
         # read these before the rows above existed.
-        fresh = {"dashboard": "/", "admin_workshops": "/admin/workshops",
+        fresh = {"dashboard": "/", "admin_workshops": "/admin/workshops", "edit_workshop": None,
                  "admin_tasks": "/admin/tasks", "breakfast": "/breakfast",
                  "revenue_to_send": REVENUE}
         pages = [(ep, url, html) for ep, url, html in sweep.owner_pages(oc)
@@ -273,10 +273,19 @@ def run():
                 home.status_code == 200 and TAG in home.get_data(as_text=True), home)
         pages.append(("dashboard", "/", home.get_data(as_text=True)))
         ateliers = oc.get("/admin/workshops")
-        s.check("the ateliers page renders with something in stock to use",
-                ateliers.status_code == 200 and TAG + " Aprons" in ateliers.get_data(as_text=True),
-                ateliers)
+        s.check("the ateliers page renders", ateliers.status_code == 200, ateliers)
         pages.append(("admin_workshops", "/admin/workshops", ateliers.get_data(as_text=True)))
+        # The materials form, whose note printed behind its button, moved to
+        # each workshop's own page on 19 October 2026, so that is the page
+        # measured with something in stock to choose.
+        wid = conn.execute("SELECT id FROM workshops ORDER BY id LIMIT 1").fetchone()
+        if wid:
+            setup_url = f"/admin/workshops/{wid['id']}/edit"
+            setup = oc.get(setup_url)
+            s.check("a workshop's own page renders with something in stock to use",
+                    setup.status_code == 200 and TAG + " Aprons" in setup.get_data(as_text=True),
+                    setup)
+            pages.append(("edit_workshop", setup_url, setup.get_data(as_text=True)))
         tasks = oc.get("/admin/tasks")
         s.check("the Tasks page renders with a week of long titles on it",
                 tasks.status_code == 200 and tasks.get_data(as_text=True).count(TAG) >= 2, tasks)

@@ -259,15 +259,15 @@ def _spots_row(first, last):
     the ISO pair it printed until 9 October 2026."""
     said = (m.format_date_range(first.isoformat(), last.isoformat()) if first != last
             else m.format_date_short(first.isoformat()))
-    # The dates link to the sitting's own page since 18 October, so the
-    # closing tag may sit between them and the count.
-    return re.compile(re.escape(said) + r"(?:</a>)?\s*·\s*\d+/\d+ spots left")
+    # Since 19 October 2026 the row draws its places as a bar in the next
+    # cells; a called-off sitting draws none.
+    return re.compile(re.escape(said) + r"(?:</strong>)?(?:</a>)?(?:(?!</tr>).)*?class=\"ws-bar\"", re.S)
 
 
 def _standing_line(html):
     """The workshops page's standing line: (upcoming sittings, places free)."""
-    up = re.search(r"(\d+) upcoming session", html)
-    free = re.search(r"(\d+) spots still free", html)
+    up = re.search(r'stat-tile-value">(\d+)</span>\s*<span class="stat-tile-label">Sittings? coming up', html)
+    free = re.search(r'stat-tile-value">(\d+)</span>\s*<span class="stat-tile-label">Places still free', html)
     return (int(up.group(1)) if up else None, int(free.group(1)) if free else None)
 
 
@@ -442,8 +442,8 @@ def run():
         s.check("the workshops page gives their places left",
                 code == 200 and bool(_spots_row(off_start, off_end).search(admin_before)),
                 detail=f"HTTP {code}")
-        s.check("and offers to take their materials out of stock",
-                _consume_link(off_now) in admin_before)
+        s.check("and its own page offers to take their materials out of stock",
+                _consume_link(off_now) in _page(oc, f"/admin/workshops/sessions/{off_now}")[1])
         s.check("and counts them in its standing line",
                 None not in _standing_line(admin_before), detail=f"{_standing_line(admin_before)}")
 
@@ -487,9 +487,10 @@ def run():
         s.check("its row does not read as full",
                 not _spots_row(off_start, off_end).search(admin_after),
                 detail="no places because it is not running is not a sell-out")
-        s.check("the page no longer offers to take its materials out of stock",
-                _consume_link(off_now) not in admin_after)
-        s.check("but still does for the running one", _consume_link(live_now) in admin_after)
+        s.check("its own page no longer offers to take its materials out of stock",
+                _consume_link(off_now) not in _page(oc, f"/admin/workshops/sessions/{off_now}")[1])
+        s.check("but the running one's still does",
+                _consume_link(live_now) in _page(oc, f"/admin/workshops/sessions/{live_now}")[1])
         said = " ".join(flashes(oc.post(_consume_link(off_now), follow_redirects=True)))
         used = _one("SELECT COUNT(*) AS c FROM stock_movements WHERE workshop_session_id = ?",
                     (off_now,))["c"]

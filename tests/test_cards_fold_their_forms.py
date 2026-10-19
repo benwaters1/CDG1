@@ -179,7 +179,13 @@ def run():
     conn.commit()
 
     pages = {}
-    for title, url in PAGES.items():
+    # A workshop's forms moved from the list to its own page on 19 October
+    # 2026, so that is the page whose forms must be folded.
+    first = conn.execute("SELECT id FROM workshops ORDER BY id LIMIT 1").fetchone()
+    urls = dict(PAGES)
+    if first:
+        urls["Workshop set-up"] = f"/admin/workshops/{first['id']}/edit"
+    for title, url in urls.items():
         r = oc.get(url)
         pages[title] = r.get_data(as_text=True)
         s.check(f"{title} draws", r.status_code == 200, detail=str(r.status_code))
@@ -202,7 +208,7 @@ def run():
     s.section("The forms that change a card are folded")
     folds = {
         "Rooms": (r"/ical-sources/new$", r"/blocks/new$"),
-        "Workshops": (r"/sessions/new$", r"/custom-fields/new$", r"/materials$"),
+        "Workshop set-up": (r"/sessions/new$", r"/custom-fields/new$", r"/materials$"),
         "Vehicles": (r"/checkout$", r"/maintenance/new$", r"/insurance/new$",
                      r"/vehicles/\d+/edit$", r"/vehicles/\d+/delete$"),
         # The add forms the read-through found drawn open, 12 October.

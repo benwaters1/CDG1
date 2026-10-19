@@ -611,6 +611,29 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
    The summary sits to the right on a wide screen and follows the steps on
    a narrow one, so the price and what will be sent are always in reach of
    the button. */
+/* The workshops pages (19 October 2026): what needs somebody, one list of
+   sittings with a fill bar, the ateliers as cards, and the setting-up and
+   running panels on their own pages. */
+.ws-needs{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; margin-bottom:22px; }
+.ws-need{ background:var(--status-warn-bg); border:1px solid var(--gold); border-radius:12px; padding:14px 16px; }
+.ws-need__head{ display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
+.ws-need__list{ margin:0 0 10px; padding-left:18px; font-size:14px; line-height:1.45; }
+.ws-table td{ vertical-align:top; }
+.ws-table .upload-hint{ display:block; }
+.ws-off td{ opacity:.6; }
+.ws-bar{ display:block; width:100%; max-width:120px; height:6px; border-radius:3px;
+  background:var(--status-neutral-bg); overflow:hidden; margin:3px 0 4px; }
+.ws-bar > span{ display:block; height:100%; background:var(--gold); }
+.ws-acts{ display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
+.ws-cards{ display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; }
+.ws-card{ background:var(--surface); border:1px solid var(--parchment-line); border-radius:12px; padding:14px 16px; }
+.ws-card__head{ display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+.ws-card__line{ margin:2px 0; font-size:14px; }
+.ws-setup{ background:var(--surface); border:1px solid var(--parchment-line); border-radius:12px;
+  padding:14px 16px 12px; margin-bottom:14px; }
+.ws-manage{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; align-items:start; }
+.ws-manage .ws-setup{ margin-bottom:0; }
+.ws-manage__h{ font-size:15px; margin:0 0 8px; }
 .nb{ margin:0; }
 .nb-count{ display:flex; flex-direction:column; gap:4px; }
 #nb_rooms .room-pick__tile.is-taken{ min-height:0; padding-top:9px; padding-bottom:9px; }
