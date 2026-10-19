@@ -419,6 +419,8 @@ SUITES = [
     "test_room_names_2026_10_16",
     "test_paid_letter_balance",
     "test_family_suite_beds",
+    "test_contact_enquiry_spam",
+    "test_workshops_fifteen",
     "test_languages_page",
     "test_share_images",
     "test_stripe_webhook_tool",
