@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Front desk{% endblock %}
+{% block content %}
+{#
+  TODAY AT THE DESK (owner, 19 October 2026). The rooms, who leaves and who
+  arrives in each, who stays on, what every one of them still owes, and
+  whether each arriving room has been made ready -- the house's stays and
+  Booking.com's together. Checking in and out is done from here. Everything is
+  worked out each time from the bookings and their bills (front_desk_day).
+#}
+{%- set d = desk -%}
+<div class="page-head">
+  <div>
+    <h1>Front desk</h1>
+    <p class="upload-hint" style="margin:4px 0 0;">{{ d.day.strftime('%A') }} {{ d.day.isoformat()|date_short }}</p>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('walk_in_booking') }}" class="btn-primary" style="margin-top:0;">+ Add a booking</a>
+    <a href="{{ url_for('arrivals_sheet_page') }}" class="btn-ghost">Arrivals sheet</a>
+    <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">All bookings</a>
+  </div>
+</div>
+
+<div class="stat-tiles">
+  <a class="stat-tile" href="#arriving">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('bookings', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ d.arriving|length }}</span>
+      <span class="stat-tile-label">Arriving today{% if d.arriving %} · {{ d.checked_in }} checked in{% endif %}</span></span>
+  </a>
+  <a class="stat-tile" href="#leaving">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('bookings', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ d.leaving|length }}</span>
+      <span class="stat-tile-label">Leaving today{% if d.leaving %} · {{ d.checked_out }} checked out{% endif %}</span></span>
+  </a>
+  <a class="stat-tile" href="#rooms">
+    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('rooms', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ d.let_tonight }} of {{ d.rooms|length }}</span>
+      <span class="stat-tile-label">Rooms let tonight · {{ d.free_tonight }} free</span></span>
+  </a>
+  <a class="stat-tile" href="#collect">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if d.owed else 'stat-tile-icon-success' }}">{{ icon('receipt', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ d.owed|money(0) }}</span>
+      <span class="stat-tile-label">To collect from today's guests</span></span>
+  </a>
+</div>
+
+{# ------------------------------------------------------------ the rooms #}
+<h2 class="section-heading" id="rooms">The rooms today</h2>
+<div class="fd-rooms">
+  {% for r in d.rooms %}
+  {% set st = r.state %}
+  <div class="fd-room fd-room--{{ st|lower|replace(' ', '-') }}">
+    <div class="fd-room__head"><strong>{{ r.room['name'] }}</strong><span class="fd-room__state">{{ st }}</span></div>
+    {% if r.leaving %}<p class="fd-room__line"><span class="fd-room__k">Out</span> {{ r.leaving.guest_name }}{% if r.leaving.checked_out_at %} <span class="mini-status status-past">checked out</span>{% endif %}</p>{% endif %}
+    {% if r.arriving %}
+    <p class="fd-room__line"><span class="fd-room__k">In</span> {{ r.arriving.guest_name }}{% if r.arriving.estimated_arrival_time %} · {{ r.arriving.estimated_arrival_time }}{% endif %}
+      {% if r.arriving.checked_in_at %} <span class="mini-status status-onshift">here</span>{% endif %}</p>
+    {% set p = r.arriving.prep %}
+    <p class="fd-room__line">{% if r.leaving and not r.leaving.checked_out_at %}<span class="upload-hint">waits for the room to be turned round</span>
+      {% elif p and not p.open %}<span class="mini-status status-confirmed">room ready</span>
+      {% elif p %}<span class="mini-status status-pending">{{ p.open }} job{{ '' if p.open == 1 else 's' }} to make it ready</span>
+      {% else %}<span class="upload-hint">nobody asked to prepare it</span>{% endif %}</p>
+    {% elif r.staying %}
+    <p class="fd-room__line"><span class="fd-room__k">Here</span> {{ r.staying.guest_name }} <span class="upload-hint">until {{ r.staying.departure_date|date_short }}</span></p>
+    {% elif not r.leaving %}
+    <p class="fd-room__line upload-hint">Nobody tonight.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{# ------------------------------------------------------------ arriving #}
+<h2 class="section-heading" id="arriving">Arriving today{% if d.arriving %} — {{ d.arriving|length }}{% endif %}</h2>
+{% if not d.arriving %}
+  <div class="empty-state">Nobody arriving today.{% if d.tomorrow %} <a href="{{ url_for('arrivals_sheet_page') }}">{{ d.tomorrow }} tomorrow</a>.{% endif %}</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table fd-table">
+    <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Expected</th><th scope="col">Stay</th><th scope="col" class="num">Owed</th><th scope="col"></th></tr></thead>
+    <tbody>
+    {% for x in d.arriving %}
+    <tr class="{{ 'fd-done' if x.checked_in_at }}">
+      <td>{% if x.kind == 'stay' %}<a href="{{ url_for('admin_booking', booking_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a>{% else %}<strong>{{ x.guest_name }}</strong> <span class="mini-status status-upcoming">Booking.com</span>{% endif %}
+        <span class="cell-note">{{ x.reference_code }}{% if x.guest_phone %} · <a href="tel:{{ x.guest_phone|replace(' ', '') }}" class="small-link">{{ x.guest_phone }}</a>{% endif %}</span>
+        {% if x.special_requests %}<span class="cell-note">{{ x.special_requests }}</span>{% endif %}</td>
+      <td>{{ x.room_name }}</td>
+      <td>{{ x.estimated_arrival_time or '—' }}</td>
+      <td>{{ x.party_size or '?' }} guest{{ '' if x.party_size == 1 else 's' }}<span class="cell-note">until {{ x.departure_date|date_short }}</span></td>
+      <td class="num">{% if x.kind == 'channel' %}<span class="cell-note">paid to Booking.com</span>{% elif x.owed %}<strong class="owed-flag">{{ x.owed|money }}</strong>{% else %}<span class="bk-settled">settled</span>{% endif %}</td>
+      <td>
+        <div class="fd-acts">
+        {% if x.kind == 'stay' %}
+          {% if x.checked_in_at %}<span class="mini-status status-onshift">checked in {{ local_time_str(x.checked_in_at) }}</span>
+          {% else %}
+          <form method="post" action="{{ url_for('check_in_booking', booking_id=x.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="desk"><button type="submit" class="btn-mini">Check in</button></form>
+          {% endif %}
+          {% if x.owed %}<a href="{{ url_for('admin_booking', booking_id=x.id) }}#take-payment" class="small-link">Take payment</a>{% endif %}
+          <a href="{{ url_for('arrival_card', booking_id=x.id) }}" class="small-link" target="_blank" rel="noopener">Arrival card</a>
+        {% else %}
+          <a href="{{ url_for('channel_stays_page', q=x.reference_code, when='all') }}" class="small-link">Open</a>
+        {% endif %}
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ------------------------------------------------------------ leaving #}
+<h2 class="section-heading" id="leaving">Leaving today{% if d.leaving %} — {{ d.leaving|length }}{% endif %}</h2>
+{% if not d.leaving %}
+  <div class="empty-state">Nobody leaving today.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table fd-table">
+    <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col" class="num">Owed</th><th scope="col">Check out</th></tr></thead>
+    <tbody>
+    {% for x in d.leaving %}
+    <tr class="{{ 'fd-done' if x.checked_out_at }}">
+      <td>{% if x.kind == 'stay' %}<a href="{{ url_for('admin_booking', booking_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a>{% else %}<strong>{{ x.guest_name }}</strong> <span class="mini-status status-upcoming">Booking.com</span>{% endif %}
+        <span class="cell-note">{{ x.reference_code }}</span></td>
+      <td>{{ x.room_name }}</td>
+      <td class="num">{% if x.kind == 'channel' %}<span class="cell-note">paid to Booking.com</span>{% elif x.owed %}<strong class="owed-flag">{{ x.owed|money }}</strong> <a href="{{ url_for('admin_booking', booking_id=x.id) }}#take-payment" class="small-link">take it</a>{% else %}<span class="bk-settled">settled</span>{% endif %}</td>
+      <td>
+        {% if x.kind != 'stay' %}<span class="upload-hint">turned round from the turnover list</span>
+        {% elif x.checked_out_at %}<span class="mini-status status-past">checked out {{ local_time_str(x.checked_out_at) }}</span>
+        {% else %}
+        {#- Checking out raises the turnover jobs for the room, so it asks who
+            does them. -#}
+        <form method="post" action="{{ url_for('checkout_booking', booking_id=x.id) }}" class="fd-out"
+              {% if x.owed %}onsubmit="return confirm('{{ x.owed|money }} is still owed on this stay. Check out anyway?');"{% endif %}>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="desk">
+          <select name="assigned_to_user_id" aria-label="Who turns the room round" required>
+            <option value="">Who turns the room round…</option>
+            {% for u in staff %}<option value="{{ u['id'] }}">{{ u['name'] }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="btn-mini">Check out</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ------------------------------------------------------------ staying on #}
+<h2 class="section-heading" id="staying">Staying on{% if d.staying %} — {{ d.staying|length }}{% endif %}</h2>
+{% if not d.staying %}
+  <div class="empty-state">Nobody else in the house.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table fd-table">
+    <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Until</th><th scope="col" class="num">Owed</th></tr></thead>
+    <tbody>
+    {% for x in d.staying %}
+    <tr>
+      <td>{% if x.kind == 'stay' %}<a href="{{ url_for('admin_booking', booking_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a>{% else %}<strong>{{ x.guest_name }}</strong> <span class="mini-status status-upcoming">Booking.com</span>{% endif %}</td>
+      <td>{{ x.room_name }}</td>
+      <td>{{ x.departure_date|date_short }}</td>
+      <td class="num">{% if x.kind == 'channel' %}<span class="cell-note">paid to Booking.com</span>{% elif x.owed %}<strong class="owed-flag">{{ x.owed|money }}</strong>{% else %}<span class="bk-settled">settled</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if d.to_collect %}
+<h2 class="section-heading" id="collect">To collect — {{ d.owed|money }}</h2>
+<ul class="fd-collect">
+  {% for x in d.to_collect %}
+  <li><a href="{{ url_for('admin_booking', booking_id=x.id) }}#take-payment">{{ x.guest_name }}</a> · {{ x.room_name }} · <strong class="owed-flag">{{ x.owed|money }}</strong>
+    <span class="upload-hint">{{ 'leaving today' if x.departure_date == d.day.isoformat() else 'arriving today' if x.arrival_date == d.day.isoformat() else 'in the house' }}</span></li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<p class="upload-hint" style="margin-top:18px;">{% if d.tomorrow %}{{ d.tomorrow }} arriving tomorrow: <a href="{{ url_for('arrivals_sheet_page') }}">the arrivals sheet</a> has them.{% else %}Nobody arriving tomorrow.{% endif %}</p>
+
+{% endblock %}

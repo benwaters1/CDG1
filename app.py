@@ -5256,6 +5256,10 @@ def init_db():
         ("invite_token", "ALTER TABLE users ADD COLUMN invite_token TEXT"),
         ("photo_filename", "ALTER TABLE rooms ADD COLUMN photo_filename TEXT"),
         ("checked_out_at", "ALTER TABLE bookings ADD COLUMN checked_out_at TEXT"),
+        # When they arrived and were given the room (19 October 2026, the
+        # front desk). Check-out had a moment; check-in did not, so "who is
+        # still to come today" could only be guessed.
+        ("checked_in_at", "ALTER TABLE bookings ADD COLUMN checked_in_at TEXT"),
         ("amenities", "ALTER TABLE rooms ADD COLUMN amenities TEXT"),
         ("extras_summary", "ALTER TABLE bookings ADD COLUMN extras_summary TEXT"),
         ("payment_status", "ALTER TABLE bookings ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'unpaid'"),
@@ -8742,6 +8746,7 @@ NAV_AREAS = {
         "write_about_booking", "text_about_booking", "add_extra_to_booking",
         "change_extra_when",
         "arrivals_sheet_page", "issue_access_code", "access_code_returned",
+        "front_desk", "check_in_booking",
         "walk_in_booking", "walk_in_options_json", "resend_reservation_link", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
         "guest_by_email",
@@ -9367,6 +9372,7 @@ OWNER_MENU = [
                  ("confirm_booking", "decline_booking", "checkout_booking", "edit_booking",
                   "admin_booking")),
             _nav("admin_calendar", "Booking Calendar", "calendar"),
+            _nav("front_desk", "Front Desk", "bookings", ("check_in_booking",)),
             _nav("arrivals_sheet_page", "Arrivals", "calendar"),
             _nav("admin_rooms", "Rooms", "rooms", ("new_room", "edit_room")),
             _nav("admin_waitlist", "Room Waitlist", "leave"),
@@ -42956,6 +42962,8 @@ PALETTE_PAGES = [
      "balances arriving weeks outlook labour cost rostered wages"),
     ("Today sheet", "today_sheet",
      "today print run sheet arrivals departures handover"),
+    ("Front desk", "front_desk",
+     "front desk reception today check in check out arriving leaving in house rooms ready owed"),
     ("Maintenance", "maintenance_page",
      "repairs upkeep servicing due jobs house"),
     ("Social", "management_social",
@@ -47723,7 +47731,7 @@ def guests():
         "guests.html", in_residence=in_residence, upcoming=upcoming,
         profiles=lv["rows"], lv=lv, stay_counts=stay_counts, history=history,
         overview=overview, period=period, tags=tags, known_tags=known_tags,
-        export_args=request.args.to_dict(),
+        export_args=request.args.to_dict(), caution_levels=CAUTION_LEVELS,
     )
 
 
@@ -47751,12 +47759,18 @@ def guest_stay_summaries(conn, today=None):
             emails.setdefault(addr, []).append(g["id"])
     out = {}
     for b in conn.execute(
-            """SELECT linked_guest_id, guest_email, arrival_date, departure_date, no_show_at
-                 FROM bookings WHERE status = 'confirmed'""").fetchall():
+            """SELECT linked_guest_id, guest_email, arrival_date, departure_date, no_show_at,
+                      guest_country
+                 FROM bookings WHERE status = 'confirmed' ORDER BY arrival_date""").fetchall():
         owners = ([b["linked_guest_id"]] if b["linked_guest_id"]
                   else emails.get((b["guest_email"] or "").strip().lower(), []))
         for gid in owners:
-            h = out.setdefault(gid, {"stays": 0, "nights": 0, "last": None, "next": None})
+            h = out.setdefault(gid, {"stays": 0, "nights": 0, "last": None, "next": None,
+                                     "country": None})
+            # The latest stay that said where they live (stays are read in
+            # date order, so the last one written wins).
+            if (b["guest_country"] or "").strip():
+                h["country"] = b["guest_country"].strip()
             arrive, leave = b["arrival_date"] or "", b["departure_date"] or ""
             if arrive and arrive <= today_iso and not b["no_show_at"]:
                 h["stays"] += 1
@@ -47802,6 +47816,15 @@ def guests_list_view(conn, args):
                   lambda g: (CAUTION_LEVELS.get(g["caution_level"])
                              if (g["caution_level"] or "").strip() else None)),
             facet("vip", "VIP", lambda g: "VIP" if g["vip"] else None),
+            # Who is booked to come, and from where (19 October 2026): the two
+            # a front desk asks next of a guest list.
+            facet("coming", "Booked to come",
+                  lambda g: "Has a stay booked" if (history.get(g["id"]) or {}).get("next")
+                  else None),
+            facet("country", "Lives in",
+                  lambda g: (history.get(g["id"]) or {}).get("country"), limit=10),
+            facet("reach", "Can be reached",
+                  lambda g: "No email" if not (g["email"] or "").strip() else None),
             facet("tag", "Tag", lambda g: tags.get(g["id"], []), limit=12),
         ],
         sorts=[
@@ -47809,6 +47832,12 @@ def guests_list_view(conn, args):
                         lambda g: (not g["vip"], (g["name"] or "").lower())),
             sort_option("stays", "Most stays first",
                         lambda g: stay_counts.get(g["id"], 0), reverse=True),
+            sort_option("nights", "Most nights first",
+                        lambda g: (history.get(g["id"]) or {}).get("nights", 0), reverse=True),
+            sort_option("last", "Here most recently",
+                        lambda g: (history.get(g["id"]) or {}).get("last") or "", reverse=True),
+            sort_option("next", "Arriving soonest",
+                        lambda g: (history.get(g["id"]) or {}).get("next") or "9999"),
         ],
         default_sort="name",
     )
@@ -63516,8 +63545,11 @@ def admin_bookings():
 def booking_return(booking_id):
     """Where an action on a stay goes back to: the stay's own page when it was
     pressed there, the list otherwise."""
-    if (request.form.get("back") or request.args.get("back")) == "booking":
+    back = request.form.get("back") or request.args.get("back")
+    if back == "booking":
         return url_for("admin_booking", booking_id=booking_id)
+    if back == "desk":
+        return url_for("front_desk")
     return url_for("admin_bookings")
 
 
@@ -94916,21 +94948,161 @@ def arrivals_sheet(conn, day=None):
     }
 
 
+def front_desk_day(conn, today=None):
+    """Today at the desk, room by room (owner, 19 October 2026: "yes at the
+    desk"). Who leaves, who arrives, who stays, what each still owes, and
+    whether each arriving room has been made ready -- across the house's own
+    stays and Booking.com's, so one page answers the morning's questions.
+
+    Read-only and rebuilt each time from the bookings, the bills and the
+    room-prep tasks; nothing is kept here to drift from them.
+    """
+    today = today or house_today()
+    iso = today.isoformat()
+    tomorrow = (today + timedelta(days=1)).isoformat()
+    rooms = conn.execute("SELECT id, name FROM rooms WHERE active = 1 "
+                         "ORDER BY sort_order, name").fetchall()
+    stays = [dict(b, kind="stay") for b in conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed' AND bookings.arrival_date <= ?
+              AND bookings.departure_date >= ? AND bookings.no_show_at IS NULL
+            ORDER BY bookings.arrival_date""", (iso, iso)).fetchall()]
+    channel = [dict(o, kind="channel", guest_name=o["guest_name"] or "Booking.com guest",
+                    room_name=o["room_name"] or o["room_label"] or "Room not matched",
+                    party_size=o["guests"], reference_code=o["reservation_number"],
+                    checked_in_at=None, checked_out_at=None, estimated_arrival_time=None)
+               for o in conn.execute(
+        """SELECT ota_reservations.*, rooms.name AS room_name FROM ota_reservations
+             LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
+            WHERE ota_reservations.status = 'confirmed' AND ota_reservations.arrival_date <= ?
+              AND ota_reservations.departure_date >= ?""", (iso, iso)).fetchall()]
+    everyone = stays + channel
+    for st in stays:
+        bill = booking_bill(conn, st["id"])
+        st["owed"] = round(bill["owed"], 2) if bill else 0.0
+    for ch in channel:
+        ch["owed"] = 0.0
+    arriving = [x for x in everyone if x["arrival_date"] == iso]
+    leaving = [x for x in everyone if x["departure_date"] == iso]
+    staying = [x for x in everyone if x["arrival_date"] < iso < x["departure_date"]]
+    arriving.sort(key=lambda x: ((x.get("estimated_arrival_time") or "99:99"), x["room_name"]))
+    # Is each arriving room ready: the prep tasks raised for that stay, done
+    # or not. A stay with none raised says so -- nobody has been asked.
+    prep = {}
+    ids = [x["id"] for x in arriving if x["kind"] == "stay"]
+    oids = [x["id"] for x in arriving if x["kind"] == "channel"]
+    for col, keys, kind in (("booking_id", ids, "stay"), ("ota_reservation_id", oids, "channel")):
+        if not keys:
+            continue
+        marks = ",".join("?" * len(keys))
+        for t in conn.execute(
+                f"""SELECT {col} AS owner, status FROM tasks
+                     WHERE {col} IN ({marks}) AND origin != 'checklist'""", keys).fetchall():
+            tally = prep.setdefault((kind, t["owner"]), {"open": 0, "done": 0})
+            tally["done" if t["status"] == "done" else "open"] += 1
+    for x in arriving:
+        x["prep"] = prep.get((x["kind"], x["id"]))
+    # The house as a whole tonight, room by room.
+    by_room = []
+    for r in rooms:
+        out = next((x for x in leaving if x.get("room_id") == r["id"]), None)
+        inn = next((x for x in arriving if x.get("room_id") == r["id"]), None)
+        stay = next((x for x in staying if x.get("room_id") == r["id"]), None)
+        tonight = inn or stay
+        if out and inn:
+            state = "Turnaround"
+        elif inn:
+            state = "Arriving"
+        elif out:
+            state = "Leaving"
+        elif stay:
+            state = "Occupied"
+        else:
+            state = "Free tonight"
+        by_room.append({"room": r, "leaving": out, "arriving": inn, "staying": stay,
+                        "tonight": tonight, "state": state})
+    tomorrow_count = conn.execute(
+        "SELECT COUNT(*) FROM bookings WHERE status = 'confirmed' AND arrival_date = ?",
+        (tomorrow,)).fetchone()[0] + conn.execute(
+        "SELECT COUNT(*) FROM ota_reservations WHERE status = 'confirmed' AND arrival_date = ?",
+        (tomorrow,)).fetchone()[0]
+    to_collect = [x for x in stays if x["owed"] > 0.005]
+    return {
+        "day": today, "rooms": by_room, "arriving": arriving, "leaving": leaving,
+        "staying": staying, "tomorrow": tomorrow_count,
+        "let_tonight": sum(1 for r in by_room if r["tonight"]),
+        "free_tonight": sum(1 for r in by_room if not r["tonight"]),
+        "to_collect": to_collect,
+        "owed": round(sum(x["owed"] for x in to_collect), 2),
+        "checked_in": sum(1 for x in arriving if x.get("checked_in_at")),
+        "checked_out": sum(1 for x in leaving if x.get("checked_out_at")),
+    }
+
+
+@app.route("/admin/desk")
+@owner_required
+def front_desk():
+    """The front desk for today: the rooms, who comes and goes, what is owed."""
+    conn = get_db()
+    desk = front_desk_day(conn)
+    staff = conn.execute("SELECT id, name FROM users WHERE role IN ('owner', 'employee') "
+                         "AND COALESCE(status, 'active') = 'active' ORDER BY role DESC, name").fetchall()
+    conn.close()
+    return render_template("front_desk.html", desk=desk, today=house_today(), staff=staff)
+
+
+@app.route("/admin/bookings/<int:booking_id>/check-in", methods=["POST"])
+@owner_required
+def check_in_booking(booking_id):
+    """They are here: the room is theirs. Recorded with the moment and who
+    did it, and refused before their arrival day or after they have left."""
+    conn = get_db()
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    today_iso = house_today_iso()
+    problem = None
+    if booking["status"] != "confirmed":
+        problem = "Only a confirmed booking can be checked in."
+    elif (booking["arrival_date"] or "") > today_iso:
+        problem = f"They are not due until {format_date_short(booking['arrival_date'])}."
+    elif (booking["departure_date"] or "") < today_iso or booking["checked_out_at"]:
+        problem = "That stay is over."
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return redirect(booking_return(booking_id))
+    cur = conn.execute("UPDATE bookings SET checked_in_at = ? WHERE id = ? AND checked_in_at IS NULL",
+                       (datetime.now(timezone.utc).isoformat(), booking_id))
+    if cur.rowcount:
+        log_audit(conn, "booking_checked_in", target=booking["reference_code"])
+    conn.commit()
+    conn.close()
+    flash(f"{booking['guest_name']} is checked in." if cur.rowcount
+          else f"{booking['guest_name']} was already checked in.", "success")
+    return redirect(booking_return(booking_id))
+
+
 @app.route("/admin/arrivals")
 @login_required
 def arrivals_sheet_page():
-    """The sheet for a day, defaulting to tomorrow.
+    """Today's sheet and tomorrow's, one under the other; or one named day.
 
-    TOMORROW rather than today on purpose: this is the page somebody reads to
-    prepare, and by the time today's arrivals are arriving it is too late to do
-    anything the sheet would have told them.
+    TODAY AND TOMORROW (owner, 19 October 2026: "arrivals should show today
+    and tomorrow"). It opened on tomorrow alone, to prepare -- which left the
+    desk without the list of who is arriving now. Both are wanted: today to
+    receive them, tomorrow to get ready. ?date= still asks for one day.
     """
-    day = parse_date(request.args.get("date", "")) or (house_today() + timedelta(days=1))
+    today = house_today()
+    named = parse_date(request.args.get("date", ""))
+    days = [named] if named else [today, today + timedelta(days=1)]
     conn = get_db()
-    sheet = arrivals_sheet(conn, day)
+    sheets = [arrivals_sheet(conn, d) for d in days]
     conn.close()
-    return render_template("arrivals_sheet.html", sheet=sheet,
-                           today=house_today(), day=day)
+    return render_template("arrivals_sheet.html", sheets=sheets,
+                           today=today, day=days[0], named=bool(named))
 
 
 @app.route("/admin/bookings/<int:booking_id>/access-code", methods=["POST"])

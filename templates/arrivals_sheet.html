@@ -4,8 +4,7 @@
 
 {# ONE DAY, ON ONE PAGE. The arrival card is per booking and the incomplete
    list says only what is missing; neither is the thing somebody wants at
-   breakfast. Defaults to TOMORROW, because by the time today's arrivals are
-   arriving it is too late to act on anything this would have told you. #}
+   breakfast. Shows today and tomorrow (owner, 19 October 2026). #}
 
 <div class="page-head">
   <h1>Arrivals</h1>
@@ -18,14 +17,20 @@
   </div>
 </div>
 
-<p class="upload-hint" style="margin-bottom:18px;">
-  {#- It opens on tomorrow on purpose, and now says so, with the way back to
-      today: "Thursday 15 October" with nothing beside it read as today. -#}
-  {{ day.strftime('%A') }} {{ day.isoformat()|date_short }}
-  {%- if day == today %} · today
-  {%- elif (day - today).days == 1 %} · tomorrow · <a href="{{ url_for('arrivals_sheet_page', date=today.isoformat()) }}">today's sheet</a>
-  {%- else %} · <a href="{{ url_for('arrivals_sheet_page', date=today.isoformat()) }}">today's sheet</a>{% endif %}
-  {%- if sheet.beds %} · {{ sheet.beds }} coming{% endif %}
+{% if named %}<p class="upload-hint" style="margin-bottom:12px;"><a href="{{ url_for('arrivals_sheet_page') }}">Today and tomorrow</a></p>{% endif %}
+
+{#- Today, then tomorrow (19 October 2026): today to receive them, tomorrow to
+    get ready. Each day says which it is, and what it holds. -#}
+{% for sheet in sheets %}
+{% set day = sheet.day %}
+<section class="arr-day" id="day-{{ day.strftime('%Y%m%d') }}">
+<h2 class="arr-day__h">
+  {%- if day == today %}Today{% elif (day - today).days == 1 %}Tomorrow{% else %}{{ day.strftime('%A') }}{% endif %}
+  <span class="arr-day__date">{{ day.strftime('%A') }} {{ day.isoformat()|date_short }}</span>
+</h2>
+<p class="upload-hint" style="margin-bottom:12px;">
+  {{ sheet.arriving|length + sheet.channel_arriving|length }} arriving · {{ sheet.leaving|length + sheet.channel_leaving|length }} leaving
+  {%- if sheet.beds %} · {{ sheet.beds }} guests coming{% endif %}
   {%- if sheet.beds_unknown %}, and {{ sheet.beds_unknown }} Booking.com
   booking{{ '' if sheet.beds_unknown == 1 else 's' }} that did not say how many{% endif %}
 </p>
@@ -36,7 +41,7 @@
 {% endif %}
 
 {% if sheet.arriving %}
-<h2 class="section-heading">Arriving</h2>
+<h3 class="section-heading">Arriving</h3>
 <div class="task-list">
   {% for r in sheet.arriving %}
   {% set b = r.booking %}
@@ -151,7 +156,7 @@
 {% if sheet.leaving %}
 {# The other half of the same morning: a room is not ready for an arrival until
    the departure has gone. #}
-<h2 class="section-heading">Leaving</h2>
+<h3 class="section-heading">Leaving</h3>
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Reference</th></tr></thead>
@@ -172,7 +177,7 @@
 {# Booking.com's guests. Only what its emails said: no telephone, no arrival
    time, no card on file here -- those are in the extranet, and the link goes
    to what the house does know. #}
-<h2 class="section-heading">Through Booking.com</h2>
+<h3 class="section-heading">Through Booking.com</h3>
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th scope="col">Guest</th><th scope="col"></th><th scope="col">Room</th>
@@ -200,5 +205,7 @@
   </table>
 </div>
 {% endif %}
+</section>
+{% endfor %}
 
 {% endblock %}
