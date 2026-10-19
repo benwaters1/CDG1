@@ -8695,7 +8695,7 @@ NAV_AREAS = {
         "write_about_booking", "text_about_booking", "add_extra_to_booking",
         "change_extra_when",
         "arrivals_sheet_page", "issue_access_code", "access_code_returned",
-        "walk_in_booking", "resend_reservation_link", "arrival_card",
+        "walk_in_booking", "walk_in_options_json", "resend_reservation_link", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
         "guest_by_email",
         "save_list_view", "delete_list_view",
@@ -42219,8 +42219,9 @@ PALETTE_PAGES = [
      "sync rota events"),
     ("Revenue to send", "revenue_to_send",
      "pennylane accountant invoices revenue income takings bookkeeping"),
-    ("Walk-in booking", "walk_in_booking",
-     "desk telephone book a room tonight arrival no reservation walk in"),
+    ("Add a booking", "walk_in_booking",
+     "desk telephone email book a room tonight arrival no reservation walk in walk-in "
+     "reserve hold payment link agreed price"),
     ("Why they cancel", "management_cancellations",
      "cancellation reason why cancelled enquiry conversion events won lost"),
     ("Shift handover", "shift_handover",
@@ -72311,24 +72312,68 @@ def management_outlook():
     return redirect(url_for("money_ahead_page", days=days))
 
 
-def walk_in_options(conn, rooms, arrival, departure):
-    """Each room with what it would cost for these nights and whether it is free.
+def walk_in_options(conn, rooms, arrival, departure, party=None, under_18=0):
+    """Each room with what it would cost for these nights and whether it can be
+    had -- free, and able to take this party.
 
     Reception should be choosing from what is actually available, not from a
     list of every room with the answer arriving after they press the button
     with somebody standing in front of them. `why` carries the reason a room is
-    out, because "taken" and "closed for the season" want different responses.
+    out, because "taken", "the house is full" and "takes two adults" want
+    different responses; `note` is anything worth knowing about one that is
+    in (a minimum stay the guest's own form would ask for -- the desk may
+    still sell it).
     """
+    nights = (departure - arrival).days if arrival and departure else 0
     out = []
     for room in rooms:
         free, why = (False, "Enter both dates.")
         price = 0.0
+        note = ""
         if arrival and departure and departure > arrival:
             free, why = is_range_available(conn, room["id"], arrival, departure)
             price = compute_room_total(conn, room, arrival, departure)
-        out.append({"room": room, "free": bool(free), "why": why or "",
-                    "price": price, "sleeps": room["max_occupancy"]})
+            if not free and is_house_full_reason(why):
+                why = why.rstrip(".") + next_free_words(conn, room, arrival, nights)
+            least = stay_rules(conn, room, arrival, departure)["min_nights"]
+            if free and nights < least:
+                note = f"Online it needs {least} nights; you can still book it here."
+        elif arrival and departure:
+            why = "The departure has to be after the arrival."
+        misfit = room_party_problem(room, party, under_18) if party else None
+        out.append({"room": room, "free": bool(free), "fits": not misfit,
+                    "why": (why or "") if not free else (misfit or ""),
+                    "note": note, "price": price, "nights": nights,
+                    "per_night": round(price / nights, 2) if nights else 0.0,
+                    "sleeps": room["max_occupancy"],
+                    "adults": room["max_adults"] or room["max_occupancy"],
+                    "children": room["max_children"] or 0})
     return out
+
+
+@app.route("/admin/bookings/walk-in/options.json")
+@owner_required
+def walk_in_options_json():
+    """The desk page's rooms for the dates and party on screen, so they change
+    as reception types rather than after a button. Read-only."""
+    arrival = parse_date((request.args.get("arrival_date", "") or "").strip())
+    departure = parse_date((request.args.get("departure_date", "") or "").strip())
+    try:
+        party = max(1, int(request.args.get("party_size", "2") or 2))
+        under_18 = max(0, min(party, int(request.args.get("guests_under_18", "0") or 0)))
+    except ValueError:
+        party, under_18 = 2, 0
+    conn = get_db()
+    rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    options = walk_in_options(conn, rooms, arrival, departure, party, under_18)
+    nights = options[0]["nights"] if options else 0
+    tax = compute_city_tax(conn, party, under_18, nights)[0] if nights > 0 else 0.0
+    conn.close()
+    return jsonify(nights=nights, tax=round(tax or 0, 2), rooms=[
+        {"id": o["room"]["id"], "name": o["room"]["name"], "free": o["free"], "fits": o["fits"],
+         "why": o["why"], "note": o["note"], "price": o["price"], "per_night": o["per_night"],
+         "sleeps": o["sleeps"], "adults": o["adults"], "children": o["children"]}
+        for o in options])
 
 
 def send_booking_to_pennylane(conn, booking, user_id=None):
@@ -72885,7 +72930,12 @@ def walk_in_booking():
         parse_date((source.get("departure_date", "") or "").strip())
         or (shown_arrival + timedelta(days=1)))
     arrival, departure = shown_arrival, shown_departure
-    options = walk_in_options(conn, rooms, shown_arrival, shown_departure)
+    try:
+        shown_party = max(1, int(source.get("party_size", "2") or 2))
+        shown_under = max(0, min(shown_party, int(source.get("guests_under_18", "0") or 0)))
+    except ValueError:
+        shown_party, shown_under = 2, 0
+    options = walk_in_options(conn, rooms, shown_arrival, shown_departure, shown_party, shown_under)
 
     if request.method == "POST":
         room_raw = (request.form.get("room_id", "") or "").strip()
@@ -72901,10 +72951,26 @@ def walk_in_booking():
         # at a price the house sets, held while the guest fills in the rest
         # and pays. The room is taken from now; they finish it on a link.
         reserve = request.form.get("mode") == "reserve"
+        # "Book it and send a payment link" is the third way, and the old
+        # tick box still means the same.
+        send_link = request.form.get("mode") == "paylink" or request.form.get("send_pay_link") == "1"
+        if send_link and not reserve and not EMAIL_RE.match(email or ""):
+            conn.close()
+            flash("A payment link needs their email address.", "error")
+            return render_template(
+                "walk_in_booking.html", rooms=rooms, today=today,
+                options=options, arrival=shown_arrival, departure=shown_departure,
+                shown_arrival=shown_arrival, shown_departure=shown_departure,
+                form=request.form)
         if reserve and not name:
             name = email
         try:
             party = max(1, int(request.form.get("party_size", "2") or 2))
+            # The page's own adults box, when it sent one: the total beside it
+            # is kept by script, and without script it is the one on load.
+            if (request.form.get("adults", "") or "").strip().isdigit():
+                party = max(1, int(request.form["adults"])) + max(
+                    0, int(request.form.get("guests_under_18", "0") or 0))
         except ValueError:
             party = 2
         try:
@@ -73053,7 +73119,7 @@ def walk_in_booking():
         # button for what is owed; sent after the commit, never with a write
         # open across the network.
         link_note = ""
-        if request.form.get("send_pay_link") == "1":
+        if send_link:
             bill = booking_bill(conn, booking["id"])
             stay = conn.execute("""SELECT bookings.*, rooms.name AS room_name FROM bookings
                                      JOIN rooms ON rooms.id = bookings.room_id
@@ -73071,10 +73137,9 @@ def walk_in_booking():
         conn.close()
         flash(f"{name} is in — {reference_code}."
               + (f" {money(taken)} taken." if taken else "") + link_note, "success")
-        if request.form.get("send_pay_link") == "1" and "admin_booking" in app.view_functions:
-            return redirect(url_for("admin_booking", booking_id=booking["id"]))
-        return redirect(url_for("management_outstanding")
-                        if not taken else url_for("admin_bookings"))
+        # To the stay itself, every time: that is where its bill, its letters
+        # and everything that can still be done to it are.
+        return redirect(url_for("admin_booking", booking_id=booking["id"]))
 
     conn.close()
     return render_template(
