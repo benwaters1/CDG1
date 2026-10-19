@@ -8279,6 +8279,14 @@ def init_db():
     # Who fits each room, as Booking.com has it -- by the names of 16 October,
     # so after them.
     apply_room_occupancy_2026_10_18(conn)
+    # Every confirmed stay has a guest profile (19 October 2026). A repair
+    # that runs at every start must never be what stops the house starting:
+    # anything it cannot do is said in the log and left for the next start.
+    try:
+        link_stays_to_profiles(conn)
+    except sqlite3.Error as exc:
+        conn.rollback()
+        print(f"[guests] could not link every stay to a profile: {exc}")
 
     # WHERE THE GATES ARE.
     #
@@ -65091,6 +65099,69 @@ def send_new_link(conn, to, name, link_for, link):
     return False, why.get("why") or "it could not be sent"
 
 
+def profile_for_stay(conn, booking):
+    """The guest profile a stay belongs to, found or made: the one it is linked
+    to, else the one with its address, else a new one with its name, address
+    and telephone. Returns the profile's id. Writes nothing to the booking --
+    the caller links it.
+
+    One definition for confirming a stay and for repairing one confirmed
+    without (link_stays_to_profiles): every confirmed stay has a profile
+    (owner, 19 October 2026: "it should have guest profile").
+    """
+    guest_email = (booking["guest_email"] or "").strip().lower() or None
+    guest_id = booking["linked_guest_id"]
+    if guest_id and not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        guest_id = None
+    if not guest_id and guest_email:
+        existing = conn.execute(
+            "SELECT id, merged_into_id FROM guests WHERE email = ? COLLATE NOCASE "
+            "ORDER BY merged_into_id IS NOT NULL, id", (guest_email,)
+        ).fetchone()
+        if existing:
+            guest_id = existing["merged_into_id"] or existing["id"]
+    if not guest_id:
+        cur = conn.execute(
+            """INSERT INTO guests (name, email, phone, notes, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (booking["guest_name"], guest_email,
+             booking["guest_phone"] or None, None,
+             datetime.now(timezone.utc).isoformat()),
+        )
+        guest_id = cur.lastrowid
+    return guest_id
+
+
+def link_stays_to_profiles(conn):
+    """Give every confirmed stay without a profile its profile, and link it.
+    Returns how many were linked. Safe to run on every start: it touches only
+    confirmed stays whose link is empty, or points at a profile that is gone.
+
+    A stay could be confirmed without one: one made before profiles existed,
+    one imported, and a desk booking whose confirmation was refused and then
+    written as confirmed regardless. Each sat outside the guest list.
+    """
+    rows = conn.execute(
+        """SELECT * FROM bookings WHERE status = 'confirmed'
+             AND (linked_guest_id IS NULL
+                  OR linked_guest_id NOT IN (SELECT id FROM guests))
+           ORDER BY id""").fetchall()
+    done = 0
+    for b in rows:
+        # One at a time, so a stay that cannot be linked (an address another
+        # profile holds in another spelling, say) does not stop the rest.
+        try:
+            conn.execute("UPDATE bookings SET linked_guest_id = ? WHERE id = ?",
+                         (profile_for_stay(conn, b), b["id"]))
+            done += 1
+        except sqlite3.IntegrityError as exc:
+            print(f"[guests] stay {b['reference_code']} left without a profile: {exc}")
+    if done:
+        conn.commit()
+        print(f"[guests] {done} confirmed stay(s) given their guest profile")
+    return done
+
+
 def ensure_guest_profile(conn, name, email, phone=None):
     """The standing profile of whoever a booking is for, made if there is none.
 
@@ -65497,22 +65568,7 @@ def confirm_booking_by_id(conn, booking_id, *, online=None):
     # an identity -- matching on it would either fail or, worse, mint a brand
     # new profile on every single confirm, reinstating the per-stay pile-up this
     # refactor removed. Lower-cased so casing can't split one person in two.
-    guest_email = (booking["guest_email"] or "").strip().lower() or None
-    guest_id = booking["linked_guest_id"]
-    if not guest_id and guest_email:
-        existing = conn.execute(
-            "SELECT id FROM guests WHERE email = ? COLLATE NOCASE", (guest_email,)
-        ).fetchone()
-        guest_id = existing["id"] if existing else None
-    if not guest_id:
-        cur = conn.execute(
-            """INSERT INTO guests (name, email, phone, notes, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (booking["guest_name"], guest_email,
-             booking["guest_phone"] or None, None,
-             datetime.now(timezone.utc).isoformat()),
-        )
-        guest_id = cur.lastrowid
+    guest_id = profile_for_stay(conn, booking)
 
     cur = conn.execute(
         "UPDATE bookings SET status='confirmed', decided_at=?, linked_guest_id=? WHERE id=? AND status='pending'",
@@ -75320,6 +75376,9 @@ def walk_in_booking():
         else:
             conn.execute("UPDATE bookings SET status = 'confirmed' WHERE id = ?",
                          (booking["id"],))
+            if not booking["linked_guest_id"]:
+                conn.execute("UPDATE bookings SET linked_guest_id = ? WHERE id = ?",
+                             (profile_for_stay(conn, booking), booking["id"]))
 
         taken_raw = (request.form.get("amount_taken", "") or "").strip().replace(",", ".")
         try:
