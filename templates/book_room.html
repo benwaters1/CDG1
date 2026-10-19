@@ -15,7 +15,7 @@
    general sentence for a room with no rate on it yet. #}
 {% block description %}{{ room_name(room['name']) }} at Château de Gudanes, a Class I monument under restoration in the Pyrénées.{% if room['max_occupancy'] %} {% if (room['max_children'] or 0)|int > 0 %}For {{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Sleeps {{ room['max_occupancy'] }}{% endif %}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Breakfast included.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
-{% block og_image %}https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba4114a3-c057-4df8-8fd9-c080ebc6fff2/Chambre+Olympe+de+Gouges+2.jpg?format=1200w{% endblock %}
+{% block og_image %}https://cf.bstatic.com/xdata/images/hotel/max2048x2048/921671001.jpg?k=81d3277437f8a0c9290ba074cc8fe547c7d49e2e27ebf78b25d319923482ce9f&amp;o={% endblock %}
 {% set sticky_bar = 'none' %}
 {% block content %}
 {% from '_before.html' import terms_upfront %}
