@@ -100,6 +100,47 @@ domain to www.
    which keeps answering and is never redirected (webhooks, the calendar feeds
    and `/outlook-addin/*` are not moved, by design).
 
+### The staff side at admin.chateaugudanes.com
+
+The public site is `www.`, the staff side is `admin.`, and one sign-in holds
+across both: sign in on admin. and the public pages show a slim bar with
+**Admin** and, where there is one, **Edit this page**. The Railway address is
+left exactly as it was, for the Outlook add-in.
+
+**Do these BEFORE the code that does this is deployed.** Once it is, every
+"please sign in" and every staff link in an email points at admin., and until
+that name answers they lead nowhere.
+
+1. **In Railway** (*CDG1 → Settings → Networking → Custom domain*): add
+   `admin.chateaugudanes.com`, port 8080, the same as www. Railway then shows a
+   `CNAME` target (something like `xxxxxxxx.up.railway.app`) and a `TXT`
+   record named `_railway-verify.admin`. Copy both exactly.
+2. **At the DNS** (the cPanel zone editor of the "Unlimited Email" product, or
+   Cloudflare if it has moved): add those two records — `CNAME` `admin` → the
+   target Railway gave, and the `TXT` `_railway-verify.admin`. Touch nothing
+   else.
+3. **Wait until Railway shows admin.chateaugudanes.com with a certificate**
+   and `https://admin.chateaugudanes.com/login` opens the sign-in page.
+4. **Then deploy.** Nothing in Railway's variables needs setting: the defaults
+   are `ADMIN_HOST=admin.chateaugudanes.com` and
+   `SESSION_COOKIE_DOMAIN=.chateaugudanes.com`. Set `ADMIN_HOST` to an empty
+   value to have no separate staff address (the staff side then answers
+   wherever it is asked, as before); `SESSION_COOKIE_DOMAIN` empty stops the
+   sign-in being shared.
+5. **After the deploy, everybody signs in once more.** The shared sign-in is a
+   new cookie, so the old one on www is no longer read. Staff who added the app
+   to a phone's home screen from www should add it again from
+   `https://admin.chateaugudanes.com`.
+
+What it does, so nobody is surprised: `admin./` goes to `/admin`, the staff
+home. A public page asked for on admin. goes to the same page on www (301).
+A staff page asked for on www or the bare domain goes to the same page on
+admin. (302, so it can be changed back). Every response on admin. says
+`X-Robots-Tag: noindex` and its robots.txt is `Disallow: /`. None of this
+applies on the Railway address, nor to `/outlook-addin/*` or
+`/webhooks/stripe` anywhere, and none of it sends anybody to admin. from a
+copy that is not live (`SITE_IS_LIVE` off, or `PUBLIC_BASE_URL` not the house's).
+
 ### Stripe, test keys to live
 
 The account (Chateau de Gudanes SASU) is shared with other live integrations

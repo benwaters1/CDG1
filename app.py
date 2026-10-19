@@ -159,7 +159,7 @@ from urllib.parse import quote, urlencode, urlparse, parse_qsl
 from zoneinfo import ZoneInfo
 from calendar import monthrange
 
-from html import unescape as html_unescape
+from html import escape as html_escape, unescape as html_unescape
 from html.parser import HTMLParser
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -169,6 +169,7 @@ from flask import (
     session as flask_session,
     has_request_context, g, Response,
 )
+from flask.sessions import SecureCookieSessionInterface
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -1352,6 +1353,22 @@ PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 SITE_IS_LIVE = os.environ.get("SITE_IS_LIVE", "0").strip().lower() in (
     "1", "true", "yes", "on")
 
+# The staff side's own address (owner, 19 Oct 2026): the public site is
+# www.chateaugudanes.com and the staff side is this. Set the variable to an
+# empty string to have no separate staff address at all, which is what every
+# copy that is not the house's needs and gets anyway: nothing sends anybody
+# here unless house_address() says this deployment IS the house's site.
+# See staff_address() and the "Two addresses" block at the end of the file.
+ADMIN_HOST = (os.environ.get("ADMIN_HOST", "admin.chateaugudanes.com") or "").strip().lower()
+
+# The house's own names, across which one sign-in holds: sign in on the staff
+# address and the public site knows you too, which is what lets it show the
+# admin bar. Applied only to a request that arrived on one of these names, so
+# the Railway address (the Outlook add-in's) and localhost keep a cookie of
+# their own exactly as before. Empty switches the sharing off.
+SHARED_COOKIE_DOMAIN = (os.environ.get("SESSION_COOKIE_DOMAIN", ".chateaugudanes.com")
+                        or "").strip().lower()
+
 # Encrypts Management > Vault entries at rest (Fernet/AES via the
 # `cryptography` library — not hand-rolled). Unset by default — until you set
 # it, the Vault page shows "not configured" instead of storing anything.
@@ -1651,6 +1668,54 @@ app.config["SESSION_COOKIE_SECURE"] = not DEBUG_MODE
 # bank details and the password vault on a front-desk computer other staff
 # might walk up to.
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
+
+
+def _request_hostname():
+    return (request.host or "").split(":")[0].lower() if has_request_context() else ""
+
+
+def on_house_domain(host=None):
+    """Whether `host` (or this request's) is one of the house's own names."""
+    host = _request_hostname() if host is None else host
+    domain = SHARED_COOKIE_DOMAIN.lstrip(".")
+    return bool(domain) and (host == domain or host.endswith("." + domain))
+
+
+# ONE SIGN-IN ACROSS THE HOUSE'S NAMES, and only those.
+#
+# The cookie is scoped per request rather than in app.config, because one
+# deployment answers on several names: a Domain=.chateaugudanes.com cookie
+# sent from the Railway address is refused by the browser, and the Outlook
+# add-in, which signs in there, would never be able to sign in at all.
+#
+# And it has a NAME of its own on the house's names. Before this, www kept a
+# host-only cookie called `session`, and every guest and member of staff who
+# has visited still holds one. Had the shared cookie been called `session`
+# too, the browser would send both and the older, host-only one first --
+# Flask reads the first -- so whatever the shared one carried, a sign-in
+# included, would be written and never read back. Nothing would error; the
+# admin bar would simply never appear, and forms would fail their CSRF check
+# for anybody holding an old cookie. The old one is ignored and expires.
+SHARED_SESSION_COOKIE_NAME = "gudanes_session"
+
+
+class HouseSessionInterface(SecureCookieSessionInterface):
+    def get_cookie_name(self, app):
+        if on_house_domain():
+            return SHARED_SESSION_COOKIE_NAME
+        return super().get_cookie_name(app)
+
+    def get_cookie_domain(self, app):
+        if on_house_domain():
+            return "." + SHARED_COOKIE_DOMAIN.lstrip(".")
+        return super().get_cookie_domain(app)
+
+    def get_cookie_secure(self, app):
+        # The house's names are only ever HTTPS, whatever FLASK_DEBUG says.
+        return True if on_house_domain() else super().get_cookie_secure(app)
+
+
+app.session_interface = HouseSessionInterface()
 
 # NOTHING ON A PAGE PRINTS AS THE WORD "None".
 #
@@ -8567,8 +8632,10 @@ def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not current_user():
-            return redirect(url_for("login"))
+            return redirect(login_address())
         return view(*args, **kwargs)
+    # A staff page, so its address is the staff side's (is_staff_page).
+    wrapped.staff_only = True
     return wrapped
 
 
@@ -9352,7 +9419,7 @@ NAV_TOP = [
     # Today first for everyone: who is in and what am I meant to be doing is
     # the question a member of staff has when they open this on a phone.
     _nav("staff_today", "Today", "home"),
-    _nav("dashboard", "Home", "home"),
+    _nav("dashboard", "Home", "home", ("admin_home",)),
     _nav("ops_calendar", "Calendar", "calendar"),
     # High, and for both roles: the one page here people are meant to open
     # unprompted, and a message nobody sees is worse than none.
@@ -9891,7 +9958,7 @@ def owner_required(view):
     def wrapped(*args, **kwargs):
         user = current_user()
         if not user:
-            return redirect(url_for("login"))
+            return redirect(login_address())
         if not can_reach(user, request.endpoint):
             abort(403)
         return view(*args, **kwargs)
@@ -30091,6 +30158,9 @@ def external_url(endpoint, **values):
     except RuntimeError:
         with app.test_request_context():
             path = url_for(endpoint, **values)
+        staff = staff_address() if is_staff_page(endpoint) else None
+        if staff:
+            return f"{staff[0]}://{staff[1]}{path}"
         return f"{PUBLIC_BASE_URL or ''}{path}"
 
 
@@ -33859,7 +33929,7 @@ def inject_user():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user():
-        return redirect(url_for("dashboard"))
+        return redirect(staff_home_url())
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
@@ -33882,7 +33952,7 @@ def login():
             session["user_id"] = user["id"]
             conn.commit()
             conn.close()
-            return redirect(url_for("dashboard"))
+            return redirect(staff_home_url())
 
         new_count = (throttle["failed_count"] if throttle else 0) + 1
         locked_until = None
@@ -33903,7 +33973,7 @@ def login():
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("login"))
+    return redirect(login_address())
 
 
 @app.route("/clock/in", methods=["POST"])
@@ -34108,7 +34178,7 @@ def reset_password():
     conn.close()
     session.pop("reset_email", None)
     flash("Password updated — sign in with your new password.", "success")
-    return redirect(url_for("login"))
+    return redirect(login_address())
 
 
 @app.route("/change-password", methods=["GET", "POST"])
@@ -37189,7 +37259,12 @@ def dashboard():
     # signed-in member of staff gets their dashboard. The public header links the
     # brand to "/", so without this a guest clicking the château's own name
     # landed on a staff login screen.
-    if not current_user():
+    #
+    # Once the staff side has an address of its own, the public one is the
+    # front page for everybody: staff signed in on admin. arrive here signed
+    # in, and what they came to see is the house as a guest does, with the
+    # admin bar over it. Their dashboard is /admin.
+    if not current_user() or serving_public_site_only():
         conn = get_db()
         # Real rooms and real dates, not category tiles. A visitor should be
         # able to see what is actually for sale — named, priced, described —
@@ -37222,6 +37297,14 @@ def dashboard():
         conn.close()
         # Both are optional in the template, so an empty house still renders.
         return render_template("home.html", rooms=rooms, upcoming=upcoming)
+    return staff_dashboard()
+
+
+@app.route("/admin")
+@login_required
+def admin_home():
+    """The staff side's front page: the dashboard, at an address that is
+    only ever the staff side's. admin.chateaugudanes.com/ comes here."""
     return staff_dashboard()
 
 
@@ -37680,7 +37763,7 @@ def office_display():
     if not token_ok:
         user = current_user()
         if not user:
-            return redirect(url_for("login"))
+            return redirect(login_address())
         if user["role"] != "owner":
             abort(403)
 
@@ -108660,6 +108743,261 @@ def register_legacy_paths():
 LEGACY_WIRED = register_legacy_paths()
 
 
+# ---------------------------------------------------------------------------
+# Two addresses: the house's site, and the staff side's (owner, 19 Oct 2026).
+#
+# www.chateaugudanes.com is the public site and admin.chateaugudanes.com is
+# the staff side, both served by this one deployment, with one sign-in across
+# them (HouseSessionInterface). The Railway address stays exactly as it was,
+# because the Outlook add-in is installed in everybody's Outlook there.
+#
+# The staff address is only ever SENT to -- by a sign-in redirect, a link in
+# an email, a page moved off www -- once house_address() says this deployment
+# is the house's site. A staging copy or a laptop never sends anybody to the
+# real admin., which would be a sign-in on the wrong database. What happens
+# to a request that ARRIVES on the staff address (its front door, noindex,
+# robots.txt) needs nothing switched on, because nothing arrives there but
+# from the house's own DNS.
+# ---------------------------------------------------------------------------
+
+# Never moved by anything in this block, on any address. The add-in loads in
+# Outlook's own frame, which will not follow a redirect to a host its
+# manifest does not list, and Stripe does not follow one at all: a payment
+# would be taken and its webhook lost, with nothing anywhere saying so.
+NEVER_MOVED_PREFIXES = ("/outlook-addin/", "/webhooks/stripe")
+
+# The staff side's doors: theirs, though no decorator says so.
+STAFF_DOORS = {"login", "logout", "forgot_password", "reset_password", "onboard",
+               "office_display"}
+
+
+def on_admin_host():
+    return bool(ADMIN_HOST) and _request_hostname() == ADMIN_HOST
+
+
+def staff_address():
+    """(scheme, host) of the staff side's own address, or None where there isn't one."""
+    home = house_address()
+    if not ADMIN_HOST or home is None:
+        return None
+    return home[0], ADMIN_HOST
+
+
+def _staff_address_here():
+    """The staff address, if links built from here should use it.
+
+    Not from a request on any other name: on the Railway address the add-in
+    signs in where it is, and is left exactly as it was. A nightly job has a
+    stand-in request on PUBLIC_BASE_URL, which is one of the house's names.
+    """
+    if has_request_context() and not on_house_domain():
+        return None
+    return staff_address()
+
+
+def serving_public_site_only():
+    """Whether this request is on the house's public name while the staff side
+    has a name of its own -- so "/" is the château's front page even for staff."""
+    return staff_address() is not None and on_house_domain() and not on_admin_host()
+
+
+def is_staff_page(endpoint):
+    """Whether `endpoint` is the staff side's: behind a sign-in, or a door to one."""
+    if endpoint in STAFF_DOORS:
+        return True
+    view = app.view_functions.get(endpoint)
+    return bool(getattr(view, "is_guarded", False) or getattr(view, "staff_only", False))
+
+
+_flask_url_for = app.url_for
+
+
+def house_url_for(endpoint, *, _anchor=None, _method=None, _scheme=None,
+                  _external=None, **values):
+    """url_for, except that a FULL link to a staff page is on the staff address.
+
+    This is what moves every staff link in every email at once -- the refund
+    desk, a feedback alert, an onboarding invitation -- without touching any
+    of them: they all build their link with _external=True, in a request or
+    in a job's stand-in one. A link within a page (no _external) is left to
+    the address the page is on, which is where it should go.
+    """
+    if _external and is_staff_page(endpoint):
+        staff = _staff_address_here()
+        if staff:
+            path = _flask_url_for(endpoint, _anchor=_anchor, _method=_method,
+                                  _external=False, **values)
+            return f"{staff[0]}://{staff[1]}{path}"
+    return _flask_url_for(endpoint, _anchor=_anchor, _method=_method, _scheme=_scheme,
+                          _external=_external, **values)
+
+
+# flask.url_for asks current_app.url_for; the templates were handed the bound
+# method when their environment was made, so they are told separately.
+app.url_for = house_url_for
+app.jinja_env.globals["url_for"] = house_url_for
+
+
+def staff_link(endpoint, **values):
+    """A link to a staff page: on the staff address where that applies, else as before."""
+    staff = _staff_address_here()
+    path = _flask_url_for(endpoint, **values)
+    return f"{staff[0]}://{staff[1]}{path}" if staff else path
+
+
+def login_address():
+    """Where somebody who must sign in is sent. One place, so the staff
+    address is decided by ADMIN_HOST and never typed into a redirect."""
+    return staff_link("login")
+
+
+def staff_home_url():
+    """Where a member of staff lands after signing in."""
+    if _staff_address_here():
+        return staff_link("admin_home")
+    return url_for("dashboard")
+
+
+@app.before_request
+def staff_side_at_its_own_address():
+    """The staff address's front door, and staff pages off the public name.
+
+    On admin., "/" is the staff home. Anywhere else under the house's names,
+    once the staff side has its own address, a staff page asked for by
+    address -- a bookmark, an old email -- goes there, sign-in included.
+    302, never 301: a browser keeps a 301 more or less for ever, and this is
+    a decision about where the staff side lives, which the house may revisit.
+
+    Only GET and HEAD. A form sent from a tab opened before the move still
+    lands where it was sent: the session is shared, so it is still signed in,
+    and a redirect would turn the POST into a GET and lose what was in it.
+    """
+    if request.path.startswith(NEVER_MOVED_PREFIXES):
+        return None
+    if request.method not in ("GET", "HEAD"):
+        return None
+    if on_admin_host():
+        if request.path == "/":
+            return redirect(_with_query(url_for("admin_home")), code=302)
+        return None
+    if not serving_public_site_only():
+        return None
+    if request.endpoint and is_staff_page(request.endpoint):
+        staff = staff_address()
+        return redirect(_with_query(f"{staff[0]}://{staff[1]}{request.path}"), code=302)
+    return None
+
+
+@app.after_request
+def staff_address_is_never_indexed(response):
+    """Nothing on the staff address belongs in a search engine, whatever it is.
+
+    A header rather than a meta tag, so it covers what has no <head> -- the
+    CSVs, the JSON, a redirect -- and pages that forgot.
+    """
+    if on_admin_host():
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
+
+
+# "Edit this page": the staff screen where what a public page shows is set.
+# (public endpoint) -> (staff endpoint, the address values it carries over).
+# Only where there is one. The front page, the story and the rest of the
+# design side's pages are written in their templates, and a link to a screen
+# that does not change them would be worse than none.
+EDIT_THIS_PAGE = {
+    "book_rooms": ("admin_rooms", ()),
+    "book_room": ("edit_room", ("room_id",)),
+    "workshops_public": ("admin_workshops", ()),
+    "workshop_detail": ("edit_workshop", ("workshop_id",)),
+    "restaurant_info": ("admin_restaurant_menu", ()),
+    "events_info": ("admin_events", ()),
+    "events_weddings": ("admin_events", ()),
+    "events_private": ("admin_events", ()),
+    "events_photoshoots": ("admin_events", ()),
+    "gallery_page": ("admin_gallery", ()),
+    "whats_on": ("admin_whats_on", ()),
+}
+
+_PUBLIC_BODY_TAG = re.compile(rb'<body class="g[^>]*>')
+
+ADMIN_BAR_HEIGHT = 34
+
+
+def admin_bar_links(user):
+    """[(label, href)] for the bar, or [] when this person gets no bar."""
+    if not user or not user_access(user):
+        # Only somebody with part of the owner's side. Every other member of
+        # staff has the till, the rota and their tasks -- none of it reached
+        # from a page a guest reads.
+        return []
+    links = [("Admin", staff_link("admin_home"))]
+    edit = EDIT_THIS_PAGE.get(request.endpoint)
+    if edit:
+        target, keys = edit
+        values = {k: (request.view_args or {}).get(k) for k in keys}
+        if all(v is not None for v in values.values()) and can_reach(user, target):
+            links.append(("Edit this page", staff_link(target, **values)))
+    return links
+
+
+def admin_bar_html(links):
+    h = ADMIN_BAR_HEIGHT
+    anchors = "".join(
+        f'<a href="{html_escape(href)}" style="color:inherit;text-decoration:none;'
+        f'display:inline-flex;align-items:center;height:{h}px;padding:0 4px">'
+        f"{html_escape(label)}</a>" for label, href in links)
+    # Fixed, because the public header is fixed at the very top and would sit
+    # over a bar in the flow. Below the menu drawer (58/59), so the drawer's
+    # own close button is never under it; above the header (40). The page and
+    # its header move down by the bar's height, so nothing is hidden by it.
+    return (f'<div class="g-adminbar" role="navigation" aria-label="Staff" '
+            f'style="position:fixed;top:0;left:0;right:0;z-index:50;height:{h}px;'
+            f'display:flex;align-items:center;gap:20px;padding:0 16px;'
+            f'background:#1f1d1a;color:#f3eee6;font:500 13px/1 system-ui,-apple-system,'
+            f'Segoe UI,sans-serif;letter-spacing:.03em">{anchors}</div>'
+            f"<style>body.g{{padding-top:{h}px}}body.g .g-top{{top:{h}px}}</style>")
+
+
+@app.after_request
+def show_the_admin_bar(response):
+    """A slim bar over the public site for somebody signed in to the owner's side.
+
+    Put in at the response, after the <body class="g..."> that every public
+    page carries, rather than in public_base.html, which arrives whole in
+    every handover and would lose it with the next zip -- the same reason the
+    photographs are swapped here and not in the tags.
+
+    Cache-Control: private whenever it is there. A page with somebody's admin
+    links in it must never be kept by anything between here and the browser
+    and handed to the next visitor. A guest's page is not touched at all.
+
+    Registered BEFORE send_to_the_house_address, so it runs after it (Flask
+    runs these last-registered first): a page that is being moved is a
+    redirect by then, and gets no bar.
+    """
+    if request.method not in ("GET", "HEAD") or response.status_code != 200:
+        return response
+    if response.direct_passthrough or not (response.content_type or "").startswith("text/html"):
+        return response
+    if request.endpoint and is_staff_page(request.endpoint):
+        return response        # /admin/images wears the public template; it is not www
+    raw = response.get_data()
+    if _PUBLIC_BODY not in raw:
+        return response
+    links = admin_bar_links(current_user())
+    if not links:
+        return response
+    found = _PUBLIC_BODY_TAG.search(raw)
+    if not found:
+        return response
+    bar = admin_bar_html(links).encode("utf-8")
+    response.set_data(raw[:found.end()] + bar + raw[found.end():])
+    response.headers["Cache-Control"] = "private, no-cache"
+    response.vary.add("Cookie")
+    return response
+
+
 @app.after_request
 def send_to_the_house_address(response):
     """One address for the public site, so a search engine sees one site.
@@ -108687,7 +109025,13 @@ def send_to_the_house_address(response):
     home = house_address()
     if home is None or request.method not in ("GET", "HEAD"):
         return response
-    if _asked_host() == home[1]:
+    if _asked_host() == home[1] or request.path.startswith(NEVER_MOVED_PREFIXES):
+        return response
+    # A staff page drawn in the public site's clothes -- /admin/images shows
+    # the photographs as guests see them -- is still a staff page. Moved to
+    # www it was sent straight back to admin. by staff_side_at_its_own_address,
+    # and round again, for ever.
+    if request.endpoint and is_staff_page(request.endpoint):
         return response
     if request.endpoint != "sitemap":
         if response.status_code != 200 or response.direct_passthrough:
@@ -108739,8 +109083,10 @@ def robots():
     public address competes with the house's own name in search results, with
     the same words and the same photographs — so until SITE_IS_LIVE says the
     domain points here, nothing is offered at all.
+
+    Nor on the staff address, ever: there is nothing on it for anybody to find.
     """
-    if not SITE_IS_LIVE:
+    if not SITE_IS_LIVE or on_admin_host():
         return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
     # Live, but asked on an address that is not the house's -- the Railway
     # one, say. The public pages there already redirect; this keeps a crawler

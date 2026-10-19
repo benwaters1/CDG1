@@ -389,6 +389,7 @@ SUITES = [
     "test_refused_cards",
     "test_voids",
     "test_old_addresses",
+    "test_staff_address",
     "test_reports_index",
     "test_reopened_bills",
     "test_guest_keys_and_photos",

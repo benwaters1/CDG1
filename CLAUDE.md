@@ -253,6 +253,23 @@ page rendered perfectly while doing the wrong thing.
   add a third-party call, add it there too. The suite runs against a copy of
   the REAL database, so "it only sends to test addresses" is never true here.
 
+- **Three names, one deployment.** www. is the public site, admin. the
+  staff side (`ADMIN_HOST`), and the Railway address is the Outlook add-in's
+  and must stay exactly as it is. One sign-in holds across the house's names
+  through a cookie called `gudanes_session`, scoped to `.chateaugudanes.com`
+  per request in `HouseSessionInterface` — never in `app.config`, or the
+  browser refuses it on Railway and the add-in can never sign in. It has its
+  own name because www's old host-only `session` cookie would be sent first
+  and read instead. A full link to a staff page is put on admin. by
+  `house_url_for` (any `url_for(..., _external=True)`), and a sign-in
+  redirect is `login_address()`: never type a host into either. A staff page
+  is anything behind `login_required`/`owner_required` or in `STAFF_DOORS`
+  (`is_staff_page`); a staff page drawn in the public template (/admin/images)
+  is still a staff page, and treating it as public made a redirect loop.
+  The admin bar goes in at the response (`show_the_admin_bar`), like the
+  photographs, because public_base.html arrives whole. Guarded by
+  `test_staff_address`.
+
 ## Tone
 
 Commit messages and user-facing copy say what changed and why it mattered,
