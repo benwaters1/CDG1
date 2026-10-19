@@ -9010,6 +9010,7 @@ NAV_AREAS = {
         "website_analytics",
         "admin_languages", "admin_languages_switcher", "admin_languages_queue",
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
+        "newsletter_subscribers_page",
         "campaign_send_detail", "allow_email_again", "remove_email_optout",
         "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
@@ -9610,6 +9611,7 @@ OWNER_MENU = [
             _nav("admin_emails", "Guest Email", "contacts", ("edit_campaign_template",)),
             _nav("management_email_templates", "Email Wording", "megaphone"),
             _nav("admin_email_outbox", "Held Email", "bell"),
+            _nav("newsletter_subscribers_page", "Newsletter", "contacts"),
             _nav("admin_inbox_flags", "Inbox Flags", "bell", (), "open_email_flags_count"),
         ]),
         ("The website", [
@@ -54974,6 +54976,11 @@ def house_map_links():
     at = f"{pin['lat']},{pin['lng']}"
     return {
         "google": f"https://www.google.com/maps/search/?api=1&query={at}",
+        # Directions TO the pin; the Contact route map adds &origin= for each
+        # of the four places it draws a road from. The origin may be a name --
+        # an airport or a city is where somebody starts, not where they are
+        # trying to arrive -- but the destination is always the coordinates.
+        "dir": f"https://www.google.com/maps/dir/?api=1&destination={at}&travelmode=driving",
         "apple": (f"https://maps.apple.com/?ll={at}"
                   "&q=Ch%C3%A2teau%20de%20Gudanes"),
         "at": at,

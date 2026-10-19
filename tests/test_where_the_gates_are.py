@@ -149,8 +149,16 @@ def run():
         s.check("the arrival card's map link appears",
                 "42.8083,1.6528" in card,
                 detail="the coordinates go in the link, not an address search")
-        s.check("and the contact page draws no map of its own",
-                "maps.apple.com" not in page and "output=embed" not in page)
+        # AND ON 19 OCTOBER THE OWNER ASKED FOR A MAP BACK ("put a map onto the
+        # contact page too of where we are ... and show the routes"). It is
+        # drawn, not embedded (_route_map.html), and every button on it goes
+        # to THIS pin through house_map_links: no embed to disagree with it,
+        # no search by name. test_route_map holds the rest of it.
+        s.check("and the contact page's map goes to the pin, never an embed",
+                "output=embed" not in page and "<iframe" not in page
+                and "maps.apple.com/?ll=42.8083,1.6528" in page
+                and "destination=42.8083,1.6528" in page,
+                detail="a map on Contact must be drawn from house_map_links")
         s.check("and Google is given the same figure",
                 '"latitude": 42.8083' in page and '"longitude": 1.6528' in page,
                 detail="the structured data and the button a guest taps have "

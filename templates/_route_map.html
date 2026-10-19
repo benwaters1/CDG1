@@ -1,0 +1,399 @@
+{# ==========================================================================
+   THE ROUTE MAP, on Contact (19 Oct 2026, the owner: "put a map onto the
+   contact page too of where we are, design it nicely and show the routes").
+
+       {% from '_route_map.html' import route_map with context %}
+       {{ route_map() }}
+
+   DRAWN, NOT EMBEDDED, for the reasons _approach.html gives and two more:
+     · an embedded Google or OpenStreetMap frame loads a third party onto the
+       page for every visitor, which the privacy notice would have to declare;
+     · a tile map shows every road equally, and the point is the four roads
+       people actually take.
+   The towns are placed TO SCALE from their real positions, and the roads are
+   drawn through the towns they pass, simplified. It is a picture, not a pin:
+   no coordinate is written here (test_where_the_gates_are reads every
+   template for one). The buttons that DO navigate come from house_maps, the
+   one builder, and only once somebody has set the pin at the gates -- until
+   then there is no button, and the page says to telephone from Les Cabannes.
+
+   Drawn by tools/draw_route_map.py, which writes the <svg> below. Change the
+   drawing there and run it again; do not hand-edit the path data.
+
+   Every figure in the legend is one the Contact page already stated before
+   the map came back (FACT_LEDGER.txt, GETTING THERE): an hour and three
+   quarters from Toulouse-Blagnac; Andorra about an hour and a half;
+   Carcassonne about an hour and forty minutes; Barcelona about three hours;
+   the train to Les Cabannes, three minutes from the gates.
+   ========================================================================== #}
+
+{% macro route_map() %}
+{%- set ROUTE_MAP_ROUTES = [
+  ('toulouse', 'From Toulouse-Blagnac', 'An hour and three quarters',
+   'The A61 and the A66, then the N20 up the Ariège valley through Foix and Tarascon.',
+   'Toulouse-Blagnac Airport'),
+  ('carcassonne', 'From Carcassonne', 'About an hour and forty minutes',
+   'West by Mirepoix to Pamiers, then the N20 up the valley.',
+   'Carcassonne'),
+  ('andorra', 'From Andorra', 'About an hour and a half',
+   'Out by Pas de la Case, then the N22 and the N20 down the valley through Ax-les-Thermes.',
+   'Andorra la Vella'),
+  ('barcelona', 'From Barcelona', 'About three hours',
+   'The C-16 to Puigcerdà, then the N20 over the border and down through Ax-les-Thermes.',
+   'Barcelona'),
+] -%}
+{#- <strong> and <small>, not <span>: main span:not(...) in gudanes.css holds
+    every span in a page's main at 15px, and it outranks a component rule. -#}
+<div class="g-rmap" data-rmap>
+  <figure class="g-rmap__fig">
+  {#- drawn by tools/draw_route_map.py: begin -#}
+  <svg class="g-rmap__svg" viewBox="0 0 600 960" role="img" aria-labelledby="g-rmap-t g-rmap-d">
+    <title id="g-rmap-t">Château de Gudanes and the roads to it</title>
+    <desc id="g-rmap-d">A map of the Ariège and the eastern Pyrenees. The château is in the
+      valley above Tarascon, beside Les Cabannes. From Toulouse the A61, the A66 and the N20
+      run south through Pamiers, Foix and Tarascon; from Carcassonne the road comes west by
+      Mirepoix to join it at Pamiers. From Andorra the road crosses at Pas de la Case and from
+      Barcelona at Puigcerdà, and both come down the valley through Ax-les-Thermes. The
+      railway from Toulouse follows the valley to Les Cabannes.</desc>
+    <rect class="g-rmap__ground" x="0" y="0" width="600" height="960"/>
+    <g class="g-rmap__peaks" aria-hidden="true">
+      <path d="M128 502.9 L134.4 494.7 L140.8 502.9"/>
+      <path d="M210 514 L217.7 504 L225.5 514"/>
+      <path d="M304 508.5 L311.2 499.3 L318.3 508.5"/>
+      <path d="M428.9 514.6 L437.1 504 L445.4 514.6"/>
+      <path d="M484.2 508.7 L489.4 501.9 L494.7 508.7"/>
+      <path d="M551.7 513.2 L559.1 503.7 L566.5 513.2"/>
+      <path d="M6 537.7 L11.6 530.5 L17.2 537.7"/>
+      <path d="M67.7 530.2 L76.2 519.4 L84.6 530.2"/>
+      <path d="M276.1 536.7 L284.7 525.5 L293.4 536.7"/>
+      <path d="M342.6 530.1 L350.3 520.1 L358.1 530.1"/>
+      <path d="M429.6 529.9 L436.2 521.5 L442.7 529.9"/>
+      <path d="M452.8 536.4 L460 527.1 L467.2 536.4"/>
+      <path d="M551.9 538.5 L559.4 528.9 L566.9 538.5"/>
+      <path d="M577.6 534.7 L583.9 526.6 L590.3 534.7"/>
+      <path d="M9.2 554.8 L15.5 546.6 L21.9 554.8"/>
+      <path d="M32.7 564.8 L40.5 554.8 L48.2 564.8"/>
+      <path d="M129.6 563.2 L137.3 553.4 L145 563.2"/>
+      <path d="M242.8 559.4 L248.7 551.8 L254.7 559.4"/>
+      <path d="M283.7 559.1 L290.4 550.5 L297.2 559.1"/>
+      <path d="M334.7 558.7 L342.9 548.2 L351 558.7"/>
+      <path d="M488.3 555.3 L493.7 548.3 L499.1 555.3"/>
+      <path d="M525.1 555 L530.8 547.7 L536.5 555"/>
+      <path d="M549.1 561.2 L554.5 554.2 L560 561.2"/>
+      <path d="M583.8 564.6 L590.7 555.8 L597.5 564.6"/>
+      <path d="M11.5 590.2 L17.4 582.6 L23.3 590.2"/>
+      <path d="M60.2 583.7 L67.3 574.6 L74.3 583.7"/>
+      <path d="M103.4 591.4 L110 582.9 L116.6 591.4"/>
+      <path d="M189.3 586 L195.5 578.1 L201.7 586"/>
+      <path d="M509.6 582.7 L518 571.9 L526.3 582.7"/>
+      <path d="M547.4 588.3 L553.2 580.9 L559 588.3"/>
+      <path d="M569.8 590 L577.7 579.9 L585.5 590"/>
+      <path d="M3 608.9 L9.3 600.8 L15.6 608.9"/>
+      <path d="M42.2 611.4 L50.1 601.4 L57.9 611.4"/>
+      <path d="M68.1 609.9 L75.9 599.8 L83.7 609.9"/>
+      <path d="M101.3 607.4 L108.6 598.1 L115.8 607.4"/>
+      <path d="M519 612.5 L526.4 603 L533.7 612.5"/>
+      <path d="M549.1 611.1 L557.2 600.7 L565.3 611.1"/>
+      <path d="M581.5 616.2 L590 605.4 L598.4 616.2"/>
+      <path d="M4.8 642.3 L12.1 632.9 L19.4 642.3"/>
+      <path d="M29.7 639.3 L38.2 628.4 L46.6 639.3"/>
+      <path d="M64.7 638.6 L70.8 630.8 L76.9 638.6"/>
+      <path d="M94.8 635.4 L100.3 628.4 L105.7 635.4"/>
+      <path d="M128.6 640.1 L136 630.7 L143.4 640.1"/>
+      <path d="M574.5 644.8 L581.2 636.1 L587.9 644.8"/>
+      <path d="M8.3 660.9 L15.8 651.3 L23.2 660.9"/>
+      <path d="M44.2 659 L50.1 651.4 L56 659"/>
+      <path d="M70 668.8 L78 658.5 L86.1 668.8"/>
+      <path d="M99.4 668.4 L105.1 661.1 L110.8 668.4"/>
+      <path d="M127 659.3 L134.4 649.8 L141.8 659.3"/>
+      <path d="M158.5 659.4 L164.1 652.3 L169.6 659.4"/>
+      <path d="M284.8 661.2 L290.9 653.4 L297 661.2"/>
+      <path d="M311.6 663.7 L318.6 654.7 L325.7 663.7"/>
+      <path d="M334.1 662.6 L341.3 653.3 L348.6 662.6"/>
+      <path d="M365.9 668.4 L372.7 659.6 L379.6 668.4"/>
+      <path d="M404.7 664.3 L410.9 656.4 L417 664.3"/>
+      <path d="M427.9 661.5 L435.6 651.6 L443.3 661.5"/>
+      <path d="M453.6 668.1 L460.5 659.3 L467.3 668.1"/>
+      <path d="M481.6 670.4 L489.7 660 L497.7 670.4"/>
+      <path d="M580 659.3 L587.2 649.9 L594.5 659.3"/>
+      <path d="M2.2 690.1 L9.8 680.4 L17.4 690.1"/>
+      <path d="M31.2 686.7 L37.3 678.8 L43.5 686.7"/>
+      <path d="M67.3 695.5 L74.9 685.8 L82.4 695.5"/>
+      <path d="M91.9 687.1 L98.7 678.3 L105.5 687.1"/>
+      <path d="M125.9 697.1 L133.2 687.7 L140.5 697.1"/>
+      <path d="M155.3 685.3 L160.8 678.1 L166.4 685.3"/>
+      <path d="M185.2 685.6 L190.7 678.5 L196.2 685.6"/>
+      <path d="M221.8 687.4 L227.3 680.4 L232.7 687.4"/>
+      <path d="M338.3 693.4 L344.2 685.8 L350.1 693.4"/>
+      <path d="M374.1 686.4 L381 677.6 L387.8 686.4"/>
+      <path d="M395.2 694.7 L402 686 L408.8 694.7"/>
+      <path d="M431.7 687.9 L439.4 677.9 L447.2 687.9"/>
+      <path d="M457.4 688.2 L464.8 678.7 L472.3 688.2"/>
+      <path d="M482.9 687.2 L490.1 677.9 L497.3 687.2"/>
+      <path d="M542.9 693.8 L549.1 685.8 L555.3 693.8"/>
+      <path d="M575.6 691.9 L582.6 682.9 L589.6 691.9"/>
+      <path d="M10.7 719.5 L17.4 710.9 L24.1 719.5"/>
+      <path d="M35.3 713.9 L43.8 702.9 L52.4 713.9"/>
+      <path d="M73.7 714.9 L79.2 707.7 L84.8 714.9"/>
+      <path d="M100.8 717.6 L108.9 707.3 L116.9 717.6"/>
+      <path d="M126.9 720.5 L133.1 712.5 L139.3 720.5"/>
+      <path d="M164.7 713.9 L170.6 706.4 L176.4 713.9"/>
+      <path d="M187.5 711 L193.9 702.9 L200.3 711"/>
+      <path d="M215.5 723.1 L224.2 711.9 L233 723.1"/>
+      <path d="M251.6 720.4 L259.4 710.4 L267.2 720.4"/>
+      <path d="M331.2 723.1 L338.9 713.2 L346.5 723.1"/>
+      <path d="M364.5 719.6 L373.3 708.4 L382 719.6"/>
+      <path d="M399.8 721 L408.1 710.3 L416.5 721"/>
+      <path d="M426.2 718.1 L433.8 708.4 L441.3 718.1"/>
+      <path d="M459.2 715.4 L467.5 704.7 L475.8 715.4"/>
+      <path d="M489.6 711.7 L496.1 703.2 L502.7 711.7"/>
+      <path d="M520.9 720.4 L529.4 709.5 L537.9 720.4"/>
+      <path d="M547.1 711.7 L555.2 701.3 L563.4 711.7"/>
+      <path d="M580.2 712.9 L585.6 705.9 L591 712.9"/>
+      <path d="M5.4 738.4 L13.2 728.4 L21 738.4"/>
+      <path d="M37 746.5 L45.4 735.7 L53.8 746.5"/>
+      <path d="M66.8 748.6 L73.7 739.7 L80.6 748.6"/>
+      <path d="M102.5 743.8 L109.3 735 L116.1 743.8"/>
+      <path d="M122.2 744.6 L128.8 736.2 L135.3 744.6"/>
+      <path d="M154.2 747.4 L162.4 737 L170.6 747.4"/>
+      <path d="M183.9 743.4 L192.5 732.4 L201 743.4"/>
+      <path d="M221.9 740.5 L227.6 733.1 L233.4 740.5"/>
+      <path d="M239.8 746.5 L247.6 736.6 L255.3 746.5"/>
+      <path d="M302.1 736.9 L308 729.4 L313.8 736.9"/>
+      <path d="M333.6 737.3 L340.8 728.1 L347.9 737.3"/>
+      <path d="M362 739.2 L368.6 730.7 L375.2 739.2"/>
+      <path d="M402.1 739.4 L409.6 729.9 L417 739.4"/>
+      <path d="M434 744.8 L439.5 737.8 L445 744.8"/>
+      <path d="M462.1 742.6 L470 732.4 L477.9 742.6"/>
+      <path d="M491.6 738.7 L497.6 730.9 L503.7 738.7"/>
+      <path d="M521.3 736.3 L526.6 729.5 L531.9 736.3"/>
+      <path d="M538.9 740.7 L547.3 729.9 L555.6 740.7"/>
+      <path d="M583.3 740.7 L588.6 733.8 L593.9 740.7"/>
+      <path d="M0.3 771 L8.7 760.2 L17 771"/>
+      <path d="M38.7 772.9 L45.1 764.7 L51.5 772.9"/>
+      <path d="M60.6 767.7 L68.8 757.1 L77 767.7"/>
+      <path d="M102.4 765.6 L110.3 755.4 L118.2 765.6"/>
+      <path d="M130.1 773.3 L138.4 762.6 L146.7 773.3"/>
+      <path d="M150 763.6 L157.8 753.6 L165.6 763.6"/>
+      <path d="M184 769.6 L192.6 758.5 L201.2 769.6"/>
+      <path d="M210.6 767.7 L218 758.2 L225.3 767.7"/>
+      <path d="M312.4 770 L320.1 760.1 L327.7 770"/>
+      <path d="M335.3 769 L341.5 761 L347.7 769"/>
+      <path d="M365.8 764.4 L371.3 757.3 L376.9 764.4"/>
+      <path d="M395.8 766.7 L401.2 759.9 L406.5 766.7"/>
+      <path d="M421 773.6 L428.8 763.5 L436.7 773.6"/>
+      <path d="M459.5 774.1 L466.3 765.3 L473.2 774.1"/>
+      <path d="M488.6 764.4 L495.9 754.9 L503.3 764.4"/>
+      <path d="M515.8 769.1 L523.1 759.7 L530.5 769.1"/>
+      <path d="M544.7 764.1 L552.9 753.6 L561 764.1"/>
+      <path d="M581.8 763.9 L588.9 754.7 L596.1 763.9"/>
+      <path d="M-0.1 798.8 L8.7 787.6 L17.4 798.8"/>
+      <path d="M34.3 789.9 L42.3 779.6 L50.3 789.9"/>
+      <path d="M72.9 791.9 L79.1 784 L85.3 791.9"/>
+      <path d="M96.8 793.5 L103.5 784.9 L110.2 793.5"/>
+      <path d="M124.9 790.1 L130.8 782.5 L136.6 790.1"/>
+      <path d="M163.8 789.2 L169.7 781.5 L175.7 789.2"/>
+      <path d="M210.9 797.1 L218.6 787.2 L226.3 797.1"/>
+      <path d="M301.9 797.1 L310.4 786.2 L318.9 797.1"/>
+      <path d="M333.5 796.5 L340.2 787.9 L346.9 796.5"/>
+      <path d="M369.5 796.9 L375.6 789.1 L381.7 796.9"/>
+      <path d="M398.4 794.6 L404.2 787.1 L410 794.6"/>
+      <path d="M429.2 790.7 L435.2 783.1 L441.1 790.7"/>
+      <path d="M463.1 799.9 L468.5 793 L473.9 799.9"/>
+      <path d="M488.5 788.3 L494.2 781.1 L499.8 788.3"/>
+      <path d="M522.2 800.2 L530.5 789.5 L538.7 800.2"/>
+      <path d="M541.6 792.6 L550 781.7 L558.4 792.6"/>
+      <path d="M579.4 796.7 L585.9 788.3 L592.4 796.7"/>
+      <path d="M6.6 817 L14.6 806.7 L22.6 817"/>
+      <path d="M41.2 816.7 L49.4 806.1 L57.7 816.7"/>
+      <path d="M69.5 815.6 L75.7 807.7 L81.9 815.6"/>
+      <path d="M96.4 821.4 L103 812.8 L109.7 821.4"/>
+      <path d="M123.3 822.7 L131.8 811.7 L140.4 822.7"/>
+      <path d="M189.6 823.5 L195.5 815.8 L201.5 823.5"/>
+      <path d="M300.1 822.2 L307.9 812.2 L315.6 822.2"/>
+      <path d="M342.8 825.6 L348.6 818.1 L354.4 825.6"/>
+      <path d="M373.8 815.4 L379.3 808.4 L384.7 815.4"/>
+      <path d="M396.8 817.5 L402.8 809.8 L408.8 817.5"/>
+      <path d="M422.9 824.1 L430.7 814.1 L438.4 824.1"/>
+      <path d="M450.2 822.4 L457.5 813 L464.9 822.4"/>
+      <path d="M491.5 822.5 L499.9 811.8 L508.2 822.5"/>
+      <path d="M516.5 816.8 L524.3 806.7 L532.1 816.8"/>
+      <path d="M551.2 822.1 L559.9 810.9 L568.7 822.1"/>
+      <path d="M577.2 823 L585.1 812.9 L592.9 823"/>
+      <path d="M9 842.5 L15.7 834 L22.3 842.5"/>
+      <path d="M35.8 843.3 L42.7 834.4 L49.7 843.3"/>
+      <path d="M72.3 849.2 L78 841.8 L83.8 849.2"/>
+      <path d="M158 847 L166.4 836.1 L174.8 847"/>
+      <path d="M192.1 843.2 L200.4 832.5 L208.7 843.2"/>
+      <path d="M311.9 845.7 L318.8 836.8 L325.7 845.7"/>
+      <path d="M334.4 841.7 L339.8 834.7 L345.3 841.7"/>
+      <path d="M361.6 850.4 L370.1 839.5 L378.6 850.4"/>
+      <path d="M395.5 841.1 L401.8 832.9 L408.1 841.1"/>
+      <path d="M427.5 851.8 L434.2 843.1 L440.9 851.8"/>
+      <path d="M461.5 842.8 L467.7 834.9 L473.8 842.8"/>
+      <path d="M485.8 850.3 L492 842.4 L498.2 850.3"/>
+      <path d="M513.4 853 L520.4 844 L527.4 853"/>
+      <path d="M541.4 849.7 L549.7 839.1 L557.9 849.7"/>
+      <path d="M574.6 851.9 L581.2 843.4 L587.8 851.9"/>
+      <path d="M6.9 872.3 L13.6 863.7 L20.2 872.3"/>
+      <path d="M38.9 871.2 L45.4 862.9 L51.9 871.2"/>
+      <path d="M61.5 877.4 L69.8 866.7 L78.2 877.4"/>
+      <path d="M158.7 870.2 L167.4 859.1 L176.1 870.2"/>
+      <path d="M191.1 866.2 L196.7 859 L202.3 866.2"/>
+      <path d="M220.6 875.5 L227.4 866.7 L234.2 875.5"/>
+      <path d="M251.1 874.9 L256.9 867.5 L262.6 874.9"/>
+      <path d="M274.4 868.8 L280.1 861.5 L285.8 868.8"/>
+      <path d="M339.9 876.7 L345.2 869.9 L350.5 876.7"/>
+      <path d="M365.7 870.9 L372.1 862.6 L378.6 870.9"/>
+      <path d="M394.8 868.3 L402.3 858.7 L409.7 868.3"/>
+      <path d="M429.5 873.1 L435.2 865.8 L440.9 873.1"/>
+      <path d="M460.2 868.4 L466.2 860.7 L472.1 868.4"/>
+      <path d="M480.3 870.1 L488.4 859.6 L496.6 870.1"/>
+      <path d="M512.3 874.3 L518.6 866.2 L525 874.3"/>
+      <path d="M552.2 873 L557.8 865.8 L563.4 873"/>
+      <path d="M573.3 868.7 L579.3 861.1 L585.2 868.7"/>
+      <path d="M12.7 904.3 L19.1 896 L25.5 904.3"/>
+      <path d="M32.4 900.2 L38.1 892.9 L43.8 900.2"/>
+      <path d="M71.8 902.5 L77.2 895.6 L82.6 902.5"/>
+      <path d="M104.1 902.6 L110.8 894 L117.6 902.6"/>
+      <path d="M125.6 898.8 L132 890.6 L138.3 898.8"/>
+      <path d="M161.9 899.1 L169.5 889.3 L177 899.1"/>
+      <path d="M184.3 896.7 L191.5 887.5 L198.6 896.7"/>
+      <path d="M211.8 893.4 L218.7 884.6 L225.6 893.4"/>
+      <path d="M245.3 894.1 L252.4 885 L259.5 894.1"/>
+      <path d="M271.9 900.3 L277.2 893.5 L282.5 900.3"/>
+      <path d="M359.9 895.6 L367.4 885.9 L374.9 895.6"/>
+      <path d="M400.2 903.1 L406.1 895.4 L412.1 903.1"/>
+      <path d="M422.2 896 L430.1 885.9 L437.9 896"/>
+      <path d="M455.8 904.6 L462.9 895.5 L470 904.6"/>
+      <path d="M490.9 904.4 L498.2 895 L505.6 904.4"/>
+      <path d="M519.6 893 L524.9 886.3 L530.1 893"/>
+      <path d="M545.2 901 L553.7 890.1 L562.2 901"/>
+      <path d="M577.2 902.6 L585.7 891.6 L594.3 902.6"/>
+      <path d="M0.8 925.6 L7.8 916.5 L14.8 925.6"/>
+      <path d="M43.3 929.9 L50.6 920.5 L58 929.9"/>
+      <path d="M70.9 919.8 L77.4 911.5 L83.9 919.8"/>
+      <path d="M97.6 918.4 L103.2 911.2 L108.7 918.4"/>
+      <path d="M129 928.2 L136 919.2 L143 928.2"/>
+      <path d="M157.2 925.3 L163.6 917.1 L169.9 925.3"/>
+      <path d="M185.8 929.7 L193 920.5 L200.2 929.7"/>
+      <path d="M211.1 925.3 L218 916.5 L224.9 925.3"/>
+      <path d="M242 927.2 L250.6 916.2 L259.2 927.2"/>
+      <path d="M275.3 921.6 L283.6 911 L291.8 921.6"/>
+      <path d="M362.1 924.5 L368.8 915.9 L375.5 924.5"/>
+      <path d="M395.1 919.6 L402.3 910.4 L409.4 919.6"/>
+      <path d="M421.4 929.9 L427.1 922.6 L432.8 929.9"/>
+      <path d="M457.8 931.1 L465.8 920.8 L473.9 931.1"/>
+      <path d="M494.5 927.6 L500.8 919.4 L507.2 927.6"/>
+      <path d="M522.1 921.4 L529.4 912 L536.8 921.4"/>
+      <path d="M550 929.9 L558.3 919.3 L566.5 929.9"/>
+      <path d="M577.9 926.5 L583.9 918.8 L589.9 926.5"/>
+    </g>
+    <path class="g-rmap__andorra" d="M69.6 743.5 L117.9 747.1 L171.4 765.5 L225 783.8 L260.4 805.7 L235.7 849.7 L203.6 879 L150 908.3 L96.4 906.8 L69.6 879 L58.9 820.4 L69.6 743.5 Z"/>
+    <path class="g-rmap__border" d="M0 692.2 L32.1 717.8 L69.6 743.5"/>
+    <path class="g-rmap__border" d="M260.4 805.7 C265.6 811.9 284 830.8 292 842.4 C299.9 854 301.8 866.2 308 875.3 C314.3 884.5 322.8 892.7 329.5 897.3 C336.2 901.9 337.9 906.2 348.2 903.2 C358.5 900.1 376.8 879.4 391.1 879 C405.4 878.6 413.4 895.5 433.9 901 C454.5 906.5 486.6 907.7 514.3 912 C542 916.2 585.7 924.2 600 926.6"/>
+    <path class="g-rmap__water" d="M0 227.1 C2.7 214.9 6.7 172.7 16.1 153.8 C25.4 134.9 46.7 130.6 56.2 113.5 C65.8 96.4 74.3 70.2 73.4 51.3 C72.5 32.4 54.6 8.5 50.9 0"/>
+    <path class="g-rmap__water" d="M259.8 794.8 C263.7 786.2 278.7 760 282.9 743.5 C287.1 727 290.6 709.3 285 695.9 C279.4 682.4 261.3 670.6 249.1 662.9 C236.9 655.2 222.6 655.2 211.6 649.7 C200.6 644.2 190.6 637.5 183.2 629.9 C175.8 622.4 170.5 615.3 167.1 604.3 C163.8 593.3 162.5 578.7 162.9 564 C163.2 549.4 166.8 533.5 169.3 516.4 C171.8 499.3 179 479.8 177.9 461.5 C176.7 443.2 167.5 430.3 162.3 406.5 C157.1 382.7 153.1 342.4 146.8 318.6 C140.4 294.8 133.2 277.7 124.3 263.7 C115.4 249.7 102.5 249 93.2 234.4 C83.9 219.7 74.7 195.9 68.6 175.8 C62.4 155.7 58.3 123.9 56.2 113.5"/>
+    <text x="364.3" y="249" class="g-rmap__country" text-anchor="middle">FRANCE</text><text x="107.1" y="770.6" class="g-rmap__country g-rmap__country--small" text-anchor="middle">ANDORRA</text><text x="503.6" y="941.3" class="g-rmap__country g-rmap__country--small" text-anchor="middle">SPAIN</text><text x="132.9" y="293" class="g-rmap__river" text-anchor="middle" transform="rotate(-72 132.9 293)">Ariège</text><text x="25.7" y="205.1" class="g-rmap__river" text-anchor="middle" transform="rotate(-62 25.7 205.1)">Garonne</text>
+    <path class="g-rmap__rail" d="M82.5 43.2 C79 54.3 58.6 78 61.6 109.9 C64.6 141.7 85.1 199.6 100.7 234.4 C116.3 269.2 144.4 290.2 155.4 318.6 C166.3 347.1 163.6 382.1 166.5 405.3 C169.4 428.5 172.8 439.3 172.5 457.8 C172.2 476.3 167.4 499.1 164.7 516.2 C162.1 533.3 156.7 545.7 156.4 560.4 C156.2 575 158.4 592.5 163.4 603.9 C168.4 615.2 179.2 621.2 186.4 628.5 C193.6 635.8 203.2 644.6 206.6 647.8"/>
+    <path class="g-rmap__case" d="M34.2 29.8 C39.6 35.2 57 52 67 62.3 C76.9 72.6 81.7 78.7 93.8 91.6 C105.8 104.4 124.6 121.5 139.3 139.2 C154 156.9 174.6 169.7 182.1 197.8 C189.7 225.9 187.4 273.1 184.8 307.6 C182.2 342.2 167.9 380.3 166.5 405.3 C165.1 430.3 176.5 439.3 176.2 457.8 C176 476.3 167.5 499.1 164.7 516.2 C162 533.3 159.9 545.7 159.6 560.4 C159.4 575 159.6 592.9 163.4 603.9 C167.1 614.9 176.3 619.6 182.1 626.3 C187.9 633 195.5 641.2 198.2 644.2"/>
+    <path class="g-rmap__r g-rmap__r--toulouse" data-route="toulouse" d="M34.2 29.8 C39.6 35.2 57 52 67 62.3 C76.9 72.6 81.7 78.7 93.8 91.6 C105.8 104.4 124.6 121.5 139.3 139.2 C154 156.9 174.6 169.7 182.1 197.8 C189.7 225.9 187.4 273.1 184.8 307.6 C182.2 342.2 167.9 380.3 166.5 405.3 C165.1 430.3 176.5 439.3 176.2 457.8 C176 476.3 167.5 499.1 164.7 516.2 C162 533.3 159.9 545.7 159.6 560.4 C159.4 575 159.6 592.9 163.4 603.9 C167.1 614.9 176.3 619.6 182.1 626.3 C187.9 633 195.5 641.2 198.2 644.2"/>
+    <path class="g-rmap__case" d="M562 334.8 C545.1 336.9 488.9 344.8 460.7 347.9 C432.5 351.1 418.2 340.7 392.7 353.8 C367.2 366.9 333.9 416.4 307.7 426.5 C281.6 436.5 259.2 417.4 235.7 413.9 C212.2 410.3 176.4 398 166.5 405.3 C156.6 412.6 176.5 439.3 176.2 457.8 C176 476.3 167.5 499.1 164.7 516.2 C162 533.3 159.9 545.7 159.6 560.4 C159.4 575 159.6 592.9 163.4 603.9 C167.1 614.9 176.3 619.6 182.1 626.3 C187.9 633 195.5 641.2 198.2 644.2"/>
+    <path class="g-rmap__r g-rmap__r--carcassonne" data-route="carcassonne" d="M562 334.8 C545.1 336.9 488.9 344.8 460.7 347.9 C432.5 351.1 418.2 340.7 392.7 353.8 C367.2 366.9 333.9 416.4 307.7 426.5 C281.6 436.5 259.2 417.4 235.7 413.9 C212.2 410.3 176.4 398 166.5 405.3 C156.6 412.6 176.5 439.3 176.2 457.8 C176 476.3 167.5 499.1 164.7 516.2 C162 533.3 159.9 545.7 159.6 560.4 C159.4 575 159.6 592.9 163.4 603.9 C167.1 614.9 176.3 619.6 182.1 626.3 C187.9 633 195.5 641.2 198.2 644.2"/>
+    <path class="g-rmap__case" d="M118.8 852.4 C124 849 137 840.7 150 832.1 C163 823.5 184.6 802.8 196.6 800.6 C208.7 798.4 216.4 814.8 222.3 818.9 C228.2 823.1 224.4 830.2 232.1 825.7 C239.8 821.2 259.1 805.5 268.4 791.8 C277.7 778.1 284.3 759.4 287.7 743.5 C291.1 727.6 295.8 709.7 288.7 696.3 C281.6 682.9 258.5 671 244.8 662.9 C231.1 654.8 214.3 650.9 206.6 647.8 C198.8 644.7 199.6 644.8 198.2 644.2"/>
+    <path class="g-rmap__r g-rmap__r--andorra" data-route="andorra" d="M118.8 852.4 C124 849 137 840.7 150 832.1 C163 823.5 184.6 802.8 196.6 800.6 C208.7 798.4 216.4 814.8 222.3 818.9 C228.2 823.1 224.4 830.2 232.1 825.7 C239.8 821.2 259.1 805.5 268.4 791.8 C277.7 778.1 284.3 759.4 287.7 743.5 C291.1 727.6 295.8 709.7 288.7 696.3 C281.6 682.9 258.5 671 244.8 662.9 C231.1 654.8 214.3 650.9 206.6 647.8 C198.8 644.7 199.6 644.8 198.2 644.2"/>
+    <path class="g-rmap__case" d="M324.1 963.2 C326.2 953.9 337.8 920.1 336.6 907.1 C335.4 894 324.6 895 317.1 884.9 C309.7 874.7 297.2 856.5 292 846 C286.7 835.5 289.5 830.9 285.5 821.9 C281.6 812.8 268 804.9 268.4 791.8 C268.8 778.8 284.3 759.4 287.7 743.5 C291.1 727.6 295.8 709.7 288.7 696.3 C281.6 682.9 258.5 671 244.8 662.9 C231.1 654.8 214.3 650.9 206.6 647.8 C198.8 644.7 199.6 644.8 198.2 644.2"/>
+    <path class="g-rmap__r g-rmap__r--barcelona" data-route="barcelona" d="M324.1 963.2 C326.2 953.9 337.8 920.1 336.6 907.1 C335.4 894 324.6 895 317.1 884.9 C309.7 874.7 297.2 856.5 292 846 C286.7 835.5 289.5 830.9 285.5 821.9 C281.6 812.8 268 804.9 268.4 791.8 C268.8 778.8 284.3 759.4 287.7 743.5 C291.1 727.6 295.8 709.7 288.7 696.3 C281.6 682.9 258.5 671 244.8 662.9 C231.1 654.8 214.3 650.9 206.6 647.8 C198.8 644.7 199.6 644.8 198.2 644.2"/>
+    <g class="g-rmap__shield" transform="translate(123.2 120.9)"><rect x="-15.8" y="-9" width="31.6" height="18" rx="3"/><text y="4.5" text-anchor="middle">A61</text></g><g class="g-rmap__shield" transform="translate(200.9 271)"><rect x="-15.8" y="-9" width="31.6" height="18" rx="3"/><text y="4.5" text-anchor="middle">A66</text></g><g class="g-rmap__shield" transform="translate(139.3 549.4)"><rect x="-15.8" y="-9" width="31.6" height="18" rx="3"/><text y="4.5" text-anchor="middle">N20</text></g><g class="g-rmap__shield" transform="translate(310.7 717.8)"><rect x="-15.8" y="-9" width="31.6" height="18" rx="3"/><text y="4.5" text-anchor="middle">N20</text></g><g class="g-rmap__shield" transform="translate(251.8 809.4)"><rect x="-15.8" y="-9" width="31.6" height="18" rx="3"/><text y="4.5" text-anchor="middle">N22</text></g><g class="g-rmap__shield" transform="translate(292 939.1)"><rect x="-19.4" y="-9" width="38.8" height="18" rx="3"/><text y="4.5" text-anchor="middle">C-16</text></g>
+    <circle class="g-rmap__dot" cx="77.1" cy="48" r="4.5"/><text x="87.1" y="54" class="g-rmap__city" text-anchor="start">Toulouse</text><circle class="g-rmap__dot" cx="166.5" cy="405.3" r="3.2"/><text x="157.5" y="409.3" class="g-rmap__town" text-anchor="end">Pamiers</text><circle class="g-rmap__dot" cx="164.7" cy="516.2" r="3.2"/><text x="155.7" y="520.2" class="g-rmap__town" text-anchor="end">Foix</text><circle class="g-rmap__dot" cx="163.4" cy="603.9" r="3.2"/><text x="154.4" y="607.9" class="g-rmap__town" text-anchor="end">Tarascon</text><circle class="g-rmap__dot" cx="288.7" cy="696.3" r="3.2"/><text x="297.7" y="702.3" class="g-rmap__town" text-anchor="start">Ax-les-Thermes</text><circle class="g-rmap__dot" cx="307.7" cy="426.5" r="3.2"/><text x="307.7" y="416.5" class="g-rmap__town" text-anchor="middle">Mirepoix</text><circle class="g-rmap__dot" cx="562" cy="334.8" r="4.5"/><text x="560" y="321.8" class="g-rmap__city" text-anchor="end">Carcassonne</text><circle class="g-rmap__dot" cx="118.8" cy="852.4" r="3.2"/><text x="118.8" y="872.4" class="g-rmap__town" text-anchor="middle">Andorra la Vella</text><circle class="g-rmap__dot" cx="232.1" cy="825.7" r="3.2"/><text x="240.1" y="842.7" class="g-rmap__town" text-anchor="start">Pas de la Case</text><circle class="g-rmap__dot" cx="336.6" cy="907.1" r="3.2"/><text x="346.6" y="912.1" class="g-rmap__town" text-anchor="start">Puigcerdà</text><circle class="g-rmap__dot" cx="206.6" cy="647.8" r="2.6"/><text x="192.6" y="671.8" class="g-rmap__town g-rmap__town--small" text-anchor="end">Les Cabannes</text>
+    <g class="g-rmap__plane" transform="translate(34.2 29.8)" aria-hidden="true">
+      <circle r="9"/>
+      <path d="M0 -6 L1.3 -1.2 L6 1.2 L6 2.4 L1.3 1.2 L1 4.6 L2.6 5.8 L2.6 6.6 L0 5.8 L-2.6 6.6 L-2.6 5.8 L-1 4.6 L-1.3 1.2 L-6 2.4 L-6 1.2 L-1.3 -1.2 Z"/>
+    </g>
+    <text x="34.2" y="55.8" class="g-rmap__town g-rmap__town--small" text-anchor="middle">airport</text>
+    <g class="g-rmap__chateau" transform="translate(198.2 644.2)">
+      <circle class="g-rmap__halo" r="22"/>
+      <circle class="g-rmap__ring" r="13"/>
+      <path d="M-9 6 h18 v-11 l-4 -3.5 v-5 h-2.8 v2.8 l-2.2 -2.2 l-2.2 2.2 v-2.8 h-2.8 v5 l-4 3.5 z"/>
+    </g>
+    <path class="g-rmap__leader" d="M210.2 630.2 L224.2 614.2"/>
+    <g class="g-rmap__tag" transform="translate(228.2 594.2)">
+      <text class="g-rmap__tag-h">Château de Gudanes</text>
+      <text class="g-rmap__tag-s" y="19">Château-Verdun</text>
+    </g>
+    <text class="g-rmap__off" x="336.1" y="948">to Barcelona</text>
+    <g class="g-rmap__card" transform="translate(366 24)">
+      <rect width="212" height="78"/>
+      <rect class="g-rmap__card-in" x="4" y="4" width="204" height="70"/>
+      <text x="106" y="34" text-anchor="middle" class="g-rmap__card-h">The Ariège</text>
+      <text x="106" y="56" text-anchor="middle" class="g-rmap__card-s">and the roads to Gudanes</text>
+    </g>
+    <g class="g-rmap__compass" transform="translate(528 650)" aria-hidden="true">
+      <circle r="20"/>
+      <path class="g-rmap__needle" d="M0 -16 L5 0 L0 16 L-5 0 Z"/>
+      <path d="M0 -16 L5 0 L-5 0 Z"/>
+      <text y="-26" text-anchor="middle">N</text>
+    </g>
+    <g class="g-rmap__scale" transform="translate(462.1 712)" aria-hidden="true">
+      <path d="M0 0 H131.7 M0 -4 V4 M65.9 -3 V3 M131.7 -4 V4"/>
+      <text x="65.9" y="19" text-anchor="middle">20 km</text>
+    </g>
+  </svg>
+  {#- drawn by tools/draw_route_map.py: end -#}
+    <figcaption class="g-rmap__cap">Towns to scale; roads drawn simply. For the turn-by-turn, use the directions{% if not house_maps %} your phone gives you{% endif %}.</figcaption>
+  </figure>
+
+  <div class="g-rmap__key">
+    <ul class="g-rmap__list" role="list">
+      {% for key, head, time, roads, origin in ROUTE_MAP_ROUTES %}
+      <li class="g-rmap__item g-rmap__item--{{ key }}">
+        <button type="button" class="g-rmap__pick" data-route="{{ key }}" aria-pressed="false">
+          <span class="g-rmap__swatch" aria-hidden="true"></span>
+          <strong class="g-rmap__h">{{ head }}</strong>
+          <small class="g-rmap__time">{{ time }}</small>
+        </button>
+        <p class="g-rmap__roads">{{ roads }}</p>
+        {% if house_maps and house_maps.dir %}
+        <a class="g-rmap__go" href="{{ house_maps.dir }}&amp;origin={{ origin|urlencode }}" rel="noopener">Directions from {{ origin }}</a>
+        {% endif %}
+      </li>
+      {% endfor %}
+      <li class="g-rmap__item g-rmap__item--rail">
+        <p class="g-rmap__pick g-rmap__pick--still">
+          <span class="g-rmap__swatch" aria-hidden="true"></span>
+          <strong class="g-rmap__h">By train</strong>
+          <small class="g-rmap__time">To Les Cabannes</small>
+        </p>
+        <p class="g-rmap__roads">From Toulouse up the valley. The station is three minutes from the gates by car.</p>
+      </li>
+    </ul>
+    {% if house_maps %}
+    <p class="g-rmap__btns">
+      <a class="g-btn g-btn--solid" href="{{ house_maps.google }}" rel="noopener">Open in Google Maps</a>
+      <a class="g-btn" href="{{ house_maps.apple }}" rel="noopener">Apple Maps</a>
+    </p>
+    <p class="g-rmap__note">The pin is the gates, not the village.</p>
+    {% endif %}
+  </div>
+</div>
+<script>
+(function(){
+  var maps = document.querySelectorAll('[data-rmap]');
+  Array.prototype.forEach.call(maps, function(m){
+    if (m.dataset.ready) return; m.dataset.ready = '1';
+    var picks = m.querySelectorAll('.g-rmap__pick[data-route]');
+    function show(key){
+      if (key) m.setAttribute('data-show', key); else m.removeAttribute('data-show');
+      Array.prototype.forEach.call(picks, function(b){
+        b.setAttribute('aria-pressed', b.dataset.route === key ? 'true' : 'false');
+      });
+    }
+    Array.prototype.forEach.call(picks, function(b){
+      b.addEventListener('click', function(){
+        show(m.getAttribute('data-show') === b.dataset.route ? null : b.dataset.route);
+      });
+    });
+  });
+})();
+</script>
+{% endmacro %}

@@ -547,6 +547,7 @@ SUITES = [
     "test_form_bot_guard",
     "test_bot_registrations_listed",
     "test_newsletter_signup",
+    "test_route_map",
 ]
 
 

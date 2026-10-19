@@ -1950,23 +1950,60 @@ def repair_newsletter_signup():
         if guarded != src:
             _write(rel, guarded)
 
-    # The footer band's rules, taken from git like the .g-plate__row rule: a
-    # literal copied here would go stale the first time the rule is improved.
+    n += _restore_css_section(".g-news--footer{", "the newsletter footer rules")
+    return n
+
+
+def _restore_css_section(needle, what):
+    """Put a whole commented section of gudanes.css back from git if the
+    stylesheet has arrived without it. Taken from git like the .g-plate__row
+    rule: a literal copied here would go stale the first time the rule is
+    improved. The section runs from the /* ==== banner above `needle` to the
+    next banner, or the end of the file."""
     rel = "static/gudanes.css"
     css = _read(rel)
-    if ".g-news--footer{" not in css:
-        try:
-            head = subprocess.run(
-                ["git", "show", f"HEAD:{rel}"], cwd=ROOT, capture_output=True,
-                text=True, encoding="utf-8", check=True).stdout.replace("\r\n", "\n")
-            at = head.index(".g-news--footer{")
-            start = head.rindex("/* ====", 0, at)
-            end = head.find("\n/* ====", at)
-            block = head[start:end if end != -1 else len(head)].rstrip("\n") + "\n"
-            _write(rel, css.rstrip("\n") + "\n\n" + block)
+    if needle in css:
+        return 0
+    try:
+        head = subprocess.run(
+            ["git", "show", f"HEAD:{rel}"], cwd=ROOT, capture_output=True,
+            text=True, encoding="utf-8", check=True).stdout.replace("\r\n", "\n")
+        at = head.index(needle)
+        start = head.rindex("/* ====", 0, at)
+        end = head.find("\n/* ====", at)
+        block = head[start:end if end != -1 else len(head)].rstrip("\n") + "\n"
+    except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+        print(f"  ! could not read {what} from git")
+        return 0
+    _write(rel, css.rstrip("\n") + "\n\n" + block)
+    return 1
+
+
+# THE ROUTE MAP ON CONTACT (19 October 2026). The owner asked for a map of
+# where the house is and the roads to it; it is drawn in _route_map.html and
+# called from Contact's Getting Here section. A handover redrawing contact.html
+# from an older copy would drop the call and the page would read as before,
+# perfectly. test_route_map goes red on it; this puts it back.
+ROUTE_MAP_CALL = ("{% from '_route_map.html' import route_map with context %}\n"
+                  "  {{ route_map() }}\n  ")
+
+
+def repair_route_map():
+    """The route map on Contact, and its rules in the stylesheet."""
+    n = 0
+    rel = "templates/contact.html"
+    src = _read(rel)
+    if "route_map()" not in src:
+        heading = src.find("Getting Here</h2>")
+        if heading == -1:
+            print("  ! contact.html: no Getting Here heading to put the map under")
+        else:
+            at = src.find('<div class="g-key', heading)
+            if at == -1:
+                at = src.find("\n", heading) + 1
+            _write(rel, src[:at] + ROUTE_MAP_CALL + src[at:])
             n += 1
-        except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
-            print("  ! could not read the newsletter footer rules from git")
+    n += _restore_css_section(".g-rmap{", "the route map rules")
     return n
 
 
@@ -2024,6 +2061,7 @@ def main():
         ("the address the owner retired, ariege@", repair_retired_addresses),
         ("the one newsletter form: footer, Contact, no ticks, bot guard",
          repair_newsletter_signup),
+        ("the route map on Contact", repair_route_map),
     ]
     total, failed = 0, []
     for label, fn in steps:

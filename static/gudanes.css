@@ -11642,3 +11642,128 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g-news__form input[type="email"]{ flex-basis: 100%; }
   .g .g-news--footer .g-btn--solid{ width: 100%; }
 }
+
+/* ==========================================================================
+   THE ROUTE MAP ON CONTACT (_route_map.html, drawn by tools/draw_route_map.py)
+   19 Oct 2026, the owner: a map "of where we are, design it nicely and show
+   the routes". An engraved-map look in the site's own blue and gilt: the
+   valley, the Pyrenees, the borders, and the four roads people take, each a
+   colour of its own that the legend repeats. Pressing a road in the legend
+   brings that road forward and fades the others. tools/repair_handover.py
+   puts this block back from git if a handover's stylesheet arrives without it.
+   ========================================================================== */
+.g-rmap{
+  --rmap-ground: #F3ECDD;
+  --rmap-toulouse: var(--blue-deep);
+  --rmap-carcassonne: #5E79A8;
+  --rmap-andorra: #8C6A35;
+  --rmap-barcelona: #A2532F;
+  --rmap-rail: #3E434C;
+  display: grid; gap: var(--s6); margin: var(--s6) 0 var(--s7);
+}
+@media (min-width: 60rem){
+  .g-rmap{ grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; column-gap: var(--s7); }
+}
+.g-rmap__fig{ margin: 0; }
+.g-rmap__svg{ display: block; width: 100%; height: auto; max-width: 40rem; margin-inline: auto; }
+.g-rmap__ground{ fill: var(--rmap-ground); stroke: var(--gilt-leaf); stroke-width: 2; }
+.g-rmap__peaks path{ fill: none; stroke: #BFAA85; stroke-width: 1.1; stroke-linejoin: round; stroke-linecap: round; opacity: .6; }
+.g-rmap__andorra{ fill: rgba(176,141,87,.12); }
+.g-rmap__border{ fill: none; stroke: #8C7A5B; stroke-width: 1.6; stroke-dasharray: .5 5; stroke-linecap: round; }
+.g-rmap__water{ fill: none; stroke: #86A9C4; stroke-width: 2; stroke-linecap: round; }
+.g-rmap__river{ font-family: var(--serif); font-style: italic; font-size: 13px; fill: #557C9C; }
+.g-rmap__rail{ fill: none; stroke: var(--rmap-rail); stroke-width: 1.6; stroke-dasharray: 6 4; opacity: .75; }
+.g-rmap__case{ fill: none; stroke: var(--rmap-ground); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
+.g-rmap__r{
+  fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round;
+  transition: opacity .25s ease, stroke-width .25s ease;
+}
+.g-rmap__r--toulouse{ stroke: var(--rmap-toulouse); }
+.g-rmap__r--carcassonne{ stroke: var(--rmap-carcassonne); }
+.g-rmap__r--andorra{ stroke: var(--rmap-andorra); }
+.g-rmap__r--barcelona{ stroke: var(--rmap-barcelona); }
+.g-rmap[data-show] .g-rmap__r{ opacity: .15; }
+.g-rmap[data-show="toulouse"] .g-rmap__r--toulouse,
+.g-rmap[data-show="carcassonne"] .g-rmap__r--carcassonne,
+.g-rmap[data-show="andorra"] .g-rmap__r--andorra,
+.g-rmap[data-show="barcelona"] .g-rmap__r--barcelona{ opacity: 1; stroke-width: 6; }
+.g-rmap__dot{ fill: #fff; stroke: var(--ink); stroke-width: 1.5; }
+.g-rmap__town, .g-rmap__city, .g-rmap__tag-h, .g-rmap__tag-s, .g-rmap__off{
+  paint-order: stroke; stroke: var(--rmap-ground); stroke-width: 4px; stroke-linejoin: round;
+}
+.g-rmap__town{ font-family: var(--ui); font-size: 14px; fill: var(--ink); }
+.g-rmap__town--small{ font-size: 12px; fill: var(--ink-soft); }
+.g-rmap__city{ font-family: var(--display); font-size: 21px; fill: var(--blue-deep); }
+.g-rmap__country{ font-family: var(--ui); font-size: 16px; letter-spacing: .5em; fill: #A3906A; }
+.g-rmap__country--small{ font-size: 12px; letter-spacing: .35em; }
+.g-rmap__shield rect{ fill: #fff; stroke: var(--blue-deep); stroke-width: 1.1; }
+.g-rmap__shield text{ font-family: var(--ui); font-size: 11px; font-weight: 700; letter-spacing: .04em; fill: var(--blue-deep); }
+.g-rmap__plane circle{ fill: var(--blue-deep); }
+.g-rmap__plane path{ fill: #fff; }
+.g-rmap__halo{ fill: rgba(176,141,87,.24); }
+.g-rmap__ring{ fill: var(--blue-deep); stroke: var(--gilt-leaf); stroke-width: 2.2; }
+.g-rmap__chateau path{ fill: var(--sand); }
+.g-rmap__leader{ fill: none; stroke: var(--gilt-leaf); stroke-width: 1.3; }
+.g-rmap__tag-h{ font-family: var(--display); font-size: 23px; fill: var(--blue-deep); }
+.g-rmap__tag-s{ font-family: var(--ui); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; fill: var(--gilt); }
+.g-rmap__off{ font-family: var(--serif); font-style: italic; font-size: 13px; fill: var(--rmap-barcelona); }
+.g-rmap__card rect{ fill: #FBF7EF; stroke: var(--gilt-leaf); stroke-width: 1.2; }
+.g-rmap__card .g-rmap__card-in{ fill: none; stroke-width: .6; }
+.g-rmap__card-h{ font-family: var(--display); font-size: 24px; fill: var(--blue-deep); }
+.g-rmap__card-s{ font-family: var(--serif); font-style: italic; font-size: 14px; fill: var(--gilt); }
+.g-rmap__compass circle{ fill: #FBF7EF; stroke: var(--gilt-leaf); stroke-width: 1.2; }
+.g-rmap__compass path{ fill: var(--blue-deep); }
+.g-rmap__compass .g-rmap__needle{ fill: none; stroke: var(--blue-deep); stroke-width: 1.2; }
+.g-rmap__compass text{ font-family: var(--ui); font-size: 12px; font-weight: 700; fill: var(--blue-deep); }
+.g-rmap__scale path{ fill: none; stroke: var(--ink); stroke-width: 1.3; }
+.g-rmap__scale text{ font-family: var(--ui); font-size: 12px; fill: var(--ink-soft); }
+.g-rmap__cap{ margin: var(--s3) auto 0; max-width: 40rem; font-family: var(--ui); font-size: var(--t-sm); color: var(--ink-soft); }
+
+/* The drawing shrinks to about 60% on a phone; the lettering grows to keep
+   pace, so a town name is still a town name and not a smudge. */
+@media (max-width: 40rem){
+  .g-rmap__town{ font-size: 21px; }
+  .g-rmap__town--small{ font-size: 18px; }
+  .g-rmap__city{ font-size: 29px; }
+  .g-rmap__tag-h{ font-size: 28px; }
+  .g-rmap__tag-s{ font-size: 16px; }
+  .g-rmap__country{ font-size: 22px; }
+  .g-rmap__country--small{ font-size: 17px; }
+  .g-rmap__river, .g-rmap__off{ font-size: 18px; }
+}
+
+/* The legend: one line per road, its colour, its time, and what it passes. */
+.g-rmap__list{ list-style: none; margin: 0; padding: 0; }
+.g-rmap__item{ padding: var(--s4) 0; border-top: 1px solid var(--line); }
+.g-rmap__item:last-child{ border-bottom: 1px solid var(--line); }
+.g-rmap__item--toulouse{ --rmap-c: var(--rmap-toulouse); }
+.g-rmap__item--carcassonne{ --rmap-c: var(--rmap-carcassonne); }
+.g-rmap__item--andorra{ --rmap-c: var(--rmap-andorra); }
+.g-rmap__item--barcelona{ --rmap-c: var(--rmap-barcelona); }
+.g .g-rmap__pick{
+  display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: var(--s3); row-gap: 2px;
+  width: 100%; min-height: 44px; margin: 0; padding: 0; border: 0; background: none;
+  text-align: left; font: inherit; color: inherit; cursor: pointer;
+}
+.g .g-rmap__pick--still{ cursor: default; }
+.g-rmap__swatch{
+  grid-row: 1 / span 2; align-self: center;
+  width: 34px; height: 5px; border-radius: 3px; background: var(--rmap-c, var(--ink));
+}
+.g-rmap__item--rail .g-rmap__swatch{
+  height: 2px; border-radius: 0;
+  background: repeating-linear-gradient(90deg, var(--rmap-rail) 0 6px, transparent 6px 10px);
+}
+.g .g-rmap__h{ font-family: var(--display); font-size: 21px; font-weight: 400; line-height: 1.2; color: var(--blue-deep); }
+.g .g-rmap__time{ font-family: var(--ui); font-size: var(--t-sm); letter-spacing: .08em; text-transform: uppercase; color: var(--gilt); }
+.g .g-rmap__roads{ margin: var(--s2) 0 0 calc(34px + var(--s3)); font-size: 16px; line-height: 1.55; color: var(--ink); }
+.g .g-rmap__go{
+  display: inline-flex; align-items: center; min-height: 44px;
+  margin-left: calc(34px + var(--s3)); font-family: var(--ui); font-size: var(--t-sm);
+}
+.g .g-rmap__pick:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 4px; }
+.g .g-rmap__pick[aria-pressed="true"] .g-rmap__h{
+  text-decoration: underline; text-decoration-color: var(--rmap-c); text-decoration-thickness: 2px; text-underline-offset: 5px;
+}
+.g-rmap__btns{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s5) 0 var(--s2); }
+.g-rmap__note{ margin: 0; font-family: var(--ui); font-size: var(--t-sm); color: var(--ink-soft); }

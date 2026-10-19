@@ -86,18 +86,17 @@
   <span class="g-hill" aria-hidden="true">{{ illus('depart') }}</span>
   <p class="g-eyebrow">The Journey</p>
   <h2 class="g-place">Getting Here</h2>
-  <div class="g-key">
+  {# 19 Oct (owner): "put a map onto the contact page too of where we are,
+     design it nicely and show the routes". Drawn, not embedded: see
+     _route_map.html. The train and the further-afield times moved into its
+     legend, beside the roads they belong to; the after-dark instruction and
+     the address stay here, where tools/repair_handover.py looks for them. #}
+  {% from '_route_map.html' import route_map with context %}
+  {{ route_map() }}
+  <div class="g-key g-key--after-map">
     <div class="g-key__i">
       <p class="g-key__k">By car</p>
       <p class="g-key__v">An hour and three quarters from Toulouse-Blagnac. The last four kilometres climb and are unlit: if you are arriving after dark, telephone when you leave Les Cabannes and someone will meet you at the gates</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">By train</p>
-      <p class="g-key__v">To Les Cabannes, three minutes from the gates by car</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Further afield</p>
-      <p class="g-key__v">Andorra, about an hour and a half; Carcassonne, about an hour and forty minutes; Barcelona, about three hours</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Address</p>
