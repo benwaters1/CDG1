@@ -60,6 +60,16 @@
            placeholder="days"
            value="{{ e['lead_time_days'] or '' if e is defined else '' }}">
   </div>
+  <fieldset class="days-off">
+    {#- A supplier shut on a day of the week: the reminder to arrange it
+        steps back off that day rather than landing where nobody can act. -#}
+    <legend class="field-label">Supplier shut on</legend>
+    {%- set off = (e['arrange_days_off'] or '').split(',') if e is defined else [] %}
+    {% for d in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
+    <label class="days-off-day"><input type="checkbox" name="arrange_days_off" value="{{ loop.index0 }}"
+           {{ 'checked' if loop.index0|string in off }}> {{ d }}</label>
+    {% endfor %}
+  </fieldset>
   <div>
     <label class="field-label" for="admin_extras-max-qty">Most one guest may take</label>
     <input id="admin_extras-max-qty" type="number" name="max_qty" min="1" style="width:6em;"
@@ -141,7 +151,9 @@
         {% if e['ask_when'] %}<span class="upload-hint">asks the guest which day</span>{% endif %}
         {% if e['max_qty'] %}<span class="upload-hint">at most {{ e['max_qty'] }} a stay</span>{% endif %}
       </td>
-      <td>{% if (e['lead_time_days'] or 0) > 0 %}{{ e['lead_time_days'] }} day{{ '' if e['lead_time_days'] == 1 else 's' }}{% else %}<span class="upload-hint">none</span>{% endif %}</td>
+      <td>{% if (e['lead_time_days'] or 0) > 0 %}{{ e['lead_time_days'] }} day{{ '' if e['lead_time_days'] == 1 else 's' }}{% else %}<span class="upload-hint">none</span>{% endif %}
+        {%- set off = (e['arrange_days_off'] or '').split(',')|reject('equalto', '')|list %}
+        {%- if off %}<br><span class="upload-hint">not arranged on {% for d in off %}{{ ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d|int] }}{{ ', ' if not loop.last }}{% endfor %}</span>{% endif %}</td>
       <td class="num">{{ e['price']|money }}
         <span class="upload-hint">VAT {{ '%g'|format(e['vat_rate'] if e['vat_rate'] is not none else extras_vat_default) }}%
           {%- if e['vat_part_amount'] %}, {{ e['vat_part_amount']|money }} at {{ '%g'|format(e['vat_part_rate']) }}%{% endif %}</span>
@@ -212,6 +224,16 @@
            placeholder="days"
            value="{{ e['lead_time_days'] or '' if e is defined else '' }}">
   </div>
+  <fieldset class="days-off">
+    {#- A supplier shut on a day of the week: the reminder to arrange it
+        steps back off that day rather than landing where nobody can act. -#}
+    <legend class="field-label">Supplier shut on</legend>
+    {%- set off = (e['arrange_days_off'] or '').split(',') if e is defined else [] %}
+    {% for d in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
+    <label class="days-off-day"><input type="checkbox" name="arrange_days_off" value="{{ loop.index0 }}"
+           {{ 'checked' if loop.index0|string in off }}> {{ d }}</label>
+    {% endfor %}
+  </fieldset>
   <div>
     <label class="field-label">Most one guest may take</label>
     <input aria-label="Most one guest may take" type="number" name="max_qty" min="1" style="width:6em;"

@@ -423,7 +423,9 @@ def _run(s, oc, ec, owner, emp, sent):
              "/admin/workshops/registrations", "The registration"),
             ("restaurant_booking", table, "restaurant_booking_confirmed", "/admin/restaurant",
              "The table"),
-            ("event", event, "event_inquiry_updated", "/admin/events", "The event")):
+            # An event's own page since 19 October 2026: the list is one line
+            # an event, and "What changed" is on the page the line opens.
+            ("event", event, "event_inquiry_updated", f"/admin/events/{event}", "The event")):
         s.check(f"a {kind.replace('_', ' ')}'s decision is on its own history",
                 len(_only(kind, record_id, action)) == 1,
                 detail=str([e["action"] for e in _lines(kind, record_id)]))

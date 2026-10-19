@@ -122,6 +122,12 @@ def run():
     s.section("An empty house still renders")
     # Both lists are optional in the template. If that ever stops being true,
     # a château with no rooms entered yet gets a broken front page on day one.
+    # Which were on, recorded rather than assumed: switching every row back on
+    # afterwards turned on anything deliberately off -- since z28 the sixth
+    # room, hidden until the owner ticks it, which every later suite then saw
+    # on sale.
+    rooms_on = [r[0] for r in conn.execute("SELECT id FROM rooms WHERE active = 1")]
+    workshops_on = [r[0] for r in conn.execute("SELECT id FROM workshops WHERE active = 1")]
     conn.execute("UPDATE rooms SET active = 0")
     conn.execute("UPDATE workshops SET active = 0")
     conn.commit()
@@ -135,8 +141,8 @@ def run():
             ROOM_MARK not in empty, detail=f"{empty.count(ROOM_MARK)} rooms shown")
     s.check("nor about dates", SIT_MARK not in empty,
             detail=f"{empty.count(SIT_MARK)} sittings shown")
-    conn.execute("UPDATE rooms SET active = 1")
-    conn.execute("UPDATE workshops SET active = 1")
+    conn.executemany("UPDATE rooms SET active = 1 WHERE id = ?", [(i,) for i in rooms_on])
+    conn.executemany("UPDATE workshops SET active = 1 WHERE id = ?", [(i,) for i in workshops_on])
     conn.commit()
 
     s.section("Signed in, the same address is the dashboard")

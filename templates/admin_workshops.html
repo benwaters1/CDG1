@@ -12,7 +12,7 @@
     <a href="{{ url_for('new_workshop') }}" class="btn-primary" style="margin-top:0;">+ Add workshop</a>
   </div>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">A workshop is the program (title, instructor, price); sessions are the specific dates it actually runs. Add a workshop, then schedule sessions under it. Record what a workshop uses up and each session says what to have ready.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">What is coming up first, every workshop together by date; then the programmes themselves. A programme is the workshop (title, teacher, price, what it uses); its sittings are the dates it runs. Open a sitting for who is coming and its money, or a programme for its setup.</p>
 
 {% with endpoint = 'admin_workshops' %}{% include "_period_selector.html" %}{% endwith %}
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
@@ -24,284 +24,151 @@
   {{ spots_remaining }} spots still free across them
 </p>
 
+{#- WHAT IS COMING UP. Every programme's sittings in one list by date, each
+    saying how full it is, what is still to decide, the money, and the way
+    in. It was the question asked every morning and the one the page made
+    hardest: a sitting was four levels down a programme's card. -#}
+{#- What needs somebody, before the list (19 October 2026): each sitting with
+    the jobs on it in words, so nobody opens every one to find out which. -#}
+{% if needs_you %}
+<h2 class="section-heading" style="margin-top:0;">Needs you</h2>
+<div class="ws-needs">
+  {% for row in needs_you %}{% set s = row.session %}
+  <a class="ws-need" href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">
+    <span class="ws-need-head"><b>{{ row.workshop['title'] }}</b>
+      <span class="upload-hint">{{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}</span></span>
+    <ul class="ws-need-list">{% for n in row.needs %}<li>{{ n }}</li>{% endfor %}</ul>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-heading" {% if not needs_you %}style="margin-top:0;"{% endif %} id="coming">Coming up</h2>
+{% if not coming %}
+  <div class="empty-state">No sittings to come. Add one to a programme below.</div>
+{% else %}
+{% include "_list_toolbar.html" %}
+{% if not lv.rows %}
+  <div class="empty-state">Nothing matches that. <a href="{{ url_for('admin_workshops') }}">Show all {{ coming|length }}</a></div>
+{% endif %}
+<div class="ws-sits">
+  {% for row in lv.rows %}
+  {% set s = row.session %}
+  {% set off = s['cancelled_at'] %}
+  {% set cap = s['capacity'] or 0 %}
+  <article class="ws-sit {{ 'is-off' if off }}">
+    <a class="ws-sit-date" href="{{ url_for('admin_workshop_session', session_id=s['id']) }}" aria-label="Open the sitting of {{ s['start_date']|date_short }}">
+      {% if row.first %}
+      <span class="ws-sit-dow">{{ row.first.strftime('%a') }}</span>
+      <span class="ws-sit-day">{{ row.first.day }}</span>
+      <span class="ws-sit-mon">{{ row.first.strftime('%b') }}</span>
+      {% endif %}
+    </a>
+    <div class="ws-sit-main">
+      <a class="ws-sit-title" href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">{{ row.workshop['title'] }}</a>
+      <p class="ws-sit-when"><a href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">{{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}</a>
+        {%- if not off %} · {{ row.remaining }}/{{ s['capacity'] }} spots left{% endif %}
+        {%- if row.nights %} · {{ row.nights }} night{{ '' if row.nights == 1 else 's' }}{% endif %}
+        {%- if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
+      </p>
+      {% if off %}
+        <span class="mini-status status-declined">called off {{ s['cancelled_at']|house_day|date_short }}{% if s['cancelled_reason'] %} — {{ s['cancelled_reason'] }}{% endif %}</span>
+      {% else %}
+        {#- How full, at a glance: confirmed, waiting on a decision, free. -#}
+        <div class="ws-bar" role="img" aria-label="{{ row.confirmed }} confirmed, {{ row.pending }} waiting on a decision{% if row.holding %}, {{ row.holding }} waiting for the deposit{% endif %}, {{ row.remaining }} free of {{ cap }}">
+          {% if cap %}
+          <span class="ws-bar-in" style="width:{{ (row.confirmed / cap * 100)|round(1) }}%"></span><span class="ws-bar-wait" style="width:{{ (row.pending / cap * 100)|round(1) }}%"></span><span class="ws-bar-hold" style="width:{{ (row.holding / cap * 100)|round(1) }}%"></span>
+          {% endif %}
+        </div>
+        <p class="ws-sit-counts">
+          <b>{{ row.confirmed }}</b> confirmed
+          {%- if row.pending %} · <a class="ws-decide" href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">{{ row.pending }} to decide</a>{% endif %}
+          {%- if row.holding %} · <span class="ws-holding">{{ row.holding }} waiting for the deposit</span>{% endif %}
+          · {{ row.remaining }} free
+          {%- if row.remaining <= 0 %} <span class="mini-status status-inactive">full</span>{% endif %}
+          · {{ row.rooms_assigned }} room{{ '' if row.rooms_assigned == 1 else 's' }} given out
+        </p>
+      {% endif %}
+      {% if row.at_risk %}{% set r = row.at_risk %}
+      <p class="ws-sit-risk {{ 'is-urgent' if r.urgent and not r.waitlist_could_fill }}">
+        <b>{{ r.confirmed }} of {{ r.minimum }} needed</b> to run{% if r.pending %} ({{ r.pending }} more registered without paying, not counted){% endif %}.
+        {% if r.overdue %}The date for deciding passed {{ r.decide_by.isoformat()|date_short }}.{% else %}Decide by {{ r.decide_by.isoformat()|date_short }}.{% endif %}
+        {% if r.waitlist_could_fill %}<a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link">{{ r.waiting }} waiting could cover it — ring them</a> before calling it off.
+        {% elif r.waiting %}{{ r.waiting }} waiting, not enough to cover it.
+        {% else %}Nobody is waiting.{% endif %}
+      </p>
+      {% endif %}
+      {% if row.materials and row.materials.lines %}{% set mp = row.materials %}
+      <p class="ws-sit-stock">
+        <b>Materials</b> for {{ mp.heads }} {{ 'place' if mp.heads == 1 else 'places' }}:
+        {% for l in mp.lines %}{{ '%g'|format(l.need) }} {{ l.unit }} {{ l.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+        {%- if mp.cost %} · {{ mp.cost|money }}{% endif %}.
+        {% if mp.taken_out %}<span class="mini-status status-inactive">taken out of stock</span>
+        {% elif mp.short %}<span class="ws-short">Short {% for l in mp.short %}{{ '%g'|format(l.shortfall) }} {{ l.unit }} of {{ l.name }}{% if not loop.last %}, {% endif %}{% endfor %}.</span>{% endif %}
+        {% if not mp.taken_out %}
+        {# Deliberately a button rather than something automatic on the end
+           date: only somebody who was there knows it actually ran. #}
+        <form method="post" action="{{ url_for('consume_workshop_materials', session_id=s['id']) }}" onsubmit="return confirm('Take these materials out of stock? This cannot be undone from here.');" class="ws-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="small-link ws-linkbtn">Take out of stock</button>
+        </form>
+        {% endif %}
+      </p>
+      {% endif %}
+    </div>
+    <div class="ws-sit-money">
+      {% if row.register.paid or row.register.owed %}
+      <span class="ws-sit-money-in">{{ row.register.paid|money(0) }} in</span>
+      {% if row.register.owed %}<span class="upload-hint">{{ row.register.owed|money(0) }} owed</span>{% endif %}
+      {% else %}<span class="upload-hint">no money yet</span>{% endif %}
+    </div>
+    <nav class="ws-sit-links" aria-label="This sitting">
+      <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}">Who is coming ({{ row.register.booked }})</a>
+      <a href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}">Running sheet</a>
+      <a href="{{ url_for('workshop_rooming', session_id=s['id']) }}">Rooming</a>
+      {# The public workshops page promises dates reach the newsletter before
+         they reach the site, so the step is here, next to the session. #}
+      <a href="{{ url_for('admin_emails') }}">Announce</a>
+    </nav>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+
+{#- THE PROGRAMMES. One line each, with its next sitting; its setup (stock,
+    questions, past sittings) is on its own page. Adding a sitting stays here,
+    folded, because it is the thing most often done to a programme. -#}
+<h2 class="section-heading">Programmes</h2>
 {% if not workshops %}
   <div class="empty-state">No workshops yet. Add one to start scheduling sessions.</div>
 {% else %}
+<div class="ws-progs">
   {% for w in workshops %}
-  <div class="expense-card">
-    <div class="expense-head">
+  {% set rows = sessions_by_workshop.get(w['id'], []) %}
+  {% set live = rows|rejectattr('session.cancelled_at')|list %}
+  <div class="ws-prog {{ 'is-hidden' if not w['active'] }}">
+    <div class="ws-prog-head">
       <div>
-        <strong>{{ w['title'] }}</strong>
-        {% if w['price_per_person'] %} — {{ w['price_per_person']|money(0) }}/person{% endif %}
-        {% if w['instructor_name'] or w['instructor_user_id'] %} · {{ w['instructor_name'] or 'instructor on staff' }}{% endif %}
-        <span class="mini-status {{ 'status-active' if w['active'] else 'status-inactive' }}" style="margin-left:8px;">{{ 'open for registration' if w['active'] else 'hidden' }}</span>
+        <a class="ws-prog-title" href="{{ url_for('admin_workshop', workshop_id=w['id']) }}">{{ w['title'] }}</a>
+        <span class="upload-hint">
+          {%- if w['price_per_person'] %}{{ w['price_per_person']|money(0) }} a person{% endif %}
+          {%- if w['instructor_name'] or w['instructor_user_id'] %} · {{ w['instructor_name'] or 'instructor on staff' }}{% endif %}
+          {%- if live %} · next {{ live[0].session['start_date']|date_short }}{% if live|length > 1 %}, {{ live|length - 1 }} more after{% endif %}{% else %} · nothing scheduled{% endif %}
+          {%- set past_n = past_by_workshop.get(w['id'], [])|length %}{% if past_n %} · {{ past_n }} past{% endif %}
+        </span>
       </div>
-      <a href="{{ url_for('edit_workshop', workshop_id=w['id']) }}" class="small-link" style="color:var(--steel);">Edit</a>
+      <div class="ws-prog-actions">
+        <span class="mini-status {{ 'status-active' if w['active'] else 'status-inactive' }}">{{ 'open for registration' if w['active'] else 'hidden' }}</span>
+        <a href="{{ url_for('admin_workshop', workshop_id=w['id']) }}" class="btn-mini">Open</a>
+      </div>
     </div>
-    {% if w['description'] %}<p class="manual-body">{{ w['description'] }}</p>{% endif %}
-
-    <p class="field-label" style="margin-top:14px;">Upcoming sessions</p>
-    {% set rows = sessions_by_workshop.get(w['id'], []) %}
-    {% if not rows %}
-      <p class="empty-inline">No sessions scheduled.</p>
-    {% else %}
-      <div class="doc-list">
-        {% for row in rows %}
-        {% set s = row.session %}
-        <div class="doc-row">
-          {# The whole first line: when it is and how full. The links follow it
-             rather than squeezing it into a column of its own. #}
-          <span style="flex:1 1 100%;">
-            {{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}
-            {% if not s['cancelled_at'] %}
-            · {{ row.remaining }}/{{ s['capacity'] }} spots left
-            {% if row.remaining <= 0 %}<span class="mini-status status-inactive" style="margin-left:6px;">full</span>{% endif %}
-            {% endif %}
-            {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
-            {% if row.at_risk %}{% set r = row.at_risk %}
-            <div class="upload-hint" style="margin-top:4px;color:{{ 'var(--rust)' if r.urgent and not r.waitlist_could_fill else 'var(--steel)' }};">
-              <b>{{ r.confirmed }} of {{ r.minimum }} needed</b> to run{% if r.pending %} ({{ r.pending }} more registered without paying, not counted){% endif %}.
-              {% if r.overdue %}The date for deciding passed {{ r.decide_by }}.{% else %}Decide by {{ r.decide_by }}.{% endif %}
-              {% if r.waitlist_could_fill %}<a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link">{{ r.waiting }} waiting could cover it — ring them</a> before calling it off.
-              {% elif r.waiting %}{{ r.waiting }} waiting, not enough to cover it.
-              {% else %}Nobody is waiting.{% endif %}
-            </div>
-            {% endif %}
-            · <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">{{ row.rooms_assigned }}/{{ total_rooms }} rooms assigned — see rooms</a>
-            {% if row.materials and row.materials.lines %}{% set mp = row.materials %}
-            <div class="upload-hint" style="margin-top:4px;">
-              <b>Materials</b> for {{ mp.heads }} {{ 'place' if mp.heads == 1 else 'places' }}:
-              {% for l in mp.lines %}{{ '%g'|format(l.need) }} {{ l.unit }} {{ l.name }}{% if not loop.last %}, {% endif %}{% endfor %}
-              {%- if mp.cost %} · {{ mp.cost|money }}{% endif %}.
-              {% if mp.taken_out %}
-                <span class="mini-status status-inactive">taken out of stock</span>
-              {% elif mp.short %}
-                <span style="color:var(--rust);">Short {% for l in mp.short %}{{ '%g'|format(l.shortfall) }} {{ l.unit }} of {{ l.name }}{% if not loop.last %}, {% endif %}{% endfor %}.</span>
-              {% endif %}
-            </div>
-            {% endif %}
-          </span>
-          {% if row.materials and row.materials.lines and not row.materials.taken_out %}
-          {# Deliberately a button rather than something automatic on the end
-             date: only somebody who was there knows it actually ran, and a
-             job that depletes stock for a workshop that was called off is
-             worse than one that never fires. #}
-          <form method="post" action="{{ url_for('consume_workshop_materials', session_id=s['id']) }}" onsubmit="return confirm('Take these materials out of stock? This cannot be undone from here.');" style="display:inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="small-link" style="background:none;border:0;padding:0;cursor:pointer;color:var(--steel);">Take out of stock</button>
-          </form>
-          {% endif %}
-          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Who is coming ({{ row.register.booked }}){% if row.register.owed %} · {{ row.register.owed|money(0) }} owed{% endif %}</a>
-          <a href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Running sheet</a>
-          <a href="{{ url_for('workshop_rooming', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Rooming</a>
-          {# The public workshops page promises dates reach the newsletter
-             before they reach the site. Nothing made that true, and nothing
-             made it findable either — so the step is here, next to the
-             session it is about. #}
-          <a href="{{ url_for('admin_emails') }}" class="small-link" style="color:var(--steel);">Announce</a>
-          <details class="refund-box" style="flex-basis:100%;">
-          <summary>Places, the teaching link, or calling it off</summary>
-          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:10px 12px;">
-          {# Capacity could only ever be set when the session was made, so
-             changing it meant deleting the session and losing its
-             registrations. It is a number the house changes as rooms open. #}
-          <form method="post" action="{{ url_for('edit_workshop_session', session_id=s['id']) }}" style="display:inline; gap:4px; align-items:center;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="start_date" value="{{ s['start_date'] }}">
-            <input type="hidden" name="end_date" value="{{ s['end_date'] }}">
-            <input type="hidden" name="notes" value="{{ s['notes'] or '' }}">
-            <label class="upload-hint" for="cap_{{ s['id'] }}">Places</label>
-            <input type="number" id="cap_{{ s['id'] }}" name="capacity" min="1" step="1"
-                   value="{{ s['capacity'] }}" style="width:4.5em;"
-                   aria-label="Places on the session starting {{ s['start_date']|date_short }}">
-            <button type="submit" class="btn-mini">Save</button>
-          </form>
-          {#- CALLING IT OFF, which deleting could never be. Deleting refuses
-              while anybody is registered and tells you to cancel them one at a
-              time; this cancels every place through the same follow-up as a
-              single cancellation, tells the waiting list it is not running,
-              and says who is owed money back without moving any. -#}
-          {% if s['cancelled_at'] %}
-          <span class="mini-status status-declined">called off {{ s['cancelled_at']|house_day|date_short }}{% if s['cancelled_reason'] %} — {{ s['cancelled_reason'] }}{% endif %}</span>
-          {% else %}
-          <form method="post" action="{{ url_for('call_off_workshop_session', session_id=s['id']) }}"
-                onsubmit="return confirm('Call this sitting off? Everybody registered is cancelled and written to, and the waiting list is told it is not running.');"
-                style="display:inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input aria-label="Why (they are told)" type="text" name="reason" placeholder="Why (they are told)" style="max-width:180px;">
-            {% if can('refund_desk') %}
-            <label class="checkbox-row"><input type="checkbox" name="refund" value="1"> <span>and refund what each paid, to their cards</span></label>
-            {% endif %}
-            <button type="submit" class="btn-mini btn-mini-danger">Call it off</button>
-          </form>
-          {% endif %}
-          {#- A read-only page for whoever is teaching: who is coming, what
-              they cannot eat, the materials. No money on it. -#}
-          <form method="post" action="{{ url_for('workshop_instructor_link', session_id=s['id']) }}" style="display:inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            {% if s['instructor_token'] %}<input type="hidden" name="off" value="1">{% endif %}
-            <button type="submit" class="btn-mini">{{ 'Stop the teaching link' if s['instructor_token'] else 'Link for whoever teaches' }}</button>
-          </form>
-          <form method="post" action="{{ url_for('delete_workshop_session', session_id=s['id']) }}" onsubmit="return confirm('Remove this session?');" style="display:inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-text-danger">Remove this session</button>
-          </form>
-          </div>
-          </details>
-        </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-
-    {% set past_rows = past_by_workshop.get(w['id'], []) %}
-    {% if past_rows %}
-    <details style="margin-top:10px;">
-      <summary class="small-link" style="color:var(--steel); cursor:pointer;">Past sessions ({{ past_rows|length }})</summary>
-      <div class="doc-list" style="margin-top:6px;">
-        {% for row in past_rows %}
-        {% set s = row.session %}
-        <div class="doc-row">
-          <span style="flex:1;">
-            {{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}
-            · {{ row.attended }}/{{ s['capacity'] }} attended
-            {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
-          </span>
-          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Who came ({{ row.register.booked }}){% if row.register.owed %} · {{ row.register.owed|money(0) }} owed{% endif %}</a>
-          <a href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Running sheet</a>
-          <a href="{{ url_for('workshop_rooming', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Rooming</a>
-        </div>
-        {% endfor %}
-      </div>
-    </details>
-    {% endif %}
-
     <details class="refund-box">
     <summary>+ Add a session</summary>
-    <form method="post" action="{{ url_for('new_workshop_session', workshop_id=w['id']) }}" class="upload-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field-row-2">
-        <div>
-          <label class="field-label" for="s-start-{{ w['id'] }}">First day</label>
-          <input id="s-start-{{ w['id'] }}" type="date" name="start_date" required>
-        </div>
-        <div>
-          <label class="field-label" for="s-end-{{ w['id'] }}">Last day (blank for a single day)</label>
-          <input id="s-end-{{ w['id'] }}" type="date" name="end_date">
-        </div>
-      </div>
-      <div class="field-row-2">
-        <div>
-          <label class="field-label" for="s-cap-{{ w['id'] }}">Places</label>
-          <input id="s-cap-{{ w['id'] }}" type="number" name="capacity" min="1" placeholder="{{ w['default_capacity'] }} if left blank">
-        </div>
-        <div>
-          <label class="field-label" for="s-min-{{ w['id'] }}">Fewest it can run with</label>
-          <input id="s-min-{{ w['id'] }}" type="number" name="min_participants" min="0" placeholder="Blank for no minimum">
-        </div>
-      </div>
-      <div class="field-row-2">
-        <div>
-          <label class="field-label" for="s-decide-{{ w['id'] }}">Decide this many days before</label>
-          <input id="s-decide-{{ w['id'] }}" type="number" name="decide_by_days" min="0" placeholder="21 if left blank">
-        </div>
-        <div>
-          <label class="field-label" for="s-notes-{{ w['id'] }}">Notes (optional)</label>
-          <input id="s-notes-{{ w['id'] }}" type="text" name="notes">
-        </div>
-      </div>
-      <p class="pay-disclaimer" style="margin-top:-4px;">Set a minimum and a session that will not reach it appears on your home page while there is still time to ring the waitlist or call it off.</p>
-      <button type="submit" class="btn-mini">Add session</button>
-    </form>
-    </details>
-
-    <p class="field-label" style="margin-top:14px;">What it uses up</p>
-    {% set mats = materials_by_workshop.get(w['id'], []) %}
-    {% if not mats %}
-      <p class="empty-inline">Nothing recorded.</p>
-    {% else %}
-      <div class="doc-list">
-        {% for mt in mats %}
-        <div class="doc-row">
-          <span style="flex:1;">
-            {{ mt['name'] }}
-            {%- if mt['qty_per_person'] %} · {{ '%g'|format(mt['qty_per_person']) }} {{ mt['unit'] }} per person{% endif %}
-            {%- if mt['qty_per_session'] %} · {{ '%g'|format(mt['qty_per_session']) }} {{ mt['unit'] }} per session{% endif %}
-            {%- if not mt['item_active'] %} <span class="mini-status status-inactive">item retired</span>{% endif %}
-            {%- if mt['note'] %} <span class="upload-hint">— {{ mt['note'] }}</span>{% endif %}
-          </span>
-          <form method="post" action="{{ url_for('remove_workshop_material', material_id=mt['id']) }}" style="display:inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="doc-delete" aria-label="Stop listing {{ mt['name'] }}" title="Stop listing this">×</button>
-          </form>
-        </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-    {% if stock_choices %}
-    <details class="refund-box">
-    <summary>+ Add something it uses up</summary>
-    <form method="post" action="{{ url_for('add_workshop_material', workshop_id=w['id']) }}" class="upload-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field-row-2">
-        <select name="stock_item_id" required aria-label="What, from stock">
-          <option value="">Something from stock…</option>
-          {% for it in stock_choices %}
-          <option value="{{ it['id'] }}">{{ it['name'] }} ({{ it['unit'] }})</option>
-          {% endfor %}
-        </select>
-        <input aria-label="Note (optional)" type="text" name="note" placeholder="Note (optional)">
-      </div>
-      <div class="field-row-2">
-        <input aria-label="Per person (e.g. 2)" type="text" name="qty_per_person" placeholder="Per person (e.g. 2)">
-        <input aria-label="Per session (e.g. 8)" type="text" name="qty_per_session" placeholder="Per session (e.g. 8)">
-      </div>
-      <p class="pay-disclaimer">Per person scales with who comes; per session does not — eight aprons is eight aprons whether four people come or ten. Set either or both.</p>
-      <button type="submit" class="btn-mini">Add it</button>
-    </form>
-    </details>
-    {% endif %}
-
-    <p class="field-label" style="margin-top:14px;">Custom registration questions</p>
-    {% set fields = custom_fields_by_workshop.get(w['id'], []) %}
-    {% if not fields %}
-      <p class="empty-inline">None &mdash; the standard questions only.</p>
-    {% else %}
-      <div class="doc-list">
-        {% for f in fields %}
-        <div class="doc-row">
-          <span style="flex:1;">{{ f['label'] }} <span class="upload-hint">({{ f['field_type'] }}{% if f['required'] %} · required{% endif %}{% if f['options'] %} · {{ f['options'] }}{% endif %})</span></span>
-          <form method="post" action="{{ url_for('delete_workshop_custom_field', field_id=f['id']) }}" onsubmit="return confirm('Remove this question?');" style="display:inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="doc-delete" aria-label="Stop asking: {{ f['label'] }}" title="Stop asking this">×</button>
-          </form>
-        </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-    <details class="refund-box">
-    <summary>+ Ask the people registering something extra</summary>
-    <form method="post" action="{{ url_for('new_workshop_custom_field', workshop_id=w['id']) }}" class="upload-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field-row-2">
-        <input aria-label="Question (e.g. Shuttle pickup time)" type="text" name="label" placeholder="Question (e.g. Shuttle pickup time)" required>
-        <select name="field_type" aria-label="How they answer">
-          <option value="text">Short text</option>
-          <option value="textarea">Long text</option>
-          <option value="select">Choice (comma-separated options)</option>
-          <option value="checkbox">Yes/No</option>
-        </select>
-      </div>
-      <div class="field-row-2">
-        <input aria-label="Options, comma-separated (only for Choice)" type="text" name="options" placeholder="Options, comma-separated (only for Choice)">
-        <label class="field-label" style="flex-direction:row; align-items:center; gap:6px;">
-          <input type="checkbox" name="required"> Required
-        </label>
-      </div>
-      <button type="submit" class="btn-mini">Add question</button>
-    </form>
+    {% with w = w %}{% include "_workshop_add_sitting.html" %}{% endwith %}
     </details>
   </div>
   {% endfor %}
+</div>
 {% endif %}
 
 {% endblock %}

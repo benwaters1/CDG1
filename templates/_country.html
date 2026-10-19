@@ -2,7 +2,7 @@
     all required. Each is posted as its own field (guest_address, guest_city, guest_postcode, guest_country) and stored in
     its own column (app.py, PATCH_guest_details.diff) - never added to the special requests. Choosing a country also sets
     the telephone code, unless the guest has already picked one. -#}
-{%- from '_phone.html' import PHONE_CODES -%}
+{%- from '_phone.html' import PHONE_CODES, search_select_script -%}
 
 {%- macro country_field(details=None) -%}
 {#- details: what the app saved (returning from Stripe), else what was just posted (a validation error) -#}
@@ -29,7 +29,8 @@
 </div>
 <div class="g-field g-country">
   <label for="guest_country">Country of residence<span class="g-req" aria-hidden="true">*</span></label>
-  <select id="guest_country" name="guest_country" required data-country autocomplete="country-name">
+  <select id="guest_country" name="guest_country" required data-country autocomplete="country-name"
+          data-searchable data-search-hint="Start typing your country">
     <option value="">Choose your country</option>
     {%- for iso, cname, code in PHONE_CODES|sort(attribute=1) %}
     {%- if not (iso == 'CA' and cname == 'Canada' and false) %}
@@ -50,10 +51,11 @@
     if (!sel.value && region){ var o = sel.querySelector('option[data-iso="' + region + '"]'); if (o) sel.value = o.value; }
     sel.addEventListener('change', function(){
       var iso = (sel.selectedOptions[0] || {}).dataset ? sel.selectedOptions[0].dataset.iso : '';
-      if (cc && iso && !cc.dataset.touched){ var p = cc.querySelector('option[data-iso="' + iso + '"]'); if (p) cc.value = p.value; }
+      if (cc && iso && !cc.dataset.touched){ var p = cc.querySelector('option[data-iso="' + iso + '"]'); if (p){ p.selected = true; cc.dispatchEvent(new Event('g-sync')); } }
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
 </script>
+{{ search_select_script() }}
 {%- endmacro -%}

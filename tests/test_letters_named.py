@@ -123,7 +123,8 @@ def run():
     s.section("A letter written in code is named by what writes it")
     with _Capture() as filed:
         r = oc.post("/contact", data={"email": f"{TAG.lower()}c@example.invalid",
-                                      "name": f"{TAG} Asker", "message": "Two nights?"})
+                                      "name": f"{TAG} Asker", "message": "Two nights?",
+                                      **_harness.contact_form_fields()})
         mine = [x for x in filed.rows if x.get("template_key") == "code:contact_page"]
         s.check("the contact form's notice to the house is filed as the contact page's",
                 r.status_code in (200, 302) and bool(mine),

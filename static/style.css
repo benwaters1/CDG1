@@ -607,6 +607,71 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
 .room-pick__name{ display:block; font-weight:600; }
 .room-pick__price{ display:block; font-variant-numeric:tabular-nums; font-size:19px; }
 .room-pick__note{ display:block; font-size:12px; color:var(--steel); }
+/* Add a booking (19 October 2026): five steps and a summary beside them.
+   The summary sits to the right on a wide screen and follows the steps on
+   a narrow one, so the price and what will be sent are always in reach of
+   the button. */
+.nb{ margin:0; }
+.nb-count{ display:flex; flex-direction:column; gap:4px; }
+#nb_rooms .room-pick__tile.is-taken{ min-height:0; padding-top:9px; padding-bottom:9px; }
+.nb-grid{ display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:22px; align-items:start; }
+.nb-main{ min-width:0; }
+.nb-step{ background:var(--surface); border:1px solid var(--parchment-line); border-radius:12px;
+  padding:18px 20px 16px; margin-bottom:14px; }
+.nb-step__h{ display:flex; align-items:center; gap:10px; font-size:17px; margin:0 0 12px; }
+.nb-num{ display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px;
+  border-radius:50%; background:var(--gold); color:var(--chestnut-deep); font-size:13px; font-weight:700;
+  flex-shrink:0; }
+.nb-modes{ display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:10px; }
+.nb-mode{ display:block; position:relative; padding:12px 12px 12px 38px; border:1px solid var(--parchment-line);
+  border-radius:10px; cursor:pointer; background:var(--parchment); }
+.nb-mode input{ position:absolute; left:13px; top:15px; }
+.nb-mode:has(input:checked){ border-color:var(--gold); background:var(--status-warn-bg);
+  box-shadow:0 0 0 2px var(--focus-ring); }
+.nb-mode__t{ display:block; font-weight:600; margin-bottom:3px; }
+.nb-mode__d{ display:block; font-size:13px; color:var(--ink-soft); line-height:1.4; }
+.nb-inline{ margin-top:12px; }
+.nb-short{ max-width:12em; }
+.nb-dates{ display:grid; grid-template-columns:1fr 1fr auto; gap:12px; align-items:end; }
+.nb-nights{ margin:0 0 10px; font-weight:600; white-space:nowrap; color:var(--ink); }
+.nb-quick{ display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 14px; }
+.nb-party{ display:flex; flex-wrap:wrap; gap:18px; }
+.nb-stepper{ display:inline-flex; align-items:center; gap:6px; }
+.nb-stepper input{ width:4.2em; text-align:center; }
+.nb-stepper .btn-mini{ min-width:36px; font-size:17px; line-height:1; }
+.nb-opt{ font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink-soft); }
+.nb-pay{ display:flex; gap:8px; }
+.nb-pay input{ flex:1 1 7em; min-width:0; }
+.nb-pay select{ flex:1 1 9em; min-width:0; }
+.nb-summary{ position:sticky; top:16px; }
+.nb-card{ background:var(--surface); border:1px solid var(--gold); border-radius:12px; padding:18px 18px 16px;
+  box-shadow:var(--shadow); }
+.nb-card__h{ font-size:17px; margin:0 0 10px; }
+.nb-card__sub{ font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft);
+  margin:16px 0 6px; }
+.nb-sum{ margin:0; }
+.nb-sum > div{ display:flex; justify-content:space-between; gap:12px; padding:6px 0;
+  border-bottom:1px solid var(--parchment-line); }
+.nb-sum dt{ color:var(--ink-soft); }
+.nb-sum dd{ margin:0; text-align:right; font-weight:500; min-width:0; overflow-wrap:anywhere; }
+.nb-sum__money dd{ font-variant-numeric:tabular-nums; }
+.nb-sum__total dt, .nb-sum__total dd{ font-weight:700; color:var(--ink); }
+.nb-sum__owed{ border-bottom:0 !important; }
+.nb-sum__owed dd{ font-weight:700; color:var(--gold-on-warn); }
+.nb-what{ margin:0 0 14px; padding-left:18px; font-size:13px; line-height:1.45; }
+.nb-what li{ margin-bottom:4px; }
+.nb-go{ width:100%; }
+.nb-problem{ margin:10px 0 0; padding:8px 10px; border-radius:8px; background:var(--flash-error-bg);
+  border:1px solid var(--flash-error-border); font-size:13px; }
+@media (max-width: 900px){
+  .nb-grid{ grid-template-columns:1fr; }
+  .nb-summary{ position:static; }
+}
+@media (max-width: 520px){
+  .nb-step{ padding:14px 14px 12px; }
+  .nb-dates{ grid-template-columns:1fr 1fr; }
+  .nb-nights{ grid-column:1 / -1; margin:0; }
+}
 .stat-tiles{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:12px; margin-bottom:22px; }
 .stat-tile{
   display:flex; align-items:center; gap:13px;
@@ -1448,7 +1513,6 @@ body.staff-shell .month-cal-badge-dinner{ color:var(--steel); }
 .cal-daynum:hover{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .cal-day-today .cal-daynum{ background:var(--gold); color:var(--chestnut-deep); border-radius:999px; min-width:24px; height:22px; line-height:20px; }
 .cal-day-events{ display:flex; flex-direction:column; gap:2px; min-width:0; overflow:hidden; }
-.cal-day-empty{ font-size:11px; color:var(--ink-soft); opacity:0.5; }
 
 .cal-ev{
   display:flex; align-items:center; gap:6px; min-width:0;
@@ -3455,3 +3519,256 @@ section[id]{ scroll-margin-top:80px; }
   .bk-stack td[data-label]::before{ content:attr(data-label); grid-column:1; grid-row:1 / span 20; justify-self:start; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); text-align:left; }
 }
 .bk-tasks .mini-status{ margin-right:6px; }
+
+/* ---------- Extras: the days a supplier is shut ---------- */
+.days-off{ border:0; margin:0; padding:0; min-width:0; display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; }
+.days-off legend{ width:100%; padding:0; }
+.days-off-day{ display:inline-flex; align-items:center; gap:4px; font-size:12.5px; white-space:nowrap; }
+.days-off-day input{ width:auto; margin:0; }
+
+/* ---------- One event's page, and the tabs its pages share ---------- */
+.field-row-3{ display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; }
+@media (max-width: 760px){ .field-row-3{ grid-template-columns:1fr; } }
+.ev-sub{ margin:4px 0 0; color:var(--ink-soft); font-size:14px; }
+.ev-ref{ font-family:'IBM Plex Mono', monospace; font-size:12px; }
+.ev-tabs{ display:flex; flex-wrap:wrap; gap:4px; margin:-8px 0 18px; border-bottom:1px solid var(--parchment-line); }
+.ev-tabs a{ padding:9px 14px; font-size:13.5px; font-weight:500; color:var(--ink-soft); text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+.ev-tabs a:hover{ color:var(--ink); }
+.ev-tabs a.is-here{ color:var(--ink); border-bottom-color:var(--gold); font-weight:600; }
+.ev-tabs .ev-tabs-all{ margin-left:auto; }
+.ev-banner{ padding:12px 16px; border-radius:10px; margin-bottom:16px; background:var(--status-neutral-bg); font-size:14px; }
+.ev-banner-danger{ background:var(--status-danger-bg); color:var(--danger); }
+/* The road from enquiry to held. Done steps tick, the current one is gold. */
+.ev-stages{ list-style:none; display:flex; margin:0 0 20px; padding:0; overflow-x:auto; }
+.ev-stages li{ flex:1 1 0; display:flex; align-items:center; gap:8px; min-width:max-content; padding:10px 14px 10px 0; font-size:13.5px; color:var(--ink-soft); position:relative; }
+.ev-stages li + li{ padding-left:14px; }
+.ev-stages li + li::before{ content:""; position:absolute; left:-2px; top:50%; width:10px; border-top:1px solid var(--parchment-line); }
+.ev-stage-dot{ display:inline-grid; place-items:center; width:24px; height:24px; border-radius:50%; flex:none; font-size:12px; font-weight:600; border:1.5px solid var(--parchment-line); background:var(--surface); }
+.ev-stages li.is-done{ color:var(--ink); }
+.ev-stages li.is-done .ev-stage-dot{ background:var(--status-success-bg); border-color:var(--success); color:var(--success); }
+.ev-stages li.is-here{ color:var(--ink); font-weight:600; }
+.ev-stages li.is-here .ev-stage-dot{ background:var(--gold); border-color:var(--gold); color:var(--chestnut-deep); }
+@media (max-width: 600px){ .ev-stages{ flex-wrap:wrap; overflow:visible; } .ev-stages li{ flex:0 0 auto; padding:6px 10px 6px 0; } .ev-stages li + li{ padding-left:12px; } }
+.ev-layout{ display:grid; grid-template-columns:minmax(0, 1.6fr) minmax(0, 1fr); gap:18px; align-items:start; }
+@media (max-width: 960px){ .ev-layout{ grid-template-columns:1fr; } }
+.ev-layout .section-heading{ margin:0 0 12px; }
+.ev-card-head{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
+.ev-card-head .section-heading{ margin:0; }
+.ev-steps{ list-style:none; margin:0 0 14px; padding:0; display:flex; flex-direction:column; gap:8px; }
+.ev-step{ display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; border-radius:10px; background:var(--surface); border-left:4px solid var(--steel); }
+.ev-step div{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.ev-step span{ font-size:13px; color:var(--ink-soft); }
+.ev-step .btn-mini{ flex:none; }
+.ev-step-warn{ border-left-color:var(--gold); }
+.ev-step-danger{ border-left-color:var(--danger); }
+.ev-stage-actions{ display:flex; flex-wrap:wrap; gap:8px; padding-top:12px; border-top:1px solid var(--parchment-line); }
+.ev-stage-actions form{ margin:0; }
+.btn-mini.btn-mini-go, body.staff-shell .btn-mini.btn-mini-go{ background:var(--status-success-bg); border-color:rgba(44,119,66,0.4); color:var(--success); }
+body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-color:var(--success); color:#fff; }
+.ev-facts{ display:grid; grid-template-columns:max-content 1fr; gap:8px 18px; margin:0; font-size:14px; }
+.ev-facts dt{ color:var(--ink-soft); }
+.ev-facts dd{ margin:0; overflow-wrap:anywhere; }
+.ev-facts dd.ev-prose{ white-space:pre-line; }
+.ev-main, .ev-side{ min-width:0; }
+.ev-next{ border-top:3px solid var(--gold); }
+.ev-change{ margin-top:14px; }
+.ev-form{ margin-top:4px; }
+.ev-form-actions{ display:flex; gap:10px; align-items:center; margin-top:14px; }
+.ev-money td{ text-align:right; font-family:'IBM Plex Mono', monospace; white-space:nowrap; }
+.ev-money-total th, .ev-money-total td{ font-weight:600; border-top:2px solid var(--parchment-line); }
+.detail-card h3.ev-h3, .ev-h3{ font-family:'Inter', sans-serif; font-size:12px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-soft); margin:18px 0 8px; }
+.ev-money-actions{ display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-top:14px; }
+.ev-inline-form{ flex:1 1 360px; margin:0; }
+.ev-inline-row{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.ev-inline-row input[type=number]{ width:8em; }
+.ev-inline-row input[type=text]{ flex:1 1 140px; width:auto; }
+.ev-inline-row select{ width:auto; }
+.ev-when{ font-weight:600; margin:0 0 8px; }
+.ev-clear{ color:var(--success); margin:6px 0; }
+.ev-clashes{ list-style:none; margin:6px 0 10px; padding:0; font-size:13.5px; }
+.ev-clashes li{ padding:6px 0; border-bottom:1px solid var(--parchment-line); display:flex; flex-direction:column; }
+.ev-clashes li:last-child{ border-bottom:0; }
+.ev-plan{ list-style:none; margin:0; padding:0; }
+.ev-plan li{ display:flex; flex-direction:column; gap:2px; padding:9px 0; border-bottom:1px solid var(--parchment-line); }
+.ev-plan li:last-child{ border-bottom:0; }
+.ev-plan li a{ font-weight:600; }
+.ev-plan li span{ font-size:13px; color:var(--ink-soft); }
+.ev-contact{ margin:0 0 8px; line-height:1.7; }
+/* The list: one line an event, and the line opens it. */
+.ev-list tbody tr.ev-row{ cursor:pointer; }
+.ev-list tbody tr.ev-row:hover td{ background:rgba(201,161,91,0.08); }
+.ev-row-name{ font-weight:600; display:block; }
+.ev-row-when{ white-space:nowrap; }
+.ev-wait{ display:block; margin-top:3px; }
+.ev-wait.is-late, .ev-late{ color:var(--danger); font-weight:600; }
+.ev-row-next{ font-size:13.5px; }
+.ev-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:7px; background:var(--steel); vertical-align:1px; }
+.ev-dot-warn{ background:var(--gold); }
+.ev-dot-danger{ background:var(--danger); }
+.ev-settings{ margin-top:24px; }
+.ev-settings summary{ cursor:pointer; margin:0; }
+.ev-settings textarea{ width:100%; }
+
+/* ---------- Workshops: what is coming up, and the programmes ---------- */
+.ws-sits{ display:flex; flex-direction:column; gap:10px; margin-bottom:8px; }
+.ws-sit{
+  display:grid; grid-template-columns:64px minmax(0, 1fr) auto; grid-template-areas:"date main money" "date links links";
+  gap:6px 16px; padding:14px 16px; border-radius:12px; background:var(--parchment);
+  border:1px solid var(--parchment-line); box-shadow:var(--shadow);
+}
+.ws-sit.is-off{ opacity:0.7; }
+.ws-sit-date{
+  grid-area:date; align-self:start; display:flex; flex-direction:column; align-items:center; gap:0;
+  padding:8px 4px; border-radius:10px; background:var(--status-warn-bg); color:var(--chestnut-deep); text-decoration:none; line-height:1.1;
+}
+.ws-sit-dow, .ws-sit-mon{ font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--gold-on-warn); }
+.ws-sit-day{ font-family:'Playfair Display', serif; font-size:24px; font-weight:600; }
+.ws-sit-main{ grid-area:main; min-width:0; }
+.ws-sit-title{ font-weight:600; font-size:15.5px; color:var(--ink); text-decoration:none; }
+.ws-sit-title:hover{ text-decoration:underline; }
+.ws-sit-when{ margin:2px 0 8px; font-size:13px; color:var(--ink-soft); }
+.ws-sit-when a{ color:inherit; }
+.ws-bar{ display:flex; height:8px; border-radius:4px; overflow:hidden; background:var(--status-neutral-bg); max-width:420px; }
+.ws-bar-in{ background:var(--success); }
+.ws-bar-wait{ background:var(--gold); }
+/* Held while the guest pays: theirs to settle, not the house's, so paler. */
+.ws-bar-hold{ background:repeating-linear-gradient(135deg, var(--gold-soft) 0 4px, transparent 4px 7px); }
+.ws-holding{ color:var(--ink-soft); }
+.ws-sit-counts{ margin:6px 0 0; font-size:13px; }
+.ws-decide{ color:var(--gold-on-warn); font-weight:600; }
+.ws-sit-risk{ margin:8px 0 0; font-size:13px; color:var(--steel-deep); }
+.ws-sit-risk.is-urgent{ color:var(--rust); }
+.ws-sit-stock{ margin:8px 0 0; font-size:12.5px; color:var(--ink-soft); }
+.ws-short{ color:var(--rust); }
+.ws-inline{ display:inline; margin:0; }
+.ws-linkbtn{ background:none; border:0; padding:0; cursor:pointer; color:var(--steel); font:inherit; text-decoration:underline; }
+.ws-sit-money{ grid-area:money; text-align:right; display:flex; flex-direction:column; gap:2px; font-family:'IBM Plex Mono', monospace; font-size:13px; white-space:nowrap; }
+.ws-sit-money-in{ font-weight:600; }
+.ws-sit-links{ grid-area:links; display:flex; flex-wrap:wrap; gap:4px 16px; padding-top:8px; border-top:1px solid var(--parchment-line); font-size:13px; }
+.ws-sit-links a{ color:var(--steel); }
+@media (max-width: 640px){
+  .ws-sit{ grid-template-columns:52px minmax(0, 1fr); grid-template-areas:"date main" "date money" "links links"; }
+  .ws-sit-money{ text-align:left; flex-direction:row; gap:10px; }
+}
+.ws-progs{ display:flex; flex-direction:column; gap:8px; }
+.ws-prog{ padding:12px 16px; border-radius:10px; background:var(--parchment); border:1px solid var(--parchment-line); }
+.ws-prog.is-hidden{ opacity:0.75; }
+.ws-prog-head{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+.ws-prog-head > div:first-child{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.ws-prog-title{ font-weight:600; font-size:15px; color:var(--ink); }
+.ws-prog-actions{ display:flex; align-items:center; gap:10px; }
+.ws-prog .refund-box{ margin-top:8px; }
+.ws-prog-sits tr.is-off td{ opacity:0.65; }
+.ws-change .ws-change-more{ display:flex; flex-wrap:wrap; gap:12px 18px; align-items:center; margin-top:16px; padding-top:14px; border-top:1px solid var(--parchment-line); }
+.ws-change .ws-change-more form{ margin:0; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.ws-calloff input[type=text]{ width:auto; max-width:220px; }
+
+/* ---------- The calendar as drawn: bars for what lasts, groups for the day ----------
+   A week (and each week of a month) is three bands over one set of column
+   rules: the day headings, the bars of what lasts across those days on a grid
+   of fourteen half-days, and each day's one-day things under headings. The
+   columns are drawn once behind all three, so today and the weekend are
+   shaded from top to bottom, bars included. */
+.cal2-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; margin-bottom:6px; }
+.cal2{ background:var(--surface); border:1px solid var(--parchment-line); border-radius:14px; box-shadow:var(--shadow); overflow:hidden; }
+.cal2-week{ position:relative; border-bottom:1px solid var(--parchment-line); }
+.cal2-week:last-child{ border-bottom:0; }
+.cal2-dows, .cal2-cols, .cal2-heads, .cal2-days{ display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); }
+.cal2-dows{ border-bottom:1px solid var(--parchment-line); }
+.cal2-dows span{ padding:9px 10px; font-size:10.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.07em; }
+.cal2-view-week .cal2-dows{ display:none; }
+.cal2-cols{ position:absolute; inset:0; pointer-events:none; z-index:0; }
+.cal2-cols span + span{ border-left:1px solid var(--parchment-line); }
+.cal2-cols .is-weekend{ background:rgba(43,38,32,0.025); }
+.cal2-cols .is-today{ background:rgba(184,133,62,0.08); }
+.cal2-cols .is-out{ background:repeating-linear-gradient(135deg, transparent 0 7px, rgba(43,38,32,0.025) 7px 9px); }
+.cal2-heads, .cal2-bars, .cal2-days{ position:relative; z-index:1; }
+.cal2-head{ display:flex; align-items:center; gap:6px; padding:8px 8px 4px; min-width:0; }
+.cal2-head.is-out{ opacity:0.5; }
+.cal2-daynum{ display:inline-flex; align-items:baseline; gap:4px; font-size:13px; font-weight:600; color:var(--ink); text-decoration:none; white-space:nowrap; }
+.cal2-daynum:hover .cal2-num{ background:var(--status-warn-bg); }
+.cal2-dow{ font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-soft); }
+.cal2-num{ font-family:'IBM Plex Mono', monospace; padding:1px 6px; border-radius:999px; }
+.cal2-head.is-today .cal2-num{ background:var(--gold); color:var(--chestnut-deep); }
+.cal2-daysum{ display:inline-flex; gap:5px; font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--ink-soft); white-space:nowrap; overflow:hidden; }
+.cal2-in{ color:var(--success); font-weight:600; }
+.cal2-out{ color:var(--rust); font-weight:600; }
+.cal2-let{ color:var(--ink-soft); }
+/* The "+" on a day: always there, because adding was the hard part. Bigger
+   on a touch screen. */
+.cal2-add{
+  margin-left:auto; flex:none; width:24px; height:24px; padding:0; border-radius:50%;
+  border:1px solid var(--parchment-line); background:var(--surface); color:var(--ink-soft);
+  font-size:15px; line-height:1; cursor:pointer;
+}
+.cal2-add:hover, .cal2-add:focus-visible{ border-color:var(--gold); background:var(--status-warn-bg); color:var(--ink); }
+@media (pointer: coarse){ .cal2-add{ width:32px; height:32px; } }
+/* The bars. Dense auto-placement packs them into as few lines as they fit,
+   and gives a line back when a filter hides one. */
+.cal2-bars{ display:grid; grid-template-columns:repeat(14, minmax(0, 1fr)); grid-auto-flow:row dense; row-gap:3px; padding:2px 0 6px; }
+.cal-ev.cal2-bar{
+  margin:0 4px; height:26px; padding:0 8px; gap:6px; border-radius:7px;
+  font-size:12px; white-space:nowrap; overflow:hidden; align-items:center;
+  border-left:3px solid transparent;
+}
+.cal-ev.cal2-bar .cal-ev-dot{ display:none; }
+.cal2-bar.from-before{ margin-left:0; border-top-left-radius:0; border-bottom-left-radius:0; border-left-color:transparent !important; }
+.cal2-bar.goes-on{ margin-right:0; border-top-right-radius:0; border-bottom-right-radius:0; }
+.cal2-bar-label{ font-weight:600; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:0 1 auto; }
+.cal2-bar-sub{ color:var(--ink-soft); font-size:11px; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1 1 0; }
+.cal2-bar-cont{ flex:none; color:var(--ink-soft); font-weight:600; }
+.cal2-bar-cont-end{ margin-left:auto; }
+.cal2-bar-stay{ border-left-color:var(--steel); }
+.cal2-bar-atelier{ background:var(--status-warn-bg); border-left-color:var(--gold); }
+.cal2-bar-event{ background:var(--status-danger-bg); border-left-color:var(--danger); }
+.cal2-bar-date{ background:var(--status-neutral-bg); border-left-color:var(--chestnut-light, #6B4630); }
+.cal2-bar-closure{ background:repeating-linear-gradient(135deg, var(--status-neutral-bg) 0 6px, transparent 6px 10px); color:var(--ink-soft); border-left-color:var(--ink-soft); }
+/* The days' groups. */
+.cal2-day{ display:flex; flex-direction:column; gap:10px; padding:4px 6px 12px; min-width:0; }
+.cal2-view-week .cal2-day{ min-height:150px; }
+.cal2-view-month .cal2-day{ min-height:64px; gap:6px; }
+.cal2-day.is-out{ opacity:0.5; }
+.cal2-sec{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+.cal2-sec-head{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:0 6px; margin:0 2px 1px; min-width:0; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-soft); }
+.cal2-sec-count{ font-family:'IBM Plex Mono', monospace; font-size:10px; text-transform:none; letter-spacing:0; white-space:nowrap; }
+.cal2 .cal2-day .cal-ev{ font-size:11.5px; padding:4px 7px; border-radius:8px; gap:4px; }
+.cal2 .cal2-day .cal-ev .cal-ev-dot{ display:none; }
+.cal2-folded{ display:none; }
+.cal-ev-high{ box-shadow:inset 3px 0 0 var(--danger); }
+.cal2-sec-shift .cal-ev{ background:transparent; padding:1px 4px; }
+@media (max-width: 860px){
+  .cal2-view-week{ min-width:820px; }
+  .cal2-view-month{ min-width:720px; }
+}
+/* One day, as a list under headings. */
+.cal2-dayview{ max-width:820px; }
+.cal2-dayview-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+.cal2-dayview .cal2-daysum{ font-size:13px; gap:10px; }
+.cal2-dsec{ margin-bottom:20px; }
+.cal2-dsec-head{ display:flex; align-items:baseline; gap:8px; margin:0 0 8px; font-family:'Inter', sans-serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-soft); }
+.cal2-dsec-head span{ font-family:'IBM Plex Mono', monospace; letter-spacing:0; }
+.cal2-dayview .cal-day-events-list{ display:flex; flex-direction:column; gap:5px; }
+.cal2-dayview .cal-ev{ font-size:13.5px; padding:8px 12px; border-radius:10px; }
+.cal2-dayview .cal-ev-text{ white-space:normal; }
+/* The Add dialog. */
+.cal-add-dialog{ width:min(560px, calc(100vw - 32px)); }
+.cal-add-tabs{ margin:14px 0 4px; display:inline-flex; }
+.cal-add-tabs button{ border:0; background:transparent; font:inherit; font-size:13px; padding:6px 12px; cursor:pointer; color:var(--ink-soft); border-radius:8px; }
+.cal-add-tabs button.is-active{ background:var(--gold); color:var(--chestnut-deep); font-weight:600; }
+.cal-add-pane{ margin-top:6px; }
+.cal-add-pane[hidden]{ display:none; }
+.cal-add-pane textarea{ width:100%; }
+.cal-add-people{ border:0; padding:0; margin:8px 0 4px; display:flex; flex-wrap:wrap; gap:4px 16px; }
+.cal-add-people legend{ width:100%; padding:0; }
+.cal-add-links{ list-style:none; margin:10px 0 0; padding:0; }
+.cal-add-links li{ display:flex; flex-direction:column; gap:2px; padding:10px 0; border-bottom:1px solid var(--parchment-line); }
+.cal-add-links li a{ font-weight:600; }
+.cal-add-sitting{ border-top:1px solid var(--parchment-line); margin-top:6px; }
+
+/* What needs somebody, above the workshops list (19 October 2026). */
+.ws-needs{ display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:10px; margin-bottom:22px; }
+.ws-need{ display:block; background:var(--status-warn-bg); border:1px solid var(--gold); border-radius:12px;
+  padding:12px 14px; color:inherit; text-decoration:none; }
+.ws-need:hover{ box-shadow:var(--shadow); }
+.ws-need-head{ display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
+.ws-need-list{ margin:0; padding-left:18px; font-size:14px; line-height:1.45; }

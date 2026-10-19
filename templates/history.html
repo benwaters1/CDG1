@@ -202,7 +202,7 @@
       <p class="g-fr">Le retour <span class="g-fr__en">The return</span></p>
       <h2 class="g-place">What the Walls Kept</h2>
       <p class="g-p">Much of the original interior had survived: carved woodwork, stained glass, gilt-framed mirrors and ornamental plaster. As the work has gone on, the château has given up its secrets: a fresco hidden behind wallpaper, two towers of the medieval fort that the family had thought long gone, and, through a hole three metres deep in a floor, a forgotten part of the cellars, perhaps a safe passage in the Second World War.</p>
-      <p class="g-p">The restoration goes on, room by room, as a Class I Historic Monument, with five guest rooms open and the workshops.</p>
+      <p class="g-p">The restoration goes on, room by room, as a Class I Historic Monument, with {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} guest rooms open and the workshops.</p>
       <p class="g-hist__cta">
         <a href="{{ url_for('restoration_page') }}" class="g-btn g-btn--solid">The restoration</a>
         <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a>

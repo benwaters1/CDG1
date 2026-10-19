@@ -102,7 +102,8 @@ def run():
     r = anon.post("/contact", data={
         "action": "flexible", "rough_month": "2028-04", "rough_nights": "4",
         "rough_guests": "2", "flexibility": "a few days either way",
-        "email": "zzaudit@example.invalid", "message": "ZZAUDIT roughly April"},
+        "email": "zzaudit@example.invalid", "message": "ZZAUDIT roughly April",
+        **_harness.contact_form_fields()},
         follow_redirects=True)
     s.check("it is accepted rather than refused", r.status_code == 200,
             detail="HTTP %s — a 405 here loses the enquiry silently" % r.status_code)
@@ -129,7 +130,8 @@ def run():
         ("%zzaudit@example.invalid%",)).fetchone()
     s.check("and somebody is asked to answer it", task is not None,
             detail="an enquiry in a list nobody opens is the state this was in")
-    r = anon.post("/contact", data={"action": "flexible", "email": "not-an-address"},
+    r = anon.post("/contact", data={"action": "flexible", "email": "not-an-address",
+                                    **_harness.contact_form_fields()},
                   follow_redirects=True)
     s.check("an address it could not reply to is refused",
             any("does not look right" in f for f in _harness.flashes(r)),
@@ -149,7 +151,8 @@ def run():
     # "that email address does not look right".
     r = anon.post("/contact", data={
         "action": "notify", "notify_month": "November", "notify_year": "2028",
-        "notify_email": "zzaudit2@example.invalid"}, follow_redirects=True)
+        "notify_email": "zzaudit2@example.invalid",
+        **_harness.contact_form_fields()}, follow_redirects=True)
     conn = m.get_db()
     told = conn.execute(
         "SELECT * FROM waitlist_entries WHERE email = ? ORDER BY id DESC LIMIT 1",

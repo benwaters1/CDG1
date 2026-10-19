@@ -14,7 +14,17 @@
   </svg>
   <p class="g-eyebrow">{{ t('Your workshop') }}</p>
   <h1>{{ booking['title'] }}</h1>
+  {#- A place held while the deposit is paid is not yet confirmed, and one
+      whose hold ran out is not cancelled by anybody: each says what it is. -#}
+  {% if booking['status'] == 'pending' and booking['deposit_hold_until'] %}
+  <p class="g-p">Status: <span class="mini-status status-pending">held for you</span></p>
+  <p class="g-p">We are holding your place until {{ booking['deposit_hold_until']|house_when }} (French time). It is confirmed as soon as the deposit is paid.</p>
+  {% elif booking['status'] == 'cancelled' and booking['hold_released_at'] %}
+  <p class="g-p">Status: <span class="mini-status status-cancelled">released</span></p>
+  <p class="g-p">We held this place while the deposit was paid, and the time ran out before it arrived. If the dates still suit you, please register again.</p>
+  {% else %}
   <p class="g-p">Status: <span class="mini-status status-{{ (booking['status']|string)|lower }}">{{ booking['status'] }}</span></p>
+  {% endif %}
 
   <div class="g-mb-card">
     <dl class="g-facts-list">

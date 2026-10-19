@@ -337,7 +337,7 @@ def run():
                    f"on {out_day.isoformat()} — the useful moment is the evening "
                    "you can still put somebody else on")
     s.check("and its title carries the date, so it dedupes to one task",
-            changeover and out_day.isoformat() in changeover[1],
+            changeover and m.format_date_short(out_day) in changeover[1],
             detail=str(changeover[1] if changeover else None))
     # The half that matters: fix the booking and the finding stops being true.
     conn.execute("UPDATE bookings SET estimated_arrival_time = '15:00' "

@@ -150,6 +150,9 @@ UNREADABLE = {
     # The house calendar's .ics link is a 404 without the key the owner makes
     # on its page, by design; test_house_calendar reads it with one.
     "house_calendar_ics": "needs the feed key",
+    # Only a room reserved for a guest has a page to finish it on; any other
+    # stay's token is a 404 there, by design. test_reserve_a_room reads it.
+    "booking_finish": "needs a reserved stay",
 }
 
 # The pages somebody who does not work here has to get through on their own.
@@ -316,6 +319,10 @@ ENDPOINT_ARGS = {
     # A callable is asked for the value: the newest row is not always one the
     # page will open. See _registrable_session.
     ("workshop_register", "session_id"): lambda conn: _registrable_session(conn),
+    # The room page answers 404 for a room off sale, and since z28 the newest
+    # room on a fresh install is the sixth, hidden until the owner ticks it.
+    ("book_room", "room_id"): lambda conn: (conn.execute(
+        "SELECT id FROM rooms WHERE active = 1 ORDER BY id DESC LIMIT 1").fetchone() or [None])[0],
     # The old Squarespace addresses that carry a name. Each is a redirect, so
     # the sweep reaches it and reads where it lands, not a page of its own.
     ("legacy_atelier_product", "slug"): "seven-starry-nights-2027",

@@ -87,14 +87,23 @@
 
   <section class="form-section">
     <h2 class="form-section-title">Who fits</h2>
+    {#- 18 Oct (owner): three limits, as Booking.com sets them. Most guests is its
+        own number: a room for 3 taking 2 adults and 2 children lets 2 + 1, never 3
+        adults and never 2 + 2. room_party_problem in app.py checks all three. -#}
     <div class="capacity-row">
       <div class="capacity-field">
-        <label class="field-label" for="max_adults">Adults</label>
+        <label class="field-label" for="max_occupancy">Most guests</label>
+        <input type="number" id="max_occupancy" name="max_occupancy" min="1" max="20"
+               value="{{ room['max_occupancy'] if room else 2 }}">
+        <span class="field-hint">Adults and children together.</span>
+      </div>
+      <div class="capacity-field">
+        <label class="field-label" for="max_adults">Most adults</label>
         <input type="number" id="max_adults" name="max_adults" min="1" max="20"
                value="{{ (room['max_adults'] or room['max_occupancy']) if room else 2 }}">
       </div>
       <div class="capacity-field">
-        <label class="field-label" for="max_children">Children</label>
+        <label class="field-label" for="max_children">Most children</label>
         <input type="number" id="max_children" name="max_children" min="0" max="20"
                value="{{ room['max_children'] if room else 0 }}">
         <span class="field-hint">The château takes children from 8.</span>
@@ -106,7 +115,9 @@
       </div>
     </div>
     <p class="field-hint" style="margin-top:6px;">
-      Counted separately because taxe de séjour is charged per adult per night — under-18s are exempt.
+      Each is its own limit, as on Booking.com: the most guests can be fewer than the adults and
+      children added up. Under 18 counts as a child here, because taxe de séjour is charged per
+      adult per night and under-18s are exempt.
     </p>
     <div class="field-row-2" style="margin-top:14px;">
       <div>

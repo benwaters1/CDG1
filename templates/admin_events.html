@@ -13,25 +13,34 @@
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">One-off venue hire — weddings, photoshoots, corporate offsites. Every event is bespoke, so this is a follow-up-and-quote queue rather than an instant-book calendar. Enquiries arriving by phone or email go in here too.</p>
 
+{#- Where the business stands in money as well as in counts: what the quotes
+    out are worth, what is confirmed, what is still to collect and whether any
+    of it is late. Every figure is event_bill's. -#}
 <div class="stat-tiles">
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ new_count }}</span><span class="stat-tile-label">New {{ 'enquiry' if new_count == 1 else 'enquiries' }}</span></span>
-  </div>
-  <div class="stat-tile">
+  <a class="stat-tile" href="{{ url_for('admin_events', state='New') }}">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-gold' if pipeline.new else 'stat-tile-icon-success' }}">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pipeline.new }}</span><span class="stat-tile-label">New {{ 'enquiry' if pipeline.new == 1 else 'enquiries' }}{% if pipeline.new %} &middot; {% if pipeline.oldest_wait %}oldest waiting {{ pipeline.oldest_wait }} day{{ '' if pipeline.oldest_wait == 1 else 's' }}{% else %}came in today{% endif %}{% endif %}</span></span>
+  </a>
+  <a class="stat-tile" href="{{ url_for('admin_events', state='Quoted') }}">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pipeline.quotes_value|money(0) }}</span><span class="stat-tile-label">In {{ pipeline.quotes_out }} quote{{ '' if pipeline.quotes_out == 1 else 's' }} still out</span></span>
+  </a>
+  <a class="stat-tile" href="{{ url_for('admin_events', state='Confirmed') }}">
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('megaphone', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ confirmed_count }}</span><span class="stat-tile-label">Confirmed events</span></span>
-  </div>
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ current_count }}</span><span class="stat-tile-label">Upcoming &amp; undated</span></span>
-  </div>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pipeline.confirmed_value|money(0) }}</span><span class="stat-tile-label">{{ pipeline.confirmed }} confirmed event{{ '' if pipeline.confirmed == 1 else 's' }} to come</span></span>
+  </a>
+  <a class="stat-tile" href="{{ url_for('admin_events', money='Owes money') }}">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if pipeline.overdue else ('stat-tile-icon-gold' if pipeline.to_collect else 'stat-tile-icon-success') }}">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pipeline.to_collect|money(0) }}</span><span class="stat-tile-label">Still to collect{% if pipeline.overdue %} &middot; {{ pipeline.overdue }} past due{% endif %}</span></span>
+  </a>
 </div>
 
 {# Owner-side intake. Until this existed the only way an event could be
    recorded was a guest filling in the public form, so a phone enquiry meant
    impersonating them. Email is optional here for exactly that reason. #}
-<div class="detail-card" id="add-event-form" style="display:none; margin-bottom:22px;">
+{#- Opened, with the day filled in, when the calendar's Add sends somebody
+    here for an event on a day they clicked. -#}
+<div class="detail-card" id="add-event-form" style="{{ '' if request.args.get('add') else 'display:none; ' }}margin-bottom:22px;">
   <h3 style="margin-top:0;">Add an event</h3>
   <form method="post" action="{{ url_for('new_event_inquiry') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -46,7 +55,7 @@
         <label class="field-label" for="admin_events-status">Status</label>
         <select id="admin_events-status" name="status">
           {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
-          <option value="{{ s }}">{{ s|capitalize }}</option>
+          <option value="{{ s }}">{{ {'new': 'New enquiry', 'contacted': 'Replied to'}.get(s, s|capitalize) }}</option>
           {% endfor %}
         </select>
       </div>
@@ -74,7 +83,7 @@
     <div class="field-row-2">
       <div>
         <label class="field-label" for="admin_events-preferred-date">Preferred date</label>
-        <input id="admin_events-preferred-date" type="date" name="preferred_date">
+        <input id="admin_events-preferred-date" type="date" name="preferred_date" value="{{ request.args.get('date', '')[:10] }}">
       </div>
       <div>
         <label class="field-label" for="admin_events-alternate-date">Alternate date</label>
@@ -104,147 +113,49 @@
   </form>
 </div>
 
-<details style="margin-bottom:18px;">
-  <summary class="small-link" style="color:var(--steel); cursor:pointer;">Edit event types ({{ event_types|length }})</summary>
-  <form method="post" action="{{ url_for('update_event_types') }}" class="detail-card" style="margin-top:10px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label" for="admin_events-event-types">One per line</label>
-    <textarea id="admin_events-event-types" name="event_types" rows="5" style="font-family:'IBM Plex Mono',monospace; font-size:13px;">{% for t in event_types %}{{ t }}
-{% endfor %}</textarea>
-    <p class="upload-hint">These fill the dropdown on the public enquiry form and here. A type you remove stays valid on events already using it.</p>
-    <button type="submit" class="btn-mini">Save types</button>
-  </form>
-</details>
-
 {% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
 
-{% macro event_card(e) %}
-<div class="expense-card">
-  <div class="expense-head">
-    <div>
-      <strong>{{ e['contact_name'] }}</strong> — {{ e['event_type']|capitalize }}
-      <span class="mini-status status-{{ e['status'] }}" style="margin-left:8px;">{{ e['status'] }}</span>
-      {# Over when its LAST day has passed. Reading the first day only put a
-         "past" badge on a three-day wedding on its second day. #}
-      {% if (e['end_date'] or e['preferred_date']) and (e['end_date'] or e['preferred_date']) < today.isoformat() %}
-      <span class="mini-status status-inactive" style="margin-left:4px;">past</span>
-      {% endif %}
-    </div>
-    <span class="upload-hint">{{ e['reference_code'] }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='event', record_id=e['id']) }}" class="small-link">What changed</a>{% endif %}</span>
-  </div>
-  <p class="manual-body wraps">
-    {% if e['preferred_date'] %}{{ e['preferred_date']|date_short }}{% if e['end_date'] %} → {{ e['end_date']|date_short }}{% endif %}{% else %}No date set yet{% endif %}
-    {%- if e['alternate_date'] %} · Alt: {{ e['alternate_date']|date_short }}{% endif %}
-    {%- if e['spaces'] %} · {{ e['spaces'] }}{% endif %}
-    {%- if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}
-    {%- if e['quoted_price'] %} · Quoted {{ e['quoted_price']|money }}{% endif %}
-    {%- set bill = bills.get(e['id']) if bills else None %}
-    {%- if bill and bill.paid %} · {{ bill.paid|money }} received{% endif %}
-    {%- if bill and bill.owed %} · <strong>{{ bill.owed|money }} still to pay</strong>
-    {%- elif bill and bill.quoted and bill.settled %} · settled{% endif %}
-  {%- if bill and bill.discount %} · <span class="upload-hint">{{ bill.gross_quote|money }} before</span> · <span class="mini-status status-approved">code
-    {{ e['promo_code'] }} \u2212{{ bill.discount|money }}</span>{% endif %}
-  </p>
-
-  {# Recording money on an event. The route existed and nothing linked to it,
-     so a wedding deposit could only be entered by somebody who knew the URL.
-     More than is owed is refused rather than clamped — a number typed here
-     with the file open is more likely a slip than an intention. #}
-  {# Money came in, so money can go back. Events had no way to refund at all. #}
-  {% if bill and (bill.paid > 0 or bill.refunded > 0) %}
-    {% with refund_url = url_for('refund_desk', category='event', booking_id=e['id']),
-            already_refunded = bill.refunded, remaining = bill.paid %}
-      {% include "_refund_form.html" %}
-    {% endwith %}
-  {% endif %}
-  {% if bill and bill.quoted > 0 and bill.owed > 0 %}
-  <details class="owed-take">
-    <summary>Record a payment</summary>
-    <form method="post" action="{{ url_for('record_event_payment_route', inquiry_id=e['id']) }}"
-          class="owed-take__form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="number" name="amount" step="0.01" min="0.01"
-             max="{{ '%.2f'|format(bill.owed) }}"
-             placeholder="{{ '%.2f'|format(bill.owed) }}" aria-label="How much" required>
-      <select name="method" aria-label="How it arrived">
-        {% for key, label in (payment_methods or {}).items() %}
-        <option value="{{ key }}">{{ label }}</option>
-        {% endfor %}
-      </select>
-      <input type="text" name="reference" placeholder="Reference (optional)"
-             aria-label="Reference">
-      <button type="submit" class="btn-mini">Record</button>
-    </form>
-  </details>
-  {% endif %}
-  <p class="upload-hint">
-    {{ e['contact_email'] or 'no email' }}{% if e['contact_phone'] %} · {{ e['contact_phone'] }}{% endif %}
-    {%- if e['contact_email'] %} · <a href="{{ url_for('guest_by_email', email=e['contact_email']) }}" class="small-link" style="color:var(--steel);">their record</a>{% endif %}
-  </p>
-  {% if e['message'] %}<p class="upload-hint">Asked for: {{ e['message'] }}</p>{% endif %}
-  {% if e['owner_note'] %}<p class="upload-hint">Note: {{ e['owner_note'] }}</p>{% endif %}
-  <p class="upload-hint">Added {{ e['created_at']|house_day|date_short }}{% if e['decided_at'] %} · Decided {{ e['decided_at']|house_day|date_short }}{% endif %}</p>
-  <p style="margin:8px 0 0;">
-    {#- The quote somebody accepted, the dates being held, and the stages the
-        money arrives in. All three lived nowhere before this page. -#}
-    <a href="{{ url_for('event_agreement', inquiry_id=e['id']) }}" class="btn-mini">Agreement</a>
-    <a href="{{ url_for('event_guest_list_page', event_id=e['id']) }}" class="btn-mini">Guest list</a>
-    <a href="{{ url_for('event_margin_page', event_id=e['id']) }}" class="btn-mini">What it made</a>
-    <a href="{{ url_for('event_run_sheet_page', event_id=e['id']) }}" class="btn-mini">Run sheet</a>
-    {%- if e['status'] == 'confirmed' and e['final_numbers'] is none %}
-    <span class="field-hint" style="margin-left:8px;">no final numbers yet</span>{% endif %}
-  </p>
-
-  {#- Folded, like every card's forms: five events drew five six-box forms
-      under everything worth reading. -#}
-  <details class="refund-box" style="margin-top:10px;">
-    <summary>Change its status, price, deposit or note</summary>
-  <form method="post" action="{{ url_for('update_event_inquiry', inquiry_id=e['id']) }}" class="search-bar" style="margin-top:10px; margin-bottom:0;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div>
-      <label class="field-label" for="admin_events-status-3">Status</label>
-      <select id="admin_events-status-3" name="status">
-        {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
-        <option value="{{ s }}" {{ 'selected' if e['status'] == s }}>{{ s|capitalize }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <label class="field-label" for="admin_events-quoted-price-2">Quoted price (€)</label>
-      <input id="admin_events-quoted-price-2" type="number" name="quoted_price" step="0.01" min="0" value="{{ e['quoted_price']|box(2) }}" style="width:110px;">
-    </div>
-    <div>
-      <label class="field-label" for="admin_events-promo-code">Promo code</label>
-      <input id="admin_events-promo-code" type="text" name="promo_code" style="width:130px;"
-             value="{{ e['promo_code'] or '' }}"
-             placeholder="{{ 'applied' if e['promo_code_id'] else 'none' }}"
-             {{ 'readonly' if e['promo_code_id'] }} spellcheck="false" autocapitalize="characters">
-    </div>
-    <div>
-      <label class="field-label" for="admin_events-deposit-amount">Deposit (€)</label>
-      <input id="admin_events-deposit-amount" type="number" name="deposit_amount" step="0.01" min="0" style="width:110px;"
-             value="{{ '%.2f'|format(e['deposit_amount']) if e['deposit_amount'] is not none else '' }}"
-             placeholder="auto">
-    </div>
-    <div>
-      <label class="field-label" for="admin_events-balance-due-date">Balance due</label>
-      <input id="admin_events-balance-due-date" type="date" name="balance_due_date" style="width:150px;"
-             value="{{ e['balance_due_date'] or '' }}">
-    </div>
-    <div style="flex:2 1 200px;">
-      <label class="field-label" for="admin_events-owner-note-2">Owner note</label>
-      <input id="admin_events-owner-note-2" type="text" name="owner_note" value="{{ e['owner_note'] or '' }}">
-    </div>
-    <button type="submit" class="btn-mini">Save</button>
-  </form>
-  </details>
-</div>
-{% endmacro %}
-
+{#- ONE LINE AN EVENT, and the line opens it. Each was a card with its money,
+    its forms and five buttons, so five events were a page of forms with the
+    one thing worth knowing -- what to do next -- written nowhere. -#}
 {% if not inquiries %}
   <div class="empty-state">{% if lv['total'] %}Nothing matches that. <a href="{{ url_for('admin_events', when='all') }}">Show all {{ lv['total'] }}</a>.{% else %}No events yet — add one above, or wait for the public enquiry form.{% endif %}</div>
 {% else %}
-  {% for e in inquiries %}{{ event_card(e) }}{% endfor %}
+<div class="table-wrap">
+<table class="data-table ev-list">
+  <thead>
+    <tr><th>When</th><th>Who</th><th>Where it stands</th><th class="num">Money</th><th>Next</th></tr>
+  </thead>
+  <tbody>
+  {% for e in inquiries %}
+  {% set bill = bills.get(e['id']) %}
+  {% set stage = stage_of(e, today.isoformat()) %}
+  {% set nxt = nexts.get(e['id']) %}
+  <tr class="ev-row" data-href="{{ url_for('admin_event', event_id=e['id']) }}">
+    <td class="ev-row-when">
+      {% if e['preferred_date'] %}<strong>{{ e['preferred_date']|date_short }}</strong>{% if e['end_date'] and e['end_date'] != e['preferred_date'] %}<br><span class="upload-hint">to {{ e['end_date']|date_short }}</span>{% endif %}
+      {% else %}<span class="upload-hint">no date yet</span>{% endif %}
+    </td>
+    <td>
+      <a href="{{ url_for('admin_event', event_id=e['id']) }}" class="ev-row-name">{{ e['contact_name'] }}</a>
+      <span class="upload-hint">{{ e['event_type']|capitalize }}{% if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %} · {{ e['reference_code'] }}</span>
+    </td>
+    <td>
+      <span class="mini-status status-{{ e['status'] }}">{{ 'held' if stage == 'held' else status_words.get(e['status'], e['status']) }}</span>
+      {%- if e['status'] == 'new' %}{% set waited = days_waiting(e) %}
+      <span class="upload-hint ev-wait {{ 'is-late' if waited >= 2 }}">{{ 'came in today' if not waited else 'waiting %d day%s' % (waited, '' if waited == 1 else 's') }}</span>{% endif %}
+    </td>
+    <td class="num">
+      {% if bill and bill.quoted %}{{ bill.quoted|money(0) }}
+        {% if e['status'] == 'confirmed' %}<br><span class="upload-hint">{% if bill.owed > 0.005 %}{{ bill.owed|money(0) }} to come{% if bill.due_date and bill.due_date < today.isoformat() %} · <span class="ev-late">late</span>{% endif %}{% else %}paid{% endif %}</span>{% endif %}
+      {% else %}<span class="upload-hint">—</span>{% endif %}
+    </td>
+    <td class="ev-row-next">{% if nxt %}<span class="ev-dot ev-dot-{{ nxt[2] }}"></span>{{ nxt[0] }}{% else %}<span class="upload-hint">nothing waiting</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
 {% endif %}
 
 <script>
@@ -254,20 +165,41 @@ function toggleAddEvent() {
   el.style.display = opening ? '' : 'none';
   if (opening) el.querySelector('input[name="contact_name"]').focus();
 }
+// A whole row opens its event, not just the name -- but a click on a link or
+// a selection of text inside it is left alone.
+document.querySelectorAll('.ev-row[data-href]').forEach(function(row) {
+  row.addEventListener('click', function(ev) {
+    if (ev.target.closest('a, button, input, select, textarea')) return;
+    if (window.getSelection && String(window.getSelection())) return;
+    window.location = row.dataset.href;
+  });
+});
 </script>
 
+{#- The settings every event shares, out of the way of the events: the kinds
+    of event, and the wording each quote carries. -#}
+<details class="detail-card ev-settings">
+  <summary class="section-heading">Settings for every event</summary>
+  <h3 class="ev-h3">Kinds of event</h3>
+  <form method="post" action="{{ url_for('update_event_types') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-label" for="admin_events-event-types">One per line</label>
+    <textarea id="admin_events-event-types" name="event_types" rows="5" style="font-family:'IBM Plex Mono',monospace; font-size:13px;">{% for t in event_types %}{{ t }}
+{% endfor %}</textarea>
+    <p class="upload-hint">These fill the list on the public enquiry form and here. One you remove stays valid on events already using it.</p>
+    <button type="submit" class="btn-mini">Save the kinds</button>
+  </form>
 
-{# THE WORDING A COUPLE AGREES TO, as data rather than code -- a commercial
-   term the owner changes with their insurer, not a deploy. A quote copies
-   this the moment it is raised, so editing it never changes what anybody has
-   already accepted. #}
-<div class="detail-card">
-  <h2 class="section-heading" style="margin-top:0;">The terms every quote carries</h2>
+  {# THE WORDING A COUPLE AGREES TO, as data rather than code -- a commercial
+     term the owner changes with their insurer, not a deploy. A quote copies
+     this the moment it is raised, so editing it never changes what anybody has
+     already accepted. #}
+  <h3 class="ev-h3">The terms every quote carries</h3>
   <form method="post" action="{{ url_for('save_event_terms') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <textarea name="terms" rows="8" aria-label="The terms every quote carries">{{ event_terms_text }}</textarea>
     <button type="submit" class="btn-mini" style="margin-top:8px;">Save the wording</button>
   </form>
-</div>
+</details>
 
 {% endblock %}

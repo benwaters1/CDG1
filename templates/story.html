@@ -35,7 +35,7 @@
   <p class="g-eyebrow">The Family</p>
   <h2 class="g-place">Since 2013</h2>
   <p class="g-p g-lede-first">The Waters family bought Château de Gudanes in 2013, and has been bringing it back ever since.</p>
-  <p class="g-p">A château like this was never meant to stand empty, so it is lived in while it is restored. Five guest rooms are open, and the workshops bring people to stay, cook and take part in the château as it comes back.</p>
+  <p class="g-p">A château like this was never meant to stand empty, so it is lived in while it is restored. {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms are open, and the workshops bring people to stay, cook and take part in the château as it comes back.</p>
   <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the full experience</a></p>
     </div>
   </div>

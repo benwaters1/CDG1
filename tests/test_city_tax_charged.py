@@ -40,6 +40,8 @@ def _cleanup():
     conn = db()
     for t in ("bookings",):
         conn.execute(f"DELETE FROM {t} WHERE guest_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM rooms WHERE name LIKE ? AND id NOT IN (SELECT room_id FROM bookings)",
+                 (TAG + "%",))
     conn.execute("DELETE FROM submission_log WHERE action IN ('book_room', 'walk_in')")
     conn.commit()
     conn.close()
@@ -52,9 +54,22 @@ def _room(conn, sleeps=4):
     and every check after it failed for a reason that had nothing to do with the
     tax.
     """
-    return conn.execute(
-        "SELECT * FROM rooms WHERE active = 1 AND max_occupancy >= ? "
-        "ORDER BY max_occupancy, id LIMIT 1", (sleeps,)).fetchone()
+    # And takes them as any mix of adults and children (18 October 2026:
+    # each room's adult and child limits are their own, as on Booking.com).
+    # The Family Suite sleeps five but takes two adults, and this suite books
+    # four adults on purpose, so a room of its own when none will.
+    want = ("SELECT * FROM rooms WHERE active = 1 AND max_occupancy >= ? "
+            "AND COALESCE(NULLIF(max_adults, 0), max_occupancy) >= ? AND max_children >= ? "
+            "ORDER BY max_occupancy, id LIMIT 1")
+    row = conn.execute(want, (sleeps, sleeps, sleeps // 2)).fetchone()
+    if row:
+        return row
+    conn.execute("""INSERT INTO rooms (name, export_token, active, max_occupancy, max_adults,
+                    max_children, price_per_night, min_nights, sort_order)
+                    VALUES (?, ?, 1, ?, ?, ?, 250, 1, 99)""",
+                 (f"{TAG} Room {sleeps}", f"tok-{TAG.lower()}-{sleeps}", sleeps, sleeps, sleeps))
+    conn.commit()
+    return conn.execute(want, (sleeps, sleeps, sleeps // 2)).fetchone()
 
 
 def _rate(conn):

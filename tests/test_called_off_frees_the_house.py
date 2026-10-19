@@ -372,13 +372,15 @@ def run():
         said = " ".join(flashes(oc.post(
             f"/admin/events/{_event('EVOFF', off_start + timedelta(days=1))}/update",
             data={"status": "confirmed"}, follow_redirects=True)))
-        s.check("no warning about the called-off atelier", "workshop session" not in said,
+        # The warning names what clashes since 19 October 2026 ("also on those
+        # dates: the X atelier") rather than counting "1 workshop session(s)".
+        s.check("no warning about the called-off atelier", "atelier" not in said,
                 detail=said)
         said = " ".join(flashes(oc.post(
             f"/admin/events/{_event('EVLIVE', live_start + timedelta(days=1))}/update",
             data={"status": "confirmed"}, follow_redirects=True)))
-        s.check("but still one about the live atelier", "1 workshop session" in said,
-                detail=said)
+        s.check("but still one about the live atelier, by name",
+                f"the {TAG} LIVE atelier" in said, detail=said)
 
         s.section("One definition, asked by every reader")
         # Three readers had three queries and all three forgot the same thing.

@@ -19,12 +19,16 @@
 
   <form method="post" action="{{ url_for('contact_page') }}" class="g-flex__f">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ bot_guard() }}{# a field only scripts fill, and when the form was drawn: bot_guard_refusal #}
     <input type="hidden" name="action" value="flexible">
+    {# Cloudflare's check, once the owner has added its keys; nothing before. #}
+    {{ turnstile_check() }}
 
     <div class="g-flex__row">
       <p class="g-field">
         <label for="fx_when">Roughly when <span class="g-opt">optional</span></label>
-        <input type="month" id="fx_when" name="rough_month">
+        {% set _mw = contact_month_window() %}
+        <input type="month" id="fx_when" name="rough_month" min="{{ _mw[0] }}" max="{{ _mw[1] }}">
       </p>
       <p class="g-field">
         <label for="fx_nights">How many nights</label>

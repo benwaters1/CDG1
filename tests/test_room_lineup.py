@@ -183,7 +183,21 @@ def run():
     if gold:
         page = _harness.visible_text(anon.get(f"/book/{gold['id']}").get_data(as_text=True))
         s.check("the room page is headed with its new name", now("The Gold Suite") in page)
-        s.check("and prices it as the row does", "480" in page)
+        # The row's figure, not a typed one: it was "480", the 24 September
+        # price, which the owner has since moved (440 on the live site).
+        figure = "{:,.0f}".format(gold["price_per_night"] or 0)
+        s.check("and prices it as the row does", figure in page, detail=figure)
         s.check("and does not say its bathroom is shared",
                 "shared bathroom" not in page.lower() and "Shared bathroom" not in page)
+
+    s.section("The sixth room is described one way (z28)")
+    six = [r for r in m.DEFAULT_ROOMS if r["name"] == "The Twin Room (Ground Floor)"]
+    s.check("it is seeded, off sale", len(six) == 1 and six[0].get("active") == 0,
+            detail=str(six))
+    s.check("in the same words as the line-up's table of them",
+            bool(six) and six[0]["description"]
+            == m.ROOM_LINEUP_WORDS["The Twin Room (Ground Floor)"])
+    s.check("and the fresh-install prices are the live ones of 17 October",
+            [p for _o, _n, p, *_r in m.ROOM_LINEUP] == [270, 270, 350, 440, 580],
+            detail=str([p for _o, _n, p, *_r in m.ROOM_LINEUP]))
     return s

@@ -25,7 +25,7 @@
     {% if panel.called_off %}<span class="mini-status status-overdue">called off</span>{% elif panel.over %}<span class="mini-status status-inactive">over</span>{% endif %}
   </p>
   <div class="detail-grid">
-    <div><span class="detail-label">Coming</span>{{ panel.people }} {{ 'person' if panel.people == 1 else 'people' }}, {{ panel.confirmed }} confirmed{% if panel.pending %}, {{ panel.pending }} pending{% endif %}</div>
+    <div><span class="detail-label">Coming</span>{{ panel.people }} {{ 'person' if panel.people == 1 else 'people' }}, {{ panel.confirmed }} confirmed{% if panel.pending %}, {{ panel.pending }} pending{% endif %}{% if panel.holding %}, {{ panel.holding }} waiting for the deposit{% endif %}</div>
     <div><span class="detail-label">Places left</span>{{ panel.places_left }} of {{ panel.capacity }}</div>
     <div><span class="detail-label">Charged</span>{{ panel.charged|money }}</div>
     <div><span class="detail-label">Paid</span>{{ panel.paid|money }}</div>
@@ -40,6 +40,7 @@
        leaves out anybody who asked not to be written to, and files the
        letter on each registration's history. #}
     <a href="{{ url_for('workshop_session_email', session_id=panel.session_id) }}" class="btn-mini">Email everyone on this session</a>
+    <a href="{{ url_for('admin_workshop_session', session_id=panel.session_id) }}" class="btn-mini">The session at a glance</a>
     {% endif %}
     {% if panel.owed > 0.005 and can('workshop_session_statements') %}
     <a href="{{ url_for('workshop_session_statements', session_id=panel.session_id) }}" class="btn-mini">Send statements to everyone</a>
@@ -107,8 +108,18 @@
     <div class="expense-head">
       <div>
         <strong>{{ r['guest_name'] }}</strong> — {{ r['title'] }}
+        {% if reg['holding'] %}
+        {# Held while the guest is at Stripe: not confirmed, and not waiting on
+           the owner. Confirmed when the deposit arrives, given back after the
+           deadline if it does not. #}
+        <span class="mini-status status-pending" style="margin-left:8px;">waiting for the deposit until {{ reg['hold_until']|house_when }}</span>
+        {% elif reg['released'] %}
+        <span class="mini-status status-cancelled" style="margin-left:8px;">released, deposit never came</span>
+        {% else %}
         <span class="mini-status status-{{ r['status'] }}" style="margin-left:8px;">{{ r['status'] }}</span>
+        {% endif %}
         {% if reg['money'] %}<span class="mini-status {{ 'status-overdue' if reg['money'] in ('Deposit unpaid', 'Balance owed') else 'status-inactive' }}">{{ reg['money'] }}</span>{% endif %}
+        {% if r['id'] in suspect_ids %}<span class="mini-status status-overdue">looks like a bot</span>{% endif %}
       </div>
       <span class="upload-hint">{{ r['reference_code'] }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='workshop_booking', record_id=r['id']) }}" class="small-link">What changed</a>{% endif %}</span>
     </div>
@@ -352,8 +363,17 @@
       {% if r['status'] == 'pending' %}
       <form method="post" action="{{ url_for('confirm_workshop_registration', registration_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Confirm</button></form>
       <form method="post" action="{{ url_for('decline_workshop_registration', registration_id=r['id']) }}" onsubmit="return confirm('Decline this registration?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+      {% elif reg['released'] and paid_by_registration.get(r['id'], 0) > 0.005 %}
+      {# The deposit came after the hold had lapsed and the atelier had filled.
+         The guest has paid and has no place: take them back, or refund above. #}
+      <form method="post" action="{{ url_for('take_back_released_registration', registration_id=r['id']) }}" onsubmit="return confirm('Give them the place back? It may take the session over its cap.');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Take them back</button></form>
       {% elif r['status'] == 'confirmed' %}
       <form method="post" action="{{ url_for('cancel_workshop_registration_admin', registration_id=r['id']) }}" onsubmit="return confirm('Cancel this confirmed registration?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Cancel</button></form>
+      {% endif %}
+      {% if r['id'] in suspect_ids %}
+      {# Flagged because the name, email and address look like random letters,
+         with nothing paid and no card. Cancel it if nobody real is behind it. #}
+      <form method="post" action="{{ url_for('clear_registration_bot_check', registration_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">This is a real person</button></form>
       {% endif %}
       {% if r['status'] in ('pending', 'confirmed') and balance_by_booking.get(r['id'], (0,))[0] > 0.005 and can('send_workshop_registration_statement') %}
       {# The same letter "Send statements" sends to the whole session, through

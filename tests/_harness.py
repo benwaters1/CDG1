@@ -22,6 +22,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import time
 from html.parser import HTMLParser
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -97,6 +98,12 @@ import jinja2.nodes  # noqa: E402
 from flask import request  # noqa: E402
 
 m.app.config["WTF_CSRF_ENABLED"] = False
+
+# The public forms refuse a post sent sooner after the page was drawn than a
+# person could fill it in (bot_guard_refusal). Suites that read a form off the
+# page and post it back are a person typing in no time at all, so the minimum
+# is nothing here. test_form_bot_guard puts it back while it checks it.
+m.PUBLIC_FORM_MIN_SECONDS = 0
 
 # ---------------------------------------------------------------------------
 # Outbound isolation.
@@ -277,8 +284,21 @@ m.tuya_request = _refuse(
     "Tuya, the front door's cloud",
     "a real call OPENS THE FRONT DOOR; stand in for tuya_request in the test")
 
+# Cloudflare Turnstile, the contact forms' human check. No keys exist yet, and
+# that is the argument for blocking it now: the day the owner adds them to
+# .env, every run would ask Cloudflare about every enquiry a suite posts, and
+# would fail on an aeroplane. Keys cleared, so the forms work as they do
+# without them; a suite testing the switch stands both in for a few lines.
+m.TURNSTILE_SITEKEY = m.TURNSTILE_SECRET = ""
+m.turnstile_siteverify = _refuse(
+    "Cloudflare Turnstile",
+    "stand in for turnstile_siteverify in the test")
+
 # Proof, rather than the assumption this file used to make. Each of these was
 # true only by accident of what happens to be in .env on one machine.
+assert not m.turnstile_enabled(), "Turnstile has keys under test"
+assert m.turnstile_siteverify.__name__ == "_blocked", (
+    "the Turnstile check is not blocked under test")
 assert not m.stripe_enabled(), "Stripe is still enabled under test"
 assert not getattr(m.stripe, "api_key", None), (
     "stripe.api_key still holds a real key — app.py wired it in at import and "
@@ -841,6 +861,22 @@ def flashes(response):
     html = response.get_data(as_text=True)
     return [" ".join(x.split())
             for x in re.findall(r'class="flash flash-\w+"[^>]*>(.*?)</div>', html, re.S)]
+
+
+def contact_form_fields(seconds_ago=60):
+    """What a person's post to /contact carries besides their answers: the
+    honeypot left empty, and the moment the form was drawn, a minute ago.
+
+    Without these a post is a machine's and is turned away quietly -- thanked,
+    and nothing saved -- so a suite that forgot them would read as a form
+    that saves nothing, not as a forgotten field."""
+    return {m.BOT_HONEYPOT_FIELD: "", m.BOT_STAMP_FIELD: form_stamp(seconds_ago)}
+
+
+def form_stamp(seconds_ago=60):
+    """A drawn-at stamp for a public form, signed as bot_guard() signs one."""
+    ts = str(int(time.time() - seconds_ago))
+    return f"{ts}.{m._form_stamp_signature(ts)}"
 
 
 def ensure_owner():

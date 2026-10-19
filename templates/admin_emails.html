@@ -40,7 +40,7 @@
   {% endif %}
   <div class="mail-health__row">
     <span class="mini-status status-{{ 'confirmed' if health.reports_on else 'pending' }}">{{ 'Reporting' if health.reports_on else 'No reports' }}</span>
-    <span>{% if health.reports_on %}The provider reports what happens to each letter: delivered, bounced or marked as spam.
+    <span>{% if health.reports_on %}The provider reports what happens to each letter: delivered, bounced, refused or marked as spam.
         {% if health.last_report %}The last report came {{ local_datetime_str(health.last_report) }}.{% else %}None has arrived yet.{% endif %}
       {% else %}“Sent” means only that the provider accepted a letter, not that it arrived. Connect delivery reports to know which bounced.{% endif %}</span>
   </div>
@@ -55,7 +55,7 @@
     <summary class="small-link">For whoever set the site up</summary>
     <p class="upload-hint">Sending: <code>RESEND_API_KEY</code> and <code>RESEND_FROM</code>, or the <code>SMTP_*</code> settings.
       Delivery reports: in Resend, add a webhook to <code>{{ health.webhook_url }}</code> for the delivered, bounced,
-      complained and delayed events, and set its signing secret as <code>RESEND_WEBHOOK_SECRET</code>.</p>
+      complained, delayed and suppressed events, and set its signing secret as <code>RESEND_WEBHOOK_SECRET</code>.</p>
   </details>
 </div>
 
@@ -126,6 +126,7 @@
    it somewhere receives every guest and every wage each night. #}
 {% if user['role'] == 'owner' %}
 <form method="post" action="{{ url_for('update_tech_email') }}" class="detail-card" style="margin:12px 0 24px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label for="tech_email">Technical mail goes to</label>
   <input type="email" id="tech_email" name="tech_email" value="{{ health.tech_email }}"
          placeholder="{{ health.owner_email or 'website@…' }}" autocomplete="off">

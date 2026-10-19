@@ -36,7 +36,7 @@
 {%- set _t_fr %}{% block title_fr %}{% endblock %}{% endset %}
 {%- set _d_fr %}{% block description_fr %}{% endblock %}{% endset %}
 <title>{% if lang == 'fr' and _t_fr|trim %}{{ _t_fr|trim }}{% else %}{% block title %}Stay{% endblock %}{% endif %} — Château de Gudanes</title>
-<meta name="description" content="{% if lang == 'fr' and _d_fr|trim %}{{ _d_fr|trim }}{% else %}{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013: five guest rooms, and workshop retreats.{% endblock %}{% endif %}">
+<meta name="description" content="{% if lang == 'fr' and _d_fr|trim %}{{ _d_fr|trim }}{% else %}{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013: {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} guest rooms, and workshop retreats.{% endblock %}{% endif %}">
 
 {# Shared to Instagram, WhatsApp or a message, a link showed a bare URL with
    no image. These give it the château and the page's own title. #}
@@ -170,6 +170,10 @@ window.houseDay = (function () {
   "currenciesAccepted": "EUR",
   "paymentAccepted": "Credit Card",
   "petsAllowed": false,
+  {# Read from CHECK_IN_TIME / CHECK_OUT_TIME in app.py, never typed: the
+     times moved once already (z15), and test_check_in_times holds it. #}
+  "checkinTime": "{{ check_in_time }}",
+  "checkoutTime": "{{ check_out_time }}",
   "amenityFeature": [
     {"@type": "LocationFeatureSpecification", "name": "Swimming pool", "value": true},
     {"@type": "LocationFeatureSpecification", "name": "Tennis court", "value": true},
@@ -262,7 +266,7 @@ window.houseDay = (function () {
             </span>
           </div>
           <button type="submit" class="g-btn g-btn--solid g-qbook__go">{{ t('Check availability') }}</button>
-          <p class="g-qbook__n">{{ t('Five rooms · breakfast included') }}</p>
+          <p class="g-qbook__n">{{ t((house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize ~ ' rooms · breakfast included') }}</p>
         </form>
 
         {#- 10 Oct (owner: "the side menus don't match up, there are duplicates - a full review"). Three groups that match the
@@ -425,7 +429,7 @@ window.houseDay = (function () {
           <span class="g-bookmenu__txt">
             <b>{{ t('Stay the Night') }}</b>
             <em>{{ t('A room and breakfast, your own dates') }}</em>
-            <span class="g-bookmenu__meta">{{ t('Five rooms · from one night') }}</span>
+            <span class="g-bookmenu__meta">{{ t((house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize ~ ' rooms · from one night') }}</span>
           </span>
         </a>
 
