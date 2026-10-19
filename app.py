@@ -63229,6 +63229,25 @@ def export_workshop_feedback_csv():
     return csv_response(fieldnames, rows, "workshop_feedback.csv")
 
 
+# Where a stay came from, as the list's chips and column say it.
+BOOKING_SOURCE_WORDS = {"direct": "Website", "desk": "Desk or telephone",
+                        "returning": "Returning guest", "agent": "Agent or platform",
+                        "event": "Part of an event", "other": "Something else",
+                        "booking.com": "Booking.com"}
+
+
+def _nights_between(arrival_iso, departure_iso):
+    """Nights between two ISO dates, 0 when either is missing or unreadable."""
+    a, d = parse_date(arrival_iso or ""), parse_date(departure_iso or "")
+    return max((d - a).days, 0) if a and d else 0
+
+
+def booking_source_label(source):
+    """'Website', 'Desk or telephone', 'Booking.com', or the source as written."""
+    key = (source or "direct").strip().lower()
+    return BOOKING_SOURCE_WORDS.get(key, key.replace("_", " ").capitalize())
+
+
 @app.route("/admin/bookings")
 @owner_required
 def admin_bookings():
@@ -63247,14 +63266,36 @@ def admin_bookings():
     # No ORDER BY worth the name: list_view sorts. The one this had compared
     # against date('now'), which is the UTC day, and was replaced by the sort
     # anyway.
-    all_bookings = conn.execute(
+    all_bookings = [dict(b, kind="stay", source_label=booking_source_label(b["source"]))
+                    for b in conn.execute(
         """SELECT bookings.*, rooms.name AS room_name,
                   booking_parties.name AS party_name
              FROM bookings
              JOIN rooms ON rooms.id = bookings.room_id
              LEFT JOIN booking_parties ON booking_parties.id = bookings.party_id
            ORDER BY bookings.arrival_date"""
-    ).fetchall()
+    ).fetchall()]
+    # EVERY RESERVATION IN ONE LIST (owner, 19 October 2026: "it needs to be a
+    # proper hotel booking system back end"). Booking.com's stays lived on a
+    # page of their own, so the list of who is coming left out every guest
+    # who booked through the channel, and "staying tonight" undercounted the
+    # house. They are listed here now, read-only and badged: they are still
+    # kept out of the house's letters, balances and revenue on purpose (see
+    # channel_stays_page), so they open their own page rather than a stay's.
+    channel_stays = [dict(o, kind="channel", source_label="Booking.com",
+                          room_name=o["room_name"] or o["room_label"] or "Room not matched",
+                          reference_code=o["reservation_number"],
+                          guest_name=o["guest_name"] or "Booking.com guest",
+                          guest_email="", guest_phone="", party_name=None, party_id=None,
+                          party_size=o["guests"], guests_under_18=0,
+                          estimated_arrival_time=None, no_show_at=None, checked_out_at=None,
+                          created_at=o["first_seen_at"], total_price=o["amount"],
+                          nights=_nights_between(o["arrival_date"], o["departure_date"]))
+                     for o in conn.execute(
+        """SELECT ota_reservations.*, rooms.name AS room_name FROM ota_reservations
+             LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
+            WHERE ota_reservations.arrival_date IS NOT NULL""").fetchall()]
+    everything = all_bookings + channel_stays
 
     # THE HOUSE RULE, applied to the one list that never had it: every list
     # gets list_view -- search, counted chips, sort -- rather than another
@@ -63292,10 +63333,29 @@ def admin_bookings():
     elif old_when == "Been and gone":
         legacy["when"] = "History"
 
+    def _live(b):
+        return b["status"] in ("pending", "confirmed")
+
     def _stage(b):
-        if (b["departure_date"] or "") <= today_iso_pre:
+        # Where a live stay is today. A guest leaving today is still here this
+        # morning -- the list used to drop them the day they left -- and one
+        # arriving today is both arriving and here, so is counted under both.
+        arrive, leave = b["arrival_date"] or "", b["departure_date"] or ""
+        if not _live(b) or leave < today_iso_pre:
             return None
-        return "Here now" if (b["arrival_date"] or "") <= today_iso_pre else "Still to come"
+        if leave == today_iso_pre:
+            return ["Leaving today"]
+        if arrive == today_iso_pre:
+            return ["Arriving today", "Here now"]
+        return "Here now" if arrive < today_iso_pre else "Still to come"
+
+    def _when(b):
+        # What the list opens on: stays still to happen or happening. A
+        # cancelled or declined one is a chip away under its own name rather
+        # than filling the first screen, and the past is History.
+        if not _live(b):
+            return "Called off"
+        return "History" if (b["departure_date"] or "") < today_iso_pre else "Current"
 
     # Which stays have something extra on them, asked once for the list.
     with_extras = {r["booking_id"] for r in conn.execute(
@@ -63303,31 +63363,37 @@ def admin_bookings():
             WHERE category = 'room' AND status != 'cancelled'""").fetchall()}
 
     lv = list_view(
-        all_bookings, legacy,
+        everything, legacy,
         search=["guest_name", "guest_email", "guest_phone", "reference_code", "room_name",
-                "party_name"],
-        search_hint="Search guest, email, telephone, reference or room",
+                "party_name", "special_requests", "source_label"],
+        search_hint="Search guest, email, telephone, reference, room or note",
         facets=[
             # The values stay "Current" and "History" -- they are in saved
             # views and bookmarks -- and say what they mean on the chip.
-            facet("when", "Show",
-                  lambda b: "History" if (b["departure_date"] or "") <= today_iso_pre
-                  else "Current", order=["Current", "History"], default="Current",
-                  labels={"Current": "Here or still to come", "History": "Past stays"}),
-            facet("stage", "Where they are", _stage, order=["Here now", "Still to come"]),
+            facet("when", "Show", _when, order=["Current", "History", "Called off"],
+                  default="Current",
+                  labels={"Current": "Here or still to come", "History": "Past stays",
+                          "Called off": "Cancelled or declined"}),
+            facet("stage", "Where they are", _stage,
+                  order=["Arriving today", "Here now", "Leaving today", "Still to come"]),
+            facet("source", "Came through", lambda b: b["source_label"],
+                  order=["Website", "Desk or telephone", "Returning guest", "Booking.com"]),
             # Pending first: a request nobody has answered is the only thing on
             # this page with a clock running on it.
             facet("state", "Status", lambda b: (b["status"] or "").capitalize(),
                   order=["Pending", "Confirmed", "Cancelled", "Declined"]),
             facet("room", "Room", lambda b: b["room_name"], limit=12),
-            facet("money", "Money", lambda b: "Owes money" if owed_by_booking.get(b["id"]) else None),
+            facet("money", "Money", lambda b: "Owes money" if b["kind"] == "stay"
+                  and owed_by_booking.get(b["id"]) else None),
             facet("extras", "Add-ons",
-                  lambda b: "With add-ons" if b["id"] in with_extras else None),
+                  lambda b: "With add-ons" if b["kind"] == "stay" and b["id"] in with_extras
+                  else None),
         ],
         sorts=[
             sort_option("arrival", "Arriving soonest",
                         lambda b: b["arrival_date"] or "9999-12-31"),
-            sort_option("owed", "Most owed", lambda b: -owed_by_booking.get(b["id"], 0)),
+            sort_option("owed", "Most owed", lambda b: -(owed_by_booking.get(b["id"], 0)
+                                                        if b["kind"] == "stay" else 0)),
             sort_option("latest", "Most recent stay first",
                         lambda b: b["departure_date"] or "", reverse=True),
             sort_option("recent", "Booked most recently",
@@ -63343,13 +63409,15 @@ def admin_bookings():
     # WHAT EACH ROW COSTS AND HAS PAID, from the bill -- the one definition of
     # what a stay owes -- for the rows on the screen. total_price alone left out
     # the tourist tax and anything added since, so a row read "€830" over a
-    # bill of €833.20.
-    bill_by_booking = {b["id"]: booking_bill(conn, b["id"]) for b in bookings}
+    # bill of €833.20. The house's stays only: a Booking.com stay is paid to
+    # the channel and has no bill here.
+    bill_by_booking = {b["id"]: booking_bill(conn, b["id"]) for b in bookings
+                       if b["kind"] == "stay"}
     # Every extra on its own line with the day it is wanted, gathered once for
     # the page. The list printed extras_summary, a line of text written at
     # booking time with no day in it, so the board for the Saturday read
     # exactly like the board on arrival -- and anything added later not at all.
-    shown = {b["id"] for b in bookings}
+    shown = {b["id"] for b in bookings if b["kind"] == "stay"}
     extras_by_booking = {}
     for line in conn.execute(
             """SELECT booking_id, name, quantity, scheduled_for, notes, status
@@ -63364,7 +63432,9 @@ def admin_bookings():
     today = house_today()
     today_iso = today.isoformat()
     week_ahead_iso = (today + timedelta(days=7)).isoformat()
-    active = [b for b in all_bookings if b["status"] in ("pending", "confirmed")]
+    # Counted across both books: a Booking.com guest arriving today is
+    # arriving today.
+    active = [b for b in everything if b["status"] in ("pending", "confirmed")]
     arriving_today = [b for b in active if b["arrival_date"] == today_iso]
     departing_today = [b for b in active if b["departure_date"] == today_iso]
     arriving_this_week = [b for b in active if today_iso < b["arrival_date"] <= week_ahead_iso]
@@ -63380,6 +63450,8 @@ def admin_bookings():
         "here": sum(1 for b in active if b["status"] == "confirmed"
                     and (b["arrival_date"] or "") <= today_iso < (b["departure_date"] or "")
                     and not b["no_show_at"]),
+        "channel": sum(1 for b in channel_stays if b["status"] == "confirmed"
+                       and (b["departure_date"] or "") >= today_iso),
         "owed": round(sum(owed_by_booking.values()), 2),
         "owing": sum(1 for v in owed_by_booking.values() if v),
     }
@@ -63405,6 +63477,8 @@ def admin_bookings():
             cautioned["n:" + " ".join((row["name"] or "").casefold().split())] = row
     caution_by_booking = {}
     for b in bookings:
+        if b["kind"] != "stay":
+            continue
         hit = (cautioned.get("e:" + (b["guest_email"] or "").strip().casefold())
                or cautioned.get("n:" + " ".join((b["guest_name"] or "").casefold().split())))
         if hit:
@@ -63710,6 +63784,7 @@ def admin_booking(booking_id):
     return render_template(
         "admin_booking.html", b=booking, bill=bill, refund=refund, nights=nights,
         reserved_until_words=reservation_held_until(booking),
+        payment_methods=MANUAL_PAYMENT_METHODS,
         extras=extras, live_extras=live_extras, addable=addable,
         stay_day_choices=stay_day_choices,
         messages=messages, waiting=waiting, texts=texts,
@@ -67547,6 +67622,9 @@ BOOKING_EDIT_FIELDS = (
     ("booked_by_name", "payer's name", "person"), ("booked_by_email", "payer's address", "person"),
     ("second_contact_name", "second contact's name", "person"),
     ("second_contact_email", "second contact's address", "person"),
+    ("guest_name", "guest's name", "person"),
+    ("guest_address", "home address", "person"), ("guest_city", "town", "person"),
+    ("guest_postcode", "postcode", "person"), ("guest_country", "country", "person"),
 )
 
 
@@ -67630,37 +67708,69 @@ def edit_booking(booking_id):
         arrival, departure = parse_date(arrival_raw), parse_date(departure_raw)
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
 
+        # THE NAME, THE ADDRESS AND THE ROOM (19 October 2026: "editable").
+        # None of the three could be changed here, so a misspelt name was on
+        # the register, the bill and every letter for good, and a room swap
+        # meant cancelling and booking again. A form posted without them (an
+        # older page) leaves them as they were; a name cannot be emptied.
+        typed_name = request.form.get("guest_name")
+        guest_name = booking["guest_name"]
+        if typed_name is not None and typed_name.strip():
+            guest_name = " ".join(typed_name.split())[:120]
+        address = {k: booking[k] for k in ("guest_address", "guest_city", "guest_postcode",
+                                           "guest_country")}
+        for k in address:
+            if k in request.form:
+                address[k] = (request.form.get(k) or "").strip()[:GUEST_DETAIL_LIMITS[k]] or None
+        room_raw = (request.form.get("room_id") or "").strip()
+        new_room = None
+        if room_raw.isdigit() and int(room_raw) != booking["room_id"]:
+            new_room = conn.execute("SELECT * FROM rooms WHERE id = ? AND active = 1",
+                                    (int(room_raw),)).fetchone()
+        room_now = new_room or booking
+
         error = None
-        if guest_email and "@" not in guest_email:
+        if room_raw.isdigit() and int(room_raw) != booking["room_id"] and not new_room:
+            error = "That room is not on sale."
+        elif guest_email and "@" not in guest_email:
             error = "That email address has no @ in it."
         elif not arrival or not departure:
             error = "Choose valid arrival and departure dates."
         elif not party_size or party_size < 1:
             error = "Party size is required."
-        elif room_party_problem(booking, party_size, int(under_18_raw) if under_18_raw.isdigit()
+        elif room_party_problem(room_now, party_size, int(under_18_raw) if under_18_raw.isdigit()
                                 else (booking["guests_under_18"] or 0)):
-            error = room_party_problem(booking, party_size, int(under_18_raw) if under_18_raw.isdigit()
+            error = room_party_problem(room_now, party_size, int(under_18_raw) if under_18_raw.isdigit()
                                        else (booking["guests_under_18"] or 0))
         else:
-            ok, reason = claim_range(conn, booking["room_id"], arrival, departure, exclude_booking_id=booking_id)
+            # The room the stay will be in: the new one when it is moving, and
+            # the same check either way, so a move can never let a room twice.
+            ok, reason = claim_range(conn, room_now["id"] if new_room else booking["room_id"],
+                                     arrival, departure, exclude_booking_id=booking_id)
             if not ok:
-                error = reason
+                error = (f"{new_room['name']} is not free for those nights: {reason}"
+                         if new_room else reason)
 
         if error:
             flash(error, "error")
             group = booking_group(conn, booking["id"])
+            rooms = _edit_rooms(conn)
             conn.close()
             return render_template("edit_booking.html", booking=booking,
                                group=group, booking_sources=BOOKING_SOURCES,
-                               heard_via_options=HEARD_VIA)
+                               heard_via_options=HEARD_VIA, rooms=rooms)
 
         room_for_pricing = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
         # Same as the guest-side change: the extras are backed out of what the
         # room was AGREED at, never out of a fresh quote.
         old_room_portion = quoted_room_total(conn, booking, room_for_pricing)
         extras_portion = (booking["total_price"] or 0) - old_room_portion
-        if (arrival.isoformat(), departure.isoformat()) == (booking["arrival_date"],
-                                                            booking["departure_date"]):
+        if new_room:
+            # Another room is another price: the new room's rate for these
+            # nights, said in the history and on the page, and the guest told.
+            new_room_portion = compute_room_total(conn, new_room, arrival, departure)
+        elif (arrival.isoformat(), departure.isoformat()) == (booking["arrival_date"],
+                                                              booking["departure_date"]):
             # The same nights, at the price they were agreed at. Quoting them
             # afresh re-priced the stay at whatever the rate card said today
             # on any save at all -- so correcting a phone number could change
@@ -67696,20 +67806,27 @@ def edit_booking(booking_id):
             "guest_email": guest_email or None, "estimated_arrival_time": arrival_time,
             "booked_by_name": booked_by_name or None, "booked_by_email": booked_by_email or None,
             "second_contact_name": second_name or None,
-            "second_contact_email": second_email or None})
+            "second_contact_email": second_email or None,
+            "guest_name": guest_name, **address})
+        if new_room:
+            changes.insert(0, f"room {booking['room_name']} → {new_room['name']}")
         conn.execute(
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
                special_requests=?, total_price=?, guests_under_18=?,
                source=?, heard_via=?, booked_by_name=?, booked_by_email=?,
                second_contact_name=?, second_contact_email=?,
-               guest_email=?, estimated_arrival_time=? WHERE id=?""",
+               guest_email=?, estimated_arrival_time=?, guest_name=?, room_id=?,
+               guest_address=?, guest_city=?, guest_postcode=?, guest_country=? WHERE id=?""",
             (arrival.isoformat(), departure.isoformat(), party_size, guest_phone or None,
              special_requests or None, new_total, under_18, source, heard_via,
              booked_by_name or None, booked_by_email or None,
              second_name or None, second_email or None,
              # Empty text, not NULL: the column will not hold a NULL, and a
              # walk-in taken with no address carries ''.
-             guest_email or "", arrival_time,
+             guest_email or "", arrival_time, guest_name,
+             new_room["id"] if new_room else booking["room_id"],
+             address["guest_address"], address["guest_city"], address["guest_postcode"],
+             address["guest_country"],
              booking_id),
         )
         stamp_room_total(conn, booking_id, new_room_portion,
@@ -67729,8 +67846,8 @@ def edit_booking(booking_id):
         # Through write_about_stay for the same reason as the cancellation: a
         # copied party who was sent the old dates must be sent the new ones.
         subject, body, letter = render_email_template(conn, "room_updated", {
-            "guest_name": booking["guest_name"],
-            "room_name": booking["room_name"],
+            "guest_name": guest_name,
+            "room_name": new_room["name"] if new_room else booking["room_name"],
             "arrival_date": format_date_human(arrival.isoformat()),
             "departure_date": format_date_human(departure.isoformat()),
             "party_size": party_size,
@@ -67745,7 +67862,8 @@ def edit_booking(booking_id):
         # nothing different in it to find.
         told = (booking["arrival_date"] != arrival.isoformat()
                 or booking["departure_date"] != departure.isoformat()
-                or booking["party_size"] != party_size)
+                or booking["party_size"] != party_size
+                or bool(new_room))
         if subject and told:
             write_about_stay(booking, subject, body, html=letter)
         flash(("Booking updated." + (" The guest has been sent the new details." if told else ""))
@@ -67753,10 +67871,17 @@ def edit_booking(booking_id):
         return redirect(url_for("admin_booking", booking_id=booking_id))
 
     group = booking_group(conn, booking["id"])
+    rooms = _edit_rooms(conn)
     conn.close()
     return render_template("edit_booking.html", booking=booking,
                                group=group, booking_sources=BOOKING_SOURCES,
-                               heard_via_options=HEARD_VIA)
+                               heard_via_options=HEARD_VIA, rooms=rooms)
+
+
+def _edit_rooms(conn):
+    """The rooms a stay can be moved into from its edit page."""
+    return conn.execute("SELECT id, name, max_occupancy FROM rooms WHERE active = 1 "
+                        "ORDER BY sort_order, name").fetchall()
 
 
 @app.route("/admin/bookings/<int:booking_id>/refund", methods=["POST"])
@@ -77367,6 +77492,14 @@ def check_gift_voucher():
     return render_template("voucher_check.html", result=result, code=code)
 
 
+def _payment_back(booking_id):
+    """A payment recorded from the stay's own page goes back to the stay; from
+    What we're owed, back to that list."""
+    if (request.form.get("back") or "") == "booking":
+        return url_for("admin_booking", booking_id=booking_id) + "#money"
+    return url_for("management_outstanding")
+
+
 @app.route("/management/outstanding/<int:booking_id>/payment", methods=["POST"])
 @owner_required
 def record_manual_booking_payment(booking_id):
@@ -77406,12 +77539,12 @@ def record_manual_booking_payment(booking_id):
     if amount <= 0:
         conn.close()
         flash("Enter how much was taken.", "error")
-        return redirect(url_for("management_outstanding"))
+        return redirect(_payment_back(booking_id))
     if bill and amount > bill["owed"] + 0.01:
         conn.close()
         flash(f"That is more than the {money(bill['owed'])} outstanding on this stay.",
               "error")
-        return redirect(url_for("management_outstanding"))
+        return redirect(_payment_back(booking_id))
     reference = (request.form.get("reference", "") or "").strip() or None
     method = (request.form.get("method", "") or "").strip() or "cash"
     if method not in MANUAL_PAYMENT_METHODS:
@@ -77438,7 +77571,7 @@ def record_manual_booking_payment(booking_id):
     flash(f"{money(amount)} recorded against {booking['guest_name']}."
           + (f" {money(remaining)} still to pay." if remaining > 0.005 else " Settled."),
           "success")
-    return redirect(url_for("management_outstanding"))
+    return redirect(_payment_back(booking_id))
 
 
 @app.route("/management/outstanding/<int:booking_id>/chase", methods=["POST"])

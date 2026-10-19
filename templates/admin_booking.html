@@ -93,9 +93,7 @@
       <dt>Name</dt><dd>{{ b['guest_name'] }}</dd>
       <dt>Email</dt><dd>{% if b['guest_email'] %}<a href="{{ url_for('guest_by_email', email=b['guest_email']) }}">{{ b['guest_email'] }}</a>{% else %}<span class="mini-status status-pending">none — give them the card</span>{% endif %}</dd>
       <dt>Telephone</dt><dd>{{ b['guest_phone'] or '—' }}</dd>
-      {% if b['guest_address'] or b['guest_country'] %}
-      <dt>Address</dt><dd>{{ [b['guest_address'], ((b['guest_city'] or '') ~ ' ' ~ (b['guest_postcode'] or ''))|trim, b['guest_country']]|select|join(', ') }}</dd>
-      {% endif %}
+      <dt>Address</dt><dd>{% if b['guest_address'] or b['guest_country'] %}{{ [b['guest_address'], ((b['guest_city'] or '') ~ ' ' ~ (b['guest_postcode'] or ''))|trim, b['guest_country']]|select|join(', ') }}{% else %}<span class="upload-hint">not given · <a href="{{ url_for('edit_booking', booking_id=b['id']) }}">add it</a></span>{% endif %}</dd>
       {% if b['booked_by_name'] %}<dt>Booked and paid by</dt><dd>{{ b['booked_by_name'] }} · {{ b['booked_by_email'] }}</dd>{% endif %}
       {% if b['second_contact_name'] or b['second_contact_email'] %}<dt>Also written to</dt><dd>{{ b['second_contact_name'] }} {{ b['second_contact_email'] }}</dd>{% endif %}
       {% if caution %}<dt>Caution</dt><dd class="owed-flag">{{ caution['caution'] }}</dd>{% endif %}
@@ -262,7 +260,7 @@
     {% if bill.deposit %}<p class="upload-hint">Deposit {{ bill.deposit|money }} — {{ 'paid' if bill.deposit_paid else 'not paid yet' }}.{% if bill.balance_due_date %} Balance due {{ bill.balance_due_date|date_short }}{% if bill.balance_overdue %}, <strong class="owed-flag">overdue</strong>{% endif %}.{% endif %}</p>{% endif %}
     <form method="post" action="{{ url_for('send_stay_statement', booking_id=b['id']) }}" class="bk-inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
-      <button type="submit" class="btn-ghost">Email the statement</button>
+      <button type="submit" class="btn-ghost">{{ 'Email the bill with a Pay now link' if bill.owed > 0.005 and b['guest_email'] else 'Email the statement' }}</button>
     </form>
   </div>
 
@@ -287,6 +285,26 @@
     {% else %}
     <p class="empty-state">No payment recorded yet.</p>
     {% endif %}
+    {#- Money taken by hand -- a transfer that landed, cash, a card in person --
+        recorded here on the stay (19 October 2026). The form was only on What
+        we're owed, so a payment on a stay meant leaving the stay to find it. -#}
+    {% if bill.owed > 0.005 and b['status'] in ('pending', 'confirmed') %}
+    <form method="post" action="{{ url_for('record_manual_booking_payment', booking_id=b['id']) }}" class="bk-take" id="take-payment">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="back" value="booking">
+      <h3 class="bk-subhead">Record a payment</h3>
+      <div class="bk-take__row">
+        <input type="number" name="amount" step="0.01" min="0.01" max="{{ '%.2f'|format(bill.owed) }}"
+               value="{{ '%.2f'|format(bill.owed) }}" aria-label="How much" required inputmode="decimal">
+        <select name="method" aria-label="How it was paid">
+          {% for key, label in payment_methods.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+        <input type="text" name="reference" placeholder="Reference (optional)" aria-label="Reference">
+        <button type="submit" class="btn-mini">Record</button>
+      </div>
+      <p class="upload-hint">For a transfer that has landed, cash, or a card taken in person. Card payments online record themselves.</p>
+    </form>
+    {% endif %}
     {% if refund.history %}
     <h3 class="bk-subhead">Refunds made</h3>
     <ul class="bk-list">
@@ -303,8 +321,8 @@
    non-refundable as standard, and money goes back when a person decides it
    should. The form is the refund desk's own -- it posts there and comes back
    here -- so there is one engine, one ledger, one letter. #}
-<div class="detail-card bk-refund">
-  <h3>Give money back</h3>
+<details class="detail-card bk-refund">
+  <summary><h3 style="display:inline;">Give money back</h3>{% if refund.ceiling > 0 %} <span class="upload-hint">up to {{ refund.ceiling|money }}</span>{% endif %}</summary>
   {% if not can('refund_desk') %}
   <p class="upload-hint">Giving money back is the owner's call.{% if refund.ceiling > 0 %} {{ refund.ceiling|money }} could go back.{% endif %}</p>
   {% elif refund.ceiling > 0 %}
@@ -362,7 +380,7 @@
   {% else %}
   <p class="upload-hint">Nothing has been paid that could go back.</p>
   {% endif %}
-</div>
+</details>
 </section>
 
 {# ---------------------------------------------------------------- messages #}

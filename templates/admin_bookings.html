@@ -27,7 +27,7 @@
 <div class="stat-tiles">
   <a class="stat-tile bk-tile-link" href="{{ url_for('admin_bookings', when='Current', stage='Here now') }}">
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('rooms', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.here }}</span><span class="stat-tile-label">Staying tonight</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.here }}</span><span class="stat-tile-label">Staying tonight{% if counts.channel %} · Booking.com included{% endif %}</span></span>
   </a>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('bookings', 19) }}</span>
@@ -47,15 +47,15 @@
 <div class="detail-card bk-week">
   <div class="bk-week-col">
     <span class="detail-label">Arriving today</span>
-    {% for b in arriving_today %}<a href="{{ url_for('admin_booking', booking_id=b['id']) }}">{{ b['guest_name'] }}</a> <span class="upload-hint">{{ b['room_name'] }}{% if b['estimated_arrival_time'] %} · {{ b['estimated_arrival_time'] }}{% endif %}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
+    {% for b in arriving_today %}<a href="{{ url_for('admin_booking', booking_id=b['id']) if b['kind'] == 'stay' else url_for('channel_stays_page', q=b['reference_code'], when='all') }}">{{ b['guest_name'] }}</a>{% if b['kind'] == 'channel' %} <span class="mini-status status-upcoming">Booking.com</span>{% endif %} <span class="upload-hint">{{ b['room_name'] }}{% if b['estimated_arrival_time'] %} · {{ b['estimated_arrival_time'] }}{% endif %}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
   </div>
   <div class="bk-week-col">
     <span class="detail-label">Leaving today</span>
-    {% for b in departing_today %}<a href="{{ url_for('admin_booking', booking_id=b['id']) }}">{{ b['guest_name'] }}</a> <span class="upload-hint">{{ b['room_name'] }}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
+    {% for b in departing_today %}<a href="{{ url_for('admin_booking', booking_id=b['id']) if b['kind'] == 'stay' else url_for('channel_stays_page', q=b['reference_code'], when='all') }}">{{ b['guest_name'] }}</a>{% if b['kind'] == 'channel' %} <span class="mini-status status-upcoming">Booking.com</span>{% endif %} <span class="upload-hint">{{ b['room_name'] }}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
   </div>
   <div class="bk-week-col">
     <span class="detail-label">Arriving this week</span>
-    {% for b in arriving_this_week %}<a href="{{ url_for('admin_booking', booking_id=b['id']) }}">{{ b['guest_name'] }}</a> <span class="upload-hint">{{ b['arrival_date']|date_short }}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
+    {% for b in arriving_this_week %}<a href="{{ url_for('admin_booking', booking_id=b['id']) if b['kind'] == 'stay' else url_for('channel_stays_page', q=b['reference_code'], when='all') }}">{{ b['guest_name'] }}</a>{% if b['kind'] == 'channel' %} <span class="mini-status status-upcoming">Booking.com</span>{% endif %} <span class="upload-hint">{{ b['arrival_date']|date_short }}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
   </div>
 </div>
 {% endif %}
@@ -78,6 +78,9 @@
 {% if not bookings %}
   <div class="empty-state">{% if lv.filtered %}No bookings match those filters.{% else %}No bookings yet.{% endif %}</div>
 {% else %}
+{#- Every reservation, the house's and Booking.com's, one row each (19 October
+    2026). Add-ons sit under the stay rather than in a column of dashes, and
+    the actions in the status cell, so the table fits a laptop. -#}
 <div class="table-wrap">
   <table class="data-table bk-table">
     <thead>
@@ -86,16 +89,38 @@
         <th scope="col">Guest</th>
         <th scope="col">Room</th>
         <th scope="col">Stay</th>
-        <th scope="col">Add-ons</th>
+        <th scope="col">Came through</th>
         <th scope="col" class="num">Total</th>
         <th scope="col" class="num">Paid</th>
         <th scope="col" class="num">Owed</th>
         <th scope="col">Status</th>
-        <th scope="col"><span class="visually-hidden">Open</span></th>
       </tr>
     </thead>
     <tbody>
     {% for b in bookings %}
+    {% if b['kind'] == 'channel' %}
+      {%- set here = b['status'] == 'confirmed' and b['arrival_date'] <= today_iso < b['departure_date'] -%}
+      <tr class="bk-row-channel{{ ' bk-row-here' if here }}{{ ' bk-row-off' if b['status'] != 'confirmed' }}">
+        <td class="bk-tick"></td>
+        <td class="bk-guest">
+          <a href="{{ url_for('channel_stays_page', q=b['reference_code'], when='all') }}" class="bk-name">{{ b['guest_name'] }}</a>
+          <span class="cell-note">Booking.com {{ b['reference_code'] }}</span>
+        </td>
+        <td data-label="Room" class="bk-room">{{ b['room_name'] }}</td>
+        <td data-label="Stay" class="bk-stay">
+          <strong>{{ date_range(b['arrival_date'], b['departure_date']) }}</strong>
+          {%- set n = b['nights'] %}
+          <span class="cell-note">{{ n }} night{{ '' if n == 1 else 's' }}{% if b['party_size'] %} · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}{% endif %}</span>
+        </td>
+        <td data-label="Came through"><span class="mini-status status-upcoming">Booking.com</span></td>
+        <td data-label="Total" class="num">{{ b['total_price']|money if b['total_price'] else '—' }}</td>
+        <td data-label="Paid" class="num" colspan="2"><span class="cell-note">paid to Booking.com</span></td>
+        <td data-label="Status" class="bk-status">
+          <span class="mini-status status-{{ 'confirmed' if b['status'] == 'confirmed' else 'cancelled' }}">{{ b['status'] }}</span>
+          {%- if here %} <span class="mini-status status-onshift">here now</span>{% endif -%}
+        </td>
+      </tr>
+    {% else %}
       {% set bill = bill_by_booking[b['id']] %}
       {% set owed = owed_by_booking.get(b['id'], 0) %}
       {% set here = b['status'] == 'confirmed' and b['arrival_date'] <= today_iso < b['departure_date'] and not b['no_show_at'] %}
@@ -121,12 +146,11 @@
         <td data-label="Stay" class="bk-stay">
           <strong>{{ date_range(b['arrival_date'], b['departure_date']) }}</strong>
           <span class="cell-note">{{ bill.nights }} night{{ '' if bill.nights == 1 else 's' }} · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}{% if b['guests_under_18'] %} ({{ b['guests_under_18'] }} under 18){% endif %}{% if b['estimated_arrival_time'] %} · arriving {{ b['estimated_arrival_time'] }}{% endif %}</span>
-        </td>
-        <td data-label="Add-ons" class="bk-extras">
           {% for x in extras_by_booking.get(b['id'], []) %}
           <span class="bk-extra">{{ x.name }}{% if x.quantity > 1 %} ×{{ x.quantity }}{% endif %}{% if x.when %} <span class="bk-when">{{ x.when }}</span>{% endif %}{% if x.status == 'delivered' %} <span class="bk-done">✓</span>{% endif %}</span>
-          {% else %}<span class="upload-hint">—</span>{% endfor %}
+          {% endfor %}
         </td>
+        <td data-label="Came through"><span class="cell-note bk-source">{{ b['source_label'] }}</span></td>
         <td data-label="Total" class="num">{{ bill.total|money }}</td>
         <td data-label="Paid" class="num">{{ bill.paid|money if bill.paid else '—' }}{% if bill.refunded %}<span class="cell-note">{{ bill.refunded|money }} refunded</span>{% endif %}</td>
         <td data-label="Owed" class="num">
@@ -140,14 +164,12 @@
           {%- if b['no_show_at'] %} <span class="mini-status status-declined" title="Confirmed, and nobody arrived">did not arrive</span>{% endif -%}
           {%- if here %} <span class="mini-status status-onshift">here now</span>{% endif -%}
           {%- if b['checked_out_at'] %} <span class="mini-status status-past">checked out</span>{% endif -%}
-        </td>
-        <td class="bk-open">
           {% if b['status'] == 'pending' %}
-          <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Confirm</button></form>
+          <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}" class="bk-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Confirm</button></form>
           {% endif %}
-          <a href="{{ url_for('admin_booking', booking_id=b['id']) }}" class="btn-ghost">Open</a>
         </td>
       </tr>
+    {% endif %}
     {% endfor %}
     </tbody>
   </table>
