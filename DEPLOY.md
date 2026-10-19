@@ -94,8 +94,7 @@ domain to www.
    to Squarespace. The app refuses to treat a Railway address as the house's,
    and the readiness page goes red if `SITE_IS_LIVE` is on without a proper
    one.
-5. **Then:** add the real domain to the Outlook add-in's sign-in redirect (see
-   the add-in section); tick *Write to guests*; submit `/sitemap.xml` in Google
+5. **Then:** tick *Write to guests*; submit `/sitemap.xml` in Google
    Search Console. The Stripe and Resend webhooks stay on the Railway address,
    which keeps answering and is never redirected (webhooks, the calendar feeds
    and `/outlook-addin/*` are not moved, by design).
@@ -125,6 +124,16 @@ done by the owner by 19 October 2026 (Google setup notes, z30):
    value to have no separate staff address (the staff side then answers
    wherever it is asked, as before); `SESSION_COOKIE_DOMAIN` empty stops the
    sign-in being shared.
+
+   **The Outlook add-in stays on the Railway address.** Its manifest and the
+   add-in page name `ADDIN_BASE_URL`, whichever address they are opened on, so
+   opening `/admin/outlook-addin` on admin. still offers the Railway manifest.
+   Unset, Railway's own `RAILWAY_PUBLIC_DOMAIN` stands in, but only when it
+   holds a `*.railway.app` name (Railway says it may hold a custom domain
+   instead). To be certain, set
+   `ADDIN_BASE_URL=https://cdg1-production-9186.up.railway.app`. If neither
+   gives an answer, the add-in page on admin. shows no manifest link, says
+   what to set, and the readiness page lists it.
 5. **After the deploy, everybody signs in once more.** The shared sign-in is a
    new cookie, so the old one on www is no longer read. Staff who added the app
    to a phone's home screen from www should add it again from
@@ -675,9 +684,9 @@ Nobody pastes a shared key any more. In the Entra admin centre:
 1. App registrations → New registration → "Gudanes Outlook add-in", this
    organisation only.
 2. Authentication → Add a platform → **Single-page application**, redirect
-   URI `brk-multihub://<the site's host>` (e.g.
-   `brk-multihub://web-production-xxxx.up.railway.app`; add the real domain
-   too at switchover).
+   URI `brk-multihub://<the add-in's host>` — the add-in page prints it, e.g.
+   `brk-multihub://cdg1-production-9186.up.railway.app`. It does not change at
+   switchover: the add-in keeps its own address (`ADDIN_BASE_URL`).
 3. Expose an API → set the Application ID URI to `api://<client id>` → add a
    scope `access_as_user` (admins and users can consent).
 4. API permissions → Add → My APIs → this app → `access_as_user` → **Grant
