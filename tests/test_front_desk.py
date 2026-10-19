@@ -50,14 +50,14 @@ def run():
     oc, ec, _o, _e = clients()
     _cleanup(conn)
     try:
-        _checks(s, conn, oc)
+        _checks(s, conn, oc, ec)
     finally:
         _cleanup(conn)
         conn.close()
     return s
 
 
-def _checks(s, conn, oc):
+def _checks(s, conn, oc, _ec):
     today = m.house_today()
     rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, id").fetchall()
     first = rooms[0]
@@ -146,6 +146,45 @@ def _checks(s, conn, oc):
     trail = " ".join(r["details"] or "" for r in conn.execute(
         "SELECT details FROM audit_log WHERE target = ? AND action = 'booking_edited'", (row["reference_code"],)))
     s.check("and the move is in its history", f"room {first['name']} → {second['name']}" in trail, detail=trail[-200:])
+
+    s.section("The front desk, today")
+    # Somebody arriving today in the first room, nothing else asked of it.
+    conn.execute("DELETE FROM bookings WHERE guest_name LIKE ? AND id != ?", (TAG + " Leaving%", leaving["id"]))
+    arr_room = next((r for r in rooms if m.is_range_available(conn, r["id"], today, today + timedelta(days=2))[0]), None)
+    s.check("a room free tonight to arrive in", arr_room is not None)
+    if arr_room:
+        here = _stay(conn, arr_room, today, 2, "Arriving")
+        desk = oc.get("/admin/desk").get_data(as_text=True)
+        s.check("the desk opens for the owner", "The rooms today" in desk)
+        s.check("every room is on it, with how it stands",
+                all(r["name"] in desk for r in rooms) and "Arriving" in desk)
+        s.check("today's arrival is listed, with a Check in button",
+                f"{TAG} Arriving" in desk and f"/admin/bookings/{here['id']}/check-in" in desk)
+        s.check("and so is the Booking.com arrival, badged", f"{TAG} Channel Guest" in desk)
+        s.check("the guest leaving today is there to check out",
+                f"/admin/bookings/{leaving['id']}/checkout" in desk)
+        s.check("what today's guests owe is added up", "To collect from today" in desk)
+        r = oc.post(f"/admin/bookings/{here['id']}/check-in", data={"back": "desk"})
+        s.check("checking in comes back to the desk", r.headers.get("Location", "").endswith("/admin/desk"))
+        stamp = conn.execute("SELECT checked_in_at FROM bookings WHERE id = ?", (here["id"],)).fetchone()[0]
+        s.check("and records the moment", bool(stamp))
+        oc.post(f"/admin/bookings/{here['id']}/check-in", data={"back": "desk"})
+        s.check("a second press changes nothing", conn.execute(
+            "SELECT checked_in_at FROM bookings WHERE id = ?", (here["id"],)).fetchone()[0] == stamp)
+        s.check("the desk shows them checked in", "checked in" in oc.get("/admin/desk").get_data(as_text=True))
+    later = free_window(first["id"], 2, after_days=90)
+    early = _stay(conn, first, later, 2, "Early")
+    r = oc.post(f"/admin/bookings/{early['id']}/check-in", data={"back": "desk"}, follow_redirects=True)
+    s.check("nobody is checked in before their day", conn.execute(
+        "SELECT checked_in_at FROM bookings WHERE id = ?", (early["id"],)).fetchone()[0] is None
+        and "not due until" in " ".join(flashes(r)))
+    s.check("staff without the owner's rights are turned away from the desk",
+            _ec.get("/admin/desk").status_code in (302, 403))
+
+    s.section("Arrivals: today and tomorrow")
+    arrivals = oc.get("/admin/arrivals").get_data(as_text=True)
+    s.check("both days are on it, today first", ">Today" in arrivals and ">Tomorrow" in arrivals
+            and arrivals.find(">Today") < arrivals.find(">Tomorrow"))
 
     s.section("The calendar is a timeline")
     cal = oc.get("/admin/calendar").get_data(as_text=True)

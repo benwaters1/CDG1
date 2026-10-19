@@ -426,6 +426,7 @@ SUITES = [
     "test_contact_enquiry_spam",
     "test_contact_form_guard",
     "test_workshops_fifteen",
+    "test_google_setup_z30",
     "test_languages_page",
     "test_share_images",
     "test_stripe_webhook_tool",

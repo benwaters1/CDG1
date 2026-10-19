@@ -65,16 +65,15 @@ def run():
     room = _harness.ensure_room()
     tomorrow = m.house_today() + timedelta(days=1)
 
-    s.section("It opens on tomorrow, not today")
+    s.section("It opens on today and tomorrow (owner, 19 October 2026)")
     _booking("TOM", room_id=room["id"], arrival=tomorrow,
              estimated_arrival_time="18:30", special_requests="no shellfish")
     _booking("TODAY", room_id=room["id"], arrival=m.house_today())
     body = oc.get("/admin/arrivals").get_data(as_text=True)
-    s.check("tomorrow's guest is on it", f"{TAG} TOM" in body,
-            detail="a page that opens on today reports rather than prepares")
-    s.check("and today's is not", f"{TAG} TODAY" not in body,
-            detail="by the time today's arrivals are arriving it is too late "
-                   "to act on anything this would have said")
+    s.check("tomorrow's guest is on it, to get ready for", f"{TAG} TOM" in body)
+    s.check("and so is today's, to receive", f"{TAG} TODAY" in body)
+    s.check("today first", body.find(f"{TAG} TODAY") < body.find(f"{TAG} TOM")
+            and ">Today" in body and ">Tomorrow" in body)
     s.check("a named day can still be asked for",
             f"{TAG} TODAY" in oc.get(
                 "/admin/arrivals?date=" + m.house_today().isoformat()

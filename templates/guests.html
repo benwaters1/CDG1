@@ -60,63 +60,27 @@
    Neither could be asked at all before. #}
 {% include "_list_toolbar.html" %}
 
-{# Who is actually here comes from confirmed bookings, not from the profiles
-   below — that separation is what stops a cancelled booking leaving a phantom
-   guest sitting in residence forever. #}
-<h2 class="section-heading">In residence now{% if in_residence %} — {{ in_residence|length }}{% endif %}</h2>
-{% if not in_residence %}
-  <div class="empty-state">No guests in residence right now.</div>
-{% else %}
-<div class="manual-layout">
-  {% for s in in_residence %}
-  <div class="manual-section">
-    <div class="manual-section-head">
-      <h3>
-        {{ s['name'] }}
-        {% if s['vip'] %}<span class="mini-status status-pending" style="margin-left:8px;">VIP</span>{% endif %}
-        <span class="mini-status status-current" style="margin-left:8px;">{{ s['stay_status_label'] }}</span>
-      </h3>
-      <div class="manual-actions">
-        {% if s['email'] %}<a href="{{ url_for('guest_booking_history', email=s['email']) }}" class="small-link">History</a>{% endif %}
-        {% if user['role'] == 'owner' and s['profile_id'] %}
-        <a href="{{ url_for('guest_detail', guest_id=s['profile_id']) }}" class="small-link">Profile</a>
-        {% endif %}
-      </div>
-    </div>
-    <p class="manual-body wraps">
-      {{ s['room_name'] }} · {{ date_range(s['arrival_date'], s['departure_date']) }}
-      {%- if s['channel'] %} · booked through {{ s['channel'] }}{% endif %}
-      {%- if s['party_size'] %} · Party of {{ s['party_size'] }}{% endif -%}
-    </p>
-    {% if s['notes'] %}<p class="manual-body">{{ s['notes'] }}</p>{% endif %}
+{#- Who is here and who is coming, from the bookings, in a strip rather than
+    a card each (19 October 2026): the Bookings list and the desk are where
+    stays are worked; this page is the guests themselves. -#}
+<div class="gu-house">
+  <div class="gu-house__col">
+    <h2 class="gu-house__h">In the house now{% if in_residence %} · {{ in_residence|length }}{% endif %}</h2>
+    {% for s in in_residence %}
+    <p class="gu-house__row"><strong>{{ s['name'] }}</strong>{% if s['vip'] %} <span class="mini-status status-pending">VIP</span>{% endif %}
+      <span class="upload-hint">{{ s['room_name'] }} · until {{ s['departure_date']|date_short }}{% if s['channel'] %} · booked through {{ s['channel'] }}{% endif %}</span>
+      {% if user['role'] == 'owner' and s['profile_id'] %}<a href="{{ url_for('guest_detail', guest_id=s['profile_id']) }}" class="small-link">Open</a>{% endif %}</p>
+    {% else %}<p class="upload-hint">Nobody in the house right now.</p>{% endfor %}
   </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-{% if upcoming %}
-<h2 class="section-heading">Arriving soon</h2>
-<div class="manual-layout">
-  {% for s in upcoming[:10] %}
-  <div class="manual-section">
-    <div class="manual-section-head">
-      <h3>
-        {{ s['name'] }}
-        {% if s['vip'] %}<span class="mini-status status-pending" style="margin-left:8px;">VIP</span>{% endif %}
-      </h3>
-      <div class="manual-actions">
-        {% if s['email'] %}<a href="{{ url_for('guest_booking_history', email=s['email']) }}" class="small-link">History</a>{% endif %}
-      </div>
-    </div>
-    <p class="manual-body wraps">
-      {{ s['room_name'] }} · {{ date_range(s['arrival_date'], s['departure_date']) }}
-      {%- if s['channel'] %} · booked through {{ s['channel'] }}{% endif %}
-      {%- if s['party_size'] %} · Party of {{ s['party_size'] }}{% endif -%}
-    </p>
+  <div class="gu-house__col">
+    <h2 class="gu-house__h">Arriving soon{% if upcoming %} · {{ upcoming|length }}{% endif %}</h2>
+    {% for s in upcoming[:8] %}
+    <p class="gu-house__row"><strong>{{ s['name'] }}</strong>
+      <span class="upload-hint">{{ s['arrival_date']|date_short }} · {{ s['room_name'] }}{% if s['channel'] %} · booked through {{ s['channel'] }}{% endif %}</span></p>
+    {% else %}<p class="upload-hint">Nobody booked to arrive soon.</p>{% endfor %}
+    {% if upcoming|length > 8 %}<p><a href="{{ url_for('admin_bookings', stage='Still to come') }}" class="small-link">All {{ upcoming|length }} on Bookings</a></p>{% endif %}
   </div>
-  {% endfor %}
 </div>
-{% endif %}
 
 <h2 class="section-heading">Guest profiles{% if profiles %} — {{ profiles|length }}{% endif %}</h2>
 <p class="upload-hint" style="margin-top:-6px;">Standing records that persist between visits — preferences, dietary needs and contact details. Stay dates live on the booking.</p>
@@ -126,7 +90,7 @@
 {# Ticked and tagged together: the same act as tagging one, done for each, and
    it names any it could not. #}
 {% if can('bulk_tag_guests') %}
-<form method="post" action="{{ url_for('bulk_tag_guests') }}" id="bulk-tag">
+<form method="post" action="{{ url_for('bulk_tag_guests') }}" id="bulk-tag" class="gu-tag">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="back" value="{{ request.full_path }}">
   <input type="text" name="tag" maxlength="40" list="known-tags" aria-label="Tag the ticked" placeholder="Tag the ticked" style="width:auto;">
@@ -134,49 +98,54 @@
   <button type="submit" class="btn-mini">Tag them</button>
 </form>
 {% endif %}
-<div class="manual-layout">
-  {% for g in profiles %}
-  <div class="manual-section">
-    <div class="manual-section-head">
-      <h3>
-        {% if can('bulk_tag_guests') %}<input type="checkbox" name="guest_ids" value="{{ g['id'] }}" form="bulk-tag" aria-label="Tick {{ g['name'] }}">{% endif %}
-        {{ g['name'] }}
-        {% if g['vip'] %}<span class="mini-status status-pending" style="margin-left:8px;">VIP</span>{% endif %}
-        {% set visits = stay_counts.get(g['id'], 0) %}
-        {% if visits > 1 %}<span class="mini-status status-confirmed" style="margin-left:8px;">{{ visits }} stays</span>{% endif %}
-        {% for t in tags.get(g['id'], []) %}<span class="mini-status status-upcoming" style="margin-left:6px;">{{ t }}</span>{% endfor %}
-      </h3>
-      <div class="manual-actions">
-        {% if g['email'] %}<a href="{{ url_for('guest_booking_history', email=g['email']) }}" class="small-link">History</a>{% endif %}
-        {% if user['role'] == 'owner' %}
-        {# The record first, the form second. Opening a person straight into
-           an edit box is a page that answers "what would you like to change"
-           when the question was "who are they". #}
-        <a href="{{ url_for('guest_detail', guest_id=g['id']) }}" class="small-link">Open</a>
-        <a href="{{ url_for('edit_guest', guest_id=g['id']) }}" class="small-link">Edit</a>
-        {% endif %}
-      </div>
-    </div>
-    {% if g['email'] or g['phone'] %}
-    <p class="manual-body wraps">
-      {{ g['email'] or '' }}{% if g['email'] and g['phone'] %} · {% endif %}{{ g['phone'] or '' }}
-    </p>
-    {% endif %}
-    {#- Their history with the house at a glance: how often, how long, when last
-        and when next. What they have been worth is on their own page, from each
-        stay's bill, rather than a cheaper sum here. -#}
-    {% set h = history.get(g['id']) %}
-    <p class="manual-body upload-hint wraps">
-      {% if h and h.stays %}{{ h.stays }} stay{{ '' if h.stays == 1 else 's' }}, {{ h.nights }} night{{ '' if h.nights == 1 else 's' }}
-        &middot; last here {{ h.last|date_short }}
-      {%- else %}Not stayed yet{% endif %}
-      {%- if h and h.next %} &middot; <strong>next arriving {{ h.next|date_short }}</strong>{% endif %}
-    </p>
-    {% if g['dietary_notes'] %}<p class="manual-body"><strong>Dietary:</strong> {{ g['dietary_notes'] }}</p>{% endif %}
-    {% if g['preferences'] %}<p class="manual-body"><strong>Prefers:</strong> {{ g['preferences'] }}</p>{% endif %}
-    {% if g['notes'] %}<p class="manual-body">{{ g['notes'] }}</p>{% endif %}
-  </div>
-  {% endfor %}
+{#- One row a guest, read across (19 October 2026): who, how to reach them,
+    where they live, how often and how long they have stayed, when last and
+    when next, and anything to know. It was a column of half-width cards. -#}
+<div class="table-wrap">
+  <table class="data-table gu-table">
+    <thead><tr>
+      {% if can('bulk_tag_guests') %}<th scope="col"><span class="visually-hidden">Tick</span></th>{% endif %}
+      <th scope="col">Guest</th><th scope="col">Contact</th><th scope="col">Lives in</th>
+      <th scope="col" class="num">Stays</th><th scope="col">Last here</th><th scope="col">Next</th>
+      <th scope="col">To know</th>
+    </tr></thead>
+    <tbody>
+    {% for g in profiles %}
+    {% set h = history.get(g['id']) or {} %}
+    <tr>
+      {% if can('bulk_tag_guests') %}<td><input type="checkbox" name="guest_ids" value="{{ g['id'] }}" form="bulk-tag" aria-label="Tick {{ g['name'] }}"></td>{% endif %}
+      <td>
+        {% if user['role'] == 'owner' %}<a href="{{ url_for('guest_detail', guest_id=g['id']) }}"><strong>{{ g['name'] }}</strong></a>{% else %}<strong>{{ g['name'] }}</strong>{% endif %}
+        <span class="gu-flags">
+          {%- if g['vip'] %}<span class="mini-status status-pending">VIP</span>{% endif -%}
+          {%- if (g['caution_level'] or '')|trim %}<span class="mini-status status-declined" title="{{ g['caution'] }}">{{ caution_levels.get(g['caution_level'], 'Caution') }}</span>{% endif -%}
+          {%- for tg in tags.get(g['id'], []) %}<span class="mini-status status-upcoming">{{ tg }}</span>{% endfor -%}
+        </span>
+      </td>
+      <td>
+        {% if g['email'] %}<span class="gu-line">{{ g['email'] }}</span>{% else %}<span class="upload-hint">no email</span>{% endif %}
+        {% if g['phone'] %}<span class="gu-line"><a class="small-link" href="tel:{{ g['phone']|replace(' ', '') }}">{{ g['phone'] }}</a></span>{% endif %}
+      </td>
+      <td>{{ h.get('country') or '' }}</td>
+      <td class="num">{% if h.get('stays') %}{{ h.stays }}<span class="cell-note">{{ h.nights }} night{{ '' if h.nights == 1 else 's' }}</span>{% else %}<span class="upload-hint">first time</span>{% endif %}</td>
+      <td>{{ h.last|date_short if h.get('last') else '' }}</td>
+      <td>{% if h.get('next') %}<strong>{{ h.next|date_short }}</strong>{% endif %}</td>
+      <td class="gu-know">
+        {%- if g['dietary_notes'] %}<span class="gu-line"><b>Diet:</b> {{ g['dietary_notes'] }}</span>{% endif -%}
+        {%- if g['access_needs'] %}<span class="gu-line"><b>Needs:</b> {{ g['access_needs'] }}</span>{% endif -%}
+        {%- if g['preferences'] %}<span class="gu-line"><b>Prefers:</b> {{ g['preferences'] }}</span>{% endif -%}
+        {#- manual-body: words somebody wrote, shown as written (an imported note
+            may carry a date in its own form). -#}
+        {%- if g['notes'] %}<span class="gu-line upload-hint manual-body">{{ g['notes'] }}</span>{% endif -%}
+        <span class="gu-acts">
+          {%- if g['email'] %}<a href="{{ url_for('guest_booking_history', email=g['email']) }}" class="small-link">Stays</a>{% endif -%}
+          {%- if user['role'] == 'owner' %} <a href="{{ url_for('edit_guest', guest_id=g['id']) }}" class="small-link">Edit</a>{% endif -%}
+        </span>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
 </div>
 {% endif %}
 

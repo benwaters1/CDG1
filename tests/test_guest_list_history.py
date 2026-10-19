@@ -89,12 +89,20 @@ def run():
         with m.app.test_request_context("/"):
             last = m.format_date_short((today - timedelta(days=40)).isoformat())
             nxt = m.format_date_short((today + timedelta(days=12)).isoformat())
-        s.check("the card says how often and how long",
-                "2 stays, 5 nights" in page, detail="the line under their contact details")
-        s.check("when they were last here", f"last here {last}" in page)
-        s.check("and when they are next arriving", f"next arriving {nxt}" in page)
-        s.check("a new profile says so", "Not stayed yet" in page)
+        # A row a guest since 19 October 2026: stays, nights, last and next
+        # in their own columns.
+        row = page[page.find(f"{TAG} Regular"):]
+        row = row[:row.find("</tr>")]
+        s.check("the row says how often and how long",
+                ">2<span" in row and "5 nights" in row, detail=row[:400])
+        s.check("when they were last here", last in row)
+        s.check("and when they are next arriving", nxt in row)
+        s.check("a new profile says so", "first time" in page)
         been = oc.get("/guests", query_string={"q": TAG, "known": "Been before"}).get_data(as_text=True)
+        coming = oc.get("/guests", query_string={"q": TAG, "coming": "Has a stay booked"}).get_data(as_text=True)
+        coming = coming[coming.find("Guest profiles"):]
+        s.check("'Has a stay booked' finds who is due back",
+                f"{TAG} Regular" in coming and f"{TAG} New" not in coming)
         s.check("'Been before' finds the guest matched by address",
                 f"{TAG} Regular" in been and f"{TAG} New" not in been)
         s.check("no money on the list", "€" not in page.split("Guest profiles")[-1],
