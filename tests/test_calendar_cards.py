@@ -91,8 +91,12 @@ def run():
     cake = extra(bid, f"{TAG} Cake", status="delivered", day=arrive)
     wine = extra(bid, f"{TAG} Wine", status="requested", day=arrive + timedelta(days=2))
     gone = extra(bid, f"{TAG} Cancelled thing", status="cancelled", day=arrive)
-    here = stay("B", -1, 3, f"Otto {TAG}Here")
-    late = extra(here, f"{TAG} Transfer", day=today - timedelta(days=1))
+    # An extra is owed by the SERVICE day, as on the extras due list, and that
+    # runs to 05:00: at 01:30 Tuesday, Monday's transfer is not late yet. Dated
+    # from the house's today, this went red every night after midnight.
+    late_day = m.service_day() - timedelta(days=1)
+    here = stay("B", -2, 4, f"Otto {TAG}Here")
+    late = extra(here, f"{TAG} Transfer", day=late_day)
     task = conn.execute(
         "INSERT INTO tasks (title, due_date, status, assigned_to_user_id, created_at) "
         "VALUES (?, ?, 'open', ?, ?)",
@@ -104,9 +108,9 @@ def run():
     as_staff = conn.execute("SELECT * FROM users WHERE id = ?", (emp["id"],)).fetchone()
     with m.app.test_request_context("/"):
         cal = m.build_calendar(conn, "month", arrive, viewer=as_owner)
-        # The week holding YESTERDAY, where the late extra is. Anchored on
-        # today it went red every Monday: yesterday is last week's Sunday.
-        week = m.build_calendar(conn, "week", today - timedelta(days=1), viewer=as_owner)
+        # The week holding the late extra's day. Anchored on today it went red
+        # every Monday: yesterday is last week's Sunday.
+        week = m.build_calendar(conn, "week", late_day, viewer=as_owner)
         staff = m.build_calendar(conn, "month", arrive, viewer=as_staff)
     events = _all_events(cal)
     mine = {iso: e for iso, e in events if e["kind"] == "booking" and e["id"] == bid}
