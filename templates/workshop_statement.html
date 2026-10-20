@@ -21,6 +21,13 @@
         {% if company|legal_mentions %}<br>{{ company|legal_mentions }}{% endif %}
       </div>
       <div class="statement-actions no-print">
+        {# The workshop letters say this page has "a way to settle anything
+           outstanding", and it had a Print button. The registration page
+           knows whether a deposit or the balance is next, so it goes there. #}
+        {% if v and v.owed > 0.005 and v.stands %}
+        <a href="{{ url_for('workshop_manage', manage_token=booking['manage_token']) }}"
+           class="g-btn g-btn--sm g-btn--solid">Pay online</a>
+        {% endif %}
         <button type="button" class="g-btn g-btn--sm" onclick="window.print()">Print</button>
       </div>
     </div>

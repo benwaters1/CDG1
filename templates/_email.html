@@ -1,82 +1,147 @@
 {#  ==========================================================================
     THE EMAIL WRAPPER
 
-    Every message the château sends is plain text today — `send_email_via_resend`
-    posts only `"text": body` — so there are no buttons, no directions anyone
-    can tap, and a manage link arrives as a bare URL.
+    Every letter the château sends is drawn in this. The words are the
+    owner's (email_templates); this is the paper they are written on: the
+    house's own logo on the navy band, a photograph where the letter is a
+    welcome rather than a bill, and a foot that says who wrote it and how to
+    reach them.
 
-    This is the HTML half. It is written for MAIL CLIENTS, which is a
-    different discipline from the website:
+    It is written for MAIL CLIENTS, which is a different discipline from the
+    website:
 
       · tables, not flexbox or grid. Outlook uses Word's rendering engine and
         supports neither
-      · every style inline. Gmail strips <style> blocks on some clients
+      · every style inline. The <style> block below only ADDS to a phone's
+        view (narrower padding, full-width buttons); a client that strips it
+        still gets the whole letter
       · no web fonts. Georgia and Helvetica are on every machine, and the
         site's Cormorant simply would not load
       · one column, 600px. Anything wider is cut off in a preview pane
       · a button is a table cell with a background and a padded <a> inside.
         A styled <button> does not exist in email
+      · every picture says what it is in its alt text, styled, because
+        Outlook does not show pictures until asked: the logo reads as
+        "Château de Gudanes" in white on navy until then
 
-    The plain-text body is still sent alongside — a client that refuses HTML,
-    or a guest who prefers it, gets exactly what they get today.
+    The pictures are the house's own copies in static/email, never the
+    Squarespace addresses the public pages still carry -- that account is the
+    one the house no longer publishes from, and a letter cannot be swapped at
+    the response layer the way a page is.
+
+    The plain-text body is still sent alongside: a client that refuses HTML,
+    or a guest who prefers it, gets the same words.
     ========================================================================== #}
 
-{% macro email_shell(title, preheader='', settings={}, lang='en') %}
+{% set NAVY = '#14305F' %}
+{% set GOLD = '#C5A24A' %}
+{% set INK = '#2F3E4E' %}
+{% set MUTED = '#5D6B78' %}
+{% set LABEL = '#73562D' %}
+{% set RULE = '#E8E0D2' %}
+{% set PANEL = '#F8F4EC' %}
+{% set SANS = "Helvetica,Arial,sans-serif" %}
+{% set SERIF = "Georgia,'Times New Roman',serif" %}
+
+{% macro email_shell(title, preheader='', settings={}, lang='en', hero=None, foot={}) %}
 <!DOCTYPE html>
 <html lang="{{ lang|default('en') }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
 <title>{{ title }}</title>
+{# Phone widths only: a media query is the one rule that cannot be written
+   inline. Everything else is on the element, so a client that strips this
+   block -- Gmail does on some -- loses the phone adjustments and nothing
+   more. test_html_email holds it to that. #}
+<style>
+  @media (max-width: 620px) {
+    .gd-pad { padding-left:22px !important; padding-right:22px !important; }
+    .gd-h1 { font-size:26px !important; }
+    .gd-btn { width:100% !important; }
+    .gd-btn a { display:block !important; text-align:center !important; }
+    .gd-col { display:block !important; width:100% !important; padding:0 0 14px !important; }
+  }
+</style>
 </head>
-<body style="margin:0; padding:0; background:#EDE5D6;">
+<body style="margin:0; padding:0; background:#EEE8DD;">
 
 {# The preheader is the grey line a phone shows under the subject. Left
    unset, clients pull the first words of the body, which is usually
-   "Hi Eleanor" — a wasted line in the one place a guest decides whether to
-   open at all. #}
-<div style="display:none; max-height:0; overflow:hidden; opacity:0;">{{ preheader }}</div>
+   "Hi Eleanor" -- a wasted line in the one place a guest decides whether to
+   open at all. The run of spaces after it stops a client padding it out
+   with the start of the letter. #}
+<div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all;">{{ preheader }}{% for _ in range(40) %}&#8199;&#847; {% endfor %}</div>
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-       style="background:#EDE5D6;">
+       style="background:#EEE8DD;">
   <tr>
-    <td align="center" style="padding:24px 12px;">
+    <td align="center" style="padding:28px 12px 36px;">
 
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0"
-             style="width:100%; max-width:600px; background:#FFFFFF; border:1px solid #DCD2BE;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"
+             style="width:100%; max-width:600px; background:#FFFFFF; border:1px solid #E2D8C6;">
 
-        {# ---- the head band ---- #}
+        {# ---- the head: the house's own mark ---- #}
         <tr>
-          <td style="background:#14305F; padding:22px 24px; border-bottom:3px solid #C5A24A;">
-            <p style="margin:0; font-family:Georgia,'Times New Roman',serif; font-size:19px;
-                      color:#FFFFFF; letter-spacing:.02em;">Château de Gudanes</p>
-            <p style="margin:4px 0 0; font-family:Helvetica,Arial,sans-serif; font-size:11px;
-                      letter-spacing:.16em; text-transform:uppercase; color:#DCC077;">
-              Ariège · Pyrénées</p>
+          <td align="center" style="background:{{ NAVY }}; padding:30px 24px 26px;">
+            <a href="{{ email_home_url() }}" style="text-decoration:none;">
+              <img src="{{ email_asset('logo-white.png') }}" width="220" height="85"
+                   alt="Château de Gudanes"
+                   style="display:block; width:220px; max-width:220px; height:auto; border:0;
+                          color:#FFFFFF; font-family:{{ SERIF }}; font-size:24px; line-height:1.3;">
+            </a>
           </td>
         </tr>
+        <tr><td style="height:3px; line-height:3px; font-size:0; background:{{ GOLD }};">&nbsp;</td></tr>
+
+        {% if hero %}
+        {# A photograph of the house, for a letter that is a welcome rather
+           than a bill. Empty alt: it is the house's picture, not a fact the
+           letter needs, so a client that hides pictures shows nothing. #}
+        <tr>
+          <td style="padding:0; font-size:0; line-height:0;">
+            <img src="{{ email_asset(hero) }}" width="600" alt=""
+                 style="display:block; width:100%; max-width:600px; height:auto; border:0;">
+          </td>
+        </tr>
+        {% endif %}
 
         <tr>
-          <td style="padding:26px 24px;">
+          <td class="gd-pad" style="padding:40px 48px 38px;">
             {{ caller() }}
           </td>
         </tr>
 
-        {# ---- the foot ---- #}
+        {# ---- the foot: who wrote it, and how to reach them ---- #}
         <tr>
-          <td style="background:#F6F1E7; padding:22px 24px; border-top:1px solid #DCD2BE;">
-            <p style="margin:0 0 6px; font-family:Helvetica,Arial,sans-serif; font-size:12px;
-                      line-height:1.6; color:#4A6076;">
-              Château de Gudanes, 09310 Château-Verdun, Ariège, France<br>
-              <a href="tel:{{ setting(settings, 'phone', '') }}"
-                 style="color:#14305F;">{{ setting(settings, 'phone', '') }}</a> ·
-              <a href="mailto:{{ setting(settings, 'email', '') }}"
-                 style="color:#14305F;">{{ setting(settings, 'email', '') }}</a>
+          <td class="gd-pad" align="center"
+              style="background:#F6F1E7; padding:32px 48px 30px; border-top:1px solid #E2D8C6;">
+            <img src="{{ email_asset('crest-navy.png') }}" width="48" height="52" alt=""
+                 style="display:block; margin:0 auto 12px; width:48px; height:auto; border:0;">
+            <p style="margin:0 0 8px; font-family:{{ SERIF }}; font-size:17px; color:{{ NAVY }};">Château de Gudanes</p>
+            <p style="margin:0 0 6px; font-family:{{ SANS }}; font-size:12.5px; line-height:1.6; color:{{ MUTED }};">
+              {{ email_house()['postal'] }}</p>
+            <p style="margin:0 0 6px; font-family:{{ SANS }}; font-size:12.5px; line-height:1.6; color:{{ MUTED }};">
+              <a href="tel:{{ email_house()['telephone']|replace(' ', '') }}" style="color:{{ NAVY }}; text-decoration:none;">{{ email_house()['telephone'] }}</a>
+              &nbsp;·&nbsp;
+              {% set _write = foot.get('email') or email_house()['email'] %}
+              <a href="mailto:{{ _write }}" style="color:{{ NAVY }}; text-decoration:none;">{{ _write }}</a>
             </p>
-            <p style="margin:0; font-family:Helvetica,Arial,sans-serif; font-size:11px;
-                      color:#6B7A88;">
-              A Class I Historic Monument under restoration since 2013.
+            <p style="margin:0 0 14px; font-family:{{ SANS }}; font-size:12.5px; line-height:1.6; color:{{ MUTED }};">
+              <a href="{{ email_home_url() }}" style="color:{{ NAVY }}; text-decoration:none;">chateaugudanes.com</a>
+              {% for name, href in email_house()['social'] %}&nbsp;·&nbsp;
+              <a href="{{ href }}" style="color:{{ NAVY }}; text-decoration:none;">{{ name }}</a>{% endfor %}
             </p>
+            <p style="margin:0; font-family:{{ SERIF }}; font-style:italic; font-size:12.5px; color:#8A8F86;">
+              A Class I Historic Monument, under restoration since 2013.</p>
+            {% if foot.get('unsubscribe') %}
+            <p style="margin:14px 0 0; font-family:{{ SANS }}; font-size:11.5px; line-height:1.6; color:#8A8F86;">
+              {{ foot.get('why') or 'You are receiving this because you asked for news from Château de Gudanes.' }}
+              <a href="{{ foot.get('unsubscribe') }}" style="color:{{ MUTED }};">Unsubscribe</a></p>
+            {% endif %}
           </td>
         </tr>
       </table>
@@ -89,18 +154,51 @@
 {% endmacro %}
 
 
-{#  A button. In email this is a table cell, not a <button> — a padded link
+{#  The small line above a heading that says what kind of letter this is --
+    "Your stay", "Payments" -- so a guest with six letters from the house
+    can tell them apart at a glance. #}
+{% macro email_eyebrow(text) %}
+<p style="margin:0 0 10px; font-family:{{ SANS }}; font-size:11px; letter-spacing:.18em;
+          text-transform:uppercase; color:{{ LABEL }};">{{ text }}</p>
+{% endmacro %}
+
+
+{#  The heading, the line under it when the subject named something (a room,
+    a reference), and the short gold rule that opens the letter. #}
+{% macro email_heading(text, sub='') %}
+<h1 class="gd-h1" style="margin:0; font-family:{{ SERIF }}; font-weight:normal; font-size:30px;
+           line-height:1.22; color:{{ NAVY }};">{{ text }}</h1>
+{% if sub %}
+<p style="margin:8px 0 0; font-family:{{ SERIF }}; font-style:italic; font-size:18px;
+          line-height:1.4; color:{{ LABEL }};">{{ sub }}</p>
+{% endif %}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 26px;">
+  <tr><td style="width:44px; height:2px; line-height:2px; font-size:0; background:{{ GOLD }};">&nbsp;</td></tr>
+</table>
+{% endmacro %}
+
+
+{#  A paragraph of the owner's words, line breaks kept, any address in it a
+    link rather than text somebody has to copy out. #}
+{% macro email_text(lines, size='15.5px', color=None, margin='0 0 18px') %}
+<p style="margin:{{ margin }}; font-family:{{ SANS }}; font-size:{{ size }}; line-height:1.7;
+          color:{{ color or INK }};">{% for line in lines %}{{ line|letter_links }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+{% endmacro %}
+
+
+{#  A button. In email this is a table cell, not a <button> -- a padded link
     inside a coloured cell is the only construction that renders everywhere,
-    including Outlook. #}
+    including Outlook. 'solid' is the one thing the letter asks the reader to
+    do; 'quiet' is everything else. #}
 {% macro email_button(href, label, tone='solid') %}
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="gd-btn" style="margin:6px 0 20px;">
   <tr>
-    <td style="background:{{ '#14305F' if tone == 'solid' else '#FFFFFF' }};
-               border:1px solid {{ '#14305F' if tone == 'solid' else '#C5A24A' }};">
+    <td align="center" style="background:{{ NAVY if tone == 'solid' else '#FFFFFF' }};
+               border:1px solid {{ NAVY if tone == 'solid' else GOLD }}; border-radius:2px;">
       <a href="{{ href }}"
-         style="display:inline-block; padding:14px 26px;
-                font-family:Helvetica,Arial,sans-serif; font-size:15px;
-                color:{{ '#FFFFFF' if tone == 'solid' else '#14305F' }};
+         style="display:inline-block; padding:15px 30px;
+                font-family:{{ SANS }}; font-size:15px; letter-spacing:.03em;
+                color:{{ '#FFFFFF' if tone == 'solid' else NAVY }};
                 text-decoration:none;">{{ label }}</a>
     </td>
   </tr>
@@ -108,19 +206,127 @@
 {% endmacro %}
 
 
-{#  A labelled fact. Booking references and dates are read at a glance, often
-    on a phone at a service station, so they are set large and lining. #}
+{#  A labelled fact, set large. Booking references and dates are read at a
+    glance, often on a phone at a service station. Kept for anything that
+    still draws one on its own. #}
 {% macro email_fact(label, value) %}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
        style="margin:0 0 14px;">
   <tr>
-    <td style="padding:0 0 3px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
-               letter-spacing:.14em; text-transform:uppercase; color:#73562D;">{{ label }}</td>
+    <td style="padding:0 0 3px; font-family:{{ SANS }}; font-size:11px;
+               letter-spacing:.14em; text-transform:uppercase; color:{{ LABEL }};">{{ label }}</td>
   </tr>
   <tr>
-    <td style="font-family:Georgia,'Times New Roman',serif; font-size:20px; color:#14305F;">{{ value }}</td>
+    <td style="font-family:{{ SERIF }}; font-size:20px; color:{{ NAVY }};">{{ value }}</td>
   </tr>
 </table>
+{% endmacro %}
+
+
+{#  "Arrival: 14 October", "Reference code: GUD-4417" -- the facts a letter
+    lists, as a card with the label on the left and the fact on the right,
+    rather than a column of colons. `rows` is [(label, value)]. #}
+{% macro email_facts(rows) %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="margin:4px 0 24px; background:{{ PANEL }}; border:1px solid {{ RULE }};">
+  {% for label, value in rows %}
+  <tr>
+    <td valign="top" style="padding:12px 0 12px 20px; width:38%; font-family:{{ SANS }}; font-size:11px;
+               letter-spacing:.14em; text-transform:uppercase; color:{{ LABEL }};
+               {{ '' if loop.first else 'border-top:1px solid ' ~ RULE ~ ';' }}">{{ label }}</td>
+    <td valign="top" style="padding:10px 20px 10px 12px; font-family:{{ SERIF }}; font-size:17px;
+               line-height:1.45; color:{{ NAVY }};
+               {{ '' if loop.first else 'border-top:1px solid ' ~ RULE ~ ';' }}">{{ value|letter_links }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endmacro %}
+
+
+{#  Lines with a sum on the end -- a receipt's items, a price, a total -- as
+    a table with the figures in their own column, so they line up and can be
+    added up by eye. `rows` is [{what, amount, kind}] where kind is '',
+    'total' or 'aside' (an "of which VAT" line). #}
+{% macro email_money(rows) %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="margin:4px 0 24px; border-collapse:collapse;">
+  {% for r in rows %}
+  {% set strong = r.kind == 'total' %}
+  {% set aside = r.kind == 'aside' %}
+  <tr>
+    <td style="padding:{{ '12px' if strong else '8px' }} 12px {{ '12px' if strong else '8px' }} 0;
+               font-family:{{ SANS }}; font-size:{{ '13px' if aside else '15px' }};
+               color:{{ MUTED if aside else (NAVY if strong else INK) }};
+               {{ 'font-weight:bold;' if strong else '' }}
+               border-top:1px solid {{ NAVY if strong else RULE }};">{{ r.what }}</td>
+    <td align="right" style="padding:{{ '12px' if strong else '8px' }} 0; white-space:nowrap;
+               font-family:{{ SANS }}; font-size:{{ '13px' if aside else '15px' }};
+               color:{{ MUTED if aside else (NAVY if strong else INK) }};
+               {{ 'font-weight:bold;' if strong else '' }}
+               border-top:1px solid {{ NAVY if strong else RULE }};">{{ r.amount }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endmacro %}
+
+
+{#  The line about how the house takes payment, set apart: it is the one a
+    guest needs to recognise a message that is not from us, so it is drawn
+    as a notice rather than lost as the last paragraph of a letter. #}
+{% macro email_notice(lines, label='Paying safely') %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 24px;">
+  <tr>
+    <td style="background:{{ PANEL }}; border-left:3px solid {{ GOLD }}; padding:16px 20px;">
+      <p style="margin:0 0 6px; font-family:{{ SANS }}; font-size:10.5px; letter-spacing:.16em;
+                text-transform:uppercase; color:{{ LABEL }};">{{ label }}</p>
+      <p style="margin:0; font-family:{{ SANS }}; font-size:13.5px; line-height:1.65; color:{{ INK }};">
+        {% for line in lines %}{{ line|letter_links }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+    </td>
+  </tr>
+</table>
+{% endmacro %}
+
+
+{#  The letter's close, set as a signature rather than a paragraph. #}
+{% macro email_signoff(text) %}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:30px 0 0;">
+  <tr><td style="width:28px; height:1px; line-height:1px; font-size:0; background:{{ GOLD }};">&nbsp;</td></tr>
+</table>
+<p style="margin:12px 0 0; font-family:{{ SERIF }}; font-style:italic; font-size:19px; color:{{ NAVY }};">{{ text }}</p>
+{% endmacro %}
+
+
+{#  Company details and other small print: legal lines a business guest's
+    accounts department needs, not something to read first. #}
+{% macro email_small(lines) %}
+<p style="margin:22px 0 0; padding-top:16px; border-top:1px solid {{ RULE }}; font-family:{{ SANS }};
+          font-size:12px; line-height:1.65; color:{{ MUTED }};">{% for line in lines %}{{ line|letter_links }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+{% endmacro %}
+
+
+{#  What is on at the house, one card each: the picture when the atelier has
+    one, its name, its dates, its price and a way to see it. `items` is
+    [{title, when, price, url, photo}]. #}
+{% macro email_workshops(items) %}
+{% if items %}{{ email_eyebrow('Coming up at the château') }}{% endif %}
+{% for w in items %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="margin:0 0 18px; border:1px solid {{ RULE }};">
+  {% if w.photo %}
+  <tr><td style="padding:0; font-size:0; line-height:0;">
+    <a href="{{ w.url }}"><img src="{{ w.photo }}" width="502" alt="{{ w.title }}"
+       style="display:block; width:100%; height:auto; border:0;"></a></td></tr>
+  {% endif %}
+  <tr>
+    <td style="padding:18px 20px 6px;">
+      <p style="margin:0 0 6px; font-family:{{ SERIF }}; font-size:21px; line-height:1.3; color:{{ NAVY }};">{{ w.title }}</p>
+      {% if w.when %}<p style="margin:0 0 4px; font-family:{{ SANS }}; font-size:14px; color:{{ INK }};">{{ w.when }}</p>{% endif %}
+      {% if w.price %}<p style="margin:0 0 10px; font-family:{{ SANS }}; font-size:13px; color:{{ MUTED }};">{{ w.price }}</p>{% endif %}
+      {{ email_button(w.url, 'See the workshop', 'quiet') }}
+    </td>
+  </tr>
+</table>
+{% endfor %}
 {% endmacro %}
 
 
@@ -130,7 +336,7 @@
     small, and the postcode alone drops people in the village rather than at
     the gates. Every arrival message carries this block.
 
-    The Maps link uses the coordinates, not the address — an address search
+    The Maps link uses the coordinates, not the address -- an address search
     for a building with no street number is exactly how people end up in the
     wrong valley.
     ========================================================================== #}
@@ -138,13 +344,12 @@
 {% set lat = setting(settings, 'lat') %}
 {% set lng = setting(settings, 'lng') %}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-       style="margin:26px 0 0; border-top:2px solid #C5A24A;">
+       style="margin:30px 0 0; border-top:1px solid {{ RULE }};">
   <tr>
-    <td style="padding:22px 0 0;">
-      <p style="margin:0 0 4px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
-                letter-spacing:.14em; text-transform:uppercase; color:#73562D;">Finding us</p>
-      <p style="margin:0 0 16px; font-family:Georgia,'Times New Roman',serif; font-size:22px;
-                color:#14305F;">The last few miles are the ones that matter</p>
+    <td style="padding:28px 0 0;">
+      {{ email_eyebrow('Finding us') }}
+      <p style="margin:0 0 16px; font-family:{{ SERIF }}; font-size:22px; line-height:1.3;
+                color:{{ NAVY }};">The last few miles are the ones that matter</p>
 
       {# The sentence and the buttons stand or fall together. "Use the pin
          below" printed above no pin is worse than either, and a pin nobody
@@ -152,45 +357,45 @@
          than the address is that being NEARLY right sends people to the
          village square, which is the exact failure at issue. #}
       {% if lat and lng %}
-      <p style="margin:0 0 18px; font-family:Helvetica,Arial,sans-serif; font-size:15px;
-                line-height:1.65; color:#2C3E50;">
+      <p style="margin:0 0 18px; font-family:{{ SANS }}; font-size:15px;
+                line-height:1.65; color:{{ INK }};">
         The château is above the village of Château-Verdun, an hour and three
         quarters south of Toulouse. <strong>Use the pin below rather than
         searching the address</strong> — a search can send you to the village square instead of the gates.
       </p>
 
       {{ email_button('https://www.google.com/maps/search/?api=1&query=' ~ lat ~ ',' ~ lng,
-                      'Open in Google Maps') }}
+                      'Open in Google Maps', 'quiet') }}
       {{ email_button('https://maps.apple.com/?ll=' ~ lat ~ ',' ~ lng ~ '&q=Ch%C3%A2teau%20de%20Gudanes',
                       'Open in Apple Maps', 'quiet') }}
       {% else %}
-      <p style="margin:0 0 18px; font-family:Helvetica,Arial,sans-serif; font-size:15px;
-                line-height:1.65; color:#2C3E50;">
+      <p style="margin:0 0 18px; font-family:{{ SANS }}; font-size:15px;
+                line-height:1.65; color:{{ INK }};">
         The château is above the village of Château-Verdun, an hour and three
         quarters south of Toulouse. <strong>Do not search the address</strong> — a search can send you to the village square instead of the gates. Telephone us and we will talk you up the last few miles.
       </p>
       {% endif %}
 
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-             style="margin:14px 0 0;">
+             style="margin:10px 0 0;">
         <tr>
-          <td style="padding:10px 0; border-top:1px solid #E6DCC8;
-                     font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.6; color:#2C3E50;">
-            <strong style="color:#14305F;">Driving</strong> — 1 h 45 from Toulouse
+          <td style="padding:12px 0; border-top:1px solid {{ RULE }};
+                     font-family:{{ SANS }}; font-size:14px; line-height:1.6; color:{{ INK }};">
+            <strong style="color:{{ NAVY }};">Driving</strong> — 1 h 45 from Toulouse
             airport by the A66 and the N20. The last four kilometres climb and narrow;
             take them slowly.
           </td>
         </tr>
         <tr>
-          <td style="padding:10px 0; border-top:1px solid #E6DCC8;
-                     font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.6; color:#2C3E50;">
-            <strong style="color:#14305F;">By train</strong> — to Les Cabannes, three minutes from the gates, or Foix, further down the valley. Tell us your train and we can arrange a car.
+          <td style="padding:12px 0; border-top:1px solid {{ RULE }};
+                     font-family:{{ SANS }}; font-size:14px; line-height:1.6; color:{{ INK }};">
+            <strong style="color:{{ NAVY }};">By train</strong> — to Les Cabannes, three minutes from the gates, or Foix, further down the valley. Tell us your train and we can arrange a car.
           </td>
         </tr>
         <tr>
-          <td style="padding:10px 0; border-top:1px solid #E6DCC8;
-                     font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.6; color:#2C3E50;">
-            <strong style="color:#14305F;">Arriving after dark</strong> — the drive
+          <td style="padding:12px 0; border-top:1px solid {{ RULE }};
+                     font-family:{{ SANS }}; font-size:14px; line-height:1.6; color:{{ INK }};">
+            <strong style="color:{{ NAVY }};">Arriving after dark</strong> — the drive
             is unlit. Telephone as you reach Les Cabannes and someone will meet you at the gates.
           </td>
         </tr>
@@ -203,10 +408,9 @@
 
 {#  ==========================================================================
     BEFORE YOU COME
-    A confirmation is the most-opened message the château sends, and today it
-    ends after the reference number. A guest who has just booked is the most
-    willing they will ever be to add a dinner — and the least likely to hunt
-    for how.
+    A confirmation is the most-opened message the château sends. A guest who
+    has just booked is the most willing they will ever be to add a dinner --
+    and the least likely to hunt for how.
 
     Two links, not five. This is a confirmation with an offer in it, not a
     catalogue.
@@ -216,27 +420,55 @@
     flexible, a stay is non-refundable). Unknown dining mode -> no dinner. -#}
 {%- set _dm = (setting(settings, 'dining_mode', 'hidden') or 'hidden')|lower|trim -%}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-       style="margin:26px 0 0;">
+       style="margin:30px 0 0;">
   <tr>
-    <td style="background:#F6F1E7; border-left:3px solid #C5A24A; padding:22px 24px;">
-      <p style="margin:0 0 4px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
-                letter-spacing:.14em; text-transform:uppercase; color:#73562D;">Before you come</p>
-      <p style="margin:0 0 14px; font-family:Georgia,'Times New Roman',serif; font-size:22px;
-                color:#14305F;">Anything you want to add, add it now</p>
+    <td style="background:{{ PANEL }}; border-left:3px solid {{ GOLD }}; padding:24px 26px 8px;">
+      {{ email_eyebrow('Before you come') }}
+      <p style="margin:0 0 12px; font-family:{{ SERIF }}; font-size:22px; line-height:1.3;
+                color:{{ NAVY }};">Anything you want to add, add it now</p>
 
-      <p style="margin:0 0 18px; font-family:Helvetica,Arial,sans-serif; font-size:15px;
-                line-height:1.65; color:#2C3E50;">
+      <p style="margin:0 0 16px; font-family:{{ SANS }}; font-size:15px;
+                line-height:1.65; color:{{ INK }};">
         {% if _dm == 'open' %}Dinner at La Table is one sitting and the kitchen cooks for one table, so it is worth claiming early. A transfer from Toulouse, or anything else, can be added to the same booking.{% else %}A car from Toulouse, or a bottle of crémant waiting in your room, can be added to the same booking.{% endif %}
       </p>
 
-      {{ email_button(manage_url, 'Add dinner, or a transfer' if _dm == 'open' else 'Add to your stay') }}
+      {{ email_button(manage_url, 'Add dinner, or a transfer' if _dm == 'open' else 'Add to your stay', 'quiet') }}
 
-      <p style="margin:10px 0 0; font-family:Helvetica,Arial,sans-serif; font-size:13px;
-                line-height:1.6; color:#4A6076;">
+      <p style="margin:0 0 16px; font-family:{{ SANS }}; font-size:13px;
+                line-height:1.6; color:{{ MUTED }};">
         The same link manages your reservation and tells us of an allergy —
         no password, and it works for as long as the booking does.
       </p>
     </td>
   </tr>
 </table>
+{% endmacro %}
+
+
+{#  One block of a drawn letter, whatever kind it is. Shared by the plain
+    letter and the confirmation so a paragraph, a card of facts or a notice
+    looks the same in both. `first_button` decides whether a button is the
+    letter's one solid call or a quiet one. #}
+{% macro email_block(block, statement=None, pay_url='', workshops=[]) %}
+  {% if block.kind == 'greeting' %}
+    <p style="margin:0 0 18px; font-family:{{ SERIF }}; font-size:19px; line-height:1.5; color:{{ NAVY }};">{{ block.text }}</p>
+  {% elif block.kind == 'button' %}
+    {{ email_button(block.href, block.label, block.tone or 'solid') }}
+  {% elif block.kind == 'facts' %}
+    {{ email_facts(block.rows) }}
+  {% elif block.kind == 'money' %}
+    {{ email_money(block.rows) }}
+  {% elif block.kind == 'notice' %}
+    {{ email_notice(block.lines) }}
+  {% elif block.kind == 'signoff' %}
+    {{ email_signoff(block.text) }}
+  {% elif block.kind == 'small' %}
+    {{ email_small(block.lines) }}
+  {% elif block.kind == 'statement' %}
+    {% if statement %}{% include "_email_statement.html" %}{% endif %}
+  {% elif block.kind == 'workshops' %}
+    {{ email_workshops(workshops) }}
+  {% else %}
+    {{ email_text(block.lines or [block.text]) }}
+  {% endif %}
 {% endmacro %}

@@ -185,7 +185,7 @@ def run():
     for key in ("room_confirmed", "room_cancelled", "room_updated", "room_declined",
                 "room_statement", "room_balance_before", "room_balance_after",
                 "room_share_request", "room_payment_received", "event_quote",
-                "workshop_not_running", "newsletter_confirm"):
+                "workshop_not_running", "newsletter_welcome"):
         s.check(f"{key} is a template", key in shipped and _row(key) is not None)
 
     s.section("Each one says when it goes and to whom")
@@ -260,9 +260,15 @@ def run():
     moved = oc.post("/management/email-templates/room_updated/preview",
                     json={"subject": shipped["room_updated"][1],
                           "body": shipped["room_updated"][2]}).get_json() or {}
+    # A line each: as typed, or -- since 19 October 2026 -- as the rows of a
+    # card, label beside value. Never run together.
+    moved_html = moved.get("html") or ""
     s.check("a list of facts is drawn a line each, as it was typed",
-            re.search(r"Arrival: 14 October 2026\s*<br>\s*Departure: 17 October 2026",
-                      moved.get("html") or "") is not None,
+            (re.search(r"Arrival: 14 October 2026\s*<br>\s*Departure: 17 October 2026",
+                       moved_html) is not None
+             or (re.search(r">Arrival</td>\s*<td[^>]*>14 October 2026</td>", moved_html)
+                 and re.search(r">Departure</td>\s*<td[^>]*>17 October 2026</td>", moved_html)))
+            and "14 October 2026 Departure" not in moved_html,
             detail="joined, it read 'Arrival: 14 October 2026 Departure: 17 October "
                    "2026 Party size: 2' -- one run-on sentence")
 

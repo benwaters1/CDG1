@@ -3881,3 +3881,36 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .gu-tag{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 10px; }
 .gu-tag input[type=text]{ width:16em !important; max-width:100%; }
 .gu-tag .btn-mini{ width:auto; }
+/* The phone's home screen (/app, 19 October 2026): what the home-screen app
+   opens on. Big tiles, three across on a phone and more on anything wider;
+   every tile is far past the 44px touch floor, so nothing here needs the
+   pointer:coarse block to be usable. */
+.ph{ max-width:720px; margin:0 auto; }
+.ph-head{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin:4px 0 18px; }
+.ph-hello{ display:flex; flex-direction:column; min-width:0; }
+.ph-name{ margin:0; font-weight:600; font-family:'Playfair Display', Georgia, serif; font-size:24px; line-height:1.2; overflow-wrap:anywhere; }
+.ph-date{ font-size:13px; color:var(--ink-soft); }
+.ph-head form{ margin:0; }
+.ph-clock{ display:inline-flex; align-items:center; gap:8px; min-height:48px; padding:0 18px; border-radius:24px;
+  border:0; background:var(--steel); color:#fff; font-size:16px; font-weight:600; cursor:pointer; width:auto; }
+.ph-clock--in{ background:var(--surface); color:var(--ink); border:1px solid var(--parchment-line); }
+.ph-clock .nav-icon{ margin:0; }
+.ph-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:12px; }
+.ph-tile{ position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  min-height:104px; padding:14px 6px 12px; border-radius:18px; background:var(--surface);
+  border:1px solid var(--parchment-line); box-shadow:var(--shadow); color:var(--ink); text-decoration:none;
+  text-align:center; -webkit-tap-highlight-color:transparent; }
+.ph-tile:active{ transform:scale(.97); background:var(--status-neutral-bg); }
+.ph-icon{ display:flex; align-items:center; justify-content:center; width:56px; height:56px; border-radius:16px;
+  background:var(--status-info-bg); color:var(--steel-deep); }
+.ph-icon .nav-icon{ margin:0; }
+.ph-label{ font-size:14px; font-weight:600; line-height:1.2; overflow-wrap:anywhere; hyphens:auto; }
+.ph-badge{ position:absolute; top:8px; right:8px; min-width:24px; height:24px; padding:0 7px; border-radius:12px;
+  background:var(--danger); color:#fff; font-size:13px; font-weight:700; line-height:24px; }
+.ph-tile--quiet .ph-icon{ background:var(--status-neutral-bg); color:var(--ink-soft); }
+@media (max-width:360px){
+  .ph-grid{ grid-template-columns:repeat(3, 1fr); gap:8px; }
+  .ph-tile{ min-height:96px; border-radius:14px; }
+  .ph-icon{ width:48px; height:48px; }
+  .ph-label{ font-size:13px; }
+}

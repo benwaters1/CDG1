@@ -147,6 +147,7 @@ import binascii
 import sys
 import threading
 import time
+import contextlib
 import shutil        # which(): whether ffmpeg is on this box
 import subprocess    # one frame out of a clip, and nothing else
 from email.message import EmailMessage
@@ -1308,6 +1309,19 @@ GUEST_LOOKUP_TOKEN = os.environ.get("GUEST_LOOKUP_TOKEN", "")
 # names; ADDIN_TENANT_ID only exists for a house whose mail lives elsewhere.
 ADDIN_CLIENT_ID = (os.environ.get("ADDIN_CLIENT_ID") or "").strip()
 ADDIN_TENANT_ID = (os.environ.get("ADDIN_TENANT_ID") or "").strip()
+
+# THE ADD-IN'S OWN ADDRESS: where Outlook loads it from, and so the address the
+# manifest names and the add-in page offers. Everybody's Outlook has it at the
+# Railway address, and it must stay there whichever name the page offering it
+# was opened on -- a manifest built from admin.chateaugudanes.com, installed,
+# moves the add-in off Railway for the whole house. See addin_base_url().
+#
+# Unset, Railway's own variable stands in, but only when it holds a
+# *.railway.app name: Railway documents it as "the public service or customer
+# domain", so with a custom domain attached it may hold one of the house's
+# names instead, which is exactly the wrong answer.
+ADDIN_BASE_URL = (os.environ.get("ADDIN_BASE_URL") or "").strip().rstrip("/")
+RAILWAY_PUBLIC_DOMAIN = (os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "").strip().lower()
 
 # THE HOUSE CALENDAR, written by the app into one Microsoft 365 mailbox.
 #
@@ -2493,12 +2507,18 @@ DEFAULT_EMAIL_TEMPLATES = [
      "accept it are here:\n{quote_url}\n\n"
      "Nothing is agreed until you accept it, and we are glad to talk any of it "
      "through first.\n\n— Château de Gudanes"),
-    ("newsletter_confirm", "Newsletter: Confirm the subscription",
-     "Confirm your subscription — Château de Gudanes",
+    # 19 Oct (owner): "a subscription doesn't need to be confirmed, it's not an
+    # account, just say thank you for your subscription and maybe an advert
+    # for whatever workshops there are on". The confirm-your-address letter it
+    # replaces is gone; {workshops_block} is what is on, drawn as cards.
+    ("newsletter_welcome", "Newsletter: Thank you for subscribing",
+     "Thank you for subscribing — Château de Gudanes",
      "Thank you for subscribing to news from Château de Gudanes.\n\n"
-     "Please confirm your address by opening this link:\n\n{confirm_url}\n\n"
-     "If you did not ask for this, ignore this message and nothing further will "
-     "be sent."),
+     "We will write when there is something to tell: the restoration as it goes, "
+     "the house as it opens, and new dates for the workshops.\n\n"
+     "{workshops_block}\n\n"
+     "All the workshops:\n{workshops_url}\n\n"
+     "— Château de Gudanes"),
 ]
 
 
@@ -2639,6 +2659,8 @@ DEFAULT_EMAIL_TEMPLATES = _fixed
 del _fixed
 # What each template is called, for anything that names a letter.
 EMAIL_TEMPLATE_LABELS = {k: label for k, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
+# Letters nothing sends any more, whose stored rows init_db removes.
+RETIRED_EMAIL_TEMPLATES = ("newsletter_confirm",)
 
 
 # ---------------------------------------------------------------------------
@@ -4272,12 +4294,14 @@ def init_db():
 
         -- Newsletter subscribers, from the box in the public site's menu panel.
         --
-        -- Double opt-in: a row exists from the moment somebody types their
-        -- address, but `confirmed_at` stays NULL until they click the link in
-        -- the email. Only confirmed rows are a mailing list. Anyone can type
-        -- somebody else's address into a public form, so without this the
-        -- château would be mailing people who never asked — which is both
-        -- rude and, under GDPR, not consent.
+        -- `confirmed_at` is when they subscribed. Only rows that have one
+        -- (and have not unsubscribed) are a mailing list. Until 19 October
+        -- 2026 it was set by a link emailed to the address; since then it is
+        -- set as they press subscribe (owner: "a subscription doesn't need to
+        -- be confirmed, it's not an account"), with the consent recorded in
+        -- consent_events. Rows still waiting on the old link stay off the
+        -- list, and an address on the opt-out list is never subscribed by
+        -- somebody typing it in.
         --
         -- `token` is the credential in the confirmation link, exactly as
         -- campaign_sends.unsubscribe_token is for unsubscribing: random and
@@ -8032,6 +8056,11 @@ def init_db():
 
     seed_companies_from_company_info(conn)
 
+    # Retired letters: nothing sends them, so the editor must not list them as
+    # though something did. newsletter_confirm went on 19 October 2026, when
+    # a subscription stopped needing confirming (newsletter_welcome replaced it).
+    for retired in RETIRED_EMAIL_TEMPLATES:
+        conn.execute("DELETE FROM email_templates WHERE template_key = ?", (retired,))
     for template_key, label, subject, body in DEFAULT_EMAIL_TEMPLATES:
         if not conn.execute("SELECT 1 FROM email_templates WHERE template_key = ?", (template_key,)).fetchone():
             conn.execute(
@@ -8279,6 +8308,14 @@ def init_db():
     # Who fits each room, as Booking.com has it -- by the names of 16 October,
     # so after them.
     apply_room_occupancy_2026_10_18(conn)
+    # Every confirmed stay has a guest profile (19 October 2026). A repair
+    # that runs at every start must never be what stops the house starting:
+    # anything it cannot do is said in the log and left for the next start.
+    try:
+        link_stays_to_profiles(conn)
+    except sqlite3.Error as exc:
+        conn.rollback()
+        print(f"[guests] could not link every stay to a profile: {exc}")
 
     # WHERE THE GATES ARE.
     #
@@ -9441,21 +9478,21 @@ NAV_AREA_OF.update({e: a for e, a in OWNER_ONLY_AREAS.items() if a})
 # (heading or None, items). An item: (endpoint, label, icon, also, badge),
 # `also` being the other pages that light it up -- "area:x" for every page in
 # access area x.
-def _nav(endpoint, label, icon_name, also=(), badge=None):
+def _nav(endpoint, label, icon_name, also=(), badge=None, phone=False):
     return {"endpoint": endpoint, "label": label, "icon": icon_name,
-            "also": tuple(also), "badge": badge}
+            "also": tuple(also), "badge": badge, "phone": phone}
 
 
 NAV_TOP = [
     # Today first for everyone: who is in and what am I meant to be doing is
     # the question a member of staff has when they open this on a phone.
-    _nav("staff_today", "Today", "home"),
+    _nav("staff_today", "Today", "home", phone=True),
     _nav("dashboard", "Home", "home", ("admin_home",)),
-    _nav("ops_calendar", "Calendar", "calendar"),
+    _nav("ops_calendar", "Calendar", "calendar", phone=True),
     # High, and for both roles: the one page here people are meant to open
     # unprompted, and a message nobody sees is worse than none.
     _nav("chat_home", "Chat", "contacts", ("chat_channel", "chat_with"),
-         "chat_unread_count"),
+         "chat_unread_count", phone=True),
 ]
 
 OWNER_MENU = [
@@ -9465,13 +9502,13 @@ OWNER_MENU = [
                  ("confirm_booking", "decline_booking", "checkout_booking", "edit_booking",
                   "admin_booking")),
             _nav("admin_calendar", "Booking Calendar", "calendar"),
-            _nav("front_desk", "Front Desk", "bookings", ("check_in_booking",)),
-            _nav("arrivals_sheet_page", "Arrivals", "calendar"),
+            _nav("front_desk", "Front Desk", "bookings", ("check_in_booking",), phone=True),
+            _nav("arrivals_sheet_page", "Arrivals", "calendar", phone=True),
             _nav("admin_rooms", "Rooms", "rooms", ("new_room", "edit_room")),
             _nav("admin_waitlist", "Room Waitlist", "leave"),
         ]),
         ("While they are here", [
-            _nav("breakfast", "Breakfast", "coffee"),
+            _nav("breakfast", "Breakfast", "coffee", phone=True),
             _nav("extras_due_page", "Extras Due", "receipt"),
             _nav("all_transfers", "Transfers", "truck",
                  ("vehicle_transfers_page", "new_vehicle_transfer")),
@@ -9493,9 +9530,9 @@ OWNER_MENU = [
     ]),
     ("restaurant", "Restaurant", "restaurant", ("till",), ("pending_restaurant_count",), [
         ("Service", [
-            _nav("pos_home", "Till", "receipt", ("area:till",)),
+            _nav("pos_home", "Till", "receipt", ("area:till",), phone=True),
             _nav("admin_restaurant", "Reservations", "restaurant", (),
-                 "pending_restaurant_count"),
+                 "pending_restaurant_count", phone=True),
             _nav("admin_restaurant_waitlist", "Waitlist", "leave"),
             _nav("restaurant_tables", "Tables", "restaurant"),
             _nav("restaurant_covers", "Covers Ahead", "restaurant"),
@@ -9529,11 +9566,11 @@ OWNER_MENU = [
     ]),
     ("daily", "Day to Day", "tasks", (), (), [
         (None, [
-            _nav("shift_handover", "Handover", "receipt"),
-            _nav("admin_tasks", "Tasks", "tasks"),
+            _nav("shift_handover", "Handover", "receipt", phone=True),
+            _nav("admin_tasks", "Tasks", "tasks", phone=True),
             _nav("announcements", "Announcements", "receipt",
                  ("new_announcement", "edit_announcement", "delete_announcement")),
-            _nav("shopping_list", "Shopping", "shopping"),
+            _nav("shopping_list", "Shopping", "shopping", phone=True),
             _nav("contacts", "Contacts", "contacts"),
             _nav("manual", "Manual", "manual"),
         ]),
@@ -9607,7 +9644,8 @@ OWNER_MENU = [
     # rebuild: it was already in headings, and the owner reads it daily.
     ("financial", "Financial", "financial", (), (), [
         ("Waiting on you", [
-            _nav("admin_approvals", "Approvals", "approvals", (), "pending_approvals_count"),
+            _nav("admin_approvals", "Approvals", "approvals", (), "pending_approvals_count",
+                 phone=True),
             _nav("expenses", "Expenses & Invoices", "receipt", ("decide_expense",)),
             _nav("admin_refunds", "Refunds", "receipt"),
         ]),
@@ -9677,7 +9715,7 @@ STAFF_MENU = [
     ("s_guests", "Guests", "guests", (), (), [
         (None, [
             _nav("guests", "Guest List", "guests"),
-            _nav("breakfast", "Breakfast", "coffee"),
+            _nav("breakfast", "Breakfast", "coffee", phone=True),
             _nav("all_transfers", "Transfers", "truck"),
             _nav("extras_due_page", "Extras Due", "receipt"),
             _nav("guest_dates", "Dates Worth Knowing", "calendar"),
@@ -9685,7 +9723,7 @@ STAFF_MENU = [
     ]),
     ("s_restaurant", "Restaurant", "restaurant", (), (), [
         (None, [
-            _nav("pos_home", "Till", "receipt", ("pos_order", "pos_kitchen")),
+            _nav("pos_home", "Till", "receipt", ("pos_order", "pos_kitchen"), phone=True),
             _nav("restaurant_covers", "Covers Ahead", "restaurant"),
             _nav("restaurant_tables", "Tables", "restaurant"),
             _nav("kitchen_prep", "Prep List", "restaurant", ("prep_item_done",)),
@@ -9694,8 +9732,8 @@ STAFF_MENU = [
     ]),
     ("house", "The House", "wrench", (), (), [
         (None, [
-            _nav("shift_handover", "Handover", "receipt"),
-            _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",)),
+            _nav("shift_handover", "Handover", "receipt", phone=True),
+            _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",), phone=True),
             _nav("room_issues", "Room Issues", "wrench"),
             _nav("management_cleaning", "Cleaning Rounds", "wrench", ("cleaning_round_done",)),
             _nav("management_visitors", "Visitors On Site", "guests", ("sign_out_visitor",)),
@@ -9707,9 +9745,9 @@ STAFF_MENU = [
     ]),
     ("me", "My Work", "shifts", (), (), [
         (None, [
-            _nav("my_shifts", "My Shifts", "shifts"),
+            _nav("my_shifts", "My Shifts", "shifts", phone=True),
             _nav("my_hours", "My Hours", "shifts"),
-            _nav("my_leave", "Time Off", "leave"),
+            _nav("my_leave", "Time Off", "leave", phone=True),
             _nav("my_availability", "My Availability", "calendar"),
             _nav("my_expenses", "Expenses", "receipt", ("submit_expense",)),
             _nav("mileage", "Mileage", "car"),
@@ -9726,7 +9764,7 @@ STAFF_MENU = [
                  ("new_announcement", "edit_announcement", "delete_announcement")),
             _nav("manual", "Manual", "manual"),
             _nav("contacts", "Contacts", "contacts"),
-            _nav("shopping_list", "Shopping", "shopping"),
+            _nav("shopping_list", "Shopping", "shopping", phone=True),
         ]),
     ]),
 ]
@@ -9788,6 +9826,7 @@ def build_nav(user, endpoint, badges):
         lit = endpoint == item["endpoint"] or endpoint in item["also"] or any(
             o == f"area:{NAV_AREA_OF.get(endpoint)}" for o in item["also"])
         return {"url": url, "label": item["label"], "icon": item["icon"],
+                "endpoint": item["endpoint"], "phone": item["phone"],
                 "active": lit, "badge": badges.get(item["badge"]) if item["badge"] else None}
 
     top = [d for d in (drawn(i) for i in NAV_TOP) if d]
@@ -9805,6 +9844,41 @@ def build_nav(user, endpoint, badges):
                        "url": out[0][1][0]["url"], "sections": out,
                        "open": here == key or here in opens, "badge": total or None})
     return {"top": top, "groups": groups}
+
+
+# THE PHONE'S HOME SCREEN (/app), which the home-screen app opens on.
+#
+# The owner expected big icons to tap, like an app, and what the home-screen
+# app opened was the full dashboard: a page written for a desk, with a sidebar
+# of a hundred links behind a menu button. On a phone in a corridor nobody
+# needs that much; they need the six things they came for, large.
+#
+# The tiles are the sidebar's own items marked `phone=True` -- not a second
+# list -- so a tile has the sidebar's label, icon and badge, and it is drawn
+# only when build_nav would draw that link for this person. An employee with
+# no areas gets STAFF_MENU's tiles; somebody with the till gets the till; the
+# owner gets the business. One more check rides on top of that: a tile to a
+# guarded page needs can_reach, so a flag set on the wrong item can never put
+# an owner-only door on an employee's phone.
+def phone_tiles(nav, user=None):
+    """The home-screen tiles for this person, from what build_nav drew."""
+    user = user or current_user()
+    tiles, seen = [], set()
+    items = list(nav.get("top", []))
+    for g in nav.get("groups", []):
+        for _heading, links in g["sections"]:
+            items.extend(links)
+    for it in items:
+        if not it.get("phone") or it["url"] in seen:
+            continue
+        if view_is_guarded(it["endpoint"]) and not can_reach(user, it["endpoint"]):
+            continue
+        seen.add(it["url"])
+        tiles.append(it)
+    return tiles
+
+
+app.jinja_env.globals["phone_tiles"] = phone_tiles
 
 
 def user_access(user):
@@ -11054,6 +11128,17 @@ def format_date_range(start_iso, end_iso):
 app.jinja_env.filters["house_day"] = house_date_iso
 app.jinja_env.filters["date_short"] = format_date_short
 app.jinja_env.filters["date_human"] = format_date_human
+
+
+def format_date_compact(value):
+    """'19 Oct 2026': a date for a narrow column -- a statement in a letter,
+    read on a phone, where '19 October 2026' took half the width and left the
+    description a word to a line."""
+    day = _day_to_show(value)
+    return f"{day.day} {day.strftime('%b')} {day.year}" if day else (value or "")
+
+
+app.jinja_env.filters["date_compact"] = format_date_compact
 
 
 _ISO_IN_TEXT = re.compile(r"(?<![\d/-])(\d{4})-(\d{2})-(\d{2})(?![\dT/-])")
@@ -29164,10 +29249,10 @@ def newsletter_subscribe():
     private information; and a public form is rate-limited rather than
     trusted, since it sends mail on an anonymous request.
 
-    Nothing here mails an unconfirmed address anything except its own
-    confirmation link, and an address on the opt-out list is never mailed
-    at all — it is recorded as pending and left alone, so an unsubscribe
-    is not silently undone by somebody re-typing the address.
+    A new address is subscribed as it presses the button and thanked once,
+    with what is on. An address on the opt-out list is never mailed at all
+    -- it is recorded as pending and left alone, so an unsubscribe is not
+    silently undone by somebody re-typing the address.
     """
     conn = get_db()
     if rate_limited(conn, "newsletter_subscribe", BOOKING_RATE_LIMIT_PER_HOUR):
@@ -29177,7 +29262,7 @@ def newsletter_subscribe():
         return redirect(request.referrer or url_for("preview_home"))
 
     email = (request.form.get("email", "") or "").strip().lower()
-    thanks = "Thank you — please check your email and click the link to confirm."
+    thanks = "Thank you for subscribing."
     if not email or not EMAIL_RE.match(email):
         conn.commit()
         conn.close()
@@ -29230,40 +29315,108 @@ def newsletter_subscribe():
         "SELECT id, token, confirmed_at FROM newsletter_subscribers WHERE email = ?",
         (email,)).fetchone()
 
-    if row is None:
-        token = secrets.token_urlsafe(32)
-        conn.execute(
-            """INSERT INTO newsletter_subscribers (email, token, source, created_at)
-               VALUES (?, ?, 'site', ?)""", (email, token, now_iso))
-        record_consent(conn, "newsletter", None,
-                       "asked to join on the site, and was sent a link to confirm",
-                       email=email, at=now_iso)
-    else:
-        token = row["token"]
-
-    conn.commit()
-    # Already confirmed, or previously unsubscribed: say the same thing, send
-    # nothing. Re-sending a confirmation to a confirmed address is a way to
-    # have the château email somebody repeatedly on demand.
+    # Already subscribed, or on the opt-out list: say the same thing, send
+    # nothing. A thank-you on every re-type is a way to have the château email
+    # somebody repeatedly on demand -- and an address that said stop is not
+    # put back by somebody typing it into a box.
     if (row and row["confirmed_at"]) or opted_out:
+        if row is None:
+            conn.execute(
+                """INSERT INTO newsletter_subscribers (email, token, source, created_at)
+                   VALUES (?, ?, 'site', ?)""", (email, secrets.token_urlsafe(32), now_iso))
+        if opted_out:
+            # Asked, and kept with how: a no on file is not lifted by a box on a
+            # public page anybody can type an address into.
+            record_consent(conn, "newsletter", None,
+                           "asked to join on the site; on the do-not-write list, so "
+                           "not added and not written to", email=email, at=now_iso)
+        conn.commit()
         conn.close()
         flash(thanks, "success")
         return redirect(request.referrer or url_for("preview_home"))
 
-    link = url_for("newsletter_confirm", token=token, _external=True)
-    subject, body, letter = render_email_template(conn, "newsletter_confirm", {
-        "confirm_url": link,
-    })
+    # SUBSCRIBED AS THEY PRESS IT (owner, 19 October 2026: "a subscription
+    # doesn't need to be confirmed, it's not an account"). They typed their
+    # own address into the box and pressed subscribe: that is the consent,
+    # recorded here with when and how. Every letter after carries the way out.
+    if row is None:
+        token = secrets.token_urlsafe(32)
+        conn.execute(
+            """INSERT INTO newsletter_subscribers (email, token, source, created_at,
+                                                   confirmed_at)
+               VALUES (?, ?, 'site', ?, ?)""", (email, token, now_iso, now_iso))
+    else:
+        # One who asked before and never pressed the old confirm link.
+        token = row["token"]
+        conn.execute("UPDATE newsletter_subscribers SET confirmed_at = ?, unsubscribed_at = NULL "
+                     "WHERE id = ?", (now_iso, row["id"]))
+    record_consent(conn, "newsletter", 1, "subscribed on the site", email=email, at=now_iso)
+    conn.commit()
+
+    send_newsletter_welcome(conn, email, token)
     conn.close()
-    if subject:
-        send_email(email, subject, body, html=letter)
     flash(thanks, "success")
     return redirect(request.referrer or url_for("preview_home"))
 
 
+def newsletter_workshops(conn, limit=4):
+    """What is on, for the thank-you letter: [{title, when, price, url}].
+
+    The workshops the public page offers, by the same rule (workshops_on_offer),
+    each with its next dates -- so the letter never advertises one that has
+    finished or been called off."""
+    out = []
+    for w, sittings in workshops_on_offer(conn, house_today()):
+        if not sittings:
+            continue
+        first = sittings[0]
+        when = format_date_range(first["start_date"], first["end_date"] or first["start_date"])
+        if len(sittings) > 1:
+            more = len(sittings) - 1
+            when += f", and {more} more date{'' if more == 1 else 's'}"
+        price = f"{euro(w['price_per_person'])} per person" if w["price_per_person"] else ""
+        out.append({"title": w["title"], "when": when, "price": price,
+                    "url": external_url("workshop_detail", workshop_id=w["id"]),
+                    "photo": None})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def send_newsletter_welcome(conn, email, token):
+    """Thank a new subscriber, once, with what is on. Call after the
+    subscription is committed: nothing here writes, and the send goes over
+    the network.
+
+    The plain text lists the workshops; the drawn letter shows them as cards.
+    Both end with the way to stop the letters, which the privacy notice says
+    every one of them carries."""
+    workshops = newsletter_workshops(conn)
+    lines = []
+    for w in workshops:
+        lines.append("\n".join(x for x in (w["title"],
+                                           " · ".join(y for y in (w["when"], w["price"]) if y),
+                                           w["url"]) if x))
+    block = ("Coming up at the château:\n\n" + "\n\n".join(lines)) if lines else ""
+    unsubscribe = external_url("newsletter_unsubscribe", token=token)
+    subject, body, letter = render_email_template(conn, "newsletter_welcome", {
+        "workshops_block": block,
+        "workshops_url": external_url("workshops_public"),
+    }, workshops=workshops, foot={
+        "unsubscribe": unsubscribe,
+        "why": "You are receiving this because you subscribed on chateaugudanes.com.",
+    })
+    if not subject:
+        return False
+    body = body.rstrip() + f"\n\n—\nTo stop these letters: {unsubscribe}\n"
+    send_email(email, subject, body, html=letter)
+    return True
+
+
 @app.route("/newsletter/confirm/<token>")
 def newsletter_confirm(token):
-    """Completes the double opt-in.
+    """A confirm link from before 19 October 2026, when subscribing needed
+    confirming: still honoured for anybody holding one.
 
     A GET is right here, unlike unsubscribing: the risk of a mail client
     pre-fetching the link is that somebody who DID ask gets subscribed,
@@ -30204,11 +30357,12 @@ def statement_text(view):
         return ""
     money = lambda x: f"-€{-x:,.2f}" if x < 0 else f"€{x:,.2f}"
     out = ["Statement" + (f": {view['booking']['what']}" if view["booking"] else "")]
-    for x in view["charges"]:
+    for x in view["added"]:
         out.append(f"  {format_date_short(x['day'])}  {x['what']}  {money(x['charge'])}")
-    if view["reductions"]:
+    if view["taken_off"]:
         out.append(f"  Subtotal  €{view['subtotal']:,.2f}")
-        out.append(f"  Discounts and reductions  -€{view['reductions']:,.2f}")
+        for x in view["taken_off"]:
+            out.append(f"  {format_date_short(x['day'])}  {x['what']}  {money(x['charge'])}")
     out.append(f"  Total  €{view['total']:,.2f}")
     out += ["", "Payments"]
     for x in view["payments"]:
@@ -31358,6 +31512,16 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # A letter about money answers to accounts, whoever sent it (MONEY_LETTERS).
     if template_key in MONEY_LETTERS:
         area = "accounts"
+    # EVERY LETTER TO SOMEBODY OUTSIDE THE HOUSE IS DRAWN. The templated ones
+    # arrive drawn; a campaign, a credential, an autocharge notice and the
+    # rest written in code arrived as bare text in a grey sans-serif, the one
+    # look the house had no say in. Drawn here, at the one door, so a letter
+    # written next year is drawn without anybody remembering to. Asked before
+    # a test redirect, which changes the address and the subject. The house's
+    # own notices to itself stay plain: they are read in Outlook as work.
+    if html is None and (body or "").strip() and to_address \
+            and writes_outside_the_house(to_address):
+        html = letter_html(subject, body, key=template_key) or None
     if MAIL_REDIRECT_TO and to_address:
         # Named in the subject, so a test inbox with forty letters in it is
         # still readable -- "which of these was the one to the Dutch couple"
@@ -47466,6 +47630,12 @@ def send_room_statement(conn, booking):
             if value:
                 who.append(value)
 
+    # Drawn, the statement is the statement: the table the page draws, its VAT
+    # beneath it, and a button to pay what is owed -- not the plain lines
+    # above set as paragraphs, with the sums trailing off the end of each.
+    drawn = dict(view, vat=statement["vat"] if view["stands"] else []) if view else None
+    owes = bool(view and view["owed"] > 0.005
+                and booking["status"] not in ("cancelled", "declined"))
     subject, body, letter = render_email_template(conn, "room_statement", {
         "guest_name": booking["guest_name"],
         "room_name": booking["room_name"],
@@ -47476,7 +47646,8 @@ def send_room_statement(conn, booking):
         "statement_url": url_for("booking_statement", manage_token=booking["manage_token"],
                                  _external=True),
         "company_block": "\n".join(who),
-    })
+    }, statement=drawn, pay_url=url_for(
+        "booking_pay", manage_token=booking["manage_token"], _external=True) if owes else "")
     delivered = bool(subject) and bool(
         write_about_stay(booking, subject, body, side="bill", html=letter))
     return {"made": bool(subject), "delivered": delivered, "address": address,
@@ -57797,7 +57968,7 @@ EMAIL_TEMPLATE_TAGS = {
                            "note_block", "pay_url", "reference_code"),
     "workshop_not_running": ("name", "reason_block", "workshop_date", "workshop_title"),
     "event_quote": ("contact_name", "event_type", "quote_total", "quote_url"),
-    "newsletter_confirm": ("confirm_url",),
+    "newsletter_welcome": ("workshops_block", "workshops_url"),
 }
 
 
@@ -57847,8 +58018,6 @@ REQUIRED_MERGE_TAGS = {
     "room_feedback_request": {"feedback_url": "it is the form they are being asked to fill in"},
     "review_invitation": {"review_url": "it is where they leave the review"},
     "event_quote": {"quote_url": "it is where they read and accept the quote"},
-    "newsletter_confirm": {"confirm_url": "without it nobody can confirm, and "
-                                          "the law says no confirmation, no newsletter"},
     "room_waitlist_opening": {"book_url": "it is how they take the room"},
     "restaurant_waitlist_opening": {"book_url": "it is how they take the table"},
     "workshop_waitlist_opening": {"register_url": "it is how they take the place"},
@@ -57969,7 +58138,7 @@ def letter_blocks(text):
                 if keep:
                     blocks.append(_letter_text(keep))
                     keep = []
-                label = _letter_label(blocks)
+                label = _letter_label(blocks, found[0])
                 blocks.append({"kind": "button", "href": found[0],
                                "label": label})
             else:
@@ -57991,7 +58160,7 @@ def _letter_text(lines):
     return {"kind": "text", "text": " ".join(lines), "lines": list(lines)}
 
 
-def _letter_label(blocks):
+def _letter_label(blocks, href=""):
     """8 Oct: a short line ending in a colon just before the button ("Pay the balance:") IS the button's label - it moves
     into the button instead of being written twice, once as text and once on the button."""
     if blocks and blocks[-1]["kind"] == "text" and blocks[-1].get("lines"):
@@ -58004,10 +58173,10 @@ def _letter_label(blocks):
                 blocks.pop()
             label = last.rstrip(":").strip()
             return (label[:1].upper() + label[1:])[:40]
-    return _letter_label_from_sentence(blocks)
+    return _letter_label_from_sentence(blocks, href)
 
 
-def _letter_label_from_sentence(blocks):
+def _letter_label_from_sentence(blocks, href=""):
     """What to write on a button, taken from the sentence before it.
 
     The letters all introduce their link the same way -- "Check in online:",
@@ -58024,32 +58193,412 @@ def _letter_label_from_sentence(blocks):
         if 1 <= len(words) <= 6:
             return tail[:40]
         break
-    return "Open the page"
+    return _letter_label_for_link(href) or "Open the page"
 
 
-def letter_html(subject, text, settings=None, statement=None):
-    """One of the twenty-one letters, drawn, or "" if it cannot be.
+# What a button says when the sentence before it is too long to be its label:
+# where it goes. "To secure it, add your details and pay here -- it takes a
+# couple of minutes:" put "Open the page" on the one button a reserved guest
+# has to press. First match wins, so the longer paths come first.
+_LINK_LABELS = (
+    ("/finish", "Finish and pay"), ("/book/pay/", "Pay now"), ("/pay-share/", "Pay your share"),
+    ("/pay-balance/", "Pay the balance"), ("/pay-deposit/", "Pay the deposit"),
+    ("/statement", "Your statement"), ("/door", "Open the front door"),
+    ("/workshops/manage/", "Your registration"), ("/book/manage/", "Your booking page"),
+    ("/checkin/", "Your booking page"), ("/feedback", "Tell us how it was"),
+    ("/review", "Leave a review"), ("/quote", "See the quote"),
+    ("/unsubscribe", "Unsubscribe"), ("/you/", "Your page"),
+)
+
+
+def _letter_label_for_link(href):
+    path = urlparse(href or "").path
+    for part, label in _LINK_LABELS:
+        if part in path:
+            return label
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# THE DRAWN LETTER (owner, 19 October 2026: "the design isn't as good as it
+# could be ... where's the logos, a proper layout ... go over all the emails
+# and do them properly, it's very basic and average").
+#
+# What a guest saw was a navy band with the house's name typed in it, the
+# name again in small capitals, the subject again as a heading with the
+# house's name on the end, and then the owner's words as one grey paragraph
+# after another -- a reference code, a list of dates, a bill and the line
+# about paying safely all set exactly alike. The statement letter drew its
+# figures as lines of text with the amounts trailing off the end, and the
+# foot printed a lone "·" where the telephone and the address should have
+# been, because nothing ever handed it either.
+#
+# Now: the house's own logo on the band; a photograph on a letter that is a
+# welcome rather than a bill; a heading without the house's name repeated;
+# and each paragraph drawn as what it IS. The words are still the owner's
+# and still one set -- this only reads them more carefully.
+# ---------------------------------------------------------------------------
+
+# How the house is reached, for the foot of every letter. The telephone is the
+# one PAYMENT_SAFETY_LINE gives, so a guest who checks one against the other
+# finds the same number.
+HOUSE_TELEPHONE = "+33 6 28 06 97 76"
+HOUSE_POSTAL = "2 Route de Beille · 09310 Château-Verdun · Ariège, France"
+HOUSE_SOCIAL = (("Instagram", "https://www.instagram.com/chateaugudanes/"),
+                ("Facebook", "https://www.facebook.com/chateaudegudanes/"))
+
+# Bumped when a picture in static/email changes, so a mail app's cache of the
+# old one is not what a guest sees.
+EMAIL_ASSET_VERSION = "20261019"
+
+# The small line above each heading: what kind of letter this is, so six
+# letters from the house can be told apart at a glance.
+_LETTER_EYEBROWS = {
+    "Your stay": ("room_request_received", "room_paid_awaiting", "room_reserved",
+                  "room_updated", "room_declined", "room_cancelled",
+                  "room_waitlist_opening"),
+    "Payments": tuple(k for k in MONEY_LETTERS if not k.startswith("code:")),
+    "Workshops": ("workshop_registration_received", "workshop_confirmed",
+                  "workshop_declined", "workshop_cancelled", "workshop_moved",
+                  "workshop_waitlist_opening", "workshop_not_running"),
+    "Dinner": ("restaurant_reservation_received", "restaurant_confirmed",
+               "restaurant_declined", "restaurant_cancelled",
+               "restaurant_waitlist_opening"),
+    "Events": ("event_inquiry_received", "event_inquiry_confirmed",
+               "event_inquiry_declined", "event_quote"),
+    "Thank you": ("room_feedback_request", "workshop_feedback_request",
+                  "review_invitation"),
+    "Your bookings": ("guest_link_updated",),
+    "News from the château": ("newsletter_welcome",),
+    "For the house": ("house_payment_received",),
+}
+LETTER_EYEBROW = {key: label for label, keys in _LETTER_EYEBROWS.items() for key in keys}
+
+# A photograph of the house for the letters that welcome somebody, invite them
+# or thank them. None on a bill, a refund or a refusal: a sunlit château above
+# "we are unable to seat your party" reads as not having noticed.
+LETTER_HERO = {
+    "room_reserved": "hero-bedroom.jpg", "room_request_received": "hero-bedroom.jpg",
+    "room_paid_awaiting": "hero-bedroom.jpg", "room_waitlist_opening": "hero-house.jpg",
+    "room_balance_before": "hero-house.jpg",
+    "room_feedback_request": "hero-window.jpg", "review_invitation": "hero-window.jpg",
+    "workshop_feedback_request": "hero-window.jpg",
+    "workshop_registration_received": "hero-facade.jpg",
+    "workshop_confirmed": "hero-facade.jpg", "workshop_waitlist_opening": "hero-facade.jpg",
+    "restaurant_reservation_received": "hero-table.jpg",
+    "restaurant_confirmed": "hero-table.jpg", "restaurant_waitlist_opening": "hero-table.jpg",
+    "event_inquiry_received": "hero-facade.jpg", "event_inquiry_confirmed": "hero-facade.jpg",
+    "event_quote": "hero-facade.jpg", "newsletter_welcome": "hero-house.jpg",
+}
+
+
+def letter_contact(template_key):
+    """The address a letter's foot gives for writing back: the inbox that
+    deals with it, the same one its Reply-To reaches."""
+    key = template_key or ""
+    if key in MONEY_LETTERS:
+        return PUBLIC_CONTACT["accounts"]
+    for prefix, area in (("workshop_", "workshops"), ("event_", "events"),
+                         ("restaurant_", "restaurant")):
+        if key.startswith(prefix):
+            return PUBLIC_CONTACT[area]
+    return PUBLIC_CONTACT["rooms"]
+
+
+def email_asset(name):
+    """A full address for one of the letter's own pictures in static/email.
+
+    The configured public address when there is one -- a letter is opened
+    from somebody's inbox, so it must name the site, not whichever host the
+    request that wrote it happened to arrive on -- and otherwise the address
+    url_for gives, inside a request or out of one."""
+    path = f"email/{name}"
+    if PUBLIC_BASE_URL:
+        return f"{PUBLIC_BASE_URL}/static/{path}?v={EMAIL_ASSET_VERSION}"
+    return f"{external_url('static', filename=path)}?v={EMAIL_ASSET_VERSION}"
+
+
+def email_home_url():
+    """The site's front page, for the logo and the foot. Taken from the
+    public address or from a public page's own link -- never typed."""
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL + "/"
+    parts = urlparse(external_url("workshops_public"))
+    return f"{parts.scheme}://{parts.netloc}/" if parts.netloc else "/"
+
+
+def email_house():
+    return {"telephone": HOUSE_TELEPHONE, "postal": HOUSE_POSTAL,
+            "email": PUBLIC_CONTACT["rooms"], "social": HOUSE_SOCIAL}
+
+
+app.jinja_env.globals.update(email_asset=email_asset, email_home_url=email_home_url,
+                             email_house=email_house)
+
+
+@app.template_filter("letter_links")
+def letter_links_filter(text):
+    """A line of a letter with any web address in it made a link, the rest escaped.
+
+    A guest name is a guest name: everything that is not an address goes
+    through escape(), so a booking made as <script> is drawn as those
+    characters. An address is linked to itself and shown as written."""
+    from markupsafe import Markup, escape
+    text = "" if text is None else str(text)
+    out, last = [], 0
+    for m in LETTER_URL.finditer(text):
+        url = m.group(0).rstrip(".,;:)")
+        end = m.start() + len(url)
+        out.append(str(escape(text[last:m.start()])))
+        out.append(f'<a href="{escape(url)}" style="color:#14305F;">{escape(url)}</a>')
+        last = end
+    out.append(str(escape(text[last:])))
+    return Markup("".join(out))
+
+
+@app.template_filter("vat_rate")
+def vat_rate_filter(rate):
+    """10 -> "10%", 5.5 -> "5.5%": a rate as it is said, not "10.0%"."""
+    try:
+        value = float(rate)
+    except (TypeError, ValueError):
+        return f"{rate}%"
+    return f"{value:g}%"
+
+
+# Markers a merge leaves for the drawn letter to find, in characters no guest
+# name, sentence or sum can contain (Unicode's private use area). The plain
+# text is merged without them.
+_SLOT = ""
+_SMALL_PRINT = ""
+
+
+def letter_slot(name):
+    """A line the drawn letter replaces with something drawn: the statement,
+    the workshops. Standing alone, it is its own paragraph."""
+    return f"{_SLOT}{name}{_SLOT}"
+
+
+def drawn_context(context, *, statement=False, workshops=False):
+    """The merge values for the DRAWN letter: the same words, with the blocks
+    that are drawn as something else marked so they can be found again.
+
+    {company_block} is small print; {statement_lines} becomes the statement
+    itself when there is one to draw; {workshops_block} becomes the cards."""
+    out = dict(context)
+    company = (out.get("company_block") or "").strip()
+    if company:
+        out["company_block"] = "\n".join(_SMALL_PRINT + line.strip()
+                                         for line in company.split("\n") if line.strip())
+    if statement and "statement_lines" in out:
+        out["statement_lines"] = letter_slot("statement")
+    if workshops and (out.get("workshops_block") or "").strip():
+        out["workshops_block"] = letter_slot("workshops")
+    return out
+
+
+# "Reference code: GUD-4417", "Arrival: 14 October 2026" -- a fact. A short
+# label with a capital, a colon and a value; not a sentence that happens to
+# contain a colon ("We are sorry: the date is full."), which has more words
+# before the colon than any label does.
+_FACT_LINE = re.compile(r"^([A-ZÀ-Ý][^:]{0,40}?):\s+(\S.{0,160})$")
+# A sum at the end of a line, set off by two spaces, a tab or an em space:
+# "Three nights at €220   €660.00", "Total €666.60".
+_MONEY_LINE = re.compile(r"^(?P<what>\S.*?)(?:\s{2,}|\t| )+(?P<amount>[-−+]?€\s?[\d,]+(?:\.\d+)?.*)$")
+_TOTAL_WORDS = re.compile(r"^(?:total(?! paid)|balance due|still to pay|to pay|settled|amount due)\b", re.I)
+_GREETING = re.compile(r"^(?:hi|hello|dear|bonjour|good (?:morning|afternoon|evening))\b.{0,70},$", re.I)
+_SIGNOFF = re.compile(r"^[—–-]\s*(?P<who>.{2,60})$")
+
+
+def _line_kind(line):
+    if line.startswith(_SLOT) and line.endswith(_SLOT):
+        return "slot"
+    if line.startswith(_SMALL_PRINT):
+        return "small"
+    fact = _FACT_LINE.match(line)
+    if fact and len(fact.group(1).split()) <= 5 and not LETTER_URL.search(fact.group(1)):
+        value = fact.group(2)
+        # "Thank you: we have received..." is a sentence, not a fact: a value
+        # opening in lower case is one, unless it is an address.
+        sentence = value[:1].islower() and "@" not in value and not value.startswith("http")
+        if not sentence and ". " not in value.rstrip("."):
+            return "fact"
+    if _MONEY_LINE.match(line.strip()):
+        return "money"
+    return "text"
+
+
+def _money_rows(lines):
+    rows = []
+    for line in lines:
+        m = _MONEY_LINE.match(line.strip())
+        what, amount = " ".join(m.group("what").split()), m.group("amount").strip()
+        kind = ("aside" if what.lower().startswith("of which")
+                else "total" if _TOTAL_WORDS.match(what) else "")
+        rows.append({"what": what, "amount": amount, "kind": kind})
+    return rows
+
+
+def dress_blocks(blocks, *, solid_first=True):
+    """What each paragraph of a letter IS, so it can be drawn as that.
+
+    letter_blocks() gives paragraphs and buttons; this splits a paragraph into
+    runs of like lines and names them: the greeting, plain text, facts (a card
+    of label and value), money (a table with the sums in a column of their
+    own), the payment-safety notice, the signature, small print, and the
+    places the statement and the workshops are drawn. A pure function of the
+    blocks, like letter_blocks, so it can be tested without drawing anything.
+
+    The first button is the letter's one solid call; any after it are quiet,
+    unless solid_first is False, when all are.
+    """
+    out = []
+    buttons = 0
+    for index, block in enumerate(blocks):
+        if block["kind"] == "button":
+            out.append(dict(block, tone="solid" if solid_first and buttons == 0 else "quiet"))
+            buttons += 1
+            continue
+        lines = [l for l in (block.get("lines") or [block["text"]]) if l.strip()]
+        whole = " ".join(lines)
+        if not out and len(lines) == 1 and _GREETING.match(lines[0]):
+            out.append({"kind": "greeting", "text": lines[0], "lines": lines})
+            continue
+        if len(lines) == 1 and _SIGNOFF.match(lines[0]) and index >= len(blocks) - 2:
+            out.append({"kind": "signoff", "text": _SIGNOFF.match(lines[0]).group("who").strip(),
+                        "lines": lines})
+            continue
+        if _CARD_ONLY_CLAIM.search(whole) and all(_line_kind(l) == "text" for l in lines):
+            out.append({"kind": "notice", "text": whole, "lines": lines})
+            continue
+        # A paragraph that opens with a lone dash is the foot a campaign letter
+        # carries: who sent it and how to stop it. Small print, not a paragraph.
+        if lines[0].strip() in ("—", "–", "-") and len(lines) > 1:
+            out.append({"kind": "small", "lines": lines[1:]})
+            continue
+        run_kind, run = None, []
+        for line in lines:
+            kind = _line_kind(line)
+            if kind != run_kind and run:
+                out.append(_dressed_run(run_kind, run))
+                run = []
+            run_kind = kind
+            run.append(line)
+        if run:
+            out.append(_dressed_run(run_kind, run))
+    # "{company_block}\n— Château de Gudanes" is one paragraph: the signature
+    # is its last line, and is still the signature.
+    last = out[-1] if out else None
+    if last and last["kind"] == "text" and last["lines"] \
+            and _SIGNOFF.match(last["lines"][-1]) and len(last["lines"][-1]) < 60:
+        who = _SIGNOFF.match(last["lines"][-1]).group("who").strip()
+        if len(last["lines"]) == 1:
+            out[-1] = {"kind": "signoff", "text": who, "lines": last["lines"]}
+        else:
+            out[-1] = dict(last, lines=last["lines"][:-1],
+                           text=" ".join(last["lines"][:-1]))
+            out.append({"kind": "signoff", "text": who, "lines": last["lines"][-1:]})
+    return out
+
+
+def _dressed_run(kind, lines):
+    if kind == "fact":
+        rows = [_FACT_LINE.match(l).groups() for l in lines]
+        return {"kind": "facts", "rows": [(a.strip(), b.strip()) for a, b in rows],
+                "lines": lines}
+    if kind == "money":
+        return {"kind": "money", "rows": _money_rows(lines), "lines": lines}
+    if kind == "small":
+        return {"kind": "small", "lines": [l.lstrip(_SMALL_PRINT) for l in lines]}
+    if kind == "slot":
+        return {"kind": lines[0].strip(_SLOT), "lines": []}
+    return {"kind": "text", "text": " ".join(lines), "lines": lines}
+
+
+def letter_heading(subject):
+    """(heading, line under it) from a subject.
+
+    "Booking confirmed — The King Room" is a heading and the room it is
+    about; "Confirm your subscription — Château de Gudanes" is a heading and
+    the house's name, which the logo above has already said."""
+    subject = " ".join((subject or "").split())
+    head, sep, tail = subject.rpartition(" — ")
+    if not sep or not head:
+        return subject, ""
+    if tail.strip().casefold() in ("château de gudanes", "chateau de gudanes"):
+        return head.strip(), ""
+    return head.strip(), tail.strip()
+
+
+def letter_preheader(blocks):
+    """The grey line under the subject: the first words that are not a greeting."""
+    for block in blocks:
+        if block["kind"] in ("text", "notice"):
+            return block["text"][:110]
+        if block["kind"] == "facts":
+            return " · ".join(f"{a}: {b}" for a, b in block["rows"])[:110]
+    return ""
+
+
+def letter_drawing_context():
+    """Somewhere to draw a letter from.
+
+    A page's request when there is one. A job -- the balance reminders, the
+    feedback requests, the autocharge notices -- has none, and render_template
+    with nothing under it raised "Working outside of application context", so
+    those letters went out as bare text while the same letter sent from a page
+    went drawn. The stand-in names the public address, so every link and
+    picture in it does too."""
+    if has_request_context():
+        return contextlib.nullcontext()
+    return app.test_request_context("/", base_url=PUBLIC_BASE_URL or None)
+
+
+def letter_html(subject, text, settings=None, statement=None, *, key=None,
+                pay_url="", workshops=None, foot=None):
+    """One of the house's letters, drawn, or "" if it cannot be.
 
     Empty rather than raising, the same rule the booking confirmation follows:
     a shell that will not render is a reason to send a plainer letter, never a
     reason for the guest to hear nothing.
 
-    `statement` is a booking_statement_view, drawn beneath the words.
+    `key` is which template made it -- found by the subject when not given, the
+    way send_email names a letter in the log -- and decides the line above the
+    heading, the photograph, and which inbox the foot gives. `statement` is a
+    booking_statement_view, drawn where {statement_lines} fell or beneath the
+    words; `pay_url` puts a button to pay what it says is owed. `workshops`
+    are the cards {workshops_block} becomes. `foot` adds to the foot: an
+    unsubscribe link for a letter somebody asked for.
     """
     try:
-        blocks = letter_blocks(text)
+        if key is None:
+            try:
+                key = rendered_letter_keys().get(subject)
+            except Exception:
+                key = None
+        blocks = dress_blocks(letter_blocks(text),
+                              solid_first=not (statement is not None and pay_url))
         if not blocks:
             return ""
-        return render_template("email_letter.html", subject=subject,
-                               blocks=blocks, settings=settings or {},
-                               statement=statement)
+        heading, subheading = letter_heading(subject)
+        foot = dict(foot or {})
+        foot.setdefault("email", letter_contact(key))
+        with letter_drawing_context():
+            return render_template(
+                "email_letter.html", subject=subject, heading=heading,
+                subheading=subheading, eyebrow=LETTER_EYEBROW.get(key or "", ""),
+                hero=LETTER_HERO.get(key or ""), preheader=letter_preheader(blocks),
+                blocks=blocks, settings=settings or {}, statement=statement,
+                statement_placed=any(b["kind"] == "statement" for b in blocks),
+                pay_url=pay_url, workshops=workshops or [], foot=foot)
     except Exception as e:      # pragma: no cover - the text still goes
         print(f"[email html failed] {subject}: {e}")
         return ""
 
 
 def template_letter_html(template_key, subject, body_src, context, *, conn=None,
-                         card=None):
+                         card=None, statement=None, pay_url="", workshops=None,
+                         foot=None):
     """The letter as a mail app draws it, from the wording given. "" if it cannot be.
 
     Every letter is the owner's words poured into the one shell -- except the
@@ -58064,7 +58613,11 @@ def template_letter_html(template_key, subject, body_src, context, *, conn=None,
     if template_key == "room_confirmed":
         return confirmation_letter_html(subject, body_src, context, conn=conn,
                                         card=card)
-    return letter_html(subject, merge_email_text(body_src, context))
+    drawn = drawn_context(context, statement=statement is not None,
+                          workshops=bool(workshops))
+    return letter_html(subject, merge_email_text(body_src, drawn), statement=statement,
+                       key=template_key, pay_url=pay_url, workshops=workshops,
+                       foot=foot)
 
 
 # Where {stay_details} fell, found again after the words are filled in. A
@@ -58077,13 +58630,14 @@ def confirmation_letter_html(subject, body_src, context, *, conn=None, card=None
 
     The words are the template's, split where {stay_details} sits: what comes
     before is the heading and the opening, what comes after closes the letter,
-    and the gap is the card -- the dates, the room, the reference, anything
-    owed, the button to their booking, and how to find the house. The plain
-    text gets the same words with the same facts written out, so the drawn
-    letter and the text one say the same thing because they ARE the same thing.
+    and the gap is the card -- the dates, the room, the reference, what is owed
+    and the button that pays it, the booking page, the front door when there
+    is one, and how to find the house. The plain text gets the same words with
+    the same facts written out, so the drawn letter and the text one say the
+    same thing because they ARE the same thing.
 
     The first paragraph is the heading only when it is short enough to be one;
-    a long one would be set in 27-point type across the whole letter.
+    a long one would be set in 30-point type across the whole letter.
     """
     try:
         marked = merge_email_text(body_src, dict(context, stay_details=STAY_SLOT))
@@ -58097,17 +58651,27 @@ def confirmation_letter_html(subject, body_src, context, *, conn=None, card=None
         settings = card.get("house") or (house_coordinates(conn) if conn else {})
         # 5 Oct: the confirmation offers dinner only while the table is open (hidden at launch).
         settings = dict(settings or {}, dining_mode=(dining_mode(conn) if conn else "hidden"))
-        return render_template(
-            "email_booking_confirmed.html",
-            heading=heading, opening=opening,
-            closing=letter_blocks(after),
-            arrival_long=context.get("arrival_date", ""),
-            departure_long=context.get("departure_date", ""),
-            room_name=context.get("room_name", ""),
-            reference_code=context.get("reference_code", ""),
-            balance_due=card.get("balance_due", ""),
-            manage_url=card.get("manage_url") or context.get("manage_url", ""),
-            settings=settings)
+        with letter_drawing_context():
+            return render_template(
+                "email_booking_confirmed.html",
+                heading=heading, opening=dress_blocks(opening),
+                closing=dress_blocks(letter_blocks(after), solid_first=False),
+                arrival_long=context.get("arrival_date", ""),
+                departure_long=context.get("departure_date", ""),
+                room_name=context.get("room_name", ""),
+                reference_code=context.get("reference_code", ""),
+                party=card.get("party", ""),
+                balance_due=card.get("balance_due", ""),
+                due_on=card.get("due_on", ""),
+                paid=card.get("paid", ""),
+                pay_url=card.get("pay_url", ""),
+                manage_url=card.get("manage_url") or context.get("manage_url", ""),
+                has_transfer=card.get("has_transfer", False),
+                door_url=card.get("door_url", ""),
+                door_opens=card.get("door_opens", ""),
+                portal_url=card.get("portal_url", ""),
+                foot={"email": letter_contact("room_confirmed")},
+                settings=settings)
     except Exception as e:      # pragma: no cover - the plain letter still goes
         print(f"[email html failed] {subject}: {e}")
         return ""
@@ -58176,6 +58740,14 @@ SAMPLE_MERGE_VALUES = {
     "pay_url": "https://chateaugudanes.com/share/4d81c2",
     "quote_url": "https://chateaugudanes.com/events/quote/7be210",
     "confirm_url": "https://chateaugudanes.com/newsletter/confirm/51ac0e",
+    "workshops_block": "Coming up at the château:\n\n"
+                       "Noël at Gudanes\n18 – 22 December 2026 · €3,200 per person\n"
+                       "https://chateaugudanes.com/workshops/351\n\n"
+                       "Cooking in the Cuisine\n12 – 16 April 2027 · €3,800 per person\n"
+                       "https://chateaugudanes.com/workshops/352",
+    "workshops_url": "https://chateaugudanes.com/workshops",
+    "finish_url": "https://chateaugudanes.com/booking/9f2c1a7b/finish",
+    "held_until": "21 October 2026 at 16:30",
     "amount": "€412.20",
     "quote_total": "€18,400.00",
     # What the confirmation's card says in its plain-text form. The drawn
@@ -58299,7 +58871,8 @@ def rendered_letter_keys():
     return keys
 
 
-def render_email_template(conn, template_key, context):
+def render_email_template(conn, template_key, context, *, statement=None, pay_url="",
+                          workshops=None, foot=None):
     """Merge-tag substitution against an admin-editable template. Falls back
     to the raw template text (tags left unreplaced) if the context is
     missing a key rather than crashing an email send over a typo.
@@ -58317,7 +58890,14 @@ def render_email_template(conn, template_key, context):
         # row did not skip the letter the way every caller expects -- it raised
         # at the unpacking, in the middle of whatever was sending it.
         return None, None, None
-    return subject, body, letter_html(subject, body)
+    # Drawn from the same wording, read again with the blocks that are drawn
+    # as something else marked (the statement, the workshops, small print).
+    # `statement`, `pay_url`, `workshops` and `foot` are what the drawing adds
+    # that is not a merge tag; see letter_html.
+    _subject_src, body_src, _ = email_template_source(conn, template_key)
+    return subject, body, template_letter_html(
+        template_key, subject, body_src, context, conn=conn, statement=statement,
+        pay_url=pay_url, workshops=workshops, foot=foot)
 
 
 def email_template_text(conn, template_key, context):
@@ -64101,7 +64681,7 @@ def send_room_confirmation(conn, booking, room_name, portal_url="", sent_by=None
         booking, subject, body,
         ics_content=generate_booking_ics(booking, room_name),
         ics_filename=f"{booking['reference_code']}.ics",
-        html=booking_confirmation_html(conn, booking, room_name),
+        html=booking_confirmation_html(conn, booking, room_name, portal_url=portal_url),
         sent_by=sent_by,
     )
 
@@ -65055,6 +65635,69 @@ def send_new_link(conn, to, name, link_for, link):
     return False, why.get("why") or "it could not be sent"
 
 
+def profile_for_stay(conn, booking):
+    """The guest profile a stay belongs to, found or made: the one it is linked
+    to, else the one with its address, else a new one with its name, address
+    and telephone. Returns the profile's id. Writes nothing to the booking --
+    the caller links it.
+
+    One definition for confirming a stay and for repairing one confirmed
+    without (link_stays_to_profiles): every confirmed stay has a profile
+    (owner, 19 October 2026: "it should have guest profile").
+    """
+    guest_email = (booking["guest_email"] or "").strip().lower() or None
+    guest_id = booking["linked_guest_id"]
+    if guest_id and not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        guest_id = None
+    if not guest_id and guest_email:
+        existing = conn.execute(
+            "SELECT id, merged_into_id FROM guests WHERE email = ? COLLATE NOCASE "
+            "ORDER BY merged_into_id IS NOT NULL, id", (guest_email,)
+        ).fetchone()
+        if existing:
+            guest_id = existing["merged_into_id"] or existing["id"]
+    if not guest_id:
+        cur = conn.execute(
+            """INSERT INTO guests (name, email, phone, notes, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (booking["guest_name"], guest_email,
+             booking["guest_phone"] or None, None,
+             datetime.now(timezone.utc).isoformat()),
+        )
+        guest_id = cur.lastrowid
+    return guest_id
+
+
+def link_stays_to_profiles(conn):
+    """Give every confirmed stay without a profile its profile, and link it.
+    Returns how many were linked. Safe to run on every start: it touches only
+    confirmed stays whose link is empty, or points at a profile that is gone.
+
+    A stay could be confirmed without one: one made before profiles existed,
+    one imported, and a desk booking whose confirmation was refused and then
+    written as confirmed regardless. Each sat outside the guest list.
+    """
+    rows = conn.execute(
+        """SELECT * FROM bookings WHERE status = 'confirmed'
+             AND (linked_guest_id IS NULL
+                  OR linked_guest_id NOT IN (SELECT id FROM guests))
+           ORDER BY id""").fetchall()
+    done = 0
+    for b in rows:
+        # One at a time, so a stay that cannot be linked (an address another
+        # profile holds in another spelling, say) does not stop the rest.
+        try:
+            conn.execute("UPDATE bookings SET linked_guest_id = ? WHERE id = ?",
+                         (profile_for_stay(conn, b), b["id"]))
+            done += 1
+        except sqlite3.IntegrityError as exc:
+            print(f"[guests] stay {b['reference_code']} left without a profile: {exc}")
+    if done:
+        conn.commit()
+        print(f"[guests] {done} confirmed stay(s) given their guest profile")
+    return done
+
+
 def ensure_guest_profile(conn, name, email, phone=None):
     """The standing profile of whoever a booking is for, made if there is none.
 
@@ -65461,22 +66104,7 @@ def confirm_booking_by_id(conn, booking_id, *, online=None):
     # an identity -- matching on it would either fail or, worse, mint a brand
     # new profile on every single confirm, reinstating the per-stay pile-up this
     # refactor removed. Lower-cased so casing can't split one person in two.
-    guest_email = (booking["guest_email"] or "").strip().lower() or None
-    guest_id = booking["linked_guest_id"]
-    if not guest_id and guest_email:
-        existing = conn.execute(
-            "SELECT id FROM guests WHERE email = ? COLLATE NOCASE", (guest_email,)
-        ).fetchone()
-        guest_id = existing["id"] if existing else None
-    if not guest_id:
-        cur = conn.execute(
-            """INSERT INTO guests (name, email, phone, notes, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (booking["guest_name"], guest_email,
-             booking["guest_phone"] or None, None,
-             datetime.now(timezone.utc).isoformat()),
-        )
-        guest_id = cur.lastrowid
+    guest_id = profile_for_stay(conn, booking)
 
     cur = conn.execute(
         "UPDATE bookings SET status='confirmed', decided_at=?, linked_guest_id=? WHERE id=? AND status='pending'",
@@ -75106,10 +75734,11 @@ def walk_in_booking():
       still shows the nights at the price they are advertised at and the
       reduction on its own line — which is what booking_bill reads.
 
-      NO EMAIL IS SENT. Somebody at the desk needs a key, not a confirmation,
-      and there is no room-booking email template to send anyway — the public
-      flow ends on a page. If they gave an address they can be sent their
-      statement or an account link from the paths that already do that.
+      ONE LETTER, AND ONLY WITH AN ADDRESS. A stay booked here is confirmed
+      at once, so a guest who gave an address gets the confirmation -- with
+      what is still to pay and the button that pays it on its card. That is
+      the whole of "book it and send a payment link". Without an address,
+      nothing is sent and nothing is waiting to be.
 
       IT REFUSES A DOUBLE BOOKING rather than warning about one. The public
       form checks availability and so must this: a room let twice is the one
@@ -75284,6 +75913,9 @@ def walk_in_booking():
         else:
             conn.execute("UPDATE bookings SET status = 'confirmed' WHERE id = ?",
                          (booking["id"],))
+            if not booking["linked_guest_id"]:
+                conn.execute("UPDATE bookings SET linked_guest_id = ? WHERE id = ?",
+                             (profile_for_stay(conn, booking), booking["id"]))
 
         taken_raw = (request.form.get("amount_taken", "") or "").strip().replace(",", ".")
         try:
@@ -75319,25 +75951,28 @@ def walk_in_booking():
             return redirect(url_for("admin_booking", booking_id=booking["id"]))
 
         # THEN A LINK TO PAY, for a booking taken from an email or the telephone
-        # (owner, 18 October 2026). Their statement, which carries the Pay now
-        # button for what is owed; sent after the commit, never with a write
-        # open across the network.
+        # (owner, 18 October 2026). It is the confirmation: booked, it went the
+        # moment create_booking confirmed the stay, and its card carries the
+        # amount owed, the date it is due and the button that pays it.
+        #
+        # This used to send the guest's STATEMENT on top -- a second letter a
+        # minute after the first, headed "Your statement", whose words sent the
+        # guest to a statement page with no way to pay on it (owner, 19
+        # October: "shouldn't it have a link to payment rather than
+        # statement"). One letter, saying the stay is booked and how to pay.
         link_note = ""
         if send_link:
             bill = booking_bill(conn, booking["id"])
-            stay = conn.execute("""SELECT bookings.*, rooms.name AS room_name FROM bookings
-                                     JOIN rooms ON rooms.id = bookings.room_id
-                                    WHERE bookings.id = ?""", (booking["id"],)).fetchone()
             if "@" not in email:
                 link_note = " No link sent: there is no email address."
             elif not bill or bill["owed"] <= 0.005:
-                link_note = " No link sent: nothing is owed."
+                link_note = " Nothing is owed, so their confirmation has no payment link."
+            elif guest_mail_live():
+                link_note = (f" Their confirmation, with a button to pay {money(bill['owed'])}, "
+                             f"has gone to {email}.")
             else:
-                sent = send_room_statement(conn, stay)
-                link_note = (f" A link to pay {money(bill['owed'])} has gone to {sent['address']}."
-                             if sent["delivered"] else
-                             " The link to pay is written and held, and goes when mail to guests is on.")
-                conn.commit()
+                link_note = (" Their confirmation, with the link to pay, is written and held, "
+                             "and goes when mail to guests is on.")
         conn.close()
         flash(f"{name} is in — {reference_code}."
               + (f" {money(taken)} taken." if taken else "") + link_note, "success")
@@ -85186,6 +85821,13 @@ def booking_statement_view(conn, category, booking_id, asking=True):
         "category": category, "kind": STATEMENT_KINDS[category], "row": row,
         "booking": about, "stands": bool(about and about["stands"]),
         "lines": lines, "charges": charges, "payments": payments, "refunds": refunds,
+        # The charges in the order a bill is read: what was added, a subtotal,
+        # then each reduction by name, then the total -- so every run of rows
+        # adds up to the line beneath it. Drawn from `charges` alone, a
+        # discount sat among the charges AND came off again under the
+        # subtotal, and the rows above the subtotal summed to less than it.
+        "added": [x for x in charges if x["charge"] > 0],
+        "taken_off": [x for x in charges if x["charge"] < 0],
         "subtotal": round(sum(x["charge"] for x in charges if x["charge"] > 0), 2),
         "reductions": round(-sum(x["charge"] for x in charges if x["charge"] < 0), 2),
         "total": total, "paid": paid, "back": back, "total_paid": round(paid - back, 2),
@@ -85828,7 +86470,7 @@ def stay_recipients(booking, side="stay"):
     return out
 
 
-def booking_confirmation_html(conn, booking, room_name):
+def booking_confirmation_html(conn, booking, room_name, portal_url=""):
     """The confirmation as a mail client would draw it, or "" if it cannot be.
 
     Returns EMPTY rather than raising. Every caller sends the plain text
@@ -85843,7 +86485,8 @@ def booking_confirmation_html(conn, booking, room_name):
     asserts a number over the top of them.
     """
     try:
-        context, card = room_confirmation_context(conn, booking, room_name)
+        context, card = room_confirmation_context(conn, booking, room_name,
+                                                  portal_url=portal_url)
         subject_src, body_src, _problems = email_template_source(conn, "room_confirmed")
         if subject_src is None:
             return ""
@@ -85935,7 +86578,27 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
         "door_url": door_url,
         "stay_details": "\n".join(details),
     }
-    return context, dict(balance_due=balance_due, manage_url=manage_url)
+    # What the drawn card says that the words do not: the button that pays
+    # what is owed, by when, what has come in already, who is staying, the
+    # front door when it is connected and the guest's own page. dict(), as
+    # above, so none of it can be typed into a letter.
+    under = (booking["guests_under_18"] if "guests_under_18" in booking.keys() else 0) or 0
+    party = int(booking["party_size"] or 0)
+    adults = max(party - under, 0)
+    party_words = (f"{adults} adult{'' if adults == 1 else 's'}"
+                   + (f", {under} under 18" if under else "")) if party else ""
+    door = door_ready(conn)
+    return context, dict(
+        balance_due=balance_due, manage_url=manage_url,
+        pay_url=(url_for("booking_pay", manage_token=booking["manage_token"], _external=True)
+                 if balance_due else ""),
+        due_on=(format_date_human(bill["balance_due_date"])
+                if balance_due and bill and bill.get("balance_due_date") else ""),
+        paid=money(bill["paid"]) if bill and bill["paid"] > 0.005 else "",
+        party=party_words, has_transfer=booking_has_transfer(booking),
+        door_url=door_url if door else "",
+        door_opens=_door_setting(conn, "door_opens_at", DOOR_DEFAULT_OPENS) if door else "",
+        portal_url=portal_url)
 
 
 def write_about_stay(booking, subject, body, side="stay",
@@ -88818,8 +89481,8 @@ EMAIL_TEMPLATE_INFO = {
     "event_quote": ("When you send a quote for an event", "The person who enquired"),
     "event_balance_reminder": ("The automatic reminder before an event's balance "
                                "falls due", "The person who enquired"),
-    "newsletter_confirm": ("When somebody signs up for news, before anything else "
-                           "is sent to them", "The address that signed up"),
+    "newsletter_welcome": ("When somebody signs up for news on the site",
+                           "The address that signed up"),
 }
 
 # What the house sends that is NOT here, and why -- so the page can say it
@@ -92149,6 +92812,19 @@ def readiness_checks(conn, *, include_slow=True):
               "be the original. Set PUBLIC_BASE_URL to https://www.chateaugudanes.com "
               "(or the bare domain, whichever the house uses).")
 
+    # Asked without the request's name: this page may be open on admin. or on
+    # Railway, and the answer must not depend on which.
+    addin_known = addin_base_source(from_request=False)[0]
+    add("warn" if staff_address() else "info", "Core", "The Outlook add-in's address",
+        bool(addin_known),
+        f"{addin_known}, on every manifest whichever address it is fetched from."
+        if addin_known else
+        "Not set. ADDIN_BASE_URL is " + ("not an address" if ADDIN_BASE_URL else "unset")
+        + (f" and RAILWAY_PUBLIC_DOMAIN is {RAILWAY_PUBLIC_DOMAIN}, not a Railway address"
+           if RAILWAY_PUBLIC_DOMAIN else "")
+        + ", so the add-in page opened on admin.chateaugudanes.com cannot offer the "
+          "manifest. Set ADDIN_BASE_URL to https://cdg1-production-9186.up.railway.app.")
+
     email_ok = email_enabled()
     held = conn.execute(
         "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
@@ -93770,6 +94446,37 @@ def staff_today():
         open_count=sum(1 for t in my_tasks if t["status"] != "done"),
         extras_today=extras_today,
     )
+
+
+@app.route("/app")
+@login_required
+def phone_home():
+    """The home-screen app's front page: big tiles, nothing else.
+
+    static/manifest.json starts here, so this is what opens when somebody taps
+    the château's icon on their phone. The computer's dashboard is unchanged
+    and one tile away. The tiles come from the sidebar (phone_tiles), so each
+    person sees only what they can open. Clocking in or out is the one thing
+    done from here directly, because it is the first and last tap of a shift.
+    """
+    user = current_user()
+    today = house_today()
+    conn = get_db()
+    try:
+        clocked_in = conn.execute(
+            "SELECT id FROM time_entries WHERE user_id = ? AND clock_out_at IS NULL",
+            (user["id"],)).fetchone()
+        # The same tasks the Today page lists as still to do, so the number on
+        # its tile is the number of things waiting behind it.
+        open_tasks = conn.execute(
+            """SELECT COUNT(*) FROM tasks
+               WHERE assigned_to_user_id = ? AND status != 'done'
+                 AND (due_date IS NULL OR due_date <= ?)""",
+            (user["id"], today.isoformat())).fetchone()[0]
+    finally:
+        conn.close()
+    return render_template("phone_home.html", clocked_in=clocked_in,
+                           open_tasks=open_tasks, today=today)
 
 
 def mark_task_done(conn, task, done=True):
@@ -108347,19 +109054,64 @@ def addin_page_config():
     }
 
 
+def _addin_setting_base():
+    """ADDIN_BASE_URL as an origin, or "" if it is unset or is not an address."""
+    parsed = urlparse(ADDIN_BASE_URL)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def addin_base_source(from_request=True):
+    """(origin, where it came from) for the add-in. `where` is one of:
+
+      "setting"  ADDIN_BASE_URL
+      "railway"  RAILWAY_PUBLIC_DOMAIN, holding a *.railway.app name
+      "request"  the name this request came in on, which is not the house's
+      "unknown"  none of those: the request is on one of the house's names and
+                 nothing says where the add-in lives (origin is then None)
+
+    The request's own name is the last resort, and never one of the house's:
+    a laptop or a staging copy serves its own add-in, as it always has, but
+    www. and admin. are not where everybody's Outlook has it. from_request=False
+    leaves it out, for a check whose answer must not depend on the name asked.
+    """
+    if _addin_setting_base():
+        return _addin_setting_base(), "setting"
+    if RAILWAY_PUBLIC_DOMAIN.endswith(".railway.app"):
+        return "https://" + RAILWAY_PUBLIC_DOMAIN, "railway"
+    if from_request and has_request_context() and not on_house_domain():
+        return request.host_url.rstrip("/"), "request"
+    return None, "unknown"
+
+
+def addin_base_url():
+    """The add-in's origin, or None when it cannot be known from here."""
+    return addin_base_source()[0]
+
+
+def addin_url(base, endpoint, **values):
+    """A full address on the add-in's origin, whatever name the request is on."""
+    return base + url_for(endpoint, **values)
+
+
 @app.route("/outlook-addin/manifest.xml")
 def outlook_addin_manifest():
-    base = request.host_url.rstrip("/")
-    icon = lambda size: url_for("static", filename=f"addin/icon-{size}.png", _external=True)  # noqa: E731
+    # Answered on every name as it always was; only the addresses inside are
+    # the add-in's own. With nothing to say where that is (only possible on
+    # the house's names), the name asked on stands in, as it always did, and
+    # the add-in page says what to set.
+    base = addin_base_url() or request.host_url.rstrip("/")
+    icon = lambda size: addin_url(base, "static", filename=f"addin/icon-{size}.png")  # noqa: E731
     xml = render_template(
         "outlook_addin_manifest.xml", guid=OUTLOOK_ADDIN_GUID, version=OUTLOOK_ADDIN_VERSION,
         icons={size: icon(size) for size in (16, 25, 32, 48, 64, 80, 128)},
-        taskpane_url=url_for("outlook_addin_taskpane", _external=True),
-        support_url=url_for("contact_page", _external=True),
+        taskpane_url=addin_url(base, "outlook_addin_taskpane"),
+        support_url=addin_url(base, "contact_page"),
         app_domain=base,
-        launchevent_html_url=url_for("outlook_addin_launchevent_html", _external=True),
-        launchevent_js_url=url_for("outlook_addin_launchevent_js", _external=True),
-        compose_taskpane_url=url_for("outlook_addin_compose", _external=True),
+        launchevent_html_url=addin_url(base, "outlook_addin_launchevent_html"),
+        launchevent_js_url=addin_url(base, "outlook_addin_launchevent_js"),
+        compose_taskpane_url=addin_url(base, "outlook_addin_compose"),
     )
     return app.response_class(xml, mimetype="application/xml")
 
@@ -108515,14 +109267,20 @@ def _admin_addin_context(conn):
                           "owner_only": mailbox_is_owner_only(r)})
     notes = conn.execute("SELECT value FROM app_settings WHERE key = ?",
                          (ADDIN_HOUSE_NOTES_SETTING,)).fetchone()
+    # The add-in's own address, not this page's: opened on admin., a manifest
+    # link built from the request would move everybody's Outlook off Railway.
+    addin_base, addin_from = addin_base_source()
     return {
-        "manifest_url": url_for("outlook_addin_manifest", _external=True),
+        "manifest_url": (addin_url(addin_base, "outlook_addin_manifest")
+                         if addin_base else None),
+        "addin_base_from": addin_from,
+        "railway_public_domain": RAILWAY_PUBLIC_DOMAIN,
         "manifest_version": OUTLOOK_ADDIN_VERSION,
         "token_configured": bool(GUEST_LOOKUP_TOKEN),
         "shared_key_allowed": addin_shared_key_allowed(conn),
         "sso_configured": addin_sso_configured(), "sso_client_id": ADDIN_CLIENT_ID,
         "sso_tenant": addin_tenant_id(), "sso_scope": addin_scope(),
-        "addin_origin": request.host_url.rstrip("/"),
+        "addin_origin": addin_base,
         "claude_on": claude_configured(), "graph_on": graph_enabled(),
         "graph_mailboxes": MS_GRAPH_MAILBOXES,
         "users": users, "sessions": sessions, "unmatched": addin_unmatched(conn),
