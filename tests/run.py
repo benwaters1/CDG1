@@ -208,6 +208,7 @@ SUITES = [
     "test_social_schedule",
     "test_design",
     "test_table_overflow",
+    "test_room_calendar_on_a_phone",
     "test_row_headings",
     "test_input_fields",
     "test_entities_as_text",
@@ -516,6 +517,8 @@ SUITES = [
     "test_outlook_addin",
     "test_send_check",
     "test_send_check_french_reply",
+    # Shared inboxes and a pinned Guest pane, 19 October 2026.
+    "test_addin_shared_inboxes",
     "test_house_calendar",
     "test_house_calendar_default",
     "test_calendar_cards",
@@ -523,6 +526,9 @@ SUITES = [
     "test_house_dates",
     # Brief of 15 October 2026.
     "test_tech_email",
+    # Brief of 19 October 2026: the summary to website@, a statement read once.
+    "test_summary_to_website",
+    "test_statement_reads_once",
     "test_staff_accounts",
     "test_check_in_times",
     # Ateliers and stays on every day they cover, 15 October 2026.

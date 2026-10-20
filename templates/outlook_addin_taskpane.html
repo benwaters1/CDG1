@@ -87,9 +87,39 @@ function setStatus(text, kind) {
   el.hidden = !text;
 }
 
-Office.onReady(function () { start(); });
+// PINNED, the pane stays open while the person moves from email to email
+// (SupportsPinning in the manifest), so it has to follow: ItemChanged says a
+// different email is chosen, or none. `seen` counts the emails this pane has
+// been asked about, so an answer about the last one that arrives after the
+// move is dropped rather than drawn over the new guest.
+var seen = 0;
+
+Office.onReady(function () {
+  try {
+    Office.context.mailbox.addHandlerAsync(Office.EventType.ItemChanged, itemChanged);
+  } catch (e) { /* an Outlook without pinning: the pane closes on a move instead */ }
+  start();
+});
+
+function itemChanged() {
+  seen += 1;
+  state = { context: null, dossier: null, history: null, draft: null };
+  show("guest", false);
+  show("setup", false);
+  ["bookingsCount", "emailsCount", "notesCount", "lettersCount"].forEach(function (id) {
+    document.getElementById(id).textContent = "";
+  });
+  Gudanes.clear(document.getElementById("emails"))
+    .appendChild(h("p", { class: "hint" }, "Reading the house's inboxes…"));
+  start();
+}
 
 async function start() {
+  var mine = seen;
+  if (!Office.context.mailbox.item) {
+    setStatus("Choose an email to see who it is from.", "quiet");
+    return;
+  }
   state.context = Gudanes.readContext();
   if (!state.context.guest) {
     setStatus("There is nobody outside the house on this message to look up.", "quiet");
@@ -99,11 +129,13 @@ async function start() {
     setStatus("Looking them up…");
     var data = await Gudanes.call(GUDANES.lookup_url, {
       email: state.context.guest.email, name: state.context.guest.name });
+    if (mine !== seen) { return; }
     state.dossier = data.dossier;
     drawGuest(data);
     setStatus("");
-    loadHistory();
+    loadHistory(mine);
   } catch (e) {
+    if (mine !== seen) { return; }
     if (e.needsSetup) { askToSignIn(e.message); }
     else { setStatus(e.message, "error"); }
   }
@@ -273,13 +305,15 @@ function drawLetters(letters) {
   });
 }
 
-async function loadHistory() {
+async function loadHistory(mine) {
   var box = document.getElementById("emails");
   try {
     var hist = await Gudanes.call(GUDANES.history_url, { email: state.context.guest.email });
+    if (mine !== seen) { return; }
     state.history = hist;
     drawHistory(hist);
   } catch (e) {
+    if (mine !== seen) { return; }
     Gudanes.clear(box).appendChild(h("p", { class: "hint error" }, e.message));
   }
 }
@@ -377,6 +411,7 @@ function drawDraftArea() {
 }
 
 async function draft(mode, language) {
+  var mine = seen;
   var note = document.getElementById("draftNote");
   var text = document.getElementById("draftText");
   document.querySelectorAll("#draftArea button").forEach(function (b) { b.disabled = true; });
@@ -387,6 +422,7 @@ async function draft(mode, language) {
       recipient_email: state.context.guest.email, subject: state.context.subject,
       body: body, conversation_id: state.context.conversationId, mailbox: state.context.mailbox,
       mode: mode, language: language || "", previous_draft: mode === "reply" ? "" : text.value });
+    if (mine !== seen) { return; }
     text.value = r.draft;
     state.draft = r;
     note.textContent = "Signed as " + r.signed_as + (r.language ? " · written in " + r.language : "") + ". Read it before it goes.";

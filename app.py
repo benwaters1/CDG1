@@ -15728,18 +15728,19 @@ def calendar_lay_out(cells, spans, view):
         c["arrive"] = sum(1 for s in stays if s["first"] == iso)
         c["leave"] = sum(1 for s in stays if s["last"] == iso)
         c["let"] = sum(1 for s in stays if s["first"] <= iso < s["last"])
-        if view == "day":
-            # The day view lists what lasts by name, in the order the house
-            # meets it: who arrives, who leaves, who is staying on.
-            c["house"] = []
-            for label, test in (("Arriving", lambda e: (e.get("facts") or {}).get("arrival") == iso and not e.get("staying")),
-                                ("Leaving", lambda e: (e.get("facts") or {}).get("departure") == iso and not e.get("staying")),
-                                ("Staying on", lambda e: e.get("staying"))):
-                these = [e for e in c["events"] if e["kind"] == "booking" and test(e)]
-                if these:
-                    c["house"].append({"label": label, "things": these})
-            c["happening"] = [e for e in c["events"] if e["kind"] in ("workshop", "event")]
-            c["noted"] = [e for e in c["events"] if e["kind"] in ("date", "closure")]
+        # The day view lists what lasts by name, in the order the house meets
+        # it: who arrives, who leaves, who is staying on. Every day of a week
+        # and a month has the same, because on a phone those are drawn as a
+        # list of days rather than a grid (ops_calendar.html, cal2-agenda).
+        c["house"] = []
+        for label, test in (("Arriving", lambda e: (e.get("facts") or {}).get("arrival") == iso and not e.get("staying")),
+                            ("Leaving", lambda e: (e.get("facts") or {}).get("departure") == iso and not e.get("staying")),
+                            ("Staying on", lambda e: e.get("staying"))):
+            these = [e for e in c["events"] if e["kind"] == "booking" and test(e)]
+            if these:
+                c["house"].append({"label": label, "things": these})
+        c["happening"] = [e for e in c["events"] if e["kind"] in ("workshop", "event")]
+        c["noted"] = [e for e in c["events"] if e["kind"] in ("date", "closure")]
 
 
 def calendar_uid(row):
@@ -16289,6 +16290,51 @@ def company_legal_mentions(company):
 
 
 app.jinja_env.filters["legal_mentions"] = company_legal_mentions
+
+
+# The house's own name, for the company blocks below. Where the house IS --
+# the street on the foot of every letter -- is HOUSE_POSTAL, beside the letter
+# design. Neither is the company's registered office, which is the owner's to
+# keep under Management, Companies, and may differ.
+HOUSE_NAME = "Château de Gudanes"
+
+
+def _same_words(a, b):
+    return " ".join((a or "").split()).casefold() == " ".join((b or "").split()).casefold()
+
+
+def company_address_parts(company):
+    """The registered address in its pieces, without the name over it again.
+
+    Every document prints the company's name and then this address under it.
+    The address as kept on 19 Oct 2026 began with the name -- "Château de
+    Gudanes, Gudanes, 09310 Château-Verdun, France" -- so a statement read
+    "Château de Gudanes" twice. A piece that only repeats the company's name,
+    or the house's, is left out here; what is kept is not touched, because it
+    is the owner's to correct on the company's page.
+    """
+    company = dict(company or {})
+    name = company.get("legal_name") or ""
+    parts = [" ".join(x.split())
+             for x in re.split(r"[,\n]", company.get("registered_address") or "")]
+    return [x for x in parts
+            if x and not _same_words(x, name) and not _same_words(x, HOUSE_NAME)]
+
+
+def company_address(company, sep=" · "):
+    """The registered address on one line, for under the company's name."""
+    return sep.join(company_address_parts(company))
+
+
+def company_address_line(company, sep=" · "):
+    """The name and the address on one line: "Château de Gudanes · 2 Route de
+    Beille · 09310 Château-Verdun · France". The name is the company's, or the
+    house's while no company is marked."""
+    name = " ".join((dict(company or {}).get("legal_name") or "").split()) or HOUSE_NAME
+    return sep.join([name] + company_address_parts(company))
+
+
+app.jinja_env.filters["company_address"] = company_address
 
 
 def company_gaps(company):
@@ -31909,11 +31955,17 @@ def tech_email_setting(conn):
 
 
 def tech_email(conn):
-    """Where mail about the software goes: backups, the provider test.
+    """Where mail about the software goes: backups, the provider test, and the
+    daily summary and the morning note.
 
     Empty setting means the owner, so nothing goes silent if it is never
-    filled in. Mail about the BUSINESS -- guests, bookings, money, the daily
-    summary -- never asks this; it goes to owner_email.
+    filled in. Mail about the BUSINESS that needs the owner -- a balance not
+    taken, a paid booking that clashes, a poor review -- never asks this; it
+    goes to owner_email.
+
+    The summaries moved here on 19 Oct 2026. The owner's address is accounts@,
+    and accounts@ is money only; the 15 Oct note that kept the summary with
+    the owner was wrong for this house.
     """
     return tech_email_setting(conn) or owner_email(conn)
 
@@ -31926,13 +31978,13 @@ def tech_email(conn):
 HOUSE_MAIL_ROUTES = (
     ("Backups by email", "tech"),
     ("The email provider's test message", "tech"),
+    ("The daily summary and the morning note", "tech"),
     ("Stays: booked, waiting on you, changed, cancelled, extras, the waitlist", "rooms"),
     ("Guests writing in, and the contact page", "rooms"),
     ("Dinners: changed, cancelled, the waitlist", "restaurant"),
     ("Ateliers: cancelled, moved, the waitlist", "workshops"),
     ("Events: enquiries, changes, quotes accepted, holds that lapsed", "events"),
     ("Money that needs you: a balance not taken, a paid booking that clashes", "owner"),
-    ("The daily summary and the morning note", "owner"),
     ("A poor review", "owner"),
 )
 
@@ -42016,8 +42068,9 @@ def pos_receipt_email_context(conn, bill):
     company = operating_company(conn)
     bits = []
     if company:
-        for key, label in (("legal_name", ""), ("registered_address", ""),
-                           ("registration_number", "SIRET "), ("vat_number", "TVA ")):
+        # The name and the address as one line, the name said once.
+        bits.append(company_address_line(company))
+        for key, label in (("registration_number", "SIRET "), ("vat_number", "TVA ")):
             value = " ".join((company[key] or "").split())
             if value:
                 bits.append(label + value)
@@ -47803,20 +47856,11 @@ def send_room_statement(conn, booking):
     # The page's own statement, line for line -- every charge, every payment
     # with its card, every refund -- and then the VAT bands the invoice owes.
     view = booking_statement_view(conn, "room", booking["id"])
-    company = operating_company(conn)
 
     lines = [statement_text(view)] if view else []
     if view and view["stands"]:
         for band in statement["vat"]:
             lines.append(f"  of which VAT at {band['rate']}%   €{band['vat']:,.2f}")
-
-    who = []
-    if company:
-        for key in ("legal_name", "registered_address", "registration_number",
-                    "vat_number"):
-            value = " ".join((company[key] or "").split())
-            if value:
-                who.append(value)
 
     # Drawn, the statement is the statement: the table the page draws, its VAT
     # beneath it, and a button to pay what is owed -- not the plain lines
@@ -47833,7 +47877,9 @@ def send_room_statement(conn, booking):
         "reference_code": booking["reference_code"],
         "statement_url": url_for("booking_statement", manage_token=booking["manage_token"],
                                  _external=True),
-        "company_block": "\n".join(who),
+        # The same block as every other statement and receipt, so the name and
+        # the address are put together in one place.
+        "company_block": company_block_text(conn),
     }, statement=drawn, pay_url=url_for(
         "booking_pay", manage_token=booking["manage_token"], _external=True) if owes else "")
     delivered = bool(subject) and bool(
@@ -57121,7 +57167,8 @@ def run_morning_digest_job(conn, today=None):
     subject, body, has_anything = morning_digest(conn, day)
     if not has_anything:
         return "nothing happening today, so nothing sent"
-    to = owner_email(conn)
+    # The technical address, like the backups: accounts@ is money only.
+    to = tech_email(conn)
     if not to:
         return "no owner address on file"
     send_email(to, subject, body)
@@ -58919,7 +58966,7 @@ SAMPLE_MERGE_VALUES = {
     "refund_how": ("It is going back to the card you paid with. Banks usually take "
                    "five to ten working days to show it."),
     "status_line": "Paid in full",
-    "company_block": "Ch\u00e2teau de Gudanes\n2 Route de Beille, 09310 Ch\u00e2teau-Verdun",
+    "company_block": "Ch\u00e2teau de Gudanes \u00b7 2 Route de Beille \u00b7 09310 Ch\u00e2teau-Verdun \u00b7 France",
     "items": "2 \u00d7 Men\u00fc du march\u00e9\u2003\u20ac110.00\n"
              "1 \u00d7 Bottle, Ari\u00e8ge red\u2003\u20ac38.00",
     "totals": "Subtotal\u2003\u20ac148.00\nService\u2003\u20ac14.80\nTotal\u2003\u20ac162.80",
@@ -59244,9 +59291,7 @@ def campaign_unsubscribe_footer(conn, token):
         # No request context — the trigger job runs from the scheduler.
         link = f"{PUBLIC_BASE_URL or ''}/unsubscribe/{token}"
     row = operating_company(conn)
-    who = "Château de Gudanes"
-    if row and (row["registered_address"] or "").strip():
-        who += " · " + " ".join((row["registered_address"] or "").split())
+    who = " · ".join([HOUSE_NAME] + company_address_parts(row))
     return (
         "\n\n—\n"
         f"{who}\n"
@@ -62678,13 +62723,13 @@ def api_owner_digest():
 
     Query string, like /api/sync-ical and unlike /api/guest-lookup, and for
     the reason set out there: a scheduler fetches a URL, and a leaked token
-    here sends the owner their own summary. It does not read anybody's
+    here sends the house its own summary. It does not read anybody's
     record."""
     supplied = request.args.get("token", "")
     if not DIGEST_TOKEN or not hmac.compare_digest(supplied, DIGEST_TOKEN):
         abort(404)
     conn = get_db()
-    to_address = owner_email(conn)
+    to_address = tech_email(conn)
     body = build_owner_digest(conn)
     sent = send_email(to_address, "Your daily summary", body)
     conn.close()
@@ -86146,7 +86191,10 @@ def company_block_text(conn):
     company = operating_company(conn)
     who = []
     if company:
-        for key in ("legal_name", "registered_address", "registration_number", "vat_number"):
+        # "Château de Gudanes · 2 Route de Beille · 09310 Château-Verdun ·
+        # France": the name once, then where it is.
+        who.append(company_address_line(company))
+        for key in ("registration_number", "vat_number"):
             value = " ".join((company[key] or "").split())
             if value:
                 who.append(value)
@@ -97345,7 +97393,9 @@ def run_page_translation_job(conn, limit=None):
 
 
 def run_daily_digest_job(conn):
-    to_address = owner_email(conn)
+    # The technical address when one is set, the owner when it is not: the
+    # summary was burying the invoices in accounts@, as the backups did.
+    to_address = tech_email(conn)
     if not to_address:
         raise JobNotSetUp("no owner email address is set")
     body = build_owner_digest(conn)
@@ -103307,7 +103357,12 @@ OUTLOOK_ADDIN_GUID = "31db9023-97b7-4519-8829-c0b1e3bed58e"
 # it was ready, so office.js never started, Outlook waited, and under SoftBlock
 # the only button on "taking longer than expected" was Don't send. Nothing
 # could be sent, internal mail included.
-OUTLOOK_ADDIN_VERSION = "2.1.0.0"
+#
+# 2.2.0.0, 19 October 2026: SupportsSharedFolders, so the Guest button is
+# offered on an email read in a shared inbox (experience@ had no add-ins at
+# all), and SupportsPinning on the Guest pane, so it stays open and follows
+# the email chosen.
+OUTLOOK_ADDIN_VERSION = "2.2.0.0"
 # Microsoft's sign-in library: the only file the panels take from a CDN, so
 # pinned to one release and fingerprinted, and the browser refuses any other
 # bytes under that name.

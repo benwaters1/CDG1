@@ -14,8 +14,9 @@ What this holds:
     owner can change it;
   - the Guest email page says where each kind of mail goes, worked out by the
     same helper the sender calls;
-  - money that needs the owner, and the daily summary, stay with the owner
-    and never ask the technical address;
+  - money that needs the owner, and a poor review, stay with the owner and
+    never ask the technical address (the daily summary moved to the technical
+    address on 19 Oct 2026: test_summary_to_website);
   - every notice about a booking goes to the inbox for that kind of booking
     (reservations@ for stays and dinners, experience@ for ateliers and
     events) and never to the owner's sign-in address, which is accounts@ --
@@ -205,8 +206,8 @@ def _checks(s, conn):
     rows = dict(m.email_health(conn)["house_mail"])
     s.check("backups are shown going to the technical address",
             rows.get("Backups by email") == TECH, detail=str(rows))
-    s.check("the daily summary is shown staying with the owner",
-            rows.get("The daily summary and the morning note") == owner_to, detail=str(rows))
+    s.check("the daily summary is shown going to the technical address",
+            rows.get("The daily summary and the morning note") == TECH, detail=str(rows))
     stays = m.house_address_for(conn, "rooms")
     s.check("stays are shown going to the rooms inbox, not the owner",
             rows.get("Stays: booked, waiting on you, changed, cancelled, extras, the waitlist")
@@ -228,9 +229,8 @@ def _checks(s, conn):
     # The page's table is a claim about the senders. Hold each "tech" line to
     # the function that sends it, and the business mail to the owner -- so a
     # sender moved without the table, or the table without the sender, is red.
-    s.section("Money and the summary stay with the owner")
-    for fn in ("run_daily_digest_job", "run_morning_digest_job",
-               "send_autocharge_failed_email", "create_booking_from_stripe_session",
+    s.section("Money and a poor review stay with the owner")
+    for fn in ("send_autocharge_failed_email", "create_booking_from_stripe_session",
                "create_restaurant_booking_from_stripe_session",
                "tell_the_house_about_a_review"):
         src = inspect.getsource(getattr(m, fn))

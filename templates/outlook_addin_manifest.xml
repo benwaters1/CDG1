@@ -157,6 +157,17 @@
             </Runtime>
           </Runtimes>
           <DesktopFormFactor>
+            <!-- THE SHARED INBOXES. reservations@, experience@ and the rest are
+                 shared mailboxes, and without this Outlook offers no add-in at
+                 all on an email READ in one: on 19 October 2026 the Apps list
+                 beside Forward was empty on a guest's email in experience@,
+                 while Draft with AI worked, because compose needs nothing.
+                 Microsoft's schema allows it in this 1.1 layer only (Mailbox
+                 1.8 for delegate folders, 1.13 for shared mailboxes), and as
+                 the first child here. In the 1.0 layer it would make the whole
+                 manifest invalid, and the 1.0 layer is only for an Outlook too
+                 old to open a shared mailbox's add-ins anyway. -->
+            <SupportsSharedFolders>true</SupportsSharedFolders>
             <FunctionFile resid="Commands.Url"/>
             <ExtensionPoint xsi:type="MessageReadCommandSurface">
               <OfficeTab id="TabDefault">
@@ -173,8 +184,12 @@
                       <bt:Image size="32" resid="Icon.32x32"/>
                       <bt:Image size="80" resid="Icon.80x80"/>
                     </Icon>
+                    <!-- Pinnable: the Guest pane stays open and follows the email
+                         chosen, rather than closing each time. The page listens
+                         for ItemChanged and redraws for the new email. -->
                     <Action xsi:type="ShowTaskpane">
                       <SourceLocation resid="Taskpane.Url"/>
+                      <SupportsPinning>true</SupportsPinning>
                     </Action>
                   </Control>
                 </Group>

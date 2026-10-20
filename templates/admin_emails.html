@@ -111,8 +111,8 @@
 #}
 <h2 class="section-heading" id="house-mail">Where the house's own mail goes</h2>
 <p class="upload-hint">What the site sends to the house rather than to guests. A booking goes to the inbox that
-  looks after that kind of booking, the same one a guest's reply reaches; mail about the software goes to the
-  technical address; money that needs you, and the daily summary, come to you.</p>
+  looks after that kind of booking, the same one a guest's reply reaches; mail about the software, and the daily
+  summary, go to the technical address; money that needs you, and a poor review, come to you.</p>
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th scope="col">Mail about</th><th scope="col">Goes to</th></tr></thead>
@@ -131,7 +131,7 @@
   <label for="tech_email">Technical mail goes to</label>
   <input type="email" id="tech_email" name="tech_email" value="{{ health.tech_email }}"
          placeholder="{{ health.owner_email or 'website@…' }}" autocomplete="off">
-  <p class="upload-hint">Backups and the provider test. Leave it empty and they come to you
+  <p class="upload-hint">Backups, the provider test and the daily summary. Leave it empty and they come to you
     {%- if health.owner_email %} ({{ health.owner_email }}){% endif %}.</p>
   <button type="submit" class="btn-primary">Save</button>
 </form>
