@@ -26,6 +26,7 @@ them to every day they cover); this holds the drawing:
   - staff may add a job of their own, and nothing else.
 """
 from datetime import date, datetime, timedelta, timezone
+import os
 
 from _harness import Suite, clients, db, flashes, house_today
 import _harness
@@ -143,11 +144,14 @@ def run():
         s.check("events come before stays, so the big things sit on top",
                 list(bars.values()).index(ev) < list(bars.values()).index(bars[f"booking-{mid}"]))
         page = oc.get(f"/calendar?view=week&date={mon.isoformat()}").get_data(as_text=True)
-        s.check("the page draws the stay once, as a bar across its days",
-                page.count(f'data-card="booking-{mid}"') == 1
-                and 'style="grid-column:4 / 10;"' in page)
+        # The grid only: under it is the same week as a list for a phone, which
+        # names the stay on its arriving and leaving days on purpose.
+        grid = page.split('class="cal2-agenda')[0]
+        s.check("the grid draws the stay once, as a bar across its days",
+                grid.count(f'data-card="booking-{mid}"') == 1
+                and 'style="grid-column:4 / 10;"' in grid)
         s.check("it no longer draws a chip for each night in residence",
-                "in residence" not in page.split('id="cal-cards"')[0])
+                "in residence" not in grid)
 
         s.section("Each day's things under headings")
         cell = {c["iso"]: c for c in week["cells"]}[wed.isoformat()]
@@ -167,6 +171,40 @@ def run():
                 '<div class="cal2-folded">' in mpage and "8 covers" in mpage)
         s.check("and lists three jobs a day, with the rest a click away",
                 "+2 more" in mpage)
+
+        s.section("On a phone, the days one under another")
+        # The owner, 19 October 2026: "not readable on phone, it's very hard".
+        # The grid needs 820px; below 640px it gives way to a list of days.
+        agenda = page.split('class="cal2-agenda', 1)[1].split('id="cal-cards"')[0] if 'class="cal2-agenda' in page else ""
+        s.check("the week is also drawn as a list of its seven days",
+                all(f'id="aday-{(mon + timedelta(days=i)).isoformat()}"' in agenda for i in range(7)))
+        tue_day = agenda.split(f'id="aday-{tue.isoformat()}"')[1].split('<section')[0] if agenda else ""
+        s.check("each day names who arrives", "Arriving" in tue_day and f"{TAG} Middle Guest" in tue_day,
+                detail=tue_day[:300])
+        wed_day = agenda.split(f'id="aday-{wed.isoformat()}"')[1].split('<section')[0] if agenda else ""
+        s.check("who leaves, and who is staying on in one line, not a chip a night",
+                "Leaving" in wed_day and f"{TAG} Early Guest" in wed_day
+                and 'class="cal2-aday-staying"' in wed_day and f"{TAG} Middle Guest" in wed_day,
+                detail=wed_day[:300])
+        s.check("with the day's jobs and the restaurant under their headings, and a + to add",
+                "To do" in wed_day and "8 covers" in wed_day and f'data-add-date="{wed.isoformat()}"' in wed_day)
+        with open(os.path.join(_harness.ROOT, "static", "style.css"), encoding="utf-8") as fh:
+            css = fh.read()
+        s.check("below 640px the stylesheet hides the grid and shows the list",
+                ".cal2-agenda{ display:none; }" in css
+                and ".cal2-scroll{ display:none; }" in css.split(".cal2-agenda{ display:none; }")[1][:200]
+                and ".cal2-agenda{ display:flex;" in css)
+        today = house_today()
+        tpage = oc.get("/calendar?view=month").get_data(as_text=True)
+        if today.day > 1:
+            gone = tpage.split('class="cal2-agenda-gone"', 1)[1].split("</details>")[0] if 'class="cal2-agenda-gone"' in tpage else ""
+            s.check("this month's days already gone fold into one line, so it opens on today",
+                    f'id="aday-{today.replace(day=1).isoformat()}"' in gone
+                    and f'id="aday-{today.isoformat()}"' not in gone
+                    and f'id="aday-{today.isoformat()}"' in tpage,
+                    detail=gone[:200])
+        else:
+            s.check("on the 1st nothing is folded", 'class="cal2-agenda-gone"' not in tpage)
 
         s.section("The day view")
         dcell = day["cells"][0]

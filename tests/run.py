@@ -208,6 +208,7 @@ SUITES = [
     "test_social_schedule",
     "test_design",
     "test_table_overflow",
+    "test_room_calendar_on_a_phone",
     "test_row_headings",
     "test_input_fields",
     "test_entities_as_text",

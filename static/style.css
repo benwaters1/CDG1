@@ -3750,6 +3750,33 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .cal2-dayview .cal-day-events-list{ display:flex; flex-direction:column; gap:5px; }
 .cal2-dayview .cal-ev{ font-size:13.5px; padding:8px 12px; border-radius:10px; }
 .cal2-dayview .cal-ev-text{ white-space:normal; }
+/* The week and the month on a phone: the days one under another, each read
+   like the day view (ops_calendar.html, cal2-agenda). The grid needs 820px and
+   on a phone showed two and a half days with every name cut short. */
+.cal2-agenda{ display:none; }
+@media (max-width: 640px){
+  .cal2-scroll{ display:none; }
+  .cal2-agenda{ display:flex; flex-direction:column; gap:10px; }
+  .cal2-aday{ background:var(--surface); border:1px solid var(--parchment-line); border-radius:12px; padding:10px 12px 12px; display:flex; flex-direction:column; gap:10px; }
+  .cal2-aday.is-today{ border-color:var(--gold); box-shadow:inset 3px 0 0 var(--gold); }
+  .cal2-aday.is-quiet{ padding-bottom:10px; background:transparent; }
+  .cal2-aday-head{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .cal2-aday-date{ display:inline-flex; align-items:baseline; gap:6px; font-size:15px; font-weight:600; color:var(--ink); text-decoration:none; }
+  .cal2-aday-dow{ font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-soft); }
+  .cal2-aday-mon{ font-size:12px; color:var(--ink-soft); font-weight:400; }
+  .cal2-aday.is-today .cal2-num{ background:var(--gold); color:var(--chestnut-deep); }
+  .cal2-aday .cal2-daysum{ font-size:12.5px; gap:8px; }
+  .cal2-aday-none{ font-size:12.5px; color:var(--ink-soft); }
+  .cal2-aday-head .cal2-add{ margin-left:auto; }
+  .cal2-aday .cal2-sec{ gap:5px; }
+  .cal2-aday .cal2-sec-head{ font-size:11px; margin:0 0 1px; }
+  .cal2-aday .cal2-sec-count{ font-size:11px; }
+  .cal2-aday .cal-ev{ font-size:14px; padding:8px 11px; border-radius:10px; }
+  .cal2-aday .cal-ev-text{ white-space:normal; }
+  .cal2-aday .cal-ev-who{ max-width:40%; }
+  .cal2-aday .cal-more{ font-size:13px; }
+  .cal2-aday-staying{ font-size:13px; line-height:1.45; color:var(--ink-soft); text-decoration:none; padding:0 2px; }
+}
 /* The Add dialog. */
 .cal-add-dialog{ width:min(560px, calc(100vw - 32px)); }
 .cal-add-tabs{ margin:14px 0 4px; display:inline-flex; }

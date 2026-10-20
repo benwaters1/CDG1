@@ -15709,18 +15709,19 @@ def calendar_lay_out(cells, spans, view):
         c["arrive"] = sum(1 for s in stays if s["first"] == iso)
         c["leave"] = sum(1 for s in stays if s["last"] == iso)
         c["let"] = sum(1 for s in stays if s["first"] <= iso < s["last"])
-        if view == "day":
-            # The day view lists what lasts by name, in the order the house
-            # meets it: who arrives, who leaves, who is staying on.
-            c["house"] = []
-            for label, test in (("Arriving", lambda e: (e.get("facts") or {}).get("arrival") == iso and not e.get("staying")),
-                                ("Leaving", lambda e: (e.get("facts") or {}).get("departure") == iso and not e.get("staying")),
-                                ("Staying on", lambda e: e.get("staying"))):
-                these = [e for e in c["events"] if e["kind"] == "booking" and test(e)]
-                if these:
-                    c["house"].append({"label": label, "things": these})
-            c["happening"] = [e for e in c["events"] if e["kind"] in ("workshop", "event")]
-            c["noted"] = [e for e in c["events"] if e["kind"] in ("date", "closure")]
+        # The day view lists what lasts by name, in the order the house meets
+        # it: who arrives, who leaves, who is staying on. Every day of a week
+        # and a month has the same, because on a phone those are drawn as a
+        # list of days rather than a grid (ops_calendar.html, cal2-agenda).
+        c["house"] = []
+        for label, test in (("Arriving", lambda e: (e.get("facts") or {}).get("arrival") == iso and not e.get("staying")),
+                            ("Leaving", lambda e: (e.get("facts") or {}).get("departure") == iso and not e.get("staying")),
+                            ("Staying on", lambda e: e.get("staying"))):
+            these = [e for e in c["events"] if e["kind"] == "booking" and test(e)]
+            if these:
+                c["house"].append({"label": label, "things": these})
+        c["happening"] = [e for e in c["events"] if e["kind"] in ("workshop", "event")]
+        c["noted"] = [e for e in c["events"] if e["kind"] in ("date", "closure")]
 
 
 def calendar_uid(row):
