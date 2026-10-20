@@ -53,7 +53,8 @@ def run():
         data = {"email": email, "source": "waitlist",
                 "wanted_arrival": _iso(40), "wanted_departure": _iso(44)}
         data.update(extra)
-        return anon.post("/newsletter/subscribe", data=data, follow_redirects=True)
+        return anon.post("/newsletter/subscribe", data={**data, **_harness.contact_form_fields()},
+                          follow_redirects=True)
 
     s.section("The dates become a waiting list entry")
     who = TAG + "hopeful@example.invalid"
@@ -114,7 +115,7 @@ def run():
     plain = TAG + "plain@example.invalid"
     conn.execute("DELETE FROM submission_log WHERE action = 'newsletter_subscribe'")
     conn.commit()
-    anon.post("/newsletter/subscribe", data={"email": plain}, follow_redirects=True)
+    anon.post("/newsletter/subscribe", data={"email": plain, **_harness.contact_form_fields()}, follow_redirects=True)
     s.check("no waiting list entry from the footer box", _entries(conn, plain) == [],
             detail="only the booking page's no-availability form is a waiting list")
     s.check("but they are on the newsletter", conn.execute(
@@ -126,7 +127,7 @@ def run():
     conn.execute("DELETE FROM submission_log WHERE action = 'newsletter_subscribe'")
     conn.commit()
     anon.post("/newsletter/subscribe",
-              data={"email": sneaky, "wanted_arrival": _iso(40),
+              data={"email": sneaky, **_harness.contact_form_fields(), "wanted_arrival": _iso(40),
                     "wanted_departure": _iso(44)}, follow_redirects=True)
     s.check("dates posted without asking for the waiting list make no entry",
             _entries(conn, sneaky) == [], detail=str(len(_entries(conn, sneaky))))

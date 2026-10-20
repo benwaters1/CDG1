@@ -29228,6 +29228,37 @@ def edit_gallery_section(section_id):
     return redirect(url_for("admin_gallery"))
 
 
+GMAIL_DOMAINS = ("gmail.com", "googlemail.com")
+
+
+def gmail_inbox(email):
+    """The one inbox a Gmail address reaches, or None for any other provider.
+
+    Gmail ignores dots in the name and anything after a +, so a.lice+news@
+    gmail.com and alice@googlemail.com are one inbox. Only Gmail: at Outlook,
+    Yahoo and the rest a dot is part of the name, and two spellings are two
+    people.
+    """
+    local, _, domain = (email or "").strip().lower().partition("@")
+    if domain not in GMAIL_DOMAINS:
+        return None
+    return local.split("+", 1)[0].replace(".", "") + "@gmail.com"
+
+
+def scattered_gmail_dots(email):
+    """A Gmail address with three dots or more in its name.
+
+    Most of the addresses in October's runs of doubled confirmations were
+    spelt like this -- a.li.c.e.sm.ith, j.o.e.bl.og.gs -- because it is how a
+    script reaches one inbox under a new name each time. A person's own address has one dot, perhaps two
+    (mary.jane.smith); three is the line, and it costs a real person with
+    four names a sign-up, which is the price of not writing to strangers.
+    """
+    if not gmail_inbox(email):
+        return False
+    return email.split("@", 1)[0].split("+", 1)[0].count(".") >= 3
+
+
 @app.route("/newsletter/subscribe", methods=["POST"])
 def newsletter_subscribe():
     """Every newsletter box on the public site: the menu panel, the footer,
@@ -29255,7 +29286,14 @@ def newsletter_subscribe():
     # partial, and the booking page's "tell me when they open"). A script
     # typing other people's addresses into it is the house mailing strangers
     # on demand, which is exactly what the Resend log showed in October.
-    if refused_as_bot(conn, "newsletter_subscribe", request.form):
+    #
+    # The stamp is REQUIRED here, as on the Contact page: every box that posts
+    # to this route has drawn one since 19 October, so a post without one never
+    # had the form in front of it -- a script that fetched the page for its
+    # CSRF token and sent back only the fields it knows.
+    reason = bot_guard_refusal(request.form, require_stamp=True)
+    if reason:
+        note_bot_refusal(conn, "newsletter_subscribe", reason)
         conn.close()
         flash(BOT_REFUSAL_MESSAGE, "error")
         return redirect(request.referrer or url_for("preview_home"))
@@ -29266,6 +29304,18 @@ def newsletter_subscribe():
         conn.commit()
         conn.close()
         flash("Enter a valid email address.", "error")
+        return redirect(request.referrer or url_for("preview_home"))
+
+    # a.li.c.e.sm.ith@gmail.com and its kind: Gmail ignores dots, so each
+    # spelling reaches one real inbox, and a script writes a new
+    # spelling every time to get past "one letter per address". Refused with
+    # the same thanks anybody gets, so the script learns nothing, and nothing
+    # is written or sent (scattered_gmail_dots says why three dots).
+    if scattered_gmail_dots(email):
+        note_bot_refusal(conn, "newsletter_subscribe",
+                         "a Gmail address with a dot between most of its letters")
+        conn.close()
+        flash(thanks, "success")
         return redirect(request.referrer or url_for("preview_home"))
 
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -29344,15 +29394,26 @@ def newsletter_subscribe():
     # email somebody repeatedly on demand. Rows from before confirm_sent_at
     # existed read their created_at, the one send they are known to have had.
     send = False
-    if not opted_out:
+    cutoff = (datetime.now(timezone.utc)
+              - timedelta(hours=NEWSLETTER_CONFIRM_RESEND_HOURS)).isoformat()
+    # And one letter per INBOX, not per spelling: a.lice@gmail.com and
+    # alice@gmail.com are the same person's post, so a letter to either inside
+    # the window stops a letter to the other.
+    hold = opted_out
+    if not hold and gmail_inbox(email):
+        same = gmail_inbox(email)
+        hold = any(gmail_inbox(other["email"]) == same for other in conn.execute(
+            """SELECT email FROM newsletter_subscribers
+                WHERE id != ? AND COALESCE(confirm_sent_at, created_at) >= ?
+                  AND (email LIKE '%@gmail.com' OR email LIKE '%@googlemail.com')""",
+            (row["id"], cutoff)).fetchall())
+    if not hold:
         if fresh:
             send = conn.execute(
                 """UPDATE newsletter_subscribers SET confirm_sent_at = ?
                     WHERE id = ? AND confirm_sent_at IS NULL AND confirmed_at IS NULL""",
                 (now_iso, row["id"])).rowcount == 1
         else:
-            cutoff = (datetime.now(timezone.utc)
-                      - timedelta(hours=NEWSLETTER_CONFIRM_RESEND_HOURS)).isoformat()
             send = conn.execute(
                 """UPDATE newsletter_subscribers SET confirm_sent_at = ?
                     WHERE id = ? AND confirmed_at IS NULL

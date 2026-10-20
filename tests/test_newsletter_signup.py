@@ -232,6 +232,37 @@ def _run(s, letters):
     conn.close()
     s.check("each refusal is written down where the owner's count reads it", noted >= 3,
             detail=str(noted))
+    bare = f"{TAG}.bare@example.invalid"
+    rb = _sub(bare, guard=False)
+    s.check("a post with no stamp at all never had the form in front of it, and is refused",
+            _row(bare) is None and letters.to(bare) == [], rb)
+
+    s.section("One inbox, however it is spelt")
+    s.check("Gmail ignores dots and +tags, so these are one inbox",
+            m.gmail_inbox("a.lice+news@googlemail.com") == m.gmail_inbox("alice@gmail.com")
+            == "alice@gmail.com")
+    s.check("and nowhere else does: at Outlook a dot is part of the name",
+            m.gmail_inbox("a.lice@outlook.com") is None)
+    scattered = "zz.n.l.s.ign@gmail.com"
+    rs = _sub(scattered)
+    s.check("a Gmail address with a dot between most of its letters is written to nobody",
+            _row(scattered) is None and letters.to(scattered) == [], rs)
+    s.check("and is thanked like anybody else, so the script learns nothing",
+            any(thanks in f for f in flashes(rs)), rs, detail=str(flashes(rs)))
+    two = "zznlsign.mary.jane@gmail.com"
+    _sub(two)
+    s.check("a person's own two dots are fine", len(letters.to(two)) == 1, detail=str(letters.to(two)))
+    elsewhere = f"{TAG}.a.b.c@outlook.example"
+    _sub(elsewhere)
+    s.check("and dots at any other provider are the person's name, not a trick",
+            len(letters.to(elsewhere)) == 1)
+    variant = "zznlsignmary.jane@gmail.com"
+    _sub(variant)
+    _sub("zznlsignmaryjane+news@googlemail.com")
+    s.check("another spelling of an inbox already written to today is sent nothing",
+            letters.to(variant) == [] and letters.to("zznlsignmaryjane+news@googlemail.com") == [],
+            detail=str(letters.sent[-3:]))
+
     human = f"{TAG}.human@example.invalid"
     _sub(human)
     s.check("a person a minute after the page was drawn goes straight through",

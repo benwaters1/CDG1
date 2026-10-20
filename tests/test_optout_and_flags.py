@@ -91,7 +91,7 @@ def run():
 
     s.section("Signing up, and being written to")
     fresh = TAG + "fresh@example.invalid"
-    anon.post("/newsletter/subscribe", data={"email": fresh}, follow_redirects=True)
+    anon.post("/newsletter/subscribe", data={"email": fresh, **_harness.contact_form_fields()}, follow_redirects=True)
     s.check("a new address is recorded", _subscriber(fresh) is not None)
     s.check("but not yet on the list, because it is unconfirmed",
             _subscriber(fresh)["confirmed_at"] is None)
@@ -113,7 +113,7 @@ def run():
 
     s.section("The do-not-write list, which the privacy notice promises")
     gone = TAG + "gone@example.invalid"
-    anon.post("/newsletter/subscribe", data={"email": gone}, follow_redirects=True)
+    anon.post("/newsletter/subscribe", data={"email": gone, **_harness.contact_form_fields()}, follow_redirects=True)
     anon.get(f"/newsletter/confirm/{_subscriber(gone)['token']}")
     oc.post("/admin/emails/optout", data={"email": gone, "reason": "asked in person"},
             follow_redirects=True)
@@ -130,7 +130,7 @@ def run():
 
     # The sentence in the notice: an old list must not be able to put them back.
     before = len(_held(gone))
-    anon.post("/newsletter/subscribe", data={"email": gone}, follow_redirects=True)
+    anon.post("/newsletter/subscribe", data={"email": gone, **_harness.contact_form_fields()}, follow_redirects=True)
     s.check("signing them up again sends them nothing",
             len(_held(gone)) == before,
             detail=f"{len(_held(gone)) - before} new message(s) to a "
@@ -154,7 +154,7 @@ def run():
     conn.execute("DELETE FROM submission_log WHERE action = 'newsletter_subscribe'")
     conn.commit()
     conn.close()
-    anon.post("/newsletter/subscribe", data={"email": never}, follow_redirects=True)
+    anon.post("/newsletter/subscribe", data={"email": never, **_harness.contact_form_fields()}, follow_redirects=True)
     s.check("an address that never confirmed is still not written to",
             len(_held(never)) == 0,
             detail=f"{len(_held(never))} message(s) — nothing but the "
@@ -185,7 +185,7 @@ def run():
     conn.close()
     answers = set()
     for address in (TAG + "brandnew@example.invalid", fresh, gone):
-        r = anon.post("/newsletter/subscribe", data={"email": address},
+        r = anon.post("/newsletter/subscribe", data={"email": address, **_harness.contact_form_fields()},
                       follow_redirects=True)
         answers.add(" ".join(flashes(r)))
     s.check("a new address, a confirmed one and an opted-out one read alike",
@@ -194,7 +194,7 @@ def run():
     s.section("Nor a way to email somebody repeatedly")
     held_before = len(_held(fresh))
     for _ in range(3):
-        anon.post("/newsletter/subscribe", data={"email": fresh}, follow_redirects=True)
+        anon.post("/newsletter/subscribe", data={"email": fresh, **_harness.contact_form_fields()}, follow_redirects=True)
     s.check("submitting a confirmed address again sends nothing",
             len(_held(fresh)) == held_before,
             detail=f"{len(_held(fresh)) - held_before} more message(s) — the "

@@ -235,7 +235,7 @@ def _run(s, oc, ec, owner, sent):
     conn.execute("DELETE FROM submission_log")
     conn.commit()
     conn.close()
-    guest.post("/newsletter/subscribe", data={"email": NEW})
+    guest.post("/newsletter/subscribe", data={"email": NEW, **_harness.contact_form_fields()})
     token = _rows("SELECT token FROM newsletter_subscribers WHERE email = ?", NEW)
     token = token[0][0] if token else "none"
     guest.get(f"/newsletter/confirm/{token}")

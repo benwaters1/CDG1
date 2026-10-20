@@ -21,7 +21,7 @@ TAG = "zznews"
 
 
 def _sub(client, email):
-    return client.post("/newsletter/subscribe", data={"email": email},
+    return client.post("/newsletter/subscribe", data={"email": email, **_harness.contact_form_fields()},
                        follow_redirects=True)
 
 
