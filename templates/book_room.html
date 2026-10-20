@@ -13,7 +13,7 @@
    is the one line a search engine shows under the link, so five rooms
    competed against each other with identical copy. Falls back to the
    general sentence for a room with no rate on it yet. #}
-{% block description %}{{ room_name(room['name']) }} at Château de Gudanes, a Class I monument under restoration in the Pyrénées.{% if room['max_occupancy'] %} {% if (room['max_children'] or 0)|int > 0 %}For {{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Sleeps {{ room['max_occupancy'] }}{% endif %}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Breakfast included.{% endblock %}
+{% block description %}{{ room_name(room['name']) }} at Château de Gudanes, a Class I monument under restoration in the Pyrénées.{% if room['max_occupancy'] %} {% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}For {{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Sleeps {{ room['max_adults'] or room['max_occupancy'] }}{% endif %}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Breakfast included.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://cf.bstatic.com/xdata/images/hotel/max2048x2048/921671001.jpg?k=81d3277437f8a0c9290ba074cc8fe547c7d49e2e27ebf78b25d319923482ce9f&amp;o={% endblock %}
 {% set sticky_bar = 'none' %}
@@ -81,7 +81,7 @@
        three bathroom sentences became one table; the form and its summary card are the only price. #}
     {%- set _private = (room['bathroom'] or 'private')|lower == 'private' %}
     <dl class="g-glance">
-      <div><dt>Sleeps</dt><dd>{% if (room['max_children'] or 0)|int > 0 %}{{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Up to {{ room['max_occupancy'] }}{% endif %}</dd></div>
+      <div><dt>Sleeps</dt><dd>{% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}{{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}{{ room['max_adults'] or room['max_occupancy'] }}{% endif %}</dd></div>
       {% if _bl %}<div><dt>The bed</dt><dd>{{ _bl }}</dd></div>{% endif %}
       {% if _rn == 'The King Suite' %}<div><dt>In the room</dt><dd>A bath and a basin of its own</dd></div>{% endif %}
       {#- 17 Oct: where the bathroom is comes from _room_copy (next door for The Twin Room (Ground Floor)); the upstairs

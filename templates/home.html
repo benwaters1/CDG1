@@ -51,7 +51,7 @@
     {#- 15 Oct (owner): the tagline - the fort first recorded, the château begun, the restoration; it links to the history. -#}
     <p class="g-hist-tag g-hist-tag--home"><a href="/history" aria-label="The history: 1213, 1741, 2013">1213 <span aria-hidden="true">·</span> 1741 <span aria-hidden="true">·</span> 2013</a></p>
     <p class="g-hero__motto">Where History Comes Back to Life</p>
-    <p class="g-hero__lede">A restoration followed the world over, and a few rooms opened to guests.</p>
+    <p class="g-hero__lede">A restoration followed the world over. Now you can stay inside it.</p>
   
     <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
       {# The two native date fields remain, as the values the form posts and as
@@ -81,7 +81,7 @@
     {# The second way in (owner, 1 Oct: push them towards the workshops) - the hero offered a room and nothing else. #}
     {#- 10 Oct (Code, for the owner): "Or come for THE FULL EXPERIENCE" did not read - said plainly now. One line on a phone:
         the full sentence from 640px up, a shorter one below (measured: fits a 360px phone). -#}
-    <p class="g-hero__alt"><span class="g-hero__alttext"><span class="g-hero__altlong">Or the full experience: a retreat of three to seven nights, every meal and drink included</span><span class="g-hero__altshort">Or the full experience, three to seven nights</span></span> <a class="g-hero__altbtn" href="{{ url_for('workshops_public') }}">See the retreats</a></p>
+    <p class="g-hero__alt"><span class="g-hero__alttext"><span class="g-hero__altlong">Or the full experience: a retreat of three to seven nights at the château</span><span class="g-hero__altshort">Or the full experience: a retreat, three to seven nights</span></span> <a class="g-hero__altbtn" href="{{ url_for('workshops_public') }}">See the retreats</a></p>
 </div>
   <button type="button" class="g-hero__pause" id="g-hero-pause" aria-label="Pause video">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
@@ -244,7 +244,7 @@
         <ul class="g-tags g-tags--sm g-tags--icons">
           {# Showed 2 whenever capacity was unset - including under a card saying "sleeping five". #}
           {% if r['bed_setup'] %}<li>{{ ci('bed') }}{{ r['bed_setup'] }}</li>{% endif %}
-          {% if (r['max_children'] or 0)|int > 0 %}<li>{{ ci('guests') }}{{ r['max_adults'] }} adults, {{ r['max_children'] }} children</li>{% elif r['max_occupancy'] %}<li>{{ ci('guests') }}Sleeps {{ r['max_occupancy'] }}</li>{% endif %}
+          {% if 'Family' in r['name'] and (r['max_children'] or 0)|int > 0 %}<li>{{ ci('guests') }}{{ r['max_adults'] }} adults, {{ r['max_children'] }} children</li>{% elif r['max_adults'] or r['max_occupancy'] %}<li>{{ ci('guests') }}Sleeps {{ r['max_adults'] or r['max_occupancy'] }}</li>{% endif %}
           {% if r['bathroom'] %}<li>{{ ci('bath') }}{{ room_bath(room_name(r['name'])|trim, r['bathroom']) }}</li>{% endif %}
           {% if r['outlook'] %}<li>{{ ci('view') }}{{ r['outlook']|capitalize }} view</li>{% endif %}
           <li>{{ ci('cup') }}Breakfast included</li>

@@ -235,7 +235,7 @@ def _run(s):
     # Not "did not go through": the Contact page thanks a script exactly as it
     # thanks a guest (contact_post_refusal), so the reply says nothing at all.
     s.check("and thanks it as it would a guest",
-            any("We will write back" in f for f in flashes(r))
+            any("write back" in f.lower() for f in flashes(r))
             and not any("did not go through" in f for f in flashes(r)), detail=str(flashes(r)))
     notify = {"action": "notify", "notify_email": f"{TAG.lower()}.notify@example.invalid",
               "notify_month": "September", "notify_year": str(house_today().year + 1)}

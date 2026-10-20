@@ -238,8 +238,8 @@ window.houseDay = (function () {
       </div>
       <a href="{{ url_for('facilities_page') }}"{% if NAV_HERE == 'facilities_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('The Estate') }}</a>
       <a href="{{ url_for('restoration_page') }}"{% if NAV_HERE == 'restoration_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('Restoration') }}</a>
-      {#- 15 Oct: Gallery left the top bar to make room for What's On (still in the menu panel and the footer). -#}
-      <a href="{{ url_for('contact_page') }}"{% if NAV_HERE == 'contact_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('Contact') }}</a>
+      {#- 20 Oct (owner): Gallery back in the top bar in Contact's place; Contact stays in the menu panel and the footer. -#}
+      <a href="{{ url_for('gallery_page') }}"{% if NAV_HERE == 'gallery_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('Gallery') }}</a>
     </nav>
     <button type="button" class="g-navbtn" aria-expanded="false" aria-controls="g-mainnav">
       <span class="g-navbtn__bars"><span></span><span></span></span>

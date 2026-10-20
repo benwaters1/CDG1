@@ -35,8 +35,7 @@ import _harness
 
 m = _harness.m
 TAG = "zzcfg"
-THANKS = ("Thank you — that is exactly the kind of enquiry we would rather "
-          "have than nothing. We will write back.")
+THANKS = "Thank you. Your message has reached the château, and we will write back."
 
 
 def _addr(who):
@@ -122,7 +121,7 @@ def run():
                 detail=str(entry and entry["status"]))
         s.check("with its task", task is not None)
         s.check("and the house is written to",
-                [x for x in letters if x[1] == "Someone asked about staying"],
+                [x for x in letters if x[1].startswith("Someone wrote to us")],
                 detail=str(letters))
         s.check("and the guest is thanked", flashes(r) == [THANKS], detail=str(flashes(r)))
         real_reply = (r.status_code, r.request.path, flashes(r))
