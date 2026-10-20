@@ -131,11 +131,14 @@ def run():
                            "Assistance and guide dogs are welcome",
                            "Transfers and excursions are included only where",
                            "2 Route de Beille",
+                           # Commercial shoots are not part of a stay (20 Oct 2026).
+                           "Commercial photography\n  and filming are not permitted during a stay",
+                           "influencer and content-creator shoots",
                            # L616-1 wants the mediator named. Generic on the
                            # owner's word (10 October 2026) until he picks one:
                            # the right, stated, without naming anybody.
                            "entitled to take\na dispute to a consumer mediator",
-                           "Last updated: 10 October 2026")
+                           "Last updated: 20 October 2026")
                if c not in m.DEFAULT_TERMS]
     s.check("the seeded default carries the same clauses as the live page",
             not missing,
