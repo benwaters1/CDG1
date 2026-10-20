@@ -81,6 +81,25 @@
 </div>
 {% endif %}
 
+{% if data.doubles %}
+<h2 class="section-heading" style="margin-top:28px;">The same file under two addresses</h2>
+<p class="pay-disclaimer">
+  Each set below is one photograph, byte for byte, kept for two or more of the site's addresses. Sometimes
+  that is right &mdash; the same picture published twice. Sometimes one copy is the wrong picture, and a
+  caption sits over a photograph of somewhere else. Open each and check it shows what its page says.
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Addresses that are the same file</th></tr></thead>
+    <tbody>
+      {% for group in data.doubles %}
+      <tr><td style="word-break:break-all; font-size:0.85em;">{% for u in group %}<a href="{{ u }}" target="_blank" rel="noopener">{{ u }}</a>{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {% if data.orphans %}
 <h2 class="section-heading" style="margin-top:28px;">No longer on the site</h2>
 <p class="pay-disclaimer">

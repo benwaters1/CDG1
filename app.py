@@ -27949,6 +27949,48 @@ def mirrored_index(conn):
     return out
 
 
+def mirror_doubles(conn, urls):
+    """Groups of these photographs whose copies are the same file, byte for byte.
+
+    Two different addresses kept as one picture is how a caption ends up over
+    the wrong photograph without anything erroring: the dining room under
+    "The family's bedroom now" (reported 20 October 2026). That one, checked
+    against the live mirror, was not a wrong copy, but nothing could have said
+    so either way. So the mirror page names every set, for a person to look
+    at; the same photograph can legitimately be published twice under two
+    addresses, so this is a list to check, not an error.
+
+    Cheap enough for the page that shows it: grouped first by the size the
+    table already records, and only files that share a size are read and
+    hashed -- one in a few hundred, if any.
+    """
+    wanted = set(urls)
+    by_size = {}
+    try:
+        rows = conn.execute(
+            "SELECT source_url, filename, bytes FROM mirrored_images WHERE filename != ''"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    for r in rows:
+        if r["source_url"] in wanted and r["bytes"]:
+            by_size.setdefault(r["bytes"], []).append((r["source_url"], r["filename"]))
+    groups = []
+    for same_size in by_size.values():
+        if len(same_size) < 2:
+            continue
+        by_digest = {}
+        for url, filename in same_size:
+            try:
+                with open(os.path.join(MIRROR_DIR, filename), "rb") as fh:
+                    digest = hashlib.sha1(fh.read()).hexdigest()
+            except OSError:
+                continue
+            by_digest.setdefault(digest, []).append(url)
+        groups += [sorted(us) for us in by_digest.values() if len(us) > 1]
+    return sorted(groups)
+
+
 def mirror_coverage(conn):
     """How much of the site would survive that account being closed.
 
@@ -27984,6 +28026,7 @@ def mirror_coverage(conn):
     return {
         "wanted": wanted, "held": len(held), "missing": missing, "errors": errors,
         "orphans": orphans, "bytes": total_bytes,
+        "doubles": mirror_doubles(conn, held),
         "percent": round(len(held) / len(wanted) * 100) if wanted else 100,
         "safe": bool(wanted) and not missing,
     }

@@ -203,6 +203,31 @@ def run():
         s.check("and is not 'safe' while any are still on their server",
                 cover["safe"] is (bool(cover["wanted"]) and not cover["missing"]))
 
+        # Two different addresses must never be served one copy unnoticed
+        # (20 October 2026: "The family's bedroom now" was reported showing
+        # the dining room). Two copies of one picture are named, and two
+        # different pictures are not.
+        twin = "feedface" * 5 + ".jpg"
+        m.record_mirror(conn, FAKE_TWO, twin, 1234, "image/jpeg")
+        conn.execute("UPDATE mirrored_images SET bytes = ? WHERE source_url IN (?, ?)",
+                     (len(STUB), FAKE_URL, FAKE_TWO))
+        conn.commit()
+        _write_stub(twin)
+        try:
+            s.check("two addresses kept as the same file are named",
+                    m.mirror_doubles(conn, [FAKE_URL, FAKE_TWO]) == [sorted([FAKE_URL, FAKE_TWO])],
+                    detail=str(m.mirror_doubles(conn, [FAKE_URL, FAKE_TWO])))
+            with io.open(os.path.join(m.MIRROR_DIR, twin), "wb") as fh:
+                fh.write(STUB[::-1])
+            s.check("and two different pictures of the same size are not",
+                    m.mirror_doubles(conn, [FAKE_URL, FAKE_TWO]) == [])
+            s.check("the mirror page carries the list",
+                    "doubles" in m.mirror_coverage(conn))
+        finally:
+            _drop_stub(twin)
+            conn.execute("DELETE FROM mirrored_images WHERE source_url = ?", (FAKE_TWO,))
+            conn.commit()
+
         # ------------------------------------------------------------ serving
         s.section("Serving our copy")
 
