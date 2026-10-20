@@ -92,23 +92,19 @@ def run():
     s.section("Signing up, and being written to")
     fresh = TAG + "fresh@example.invalid"
     anon.post("/newsletter/subscribe", data={"email": fresh, **_harness.contact_form_fields()}, follow_redirects=True)
+    # Subscribed as they press it (owner, 19 October 2026: "a subscription
+    # doesn't need to be confirmed, it's not an account"), and thanked once.
     s.check("a new address is recorded", _subscriber(fresh) is not None)
-    s.check("but not yet on the list, because it is unconfirmed",
-            _subscriber(fresh)["confirmed_at"] is None)
-    s.check("and is sent something to click", len(_held(fresh)) == 1,
+    s.check("and subscribed as they press the button",
+            _subscriber(fresh)["confirmed_at"] is not None)
+    s.check("and is sent its thank-you", len(_held(fresh)) == 1,
             detail=f"{len(_held(fresh))} held — with no provider configured "
-                   "the confirmation goes to the outbox")
+                   "the letter goes to the outbox")
 
     conn = db()
     on_list = [r["email"] for r in m.newsletter_recipients(conn)]
     conn.close()
-    s.check("an unconfirmed address is not on the mailing list", fresh not in on_list)
-
-    anon.get(f"/newsletter/confirm/{_subscriber(fresh)['token']}")
-    conn = db()
-    on_list = [r["email"] for r in m.newsletter_recipients(conn)]
-    conn.close()
-    s.check("clicking the link puts them on it", fresh in on_list,
+    s.check("it is on the mailing list", fresh in on_list,
             detail="a list nobody can join is not a list")
 
     s.section("The do-not-write list, which the privacy notice promises")

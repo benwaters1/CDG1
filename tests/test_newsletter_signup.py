@@ -1,4 +1,4 @@
-"""One newsletter, one sign-up form, one confirmation letter.
+"""One newsletter, one sign-up form, one letter, and no sign-ups by script.
 
 The owner, 19 October 2026, looking at the Resend log: "why's there 2 of lots
 of emails, is it because they have multiple ticks on here, it should just be 1
@@ -14,16 +14,26 @@ looked like scripts (a gmail address with a dot between every letter is the
 signature of one), and no newsletter box carried the bot guard the booking
 forms got the day before.
 
+The same evening the owner ruled the confirm step out ("a subscription doesn't
+need to be confirmed, it's not an account"), so an address is on the list as
+it presses the button and is thanked once. That makes a script's sign-up a
+real subscription, which is why the guards below matter more, not less: the
+next morning's log showed the pairs going on, to Gmail addresses with a dot
+between most of their letters -- one inbox, a new spelling each time.
+
 Checked here, each with the failure it guards:
 
-  - one letter per address per NEWSLETTER_CONFIRM_RESEND_HOURS, however many
-    posts, ticks or no ticks, including rows from before the column existed;
-  - confirmed and opted-out addresses are never sent one, and the page says the
-    same thing whichever happened;
-  - the bot guard turns a script away from the newsletter and the room waiting
-    list, writing nothing and sending nothing, and lets a person through;
-  - double opt-in still works end to end: confirm link, confirmed page,
-    unsubscribe;
+  - one letter per address, however many posts, ticks or no ticks, including
+    somebody who asked under the old confirm-first box;
+  - subscribers and opted-out addresses are never sent one, and the page says
+    the same thing whichever happened;
+  - the bot guard, with the stamp required, turns a script away from the
+    newsletter and the room waiting list, writing nothing and sending nothing,
+    and lets a person through;
+  - a Gmail address with a dot between most of its letters is written to
+    nobody, and another spelling of an inbox already on the list is neither
+    added nor written to;
+  - on the list, and off it with the unsubscribe link;
   - the source: no tick on any template, every sign-up form guarded, and the
     footer and the Contact page carry the one form -- because public templates
     arrive from the design side as whole files, and a handover that drops the
@@ -132,17 +142,19 @@ def run():
 
 
 def _run(s, letters):
-    thanks = "please check your email"
+    thanks = "Thank you for subscribing"
 
     s.section("One letter, however many times the address is typed")
     a = f"{TAG}.one@example.invalid"
     r1 = _sub(a, {"interests": ["stays", "restoration"]})
     s.check("a new address with two topics ticked is sent ONE letter, not one per tick",
             len(letters.to(a)) == 1, r1, detail=str(letters.to(a)))
-    s.check("and it is the confirmation", letters.to(a)[:1] and "Confirm" in letters.to(a)[0],
+    s.check("and it is the thank-you, not a request to confirm (owner, 19 Oct)",
+            letters.to(a)[:1] and "Thank you for subscribing" in letters.to(a)[0],
             detail=str(letters.to(a)))
     row = _row(a)
-    s.check("when it went is written down", row is not None and row["confirm_sent_at"],
+    s.check("they are on the list as they press it, and when the letter went is written down",
+            row is not None and row["confirmed_at"] and row["confirm_sent_at"],
             detail=str(dict(row) if row else None))
     s.check("the page thanks them", any(thanks in f for f in flashes(r1)), r1)
     r2 = _sub(a)
@@ -155,44 +167,27 @@ def _run(s, letters):
     s.check("five posts in a row are still one letter", len(letters.to(a)) == 1,
             detail=str(letters.to(a)))
 
-    s.section("The window, and the rows from before it existed")
-    conn = db()
+    s.section("Somebody who asked under the old confirm-first box")
     old = (datetime.now(timezone.utc)
            - timedelta(hours=m.NEWSLETTER_CONFIRM_RESEND_HOURS + 1)).isoformat()
-    conn.execute("UPDATE newsletter_subscribers SET confirm_sent_at = ? WHERE email = ?", (old, a))
-    conn.commit()
-    conn.close()
-    _sub(a)
-    s.check(f"past {m.NEWSLETTER_CONFIRM_RESEND_HOURS} hours a person can ask again, and gets one",
-            len(letters.to(a)) == 2, detail=str(letters.to(a)))
-    _sub(a)
-    s.check("and only one", len(letters.to(a)) == 2, detail=str(letters.to(a)))
-
-    legacy_new, legacy_old = f"{TAG}.legacy1@example.invalid", f"{TAG}.legacy2@example.invalid"
+    legacy = f"{TAG}.legacy@example.invalid"
     conn = db()
-    for email, hours in ((legacy_new, 2), (legacy_old, m.NEWSLETTER_CONFIRM_RESEND_HOURS + 6)):
-        made = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-        conn.execute("""INSERT INTO newsletter_subscribers (email, token, source, created_at)
-                        VALUES (?, ?, 'site', ?)""", (email, m.secrets.token_urlsafe(16), made))
+    conn.execute("""INSERT INTO newsletter_subscribers (email, token, source, created_at)
+                    VALUES (?, ?, 'site', ?)""", (legacy, m.secrets.token_urlsafe(16), old))
     conn.commit()
     conn.close()
-    _sub(legacy_new)
-    s.check("a row from before the column, signed up two hours ago, is not sent another",
-            letters.to(legacy_new) == [], detail=str(letters.to(legacy_new)))
-    _sub(legacy_old)
-    s.check("one signed up over a day ago is", len(letters.to(legacy_old)) == 1,
-            detail=str(letters.to(legacy_old)))
+    _sub(legacy)
+    s.check("pressing again subscribes them and thanks them once",
+            _row(legacy)["confirmed_at"] and len(letters.to(legacy)) == 1,
+            detail=str(letters.to(legacy)))
+    _sub(legacy)
+    s.check("and again sends nothing", len(letters.to(legacy)) == 1)
 
     s.section("Never to somebody already on the list, or who said no")
-    conn = db()
-    conn.execute("UPDATE newsletter_subscribers SET confirmed_at = ?, confirm_sent_at = ? "
-                 "WHERE email = ?", (old, old, legacy_old))
-    conn.commit()
-    conn.close()
-    before = len(letters.to(legacy_old))
-    rc = _sub(legacy_old)
-    s.check("a confirmed subscriber is sent nothing", len(letters.to(legacy_old)) == before,
-            rc, detail=str(letters.to(legacy_old)))
+    before = len(letters.to(legacy))
+    rc = _sub(legacy)
+    s.check("a subscriber is sent nothing", len(letters.to(legacy)) == before,
+            rc, detail=str(letters.to(legacy)))
     s.check("and told the same as a stranger", any(thanks in f for f in flashes(rc)), rc)
     no = f"{TAG}.no@example.invalid"
     conn = db()
@@ -259,9 +254,11 @@ def _run(s, letters):
     variant = "zznlsignmary.jane@gmail.com"
     _sub(variant)
     _sub("zznlsignmaryjane+news@googlemail.com")
-    s.check("another spelling of an inbox already written to today is sent nothing",
+    s.check("another spelling of an inbox already on the list is sent nothing",
             letters.to(variant) == [] and letters.to("zznlsignmaryjane+news@googlemail.com") == [],
             detail=str(letters.sent[-3:]))
+    s.check("and is not added, or the list would write to that inbox twice",
+            _row(variant) is None and _row("zznlsignmaryjane+news@googlemail.com") is None)
 
     human = f"{TAG}.human@example.invalid"
     _sub(human)
@@ -290,12 +287,9 @@ def _run(s, letters):
     conn.close()
     s.check("and takes a person", wl_rows == 1, detail=str(wl_rows))
 
-    s.section("Double opt-in still works end to end")
+    s.section("On the one list, and off it in one press")
     pub = m.app.test_client()
     token = _row(human)["token"]
-    rc = pub.get(f"/newsletter/confirm/{token}")
-    s.check("the link in the letter confirms", rc.status_code == 200 and _row(human)["confirmed_at"],
-            detail=str(rc.status_code))
     conn = db()
     on = [r["email"] for r in m.newsletter_recipients(conn)]
     conn.close()
@@ -384,11 +378,11 @@ def _run(s, letters):
     r = oc.get("/admin/newsletter")
     page = r.get_data(as_text=True)
     s.check("the page opens", r.status_code == 200, r, detail=str(r.status_code))
-    s.check("it lists an address waiting to confirm", a in page)
-    s.check("and says where each stands", "Waiting to confirm" in page and "Left" in page)
+    s.check("it lists a subscriber", a in page)
+    s.check("and says where each stands", "On the list" in page and "Left" in page)
     s.check("and counts the scripts turned away", "Scripts turned away" in page)
-    r = oc.get("/admin/newsletter?q=" + legacy_old)
-    s.check("its search finds one address", legacy_old in r.get_data(as_text=True)
+    r = oc.get("/admin/newsletter?q=" + legacy)
+    s.check("its search finds one address", legacy in r.get_data(as_text=True)
             and a not in r.get_data(as_text=True))
     if emp:
         r = ec.get("/admin/newsletter")

@@ -98,8 +98,8 @@ def run():
     s.check("with no flexbox and no grid",
             "display:flex" not in html.replace(" ", "")
             and "display:grid" not in html.replace(" ", ""))
-    s.check("and no stylesheet for Gmail to strip",
-            "<style" not in html.lower())
+    s.check("and nothing in a stylesheet for Gmail to strip but phone widths",
+            only_phone_rules(html))
     s.check("and no web font to fail to load",
             "fonts.googleapis" not in html and "@font-face" not in html)
     s.check("the button is a real link", 'href="https://example.invalid' in html)
@@ -135,7 +135,7 @@ def run():
     # THE REASON THE RETURN WAS WIDENED. A caller nobody updated has to break
     # loudly rather than quietly send a plainer letter.
     s.check("and the one function hands back three things",
-            "return subject, body, letter_html(subject, body)" in source,
+            "return subject, body, template_letter_html(" in source,
             detail="two would let a forgotten caller go on working, silently "
                    "plainer than the rest")
 
@@ -181,3 +181,28 @@ def run():
             "Eleanor" in body and "Eleanor" in drawn,
             detail="one set of words is the entire point")
     return s
+
+
+def only_phone_rules(html):
+    """True when every <style> block holds nothing but @media rules -- the one
+    kind of rule that cannot be written inline -- so a client that strips the
+    block loses the phone adjustments and nothing else."""
+    import re as _re
+    for block in _re.findall(r"<style[^>]*>(.*?)</style>", html, _re.S | _re.I):
+        rest = _re.sub(r"/\*.*?\*/", "", block, flags=_re.S)
+        depth, out = 0, []
+        i = 0
+        while i < len(rest):
+            if rest.startswith("@media", i):
+                j = rest.index("{", i)
+                depth, k = 1, j + 1
+                while depth and k < len(rest):
+                    depth += {"{": 1, "}": -1}.get(rest[k], 0)
+                    k += 1
+                i = k
+                continue
+            out.append(rest[i])
+            i += 1
+        if "".join(out).strip():
+            return False
+    return True

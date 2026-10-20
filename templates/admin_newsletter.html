@@ -8,10 +8,11 @@
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
   One list. An address joins from the sign-up box in the site's menu, its footer, the
-  Contact page or a Journal band, is sent one letter asking it to confirm, and is on the
-  list once it has. Nobody is sent that letter twice in {{ resend_hours }} hours, however many times
-  the address is typed in. To write to the list, send a campaign to
-  <a href="{{ url_for('admin_emails') }}">Newsletter subscribers</a>.
+  Contact page or a Journal band, is on the list as it presses the button, and is thanked
+  once. Typing it again sends nothing. Scripts are turned away before anything is written:
+  the bot guard, and Gmail addresses spelt with a dot between most of their letters.
+  "Waiting to confirm" is only somebody who asked under the old confirm-first box. To write
+  to the list, send a campaign to <a href="{{ url_for('admin_emails') }}">Newsletter subscribers</a>.
 </p>
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
@@ -30,7 +31,7 @@
   <div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>Address</th><th>Where they stand</th><th>Signed up</th>
-        <th>Confirmation letter sent</th><th>Confirmed</th><th>Left</th></tr></thead>
+        <th>Letter sent</th><th>On the list since</th><th>Left</th></tr></thead>
       <tbody>
         {% for r in rows %}
         <tr>

@@ -124,9 +124,9 @@ def run():
 
     on = _list()
     s.check("a confirmed subscriber is on it", live in on)
-    s.check("somebody who never confirmed is not", unconfirmed not in on,
-            detail="a double opt-in that sends before the second step is not "
-                   "a double opt-in")
+    s.check("somebody who never finished the old confirm step is not", unconfirmed not in on,
+            detail="a row waiting on a link from before 19 October 2026 never "
+                   "said yes")
     s.check("somebody who unsubscribed is not", gone not in on)
     s.check("and somebody the owner put on the do-not-write list is not",
             quiet not in on,

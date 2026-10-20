@@ -106,10 +106,11 @@ def run():
                 and "display:grid" not in html.replace(" ", ""),
                 detail="Outlook uses Word's rendering engine and supports "
                        "neither")
-        s.check("and no stylesheet to be stripped",
-                "<style" not in html.lower() and "stylesheet" not in html.lower(),
+        s.check("and nothing in a stylesheet that could be stripped",
+                only_phone_rules(html) and "stylesheet" not in html.lower(),
                 detail="Gmail drops <style> blocks on some clients, so every "
-                       "rule has to be inline")
+                       "rule has to be inline -- a phone-width @media rule, "
+                       "which cannot be, is the only thing allowed there")
         s.check("and no web font to fail to load",
                 "fonts.googleapis" not in html and "@font-face" not in html)
         s.check("it says which booking it is about", ref in html)
@@ -277,3 +278,28 @@ def run():
         m.send_email, m.send_email_via_resend = was_email, was_resend
         _cleanup()
     return s
+
+
+def only_phone_rules(html):
+    """True when every <style> block holds nothing but @media rules -- the one
+    kind of rule that cannot be written inline -- so a client that strips the
+    block loses the phone adjustments and nothing else."""
+    import re as _re
+    for block in _re.findall(r"<style[^>]*>(.*?)</style>", html, _re.S | _re.I):
+        rest = _re.sub(r"/\*.*?\*/", "", block, flags=_re.S)
+        depth, out = 0, []
+        i = 0
+        while i < len(rest):
+            if rest.startswith("@media", i):
+                j = rest.index("{", i)
+                depth, k = 1, j + 1
+                while depth and k < len(rest):
+                    depth += {"{": 1, "}": -1}.get(rest[k], 0)
+                    k += 1
+                i = k
+                continue
+            out.append(rest[i])
+            i += 1
+        if "".join(out).strip():
+            return False
+    return True

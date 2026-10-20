@@ -7,7 +7,7 @@
   stay reaches the house without the guest's own form:
 
     BOOK IT NOW          somebody at the door or on the telephone; decided.
-    BOOK IT, SEND A LINK decided, and they pay online from their statement.
+    BOOK IT, SEND A LINK decided: their confirmation carries a Pay now button.
     RESERVE IT           agreed by email: held while they fill in their
                          details and pay, confirmed when they have.
 
@@ -53,7 +53,7 @@
         <label class="nb-mode">
           <input type="radio" name="mode" value="paylink" {{ 'checked' if mode == 'paylink' }}>
           <span class="nb-mode__t">Book it and send a payment link</span>
-          <span class="nb-mode__d">Confirmed now. They are emailed their bill with a Pay now button.</span>
+          <span class="nb-mode__d">Confirmed now. Their confirmation email carries a Pay now button.</span>
         </label>
         <label class="nb-mode">
           <input type="radio" name="mode" value="reserve" {{ 'checked' if mode == 'reserve' }}>
@@ -169,7 +169,7 @@
         <span class="nb-opt" data-for="book">(optional)</span><span class="nb-opt" data-for="paylink reserve">(needed — the link goes here)</span></label>
       <input id="wi_email" type="email" name="guest_email" value="{{ f.get('guest_email', '') }}" autocomplete="off">
       <p class="upload-hint" data-for="book">With an address they get their confirmation, and you can send their bill or chase a balance later. Worth asking for, not worth refusing the booking over.</p>
-      <p class="upload-hint" data-for="paylink">They get their confirmation and their bill with a Pay now button for whatever is still owed.</p>
+      <p class="upload-hint" data-for="paylink">They get their confirmation, with a Pay now button for whatever is still owed.</p>
       <p class="upload-hint" data-for="reserve">They get one email: what is held, for how much, until when, and a link to finish and pay.</p>
     </section>
 
@@ -223,7 +223,7 @@
       </ul>
       <ul class="nb-what" data-for="paylink">
         <li>The room is booked and confirmed.</li>
-        <li>They are emailed their confirmation, and their bill with a Pay now button.</li>
+        <li>They are emailed their confirmation, with a Pay now button for what is owed.</li>
         <li>You go to the booking, where the payment shows when it lands.</li>
       </ul>
       <ul class="nb-what" data-for="reserve">
