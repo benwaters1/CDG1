@@ -244,7 +244,7 @@ def _checks(s, conn):
     s.section("Every booking notice goes to its own inbox, none to the owner")
     for fn, area in (("create_booking", "rooms"), ("manage_booking", "rooms"),
                      ("join_waitlist", "rooms"), ("guest_account_message", "rooms"),
-                     ("contact_page", "rooms"),
+                     ("contact_page", "rooms"), ("contact_page", "events"),
                      ("restaurant_manage", "restaurant"), ("join_restaurant_waitlist", "restaurant"),
                      ("workshop_manage", "workshops"), ("join_workshop_waitlist", "workshops"),
                      ("submit_event_inquiry", "events"), ("event_manage", "events"),

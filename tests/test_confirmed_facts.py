@@ -234,11 +234,13 @@ def run():
     s.check("and one the house declined is not", "Wedding gone" not in kinds,
             detail=str(kinds))
 
-    s.section("The rough-dates enquiry takes what people actually know")
+    s.section("The Contact form takes what people actually know")
+    # Since z29 ("Write to Us"): no nights and no flexibility on the form, a
+    # topic first, and the message required.
     r = anon.post("/contact", data={
         "action": "flexible", "email": "zzfact.flex@example.invalid",
-        "name": TAG + " Margot", "rough_month": "", "rough_nights": "0",
-        "rough_guests": "2", "flexibility": "any", "message": "",
+        "name": TAG + " Margot", "rough_month": "", "topic": "private_event",
+        "rough_guests": "", "message": "A birthday dinner for my mother, we have not decided when.",
         **_harness.contact_form_fields()},
         follow_redirects=True)
     conn = db()
@@ -250,11 +252,11 @@ def run():
     s.check("an enquiry with no month is accepted", bool(row),
             detail=f"HTTP {r.status_code} — a press or general question should "
                    "not have to pick a month")
-    s.check("\"not decided\" is recorded as not decided",
-            row and "not decided" in (row["notes"] or "")
-            and "1 night" not in (row["notes"] or ""),
-            detail=f"{row['notes'] if row else None!r} — it used to arrive as a "
-                   "request for one night")
+    s.check("it says what it is about first, and nothing about nights or guests nobody gave",
+            row and (row["notes"] or "").startswith("Private event.")
+            and "night" not in (row["notes"] or "") and "guest" not in (row["notes"] or ""),
+            detail=f"{row['notes'] if row else None!r} -- a blank once arrived as one "
+                   "night, then as 'length not decided' and two guests")
     s.check("and the name they gave is kept", row and row["name"] == TAG + " Margot",
             detail=f"{row['name'] if row else None!r}")
     s.check("so the task says who to answer",

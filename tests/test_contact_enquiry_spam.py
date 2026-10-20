@@ -57,7 +57,7 @@ def _send(anon, who, message, name=None):
     task = conn.execute("SELECT * FROM tasks WHERE waitlist_entry_id = ?",
                         (entry["id"],)).fetchone() if entry else None
     conn.close()
-    return r, entry, task, [x for x in sent if x[1] == "Someone asked about staying"]
+    return r, entry, task, [x for x in sent if x[1].startswith("Someone wrote to us")]
 
 
 def _task(task_id):

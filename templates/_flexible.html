@@ -1,21 +1,24 @@
 {# ==========================================================================
-   FLEXIBLE ENQUIRY  — item 10
-   The date picker demands two exact dates before it will say anything, so a
-   guest who is flexible has to guess, get refused, and guess again. This
-   takes the enquiry as it is actually held in someone's head: a month, a
-   rough length, and a number of people.
+   WRITE TO US  (the contact form)
+   20 Oct (owner): this was "Not Sure of the Dates / Tell Us Roughly", a form
+   for nightly stays. Rooms and retreats book online at the price shown, and
+   the form was drawing messages asking for a lower one. It is now for what
+   does not book online: private events, weddings, photoshoots, the whole
+   château for a group, and questions the pages do not answer.
 
        {% from '_flexible.html' import flexible %}
        {{ flexible() }}
 
-   Posts action=flexible to contact. Nothing here needs an availability
-   lookup — it is a question, and someone answers it.
+   Still posts action=flexible to contact_page, with the same field names
+   (rough_month, rough_guests, name, email, message), so nothing breaks before
+   Code reads the new "topic" field. rough_nights and flexibility are gone;
+   the handler already treats them as blank. See FOR-CODE-z29.md.
    ========================================================================== #}
 {% macro flexible() %}
 <section class="g-flex"><div class="g-wrap">
-  <p class="g-eyebrow">Not Sure of the Dates</p>
-  <h2 class="g-place">Tell Us Roughly</h2>
-  <p class="g-p g-lede-first">Most people arrive at this knowing a month and a rough length rather than two exact dates. That is a perfectly good enquiry and we would rather have it than nothing.</p>
+  <p class="g-eyebrow">Write to Us</p>
+  <h2 class="g-place">Private Events, and Anything Else</h2>
+  <p class="g-p g-lede-first">Rooms and retreats book online, at the price you see, so there is no need to write for those. For a private event, a wedding, a photoshoot, taking the whole château, or a question the pages don’t answer, tell us here.</p>
 
   <form method="post" action="{{ url_for('contact_page') }}" class="g-flex__f">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -24,6 +27,18 @@
     {# Cloudflare's check, once the owner has added its keys; nothing before. #}
     {{ turnstile_check() }}
 
+    <p class="g-field">
+      <label for="fx_topic">What it is about<span class="g-req" aria-hidden="true">*</span></label>
+      <select id="fx_topic" name="topic" required>
+        <option value="" selected disabled>Choose one</option>
+        <option value="private_event">A private event or celebration</option>
+        <option value="wedding">A wedding</option>
+        <option value="photoshoot">A photoshoot or filming</option>
+        <option value="whole_chateau">The whole château, for a group</option>
+        <option value="other">Something else</option>
+      </select>
+    </p>
+
     <div class="g-flex__row">
       <p class="g-field">
         <label for="fx_when">Roughly when <span class="g-opt">optional</span></label>
@@ -31,35 +46,14 @@
         <input type="month" id="fx_when" name="rough_month" min="{{ _mw[0] }}" max="{{ _mw[1] }}">
       </p>
       <p class="g-field">
-        <label for="fx_nights">How many nights</label>
-        <select id="fx_nights" name="rough_nights">
-          <option value="2">Two</option>
-          <option value="3" selected>Three</option>
-          <option value="4">Four</option>
-          <option value="5">Five</option>
-          <option value="7">A week</option>
-          <option value="0">Not decided</option>
-        </select>
-      </p>
-      <p class="g-field">
-        <label for="fx_people">How many of you</label>
-        <input type="number" id="fx_people" name="rough_guests" min="1" max="15" value="2" inputmode="numeric">
+        <label for="fx_people">How many guests <span class="g-opt">optional</span></label>
+        <input type="number" id="fx_people" name="rough_guests" min="1" max="200" inputmode="numeric">
       </p>
     </div>
 
     <p class="g-field">
-      <label for="fx_flex">How flexible are you</label>
-      <select id="fx_flex" name="flexibility">
-        <option value="exact">Those dates or nothing</option>
-        <option value="week" selected>Give or take a week</option>
-        <option value="month">Anywhere in that month</option>
-        <option value="any">Any time — tell us when it is quiet</option>
-      </select>
-    </p>
-
-    <p class="g-field">
-      <label for="fx_name">Your name <span class="g-opt">optional</span></label>
-      <input type="text" id="fx_name" name="name" autocomplete="name" maxlength="120">
+      <label for="fx_name">Your name<span class="g-req" aria-hidden="true">*</span></label>
+      <input type="text" id="fx_name" name="name" required autocomplete="name" maxlength="120">
     </p>
 
     <p class="g-field">
@@ -68,12 +62,12 @@
     </p>
 
     <p class="g-field">
-      <label for="fx_note">Anything else <span class="g-opt">optional</span></label>
-      <textarea id="fx_note" name="message" rows="3" placeholder="A birthday, an atelier you are interested in, a dietary requirement"></textarea>
+      <label for="fx_note">Your message<span class="g-req" aria-hidden="true">*</span></label>
+      <textarea id="fx_note" name="message" rows="5" required placeholder="What you have in mind, and anything we should know"></textarea>
     </p>
 
-    <button type="submit" class="g-btn g-btn--solid">Send this</button>
-    <p class="g-hint">We answer within a day. Nothing is held and nothing is charged — this is a question, not a booking.</p>
+    <button type="submit" class="g-btn g-btn--solid">Send</button>
+    <p class="g-hint">Rates are the same online as here, so we can’t offer lower ones by email. Every message is read at the château.</p>
   </form>
 </div></section>
 {% endmacro %}

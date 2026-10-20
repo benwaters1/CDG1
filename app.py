@@ -1099,6 +1099,8 @@ paid us.
 - Guests must be eight or older.
 - Please treat the château as the historic building it is. Smoking is not
   permitted indoors. Additional guests only by prior agreement.
+- A nightly stay is for staying, not for working. Commercial photography
+  and filming are not permitted during a stay (see section 9).
 - We cannot accommodate pets, as the restoration areas make it unsafe for
   them. Assistance and guide dogs are welcome; please tell us before you
   arrive so that we can prepare your room.
@@ -1122,10 +1124,36 @@ at all times and take care after dark. Nothing in these terms limits our
 liability for death or personal injury caused by our negligence, or for
 anything else that cannot lawfully be limited.
 
-9. Photography
-We sometimes photograph the château, its events and its workshops. If you
-would prefer not to appear in anything we publish, tell us and we will
-respect that.
+9. Photography, filming and our intellectual property
+- Photographs and videos for your own personal use are welcome in your
+  room and the areas open to guests, including sharing them on your own
+  personal social media.
+- Commercial photography and filming are not permitted during a nightly
+  stay or a workshop. That includes influencer and content-creator shoots,
+  whether or not you are paid or gifted anything, and any shoot for a
+  brand, business, client or publication; advertising; paid or sponsored
+  content; stock imagery; portfolio work offered for sale or hire; and any
+  shoot using hired crew, models, or professional lighting or equipment.
+  Booking a room or a workshop place does not give permission to work
+  here.
+- Commercial shoots are booked separately, agreed with us in writing in
+  advance and charged at our location rate. Write to us to arrange one.
+- If commercial work takes place during a stay or a workshop without our
+  written agreement, we may stop it and ask those involved to leave
+  without a refund, and we may charge our location fee for the use of the
+  château together with any other costs it causes us.
+- The name Château de Gudanes, our logos, our photographs, films and
+  written content, and the content of our workshops (recipes, methods and
+  teaching materials) are our intellectual property. They may not be
+  copied or used for any commercial purpose without our written
+  permission.
+- Images you take at the château may not be used for any commercial
+  purpose, in advertising, or in any way that suggests the château
+  endorses or is associated with a product, service or business, without
+  our written permission.
+- We sometimes photograph the château, its events and its workshops. If
+  you would prefer not to appear in anything we publish, tell us and we
+  will respect that.
 
 10. Events outside our control
 If we cannot honour a booking because of something genuinely outside our
@@ -1151,7 +1179,7 @@ resolve it with us in writing.
 Château de Gudanes SASU, 2 Route de Beille, 09310 Château-Verdun, France.
 +33 6 28 06 97 76 · reservations@chateaugudanes.com
 
-Last updated: 10 October 2026"""
+Last updated: 20 October 2026"""
 
 # Email — unset until you add either Resend or SMTP credentials as
 # environment variables. Until then, every send_email() call is a no-op
@@ -109971,14 +109999,26 @@ def contact_page():
     email = (request.form.get("email") or "").strip().lower()
     name = (request.form.get("name") or "").strip()[:120]
     month = (request.form.get("rough_month") or "").strip()
+    # Nights and flexibility left the form with z29 ("Write to Us"): rooms
+    # and retreats book online. Still read, for a page cached before it.
     nights = (request.form.get("rough_nights") or "").strip()
     guests = (request.form.get("rough_guests") or "").strip()
     flex = (request.form.get("flexibility") or "").strip()
     message = (request.form.get("message") or "").strip()[:2000]
+    # What it is about (z29): one of CONTACT_TOPICS, said first in the notes.
+    # A post without one -- a page cached before z29 -- is "something else".
+    topic = (request.form.get("topic") or "").strip()
+    if topic not in CONTACT_TOPICS:
+        topic = "other"
 
     if not EMAIL_RE.match(email):
         flash("That email address does not look right — we would have no way "
               "to answer you.", "error")
+        return redirect(url_for("contact_page"))
+    # The message is the enquiry. The form asks for it; a post without one
+    # is told so rather than saved as a name and an address.
+    if not message:
+        flash("Tell us a little about what you have in mind, so we can answer it.", "error")
         return redirect(url_for("contact_page"))
 
     # A month is what they typed; a pair of dates is what the column holds, so
@@ -110006,8 +110046,7 @@ def contact_page():
                          else date(start.year, start.month + 1, 1))
     else:
         month = month[:40]
-    thanks = ("Thank you — that is exactly the kind of enquiry we would rather "
-              "have than nothing. We will write back.")
+    thanks = "Thank you. Your message has reached the château, and we will write back."
     if refusal:
         return contact_turned_away(refusal, thanks, url_for("contact_page"))
 
@@ -110031,21 +110070,25 @@ def contact_page():
         n = max(1, min(60, n)) if n > 0 else None
     except (TypeError, ValueError):
         n = None
+    # Optional since z29, and up to 200 for an event. Blank says nothing: it
+    # used to become two guests, which nobody had said.
     try:
-        party = max(1, min(40, int(guests)))
+        party = max(1, min(CONTACT_MOST_GUESTS, int(guests)))
     except (TypeError, ValueError):
-        party = 2
+        party = None
 
-    said = []
+    said = [CONTACT_TOPICS[topic]]
     if month:
         said.append("Around %s" % month)
-    said.append("%d night%s" % (n, "" if n == 1 else "s") if n
-                else "length not decided")
-    said.append("%d guest%s" % (party, "" if party == 1 else "s"))
+    # The length only when somebody gave one. "Length not decided" on every
+    # wedding enquiry described a form field, not the enquiry.
+    if n:
+        said.append("%d night%s" % (n, "" if n == 1 else "s"))
+    if party:
+        said.append("%d guest%s" % (party, "" if party == 1 else "s"))
     if flex:
         said.append("flexible: %s" % flex)
-    if message:
-        said.append(message)
+    said.append(message)
     notes = ". ".join(said)
 
     # A pitch, or a sender already marked as spam, is kept as Spam and goes no
@@ -110081,16 +110124,35 @@ def contact_page():
         """INSERT INTO tasks (title, notes, priority, due_date, status, origin,
              created_at, waitlist_entry_id)
            VALUES (?, ?, 'normal', ?, 'open', 'enquiry', ?, ?)""",
-        ("Answer an enquiry from %s" % ("%s (%s)" % (name, email) if name else email),
+        ("Answer an enquiry from %s: %s" % ("%s (%s)" % (name, email) if name else email,
+                                             CONTACT_TOPICS[topic].lower()),
          notes, house_today_iso(), datetime.now(timezone.utc).isoformat(), entry_id))
     conn.commit()
-    to = house_address_for(conn, "rooms")
+    # A wedding, a private event, a shoot or the whole house goes to the
+    # inbox that looks after events (experience@), not the one for nightly
+    # stays (z29). Anything else to reservations@, as before.
+    to = (house_address_for(conn, "events") if topic in CONTACT_EVENT_TOPICS
+          else house_address_for(conn, "rooms"))
     conn.close()
     if to:
-        send_email(to, "Someone asked about staying",
+        send_email(to, "Someone wrote to us: %s" % CONTACT_TOPICS[topic].lower(),
                    "%s\n\nThey left this address: %s" % (notes, email))
     flash(thanks, "success")
     return redirect(url_for("contact_page"))
+
+
+# What the Contact page's "Write to Us" form asks it is about (z29), in the
+# words the house reads it in. The keys are what _flexible.html posts.
+CONTACT_TOPICS = {
+    "private_event": "Private event",
+    "wedding": "Wedding",
+    "photoshoot": "Photoshoot or filming",
+    "whole_chateau": "The whole château, for a group",
+    "other": "Something else",
+}
+CONTACT_EVENT_TOPICS = ("private_event", "wedding", "photoshoot", "whole_chateau")
+# The form allows 200 (an event); a room enquiry was clamped to 40.
+CONTACT_MOST_GUESTS = 200
 
 
 @app.route('/preview')
