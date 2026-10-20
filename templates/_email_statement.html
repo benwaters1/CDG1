@@ -1,48 +1,86 @@
-{# One booking's statement drawn for a mail client, beneath a letter's words:
-   tables and inline styles, one 600px column, like everything else in a
-   letter. The same view the statement page draws (booking_statement_view), so
-   the receipt and the page cannot say two things about the same money. #}
-{% set cell = "padding:6px 8px 6px 0; border-bottom:1px solid #EFE7DA; vertical-align:top;" %}
-{% set head = "padding:6px 8px 6px 0; border-bottom:1px solid #D9CFC1; font-weight:600; text-align:left;" %}
-{% set money = "padding:6px 0; border-bottom:1px solid #EFE7DA; text-align:right; white-space:nowrap; vertical-align:top;" %}
-<p style="margin:28px 0 8px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
-          letter-spacing:.14em; text-transform:uppercase; color:#73562D;">Statement{% if statement.booking %} · {{ statement.booking.ref }}{% endif %}</p>
-{% if statement.booking %}
-<p style="margin:0 0 10px; font-family:Helvetica,Arial,sans-serif; font-size:15px; color:#14305F;">{{ statement.booking.what }}</p>
-{% endif %}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-       style="border-collapse:collapse; font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.5; color:#2C3E50;">
-  <tr><th style="{{ head }}">Date</th><th style="{{ head }}">Description</th><th style="{{ head }} text-align:right;">Amount</th></tr>
-  {% for x in statement.charges %}
-  <tr><td style="{{ cell }} white-space:nowrap;">{{ x.day|date_short }}</td><td style="{{ cell }}">{{ x.what }}</td>
-      <td style="{{ money }}">{% if x.charge < 0 %}−€{{ '{:,.2f}'.format(-x.charge) }}{% else %}€{{ '{:,.2f}'.format(x.charge) }}{% endif %}</td></tr>
-  {% endfor %}
-  {# Straight to the total. The discount is a line above; a subtotal and a
-     second discount figure under it read as €30 off twice. #}
-  <tr><td></td><td style="{{ cell }} font-weight:600;">Total</td><td style="{{ money }} font-weight:600;">€{{ '{:,.2f}'.format(statement.total) }}</td></tr>
-</table>
-<p style="margin:20px 0 8px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
-          letter-spacing:.14em; text-transform:uppercase; color:#73562D;">Payments</p>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-       style="border-collapse:collapse; font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.5; color:#2C3E50;">
-  <tr><th style="{{ head }}">Date</th><th style="{{ head }}">Description</th><th style="{{ head }}">Method</th><th style="{{ head }} text-align:right;">Amount</th></tr>
-  {% for x in statement.payments %}
-  <tr><td style="{{ cell }} white-space:nowrap;">{{ x.day|date_short }}</td><td style="{{ cell }}">{{ x.note or 'Payment' }}</td>
-      <td style="{{ cell }}">{{ x.method or '' }}{% if x.card_words %}<br>{{ x.card_words }}{% endif %}</td>
-      <td style="{{ money }}">€{{ '{:,.2f}'.format(x.paid) }}</td></tr>
-  {% endfor %}
-  {% for x in statement.refunds %}
-  <tr><td style="{{ cell }} white-space:nowrap;">{{ x.day|date_short }}</td><td style="{{ cell }}">{{ x.what }}</td>
-      <td style="{{ cell }}">{{ x.method or '' }}{% if x.card_words %}<br>{{ x.card_words }}{% endif %}</td>
-      <td style="{{ money }}">{% if x.back < 0 %}+€{{ '{:,.2f}'.format(-x.back) }}{% else %}−€{{ '{:,.2f}'.format(x.back) }}{% endif %}</td></tr>
-  {% endfor %}
-  {% if not statement.payments and not statement.refunds %}
-  <tr><td colspan="4" style="{{ cell }}">Nothing received yet.</td></tr>
-  {% endif %}
-  <tr><td></td><td></td><td style="{{ cell }}">Total paid</td><td style="{{ money }}">€{{ '{:,.2f}'.format(statement.total_paid) }}</td></tr>
-  <tr><td></td><td></td><td style="{{ cell }} font-weight:600;">{{ 'Balance due' if statement.owed else 'Settled' }}</td>
-      <td style="{{ money }} font-weight:600;">€{{ '{:,.2f}'.format(statement.owed) }}</td></tr>
-  {% if statement.credit %}
-  <tr><td></td><td></td><td style="{{ cell }}">In credit, and yours: given back on request</td><td style="{{ money }}">€{{ '{:,.2f}'.format(statement.credit) }}</td></tr>
-  {% endif %}
+{# One booking's statement drawn for a mail client, beneath or within a
+   letter's words: tables and inline styles, one 600px column, like
+   everything else in a letter. The same view the statement page draws
+   (booking_statement_view), so the receipt and the page cannot say two
+   things about the same money.
+
+   THE ROWS ADD UP TO THE LINE UNDER THEM. The charges above the subtotal
+   are the charges; each reduction is named beneath it; the total is the
+   one minus the other. A discount used to be listed among the charges AND
+   taken off again under "Discounts and reductions", so the rows above the
+   subtotal summed to less than it said, and a guest checking the bill by
+   hand found it thirty euros out. `pay_url`, when given, is the button to
+   settle what is owed. #}
+{% from '_email.html' import email_button %}
+{% set cell = "padding:9px 10px 9px 0; border-top:1px solid #E8E0D2; vertical-align:top; font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.5; color:#2F3E4E;" %}
+{% set head = "padding:0 10px 8px 0; font-family:Helvetica,Arial,sans-serif; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:#73562D; font-weight:normal; text-align:left;" %}
+{% set money = "padding:9px 0; border-top:1px solid #E8E0D2; text-align:right; white-space:nowrap; vertical-align:top; font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.5; color:#2F3E4E;" %}
+{% set strong = "border-top:1px solid #14305F; font-weight:bold; color:#14305F; padding-top:12px; padding-bottom:12px;" %}
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="margin:10px 0 26px; border:1px solid #E8E0D2;">
+  <tr>
+    <td style="padding:22px 22px 6px;">
+      <p style="margin:0 0 4px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
+                letter-spacing:.18em; text-transform:uppercase; color:#73562D;">Statement{% if statement.booking %} · {{ statement.booking.ref }}{% endif %}</p>
+      {% if statement.booking %}
+      <p style="margin:0 0 16px; font-family:Georgia,'Times New Roman',serif; font-size:18px; line-height:1.4; color:#14305F;">{{ statement.booking.what }}</p>
+      {% endif %}
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        <tr><th style="{{ head }}">Date</th><th style="{{ head }}">Description</th><th style="{{ head }} text-align:right; padding-right:0;">Amount</th></tr>
+        {% for x in statement.added or [] %}
+        <tr><td style="{{ cell }} white-space:nowrap;">{{ x.day|date_compact }}</td><td style="{{ cell }}">{{ x.what }}</td>
+            <td style="{{ money }}">€{{ '{:,.2f}'.format(x.charge) }}</td></tr>
+        {% else %}
+        <tr><td colspan="3" style="{{ cell }}">Nothing is charged on this booking.</td></tr>
+        {% endfor %}
+        {% if statement.taken_off %}
+        <tr><td></td><td style="{{ cell }}">Subtotal</td><td style="{{ money }}">€{{ '{:,.2f}'.format(statement.subtotal) }}</td></tr>
+        {% for x in statement.taken_off %}
+        <tr><td style="{{ cell }} white-space:nowrap;">{{ x.day|date_compact }}</td><td style="{{ cell }}">{{ x.what }}</td>
+            <td style="{{ money }}">−€{{ '{:,.2f}'.format(-x.charge) }}</td></tr>
+        {% endfor %}
+        {% endif %}
+        <tr><td style="{{ cell }} {{ strong }}"></td><td style="{{ cell }} {{ strong }}">Total</td>
+            <td style="{{ money }} {{ strong }}">€{{ '{:,.2f}'.format(statement.total) }}</td></tr>
+        {% for band in statement.vat or [] %}
+        <tr><td></td><td style="padding:0 10px 6px 0; font-family:Helvetica,Arial,sans-serif; font-size:12.5px; color:#5D6B78;">of which VAT at {{ band.rate|vat_rate }}</td>
+            <td style="padding:0 0 6px; text-align:right; white-space:nowrap; font-family:Helvetica,Arial,sans-serif; font-size:12.5px; color:#5D6B78;">€{{ '{:,.2f}'.format(band.vat) }}</td></tr>
+        {% endfor %}
+      </table>
+
+      <p style="margin:26px 0 10px; font-family:Georgia,'Times New Roman',serif; font-size:16px; color:#14305F;">Payments</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        <tr><th style="{{ head }}">Date</th><th style="{{ head }}">Description</th><th style="{{ head }} text-align:right; padding-right:0;">Amount</th></tr>
+        {% for x in statement.payments %}
+        <tr><td style="{{ cell }} white-space:nowrap;">{{ x.day|date_compact }}</td>
+            <td style="{{ cell }}">{{ x.note or 'Payment' }}{% if x.method or x.card_words %}<br><span style="font-size:12.5px; color:#5D6B78;">{{ x.method or '' }}{% if x.method and x.card_words %} · {% endif %}{{ x.card_words or '' }}</span>{% endif %}</td>
+            <td style="{{ money }}">€{{ '{:,.2f}'.format(x.paid) }}</td></tr>
+        {% endfor %}
+        {% for x in statement.refunds %}
+        <tr><td style="{{ cell }} white-space:nowrap;">{{ x.day|date_compact }}</td>
+            <td style="{{ cell }}">{{ x.what }}{% if x.method or x.card_words %}<br><span style="font-size:12.5px; color:#5D6B78;">{{ x.method or '' }}{% if x.method and x.card_words %} · {% endif %}{{ x.card_words or '' }}</span>{% endif %}</td>
+            <td style="{{ money }}">{% if x.back < 0 %}+€{{ '{:,.2f}'.format(-x.back) }}{% else %}−€{{ '{:,.2f}'.format(x.back) }}{% endif %}</td></tr>
+        {% endfor %}
+        {% if not statement.payments and not statement.refunds %}
+        <tr><td colspan="3" style="{{ cell }} color:#5D6B78;">Nothing received yet.</td></tr>
+        {% endif %}
+        <tr><td></td><td style="{{ cell }}">Total paid</td><td style="{{ money }}">€{{ '{:,.2f}'.format(statement.total_paid) }}</td></tr>
+        <tr><td style="{{ cell }} {{ strong }}"></td><td style="{{ cell }} {{ strong }}">{{ 'Balance due' if statement.owed else 'Settled' }}</td>
+            <td style="{{ money }} {{ strong }}">€{{ '{:,.2f}'.format(statement.owed) }}</td></tr>
+        {% if statement.credit %}
+        <tr><td></td><td style="{{ cell }}">In credit, and yours: given back on request</td><td style="{{ money }}">€{{ '{:,.2f}'.format(statement.credit) }}</td></tr>
+        {% endif %}
+      </table>
+
+      {% if pay_url and statement.owed and statement.owed > 0.005 %}
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 0;"><tr><td>
+        {{ email_button(pay_url, 'Pay €' ~ '{:,.2f}'.format(statement.owed) ~ ' now') }}
+      </td></tr></table>
+      {% else %}
+      <p style="margin:0 0 16px;"></p>
+      {% endif %}
+    </td>
+  </tr>
 </table>

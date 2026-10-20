@@ -1,68 +1,137 @@
 {#  ==========================================================================
     BOOKING CONFIRMED — the HTML version
 
-    The most-opened message the château sends. Today it is plain text and
-    ends after the reference number, which means the guest most willing to
-    add a dinner is given no way to.
+    The most-opened message the château sends: the house, the stay as a card,
+    what is owed and a button to pay it, the booking page, what can be added,
+    and how to find the gates.
 
-    Register: the site does not say "Hi Eleanor" or "We look forward to
-    welcoming you". It says what is true, plainly. The French is the site's
-    own — a line above the English, the way the headings work — not decoration
-    sprinkled through the sentences.
+    Register: the site does not say "We look forward to welcoming you". It
+    says what is true, plainly. The French is the site's own -- a line above
+    the English, the way the headings work -- not decoration sprinkled
+    through the sentences.
 
-    The plain-text body still goes out alongside this.
+    THE WORDS ARE NOT HERE. They are the "Rooms: Booking confirmed" template,
+    which the owner edits under Management, Email templates, like every other
+    letter. The template is split where {stay_details} sits: `heading` and
+    `opening` come before it, `closing` after, and the card below is what
+    goes in the gap. The plain text gets the same facts written out.
 
-    THE WORDS ARE NOT HERE ANY MORE. They are the "Rooms: Booking confirmed"
-    template, which the owner edits under Management, Email templates, like
-    every other letter. This file drew its own sentences while the plain text
-    said different ones, so an edit reached the few guests whose mail app shows
-    text and none of the rest. The template is split where {stay_details}
-    sits: `heading` and `opening` come before it, `closing` after, and the card
-    below is what goes in the gap. The shipped wording is the wording this file
-    used to carry, so this letter looks exactly as it did until somebody edits
-    it. (Its plain text changed: it now says the same thing as this.)
+    WHAT IS OWED IS ASKED FOR ONLINE. This card used to say a balance "is due
+    on arrival. We take cards and cash" -- in the same letter whose closing
+    says the house only ever takes payment by card on chateaugudanes.com, and
+    against the rule that a stay is paid before it starts. It now says what
+    is still to pay, by when, and gives the button that pays it.
     ========================================================================== #}
-{% from '_email.html' import email_shell, email_button, email_fact, email_directions, email_extras %}
+{% from '_email.html' import email_shell, email_button, email_eyebrow, email_block, email_directions, email_extras %}
+{% set SANS = "Helvetica,Arial,sans-serif" %}
+{% set SERIF = "Georgia,'Times New Roman',serif" %}
+{% set label_style = "padding:0 0 4px; font-family:" ~ SANS ~ "; font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#73562D;" %}
+{% set value_style = "font-family:" ~ SERIF ~ "; font-size:20px; line-height:1.3; color:#14305F;" %}
 
 {% call email_shell('Your booking — Château de Gudanes',
      'Reference ' ~ reference_code ~ '. Everything you need, including how to find us.',
-     settings) %}
+     settings, hero='hero-house.jpg', foot=foot or {}) %}
 
-  <p style="margin:0 0 4px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
-            letter-spacing:.14em; text-transform:uppercase; color:#73562D;">C'est confirmé</p>
+  {{ email_eyebrow("C'est confirmé"|safe) }}
   {% if heading %}
-  <p style="margin:0 0 20px; font-family:Georgia,'Times New Roman',serif; font-size:27px;
-            line-height:1.25; color:#14305F;">{{ heading }}</p>
+  <h1 class="gd-h1" style="margin:0; font-family:{{ SERIF }}; font-weight:normal; font-size:30px;
+             line-height:1.22; color:#14305F;">{{ heading }}</h1>
   {% endif %}
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 26px;">
+    <tr><td style="width:44px; height:2px; line-height:2px; font-size:0; background:#C5A24A;">&nbsp;</td></tr>
+  </table>
 
-  {% for block in opening %}
-    {% if block.kind == 'button' %}
-      {{ email_button(block.href, block.label) }}
-    {% else %}
-  <p style="margin:0 0 {{ '26' if loop.last else '18' }}px; font-family:Helvetica,Arial,sans-serif; font-size:16px;
-            line-height:1.7; color:#2C3E50;">{% for line in block.lines or [block.text] %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
-    {% endif %}
-  {% endfor %}
+  {% for block in opening %}{{ email_block(block) }}{% endfor %}
 
-  {{ email_fact('Arriving', arrival_long) }}
-  {{ email_fact('Leaving', departure_long) }}
-  {{ email_fact('Room', room_name) }}
-  {{ email_fact('Reference', reference_code) }}
+  {# ---- the stay, as a card ---- #}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="margin:8px 0 22px; background:#F8F4EC; border:1px solid #E8E0D2;">
+    <tr>
+      <td style="padding:22px 24px 6px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td class="gd-col" width="50%" valign="top" style="padding:0 12px 16px 0;">
+              <div style="{{ label_style }}">Arriving</div>
+              <div style="{{ value_style }}">{{ arrival_long }}</div>
+            </td>
+            <td class="gd-col" width="50%" valign="top" style="padding:0 0 16px 12px;">
+              <div style="{{ label_style }}">Leaving</div>
+              <div style="{{ value_style }}">{{ departure_long }}</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:0 24px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="top" style="padding:14px 0; border-top:1px solid #E8E0D2; width:38%; {{ label_style }} padding-top:16px;">Room</td>
+            <td valign="top" style="padding:12px 0; border-top:1px solid #E8E0D2; font-family:{{ SERIF }}; font-size:17px; color:#14305F;">{{ room_name }}</td>
+          </tr>
+          {% if party %}
+          <tr>
+            <td valign="top" style="padding:14px 0; border-top:1px solid #E8E0D2; {{ label_style }} padding-top:16px;">Guests</td>
+            <td valign="top" style="padding:12px 0; border-top:1px solid #E8E0D2; font-family:{{ SERIF }}; font-size:17px; color:#14305F;">{{ party }}</td>
+          </tr>
+          {% endif %}
+          <tr>
+            <td valign="top" style="padding:14px 0 18px; border-top:1px solid #E8E0D2; {{ label_style }} padding-top:16px;">Reference</td>
+            <td valign="top" style="padding:12px 0 18px; border-top:1px solid #E8E0D2; font-family:{{ SERIF }}; font-size:17px; letter-spacing:.04em; color:#14305F;">{{ reference_code }}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 
+  {# ---- the money: owed with the button that pays it, or paid ---- #}
   {% if balance_due %}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-         style="margin:6px 0 22px;">
+         style="margin:0 0 24px; border:1px solid #14305F;">
     <tr>
-      <td style="background:#F6F1E7; padding:16px 18px; border-left:3px solid #C5A24A;
-                 font-family:Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#2C3E50;">
-        <strong style="color:#14305F;">{{ balance_due }}</strong> is due on arrival.
-        We take cards and cash.
+      <td style="padding:20px 24px 4px;">
+        <div style="{{ label_style }}">Still to pay</div>
+        <div style="font-family:{{ SERIF }}; font-size:28px; line-height:1.25; color:#14305F;">{{ balance_due }}</div>
+        <p style="margin:6px 0 14px; font-family:{{ SANS }}; font-size:14px; line-height:1.6; color:#2F3E4E;">
+          {% if paid %}{{ paid }} received with thanks. {% endif %}{% if due_on %}Due by {{ due_on }}, by card, online.{% else %}By card, online.{% endif %}
+        </p>
+        {% if pay_url %}{{ email_button(pay_url, 'Pay ' ~ balance_due ~ ' now') }}{% endif %}
+      </td>
+    </tr>
+  </table>
+  {% elif paid %}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+    <tr>
+      <td style="padding:14px 20px; background:#F8F4EC; border-left:3px solid #C5A24A;
+                 font-family:{{ SANS }}; font-size:15px; line-height:1.6; color:#2F3E4E;">
+        <strong style="color:#14305F;">Paid in full, {{ paid }}.</strong> There is nothing more to pay.
       </td>
     </tr>
   </table>
   {% endif %}
 
-  {{ email_button(manage_url, 'Your booking page') }}
+  {{ email_button(manage_url, 'Your booking page', 'quiet' if balance_due else 'solid') }}
+  <p style="margin:-8px 0 8px; font-family:{{ SANS }}; font-size:13px; line-height:1.6; color:#5D6B78;">
+    Check in online there: your arrival time, any requests{% if has_transfer %} and your transfer details{% endif %}.</p>
+
+  {% if door_url %}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 0;">
+    <tr>
+      <td style="padding:18px 20px 4px; border:1px solid #E8E0D2;">
+        <div style="{{ label_style }}">The front door</div>
+        <p style="margin:4px 0 14px; font-family:{{ SANS }}; font-size:14.5px; line-height:1.6; color:#2F3E4E;">
+          It opens from your phone, from {{ door_opens }} on the day you arrive until you leave. Keep this link.</p>
+        {{ email_button(door_url, 'Open the front door', 'quiet') }}
+      </td>
+    </tr>
+  </table>
+  {% endif %}
+
+  {% if portal_url %}
+  <p style="margin:18px 0 0; font-family:{{ SANS }}; font-size:13.5px; line-height:1.6; color:#5D6B78;">
+    Everything you have with us — this stay, any workshops or dinners — is always
+    <a href="{{ portal_url }}" style="color:#14305F;">on your page</a>.</p>
+  {% endif %}
 
   {# What a guest is actually most likely to want next, and the directions
      they will come back for on the day. #}
@@ -71,17 +140,10 @@
 
   {% if closing %}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-         style="margin:28px 0 0; border-top:1px solid #E6DCC8;">
+         style="margin:30px 0 0; border-top:1px solid #E8E0D2;">
     <tr>
-      <td style="padding:20px 0 0; font-family:Helvetica,Arial,sans-serif; font-size:14px;
-                 line-height:1.7; color:#4A6076;">
-        {% for block in closing %}
-          {% if block.kind == 'button' %}
-            {{ email_button(block.href, block.label, 'quiet') }}
-          {% else %}
-        <p style="margin:0 0 {{ '0' if loop.last else '14' }}px;">{% for line in block.lines or [block.text] %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
-          {% endif %}
-        {% endfor %}
+      <td style="padding:24px 0 0;">
+        {% for block in closing %}{{ email_block(block) }}{% endfor %}
       </td>
     </tr>
   </table>

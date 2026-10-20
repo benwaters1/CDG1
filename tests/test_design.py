@@ -768,11 +768,21 @@ def run():
         for path in ALL_CSS)
     defined = set(re.findall(r"\.([a-zA-Z][\w-]*)", all_css))
     used = {}
+
+    def _own_rules(html):
+        return set(re.findall(r"\.([a-zA-Z][\w-]*)",
+                              " ".join(re.findall(r"<style[^>]*>(.*?)</style>", html, re.S))))
+
     for path in glob.glob(os.path.join(ROOT, "templates", "*.html")):
         html = open(path, encoding="utf-8").read()
-        # Templates carry their own <style> blocks in a couple of places.
-        local = set(re.findall(r"\.([a-zA-Z][\w-]*)",
-                               " ".join(re.findall(r"<style[^>]*>(.*?)</style>", html, re.S))))
+        # Templates carry their own <style> blocks in a couple of places --
+        # and a letter is drawn inside the shell it imports, whose <style> is
+        # the page's (_email.html holds the phone-width rules for every letter).
+        local = _own_rules(html)
+        for imported in re.findall(r"\{%-?\s*(?:from|import)\s+['\"]([\w.-]+\.html)['\"]", html):
+            other = os.path.join(ROOT, "templates", imported)
+            if os.path.exists(other):
+                local |= _own_rules(open(other, encoding="utf-8").read())
         for attr in re.findall(r'class="([^"]*)"', html):
             cleaned = re.sub(r"\{\{.*?\}\}|\{%.*?%\}", " ", attr)
             for cls in cleaned.split():

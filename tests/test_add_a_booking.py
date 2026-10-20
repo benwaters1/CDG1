@@ -63,7 +63,7 @@ def _checks(s, conn):
     s.check("in five steps, with a summary", page.count('class="nb-step"') == 5 and "When you press the button" in page)
     s.check("what each way sends is said before the button",
             "They are emailed a link to add their details and pay." in page
-            and "their bill with a Pay now button" in page)
+            and "their confirmation, with a Pay now button for what is owed" in page)
     s.check("staff without the owner's rights are turned away",
             employee.get("/admin/bookings/walk-in").status_code in (302, 403))
 

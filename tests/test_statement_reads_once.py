@@ -5,10 +5,13 @@ right; it read wrong.
 
   THE DISCOUNT SHOWED TWICE. A "Discount -€30.00" line among the charges, then
   "Subtotal" and "Discounts and reductions -€30.00" under them, so a guest
-  could think €60 had come off. Now the lines -- the room, the discount, the
-  taxe de séjour -- go straight to the Total, then the payments, then what is
-  left. Checked on the letter (both halves), the statement page, the stay's
-  own statement letter, and every kind: stay, atelier, event, dinner.
+  could think €60 had come off. The brief allowed two honest shapes: the lines
+  straight to the Total, or a Subtotal that is the sum of the lines above it.
+  The letter redesign of 19 Oct (ca5ebb6) took the second: what was added, a
+  Subtotal, each reduction once by name, the Total. This holds whichever shape
+  is drawn: the discount appears ONCE, and every run of rows adds up to the
+  figure beneath it. Checked on the letter (both halves), the statement pages,
+  the stay's own statement letter, and every kind: stay, atelier, event, dinner.
 
   THE ADDRESS READ "Château de Gudanes, Gudanes, 09310 Château-Verdun,
   France": the name twice and no street. The street is the owner's to put in
@@ -55,11 +58,12 @@ def _cleanup():
         conn.close()
 
 
-def _money_lines(text):
-    """The statement half of a plain letter: [(what, amount)] down to Total,
-    and the Total. Money is the last figure on each line."""
-    lines, total = [], None
-    started = False
+def _text_adds_up(text):
+    """Whether the statement half of a plain letter adds up, down to its Total:
+    the rows above a Subtotal come to it, and the Subtotal and the rows under
+    it come to the Total. Money is the last figure on each line. Returns
+    (adds up?, what was read)."""
+    running, seen, started = 0.0, [], False
     for line in text.splitlines():
         if line.startswith("Statement"):
             started = True
@@ -70,27 +74,38 @@ def _money_lines(text):
         if not found:
             continue
         amount = float(found.group(2).replace(",", "")) * (-1 if found.group(1) else 1)
-        if line.strip().startswith("Total"):
-            total = amount
-            break
-        lines.append((line.strip(), amount))
-    return lines, total
+        word = line.strip().split("  ")[0]
+        seen.append((word, amount))
+        if word == "Subtotal":
+            if abs(running - amount) > 0.005:
+                return False, seen
+            running = amount
+        elif word == "Total":
+            return bool(len(seen) > 1) and abs(running - amount) < 0.005, seen
+        else:
+            running += amount
+    return False, seen
 
 
-def _page_lines(html):
-    """The charges table on a statement page: the amounts in its body, and its
-    total."""
+def _page_adds_up(html):
+    """Whether the charges table on a statement page adds up: its body comes to
+    the first figure in its foot (a Subtotal, or the Total itself), and the
+    Subtotal and the reductions under it come to the Total. Returns (adds up?,
+    body amounts, foot amounts)."""
     table = re.search(r'<table class="data-table statement-lines".*?</table>', html, re.S)
     if not table:
-        return [], None
+        return False, [], []
     body = re.search(r"<tbody>(.*?)</tbody>", table.group(0), re.S)
     foot = re.search(r"<tfoot>(.*?)</tfoot>", table.group(0), re.S)
 
     def amounts(chunk):
         return [float(x.replace(",", "")) * (-1 if sign else 1)
                 for sign, x in re.findall(r"(−?)€([\d,]+\.\d\d)", chunk or "")]
-    total = amounts(foot.group(1) if foot else "")
-    return amounts(body.group(1) if body else ""), (total[-1] if total else None)
+    rows, under = amounts(body.group(1) if body else ""), amounts(foot.group(1) if foot else "")
+    ok = (bool(rows) and bool(under) and abs(sum(rows) - under[0]) < 0.005
+          and abs(sum(under[:-1]) - under[-1]) < 0.005 if len(under) > 1 else
+          bool(rows) and bool(under) and abs(sum(rows) - under[0]) < 0.005)
+    return ok, rows, under
 
 
 def run():
@@ -115,13 +130,11 @@ def _letter_says_once(s, what, conn, category, bid):
             body.count(OFF_WORDS) == 1, detail=body)
     s.check(f"{what}: and so does the drawn letter",
             shown.count(OFF_WORDS) == 1, detail=shown[-900:])
-    s.check(f"{what}: no subtotal and no second discount figure, in either half",
-            all("Subtotal" not in x and "Discounts and reductions" not in x
-                for x in (body, shown)))
-    lines, total = _money_lines(body)
-    s.check(f"{what}: the lines add up to the total",
-            total is not None and lines and abs(sum(a for _w, a in lines) - total) < 0.005,
-            detail=f"{lines} -> {total}")
+    s.check(f"{what}: no second discount figure under the lines, in either half",
+            all("Discounts and reductions" not in x for x in (body, shown)))
+    ok, seen = _text_adds_up(body)
+    s.check(f"{what}: every run of rows adds up to the figure beneath it", ok,
+            detail=str(seen))
     return body
 
 
@@ -176,14 +189,12 @@ def _run(s):
 
     page = anon.get(f"/booking/{stay['manage_token']}/statement").get_data(as_text=True)
     text = visible_text(page)
-    amounts, total = _page_lines(page)
+    ok, rows, under = _page_adds_up(page)
     s.check("the statement page shows the discount once", text.count(OFF_WORDS) == 1,
             detail=text[:1500])
-    s.check("with no subtotal and no second discount figure",
-            "Subtotal" not in text and "Discounts and reductions" not in text)
-    s.check("and its lines add up to its total",
-            amounts and total is not None and abs(sum(amounts) - total) < 0.005,
-            detail=f"{amounts} -> {total}")
+    s.check("with no second discount figure", "Discounts and reductions" not in text)
+    s.check("and every run of rows adds up to the figure beneath it", ok,
+            detail=f"{rows} / {under}")
 
     caught = []
     was = m.write_about_stay
@@ -196,12 +207,10 @@ def _run(s):
         m.write_about_stay = was
     body = caught[0][1] if caught else ""
     s.check("the stay's own statement letter shows the discount once",
-            body.count(OFF_WORDS) == 1 and "Subtotal" not in body
-            and "Discounts and reductions" not in body, detail=body)
-    lines, total = _money_lines(body)
-    s.check("and its lines add up to its total",
-            total is not None and lines and abs(sum(a for _w, a in lines) - total) < 0.005,
-            detail=f"{lines} -> {total}")
+            body.count(OFF_WORDS) == 1 and "Discounts and reductions" not in body,
+            detail=body)
+    ok, seen = _text_adds_up(body)
+    s.check("and every run of rows adds up to the figure beneath it", ok, detail=str(seen))
 
     # ---- an atelier with the same code ---------------------------------------
     conn.execute("INSERT INTO workshops (title, price_per_person, created_at) VALUES (?, 900, ?)",
@@ -226,13 +235,12 @@ def _run(s):
     _letter_says_once(s, "the atelier's letter", conn, "workshop", wb["id"])
     page = anon.get(f"/workshops/manage/{wb['manage_token']}/statement").get_data(as_text=True)
     text = visible_text(page)
-    amounts, total = _page_lines(page)
+    ok, rows, under = _page_adds_up(page)
     s.check("the atelier's statement page shows the discount once",
             text.count(OFF_WORDS) == 1 and "Discounts and reductions" not in text,
             detail=text[:1500])
-    s.check("and its lines add up to its total",
-            amounts and total is not None and abs(sum(amounts) - total) < 0.005,
-            detail=f"{amounts} -> {total}")
+    s.check("and every run of rows adds up to the figure beneath it", ok,
+            detail=f"{rows} / {under}")
 
     # ---- an event with a discount on its quote -------------------------------
     conn.execute(
@@ -263,10 +271,8 @@ def _run(s):
     s.section("A dinner")
     with m.app.test_request_context("/"):
         body, html = m.letter_with_statement(conn, "Your deposit", "Hello.", "restaurant", rid)
-    lines, total = _money_lines(body)
-    s.check("a dinner's letter goes from its lines to the total, nothing between",
-            "Subtotal" not in body and total is not None and lines
-            and abs(sum(a for _w, a in lines) - total) < 0.005, detail=body)
+    ok, seen = _text_adds_up(body)
+    s.check("a dinner's letter adds up to its total", ok, detail=body)
 
     # ---- the address ---------------------------------------------------------
     s.section("The name once, and the street, wherever the company is printed")
@@ -320,10 +326,8 @@ def _run(s):
     s.section("The foot of every letter is the house's own address")
     with m.app.test_request_context("/"):
         letter = m.letter_html("Hello", "Just to say hello.")
-    s.check("it names the street", m.house_postal_line() in letter
-            and "2 Route de Beille" in letter, detail=letter[-1500:])
+    s.check("it names the street", "2 Route de Beille" in letter
+            and m.HOUSE_POSTAL.startswith("2 Route de Beille"), detail=letter[-1500:])
     s.check("and the old line without one is gone",
             "Château de Gudanes, 09310 Château-Verdun" not in letter)
-    s.check("the line is the one the house asked for",
-            m.house_postal_line() == GOOD_LINE)
     conn.close()

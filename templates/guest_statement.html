@@ -38,6 +38,14 @@
        No address field on purpose: it goes to the address on the booking, so a
        link cannot be used to post somebody else's bill to yourself. #}
     <div class="statement-actions no-print">
+      {# The way to settle it, which the statement letter has always promised
+         is on this page and was not: a guest sent here to pay found Email
+         and Print. Not on a stay that no longer stands -- booking_pay would
+         refuse it anyway. #}
+      {% if v and v.owed > 0.005 and v.stands %}
+      <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}"
+         class="g-btn g-btn--sm g-btn--solid">Pay €{{ '{:,.2f}'.format(v.owed) }} now</a>
+      {% endif %}
       <form method="post"
             action="{{ url_for('email_booking_statement', manage_token=booking['manage_token']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

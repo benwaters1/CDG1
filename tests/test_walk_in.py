@@ -266,6 +266,10 @@ def run():
             detail=f"{html2.count('is-taken')} taken then vs "
                    f"{html.count('is-taken')} taken now")
 
+    # The link to pay is the confirmation's own button (owner, 19 October
+    # 2026: "shouldn't it have a link to payment rather than statement"). It
+    # used to be a second letter, the statement, whose words sent the guest to
+    # a statement page with no way to pay on it.
     s.section("Booked from an email, then a link to pay (owner, 18 October 2026)")
     day = _harness.free_window(room["id"], 1, after_days=500)
     addr = "zzwalkin.paylink@example.invalid"
@@ -275,20 +279,25 @@ def run():
         "guest_email": addr, "party_size": "2", "send_pay_link": "1"}, follow_redirects=True)
     body = r.get_data(as_text=True)
     conn = db()
-    mail = conn.execute("SELECT * FROM mail_log WHERE to_address = ? AND template_key = 'room_statement'",
+    mail = conn.execute("SELECT * FROM mail_log WHERE to_address = ? AND template_key = 'room_confirmed'",
                         (addr,)).fetchone()
+    statements = conn.execute("SELECT COUNT(*) AS c FROM mail_log WHERE to_address = ? "
+                              "AND template_key = 'room_statement'", (addr,)).fetchone()["c"]
     waiting = conn.execute("SELECT COUNT(*) AS c FROM mail_log WHERE to_address = ? "
                            "AND template_key = 'room_request_received'", (addr,)).fetchone()["c"]
     stay = conn.execute("SELECT * FROM bookings WHERE guest_email = ?", (addr,)).fetchone()
     conn.close()
     s.check("the stay is booked and confirmed", stay is not None and stay["status"] == "confirmed")
-    s.check("and their statement, with its link to pay, is written to them",
-            mail is not None and mail["template_key"] == "room_statement",
+    s.check("and their confirmation, which carries the link to pay, is written to them",
+            mail is not None and mail["template_key"] == "room_confirmed",
             detail=str(mail and dict(mail).get("template_key")))
+    s.check("and no second letter, the statement, on top of it", statements == 0,
+            detail=f"{statements} statement(s)")
     s.check("and they are not told their booking is waiting to be confirmed", waiting == 0,
             detail="the online 'request received' letter, for a stay the desk has just confirmed")
     s.check("the page says it went, or that it is held until mail to guests is on",
-            "link to pay" in body, detail="; ".join(_harness.flashes(r)[:2]))
+            "button to pay" in body or "link to pay" in body,
+            detail="; ".join(_harness.flashes(r)[:2]))
     day2 = _harness.free_window(room["id"], 1, after_days=520)
     r = oc.post("/admin/bookings/walk-in", data={
         "room_id": str(room["id"]), "arrival_date": day2.isoformat(),
@@ -300,8 +309,8 @@ def run():
                              "AND template_key = 'room_statement'",
                              ("zzwalkin.paidup@example.invalid",)).fetchone()["c"]
     conn.close()
-    s.check("nothing is sent to somebody who has paid it all at the desk",
-            none_sent == 0 and "nothing is owed" in r.get_data(as_text=True))
+    s.check("no statement is sent to somebody who has paid it all at the desk",
+            none_sent == 0 and "nothing is owed" in r.get_data(as_text=True).lower())
 
     s.section("Guards")
     before = _count()
