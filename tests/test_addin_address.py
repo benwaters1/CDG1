@@ -19,8 +19,8 @@ WHAT IS CHECKED
   the Railway address at every URL in it, and not one on the name asked.
   The add-in page, opened on admin., links the Railway manifest and gives the
   Railway redirect URI for the Microsoft sign-in.
-  With nothing to say where the add-in is, and the page open on a house name,
-  it offers no manifest at all rather than the wrong one, and readiness says so.
+  With nothing set at all, the house's names still name Railway: the address
+  is built in for them (22 Oct 2026), so losing the variables moves nothing.
   A laptop or a staging copy still serves its own add-in, as it always did.
   And /outlook-addin/* still answers on every name -- this moves no request.
 """
@@ -146,22 +146,36 @@ def _still_answers(s):
 
 
 def _nothing_to_go_on(s, owner):
-    s.section("With nothing to say where it is, admin. offers no manifest at all")
+    # The variables lost: neither set, and Railway's holding the custom domain
+    # (or nothing). On the house's names the built-in address still holds.
+    for railway_var in ("admin.chateaugudanes.com", ""):
+        m.ADDIN_BASE_URL, m.RAILWAY_PUBLIC_DOMAIN = "", railway_var
+        _manifest_everywhere(
+            s, "with no ADDIN_BASE_URL and RAILWAY_PUBLIC_DOMAIN "
+               + (repr(railway_var) if railway_var else "unset"))
+
+    s.section("With nothing set, the page on admin. still offers Railway's manifest")
     m.ADDIN_BASE_URL, m.RAILWAY_PUBLIC_DOMAIN = "", "admin.chateaugudanes.com"
+    s.check("the built-in address is the house's Railway one",
+            m.HOUSE_ADDIN_ORIGIN == RAILWAY, detail=m.HOUSE_ADDIN_ORIGIN)
     r = _signed_in(owner["id"], ADMIN).get("/admin/outlook-addin", base_url=ADMIN)
     body = r.get_data(as_text=True)
-    s.check("the page still answers", r.status_code == 200, response=r)
-    s.check("it offers no manifest on admin.",
+    s.check("the page answers", r.status_code == 200, response=r)
+    s.check("its manifest link is Railway's",
+            f'href="{RAILWAY}/outlook-addin/manifest.xml"' in body)
+    s.check("the sign-in redirect URI is Railway's",
+            f"brk-multihub://{RAILWAY_NAME}</code>" in body)
+    s.check("nothing on the page offers the add-in on admin.",
             "admin.chateaugudanes.com/outlook-addin" not in body
             and "brk-multihub://admin." not in body)
-    s.check("it says the address is not known, and what to set",
-            "address not known" in body and "ADDIN_BASE_URL" in body)
-    s.check("and why Railway's own variable was not used",
-            "<code>admin.chateaugudanes.com</code>, which is not a Railway address" in body)
+    s.check("it says the address is the built-in one, and why Railway's variable was not used",
+            "the address built into the app" in body
+            and "<code>admin.chateaugudanes.com</code>, which is not a Railway address" in body)
     line = _readiness_line(ADMIN)
-    s.check("readiness says so, as worth fixing",
-            line is not None and not line["ok"] and line["severity"] == "warn"
-            and "ADDIN_BASE_URL" in line["detail"], detail=str(line))
+    s.check("readiness notes it, as optional rather than worth fixing",
+            line is not None and not line["ok"] and line["severity"] == "info"
+            and RAILWAY in line["detail"] and "ADDIN_BASE_URL" in line["detail"],
+            detail=str(line))
     # Opened on Railway itself, the address it was opened on is the right one.
     r = _signed_in(owner["id"], RAILWAY).get("/admin/outlook-addin", base_url=RAILWAY)
     s.check("opened on Railway, the page offers Railway's manifest",
