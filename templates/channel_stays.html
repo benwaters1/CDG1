@@ -54,7 +54,8 @@
       {% for r in rows %}
       <tr>
         <th scope="row" style="font-weight:500;">
-          {{ r['guest_name'] or ('Booking.com – ' ~ (r['room_name'] or 'room not matched')) }}
+          <a href="{{ url_for('channel_stay_page', reservation_id=r['id']) }}">{{ r['guest_name'] or ('Booking.com – ' ~ (r['room_name'] or 'room not matched')) }}</a>
+          {% if r['checkin_done_at'] %}<span class="mini-status status-confirmed">checked in online</span>{% endif %}
           {% if r['status'] != 'confirmed' %}
             <span class="mini-status status-inactive">{{ r['status'] }}</span>
           {% elif r['upcoming'] %}
