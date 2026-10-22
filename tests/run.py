@@ -558,6 +558,8 @@ SUITES = [
     "test_form_bot_guard",
     "test_bot_registrations_listed",
     "test_newsletter_signup",
+    # 22 October 2026: script sign-ups from before the guards, already on the list.
+    "test_newsletter_script_signups",
     "test_route_map",
     # 19 October 2026: the phone's home screen the owner expected and never got.
     "test_phone_home",
