@@ -16,13 +16,14 @@
     floor and ceiling intact, slate floor lifted and kept), and the owner's wallpaper (one Family Suite bedroom). The first
     sentence of each stands alone: the homepage cards show only that. -#}
 {% macro room_copy(name, fallback='') -%}
+{#- 22 Oct (owner): each room's card paragraph as the owner wrote it. No bathroom is ever called "ensuite", and the Marquis Suite's walls are not mentioned anywhere. -#}
 {%- set RM_DESC = {
-  'The Twin Room':    'Two gilded beds beneath an old tapestry, in the Chambre Jeanne d’Arc. Once half of a much larger room, it was divided in 2021 and laid with old wooden floorboards.',
-  'The King Room':   'A king bed in the Chambre Olympe de Gouges, one of the few rooms whose floor and ceiling survived. Before the restoration its hallway had caved in and the room could not be reached; its original slate floor was lifted and kept safe.',
-  'The King Suite':    'A king bed beneath a four-poster canopy, with a bath and a basin in the room itself.',
-  'The Marquis Suite':   'A gilded four-poster with an emperor bed, and armchairs by the fireplace, within walls left as they were found.',
-  'The Family Suite': 'Two bedrooms for a family, the Chambre Bleue and the Chambre des Fleurs. In one of them the original wallpaper has been printed anew by the company that first made it, from its original templates. Children of eight and over are welcome.',
-  'The Twin Room (Ground Floor)': 'A queen bed and a double bed, with a private bathroom of its own next door. On the ground floor, though still reached by stairs.'
+  'The Twin Room':    'Two gilded beds beneath an old tapestry in the Chambre Jeanne d’Arc, looking out to the mountains. Once half of a much larger room, it was divided in 2021 and laid with old wooden floorboards. Your private bathroom is on the ground floor, there is a powder room on the bedroom landing, and breakfast is served downstairs each morning.',
+  'The King Room':   'A king bed in the Chambre Olympe de Gouges, one of the few rooms whose floor and ceiling survived. Before the restoration its hallway had caved in and the room could not be reached. Its original slate floor was lifted and kept safe while the room was brought back to life. It has mountain views and a private bathroom on the ground floor.',
+  'The King Suite':    'A king bed beneath a four-poster canopy, with a bath and a basin in the room itself and the mountains beyond the windows. Your private bathroom is on the ground floor.',
+  'The Marquis Suite':   'The château’s grandest bedroom: a gilded four-poster with an emperor bed, armchairs by the fireplace, and 70 m² to yourselves.',
+  'The Family Suite': 'Two bedrooms for a family, the Chambre Bleue and the Chambre des Fleurs, across 140 m². One of the two bedrooms has its original wallpaper, printed anew by the company that first made it, from its original templates. There are two double beds in one bedroom and three in the other, and children of eight and over are welcome.',
+  'The Twin Room (Ground Floor)': 'A queen bed and a double bed in a quiet room on the ground floor, though still reached by stairs. It has its own private bathroom right next door, and the mountains outside the window.'
 } -%}
 {{- RM_DESC.get(name) or fallback -}}
 {%- endmacro %}

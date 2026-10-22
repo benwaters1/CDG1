@@ -246,7 +246,7 @@
           {% if r['bed_setup'] %}<li>{{ ci('bed') }}{{ r['bed_setup'] }}</li>{% endif %}
           {% if 'Family' in r['name'] and (r['max_children'] or 0)|int > 0 %}<li>{{ ci('guests') }}{{ r['max_adults'] }} adults, {{ r['max_children'] }} children</li>{% elif r['max_adults'] or r['max_occupancy'] %}<li>{{ ci('guests') }}Sleeps {{ r['max_adults'] or r['max_occupancy'] }}</li>{% endif %}
           {% if r['bathroom'] %}<li>{{ ci('bath') }}{{ room_bath(room_name(r['name'])|trim, r['bathroom']) }}</li>{% endif %}
-          {% if r['outlook'] %}<li>{{ ci('view') }}{{ r['outlook']|capitalize }} view</li>{% endif %}
+          {% if r['outlook'] %}<li>{{ ci('view') }}{% if r['name'] in ['The Marquis Suite', 'The Family Suite'] %}Mountain and front views{% else %}{{ r['outlook']|capitalize }} view{% endif %}</li>{% endif %}
           <li>{{ ci('cup') }}Breakfast included</li>
         </ul>
         <a href="{% if r.get('id') %}{{ url_for('book_room', room_id=r['id']) }}{% else %}{{ url_for('book_rooms') }}{% endif %}" class="g-btn g-btn--line">Check dates</a>

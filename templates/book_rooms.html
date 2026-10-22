@@ -279,7 +279,7 @@
             {% if room['bed_setup'] %}<li>{{ ci('bed') }}{{ room['bed_setup'] }}</li>
             {% else %}{# Was "Double bed" on every card, whatever the room. A room it does not recognise gets no bed line rather than a guess - set bed_setup. #}{%- set _rn = room_name(room['name']) %}{%- set _bl = 'Twin beds' if ('Twin' in _rn or 'Tilleul' in _rn) else ('Queen bed' if ('Queen' in _rn or 'Cerise' in _rn) else ('King bed' if ('King' in _rn or 'Levant' in _rn) else ('Emperor bed' if ('Gold' in _rn or 'Émeraude' in _rn) else ('Two bedrooms' if ('Family' in _rn or 'Deux' in _rn) else '')))) %}{% if _bl %}<li>{{ ci('bed') }}{{ _bl }}</li>{% endif %}{% endif %}
             {% if room['bathroom'] %}<li>{{ ci('bath') }}{{ room_bath(room_name(room['name'])|trim, room['bathroom']) }}</li>{% endif %}{#- 15 Oct (owner): say it is not attached - the room page says each is on the ground floor -#}
-            {% if room['outlook'] %}<li>{{ ci('view') }}{{ room['outlook']|capitalize }} view</li>{% endif %}
+            {% if room['outlook'] %}<li>{{ ci('view') }}{% if room_name(room['name']) in ['The Marquis Suite', 'The Family Suite'] %}Mountain and front views{% else %}{{ room['outlook']|capitalize }} view{% endif %}</li>{% endif %}{#- 22 Oct (owner): the two suites look to the mountains and over the front; every other room, the mountains. -#}
             <li>{{ ci('cup') }}Breakfast included</li>
             {% if _wdates and not _winter_room %}<li>{{ ci('bed') }}Space heater and electric blankets</li>{% endif %}
             {% if (room['min_nights'] or 1) > 1 %}<li>{{ ci('nights') }}{{ room['min_nights'] }}-night minimum</li>{% endif %}
