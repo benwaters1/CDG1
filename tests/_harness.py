@@ -734,6 +734,18 @@ def keep_rows(conn, table, where, params=()):
     return put_back
 
 
+def write_guest_text(conn, kind, words="Bonjour {guest_name}. {manage_url}"):
+    """Put the owner's wording in for one guest text, and return what takes it
+    back out. Neither text has a default any more, so a suite that wants one
+    sent has to write it first, the way the house does."""
+    key = m.GUEST_TEXTS[kind]["setting"]
+    put_back = keep_rows(conn, "app_settings", "key = ?", (key,))
+    conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                 (key, words))
+    conn.commit()
+    return put_back
+
+
 # The rows that say a backup left the building, as backup_age_hours() reads them.
 BACKUP_RECORD = "action IN ('backup_downloaded', 'backup_auto_sent')"
 

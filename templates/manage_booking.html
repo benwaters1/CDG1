@@ -282,7 +282,11 @@
 
 <div class="g-mb-card" style="margin-top:var(--s4);">
   <h2 class="g-panel__h">{{ t('Your details') }}</h2>
-  <p class="g-hint">{{ t("If we have your mobile we will text you the day before with everything you need to find us. A number we cannot read means we cannot do that.") }}</p>
+  {# Promised only while the arrival text is switched on and has wording.
+     It goes the morning of arrival, not the day before. #}
+  {% if arrival_text %}
+  <p class="g-hint">{{ t("If we have your mobile we will text you on the morning you arrive. A number we cannot read means we cannot do that.") }}</p>
+  {% endif %}
   <form method="post" class="g-row" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="contact">

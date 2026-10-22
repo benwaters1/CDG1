@@ -105,6 +105,7 @@ def run():
             (True, "SM-test"))[1]
         m.SMS_PROVIDER_SID = m.SMS_PROVIDER_TOKEN = "test"
         m.SMS_FROM_NUMBER = "+15550002222"
+        unwrite = _harness.write_guest_text(conn, "checkin")
         try:
             room = conn.execute("SELECT id FROM rooms LIMIT 1").fetchone()["id"]
             today = m.house_today()
@@ -162,6 +163,7 @@ def run():
                     detail="the first question when a guest says they had "
                            "nothing")
         finally:
+            unwrite()
             m.sms_provider_send = real
             m.SMS_PROVIDER_SID = m.SMS_PROVIDER_TOKEN = m.SMS_FROM_NUMBER = None
     finally:

@@ -22,20 +22,12 @@
 <table class="data-table">
   <tbody>
     <tr><th scope="row">The add-in Outlook installs</th>
-        <td>{% if manifest_url %}Version {{ manifest_version }} · <a href="{{ manifest_url }}">{{ manifest_url }}</a>
-            {% if addin_base_from == 'request' %}<br><span class="upload-hint">This address is the one this page was opened on. Set <code>ADDIN_BASE_URL</code> in Railway to say it for certain.</span>{% endif %}
-            {% else %}<span class="mini-status status-declined">address not known</span>
-            Nothing says where the add-in lives, and this page is open on one of the house's own
-            names, which is not where everybody's Outlook has it. Set <code>ADDIN_BASE_URL</code>
-            in Railway to the Railway address (<code>https://cdg1-production-9186.up.railway.app</code>)
-            and redeploy{% if railway_public_domain %}: Railway's own variable says
-            <code>{{ railway_public_domain }}</code>, which is not a Railway address, so it is not used{% endif %}.
-            Until then, open this page on the Railway address to install or update the add-in.{% endif %}</td></tr>
+        <td>Version {{ manifest_version }} · <a href="{{ manifest_url }}">{{ manifest_url }}</a>
+            {% if addin_base_from == 'request' %}<br><span class="upload-hint">This address is the one this page was opened on. Set <code>ADDIN_BASE_URL</code> in Railway to say it for certain.</span>{% endif %}</td></tr>
     <tr><th scope="row">Where the add-in lives</th>
-        <td>{% if addin_origin %}<code>{{ addin_origin }}</code>, from
-            {% if addin_base_from == 'setting' %}<code>ADDIN_BASE_URL</code>{% elif addin_base_from == 'railway' %}Railway's own address for this service (<code>RAILWAY_PUBLIC_DOMAIN</code>){% else %}the address this page was opened on{% endif %}.
-            The manifest names this address on every name it is fetched from, so the add-in stays here when staff use admin.chateaugudanes.com.
-            {% else %}not known (above).{% endif %}</td></tr>
+        <td><code>{{ addin_origin }}</code>, from
+            {% if addin_base_from == 'setting' %}<code>ADDIN_BASE_URL</code>{% elif addin_base_from == 'railway' %}Railway's own address for this service (<code>RAILWAY_PUBLIC_DOMAIN</code>){% elif addin_base_from == 'house' %}the address built into the app for the house's own names, as neither <code>ADDIN_BASE_URL</code> nor <code>RAILWAY_PUBLIC_DOMAIN</code> names one{% if railway_public_domain %} (Railway's variable says <code>{{ railway_public_domain }}</code>, which is not a Railway address){% endif %}{% else %}the address this page was opened on{% endif %}.
+            The manifest names this address on every name it is fetched from, so the add-in stays here when staff use admin.chateaugudanes.com.</td></tr>
     <tr><th scope="row">Signing in with Microsoft 365</th>
         <td>{% if sso_configured %}<span class="mini-status status-confirmed">on</span> app {{ sso_client_id }}, scope <code>{{ sso_scope }}</code>
             {% else %}<span class="mini-status status-declined">not set up</span> Set <code>ADDIN_CLIENT_ID</code> (steps below). Until then only the shared key works.{% endif %}</td></tr>
@@ -80,7 +72,7 @@
   <ol class="manual-body wraps">
     <li>Microsoft 365 admin centre → Settings → Integrated apps → Upload custom apps.</li>
     <li>App type: <em>Office Add-in</em>. Choose "Provide link to manifest file" and paste
-      {% if manifest_url %}<code>{{ manifest_url }}</code>{% else %}the manifest address, once <code>ADDIN_BASE_URL</code> is set (above){% endif %}. Validate.</li>
+      <code>{{ manifest_url }}</code>. Validate.</li>
     <li>Assign it to everybody who answers guests (or the whole organisation), and choose
       <em>Fixed</em> so nobody has to switch it on. Deploy.</li>
     <li>It reaches Outlook within a few hours (Microsoft says up to 24). It then appears as
@@ -99,7 +91,7 @@
   <ol class="manual-body wraps">
     <li>App registrations → New registration. Name <em>Gudanes Outlook add-in</em>. Accounts in this organisational directory only. Register.</li>
     <li>Authentication → Add a platform → <em>Single-page application</em>, redirect URI
-      {% if addin_origin %}<code>brk-multihub://{{ addin_origin|replace('https://', '')|replace('http://', '') }}</code>{% else %}<code>brk-multihub://</code> followed by the add-in's address, once <code>ADDIN_BASE_URL</code> is set (above){% endif %}. Save.</li>
+      <code>brk-multihub://{{ addin_origin|replace('https://', '')|replace('http://', '') }}</code>. Save.</li>
     <li>Expose an API → Application ID URI: accept <code>api://&lt;the client id&gt;</code>. Add a scope:
       <code>access_as_user</code>, who can consent "Admins and users", display name "Use the Gudanes add-in as you". Save.</li>
     <li>API permissions → Add a permission → My APIs → this app → <code>access_as_user</code>. Then Grant admin consent for the organisation, so nobody is asked.</li>

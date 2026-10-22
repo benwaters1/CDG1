@@ -7,7 +7,7 @@
   <form method="post" action="{{ url_for('run_checkin_texts_now') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="kind" value="checkin">
-    <button type="submit" class="btn-mini">Send tomorrow's arrival texts now</button>
+    <button type="submit" class="btn-mini">Send today's arrival texts now</button>
   </form>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
@@ -36,13 +36,20 @@
 
 <h2 class="section-heading">What they get, and what it costs</h2>
 {# Both messages side by side. Kept in one loop rather than two blocks so a
-   second message cannot become the one nobody looks at. #}
+   second message cannot become the one nobody looks at. Neither has a default
+   wording: an empty box is a text that is never sent. #}
 {% for msg in messages %}
-<form method="post" action="{{ url_for('save_checkin_text') }}" style="margin-bottom:18px;">
+<form method="post" action="{{ url_for('save_checkin_text') }}" id="text-{{ msg.kind }}" style="margin-bottom:18px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="kind" value="{{ msg.kind }}">
-  <label class="field-label">Before {{ msg.label }} — sent {{ msg.when }}</label>
-  <textarea aria-label="Before  — sent" name="template" rows="3" style="width:100%;">{{ msg.body }}</textarea>
+  <label class="field-label" for="text-{{ msg.kind }}-body">The {{ msg.label }} text — sent {{ msg.when }}</label>
+  <p class="upload-hint" style="margin:0 0 6px;">
+    {% if not msg.body %}<strong>No wording yet — write it here.</strong> Nothing is sent until you do{% if not msg.on %}, and then not until it is switched on under <a href="{{ url_for('admin_automation') }}#automation_{{ msg.kind }}_text_enabled">Automation</a>{% endif %}.
+    {% elif not msg.on %}Written, but switched off under <a href="{{ url_for('admin_automation') }}#automation_{{ msg.kind }}_text_enabled">Automation</a>, so nothing goes by itself.
+    {% else %}Written and switched on.{% endif %}
+  </p>
+  <textarea id="text-{{ msg.kind }}-body" name="template" rows="3" style="width:100%;"
+            placeholder="No wording yet — write it here">{{ msg.body }}</textarea>
   <p class="upload-hint" style="margin-top:6px;">
     Use <code>{guest_name}</code>, <code>{arrival_date}</code>,
     <code>{departure_date}</code>, <code>{reference}</code>,
@@ -54,8 +61,10 @@
   </p>
   <div style="display:flex; gap:8px;">
     <button type="submit" class="btn-mini">Save</button>
+    {% if msg.body %}
     <button type="submit" class="btn-ghost"
             formaction="{{ url_for('run_checkin_texts_now') }}">Send these now</button>
+    {% endif %}
   </div>
 </form>
 {% endfor %}
