@@ -96627,7 +96627,7 @@ def decide_leave(request_id):
 ACCESS_CODE_KEEP_DAYS = 7
 
 
-def arrivals_sheet(conn, day=None):
+def arrivals_sheet(conn, day=None, channel=None):
     """One day's arrivals and departures, with everything about each on the row.
 
     The arrival card is per booking and the incomplete list says only what is
@@ -96636,7 +96636,8 @@ def arrivals_sheet(conn, day=None):
     and what still has no answer. It was assembled by opening six pages.
 
     Read-only and rebuilt every time. Nothing here is stored, so it cannot go
-    stale and disagree with the bookings it describes.
+    stale and disagree with the bookings it describes. `channel` is
+    channel_stays() read once by a caller building many days.
     """
     day = day or house_today()
     iso = day.isoformat()
@@ -96716,7 +96717,8 @@ def arrivals_sheet(conn, day=None):
     # Booking.com's guests, on their own list: the sheet's rows are the house's
     # bookings with everything that hangs off them -- codes, transfers, a
     # telephone to ring -- and a Booking.com stay has none of that to show.
-    channel = channel_stays(conn)
+    if channel is None:
+        channel = channel_stays(conn)
     channel_arriving = [st for st in channel if st["arrival_date"] == iso]
     channel_leaving = [st for st in channel if st["departure_date"] == iso]
     return {
@@ -96732,6 +96734,60 @@ def arrivals_sheet(conn, day=None):
         # identical otherwise.
         "nothing_doing": not (arriving or leaving or channel_arriving or channel_leaving),
     }
+
+
+ARRIVALS_WEEKS = 2
+
+
+def arrivals_weeks(conn, start=None):
+    """This week and next, day by day (owner, 22 October 2026: "make this
+    upcoming in date not just today and tomorrow it should be weekly and
+    next").
+
+    From `start` -- today, or the day somebody picked -- to the Sunday of the
+    week after, so the sheet always reaches the end of next week: fourteen
+    days from a Monday, eight from a Sunday. Weeks run Monday to Sunday, as
+    they do in France.
+
+    A day with somebody coming or going is that day's whole sheet. A run of
+    days with nobody is ONE entry, `quiet` with its first and last day, not an
+    empty panel each: a fortnight of those would bury the days that matter.
+    """
+    today = house_today()
+    start = start or today
+    first_monday = start - timedelta(days=start.weekday())
+    end = first_monday + timedelta(days=7 * ARRIVALS_WEEKS - 1)
+    this_monday = today - timedelta(days=today.weekday())
+    channel = channel_stays(conn)
+    weeks = []
+    day = start
+    while day <= end:
+        monday = day - timedelta(days=day.weekday())
+        if not weeks or weeks[-1]["monday"] != monday:
+            ahead = (monday - this_monday).days // 7
+            weeks.append({
+                "monday": monday, "first": day, "last": day,
+                "label": {0: "This week", 1: "Next week", -1: "Last week"}.get(
+                    ahead, f"Week of {format_date_short(monday.isoformat())}"),
+                "entries": [], "arriving": 0, "leaving": 0, "guests": 0,
+            })
+        week = weeks[-1]
+        week["last"] = day
+        sheet = arrivals_sheet(conn, day, channel=channel)
+        if sheet["nothing_doing"]:
+            prev = week["entries"][-1] if week["entries"] else None
+            if prev and prev.get("quiet"):
+                prev["last"] = day
+            else:
+                week["entries"].append({"quiet": True, "first": day, "last": day})
+        else:
+            week["entries"].append({"quiet": False, "sheet": sheet})
+            week["arriving"] += len(sheet["arriving"]) + len(sheet["channel_arriving"])
+            week["leaving"] += len(sheet["leaving"]) + len(sheet["channel_leaving"])
+            week["guests"] += sheet["beds"]
+        day += timedelta(days=1)
+    return {"start": start, "end": end, "weeks": weeks,
+            "after": end + timedelta(days=1)}
 
 
 def front_desk_day(conn, today=None):
@@ -96874,21 +96930,22 @@ def check_in_booking(booking_id):
 @app.route("/admin/arrivals")
 @login_required
 def arrivals_sheet_page():
-    """Today's sheet and tomorrow's, one under the other; or one named day.
+    """This week and next, day by day, from today or from a picked day.
 
-    TODAY AND TOMORROW (owner, 19 October 2026: "arrivals should show today
-    and tomorrow"). It opened on tomorrow alone, to prepare -- which left the
-    desk without the list of who is arriving now. Both are wanted: today to
-    receive them, tomorrow to get ready. ?date= still asks for one day.
+    THIS WEEK AND NEXT (owner, 22 October 2026: "it should be weekly and
+    next"). It showed today and tomorrow (19 October), and before that
+    tomorrow alone; on a quiet Thursday that was two empty panels and nothing
+    about the weekend. Today is still first, to receive them, and tomorrow
+    second, to get ready -- the fortnight is what comes after. ?date= starts
+    the window on that day instead.
     """
     today = house_today()
     named = parse_date(request.args.get("date", ""))
-    days = [named] if named else [today, today + timedelta(days=1)]
     conn = get_db()
-    sheets = [arrivals_sheet(conn, d) for d in days]
+    window = arrivals_weeks(conn, named or today)
     conn.close()
-    return render_template("arrivals_sheet.html", sheets=sheets,
-                           today=today, day=days[0], named=bool(named))
+    return render_template("arrivals_sheet.html", window=window,
+                           today=today, day=window["start"], named=bool(named))
 
 
 @app.route("/admin/bookings/<int:booking_id>/access-code", methods=["POST"])

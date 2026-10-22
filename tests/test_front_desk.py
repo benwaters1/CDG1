@@ -188,10 +188,15 @@ def _checks(s, conn, oc, _ec):
     s.check("staff without the owner's rights are turned away from the desk",
             _ec.get("/admin/desk").status_code in (302, 403))
 
-    s.section("Arrivals: today and tomorrow")
+    s.section("Arrivals: this week and next, today first (owner, 22 October 2026)")
     arrivals = oc.get("/admin/arrivals").get_data(as_text=True)
-    s.check("both days are on it, today first", ">Today" in arrivals and ">Tomorrow" in arrivals
-            and arrivals.find(">Today") < arrivals.find(">Tomorrow"))
+    # Today is named first either way: a day of its own when somebody comes
+    # or goes, the start of a quiet line when nobody does.
+    # Read from the page's own heading: the menu has a "Today" of its own.
+    sheet = arrivals[arrivals.find("<h1>Arrivals</h1>"):]
+    where = [sheet.find(x) for x in (">This week", ">Today", ">Next week")]
+    s.check("both weeks are on it, this week first, opening on today",
+            0 < where[0] < where[1] < where[2], detail=f"found at {where}")
 
     s.section("The calendar is a timeline")
     cal = oc.get("/admin/calendar").get_data(as_text=True)

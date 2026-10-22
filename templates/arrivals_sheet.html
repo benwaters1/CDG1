@@ -2,46 +2,78 @@
 {% block title %}Arrivals{% endblock %}
 {% block content %}
 
-{# ONE DAY, ON ONE PAGE. The arrival card is per booking and the incomplete
+{# EACH DAY, ON ONE PAGE. The arrival card is per booking and the incomplete
    list says only what is missing; neither is the thing somebody wants at
-   breakfast. Shows today and tomorrow (owner, 19 October 2026). #}
+   breakfast. Shows this week and next, day by day (owner, 22 October 2026:
+   "it should be weekly and next"); it was today and tomorrow. #}
+
+{#- Today and Tomorrow by name, because those are the two days the desk acts
+    on; every other day by its weekday and date. -#}
+{%- macro day_name(d) -%}
+  {%- if d == today %}Today{% elif (d - today).days == 1 %}Tomorrow{% else %}{{ d.strftime('%A') }} {{ d.day }} {{ d.strftime('%B') }}{% endif -%}
+{%- endmacro %}
 
 <div class="page-head">
   <h1>Arrivals</h1>
   <div style="display:flex; gap:10px; align-items:center;">
     <form method="get" action="{{ url_for('arrivals_sheet_page') }}" style="display:flex; gap:6px; align-items:center;">
-      <input type="date" name="date" value="{{ day.isoformat() }}" aria-label="Which day">
+      <input type="date" name="date" value="{{ day.isoformat() }}" aria-label="Start from which day">
       <button type="submit" class="btn-mini">Show</button>
     </form>
     <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">All bookings</a>
   </div>
 </div>
 
-{% if named %}<p class="upload-hint" style="margin-bottom:12px;"><a href="{{ url_for('arrivals_sheet_page') }}">Today and tomorrow</a></p>{% endif %}
+<p class="upload-hint arr-window">
+  Who comes and goes from
+  {% if window.start == today %}today{% else %}{{ window.start.strftime('%A') }} {{ window.start.isoformat()|date_short }}{% endif %}
+  to Sunday {{ window.end.isoformat()|date_short }}.
+  {% if named %}<a href="{{ url_for('arrivals_sheet_page') }}">From today</a> · {% endif %}
+  <a href="{{ url_for('arrivals_sheet_page', date=window.after.isoformat()) }}">The fortnight after</a>
+</p>
 
-{#- Today, then tomorrow (19 October 2026): today to receive them, tomorrow to
-    get ready. Each day says which it is, and what it holds. -#}
-{% for sheet in sheets %}
+{#- Where a recorded code comes back to: this same window, at that day. -#}
+{% set here = url_for('arrivals_sheet_page', date=(window.start.isoformat() if named else None)) %}
+
+{% for week in window.weeks %}
+<section class="arr-week" id="week-{{ week.monday.strftime('%Y%m%d') }}">
+<h2 class="arr-week__h">{{ week.label }}
+  <span class="arr-week__dates">{{ date_range(week.first.isoformat(), week.last.isoformat()) }}</span></h2>
+{% if week.arriving or week.leaving %}
+<p class="upload-hint arr-week__sum">
+  {{ week.arriving }} arriving · {{ week.leaving }} leaving
+  {%- if week.guests %} · {{ week.guests }} guest{{ '' if week.guests == 1 else 's' }} coming{% endif %}
+</p>
+{% endif %}
+
+{% for entry in week.entries %}
+{% if entry.quiet %}
+{#- A run of days with nobody coming or going is one line, not an empty panel
+    a day: fourteen of those would bury the days that matter. Still said, because
+    an empty day and a sheet nobody built look identical otherwise. -#}
+<p class="arr-quiet" id="day-{{ entry.first.strftime('%Y%m%d') }}">
+  <strong>{{ day_name(entry.first) }}{% if entry.last != entry.first %} – {{ day_name(entry.last) }}{% endif %}</strong>
+  · nobody arriving or leaving
+</p>
+{% else %}
+{% set sheet = entry.sheet %}
 {% set day = sheet.day %}
+{% set near = (day - today).days <= 1 %}
+{% set back = here ~ '#day-' ~ day.strftime('%Y%m%d') %}
 <section class="arr-day" id="day-{{ day.strftime('%Y%m%d') }}">
-<h2 class="arr-day__h">
+<h3 class="arr-day__h">
   {%- if day == today %}Today{% elif (day - today).days == 1 %}Tomorrow{% else %}{{ day.strftime('%A') }}{% endif %}
-  <span class="arr-day__date">{{ day.strftime('%A') }} {{ day.isoformat()|date_short }}</span>
-</h2>
-<p class="upload-hint" style="margin-bottom:12px;">
+  <span class="arr-day__date">{% if day == today or (day - today).days == 1 %}{{ day.strftime('%A') }} {% endif %}{{ day.day }} {{ day.strftime('%B') }}</span>
+</h3>
+<p class="upload-hint arr-day__sum">
   {{ sheet.arriving|length + sheet.channel_arriving|length }} arriving · {{ sheet.leaving|length + sheet.channel_leaving|length }} leaving
-  {%- if sheet.beds %} · {{ sheet.beds }} guests coming{% endif %}
+  {%- if sheet.beds %} · {{ sheet.beds }} guest{{ '' if sheet.beds == 1 else 's' }} coming{% endif %}
   {%- if sheet.beds_unknown %}, and {{ sheet.beds_unknown }} Booking.com
   booking{{ '' if sheet.beds_unknown == 1 else 's' }} that did not say how many{% endif %}
 </p>
 
-{% if sheet.nothing_doing %}
-  {# An empty day and a sheet nobody built look identical unless one says so. #}
-  <div class="empty-state">Nobody is arriving or leaving on this day.</div>
-{% endif %}
-
 {% if sheet.arriving %}
-<h3 class="section-heading">Arriving</h3>
+<h4 class="sub-heading">Arriving</h4>
 <div class="task-list">
   {% for r in sheet.arriving %}
   {% set b = r.booking %}
@@ -121,7 +153,7 @@
       {%- if c['note'] %} · {{ c['note'] }}{% endif %}
       <form method="post" action="{{ url_for('access_code_returned', code_id=c['id']) }}" style="display:inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="back" value="{{ url_for('arrivals_sheet_page', date=day.isoformat()) }}">
+        <input type="hidden" name="back" value="{{ back }}">
         <button type="submit" class="small-link">back</button>
       </form>
     </p>
@@ -129,10 +161,15 @@
     {% endif %}
 
     {% if may('guests') %}
+    {#- Open on today's and tomorrow's arrivals and folded on the days after:
+        a code is given at the door, and a fortnight of open forms would bury
+        the guests they are for. -#}
+    <details class="arr-code"{% if near %} open{% endif %}>
+    <summary class="small-link">Record a door code or key</summary>
     <form method="post" action="{{ url_for('issue_access_code', booking_id=b['id']) }}"
-          class="expense-actions" style="margin-top:8px; padding-top:10px; border-top:1px dashed var(--parchment-line); display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          class="expense-actions" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="back" value="{{ url_for('arrivals_sheet_page', date=day.isoformat()) }}">
+      <input type="hidden" name="back" value="{{ back }}">
       <select name="kind" aria-label="Code or key">
         <option value="code">Door code</option>
         <option value="key">Key or door remote</option>
@@ -142,6 +179,7 @@
       <button type="submit" class="btn-mini">Record it</button>
       <span class="upload-hint">Cleared automatically once the stay is over.</span>
     </form>
+    </details>
     {% endif %}
 
     <p style="margin-top:8px;">
@@ -156,7 +194,7 @@
 {% if sheet.leaving %}
 {# The other half of the same morning: a room is not ready for an arrival until
    the departure has gone. #}
-<h3 class="section-heading">Leaving</h3>
+<h4 class="sub-heading">Leaving</h4>
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Reference</th></tr></thead>
@@ -177,7 +215,7 @@
 {# Booking.com's guests. Only what its emails said: no telephone, no arrival
    time, no card on file here -- those are in the extranet, and the link goes
    to what the house does know. #}
-<h3 class="section-heading">Through Booking.com</h3>
+<h4 class="sub-heading">Through Booking.com</h4>
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th scope="col">Guest</th><th scope="col"></th><th scope="col">Room</th>
@@ -205,6 +243,9 @@
   </table>
 </div>
 {% endif %}
+</section>
+{% endif %}
+{% endfor %}
 </section>
 {% endfor %}
 
