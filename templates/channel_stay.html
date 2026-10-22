@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}{{ stay['guest_name'] or 'Booking.com stay' }}{% endblock %}
+{% block content %}
+{#
+  ONE BOOKING.COM STAY (22 October 2026). Booking.com's emails give a name and
+  dates and nothing to reach the guest by. The rest comes from the extranet --
+  typed here, or the reservation page pasted in and read -- or from the
+  guest's own online check-in, whose link is on this page to send or to paste
+  into Booking.com's messages. Kept out of the house's bookings on purpose: no
+  bill, no balance, no revenue here (channel_stays_page).
+#}
+<div class="page-head">
+  <div>
+    <h1>{{ stay['guest_name'] or 'Booking.com guest' }}</h1>
+    <p class="upload-hint" style="margin:4px 0 0;">
+      Booking.com {{ stay['reservation_number'] }} ·
+      {{ stay['room_name'] or stay['room_label'] or 'room not matched' }} ·
+      {% if stay['arrival_date'] %}{{ date_range(stay['arrival_date'], stay['departure_date']) if stay['departure_date'] else stay['arrival_date']|date_short }} · {{ nights }} night{{ '' if nights == 1 else 's' }}{% else %}no dates{% endif %}
+      {%- if stay['guests'] %} · {{ stay['guests'] }} guest{{ '' if stay['guests'] == 1 else 's' }}{% endif %}
+      · <span class="mini-status status-{{ 'confirmed' if stay['status'] == 'confirmed' else 'cancelled' }}">{{ stay['status'] }}</span>
+    </p>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    {% if stay['extranet_url'] %}<a href="{{ stay['extranet_url'] }}" class="btn-ghost" target="_blank" rel="noopener">Open in the extranet</a>{% endif %}
+    <a href="{{ url_for('channel_stays_page') }}" class="btn-ghost">All Booking.com stays</a>
+  </div>
+</div>
+
+<div class="cs-grid">
+  {# ------------------------------------------------ online check-in #}
+  <section class="detail-card">
+    <h2 class="section-heading">Online check-in</h2>
+    {% if stay['checkin_done_at'] %}
+    <p><span class="mini-status status-confirmed">checked in online</span> {{ local_datetime_str(stay['checkin_done_at']) }}</p>
+    {% else %}
+    <p>{% if stay['checkin_sent_at'] %}<span class="mini-status status-pending">link sent {{ local_datetime_str(stay['checkin_sent_at']) }}</span> — not filled in yet.
+       {% elif address %}<span class="upload-hint">Not sent yet: it goes by itself within a few minutes now there is an address.</span>
+       {% else %}<span class="upload-hint">No address to send it to yet. Paste the link into Booking.com's messages to the guest, or add their address below.</span>{% endif %}</p>
+    {% endif %}
+    <label class="field-label" for="cs-link">Their link</label>
+    <input id="cs-link" type="text" readonly value="{{ checkin_url }}" onclick="this.select()">
+    <p class="upload-hint">It asks how to reach them, their home address, when they will arrive, what they cannot eat, and — for a guest who is not French — the police fiche. Safe to paste into Booking.com's messages: it is about the stay and nothing else.</p>
+    {% if not stay['checkin_done_at'] and stay['status'] == 'confirmed' %}
+    <form method="post" action="{{ url_for('send_channel_checkin_link', reservation_id=stay['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini" {{ 'disabled' if not address }}>{{ 'Email the link again' if stay['checkin_sent_at'] else 'Email the link now' }}</button>
+      {% if address %}<span class="upload-hint">to {{ address }}</span>{% endif %}
+    </form>
+    {% endif %}
+  </section>
+
+  {# ------------------------------------------------ police fiche #}
+  <section class="detail-card">
+    <h2 class="section-heading">Police fiche</h2>
+    {% if fiches %}
+      {% for fi in fiches %}<p><strong>{{ fi['first_names'] }} {{ fi['surname'] }}</strong> <span class="upload-hint">{{ fi['nationality'] }}{% if fi['born_on'] %} · born {{ fi['born_on']|date_short }}{% if fi['born_at'] %}, {{ fi['born_at'] }}{% endif %}{% endif %}</span></p>{% endfor %}
+    {% else %}
+      <p class="upload-hint">None yet. The online check-in makes one for a guest who is not French; or record it from <a href="{{ url_for('channel_stays_page', q=stay['reservation_number'], when='all') }}">the Booking.com stays page</a>.</p>
+    {% endif %}
+    {% if mail_count %}<p class="upload-hint">{{ mail_count }} email{{ '' if mail_count == 1 else 's' }} from Booking.com about this stay: <a href="{{ url_for('management_booking_com', q=stay['reservation_number']) }}">read them</a>.</p>{% endif %}
+  </section>
+</div>
+
+{# ------------------------------------------------ the guest #}
+<section class="detail-card">
+  <h2 class="section-heading">The guest</h2>
+  {% if stay['linked_guest_id'] %}<p class="upload-hint cs-profile"><a href="{{ url_for('guest_detail', guest_id=stay['linked_guest_id']) }}">Their guest profile</a></p>{% endif %}
+  <details class="cs-paste" {{ 'open' if not (stay['guest_phone'] or stay['guest_email']) }}>
+    <summary>Paste from the extranet</summary>
+    <form method="post" action="{{ url_for('save_channel_stay_details', reservation_id=stay['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-label" for="cs-paste">The reservation page, copied</label>
+      <textarea id="cs-paste" name="paste" rows="6" placeholder="Open the reservation in the Booking.com extranet, select the guest's details (or the whole page), copy, and paste here."></textarea>
+      <p class="upload-hint">Reads the guest's name, their @guest.booking.com address, telephone, country, address, arrival time and requests. Fills only what it finds.</p>
+      <button type="submit" class="btn-mini">Read it in</button>
+    </form>
+  </details>
+  <form method="post" action="{{ url_for('save_channel_stay_details', reservation_id=stay['id']) }}" class="cs-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-3">
+      <div><label class="field-label" for="cs-name">Name</label>
+        <input id="cs-name" type="text" name="guest_name" value="{{ stay['guest_name'] or '' }}" maxlength="120" autocomplete="off"></div>
+      <div><label class="field-label" for="cs-email">Email</label>
+        <input id="cs-email" type="email" name="guest_email" value="{{ stay['guest_email'] or '' }}" maxlength="200" autocomplete="off" placeholder="…@guest.booking.com is fine"></div>
+      <div><label class="field-label" for="cs-phone">Telephone</label>
+        <input id="cs-phone" type="tel" name="guest_phone" value="{{ stay['guest_phone'] or '' }}" maxlength="40" autocomplete="off"></div>
+    </div>
+    <label class="field-label" for="cs-address">Home address</label>
+    <input id="cs-address" type="text" name="guest_address" value="{{ stay['guest_address'] or '' }}" maxlength="200" autocomplete="off">
+    <div class="field-row-3">
+      <div><label class="field-label" for="cs-city">Town or city</label>
+        <input id="cs-city" type="text" name="guest_city" value="{{ stay['guest_city'] or '' }}" maxlength="100" autocomplete="off"></div>
+      <div><label class="field-label" for="cs-postcode">Postcode</label>
+        <input id="cs-postcode" type="text" name="guest_postcode" value="{{ stay['guest_postcode'] or '' }}" maxlength="20" autocomplete="off"></div>
+      <div><label class="field-label" for="cs-country">Country</label>
+        <input id="cs-country" type="text" name="guest_country" value="{{ stay['guest_country'] or '' }}" maxlength="60" autocomplete="off"></div>
+    </div>
+    <div class="field-row-2">
+      <div><label class="field-label" for="cs-eta">Arriving at</label>
+        <input id="cs-eta" type="text" name="estimated_arrival_time" value="{{ stay['estimated_arrival_time'] or '' }}" maxlength="60" placeholder="About 4pm"></div>
+      <div><label class="field-label" for="cs-diet">Cannot eat</label>
+        <input id="cs-diet" type="text" name="dietary_notes" value="{{ stay['dietary_notes'] or '' }}" maxlength="500"></div>
+    </div>
+    <label class="field-label" for="cs-req">Requests and notes</label>
+    <textarea id="cs-req" name="special_requests" rows="3">{{ stay['special_requests'] or '' }}</textarea>
+    <button type="submit" class="btn-primary">Save</button>
+    <p class="upload-hint">Kept with the stay and deleted with it, two years after; what they cannot eat goes once they have left. With an address, the stay joins the guest's profile.</p>
+  </form>
+</section>
+
+{% endblock %}

@@ -49,9 +49,16 @@ def run():
     conn = db()
     oc, ec, _o, _e = clients()
     _cleanup(conn)
+    # The desk is checked on a day the house is open. This runs on a copy of
+    # the real calendar, and a workshop running today holds every room -- on
+    # 22 October 2026 it left the arriving guest nowhere to arrive, and the
+    # suite went red for the date rather than for anything the desk did.
+    holding = m.sessions_holding_the_house
+    m.sessions_holding_the_house = lambda conn, *a, **k: []
     try:
         _checks(s, conn, oc, ec)
     finally:
+        m.sessions_holding_the_house = holding
         _cleanup(conn)
         conn.close()
     return s
@@ -69,17 +76,17 @@ def _checks(s, conn, oc, _ec):
     s.section("One list of every reservation")
     leaving = _stay(conn, first, today - timedelta(days=2), 2, "Leaving")
     gone = _stay(conn, second, free_window(second["id"], 2, after_days=60), 2, "Called", status="cancelled")
-    conn.execute("""INSERT INTO ota_reservations (channel, reservation_number, status, guest_name, arrival_date,
+    chan_id = conn.execute("""INSERT INTO ota_reservations (channel, reservation_number, status, guest_name, arrival_date,
                     departure_date, room_label, room_id, guests, amount, currency, first_seen_at, updated_at)
                     VALUES ('booking.com', '7700111', 'confirmed', ?, ?, ?, ?, ?, 2, 410, 'EUR', ?, ?)""",
                  (f"{TAG} Channel Guest", today.isoformat(), (today + timedelta(days=2)).isoformat(),
-                  second["name"], second["id"], now, now))
+                  second["name"], second["id"], now, now)).lastrowid
     conn.commit()
     page = oc.get("/admin/bookings", query_string={"q": TAG}).get_data(as_text=True)
     s.check("a Booking.com stay is on the list", f"{TAG} Channel Guest" in page)
     s.check("badged and with its own reference", "Booking.com 7700111" in page)
     s.check("opening its own page, not a house stay's",
-            "/admin/channel-stays?q=7700111" in page)
+            f'/admin/channel-stays/{chan_id}"' in page)
     s.check("and paid to the channel, not owed to the house", "paid to Booking.com" in page)
     s.check("a guest leaving today is still on the list that morning",
             f"/admin/bookings/{leaving['id']}" in page)

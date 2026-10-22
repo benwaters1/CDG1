@@ -2459,6 +2459,15 @@ DEFAULT_EMAIL_TEMPLATES = [
      "We hold the room until {held_until}; after that it goes back on sale.\n\n"
      "Reference: {reference_code}\n\n"
      "— Château de Gudanes"),
+    ("channel_checkin", "Rooms: Online check-in for a Booking.com guest",
+     "Check in online for your stay — {room_name}",
+     "Hello {guest_name},\n\nThank you for booking {room_name} at Château de Gudanes "
+     "through Booking.com, from {arrival_date} to {departure_date}.\n\n"
+     "So that your room is ready for you, and for the register French law asks a guest "
+     "house to keep, please take two minutes to check in online:\n{checkin_url}\n\n"
+     "It asks how to reach you, when you expect to arrive and anything you cannot eat.\n\n"
+     "We look forward to welcoming you.\n\n"
+     "— Château de Gudanes"),
     ("room_paid_awaiting", "Rooms: Paid online, dates being confirmed",
      "Payment received — {room_name}",
      "Hi {guest_name},\n\nThank you — your payment of {total_price} has been "
@@ -7419,6 +7428,24 @@ def init_db():
          "ALTER TABLE ota_reservations ADD COLUMN match_note TEXT"),
         ("ota_reservations_extranet_url",
          "ALTER TABLE ota_reservations ADD COLUMN extranet_url TEXT"),
+        # WHO A BOOKING.COM GUEST IS (22 October 2026). The channel's emails
+        # give a name and dates and nothing to reach them by; these come from
+        # the extranet, typed or pasted by the house, or from the guest's own
+        # online check-in. Deleted with the stay, two years after it, as the
+        # privacy notice says; the dietary note once the stay is over.
+        ("ota_guest_email", "ALTER TABLE ota_reservations ADD COLUMN guest_email TEXT"),
+        ("ota_guest_phone", "ALTER TABLE ota_reservations ADD COLUMN guest_phone TEXT"),
+        ("ota_guest_address", "ALTER TABLE ota_reservations ADD COLUMN guest_address TEXT"),
+        ("ota_guest_city", "ALTER TABLE ota_reservations ADD COLUMN guest_city TEXT"),
+        ("ota_guest_postcode", "ALTER TABLE ota_reservations ADD COLUMN guest_postcode TEXT"),
+        ("ota_guest_country", "ALTER TABLE ota_reservations ADD COLUMN guest_country TEXT"),
+        ("ota_arrival_time", "ALTER TABLE ota_reservations ADD COLUMN estimated_arrival_time TEXT"),
+        ("ota_special_requests", "ALTER TABLE ota_reservations ADD COLUMN special_requests TEXT"),
+        ("ota_dietary_notes", "ALTER TABLE ota_reservations ADD COLUMN dietary_notes TEXT"),
+        ("ota_linked_guest", "ALTER TABLE ota_reservations ADD COLUMN linked_guest_id INTEGER"),
+        ("ota_checkin_token", "ALTER TABLE ota_reservations ADD COLUMN checkin_token TEXT"),
+        ("ota_checkin_sent", "ALTER TABLE ota_reservations ADD COLUMN checkin_sent_at TEXT"),
+        ("ota_checkin_done", "ALTER TABLE ota_reservations ADD COLUMN checkin_done_at TEXT"),
         # When the house was told about a booking email (or decided not to
         # be): one letter to reservations@ per email, never two.
         ("ota_mail_house_told_at",
@@ -9410,6 +9437,11 @@ OWNER_ONLY_AREAS = {
     "add_channel_stay": "management",
     "remove_channel_stay": "management",
     "sync_channel_stays_now": "management",
+    # One stay's own page: who the guest is, from the extranet or their own
+    # online check-in, and the check-in link sent from it.
+    "channel_stay_page": "management",
+    "save_channel_stay_details": "management",
+    "send_channel_checkin_link": "management",
     "restoration_record": "management",
     # The camera roll. Management rather than estate: it decides what appears
     # on the house's public pages, which is the owner's call and not a
@@ -58396,6 +58428,8 @@ EMAIL_TEMPLATE_TAGS = {
                               "room_name", "stay_lines"),
     "room_paid_awaiting": ("checkin_url", "guest_name", "reference_code", "room_name",
                            "stay_lines", "total_price"),
+    "channel_checkin": ("arrival_date", "checkin_url", "departure_date", "guest_name",
+                        "reference_code", "room_name"),
     "room_reserved": ("finish_url", "guest_name", "held_until", "reference_code",
                       "room_name", "stay_lines", "total_price"),
     "room_declined": ("arrival_date", "departure_date", "guest_name", "reference_code",
@@ -58446,6 +58480,7 @@ REQUIRED_MERGE_TAGS = {
     "room_request_received": {"reference_code": "it is how they quote the booking to us"},
     "room_paid_awaiting": {"reference_code": "it is how they quote the booking to us"},
     "room_reserved": {"finish_url": "it is the only way for them to finish the booking and pay"},
+    "channel_checkin": {"checkin_url": "it is the only way to the check-in form"},
     "room_updated": {"arrival_date": "it is the date that changed",
                      "departure_date": "it is the date that changed"},
     "room_statement": {"statement_url": "it is the only way to open the statement and settle it"},
@@ -81608,6 +81643,354 @@ def channel_stays_page():
                            prefill=prefill, sources=sources)
 
 
+# What the house can know about a Booking.com guest, beyond the email's name
+# and dates: from the extranet, or from the guest's own online check-in.
+OTA_GUEST_FIELDS = ("guest_name", "guest_email", "guest_phone", "guest_address",
+                    "guest_city", "guest_postcode", "guest_country",
+                    "estimated_arrival_time", "special_requests", "dietary_notes")
+OTA_FIELD_LIMITS = {"guest_name": 120, "guest_email": 200, "guest_phone": 40,
+                    "guest_address": 200, "guest_city": 100, "guest_postcode": 20,
+                    "guest_country": 60, "estimated_arrival_time": 60,
+                    "special_requests": 1000, "dietary_notes": 500}
+
+# Booking.com's spelling of a country, in English or in the French extranet,
+# as the booking form and the register spell it (the names in
+# NATIONALITY_BY_COUNTRY and the country list on the guest forms). Without it
+# "Czech Republic" matches nothing on the check-in form, which then falls back
+# to the guest's browser and offered a Czech guest "United States".
+OTA_COUNTRY_NAMES = {
+    "czech republic": "Czechia", "république tchèque": "Czechia", "tchéquie": "Czechia",
+    "uk": "United Kingdom", "great britain": "United Kingdom", "england": "United Kingdom",
+    "scotland": "United Kingdom", "wales": "United Kingdom", "northern ireland": "United Kingdom",
+    "royaume-uni": "United Kingdom", "usa": "United States", "united states of america": "United States",
+    "us": "United States", "états-unis": "United States", "etats-unis": "United States",
+    "the netherlands": "Netherlands", "holland": "Netherlands", "pays-bas": "Netherlands",
+    "allemagne": "Germany", "espagne": "Spain", "italie": "Italy", "belgique": "Belgium",
+    "suisse": "Switzerland", "irlande": "Ireland", "autriche": "Austria", "danemark": "Denmark",
+    "suède": "Sweden", "norvège": "Norway", "finlande": "Finland", "islande": "Iceland",
+    "pologne": "Poland", "hongrie": "Hungary", "grèce": "Greece", "canada": "Canada",
+    "australie": "Australia", "nouvelle-zélande": "New Zealand", "japon": "Japan",
+    "chine": "China", "inde": "India", "brésil": "Brazil", "mexique": "Mexico",
+    "argentine": "Argentina", "chili": "Chile", "colombie": "Colombia",
+    "afrique du sud": "South Africa", "émirats arabes unis": "United Arab Emirates",
+    "uae": "United Arab Emirates", "arabie saoudite": "Saudi Arabia", "israël": "Israel",
+    "corée du sud": "South Korea", "korea": "South Korea", "republic of korea": "South Korea",
+    "singapour": "Singapore", "thaïlande": "Thailand", "malaisie": "Malaysia",
+    "indonésie": "Indonesia", "luxembourg": "Luxembourg", "portugal": "Portugal",
+}
+
+
+def house_country_name(name):
+    """A country as the house's forms name it, from however Booking.com wrote
+    it. A name already right, or one not known, comes back as it was."""
+    name = " ".join((name or "").split())
+    return OTA_COUNTRY_NAMES.get(name.lower(), name)
+
+
+_EXTRANET_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_EXTRANET_PHONE = re.compile(r"(?:phone|telephone|tel|mobile|téléphone)\s*[:\-]?\s*(\+?[\d][\d\s().-]{6,}\d)", re.I)
+_EXTRANET_PHONE_BARE = re.compile(r"(?<![\w@])(\+\d[\d\s().-]{7,}\d)")
+_EXTRANET_TIME = re.compile(
+    r"(?:arrival|arriv\w*|check-?in)[^\n]{0,40}?(\d{1,2}[:h.]\d{2})(?:\s*(?:-|–|and|to|et)\s*(\d{1,2}[:h.]\d{2}))?", re.I)
+_EXTRANET_LABEL = r"(?:^|\n)\s*{label}\s*[:\-]?\s*\n?\s*([^\n]{{2,120}})"
+
+
+def parse_extranet_text(text):
+    """What a reservation page copied from the Booking.com extranet says about
+    the guest, as fields. Only what it finds: nothing found is not written,
+    so pasting part of a page never clears what is already there.
+
+    Read for labels in English and French as the extranet prints them; the
+    guest's address at Booking.com ends @guest.booking.com, and is taken over
+    any other address on the page.
+    """
+    text = (text or "").replace("\r", "")
+    got = {}
+    emails = _EXTRANET_EMAIL.findall(text)
+    alias = next((e for e in emails if e.lower().endswith("@guest.booking.com")), None)
+    if alias or emails:
+        got["guest_email"] = (alias or emails[0]).lower()
+    m = _EXTRANET_PHONE.search(text) or _EXTRANET_PHONE_BARE.search(text)
+    if m:
+        got["guest_phone"] = " ".join(m.group(1).split())
+    m = _EXTRANET_TIME.search(text)
+    if m:
+        a = m.group(1).replace("h", ":").replace(".", ":")
+        got["estimated_arrival_time"] = a + (" – " + m.group(2).replace("h", ":").replace(".", ":")
+                                             if m.group(2) else "")
+    for field, labels in (
+            ("guest_name", ("Guest name", "Booker name", "Nom du client", "Name")),
+            ("guest_country", ("Country/region", "Country", "Pays/région", "Pays")),
+            ("guest_address", ("Address", "Adresse")),
+            ("special_requests", ("Special requests", "Demandes spéciales", "Requests"))):
+        for label in labels:
+            m = re.search(_EXTRANET_LABEL.format(label=re.escape(label)), text, re.I)
+            if m:
+                value = m.group(1).strip(" :-\t")
+                if value and not _EXTRANET_EMAIL.fullmatch(value):
+                    if field == "guest_country":
+                        value = house_country_name(value)
+                    got[field] = value[:OTA_FIELD_LIMITS[field]]
+                break
+    return got
+
+
+def ota_guest_address(conn, stay):
+    """Where to write to a Booking.com guest: the address kept on the stay,
+    else the @guest.booking.com address a message from them came from. ''
+    when there is none."""
+    kept = (stay["guest_email"] or "").strip() if "guest_email" in stay.keys() else ""
+    if kept:
+        return kept
+    row = conn.execute(
+        """SELECT reply_to, from_address FROM ota_mail
+            WHERE (ota_reservation_id = ? OR reservation_number = ?)
+              AND (LOWER(COALESCE(reply_to, '')) LIKE '%@guest.booking.com'
+                   OR LOWER(COALESCE(from_address, '')) LIKE '%@guest.booking.com')
+            ORDER BY id DESC LIMIT 1""",
+        (stay["id"], stay["reservation_number"] or "")).fetchone()
+    if not row:
+        return ""
+    for a in (row["reply_to"], row["from_address"]):
+        if (a or "").lower().endswith("@guest.booking.com"):
+            return a.strip().lower()
+    return ""
+
+
+def ota_checkin_token(conn, stay_id):
+    """The stay's own check-in link key, made the first time it is asked for."""
+    row = conn.execute("SELECT checkin_token FROM ota_reservations WHERE id = ?", (stay_id,)).fetchone()
+    if row and row["checkin_token"]:
+        return row["checkin_token"]
+    token = secrets.token_urlsafe(18)
+    conn.execute("UPDATE ota_reservations SET checkin_token = ? WHERE id = ?", (token, stay_id))
+    return token
+
+
+def link_ota_profile(conn, stay_id):
+    """The guest profile a Booking.com stay belongs to, found or made from the
+    best address it has, and linked. None when there is no address at all."""
+    stay = conn.execute("SELECT * FROM ota_reservations WHERE id = ?", (stay_id,)).fetchone()
+    if not stay:
+        return None
+    email = (stay["guest_email"] or "").strip().lower()
+    if "@" not in email:
+        return None
+    gid = ensure_guest_profile(conn, stay["guest_name"], email, stay["guest_phone"])
+    if gid:
+        conn.execute("UPDATE ota_reservations SET linked_guest_id = ? WHERE id = ?", (gid, stay_id))
+    return gid
+
+
+def send_channel_checkin(conn, stay_id):
+    """The one letter a Booking.com guest is sent by the house: the link to check
+    in online, to the address Booking.com gave them. About the stay and
+    nothing else -- Booking.com relays a guest's mail only on that footing.
+    Commits before it sends. Returns (sent, why_not)."""
+    stay = conn.execute(
+        """SELECT ota_reservations.*, rooms.name AS room_name FROM ota_reservations
+             LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
+            WHERE ota_reservations.id = ?""", (stay_id,)).fetchone()
+    if not stay or stay["status"] != "confirmed":
+        return False, "the stay is not a confirmed one"
+    if stay["checkin_done_at"]:
+        return False, "they have already checked in online"
+    to = ota_guest_address(conn, stay)
+    if "@" not in to:
+        return False, "there is no address for them yet"
+    token = ota_checkin_token(conn, stay_id)
+    conn.commit()
+    subject, body, letter = render_email_template(conn, "channel_checkin", {
+        "guest_name": (stay["guest_name"] or "").split(" ")[0] or "there",
+        "room_name": stay["room_name"] or stay["room_label"] or "your room",
+        "arrival_date": format_date_human(stay["arrival_date"]) if stay["arrival_date"] else "",
+        "departure_date": format_date_human(stay["departure_date"]) if stay["departure_date"] else "",
+        "checkin_url": url_for("channel_checkin", token=token, _external=True),
+        "reference_code": stay["reservation_number"],
+    })
+    if not subject:
+        return False, "the letter is switched off"
+    delivered = bool(send_email(to, subject, body, html=letter, area="rooms"))
+    conn.execute("UPDATE ota_reservations SET checkin_sent_at = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), stay_id))
+    conn.commit()
+    return True, ("" if delivered else "held until mail to guests is switched on")
+
+
+def send_channel_checkin_links(conn, today=None):
+    """Every confirmed Booking.com stay still to come that has an address, has
+    not been sent its check-in link and has not checked in: sent it. Run with
+    the housekeeping. Returns how many went."""
+    iso = (today or house_today()).isoformat()
+    sent = 0
+    for stay in conn.execute(
+            """SELECT * FROM ota_reservations WHERE status = 'confirmed'
+                 AND arrival_date >= ? AND checkin_sent_at IS NULL
+                 AND checkin_done_at IS NULL""", (iso,)).fetchall():
+        if "@" in ota_guest_address(conn, stay):
+            ok, _why = send_channel_checkin(conn, stay["id"])
+            sent += 1 if ok else 0
+    return sent
+
+
+@app.route("/admin/channel-stays/<int:reservation_id>")
+@owner_required
+def channel_stay_page(reservation_id):
+    """One Booking.com stay: who they are, how to reach them, their online
+    check-in, and their police fiche (22 October 2026). The channel's emails
+    give a name and dates; the rest comes from the extranet or from them."""
+    conn = get_db()
+    stay = conn.execute(
+        """SELECT ota_reservations.*, rooms.name AS room_name FROM ota_reservations
+             LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
+            WHERE ota_reservations.id = ?""", (reservation_id,)).fetchone()
+    if not stay:
+        conn.close()
+        abort(404)
+    address = ota_guest_address(conn, stay)
+    token = ota_checkin_token(conn, reservation_id)
+    conn.commit()
+    fiches = conn.execute("SELECT * FROM channel_police_register WHERE ota_reservation_id = ? "
+                          "ORDER BY id", (reservation_id,)).fetchall()
+    mail = conn.execute("SELECT COUNT(*) FROM ota_mail WHERE ota_reservation_id = ?",
+                        (reservation_id,)).fetchone()[0]
+    conn.close()
+    return render_template(
+        "channel_stay.html", stay=stay, address=address, fiches=fiches, mail_count=mail,
+        nights=_nights_between(stay["arrival_date"], stay["departure_date"]),
+        checkin_url=url_for("channel_checkin", token=token, _external=True))
+
+
+@app.route("/admin/channel-stays/<int:reservation_id>/details", methods=["POST"])
+@owner_required
+def save_channel_stay_details(reservation_id):
+    """The guest's details, typed in, or pasted from the extranet's reservation
+    page. A paste fills only what it finds; a typed box that is emptied
+    empties its field. Linked to the guest's profile when there is an
+    address."""
+    conn = get_db()
+    stay = conn.execute("SELECT * FROM ota_reservations WHERE id = ?", (reservation_id,)).fetchone()
+    if not stay:
+        conn.close()
+        abort(404)
+    pasted = (request.form.get("paste") or "").strip()
+    if pasted:
+        values = parse_extranet_text(pasted)
+        if not values:
+            conn.close()
+            flash("Nothing in that could be read: paste the guest part of the reservation page.", "error")
+            return redirect(url_for("channel_stay_page", reservation_id=reservation_id))
+    else:
+        values = {f: ((request.form.get(f) or "").strip()[:OTA_FIELD_LIMITS[f]] or None)
+                  for f in OTA_GUEST_FIELDS if f in request.form}
+        if "guest_email" in values and values["guest_email"]:
+            values["guest_email"] = values["guest_email"].lower()
+            if not EMAIL_RE.match(values["guest_email"]):
+                conn.close()
+                flash("That email address does not look right.", "error")
+                return redirect(url_for("channel_stay_page", reservation_id=reservation_id))
+        if "guest_name" in values and not values["guest_name"]:
+            values.pop("guest_name")
+    if values:
+        conn.execute("UPDATE ota_reservations SET " + ", ".join(f"{k} = ?" for k in values)
+                     + " WHERE id = ?", (*values.values(), reservation_id))
+        link_ota_profile(conn, reservation_id)
+        log_audit(conn, "channel_stay_details", target=stay["reservation_number"],
+                  details=", ".join(k.replace("guest_", "").replace("_", " ") for k in values))
+    conn.commit()
+    conn.close()
+    words = ", ".join(k.replace("guest_", "").replace("_", " ") for k in values)
+    flash((f"Read from the paste: {words}." if pasted else "Saved.") if values
+          else "Nothing had changed.", "success")
+    return redirect(url_for("channel_stay_page", reservation_id=reservation_id))
+
+
+@app.route("/admin/channel-stays/<int:reservation_id>/checkin-link", methods=["POST"])
+@owner_required
+def send_channel_checkin_link(reservation_id):
+    """Email the guest their check-in link now, whether or not it went before."""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM ota_reservations WHERE id = ?", (reservation_id,)).fetchone():
+        conn.close()
+        abort(404)
+    ok, why = send_channel_checkin(conn, reservation_id)
+    conn.close()
+    flash(("Sent." + (f" It is {why}." if why else "")) if ok else f"Not sent: {why}.",
+          "success" if ok else "error")
+    return redirect(url_for("channel_stay_page", reservation_id=reservation_id))
+
+
+@app.route("/checkin/stay/<token>", methods=["GET", "POST"])
+def channel_checkin(token):
+    """A Booking.com guest's online check-in, from the link the house sent or
+    pasted into Booking.com's messages (22 October 2026). It asks what the
+    channel does not pass on: how to reach them, where they live, when they
+    will arrive, what they cannot eat -- and, for a guest who is not French,
+    the police fiche French law asks a guest house to keep."""
+    conn = get_db()
+    stay = conn.execute(
+        """SELECT ota_reservations.*, rooms.name AS room_name FROM ota_reservations
+             LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
+            WHERE ota_reservations.checkin_token = ?""", (token or "",)).fetchone()
+    if not stay or stay["status"] != "confirmed":
+        conn.close()
+        abort(404)
+    form = request.form if request.method == "POST" else {}
+    if request.method == "POST" and not stay["checkin_done_at"]:
+        f = {k: (request.form.get(k) or "").strip()[:OTA_FIELD_LIMITS[k]] for k in OTA_GUEST_FIELDS}
+        first = (request.form.get("first_names") or "").strip()[:80]
+        last = (request.form.get("surname") or "").strip()[:80]
+        nationality = (request.form.get("nationality") or "").strip()[:60]
+        born_on = (request.form.get("born_on") or "").strip()[:10]
+        born_at = (request.form.get("born_at") or "").strip()[:100]
+        foreign = bool(nationality) and nationality.casefold() not in ("france", "french", "française", "français")
+        problem = None
+        if not first or not last:
+            problem = "Please give your first name and surname."
+        elif not EMAIL_RE.match(f["guest_email"] or ""):
+            problem = "Please give an email address we can write to."
+        elif not (f["guest_address"] and f["guest_city"] and f["guest_country"]):
+            problem = "Please give your home address, town and country."
+        elif not nationality:
+            problem = "Please say your nationality."
+        elif foreign and not (parse_date(born_on) and born_at):
+            problem = "For a guest who is not French, the law asks for your date and place of birth."
+        elif request.form.get("agree") != "on":
+            problem = "Please confirm the details are right."
+        if problem:
+            flash(problem, "error")
+        else:
+            values = {k: (v or None) for k, v in f.items()}
+            values["guest_name"] = f"{first} {last}"
+            values["guest_email"] = values["guest_email"].lower()
+            values["checkin_done_at"] = datetime.now(timezone.utc).isoformat()
+            conn.execute("UPDATE ota_reservations SET " + ", ".join(f"{k} = ?" for k in values)
+                         + " WHERE id = ?", (*values.values(), stay["id"]))
+            if foreign and not conn.execute(
+                    "SELECT 1 FROM channel_police_register WHERE ota_reservation_id = ?",
+                    (stay["id"],)).fetchone():
+                home = ", ".join(x for x in (f["guest_address"], f"{f['guest_city']} {f['guest_postcode']}".strip(),
+                                             f["guest_country"]) if x)
+                conn.execute(
+                    """INSERT INTO channel_police_register (ota_reservation_id, surname, first_names,
+                           born_on, born_at, nationality, home_address, recorded_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (stay["id"], last, first, parse_date(born_on).isoformat(), born_at,
+                     nationality, home, datetime.now(timezone.utc).isoformat()))
+            link_ota_profile(conn, stay["id"])
+            log_audit(conn, "channel_checkin_done", target=stay["reservation_number"],
+                      via="the guest's check-in link")
+            conn.commit()
+            conn.close()
+            return redirect(url_for("channel_checkin", token=token))
+    conn.close()
+    details = {k: stay[k] for k in ("guest_address", "guest_city", "guest_postcode", "guest_country")}
+    details["guest_country"] = house_country_name(details["guest_country"])
+    return render_template("channel_checkin.html", stay=stay, form=form, token=token,
+                           stay_details=details,
+                           suggested_nationality=nationality_for_country(details["guest_country"]))
+
+
 @app.route("/admin/channel-stays/add", methods=["POST"])
 @owner_required
 def add_channel_stay():
@@ -89866,6 +90249,10 @@ EMAIL_TEMPLATE_INFO = {
                            "the spot", "The guest"),
     "room_reserved": ("When you reserve a room for a guest from Add a booking, at a "
                       "price you agreed with them", "The guest"),
+    "channel_checkin": ("When a Booking.com stay has an address to write to and its guest "
+                        "has not checked in online yet, or when you press Email the link "
+                        "on the stay", "The Booking.com guest, through Booking.com's own "
+                        "address for them"),
     "room_declined": ("When you decline a booking request", "The guest, and anyone "
                                                             "they asked us to copy"),
     "room_cancelled": ("When the house cancels a booking from the bookings list",
@@ -93948,6 +94335,16 @@ def purge_health_notes(conn, today=None):
         (iso,)).rowcount
     cleared["workshop_bookings"] = n
 
+    # A Booking.com guest's dietary needs, from their online check-in, once
+    # they have left.
+    try:
+        cleared["ota_reservations"] = conn.execute(
+            """UPDATE ota_reservations SET dietary_notes = NULL
+                WHERE dietary_notes IS NOT NULL AND TRIM(dietary_notes) != ''
+                  AND COALESCE(departure_date, arrival_date) < ?""", (iso,)).rowcount
+    except sqlite3.OperationalError:
+        cleared["ota_reservations"] = 0
+
     # The same note was copied into notifications.body when the booking was
     # made. Cleared by age rather than by dinner date, because a notification
     # carries no link back to the booking — 90 days is well past the longest
@@ -96271,7 +96668,7 @@ def front_desk_day(conn, today=None):
     channel = [dict(o, kind="channel", guest_name=o["guest_name"] or "Booking.com guest",
                     room_name=o["room_name"] or o["room_label"] or "Room not matched",
                     party_size=o["guests"], reference_code=o["reservation_number"],
-                    checked_in_at=None, checked_out_at=None, estimated_arrival_time=None)
+                    checked_in_at=None, checked_out_at=None)
                for o in conn.execute(
         """SELECT ota_reservations.*, rooms.name AS room_name FROM ota_reservations
              LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
@@ -97383,11 +97780,16 @@ def run_housekeeping_job(conn):
     told = notify_bookings_awaiting_answer(conn)
     expired = expire_stale_pending_bookings(conn)
     released = release_lapsed_reservations(conn)
+    try:
+        checkins = send_channel_checkin_links(conn)
+    except sqlite3.Error:
+        checkins = 0
     unheld = release_lapsed_workshop_holds(conn)
     prepped = auto_prep_upcoming_arrivals(conn, today)
     turned = prep_channel_departures(conn, today)
     return (f"told about {told} waiting request(s), expired {expired} stale "
             f"booking(s), released {released} reservation(s) not taken up, "
+            f"sent {checkins} Booking.com check-in link(s), "
             f"released {unheld} atelier place(s) held for a deposit that never came, "
             f"prepped {prepped} arrival(s), "
             f"{turned} Booking.com room(s) to turn round")
