@@ -19,6 +19,26 @@
 
 {% include "_list_toolbar.html" %}
 
+{#- Script sign-ups already on the list (the evening of 19 October 2026, before
+    the guards). Each flagged row is ticked; the owner unticks anybody they
+    know and presses the button. Taken off, not deleted, and not put on the
+    do-not-write list: the inbox behind the spelling is a real person's. -#}
+{% if scripts %}
+<form method="post" action="{{ url_for('take_off_script_signups') }}" id="take-off-scripts">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p class="pay-disclaimer">
+    {{ scripts }} address{{ '' if scripts == 1 else 'es' }} on the list would be turned away if
+    {{ 'it was' if scripts == 1 else 'they were' }} typed into the box today: a Gmail address with a
+    dot between most of its letters, or another spelling of a Gmail inbox already on the list.
+    They came in before the guards, and the next campaign writes to them. Those on this page are
+    ticked; untick anybody you know, then take them off. They stay on this page as
+    "Taken off", and they are not put on the do-not-write list, so the person who owns the
+    inbox can still sign up.
+  </p>
+  <button type="submit" class="btn-mini">Take the ticked off the list</button>
+</form>
+{% endif %}
+
 {% if not rows %}
   <div class="empty-state">
     {% if lv.filtered %}
@@ -30,12 +50,15 @@
 {% else %}
   <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Address</th><th>Where they stand</th><th>Signed up</th>
+      <thead><tr>{% if scripts %}<th scope="col"><span class="visually-hidden">Tick</span></th>{% endif %}<th>Address</th><th>Where they stand</th><th>Signed up</th>
         <th>Letter sent</th><th>On the list since</th><th>Left</th></tr></thead>
       <tbody>
         {% for r in rows %}
         <tr>
-          <td>{{ r.email }}</td>
+          {% if scripts %}<td>{% if r.script %}<input type="checkbox" name="subscriber_ids" value="{{ r.id }}" form="take-off-scripts" checked aria-label="Take {{ r.email }} off the list">{% endif %}</td>{% endif %}
+          <td>{{ r.email }}{% if r.script %}
+            <span class="mini-status status-declined">Looks like a script</span>
+            <div class="upload-hint">{{ r.script|capitalize }}</div>{% endif %}</td>
           <td>{{ r.state }}</td>
           <td>{{ r.signed_up }}</td>
           <td>{{ r.letter_sent or '—' }}</td>

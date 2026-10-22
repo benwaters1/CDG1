@@ -7610,6 +7610,13 @@ def init_db():
         # to. Rows from before it read their created_at instead.
         ("newsletter_subscribers_confirm_sent_at",
          "ALTER TABLE newsletter_subscribers ADD COLUMN confirm_sent_at TEXT"),
+        # When the owner took this address off as a script sign-up. It is the
+        # same moment as unsubscribed_at, and the list says "Taken off" only
+        # while the two agree -- so a real person who joins or leaves later
+        # changes unsubscribed_at and is read as themselves again, without
+        # every route that writes that column having to clear this one.
+        ("newsletter_subscribers_script_removed_at",
+         "ALTER TABLE newsletter_subscribers ADD COLUMN script_removed_at TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -9103,7 +9110,7 @@ NAV_AREAS = {
         "website_analytics",
         "admin_languages", "admin_languages_switcher", "admin_languages_queue",
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
-        "newsletter_subscribers_page",
+        "newsletter_subscribers_page", "take_off_script_signups",
         "campaign_send_detail", "allow_email_again", "remove_email_optout",
         "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
@@ -29775,7 +29782,119 @@ def newsletter_recipients(conn):
         if (r["email"] or "").strip().lower() not in held_back]
 
 
-NEWSLETTER_STATES = ["On the list", "Waiting to confirm", "Not written to", "Left"]
+NEWSLETTER_STATES = ["On the list", "Waiting to confirm", "Not written to", "Left", "Taken off"]
+
+SCRIPT_SIGNUP_DOTS = "a Gmail address with a dot between most of its letters"
+SCRIPT_SIGNUP_CHIP = "Looks like a script"
+
+
+def newsletter_script_signups(conn):
+    """{subscriber id: why} for every address still on the newsletter list
+    that the sign-up box would turn away if it were typed today.
+
+    Between subscribe-as-you-press going live on 19 October 2026 and the bot
+    guards the next day, a script typed Gmail addresses spelt with a dot
+    between most of their letters into the box, and each became a confirmed
+    subscriber with a thank-you letter. The guards stop new ones; these are
+    the ones already in, and the next campaign to the list writes to them.
+
+    The same two rules as newsletter_subscribe, so the page and the box never
+    disagree about what a script looks like:
+      - scattered_gmail_dots, on its own;
+      - another spelling of a Gmail inbox that was already ON the list --
+        confirmed and not left. The one that got there first is kept, and is
+        never the scattered one, since that one goes anyway: if a.l.i.c.e
+        joined before alice, alice is the person and stays. A row still
+        waiting under the old confirm-first box was never on the list, so it
+        does not make a later spelling a copy; but it is flagged itself when
+        a spelling of its inbox is on the list, since pressing the box again
+        would be refused.
+    Rows that have already left are not on the list and are not flagged.
+    """
+    rows = conn.execute(
+        """SELECT id, email, confirmed_at FROM newsletter_subscribers
+            WHERE unsubscribed_at IS NULL""").fetchall()
+    flagged, plain = {}, []
+    for r in rows:
+        email = (r["email"] or "").strip().lower()
+        if scattered_gmail_dots(email):
+            flagged[r["id"]] = SCRIPT_SIGNUP_DOTS
+        elif gmail_inbox(email):
+            plain.append((r, email))
+    # The first plain spelling of each inbox onto the list, by when it got on.
+    first = {}
+    for r, email in sorted((p for p in plain if p[0]["confirmed_at"]),
+                           key=lambda p: (p[0]["confirmed_at"], p[0]["id"])):
+        first.setdefault(gmail_inbox(email), (r["id"], email))
+    for r, email in plain:
+        kept = first.get(gmail_inbox(email))
+        if kept and kept[0] != r["id"]:
+            flagged[r["id"]] = f"another spelling of {kept[1]}, which is on the list"
+    return flagged
+
+
+def take_off_script_signup(conn, subscriber_id, flagged, *, at):
+    """Take one address off the newsletter as a script sign-up.
+
+    Returns None when it is done, or why it was not. `flagged` is
+    newsletter_script_signups(conn), worked out once by the caller, and the
+    row must still be in it: a page drawn an hour ago does not get to take off
+    somebody the rules no longer call a script.
+
+    Taken off, NOT deleted, and NOT put on the do-not-write list. The row
+    stays so the list keeps a record of who was taken off and when; and the
+    inbox behind a.l.i.c.e.sm.ith belongs to a real alice.smith, who never
+    asked to stop hearing from anybody and may want to sign up themselves.
+    unsubscribed_at and confirmed_at go exactly as the unsubscribe link sets
+    them, so the box treats a later sign-up the same way.
+    """
+    row = conn.execute(
+        "SELECT id, email, unsubscribed_at FROM newsletter_subscribers WHERE id = ?",
+        (subscriber_id,)).fetchone()
+    if not row:
+        return "no longer on the list at all"
+    if row["unsubscribed_at"]:
+        return "already off the list"
+    why = flagged.get(row["id"])
+    if not why:
+        return "the sign-up rules do not call it a script, so it was left on"
+    if not conn.execute(
+            "UPDATE newsletter_subscribers SET unsubscribed_at = ?, confirmed_at = NULL, "
+            "script_removed_at = ? WHERE id = ? AND unsubscribed_at IS NULL",
+            (at, at, row["id"])).rowcount:
+        return "already off the list"
+    record_consent(conn, "newsletter", 0,
+                   f"taken off the list by the house as a script sign-up: {why}",
+                   email=row["email"], at=at)
+    return None
+
+
+@app.route("/admin/newsletter/take-off-scripts", methods=["POST"])
+@owner_required
+def take_off_script_signups():
+    """The ticked addresses off the newsletter, each as take_off_script_signup
+    would take off one, naming any it did not take off and why."""
+    ids = [int(i) for i in request.form.getlist("subscriber_ids") if i.isdigit()]
+    conn = get_db()
+    flagged = newsletter_script_signups(conn)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    names = {r["id"]: r["email"] for r in conn.execute(
+        f"SELECT id, email FROM newsletter_subscribers WHERE id IN ({','.join('?' * len(ids))})",
+        ids).fetchall()} if ids else {}
+    done, skipped = 0, []
+    for sid in dict.fromkeys(ids):
+        reason = take_off_script_signup(conn, sid, flagged, at=now_iso)
+        if reason:
+            skipped.append((names.get(sid, f"subscriber #{sid}"), reason))
+        else:
+            done += 1
+    if done:
+        log_audit(conn, "newsletter_script_signups_taken_off", details=f"{done} taken off")
+    conn.commit()
+    conn.close()
+    message, category = bulk_message("Removed", "subscriber", done, skipped)
+    flash(message, category)
+    return redirect(url_for("newsletter_subscribers_page"))
 
 
 def newsletter_rows(conn):
@@ -29785,11 +29904,15 @@ def newsletter_rows(conn):
     put on the do-not-write list, or whose owner asked us to stop using their
     details, is "Not written to"."""
     on_list = {(r["email"] or "").strip().lower() for r in newsletter_recipients(conn)}
+    script = newsletter_script_signups(conn)
     rows = [dict(r) for r in conn.execute(
         "SELECT * FROM newsletter_subscribers ORDER BY created_at DESC, id DESC").fetchall()]
     for r in rows:
         email = (r["email"] or "").strip().lower()
-        if r["unsubscribed_at"]:
+        r["script"] = script.get(r["id"])
+        if r["unsubscribed_at"] and r.get("script_removed_at") == r["unsubscribed_at"]:
+            r["state"] = "Taken off"
+        elif r["unsubscribed_at"]:
             r["state"] = "Left"
         elif email in on_list:
             r["state"] = "On the list"
@@ -29811,7 +29934,11 @@ def newsletter_list_view(rows, args):
         search=["email"],
         search_hint="Search an address",
         facets=[facet("state", "Where they stand", lambda r: r["state"],
-                      order=NEWSLETTER_STATES)],
+                      order=NEWSLETTER_STATES),
+                # Only the ones the sign-up box would refuse today; everybody
+                # else is not "not a script", they are simply not in question.
+                facet("script", "Sign-up", lambda r: SCRIPT_SIGNUP_CHIP if r["script"] else None,
+                      order=[SCRIPT_SIGNUP_CHIP])],
         sorts=[
             sort_option("recent", "Newest first",
                         lambda r: (r["created_at"] or "", r["id"]), reverse=True),
@@ -29844,8 +29971,14 @@ def newsletter_subscribers_page():
         overview_cell("Left", counts["Left"]),
         overview_cell("Scripts turned away", bots, hint="this week, by the bot guard"),
     ]
+    scripts = sum(1 for r in rows if r["script"])
+    if scripts or counts["Taken off"]:
+        overview.append(overview_cell(
+            "Look like scripts", scripts, alert=scripts > 0,
+            hint=f"still on the list; {counts['Taken off']} taken off" if counts["Taken off"]
+            else "still on the list, and the next campaign writes to them"))
     return render_template("admin_newsletter.html", lv=lv, rows=lv["rows"],
-                           overview=overview)
+                           overview=overview, scripts=scripts)
 
 
 @app.route("/admin/emails/optout", methods=["POST"])
