@@ -1,0 +1,96 @@
+{% extends "public_base.html" %}
+{% from '_country.html' import country_field %}
+{% from '_phone.html' import phone_field %}
+{% set sticky_bar = 'none' %}
+{% block title %}Check in online — Château de Gudanes{% endblock %}
+{# A Booking.com guest's online check-in (22 October 2026): what the channel
+   does not pass on, asked of the guest. One guest's stay on a link they were
+   sent, so never indexed. #}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+{%- set f = form -%}
+<div class="g-short"><div class="g-wrap" style="padding-top:var(--s5); padding-bottom:var(--s6);">
+  <h1 class="g-place" style="margin:0;">Check in online</h1>
+  <p class="g-hint" style="margin:var(--s1) 0 var(--s4);">
+    {{ stay['room_name'] or stay['room_label'] or 'Your room' }}
+    {%- if stay['arrival_date'] %} · {{ stay['arrival_date']|date_short }}{% if stay['departure_date'] %} to {{ stay['departure_date']|date_short }}{% endif %}{% endif %}
+    · booked through Booking.com, {{ stay['reservation_number'] }}
+  </p>
+
+  {% if stay['checkin_done_at'] %}
+  <p>Thank you — you are checked in. Your room will be ready for you{% if stay['estimated_arrival_time'] %}, and we expect you {{ stay['estimated_arrival_time'] }}{% endif %}.</p>
+  <p class="g-hint">If anything changes, write to us through Booking.com and we will see it.</p>
+  {% else %}
+  <p>So that your room is ready, and for the register French law asks a guest house to keep, please fill this in. It takes two minutes.</p>
+
+  <form method="post" class="g-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="g-row g-namerow">
+      <p class="g-field">
+        <label for="ci_first">First name(s)<span class="g-req" aria-hidden="true">*</span></label>
+        <input type="text" id="ci_first" name="first_names" autocomplete="given-name" required spellcheck="false" autocapitalize="words"
+               value="{{ f.get('first_names', (stay['guest_name'] or '').split(' ', 1)[0]) }}">
+      </p>
+      <p class="g-field">
+        <label for="ci_last">Surname<span class="g-req" aria-hidden="true">*</span></label>
+        <input type="text" id="ci_last" name="surname" autocomplete="family-name" required spellcheck="false" autocapitalize="words"
+               value="{{ f.get('surname', ((stay['guest_name'] or '').split(' ', 1) + [''])[1]) }}">
+      </p>
+    </div>
+    <div class="g-stack">
+      <p class="g-field">
+        <label for="ci_email">Email<span class="g-req" aria-hidden="true">*</span></label>
+        <input type="email" id="ci_email" name="guest_email" autocomplete="email" required
+               value="{{ f.get('guest_email', '' if (stay['guest_email'] or '').endswith('@guest.booking.com') else (stay['guest_email'] or '')) }}">
+        <span class="g-hint">Your own address, so we can write to you about your stay.</span>
+      </p>
+      {{ country_field(f if f else stay_details) }}
+      {{ phone_field('guest_phone', 'guest_phone', f.get('guest_phone') or stay['guest_phone'] or '') }}
+    </div>
+    <div class="g-row">
+      <p class="g-field">
+        <label for="ci_nat">Nationality<span class="g-req" aria-hidden="true">*</span></label>
+        <input type="text" id="ci_nat" name="nationality" required value="{{ f.get('nationality', suggested_nationality or '') }}" autocomplete="off">
+      </p>
+      <p class="g-field">
+        <label for="ci_born_on">Date of birth</label>
+        <input type="date" id="ci_born_on" name="born_on" value="{{ f.get('born_on', '') }}">
+      </p>
+      <p class="g-field">
+        <label for="ci_born_at">Place of birth</label>
+        <input type="text" id="ci_born_at" name="born_at" value="{{ f.get('born_at', '') }}" autocomplete="off">
+      </p>
+    </div>
+    <p class="g-hint">If you are not French, the law asks us for your date and place of birth too, for the fiche de police. It is kept for six months and then deleted.</p>
+    <p class="g-field g-eta">
+      <label for="ci_eta">When you expect to arrive</label>
+      {%- set _eta = f.get('estimated_arrival_time') or stay['estimated_arrival_time'] or '' %}
+      <select id="ci_eta" name="estimated_arrival_time">
+        <option value="">Not sure yet</option>
+        <option value="Before {{ check_in_at }} (early check-in requested)" {{ 'selected' if _eta.startswith('Before') }}>Before {{ check_in_at }} &mdash; early check-in, on request</option>
+        {%- for _h in range(check_in_hour, 22) %}{% set _slot = clock_words(_h) ~ '-' ~ clock_words(_h + 1) %}
+        <option value="{{ _slot }}" {{ 'selected' if _eta == _slot }}>{{ clock_words(_h) }} &ndash; {{ clock_words(_h + 1) }}</option>
+        {%- endfor %}
+        <option value="After 10pm" {{ 'selected' if _eta == 'After 10pm' }}>After 10pm</option>
+      </select>
+      <span class="g-hint">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}.</span>
+    </p>
+    <p class="g-field">
+      <label for="ci_diet">Anything you cannot eat</label>
+      <input type="text" id="ci_diet" name="dietary_notes" value="{{ f.get('dietary_notes', stay['dietary_notes'] or '') }}" placeholder="For breakfast: allergies, or nothing">
+      <span class="g-hint">Deleted once your stay is over.</span>
+    </p>
+    <p class="g-field">
+      <label for="ci_req">Anything else we should know</label>
+      <textarea id="ci_req" name="special_requests" rows="3">{{ f.get('special_requests', stay['special_requests'] or '') }}</textarea>
+    </p>
+    <input type="hidden" name="guest_name" value="">
+    <label class="g-check">
+      <input type="checkbox" name="agree" value="on" required>
+      <span class="g-check__t">These details are right. They are used for your stay and the register, as our <a href="{{ url_for('privacy_page') }}" target="_blank" rel="noopener">privacy notice</a> says.</span>
+    </label>
+    <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">Check in</button>
+  </form>
+  {% endif %}
+</div></div>
+{% endblock %}
