@@ -124,9 +124,26 @@ def _sessions():
            active, sort_order, created_at, deposit_percent)
            VALUES (?, '', 2600, 10, 1, 92, ?, 10)""", (f"{TAG} Atelier", now))
     wid = conn.execute("SELECT id FROM workshops WHERE title = ?", (f"{TAG} Atelier",)).fetchone()["id"]
+    # ASKED, NOT COUNTED. The import finds a registration's session by the day
+    # it starts, across every atelier in the house -- so these days must be
+    # ones on which nothing else starts. Counted off today, they were not: on
+    # 19 October Lou's "moved" day (+47) was 5 December, the day Noël at
+    # Gudanes starts, so Lou landed on Noël instead of being stopped, and four
+    # checks went red with nothing wrong. On 26 October "one" (+40) would have
+    # been that day, two sessions would have started on it, and the suite
+    # would have crashed. Lou's day, seven after "one", is kept clear as well.
+    taken = {r["start_date"] for r in conn.execute("SELECT start_date FROM workshop_sessions")}
+
+    def clear_from(days, also=()):
+        day = house_today() + timedelta(days=days)
+        while any((day + timedelta(days=k)).isoformat() in taken for k in (0, *also)):
+            day += timedelta(days=1)
+        taken.update((day + timedelta(days=k)).isoformat() for k in (0, *also))
+        return day
+
     out = {}
     for label, days, off in (("one", 40, False), ("two", 120, False), ("gone", 80, True)):
-        start = house_today() + timedelta(days=days)
+        start = clear_from(days, also=(7,) if label == "one" else ())
         conn.execute(
             """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity, notes,
                  created_at, cancelled_at) VALUES (?, ?, ?, 10, ?, ?, ?)""",
