@@ -111,7 +111,13 @@ def run():
     # Asked, not counted. +40 days walked onto a seeded atelier the morning
     # the calendar moved, and the booking below was refused for a reason that
     # had nothing to do with the tax this suite is about.
-    arrival = _harness.free_window(room["id"], 3, after_days=40)
+    #
+    # Five nights free, not three: the stay is booked for three and later
+    # stretched to five, and a window that was free for only the three it
+    # starts with had the edit refused onto someone else's nights -- the tax
+    # then stayed at the three-night figure for a reason that had nothing to
+    # do with tax either.
+    arrival = _harness.free_window(room["id"], 5, after_days=40)
     departure = arrival + timedelta(days=3)          # 3 nights
 
     s.section("The quote carries the tax, worked out as the card is charged")
@@ -276,7 +282,11 @@ def run():
                    f"{legacy_stmt['total']:.2f}")
 
     s.section("A walk-in taken at the desk carries it too")
-    wi_arrival = _harness.free_window(room["id"], 2, after_days=60)
+    # Clear of the two nights the family's stay is stretched into below, or
+    # the walk-in takes them and the stretch is refused.
+    wi_arrival = _harness.free_window(
+        room["id"], 2,
+        after_days=max(60, (arrival - house_today()).days + 5))
     r = oc.post("/admin/bookings/walk-in", data={
         "room_id": str(room["id"]),
         "arrival_date": wi_arrival.isoformat(),
@@ -459,9 +469,10 @@ def run():
             detail="the quote on the page it came back to")
 
     s.section("Nonsense in the field cannot make the tax bigger")
+    odd_arrival = _harness.free_window(room["id"], 2, after_days=140)
     r = anon.post(f"/book/{room['id']}", data={
-        "arrival_date": (arrival + timedelta(days=100)).isoformat(),
-        "departure_date": (arrival + timedelta(days=102)).isoformat(),
+        "arrival_date": odd_arrival.isoformat(),
+        "departure_date": (odd_arrival + timedelta(days=2)).isoformat(),
         "guest_name": f"{TAG} Odd", "guest_email": "zzctax.odd@example.invalid",
         "guest_phone": "", "party_size": "2", "guests_under_18": "-5",
         "special_requests": "", "agree_terms": "on",
@@ -477,9 +488,10 @@ def run():
                 detail=f"{odd['city_tax']}")
 
     s.section("More children than guests is not a discount scheme")
+    many_arrival = _harness.free_window(room["id"], 2, after_days=240)
     r = anon.post(f"/book/{room['id']}", data={
-        "arrival_date": (arrival + timedelta(days=200)).isoformat(),
-        "departure_date": (arrival + timedelta(days=202)).isoformat(),
+        "arrival_date": many_arrival.isoformat(),
+        "departure_date": (many_arrival + timedelta(days=2)).isoformat(),
         "guest_name": f"{TAG} Many", "guest_email": "zzctax.many@example.invalid",
         "guest_phone": "", "party_size": "2", "guests_under_18": "9",
         "special_requests": "", "agree_terms": "on",

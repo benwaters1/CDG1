@@ -298,12 +298,15 @@ def run():
     today2 = m.house_today()
     conn.execute("DELETE FROM bookings WHERE guest_email = 'zzfiche@example.invalid'")
     conn.commit()
+    # Asked, not counted. Two days out was a workshop holding the whole house
+    # on the copied calendar, and the form refused the stay, so this read
+    # "stored None" about an address nobody had been allowed to give. Where
+    # it lands does not matter: it is walked back onto tonight below, for
+    # the register, which lists only who has arrived.
+    arrive2 = _harness.free_window(room["id"], 2, after_days=2)
     posted = anon2.post("/book/%d" % room["id"], data={
-        # Inside the window the register page shows. It lists who is staying
-        # around now, which is the question it answers, so a stay more than a
-        # year out is correctly absent from it and would prove nothing here.
-        "arrival_date": (today2 + _dt.timedelta(days=2)).isoformat(),
-        "departure_date": (today2 + _dt.timedelta(days=4)).isoformat(),
+        "arrival_date": arrive2.isoformat(),
+        "departure_date": (arrive2 + _dt.timedelta(days=2)).isoformat(),
         "guest_name": "ZZ Fiche", "guest_email": "zzfiche@example.invalid",
         "guest_phone": "+33 6 00 00 00 00", "party_size": "2", "adults": "2",
         "agree_terms": "on", "special_requests": "",

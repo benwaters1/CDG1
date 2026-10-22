@@ -117,9 +117,21 @@ def _extra(name, price, ask_when=1):
 
 
 def _stay(ref, room, *, offset=40, nights=2, status="confirmed", paid=0.0,
-          phone="+33612345678"):
+          phone="+33612345678", clear=0):
+    """A stay written straight in, `offset` days out.
+
+    `clear` is for a stay the suite goes on to MOVE: it asks for that many
+    nights from the arrival that the house would really take, rather than
+    trusting whatever sits at the offset on the copied calendar. On 22
+    October 2026 the main stay's move landed in a workshop that holds the
+    whole house, was refused, and everything after it either went red or
+    crashed for want of the extra the move should have carried.
+    """
+    if clear:
+        arrival = _harness.free_window(room["id"], clear, after_days=offset)
+    else:
+        arrival = house_today() + timedelta(days=offset)
     conn = db()
-    arrival = house_today() + timedelta(days=offset)
     departure = arrival + timedelta(days=nights)
     room_total = round(m.compute_room_total(conn, room, arrival, departure), 2)
     conn.execute(
@@ -163,7 +175,9 @@ def run():
     board = _extra("Crémant board", 80.0, ask_when=1)
     tour = _extra("Tour", 50.0, ask_when=1)
 
-    stay = _stay("MAIN", room, paid=200.0)
+    # Free for six nights: its own two, and the three it is moved to later
+    # on, three days after it arrives.
+    stay = _stay("MAIN", room, paid=200.0, clear=6)
     arrival = m.parse_date(stay["arrival_date"])
     second_day = (arrival + timedelta(days=1)).isoformat()
     conn = db()
@@ -257,7 +271,8 @@ def run():
             ec.get(f"/admin/bookings/{stay['id']}").status_code in (302, 403))
 
     s.section("Moving the dates: the same gate, the same prices")
-    blocker = _stay("BLOCK", room, offset=60, nights=3)
+    # Well past the nights the stay is moved into below, wherever it landed.
+    blocker = _stay("BLOCK", room, offset=(arrival - house_today()).days + 20, nights=3)
     new_arrival = arrival + timedelta(days=3)
     new_departure = new_arrival + timedelta(days=3)
     page = html.unescape(oc.get(
@@ -321,7 +336,7 @@ def run():
                        OR (about_category = 'room' AND about_id = ?)""", stay["id"], stay["id"])))
     s.check("the page lands back on the stay", r.request.path == f"/admin/bookings/{stay['id']}")
 
-    short = _stay("SHORT", room, offset=120, nights=3)
+    short = _stay("SHORT", room, offset=120, nights=3, clear=3)
     conn = db()
     conn.execute("UPDATE rooms SET min_nights = 3 WHERE id = ?", (room["id"],))
     conn.commit()

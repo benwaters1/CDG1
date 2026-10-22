@@ -42,6 +42,22 @@ def _cleanup(conn):
 
 
 def run():
+    # The suite builds its own rooms and asks what they offer, so the
+    # ateliers on the copied real calendar are stood down for it. On 22
+    # October 2026 one held the whole house across the lead day, the easy
+    # room's first night moved past it, and "not before the lead time" went
+    # red for the date rather than for anything about lead time. With them
+    # stood down the nights before the lead day are free too, which is what
+    # gives that check something to refuse.
+    holding = m.sessions_holding_the_house
+    m.sessions_holding_the_house = lambda conn, *a, **k: []
+    try:
+        return _run()
+    finally:
+        m.sessions_holding_the_house = holding
+
+
+def _run():
     s = Suite("the next free nights")
     today = house_today()
     now = m.datetime.now(m.timezone.utc).isoformat()
@@ -86,9 +102,19 @@ def run():
 
     s.section("It offers a stay somebody can actually book")
     s.check("the easy room is offered", TAG + " Easy" in runs)
+    # Asked from the lead day rather than assumed to BE the lead day: an
+    # event or the five-rooms-a-night limit can still close that night on the
+    # real calendar, and neither has anything to do with lead time.
+    lead = today + timedelta(days=m.NEXT_FREE_LEAD_DAYS)
+    easy_from = lead
+    for _ in range(120):
+        ok, _why = m.is_range_available(conn, easy, easy_from,
+                                        easy_from + timedelta(days=1))
+        if ok:
+            break
+        easy_from += timedelta(days=1)
     s.check("and not before the lead time",
-            runs[TAG + " Easy"]["date_iso"] ==
-            (today + timedelta(days=m.NEXT_FREE_LEAD_DAYS)).isoformat(),
+            runs[TAG + " Easy"]["date_iso"] == easy_from.isoformat(),
             detail="a page leading with tonight reads as an empty house, and "
                    "a guest who has to fly cannot take it anyway")
 

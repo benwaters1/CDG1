@@ -32,6 +32,7 @@ path accepts.
 """
 import html
 import re
+from contextlib import contextmanager
 from datetime import timedelta
 
 from werkzeug.datastructures import MultiDict
@@ -124,6 +125,32 @@ def _window(room, nights=2, after_days=40):
     return arrival, arrival + timedelta(days=nights)
 
 
+class _PinnedDatetime(m.datetime):
+    """datetime.now() held at one instant, tz-aware, for both zones."""
+
+    _at = None
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls._at.astimezone(tz) if tz else cls._at.replace(tzinfo=None)
+
+
+@contextmanager
+def _today_is(day):
+    """The app believes it is midday at the house on `day`.
+
+    house_today() reads m.datetime, as test_house_day pins it, so notice is
+    counted from here by everything the booking form and the quote ask."""
+    real = m.datetime
+    _PinnedDatetime._at = m.datetime(day.year, day.month, day.day, 10, 0,
+                                     tzinfo=m.timezone.utc)
+    m.datetime = _PinnedDatetime
+    try:
+        yield
+    finally:
+        m.datetime = real
+
+
 def run():
     s = Suite("Extras at booking: the crémant board")
     _cleanup()
@@ -196,36 +223,44 @@ def run():
             detail=f"summary {b0['extras_summary']!r}" if b0 else "no booking")
 
     s.section("Notice is kept, not just shown")
-    soon = free_window(room["id"], nights=2, after_days=1, clear_of_ateliers=True)
-    s.check("a stay starting within three days can be found to try",
-            (soon - today).days < 3, detail=f"first free arrival is {soon}")
-    refused = _book(room, soon, soon + timedelta(days=2), "soon", extras=[board["id"]])
-    said = [html.unescape(f) for f in flashes(refused)]
-    s.check("booking it for then is refused, saying why",
-            any("3 days' notice" in f and BOARD in f for f in said), detail=str(said))
-    s.check("and no booking is made", _booking("soon") is None)
-    quote = _guest().get(
-        f"/api/quote?room_id={room['id']}&arrival={soon.isoformat()}"
-        f"&departure={(soon + timedelta(days=2)).isoformat()}&extras={board['id']}").get_json()
-    s.check("the price beside the form names it rather than charging for it",
-            any(x["id"] == board["id"] for x in quote.get("too_soon", []))
-            and not any(l["label"] == BOARD for l in quote.get("lines", [])),
-            detail=str(quote.get("too_soon")))
-    shut = _guest().get(f"/book/{room['id']}?arrival={soon.isoformat()}"
-                        f"&departure={(soon + timedelta(days=2)).isoformat()}"
-                        ).get_data(as_text=True)
-    s.check("and the page draws it shut, with the reason showing",
-            re.search(r'id="extra_%d"[^>]*disabled' % board["id"], shut, re.S) is not None
-            and 'id="extra_too_soon_%d">' % board["id"] in shut,
-            detail="disabled on the box, and the hint drawn without hidden")
-    edge = free_window(room["id"], nights=2, after_days=3, clear_of_ateliers=True)
-    if (edge - today).days == 3:
-        took = _book(room, edge, edge + timedelta(days=2), "edge", extras=[board["id"]])
+    # The stay is fixed and the CLOCK is moved, not the other way round. This
+    # used to look for a free stay in the next three days of the copied real
+    # calendar, and on 22 October 2026 a workshop held the whole house across
+    # them: the first free arrival was six days out, so nothing about notice
+    # was tested and five checks went red for the date. A free stay further
+    # out, with "today" pinned one day and then three days before it, asks
+    # the same question every day of the year -- and the boundary, which used
+    # to be skipped whenever nothing was free exactly three days out, is
+    # always tried.
+    soon = _window(room, nights=2, after_days=60)[0]
+    with _today_is(soon - timedelta(days=1)):
+        s.check("a stay starting within three days can be found to try",
+                (soon - m.house_today()).days < 3,
+                detail=f"the app's today is {m.house_today()}, the stay {soon} "
+                       "-- the pinned clock did not take")
+        refused = _book(room, soon, soon + timedelta(days=2), "soon", extras=[board["id"]])
+        said = [html.unescape(f) for f in flashes(refused)]
+        s.check("booking it for then is refused, saying why",
+                any("3 days' notice" in f and BOARD in f for f in said), detail=str(said))
+        s.check("and no booking is made", _booking("soon") is None)
+        quote = _guest().get(
+            f"/api/quote?room_id={room['id']}&arrival={soon.isoformat()}"
+            f"&departure={(soon + timedelta(days=2)).isoformat()}&extras={board['id']}").get_json()
+        s.check("the price beside the form names it rather than charging for it",
+                any(x["id"] == board["id"] for x in quote.get("too_soon", []))
+                and not any(l["label"] == BOARD for l in quote.get("lines", [])),
+                detail=str(quote.get("too_soon")))
+        shut = _guest().get(f"/book/{room['id']}?arrival={soon.isoformat()}"
+                            f"&departure={(soon + timedelta(days=2)).isoformat()}"
+                            ).get_data(as_text=True)
+        s.check("and the page draws it shut, with the reason showing",
+                re.search(r'id="extra_%d"[^>]*disabled' % board["id"], shut, re.S) is not None
+                and 'id="extra_too_soon_%d">' % board["id"] in shut,
+                detail="disabled on the box, and the hint drawn without hidden")
+    with _today_is(soon - timedelta(days=3)):
+        took = _book(room, soon, soon + timedelta(days=2), "edge", extras=[board["id"]])
         s.check("three days ahead is enough", _booking("edge") is not None,
                 detail=str(flashes(took)))
-    else:
-        s.check("three days ahead is enough (no free stay exactly three days out)",
-                True, detail=f"first free arrival is {edge}; boundary not tried")
 
     s.section("When, and a note")
     arrival, departure = _window(room, nights=3, after_days=45)

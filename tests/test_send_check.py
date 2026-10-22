@@ -518,8 +518,15 @@ def _server_side(s, anon, oc, conn):
             detail=str(got))
 
     s.section("The quoted conversation does not decide")
+    # The guest's date is a month past the stay, not a fixed "1 January". It
+    # was read as 1 January 2027, and when the free stay found for the room
+    # ran 30 December to 1 January the guest's date was the stay's own last
+    # day: nothing in the thread disagreed with anything, and this went red
+    # for the calendar rather than for the quote being read.
+    later = b + timedelta(days=30)
     thread = (f"{right}\n\n________________________________\nFrom: Guest <g@x.com>\n"
-              "Sent: 13 October 2026 14:02\n\nCould we do 1 January 2026 for €5?")
+              "Sent: 13 October 2026 14:02\n\n"
+              f"Could we do {later.day} {later.strftime('%B %Y')} for €5?")
     with_quote = m.guess_email_conflict(conn, [GUEST], "Re: stay", thread,
                                         datetime.now(timezone.utc).isoformat())
     without = m.guess_email_conflict(conn, [GUEST], "Re: stay", m.own_words(thread),

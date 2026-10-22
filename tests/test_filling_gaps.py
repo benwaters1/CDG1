@@ -295,7 +295,10 @@ def run():
     gid = conn.execute("SELECT id FROM guests WHERE email = ?",
                        ("zzgap.rebook@example.invalid",)).fetchone()["id"]
     conn.close()
-    far = today + timedelta(days=200)
+    # Asked, not counted. +200 days landed on a real guest's stay in the
+    # copied calendar, and the rebook was refused as "already reserved" --
+    # which is the right answer to the wrong question.
+    far = _harness.free_window(room["id"], 2, after_days=200)
     r = oc.post(f"/guests/{gid}/rebook", data={
         "room_id": str(room["id"]), "arrival_date": far.isoformat(),
         "departure_date": (far + timedelta(days=2)).isoformat(),

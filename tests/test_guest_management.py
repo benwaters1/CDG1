@@ -364,7 +364,9 @@ def run():
     conn = db()
     room = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
     conn.close()
-    arrival = house_today() + timedelta(days=120)
+    # Asked, not counted: the softer caution below has to be able to go
+    # through, and on a night somebody else has it would be refused for that.
+    arrival = _harness.free_window(room["id"], 3, after_days=120)
     r = oc.post("/admin/bookings/walk-in", data={
         "room_id": str(room["id"]),
         "arrival_date": arrival.isoformat(),
@@ -448,7 +450,10 @@ def run():
     # and ignored the moment the same person booked online.
     conn = db()
     room2 = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
-    online_arrival = house_today() + timedelta(days=200)
+    # Asked, not counted. +200 days fell on a real stay in the copied
+    # calendar, so once the instruction was lifted the confirm was refused
+    # as a clash, and "the block has to be liftable" read as if it were not.
+    online_arrival = _harness.free_window(room2["id"], 1, after_days=200)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size,
