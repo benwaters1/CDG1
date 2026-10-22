@@ -47,15 +47,15 @@
 <div class="detail-card bk-week">
   <div class="bk-week-col">
     <span class="detail-label">Arriving today</span>
-    {% for b in arriving_today %}<a href="{{ url_for('admin_booking', booking_id=b['id']) if b['kind'] == 'stay' else url_for('channel_stays_page', q=b['reference_code'], when='all') }}">{{ b['guest_name'] }}</a>{% if b['kind'] == 'channel' %} <span class="mini-status status-upcoming">Booking.com</span>{% endif %} <span class="upload-hint">{{ b['room_name'] }}{% if b['estimated_arrival_time'] %} · {{ b['estimated_arrival_time'] }}{% endif %}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
+    {% for b in arriving_today %}<a href="{{ url_for('admin_booking', booking_id=b['id']) if b['kind'] == 'stay' else url_for('channel_stay_page', reservation_id=b['id']) }}">{{ b['guest_name'] }}</a>{% if b['kind'] == 'channel' %} <span class="mini-status status-upcoming">Booking.com</span>{% endif %} <span class="upload-hint">{{ b['room_name'] }}{% if b['estimated_arrival_time'] %} · {{ b['estimated_arrival_time'] }}{% endif %}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
   </div>
   <div class="bk-week-col">
     <span class="detail-label">Leaving today</span>
-    {% for b in departing_today %}<a href="{{ url_for('admin_booking', booking_id=b['id']) if b['kind'] == 'stay' else url_for('channel_stays_page', q=b['reference_code'], when='all') }}">{{ b['guest_name'] }}</a>{% if b['kind'] == 'channel' %} <span class="mini-status status-upcoming">Booking.com</span>{% endif %} <span class="upload-hint">{{ b['room_name'] }}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
+    {% for b in departing_today %}<a href="{{ url_for('admin_booking', booking_id=b['id']) if b['kind'] == 'stay' else url_for('channel_stay_page', reservation_id=b['id']) }}">{{ b['guest_name'] }}</a>{% if b['kind'] == 'channel' %} <span class="mini-status status-upcoming">Booking.com</span>{% endif %} <span class="upload-hint">{{ b['room_name'] }}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
   </div>
   <div class="bk-week-col">
     <span class="detail-label">Arriving this week</span>
-    {% for b in arriving_this_week %}<a href="{{ url_for('admin_booking', booking_id=b['id']) if b['kind'] == 'stay' else url_for('channel_stays_page', q=b['reference_code'], when='all') }}">{{ b['guest_name'] }}</a>{% if b['kind'] == 'channel' %} <span class="mini-status status-upcoming">Booking.com</span>{% endif %} <span class="upload-hint">{{ b['arrival_date']|date_short }}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
+    {% for b in arriving_this_week %}<a href="{{ url_for('admin_booking', booking_id=b['id']) if b['kind'] == 'stay' else url_for('channel_stay_page', reservation_id=b['id']) }}">{{ b['guest_name'] }}</a>{% if b['kind'] == 'channel' %} <span class="mini-status status-upcoming">Booking.com</span>{% endif %} <span class="upload-hint">{{ b['arrival_date']|date_short }}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
   </div>
 </div>
 {% endif %}
@@ -103,7 +103,7 @@
       <tr class="bk-row-channel{{ ' bk-row-here' if here }}{{ ' bk-row-off' if b['status'] != 'confirmed' }}">
         <td class="bk-tick"></td>
         <td class="bk-guest">
-          <a href="{{ url_for('channel_stays_page', q=b['reference_code'], when='all') }}" class="bk-name">{{ b['guest_name'] }}</a>
+          <a href="{{ url_for('channel_stay_page', reservation_id=b['id']) }}" class="bk-name">{{ b['guest_name'] }}</a>
           <span class="cell-note">Booking.com {{ b['reference_code'] }}</span>
         </td>
         <td data-label="Room" class="bk-room">{{ b['room_name'] }}</td>
