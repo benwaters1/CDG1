@@ -33,14 +33,15 @@
 {%- elif w['transfers_included'] is defined and w['transfers_included'] is not none and not w['transfers_included'] -%}yes{%- endif -%}
 {%- endmacro %}
 
+{#- 22 Oct (owner): the card paragraph for each of the five, as the owner wrote it. Only this sentence on the card changed: nights, dates, prices, the included line and the button are as they were. -#}
 {% macro ws_lead(w) -%}
 {%- set _n = ws_nights(w)|trim -%}
 {%- set _k = ws_kind(w)|trim -%}
-{%- if _k == 'noel' -%}The first Noël atelier at Gudanes: Christmas ornaments, candles and champagne jellies, all made by hand at the château in December.
-{%- elif _k == 'autumn' -%}Traditional craftsmanship at the château: embroidery with brodeur d’art Nicolas Jover, and a plumier and feather quill made by hand.
-{%- elif _k == 'cooking' -%}A celebration of French cuisine: historic and seasonal cooking with the château’s chefs, and the rituals of the French table.
-{%- elif _k == 'finds' -%}Three nights for the romance of the French brocante: antique markets, hidden antique shops and vide-greniers across the valleys.
-{%- elif _k == 'starry' -%}A week of summer at the château: the brocantes, the kitchen, the restoration up close, and French cinema beneath the stars.
+{%- if _k == 'noel' -%}The château’s first Noël atelier: four December nights as Gudanes fills with festive warmth. You embroider ornaments inspired by the Salon de Musique, pour candles scented with the château’s original eighteenth-century fragrance recipe, and set champagne jellies in antique copper moulds with the chefs. You go home with a stocking full of château memories.
+{%- elif _k == 'autumn' -%}Four nights at the château, learning traditional crafts from people who still practise them. With brodeur d’art Nicolas Jover you embroider a brooch, bracelet or ornament drawn from the gilded detail of the eighteenth-century Salon de Musique, then make a plumier and a feather quill by hand. No experience is needed, most afternoons are your own, and every meal and drink is included.
+{%- elif _k == 'cooking' -%}Five nights in celebration of French cuisine. There are hands-on classes and demonstrations with the château’s chefs, sweet and savoury, some drawn from the château’s own eighteenth-century cookbook. Then come the rituals of the French table: dressed linens, silver and porcelain. It suits first-time cooks and accomplished ones alike.
+{%- elif _k == 'finds' -%}Three nights for the romance of the French brocante. You wander antique markets, hidden antique shops and vide-greniers across the villages and valleys of the Pyrénées, looking for pieces with character and history. Back at the château there is a cooking class, then dinner and French cinema beneath the stars.
+{%- elif _k == 'starry' -%}A week of long, golden summer days, balancing exploring with doing nothing at all. There are the valley’s brocantes and antique dealers, French cooking with the chefs, a day on the river or in the mountains, the restoration up close, and films beneath the stars. In between are the pool, the grounds and long dinners.
 {%- elif _n == '3' -%}Three nights for the brocantes: the hunt through the antique fairs of the valley, and whatever you carry home, with the kitchen and the restoration around it.
 {%- elif _n == '5' -%}Five nights for the kitchen: French cooking at the château, and long dinners together, with the brocantes and the restoration around it.
 {%- elif _n == '7' -%}Seven nights for the restoration: the château up close as it comes back to life, with the brocantes and the kitchen around it.
