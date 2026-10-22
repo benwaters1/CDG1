@@ -144,6 +144,8 @@ def run():
     s.section("One arrival text, not three")
     # Three identical texts to the same telephone on the same morning, each
     # billed, is what this existed to stop.
+    wording = db()       # its own connection: the put-back outlives the two below
+    unwrite = _harness.write_guest_text(wording, "checkin")
     conn = db()
     with m.app.test_request_context():
         said = m.run_guest_text_job(conn, "checkin", days_before=1)
@@ -168,6 +170,8 @@ def run():
         again = m.run_guest_text_job(conn, "checkin", days_before=1)
     conn.commit()
     conn.close()
+    unwrite()
+    wording.close()
     s.check("so a second run sends nothing",
             _one("SELECT COUNT(*) AS c FROM sms_outbox WHERE phone = '+33655555555'")["c"] == 1,
             detail=str(again))

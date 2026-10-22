@@ -1,4 +1,4 @@
-"""The text a guest gets the day before they arrive, and the page behind it.
+"""The text a guest gets the morning they arrive, and the page behind it.
 
 This is the message the whole texting layer exists for. They are travelling,
 away from a computer, and "where do I actually go" is the only question left.
@@ -22,6 +22,9 @@ app before:
 
 Nothing can reach a provider: the harness stands in for sms_provider_send,
 which is the only function that opens a connection.
+
+Neither text has a default wording any more (test_guest_text_wording), so this
+suite writes the owner's words first, the way the house has to.
 """
 from datetime import date, datetime, timedelta, timezone
 
@@ -30,6 +33,20 @@ import _harness
 
 m = _harness.m
 TAG = "ZTCHK"
+# The owner's words, as they would be typed on the texting page.
+WORDING = {
+    "checkin": "Bonjour {guest_name}, see you this afternoon. Directions: {manage_url}",
+    "checkout": "Bonjour {guest_name}, safe travels tomorrow. Your bill: {statement_url}",
+}
+
+
+def _write_wording():
+    conn = db()
+    for kind, words in WORDING.items():
+        conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                     (m.GUEST_TEXTS[kind]["setting"], words))
+    conn.commit()
+    conn.close()
 
 
 def _cleanup():
@@ -100,9 +117,10 @@ def _run():
 def run():
     s = Suite("The arrival text")
     _cleanup()
+    _write_wording()
     oc, ec, _owner, _emp = clients()
 
-    s.section("Tomorrow's arrivals, and only those")
+    s.section("Today's arrivals, and only those")
     good = _arrival("GOOD", "06 11 11 11 11")
     _arrival("LATER", "06 11 11 11 11", days=6)          # not yet
     _arrival("PENDING", "06 11 11 11 11", status="pending")   # not confirmed
@@ -191,11 +209,8 @@ def run():
     s.check("a guest leaving tomorrow is written to", len(out) == 1,
             detail=f"{len(out)} — {result}")
     body = out[0]["body"] if out else ""
-    # The house's checkout time, read from the one value (10am since 15 Oct
-    # 2026), not a time typed into the test: it said "11am" and went red the
-    # day the owner moved checkout, which is the letter getting it right.
-    s.check("and told when checkout is", m.CHECK_OUT_WORDS in body
-            and "checkout is" in body, detail=body[:80])
+    s.check("in the owner's words for leaving, not the arrival ones",
+            "safe travels" in body and "Directions" not in body, detail=body[:80])
     s.check("with a link to their bill rather than to the manage page",
             "/statement" in body, detail=body[:100])
     s.check("no merge tag is left showing", "{" not in body, detail=body[:80])
@@ -225,18 +240,18 @@ def run():
     conn.close()
     s.check("sending one leaves the other untouched", arrival_stamp is None)
 
-    s.section("What the shipped wording costs")
+    s.section("What the owner's wording costs")
     # The url is most of a text: about 70 characters of 160 once the live host
-    # and a real token are in it. A default that fits in the test's short token
-    # and not in production is a bill nobody sees coming, and the first version
-    # of the arrival message was exactly that.
+    # and a real token are in it. There is no shipped wording to size any more,
+    # so the page's segment count is what tells the owner; this proves the
+    # count is made on the real url, not the test's short one.
     real_base, real_token, long_name = "https://chateaugudanes.com", "x" * 32, "Marie-Christine"
-    for kind, spec in m.GUEST_TEXTS.items():
-        body = (spec["default"]
+    for kind, words in WORDING.items():
+        body = (words
                 .replace("{guest_name}", long_name)
                 .replace("{manage_url}", f"{real_base}/book/manage/{real_token}")
                 .replace("{statement_url}", f"{real_base}/booking/{real_token}/statement"))
-        s.check(f"the {kind} default is one billed message",
+        s.check(f"the {kind} wording here is one billed message",
                 m.sms_segments(body) == 1,
                 detail=f"{len(body)} characters with a real url and a long name")
 
@@ -248,7 +263,7 @@ def run():
     s.check("it counts the numbers that cannot be used", "cannot use" in html)
     s.check("and shows what is waiting", "+33611111111" in html)
     s.check("it offers both messages, not only the arrival one",
-            "Before arrival" in html and "Before departure" in html,
+            "The arrival text" in html and "The departure text" in html,
             detail="a second message nobody can see is a second message "
                    "nobody edits")
     s.check("with the person who asked to stop", "+33622222222" in html)
@@ -271,8 +286,16 @@ def run():
     s.check("and a message the app does not have is refused outright",
             oc.post("/management/texting/template",
                     data={"kind": "invented", "template": "x"}).status_code == 400)
-    s.check("an empty message is refused",
-            any("cannot be empty" in f for f in flashes(r)), detail=str(flashes(r)))
+    # There is no default to fall back on, so emptying the box withdraws the
+    # text rather than being refused.
+    s.check("an empty message withdraws the text",
+            any("has no wording now" in f for f in flashes(r)), detail=str(flashes(r)))
+    conn = db()
+    left = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                        (m.GUEST_TEXTS["checkin"]["setting"],)).fetchone()
+    conn.close()
+    s.check("and nothing is left in the setting", left is None,
+            detail=repr(left["value"] if left else None))
 
     s.section("Adding and lifting a stop, from the page")
     oc.post("/management/texting/stop",

@@ -125,11 +125,17 @@ def run():
     s.check("the arrival text counts zero days back",
             m.GUEST_TEXTS["checkin"]["days_before"] == 0,
             detail="the morning of, which is why the window above has to hold")
-    s.check("and its wording says today rather than tomorrow",
-            "today" in m.GUEST_TEXTS["checkin"]["default"]
-            and "tomorrow" not in m.GUEST_TEXTS["checkin"]["default"],
-            detail="a note saying 'tomorrow' sent on the day is worse than "
-                   "either version on its own")
+    # The wording is the owner's now (there is no default), so what this
+    # holds to is the label every page shows beside it.
+    s.check("and it is called the morning of arrival",
+            m.GUEST_TEXTS["checkin"]["when"] == "the morning of arrival",
+            detail=m.GUEST_TEXTS["checkin"].get("when"))
+    s.check("in the morning window",
+            m.JOB_HOURS["checkin_text"][1] <= 12, detail=repr(m.JOB_HOURS["checkin_text"]))
+    s.check("while the departure note is called the evening before",
+            m.GUEST_TEXTS["checkout"]["when"] == "the evening before departure"
+            and m.JOB_HOURS["checkout_text"][0] >= 17,
+            detail=f'{m.GUEST_TEXTS["checkout"].get("when")} {m.JOB_HOURS["checkout_text"]}')
     s.check("while the departure note still counts one day back",
             m.GUEST_TEXTS["checkout"]["days_before"] == 1,
             detail="'checkout is at eleven' read at ten past ten is too late "

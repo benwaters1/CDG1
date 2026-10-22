@@ -459,8 +459,11 @@ AUTOMATION_SETTING_DEFAULTS = {
     # On, but harmless until a review page is set: with none it writes to
     # nobody and says so.
     "automation_review_invitation_enabled": "1",
-    "automation_checkin_text_enabled": "1",
-    "automation_checkout_text_enabled": "1",
+    # OFF, and with no wording of their own: the owner writes each text and
+    # then switches it on. Both shipped on with a sentence the app made up,
+    # which put words in the house's mouth to every guest with a mobile.
+    "automation_checkin_text_enabled": "0",
+    "automation_checkout_text_enabled": "0",
     "automation_backup_interval_hours": "24",
     "automation_social_schedule_enabled": "1",
     # OFF until somebody turns it on. The switch is the last thing between a
@@ -8493,6 +8496,9 @@ def init_db():
     if moved or repriced:
         print(f"Workshop deposit set to {WORKSHOP_DEPOSIT_PERCENT}%: {moved} atelier(s), "
               f"{repriced} unpaid deposit(s) repriced")
+    if switch_guest_texts_off_once(conn):
+        print("Guest texts switched off, and any copy of the old made-up "
+              "wording removed")
 
     # 2a. Rewritten copy. Applied only where the description is still one of
     #     the wordings WE seeded, so anything written by hand survives a
@@ -47050,15 +47056,13 @@ def management_texting():
     # Both messages, read the same way, so neither can quietly become the one
     # nobody looks at.
     messages = []
+    settings_on = {kind: guest_text_on(conn, kind) for kind in GUEST_TEXTS}
     for kind, spec in GUEST_TEXTS.items():
-        row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
-                           (spec["setting"],)).fetchone()
-        body = (row["value"] if row else "") or spec["default"]
+        body = guest_text_wording(conn, kind)
         messages.append({
             "kind": kind, "label": spec["label"], "body": body,
-            "segments": sms_segments(body),
-            "when": ({0: "on the day", 1: "the day before"}.get(spec["days_before"])
-                     or f"{spec['days_before']} days before"),
+            "segments": sms_segments(body), "when": spec["when"],
+            "on": settings_on.get(kind, False),
         })
     conn.close()
 
@@ -47087,10 +47091,18 @@ def save_checkin_text():
     if kind not in GUEST_TEXTS:
         abort(400)
     body = (request.form.get("template", "") or "").strip()
-    if not body:
-        flash("The message cannot be empty — leave the default if you like it.", "error")
-        return redirect(url_for("management_texting"))
     conn = get_db()
+    if not body:
+        # Emptying the box is how a text is withdrawn. There is no default
+        # for it to fall back on, so an empty wording is a text that does
+        # not go, and the page says so rather than refusing.
+        conn.execute("DELETE FROM app_settings WHERE key = ?",
+                     (GUEST_TEXTS[kind]["setting"],))
+        conn.commit()
+        conn.close()
+        flash(f"The {GUEST_TEXTS[kind]['label']} text has no wording now, so it "
+              "will not be sent until you write some.", "success")
+        return redirect(url_for("management_texting"))
     conn.execute(
         """INSERT INTO app_settings (key, value) VALUES (?, ?)
            ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
@@ -52465,11 +52477,14 @@ def manage_booking(manage_token):
     # The front door: whether this stay's guest can open it from their phone,
     # for the card that leads them to it (templates/_door_card.html).
     door = door_access(conn, booking=booking)
+    # Whether the page may promise an arrival text. Only when one will go:
+    # switched on and written by the owner (GUEST_TEXTS has no default).
+    arrival_text = guest_text_on(conn, "checkin") and bool(guest_text_wording(conn, "checkin"))
     conn.commit()
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
-        door=door,
+        door=door, arrival_text=arrival_text,
         addable_rooms=addable_rooms,
         group=group,
         portal_token=portal_token,
@@ -56852,9 +56867,17 @@ def sms_provider_send(number, body, channel="sms", template_id="",
 # Each message's wording is a setting, not a constant: it is the owner's words
 # to their own guests and will be reworded far more often than this file is
 # touched. The merge tags are the same single braces the promo blast uses.
+#
+# THERE IS NO DEFAULT WORDING. There used to be one for each, written here,
+# and with both switches shipped on it meant the house texted every guest a
+# sentence nobody at the house had written. A text with nothing in its
+# setting is not sent, by the job, by Send these now, or by anything else,
+# and the automation page says so beside the switch.
 GUEST_TEXTS = {
     "checkin": {
         "setting": "sms_checkin_template",
+        # The Automation switch that lets the job send it. Off by default.
+        "switch": "automation_checkin_text_enabled",
         "stamp": "checkin_text_sent_at",
         "date_column": "arrival_date",
         # THE MORNING OF, which is a change of mind rather than a fix. The
@@ -56865,46 +56888,70 @@ GUEST_TEXTS = {
         #
         # Only honest because the hour windows landed first. On a plain daily
         # cooldown this would go out at whatever time the process last
-        # restarted, and "we look forward to seeing you today" at half past
-        # midnight is about a day that is over. See JOB_HOURS.
+        # restarted, and a note about today at half past midnight is about a
+        # day that is over. See JOB_HOURS.
         "days_before": 0,
         "label": "arrival",
+        # When it goes, in the words every page uses. Read with days_before
+        # and JOB_HOURS: the three have to say the same thing.
+        "when": "the morning of arrival",
         # The variables an approved WhatsApp template is filled with, in the
         # order Meta approved them. Positional, because that is what the
         # Content API takes -- the names here are only so this list can be
         # read against the template somebody submitted.
         "variables": ("guest_name", "manage_url"),
-        # Sized to ONE billed message with a real url and a long first name.
-        # The url is most of the budget — about 71 characters once the live
-        # host and a 32-character token are in it, out of 160 — so there are
-        # roughly 75 left for words after allowing for a name like
-        # Marie-Christine. The first version of this read beautifully and cost
-        # two messages per arrival, which is invisible until the bill.
-        "default": (
-            "Bonjour {guest_name}, we look forward to seeing you today. "
-            "How to find us: {manage_url}"
-        ),
     },
     "checkout": {
         "setting": "sms_checkout_template",
+        "switch": "automation_checkout_text_enabled",
         "stamp": "checkout_text_sent_at",
         "date_column": "departure_date",
         # The evening before, not the morning of. A guest reading "checkout is
         # at eleven" at ten past ten has been told too late to act on it.
         "days_before": 1,
         "label": "departure",
-        # The statement url is longer again, so this is terser still.
-        "default": (
-            "Bonjour {guest_name}, checkout is " + CHECK_OUT_WORDS + ". Keys in "
-            "the bowl by the door. Bill: {statement_url}"
-        ),
+        "when": "the evening before departure",
     },
 }
+
+def switch_guest_texts_off_once(conn):
+    """Turn both guest texts off on a database that already has them on.
+
+    The new defaults are off, but a house that has ever saved its Automation
+    page holds an explicit "1" for each, which a default does not touch. So
+    once, recorded in app_settings and never repeated -- an owner who writes
+    the wording and switches a text back on is not overruled on the next
+    deploy, the same reasoning as apply_workshop_deposit_percent.
+
+    A saved copy of the old made-up wording goes too. The texting page put it
+    in the box, so pressing Save stored it as if the owner had written it;
+    it is matched by its shape, because the checkout one carried whatever the
+    checkout time was on the day. Anything else in the box is the owner's and
+    stays. Returns True on the run that did it.
+    """
+    if conn.execute("SELECT 1 FROM app_settings "
+                    "WHERE key = 'guest_texts_off_done'").fetchone():
+        return False
+    for spec in GUEST_TEXTS.values():
+        conn.execute("UPDATE app_settings SET value = '0' WHERE key = ?",
+                     (spec["switch"],))
+    conn.execute(
+        "DELETE FROM app_settings WHERE key = 'sms_checkin_template' AND TRIM(value) = "
+        "'Bonjour {guest_name}, we look forward to seeing you today. "
+        "How to find us: {manage_url}'")
+    conn.execute(
+        "DELETE FROM app_settings WHERE key = 'sms_checkout_template' "
+        "AND TRIM(value) LIKE 'Bonjour {guest_name}, checkout is %' "
+        "AND TRIM(value) LIKE '%. Keys in the bowl by the door. Bill: {statement_url}'")
+    conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('guest_texts_off_done', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    return True
+
 
 # Kept so anything still calling these reads the same value. The arrival text
 # was here first and other code refers to it by name.
 CHECKIN_TEXT_SETTING = GUEST_TEXTS["checkin"]["setting"]
-CHECKIN_TEXT_DEFAULT = GUEST_TEXTS["checkin"]["default"]
 CHECKIN_TEXT_DAYS_BEFORE = GUEST_TEXTS["checkin"]["days_before"]
 # A text is billed per 160-character segment, so a template somebody has grown
 # over a season quietly triples the cost of every arrival. Not a limit — the
@@ -56953,20 +57000,32 @@ def guest_text_variables(conn, booking, kind="checkin"):
     return [tags.get(name, "") for name in GUEST_TEXTS[kind].get("variables", ())]
 
 
+def guest_text_wording(conn, kind):
+    """What the owner has written for this text, or "" if they have not."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (GUEST_TEXTS[kind]["setting"],)).fetchone()
+    return ((row["value"] if row else "") or "").strip()
+
+
+def guest_text_on(conn, kind):
+    """Whether this text's Automation switch is on."""
+    return get_automation_settings(conn).get(GUEST_TEXTS[kind]["switch"]) == "1"
+
+
 def guest_text_body(conn, booking, kind="checkin"):
-    """The message for one booking, with the tags filled in."""
-    spec = GUEST_TEXTS[kind]
-    row = conn.execute(
-        "SELECT value FROM app_settings WHERE key = ?", (spec["setting"],)).fetchone()
-    template = (row["value"] if row and (row["value"] or "").strip()
-                else spec["default"])
+    """The message for one booking, with the tags filled in -- or "" when
+    the owner has written nothing for it, which means it does not go."""
+    template = guest_text_wording(conn, kind)
+    if not template:
+        return ""
     for name, value in guest_text_tags(conn, booking).items():
         template = template.replace("{" + name + "}", value)
     return template
 
 
 def run_guest_text_job(conn, kind="checkin", days_before=None):
-    """Text tomorrow's arrivals where the house has a number it may use.
+    """Text the stays this message is about, where the house has a number it
+    may use -- and nobody at all while the owner has written no wording.
 
     Only confirmed stays, only once each, and only through can_text — so a
     guest who has asked not to be texted, or gave a landline, or gave something
@@ -56980,6 +57039,12 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
     what already went.
     """
     spec = GUEST_TEXTS[kind]          # KeyError rather than a silent no-op
+    # Before anything is read or stamped. Stamping the stays as handled with
+    # nothing sent would mean that writing the wording later reaches nobody
+    # already in the window.
+    if not guest_text_wording(conn, kind):
+        return (f"nothing sent: the {spec['label']} text has no wording yet, "
+                "so it does not go")
     days = spec["days_before"] if days_before is None else days_before
     when = (house_today() + timedelta(days=days)).isoformat()
     # The two column names come from GUEST_TEXTS above and nowhere else, so
@@ -57407,14 +57472,22 @@ def ask_room_feedback(conn, booking):
     return True
 
 
+def _scheduled_guest_text(conn, kind, days_before):
+    """The scheduled run of one guest text. Switched on with nothing written
+    is "Couldn't run" on the Automation page, not "Worked — nothing sent"."""
+    if not guest_text_wording(conn, kind):
+        raise JobNotSetUp(f"the {GUEST_TEXTS[kind]['label']} text has no wording yet")
+    return run_guest_text_job(conn, kind, days_before)
+
+
 def run_checkin_text_job(conn, days_before=None):
     """The arrival run. Kept because the page and its tests call it by name."""
-    return run_guest_text_job(conn, "checkin", days_before)
+    return _scheduled_guest_text(conn, "checkin", days_before)
 
 
 def run_checkout_text_job(conn, days_before=None):
     """The departure run."""
-    return run_guest_text_job(conn, "checkout", days_before)
+    return _scheduled_guest_text(conn, "checkout", days_before)
 
 
 def normalise_phone(raw, default_country=None):
@@ -64715,11 +64788,20 @@ def booking_messages(conn, booking):
 
 
 def booking_texts_plan(conn, booking):
-    """The texts the house sends a stay by itself, and where each one stands."""
+    """The texts the house sends a stay by itself, and where each one stands.
+
+    Only the ones that will actually go: a text switched off under Automation,
+    or with no wording written for it, is not listed at all. Listing it with a
+    due date would promise the guest a message nothing is going to send. One
+    already sent stays, because that is a record of what the guest was told.
+    """
     number, refusal = can_text(conn, booking["guest_phone"], "transactional")
     out = []
     for kind, spec in GUEST_TEXTS.items():
         sent = booking[spec["stamp"]] if spec["stamp"] in booking.keys() else None
+        if not sent and not (guest_text_on(conn, kind)
+                             and guest_text_wording(conn, kind)):
+            continue
         on = parse_date(booking[spec["date_column"]] or "")
         due = (on - timedelta(days=spec["days_before"])) if on else None
         if sent:
@@ -64734,7 +64816,8 @@ def booking_texts_plan(conn, booking):
             state = "missed"
         else:
             state = "due"
-        out.append({"kind": kind, "label": spec["label"], "sent_at": sent,
+        out.append({"kind": kind, "label": spec["label"], "when": spec["when"],
+                    "sent_at": sent,
                     "due": due.isoformat() if due else None, "state": state,
                     "refusal": refusal,
                     "body": guest_text_body(conn, booking, kind)})
@@ -102824,14 +102907,17 @@ AUTOMATION_SWITCHES = [
              "until the review page is set."},
     {"key": "automation_checkin_text_enabled", "job": "checkin_text",
      "runs": ("run_checkin_text_job",), "group": "guests", "reaches": ("guests",),
-     "label": "Text a guest the day before they arrive",
-     "what": "How to find the house and what to expect — by text, or WhatsApp where "
-             "it is set up. Nothing until a texting service is connected."},
+     "text": "checkin",
+     "label": "Text a guest the morning they arrive",
+     "what": "Your own words, sent the morning of arrival — by text, or WhatsApp "
+             "where it is set up. Nothing until you have written it and a "
+             "texting service is connected."},
     {"key": "automation_checkout_text_enabled", "job": "checkout_text",
      "runs": ("run_checkout_text_job",), "group": "guests", "reaches": ("guests",),
-     "label": "Text a guest the day they leave",
-     "what": "Check-out time and a link to their bill. Nothing until a texting "
-             "service is connected."},
+     "text": "checkout",
+     "label": "Text a guest the evening before they leave",
+     "what": "Your own words, sent the evening before departure. Nothing until "
+             "you have written it and a texting service is connected."},
     {"key": "automation_waitlist_autonotify_enabled", "job": None,
      "runs": ("notify_room_waitlist_opening", "notify_restaurant_waitlist_opening",
               "notify_workshop_waitlist_opening"),
@@ -103029,6 +103115,10 @@ def admin_automation():
     held_texts = conn.execute(
         "SELECT COUNT(*) AS n FROM sms_outbox WHERE sent_at IS NULL "
         "AND reason LIKE '%not writing to guests%'").fetchone()["n"]
+    # A guest text with nothing written for it never goes, switch or no
+    # switch, so the row says so beside the switch rather than letting an
+    # owner tick it and wait for a message that cannot exist.
+    unwritten = {kind for kind in GUEST_TEXTS if not guest_text_wording(conn, kind)}
     conn.close()
 
     windows = house_windows()
@@ -103044,6 +103134,7 @@ def admin_automation():
             row = dict(e, on=settings.get(e["key"]) == "1",
                        what=e["what"].format(**facts),
                        run=last_runs.get(e["job"]) if e["job"] else None,
+                       no_wording=e.get("text") in unwritten,
                        reach_words=[AUTOMATION_REACH_WORDS[r] for r in e["reaches"]],
                        fields=[(f, label, kind, settings.get(f))
                                for f, label, kind in e.get("fields", ())])
