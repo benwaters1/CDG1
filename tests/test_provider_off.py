@@ -188,8 +188,12 @@ def run():
     landline = make_arrival("LAN", "+33561000000")
     conn.commit()
 
-    r = oc.post("/management/texting/run-checkin", data={"kind": "checkin"},
-                follow_redirects=True)
+    unwrite = _harness.write_guest_text(conn, "checkin")
+    try:
+        r = oc.post("/management/texting/run-checkin", data={"kind": "checkin"},
+                    follow_redirects=True)
+    finally:
+        unwrite()
     said = " ".join(flashes(r))
     s.check("the job reports in plain words", bool(said.strip()),
             detail=said or "nothing was said")

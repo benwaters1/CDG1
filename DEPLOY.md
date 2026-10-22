@@ -132,8 +132,9 @@ done by the owner by 19 October 2026 (Google setup notes, z30):
    holds a `*.railway.app` name (Railway says it may hold a custom domain
    instead). To be certain, set
    `ADDIN_BASE_URL=https://cdg1-production-9186.up.railway.app`. If neither
-   gives an answer, the add-in page on admin. shows no manifest link, says
-   what to set, and the readiness page lists it.
+   gives an answer, the manifest on www. and admin. names that same address,
+   built into the app, so losing the variables does not move the add-in. Set
+   `ADDIN_BASE_URL` only if the add-in itself ever moves.
 5. **After the deploy, everybody signs in once more.** The shared sign-in is a
    new cookie, so the old one on www is no longer read. Staff who added the app
    to a phone's home screen from www should add it again from

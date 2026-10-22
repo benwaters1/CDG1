@@ -315,6 +315,7 @@ SUITES = [
     "test_reset_code",
     "test_texting",
     "test_checkin_texts",
+    "test_guest_text_wording",
     "test_room_feedback",
     "test_digest_and_hub",
     "test_guest_self_service",
