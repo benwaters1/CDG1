@@ -161,6 +161,7 @@ SUITES = [
     "test_booking_com_mail",
     "test_booking_com_stays",
     "test_door_lock",
+    "test_deploy_behind_main",
     "test_room_lineup",
     "test_dining_switch",
     "test_newsletter",
@@ -525,6 +526,8 @@ SUITES = [
     "test_send_check_french_reply",
     # Shared inboxes and a pinned Guest pane, 19 October 2026.
     "test_addin_shared_inboxes",
+    # 22 October 2026: a new add-in version reaches the owner as a task.
+    "test_addin_version",
     "test_house_calendar",
     "test_house_calendar_default",
     "test_calendar_cards",
