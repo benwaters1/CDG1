@@ -7623,6 +7623,13 @@ def init_db():
         # every route that writes that column having to clear this one.
         ("newsletter_subscribers_script_removed_at",
          "ALTER TABLE newsletter_subscribers ADD COLUMN script_removed_at TEXT"),
+        # Why a table booked while tables confirm themselves (restaurant_instant)
+        # was left for the owner instead: "over the 20 covers", "a party of 9".
+        # Written once, when it was held, and shown beside Confirm in the queue
+        # so the decision is made with it rather than from memory of a
+        # notification.
+        ("restaurant_bookings_instant_held",
+         "ALTER TABLE restaurant_bookings ADD COLUMN instant_held TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -11419,6 +11426,9 @@ def log_audit(conn, action, target=None, details=None, via=None, *, actor=ACTOR_
 # stay the guest cancelled themselves is a record that points the wrong way.
 GUEST_AUDIT_ACTIONS = frozenset({
     "booking_confirmed_online", "booking_cancelled_by_guest",
+    # A table booked on the site while tables confirm themselves: confirmed
+    # on it, or left for the owner with the reason (restaurant_instant_holds).
+    "restaurant_booking_confirmed_online", "restaurant_booking_held_for_owner",
     "booking_dates_changed_by_guest", "booking_change_asked_by_guest",
     "booking_contact_changed_by_guest", "guest_extended_stay", "guest_added_extra",
     "guest_wrote_in", "guest_restricted", "guest_asked_to_be_forgotten",
@@ -56137,14 +56147,185 @@ def refund_restaurant_booking(conn, booking, reason="Reservation cancelled by th
                         method="stripe", user_id=user_id)
 
 
+# What confirm_restaurant_reservation says when there was nothing to confirm:
+# decided already, or cancelled while a payment was settling. The Confirm
+# button answers it with a 404, as it always has.
+RESTAURANT_NOT_WAITING = "it is no longer waiting to be confirmed"
+
+
+def confirm_restaurant_reservation(conn, booking, *, online=False):
+    """Confirm one dinner reservation that is waiting, and send the guest the
+    confirmation letter. None once that is done, or the reason it was not.
+
+    THE ONE CONFIRMATION. The owner's Confirm button and a table that confirms
+    itself on payment (restaurant_instant) both come here, so a rule added to
+    confirming -- the standing instruction below was one -- reaches both. A
+    copy of this body in the automatic path would have been the bulk-decline
+    fault again: the same action, done a second way, quietly doing less.
+
+    `online` is the table that took itself: written down as such, against
+    nobody, because it was not the decision of whoever happens to be signed in
+    on that browser.
+    """
+    # A STANDING INSTRUCTION MEANS THE HOUSE, and the house includes its table.
+    # A stay and an atelier have refused a cautioned guest for a while; a
+    # dinner never asked.
+    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
+    if caution and caution["caution_level"] == "refuse":
+        return (f"there is a standing instruction not to accept a booking from "
+                f"{caution['name']} ({caution['caution']}) — lift it on their profile if that "
+                "has changed")
+    cur = conn.execute(
+        "UPDATE restaurant_bookings SET status = 'confirmed', decided_at = ? WHERE id = ? AND status = 'pending'",
+        (datetime.now(timezone.utc).isoformat(), booking["id"]),
+    )
+    if cur.rowcount == 0:
+        return RESTAURANT_NOT_WAITING
+    if online:
+        log_audit(conn, "restaurant_booking_confirmed_online", target=booking["reference_code"],
+                  details="confirmed itself when it was booked, the evening having room",
+                  actor=None)
+    else:
+        log_audit(conn, "restaurant_booking_confirmed", target=booking["reference_code"])
+    ensure_guest_profile(conn, booking["guest_name"], booking["guest_email"],
+                         booking["guest_phone"])
+    # Committed before the letter: a write left open across the send is the
+    # "database is locked" that loses held mail.
+    conn.commit()
+    send_restaurant_email(conn, booking, "restaurant_confirmed", restaurant_email_context(booking))
+    return None
+
+
+def restaurant_instant_on(conn):
+    """Whether a table booked on the website confirms itself (restaurant_instant).
+
+    Read as the public pages read it -- 1, true, yes or on -- so the promise on
+    the booking page and what happens to the booking cannot disagree about
+    which way the switch is set.
+    """
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'restaurant_instant'").fetchone()
+    return ((row["value"] if row else "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def restaurant_open_weekdays(conn):
+    """The evenings La Table serves, as weekdays (0 = Monday), or None while
+    they have not been set -- and then no evening is closed by them. Read the
+    way _dining_hours.html reads them for the opening hours."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = 'dining_days'").fetchone()
+    days = {int(p) for p in ((row["value"] if row else "") or "").replace(" ", "").split(",")
+            if p.isdigit() and int(p) < 7}
+    return days or None
+
+
+def restaurant_instant_holds(conn, booking):
+    """Every reason this table should NOT confirm itself, in plain words.
+
+    Empty means the evening has room and nothing about the booking needs the
+    owner's eye, so it is confirmed the moment it is paid. Anything listed
+    leaves it a request: the owner decides, and the guest is told it is a
+    request, never that it is confirmed.
+
+    Only rules the house already keeps, read from where they already live,
+    and checked AFTER the booking is written -- so two paid at once each see
+    the other, and the second of two that would fill the room waits rather
+    than both getting in:
+
+      closed      online booking off, dining closed or switched off, before
+                  the opening date, an evening already gone, or an evening the
+                  opening hours leave out (dining_days)
+      too large   more than the room seats, or more than its biggest table --
+                  laying a party across tables is somebody's decision
+      covers      every reservation that night, waiting or confirmed (the
+                  booking form's rule), and the atelier guests who eat in,
+                  which the covers forecast counts as certain -- against the
+                  covers set on the restaurant's settings and the seats on the
+                  floor plan, whichever is fewer
+      the card    when that evening's card is published, a course whose
+                  counted stock would not reach this party too
+      the guest   a caution on their profile (handle with care, or do not
+                  accept), or the repeated no-shows the queue already warns of
+    """
+    reasons = []
+    settings = get_restaurant_settings(conn)
+    day = parse_date(booking["dinner_date"] or "")
+    party = booking["party_size"] or 0
+    capacity = (settings["capacity"] if settings else 0) or 20
+
+    if not settings or not settings["enabled"]:
+        reasons.append("online reservations are switched off")
+    mode = dining_mode(conn)
+    if mode != "open":
+        reasons.append("dining is closed for the season" if mode == "closed"
+                       else "dining is switched off on the website")
+    if not day:
+        return reasons + ["the date on it could not be read"]
+    if day < house_today():
+        reasons.append("that evening has already gone")
+    opening = parse_date(settings["opening_date"]) if settings and settings["opening_date"] else None
+    if opening and day < opening:
+        reasons.append(f"La Table does not open until {format_date_human(opening.isoformat())}")
+    open_days = restaurant_open_weekdays(conn)
+    if open_days is not None and day.weekday() not in open_days:
+        reasons.append(f"La Table is closed on {day.strftime('%A')}s")
+
+    tables = dining_tables(conn)
+    biggest = max((t["seats"] or 0 for t in tables), default=0)
+    if party > capacity:
+        reasons.append(f"a party of {party} is more than the {capacity} the room takes")
+    elif biggest and party > biggest:
+        reasons.append(f"a party of {party} is more than the biggest table seats ({biggest})")
+
+    booked = capacity - restaurant_remaining_capacity(conn, day.isoformat(), exclude_id=booking["id"])
+    night = dinner_covers_forecast(conn, start=day, days=1)["rows"]
+    atelier = night[0]["atelier"] if night else 0
+    at_table = booked + atelier + party
+    seats = sum(t["seats"] or 0 for t in tables)
+    with_atelier = f", counting {atelier} atelier guest{'' if atelier == 1 else 's'} dining in" if atelier else ""
+    if at_table > capacity:
+        reasons.append(f"that evening would have {at_table} at table against the "
+                       f"{capacity} covers it takes{with_atelier}")
+    elif seats and at_table > seats:
+        reasons.append(f"that evening would have {at_table} at table and the floor plan "
+                       f"seats {seats}{with_atelier}")
+
+    card = menu_for_date(conn, day)
+    if card:
+        short = [MENU_COURSES.get(c["course"], c["course"])
+                 for c in card_capacity(conn, card["id"], day)["courses"]
+                 if c["all_off"] or (not c["untracked"]
+                                     and c["still_to_come"] + party > c["portions"])]
+        if short:
+            reasons.append(f"that evening's card would run short ({', '.join(short)})")
+
+    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
+    if caution and caution["caution_level"] in ("care", "refuse"):
+        reasons.append(f"their guest profile says “{CAUTION_LEVELS[caution['caution_level']]}”")
+    # The queue's own threshold: mark_restaurant_no_show tells the owner from
+    # the second one on, so a table from that address is the owner's call.
+    missed = prior_no_shows(conn, [booking["guest_email"]]).get(
+        (booking["guest_email"] or "").lower(), 0)
+    if missed > 1:
+        reasons.append(f"they have not turned up {missed} times before")
+    return reasons
+
+
 def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner_date, party_size,
                                dietary_notes, booking_id=None, payment_status="unpaid",
                                stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                                deposit_amount=None, total_price_override=None, discount_amount_override=None,
-                               reference_code=None, quiet=False):
+                               reference_code=None, quiet=False, instant=False):
     """Write a dinner reservation down. `quiet` sends nothing -- no "request
     received" letter, no notification -- for a table the house is taking
-    itself (add_restaurant_reservation), which says what it sends."""
+    itself (add_restaurant_reservation), which says what it sends.
+
+    `instant` is a table booked on the website while tables confirm
+    themselves (restaurant_instant_on), and already paid for where payment is
+    taken. It is confirmed here unless restaurant_instant_holds finds a reason
+    not to, and then the guest gets the confirmation letter INSTEAD of "request
+    received" -- not both, a second apart, saying opposite things. One held
+    back gets "request received", as every table did before, and the reason is
+    kept on it for the owner's queue."""
     settings = get_restaurant_settings(conn)
     # Handed in from the card page, which labelled the payment with it. Kept
     # only while no other reservation holds it.
@@ -56195,7 +56376,21 @@ def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner
         return reference_code, manage_token
 
     booking_row = conn.execute("SELECT * FROM restaurant_bookings WHERE manage_token = ?", (manage_token,)).fetchone()
-    send_restaurant_email(conn, booking_row, "restaurant_reservation_received", restaurant_email_context(booking_row))
+    held = []
+    if instant:
+        held = restaurant_instant_holds(conn, booking_row)
+        if not held:
+            # Sends the confirmation letter itself, as the Confirm button does.
+            problem = confirm_restaurant_reservation(conn, booking_row, online=True)
+            held = [problem] if problem else []
+        if held:
+            conn.execute("UPDATE restaurant_bookings SET instant_held = ? WHERE id = ?",
+                         ("; ".join(held), booking_row["id"]))
+            log_audit(conn, "restaurant_booking_held_for_owner", target=reference_code,
+                      details="; ".join(held), actor=None)
+            conn.commit()
+    if not instant or held:
+        send_restaurant_email(conn, booking_row, "restaurant_reservation_received", restaurant_email_context(booking_row))
 
     # The dietary note is NOT copied into the notification body. It used to be,
     # which put the guest's allergy into a second table that nothing deletes —
@@ -56204,6 +56399,15 @@ def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner
     notify_body = ("Dietary notes were given — they are on the reservation."
                    if (dietary_notes or "").strip() else None)
     notify_title = f"Dinner reservation — {guest_name}, party of {party_size} ({format_date_human(dinner_date)})"
+    if instant and not held:
+        notify_title = (f"Dinner confirmed on booking — {guest_name}, party of {party_size} "
+                        f"({format_date_human(dinner_date)})")
+    elif instant:
+        # Said, not left to be noticed: the switch is on, so anyone reading
+        # "Dinner reservation" would take it to be confirmed already.
+        notify_title += " — waiting on you"
+        notify_body = " ".join(filter(None, [
+            f"Not confirmed automatically: {'; '.join(held)}.", notify_body]))
     notified_ids = set()
     owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
     if owner_row:
@@ -56238,6 +56442,10 @@ def create_restaurant_booking_from_stripe_session(conn, session):
         # — more trustworthy than recomputing from deposit_percent at
         # webhook time, since that setting could have changed in between.
         deposit_amount=(session["amount_total"] / 100) if sval(session, "amount_total") else None,
+        # Paid, so this is the moment the booking page promised: confirmed as
+        # soon as the payment goes through, where the evening has room. The
+        # return page and the webhook both arrive here, whichever is first.
+        instant=restaurant_instant_on(conn),
     )
     if remaining < party_size:
         # Money has already changed hands, so the reservation is still
@@ -56422,6 +56630,10 @@ def restaurant_book():
         reference_code, manage_token = create_restaurant_booking(
             conn, guest_name, guest_email, guest_phone or None, dinner_date.isoformat(), party_size, dietary_notes,
             promo_code=promo_code or None,
+            # Nothing to pay online, so booking it is the moment. The page
+            # says "confirmed as you book" here when the switch is on, and
+            # the same rules decide whether it is.
+            instant=restaurant_instant_on(conn),
         )
         conn.close()
         return redirect(url_for("restaurant_confirmation", manage_token=manage_token))
@@ -70036,27 +70248,16 @@ def confirm_restaurant_booking(reservation_id):
     if not booking:
         conn.close()
         abort(404)
-    # A STANDING INSTRUCTION MEANS THE HOUSE, and the house includes its table.
-    # A stay and an atelier have refused a cautioned guest for a while; a
-    # dinner never asked.
-    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
-    if caution and caution["caution_level"] == "refuse":
-        conn.close()
-        flash(f"Not confirmed: there is a standing instruction not to accept a booking from "
-              f"{caution['name']} ({caution['caution']}) — lift it on their profile if that "
-              "has changed.", "error")
-        return redirect(url_for("admin_restaurant"))
-    cur = conn.execute(
-        "UPDATE restaurant_bookings SET status = 'confirmed', decided_at = ? WHERE id = ? AND status = 'pending'",
-        (datetime.now(timezone.utc).isoformat(), reservation_id),
-    )
-    if cur.rowcount == 0:
+    # The same confirmation a table that confirms itself on payment gets,
+    # letter included (confirm_restaurant_reservation).
+    problem = confirm_restaurant_reservation(conn, booking)
+    if problem == RESTAURANT_NOT_WAITING:
         conn.close()
         abort(404)
-    log_audit(conn, "restaurant_booking_confirmed", target=booking["reference_code"])
-    ensure_guest_profile(conn, booking["guest_name"], booking["guest_email"],
-                         booking["guest_phone"])
-    conn.commit()
+    if problem:
+        conn.close()
+        flash(f"Not confirmed: {problem}.", "error")
+        return redirect(url_for("admin_restaurant"))
 
     confirmed_total = conn.execute(
         "SELECT COALESCE(SUM(party_size), 0) AS t FROM restaurant_bookings WHERE dinner_date = ? AND status = 'confirmed'",
@@ -70067,7 +70268,6 @@ def confirm_restaurant_booking(reservation_id):
     if settings and confirmed_total > settings["capacity"]:
         capacity_note = f" Heads up — confirmed covers for {booking['dinner_date']} now total {confirmed_total}, over the {settings['capacity']}-seat cap."
 
-    send_restaurant_email(conn, booking, "restaurant_confirmed", restaurant_email_context(booking))
     conn.close()
     flash("Reservation confirmed." + capacity_note, "success" if not capacity_note else "error")
     return redirect(url_for("admin_restaurant"))
@@ -70336,6 +70536,14 @@ def admin_restaurant_settings():
                        ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
                     (key, value))
             log_audit(conn, "dining_mode_set", target=mode, details=reopens or None)
+        # Tables confirming themselves. In app_settings beside the dining
+        # switch for the same reason: the booking page words its promise on it.
+        instant = "1" if request.form.get("restaurant_instant") else "0"
+        if instant != ("1" if restaurant_instant_on(conn) else "0"):
+            conn.execute(
+                """INSERT INTO app_settings (key, value) VALUES ('restaurant_instant', ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (instant,))
+            log_audit(conn, "restaurant_instant_set", target="on" if instant == "1" else "off")
         log_audit(conn, "restaurant_settings_updated")
         conn.commit()
         conn.close()
@@ -70348,11 +70556,13 @@ def admin_restaurant_settings():
         "SELECT value FROM app_settings WHERE key = 'dining_reopens'").fetchone()
     employees = conn.execute("SELECT * FROM users WHERE role IN ('owner', 'employee') ORDER BY role DESC, name").fetchall()
     rate_overrides = conn.execute("SELECT * FROM restaurant_rate_overrides ORDER BY start_date").fetchall()
+    instant = restaurant_instant_on(conn)
     conn.close()
     return render_template(
         "admin_restaurant_settings.html", settings=settings, employees=employees, rate_overrides=rate_overrides,
         dining_modes=DINING_MODES, dining_mode=mode_now,
         dining_reopens=(reopens_row["value"] if reopens_row else "") or "",
+        restaurant_instant=instant,
     )
 
 
@@ -84157,6 +84367,12 @@ PUBLIC_SETTINGS = (
     # it reopens. Every public page reads it, through `site`. Set on the
     # restaurant settings page; the restaurant's booking route refuses too.
     "dining_mode", "dining_reopens",
+    # Whether a table confirms itself once paid. The booking page and the
+    # Dining page word their promise on it ("confirmed as soon as the payment
+    # goes through"), and both were reading a key that was never allowed out,
+    # so the switch could not have reached them. Set on the restaurant
+    # settings page; restaurant_instant_holds() is what keeps the promise.
+    "restaurant_instant",
 )
 
 
