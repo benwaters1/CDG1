@@ -195,6 +195,11 @@ def run():
         s.check("and its note is printed once, not once an item",
                 text.count(NOTE) == 1, detail=f"{text.count(NOTE)} times")
         s.check("saying how far it has got", f"0 of {len(ITEMS)} done" in text)
+        # Their own list sits under the rooms and the guests, on purpose; the
+        # top of the page says how many are on it and goes straight there.
+        s.check("the top of the page goes straight down to the list",
+                re.search(r'href="#my-list"[^>]*>[^<]*· \d+<', page) is not None
+                and 'id="my-list"' in page)
         s.check("every item still a tick of its own",
                 all(f'onclick="completeTask({t["id"]}, this)"' in page
                     for title, t in tasks.items() if title.startswith(ROOM)))
