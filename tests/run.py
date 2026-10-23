@@ -359,6 +359,7 @@ SUITES = [
     "test_house_upkeep",
     "test_restaurant_four",
     "test_restaurant_instant",
+    "test_dining_days",
     "test_buying",
     "test_kitchen",
     "test_kitchen_wall",

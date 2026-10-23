@@ -52580,6 +52580,8 @@ def manage_booking(manage_token):
             error = "Choose a date within your stay."
         elif dinner_date < min_date:
             error = f"Dinner service isn't open until {format_date_human(min_date.isoformat())}."
+        elif restaurant_closed_evening(conn, dinner_date):
+            error = restaurant_closed_evening(conn, dinner_date)
         elif not party_size or party_size < 1:
             error = "Party size is required."
         elif party_size > restaurant_settings["capacity"]:
@@ -52616,6 +52618,15 @@ def manage_booking(manage_token):
         dinner_min_date = max(stay_start, opening).isoformat()
         dinner_max_date = (stay_end - timedelta(days=1)).isoformat()
         dinner_available = dinner_min_date <= dinner_max_date
+        # A stay that falls wholly on evenings La Table is closed has no
+        # dinner to offer: drawing the form would only let them pick a night
+        # and be refused it.
+        open_days = restaurant_open_weekdays(conn)
+        if dinner_available and open_days is not None:
+            first = parse_date(dinner_min_date)
+            nights = (parse_date(dinner_max_date) - first).days + 1
+            dinner_available = any((first + timedelta(days=n)).weekday() in open_days
+                                   for n in range(min(nights, 7)))
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
     bill = booking_bill(conn, booking["id"])
     # What they can still add. Anything needing more notice than they have left
@@ -56205,6 +56216,53 @@ def restaurant_open_weekdays(conn):
     return days or None
 
 
+def restaurant_open_days_words(days):
+    """The open evenings as the opening hours word them: "Thursday to Sunday",
+    "Wednesday and Friday to Monday". A run of three or more is a
+    range, and the walk starts just after a closed day so a run over the
+    weekend stays whole -- the same reading as days_text in _dining_hours.html,
+    so a refusal and the hours above the form name the same evenings."""
+    days = set(days or ())
+    if not days:
+        return ""
+    if len(days) == 7:
+        return "every evening"
+    start = next(i for i in range(7) if i in days and (i - 1) % 7 not in days)
+    runs, run = [], []
+    for k in range(7):
+        i = (start + k) % 7
+        if i in days:
+            run.append(i)
+        elif run:
+            runs.append(run)
+            run = []
+    if run:
+        runs.append(run)
+    items = []
+    for r in runs:
+        if len(r) >= 3:
+            items.append(f"{WEEKDAY_NAMES[r[0]]} to {WEEKDAY_NAMES[r[-1]]}")
+        else:
+            items.extend(WEEKDAY_NAMES[i] for i in r)
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def restaurant_closed_evening(conn, day):
+    """Why a table cannot be booked for `day`, in words for the guest, or None
+    when La Table serves that evening -- or when the evenings have not been
+    set, which closes none.
+
+    The date picker greys a closed evening out, but that is the browser being
+    helpful: a form typed into by hand, saved before the owner changed the
+    evenings, or posted from anywhere else, arrives here all the same. Every
+    door a guest can book a table through asks this."""
+    open_days = restaurant_open_weekdays(conn)
+    if open_days is None or day.weekday() in open_days:
+        return None
+    return (f"La Table is closed on {WEEKDAY_NAMES[day.weekday()]}s. It serves dinner "
+            f"{restaurant_open_days_words(open_days)} — please choose one of those evenings.")
+
+
 def restaurant_instant_holds(conn, booking):
     """Every reason this table should NOT confirm itself, in plain words.
 
@@ -56521,6 +56579,8 @@ def restaurant_book():
             error = "Choose a valid date."
         elif dinner_date < min_date:
             error = f"We're not taking reservations before {format_date_human(min_date.isoformat())}."
+        elif restaurant_closed_evening(conn, dinner_date):
+            error = restaurant_closed_evening(conn, dinner_date)
         elif not party_size or party_size < 1:
             error = "Party size is required."
         elif party_size > settings["capacity"]:
@@ -70200,6 +70260,22 @@ def admin_restaurant_settings():
                 """INSERT INTO app_settings (key, value) VALUES ('restaurant_instant', ?)
                    ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (instant,))
             log_audit(conn, "restaurant_instant_set", target="on" if instant == "1" else "off")
+        # The evenings La Table serves, 0 = Monday. In app_settings for the
+        # same reason again: the opening hours on the public pages and the
+        # booking page's date picker read them through `site`. The boxes were
+        # drawn for weeks before anything saved them, so every tick was thrown
+        # away. None ticked is blank, which closes no evening and lets each
+        # page keep its general wording -- see restaurant_open_weekdays.
+        days = ",".join(str(d) for d in sorted(
+            {int(d) for d in request.form.getlist("dining_days") if d.isdigit() and int(d) < 7}))
+        days_row = conn.execute("SELECT value FROM app_settings WHERE key = 'dining_days'").fetchone()
+        if days != ((days_row["value"] if days_row else "") or ""):
+            conn.execute(
+                """INSERT INTO app_settings (key, value) VALUES ('dining_days', ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (days,))
+            log_audit(conn, "dining_days_set",
+                      target=restaurant_open_days_words(int(d) for d in days.split(",") if d)
+                      or "not set")
         log_audit(conn, "restaurant_settings_updated")
         conn.commit()
         conn.close()
@@ -70213,12 +70289,14 @@ def admin_restaurant_settings():
     employees = conn.execute("SELECT * FROM users WHERE role IN ('owner', 'employee') ORDER BY role DESC, name").fetchall()
     rate_overrides = conn.execute("SELECT * FROM restaurant_rate_overrides ORDER BY start_date").fetchall()
     instant = restaurant_instant_on(conn)
+    open_days = restaurant_open_weekdays(conn)
     conn.close()
     return render_template(
         "admin_restaurant_settings.html", settings=settings, employees=employees, rate_overrides=rate_overrides,
         dining_modes=DINING_MODES, dining_mode=mode_now,
         dining_reopens=(reopens_row["value"] if reopens_row else "") or "",
         restaurant_instant=instant,
+        dining_days=",".join(str(d) for d in sorted(open_days or ())),
     )
 
 
@@ -71783,6 +71861,15 @@ def join_restaurant_waitlist():
         conn.commit()      # keep the rate-limit entry
         conn.close()
         flash("Enter a valid date, or leave it blank and we will ask.", "error")
+        return redirect(url_for("restaurant_book"))
+    # A place on the waitlist for an evening La Table does not serve is a
+    # promise nothing will ever keep: no table frees up that night, so the
+    # job that writes to the list never does, and the guest waits for nothing.
+    closed = restaurant_closed_evening(conn, parse_date(desired_date)) if desired_date else None
+    if closed:
+        conn.commit()      # keep the rate-limit entry
+        conn.close()
+        flash(closed, "error")
         return redirect(url_for("restaurant_book"))
 
     party_size = int(party_size_raw) if party_size_raw.isdigit() else None
@@ -84029,6 +84116,14 @@ PUBLIC_SETTINGS = (
     # so the switch could not have reached them. Set on the restaurant
     # settings page; restaurant_instant_holds() is what keeps the promise.
     "restaurant_instant",
+    # La Table's opening hours: the evenings it serves (0 = Monday, comma-
+    # separated) and the dinner time. _dining_hours.html words them on the
+    # Dining page, the footer, Stay and the homepage, and the booking page's
+    # date picker greys out the rest. Both were read by every one of those
+    # pages and allowed out by none, so the hours never appeared. dining_days
+    # is saved on the restaurant settings page; dining_time is not a key of
+    # its own -- see _load.
+    "dining_days", "dining_time",
 )
 
 
@@ -84068,6 +84163,13 @@ class LazyPublicSettings:
                     # two.
                     self._data["tourist_tax"] = tax_rate(
                         conn, "city_tax_per_adult_per_night")
+                    # The dinner time the restaurant settings page saves, the
+                    # one the booking page already prints as "seating from".
+                    # The hours were written to read app_settings.dining_time,
+                    # which nothing writes; a second copy would only drift.
+                    restaurant = get_restaurant_settings(conn)
+                    self._data["dining_time"] = ((restaurant["dinner_time"] if restaurant else "")
+                                                 or "").strip() or None
                 finally:
                     conn.close()
             except Exception:
