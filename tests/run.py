@@ -161,6 +161,7 @@ SUITES = [
     "test_booking_com_mail",
     "test_booking_com_stays",
     "test_door_lock",
+    "test_deploy_behind_main",
     "test_room_lineup",
     "test_dining_switch",
     "test_newsletter",
@@ -780,6 +781,9 @@ def main(argv):
 
     print(f"Database: {_harness.SCRATCH_DB}")
     print("(a throwaway copy — the real one is untouched)")
+    print(f"Today: {_harness.PINNED_START:%A %d %B %Y}, from "
+          f"{_harness.PINNED_START:%H:%M} at the house")
+    print("(pinned for the whole run, whatever the date — GUDANES_TEST_TODAY moves it)")
     print("\n== Self-check")
     control_ok = _positive_control()
     registry_ok = _registry_complete()
