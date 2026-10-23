@@ -266,6 +266,7 @@ left behind that survives a password change:
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API keys → Create. Look at Usage since 5 October while you're there — spending you didn't do is the tell of a stolen key. |
 | `MS_GRAPH_CLIENT_SECRET` | entra.microsoft.com → App registrations → *Chateau de Gudanes - inbox reader* → Certificates & secrets → New client secret. Copy the **Value**, not the Secret ID. |
 | `SMTP_PASSWORD`, `SMS_PROVIDER_TOKEN`, `TUYA_ACCESS_SECRET` | Only if set. Each from its own provider. |
+| `GITHUB_READ_TOKEN` | Only if set. GitHub → Settings → Developer settings → Fine-grained tokens: a new one as in "Knowing when the live site is behind main". It can only read the code, but the code is private. |
 
 ### 3. New keys the app makes itself
 
@@ -596,6 +597,53 @@ FIRST RUN — owner account created.
 Read it under **Deployments → View logs**. With no email provider configured
 there is no password-reset route yet, so this is the only way in. Log in and
 change it straight away.
+
+---
+
+## Knowing when the live site is behind main
+
+A push to `main` is not live until Railway has deployed it. From 20 to 22
+October 2026 every push built and then failed at **Pre-deploy → Migrate
+volumes**, because a change staged on the Railway canvas was holding the
+`/data` volume. The site stayed on 4bcf711 for two days, and nothing said so.
+
+Every quarter of an hour the app asks GitHub where `main` is and compares it
+with the commit Railway is running (`RAILWAY_GIT_COMMIT_SHA`, which `/status`
+also shows). Once the live site has been behind for more than an hour, the
+owner home says so, with how many commits and since when, and a watch task is
+raised. After a day it is a blocker. Both go away by themselves once the site
+catches up.
+
+"Since when" is the time of the push that left the site behind, taken from
+GitHub's record of pushes to `main`. It is not the commit's own date: work is
+often committed hours before it is pushed.
+
+The repository is private, so the app needs a token that can read it:
+
+1. GitHub → your picture → **Settings → Developer settings → Personal access
+   tokens → Fine-grained tokens → Generate new token**.
+2. **Repository access: Only select repositories**, and choose this one.
+3. **Repository permissions: Contents → Read-only.** GitHub adds Metadata →
+   Read-only with it. Give it nothing else.
+4. Expiry: the longest GitHub offers, with the date in the house calendar.
+   When it expires GitHub refuses it, the check starts failing, and the home
+   page says the job has stopped working.
+5. Railway → CDG1 → **Variables** → `GITHUB_READ_TOKEN` = the token, then
+   Deploy.
+
+Within a quarter of an hour, **Admin → Readiness** shows "The live site is
+running main" as passing (**Admin → Automation → Run now** asks GitHub
+straight away). Until the token is set, that line says it is missing.
+
+Railway supplies the repository and branch (`RAILWAY_GIT_REPO_OWNER`,
+`RAILWAY_GIT_REPO_NAME`, `RAILWAY_GIT_BRANCH`). For a copy deployed some other
+way, `GITHUB_REPO=owner/name` overrides them.
+
+**When it fires,** open **Railway → CDG1 → Deployments** and look at the most
+recent attempts. If one failed at **Migrate volumes**, a change staged on the
+canvas is holding the volume: press **Deploy** on the canvas to apply it, and
+the deploy goes through. For anything else, the deploy log says why. After a
+fix, check `/status` shows the new commit before telling anyone it is live.
 
 ---
 
