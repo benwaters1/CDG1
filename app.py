@@ -9372,6 +9372,9 @@ NAV_AREAS = {
         "admin_outlook_addin_people", "admin_outlook_addin_revoke",
         "admin_outlook_addin_revoke_check",
         "admin_outlook_addin_mailboxes", "admin_outlook_addin_settings",
+        # Saying Microsoft 365 has fetched the new add-in: it closes the
+        # owner's warning and task, so it is the owner's to say.
+        "admin_outlook_addin_updated",
         "admin_house_calendar", "admin_house_calendar_sync", "admin_house_calendar_share",
         "admin_house_calendar_shared_by_hand",
         "admin_house_calendar_feed_link", "admin_house_calendar_areas",
@@ -37778,6 +37781,13 @@ def owner_home_warnings(conn, today):
             "Outlook gives the whole check five, and past three the add-in gives up and "
             "asks the person to check by eye.",
             speed["count"], "admin_outlook_addin", _anchor="send-checks")
+    # A NEW ADD-IN THAT MICROSOFT 365 HAS NOT FETCHED. The add-in page said
+    # to watch for a new version number, and nobody opens a page to see
+    # whether its number has changed. Closes itself when the owner says
+    # Microsoft has it.
+    stale = addin_version_problem(conn)
+    if stale:
+        add("warn", stale[0], stale[1], 1, "admin_outlook_addin", _anchor="update")
 
     # EXTRAS THE HOUSE HAS PROMISED AND NOT SORTED. The run sheet knew, and
     # nobody opens a run sheet to find out whether there is a problem on it.
@@ -86178,6 +86188,7 @@ WATCH_TASK_KINDS = {
     "door": "The front door lock needs attention",
     "letters": "A guest letter out of step with the house rules on payment",
     "sendcheck": "An Outlook the check on Send cannot run in",
+    "addin_version": "A new Outlook add-in that Microsoft 365 has not fetched",
     "terms": "Booking terms that give a different arrival or departure time",
     "extras": "An extra a guest has paid for, to arrange or hand over",
     "rooms_let": "A night with more rooms let than the house has bathrooms for",
@@ -89529,6 +89540,15 @@ def watch_task_findings(conn, today=None):
             + (f"\n\n{t['remedy']}" if t["remedy"] else ""),
             today.isoformat(), "high"))
     found.extend(take("sendcheck", unchecked))
+
+    # A new add-in that Microsoft 365 has not fetched. Titled by the version,
+    # so it closes when the owner says Microsoft has it, and a second change
+    # before then replaces it rather than sitting beside it.
+    stale = addin_version_problem(conn)
+    if stale:
+        found.append(("addin_version", stale[0],
+                      stale[1] + "\n\nManagement → Outlook add-in (/admin/outlook-addin).",
+                      today.isoformat(), "normal"))
 
     # AN EXTRA TO ARRANGE OR HAND OVER. On the calendar on the day it has to be
     # arranged by, so the transfer is booked the day before rather than found
@@ -105287,6 +105307,12 @@ ADDIN_SESSION_DAYS = 30
 ADDIN_SHARED_KEY_SETTING = "addin_shared_key_allowed"
 ADDIN_UNMATCHED_SETTING = "addin_unmatched_signins"
 ADDIN_HOUSE_NOTES_SETTING = "addin_house_notes"
+# The add-in version the owner last said Microsoft 365 has fetched. Microsoft
+# keeps handing Outlook the manifest it fetched last until somebody opens the
+# add-in in Integrated apps and chooses Update, so a new OUTLOOK_ADDIN_VERSION
+# reaches nobody on its own, and nothing in Outlook says it is out of date.
+# Set by the button on the add-in page; see addin_version_problem.
+ADDIN_CONFIRMED_VERSION_SETTING = "addin_manifest_confirmed_version"
 
 
 class AddinAuthError(Exception):
@@ -105310,6 +105336,59 @@ def addin_shared_key_allowed(conn):
     row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
                        (ADDIN_SHARED_KEY_SETTING,)).fetchone()
     return (row["value"] if row else "1") != "0"
+
+
+def addin_version_state(conn):
+    """Which add-in Microsoft 365 is handing out, as far as anybody has said.
+
+    `behind` is the one that matters: the app serves a version nobody has
+    confirmed Microsoft has fetched. With nothing ever confirmed, it counts
+    only once some Outlook has reached the add-in, because an add-in nobody
+    has installed has nothing to update, and a line saying otherwise on a
+    fresh copy would be a panel that can never be empty.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (ADDIN_CONFIRMED_VERSION_SETTING,)).fetchone()
+    confirmed = ((row["value"] if row else "") or "").strip()
+    said = conn.execute(
+        """SELECT audit_log.created_at, users.name FROM audit_log
+             LEFT JOIN users ON users.id = audit_log.actor_user_id
+            WHERE audit_log.action = 'addin_manifest_updated' AND audit_log.target = ?
+            ORDER BY audit_log.created_at DESC, audit_log.id DESC LIMIT 1""",
+        (confirmed,)).fetchone() if confirmed else None
+    in_use = bool(confirmed) or bool(conn.execute(
+        """SELECT 1 FROM addin_sessions UNION ALL SELECT 1 FROM addin_check_keys
+           UNION ALL SELECT 1 FROM addin_send_checks LIMIT 1""").fetchone())
+    return {"running": OUTLOOK_ADDIN_VERSION, "confirmed": confirmed,
+            "confirmed_at": said["created_at"] if said else None,
+            "confirmed_by": said["name"] if said else None,
+            "behind": in_use and confirmed != OUTLOOK_ADDIN_VERSION}
+
+
+def addin_version_problem(conn):
+    """(title, detail) when the app serves an add-in version nobody has said
+    Microsoft 365 has fetched, else None. One sentence for the owner home and
+    the task it raises, so they cannot word it apart.
+
+    The version is in the title on purpose: it is the task's dedupe key, and a
+    second change before the first was fetched is a new job, not the old one.
+    Closes itself when the owner presses the button on the add-in page.
+    """
+    state = addin_version_state(conn)
+    if not state["behind"]:
+        return None
+    running = state["running"]
+    if state["confirmed"]:
+        said = (f"The add-in is now version {running}; Microsoft 365 was last "
+                f"updated to {state['confirmed']}.")
+    else:
+        said = (f"The add-in is version {running}, and nobody has yet said "
+                "which version Microsoft 365 has fetched.")
+    return (f"Update the Outlook add-in to version {running} in Microsoft 365",
+            said + " Outlook keeps the add-in Microsoft fetched last, so a change "
+            "reaches nobody until somebody opens it in the Microsoft 365 admin "
+            "centre, Settings, Integrated apps, and chooses Update. Then press "
+            "\"I've updated it in Microsoft 365\" on the add-in page and this closes.")
 
 
 _MS_KEYS = {"keys": {}, "fetched_at": 0.0, "tried_at": 0.0}
@@ -111405,6 +111484,7 @@ def _admin_addin_context(conn):
         "addin_base_from": addin_from,
         "railway_public_domain": RAILWAY_PUBLIC_DOMAIN,
         "manifest_version": OUTLOOK_ADDIN_VERSION,
+        "addin_version": addin_version_state(conn),
         "token_configured": bool(GUEST_LOOKUP_TOKEN),
         "shared_key_allowed": addin_shared_key_allowed(conn),
         "sso_configured": addin_sso_configured(), "sso_client_id": ADDIN_CLIENT_ID,
@@ -111591,6 +111671,51 @@ def admin_outlook_addin_settings():
                        "The shared key no longer opens anything; only people signed in to "
                        "Microsoft 365 can use the add-in."), "success")
     return redirect(url_for("admin_outlook_addin") + "#settings")
+
+
+@app.route("/admin/outlook-addin/updated", methods=["POST"])
+@owner_required
+def admin_outlook_addin_updated():
+    """The owner has chosen Update in Microsoft 365's Integrated apps, so
+    Microsoft has fetched the manifest this app serves.
+
+    Records the version the page showed, and only if it is still the one
+    running: an app redeployed while the page was open serves a manifest
+    Microsoft has not seen, and taking the press for that one would close
+    the warning about exactly the change that has not been fetched.
+    """
+    shown = (request.form.get("version") or "").strip()
+    if shown != OUTLOOK_ADDIN_VERSION:
+        flash(("Not recorded. " + (
+            f"The page showed version {shown} and the add-in is now {OUTLOOK_ADDIN_VERSION}: "
+            "it changed while the page was open, so Microsoft 365 may not have this one. "
+            if shown else "The press did not say which version it was for. ")
+            + "Choose Update in Integrated apps again, then press the button below."), "error")
+        return redirect(url_for("admin_outlook_addin") + "#update")
+    conn = get_db()
+    before = addin_version_state(conn)["confirmed"]
+    if before == OUTLOOK_ADDIN_VERSION:
+        conn.close()
+        flash(f"Already recorded: Microsoft 365 has version {OUTLOOK_ADDIN_VERSION}.", "success")
+        return redirect(url_for("admin_outlook_addin") + "#update")
+    stale = addin_version_problem(conn)
+    conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                 (ADDIN_CONFIRMED_VERSION_SETTING, OUTLOOK_ADDIN_VERSION))
+    log_audit(conn, "addin_manifest_updated", target=OUTLOOK_ADDIN_VERSION,
+              details=f"Microsoft 365 had {before or 'a version nobody recorded'}")
+    # The task that asked for this, closed now rather than on tomorrow's
+    # pass, which would find it no longer true and close it anyway. By its
+    # title, the way that pass closes it.
+    if stale:
+        conn.execute(
+            """UPDATE tasks SET status = 'done', completed_at = ?
+                WHERE origin = ? AND title = ? AND status != 'done'""",
+            (datetime.now(timezone.utc).isoformat(), WATCH_TASK_ORIGIN, stale[0]))
+    conn.commit()
+    conn.close()
+    flash(f"Recorded: Microsoft 365 has version {OUTLOOK_ADDIN_VERSION}. Outlook picks it "
+          "up over the next few hours (Microsoft says up to a day).", "success")
+    return redirect(url_for("admin_outlook_addin") + "#update")
 
 
 @app.route("/guests/<int:guest_id>/emails")
