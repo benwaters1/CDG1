@@ -294,6 +294,20 @@ m.turnstile_siteverify = _refuse(
     "Cloudflare Turnstile",
     "stand in for turnstile_siteverify in the test")
 
+# GitHub, asked every quarter of an hour where main is. It only reads, which is
+# the category that gets left out -- and a suite that reached it would spend the
+# token's hourly allowance from a laptop and pass or fail on what was pushed
+# that afternoon. Token cleared, stood down at github_request (the one way out),
+# and the deployed commit taken away, so no suite is a Railway deployment
+# unless it says so by setting the variable itself.
+m.GITHUB_READ_TOKEN = ""
+# Kept, as the Pennylane one is, so the suite can run the real one with urlopen
+# stood in underneath it: the headers and the refusals are the request's own.
+REAL_GITHUB_REQUEST = m.github_request
+m.github_request = _refuse(
+    "GitHub", "stand in for github_request in the test")
+os.environ.pop("RAILWAY_GIT_COMMIT_SHA", None)
+
 # Proof, rather than the assumption this file used to make. Each of these was
 # true only by accident of what happens to be in .env on one machine.
 assert not m.turnstile_enabled(), "Turnstile has keys under test"
@@ -333,6 +347,11 @@ assert m.meta_request.__name__ == "_blocked", (
 assert m.tuya_request.__name__ == "_blocked" and not m.tuya_configured(), (
     "the Tuya call is not blocked under test — reaching it would open the "
     "house's front door")
+assert m.github_request.__name__ == "_blocked" and not m.GITHUB_READ_TOKEN, (
+    "the GitHub call is not blocked under test, or its token is still set")
+assert not m.running_commit(), (
+    "RAILWAY_GIT_COMMIT_SHA is set under test, so every suite would be checking a "
+    "deployment against main")
 assert not (m.email_enabled() or m.resend_enabled()), (
     "an email provider is configured under test — a run would send real mail "
     "to the real guest addresses in the copied database")

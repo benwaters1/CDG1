@@ -161,6 +161,7 @@ SUITES = [
     "test_booking_com_mail",
     "test_booking_com_stays",
     "test_door_lock",
+    "test_deploy_behind_main",
     "test_room_lineup",
     "test_dining_switch",
     "test_newsletter",
