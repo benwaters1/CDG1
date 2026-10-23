@@ -68,7 +68,7 @@
   <dl class="g-facts-list">
     {% if workshop['nights_label'] %}<div><dt>Length</dt><dd>{{ workshop['nights_label'] }}</dd></div>{% endif %}
     {%- set _inc = (workshop['inclusions'] or '')|trim -%}{%- set _basis = _inc if _inc.lower().startswith('per person') else '' -%}
-    {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '{:,.0f}'.format(workshop['price_per_person']) }} {% if _basis %}{{ (_basis|trim('.'))[:1]|lower }}{{ (_basis|trim('.'))[1:] }}{% else %}per person{% endif %}; all meals, wine{% if _tx %}, the activities and the transfers{% else %} and the activities{% endif %} included</dd></div>{% endif %}
+    {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '{:,.0f}'.format(workshop['price_per_person']) }} {% if _basis %}{{ (_basis|trim('.'))[:1]|lower }}{{ (_basis|trim('.'))[1:] }}{% else %}per person{% endif %}{% set _an = a_night(workshop) %}{% if _an %} ({{ _an }}){% endif %}; all meals, wine{% if _tx %}, the activities and the transfers{% else %} and the activities{% endif %} included</dd></div>{% endif %}
       <div><dt>Experience needed</dt><dd>None. Most people who come have never done it before</dd></div>
     <div><dt>Where you sleep</dt><dd>In the château itself — bedrooms, not a nearby hotel</dd></div>
     <div><dt>Meals</dt><dd>A traditional French breakfast, luncheon and dinner each day, with desserts, prepared by the château’s chefs</dd></div>
@@ -128,6 +128,9 @@
             <span class="g-fig">€{{ '{:,.0f}'.format(workshop['price_per_person']) }}</span>
             <span>per person{% if workshop['deposit_percent'] %} · {{ workshop['deposit_percent'] }}% deposit{% endif %}</span>
           </p>
+          {#- 23 Oct (owner): what it comes to a night, from the price and these dates (a_night in app.py). -#}
+          {%- set _an = a_night(workshop, s) %}{% if _an %}
+          <p class="g-pernight">{{ _an }}</p>{% endif %}
           {% endif %}
           {% if row.remaining > 0 %}
           <a href="{{ url_for('workshop_register', session_id=s['id']) }}" class="g-btn g-btn--solid">Book these dates</a>

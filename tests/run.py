@@ -437,6 +437,7 @@ SUITES = [
     "test_google_setup_z30",
     "test_contact_topic_z29",
     "test_card_copy_2026_10_22",
+    "test_price_a_night",
     "test_languages_page",
     "test_share_images",
     "test_stripe_webhook_tool",

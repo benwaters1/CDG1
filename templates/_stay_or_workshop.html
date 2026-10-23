@@ -39,7 +39,7 @@
         <li>The pool, the tennis court and the gardens, table tennis, the lounge and board games, the terraces and a barbecue area</li>
         <li>{% if dm == 'open' %}At extra cost, if you wish: dinner on the nights the table is open, and an airport transfer from Toulouse{% else %}At extra cost, if you wish: an airport transfer from Toulouse{% endif %}</li>
       </ul>
-      <p class="g-sow__foot">One night or more{% if rooms_from %}, from &euro;{{ '{:,.0f}'.format(rooms_from) }} a night{% endif %}</p>
+      <p class="g-sow__foot">One night or more{% if rooms_from %}, from &euro;{{ '{:,.0f}'.format(rooms_from) }} per room, a night{% endif %}</p>
       {% if here != 'stay' %}<p class="g-sow__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn">See the rooms</a></p>{% endif %}
     </article>
     <article class="g-sow__col g-sow__col--full{% if here == 'workshop' %} is-here{% endif %}">
@@ -90,7 +90,7 @@
       <tr><th scope="row">Wi-Fi, in a common area of the château</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">Only the group in residence</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }} No other guests while it runs</td></tr>
       <tr class="g-vs__sum"><th scope="row">Length</th><td>From one night</td><td class="g-vs__full">Three to seven nights</td></tr>
-      <tr class="g-vs__sum"><th scope="row">Price</th><td>{% if rooms_from %}From &euro;{{ '{:,.0f}'.format(rooms_from) }} a night, the room{% else %}Per room, per night{% endif %}</td><td class="g-vs__full">Per person, all meals and drinks</td></tr>
+      <tr class="g-vs__sum"><th scope="row">Price</th><td>{% if rooms_from %}From &euro;{{ '{:,.0f}'.format(rooms_from) }} per room, a night{% else %}Per room, a night{% endif %}</td><td class="g-vs__full">Per person, all meals and drinks</td></tr>
     </tbody>
     <tfoot><tr><td></td>
       <td><a href="{{ url_for('book_rooms') }}" class="g-btn">See the rooms</a></td>
