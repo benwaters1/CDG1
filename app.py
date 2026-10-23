@@ -13480,6 +13480,40 @@ def month_words(value):
 
 
 app.jinja_env.filters["month_words"] = month_words
+
+
+def waitlist_when_words(entry):
+    """When somebody on the waitlist wants to come, in words.
+
+    The Waitlist and Search printed "2026-12-01 → 2027-01-01". A Contact
+    enquiry's rough month is stored as its first night to the first of the next
+    month (see contact_page), and reads as the month it is: "December 2026".
+    """
+    a, d = entry["desired_arrival"], entry["desired_departure"]
+    came, goes = parse_date(a or ""), parse_date(d or "")
+    if came and goes and came.day == 1 and goes.day == 1 and goes == (
+            date(came.year + 1, 1, 1) if came.month == 12
+            else date(came.year, came.month + 1, 1)):
+        return month_words(came)
+    if came and goes:
+        return format_date_range(a, d)
+    return format_date_short(a or d or "")
+
+
+# "Around 2026-12" is the house's own words on a Contact enquiry's note, written
+# by contact_page before it said the month in words. The rest of the note is
+# what the guest typed, so only that phrase is read again.
+_AROUND_A_MONTH = re.compile(r"\bAround (\d{4}-\d{2})\b")
+
+
+def enquiry_note_words(text):
+    if not text:
+        return text
+    return _AROUND_A_MONTH.sub(lambda m: "Around " + month_words(m.group(1)), text)
+
+
+app.jinja_env.globals["waitlist_when"] = waitlist_when_words
+app.jinja_env.filters["enquiry_note_words"] = enquiry_note_words
 app.jinja_env.filters["qty"] = lambda v, places=2: quantity(v, places)
 app.jinja_env.filters["box"] = lambda v, places=None: box_value(v, places)
 
@@ -37505,7 +37539,7 @@ def owner_home_warnings(conn, today):
     if gaps:
         with_guests = [g for g in gaps if g["in_house"] or g["arrivals"]]
         add("blocker" if with_guests else "warn", "Days with nobody on",
-            (f"{with_guests[0]['date']} has guests and nobody rostered"
+            (f"{format_date_short(with_guests[0]['date'])} has guests and nobody rostered"
              if with_guests else f"first is {format_date_short(gaps[0]['date'])}"),
             len(gaps), "cover_gaps_page")
 
@@ -38071,8 +38105,10 @@ def staff_dashboard():
         auto_prepped_count = auto_prep_upcoming_arrivals(conn, today)
         if auto_prepped_count:
             flash(
-                f"Auto-prepped {auto_prepped_count} arriving booking{'' if auto_prepped_count == 1 else 's'} "
-                f"— room setup tasks assigned.", "success",
+                f"{auto_prepped_count} stay{' is' if auto_prepped_count == 1 else 's are'} "
+                f"arriving soon: the checklist to get "
+                f"{'its room' if auto_prepped_count == 1 else 'their rooms'} ready is made, "
+                f"for whoever is on that day.", "success",
             )
         # And the Booking.com rooms emptying today, for the same reason the
         # arrival prep is here: the job runs every ten minutes, and the owner
@@ -38577,8 +38613,9 @@ def _search_sources():
                        "bookings.second_contact_email", "rooms.name"],
             "order": "bookings.arrival_date DESC",
             "name": lambda r: r["guest_name"],
-            "line": lambda r: (f"{r['room_name']} \u00b7 {r['arrival_date']} to "
-                               f"{r['departure_date']} \u00b7 {r['reference_code']}"),
+            "line": lambda r: (f"{r['room_name']} \u00b7 "
+                               f"{format_date_range(r['arrival_date'], r['departure_date'])}"
+                               f" \u00b7 {r['reference_code']}"),
             "status": lambda r: (r["status"], r["status"]),
             "href": lambda r: url_for("admin_booking", booking_id=r["id"]),
         },
@@ -38602,7 +38639,7 @@ def _search_sources():
                        "dietary_notes"],
             "order": "dinner_date DESC",
             "name": lambda r: r["guest_name"],
-            "line": lambda r: (f"{r['dinner_date']} \u00b7 party of "
+            "line": lambda r: (f"{format_date_short(r['dinner_date'])} \u00b7 party of "
                                f"{r['party_size']} \u00b7 {r['reference_code']}"),
             "status": lambda r: (r["status"], r["status"]),
             "href": lambda r: url_for("admin_restaurant"),
@@ -38634,10 +38671,12 @@ def _search_sources():
             "order": "created_at DESC",
             "name": lambda r: r["contact_name"],
             "line": lambda r: ((r["event_type"] or "").capitalize()
-                               + (f" \u00b7 {r['preferred_date']}" if r["preferred_date"] else "")
+                               + (f" \u00b7 {format_date_short(r['preferred_date'])}"
+                                  if r["preferred_date"] else "")
                                + f" \u00b7 {r['reference_code']}"),
             "status": lambda r: (r["status"], r["status"]),
-            "href": lambda r: url_for("admin_events"),
+            # The event itself, not the list it is somewhere in.
+            "href": lambda r: url_for("admin_event", event_id=r["id"]),
         },
         {
             "key": "expenses",
@@ -38646,9 +38685,10 @@ def _search_sources():
             "fields": ["vendor_name", "description", "invoice_number", "doc_type"],
             "order": "submitted_at DESC",
             "name": lambda r: r["vendor_name"] or r["description"] or "(no name)",
-            "line": lambda r: (f"\u20ac{float(r['amount'] or 0):,.2f} \u00b7 "
+            "line": lambda r: (f"{money(r['amount'] or 0)} \u00b7 "
                                + (r["description"] or "")
-                               + (f" \u00b7 due {r['due_date']}" if r["due_date"] else "")),
+                               + (f" \u00b7 due {format_date_short(r['due_date'])}"
+                                  if r["due_date"] else "")),
             "status": lambda r: (r["status"], r["status"]),
             "href": lambda r: url_for("expenses"),
         },
@@ -38700,7 +38740,7 @@ def _search_sources():
             "fields": ["name", "description"],
             "order": "sort_order",
             "name": lambda r: r["name"],
-            "line": lambda r: f"\u20ac{float(r['price_per_night'] or 0):,.0f}/night",
+            "line": lambda r: f"{euro(r['price_per_night'] or 0)} a night",
             "href": lambda r: url_for("edit_room", room_id=r["id"]),
         },
         {
@@ -38710,13 +38750,13 @@ def _search_sources():
             "fields": ["name", "email", "phone", "notes"],
             "order": "created_at DESC",
             "name": lambda r: r["name"],
-            "line": lambda r: (f"{r['desired_arrival'] or '?'} \u2192 "
-                               f"{r['desired_departure'] or '?'} \u00b7 {r['email'] or ''}"),
+            "line": lambda r: " \u00b7 ".join(x for x in (
+                waitlist_when_words(r), r["email"] or "") if x),
             "status": lambda r: (
                 r["status"],
                 "onshift" if r["status"] == "booked"
                 else ("inactive" if r["status"] == "closed" else "pending")),
-            "href": lambda r: url_for("admin_waitlist"),
+            "href": lambda r: url_for("admin_waitlist", when="all") + f"#entry-{r['id']}",
         },
         {
             "key": "recurring_costs",
@@ -38725,7 +38765,7 @@ def _search_sources():
             "fields": ["label", "category", "notes"],
             "order": "label",
             "name": lambda r: r["label"],
-            "line": lambda r: f"\u20ac{float(r['amount'] or 0):,.2f} / {r['frequency']}",
+            "line": lambda r: f"{money(r['amount'] or 0)} / {r['frequency']}",
             "status": lambda r: ("active" if r["active"] else "paused",
                                  "onshift" if r["active"] else "inactive"),
             "href": lambda r: url_for("management_recurring_costs"),
@@ -38762,7 +38802,8 @@ def _search_sources():
             "name": lambda r: (r["caption"] or "")[:60]
                               + ("\u2026" if len(r["caption"] or "") > 60 else ""),
             "line": lambda r: ((r["platform"] or "")
-                               + (f" \u00b7 {r['scheduled_date']}" if r["scheduled_date"] else "")),
+                               + (f" \u00b7 {format_date_short(r['scheduled_date'])}"
+                                  if r["scheduled_date"] else "")),
             "status": lambda r: (r["status"],
                                  "onshift" if r["status"] == "posted" else "pending"),
             "href": lambda r: url_for("management_social"),
@@ -77406,10 +77447,28 @@ def reports_index():
     Thirty-six of them were reachable only through the command palette, which
     is no use to somebody who does not already know the report exists.
     """
-    rows = report_catalogue()
+    # One line a page. The palette keeps two names for one page -- "Event run
+    # sheet" is how somebody asks for Events -- and the index printed both,
+    # each with the same sentence. The shorter name leads; the other is said
+    # beside it and still found by a search.
+    merged = {}
+    for r in report_catalogue():
+        kept = merged.get(r["endpoint"])
+        if kept is None:
+            merged[r["endpoint"]] = dict(r, also=[])
+            continue
+        if len(r["label"]) < len(kept["label"]):
+            kept["also"].append(kept["label"])
+            kept["label"] = r["label"]
+        else:
+            kept["also"].append(r["label"])
+        kept["keywords"] = f"{kept['keywords']} {r['keywords']}"
+    rows = list(merged.values())
+    for r in rows:
+        r["also_words"] = " ".join(r["also"])
     lv = list_view(
         rows, request.args,
-        search=["label", "what", "keywords"],
+        search=["label", "what", "keywords", "also_words"],
         search_hint="Search what you want to know, not what the page is called",
         facets=[
             facet("area", "Part of the house", lambda r: r["area_title"],
@@ -94754,9 +94813,9 @@ def run_backup_email_job(conn):
 @app.route("/calendar")
 @login_required
 def ops_calendar():
-    """The main working calendar — day/week/month, every item clickable and
-    filterable. Employees get it too (it's the "what's on" view), and see only
-    what is theirs to see."""
+    """The house's calendar by day, week or month: stays, dinners, ateliers,
+    events, tasks and the rota, each one opening to everything about it.
+    Everybody has it, and each person sees what is theirs to see."""
     view = request.args.get("view", "week")
     anchor = parse_date(request.args.get("date", "")) or house_today()
     user = current_user()
@@ -96857,9 +96916,14 @@ def arrivals_sheet(conn, day=None, channel=None):
             "arrival_time": (b["estimated_arrival_time"] or "").strip()
                             or ((profile["usual_arrival_time"] or "").strip()
                                 if profile else ""),
-            "dietary": " · ".join(x for x in [
-                (profile["dietary_notes"] or "").strip() if profile else "",
-                (b["special_requests"] or "").strip()] if x),
+            # What the guest's record says they cannot eat, and what the
+            # booking's own box says, kept apart. Joined, they were printed
+            # under "Cannot eat" together, so "Anniversary - could we have
+            # flowers in the room?" read as an allergy. The box is where guests
+            # do write "no shellfish" (the kitchen sheet reads it as such), so
+            # it is shown in full beside it, as their words.
+            "dietary": (profile["dietary_notes"] or "").strip() if profile else "",
+            "requests": (b["special_requests"] or "").strip(),
             "access_needs": (profile["access_needs"] or "").strip() if profile else "",
             "missing": missing,
         })
@@ -109118,6 +109182,8 @@ def assistant_read_tool(conn, user, name, args):
                 bits.append(f"at {r['arrival_time']}")
             if r["dietary"]:
                 bits.append(f"CANNOT EAT: {r['dietary']}")
+            if r["requests"]:
+                bits.append(f"THEY ASKED: {r['requests']}")
             if r["milestone"]:
                 bits.append(str(r["milestone"]))
             # A standing instruction about somebody is the one thing on this
@@ -110961,7 +111027,9 @@ def contact_page():
 
     said = [CONTACT_TOPICS[topic]]
     if month:
-        said.append("Around %s" % month)
+        # The month in words: "2026-12" is how the form sends it, not how the
+        # house writes it (enquiry_note_words reads the older ones).
+        said.append("Around %s" % month_words(month))
     # The length only when somebody gave one. "Length not decided" on every
     # wedding enquiry described a form field, not the enquiry.
     if n:

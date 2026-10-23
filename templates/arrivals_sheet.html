@@ -111,6 +111,13 @@
     <p>{{ r.dietary }}</p>
     {% endif %}
 
+    {% if r.requests %}
+    {#- The booking's own box, in their words: a request, or what they cannot
+        eat -- guests write both there -- so it is never called either. -#}
+    <p class="field-label">They asked</p>
+    <p>{{ r.requests }}</p>
+    {% endif %}
+
     {% if r.access_needs %}
     {# Read here rather than found on the profile afterwards: the ground-floor
        decision is made before they arrive or not at all. #}

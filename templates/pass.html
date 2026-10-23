@@ -104,7 +104,7 @@
             <div><dt>Been before</dt><dd>{{ g['stay_count'] }} stays{% if g['last_stay'] %}, last in {{ g['last_stay'] }}{% endif %}</dd></div>
             {% endif %}
             {% if g['staying'] %}
-            <div><dt>Here</dt><dd>{{ g['arrive'] }} to {{ g['depart'] }}{% if g['room_name'] %}, {{ g['room_name'] }}{% endif %}</dd></div>
+            <div><dt>Here</dt><dd>{{ date_range(g['arrive'], g['depart']) }}{% if g['room_name'] %}, {{ g['room_name'] }}{% endif %}</dd></div>
             {% endif %}
             {% if g['party'] %}<div><dt>Party</dt><dd>{{ g['party'] }}</dd></div>{% endif %}
             {% if g['occasion'] %}<div><dt>Occasion</dt><dd>{{ g['occasion'] }}</dd></div>{% endif %}

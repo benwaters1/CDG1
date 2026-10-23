@@ -33,14 +33,14 @@
       </div>
     </div>
     <p class="upload-hint">
-      {{ e['desired_arrival'] or '?' }} → {{ e['desired_departure'] or '?' }}
+      {{ waitlist_when(e) or 'No dates given' }}
       {% if e['party_size'] %} · Party of {{ e['party_size'] }}{% endif %}
     </p>
     <p class="upload-hint">
       <a href="mailto:{{ e['email'] }}" style="color:var(--steel);">{{ e['email'] }}</a>
       {% if e['phone'] %} · <a href="tel:{{ e['phone'] }}" style="color:var(--steel);">{{ e['phone'] }}</a>{% endif %}
     </p>
-    {% if e['notes'] %}<p class="manual-body">{{ e['notes'] }}</p>{% endif %}
+    {% if e['notes'] %}<p class="manual-body">{{ e['notes']|enquiry_note_words }}</p>{% endif %}
     <p class="upload-hint">Joined {{ e['created_at']|house_day|date_short }}</p>
     <div class="expense-actions">
       {% if e['status'] in ('open', 'enquiry', 'contacted') and e['desired_arrival'] and e['desired_departure'] %}
