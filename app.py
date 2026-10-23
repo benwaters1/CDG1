@@ -14972,6 +14972,9 @@ def build_overview(conn, view, anchor, fetch_window=None):
     rows = []
     for t in _overview_task_range(conn, query_start, query_end):
         is_owner_task = owner_id is not None and t["assigned_to_user_id"] == owner_id
+        # What the task is about, where the person looking may open it: the
+        # stay, the enquiry. A task with none opens the task list (build_calendar).
+        subject = task_subject(t)
         rows.append({
             "kind": "task",
             "lane": "owner" if is_owner_task else "task",
@@ -14987,7 +14990,8 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "detail": t["room_note"] or t["notes"] or "",
             "assignee_id": t["assigned_to_user_id"],
             "assignee_name": t["employee_name"],
-            "id": t["id"], "link": None,
+            "id": t["id"], "link": subject["url"] if subject else None,
+            "open_words": subject["words"] if subject else None,
         })
 
     lo, hi = query_start.isoformat(), query_end.isoformat()
@@ -15471,7 +15475,7 @@ def build_calendar(conn, view, anchor, viewer=None):
         # including their own tasks. Send tasks to the dashboard, where their
         # "What I Need To Do" list actually lives, and leave the rest as plain
         # information rather than links into pages they can't open.
-        rows = [dict(r, link=(url_for("dashboard") if r["kind"] == "task"
+        rows = [dict(r, link=((r.get("link") or url_for("dashboard")) if r["kind"] == "task"
                               else url_for("my_shifts") if r["kind"] == "shift"
                               # The extras due list is theirs: they carry them.
                               else url_for("extras_due_page") if r["kind"] == "extra" else None))
@@ -15992,7 +15996,8 @@ def calendar_cards(conn, rows, owner_view):
                   ("For", "me" if r["lane"] == "owner" else (r.get("assignee_name") or "nobody yet")),
                   ("Priority", r.get("priority") if r.get("priority") not in (None, "", "normal") else ""),
                   ("Notes", r.get("detail") or "")],
-                 open_words="Open in tasks" if owner_view else "My list")
+                 open_words=r.get("open_words")
+                 or ("Open in tasks" if owner_view else "My list"))
         elif kind == "shift":
             hours = "–".join(x for x in (f.get("start") or "", f.get("end") or "") if x)
             card(r, f"{f.get('who')} on" + (f" {hours}" if hours else ""), _cal_day(r["date"]),
@@ -37816,16 +37821,29 @@ def owner_home_day(conn, today, user):
     if covers:
         rows.append({"time": "19:30", "kind": "dinner", "title": "Dinner service",
                      "detail": f"{covers} covers", "assignee": None, "done": False})
-    for t in conn.execute(
+    tasks = conn.execute(
             """SELECT tasks.*, users.name AS who FROM tasks
                LEFT JOIN users ON users.id = tasks.assigned_to_user_id
                WHERE tasks.due_date = ? ORDER BY tasks.status, tasks.id""",
-            (today.isoformat(),)).fetchall():
-        # Every row opens something. A task that came from an enquiry opens
-        # the enquiry, where answering or marking it spam settles the task;
-        # any other task opens the task list at it.
-        href = (_day_link("admin_waitlist", when="all") + f"#entry-{t['waitlist_entry_id']}"
-                if t["waitlist_entry_id"] else _day_link("admin_tasks"))
+            (today.isoformat(),)).fetchall()
+    for e in task_entries(tasks, user):
+        # Every row opens something: what the task is about where there is a
+        # page for it (task_subject) -- the enquiry, where answering or marking
+        # it spam settles the task; the booking -- and the task list otherwise.
+        href = (e["subject"] or {}).get("url") or _day_link("admin_tasks")
+        if e["group"]:
+            # A room's checklist is one thing on the day, not eight rows each
+            # saying who is arriving.
+            people = {t["assigned_to_user_id"] for t in e["tasks"]}
+            first = e["tasks"][0]
+            rows.append({"time": "", "kind": "task", "title": e["heading"],
+                         "detail": f"{e['done']} of {e['total']} done"
+                                   + (f" · {e['note']}" if e["note"] else ""),
+                         "assignee": ("Mine" if people == {user["id"]}
+                                      else first["who"] if len(people) == 1 else None),
+                         "done": e["done"] == e["total"], "href": href})
+            continue
+        t = e["task"]
         rows.append({"time": "", "kind": "task", "title": t["title"],
                      "detail": t["room_note"] or "",
                      "assignee": "Mine" if t["assigned_to_user_id"] == user["id"] else t["who"],
@@ -38665,10 +38683,15 @@ def _search_sources():
             "order": "tasks.due_date DESC",
             "name": lambda r: r["title"],
             "line": lambda r: ((r["assigned_to_name"] or "Unassigned")
-                               + (f" \u00b7 {r['due_date']}" if r["due_date"] else "")),
+                               + (f" \u00b7 {format_date_short(r['due_date'])}"
+                                  if r["due_date"] else "")),
             "status": lambda r: (r["status"],
                                  "onshift" if r["status"] == "done" else "pending"),
-            "href": lambda r: url_for("admin_tasks"),
+            # What the task is about where there is a page for it, else the
+            # day it is on -- not the whole of this week's tasks.
+            "href": lambda r: ((task_subject(r) or {}).get("url")
+                               or (url_for("admin_tasks", view="day", date=r["due_date"])
+                                   if r["due_date"] else url_for("admin_tasks"))),
         },
         {
             "key": "rooms",
@@ -95413,6 +95436,132 @@ def phone_home():
         conn.close()
     return render_template("phone_home.html", clocked_in=clocked_in,
                            open_tasks=open_tasks, today=today)
+
+
+# WHAT A TASK IS ABOUT, AND WHERE IT OPENS.
+#
+# A task raised by a stay, an enquiry, a meeting or a piece of restoration work
+# carries the key to it, and nothing drew it. "Cot in the Family Suite for the
+# Okafors" could be ticked on Today, Tasks, the calendar and Search and opened
+# from none of them, so whoever had it went looking for the stay by name; Search
+# sent every task to the Tasks page. Only the owner home's day list opened an
+# enquiry. One answer here, for every list that draws a task.
+TASK_SUBJECTS = (
+    # (the task's column, the page, the page's argument, the words on the link)
+    ("booking_id", "admin_booking", "booking_id", "Open the booking"),
+    ("ota_reservation_id", "channel_stay_page", "reservation_id", "Open the Booking.com stay"),
+    ("waitlist_entry_id", "admin_waitlist", None, "Open the enquiry"),
+    ("meeting_id", "meeting_page", "meeting_id", "Open the meeting"),
+    ("restoration_work_id", "restoration_work_page", "work_id", "Open the work"),
+)
+
+
+def task_subject(task, user=None):
+    """{"words", "url"} for the thing this task is about, or None.
+
+    Only a page this person may open: a link that answers 403 is worse than
+    none, which is the rule the calendar's chips keep. And only inside a
+    request, because owner_home_day is also read by the assistant outside one.
+    """
+    if not has_request_context():
+        return None
+    keys = task.keys()
+    for column, endpoint, arg, words in TASK_SUBJECTS:
+        key = task[column] if column in keys else None
+        if not key:
+            continue
+        user = user or current_user()
+        if not user or not can_reach(user, endpoint):
+            return None
+        if arg is None:
+            # The waitlist page draws each entry under #entry-<id>, closed ones
+            # too when it is asked for all of them.
+            return {"words": words, "url": url_for(endpoint, when="all") + f"#entry-{key}"}
+        return {"words": words, "url": url_for(endpoint, **{arg: key})}
+    return None
+
+
+def checklist_key(task):
+    """Which stay's checklist a task belongs to, or None if it stands alone.
+
+    Arrival prep and turnover are made as one task per item, titled
+    "<room>: <item>", tied to the stay, due the same day and carrying the
+    same note -- so these four things together are the checklist.
+    """
+    keys = task.keys()
+    if "origin" not in keys or task["origin"] != "checklist":
+        return None
+    if "booking_id" in keys and task["booking_id"]:
+        stay = ("booking", task["booking_id"])
+    elif "ota_reservation_id" in keys and task["ota_reservation_id"]:
+        stay = ("channel", task["ota_reservation_id"])
+    else:
+        return None
+    room, sep, item = (task["title"] or "").partition(": ")
+    if not sep or not item:
+        return None
+    return (stay, task["due_date"], room, item in CHECKOUT_CHECKLIST)
+
+
+def task_entries(tasks, user=None):
+    """The tasks as a list reads them: one stay's checklist as one entry.
+
+    A room being made ready is eight tasks, each "urgent" and each saying "The
+    Okafor family arriving 22 October 2026, party of 4." On 22 October an
+    employee's Today held thirteen rows and eight were that room; Thursday on
+    Tasks was sixteen cards. The room board already read them as one room and
+    the lists did not. Each task is still its own tick here: the group only says
+    the shared part once, at the place its first task stood.
+
+    Every entry is {"group": bool, ...}. A lone task: "task", "subject". A
+    checklist: "heading", "room", "note", "items" ({"task", "item"}), "total",
+    "done", "urgent" (an open item is high priority), "due_date", "people"
+    (who has its items, where the rows say), "subject".
+    """
+    entries, groups = [], {}
+    for t in tasks:
+        key = checklist_key(t)
+        if key is None:
+            entries.append({"group": False, "task": t})
+            continue
+        if key not in groups:
+            groups[key] = {"group": True, "room": key[2], "turnover": key[3],
+                           "due_date": key[1], "tasks": [], "items": []}
+            entries.append(groups[key])
+        groups[key]["tasks"].append(t)
+        groups[key]["items"].append({"task": t, "item": t["title"].partition(": ")[2]})
+    out = []
+    for e in entries:
+        if e["group"] and len(e["tasks"]) == 1:
+            # A checklist with one item left in it reads best as that task.
+            e = {"group": False, "task": e["tasks"][0]}
+        if not e["group"]:
+            e["subject"] = task_subject(e["task"], user)
+            out.append(e)
+            continue
+        first = e["tasks"][0]
+        keys = first.keys()
+        e["heading"] = (f"{e['room']}: turn it round" if e["turnover"]
+                        else f"{e['room']}: get it ready")
+        e["note"] = ((first["room_note"] if "room_note" in keys else None)
+                     or (first["notes"] if "notes" in keys else None) or "")
+        e["total"] = len(e["tasks"])
+        e["done"] = sum(1 for t in e["tasks"] if t["status"] == "done")
+        e["urgent"] = any(t["priority"] == "high" and t["status"] != "done"
+                          for t in e["tasks"])
+        e["people"] = []
+        if "employee_name" in keys:
+            for t in e["tasks"]:
+                name = t["employee_name"] or "Unassigned"
+                if name not in e["people"]:
+                    e["people"].append(name)
+        e["subject"] = task_subject(first, user)
+        out.append(e)
+    return out
+
+
+app.jinja_env.globals["task_entries"] = task_entries
+app.jinja_env.globals["task_subject"] = task_subject
 
 
 def mark_task_done(conn, task, done=True):
