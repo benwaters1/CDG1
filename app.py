@@ -95515,6 +95515,22 @@ TASK_SUBJECTS = (
 )
 
 
+def _whole_person(user):
+    """The person's full row, when a caller holds only part of one.
+
+    Some callers of owner_home_day hold an id and a name and nothing else,
+    and which pages somebody may open is read off their role and their
+    access: guessed from a partial row it raised, and the day did not draw.
+    """
+    if not user or "role" in user.keys():
+        return user
+    conn = get_db()
+    try:
+        return conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+    finally:
+        conn.close()
+
+
 def task_subject(task, user=None):
     """{"words", "url"} for the thing this task is about, or None.
 
@@ -95529,7 +95545,7 @@ def task_subject(task, user=None):
         key = task[column] if column in keys else None
         if not key:
             continue
-        user = user or current_user()
+        user = _whole_person(user or current_user())
         if not user or not can_reach(user, endpoint):
             return None
         if arg is None:
@@ -95577,6 +95593,9 @@ def task_entries(tasks, user=None):
     "done", "urgent" (an open item is high priority), "due_date", "people"
     (who has its items, where the rows say), "subject".
     """
+    # Who is looking, read once for the list rather than once a task.
+    if has_request_context():
+        user = _whole_person(user or current_user())
     entries, groups = [], {}
     for t in tasks:
         key = checklist_key(t)

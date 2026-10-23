@@ -267,6 +267,22 @@ def run():
         req = next((r for r in mine_rows if r["title"] == f"{TAG} cot for the Okafors"), {})
         s.check("a guest's request opens the booking, not the task list",
                 req.get("href") == booking_url, detail=str(req.get("href")))
+        # Some callers hold only an id and a name. Which pages somebody may
+        # open is read off their whole record, and read off half of one it
+        # raised -- the full run found it, from test_booking_com_stays.
+        conn = db()
+        try:
+            with m.app.test_request_context("/"):
+                partial = m.owner_home_day(conn, house_today(),
+                                           {"id": owner["id"], "name": owner["name"]})
+            err = None
+        except Exception as e:  # noqa: BLE001 -- the failure is the finding
+            partial, err = [], f"{type(e).__name__}: {e}"
+        finally:
+            conn.close()
+        got = next((r for r in partial if r["title"] == f"{TAG} cot for the Okafors"), {})
+        s.check("handed only part of the person, the day still draws, and opens the stay",
+                err is None and got.get("href") == booking_url, detail=err or str(got.get("href")))
 
         s.section("The calendar's card and Search")
         cal = _main(oc.get(f"/calendar?view=day&date={house_today().isoformat()}")
