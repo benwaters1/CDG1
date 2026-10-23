@@ -414,6 +414,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_weather_enabled": "1",
     "automation_exchange_rates_enabled": "1",
     "automation_photo_mirror_enabled": "1",
+    # ON: it asks nobody until GITHUB_READ_TOKEN is set, and the readiness page
+    # says it is missing.
+    "automation_deploy_check_enabled": "1",
     "automation_card_details_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
@@ -7657,6 +7660,13 @@ def init_db():
         # every route that writes that column having to clear this one.
         ("newsletter_subscribers_script_removed_at",
          "ALTER TABLE newsletter_subscribers ADD COLUMN script_removed_at TEXT"),
+        # Why a table booked while tables confirm themselves (restaurant_instant)
+        # was left for the owner instead: "over the 20 covers", "a party of 9".
+        # Written once, when it was held, and shown beside Confirm in the queue
+        # so the decision is made with it rather than from memory of a
+        # notification.
+        ("restaurant_bookings_instant_held",
+         "ALTER TABLE restaurant_bookings ADD COLUMN instant_held TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -11460,6 +11470,9 @@ def log_audit(conn, action, target=None, details=None, via=None, *, actor=ACTOR_
 # stay the guest cancelled themselves is a record that points the wrong way.
 GUEST_AUDIT_ACTIONS = frozenset({
     "booking_confirmed_online", "booking_cancelled_by_guest",
+    # A table booked on the site while tables confirm themselves: confirmed
+    # on it, or left for the owner with the reason (restaurant_instant_holds).
+    "restaurant_booking_confirmed_online", "restaurant_booking_held_for_owner",
     "booking_dates_changed_by_guest", "booking_change_asked_by_guest",
     "booking_contact_changed_by_guest", "guest_extended_stay", "guest_added_extra",
     "guest_wrote_in", "guest_restricted", "guest_asked_to_be_forgotten",
@@ -38354,6 +38367,16 @@ def owner_home_warnings(conn, today):
     if door:
         add("warn", "The front door lock needs looking at", door, 1, "door_lock_page")
 
+    # The live site behind main for over an hour, from the quarter-hourly
+    # check: pushes that are not live. A blocker after a day, which is what
+    # 20-22 October 2026 was. Quiet the moment the check finds it caught up.
+    lag = deploy_lag(conn)
+    if lag and lag["overdue"]:
+        add("blocker" if lag["blocker"] else "warn",
+            f"The live site is {counted(lag['behind_by'], 'commit')} behind "
+            f"{lag['branch']}", deploy_lag_sentence(lag), lag["behind_by"],
+            "admin_readiness")
+
     for check in readiness_checks(conn, include_slow=False):
         if check["ok"] or check["label"] not in FRONT_PAGE_READINESS:
             continue
@@ -56864,14 +56887,185 @@ def refund_restaurant_booking(conn, booking, reason="Reservation cancelled by th
                         method="stripe", user_id=user_id)
 
 
+# What confirm_restaurant_reservation says when there was nothing to confirm:
+# decided already, or cancelled while a payment was settling. The Confirm
+# button answers it with a 404, as it always has.
+RESTAURANT_NOT_WAITING = "it is no longer waiting to be confirmed"
+
+
+def confirm_restaurant_reservation(conn, booking, *, online=False):
+    """Confirm one dinner reservation that is waiting, and send the guest the
+    confirmation letter. None once that is done, or the reason it was not.
+
+    THE ONE CONFIRMATION. The owner's Confirm button and a table that confirms
+    itself on payment (restaurant_instant) both come here, so a rule added to
+    confirming -- the standing instruction below was one -- reaches both. A
+    copy of this body in the automatic path would have been the bulk-decline
+    fault again: the same action, done a second way, quietly doing less.
+
+    `online` is the table that took itself: written down as such, against
+    nobody, because it was not the decision of whoever happens to be signed in
+    on that browser.
+    """
+    # A STANDING INSTRUCTION MEANS THE HOUSE, and the house includes its table.
+    # A stay and an atelier have refused a cautioned guest for a while; a
+    # dinner never asked.
+    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
+    if caution and caution["caution_level"] == "refuse":
+        return (f"there is a standing instruction not to accept a booking from "
+                f"{caution['name']} ({caution['caution']}) — lift it on their profile if that "
+                "has changed")
+    cur = conn.execute(
+        "UPDATE restaurant_bookings SET status = 'confirmed', decided_at = ? WHERE id = ? AND status = 'pending'",
+        (datetime.now(timezone.utc).isoformat(), booking["id"]),
+    )
+    if cur.rowcount == 0:
+        return RESTAURANT_NOT_WAITING
+    if online:
+        log_audit(conn, "restaurant_booking_confirmed_online", target=booking["reference_code"],
+                  details="confirmed itself when it was booked, the evening having room",
+                  actor=None)
+    else:
+        log_audit(conn, "restaurant_booking_confirmed", target=booking["reference_code"])
+    ensure_guest_profile(conn, booking["guest_name"], booking["guest_email"],
+                         booking["guest_phone"])
+    # Committed before the letter: a write left open across the send is the
+    # "database is locked" that loses held mail.
+    conn.commit()
+    send_restaurant_email(conn, booking, "restaurant_confirmed", restaurant_email_context(booking))
+    return None
+
+
+def restaurant_instant_on(conn):
+    """Whether a table booked on the website confirms itself (restaurant_instant).
+
+    Read as the public pages read it -- 1, true, yes or on -- so the promise on
+    the booking page and what happens to the booking cannot disagree about
+    which way the switch is set.
+    """
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'restaurant_instant'").fetchone()
+    return ((row["value"] if row else "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def restaurant_open_weekdays(conn):
+    """The evenings La Table serves, as weekdays (0 = Monday), or None while
+    they have not been set -- and then no evening is closed by them. Read the
+    way _dining_hours.html reads them for the opening hours."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = 'dining_days'").fetchone()
+    days = {int(p) for p in ((row["value"] if row else "") or "").replace(" ", "").split(",")
+            if p.isdigit() and int(p) < 7}
+    return days or None
+
+
+def restaurant_instant_holds(conn, booking):
+    """Every reason this table should NOT confirm itself, in plain words.
+
+    Empty means the evening has room and nothing about the booking needs the
+    owner's eye, so it is confirmed the moment it is paid. Anything listed
+    leaves it a request: the owner decides, and the guest is told it is a
+    request, never that it is confirmed.
+
+    Only rules the house already keeps, read from where they already live,
+    and checked AFTER the booking is written -- so two paid at once each see
+    the other, and the second of two that would fill the room waits rather
+    than both getting in:
+
+      closed      online booking off, dining closed or switched off, before
+                  the opening date, an evening already gone, or an evening the
+                  opening hours leave out (dining_days)
+      too large   more than the room seats, or more than its biggest table --
+                  laying a party across tables is somebody's decision
+      covers      every reservation that night, waiting or confirmed (the
+                  booking form's rule), and the atelier guests who eat in,
+                  which the covers forecast counts as certain -- against the
+                  covers set on the restaurant's settings and the seats on the
+                  floor plan, whichever is fewer
+      the card    when that evening's card is published, a course whose
+                  counted stock would not reach this party too
+      the guest   a caution on their profile (handle with care, or do not
+                  accept), or the repeated no-shows the queue already warns of
+    """
+    reasons = []
+    settings = get_restaurant_settings(conn)
+    day = parse_date(booking["dinner_date"] or "")
+    party = booking["party_size"] or 0
+    capacity = (settings["capacity"] if settings else 0) or 20
+
+    if not settings or not settings["enabled"]:
+        reasons.append("online reservations are switched off")
+    mode = dining_mode(conn)
+    if mode != "open":
+        reasons.append("dining is closed for the season" if mode == "closed"
+                       else "dining is switched off on the website")
+    if not day:
+        return reasons + ["the date on it could not be read"]
+    if day < house_today():
+        reasons.append("that evening has already gone")
+    opening = parse_date(settings["opening_date"]) if settings and settings["opening_date"] else None
+    if opening and day < opening:
+        reasons.append(f"La Table does not open until {format_date_human(opening.isoformat())}")
+    open_days = restaurant_open_weekdays(conn)
+    if open_days is not None and day.weekday() not in open_days:
+        reasons.append(f"La Table is closed on {day.strftime('%A')}s")
+
+    tables = dining_tables(conn)
+    biggest = max((t["seats"] or 0 for t in tables), default=0)
+    if party > capacity:
+        reasons.append(f"a party of {party} is more than the {capacity} the room takes")
+    elif biggest and party > biggest:
+        reasons.append(f"a party of {party} is more than the biggest table seats ({biggest})")
+
+    booked = capacity - restaurant_remaining_capacity(conn, day.isoformat(), exclude_id=booking["id"])
+    night = dinner_covers_forecast(conn, start=day, days=1)["rows"]
+    atelier = night[0]["atelier"] if night else 0
+    at_table = booked + atelier + party
+    seats = sum(t["seats"] or 0 for t in tables)
+    with_atelier = f", counting {atelier} atelier guest{'' if atelier == 1 else 's'} dining in" if atelier else ""
+    if at_table > capacity:
+        reasons.append(f"that evening would have {at_table} at table against the "
+                       f"{capacity} covers it takes{with_atelier}")
+    elif seats and at_table > seats:
+        reasons.append(f"that evening would have {at_table} at table and the floor plan "
+                       f"seats {seats}{with_atelier}")
+
+    card = menu_for_date(conn, day)
+    if card:
+        short = [MENU_COURSES.get(c["course"], c["course"])
+                 for c in card_capacity(conn, card["id"], day)["courses"]
+                 if c["all_off"] or (not c["untracked"]
+                                     and c["still_to_come"] + party > c["portions"])]
+        if short:
+            reasons.append(f"that evening's card would run short ({', '.join(short)})")
+
+    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
+    if caution and caution["caution_level"] in ("care", "refuse"):
+        reasons.append(f"their guest profile says “{CAUTION_LEVELS[caution['caution_level']]}”")
+    # The queue's own threshold: mark_restaurant_no_show tells the owner from
+    # the second one on, so a table from that address is the owner's call.
+    missed = prior_no_shows(conn, [booking["guest_email"]]).get(
+        (booking["guest_email"] or "").lower(), 0)
+    if missed > 1:
+        reasons.append(f"they have not turned up {missed} times before")
+    return reasons
+
+
 def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner_date, party_size,
                                dietary_notes, booking_id=None, payment_status="unpaid",
                                stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                                deposit_amount=None, total_price_override=None, discount_amount_override=None,
-                               reference_code=None, quiet=False):
+                               reference_code=None, quiet=False, instant=False):
     """Write a dinner reservation down. `quiet` sends nothing -- no "request
     received" letter, no notification -- for a table the house is taking
-    itself (add_restaurant_reservation), which says what it sends."""
+    itself (add_restaurant_reservation), which says what it sends.
+
+    `instant` is a table booked on the website while tables confirm
+    themselves (restaurant_instant_on), and already paid for where payment is
+    taken. It is confirmed here unless restaurant_instant_holds finds a reason
+    not to, and then the guest gets the confirmation letter INSTEAD of "request
+    received" -- not both, a second apart, saying opposite things. One held
+    back gets "request received", as every table did before, and the reason is
+    kept on it for the owner's queue."""
     settings = get_restaurant_settings(conn)
     # Handed in from the card page, which labelled the payment with it. Kept
     # only while no other reservation holds it.
@@ -56922,7 +57116,21 @@ def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner
         return reference_code, manage_token
 
     booking_row = conn.execute("SELECT * FROM restaurant_bookings WHERE manage_token = ?", (manage_token,)).fetchone()
-    send_restaurant_email(conn, booking_row, "restaurant_reservation_received", restaurant_email_context(booking_row))
+    held = []
+    if instant:
+        held = restaurant_instant_holds(conn, booking_row)
+        if not held:
+            # Sends the confirmation letter itself, as the Confirm button does.
+            problem = confirm_restaurant_reservation(conn, booking_row, online=True)
+            held = [problem] if problem else []
+        if held:
+            conn.execute("UPDATE restaurant_bookings SET instant_held = ? WHERE id = ?",
+                         ("; ".join(held), booking_row["id"]))
+            log_audit(conn, "restaurant_booking_held_for_owner", target=reference_code,
+                      details="; ".join(held), actor=None)
+            conn.commit()
+    if not instant or held:
+        send_restaurant_email(conn, booking_row, "restaurant_reservation_received", restaurant_email_context(booking_row))
 
     # The dietary note is NOT copied into the notification body. It used to be,
     # which put the guest's allergy into a second table that nothing deletes —
@@ -56931,6 +57139,15 @@ def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner
     notify_body = ("Dietary notes were given — they are on the reservation."
                    if (dietary_notes or "").strip() else None)
     notify_title = f"Dinner reservation — {guest_name}, party of {party_size} ({format_date_human(dinner_date)})"
+    if instant and not held:
+        notify_title = (f"Dinner confirmed on booking — {guest_name}, party of {party_size} "
+                        f"({format_date_human(dinner_date)})")
+    elif instant:
+        # Said, not left to be noticed: the switch is on, so anyone reading
+        # "Dinner reservation" would take it to be confirmed already.
+        notify_title += " — waiting on you"
+        notify_body = " ".join(filter(None, [
+            f"Not confirmed automatically: {'; '.join(held)}.", notify_body]))
     notified_ids = set()
     owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
     if owner_row:
@@ -56965,6 +57182,10 @@ def create_restaurant_booking_from_stripe_session(conn, session):
         # — more trustworthy than recomputing from deposit_percent at
         # webhook time, since that setting could have changed in between.
         deposit_amount=(session["amount_total"] / 100) if sval(session, "amount_total") else None,
+        # Paid, so this is the moment the booking page promised: confirmed as
+        # soon as the payment goes through, where the evening has room. The
+        # return page and the webhook both arrive here, whichever is first.
+        instant=restaurant_instant_on(conn),
     )
     if remaining < party_size:
         # Money has already changed hands, so the reservation is still
@@ -57149,6 +57370,10 @@ def restaurant_book():
         reference_code, manage_token = create_restaurant_booking(
             conn, guest_name, guest_email, guest_phone or None, dinner_date.isoformat(), party_size, dietary_notes,
             promo_code=promo_code or None,
+            # Nothing to pay online, so booking it is the moment. The page
+            # says "confirmed as you book" here when the switch is on, and
+            # the same rules decide whether it is.
+            instant=restaurant_instant_on(conn),
         )
         conn.close()
         return redirect(url_for("restaurant_confirmation", manage_token=manage_token))
@@ -63572,6 +63797,337 @@ def status_page():
             "recovery_token_set": env("OWNER_RECOVERY_TOKEN"),
         },
     })
+
+
+# ---------------------------------------------------------------------------
+# IS THE LIVE SITE RUNNING WHAT IS ON MAIN?
+#
+# From 20 to 22 October 2026 every push to main built on Railway and then
+# failed at "Pre-deploy > Migrate volumes", because a change staged on the
+# Railway canvas was holding the /data volume. Production stayed on 4bcf711
+# for two days, and several sessions reported their work live because they had
+# pushed it. Nothing in the app could have said otherwise: /status printed the
+# commit it was running, and nothing ever compared it with anything.
+#
+# So the house asks GitHub, every quarter of an hour, where main is, and keeps
+# the answer. The owner home, the task list and the readiness page read the
+# kept answer and never the network.
+# ---------------------------------------------------------------------------
+
+GITHUB_API = "https://api.github.com"
+# Read-only, and only ever used to read. A fine-grained token for this one
+# repository with Contents: read -- DEPLOY.md, "Knowing when the live site is
+# behind main". The repository is private, so without it GitHub answers every
+# question with a 404 and there is nothing to compare.
+GITHUB_READ_TOKEN = (os.environ.get("GITHUB_READ_TOKEN") or "").strip()
+# Where the code lives when nothing says otherwise. Railway names the repository
+# it deploys from, and GITHUB_REPO is for a copy deployed some other way; this
+# is the house's own, as HOUSE_ADDIN_ORIGIN is the add-in's.
+HOUSE_GITHUB_REPO = "benwaters1/CDG1"
+DEPLOY_CHECK_SETTING = "deploy_check"
+# A push is normally live in five minutes. An hour is a deploy that did not
+# happen rather than one that is slow, and a day is a blocker: every fix pushed
+# since is not reaching anybody, whatever the session that pushed it said.
+DEPLOY_LAG_HOURS = 1
+DEPLOY_LAG_BLOCKER_HOURS = 24
+
+
+def running_commit():
+    """The commit this process is running, as Railway says, or "" anywhere else.
+
+    Read when asked rather than once at import, like /status reads it: a test
+    stands a deployment in by setting the variable."""
+    return (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or "").strip().lower()
+
+
+def deploy_branch():
+    """The branch Railway deploys from: main, unless Railway says otherwise."""
+    return (os.environ.get("RAILWAY_GIT_BRANCH") or "").strip() or "main"
+
+
+def github_repo():
+    """owner/name of the repository the live site is built from."""
+    named = (os.environ.get("GITHUB_REPO") or "").strip().strip("/")
+    if named:
+        return named
+    owner = (os.environ.get("RAILWAY_GIT_REPO_OWNER") or "").strip()
+    name = (os.environ.get("RAILWAY_GIT_REPO_NAME") or "").strip()
+    return f"{owner}/{name}" if owner and name else HOUSE_GITHUB_REPO
+
+
+def github_request(path, params=None):
+    """One read from GitHub's API: (HTTP status, the answer, or GitHub's message).
+
+    urllib, like every other outbound call here, and the one way out to GitHub,
+    so the harness standing it down covers all of it. Never raises: it runs on
+    a timer with nobody watching, so a failure has to come back as a sentence
+    the check can keep. Status 0 is no answer at all.
+    """
+    query = ("?" + urlencode(params)) if params else ""
+    headers = {"Accept": "application/vnd.github+json",
+               "X-GitHub-Api-Version": "2022-11-28",
+               "User-Agent": "chateau-gudanes"}
+    if GITHUB_READ_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_READ_TOKEN}"
+    req = Request(f"{GITHUB_API}/{path}{query}", headers=headers, method="GET")
+    try:
+        with urlopen(req, timeout=20) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8") or "null")
+    except HTTPError as e:
+        try:
+            message = json.loads(e.read().decode("utf-8")).get("message") or str(e)
+        except Exception:
+            message = str(e)
+        return e.code, message
+    except (URLError, OSError, ValueError) as e:
+        return 0, f"could not reach GitHub ({e})"
+
+
+# What a refusal from GitHub means for this check, said once. A 404 is the
+# misleading one: GitHub gives it for a private repository the token cannot
+# read, as well as for one that is not there, so a token made for the wrong
+# repository reads as "Not Found".
+GITHUB_REFUSALS = {
+    401: "The token was refused, so it has expired or been revoked: make a new one.",
+    403: "GitHub would not answer. Either the hourly limit is used up and the next "
+         "check will work, or the token is not allowed to read this repository.",
+    404: "GitHub says there is no such thing, which is also what it says when the "
+         "token cannot read a private repository. Check the token is for {repo} "
+         "with Contents: read, and that the deployed commit is still on GitHub.",
+}
+
+
+def first_push_past(activities, running):
+    """When main first moved past `running`, from GitHub's record of what
+    changed the branch, or None if the record does not go back that far.
+
+    Not a commit's own date. A commit made at ten and pushed at four carries
+    ten o'clock, and in this repository that is the usual case: work is
+    committed, the owner is asked, and it is pushed when they say. Dated by
+    the commit, every such push would have looked an hour late the moment it
+    landed, before Railway had had five minutes with it.
+    """
+    moves = [a for a in activities or () if isinstance(a, dict)
+             and a.get("activity_type") != "branch_deletion"]
+    # Newest first, as GitHub sends them. The push that left `running` behind
+    # is the one that started from it; failing that (a force push breaks the
+    # chain), the next one after the push that brought it in.
+    for i, a in enumerate(moves):
+        if (a.get("before") or "").lower() == running:
+            return _github_time(a.get("timestamp"))
+        if (a.get("after") or "").lower() == running:
+            return _github_time(moves[i - 1].get("timestamp")) if i else None
+    return None
+
+
+def _github_time(stamp):
+    """GitHub's '2026-10-20T14:05:12Z' as a stored moment, or None.
+
+    The Z is spelled out first: fromisoformat reads it only from Python 3.11,
+    nothing pins the version Railway builds with, and a moment that does not
+    parse is a warning that never shows."""
+    when = (parse_datetime_iso(stamp.replace("Z", "+00:00"))
+            if isinstance(stamp, str) else None)
+    return when.astimezone(timezone.utc).isoformat() if when else None
+
+
+def deploy_check_state(conn):
+    """The last answer from GitHub, as kept, or {} if there has never been one."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (DEPLOY_CHECK_SETTING,)).fetchone()
+    try:
+        held = json.loads(row["value"]) if row and row["value"] else {}
+    except (TypeError, ValueError):
+        held = {}
+    return held if isinstance(held, dict) else {}
+
+
+def check_deploy_against_main(running, previous=None, now=None):
+    """Ask GitHub where main is and how far `running` is behind it. The state
+    to keep, never raising: a failure is kept as `error` beside the last good
+    answer, so a GitHub outage during a stuck deploy does not make the stuck
+    deploy look fixed.
+
+    Three reads at most, one when nothing has moved: where main is (a few
+    bytes), then how far apart the two commits are, then when main first moved
+    past the one Railway is running.
+    """
+    now = now or datetime.now(timezone.utc)
+    repo, branch = github_repo(), deploy_branch()
+    # Only an answer about this same commit carries forward. After a deploy
+    # the last answer is about the previous one and says nothing about this.
+    prev = previous if (previous or {}).get("running") == running else {}
+    state = dict(prev, running=running, repo=repo, branch=branch,
+                 tried_at=now.isoformat(), error=None)
+
+    def refused(status, said):
+        state["error"] = (f"{said} (HTTP {status}). " if status else f"{said}. ") + \
+            GITHUB_REFUSALS.get(status, "").format(repo=repo)
+        state["error"] = state["error"].strip()
+        return state
+
+    status, ref = github_request(f"repos/{repo}/git/ref/heads/{branch}")
+    head = ((ref.get("object") or {}).get("sha") or "").lower() if (
+        status == 200 and isinstance(ref, dict)) else ""
+    if not head:
+        return refused(status, ref if status != 200 else f"no commit at the head of {branch}")
+    if head == running:
+        state.update(head=head, status="identical", behind_by=0, extra=0, since=None,
+                     since_from=None, noticed_at=None, checked_at=now.isoformat())
+        return state
+
+    status, cmp = github_request(f"repos/{repo}/compare/{running}...{head}",
+                                 {"per_page": 1})
+    if status != 200 or not isinstance(cmp, dict):
+        return refused(status, cmp)
+    # GitHub's words are about the second commit: "ahead" means main is ahead.
+    # "diverged" is a live site running a commit main does not have.
+    behind, extra = int(cmp.get("ahead_by") or 0), int(cmp.get("behind_by") or 0)
+    state.update(head=head, status=cmp.get("status") or "", behind_by=behind,
+                 extra=extra, checked_at=now.isoformat())
+    if behind <= 0:
+        state.update(since=None, since_from=None, noticed_at=None)
+        return state
+
+    # When this check first saw it, kept while it stays true: the fallback for
+    # a push older than GitHub's record goes back.
+    state["noticed_at"] = (prev.get("noticed_at") if prev.get("behind_by")
+                           else None) or now.isoformat()
+    since = prev.get("since") if prev.get("since_from") == "push" else None
+    if not since:
+        # Best effort. Without it the answer is still right, only vaguer
+        # about when it started.
+        status, acts = github_request(f"repos/{repo}/activity",
+                                      {"ref": branch, "per_page": 100})
+        if status == 200 and isinstance(acts, list):
+            since = first_push_past(acts, running)
+    state.update(since=since or state["noticed_at"],
+                 since_from="push" if since else "noticed")
+    return state
+
+
+def run_deploy_check_job(conn):
+    """Every quarter of an hour: is the live site running the head of main?
+
+    Kept for the owner home, the task list and the readiness page, which say so
+    once it has been behind for an hour and go quiet when it catches up. With
+    no token there is nothing to ask, and that is a setting missing rather than
+    a job failing; a refusal from GitHub is a failure, so a token that has
+    expired surfaces the way any job that keeps failing does.
+    """
+    running = running_commit()
+    if not running:
+        raise JobNotSetUp("not running on Railway, so there is no deployed commit "
+                          "to compare with main")
+    if not GITHUB_READ_TOKEN:
+        raise JobNotSetUp("GITHUB_READ_TOKEN is not set, and the repository is "
+                          "private, so GitHub will not say where main is")
+    # Read, then the network, then one write: nothing is held open across
+    # GitHub's answer.
+    state = check_deploy_against_main(running, deploy_check_state(conn))
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (DEPLOY_CHECK_SETTING, json.dumps(state)))
+    conn.commit()
+    if state["error"]:
+        raise RuntimeError(state["error"])
+    if not state["behind_by"]:
+        return f"running {running[:7]}, the head of {state['branch']}"
+    return (f"{counted(state['behind_by'], 'commit')} behind {state['branch']} "
+            f"since {local_datetime_str(state['since'])}")
+
+
+def deploy_lag(conn, now=None):
+    """How far the live site is behind main, from the last answer, or None.
+
+    Only an answer about the commit THIS process is running counts. The answer
+    is kept in the database, and the database outlives a deploy: the morning a
+    stuck deploy finally goes through, the answer on file is about the old
+    commit, and believing it would keep the warning up after the problem had
+    gone.
+    """
+    running = running_commit()
+    state = deploy_check_state(conn)
+    if not running or state.get("running") != running:
+        return None
+    behind = int(state.get("behind_by") or 0)
+    since = parse_datetime_iso(state.get("since"))
+    if behind <= 0 or not since:
+        return None
+    hours = ((now or datetime.now(timezone.utc)) - since).total_seconds() / 3600
+    return {"behind_by": behind, "extra": int(state.get("extra") or 0),
+            "running": running, "branch": state.get("branch") or deploy_branch(),
+            "since": state["since"], "pushed": state.get("since_from") == "push",
+            "hours": hours, "overdue": hours > DEPLOY_LAG_HOURS,
+            "blocker": hours >= DEPLOY_LAG_BLOCKER_HOURS}
+
+
+def deploy_lag_sentence(lag):
+    """What is wrong and where to look, in one wording, so the owner home, the
+    task it raises and the readiness page cannot read as three problems."""
+    hours = lag["hours"]
+    ago = (f"{int(hours // 24)} days ago" if hours >= 48 else
+           f"{int(hours)} hours ago" if hours >= 2 else "over an hour ago")
+    when = local_datetime_str(lag["since"])
+    branch = lag["branch"]
+    return (
+        f"Railway is still running {lag['running'][:7]}, and {branch} has "
+        f"{counted(lag['behind_by'], 'commit')} it does not. "
+        + (f"{branch.capitalize()} moved past it on {when}, {ago}. " if lag["pushed"] else
+           f"{branch.capitalize()} had moved past it by {when}, when this check first "
+           f"saw it, {ago}. ")
+        + (f"The live site is also running {counted(lag['extra'], 'commit')} {branch} "
+           "does not have, so it was deployed from somewhere else. " if lag["extra"] else "")
+        + "Nothing pushed since then is live, whatever was said when it was pushed. "
+          "Railway → CDG1 → Deployments shows each attempt and where it "
+          "stopped. One that failed at “Migrate volumes” means a change "
+          "staged on the Railway canvas is holding the volume: press Deploy on the "
+          "canvas to apply it, and the deploy goes through.")
+
+
+def deploy_check_readiness(conn):
+    """The readiness line: (severity, area, label, ok, detail)."""
+    label = "The live site is running main"
+    running = running_commit()
+    if not running:
+        return ("info", "Core", label, False,
+                "Not running on Railway, so there is no deployed commit to compare "
+                "with main.")
+    if not GITHUB_READ_TOKEN:
+        return ("warn", "Core", label, False,
+                f"Nothing can tell. GITHUB_READ_TOKEN is not set and {github_repo()} "
+                "is private, so GitHub will not say where main is. From 20 to 22 "
+                "October 2026 every deploy failed and nothing said so for two days. "
+                "DEPLOY.md, “Knowing when the live site is behind main”, "
+                "says how to make one that can read the repository and nothing else.")
+    state = deploy_check_state(conn)
+    if state.get("running") != running:
+        return ("warn", "Core", label, False,
+                f"Not checked since {running[:7]} was deployed. It is checked every "
+                "quarter of an hour; Admin → Automation has Run now.")
+    # Behind first: a stuck deploy is still stuck while GitHub is not answering,
+    # and the last answer is what says so.
+    lag = deploy_lag(conn)
+    if lag and lag["overdue"]:
+        return ("blocker" if lag["blocker"] else "warn", "Core", label, False,
+                deploy_lag_sentence(lag))
+    # Every attempt clears the error, so one that is here is the latest.
+    if state.get("error"):
+        return ("warn", "Core", label, False,
+                f"The last check could not ask GitHub: {state['error']}"
+                + (f" GitHub last answered on {local_datetime_str(state['checked_at'])}."
+                   if state.get("checked_at") else ""))
+    if lag:
+        return ("warn", "Core", label, True,
+                f"{counted(lag['behind_by'], 'commit')} on {lag['branch']} not live yet, "
+                f"since {local_datetime_str(lag['since'])}. Railway is normally live "
+                "within minutes; after "
+                + ("an hour" if DEPLOY_LAG_HOURS == 1 else counted(DEPLOY_LAG_HOURS, "hour"))
+                + " this says so on the home page.")
+    return ("warn", "Core", label, True,
+            f"Running {running[:7]}, the head of {state.get('branch') or deploy_branch()}, "
+            f"when GitHub was last asked ({local_datetime_str(state.get('checked_at'))}).")
 
 
 @app.route("/api/sync-ical", methods=["GET", "POST"])
@@ -70476,27 +71032,16 @@ def confirm_restaurant_booking(reservation_id):
     if not booking:
         conn.close()
         abort(404)
-    # A STANDING INSTRUCTION MEANS THE HOUSE, and the house includes its table.
-    # A stay and an atelier have refused a cautioned guest for a while; a
-    # dinner never asked.
-    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
-    if caution and caution["caution_level"] == "refuse":
-        conn.close()
-        flash(f"Not confirmed: there is a standing instruction not to accept a booking from "
-              f"{caution['name']} ({caution['caution']}) — lift it on their profile if that "
-              "has changed.", "error")
-        return redirect(url_for("admin_restaurant"))
-    cur = conn.execute(
-        "UPDATE restaurant_bookings SET status = 'confirmed', decided_at = ? WHERE id = ? AND status = 'pending'",
-        (datetime.now(timezone.utc).isoformat(), reservation_id),
-    )
-    if cur.rowcount == 0:
+    # The same confirmation a table that confirms itself on payment gets,
+    # letter included (confirm_restaurant_reservation).
+    problem = confirm_restaurant_reservation(conn, booking)
+    if problem == RESTAURANT_NOT_WAITING:
         conn.close()
         abort(404)
-    log_audit(conn, "restaurant_booking_confirmed", target=booking["reference_code"])
-    ensure_guest_profile(conn, booking["guest_name"], booking["guest_email"],
-                         booking["guest_phone"])
-    conn.commit()
+    if problem:
+        conn.close()
+        flash(f"Not confirmed: {problem}.", "error")
+        return redirect(url_for("admin_restaurant"))
 
     confirmed_total = conn.execute(
         "SELECT COALESCE(SUM(party_size), 0) AS t FROM restaurant_bookings WHERE dinner_date = ? AND status = 'confirmed'",
@@ -70507,7 +71052,6 @@ def confirm_restaurant_booking(reservation_id):
     if settings and confirmed_total > settings["capacity"]:
         capacity_note = f" Heads up — confirmed covers for {booking['dinner_date']} now total {confirmed_total}, over the {settings['capacity']}-seat cap."
 
-    send_restaurant_email(conn, booking, "restaurant_confirmed", restaurant_email_context(booking))
     conn.close()
     flash("Reservation confirmed." + capacity_note, "success" if not capacity_note else "error")
     return redirect(url_for("admin_restaurant"))
@@ -70776,6 +71320,14 @@ def admin_restaurant_settings():
                        ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
                     (key, value))
             log_audit(conn, "dining_mode_set", target=mode, details=reopens or None)
+        # Tables confirming themselves. In app_settings beside the dining
+        # switch for the same reason: the booking page words its promise on it.
+        instant = "1" if request.form.get("restaurant_instant") else "0"
+        if instant != ("1" if restaurant_instant_on(conn) else "0"):
+            conn.execute(
+                """INSERT INTO app_settings (key, value) VALUES ('restaurant_instant', ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (instant,))
+            log_audit(conn, "restaurant_instant_set", target="on" if instant == "1" else "off")
         log_audit(conn, "restaurant_settings_updated")
         conn.commit()
         conn.close()
@@ -70788,11 +71340,13 @@ def admin_restaurant_settings():
         "SELECT value FROM app_settings WHERE key = 'dining_reopens'").fetchone()
     employees = conn.execute("SELECT * FROM users WHERE role IN ('owner', 'employee') ORDER BY role DESC, name").fetchall()
     rate_overrides = conn.execute("SELECT * FROM restaurant_rate_overrides ORDER BY start_date").fetchall()
+    instant = restaurant_instant_on(conn)
     conn.close()
     return render_template(
         "admin_restaurant_settings.html", settings=settings, employees=employees, rate_overrides=rate_overrides,
         dining_modes=DINING_MODES, dining_mode=mode_now,
         dining_reopens=(reopens_row["value"] if reopens_row else "") or "",
+        restaurant_instant=instant,
     )
 
 
@@ -84602,6 +85156,12 @@ PUBLIC_SETTINGS = (
     # it reopens. Every public page reads it, through `site`. Set on the
     # restaurant settings page; the restaurant's booking route refuses too.
     "dining_mode", "dining_reopens",
+    # Whether a table confirms itself once paid. The booking page and the
+    # Dining page word their promise on it ("confirmed as soon as the payment
+    # goes through"), and both were reading a key that was never allowed out,
+    # so the switch could not have reached them. Set on the restaurant
+    # settings page; restaurant_instant_holds() is what keeps the promise.
+    "restaurant_instant",
 )
 
 
@@ -86300,6 +86860,7 @@ WATCH_TASK_KINDS = {
     "extras": "An extra a guest has paid for, to arrange or hand over",
     "rooms_let": "A night with more rooms let than the house has bathrooms for",
     "inbox": "One of the house's own inboxes is not getting its mail",
+    "deploy": "The live site is behind main",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -89588,6 +90149,15 @@ def watch_task_findings(conn, today=None):
     for fault in house_inbox_delivery_faults(conn):
         found.append(("inbox", f"Mail to {fault['address']} is not arriving",
                       house_inbox_fault_sentence(fault), today.isoformat(), "high"))
+
+    # The live site an hour or more behind main. One task while it is; titled
+    # by nothing that moves, so the count and the hours are rewritten in the
+    # note, and it closes itself on the first run after the check finds the
+    # live site on main's head.
+    lag = deploy_lag(conn)
+    if lag and lag["overdue"]:
+        found.append(("deploy", "Find out why the live site is behind main",
+                      deploy_lag_sentence(lag), today.isoformat(), "high"))
 
     # The booking terms naming an arrival or departure time the pages
     # contradict. Titled by what is wrong and nothing that moves, so saving
@@ -94527,6 +95097,10 @@ def readiness_checks(conn, *, include_slow=True):
             + ". The site answers on every address it has, each one claiming to "
               "be the original. Set PUBLIC_BASE_URL to https://www.chateaugudanes.com "
               "(or the bare domain, whichever the house uses).")
+
+    # Whether the live site is running main, from the quarter-hourly check, and
+    # whether there can be a check at all: the repository is private.
+    add(*deploy_check_readiness(conn))
 
     # Asked without the request's name: this page may be open on admin. or on
     # Railway, and the answer must not depend on which.
@@ -104028,6 +104602,12 @@ AUTOMATION_JOBS = [
     # and every page reads what is kept rather than asking.
     ("card_details", "automation_card_details_enabled", None, 24 * 3600,
      run_card_details_job),
+    # Every quarter of an hour, so a deploy that did not happen is on the home
+    # page within the hour it is late by rather than the next morning. One
+    # small read from GitHub while nothing has moved; above the photographs,
+    # which can take a minute.
+    ("deploy_check", "automation_deploy_check_enabled", None, 900,
+     run_deploy_check_job),
     # LAST ON PURPOSE. These run one after another in a single background
     # thread, so everything below a job waits for it -- and this one is the
     # only one that spends up to a minute on somebody else's network. It was
@@ -104470,6 +105050,12 @@ AUTOMATION_SWITCHES = [
      "runs": ("run_card_details_job",), "group": "records", "reaches": (),
      "label": "Name the card behind each payment",
      "what": "Asks Stripe for a card payment's brand and last four, for statements."},
+    {"key": "automation_deploy_check_enabled", "job": "deploy_check",
+     "runs": ("run_deploy_check_job",), "group": "records", "reaches": (),
+     "label": "Notice when the live site is behind main",
+     "what": "Every quarter of an hour, asks GitHub where main is and compares it "
+             "with the commit Railway is running. An hour behind, it says so on the "
+             "home page. Reads only; nothing until a GitHub read token is set."},
     {"key": "automation_door_lock_check_enabled", "job": "door_lock_check",
      "runs": ("run_door_lock_check_job",), "group": "records", "reaches": (),
      "label": "Check the front door lock",
