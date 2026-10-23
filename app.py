@@ -44041,6 +44041,8 @@ PALETTE_PAGES = [
      "copy of my data delete me portable"),
     ("Guest register", "police_register_page",
      "police fiche individuelle nationality passport foreign guests declaration prefecture gendarmerie"),
+    ("Print the police fiches", "register_print",
+     "fiches de police print pdf hand over gendarmerie police request signed register"),
     ("Door lock", "door_lock_page",
      "front door lock open remote tuya smart life guests access key nivian"),
     ("Transfers", "all_transfers", "airport pickup driving"),
