@@ -188,6 +188,15 @@ m.send_email_via_resend = _refuse(
 m.fetch_weather = _refuse(
     "Open-Meteo",
     "the page reads a cached reading; stand in for fetch_weather in the test")
+# And its forecast, for the outdoor jobs. A second call to the same service,
+# written later, is exactly the one that would be left out of this list. Kept
+# first, so a suite can read a canned reply through the real parser with
+# urlopen stood in underneath it.
+REAL_FETCH_FORECAST = m.fetch_forecast
+m.fetch_forecast = _refuse(
+    "Open-Meteo, for the forecast",
+    "the jobs read a cached forecast; write one with a fixed set of hours, or "
+    "stand in for fetch_forecast in the test")
 
 # Frankfurter, for exactly the reason above. It needs no key and costs nothing,
 # which is the category that gets left out -- and the whole point of moving
@@ -311,6 +320,8 @@ assert m.fetch_exchange_rates.__name__ == "_blocked", (
 assert m.fetch_weather.__name__ == "_blocked", (
     "the weather fetch is not blocked under test — it needs no key and costs "
     "nothing, which is why it is the one that gets forgotten")
+assert m.fetch_forecast.__name__ == "_blocked", (
+    "the forecast fetch is not blocked under test")
 assert m.webpush.__name__ == "_blocked", (
     "the browser push send is not blocked under test")
 assert m.fetch_one_image.__name__ == "_blocked", (
