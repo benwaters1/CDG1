@@ -161,6 +161,7 @@ SUITES = [
     "test_booking_com_mail",
     "test_booking_com_stays",
     "test_door_lock",
+    "test_deploy_behind_main",
     "test_room_lineup",
     "test_dining_switch",
     "test_newsletter",
@@ -525,6 +526,8 @@ SUITES = [
     "test_send_check_french_reply",
     # Shared inboxes and a pinned Guest pane, 19 October 2026.
     "test_addin_shared_inboxes",
+    # 22 October 2026: a new add-in version reaches the owner as a task.
+    "test_addin_version",
     "test_house_calendar",
     "test_house_calendar_default",
     "test_calendar_cards",
@@ -780,6 +783,9 @@ def main(argv):
 
     print(f"Database: {_harness.SCRATCH_DB}")
     print("(a throwaway copy — the real one is untouched)")
+    print(f"Today: {_harness.PINNED_START:%A %d %B %Y}, from "
+          f"{_harness.PINNED_START:%H:%M} at the house")
+    print("(pinned for the whole run, whatever the date — GUDANES_TEST_TODAY moves it)")
     print("\n== Self-check")
     control_ok = _positive_control()
     registry_ok = _registry_complete()

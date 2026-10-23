@@ -414,6 +414,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_weather_enabled": "1",
     "automation_exchange_rates_enabled": "1",
     "automation_photo_mirror_enabled": "1",
+    # ON: it asks nobody until GITHUB_READ_TOKEN is set, and the readiness page
+    # says it is missing.
+    "automation_deploy_check_enabled": "1",
     "automation_card_details_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
@@ -9425,6 +9428,9 @@ NAV_AREAS = {
         "admin_outlook_addin_people", "admin_outlook_addin_revoke",
         "admin_outlook_addin_revoke_check",
         "admin_outlook_addin_mailboxes", "admin_outlook_addin_settings",
+        # Saying Microsoft 365 has fetched the new add-in: it closes the
+        # owner's warning and task, so it is the owner's to say.
+        "admin_outlook_addin_updated",
         "admin_house_calendar", "admin_house_calendar_sync", "admin_house_calendar_share",
         "admin_house_calendar_shared_by_hand",
         "admin_house_calendar_feed_link", "admin_house_calendar_areas",
@@ -37713,6 +37719,16 @@ def owner_home_warnings(conn, today):
     if door:
         add("warn", "The front door lock needs looking at", door, 1, "door_lock_page")
 
+    # The live site behind main for over an hour, from the quarter-hourly
+    # check: pushes that are not live. A blocker after a day, which is what
+    # 20-22 October 2026 was. Quiet the moment the check finds it caught up.
+    lag = deploy_lag(conn)
+    if lag and lag["overdue"]:
+        add("blocker" if lag["blocker"] else "warn",
+            f"The live site is {counted(lag['behind_by'], 'commit')} behind "
+            f"{lag['branch']}", deploy_lag_sentence(lag), lag["behind_by"],
+            "admin_readiness")
+
     for check in readiness_checks(conn, include_slow=False):
         if check["ok"] or check["label"] not in FRONT_PAGE_READINESS:
             continue
@@ -37824,6 +37840,13 @@ def owner_home_warnings(conn, today):
             "Outlook gives the whole check five, and past three the add-in gives up and "
             "asks the person to check by eye.",
             speed["count"], "admin_outlook_addin", _anchor="send-checks")
+    # A NEW ADD-IN THAT MICROSOFT 365 HAS NOT FETCHED. The add-in page said
+    # to watch for a new version number, and nobody opens a page to see
+    # whether its number has changed. Closes itself when the owner says
+    # Microsoft has it.
+    stale = addin_version_problem(conn)
+    if stale:
+        add("warn", stale[0], stale[1], 1, "admin_outlook_addin", _anchor="update")
 
     # EXTRAS THE HOUSE HAS PROMISED AND NOT SORTED. The run sheet knew, and
     # nobody opens a run sheet to find out whether there is a problem on it.
@@ -63158,6 +63181,337 @@ def status_page():
     })
 
 
+# ---------------------------------------------------------------------------
+# IS THE LIVE SITE RUNNING WHAT IS ON MAIN?
+#
+# From 20 to 22 October 2026 every push to main built on Railway and then
+# failed at "Pre-deploy > Migrate volumes", because a change staged on the
+# Railway canvas was holding the /data volume. Production stayed on 4bcf711
+# for two days, and several sessions reported their work live because they had
+# pushed it. Nothing in the app could have said otherwise: /status printed the
+# commit it was running, and nothing ever compared it with anything.
+#
+# So the house asks GitHub, every quarter of an hour, where main is, and keeps
+# the answer. The owner home, the task list and the readiness page read the
+# kept answer and never the network.
+# ---------------------------------------------------------------------------
+
+GITHUB_API = "https://api.github.com"
+# Read-only, and only ever used to read. A fine-grained token for this one
+# repository with Contents: read -- DEPLOY.md, "Knowing when the live site is
+# behind main". The repository is private, so without it GitHub answers every
+# question with a 404 and there is nothing to compare.
+GITHUB_READ_TOKEN = (os.environ.get("GITHUB_READ_TOKEN") or "").strip()
+# Where the code lives when nothing says otherwise. Railway names the repository
+# it deploys from, and GITHUB_REPO is for a copy deployed some other way; this
+# is the house's own, as HOUSE_ADDIN_ORIGIN is the add-in's.
+HOUSE_GITHUB_REPO = "benwaters1/CDG1"
+DEPLOY_CHECK_SETTING = "deploy_check"
+# A push is normally live in five minutes. An hour is a deploy that did not
+# happen rather than one that is slow, and a day is a blocker: every fix pushed
+# since is not reaching anybody, whatever the session that pushed it said.
+DEPLOY_LAG_HOURS = 1
+DEPLOY_LAG_BLOCKER_HOURS = 24
+
+
+def running_commit():
+    """The commit this process is running, as Railway says, or "" anywhere else.
+
+    Read when asked rather than once at import, like /status reads it: a test
+    stands a deployment in by setting the variable."""
+    return (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or "").strip().lower()
+
+
+def deploy_branch():
+    """The branch Railway deploys from: main, unless Railway says otherwise."""
+    return (os.environ.get("RAILWAY_GIT_BRANCH") or "").strip() or "main"
+
+
+def github_repo():
+    """owner/name of the repository the live site is built from."""
+    named = (os.environ.get("GITHUB_REPO") or "").strip().strip("/")
+    if named:
+        return named
+    owner = (os.environ.get("RAILWAY_GIT_REPO_OWNER") or "").strip()
+    name = (os.environ.get("RAILWAY_GIT_REPO_NAME") or "").strip()
+    return f"{owner}/{name}" if owner and name else HOUSE_GITHUB_REPO
+
+
+def github_request(path, params=None):
+    """One read from GitHub's API: (HTTP status, the answer, or GitHub's message).
+
+    urllib, like every other outbound call here, and the one way out to GitHub,
+    so the harness standing it down covers all of it. Never raises: it runs on
+    a timer with nobody watching, so a failure has to come back as a sentence
+    the check can keep. Status 0 is no answer at all.
+    """
+    query = ("?" + urlencode(params)) if params else ""
+    headers = {"Accept": "application/vnd.github+json",
+               "X-GitHub-Api-Version": "2022-11-28",
+               "User-Agent": "chateau-gudanes"}
+    if GITHUB_READ_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_READ_TOKEN}"
+    req = Request(f"{GITHUB_API}/{path}{query}", headers=headers, method="GET")
+    try:
+        with urlopen(req, timeout=20) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8") or "null")
+    except HTTPError as e:
+        try:
+            message = json.loads(e.read().decode("utf-8")).get("message") or str(e)
+        except Exception:
+            message = str(e)
+        return e.code, message
+    except (URLError, OSError, ValueError) as e:
+        return 0, f"could not reach GitHub ({e})"
+
+
+# What a refusal from GitHub means for this check, said once. A 404 is the
+# misleading one: GitHub gives it for a private repository the token cannot
+# read, as well as for one that is not there, so a token made for the wrong
+# repository reads as "Not Found".
+GITHUB_REFUSALS = {
+    401: "The token was refused, so it has expired or been revoked: make a new one.",
+    403: "GitHub would not answer. Either the hourly limit is used up and the next "
+         "check will work, or the token is not allowed to read this repository.",
+    404: "GitHub says there is no such thing, which is also what it says when the "
+         "token cannot read a private repository. Check the token is for {repo} "
+         "with Contents: read, and that the deployed commit is still on GitHub.",
+}
+
+
+def first_push_past(activities, running):
+    """When main first moved past `running`, from GitHub's record of what
+    changed the branch, or None if the record does not go back that far.
+
+    Not a commit's own date. A commit made at ten and pushed at four carries
+    ten o'clock, and in this repository that is the usual case: work is
+    committed, the owner is asked, and it is pushed when they say. Dated by
+    the commit, every such push would have looked an hour late the moment it
+    landed, before Railway had had five minutes with it.
+    """
+    moves = [a for a in activities or () if isinstance(a, dict)
+             and a.get("activity_type") != "branch_deletion"]
+    # Newest first, as GitHub sends them. The push that left `running` behind
+    # is the one that started from it; failing that (a force push breaks the
+    # chain), the next one after the push that brought it in.
+    for i, a in enumerate(moves):
+        if (a.get("before") or "").lower() == running:
+            return _github_time(a.get("timestamp"))
+        if (a.get("after") or "").lower() == running:
+            return _github_time(moves[i - 1].get("timestamp")) if i else None
+    return None
+
+
+def _github_time(stamp):
+    """GitHub's '2026-10-20T14:05:12Z' as a stored moment, or None.
+
+    The Z is spelled out first: fromisoformat reads it only from Python 3.11,
+    nothing pins the version Railway builds with, and a moment that does not
+    parse is a warning that never shows."""
+    when = (parse_datetime_iso(stamp.replace("Z", "+00:00"))
+            if isinstance(stamp, str) else None)
+    return when.astimezone(timezone.utc).isoformat() if when else None
+
+
+def deploy_check_state(conn):
+    """The last answer from GitHub, as kept, or {} if there has never been one."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (DEPLOY_CHECK_SETTING,)).fetchone()
+    try:
+        held = json.loads(row["value"]) if row and row["value"] else {}
+    except (TypeError, ValueError):
+        held = {}
+    return held if isinstance(held, dict) else {}
+
+
+def check_deploy_against_main(running, previous=None, now=None):
+    """Ask GitHub where main is and how far `running` is behind it. The state
+    to keep, never raising: a failure is kept as `error` beside the last good
+    answer, so a GitHub outage during a stuck deploy does not make the stuck
+    deploy look fixed.
+
+    Three reads at most, one when nothing has moved: where main is (a few
+    bytes), then how far apart the two commits are, then when main first moved
+    past the one Railway is running.
+    """
+    now = now or datetime.now(timezone.utc)
+    repo, branch = github_repo(), deploy_branch()
+    # Only an answer about this same commit carries forward. After a deploy
+    # the last answer is about the previous one and says nothing about this.
+    prev = previous if (previous or {}).get("running") == running else {}
+    state = dict(prev, running=running, repo=repo, branch=branch,
+                 tried_at=now.isoformat(), error=None)
+
+    def refused(status, said):
+        state["error"] = (f"{said} (HTTP {status}). " if status else f"{said}. ") + \
+            GITHUB_REFUSALS.get(status, "").format(repo=repo)
+        state["error"] = state["error"].strip()
+        return state
+
+    status, ref = github_request(f"repos/{repo}/git/ref/heads/{branch}")
+    head = ((ref.get("object") or {}).get("sha") or "").lower() if (
+        status == 200 and isinstance(ref, dict)) else ""
+    if not head:
+        return refused(status, ref if status != 200 else f"no commit at the head of {branch}")
+    if head == running:
+        state.update(head=head, status="identical", behind_by=0, extra=0, since=None,
+                     since_from=None, noticed_at=None, checked_at=now.isoformat())
+        return state
+
+    status, cmp = github_request(f"repos/{repo}/compare/{running}...{head}",
+                                 {"per_page": 1})
+    if status != 200 or not isinstance(cmp, dict):
+        return refused(status, cmp)
+    # GitHub's words are about the second commit: "ahead" means main is ahead.
+    # "diverged" is a live site running a commit main does not have.
+    behind, extra = int(cmp.get("ahead_by") or 0), int(cmp.get("behind_by") or 0)
+    state.update(head=head, status=cmp.get("status") or "", behind_by=behind,
+                 extra=extra, checked_at=now.isoformat())
+    if behind <= 0:
+        state.update(since=None, since_from=None, noticed_at=None)
+        return state
+
+    # When this check first saw it, kept while it stays true: the fallback for
+    # a push older than GitHub's record goes back.
+    state["noticed_at"] = (prev.get("noticed_at") if prev.get("behind_by")
+                           else None) or now.isoformat()
+    since = prev.get("since") if prev.get("since_from") == "push" else None
+    if not since:
+        # Best effort. Without it the answer is still right, only vaguer
+        # about when it started.
+        status, acts = github_request(f"repos/{repo}/activity",
+                                      {"ref": branch, "per_page": 100})
+        if status == 200 and isinstance(acts, list):
+            since = first_push_past(acts, running)
+    state.update(since=since or state["noticed_at"],
+                 since_from="push" if since else "noticed")
+    return state
+
+
+def run_deploy_check_job(conn):
+    """Every quarter of an hour: is the live site running the head of main?
+
+    Kept for the owner home, the task list and the readiness page, which say so
+    once it has been behind for an hour and go quiet when it catches up. With
+    no token there is nothing to ask, and that is a setting missing rather than
+    a job failing; a refusal from GitHub is a failure, so a token that has
+    expired surfaces the way any job that keeps failing does.
+    """
+    running = running_commit()
+    if not running:
+        raise JobNotSetUp("not running on Railway, so there is no deployed commit "
+                          "to compare with main")
+    if not GITHUB_READ_TOKEN:
+        raise JobNotSetUp("GITHUB_READ_TOKEN is not set, and the repository is "
+                          "private, so GitHub will not say where main is")
+    # Read, then the network, then one write: nothing is held open across
+    # GitHub's answer.
+    state = check_deploy_against_main(running, deploy_check_state(conn))
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (DEPLOY_CHECK_SETTING, json.dumps(state)))
+    conn.commit()
+    if state["error"]:
+        raise RuntimeError(state["error"])
+    if not state["behind_by"]:
+        return f"running {running[:7]}, the head of {state['branch']}"
+    return (f"{counted(state['behind_by'], 'commit')} behind {state['branch']} "
+            f"since {local_datetime_str(state['since'])}")
+
+
+def deploy_lag(conn, now=None):
+    """How far the live site is behind main, from the last answer, or None.
+
+    Only an answer about the commit THIS process is running counts. The answer
+    is kept in the database, and the database outlives a deploy: the morning a
+    stuck deploy finally goes through, the answer on file is about the old
+    commit, and believing it would keep the warning up after the problem had
+    gone.
+    """
+    running = running_commit()
+    state = deploy_check_state(conn)
+    if not running or state.get("running") != running:
+        return None
+    behind = int(state.get("behind_by") or 0)
+    since = parse_datetime_iso(state.get("since"))
+    if behind <= 0 or not since:
+        return None
+    hours = ((now or datetime.now(timezone.utc)) - since).total_seconds() / 3600
+    return {"behind_by": behind, "extra": int(state.get("extra") or 0),
+            "running": running, "branch": state.get("branch") or deploy_branch(),
+            "since": state["since"], "pushed": state.get("since_from") == "push",
+            "hours": hours, "overdue": hours > DEPLOY_LAG_HOURS,
+            "blocker": hours >= DEPLOY_LAG_BLOCKER_HOURS}
+
+
+def deploy_lag_sentence(lag):
+    """What is wrong and where to look, in one wording, so the owner home, the
+    task it raises and the readiness page cannot read as three problems."""
+    hours = lag["hours"]
+    ago = (f"{int(hours // 24)} days ago" if hours >= 48 else
+           f"{int(hours)} hours ago" if hours >= 2 else "over an hour ago")
+    when = local_datetime_str(lag["since"])
+    branch = lag["branch"]
+    return (
+        f"Railway is still running {lag['running'][:7]}, and {branch} has "
+        f"{counted(lag['behind_by'], 'commit')} it does not. "
+        + (f"{branch.capitalize()} moved past it on {when}, {ago}. " if lag["pushed"] else
+           f"{branch.capitalize()} had moved past it by {when}, when this check first "
+           f"saw it, {ago}. ")
+        + (f"The live site is also running {counted(lag['extra'], 'commit')} {branch} "
+           "does not have, so it was deployed from somewhere else. " if lag["extra"] else "")
+        + "Nothing pushed since then is live, whatever was said when it was pushed. "
+          "Railway → CDG1 → Deployments shows each attempt and where it "
+          "stopped. One that failed at “Migrate volumes” means a change "
+          "staged on the Railway canvas is holding the volume: press Deploy on the "
+          "canvas to apply it, and the deploy goes through.")
+
+
+def deploy_check_readiness(conn):
+    """The readiness line: (severity, area, label, ok, detail)."""
+    label = "The live site is running main"
+    running = running_commit()
+    if not running:
+        return ("info", "Core", label, False,
+                "Not running on Railway, so there is no deployed commit to compare "
+                "with main.")
+    if not GITHUB_READ_TOKEN:
+        return ("warn", "Core", label, False,
+                f"Nothing can tell. GITHUB_READ_TOKEN is not set and {github_repo()} "
+                "is private, so GitHub will not say where main is. From 20 to 22 "
+                "October 2026 every deploy failed and nothing said so for two days. "
+                "DEPLOY.md, “Knowing when the live site is behind main”, "
+                "says how to make one that can read the repository and nothing else.")
+    state = deploy_check_state(conn)
+    if state.get("running") != running:
+        return ("warn", "Core", label, False,
+                f"Not checked since {running[:7]} was deployed. It is checked every "
+                "quarter of an hour; Admin → Automation has Run now.")
+    # Behind first: a stuck deploy is still stuck while GitHub is not answering,
+    # and the last answer is what says so.
+    lag = deploy_lag(conn)
+    if lag and lag["overdue"]:
+        return ("blocker" if lag["blocker"] else "warn", "Core", label, False,
+                deploy_lag_sentence(lag))
+    # Every attempt clears the error, so one that is here is the latest.
+    if state.get("error"):
+        return ("warn", "Core", label, False,
+                f"The last check could not ask GitHub: {state['error']}"
+                + (f" GitHub last answered on {local_datetime_str(state['checked_at'])}."
+                   if state.get("checked_at") else ""))
+    if lag:
+        return ("warn", "Core", label, True,
+                f"{counted(lag['behind_by'], 'commit')} on {lag['branch']} not live yet, "
+                f"since {local_datetime_str(lag['since'])}. Railway is normally live "
+                "within minutes; after "
+                + ("an hour" if DEPLOY_LAG_HOURS == 1 else counted(DEPLOY_LAG_HOURS, "hour"))
+                + " this says so on the home page.")
+    return ("warn", "Core", label, True,
+            f"Running {running[:7]}, the head of {state.get('branch') or deploy_branch()}, "
+            f"when GitHub was last asked ({local_datetime_str(state.get('checked_at'))}).")
+
+
 @app.route("/api/sync-ical", methods=["GET", "POST"])
 def api_sync_ical():
     """No-login sync trigger for an external scheduler. 404s (not 401/403,
@@ -86280,10 +86634,12 @@ WATCH_TASK_KINDS = {
     "door": "The front door lock needs attention",
     "letters": "A guest letter out of step with the house rules on payment",
     "sendcheck": "An Outlook the check on Send cannot run in",
+    "addin_version": "A new Outlook add-in that Microsoft 365 has not fetched",
     "terms": "Booking terms that give a different arrival or departure time",
     "extras": "An extra a guest has paid for, to arrange or hand over",
     "rooms_let": "A night with more rooms let than the house has bathrooms for",
     "inbox": "One of the house's own inboxes is not getting its mail",
+    "deploy": "The live site is behind main",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -89641,6 +89997,15 @@ def watch_task_findings(conn, today=None):
         found.append(("inbox", f"Mail to {fault['address']} is not arriving",
                       house_inbox_fault_sentence(fault), today.isoformat(), "high"))
 
+    # The live site an hour or more behind main. One task while it is; titled
+    # by nothing that moves, so the count and the hours are rewritten in the
+    # note, and it closes itself on the first run after the check finds the
+    # live site on main's head.
+    lag = deploy_lag(conn)
+    if lag and lag["overdue"]:
+        found.append(("deploy", "Find out why the live site is behind main",
+                      deploy_lag_sentence(lag), today.isoformat(), "high"))
+
     # The booking terms naming an arrival or departure time the pages
     # contradict. Titled by what is wrong and nothing that moves, so saving
     # terms that agree closes it. Never rewritten here: they are the owner's
@@ -89689,6 +90054,15 @@ def watch_task_findings(conn, today=None):
             + (f"\n\n{t['remedy']}" if t["remedy"] else ""),
             today.isoformat(), "high"))
     found.extend(take("sendcheck", unchecked))
+
+    # A new add-in that Microsoft 365 has not fetched. Titled by the version,
+    # so it closes when the owner says Microsoft has it, and a second change
+    # before then replaces it rather than sitting beside it.
+    stale = addin_version_problem(conn)
+    if stale:
+        found.append(("addin_version", stale[0],
+                      stale[1] + "\n\nManagement → Outlook add-in (/admin/outlook-addin).",
+                      today.isoformat(), "normal"))
 
     # AN EXTRA TO ARRANGE OR HAND OVER. On the calendar on the day it has to be
     # arranged by, so the transfer is booked the day before rather than found
@@ -94598,6 +94972,10 @@ def readiness_checks(conn, *, include_slow=True):
             + ". The site answers on every address it has, each one claiming to "
               "be the original. Set PUBLIC_BASE_URL to https://www.chateaugudanes.com "
               "(or the bare domain, whichever the house uses).")
+
+    # Whether the live site is running main, from the quarter-hourly check, and
+    # whether there can be a check at all: the repository is private.
+    add(*deploy_check_readiness(conn))
 
     # Asked without the request's name: this page may be open on admin. or on
     # Railway, and the answer must not depend on which.
@@ -104102,6 +104480,12 @@ AUTOMATION_JOBS = [
     # and every page reads what is kept rather than asking.
     ("card_details", "automation_card_details_enabled", None, 24 * 3600,
      run_card_details_job),
+    # Every quarter of an hour, so a deploy that did not happen is on the home
+    # page within the hour it is late by rather than the next morning. One
+    # small read from GitHub while nothing has moved; above the photographs,
+    # which can take a minute.
+    ("deploy_check", "automation_deploy_check_enabled", None, 900,
+     run_deploy_check_job),
     # LAST ON PURPOSE. These run one after another in a single background
     # thread, so everything below a job waits for it -- and this one is the
     # only one that spends up to a minute on somebody else's network. It was
@@ -104554,6 +104938,12 @@ AUTOMATION_SWITCHES = [
      "runs": ("run_card_details_job",), "group": "records", "reaches": (),
      "label": "Name the card behind each payment",
      "what": "Asks Stripe for a card payment's brand and last four, for statements."},
+    {"key": "automation_deploy_check_enabled", "job": "deploy_check",
+     "runs": ("run_deploy_check_job",), "group": "records", "reaches": (),
+     "label": "Notice when the live site is behind main",
+     "what": "Every quarter of an hour, asks GitHub where main is and compares it "
+             "with the commit Railway is running. An hour behind, it says so on the "
+             "home page. Reads only; nothing until a GitHub read token is set."},
     {"key": "automation_door_lock_check_enabled", "job": "door_lock_check",
      "runs": ("run_door_lock_check_job",), "group": "records", "reaches": (),
      "label": "Check the front door lock",
@@ -105070,6 +105460,12 @@ ADDIN_SESSION_DAYS = 30
 ADDIN_SHARED_KEY_SETTING = "addin_shared_key_allowed"
 ADDIN_UNMATCHED_SETTING = "addin_unmatched_signins"
 ADDIN_HOUSE_NOTES_SETTING = "addin_house_notes"
+# The add-in version the owner last said Microsoft 365 has fetched. Microsoft
+# keeps handing Outlook the manifest it fetched last until somebody opens the
+# add-in in Integrated apps and chooses Update, so a new OUTLOOK_ADDIN_VERSION
+# reaches nobody on its own, and nothing in Outlook says it is out of date.
+# Set by the button on the add-in page; see addin_version_problem.
+ADDIN_CONFIRMED_VERSION_SETTING = "addin_manifest_confirmed_version"
 
 
 class AddinAuthError(Exception):
@@ -105093,6 +105489,59 @@ def addin_shared_key_allowed(conn):
     row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
                        (ADDIN_SHARED_KEY_SETTING,)).fetchone()
     return (row["value"] if row else "1") != "0"
+
+
+def addin_version_state(conn):
+    """Which add-in Microsoft 365 is handing out, as far as anybody has said.
+
+    `behind` is the one that matters: the app serves a version nobody has
+    confirmed Microsoft has fetched. With nothing ever confirmed, it counts
+    only once some Outlook has reached the add-in, because an add-in nobody
+    has installed has nothing to update, and a line saying otherwise on a
+    fresh copy would be a panel that can never be empty.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (ADDIN_CONFIRMED_VERSION_SETTING,)).fetchone()
+    confirmed = ((row["value"] if row else "") or "").strip()
+    said = conn.execute(
+        """SELECT audit_log.created_at, users.name FROM audit_log
+             LEFT JOIN users ON users.id = audit_log.actor_user_id
+            WHERE audit_log.action = 'addin_manifest_updated' AND audit_log.target = ?
+            ORDER BY audit_log.created_at DESC, audit_log.id DESC LIMIT 1""",
+        (confirmed,)).fetchone() if confirmed else None
+    in_use = bool(confirmed) or bool(conn.execute(
+        """SELECT 1 FROM addin_sessions UNION ALL SELECT 1 FROM addin_check_keys
+           UNION ALL SELECT 1 FROM addin_send_checks LIMIT 1""").fetchone())
+    return {"running": OUTLOOK_ADDIN_VERSION, "confirmed": confirmed,
+            "confirmed_at": said["created_at"] if said else None,
+            "confirmed_by": said["name"] if said else None,
+            "behind": in_use and confirmed != OUTLOOK_ADDIN_VERSION}
+
+
+def addin_version_problem(conn):
+    """(title, detail) when the app serves an add-in version nobody has said
+    Microsoft 365 has fetched, else None. One sentence for the owner home and
+    the task it raises, so they cannot word it apart.
+
+    The version is in the title on purpose: it is the task's dedupe key, and a
+    second change before the first was fetched is a new job, not the old one.
+    Closes itself when the owner presses the button on the add-in page.
+    """
+    state = addin_version_state(conn)
+    if not state["behind"]:
+        return None
+    running = state["running"]
+    if state["confirmed"]:
+        said = (f"The add-in is now version {running}; Microsoft 365 was last "
+                f"updated to {state['confirmed']}.")
+    else:
+        said = (f"The add-in is version {running}, and nobody has yet said "
+                "which version Microsoft 365 has fetched.")
+    return (f"Update the Outlook add-in to version {running} in Microsoft 365",
+            said + " Outlook keeps the add-in Microsoft fetched last, so a change "
+            "reaches nobody until somebody opens it in the Microsoft 365 admin "
+            "centre, Settings, Integrated apps, and chooses Update. Then press "
+            "\"I've updated it in Microsoft 365\" on the add-in page and this closes.")
 
 
 _MS_KEYS = {"keys": {}, "fetched_at": 0.0, "tried_at": 0.0}
@@ -111190,6 +111639,7 @@ def _admin_addin_context(conn):
         "addin_base_from": addin_from,
         "railway_public_domain": RAILWAY_PUBLIC_DOMAIN,
         "manifest_version": OUTLOOK_ADDIN_VERSION,
+        "addin_version": addin_version_state(conn),
         "token_configured": bool(GUEST_LOOKUP_TOKEN),
         "shared_key_allowed": addin_shared_key_allowed(conn),
         "sso_configured": addin_sso_configured(), "sso_client_id": ADDIN_CLIENT_ID,
@@ -111376,6 +111826,51 @@ def admin_outlook_addin_settings():
                        "The shared key no longer opens anything; only people signed in to "
                        "Microsoft 365 can use the add-in."), "success")
     return redirect(url_for("admin_outlook_addin") + "#settings")
+
+
+@app.route("/admin/outlook-addin/updated", methods=["POST"])
+@owner_required
+def admin_outlook_addin_updated():
+    """The owner has chosen Update in Microsoft 365's Integrated apps, so
+    Microsoft has fetched the manifest this app serves.
+
+    Records the version the page showed, and only if it is still the one
+    running: an app redeployed while the page was open serves a manifest
+    Microsoft has not seen, and taking the press for that one would close
+    the warning about exactly the change that has not been fetched.
+    """
+    shown = (request.form.get("version") or "").strip()
+    if shown != OUTLOOK_ADDIN_VERSION:
+        flash(("Not recorded. " + (
+            f"The page showed version {shown} and the add-in is now {OUTLOOK_ADDIN_VERSION}: "
+            "it changed while the page was open, so Microsoft 365 may not have this one. "
+            if shown else "The press did not say which version it was for. ")
+            + "Choose Update in Integrated apps again, then press the button below."), "error")
+        return redirect(url_for("admin_outlook_addin") + "#update")
+    conn = get_db()
+    before = addin_version_state(conn)["confirmed"]
+    if before == OUTLOOK_ADDIN_VERSION:
+        conn.close()
+        flash(f"Already recorded: Microsoft 365 has version {OUTLOOK_ADDIN_VERSION}.", "success")
+        return redirect(url_for("admin_outlook_addin") + "#update")
+    stale = addin_version_problem(conn)
+    conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                 (ADDIN_CONFIRMED_VERSION_SETTING, OUTLOOK_ADDIN_VERSION))
+    log_audit(conn, "addin_manifest_updated", target=OUTLOOK_ADDIN_VERSION,
+              details=f"Microsoft 365 had {before or 'a version nobody recorded'}")
+    # The task that asked for this, closed now rather than on tomorrow's
+    # pass, which would find it no longer true and close it anyway. By its
+    # title, the way that pass closes it.
+    if stale:
+        conn.execute(
+            """UPDATE tasks SET status = 'done', completed_at = ?
+                WHERE origin = ? AND title = ? AND status != 'done'""",
+            (datetime.now(timezone.utc).isoformat(), WATCH_TASK_ORIGIN, stale[0]))
+    conn.commit()
+    conn.close()
+    flash(f"Recorded: Microsoft 365 has version {OUTLOOK_ADDIN_VERSION}. Outlook picks it "
+          "up over the next few hours (Microsoft says up to a day).", "success")
+    return redirect(url_for("admin_outlook_addin") + "#update")
 
 
 @app.route("/guests/<int:guest_id>/emails")
