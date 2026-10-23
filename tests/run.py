@@ -524,6 +524,8 @@ SUITES = [
     "test_send_check_french_reply",
     # Shared inboxes and a pinned Guest pane, 19 October 2026.
     "test_addin_shared_inboxes",
+    # 22 October 2026: a new add-in version reaches the owner as a task.
+    "test_addin_version",
     "test_house_calendar",
     "test_house_calendar_default",
     "test_calendar_cards",
