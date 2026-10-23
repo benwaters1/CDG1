@@ -74,6 +74,11 @@
           <a href="{{ url_for('management_texting') }}#text-{{ e.text }}">write it here</a>.
           Until then nothing is sent, even with this switched on.</p>
         {% endif %}
+        {% if e.no_letter %}
+        <p class="upload-hint"><strong>No wording yet</strong> &mdash;
+          <a href="{{ url_for('management_email_templates') }}#tpl-{{ e.letter }}">write the letter here</a>.
+          Until then nothing is sent, even with this switched on.</p>
+        {% endif %}
         {% if e.needs == 'graph' and not graph_enabled %}
         <p class="upload-hint"><em>Not connected yet</em> &mdash; it needs the Microsoft Graph
           mailbox set up (DEPLOY.md, "Microsoft Graph inbox monitoring").</p>

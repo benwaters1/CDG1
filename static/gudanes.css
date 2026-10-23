@@ -11026,6 +11026,9 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-mb-acts.g-mb-extra--noqty:has(> input[name="action"][value="add_extra"]){ grid-template-columns: minmax(0, 1fr); }
   .g .g-mb-acts.g-mb-extra--noqty:has(> input[name="action"][value="add_extra"]) > button{ grid-column: 1 / -1; }
 }
+/* 23 Oct - the extra a guest followed the letter before arrival to: marked, and not hidden under the sticky header */
+.g .g-mb-extra, .g #dinner{ scroll-margin-top: 96px; }
+.g .g-mb-extra--offered{ background: color-mix(in srgb, var(--gilt) 10%, transparent); box-shadow: inset 2px 0 0 var(--gilt); }
 
 /* 10 Oct - BOOKING PAGE, the end: cancelling (the advice once, the fold as a real link) and the bill with everything else */
 .g .g-mb-cancel{ margin-top: var(--s6); padding-top: var(--s4); border-top: 1px solid var(--line); }
