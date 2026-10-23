@@ -75951,6 +75951,8 @@ SETTINGS_PLACES = [
         ("admin_terms", "Terms and conditions", "What a guest agrees to when they book"),
         ("management_documents", "Documents", "Certificates, registration, scans"),
         ("vendors", "Suppliers", "Who the house buys from"),
+        ("weather_jobs_page", "Weather jobs",
+         "The frost, storm and heat lines, and the outdoor jobs each one raises"),
         ("admin_readiness", "Go-live checklist", "What is still to set before guests book here"),
     ]),
     ("Who can open what", "lock", [
