@@ -1,6 +1,7 @@
 {% extends "public_base.html" %}
 {% from '_country.html' import country_field %}
 {% from '_phone.html' import phone_field %}
+{% from '_signature_pad.html' import signature_pad %}
 {% set sticky_bar = 'none' %}
 {% block title %}Check in online — Château de Gudanes{% endblock %}
 {# A Booking.com guest's online check-in (22 October 2026): what the channel
@@ -61,7 +62,8 @@
         <input type="text" id="ci_born_at" name="born_at" value="{{ f.get('born_at', '') }}" autocomplete="off">
       </p>
     </div>
-    <p class="g-hint">If you are not French, the law asks us for your date and place of birth too, for the fiche de police. It is kept for six months and then deleted.</p>
+    <p class="g-hint">If you are not French, the law asks us for your date and place of birth too, for the fiche de police, and for you to sign it. It is kept for six months and then deleted. Please have your passport or identity card with you when you arrive: we look at it, and keep no copy.</p>
+    {{ signature_pad('signature', 'signed_name', 'ci_sig', 'Signature (if you are not French)') }}
     <p class="g-field g-eta">
       <label for="ci_eta">When you expect to arrive</label>
       {%- set _eta = f.get('estimated_arrival_time') or stay['estimated_arrival_time'] or '' %}

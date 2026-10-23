@@ -106,9 +106,19 @@ def _person(n, **fields):
 
 
 def _foreign(n, surname, nationality="British", **more):
-    return _person(n, first_names="Ada", surname=surname, nationality=nationality,
-                   born_on="1984-06-11", born_at="Leeds", home="1 Mill Lane, York",
-                   phone="+44 7700 900123", email="ada@example.invalid", **more)
+    """A foreign adult's block, signed by typing the name -- the way a guest
+    with no box to draw in signs. The drawn signature is checked on its own."""
+    fields = dict(first_names="Ada", surname=surname, nationality=nationality,
+                  born_on="1984-06-11", born_at="Leeds", home="1 Mill Lane, York",
+                  phone="+44 7700 900123", email="ada@example.invalid",
+                  signed_name=f"Ada {surname}")
+    fields.update(more)
+    return _person(n, **fields)
+
+
+# A real PNG, one pixel, as a signature pad posts it.
+PNG = ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+       "2mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
 
 
 def _fiches(conn, table, column, stay_id):
@@ -354,6 +364,103 @@ def _checks(s, conn, sent):
         oc.post(f"/admin/register/workshop/{bf[0]['id']}/delete")
         s.check("and take a mistyped one off again",
                 not _fiches(conn, "workshop_police_register", "workshop_booking_id", begun["id"]))
+
+    # ------------------------------------------------------------------
+    s.section("Signed by the guest; the passport seen, never copied")
+    sig = _stay(conn, "SIG", party=1, country="Italy")
+    surl = f"/book/manage/{sig['manage_token']}/check-in"
+    sbody = guest.get(surl).get_data(as_text=True)
+    s.check("the form has a box to sign in", "data-sigpad" in sbody)
+    s.check("and asks them to bring the passport, saying no copy is kept",
+            "keep no copy" in sbody)
+    r = guest.post(surl, data=dict(_foreign(1, "Rossi", "Italian", signed_name=""), agree="on"))
+    s.check("a foreign guest who has not signed is refused, saying why",
+            any("signed" in f for f in flashes(r))
+            and not _fiches(conn, "police_register", "booking_id", sig["id"]),
+            detail=str(flashes(r)))
+    r = guest.post(surl, data=dict(_foreign(1, "Rossi", "Italian", signed_name="Someone Else"),
+                                   agree="on"))
+    s.check("a typed signature that is not their own name is refused",
+            any("exactly" in f for f in flashes(r)), detail=str(flashes(r)))
+    r = guest.post(surl, data=dict(_foreign(1, "Rossi", "Italian", signed_name="",
+                                            signature="data:image/png;base64,bm90IGEgcG5n"),
+                                   agree="on"))
+    s.check("and nothing that is not a picture is taken as a drawn one",
+            any("could not be read" in f for f in flashes(r)), detail=str(flashes(r)))
+    guest.post(surl, data=dict(_foreign(1, "Rossi", "Italian", signed_name="", signature=PNG),
+                               agree="on"))
+    sf = _fiches(conn, "police_register", "booking_id", sig["id"])
+    s.check("a drawn signature is kept on the fiche, with when",
+            sf and sf[0]["signature"] == PNG and sf[0]["signature_kind"] == "drawn"
+            and sf[0]["signed_at"], detail=str(len(sf)))
+    copy_cols = {"passport", "passport_number", "passport_photo", "document_number",
+                 "id_number", "id_scan", "scan", "photo", "photo_filename", "document"}
+    s.check("no register has anywhere to keep a copy of a document",
+            not any({c[1] for c in conn.execute(f"PRAGMA table_info({t})")} & copy_cols
+                    for t in ("police_register", "channel_police_register",
+                              "workshop_police_register")))
+    if sf:
+        oc.post(f"/admin/register/booking/{sf[0]['id']}/passport-seen")
+        seen = conn.execute("SELECT * FROM police_register WHERE id = ?", (sf[0]["id"],)).fetchone()
+        s.check("the desk marks the passport as seen: who, and when",
+                seen["id_checked_at"] and seen["id_checked_by_user_id"] == owner["id"])
+        s.check("an employee cannot", ec.post(f"/admin/register/booking/{sf[0]['id']}/passport-seen")
+                .status_code in (302, 303, 403))
+    s.check("a register that does not exist is a 404",
+            oc.post("/admin/register/nope/1/passport-seen").status_code == 404)
+
+    s.section("Keeping the register: signing at the desk, the print-out, the export")
+    span = f"from={(today - timedelta(days=5)).isoformat()}&to={(today + timedelta(days=20)).isoformat()}"
+    regpage = oc.get(f"/admin/register?{span}").get_data(as_text=True)
+    s.check("a fiche typed at the desk shows as not signed", "Sign at the desk" in regpage)
+    s.check("and the list says what is still to do", "Not signed" in regpage
+            and "Passport not seen" in regpage)
+    if dfiche:
+        spage = oc.get(f"/admin/register/booking/{dfiche[0]['id']}/sign")
+        s.check("the desk opens the fiche for the guest to read and sign",
+                spage.status_code == 200 and "Fischer" in spage.get_data(as_text=True)
+                and "data-sigpad" in spage.get_data(as_text=True))
+        oc.post(f"/admin/register/booking/{dfiche[0]['id']}/sign", data={"signature": PNG})
+        s.check("and the guest signs it there",
+                conn.execute("SELECT signature FROM police_register WHERE id = ?",
+                             (dfiche[0]["id"],)).fetchone()[0] == PNG)
+        r = oc.post(f"/admin/register/booking/{dfiche[0]['id']}/sign", data={},
+                    follow_redirects=True)
+        s.check("signing with nothing is refused", any("Nothing was signed" in f
+                                                       for f in flashes(r)))
+    printed = oc.get(f"/admin/register/print?{span}").get_data(as_text=True)
+    s.check("the print-out holds each fiche, signature and all",
+            "Rossi" in printed and PNG in printed and "Fiche individuelle de police" in printed)
+    s.check("but not a French national's line, which is not a fiche",
+            "Rouvière" not in printed and "Martin" not in printed)
+    exported = oc.get(f"/admin/register/export.csv?{span}").get_data(as_text=True)
+    s.check("the export has the fiches and the law's fields",
+            "Rossi" in exported and "born_at" in exported and "Rouvière" not in exported)
+    s.check("and no signature image", "base64" not in exported)
+    if sf:
+        one = oc.get(f"/admin/register/booking/{sf[0]['id']}/fiche")
+        s.check("each fiche prints on its own", one.status_code == 200
+                and "Rossi" in one.get_data(as_text=True))
+    s.check("an employee cannot print the register",
+            ec.get(f"/admin/register/print?{span}").status_code in (302, 303, 403))
+
+    s.section("The owner home says when the register has gaps")
+    gap = _stay(conn, "GAP", arrive_in=-1, party=1, country="Italy")
+    with m.app.test_request_context():
+        before = [w for w in m.owner_home_warnings(conn, today)
+                  if w["title"] == "The police register has gaps"]
+    s.check("a guest here with no fiche puts a line on the owner home", bool(before))
+    oc.post(f"/admin/bookings/{gap['id']}/register", data={
+        "surname": "Bianchi", "first_names": "Luca", "nationality": "Italian",
+        "born_on": "1980-03-03", "born_at": "Roma"})
+    gf = _fiches(conn, "police_register", "booking_id", gap["id"])
+    oc.post(f"/admin/register/booking/{gf[0]['id']}/sign", data={"signed_name": "Luca Bianchi"})
+    with m.app.test_request_context():
+        after = [w for w in m.owner_home_warnings(conn, today)
+                 if w["title"] == "The police register has gaps"]
+    s.check("and filling it in and signing it takes that guest off again",
+            not after or (before and after[0]["count"] < before[0]["count"]),
+            detail=f"{before and before[0]['count']} then {after and after[0]['count']}")
 
     # ------------------------------------------------------------------
     s.section("Six months after the stay ends, then deleted")

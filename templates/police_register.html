@@ -157,17 +157,26 @@
 {% endif %}
 
 <!-- ----------------------------------------------------------------- -->
-<h2 class="section-heading">The register</h2>
+<h2 class="section-heading" id="register">The register</h2>
+{# Kept in order here: who has signed (R. 814-1), whose passport somebody
+   has looked at -- never copied, as the CNIL requires -- and the print-out
+   or spreadsheet to hand over when the police or gendarmerie ask (R. 814-3).
+   A French national's line is not a fiche: it is on the list so the stay
+   counts as done, and it is left out of what is handed over. #}
 <form method="get" class="search-bar" style="margin-bottom:12px;">
   <label class="field-label" for="reg_from">From</label>
   <input type="date" id="reg_from" name="from" value="{{ start }}">
   <label class="field-label" for="reg_to">To</label>
   <input type="date" id="reg_to" name="to" value="{{ end }}">
   <button type="submit" class="btn-mini">Show</button>
+  <a href="{{ url_for('register_print', **{'from': start, 'to': end}) }}" class="btn-mini" target="_blank" rel="noopener">Print the fiches</a>
+  <a href="{{ url_for('register_export_csv', **{'from': start, 'to': end}) }}" class="btn-mini">Export CSV</a>
 </form>
+{% with cells = summary.cells %}{% include "_overview_band.html" %}{% endwith %}
+{% include "_list_toolbar.html" %}
 
 {% if not rows %}
-  <div class="empty-state">Nothing on the register for those dates.</div>
+  <div class="empty-state">{% if lv.q or lv.filtered %}Nothing on the register matches that.{% else %}Nothing on the register for those dates.{% endif %}</div>
 {% else %}
 <div class="table-wrap">
 <table class="data-table">
@@ -175,7 +184,7 @@
     <tr>
       <th>Name</th><th>Born</th><th>Nationality</th><th>Home address</th>
       <th>Telephone and email</th>
-      <th>Room</th><th>Arrived</th><th>Left</th>
+      <th>Room</th><th>Arrived</th><th>Left</th><th>Signed</th><th>Passport</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -185,13 +194,20 @@
       <td>{{ r['born_on'] or '—' }}{% if r['born_at'] %}<br><span class="upload-hint">{{ r['born_at'] }}</span>{% endif %}</td>
       <td>{{ r['nationality'] }}</td>
       <td><span class="upload-hint">{{ r['home_address'] or '—' }}</span></td>
-      {# R. 814-1 item 5. Shown because a register nobody can read back is a
-         register nobody can check, and these are the two fields it was
-         missing entirely until 7 October. #}
+      {# R. 814-2 item 5. Shown because a register nobody can read back is a
+         register nobody can check. #}
       <td><span class="upload-hint">{{ r['phone'] or '—' }}{% if r['email'] %}<br>{{ r['email'] }}{% endif %}</span></td>
-      <td>{{ r['room_name'] or '—' }}</td>
+      <td>{{ r['room_name'] or '—' }}<br><span class="upload-hint">{{ r['source'] }}</span></td>
       <td>{{ r['arrival_date']|date_short }}</td>
       <td>{{ r['departure_date']|date_short }}</td>
+      <td>{% if r['french'] %}<span class="upload-hint">not needed</span>
+        {% elif r['signed_at'] %}<span class="mini-status status-confirmed">signed</span><br><span class="upload-hint">{{ r['signed_at']|house_day|date_short }}{% if r['signature_kind'] == 'typed' %}, typed{% endif %}</span>
+        {% else %}<a href="{{ url_for('register_sign_at_desk', kind=r['kind'], fiche_id=r['id']) }}" class="btn-mini">Sign at the desk</a>{% endif %}</td>
+      <td>{% if r['id_checked_at'] %}<span class="mini-status status-confirmed">seen</span><br><span class="upload-hint">{{ r['id_checked_at']|house_day|date_short }}{% if r['id_checked_by'] %}, {{ r['id_checked_by'] }}{% endif %}</span>
+        {% else %}<form method="post" action="{{ url_for('register_passport_seen', kind=r['kind'], fiche_id=r['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini">Passport seen</button></form>{% endif %}</td>
+      <td>{% if not r['french'] %}<a href="{{ url_for('register_fiche_page', kind=r['kind'], fiche_id=r['id']) }}" class="small-link" target="_blank" rel="noopener">Fiche</a>{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -201,7 +217,8 @@
   {{ rows|length }} entr{{ 'y' if rows|length == 1 else 'ies' }}. Anything from a
   stay that ended more than {{ keep_months }} months ago has already gone — that
   is not a gap in the register, it is the retention period doing what our
-  privacy notice says it does.
+  privacy notice says it does. A passport is looked at, never copied or
+  scanned: the CNIL does not allow a hotel to keep a copy.
 </p>
 {% endif %}
 

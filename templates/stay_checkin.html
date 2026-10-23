@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_signature_pad.html' import signature_pad %}
 {% set sticky_bar = 'none' %}
 {% block title %}Check in online — Château de Gudanes{% endblock %}
 {# The online check-in for a guest who booked with the house (22 October 2026):
@@ -35,7 +36,7 @@
   <p class="g-hint"><a href="{{ back }}">Back to your booking page</a></p>
   {% else %}
   <p>For the register French law asks a guest house to keep, and so that we know when to expect you, please fill this in for everyone staying.</p>
-  <p class="g-hint" style="margin-bottom:var(--s5);">For anyone who is not French, the law asks for date and place of birth, home address, mobile and email: the fiche de police, kept for six months after your stay and then deleted. Nothing more is asked of a French national than their name.</p>
+  <p class="g-hint" style="margin-bottom:var(--s5);">For anyone who is not French, the law asks for date and place of birth, home address, mobile and email, signed: the fiche de police, kept for six months after your stay and then deleted. Nothing more is asked of a French national than their name. Please have your passport or identity card with you when you arrive: we look at it, and keep no copy.</p>
 
   <form method="post" class="g-form" id="ci_form" data-french="{{ french_words|join('|') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -107,6 +108,7 @@
                    value="{{ f.get(p ~ 'email', (stay['guest_email'] or '') if n == 1 else '') }}">
           </p>
         </div>
+        {{ signature_pad(p ~ 'signature', p ~ 'signed_name', p ~ 'sig', 'Signature' if n == 1 else 'Their signature') }}
       </div>
     </div>
     {% endfor %}

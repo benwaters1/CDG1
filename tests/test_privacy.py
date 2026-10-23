@@ -386,7 +386,7 @@ def _online_checkin(s, conn, now):
             "p1_phone": "+33 6 00 00 00 00", "p1_email": "e@example.invalid",
             "p2_first_names": "Ada", "p2_surname": "Lovelace", "p2_nationality": "British",
             "p2_born_on": "1984-06-11", "p2_born_at": "Leeds", "p2_home": "York",
-            "agree": "on"}
+            "p2_signed_name": "Ada Lovelace", "agree": "on"}
     with m.app.test_request_context():
         got, problem = m.read_direct_checkin(form, stay)
     french, british = (got or {"people": [{}, {}]})["people"]
@@ -407,6 +407,26 @@ def _online_checkin(s, conn, now):
             "A child under 15 travelling with you goes on your fiche as a number" in text
             and "children_under_15" in {c[1] for c in conn.execute(
                 "PRAGMA table_info(police_register)")})
+
+    # The signature and the passport (23 October 2026): signed, kept with the
+    # fiche -- so the six-month purge takes it -- and the passport seen, never
+    # copied, which the CNIL requires and the schema can be read to show.
+    s.check("the notice says the fiche is signed and the signature kept with it",
+            "you sign on your own screen when you check in online" in text
+            and "the signature is kept with the fiche" in text)
+    cols = {c[1] for c in conn.execute("PRAGMA table_info(police_register)")}
+    s.check("and the signature is a column of the fiche itself, purged with it",
+            {"signature", "signed_at"} <= cols)
+    s.check("the notice says the passport is seen and never copied",
+            "we keep no copy or scan of it" in text
+            and "note only that it was seen, when, and by whom" in text)
+    s.check("and nothing in any register could hold a copy",
+            not any({c[1] for c in conn.execute(f"PRAGMA table_info({t})")}
+                    & {"passport", "passport_photo", "scan", "id_scan", "photo",
+                       "photo_filename", "document"}
+                    for t in ("police_register", "channel_police_register",
+                              "workshop_police_register"))
+            and {"id_checked_at", "id_checked_by_user_id"} <= cols)
 
     # "a stay, a table, a workshop -- is deleted once that booking is over"
     s.check("the notice counts a stay among the notes deleted afterwards",

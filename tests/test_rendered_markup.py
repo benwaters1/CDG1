@@ -358,6 +358,12 @@ ENDPOINT_ARGS = {
     # A guest of the house's own checking in online (22 October 2026).
     ("stay_checkin", "manage_token"): ("bookings", "manage_token"),
     ("workshop_checkin", "manage_token"): ("workshop_bookings", "manage_token"),
+    # One fiche from the register, to print or to sign at the desk: which
+    # register is a word in the address, the fiche an id in it.
+    ("register_fiche_page", "kind"): "booking",
+    ("register_fiche_page", "fiche_id"): ("police_register", "id"),
+    ("register_sign_at_desk", "kind"): "booking",
+    ("register_sign_at_desk", "fiche_id"): ("police_register", "id"),
     ("workshop_calendar_ics", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_confirmation", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_manage", "manage_token"): ("workshop_bookings", "manage_token"),

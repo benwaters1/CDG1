@@ -7539,6 +7539,20 @@ def init_db():
          "ALTER TABLE police_register ADD COLUMN children_under_15 INTEGER NOT NULL DEFAULT 0"),
         ("channel_police_register_children_under_15",
          "ALTER TABLE channel_police_register ADD COLUMN children_under_15 INTEGER NOT NULL DEFAULT 0"),
+        # R. 814-1: the fiche is "rempli et signé par l'étranger, dès son
+        # arrivée". The register held no signature at all (owner, 23 October
+        # 2026: "e signature"). Drawn on the guest's screen at online check-in
+        # or on the desk's at arrival -- a PNG as a data URL, or the name
+        # typed where no drawing could be made -- with when. And that somebody
+        # at the house LOOKED at the passport: who and when, never a copy. The
+        # CNIL is plain that a hotel may ask to see it and may not copy or scan
+        # it. All of it lives on the fiche, so it goes with it at six months.
+        *[(f"{table}_{col}", f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
+          for table in ("police_register", "channel_police_register",
+                        "workshop_police_register")
+          for col, kind in (("signature", "TEXT"), ("signature_kind", "TEXT"),
+                            ("signed_at", "TEXT"), ("id_checked_at", "TEXT"),
+                            ("id_checked_by_user_id", "INTEGER"))],
         # When the house was told about a booking email (or decided not to
         # be): one letter to reservations@ per email, never two.
         ("ota_mail_house_told_at",
@@ -9081,6 +9095,10 @@ NAV_AREAS = {
         "add_police_fiche", "bulk_confirm_bookings", "bulk_decline_bookings", "cancel_booking_admin",
         "add_channel_police_fiche", "delete_channel_police_fiche",
         "add_workshop_police_fiche", "delete_workshop_police_fiche",
+        # Keeping the register: passport seen, signed at the desk, the
+        # printed fiches and the hand-over export.
+        "register_passport_seen", "register_sign_at_desk", "register_fiche_page",
+        "register_print", "register_export_csv",
         # The front door: who may open it, and opening it from the office.
         "door_lock_page", "save_door_settings", "open_door_now", "set_stay_door_access",
         "make_channel_door_link",
@@ -37168,6 +37186,27 @@ def owner_home_warnings(conn, today):
     for fault in house_inbox_delivery_faults(conn):
         add("blocker", f"Mail to {fault['address']} is not arriving",
             house_inbox_fault_sentence(fault), 1, "mail_log", q=fault["address"])
+
+    # THE POLICE REGISTER, for guests already here: nobody recorded for some
+    # of a party, or a foreign guest's fiche not yet signed (R. 814-1 wants it
+    # signed on arrival). It closes itself: a fiche filled in or signed takes
+    # it off, which is what keeps the panel able to be empty.
+    try:
+        missing = sum(x["outstanding"] for x in stays_missing_fiches(conn, today))
+        here = [r for r in register_rows(conn, (today - timedelta(days=60)).isoformat(),
+                                         today.isoformat())
+                if (r["departure_date"] or "") > today.isoformat()]
+        unsigned = sum(1 for r in here if r["unsigned"])
+    except sqlite3.Error:
+        missing = unsigned = 0
+    if missing or unsigned:
+        parts = ([f"{missing} guest{'' if missing == 1 else 's'} who arrived with no line "
+                  "on it"] if missing else []) + (
+                     [f"{unsigned} fiche{'' if unsigned == 1 else 's'} of guests still here "
+                      "not signed"] if unsigned else [])
+        add("warn", "The police register has gaps",
+            "; ".join(parts) + ". French law wants a signed fiche for each foreign guest "
+            "on arrival.", missing + unsigned, "police_register_page")
 
     # A guest said the stay was poor and nobody has answered. It closes
     # itself: replying or marking it read takes it off this list, which is
@@ -67787,14 +67826,50 @@ def insert_police_fiche(conn, kind, stay_id, fiche):
     conn.execute(
         f"""INSERT INTO {table} ({column}, surname, first_names, born_on, born_at,
                nationality, home_address, phone, email, children_under_15,
-               recorded_at, recorded_by_user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               recorded_at, recorded_by_user_id, signature, signature_kind, signed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (stay_id, fiche["surname"], fiche["first_names"], fiche.get("born_on"),
          fiche.get("born_at"), fiche["nationality"], fiche.get("home_address"),
          fiche.get("phone"), fiche.get("email"),
          int(fiche.get("children_under_15") or 0),
          fiche.get("recorded_at") or datetime.now(timezone.utc).isoformat(),
-         fiche.get("recorded_by_user_id")))
+         fiche.get("recorded_by_user_id"), fiche.get("signature"),
+         fiche.get("signature_kind"), fiche.get("signed_at")))
+
+
+# A drawn signature arrives as a PNG data URL from the signature pad. Capped:
+# a signature is a few kilobytes, and an unbounded field on a public form is
+# somewhere to park anything.
+SIGNATURE_PREFIX = "data:image/png;base64,"
+SIGNATURE_MAX_CHARS = 200_000
+
+
+def read_signature(drawn, typed, name):
+    """(signature, kind, problem) from a signature pad and its typed fallback.
+
+    Drawn wins: a PNG that is really a PNG and not too large. Without a drawing
+    -- no script, or a screen nobody could draw on -- the guest types their
+    full name, which must be the name on the fiche: a simple electronic
+    signature either way. (None, None, None) when neither was given.
+    """
+    drawn = (drawn or "").strip()
+    typed = " ".join((typed or "").split())[:200]
+    if drawn:
+        if not drawn.startswith(SIGNATURE_PREFIX) or len(drawn) > SIGNATURE_MAX_CHARS:
+            return None, None, "That signature could not be read; please sign again."
+        try:
+            raw = base64.b64decode(drawn[len(SIGNATURE_PREFIX):], validate=True)
+        except (ValueError, binascii.Error):
+            return None, None, "That signature could not be read; please sign again."
+        if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+            return None, None, "That signature could not be read; please sign again."
+        return drawn, "drawn", None
+    if typed:
+        if typed.casefold() != " ".join((name or "").split()).casefold():
+            return None, None, ("To sign by typing, type your full name exactly as it is "
+                                "written above.")
+        return typed, "typed", None
+    return None, None, None
 
 
 def police_fiche_fields(form):
@@ -68724,22 +68799,18 @@ def data_request_erase():
     return redirect(url_for("data_requests"))
 
 
-@app.route("/admin/register")
-@owner_required
-def police_register_page():
-    """The register itself, which is the thing that gets asked for.
+def register_rows(conn, start, end):
+    """Every fiche for stays arriving between two days, from all three
+    registers, each marked with its `kind` -- 'booking', 'channel' or
+    'workshop' -- so a row knows which register it is in.
 
     Ordered by arrival, because that is how the question comes: who was
     staying here in the week of such and such.
     """
-    conn = get_db()
-    today = house_today()
-    start = parse_date(request.args.get("from", "")) or (today - timedelta(days=30))
-    end = parse_date(request.args.get("to", "")) or today
-    rows = conn.execute(
+    rows = [dict(r, kind="booking", source="Room") for r in conn.execute(
         """SELECT police_register.*, bookings.reference_code, bookings.arrival_date,
                   bookings.departure_date, rooms.name AS room_name,
-                  users.name AS recorded_by
+                  users.name AS recorded_by, checker.name AS id_checked_by
              FROM police_register
              JOIN bookings ON bookings.id = police_register.booking_id
              LEFT JOIN rooms ON rooms.id = bookings.room_id
@@ -68747,47 +68818,233 @@ def police_register_page():
              -- gendarmerie can ask for, and an entry with nobody's name
              -- against it is one nobody can vouch for.
              LEFT JOIN users ON users.id = police_register.recorded_by_user_id
-            WHERE bookings.arrival_date >= ? AND bookings.arrival_date <= ?
-            ORDER BY bookings.arrival_date, police_register.surname""",
-        (start.isoformat(), end.isoformat())).fetchall()
+             LEFT JOIN users AS checker ON checker.id = police_register.id_checked_by_user_id
+            WHERE bookings.arrival_date >= ? AND bookings.arrival_date <= ?""",
+        (start, end)).fetchall()]
     # The same register, for guests who booked through Booking.com: one list,
     # because the question it answers -- who was staying here that week -- does
     # not care how anybody booked.
-    rows = [dict(r) for r in rows] + [dict(r) for r in conn.execute(
+    rows += [dict(r, kind="channel", source="Booking.com") for r in conn.execute(
         """SELECT channel_police_register.*,
                   ota_reservations.reservation_number AS reference_code,
                   ota_reservations.arrival_date, ota_reservations.departure_date,
-                  rooms.name AS room_name, users.name AS recorded_by
+                  rooms.name AS room_name, users.name AS recorded_by,
+                  checker.name AS id_checked_by
              FROM channel_police_register
              JOIN ota_reservations ON ota_reservations.id = channel_police_register.ota_reservation_id
              LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
              LEFT JOIN users ON users.id = channel_police_register.recorded_by_user_id
+             LEFT JOIN users AS checker ON checker.id = channel_police_register.id_checked_by_user_id
             WHERE ota_reservations.arrival_date >= ? AND ota_reservations.arrival_date <= ?""",
-        (start.isoformat(), end.isoformat())).fetchall()]
+        (start, end)).fetchall()]
     # And the atelier guests, who sleep here for the sitting: arrived on its
     # first day, left on its last, in the room they were given if they were.
-    rows += [dict(r) for r in conn.execute(
+    rows += [dict(r, kind="workshop", source="Atelier") for r in conn.execute(
         """SELECT workshop_police_register.*,
                   workshop_bookings.reference_code,
                   workshop_sessions.start_date AS arrival_date,
                   workshop_sessions.end_date AS departure_date,
                   COALESCE(rooms.name, workshops.title) AS room_name,
-                  users.name AS recorded_by
+                  users.name AS recorded_by, checker.name AS id_checked_by
              FROM workshop_police_register
              JOIN workshop_bookings ON workshop_bookings.id = workshop_police_register.workshop_booking_id
              JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
              JOIN workshops ON workshops.id = workshop_sessions.workshop_id
              LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
              LEFT JOIN users ON users.id = workshop_police_register.recorded_by_user_id
+             LEFT JOIN users AS checker ON checker.id = workshop_police_register.id_checked_by_user_id
             WHERE workshop_sessions.start_date >= ? AND workshop_sessions.start_date <= ?""",
-        (start.isoformat(), end.isoformat())).fetchall()]
+        (start, end)).fetchall()]
+    today = house_today().isoformat()
+    for r in rows:
+        r["french"] = is_french_national(r["nationality"])
+        r["arrived"] = (r["arrival_date"] or "9999") <= today
+        # What is still owed on this fiche, in the words the chips use. A
+        # French national's line is not a fiche and needs no signature.
+        r["unsigned"] = not r["french"] and not r["signed_at"]
+        r["id_unseen"] = r["arrived"] and not r["id_checked_at"]
     rows.sort(key=lambda r: (r["arrival_date"] or "", r["surname"] or ""))
+    return rows
+
+
+def register_span(args, today=None):
+    """The from/to of a register view, as ISO days: the last thirty days to
+    the next fortnight unless asked, so tonight's arrivals are on it."""
+    today = today or house_today()
+    start = parse_date(args.get("from", "")) or (today - timedelta(days=30))
+    end = parse_date(args.get("to", "")) or (today + timedelta(days=14))
+    return start.isoformat(), end.isoformat()
+
+
+@app.route("/admin/register")
+@owner_required
+def police_register_page():
+    """The register itself, which is the thing that gets asked for -- and the
+    place it is kept in order: who has signed, whose passport somebody has
+    looked at, and the print-out for the gendarmerie."""
+    conn = get_db()
+    today = house_today()
+    start, end = register_span(request.args, today)
+    rows = register_rows(conn, start, end)
     missing = stays_missing_fiches(conn, today)
     conn.close()
+    lv = list_view(
+        rows, request.args,
+        search=["surname", "first_names", "nationality", "reference_code", "room_name"],
+        search_hint="A name, a nationality, a reference or a room",
+        facets=[
+            facet("todo", "Still to do", lambda r: (
+                "Not signed" if r["unsigned"] else
+                ("Passport not seen" if r["id_unseen"] else None)),
+                  order=["Not signed", "Passport not seen"]),
+            facet("who", "Fiche", lambda r: "French national" if r["french"] else "Fiche de police",
+                  order=["Fiche de police", "French national"]),
+            facet("source", "Booked", lambda r: r["source"],
+                  order=["Room", "Booking.com", "Atelier"]),
+        ],
+        sorts=[
+            sort_option("arrival", "By arrival", lambda r: (r["arrival_date"] or "",
+                                                            r["surname"] or "")),
+            sort_option("name", "By surname", lambda r: (r["surname"] or "").lower()),
+        ],
+        default_sort="arrival",
+    )
+    summary = {"cells": [
+        overview_cell("On the register", len(rows), hint="for these dates"),
+        overview_cell("Fiches de police", sum(1 for r in rows if not r["french"])),
+        overview_cell("Not signed", sum(1 for r in rows if r["unsigned"]),
+                      alert=any(r["unsigned"] and r["arrived"] for r in rows),
+                      hint="R. 814-1: signed by the guest on arrival"),
+        overview_cell("Passport not seen", sum(1 for r in rows if r["id_unseen"]),
+                      alert=any(r["id_unseen"] for r in rows),
+                      hint="looked at, never copied"),
+        overview_cell("Waiting to be filled in", sum(x["outstanding"] for x in missing),
+                      alert=bool(missing), hint="people in stays that have begun"),
+    ]}
     return render_template(
-        "police_register.html", rows=rows, missing=missing,
-        start=start.isoformat(), end=end.isoformat(),
-        keep_months=POLICE_REGISTER_KEEP_MONTHS)
+        "police_register.html", rows=lv["rows"], lv=lv, missing=missing, summary=summary,
+        start=start, end=end, keep_months=POLICE_REGISTER_KEEP_MONTHS)
+
+
+def register_fiche(conn, kind, fiche_id):
+    """One fiche from any register, with its stay's reference and dates, or
+    None. `kind` is checked against POLICE_REGISTERS: it is part of a URL."""
+    if kind not in POLICE_REGISTERS:
+        return None
+    table, _column = POLICE_REGISTERS[kind]
+    row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (fiche_id,)).fetchone()
+    if not row:
+        return None
+    # The stay's own dates and reference, read the way register_rows reads
+    # them, over a span wide enough to hold any stay.
+    found = next((r for r in register_rows(conn, "0000-01-01", "9999-12-31")
+                  if r["kind"] == kind and r["id"] == fiche_id), None)
+    return found
+
+
+@app.route("/admin/register/<kind>/<int:fiche_id>/passport-seen", methods=["POST"])
+@owner_required
+def register_passport_seen(kind, fiche_id):
+    """Somebody at the house has looked at this guest's passport or identity
+    card and it matches the fiche. Who and when -- and never a copy: the CNIL
+    is plain that a hotel may ask to see it and may not copy or scan it."""
+    conn = get_db()
+    fiche = register_fiche(conn, kind, fiche_id)
+    if not fiche:
+        conn.close()
+        abort(404)
+    table, _column = POLICE_REGISTERS[kind]
+    me = current_user()
+    conn.execute(f"UPDATE {table} SET id_checked_at = ?, id_checked_by_user_id = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), me["id"] if me else None, fiche_id))
+    log_audit(conn, "police_fiche_id_seen", target=fiche["reference_code"])
+    conn.commit()
+    conn.close()
+    flash("Noted: the passport was seen. Nothing of it is kept.", "success")
+    return redirect(request.form.get("back") or url_for("police_register_page"))
+
+
+@app.route("/admin/register/<kind>/<int:fiche_id>/sign", methods=["GET", "POST"])
+@owner_required
+def register_sign_at_desk(kind, fiche_id):
+    """The guest signs their fiche at the desk, on the house's screen: for a
+    fiche the desk typed in, or one checked in online without a signature.
+    The page shows the fiche so they sign what they have read."""
+    conn = get_db()
+    fiche = register_fiche(conn, kind, fiche_id)
+    if not fiche:
+        conn.close()
+        abort(404)
+    if request.method == "POST":
+        signature, sig_kind, problem = read_signature(
+            request.form.get("signature"), request.form.get("signed_name"),
+            f"{fiche['first_names']} {fiche['surname']}")
+        if not problem and not signature:
+            problem = "Nothing was signed: sign in the box, or type the full name."
+        if problem:
+            conn.close()
+            flash(problem, "error")
+            return redirect(url_for("register_sign_at_desk", kind=kind, fiche_id=fiche_id))
+        table, _column = POLICE_REGISTERS[kind]
+        conn.execute(f"UPDATE {table} SET signature = ?, signature_kind = ?, signed_at = ? "
+                     "WHERE id = ?", (signature, sig_kind,
+                                     datetime.now(timezone.utc).isoformat(), fiche_id))
+        log_audit(conn, "police_fiche_signed", target=fiche["reference_code"],
+                  via="the desk")
+        conn.commit()
+        conn.close()
+        flash("Signed.", "success")
+        return redirect(url_for("police_register_page"))
+    conn.close()
+    return render_template("register_sign.html", fiche=fiche, kind=kind)
+
+
+@app.route("/admin/register/<kind>/<int:fiche_id>/fiche")
+@owner_required
+def register_fiche_page(kind, fiche_id):
+    """One fiche individuelle de police, laid out to print or to show."""
+    conn = get_db()
+    fiche = register_fiche(conn, kind, fiche_id)
+    conn.close()
+    if not fiche:
+        abort(404)
+    return render_template("register_fiches.html", fiches=[fiche], single=True,
+                           start=None, end=None)
+
+
+@app.route("/admin/register/print")
+@owner_required
+def register_print():
+    """Every fiche de police for a period, to print or to save as a PDF and
+    hand over when the police or gendarmerie ask (R. 814-3). French nationals'
+    lines are left out: they are not fiches, and the request is for fiches."""
+    conn = get_db()
+    start, end = register_span(request.args)
+    fiches = [r for r in register_rows(conn, start, end) if not r["french"]]
+    log_audit(conn, "police_register_printed", details=f"{start} to {end}, {len(fiches)} fiche(s)")
+    conn.commit()
+    conn.close()
+    return render_template("register_fiches.html", fiches=fiches, single=False,
+                           start=start, end=end)
+
+
+@app.route("/admin/register/export.csv")
+@owner_required
+def register_export_csv():
+    """The fiches for a period as a spreadsheet, for an electronic hand-over
+    (R. 814-3 allows it). Fiches only, and the fields the law lists: no
+    signature image, which belongs on the printed fiche."""
+    conn = get_db()
+    start, end = register_span(request.args)
+    fiches = [r for r in register_rows(conn, start, end) if not r["french"]]
+    log_audit(conn, "police_register_exported", details=f"{start} to {end}, {len(fiches)} fiche(s)")
+    conn.commit()
+    conn.close()
+    fields = ["surname", "first_names", "born_on", "born_at", "nationality", "home_address",
+              "phone", "email", "arrival_date", "departure_date", "children_under_15",
+              "signed_at", "id_checked_at", "room_name", "reference_code"]
+    return csv_response(fields, [{k: r.get(k) or "" for k in fields} for r in fiches],
+                        f"fiches_de_police_{start}_{end}.csv")
 
 
 @app.route("/admin/bookings/<int:booking_id>/prepare-arrival", methods=["POST"])
@@ -82815,6 +83072,15 @@ def channel_checkin(token):
             problem = "For a guest who is not French, the law asks for your date and place of birth."
         elif request.form.get("agree") != "on":
             problem = "Please confirm the details are right."
+        # R. 814-1: signed by the guest, when there is a fiche to sign.
+        signature = sig_kind = None
+        if foreign and not problem:
+            signature, sig_kind, sig_problem = read_signature(
+                request.form.get("signature"), request.form.get("signed_name"),
+                f"{first} {last}")
+            problem = sig_problem or (None if signature else
+                                      "For a guest who is not French, the law asks for the "
+                                      "fiche to be signed: sign in the box, or type your full name.")
         if problem:
             flash(problem, "error")
         else:
@@ -82829,12 +83095,16 @@ def channel_checkin(token):
                     (stay["id"],)).fetchone():
                 home = ", ".join(x for x in (f["guest_address"], f"{f['guest_city']} {f['guest_postcode']}".strip(),
                                              f["guest_country"]) if x)
-                conn.execute(
-                    """INSERT INTO channel_police_register (ota_reservation_id, surname, first_names,
-                           born_on, born_at, nationality, home_address, recorded_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (stay["id"], last, first, parse_date(born_on).isoformat(), born_at,
-                     nationality, home, datetime.now(timezone.utc).isoformat()))
+                # Through the one insert every register uses, with the mobile
+                # and email R. 814-2 lists, which this fiche used to leave out.
+                stamp = datetime.now(timezone.utc).isoformat()
+                insert_police_fiche(conn, "channel", stay["id"], {
+                    "surname": last, "first_names": first,
+                    "born_on": parse_date(born_on).isoformat(), "born_at": born_at,
+                    "nationality": nationality, "home_address": home,
+                    "phone": f["guest_phone"] or None, "email": values["guest_email"],
+                    "recorded_at": stamp, "signature": signature,
+                    "signature_kind": sig_kind, "signed_at": stamp})
             link_ota_profile(conn, stay["id"])
             log_audit(conn, "channel_checkin_done", target=stay["reservation_number"],
                       via="the guest's check-in link")
@@ -82985,8 +83255,19 @@ def read_direct_checkin(form, stay):
                 return None, f"For {who}, not being French, the law asks for a home address."
             if email and not EMAIL_RE.match(email):
                 return None, f"The email address for {who} does not look right."
+            # R. 814-1: the fiche is signed by the guest it is about.
+            signature, kind, trouble = read_signature(
+                form.get(f"p{n}_signature"), form.get(f"p{n}_signed_name"),
+                f"{person['first_names']} {person['surname']}")
+            if trouble:
+                return None, trouble if n == 1 else f"For guest {n}: {trouble}"
+            if not signature:
+                return None, (f"For {who}, not being French, the law asks for the fiche to be "
+                              "signed: sign in the box, or type the full name.")
             person.update(born_on=born_on.isoformat(), born_at=born_at, home_address=home,
-                          phone=phone or None, email=email or None)
+                          phone=phone or None, email=email or None, signature=signature,
+                          signature_kind=kind,
+                          signed_at=datetime.now(timezone.utc).isoformat())
         people.append(person)
     if form.get("agree") != "on":
         return None, "Please confirm the details are right."
