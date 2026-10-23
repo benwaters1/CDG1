@@ -75454,6 +75454,8 @@ SETTINGS_PLACES = [
         ("admin_promo_codes", "Promo codes", "Discount codes for rooms, dinners and ateliers"),
         ("management_channels", "Channels", "What Booking.com and the others take"),
         ("management_booking_com", "Booking.com messages", "Which mailbox their messages arrive in"),
+        ("house_guide_admin", "House guide",
+         "What a staying guest reads: the Wi-Fi, breakfast, who to call, and when the code shows"),
     ]),
     ("Restaurant", "restaurant", [
         ("admin_restaurant_settings", "Restaurant", "Online reservations, capacity, price per person"),
