@@ -213,6 +213,15 @@ def _run(s, oc, conn, now, today):
     put_back_terms = _harness.keep_rows(conn, "app_settings", "key = 'terms_and_conditions'")
     conn.execute("UPDATE app_settings SET value = ? WHERE key = 'terms_and_conditions'",
                  (m.DEFAULT_TERMS,))
+    # A new Outlook add-in that Microsoft 365 has not fetched is on the panel
+    # too, once any Outlook has reached the add-in, which a copy of the house's
+    # own database will show. Settled the way the house settles it -- the owner saying
+    # Microsoft has this version -- and put back straight after the check.
+    # test_addin_version proves the line comes and goes.
+    put_back_addin = _harness.keep_rows(conn, "app_settings", "key = ?",
+                                        (m.ADDIN_CONFIRMED_VERSION_SETTING,))
+    conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                 (m.ADDIN_CONFIRMED_VERSION_SETTING, m.OUTLOOK_ADDIN_VERSION))
     conn.commit()
     real_checks = m.readiness_checks
     # **kwargs: the caller passes include_slow=False now, and a stand-in
@@ -224,6 +233,7 @@ def _run(s, oc, conn, now, today):
         m.readiness_checks = real_checks
         put_back_letters()
         put_back_terms()
+        put_back_addin()
     for row in held_before:
         conn.execute("UPDATE email_outbox SET created_at = ? WHERE id = ?",
                      (row["created_at"], row["id"]))
