@@ -28,14 +28,17 @@
 {% for st in missing %}
 {# A Booking.com stay has no booking of the house's own: its fiches go to their
    own register, through their own form, and are listed with the rest. #}
-{% set key = ('o' ~ st.booking['ota_reservation_id']) if st.channel else ('b' ~ st.booking['id']) %}
+{# An atelier place is a third kind: its guests sleep here for the sitting,
+   and their fiches go to the ateliers' own register. #}
+{% set key = ('o' ~ st.booking['ota_reservation_id']) if st.channel else (('w' ~ st.booking['id']) if st.kind == 'workshop' else ('b' ~ st.booking['id'])) %}
 <div class="expense-card">
   <div class="expense-head">
     <div>
       <strong>{{ st.booking['guest_name'] }}</strong>
       <span class="upload-hint">{{ st.booking['reference_code'] }} ·
         {{ date_range(st.booking['arrival_date'], st.booking['departure_date']) }}
-        {%- if st.channel %} · booked through {{ st.channel }}{% endif %}</span>
+        {%- if st.channel %} · booked through {{ st.channel }}{% endif %}
+        {%- if st.kind == 'workshop' %} · {{ st.booking['title'] }}{% endif %}</span>
       <span class="mini-status status-pending" style="margin-left:8px;">
         {% if st.channel and not st.party_known %}{{ st.recorded }} recorded — the booking did not say how many are staying
         {% else %}{{ st.recorded }} of {{ st.party }} recorded{% endif %}
@@ -43,7 +46,7 @@
     </div>
   </div>
 
-  <form method="post" action="{{ url_for('add_channel_police_fiche', reservation_id=st.booking['ota_reservation_id']) if st.channel else url_for('add_police_fiche', booking_id=st.booking['id']) }}"
+  <form method="post" action="{{ url_for('add_channel_police_fiche', reservation_id=st.booking['ota_reservation_id']) if st.channel else (url_for('add_workshop_police_fiche', registration_id=st.booking['id']) if st.kind == 'workshop' else url_for('add_police_fiche', booking_id=st.booking['id'])) }}"
         class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {# WHAT THE HOUSE ALREADY KNOWS, filled in. A booking carries the guest's
@@ -114,6 +117,12 @@
         <input type="email" id="em_{{ key }}" name="email" maxlength="200"
                value="{{ pre.email or '' }}">
       </div>
+      {# R. 814-2: a child under fifteen may go on the fiche of the adult with
+         them, so a family is not a fiche per child. Only how many. #}
+      <div style="flex:1 1 140px;">
+        <label class="field-label" for="kids_{{ key }}">Children under 15 with them</label>
+        <input type="number" id="kids_{{ key }}" name="children_under_15" min="0" max="20" value="0">
+      </div>
     </div>
     <button type="submit" class="btn-mini" style="margin-top:8px;">Add to the register</button>
   </form>
@@ -125,11 +134,11 @@
       <tbody>
         {% for f in st.fiches %}
         <tr>
-          <th scope="row">{{ f['surname'] }}, {{ f['first_names'] }}</th>
+          <th scope="row">{{ f['surname'] }}, {{ f['first_names'] }}{% if f['children_under_15'] %} <span class="upload-hint">+ {{ f['children_under_15'] }} under 15</span>{% endif %}</th>
           <td>{{ f['nationality'] }}</td>
           <td>{{ f['born_on'] or '—' }}{% if f['born_at'] %} · {{ f['born_at'] }}{% endif %}</td>
           <td>
-            <form method="post" action="{{ url_for('delete_channel_police_fiche', fiche_id=f['id']) if st.channel else url_for('delete_police_fiche', fiche_id=f['id']) }}"
+            <form method="post" action="{{ url_for('delete_channel_police_fiche', fiche_id=f['id']) if st.channel else (url_for('delete_workshop_police_fiche', fiche_id=f['id']) if st.kind == 'workshop' else url_for('delete_police_fiche', fiche_id=f['id'])) }}"
                   onsubmit="return confirm('Remove this entry from the register?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn-text-danger">Remove</button>
@@ -172,7 +181,7 @@
   <tbody>
     {% for r in rows %}
     <tr>
-      <th scope="row">{{ r['surname'] }}, {{ r['first_names'] }}</th>
+      <th scope="row">{{ r['surname'] }}, {{ r['first_names'] }}{% if r['children_under_15'] %}<br><span class="upload-hint">with {{ r['children_under_15'] }} child{{ 'ren' if r['children_under_15'] != 1 }} under 15</span>{% endif %}</th>
       <td>{{ r['born_on'] or '—' }}{% if r['born_at'] %}<br><span class="upload-hint">{{ r['born_at'] }}</span>{% endif %}</td>
       <td>{{ r['nationality'] }}</td>
       <td><span class="upload-hint">{{ r['home_address'] or '—' }}</span></td>

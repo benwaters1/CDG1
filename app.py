@@ -464,6 +464,11 @@ AUTOMATION_SETTING_DEFAULTS = {
     # which put words in the house's mouth to every guest with a mobile.
     "automation_checkin_text_enabled": "0",
     "automation_checkout_text_enabled": "0",
+    # OFF, and the two letters it sends ship with no words at all
+    # (UNWRITTEN_LETTERS): the online check-in link before arrival goes only
+    # once the owner has written the letter and switched this on.
+    "automation_checkin_letter_enabled": "0",
+    "automation_checkin_letter_days_before": "3",
     "automation_backup_interval_hours": "24",
     "automation_social_schedule_enabled": "1",
     # OFF until somebody turns it on. The switch is the last thing between a
@@ -2478,6 +2483,13 @@ DEFAULT_EMAIL_TEMPLATES = [
      "It asks how to reach you, when you expect to arrive and anything you cannot eat.\n\n"
      "We look forward to welcoming you.\n\n"
      "— Château de Gudanes"),
+    # The link to check in online, before arrival, for a guest who booked
+    # with the house (22 October 2026). SHIPPED WITH NO WORDS, on purpose:
+    # the guest texts went out in sentences the app made up, and the owner
+    # switched them off for it. Nothing sends either of these until the owner
+    # has written it (UNWRITTEN_LETTERS), and the automation is off as well.
+    ("room_checkin_before", "Rooms: Online check-in link, before arrival", "", ""),
+    ("workshop_checkin_before", "Workshop: Online check-in link, before the atelier", "", ""),
     ("room_paid_awaiting", "Rooms: Paid online, dates being confirmed",
      "Payment received — {room_name}",
      "Hi {guest_name},\n\nThank you — your payment of {total_price} has been "
@@ -2714,6 +2726,27 @@ del _fixed
 EMAIL_TEMPLATE_LABELS = {k: label for k, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
 # Letters nothing sends any more, whose stored rows init_db removes.
 RETIRED_EMAIL_TEMPLATES = ("newsletter_confirm",)
+# LETTERS THAT SHIP WITH NO WORDS (22 October 2026). Each goes only once the
+# owner has written it on the email templates page: until then nothing sends
+# it, the page says "No wording yet" rather than "Needs fixing", and there is
+# no shipped wording for a send to fall back on -- Restore original wording
+# empties it again, which is how one is withdrawn. Two guest texts went out
+# in sentences the app made up, which is why these do not.
+UNWRITTEN_LETTERS = ("room_checkin_before", "workshop_checkin_before")
+
+
+def letter_written(subject, body):
+    """Whether a letter has words to send: a subject and a body, both."""
+    return bool((subject or "").strip() and (body or "").strip())
+
+
+def letter_unwritten(conn, template_key):
+    """True for one of UNWRITTEN_LETTERS the owner has not written yet."""
+    if template_key not in UNWRITTEN_LETTERS:
+        return False
+    row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?",
+                       (template_key,)).fetchone()
+    return not (row and letter_written(row["subject"], row["body"]))
 
 
 # ---------------------------------------------------------------------------
@@ -3999,6 +4032,28 @@ def init_db():
             born_at TEXT,
             nationality TEXT NOT NULL,
             home_address TEXT,
+            recorded_at TEXT NOT NULL,
+            recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        );
+
+        -- The police register for atelier guests (22 October 2026). Every
+        -- live sitting holds the whole house, so its guests sleep here and
+        -- the fiche is owed for them as for anybody -- and police_register
+        -- cannot hold them, its booking_id being NOT NULL against bookings.
+        -- Its own table for the reason channel_police_register is one: a
+        -- legal register is not rebuilt to change a constraint.
+        CREATE TABLE IF NOT EXISTS workshop_police_register (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workshop_booking_id INTEGER NOT NULL REFERENCES workshop_bookings(id) ON DELETE CASCADE,
+            surname TEXT NOT NULL,
+            first_names TEXT NOT NULL,
+            born_on TEXT,
+            born_at TEXT,
+            nationality TEXT NOT NULL,
+            home_address TEXT,
+            phone TEXT,
+            email TEXT,
+            children_under_15 INTEGER NOT NULL DEFAULT 0,
             recorded_at TEXT NOT NULL,
             recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
         );
@@ -7456,6 +7511,31 @@ def init_db():
         ("ota_checkin_token", "ALTER TABLE ota_reservations ADD COLUMN checkin_token TEXT"),
         ("ota_checkin_sent", "ALTER TABLE ota_reservations ADD COLUMN checkin_sent_at TEXT"),
         ("ota_checkin_done", "ALTER TABLE ota_reservations ADD COLUMN checkin_done_at TEXT"),
+        # ONLINE CHECK-IN FOR THE HOUSE'S OWN GUESTS (22 October 2026): a
+        # room stay or an atelier place, from the guest's own booking page.
+        # When they did it; when the letter with the link went (the
+        # automation's stamp, once per stay); and what they cannot eat, a
+        # note about this stay only -- deleted once it is over, as the
+        # privacy notice says (purge_health_notes), and never written into
+        # the changes log (CHANGE_LOG_NEVER reads "dietary").
+        ("bookings_checkin_done_at", "ALTER TABLE bookings ADD COLUMN checkin_done_at TEXT"),
+        ("bookings_checkin_letter_sent_at",
+         "ALTER TABLE bookings ADD COLUMN checkin_letter_sent_at TEXT"),
+        ("bookings_dietary_notes", "ALTER TABLE bookings ADD COLUMN dietary_notes TEXT"),
+        ("workshop_bookings_checkin_done_at",
+         "ALTER TABLE workshop_bookings ADD COLUMN checkin_done_at TEXT"),
+        ("workshop_bookings_checkin_letter_sent_at",
+         "ALTER TABLE workshop_bookings ADD COLUMN checkin_letter_sent_at TEXT"),
+        ("workshop_bookings_estimated_arrival_time",
+         "ALTER TABLE workshop_bookings ADD COLUMN estimated_arrival_time TEXT"),
+        # R. 814-2: "les données relatives aux enfants âgés de moins de 15 ans
+        # peuvent figurer sur la fiche d'un adulte qui les accompagne". How
+        # many ride on this fiche, and nothing else about them: the article
+        # says they MAY be on an adult's, not what of theirs to write.
+        ("police_register_children_under_15",
+         "ALTER TABLE police_register ADD COLUMN children_under_15 INTEGER NOT NULL DEFAULT 0"),
+        ("channel_police_register_children_under_15",
+         "ALTER TABLE channel_police_register ADD COLUMN children_under_15 INTEGER NOT NULL DEFAULT 0"),
         # When the house was told about a booking email (or decided not to
         # be): one letter to reservations@ per email, never two.
         ("ota_mail_house_told_at",
@@ -8990,6 +9070,7 @@ NAV_AREAS = {
         # owner-only by omission rather than by choice.
         "add_police_fiche", "bulk_confirm_bookings", "bulk_decline_bookings", "cancel_booking_admin",
         "add_channel_police_fiche", "delete_channel_police_fiche",
+        "add_workshop_police_fiche", "delete_workshop_police_fiche",
         # The front door: who may open it, and opening it from the office.
         "door_lock_page", "save_door_settings", "open_door_now", "set_stay_door_access",
         "make_channel_door_link",
@@ -25506,7 +25587,8 @@ def dietary_sheet(conn, on_day=None):
     # Sleeping here tonight. Departure day is checkout, so they are not.
     for r in conn.execute(
         """SELECT bookings.guest_name, bookings.party_size, bookings.reference_code,
-                  bookings.special_requests, rooms.name AS room_name,
+                  bookings.special_requests, bookings.dietary_notes AS stay_notes,
+                  rooms.name AS room_name,
                   guests.dietary_notes AS profile_notes, guests.name AS profile_name
              FROM bookings
              LEFT JOIN rooms ON rooms.id = bookings.room_id
@@ -25517,8 +25599,10 @@ def dietary_sheet(conn, on_day=None):
         # The booking's requests stay in with the dietary notes, in red, on
         # purpose: it is where a guest types "no shellfish" as often as "late
         # arrival", and a sheet that showed the second in red is a smaller
-        # fault than one that let the first read as nothing about food.
-        notes = [n for n in ((r["profile_notes"] or "").strip(),
+        # fault than one that let the first read as nothing about food. What
+        # they wrote at online check-in leads: it is about this stay.
+        notes = [n for n in ((r["stay_notes"] or "").strip(),
+                             (r["profile_notes"] or "").strip(),
                              (r["special_requests"] or "").strip()) if n]
         people.append({
             "who": r["guest_name"] or r["profile_name"] or "Guest",
@@ -47175,7 +47259,7 @@ def legal_page():
 
 # Bumped by hand when the wording changes. A privacy notice with no date on it
 # tells a reader nothing about whether it still describes the software.
-PRIVACY_LAST_REVIEWED = "19 October 2026"  # Cloudflare Web Analytics added (z30, G7)
+PRIVACY_LAST_REVIEWED = "22 October 2026"  # online check-in for the house's own guests
 
 
 @app.route("/privacy")
@@ -52652,11 +52736,13 @@ def manage_booking(manage_token):
     # Whether the page may promise an arrival text. Only when one will go:
     # switched on and written by the owner (GUEST_TEXTS has no default).
     arrival_text = guest_text_on(conn, "checkin") and bool(guest_text_wording(conn, "checkin"))
+    # Online check-in, for the card that leads to it (_checkin_card.html).
+    checkin = direct_checkin_card(conn, "booking", manage_token)
     conn.commit()
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
-        door=door, arrival_text=arrival_text,
+        door=door, arrival_text=arrival_text, checkin=checkin,
         addable_rooms=addable_rooms,
         group=group,
         portal_token=portal_token,
@@ -58510,6 +58596,13 @@ EMAIL_TEMPLATE_TAGS = {
                            "stay_lines", "total_price"),
     "channel_checkin": ("arrival_date", "checkin_url", "departure_date", "guest_name",
                         "reference_code", "room_name"),
+    # The two letters that ship with no words (UNWRITTEN_LETTERS), and what
+    # the owner can use in them once they write them.
+    "room_checkin_before": ("arrival_date", "checkin_url", "departure_date", "first_name",
+                            "guest_name", "manage_url", "reference_code", "room_name"),
+    "workshop_checkin_before": ("arrival_date", "checkin_url", "departure_date",
+                                "first_name", "guest_name", "manage_url",
+                                "reference_code", "workshop_title"),
     "room_reserved": ("finish_url", "guest_name", "held_until", "reference_code",
                       "room_name", "stay_lines", "total_price"),
     "room_declined": ("arrival_date", "departure_date", "guest_name", "reference_code",
@@ -58561,6 +58654,8 @@ REQUIRED_MERGE_TAGS = {
     "room_paid_awaiting": {"reference_code": "it is how they quote the booking to us"},
     "room_reserved": {"finish_url": "it is the only way for them to finish the booking and pay"},
     "channel_checkin": {"checkin_url": "it is the only way to the check-in form"},
+    "room_checkin_before": {"checkin_url": "it is what the letter is for"},
+    "workshop_checkin_before": {"checkin_url": "it is what the letter is for"},
     "room_updated": {"arrival_date": "it is the date that changed",
                      "departure_date": "it is the date that changed"},
     "room_statement": {"statement_url": "it is the only way to open the statement and settle it"},
@@ -58606,6 +58701,10 @@ def wording_problems(template_key, subject, body):
     """
     subject, body = subject or "", body or ""
     problems = []
+    # Not written is not wrong: it is a letter that does not go yet
+    # (UNWRITTEN_LETTERS). Half-written is, and is checked like any other.
+    if template_key in UNWRITTEN_LETTERS and not (subject.strip() or body.strip()):
+        return []
     stray = unknown_merge_tags(template_key, subject, body)
     if stray:
         problems.append("nothing fills " + ", ".join("{%s}" % s for s in stray))
@@ -59387,7 +59486,15 @@ def preview_email_template(template_key, subject_src, body_src):
     subject = merge_email_text(subject_src, context).strip()
     body = merge_email_text(body_src, context)
 
-    if template_key == "room_confirmed":
+    unwritten = (template_key in UNWRITTEN_LETTERS
+                 and not (subject_src.strip() or body_src.strip()))
+    if unwritten:
+        # Nothing to send, and nothing pretends otherwise: the page shows the
+        # paper the letter will be written on, with a note to the owner that
+        # never goes anywhere -- this is a preview, not a send.
+        html = letter_html("No wording yet", "Nothing is sent until this letter is "
+                           "written.", key=template_key)
+    elif template_key == "room_confirmed":
         # Its card draws the directions, which read the house's coordinates.
         conn = get_db()
         try:
@@ -59495,6 +59602,11 @@ def email_template_source(conn, template_key):
     """
     row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?", (template_key,)).fetchone()
     shipped = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
+    # A letter that ships with no words and has not been written: nothing to
+    # send, and nothing wrong -- it is not sent, quietly, until it is.
+    if template_key in UNWRITTEN_LETTERS and not (
+            row and letter_written(row["subject"], row["body"])):
+        return None, None, []
     if not row:
         if not shipped:
             return None, None, []
@@ -61193,6 +61305,8 @@ def workshop_manage(manage_token):
             and workshop_session_remaining_capacity(conn, s["id"]) >= booking["party_size"]
         ]
 
+    # Online check-in, for the card that leads to it (_checkin_card.html).
+    checkin = direct_checkin_card(conn, "workshop", manage_token)
     conn.close()
     # Whether the automatic job is switched on no longer decides what the page
     # promises: the house takes a balance from the card by hand as well, so
@@ -61214,7 +61328,7 @@ def workshop_manage(manage_token):
         custom_fields=custom_fields, custom_responses=custom_responses,
         balance_due=balance_due, total_charged=total_charged, total_paid=total_paid,
         other_sessions=other_sessions,
-        extend_before=extend_before, extend_after=extend_after,
+        extend_before=extend_before, extend_after=extend_after, checkin=checkin,
     )
 
 
@@ -67086,6 +67200,37 @@ def cancel_booking_extra_line(line_id):
     return redirect(request.referrer or url_for("admin_bookings"))
 
 
+# The three registers, one per kind of stay and field for field the same: the
+# house's own room bookings, Booking.com's stays, and atelier places. What each
+# is keyed by, so one insert serves all three and a fiche is the same fiche
+# whichever way the guest came and whoever filled it in.
+POLICE_REGISTERS = {
+    "booking": ("police_register", "booking_id"),
+    "channel": ("channel_police_register", "ota_reservation_id"),
+    "workshop": ("workshop_police_register", "workshop_booking_id"),
+}
+
+
+def insert_police_fiche(conn, kind, stay_id, fiche):
+    """Write one fiche to the register for this kind of stay. The caller commits.
+
+    `fiche` is police_fiche_fields' dict, or the online check-in's, which has
+    the same keys; recorded_by_user_id is None when the guest filled it in.
+    """
+    table, column = POLICE_REGISTERS[kind]
+    conn.execute(
+        f"""INSERT INTO {table} ({column}, surname, first_names, born_on, born_at,
+               nationality, home_address, phone, email, children_under_15,
+               recorded_at, recorded_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (stay_id, fiche["surname"], fiche["first_names"], fiche.get("born_on"),
+         fiche.get("born_at"), fiche["nationality"], fiche.get("home_address"),
+         fiche.get("phone"), fiche.get("email"),
+         int(fiche.get("children_under_15") or 0),
+         fiche.get("recorded_at") or datetime.now(timezone.utc).isoformat(),
+         fiche.get("recorded_by_user_id")))
+
+
 def police_fiche_fields(form):
     """One fiche from the register form, read and checked: (fields, problem).
 
@@ -67108,8 +67253,13 @@ def police_fiche_fields(form):
     # than an entry with one field empty.
     phone = form.get("phone", "").strip()[:40]
     email = form.get("email", "").strip()[:200]
+    # R. 814-2: a child under fifteen may go on the fiche of the adult with
+    # them. A number, so a family of four is two fiches and not four.
+    children_raw = (form.get("children_under_15", "") or "").strip()
     if not surname or not first_names or not nationality:
         return None, "A surname, first names and nationality are what the register asks for."
+    if children_raw and not (children_raw.isdigit() and int(children_raw) <= 20):
+        return None, "The number of children under 15 could not be read."
     born_on = parse_date(born_on_raw) if born_on_raw else None
     if born_on_raw and not born_on:
         return None, "That date of birth could not be read."
@@ -67119,6 +67269,7 @@ def police_fiche_fields(form):
             "born_on": born_on.isoformat() if born_on else None, "born_at": born_at or None,
             "nationality": nationality, "home_address": home_address or None,
             "phone": phone or None, "email": email or None,
+            "children_under_15": int(children_raw or 0),
             "recorded_at": datetime.now(timezone.utc).isoformat(),
             "recorded_by_user_id": current_user()["id"] if current_user() else None}, None
 
@@ -67138,15 +67289,7 @@ def add_police_fiche(booking_id):
         flash(problem, "error")
         return redirect(url_for("police_register_page"))
 
-    conn.execute(
-        """INSERT INTO police_register (booking_id, surname, first_names, born_on,
-           born_at, nationality, home_address, phone, email,
-           recorded_at, recorded_by_user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (booking_id, fiche["surname"], fiche["first_names"], fiche["born_on"],
-         fiche["born_at"], fiche["nationality"], fiche["home_address"],
-         fiche["phone"], fiche["email"],
-         fiche["recorded_at"], fiche["recorded_by_user_id"]))
+    insert_police_fiche(conn, "booking", booking_id, fiche)
     # The name is not in the audit line. Who touched the register and when is
     # worth recording; copying a guest's name into a second table that is not
     # purged with the first would be keeping it after the fiche has gone.
@@ -67196,15 +67339,7 @@ def add_channel_police_fiche(reservation_id):
         conn.close()
         flash(problem, "error")
         return redirect(url_for("police_register_page"))
-    conn.execute(
-        """INSERT INTO channel_police_register (ota_reservation_id, surname, first_names,
-               born_on, born_at, nationality, home_address, phone, email,
-               recorded_at, recorded_by_user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (reservation_id, fiche["surname"], fiche["first_names"], fiche["born_on"],
-         fiche["born_at"], fiche["nationality"], fiche["home_address"],
-         fiche["phone"], fiche["email"],
-         fiche["recorded_at"], fiche["recorded_by_user_id"]))
+    insert_police_fiche(conn, "channel", reservation_id, fiche)
     # As for the house's own: the act is recorded, the name is not.
     log_audit(conn, "police_fiche_recorded", target=f"Booking.com {stay['reservation_number']}")
     conn.commit()
@@ -67228,6 +67363,58 @@ def delete_channel_police_fiche(fiche_id):
         abort(404)
     conn.execute("DELETE FROM channel_police_register WHERE id = ?", (fiche_id,))
     log_audit(conn, "police_fiche_removed", target=f"Booking.com {row['reservation_number']}")
+    conn.commit()
+    conn.close()
+    flash("Removed from the register.", "success")
+    return redirect(url_for("police_register_page"))
+
+
+@app.route("/admin/workshops/registrations/<int:registration_id>/register", methods=["POST"])
+@owner_required
+def add_workshop_police_fiche(registration_id):
+    """Record one atelier guest on the police register.
+
+    Every live sitting holds the whole house, so its guests sleep here and the
+    fiche is owed for them exactly as for a room guest. A place that was
+    cancelled, or on a sitting called off, is nobody arriving.
+    """
+    conn = get_db()
+    place = conn.execute(
+        f"""SELECT workshop_bookings.* FROM workshop_bookings
+              JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             WHERE workshop_bookings.id = ? AND workshop_bookings.status = 'confirmed'
+               AND {SESSION_IS_LIVE}""", (registration_id,)).fetchone()
+    if not place:
+        conn.close()
+        abort(404)
+    fiche, problem = police_fiche_fields(request.form)
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return redirect(url_for("police_register_page"))
+    insert_police_fiche(conn, "workshop", registration_id, fiche)
+    log_audit(conn, "police_fiche_recorded", target=place["reference_code"])
+    conn.commit()
+    conn.close()
+    flash("Added to the register.", "success")
+    return redirect(url_for("police_register_page"))
+
+
+@app.route("/admin/register/workshop/<int:fiche_id>/delete", methods=["POST"])
+@owner_required
+def delete_workshop_police_fiche(fiche_id):
+    """Remove an atelier guest's fiche, for the reason one is ever removed."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT workshop_police_register.id, workshop_bookings.reference_code
+             FROM workshop_police_register
+             JOIN workshop_bookings ON workshop_bookings.id = workshop_police_register.workshop_booking_id
+            WHERE workshop_police_register.id = ?""", (fiche_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM workshop_police_register WHERE id = ?", (fiche_id,))
+    log_audit(conn, "police_fiche_removed", target=row["reference_code"])
     conn.commit()
     conn.close()
     flash("Removed from the register.", "success")
@@ -68010,6 +68197,23 @@ def police_register_page():
              LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
              LEFT JOIN users ON users.id = channel_police_register.recorded_by_user_id
             WHERE ota_reservations.arrival_date >= ? AND ota_reservations.arrival_date <= ?""",
+        (start.isoformat(), end.isoformat())).fetchall()]
+    # And the atelier guests, who sleep here for the sitting: arrived on its
+    # first day, left on its last, in the room they were given if they were.
+    rows += [dict(r) for r in conn.execute(
+        """SELECT workshop_police_register.*,
+                  workshop_bookings.reference_code,
+                  workshop_sessions.start_date AS arrival_date,
+                  workshop_sessions.end_date AS departure_date,
+                  COALESCE(rooms.name, workshops.title) AS room_name,
+                  users.name AS recorded_by
+             FROM workshop_police_register
+             JOIN workshop_bookings ON workshop_bookings.id = workshop_police_register.workshop_booking_id
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+             LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
+             LEFT JOIN users ON users.id = workshop_police_register.recorded_by_user_id
+            WHERE workshop_sessions.start_date >= ? AND workshop_sessions.start_date <= ?""",
         (start.isoformat(), end.isoformat())).fetchall()]
     rows.sort(key=lambda r: (r["arrival_date"] or "", r["surname"] or ""))
     missing = stays_missing_fiches(conn, today)
@@ -82081,6 +82285,359 @@ def channel_checkin(token):
                            suggested_nationality=nationality_for_country(details["guest_country"]))
 
 
+# ---------------------------------------------------------------------------
+# ONLINE CHECK-IN FOR THE HOUSE'S OWN GUESTS (owner, 22 October 2026: "online
+# check-in for direct guests, following the police rules").
+#
+# A room stay or an atelier place -- every live sitting holds the whole house,
+# so its guests sleep here -- checked in from a link on the guest's own booking
+# page, and in the letter before arrival once the owner has written it. It asks
+# when they will arrive and what they cannot eat, and for each adult in the
+# party a name and a nationality; only from an adult who is not French does it
+# ask what the fiche individuelle de police lists (CESEDA R. 814-2): date and
+# place of birth, usual home, mobile and email. Arrival and departure are the
+# stay's own. A child under fifteen goes on an adult's fiche, as a number, as
+# the same article allows. No passport number and no scan, as everywhere else.
+#
+# The fiches go to the registers the desk fills in, through the same insert,
+# so the register page, its "waiting to be filled in" list and the six-month
+# purge treat them exactly as one typed at the door. A French adult is written
+# the way the register page tells the desk to write one -- their name and
+# their nationality, nothing more -- so the stay counts as done.
+#
+# NOT A SIGNATURE. R. 814-1 has the foreign guest sign the fiche on arrival.
+# The tick at the foot of the form says the details are right; it is not a
+# signature, and the register has never held one.
+# ---------------------------------------------------------------------------
+
+# Where each kind of stay keeps its own columns and its fiches.
+DIRECT_CHECKIN_TABLES = {"booking": "bookings", "workshop": "workshop_bookings"}
+
+
+def direct_checkin_stay(conn, kind, manage_token):
+    """The stay a check-in link is for, with what the form needs, or None.
+
+    One shape for both kinds: arrival_date and departure_date are a sitting's
+    first and last day for an atelier place, and `names` are the people the
+    registration already named, to put in the boxes for them.
+    """
+    if kind == "booking":
+        row = conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 LEFT JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.manage_token = ?""", (manage_token or "",)).fetchone()
+        if not row:
+            return None
+        return dict(row, kind="booking", stay_name=row["room_name"] or "Your room",
+                    session_live=True, children_asked=True,
+                    names=[row["guest_name"] or ""])
+    row = conn.execute(
+        """SELECT workshop_bookings.*, workshop_sessions.start_date AS arrival_date,
+                  workshop_sessions.end_date AS departure_date,
+                  workshop_sessions.cancelled_at AS session_cancelled_at,
+                  workshops.title, rooms.name AS room_name
+             FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+             LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
+            WHERE workshop_bookings.manage_token = ?""", (manage_token or "",)).fetchone()
+    if not row:
+        return None
+    names = [r["guest_name"] for r in conn.execute(
+        """SELECT guest_name FROM workshop_booking_guests WHERE workshop_booking_id = ?
+            ORDER BY is_lead DESC, id""", (row["id"],)).fetchall()]
+    # Ateliers are for adults (owner), so every place is asked for as one.
+    return dict(row, kind="workshop", stay_name=row["title"] or "Your atelier",
+                session_live=not row["session_cancelled_at"], children_asked=False,
+                names=names or [row["guest_name"] or ""])
+
+
+def direct_checkin_state(stay, today=None):
+    """Where a stay's online check-in stands, in one word.
+
+    'open' to fill in; 'done' once they have; 'desk' once they were checked in
+    at the door, where the fiche is the desk's to fill; 'over' when the stay
+    has ended; 'not_yet' while it is not a confirmed stay (a request waiting
+    for an answer, a cancelled place, a sitting called off).
+    """
+    if stay["status"] != "confirmed" or not stay.get("session_live", True):
+        return "not_yet"
+    if stay.get("checkin_done_at"):
+        return "done"
+    if stay.get("checked_in_at"):
+        return "desk"
+    day = (today or house_today()).isoformat()
+    if (stay.get("departure_date") or "") and stay["departure_date"] <= day:
+        return "over"
+    return "open"
+
+
+def direct_checkin_url(kind, manage_token):
+    """The guest's own link to the form, as a letter carries it."""
+    endpoint = "stay_checkin" if kind == "booking" else "workshop_checkin"
+    return url_for(endpoint, manage_token=manage_token, _external=True)
+
+
+def read_direct_checkin(form, stay):
+    """The check-in form, read and checked: (values, problem).
+
+    One block per adult -- the party less any children under fifteen -- each
+    p<n>_surname, p<n>_first_names, p<n>_nationality and, only where the
+    nationality is not French, p<n>_born_on, p<n>_born_at, p<n>_home,
+    p<n>_phone and p<n>_email. Whatever a French adult's block carries beyond
+    the first three is not read, so nothing the law does not ask is kept
+    because a box happened to be filled in.
+    """
+    party = max(1, int(stay["party_size"] or 1))
+    under_15 = 0
+    if stay["children_asked"] and party > 1:
+        raw = (form.get("children_under_15") or "0").strip()
+        if not raw.isdigit() or int(raw) > party - 1:
+            return None, ("The number of children under 15 has to leave at least one "
+                          "adult in a party of %d." % party)
+        under_15 = int(raw)
+    adults = party - under_15
+    people = []
+    for n in range(1, adults + 1):
+        def got(key, limit):
+            return (form.get(f"p{n}_{key}") or "").strip()[:limit]
+        who = "you" if n == 1 else f"guest {n}"
+        person = {"surname": got("surname", 100), "first_names": got("first_names", 120),
+                  "nationality": got("nationality", 60)}
+        if not person["surname"] or not person["first_names"]:
+            return None, f"Please give the first name and surname of {who}."
+        if not person["nationality"]:
+            return None, f"Please give the nationality of {who}."
+        if not is_french_national(person["nationality"]):
+            born_on = parse_date(got("born_on", 10))
+            born_at, home = got("born_at", 120), got("home", 300)
+            phone, email = got("phone", 40), got("email", 200).lower()
+            if not born_on or born_on > house_today():
+                return None, (f"For {who}, not being French, the law asks for a date of "
+                              "birth, and that one could not be read.")
+            if not born_at:
+                return None, f"For {who}, not being French, the law asks for a place of birth."
+            if not home:
+                return None, f"For {who}, not being French, the law asks for a home address."
+            if email and not EMAIL_RE.match(email):
+                return None, f"The email address for {who} does not look right."
+            person.update(born_on=born_on.isoformat(), born_at=born_at, home_address=home,
+                          phone=phone or None, email=email or None)
+        people.append(person)
+    if form.get("agree") != "on":
+        return None, "Please confirm the details are right."
+    # The children go on the first adult who is not French, whose fiche is
+    # the one that would be handed over; with nobody foreign, on the first
+    # adult's line, so the register still counts the whole party.
+    if under_15:
+        holder = next((p for p in people if not is_french_national(p["nationality"])),
+                      people[0])
+        holder["children_under_15"] = under_15
+    return {"people": people, "children_under_15": under_15,
+            "arrival_time": (form.get("estimated_arrival_time") or "").strip()[:60],
+            "dietary_notes": (form.get("dietary_notes") or "").strip()[:500]}, None
+
+
+def record_direct_checkin(conn, stay, values):
+    """Write a check-in: the stay's arrival time and dietary note, and its
+    fiches. The caller commits.
+
+    The fiches only where the stay has none yet. A desk that has already
+    written the register at the door is not second-guessed by a form, and a
+    second set would count the party twice.
+    """
+    table = DIRECT_CHECKIN_TABLES[stay["kind"]]
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        f"""UPDATE {table}
+               SET estimated_arrival_time = COALESCE(NULLIF(?, ''), estimated_arrival_time),
+                   dietary_notes = ?, checkin_done_at = ?
+             WHERE id = ?""",
+        (values["arrival_time"], values["dietary_notes"] or None, now, stay["id"]))
+    register, column = POLICE_REGISTERS[stay["kind"]]
+    if conn.execute(f"SELECT 1 FROM {register} WHERE {column} = ?",
+                    (stay["id"],)).fetchone():
+        return 0
+    for person in values["people"]:
+        insert_police_fiche(conn, stay["kind"], stay["id"],
+                            dict(person, recorded_at=now, recorded_by_user_id=None))
+    return len(values["people"])
+
+
+def direct_checkin_page(kind, manage_token):
+    """The form, its answer, and the page that thanks them."""
+    conn = get_db()
+    stay = direct_checkin_stay(conn, kind, manage_token)
+    if not stay:
+        conn.close()
+        abort(404)
+    state = direct_checkin_state(stay)
+    form = request.form if request.method == "POST" else {}
+    if request.method == "POST" and state == "open":
+        values, problem = read_direct_checkin(request.form, stay)
+        if problem:
+            flash(problem, "error")
+        else:
+            record_direct_checkin(conn, stay, values)
+            # The act, not the people: names in the audit trail outlive the
+            # six months the register keeps them for.
+            log_audit(conn, "direct_checkin_done", target=stay["reference_code"],
+                      via="the guest's check-in link")
+            conn.commit()
+            conn.close()
+            endpoint = "stay_checkin" if kind == "booking" else "workshop_checkin"
+            return redirect(url_for(endpoint, manage_token=manage_token))
+    back = (url_for("manage_booking", manage_token=manage_token) if kind == "booking"
+            else url_for("workshop_manage", manage_token=manage_token))
+    conn.close()
+    country = house_country_name(stay.get("guest_country"))
+    return render_template(
+        "stay_checkin.html", stay=stay, state=state, form=form, back=back,
+        party=max(1, int(stay["party_size"] or 1)),
+        home=address_one_line(stay),
+        suggested_nationality=nationality_for_country(country),
+        french_words=sorted(FRENCH_NATIONALITY_WORDS),
+        nationalities=sorted(set(NATIONALITY_BY_COUNTRY.values())))
+
+
+# THE LETTER BEFORE ARRIVAL with the link to check in online: a new
+# automation, OFF until the owner switches it on, and even then nothing goes
+# until the owner has written the letter (UNWRITTEN_LETTERS). Days before
+# arrival is the owner's number under Automation; this is what it starts at.
+CHECKIN_LETTER_DAYS_BEFORE = 3
+CHECKIN_LETTER_KEYS = {"booking": "room_checkin_before", "workshop": "workshop_checkin_before"}
+
+
+def checkin_letter_days(conn):
+    """How many days before arrival the check-in letter goes (0 to 30)."""
+    raw = get_automation_settings(conn).get("automation_checkin_letter_days_before")
+    try:
+        return max(0, min(30, int(raw)))
+    except (TypeError, ValueError):
+        return CHECKIN_LETTER_DAYS_BEFORE
+
+
+def send_direct_checkin_letter(conn, kind, stay_id):
+    """The letter with the online check-in link, to one stay's guest, once.
+
+    Only to a stay whose check-in is open, and only in the owner's words: with
+    the letter unwritten it says so and stamps nothing, so writing it later
+    still reaches every stay that is due. Commits before it sends. Held, like
+    every letter to a guest, while Write to guests is off. (sent, why_not).
+    """
+    table = DIRECT_CHECKIN_TABLES[kind]
+    key = CHECKIN_LETTER_KEYS[kind]
+    row = conn.execute(f"SELECT manage_token FROM {table} WHERE id = ?", (stay_id,)).fetchone()
+    stay = direct_checkin_stay(conn, kind, row["manage_token"]) if row else None
+    if not stay:
+        return False, "there is no such stay"
+    state = direct_checkin_state(stay)
+    if state != "open":
+        return False, {"done": "they have checked in online already",
+                       "desk": "they were checked in at the door",
+                       "over": "the stay is over"}.get(state, "it is not a confirmed stay")
+    if letter_unwritten(conn, key):
+        return False, "the letter has no wording yet"
+    to = (stay["guest_email"] or "").strip()
+    if "@" not in to:
+        return False, "there is no address for them"
+    whole = " ".join((stay["guest_name"] or "").split())
+    context = {
+        "guest_name": whole or "there",
+        "first_name": whole.split(" ")[0] if whole else "there",
+        "arrival_date": format_date_human(stay["arrival_date"]) if stay["arrival_date"] else "",
+        "departure_date": (format_date_human(stay["departure_date"])
+                           if stay["departure_date"] else ""),
+        "checkin_url": direct_checkin_url(kind, stay["manage_token"]),
+        "reference_code": stay["reference_code"],
+    }
+    if kind == "booking":
+        context.update(room_name=stay["stay_name"],
+                       manage_url=url_for("manage_booking", manage_token=stay["manage_token"],
+                                          _external=True))
+    else:
+        context.update(workshop_title=stay["stay_name"],
+                       manage_url=url_for("workshop_manage", manage_token=stay["manage_token"],
+                                          _external=True))
+    subject, body, letter = render_email_template(conn, key, context)
+    if not subject:
+        return False, "the letter has no wording yet"
+    conn.commit()
+    delivered = bool(send_email(to, subject, body, html=letter,
+                                area="rooms" if kind == "booking" else "workshops",
+                                about=("room" if kind == "booking" else "workshop", stay_id)))
+    conn.execute(f"UPDATE {table} SET checkin_letter_sent_at = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), stay_id))
+    conn.commit()
+    return True, ("" if delivered else "held until mail to guests is switched on")
+
+
+def run_checkin_letter_job(conn, today=None):
+    """Email each stay arriving in the next N days its check-in link, once.
+
+    N is the owner's number under Automation. A stay booked closer than that
+    is written to on the first morning after it is confirmed, so nobody is
+    missed for booking late. Not to a guest who has checked in online, was
+    checked in at the door, or has already been sent it. Nothing at all --
+    and nothing stamped -- while a letter has no wording: that is "Couldn't
+    run" on the Automation page, not "Worked".
+    """
+    unwritten = [k for k in CHECKIN_LETTER_KEYS if letter_unwritten(conn, CHECKIN_LETTER_KEYS[k])]
+    if len(unwritten) == len(CHECKIN_LETTER_KEYS):
+        raise JobNotSetUp("neither check-in letter has any wording yet")
+    day = today or house_today()
+    first, last = day.isoformat(), (day + timedelta(days=checkin_letter_days(conn))).isoformat()
+    due = []
+    if "booking" not in unwritten:
+        due += [("booking", r["id"]) for r in conn.execute(
+            """SELECT id FROM bookings
+                WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date <= ?
+                  AND checkin_letter_sent_at IS NULL AND checkin_done_at IS NULL
+                  AND checked_in_at IS NULL""", (first, last)).fetchall()]
+    if "workshop" not in unwritten:
+        due += [("workshop", r["id"]) for r in conn.execute(
+            f"""SELECT workshop_bookings.id FROM workshop_bookings
+                  JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                 WHERE workshop_bookings.status = 'confirmed' AND {SESSION_IS_LIVE}
+                   AND workshop_sessions.start_date >= ? AND workshop_sessions.start_date <= ?
+                   AND workshop_bookings.checkin_letter_sent_at IS NULL
+                   AND workshop_bookings.checkin_done_at IS NULL""", (first, last)).fetchall()]
+    sent = held = 0
+    for kind, stay_id in due:
+        ok, why = send_direct_checkin_letter(conn, kind, stay_id)
+        sent += 1 if ok and not why else 0
+        held += 1 if ok and why else 0
+    out = f"sent {sent} check-in letter(s)"
+    if held:
+        out += f", {held} held until mail to guests is switched on"
+    if unwritten:
+        out += ("; the " + " and the ".join("room" if k == "booking" else "atelier"
+                                            for k in unwritten)
+                + " letter has no wording yet, so it does not go")
+    return out
+
+
+def direct_checkin_card(conn, kind, manage_token):
+    """What the booking page's check-in card needs: {"state", "url", "done_at"}."""
+    stay = direct_checkin_stay(conn, kind, manage_token)
+    if not stay:
+        return None
+    return {"state": direct_checkin_state(stay), "done_at": stay.get("checkin_done_at"),
+            "url": direct_checkin_url(kind, manage_token)}
+
+
+@app.route("/book/manage/<manage_token>/check-in", methods=["GET", "POST"])
+def stay_checkin(manage_token):
+    """A room guest's online check-in, from their booking page."""
+    return direct_checkin_page("booking", manage_token)
+
+
+@app.route("/workshops/manage/<manage_token>/check-in", methods=["GET", "POST"])
+def workshop_checkin(manage_token):
+    """An atelier guest's online check-in, from their registration page."""
+    return direct_checkin_page("workshop", manage_token)
+
+
 @app.route("/admin/channel-stays/add", methods=["POST"])
 @owner_required
 def add_channel_stay():
@@ -85561,7 +86118,7 @@ POLICE_REGISTER_KEEP_MONTHS = 6
 # and on either language, since a French guest writes "française" and an
 # English-speaking one writes "French" about the same person.
 FRENCH_NATIONALITY_WORDS = {"fr", "france", "french", "francais", "française",
-                            "francaise", "française"}
+                            "francaise", "français"}
 
 
 def is_french_national(nationality):
@@ -85594,8 +86151,24 @@ def police_register_needed(conn, booking_id):
     exempt = sum(1 for f in have if is_french_national(f["nationality"]))
     party = booking["party_size"] or 1
     return {"booking": booking, "fiches": have, "party": party,
-            "recorded": len(have), "exempt": exempt,
-            "outstanding": max(0, party - len(have))}
+            "recorded": fiche_people(have), "exempt": exempt,
+            "outstanding": max(0, party - fiche_people(have))}
+
+
+def fiche_people(fiches):
+    """How many of the party these fiches account for: each adult, and the
+    children under fifteen written on an adult's (R. 814-2). Without the
+    children, a family of four with both parents recorded read as two short
+    for as long as it stayed."""
+    return sum(1 + int(_row_value(f, "children_under_15") or 0) for f in fiches)
+
+
+def _row_value(row, key):
+    """row[key], or None where the row has no such column (an older copy)."""
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return None
 
 
 def stays_missing_fiches(conn, today=None, days_back=30):
@@ -85624,6 +86197,19 @@ def stays_missing_fiches(conn, today=None, days_back=30):
             state = channel_register_needed(conn, st)
             if state["outstanding"]:
                 out.append(state)
+    # And the ateliers' guests, who sleep here for the sitting.
+    for place in conn.execute(
+            f"""SELECT workshop_bookings.*, workshop_sessions.start_date,
+                       workshop_sessions.end_date, workshops.title
+                  FROM workshop_bookings
+                  JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                 WHERE workshop_bookings.status = 'confirmed' AND {SESSION_IS_LIVE}
+                   AND workshop_sessions.start_date <= ? AND workshop_sessions.start_date >= ?""",
+            (day.isoformat(), since)).fetchall():
+        state = workshop_register_needed(conn, place)
+        if state["outstanding"]:
+            out.append(state)
     out.sort(key=lambda x: x["booking"]["arrival_date"] or "")
     return out
 
@@ -85642,8 +86228,25 @@ def channel_register_needed(conn, stay):
     party = stay["party_size"] or 1
     return {"booking": stay, "fiches": have, "party": party,
             "party_known": bool(stay["party_size"]), "channel": stay["channel"],
-            "recorded": len(have), "exempt": exempt,
-            "outstanding": max(0, party - len(have))}
+            "recorded": fiche_people(have), "exempt": exempt,
+            "outstanding": max(0, party - fiche_people(have))}
+
+
+def workshop_register_needed(conn, place):
+    """police_register_needed, for an atelier place: one row of
+    workshop_bookings joined to its sitting (start_date, end_date, title)."""
+    have = conn.execute(
+        "SELECT * FROM workshop_police_register WHERE workshop_booking_id = ? ORDER BY id",
+        (place["id"],)).fetchall()
+    exempt = sum(1 for f in have if is_french_national(f["nationality"]))
+    party = place["party_size"] or 1
+    # Read by the register page with a booking's names, so the sitting's
+    # dates are given as the stay's.
+    booking = dict(place, arrival_date=place["start_date"],
+                   departure_date=place["end_date"])
+    return {"booking": booking, "fiches": have, "party": party,
+            "kind": "workshop", "recorded": fiche_people(have), "exempt": exempt,
+            "outstanding": max(0, party - fiche_people(have))}
 
 
 def purge_police_register(conn, today=None):
@@ -85667,6 +86270,16 @@ def purge_police_register(conn, today=None):
                SELECT id FROM ota_reservations
                 WHERE COALESCE(departure_date, '') != '' AND departure_date < ?)""",
         (cutoff,))
+    gone += max(0, cur.rowcount)
+    # An atelier guest's, from the day the sitting ended, which is when they
+    # left.
+    cur = conn.execute(
+        """DELETE FROM workshop_police_register WHERE workshop_booking_id IN (
+               SELECT workshop_bookings.id FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                WHERE COALESCE(workshop_sessions.end_date, '') != ''
+                  AND workshop_sessions.end_date < ?)""",
+        (cutoff,))
     return {"police register entries": gone + max(0, cur.rowcount)}
 
 
@@ -85688,7 +86301,7 @@ ANONYMISE_RATHER_THAN_DELETE = {
     # "anonymised" stay still said who had stayed.
     "bookings": ("guest_name", "guest_email", "guest_phone", "special_requests",
                  "second_contact_name", "second_contact_email", "booked_by_name",
-                 "booked_by_email"),
+                 "booked_by_email", "dietary_notes"),
     "restaurant_bookings": ("guest_name", "guest_email", "guest_phone", "dietary_notes"),
     "workshop_bookings": ("guest_name", "guest_email", "guest_phone"),
     "refunds": ("guest_name", "guest_email"),
@@ -88079,7 +88692,8 @@ def guest_data_export(conn, email):
     if workshop_ids:
         marks = ",".join("?" * len(workshop_ids))
         for table, column in (("workshop_feedback", "workshop_booking_id"),
-                              ("workshop_booking_guests", "workshop_booking_id")):
+                              ("workshop_booking_guests", "workshop_booking_id"),
+                              ("workshop_police_register", "workshop_booking_id")):
             try:
                 rows = conn.execute(
                     f"SELECT * FROM {table} WHERE {column} IN ({marks})",
@@ -88217,6 +88831,17 @@ def guest_data_erase(conn, email):
             continue
         if cur.rowcount:
             deleted[table] = deleted.get(table, 0) + cur.rowcount
+    # An atelier place's fiches, on the same footing.
+    try:
+        cur = conn.execute(
+            """DELETE FROM workshop_police_register WHERE workshop_booking_id IN (
+                    SELECT id FROM workshop_bookings WHERE guest_name = ?)""",
+            (ERASED_MARKER,))
+        if cur.rowcount:
+            deleted["workshop_police_register"] = (deleted.get("workshop_police_register", 0)
+                                                   + cur.rowcount)
+    except sqlite3.OperationalError:
+        pass
 
     # And out of the record of who did what, which outlives everything else.
     scrubbed = scrub_audit_trail(conn, [email] + numbers + names)
@@ -90311,6 +90936,7 @@ TEMPLATE_STAGES = [
     ("waitlist", "Waitlist"), ("declined", "Declined"), ("cancelled", "Cancelled"),
     ("not_running", "Cancelled"), ("feedback", "After the stay"),
     ("review", "After the stay"), ("newsletter", "Signing up"),
+    ("checkin", "Before arrival"),
 ]
 
 # WHEN EACH ONE GOES, AND TO WHOM. The page listed thirty-odd letters by name
@@ -90343,6 +90969,16 @@ EMAIL_TEMPLATE_INFO = {
                         "has not checked in online yet, or when you press Email the link "
                         "on the stay", "The Booking.com guest, through Booking.com's own "
                         "address for them"),
+    "room_checkin_before": ("Not until you have written it. Then, with Email the check-in "
+                            "link before arrival switched on under Automation, once to each "
+                            "confirmed stay, in the morning, as many days before arrival as "
+                            "you set there — unless they have checked in online already",
+                            "The guest"),
+    "workshop_checkin_before": ("Not until you have written it. Then, with Email the check-in "
+                                "link before arrival switched on under Automation, once to "
+                                "each confirmed atelier place, in the morning, as many days "
+                                "before the atelier as you set there — unless they have "
+                                "checked in online already", "The guest"),
     "room_declined": ("When you decline a booking request", "The guest, and anyone "
                                                             "they asked us to copy"),
     "room_cancelled": ("When the house cancels a booking from the bookings list",
@@ -90452,6 +91088,9 @@ def template_state(row, defaults):
     # text: a tag nothing fills, a stray brace, a link taken out. The send
     # quietly uses the shipped wording for all of them, so a page that marked
     # only one of the four showed "Edited" over a letter nobody was receiving.
+    if (row["template_key"] in UNWRITTEN_LETTERS
+            and not letter_written(row["subject"], row["body"])):
+        return "No wording yet"
     if wording_problems(row["template_key"], row["subject"], row["body"]):
         return "Needs fixing"
     want = defaults.get(row["template_key"])
@@ -90562,7 +91201,7 @@ def email_templates_page(draft=None):
                   order=list(dict.fromkeys(label for _t, label in TEMPLATE_STAGES))
                   + ["Other"]),
             facet("state", "Wording", lambda t: states[t["template_key"]],
-                  order=["Needs fixing", "Edited", "Original wording"]),
+                  order=["Needs fixing", "No wording yet", "Edited", "Original wording"]),
             facet("use", "Last 90 days",
                   lambda t: "Went out" if usage.get(t["template_key"], {}).get("sent")
                   else "Did not go out",
@@ -90719,8 +91358,13 @@ def restore_email_template(template_key):
     log_audit(conn, "email_template_restored", target=template_key)
     conn.commit()
     conn.close()
-    flash("Restored to the original wording. What it said before is in its history.",
-          "success")
+    if template_key in UNWRITTEN_LETTERS:
+        # It shipped with no words, so going back to them withdraws it.
+        flash("Emptied: it shipped with no wording, so it will not be sent until it "
+              "is written again. What it said before is in its history.", "success")
+    else:
+        flash("Restored to the original wording. What it said before is in its history.",
+              "success")
     return redirect(url_for("management_email_templates"))
 
 
@@ -94374,6 +95018,8 @@ def send_backup_email(to_address, zip_bytes, filename, note=""):
 HEALTH_NOTE_FIELDS = [
     ("restaurant_bookings", ["dietary_notes"], "dinner_date"),
     ("workshop_bookings", ["dietary_notes", "medical_notes"], None),
+    # What a room guest said at online check-in, once they have left.
+    ("bookings", ["dietary_notes"], "departure_date"),
 ]
 
 
@@ -94423,6 +95069,14 @@ def purge_health_notes(conn, today=None):
                 OR (medical_notes IS NOT NULL AND TRIM(medical_notes) != ''))""",
         (iso,)).rowcount
     cleared["workshop_bookings"] = n
+
+    # A room guest's, from their online check-in, once they have left. The
+    # departure day is the last morning they are here, so it goes the day
+    # after, as a Booking.com guest's does below.
+    cleared["bookings"] = conn.execute(
+        """UPDATE bookings SET dietary_notes = NULL
+            WHERE dietary_notes IS NOT NULL AND TRIM(dietary_notes) != ''
+              AND departure_date < ?""", (iso,)).rowcount
 
     # A Booking.com guest's dietary needs, from their online check-in, once
     # they have left.
@@ -96708,10 +97362,14 @@ def arrivals_sheet(conn, day=None, channel=None):
             "arrival_time": (b["estimated_arrival_time"] or "").strip()
                             or ((profile["usual_arrival_time"] or "").strip()
                                 if profile else ""),
+            # What they said at online check-in first: it is about this stay
+            # and the newest thing they told us.
             "dietary": " · ".join(x for x in [
+                (b["dietary_notes"] or "").strip(),
                 (profile["dietary_notes"] or "").strip() if profile else "",
                 (b["special_requests"] or "").strip()] if x),
             "access_needs": (profile["access_needs"] or "").strip() if profile else "",
+            "checked_in_online": b["checkin_done_at"],
             "missing": missing,
         })
     # Booking.com's guests, on their own list: the sheet's rows are the house's
@@ -103202,6 +103860,10 @@ AUTOMATION_JOBS = [
      run_checkin_text_job),
     ("checkout_text", "automation_checkout_text_enabled", None, 24 * 3600,
      run_checkout_text_job),
+    # The letter with the online check-in link. Daily, in the morning (see
+    # JOB_HOURS); each stay is stamped, so a run twice sends nothing twice.
+    ("checkin_letter", "automation_checkin_letter_enabled", None, 24 * 3600,
+     run_checkin_letter_job),
     # Deliberately shipped disabled: this is the only job that takes money
     # with nobody present. Turn it on under Automation once a test booking
     # has been charged end to end in Stripe test mode, including a card
@@ -103261,6 +103923,9 @@ JOB_HOURS = {
     # somebody reading "checkout is at eleven" at ten past ten has been told
     # too late to do anything about it.
     "checkout_text": (17, 21),
+    # The letter with the online check-in link: a morning letter, from nine
+    # to noon on the house's clock, which is what its label says.
+    "checkin_letter": (9, 12),
     # In the small hours, when nobody is looking at the calendar it rewrites.
     "house_calendar_reconcile": (2, 6),
 }
@@ -103516,6 +104181,16 @@ AUTOMATION_SWITCHES = [
      "label": "Text a guest the evening before they leave",
      "what": "Your own words, sent the evening before departure. Nothing until "
              "you have written it and a texting service is connected."},
+    {"key": "automation_checkin_letter_enabled", "job": "checkin_letter",
+     "runs": ("run_checkin_letter_job",), "group": "guests", "reaches": ("guests",),
+     "letters": UNWRITTEN_LETTERS,
+     "label": "Email the check-in link before arrival",
+     "what": "Your own letter with the link to check in online, once to each guest who "
+             "booked with the house — a room or an atelier — between 9am and noon "
+             "(French time), {checkin_letter_days} days before they arrive; a stay "
+             "booked closer than that gets it the next morning. Not to anyone who has "
+             "checked in online already. Nothing until you have written the letter.",
+     "fields": (("automation_checkin_letter_days_before", "Days before arrival", "days"),)},
     {"key": "automation_waitlist_autonotify_enabled", "job": None,
      "runs": ("notify_room_waitlist_opening", "notify_restaurant_waitlist_opening",
               "notify_workshop_waitlist_opening"),
@@ -103717,12 +104392,18 @@ def admin_automation():
     # switch, so the row says so beside the switch rather than letting an
     # owner tick it and wait for a message that cannot exist.
     unwritten = {kind for kind in GUEST_TEXTS if not guest_text_wording(conn, kind)}
+    # And the same for a letter that ships with no words: the row says which
+    # of them is still unwritten, beside the switch.
+    unwritten_letters = [EMAIL_TEMPLATE_LABELS.get(k, k) for k in UNWRITTEN_LETTERS
+                         if letter_unwritten(conn, k)]
+    letter_days = checkin_letter_days(conn)
     conn.close()
 
     windows = house_windows()
     facts = {"decline_hours": STALE_PENDING_BOOKING_HOURS,
              "prep_days": windows["arrival_prep_days"],
-             "digest_hours": windows["digest_interval_hours"]}
+             "digest_hours": windows["digest_interval_hours"],
+             "checkin_letter_days": letter_days}
     groups, everything = [], []
     for key, title, about in AUTOMATION_GROUPS:
         entries = []
@@ -103733,6 +104414,7 @@ def admin_automation():
                        what=e["what"].format(**facts),
                        run=last_runs.get(e["job"]) if e["job"] else None,
                        no_wording=e.get("text") in unwritten,
+                       letters_unwritten=unwritten_letters if e.get("letters") else [],
                        reach_words=[AUTOMATION_REACH_WORDS[r] for r in e["reaches"]],
                        fields=[(f, label, kind, settings.get(f))
                                for f, label, kind in e.get("fields", ())])
@@ -106658,7 +107340,9 @@ def kitchen_sheet(conn, day):
                   AND bookings.departure_date > ?
                 ORDER BY bookings.guest_name""", (day_iso, day_iso)).fetchall():
         covers += int(booking["party_size"] or 0)
-        notes = clean(booking["profile_dietary"], booking["special_requests"])
+        # What they wrote at online check-in first: it is about this stay.
+        notes = clean(booking["dietary_notes"], booking["profile_dietary"],
+                      booking["special_requests"])
         if notes:
             rows.append({"who": booking["guest_name"],
                          "where": booking["room_name"] or "room to be confirmed",

@@ -270,6 +270,7 @@ SUITES = [
     "test_front_desk",
     "test_every_stay_has_a_profile",
     "test_channel_checkin",
+    "test_direct_checkin",
     "test_extras_at_booking",
     "test_chateau_tour",
     "test_no_control_characters",

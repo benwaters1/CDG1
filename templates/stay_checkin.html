@@ -1,0 +1,167 @@
+{% extends "public_base.html" %}
+{% set sticky_bar = 'none' %}
+{% block title %}Check in online — Château de Gudanes{% endblock %}
+{# The online check-in for a guest who booked with the house (22 October 2026):
+   a room stay or an atelier place, from the link on their own booking page.
+   One guest's stay on a private link, so never indexed.
+
+   Asks for each adult a name and a nationality, and ONLY from one who is not
+   French what the fiche de police lists (CESEDA R. 814-2). The script hides
+   those boxes for a French national and the blocks of children under 15; with
+   no script every box shows and the server reads only what applies, so the
+   form works either way and nothing extra is kept because a box was filled. #}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+{%- set f = form -%}
+<div class="g-short"><div class="g-wrap" style="padding-top:var(--s5); padding-bottom:var(--s6);">
+  <h1 class="g-place" style="margin:0;">Check in online</h1>
+  <p class="g-hint" style="margin:var(--s1) 0 var(--s4);">
+    {{ stay['stay_name'] }}
+    {%- if stay['arrival_date'] %} · {{ stay['arrival_date']|date_short }}{% if stay['departure_date'] %} to {{ stay['departure_date']|date_short }}{% endif %}{% endif %}
+    · {{ stay['reference_code'] }}
+  </p>
+
+  {% if state == 'done' %}
+  <p>Thank you — you are checked in{% if stay['estimated_arrival_time'] %}, and we expect you {{ stay['estimated_arrival_time'] }}{% endif %}.</p>
+  <p class="g-hint">If anything changes, tell us from <a href="{{ back }}">your booking page</a>.</p>
+  {% elif state == 'desk' %}
+  <p>You were checked in at the house, so there is nothing to fill in here.</p>
+  <p class="g-hint"><a href="{{ back }}">Back to your booking page</a></p>
+  {% elif state == 'over' %}
+  <p>This stay is over, so online check-in has closed.</p>
+  <p class="g-hint"><a href="{{ back }}">Back to your booking page</a></p>
+  {% elif state == 'not_yet' %}
+  <p>{% if stay['status'] == 'pending' %}Online check-in opens once your booking is confirmed.{% else %}There is nothing to check in for on this booking.{% endif %}</p>
+  <p class="g-hint"><a href="{{ back }}">Back to your booking page</a></p>
+  {% else %}
+  <p>For the register French law asks a guest house to keep, and so that we know when to expect you, please fill this in for everyone staying.</p>
+  <p class="g-hint" style="margin-bottom:var(--s5);">For anyone who is not French, the law asks for date and place of birth, home address, mobile and email: the fiche de police, kept for six months after your stay and then deleted. Nothing more is asked of a French national than their name.</p>
+
+  <form method="post" class="g-form" id="ci_form" data-french="{{ french_words|join('|') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <datalist id="ci_nats">
+      <option value="French">
+      {%- for n in nationalities %}{% if n != 'French' %}<option value="{{ n }}">{% endif %}{% endfor %}
+    </datalist>
+
+    {% if stay['children_asked'] and party > 1 %}
+    <p class="g-field">
+      <label for="ci_kids">How many of the {{ party }} of you are under 15?</label>
+      <select id="ci_kids" name="children_under_15">
+        {%- for n in range(0, party) %}
+        <option value="{{ n }}" {{ 'selected' if (f.get('children_under_15', '0')|string) == (n|string) }}>{{ n }}</option>
+        {%- endfor %}
+      </select>
+      <span class="g-hint">A child under 15 goes on an adult's fiche and needs nothing of their own here.</span>
+    </p>
+    {% endif %}
+
+    {% for n in range(1, party + 1) %}
+    {%- set p = 'p' ~ n ~ '_' -%}
+    {%- set given = (stay['names'][n - 1] if stay['names']|length >= n else '') or '' -%}
+    {%- set bits = given.rsplit(' ', 1) if ' ' in given else [given, ''] -%}
+    <div class="g-ci-person" data-person="{{ n }}">
+      <h2 class="g-panel__h" style="margin-top:var(--s5);">{{ 'You' if n == 1 else 'Guest ' ~ n }}</h2>
+      <div class="g-row g-namerow">
+        <p class="g-field">
+          <label for="{{ p }}first">First name(s)</label>
+          <input type="text" id="{{ p }}first" name="{{ p }}first_names" autocomplete="{{ 'given-name' if n == 1 else 'off' }}" spellcheck="false" autocapitalize="words"
+                 value="{{ f.get(p ~ 'first_names', bits[0]) }}">
+        </p>
+        <p class="g-field">
+          <label for="{{ p }}last">Surname</label>
+          <input type="text" id="{{ p }}last" name="{{ p }}surname" autocomplete="{{ 'family-name' if n == 1 else 'off' }}" spellcheck="false" autocapitalize="words"
+                 value="{{ f.get(p ~ 'surname', bits[1]) }}">
+        </p>
+      </div>
+      <p class="g-field">
+        <label for="{{ p }}nat">Nationality</label>
+        <input type="text" id="{{ p }}nat" name="{{ p }}nationality" list="ci_nats" autocomplete="off" data-nat
+               value="{{ f.get(p ~ 'nationality', suggested_nationality if n == 1 else '') }}">
+      </p>
+      <div data-fiche>
+        <p class="g-hint">If not French:</p>
+        <div class="g-row">
+          <p class="g-field">
+            <label for="{{ p }}dob">Date of birth</label>
+            <input type="date" id="{{ p }}dob" name="{{ p }}born_on" value="{{ f.get(p ~ 'born_on', '') }}">
+          </p>
+          <p class="g-field">
+            <label for="{{ p }}pob">Place of birth</label>
+            <input type="text" id="{{ p }}pob" name="{{ p }}born_at" autocomplete="off" value="{{ f.get(p ~ 'born_at', '') }}">
+          </p>
+        </div>
+        <p class="g-field">
+          <label for="{{ p }}home">Home address</label>
+          <input type="text" id="{{ p }}home" name="{{ p }}home" autocomplete="{{ 'street-address' if n == 1 else 'off' }}" value="{{ f.get(p ~ 'home', home) }}">
+        </p>
+        <div class="g-row">
+          <p class="g-field">
+            <label for="{{ p }}tel">Mobile</label>
+            <input type="tel" inputmode="tel" id="{{ p }}tel" name="{{ p }}phone" autocomplete="{{ 'tel' if n == 1 else 'off' }}"
+                   value="{{ f.get(p ~ 'phone', (stay['guest_phone'] or '') if n == 1 else '') }}">
+          </p>
+          <p class="g-field">
+            <label for="{{ p }}email">Email</label>
+            <input type="email" id="{{ p }}email" name="{{ p }}email" autocomplete="{{ 'email' if n == 1 else 'off' }}"
+                   value="{{ f.get(p ~ 'email', (stay['guest_email'] or '') if n == 1 else '') }}">
+          </p>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <h2 class="g-panel__h" style="margin-top:var(--s5);">Your stay</h2>
+    <p class="g-field g-eta">
+      <label for="ci_eta">When you expect to arrive</label>
+      {%- set _eta = f.get('estimated_arrival_time') or stay['estimated_arrival_time'] or '' %}
+      <select id="ci_eta" name="estimated_arrival_time">
+        <option value="">Not sure yet</option>
+        <option value="Before {{ check_in_at }} (early check-in requested)" {{ 'selected' if _eta.startswith('Before') }}>Before {{ check_in_at }} &mdash; early check-in, on request</option>
+        {%- for _h in range(check_in_hour, 22) %}{% set _slot = clock_words(_h) ~ '-' ~ clock_words(_h + 1) %}
+        <option value="{{ _slot }}" {{ 'selected' if _eta == _slot }}>{{ clock_words(_h) }} &ndash; {{ clock_words(_h + 1) }}</option>
+        {%- endfor %}
+        <option value="After 10pm" {{ 'selected' if _eta == 'After 10pm' }}>After 10pm</option>
+      </select>
+      <span class="g-hint">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}.</span>
+    </p>
+    <p class="g-field">
+      <label for="ci_diet">Anything you cannot eat</label>
+      <input type="text" id="ci_diet" name="dietary_notes" value="{{ f.get('dietary_notes', stay['dietary_notes'] or '') }}">
+      <span class="g-hint">For the kitchen. Deleted once your stay is over.</span>
+    </p>
+    <label class="g-check">
+      <input type="checkbox" name="agree" value="on" required>
+      <span class="g-check__t">These details are right. They are used for your stay and the register, as our <a href="{{ url_for('privacy_page') }}" target="_blank" rel="noopener">privacy notice</a> says.</span>
+    </label>
+    <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">Check in</button>
+  </form>
+  <p class="g-hint" style="margin-top:var(--s4);"><a href="{{ back }}">Back to your booking page</a></p>
+<script>
+(function(){
+  var form = document.getElementById('ci_form'); if (!form) return;
+  var french = (form.getAttribute('data-french') || '').split('|');
+  var kids = document.getElementById('ci_kids');
+  var people = form.querySelectorAll('[data-person]');
+  function isFrench(v){
+    v = (v || '').trim().toLowerCase().replace(/\.$/, '');
+    return french.indexOf(v) !== -1;
+  }
+  function refresh(){
+    var adults = people.length - (kids ? parseInt(kids.value || '0', 10) : 0);
+    people.forEach(function(block){
+      var n = parseInt(block.getAttribute('data-person'), 10);
+      block.hidden = n > adults;
+      var nat = block.querySelector('[data-nat]');
+      var fiche = block.querySelector('[data-fiche]');
+      if (fiche) fiche.hidden = isFrench(nat && nat.value);
+    });
+  }
+  if (kids) kids.addEventListener('change', refresh);
+  form.querySelectorAll('[data-nat]').forEach(function(i){ i.addEventListener('input', refresh); });
+  refresh();
+})();
+</script>
+  {% endif %}
+</div></div>
+{% endblock %}

@@ -355,6 +355,9 @@ ENDPOINT_ARGS = {
     # check-in (22 October 2026).
     ("channel_stay_page", "reservation_id"): ("ota_reservations", "id"),
     ("channel_checkin", "token"): ("ota_reservations", "checkin_token"),
+    # A guest of the house's own checking in online (22 October 2026).
+    ("stay_checkin", "manage_token"): ("bookings", "manage_token"),
+    ("workshop_checkin", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_calendar_ics", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_confirmation", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_manage", "manage_token"): ("workshop_bookings", "manage_token"),
