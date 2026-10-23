@@ -778,6 +778,9 @@ def main(argv):
 
     print(f"Database: {_harness.SCRATCH_DB}")
     print("(a throwaway copy — the real one is untouched)")
+    print(f"Today: {_harness.PINNED_START:%A %d %B %Y}, from "
+          f"{_harness.PINNED_START:%H:%M} at the house")
+    print("(pinned for the whole run, whatever the date — GUDANES_TEST_TODAY moves it)")
     print("\n== Self-check")
     control_ok = _positive_control()
     registry_ok = _registry_complete()
