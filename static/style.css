@@ -3456,7 +3456,7 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
    against: absolutely placed with no positioned ancestor, they escaped the
    table-wrap's scroll box and dragged a desk-width page to 1360px whenever
    the table was wider than its box. */
-.bk-table, .bk-stack{ position:relative; }
+.bk-table{ position:relative; }
 .bk-table .bk-tick{ width:1%; }
 .bk-guest{ min-width:11rem; }
 .bk-room{ white-space:nowrap; }
@@ -3549,19 +3549,32 @@ section[id]{ scroll-margin-top:80px; }
 .bk-danger > summary{ cursor:pointer; color:var(--danger); }
 .bk-housekeeping p{ margin:0 0 var(--s2) 0; }
 .bk-note{ margin-bottom:var(--s3); }
-/* The add-ons on one stay, stacked on a phone like the list's rows. */
+/* The add-ons on one stay, stacked on a phone like the list's rows -- and,
+   as .phone-cards, every table whose row carries the button somebody came
+   for. In a table-wrap that button sat past the right edge on a 390px phone:
+   Check in on Front Desk, Walk it on Room Checks, Handed over on Extras Due.
+   The table scrolled sideways, so nothing looked broken; the button was just
+   not there until you swiped for it. Each cell says what it is (data-label)
+   and the action cells run the width of the card. */
+.bk-stack, .phone-cards{ position:relative; }
 @media (max-width: 760px){
-  .bk-stack{ min-width:0; }
-  .bk-stack thead{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
-  .bk-stack, .bk-stack tbody, .bk-stack tr, .bk-stack td, .bk-stack tbody th{ display:block; width:100%; }
-  .bk-stack tr{ border-bottom:1px solid var(--parchment-line); padding:var(--s3); }
-  .bk-stack tbody tr:last-child{ border-bottom:none; }
-  .bk-stack td, .bk-stack tbody th{ border:none; padding:3px 0; }
-  .bk-stack td[data-label]{ display:grid; grid-template-columns:5.5rem 1fr; column-gap:var(--s3); justify-items:end; text-align:right; }
-  .bk-stack td[data-label] > *{ grid-column:2; }
-  .bk-stack td[data-label]::before{ content:attr(data-label); grid-column:1; grid-row:1 / span 20; justify-self:start; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); text-align:left; }
+  .bk-stack, .phone-cards{ min-width:0; }
+  .bk-stack thead, .phone-cards thead{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+  .bk-stack, .bk-stack tbody, .bk-stack tr, .bk-stack td, .bk-stack tbody th,
+  .phone-cards, .phone-cards tbody, .phone-cards tr, .phone-cards td, .phone-cards tbody th{ display:block; width:100%; box-sizing:border-box; }
+  .bk-stack tr, .phone-cards tr{ border-bottom:1px solid var(--parchment-line); padding:var(--s3); }
+  .bk-stack tbody tr:last-child, .phone-cards tbody tr:last-child{ border-bottom:none; }
+  .bk-stack td, .bk-stack tbody th, .phone-cards td, .phone-cards tbody th{ border:none; padding:3px 0; }
+  .bk-stack td[data-label], .phone-cards td[data-label]{ display:grid; grid-template-columns:5.5rem 1fr; column-gap:var(--s3); justify-items:end; text-align:right; }
+  .bk-stack td[data-label] > *, .phone-cards td[data-label] > *{ grid-column:2; }
+  .bk-stack td[data-label]::before, .phone-cards td[data-label]::before{ content:attr(data-label); grid-column:1; grid-row:1 / span 20; justify-self:start; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); text-align:left; }
+  .phone-cards td.num{ text-align:right; }
+  .phone-cards td:not([data-label]) form, .phone-cards td:not([data-label]) select{ max-width:100%; }
+  .phone-cards td:empty{ display:none; }
 }
 .bk-tasks .mini-status{ margin-right:6px; }
+.bk-tasks li .bk-tick-done, .bk-request .bk-tick-done{ margin-left:6px; }
+.bk-request-done strong{ text-decoration:line-through; color:var(--ink-soft); }
 
 /* ---------- Extras: the days a supplier is shut ---------- */
 .days-off{ border:0; margin:0; padding:0; min-width:0; display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; }

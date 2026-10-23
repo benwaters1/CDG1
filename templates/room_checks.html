@@ -24,15 +24,15 @@
   <div class="empty-state">Nobody is arriving in this window.</div>
   {% else %}
   <div class="table-wrap">
-    <table class="data-table">
+    <table class="data-table phone-cards">
       <thead><tr><th>Arriving</th><th>Room</th><th>Who</th><th>Where it stands</th><th></th></tr></thead>
       <tbody>
         {% for a in arrivals %}
         <tr class="{{ 'row-alert' if a.state in ['unchecked', 'failed'] }}">
           <th scope="row">{{ a.booking['arrival_date']|date_short }}</th>
-          <td>{{ a.booking['room_name'] }}</td>
-          <td>
-            {{ a.booking['guest_name'] }}
+          <td data-label="Room">{{ a.booking['room_name'] }}</td>
+          <td data-label="Who">
+            <span>{{ a.booking['guest_name'] }}</span>
             <div class="upload-hint">{{ a.booking['reference_code'] }}</div>
           </td>
           <td>
@@ -65,7 +65,7 @@
   <div class="empty-state">Nothing on the list. Add the first below.</div>
   {% else %}
   <div class="table-wrap">
-    <table class="data-table">
+    <table class="data-table phone-cards">
       <thead><tr><th>Where</th><th>What</th><th></th></tr></thead>
       <tbody>
         {% for st in standards %}

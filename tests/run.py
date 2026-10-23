@@ -568,6 +568,7 @@ SUITES = [
     # is about and a room's checklist reads as one; dates, labels and search
     # hits in the house's words; the button you came for, within reach.
     "test_tasks_open_what_they_are_about",
+    "test_buttons_within_reach_on_a_phone",
 ]
 
 

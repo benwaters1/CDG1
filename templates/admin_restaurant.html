@@ -90,7 +90,7 @@
       </span>
     </div>
     <div class="table-wrap">
-      <table class="data-table rs-table">
+      <table class="data-table rs-table phone-cards">
         <thead><tr><th class="rs-c-who">Who</th><th class="rs-c-party">Party</th><th class="rs-c-notes">Notes</th><th class="rs-c-money">Money</th><th class="rs-c-status">Status</th><th class="rs-c-acts"></th></tr></thead>
         <tbody>
           {% for r in n.rows %}
@@ -106,10 +106,10 @@
               <span class="no-show-warning">{{ no_show_history[r['id']] }} previous no-show{{ '' if no_show_history[r['id']] == 1 else 's' }} on this address.{% if r['status'] == 'pending' %} Worth asking for a deposit, or a phone number that answers.{% endif %}</span>
               {% endif %}
             </td>
-            <td>{{ r['party_size'] }}</td>
-            <td>{% if r['dietary_notes'] %}{{ r['dietary_notes'] }}{% else %}<span class="upload-hint">&mdash;</span>{% endif %}
+            <td data-label="Party">{{ r['party_size'] }}</td>
+            <td data-label="Notes">{% if r['dietary_notes'] %}{{ r['dietary_notes'] }}{% else %}<span class="upload-hint">&mdash;</span>{% endif %}
               {% if r['booking_id'] %}<span class="mini-status status-upcoming">staying with us</span>{% endif %}</td>
-            <td>
+            <td data-label="Money">
               {% if r['total_price'] %}{{ r['total_price']|money }}{% else %}<span class="upload-hint">&mdash;</span>{% endif %}
               {% if r['total_price'] and r['deposit_amount'] and r['deposit_amount'] < r['total_price'] %}
               <span class="upload-hint">deposit {{ r['deposit_amount']|money }} paid · {{ (r['total_price'] - r['deposit_amount'])|money }} on the night</span>
@@ -117,7 +117,7 @@
               <span class="upload-hint">{{ r['payment_status'] }}</span>
               {% elif r['total_price'] %}<span class="upload-hint">on the night</span>{% endif %}
             </td>
-            <td>
+            <td data-label="Status">
               <span class="mini-status status-{{ r['status'] }}">{{ 'to decide' if r['status'] == 'pending' else r['status'] }}</span>
               {% if r['no_show_at'] %}<span class="mini-status status-declined">no-show</span>{% endif %}
             </td>
