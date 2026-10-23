@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Plans{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Plans</h1>
+  <div>
+    <a href="{{ url_for('plan_map') }}" class="btn-ghost">Map of the grounds</a>
+    <a href="{{ url_for('maintenance_page') }}" class="btn-ghost">Maintenance</a>
+  </div>
+</div>
+<p class="pay-disclaimer plan-intro">
+  The pictures jobs are pinned to. Upload an aerial photograph, a survey plan or a cadastre
+  extract of the estate, and staff can tap on it from a phone to say where something is wrong.
+  The app never draws a plan of its own: what is on the map is exactly what you upload, so it
+  is as accurate as the picture.
+</p>
+
+{% include "_list_toolbar.html" %}
+
+{% if not lv.rows %}
+<div class="empty-state">
+  {% if lv.total %}No plan matches.{% else %}No plan yet. The first one you add is the one a
+  report opens on.{% endif %}
+</div>
+{% endif %}
+
+<div class="plan-cards">
+{% for p in lv.rows %}
+  <details class="detail-card plan-card" id="plan-{{ p.id }}">
+    <summary>
+      <img src="{{ url_for('plan_image', plan_id=p.id, v=p.filename) }}" alt="" class="plan-thumb"
+           width="{{ p.width }}" height="{{ p.height }}" loading="lazy">
+      <span class="plan-card-says">
+        <strong>{{ p.name }}</strong>
+        {% if not p.active %}<span class="mini-status status-inactive">retired</span>{% endif %}
+        <span class="upload-hint">
+          {{ kinds.get(p.kind, p.kind) }} &middot; {{ p.width }} &times; {{ p.height }} px
+          &middot; {{ p.open_jobs }} open job{{ '' if p.open_jobs == 1 else 's' }}
+          &middot; {{ p.checks }} check{{ '' if p.checks == 1 else 's' }} placed
+          {%- if p.source %} &middot; {{ p.source }}{% endif %}
+          &middot; added {{ p.created_at|house_when }}{% if p.added_by_name %} by {{ p.added_by_name }}{% endif %}
+          {%- if p.image_replaced_at %} &middot; picture replaced {{ p.image_replaced_at|house_when }}{% endif %}
+        </span>
+      </span>
+    </summary>
+    <p><a href="{{ url_for('plan_map', plan_id=p.id) }}" class="small-link">Open it as the map</a></p>
+    <form method="post" action="{{ url_for('edit_plan', plan_id=p.id) }}" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% with plan = p %}{% include "_plan_fields.html" %}{% endwith %}
+      <label class="field-label" for="plan-image-{{ p.id }}">A sharper copy of the same picture</label>
+      <input type="file" id="plan-image-{{ p.id }}" name="image" accept="image/*">
+      <p class="field-hint">
+        Pins are kept as a share of the picture's width and height, so a new picture must show
+        exactly the same view &mdash; sharper, not cropped or turned. A different view is a new plan.
+      </p>
+      <label class="plan-check"><input type="checkbox" name="active" value="1" {{ 'checked' if p.active }}>
+        In use &mdash; untick to retire it. Its jobs keep their pins.</label>
+      <button type="submit" class="btn-mini">Save</button>
+    </form>
+  </details>
+{% endfor %}
+</div>
+
+<h2 class="section-heading">Add a plan</h2>
+<form method="post" action="{{ url_for('new_plan') }}" enctype="multipart/form-data"
+      class="detail-card plan-add">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% with plan = None %}{% include "_plan_fields.html" %}{% endwith %}
+  <label class="field-label" for="plan-image-new">The picture</label>
+  <input type="file" id="plan-image-new" name="image" accept="image/*" required>
+  <p class="field-hint">
+    A JPEG or PNG at least {{ min_edge }} pixels across. Géoportail (geoportail.gouv.fr) shows
+    the estate from the air: zoom to the grounds, take a screenshot, upload it. A survey plan or
+    a cadastre extract works too &mdash; if it is a PDF, screenshot the part you want first.
+    North at the top makes it easiest to read on a phone.
+  </p>
+  <button type="submit" class="btn-primary">Add the plan</button>
+</form>
+
+{% endblock %}

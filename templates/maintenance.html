@@ -5,6 +5,7 @@
 <div class="page-head">
   <h1>The estate's upkeep</h1>
   <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('plan_map') }}" class="btn-ghost">Map of the grounds</a>
     <a href="{{ url_for('room_issues') }}" class="btn-ghost">Room issues</a>
     <a href="{{ url_for('management_vehicles') }}" class="btn-ghost">Vehicles</a>
   </div>
@@ -45,7 +46,7 @@
 {% else %}
 <div class="doc-list" style="max-width:940px;">
   {% for sc in schedules %}
-  <details class="doc-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+  <details class="doc-row" id="sched-{{ sc.id }}" style="flex-direction:column; align-items:stretch; gap:6px;">
     <summary style="display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; cursor:pointer;">
       <strong style="flex:1;">
         {{ sc.name }}{% if sc.location %} <span class="upload-hint">{{ sc.location }}</span>{% endif %}
@@ -83,6 +84,18 @@
         {%- if sc.visit_count > 1 %} · {{ sc.visit_count }} recorded in all{% endif %}
       {% else %}
         Never recorded here. If it has been done, saying when sets the next date.
+      {% endif %}
+    </p>
+    {# Where it is, on a plan the owner uploaded (THE PLANS in app.py). #}
+    <p class="field-hint plan-where">
+      {% if placed.get(sc.id) %}
+        On <a href="{{ url_for('maintenance_check', schedule_id=sc.id) }}">{{ placed[sc.id]['plan_name'] }}</a>
+        &middot; <a href="{{ url_for('place_on_plan', plan_id=placed[sc.id]['plan_id'], schedule_id=sc.id) }}">move it</a>
+      {% elif plans %}
+        Not on a plan.
+        {% for p in plans %}<a href="{{ url_for('place_on_plan', plan_id=p['id'], schedule_id=sc.id) }}">Put it on {{ p['name'] }}</a>{{ ' · ' if not loop.last }}{% endfor %}
+      {% else %}
+        Not on a plan &mdash; <a href="{{ url_for('manage_plans') }}">upload one</a> to show where it is.
       {% endif %}
     </p>
 

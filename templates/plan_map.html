@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ plan['name'] if plan else 'Map of the grounds' }}{% endblock %}
+{% block content %}
+{% set said = {'open': 'Open', 'in_progress': 'Being dealt with', 'done': 'Done'} %}
+
+<div class="page-head">
+  <h1>{{ plan['name'] if plan else 'Map of the grounds' }}</h1>
+  <div>
+    <a href="{{ url_for('report_problem', plan=plan['id']) if plan else url_for('report_problem') }}"
+       class="btn-primary">Report a problem</a>
+    {% if can_manage %}<a href="{{ url_for('manage_plans') }}" class="btn-ghost">Plans</a>{% endif %}
+  </div>
+</div>
+
+{% if not plan %}
+<div class="empty-state">
+  {% if can_manage %}
+    No plan yet. Upload an aerial photograph or a survey plan of the estate on
+    <a href="{{ url_for('manage_plans') }}">Plans</a>, and every job shows here where it is.
+  {% else %}
+    No plan yet. When the owner uploads one, every job shows here where it is. A problem
+    can still be reported without one.
+  {% endif %}
+</div>
+{% else %}
+  {% if plans|length > 1 %}
+  <nav class="plan-switch" aria-label="Plans">
+    {% for p in plans %}
+    <a href="{{ url_for('plan_map', plan_id=p['id']) }}"
+       class="chip {{ 'is-on' if p['id'] == plan['id'] }}">{{ p['name'] }}
+      {%- if open_by_plan.get(p['id']) %} <span class="chip-n">{{ open_by_plan[p['id']] }}</span>{% endif %}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+  {% if not plan['active'] %}
+  <p class="pay-disclaimer">
+    This plan is retired: reports no longer open on it. Its jobs keep their pins.
+  </p>
+  {% endif %}
+{% endif %}
+
+{% include "_list_toolbar.html" %}
+
+{% if plan %}
+  {% with tap=False, marker=None %}{% include "_plan_frame.html" %}{% endwith %}
+  <p class="plan-legend" aria-hidden="true">
+    <span class="plan-key plan-key--open">Open</span>
+    <span class="plan-key plan-key--doing">Being dealt with</span>
+    <span class="plan-key plan-key--done">Done in the last {{ done_days }} days</span>
+    <span class="plan-key plan-key--check">A check on a schedule</span>
+  </p>
+{% endif %}
+
+<div class="table-wrap">
+<table class="data-table plan-jobs">
+  <thead>
+    <tr>
+      <th scope="col" class="num">Pin</th>
+      <th scope="col">Job</th>
+      <th scope="col">Status</th>
+      <th scope="col">Who has it</th>
+      <th scope="col">Raised</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in lv.rows %}
+    <tr>
+      <td class="num">{{ r.n or '' }}</td>
+      <td>
+        <a href="{{ r.link }}">{{ r.title }}</a>
+        {%- if r.photo %} <span class="upload-hint">&middot; photograph</span>{% endif %}
+        {%- if r.where == 'unplaced' %}
+          <span class="upload-hint">&middot; not on a plan
+          {%- if can_place and plan %} &mdash; <a href="{{ url_for('place_on_plan', plan_id=plan['id'], task_id=r.id) }}">place it here</a>{% endif %}</span>
+        {%- endif %}
+      </td>
+      <td>
+        <span class="mini-status plan-status--{{ r.tone }}">
+          {{- r.status_label if r.kind == 'check' else said.get(r.status, r.status) -}}
+        </span>
+        {%- if r.priority == 'high' and r.status != 'done' %} <span class="mini-status status-declined">Urgent</span>{% endif %}
+      </td>
+      <td>{{ r.assignee_name or ('—' if r.kind == 'check' else 'Nobody yet') }}</td>
+      <td>
+        {%- if r.created_at %}{{ r.created_at|house_when }}{% if r.placed_by_name %} &middot; {{ r.placed_by_name }}{% endif %}
+        {%- elif r.due_date %}next due {{ r.due_date|date_short }}{% else %}&mdash;{% endif -%}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="empty-inline">
+      {% if lv.filtered or lv.defaulted %}Nothing here under these filters.{% else %}Nothing reported, and no checks placed on this plan yet.{% endif %}
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% endblock %}

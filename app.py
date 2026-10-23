@@ -7283,6 +7283,53 @@ def init_db():
          "ALTER TABLE tasks ADD COLUMN restoration_work_id INTEGER "
          "REFERENCES restoration_works(id) ON DELETE SET NULL"),
 
+        # PLANS OF THE HOUSE (see THE PLANS, beside the maintenance routes). A
+        # plan is a picture the owner uploaded -- an aerial photograph, a
+        # survey plan, a cadastre extract -- and nothing else: the app never
+        # draws one. The width and height are the stored picture's, kept so a
+        # page can reserve its shape before it loads.
+        ("site_plans_table",
+         """CREATE TABLE IF NOT EXISTS site_plans (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              kind TEXT NOT NULL DEFAULT 'grounds'
+                  CHECK(kind IN ('grounds','floor','other')),
+              filename TEXT NOT NULL,
+              width INTEGER NOT NULL,
+              height INTEGER NOT NULL,
+              source TEXT,
+              reports_to_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              active INTEGER NOT NULL DEFAULT 1,
+              created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+              created_at TEXT NOT NULL,
+              image_replaced_at TEXT
+            )"""),
+        # A place on a plan, as FRACTIONS of the picture's width and height,
+        # so it is the same place on a phone and on the office screen. What it
+        # marks is a job (a task), a check on a schedule, or neither. One pin
+        # per job and per schedule: a thing is in one place.
+        ("plan_pins_table",
+         """CREATE TABLE IF NOT EXISTS plan_pins (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              plan_id INTEGER NOT NULL REFERENCES site_plans(id) ON DELETE CASCADE,
+              x REAL NOT NULL CHECK(x >= 0 AND x <= 1),
+              y REAL NOT NULL CHECK(y >= 0 AND y <= 1),
+              task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+              schedule_id INTEGER REFERENCES maintenance_schedules(id) ON DELETE CASCADE,
+              label TEXT,
+              photo_filename TEXT,
+              placed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+              created_at TEXT NOT NULL,
+              moved_at TEXT
+            )"""),
+        ("plan_pins_one_per_task",
+         "CREATE UNIQUE INDEX IF NOT EXISTS plan_pins_one_per_task "
+         "ON plan_pins(task_id) WHERE task_id IS NOT NULL"),
+        ("plan_pins_one_per_schedule",
+         "CREATE UNIQUE INDEX IF NOT EXISTS plan_pins_one_per_schedule "
+         "ON plan_pins(schedule_id) WHERE schedule_id IS NOT NULL"),
+
         # Everything the camera has handed over, and what was decided about
         # it. One row per FILE, keyed on its bytes.
         ("media_intake", """CREATE TABLE IF NOT EXISTS media_intake (
@@ -9102,6 +9149,10 @@ NAV_AREAS = {
         "resolve_room_issue", "resolve_vehicle_maintenance", "return_access_item",
         "room_issues", "shopping_list", "toggle_shopping_item", "toggle_vehicle_cleanliness",
         "toggle_vehicle_fuel", "update_asset",
+        # The plans of the house: uploading them, and putting a job or a
+        # check on one. Reporting a problem and reading the map are open to
+        # everybody signed in, so they are not here.
+        "manage_plans", "new_plan", "edit_plan", "place_on_plan", "save_place_on_plan",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         "decide_mileage", "delete_maintenance_schedule", "edit_maintenance_schedule", "maintenance_certificate",
@@ -9704,6 +9755,12 @@ OWNER_MENU = [
             _nav("room_issues", "Room Issues", "wrench"),
             _nav("room_faults_page", "Sold With a Fault", "wrench"),
         ]),
+        ("The grounds", [
+            _nav("plan_map", "Map of the Grounds", "pin",
+                 ("maintenance_job", "maintenance_check")),
+            _nav("report_problem", "Report a Problem", "pin", phone=True),
+            _nav("manage_plans", "Plans", "folder", ("place_on_plan",)),
+        ]),
         ("What the house owns", [
             _nav("admin_assets", "Asset Register", "building"),
             _nav("management_vehicles", "Vehicles", "car"),
@@ -9829,6 +9886,9 @@ STAFF_MENU = [
             _nav("shift_handover", "Handover", "receipt", phone=True),
             _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",), phone=True),
             _nav("room_issues", "Room Issues", "wrench"),
+            _nav("report_problem", "Report a Problem", "pin", phone=True),
+            _nav("plan_map", "Map of the Grounds", "pin",
+                 ("maintenance_job", "maintenance_check")),
             _nav("management_cleaning", "Cleaning Rounds", "wrench", ("cleaning_round_done",)),
             _nav("management_visitors", "Visitors On Site", "guests", ("sign_out_visitor",)),
             _nav("management_breakages", "Breakages", "wrench"),
@@ -32259,7 +32319,7 @@ NOTIFICATION_KIND_LABELS = {
     "hr_escalation": "HR", "hr_note": "HR", "hr_note_reply": "HR", "hr_reminder": "HR",
     "performance_review": "HR", "leave_decided": "Time off",
     "inbox_flag_assigned": "Inbox", "inbox_flag_escalated": "Inbox", "inbox_flag_new": "Inbox",
-    "room_issue": "Rooms", "vehicle": "Vehicles",
+    "room_issue": "Rooms", "vehicle": "Vehicles", "maintenance": "Upkeep",
     "shift_auto_closed": "Shifts", "shift_swap_decided": "Shifts",
     "shift_swap_needs_approval": "Shifts", "shift_swap_offer": "Shifts",
     "shift_swap_response": "Shifts", "timesheet": "Shifts",
@@ -43763,6 +43823,12 @@ PALETTE_PAGES = [
      "front desk reception today check in check out arriving leaving in house rooms ready owed"),
     ("Maintenance", "maintenance_page",
      "repairs upkeep servicing due jobs house"),
+    ("Map of the grounds", "plan_map",
+     "map grounds estate where pins jobs problems aerial gardens park"),
+    ("Report a problem", "report_problem",
+     "report problem broken fallen branch tree damage leak fault photo grounds"),
+    ("Plans", "manage_plans",
+     "plans upload aerial photo survey cadastre plan of the grounds floors"),
     ("Social", "management_social",
      "instagram facebook posts marketing schedule"),
     ("Social plans", "social_plans",
@@ -89054,6 +89120,12 @@ def maintenance_page():
     vendor_list = conn.execute("SELECT id, name FROM vendors ORDER BY name").fetchall()
     policies = conn.execute(
         "SELECT id, provider, coverage_type FROM insurance_policies ORDER BY provider").fetchall()
+    # Where each one is, for the ones put on a plan (see THE PLANS).
+    plans = site_plans(conn)
+    placed = {r["schedule_id"]: r for r in conn.execute(
+        """SELECT plan_pins.schedule_id, site_plans.id AS plan_id, site_plans.name AS plan_name
+             FROM plan_pins JOIN site_plans ON site_plans.id = plan_pins.plan_id
+            WHERE plan_pins.schedule_id IS NOT NULL""")}
     conn.close()
     overview = [
         overview_cell("On a schedule", len(live)),
@@ -89066,7 +89138,8 @@ def maintenance_page():
         "maintenance.html", schedules=rows, overview=overview, exposed=exposed,
         employees=employees, vendors=vendor_list, policies=policies,
         categories=MAINTENANCE_CATEGORIES, required_by=MAINTENANCE_REQUIRED_BY,
-        suggestions=MAINTENANCE_SUGGESTIONS, today=house_today())
+        suggestions=MAINTENANCE_SUGGESTIONS, today=house_today(),
+        plans=plans, placed=placed)
 
 
 @app.route("/admin/rota-clashes")
@@ -89597,6 +89670,872 @@ def delete_maintenance_schedule(schedule_id):
     conn.close()
     flash("Retired. Everything recorded against it is kept.", "success")
     return redirect(url_for("maintenance_page"))
+
+
+# ---------------------------------------------------------------------------
+# THE PLANS: pictures of the house that things can be pinned to.
+#
+# Starting with the grounds. Somebody on the far side of the park finds a
+# branch down across the drive. On their phone they open the plan, tap where
+# it is, take a photograph, write a line and send. It becomes a maintenance
+# job like any other -- a task, origin 'maintenance', on somebody's list and
+# on the calendar -- and the map shows it where it is.
+#
+# THE APP NEVER DRAWS A PLAN. On 9 October 2026 a floor plan drawn on the
+# design side was put in front of the owner, who rejected it as not even
+# accurate, and it was deleted (RULED_OUT_PARTIALS in tools/repair_handover.py
+# keeps it out). Accuracy comes from one place: a picture the owner uploads --
+# an aerial photograph, a survey plan, a cadastre extract. Nothing here
+# generates, traces or tidies one.
+#
+# A PIN IS FRACTIONS, NOT PIXELS. x and y are how far across and down the
+# picture it is, 0 to 1, so a pin is on the same spot on a 390px phone and on
+# the office screen, and stays there if the picture is stored smaller.
+# pin_from_tap is that arithmetic, done once, here.
+#
+# JOBS STAY TASKS. There is no second job list. A report is a row in tasks,
+# exactly as a schedule's job is, and the pin hangs off it. A job with no pin
+# works everywhere it did before; a schedule's job takes its schedule's pin,
+# found by title, the way record_maintenance_visit finds the task.
+#
+# FOR GUESTS LATER. `kind` says what a plan is a picture of -- the grounds, a
+# floor of the house -- and nothing here assumes grounds, so a later piece can
+# mark areas of a floor for guests (the accessible rooms) on the same pictures.
+# Today the pictures are served to staff only; a guest-facing one would be a
+# deliberate new route, not this one opened up.
+# ---------------------------------------------------------------------------
+
+PLAN_KINDS = {
+    "grounds": "The grounds",
+    "floor": "A floor of the house",
+    "other": "Something else",
+}
+
+# Smaller than this and nothing can be put anywhere precisely: a picture of
+# the whole estate 400px across puts the gate and the chapel a fingertip apart.
+PLAN_MIN_EDGE = 800
+
+# A job finished this recently stays on the map under its own chip, so whoever
+# walks past the gate can see the branch was dealt with. Older is history, and
+# a map of every problem the house has ever had is a map nobody reads.
+PLAN_DONE_SHOWN_DAYS = 30
+
+# The chips on the map. A job being dealt with is still open -- it sits under
+# both -- so "Open" is everything not finished.
+PLAN_JOB_STATUSES = {
+    "open": "Open",
+    "in_progress": "Being dealt with",
+    "done": "Done lately",
+    "not_due": "Checks not due yet",
+}
+PLAN_JOB_SOURCES = {
+    "reported": "Reported",
+    "schedule": "On a schedule",
+    "other": "Other jobs",
+}
+PLAN_JOB_WHERE = {"here": "On this plan", "unplaced": "Not placed yet"}
+
+# The pin's colour, by what state the thing it marks is in.
+PLAN_PIN_TONES = {"open": "open", "in_progress": "doing", "done": "done",
+                  "not_due": "check"}
+
+
+def pin_from_tap(tap_x, tap_y, shown_w, shown_h):
+    """Where a tap landed on a plan, as the fractions a pin is stored in.
+
+    `tap_x` and `tap_y` are pixels from the picture's top-left corner as it
+    was SHOWN, and `shown_w` and `shown_h` the size it was shown at -- which on
+    a phone is nothing like the size it is stored at, and need not be. Returns
+    (x, y), or None for a tap off the picture or a size that is nonsense.
+    """
+    try:
+        tx, ty, w, h = (float(str(v).strip()) for v in (tap_x, tap_y, shown_w, shown_h))
+    except (TypeError, ValueError):
+        return None
+    if not all(v == v and abs(v) != float("inf") for v in (tx, ty, w, h)):
+        return None                    # NaN or infinity, which float() accepts
+    if w <= 0 or h <= 0 or not (0 <= tx <= w) or not (0 <= ty <= h):
+        return None
+    return round(tx / w, 5), round(ty / h, 5)
+
+
+def _plan_picture_bytes(upload, what):
+    """An upload's bytes put through photo_master. (jpeg, width, height).
+
+    Raises ValueError with the sentence to show. `what` is the word for the
+    thing in that sentence -- "plan" or "photograph".
+    """
+    name = upload.filename or ""
+    ok, why = allowed_image(name)
+    if not ok:
+        raise ValueError(why)
+    data = upload.read()
+    if not data:
+        raise ValueError("That file was empty.")
+    try:
+        jpeg, _taken = photo_master(data, name)
+    except ValueError:
+        raise ValueError(f"That {what} could not be read as a picture. Save it as a "
+                         "JPEG or PNG and try again.")
+    from PIL import Image
+    with Image.open(io.BytesIO(jpeg)) as im:
+        width, height = im.size
+    return jpeg, width, height
+
+
+def _write_beside_room_photos(prefix, jpeg):
+    """Put a picture on the volume beside the room photographs, under a name
+    nobody can guess. Returns the stored name."""
+    stored = "%s_%s.jpg" % (prefix, secrets.token_hex(8))
+    os.makedirs(ROOM_PHOTO_DIR, exist_ok=True)
+    with open(os.path.join(ROOM_PHOTO_DIR, stored), "wb") as fh:
+        fh.write(jpeg)
+    return stored
+
+
+def store_plan_image(upload):
+    """A plan the owner uploaded, normalised and stored. (filename, w, h).
+
+    Raises ValueError with the sentence to show. A cadastre extract arrives as
+    a PDF, which is the commonest wrong file and the easiest to fix, so it is
+    answered with how to fix it rather than with "not a picture".
+    """
+    name = (upload.filename or "") if upload else ""
+    if not name:
+        raise ValueError("Choose the picture of the plan to upload.")
+    if name.lower().endswith(".pdf"):
+        raise ValueError(
+            "That is a PDF, and a plan has to be a picture to put pins on. Open "
+            "it, zoom to the part you want, and take a screenshot -- or export "
+            "the page as a PNG or JPEG -- then upload that.")
+    jpeg, width, height = _plan_picture_bytes(upload, "plan")
+    if max(width, height) < PLAN_MIN_EDGE:
+        raise ValueError(
+            f"That picture is only {max(width, height)} pixels across at its "
+            f"longest, too small to put a pin anywhere precisely. Upload one at "
+            f"least {PLAN_MIN_EDGE} across -- a screenshot of a whole screen is plenty.")
+    return _write_beside_room_photos("plan", jpeg), width, height
+
+
+def store_report_photo(upload):
+    """The photograph sent with a report: its stored name, or None if none
+    was sent. Raises ValueError with the sentence to show. photo_master drops
+    the EXIF on the way in, so where the phone was is not kept with it."""
+    if not upload or not upload.filename:
+        return None
+    jpeg, _w, _h = _plan_picture_bytes(upload, "photograph")
+    return _write_beside_room_photos("report", jpeg)
+
+
+def site_plans(conn):
+    """The plans in use, in the owner's order: the first is the one a report
+    opens on."""
+    return conn.execute(
+        "SELECT * FROM site_plans WHERE active = 1 ORDER BY sort_order, id").fetchall()
+
+
+def set_pin(conn, plan_id, x, y, *, task_id=None, schedule_id=None, photo=None,
+            user_id=None):
+    """Put a job or a check on a plan, or move it if it is on one already.
+
+    One pin per job and per schedule, so moving it keeps the photograph that
+    came with the report. Returns the pin's id. Does not commit.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    key, value = ("task_id", task_id) if task_id else ("schedule_id", schedule_id)
+    there = (conn.execute(f"SELECT id FROM plan_pins WHERE {key} = ?", (value,)).fetchone()
+             if value else None)
+    if there:
+        conn.execute("UPDATE plan_pins SET plan_id = ?, x = ?, y = ?, moved_at = ? WHERE id = ?",
+                     (plan_id, x, y, now, there["id"]))
+        return there["id"]
+    cur = conn.execute(
+        """INSERT INTO plan_pins (plan_id, x, y, task_id, schedule_id, photo_filename,
+                                  placed_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (plan_id, x, y, task_id, schedule_id, photo, user_id, now))
+    return cur.lastrowid
+
+
+def plan_report_recipients(conn, plan, *, dangerous=False, reporter_id=None):
+    """Who hears about a report as it arrives.
+
+    Whoever the plan's reports go to, when the owner has said, and they are
+    still here; otherwise the owner. Something dangerous goes to the owner as
+    well, whoever else has it. Never the person who sent it.
+    """
+    who = []
+    if plan and plan["reports_to_user_id"]:
+        row = conn.execute("SELECT id FROM users WHERE id = ? AND status = 'active'",
+                           (plan["reports_to_user_id"],)).fetchone()
+        if row:
+            who.append(row["id"])
+    if not who or dangerous:
+        who += [r["id"] for r in conn.execute(
+            "SELECT id FROM users WHERE role = 'owner' AND status = 'active' ORDER BY id")]
+    return [u for u in dict.fromkeys(who) if u != reporter_id]
+
+
+def report_problem_on_plan(conn, plan, *, line, point=None, photo=None,
+                           dangerous=False, user=None):
+    """Something somebody found, made a maintenance job with its pin.
+
+    The title carries the plan's name the way a room issue carries the room's:
+    it reads right on a task list, and it can never be taken for a schedule's
+    own job, which generate_maintenance_tasks and record_maintenance_visit
+    both recognise by title alone. Goes to whoever the plan's reports go to,
+    or to nobody -- which is the owner's own list, as with any unassigned task.
+    Due today, so it is on today's calendar. Commits. Returns the task id.
+    """
+    line = " ".join((line or "").split())
+    title = f"{plan['name'] if plan else 'Reported'}: {line}"
+    if len(title) > 140:
+        title = title[:139].rstrip() + "…"
+    who = user["name"] if user else "Somebody"
+    notes = (f"{line}\n\nReported by {who}"
+             + (f" on the plan of {plan['name']}" if plan else "")
+             + (", as dangerous." if dangerous else "."))
+    assignee = None
+    if plan and plan["reports_to_user_id"]:
+        row = conn.execute("SELECT id FROM users WHERE id = ? AND status = 'active'",
+                           (plan["reports_to_user_id"],)).fetchone()
+        assignee = row["id"] if row else None
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                              status, origin, created_at)
+           VALUES (?, ?, ?, ?, ?, 'open', 'maintenance', ?)""",
+        (assignee, title, notes, "high" if dangerous else "normal",
+         house_today_iso(), now))
+    task_id = cur.lastrowid
+    if plan and point:
+        set_pin(conn, plan["id"], point[0], point[1], task_id=task_id, photo=photo,
+                user_id=user["id"] if user else None)
+    elif photo:
+        # No plan uploaded yet, so nowhere to put a pin -- and the photograph is
+        # still the report. A pin needs a place, so it waits in the notes.
+        conn.execute("UPDATE tasks SET notes = ? WHERE id = ?",
+                     (notes + "\nA photograph came with it.", task_id))
+    log_audit(conn, "problem_reported", target=title,
+              details=f"plan {plan['id']}" if plan else "no plan")
+    # Committed BEFORE anybody is told: telling them pushes to a phone, over
+    # the network, and a write held open across that locks every other writer.
+    conn.commit()
+    link = url_for("maintenance_job", task_id=task_id)
+    body = line + (" It looks dangerous." if dangerous else "")
+    for uid in plan_report_recipients(conn, plan, dangerous=dangerous,
+                                      reporter_id=user["id"] if user else None):
+        send_notification(conn, uid, "maintenance", f"Reported: {line}"[:120], body,
+                          link=link, related_task_id=task_id)
+    return task_id
+
+
+def maintenance_schedule_for_task(conn, task):
+    """The schedule a maintenance job was raised for, or None. Matched by
+    title, which is how the schedules recognise their own jobs."""
+    if not task or (task["origin"] or "") != "maintenance":
+        return None
+    for s in conn.execute(
+            "SELECT * FROM maintenance_schedules ORDER BY active DESC, id").fetchall():
+        if maintenance_task_title(s) == task["title"]:
+            return s
+    return None
+
+
+def plan_jobs(conn, *, now=None):
+    """Every maintenance job, and every placed check, with where it is.
+
+    One dict per thing the map can show: a job (a task with origin
+    'maintenance') that is open or was finished in the last
+    PLAN_DONE_SHOWN_DAYS, and a check on a schedule that has been put on a
+    plan and has no job open just now. `plan_id`, `x`, `y` are its pin, or
+    None for a job that is on no plan -- which is still a job.
+    """
+    now = now or datetime.now(timezone.utc)
+    since = (now - timedelta(days=PLAN_DONE_SHOWN_DAYS)).isoformat()
+    pins = {r["task_id"]: r for r in conn.execute(
+        """SELECT plan_pins.*, users.name AS placed_by_name FROM plan_pins
+             LEFT JOIN users ON users.id = plan_pins.placed_by_user_id
+            WHERE plan_pins.task_id IS NOT NULL""")}
+    schedules = conn.execute(
+        """SELECT maintenance_schedules.*, plan_pins.plan_id AS pin_plan_id,
+                  plan_pins.x AS pin_x, plan_pins.y AS pin_y
+             FROM maintenance_schedules
+             LEFT JOIN plan_pins ON plan_pins.schedule_id = maintenance_schedules.id
+            WHERE maintenance_schedules.active = 1 ORDER BY maintenance_schedules.id""").fetchall()
+    by_title = {}
+    for s in schedules:
+        by_title.setdefault(maintenance_task_title(s), s)
+
+    rows, open_titles = [], set()
+    for t in conn.execute(
+            """SELECT tasks.*, users.name AS assignee_name FROM tasks
+                 LEFT JOIN users ON users.id = tasks.assigned_to_user_id
+                WHERE tasks.origin = 'maintenance'
+                  AND (tasks.status != 'done' OR tasks.completed_at >= ?)
+                ORDER BY tasks.created_at, tasks.id""", (since,)).fetchall():
+        pin, sched = pins.get(t["id"]), by_title.get(t["title"])
+        if t["status"] != "done":
+            open_titles.add(t["title"])
+        where = ((pin["plan_id"], pin["x"], pin["y"]) if pin
+                 else (sched["pin_plan_id"], sched["pin_x"], sched["pin_y"])
+                 if sched and sched["pin_plan_id"] else (None, None, None))
+        status = t["status"] if t["status"] in ("open", "in_progress", "done") else "open"
+        rows.append({
+            "kind": "job", "id": t["id"], "title": t["title"], "notes": t["notes"] or "",
+            "status": status, "priority": t["priority"], "due_date": t["due_date"],
+            "created_at": t["created_at"], "completed_at": t["completed_at"],
+            "assignee_id": t["assigned_to_user_id"], "assignee_name": t["assignee_name"],
+            "source": "reported" if pin and not sched else "schedule" if sched else "other",
+            "schedule_id": sched["id"] if sched else None,
+            "plan_id": where[0], "x": where[1], "y": where[2],
+            "photo": bool(pin and pin["photo_filename"]),
+            "placed_by_name": pin["placed_by_name"] if pin else None,
+            "bucket": (["open", "in_progress"] if status == "in_progress"
+                       else [status]),
+            "link": url_for("maintenance_job", task_id=t["id"]),
+        })
+    for s in schedules:
+        if not s["pin_plan_id"] or maintenance_task_title(s) in open_titles:
+            continue
+        state = maintenance_status(s)
+        rows.append({
+            "kind": "check", "id": s["id"], "title": maintenance_task_title(s),
+            "notes": s["notes"] or "", "status": "not_due",
+            "status_label": state["label"], "priority": "normal",
+            "due_date": state["due"].isoformat() if state["due"] else None,
+            "created_at": None, "completed_at": None,
+            "assignee_id": s["assigned_to_user_id"], "assignee_name": None,
+            "source": "schedule", "schedule_id": s["id"],
+            "plan_id": s["pin_plan_id"], "x": s["pin_x"], "y": s["pin_y"],
+            "photo": False, "placed_by_name": None,
+            # Overdue with no job raised yet is owed, whatever the job runner
+            # has or has not got round to.
+            "bucket": ["open"] if state["state"] in ("overdue", "soon") else ["not_due"],
+            "link": url_for("maintenance_check", schedule_id=s["id"]),
+        })
+    for r in rows:
+        r["tone"] = PLAN_PIN_TONES.get(
+            "in_progress" if "in_progress" in r["bucket"] else r["bucket"][0], "open")
+    return rows
+
+
+_PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2}
+
+
+@app.route("/plans")
+@app.route("/plans/<int:plan_id>")
+@login_required
+def plan_map(plan_id=None):
+    """A plan with the house's maintenance jobs pinned where they are."""
+    conn = get_db()
+    plans = site_plans(conn)
+    if plan_id is not None:
+        plan = conn.execute("SELECT * FROM site_plans WHERE id = ?", (plan_id,)).fetchone()
+        if not plan:
+            conn.close()
+            abort(404)
+    else:
+        plan = plans[0] if plans else None
+    jobs = plan_jobs(conn)
+    conn.close()
+
+    # This plan's jobs, and the open ones that are on no plan at all -- they
+    # are still the house's jobs, and listing them here is how they get placed.
+    here = []
+    for j in jobs:
+        if plan and j["plan_id"] == plan["id"]:
+            j["where"] = "here"
+        elif j["plan_id"] is None and j["kind"] == "job" and j["status"] != "done":
+            j["where"] = "unplaced"
+        else:
+            continue
+        here.append(j)
+    facets = [
+        facet("status", "Status", lambda r: r["bucket"], default="open",
+              order=list(PLAN_JOB_STATUSES), labels=PLAN_JOB_STATUSES),
+        facet("source", "What", lambda r: r["source"],
+              order=list(PLAN_JOB_SOURCES), labels=PLAN_JOB_SOURCES),
+    ]
+    if plan:
+        facets.append(facet("where", "Where", lambda r: r["where"],
+                            order=list(PLAN_JOB_WHERE), labels=PLAN_JOB_WHERE))
+    lv = list_view(
+        here, request.args,
+        search=("title", "notes", "assignee_name", "placed_by_name"),
+        facets=facets,
+        sorts=[
+            sort_option("urgent", "Most urgent",
+                        lambda r: (_PRIORITY_RANK.get(r["priority"], 1),
+                                   r["due_date"] or "9999")),
+            sort_option("waiting", "Waiting longest", lambda r: r["created_at"] or "9999"),
+            sort_option("newest", "Newest first", lambda r: r["created_at"] or "",
+                        reverse=True),
+        ],
+        search_hint="Search the jobs")
+    # Numbered in the order the list is in, so pin 3 is the third line below.
+    n = 0
+    for r in lv["rows"]:
+        if plan and r["plan_id"] == plan["id"]:
+            n += 1
+            r["n"] = n
+        else:
+            r["n"] = None
+    open_by_plan = {}
+    for j in jobs:
+        if j["plan_id"] and "open" in j["bucket"]:
+            open_by_plan[j["plan_id"]] = open_by_plan.get(j["plan_id"], 0) + 1
+    user = current_user()
+    return render_template(
+        "plan_map.html", plan=plan, plans=plans, lv=lv,
+        pins=[r for r in lv["rows"] if r["n"]], open_by_plan=open_by_plan,
+        can_manage=can_reach(user, "manage_plans"),
+        can_place=can_reach(user, "place_on_plan"),
+        done_days=PLAN_DONE_SHOWN_DAYS)
+
+
+@app.route("/plans/<int:plan_id>/image")
+@login_required
+def plan_image(plan_id):
+    """The picture itself, by the plan's id, never by a name off the URL."""
+    conn = get_db()
+    row = conn.execute("SELECT filename FROM site_plans WHERE id = ?", (plan_id,)).fetchone()
+    conn.close()
+    if not row or not os.path.exists(os.path.join(ROOM_PHOTO_DIR, row["filename"])):
+        abort(404)
+    return send_from_directory(ROOM_PHOTO_DIR, row["filename"])
+
+
+def _report_form(plans, plan, *, line="", point=None, dangerous=False):
+    return render_template("report_problem.html", plans=plans, plan=plan,
+                           line=line, point=point, dangerous=dangerous)
+
+
+@app.route("/report-a-problem")
+@login_required
+def report_problem():
+    """Tap where it is on the plan, add a photograph and a line, and send."""
+    conn = get_db()
+    plans = site_plans(conn)
+    conn.close()
+    wanted = request.args.get("plan", type=int)
+    plan = next((p for p in plans if p["id"] == wanted), plans[0] if plans else None)
+    return _report_form(plans, plan)
+
+
+@app.route("/report-a-problem", methods=["POST"])
+@login_required
+def submit_problem_report():
+    user = current_user()
+    f = request.form
+    conn = get_db()
+    plans = site_plans(conn)
+    wanted = (f.get("plan_id") or "").strip()
+    plan = next((p for p in plans if str(p["id"]) == wanted), None)
+    line = " ".join((f.get("line") or "").split())
+    point = pin_from_tap(f.get("tap_x"), f.get("tap_y"), f.get("shown_w"), f.get("shown_h"))
+    dangerous = bool(f.get("dangerous"))
+    error = None
+    if not line:
+        error = "Say in a few words what is wrong -- it becomes the job's title."
+    elif (wanted or plans) and not plan:
+        # A page left open on a plan the owner has since retired: the tap was
+        # on a picture that is no longer the map, so it is not taken.
+        error = "That plan is no longer in use. Choose one and tap where it is."
+    elif plan and not point:
+        error = "Tap the plan where it is, so whoever goes out to it can find it."
+    photo = None
+    if not error:
+        try:
+            photo = store_report_photo(request.files.get("photo"))
+        except ValueError as e:
+            error = str(e)
+    if error:
+        conn.close()
+        flash(error, "error")
+        # Everything they wrote and where they tapped comes back with the
+        # message: a report typed with cold hands is not typed twice.
+        return _report_form(plans, plan or (plans[0] if plans else None),
+                            line=line, point=point if plan else None,
+                            dangerous=dangerous)
+    task_id = report_problem_on_plan(conn, plan, line=line, point=point, photo=photo,
+                                     dangerous=dangerous, user=user)
+    conn.close()
+    flash("Sent. It is a job now" + (", pinned where you tapped." if plan else ".")
+          , "success")
+    return redirect(url_for("maintenance_job", task_id=task_id))
+
+
+def maintenance_job_detail(conn, task_id):
+    """One maintenance job with everything its page shows, or None."""
+    task = conn.execute(
+        """SELECT tasks.*, users.name AS assignee_name FROM tasks
+             LEFT JOIN users ON users.id = tasks.assigned_to_user_id
+            WHERE tasks.id = ? AND tasks.origin = 'maintenance'""", (task_id,)).fetchone()
+    if not task:
+        return None
+    pin = conn.execute(
+        """SELECT plan_pins.*, users.name AS placed_by_name FROM plan_pins
+             LEFT JOIN users ON users.id = plan_pins.placed_by_user_id
+            WHERE plan_pins.task_id = ?""", (task_id,)).fetchone()
+    sched = maintenance_schedule_for_task(conn, task)
+    inherited = False
+    if not pin and sched:
+        pin = conn.execute("SELECT * FROM plan_pins WHERE schedule_id = ?",
+                           (sched["id"],)).fetchone()
+        inherited = bool(pin)
+    plan = (conn.execute("SELECT * FROM site_plans WHERE id = ?", (pin["plan_id"],)).fetchone()
+            if pin else None)
+    return {"task": task, "pin": pin, "plan": plan, "schedule": sched,
+            "inherited": inherited,
+            "photo": bool(pin and not inherited and pin["photo_filename"])}
+
+
+@app.route("/maintenance/jobs/<int:task_id>")
+@login_required
+def maintenance_job(task_id):
+    """One job: what, where on the plan, the photograph, and who has it."""
+    user = current_user()
+    conn = get_db()
+    job = maintenance_job_detail(conn, task_id)
+    plans = site_plans(conn) if job else []
+    conn.close()
+    if not job:
+        abort(404)
+    t = job["task"]
+    mine = t["assigned_to_user_id"] == user["id"]
+    status = t["status"] if t["status"] in ("open", "in_progress", "done") else "open"
+    tone = PLAN_PIN_TONES[status]
+    pins = ([{"x": job["pin"]["x"], "y": job["pin"]["y"], "n": None, "tone": tone,
+              "link": url_for("maintenance_job", task_id=t["id"]), "title": t["title"]}]
+            if job["plan"] else [])
+    return render_template(
+        "maintenance_job.html", job=job, check=None, plans=plans, pins=pins, tone=tone,
+        label={"open": "Open", "in_progress": "Being dealt with", "done": "Done"}[status],
+        mine=mine, can_change=mine or user["role"] == "owner",
+        can_take=not t["assigned_to_user_id"] and t["status"] != "done",
+        can_place=can_reach(user, "place_on_plan"),
+        can_record=bool(job["schedule"]) and can_reach(user, "record_maintenance_done"),
+        today=house_today())
+
+
+@app.route("/maintenance/jobs/<int:task_id>/status", methods=["POST"])
+@login_required
+def maintenance_job_status(task_id):
+    """Take a job on, start it, finish it or open it again.
+
+    Whoever has it, or the owner, may move it on; anybody may take one that
+    nobody has. A schedule's own job is finished by recording the visit,
+    which moves the next date on and keeps the certificate -- ticking the task
+    alone would leave the schedule owed and raise the same job tomorrow.
+    """
+    user = current_user()
+    action = (request.form.get("action") or "").strip()
+    conn = get_db()
+    task = conn.execute("SELECT * FROM tasks WHERE id = ? AND origin = 'maintenance'",
+                        (task_id,)).fetchone()
+    if not task:
+        conn.close()
+        abort(404)
+    mine = task["assigned_to_user_id"] == user["id"]
+    allowed = mine or user["role"] == "owner"
+    said, ok = None, False
+    if action == "take":
+        if task["assigned_to_user_id"] and not mine:
+            holder = conn.execute("SELECT name FROM users WHERE id = ?",
+                                  (task["assigned_to_user_id"],)).fetchone()
+            said = f"{holder['name'] if holder else 'Somebody'} already has this one."
+        elif task["status"] == "done":
+            said = "That one is already done."
+        else:
+            conn.execute("UPDATE tasks SET assigned_to_user_id = ?, status = 'in_progress' "
+                         "WHERE id = ?", (user["id"], task_id))
+            said, ok = "It's yours, and marked as being dealt with.", True
+    elif action in ("start", "done", "reopen"):
+        if not allowed:
+            said = "Only whoever has this job, or the owner, can change it."
+        elif action == "done" and maintenance_schedule_for_task(conn, task):
+            said = ("This one is on a schedule: record the visit on the maintenance "
+                    "page, so the next date moves on and the certificate is kept.")
+        elif action == "start":
+            conn.execute("UPDATE tasks SET status = 'in_progress' WHERE id = ?", (task_id,))
+            said, ok = "Marked as being dealt with.", True
+        else:
+            mark_task_done(conn, task, done=action == "done")
+            said, ok = ("Done. It stays on the map for a while so people can see."
+                        if action == "done" else "Opened again."), True
+    else:
+        said = "That is not something this page does."
+    if ok:
+        log_audit(conn, f"maintenance_job_{action}", target=task["title"])
+    conn.commit()
+    conn.close()
+    flash(said, "success" if ok else "error")
+    return redirect(url_for("maintenance_job", task_id=task_id))
+
+
+@app.route("/maintenance/jobs/<int:task_id>/photo")
+@login_required
+def maintenance_job_photo(task_id):
+    """The photograph sent with a report, served by its job."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT plan_pins.photo_filename AS f FROM plan_pins
+             JOIN tasks ON tasks.id = plan_pins.task_id
+            WHERE plan_pins.task_id = ? AND tasks.origin = 'maintenance'""",
+        (task_id,)).fetchone()
+    conn.close()
+    if not row or not row["f"] or not os.path.exists(os.path.join(ROOM_PHOTO_DIR, row["f"])):
+        abort(404)
+    return send_from_directory(ROOM_PHOTO_DIR, row["f"])
+
+
+@app.route("/maintenance/checks/<int:schedule_id>")
+@login_required
+def maintenance_check(schedule_id):
+    """A check on a schedule: where it is, when it was last done, when it is next."""
+    user = current_user()
+    conn = get_db()
+    sched = conn.execute(
+        """SELECT maintenance_schedules.*, users.name AS assignee_name,
+                  vendors.name AS vendor_name
+             FROM maintenance_schedules
+             LEFT JOIN users ON users.id = maintenance_schedules.assigned_to_user_id
+             LEFT JOIN vendors ON vendors.id = maintenance_schedules.vendor_id
+            WHERE maintenance_schedules.id = ?""", (schedule_id,)).fetchone()
+    if not sched:
+        conn.close()
+        abort(404)
+    pin = conn.execute("SELECT * FROM plan_pins WHERE schedule_id = ?",
+                       (schedule_id,)).fetchone()
+    plan = (conn.execute("SELECT * FROM site_plans WHERE id = ?", (pin["plan_id"],)).fetchone()
+            if pin else None)
+    open_job = conn.execute(
+        """SELECT id FROM tasks WHERE origin = 'maintenance' AND title = ?
+             AND status != 'done' ORDER BY id DESC LIMIT 1""",
+        (maintenance_task_title(sched),)).fetchone()
+    last = conn.execute(
+        "SELECT * FROM maintenance_visits WHERE schedule_id = ? ORDER BY done_on DESC LIMIT 1",
+        (schedule_id,)).fetchone()
+    plans = site_plans(conn)
+    conn.close()
+    state = maintenance_status(sched)
+    tone = "open" if state["state"] in ("overdue", "soon") else "check"
+    pins = ([{"x": pin["x"], "y": pin["y"], "n": None, "tone": tone,
+              "link": url_for("maintenance_check", schedule_id=schedule_id),
+              "title": sched["name"]}] if plan else [])
+    return render_template(
+        "maintenance_job.html", job=None, plans=plans, pins=pins, tone=tone,
+        check={"schedule": sched, "pin": pin, "plan": plan, "open_job": open_job,
+               "last": last, "status": state,
+               "category": MAINTENANCE_CATEGORIES.get(sched["category"], sched["category"])},
+        can_place=can_reach(user, "place_on_plan"),
+        can_record=can_reach(user, "maintenance_page"),
+        today=house_today())
+
+
+def _plan_fields(f):
+    name = " ".join((f.get("name") or "").split())
+    if not name:
+        return None, "Give the plan a name -- it is what a report says it is on."
+    kind = (f.get("kind") or "grounds").strip()
+    reports_to = (f.get("reports_to_user_id") or "").strip()
+    try:
+        order = int(f.get("sort_order") or 0)
+    except ValueError:
+        order = 0
+    return {
+        "name": name[:80],
+        "kind": kind if kind in PLAN_KINDS else "grounds",
+        "source": " ".join((f.get("source") or "").split())[:200] or None,
+        "reports_to_user_id": int(reports_to) if reports_to.isdigit() else None,
+        "sort_order": max(-999, min(999, order)),
+    }, None
+
+
+@app.route("/management/plans")
+@owner_required
+def manage_plans():
+    """The pictures the house is mapped on, and adding one."""
+    conn = get_db()
+    # Who put each picture up: the map is only as true as the picture, so
+    # whoever chose it is somebody to ask.
+    plans = [dict(p) for p in conn.execute(
+        """SELECT site_plans.*, users.name AS added_by_name FROM site_plans
+             LEFT JOIN users ON users.id = site_plans.created_by_user_id
+            ORDER BY site_plans.active DESC, site_plans.sort_order, site_plans.id""")]
+    counts = {r["plan_id"]: r for r in conn.execute(
+        """SELECT plan_pins.plan_id,
+                  SUM(CASE WHEN tasks.id IS NOT NULL AND tasks.status != 'done'
+                           THEN 1 ELSE 0 END) AS open_jobs,
+                  SUM(CASE WHEN plan_pins.schedule_id IS NOT NULL THEN 1 ELSE 0 END) AS checks
+             FROM plan_pins LEFT JOIN tasks ON tasks.id = plan_pins.task_id
+            GROUP BY plan_pins.plan_id""")}
+    for p in plans:
+        c = counts.get(p["id"])
+        p["open_jobs"] = (c["open_jobs"] or 0) if c else 0
+        p["checks"] = (c["checks"] or 0) if c else 0
+    people = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    conn.close()
+    lv = list_view(
+        plans, request.args, search=("name", "source"),
+        facets=[facet("state", "In use", lambda p: "live" if p["active"] else "retired",
+                      order=["live", "retired"],
+                      labels={"live": "In use", "retired": "Retired"}),
+                facet("kind", "Of", lambda p: p["kind"], order=list(PLAN_KINDS),
+                      labels=PLAN_KINDS)],
+        sorts=[sort_option("order", "The order a report offers them",
+                           lambda p: (not p["active"], p["sort_order"], p["id"])),
+               sort_option("name", "Name", lambda p: p["name"].lower())],
+        search_hint="Search the plans")
+    return render_template("manage_plans.html", lv=lv, people=people, kinds=PLAN_KINDS,
+                           min_edge=PLAN_MIN_EDGE)
+
+
+@app.route("/management/plans/new", methods=["POST"])
+@owner_required
+def new_plan():
+    fields, error = _plan_fields(request.form)
+    stored = None
+    if not error:
+        try:
+            stored, width, height = store_plan_image(request.files.get("image"))
+        except ValueError as e:
+            error = str(e)
+    if error:
+        flash(error, "error")
+        return redirect(url_for("manage_plans"))
+    conn = get_db()
+    cols = list(fields) + ["filename", "width", "height", "created_by_user_id", "created_at"]
+    cur = conn.execute(
+        f"INSERT INTO site_plans ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+        list(fields.values()) + [stored, width, height, session.get("user_id"),
+                                 datetime.now(timezone.utc).isoformat()])
+    plan_id = cur.lastrowid
+    log_audit(conn, "plan_added", target=fields["name"])
+    conn.commit()
+    conn.close()
+    flash(f"{fields['name']} is up. Tap Report a Problem on a phone to try it.", "success")
+    return redirect(url_for("plan_map", plan_id=plan_id))
+
+
+@app.route("/management/plans/<int:plan_id>/edit", methods=["POST"])
+@owner_required
+def edit_plan(plan_id):
+    """Rename, reorder, retire or bring back a plan, or give it a sharper picture.
+
+    A new picture keeps every pin where it was AS A FRACTION of the picture, so
+    it must be the same view -- a sharper copy, not a different crop. A
+    different view is a new plan, and the page says so beside the box.
+    """
+    fields, error = _plan_fields(request.form)
+    conn = get_db()
+    plan = conn.execute("SELECT * FROM site_plans WHERE id = ?", (plan_id,)).fetchone()
+    if not plan:
+        conn.close()
+        abort(404)
+    replaced = None
+    if not error and request.files.get("image") and request.files["image"].filename:
+        try:
+            replaced = store_plan_image(request.files["image"])
+        except ValueError as e:
+            error = str(e)
+    if error:
+        conn.close()
+        flash(error, "error")
+        return redirect(url_for("manage_plans"))
+    fields["active"] = 1 if request.form.get("active") else 0
+    if replaced:
+        fields.update(filename=replaced[0], width=replaced[1], height=replaced[2],
+                      image_replaced_at=datetime.now(timezone.utc).isoformat())
+    conn.execute(f"UPDATE site_plans SET {', '.join(k + ' = ?' for k in fields)} WHERE id = ?",
+                 list(fields.values()) + [plan_id])
+    log_audit(conn, "plan_edited", target=fields["name"],
+              details="new picture" if replaced else None)
+    conn.commit()
+    conn.close()
+    if replaced:
+        # The old picture goes once the new one is written and recorded. Before,
+        # and a failure in between would leave the plan pointing at nothing.
+        try:
+            os.remove(os.path.join(ROOM_PHOTO_DIR, plan["filename"]))
+        except OSError:
+            pass
+    flash("Saved." + (" New picture in; every pin kept its place on it." if replaced else "")
+          + ("" if fields["active"] else " Retired: it no longer opens for a report, "
+             "and its jobs keep their pins."), "success")
+    return redirect(url_for("manage_plans"))
+
+
+def _placing(conn, args):
+    """What is being put on a plan: ('task', row) or ('schedule', row), or None."""
+    task_id = str(args.get("task_id") or args.get("task") or "").strip()
+    sched_id = str(args.get("schedule_id") or args.get("schedule") or "").strip()
+    if task_id.isdigit():
+        row = conn.execute("SELECT * FROM tasks WHERE id = ? AND origin = 'maintenance'",
+                           (int(task_id),)).fetchone()
+        return ("task", row) if row else None
+    if sched_id.isdigit():
+        row = conn.execute("SELECT * FROM maintenance_schedules WHERE id = ?",
+                           (int(sched_id),)).fetchone()
+        return ("schedule", row) if row else None
+    return None
+
+
+@app.route("/management/plans/<int:plan_id>/place")
+@owner_required
+def place_on_plan(plan_id):
+    """Tap where a job or a check is, to put it on this plan."""
+    conn = get_db()
+    plan = conn.execute("SELECT * FROM site_plans WHERE id = ?", (plan_id,)).fetchone()
+    what = _placing(conn, request.args)
+    if not plan or not what:
+        conn.close()
+        abort(404)
+    kind, row = what
+    pin = conn.execute(f"SELECT * FROM plan_pins WHERE {kind}_id = ?", (row["id"],)).fetchone()
+    plans = site_plans(conn)
+    conn.close()
+    title = row["title"] if kind == "task" else maintenance_task_title(row)
+    return render_template("place_on_plan.html", plan=plan, plans=plans, kind=kind,
+                           row=row, title=title, pin=pin)
+
+
+@app.route("/management/plans/<int:plan_id>/place", methods=["POST"])
+@owner_required
+def save_place_on_plan(plan_id):
+    conn = get_db()
+    plan = conn.execute("SELECT * FROM site_plans WHERE id = ?", (plan_id,)).fetchone()
+    what = _placing(conn, request.form)
+    if not plan or not what:
+        conn.close()
+        abort(404)
+    kind, row = what
+    back = (url_for("maintenance_job", task_id=row["id"]) if kind == "task"
+            else url_for("maintenance_page") + f"#sched-{row['id']}")
+    title = row["title"] if kind == "task" else maintenance_task_title(row)
+    if request.form.get("remove"):
+        conn.execute(f"DELETE FROM plan_pins WHERE {kind}_id = ?", (row["id"],))
+        log_audit(conn, "plan_pin_removed", target=title)
+        conn.commit()
+        conn.close()
+        flash(f"Taken off the plan. {title} is still a "
+              f"{'job' if kind == 'task' else 'check on the schedule'}.", "success")
+        return redirect(back)
+    f = request.form
+    point = pin_from_tap(f.get("tap_x"), f.get("tap_y"), f.get("shown_w"), f.get("shown_h"))
+    if not point:
+        conn.close()
+        flash("Tap the plan where it is first.", "error")
+        return redirect(url_for("place_on_plan", plan_id=plan_id, **{f"{kind}_id": row["id"]}))
+    set_pin(conn, plan_id, point[0], point[1], user_id=session.get("user_id"),
+            **{f"{kind}_id": row["id"]})
+    log_audit(conn, "plan_pin_placed", target=title, details=plan["name"])
+    conn.commit()
+    conn.close()
+    flash(f"{title} is on {plan['name']}.", "success")
+    return redirect(back)
 
 
 @app.route("/management/vehicles")

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Put it on {{ plan['name'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Where is {{ title }}?</h1>
+  <div>
+    <a href="{{ url_for('maintenance_job', task_id=row['id']) if kind == 'task' else url_for('maintenance_check', schedule_id=row['id']) }}"
+       class="btn-ghost">Back</a>
+  </div>
+</div>
+
+{% if plans|length > 1 %}
+<nav class="plan-switch" aria-label="Which plan">
+  {% for p in plans %}
+  <a href="{{ url_for('place_on_plan', plan_id=p['id'], **{kind ~ '_id': row['id']}) }}"
+     class="chip {{ 'is-on' if p['id'] == plan['id'] }}">{{ p['name'] }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+{% set here = pin and pin['plan_id'] == plan['id'] %}
+<form method="post" action="{{ url_for('save_place_on_plan', plan_id=plan['id']) }}" class="plan-report">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="{{ kind }}_id" value="{{ row['id'] }}">
+  {# Already on this plan: its place, written over a picture 10000 across, so
+     Save without a tap keeps it where it is. #}
+  <input type="hidden" name="tap_x" value="{{ '%.2f'|format(pin['x'] * 10000) if here }}">
+  <input type="hidden" name="tap_y" value="{{ '%.2f'|format(pin['y'] * 10000) if here }}">
+  <input type="hidden" name="shown_w" value="{{ '10000' if here }}">
+  <input type="hidden" name="shown_h" value="{{ '10000' if here }}">
+  <p class="plan-step">Tap where it is on {{ plan['name'] }}.</p>
+  {% with tap=True, pins=[], marker=((pin['x'], pin['y']) if here else None) %}{% include "_plan_frame.html" %}{% endwith %}
+  {# Below the plan, so a message appearing never moves the picture. #}
+  <p id="plan-tap-said" class="plan-tap-said" aria-live="polite">
+    {%- if here %}It is here now. Tap to move it.{% elif pin %}It is on another plan now; saving moves it here.{% endif -%}
+  </p>
+  <div class="plan-job-acts">
+    <button type="submit" class="btn-primary">Save the place</button>
+    {% if pin %}
+    <button type="submit" name="remove" value="1" formnovalidate class="btn-mini btn-mini-danger"
+            onclick="return confirm('Take it off the plan? The {{ 'job' if kind == 'task' else 'check' }} itself stays.')">
+      Take it off the plan</button>
+    {% endif %}
+  </div>
+</form>
+
+{% endblock %}

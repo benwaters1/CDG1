@@ -171,6 +171,7 @@ SUITES = [
     "test_destructive",
     "test_money_ahead",
     "test_maintenance",
+    "test_site_plans",
     "test_backup_alert",
     "test_payments",
     "test_stripe_webhook",
