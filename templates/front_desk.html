@@ -76,7 +76,7 @@
   <div class="empty-state">Nobody arriving today.{% if d.tomorrow %} <a href="{{ url_for('arrivals_sheet_page') }}">{{ d.tomorrow }} tomorrow</a>.{% endif %}</div>
 {% else %}
 <div class="table-wrap">
-  <table class="data-table fd-table">
+  <table class="data-table fd-table phone-cards">
     <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Expected</th><th scope="col">Stay</th><th scope="col" class="num">Owed</th><th scope="col"></th></tr></thead>
     <tbody>
     {% for x in d.arriving %}
@@ -90,10 +90,10 @@
         {% if x.special_occasion %}<span class="cell-note"><strong>Celebrating:</strong> {{ x.special_occasion }}
           {%- set op = x.occasion_prep %}{% if op %} · <a href="{{ url_for('occasions_page') }}#task-{{ op.task_id }}" class="small-link">
           {%- if op.status == 'done' %}prepared{% elif op.total %}{{ op.done }} of {{ op.total }} done{% else %}to prepare{% endif %}</a>{% endif %}</span>{% endif %}</td>
-      <td>{{ x.room_name }}</td>
-      <td>{{ x.estimated_arrival_time or '—' }}</td>
-      <td>{{ x.party_size or '?' }} guest{{ '' if x.party_size == 1 else 's' }}<span class="cell-note">until {{ x.departure_date|date_short }}</span></td>
-      <td class="num">{% if x.kind == 'channel' %}<span class="cell-note">paid to Booking.com</span>{% elif x.owed %}<strong class="owed-flag">{{ x.owed|money }}</strong>{% else %}<span class="bk-settled">settled</span>{% endif %}</td>
+      <td data-label="Room">{{ x.room_name }}</td>
+      <td data-label="Expected">{{ x.estimated_arrival_time or '—' }}</td>
+      <td data-label="Stay"><span>{{ x.party_size or '?' }} guest{{ '' if x.party_size == 1 else 's' }}</span><span class="cell-note">until {{ x.departure_date|date_short }}</span></td>
+      <td class="num" data-label="Owed">{% if x.kind == 'channel' %}<span class="cell-note">paid to Booking.com</span>{% elif x.owed %}<strong class="owed-flag">{{ x.owed|money }}</strong>{% else %}<span class="bk-settled">settled</span>{% endif %}</td>
       <td>
         <div class="fd-acts">
         {% if x.kind == 'stay' %}
@@ -121,15 +121,15 @@
   <div class="empty-state">Nobody leaving today.</div>
 {% else %}
 <div class="table-wrap">
-  <table class="data-table fd-table">
+  <table class="data-table fd-table phone-cards">
     <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col" class="num">Owed</th><th scope="col">Check out</th></tr></thead>
     <tbody>
     {% for x in d.leaving %}
     <tr class="{{ 'fd-done' if x.checked_out_at }}">
       <td>{% if x.kind == 'stay' %}<a href="{{ url_for('admin_booking', booking_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a>{% else %}<strong>{{ x.guest_name }}</strong> <span class="mini-status status-upcoming">Booking.com</span>{% endif %}
         <span class="cell-note">{{ x.reference_code }}</span></td>
-      <td>{{ x.room_name }}</td>
-      <td class="num">{% if x.kind == 'channel' %}<span class="cell-note">paid to Booking.com</span>{% elif x.owed %}<strong class="owed-flag">{{ x.owed|money }}</strong> <a href="{{ url_for('admin_booking', booking_id=x.id) }}#take-payment" class="small-link">take it</a>{% else %}<span class="bk-settled">settled</span>{% endif %}</td>
+      <td data-label="Room">{{ x.room_name }}</td>
+      <td class="num" data-label="Owed">{% if x.kind == 'channel' %}<span class="cell-note">paid to Booking.com</span>{% elif x.owed %}<strong class="owed-flag">{{ x.owed|money }}</strong> <a href="{{ url_for('admin_booking', booking_id=x.id) }}#take-payment" class="small-link">take it</a>{% else %}<span class="bk-settled">settled</span>{% endif %}</td>
       <td>
         {% if x.kind != 'stay' %}<span class="upload-hint">turned round from the turnover list</span>
         {% elif x.checked_out_at %}<span class="mini-status status-past">checked out {{ local_time_str(x.checked_out_at) }}</span>
@@ -160,15 +160,15 @@
   <div class="empty-state">Nobody else in the house.</div>
 {% else %}
 <div class="table-wrap">
-  <table class="data-table fd-table">
+  <table class="data-table fd-table phone-cards">
     <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Until</th><th scope="col" class="num">Owed</th></tr></thead>
     <tbody>
     {% for x in d.staying %}
     <tr>
       <td>{% if x.kind == 'stay' %}<a href="{{ url_for('admin_booking', booking_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a>{% else %}<strong>{{ x.guest_name }}</strong> <span class="mini-status status-upcoming">Booking.com</span>{% endif %}</td>
-      <td>{{ x.room_name }}</td>
-      <td>{{ x.departure_date|date_short }}</td>
-      <td class="num">{% if x.kind == 'channel' %}<span class="cell-note">paid to Booking.com</span>{% elif x.owed %}<strong class="owed-flag">{{ x.owed|money }}</strong>{% else %}<span class="bk-settled">settled</span>{% endif %}</td>
+      <td data-label="Room">{{ x.room_name }}</td>
+      <td data-label="Until">{{ x.departure_date|date_short }}</td>
+      <td class="num" data-label="Owed">{% if x.kind == 'channel' %}<span class="cell-note">paid to Booking.com</span>{% elif x.owed %}<strong class="owed-flag">{{ x.owed|money }}</strong>{% else %}<span class="bk-settled">settled</span>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>

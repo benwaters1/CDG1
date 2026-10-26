@@ -581,6 +581,12 @@ SUITES = [
     "test_route_map",
     # 19 October 2026: the phone's home screen the owner expected and never got.
     "test_phone_home",
+    # 22 October 2026, the staff side read on a busy day: a task opens what it
+    # is about and a room's checklist reads as one; dates, labels and search
+    # hits in the house's words; the button you came for, within reach.
+    "test_tasks_open_what_they_are_about",
+    "test_a_busy_day_in_words",
+    "test_buttons_within_reach_on_a_phone",
     # 26 October 2026: the owner's retreats copy deck, its photographs and old pages.
     "test_retreats_deck",
 ]

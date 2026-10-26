@@ -1,3 +1,85 @@
+{#- One task on the sheet. In a stay's checklist (`grouped`) it says only the
+    item: the room, the guest, the note and the urgency are said once, on the
+    group above it (task_entries). `subject` is where the task opens -- the
+    booking, the enquiry -- when there is a page for it (task_subject). -#}
+{% macro sheet_row(t, title, grouped=False, subject=None, unassigned=False) %}
+<div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
+  <input type="checkbox" class="task-pick" value="{{ t['id'] }}"
+         aria-label="Select {{ t['title'] }}">
+  <button type="button" class="task-check" aria-pressed="{{ 'true' if t['status'] == 'done' else 'false' }}" aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ t['title'] }}" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
+  <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
+  <span class="task-title">
+    {{ title }}
+    {% if t['priority'] == 'high' and not grouped %}<span class="mini-status status-declined">high priority</span>{% endif %}
+    {% if t['status'] == 'in_progress' %}<span class="mini-status status-pending">in progress</span>{% endif %}
+    {% if t['repeat_weekly'] %}<span class="upload-hint">· every week</span>{% endif %}
+    {% if not grouped %}
+    {% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}
+    {% if t['notes'] %} <span class="upload-hint">({{ t['notes'] }})</span>{% endif %}
+    {% endif %}
+    {% if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
+    {% if subject %} <a href="{{ subject.url }}" class="task-open">{{ subject.words }}</a>{% endif %}
+  </span>
+  {% if t['acknowledgment_status'] == 'pending' %}<span class="mini-status status-pending">awaiting response</span>
+  {% elif t['acknowledgment_status'] == 'accepted' %}<span class="mini-status status-active">accepted</span>
+  {% elif t['acknowledgment_status'] == 'rejected' %}<span class="mini-status status-inactive">rejected — reassign</span>{% endif %}
+  {% if t['due_date'] and not grouped %}<span class="upload-hint">{{ t['due_date']|date_short }}</span>{% endif %}
+  {% if grouped %}
+  {#- An item of a checklist goes with its room: copying "Wine bottle" to next
+      week, or sending it alone, is not a thing anybody means. -#}
+  {% elif unassigned %}
+  <form method="post" action="{{ url_for('direct_task', task_id=t['id']) }}" class="task-send">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <select name="employee_id" required aria-label="Who to send {{ t['title'] }} to">
+      <option value="">Send to…</option>
+      {% for e in sheet.employees %}
+      <option value="{{ e['id'] }}">{{ e['name'] }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="small-link task-word-btn">Send now</button>
+  </form>
+  {% else %}
+  {#- Sending pushes it to their phone now and asks them to accept it. Said in
+      words: the old lightning bolt explained itself only on hover, and a
+      phone cannot hover. -#}
+  <form method="post" action="{{ url_for('direct_task', task_id=t['id']) }}" title="Sends it to their phone now, and asks them to accept it">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="small-link task-word-btn">Send now</button>
+  </form>
+  <form method="post" action="{{ url_for('duplicate_task_next_week', task_id=t['id']) }}" title="A copy of this task, a week later">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="small-link task-word-btn">Copy to next week</button>
+  </form>
+  {% endif %}
+  <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="doc-delete" aria-label="Remove this task" title="Remove this task">×</button>
+  </form>
+</div>
+{% endmacro %}
+
+{#- A list of tasks with each stay's checklist as one group. -#}
+{% macro sheet_rows(tasks, unassigned=False) %}
+<div class="task-list">
+  {% for en in task_entries(tasks) %}
+  {% if en.group %}
+  <div class="task-group">
+    <div class="task-group-head">
+      <strong>{{ en.heading }}</strong>
+      <span class="upload-hint">{{ en.done }} of {{ en.total }} done{% if en.due_date %} · {{ en.due_date|date_short }}{% endif %}</span>
+      {% if en.urgent %}<span class="mini-status status-declined">high priority</span>{% endif %}
+      {% if en.subject %}<a href="{{ en.subject.url }}" class="task-open">{{ en.subject.words }}</a>{% endif %}
+      {% if en.note %}<span class="task-group-note">{{ en.note }}</span>{% endif %}
+    </div>
+    {% for it in en['items'] %}{{ sheet_row(it.task, it.item, grouped=True, unassigned=unassigned) }}{% endfor %}
+  </div>
+  {% else %}
+  {{ sheet_row(en.task, en.task['title'], subject=en.subject, unassigned=unassigned) }}
+  {% endif %}
+  {% endfor %}
+</div>
+{% endmacro %}
+
 {% if not sheet.employees %}
   <div class="empty-state">Add employees first to assign tasks.</div>
 {% else %}
@@ -16,41 +98,7 @@
       {% endif %}
     </div>
     {% if entry and entry.tasks %}
-      <div class="task-list">
-        {% for t in entry.tasks %}
-        <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
-          <input type="checkbox" class="task-pick" value="{{ t['id'] }}"
-                 aria-label="Select {{ t['title'] }}">
-          <button type="button" class="task-check" aria-pressed="{{ 'true' if t['status'] == 'done' else 'false' }}" aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ t['title'] }}" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
-          <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
-          <span class="task-title">
-            {% if t['origin'] == 'occasion' %}<a href="{{ url_for('occasions_page') }}#task-{{ t['id'] }}">{{ t['title'] }}</a>{% else %}{{ t['title'] }}{% endif %}
-            {% if t['priority'] == 'high' %}<span class="mini-status status-declined">high priority</span>{% endif %}
-            {% if t['status'] == 'in_progress' %}<span class="mini-status status-pending">in progress</span>{% endif %}
-            {% if t['repeat_weekly'] %}<span title="Repeats weekly">↻</span>{% endif %}
-            {% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}
-            {% if t['notes'] %} <span class="upload-hint">({{ t['notes'] }})</span>{% endif %}
-            {% if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
-          </span>
-          {% if t['acknowledgment_status'] == 'pending' %}<span class="mini-status status-pending">awaiting response</span>
-          {% elif t['acknowledgment_status'] == 'accepted' %}<span class="mini-status status-active">accepted</span>
-          {% elif t['acknowledgment_status'] == 'rejected' %}<span class="mini-status status-inactive">rejected — reassign</span>{% endif %}
-          {% if t['due_date'] %}<span class="upload-hint">{{ t['due_date']|date_short }}</span>{% endif %}
-          <form method="post" action="{{ url_for('direct_task', task_id=t['id']) }}" title="Direct now — sends a push, needs accept/reject">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡</button>
-          </form>
-          <form method="post" action="{{ url_for('duplicate_task_next_week', task_id=t['id']) }}" title="Duplicate to next week">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">↻</button>
-          </form>
-          <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="doc-delete" aria-label="Remove this task" title="Remove this task">×</button>
-          </form>
-        </div>
-        {% endfor %}
-      </div>
+      {{ sheet_rows(entry.tasks) }}
     {% else %}
       <p class="empty-inline">Nothing assigned {{ {'day': 'today', 'week': 'this week', 'month': 'this month'}[sheet.view] }}.</p>
     {% endif %}
@@ -66,32 +114,7 @@
       all {{ sheet.unassigned_tasks|length }}
     </label>
   </div>
-  <div class="task-list">
-    {% for t in sheet.unassigned_tasks %}
-    <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
-      <input type="checkbox" class="task-pick" value="{{ t['id'] }}"
-                 aria-label="Select {{ t['title'] }}">
-      <button type="button" class="task-check" aria-pressed="{{ 'true' if t['status'] == 'done' else 'false' }}" aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ t['title'] }}" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
-      <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
-      <span class="task-title">{% if t['origin'] == 'occasion' %}<a href="{{ url_for('occasions_page') }}#task-{{ t['id'] }}">{{ t['title'] }}</a>{% else %}{{ t['title'] }}{% endif %}{% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}</span>
-      {% if t['due_date'] %}<span class="upload-hint">{{ t['due_date']|date_short }}</span>{% endif %}
-      <form method="post" action="{{ url_for('direct_task', task_id=t['id']) }}" style="display:flex; gap:4px;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <select name="employee_id" required style="font-size:11px; padding:1px;">
-          <option value="">Direct to…</option>
-          {% for e in sheet.employees %}
-          <option value="{{ e['id'] }}">{{ e['name'] }}</option>
-          {% endfor %}
-        </select>
-        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡</button>
-      </form>
-      <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="doc-delete" aria-label="Remove this task" title="Remove this task">×</button>
-      </form>
-    </div>
-    {% endfor %}
-  </div>
+  {{ sheet_rows(sheet.unassigned_tasks, unassigned=True) }}
 </div>
 {% endif %}
 
@@ -107,12 +130,14 @@
   </div>
   <div class="task-list">
     {% for t in sheet.undated_tasks %}
+    {% set subject = task_subject(t) %}
     <div class="task-row" data-task-id="{{ t['id'] }}">
       <input type="checkbox" class="task-pick" value="{{ t['id'] }}"
                  aria-label="Select {{ t['title'] }}">
       <button type="button" class="task-check" aria-pressed="{{ 'true' if t['status'] == 'done' else 'false' }}" aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ t['title'] }}" onclick="toggleTask({{ t['id'] }}, this)"></button>
       <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
-      <span class="task-title">{{ t['title'] }} <span class="upload-hint">— {{ t['employee_name'] }}</span></span>
+      <span class="task-title">{{ t['title'] }} <span class="upload-hint">— {{ t['employee_name'] }}</span>
+        {% if subject %} <a href="{{ subject.url }}" class="task-open">{{ subject.words }}</a>{% endif %}</span>
       <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="doc-delete" aria-label="Remove this task" title="Remove this task">×</button>
