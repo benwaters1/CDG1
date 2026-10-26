@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from '_signature_pad_staff.html' import signature_pad %}
+{% block title %}Sign the fiche{% endblock %}
+{% block content %}
+{# The guest signs their own fiche at the desk, on the house's screen
+   (R. 814-1: "signée par l'étranger, dès son arrivée"). Shown in full first,
+   so what they sign is what they have read. #}
+<div class="page-head">
+  <h1>Fiche individuelle de police</h1>
+  <a href="{{ url_for('police_register_page') }}" class="small-link">← The register</a>
+</div>
+
+<div class="detail-card" style="max-width:34em;">
+  <dl class="bk-facts">
+    <dt>Nom / Surname</dt><dd>{{ fiche['surname'] }}</dd>
+    <dt>Prénoms / First names</dt><dd>{{ fiche['first_names'] }}</dd>
+    <dt>Né(e) le / Born on</dt><dd>{{ fiche['born_on'] or '—' }}</dd>
+    <dt>À / At</dt><dd>{{ fiche['born_at'] or '—' }}</dd>
+    <dt>Nationalité / Nationality</dt><dd>{{ fiche['nationality'] }}</dd>
+    <dt>Domicile habituel / Home</dt><dd>{{ fiche['home_address'] or '—' }}</dd>
+    <dt>Mobile / Email</dt><dd>{{ fiche['phone'] or '—' }}{% if fiche['email'] %} · {{ fiche['email'] }}{% endif %}</dd>
+    <dt>Arrivée / Arrival</dt><dd>{{ fiche['arrival_date']|date_short }}</dd>
+    <dt>Départ prévu / Leaving</dt><dd>{{ fiche['departure_date']|date_short }}</dd>
+    {% if fiche['children_under_15'] %}<dt>Enfants de moins de 15 ans / Children under 15</dt><dd>{{ fiche['children_under_15'] }}</dd>{% endif %}
+  </dl>
+  {% if fiche['signed_at'] %}
+  <p class="upload-hint">Already signed {{ fiche['signed_at']|house_day|date_short }}. Signing again replaces it.</p>
+  {% endif %}
+  <form method="post" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ signature_pad('signature', 'signed_name', 'desk_sig', 'Signature') }}
+    <button type="submit" class="btn-primary" style="margin-top:8px;">Save the signature</button>
+  </form>
+</div>
+{% endblock %}
