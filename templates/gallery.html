@@ -23,9 +23,15 @@
    they exist — this only fills a section that has none. #}
 {#- 12 Oct (owner: "tidy the gallery, more before and afters"): the restoration section runs as it was, before, during,
     now - and the bathrooms, from the old site's bathrooms page. -#}
+{#- 26 Oct (owner, the Booking.com photo swaps): the full-size pictures that replace the low-quality ones there go
+    here too, so the site and Booking.com match - the four in the grounds, the King Suite's four-poster and the bath. The
+    night, the snowy peaks, Bruce in the snow and the croissants were already in this gallery; the photo swap now serves
+    those from the house's own copies. -#}
 {% set FALLBACK = {
   'inside': [
+    {'url': url_for('static', filename='img/retreats/king-suite-four-poster.jpg'), 'caption': 'The King Suite, the four-poster'},
     {'url': url_for('static', filename='img/more/king-room-canopy.jpg'), 'caption': 'The King Suite, its canopied four-poster'},
+    {'url': url_for('static', filename='img/retreats/bath-floral-tiles.jpg'), 'caption': 'A bath under the floral tiles'},
     {'url': url_for('static', filename='img/more/blue-bedroom.jpg'), 'caption': 'The Family Suite, the blue bedroom'},
     {'url': url_for('static', filename='img/xx/the-kitchen.jpg'), 'caption': 'The kitchen, its table laid with fresh produce'},
     {'url': url_for('static', filename='img/xx/salon-floral-curtains.jpg'), 'caption': 'A salon, the mountains through its windows'},
@@ -79,6 +85,10 @@
     {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1731560627745-OAYXOK7F1XCM5B4HSRXM/Kitchen+1.JPG?format=1500w", 'caption': 'Fruit on the kitchen table'}
   ],
   'grounds': [
+    {'url': url_for('static', filename='img/retreats/garden-in-bloom.jpg'), 'caption': 'The garden in bloom below the château'},
+    {'url': url_for('static', filename='img/retreats/roses-on-the-drive.jpg'), 'caption': 'Roses on the drive, the château behind'},
+    {'url': url_for('static', filename='img/retreats/chateau-framed-by-roses.jpg'), 'caption': 'The château, framed by roses'},
+    {'url': url_for('static', filename='img/retreats/gate-in-snow.jpg'), 'caption': 'The gate in the snow'},
     {'url': url_for('static', filename='img/more/the-kitchen-garden.jpg'), 'caption': 'The kitchen garden'},
     {'url': url_for('static', filename='img/grounds/late-summer-flowers-urn.jpg'), 'caption': 'Late-summer flowers around an old urn, the mountains beyond'},
     {'url': url_for('static', filename='img/xx/garden-chateau-mountains.jpg'), 'caption': 'The château over its garden, the mountains beyond'},

@@ -242,7 +242,7 @@ def run():
     s.section("The photographs are the house's own")
     sources = io.open(os.path.join(RETREATS, "SOURCES.txt"), encoding="utf-8").read().splitlines()
     listed = [line.split()[0] for line in sources if line.split() and line.split()[0].endswith(".jpg")]
-    s.check("SOURCES.txt lists the deck's photographs", len(listed) >= 45, detail=f"{len(listed)} listed")
+    s.check("SOURCES.txt lists the deck's photographs", len(listed) >= 100, detail=f"{len(listed)} listed")
     missing = [n for n in listed if not os.path.exists(os.path.join(RETREATS, n))
                or not os.path.exists(os.path.join(RETREATS, n[:-4] + "-800.jpg"))]
     s.check("and every one is in the folder, at both sizes", not missing, detail=", ".join(missing))
@@ -265,12 +265,17 @@ def run():
         twice = sorted({u for u in ours if ours.count(u) > 1})
         s.check(f"{path}: none of them twice", not twice, detail=", ".join(twice))
     ws_html = pages["/workshops"].get_data(as_text=True)
-    for credit in ("Patrick Castay", "Babsy", "Traumrune", "Jeunamateur"):
+    # Foix and Mirepoix are the chateau's own photographs since the deck's second section 6;
+    # Lombrives and Ax are still from Commons.
+    for credit in ("Traumrune", "Jeunamateur"):
         at = ws_html.find(credit)
         inside = at != -1 and ws_html.rfind("<figcaption", 0, at) > ws_html.rfind("</figcaption>", 0, at)
         s.check(f"/workshops credits {credit}, outside the hidden captions", at != -1 and not inside)
     home_html = pages["/"].get_data(as_text=True)
-    s.check("the home page credits the castle at Foix", "Patrick Castay" in home_html)
+    s.check("the home page and /workshops open on the guests toasting",
+            "img/retreats/guests-toasting" in home_html and "img/retreats/guests-toasting" in ws_html)
+    s.check("and no Commons credit is left for a photograph no longer shown",
+            "Patrick Castay" not in home_html + ws_html and "Babsy" not in ws_html)
 
     s.section("The old pages land somewhere that answers")
     for path in ("/5-nights", "/christmas", "/4-nights", "/stay-2026", "/stay-2024", "/workshops-2026"):

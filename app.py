@@ -29214,7 +29214,7 @@ def turned_away(conn, days=365, today=None):
 MIRROR_DIR = os.environ.get("GUDANES_MIRROR_DIR") or os.path.join(DATA_DIR, "mirrored")
 
 # THE RETREATS DECK'S PHOTOGRAPHS (owner, 26 October 2026), held in the code
-# rather than on the volume. The deck chose 41 pictures from the old
+# rather than on the volume. The deck chose a hundred-odd pictures from the old
 # Squarespace site, which expires on 14 November 2026, and each was copied to
 # static/img/retreats; SOURCES.txt there says where each came from. The new
 # words point at those files directly, but the older galleries on the retreat
@@ -29224,8 +29224,17 @@ MIRROR_DIR = os.environ.get("GUDANES_MIRROR_DIR") or os.path.join(DATA_DIR, "mir
 # kept in a second list here, so a picture added there is swapped the moment
 # its file is in the folder, and one whose file has gone is not swapped for a
 # 404 of our own making.
+#
+# Matched on the picture, not on the whole address. Squarespace serves a photo
+# by the account and asset in its path and ignores the name after them, so
+# ".../9b008241-.../IMG_4368.JPG" (a template) and ".../9b008241-.../chateau-
+# at-night.jpg" (the deck) are one photograph -- and SOURCES.txt holds the
+# deck's spelling. Every address the templates use is looked up by its asset
+# (_house_copies_in_templates, once hotlinked_urls exists further down).
 HOUSE_COPIES_DIR = os.path.join(BASE_DIR, "static", "img", "retreats")
 _HOUSE_COPY_SMALL = ("100w", "300w", "500w", "750w", "1000w")
+_HOUSE_COPY_ASSET = re.compile(r"/content/(?:v1/)?[0-9a-f]{24}/([^/?#]+)/")
+_HOUSE_COPY_BY_ASSET = {}      # asset id -> (the 1600px copy, the 800px copy)
 
 
 def _house_copies():
@@ -29255,6 +29264,22 @@ def _house_copies():
             out[base] = big
             for size in _HOUSE_COPY_SMALL:
                 out[base + "?format=" + size] = small
+        asset = _HOUSE_COPY_ASSET.search(url)
+        if asset:
+            _HOUSE_COPY_BY_ASSET.setdefault(asset.group(1), (big, small))
+    return out
+
+
+def _house_copies_in_templates(urls):
+    """{address a template uses: the house's copy} for every held picture,
+    whatever name the template happens to give it."""
+    out = {}
+    for url in urls:
+        asset = _HOUSE_COPY_ASSET.search(url)
+        held = _HOUSE_COPY_BY_ASSET.get(asset.group(1)) if asset else None
+        if held:
+            size = url.split("?format=", 1)[1] if "?format=" in url else ""
+            out[url] = held[1] if size in _HOUSE_COPY_SMALL else held[0]
     return out
 
 
@@ -29353,6 +29378,10 @@ def hotlinked_urls():
         _MIRROR_SCANNED["signature"] = signature
         _MIRROR_SCANNED["urls"] = urls
     return urls
+
+
+# The retreats deck's copies, for every address the templates use for them.
+HOUSE_COPIES.update(_house_copies_in_templates(hotlinked_urls()))
 
 
 def mirrored_index(conn):
@@ -63526,16 +63555,10 @@ def workshops_public():
     # else this route reads.
     deposit_pct = workshop_deposit_to_show(conn)
     conn.close()
-    # What the panel at the top of the page quotes. The ateliers are priced
-    # individually, so the lowest is the honest single figure and the template
-    # says "from" whenever there is more than one of them.
-    priced = sorted((w for w in workshops if w["price_per_person"]),
-                    key=lambda w: w["price_per_person"])
-    glance_workshop = priced[0] if priced else None
-    glance_from = len({w["price_per_person"] for w in priced}) > 1
+    # The glance panel and its "from" figure went with the retreats deck (26
+    # Oct): each retreat's own price is on its card and its dates.
     return render_template(
         "workshops_public.html", workshops=workshops,
-        glance_workshop=glance_workshop, glance_from=glance_from,
         deposit_pct=deposit_pct,
         balance_days=WORKSHOP_BALANCE_DAYS,
         sessions_by_workshop=sessions_by_workshop,

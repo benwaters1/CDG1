@@ -9,8 +9,8 @@ covered-market.jpg  https://images.squarespace-cdn.com/content/v1/53c3b576e4b02b
 guests-uncovering-fresco.jpg  https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1421602176174-K3W64FCHNI9CRQ78SIZH/januaryblog2.jpg
 dancing-in-pink.jpg  https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/54e4a08b-7bfb-4842-a358-59f34bffebff/day_3_83.jpg
 the-pool.jpg  https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1665120434823-R6LIPKHP9D00GIKE4SLI/Screen+Shot+2022-10-07+at+1.24.46+pm.png
-foix-castle.jpg  https://commons.wikimedia.org/wiki/File:Château_de_Foix_Lespinet.JPG  (CC BY 3.0 Patrick Castay)
-crepe-cart.jpg  https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/334dd515-532c-485f-94d4-d4856ececfee/Screen+Shot+2023-01-20+at+12.33.41+pm.png
+foix-castle-lespinet.jpg  https://commons.wikimedia.org/wiki/File:Château_de_Foix_Lespinet.JPG  (CC BY 3.0 Patrick Castay)
+crepe-cart-collage.jpg  https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/334dd515-532c-485f-94d4-d4856ececfee/Screen+Shot+2023-01-20+at+12.33.41+pm.png
 long-lunch-outdoors.jpg  https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/50777fc2-8ec7-4f80-a17f-48f8a148e769/day_1_120+2.JPG
 lunch-outdoors-many.jpg  https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1513905354817-CY78QMMU9GQWZY8VXHXF/IMG_8548+2.JPG
 sorbet-pouring.jpg  https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/efc50316-fc9a-4f49-bd85-be8244e8976c/Sorbet_Pouring+2.jpg
@@ -48,5 +48,69 @@ a-christmas-table.jpg  https://images.squarespace-cdn.com/content/v1/6a55fc287fb
 noel-at-gudanes.jpg  https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/48dc09e5-c623-4f0a-bd02-ed1b614f7e81/4764E339-9EE5-4DC8-9349-B87245BAC7FB.jpg
 marshmallows-by-the-fire.jpg  https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1587392453319-7L5XHVDIDHFW10FUDJRP/Blog+post+marshmallows+2.jpg
 
-crepe-cart.jpg is the top-left square of a collage. Each file is at most 1600px on its long
+The second version of the deck's section 6, and the Booking.com photo swaps (both 26 October 2026).
+The name at the end of each address is only a name: Squarespace serves the picture by the part before it.
+
+guests-toasting.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1724501214096-XBFUPVID66ZTGZV68S4T/guests-toasting.jpg
+brocante-gilt-frame.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1481179212968-BJ7WLHYBYGMTUL6RSR4A/brocante-gilt-frame.jpg
+market-charcuterie.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1588058662677-2C0OQN38VO1Q0BOU2JM0/market-charcuterie.jpg
+restoration-scaffold.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1481095122697-MSGWFDFVRUYX1B6P0EHM/restoration-scaffold.jpg
+garden-with-bruce.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/49f1267d-26d2-4f04-b908-73c78a327184/garden-with-bruce.jpg
+foix-castle.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1481616074741-RYJEHZMD9TK30AACGC1R/foix-castle.jpg
+crepe-cart.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1724521431407-76Z5NM7NBYO9QZW1KHIC/crepe-cart.jpg
+village-boulangerie.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1423686965587-0X5ITQNUPVOFVWZ289QS/village-boulangerie.jpg
+cooking-class-hands.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/a0d70370-c363-4a8a-b55d-b9fbd5de92d3/cooking-class-hands.jpg
+lawn-afternoon.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1665120415677-CMZTV85ZJMZIPPHIALO8/lawn-afternoon.jpg
+sparkling-tray.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1545183729619-VFGNX9DUWPBQ2PADNC5E/sparkling-tray.jpg
+candlelit-dinner-salon.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/671448ba-9e1f-4405-8c64-dcf664201eb5/candlelit-dinner-salon.jpg
+trout-on-the-grill.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1724498290692-4KOIZ7SEGNI0MM6E79Y3/trout-on-the-grill.jpg
+plating-asparagus.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1724498445321-DRALJQ7GMIOYLKI1N833/plating-asparagus.jpg
+chateau-apron-plate.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1724501208685-58642QLB8OD8MF96DUX1/chateau-apron-plate.jpg
+red-beret-tart.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1724498453772-T4KO4CX3T9UDHUV1J4VR/red-beret-tart.jpg
+roast-birds.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/acacce28-468c-425b-8b40-29f13a136f5d/roast-birds.jpg
+roast-on-old-china.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/fbc2d8e4-a7ae-456e-acf1-13e8ce61a018/roast-on-old-china.jpg
+plated-starter.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/355ed207-f7a3-4e62-b7ec-13d8dfaf09a8/plated-starter.jpg
+plated-spring-dish.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/78356bc2-c168-42b2-b1b1-02d9660281c7/plated-spring-dish.jpg
+mille-feuille.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1724498418853-3NECZHQR4AB0GANCDW6D/mille-feuille.jpg
+shared-dish.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d853fd14-d666-4ad7-8225-b5a688d34d0c/shared-dish.jpg
+chef-across-the-lawn.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/a59aa6b7-ec00-46c9-b41e-7ff7bfddeafd/chef-across-the-lawn.jpg
+croquembouche.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/617de1cc-5951-4603-9664-2f1772baa984/croquembouche.jpg
+vide-grenier.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1736399089229-OXAZTJLI4DETI5NUEHB2/vide-grenier.jpg
+brocante-stalls.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1736397802985-SMWGNZRNRJ8JRZFUIFRR/brocante-stalls.jpg
+brocante-china.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1736397821832-QHC0S5I9RMADS8BU3O2O/brocante-china.jpg
+brocante-accordion.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1408133713141-3K5BJ3LA7OFLH3QJHPIY/brocante-accordion.jpg
+brocante-2cv.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1408131839081-PT7U0BJZYY3G710OWJB9/brocante-2cv.jpg
+antique-shop.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/4a827f1a-5f66-4859-af21-5a87b12c3c2e/antique-shop.jpg
+film-under-the-stars.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1665031797851-HE3315PKCTGV2ONLJI9W/film-under-the-stars.jpg
+fire-pit-lawn.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1724498420616-AHOHY4M98O9RLLT24CM4/fire-pit-lawn.jpg
+dancing-bw.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/e3df63d5-48f8-4066-95cd-955356087378/dancing-bw.jpg
+medieval-kitchen-table.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/629c7708-5beb-4726-ad94-d4c32d8016d4/medieval-kitchen-table.jpg
+uncovering-fresco.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1445267442084-0XSW4NI6ENSPLR3MZHWB/uncovering-fresco.jpg
+restorer-painted-wall.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/a907e71b-b1f3-455c-814c-d121ce440455/restorer-painted-wall.jpg
+mountain-walk.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/096e3877-6b97-4d5c-85c9-0daa1740052a/mountain-walk.jpg
+village-street.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/b16e2a9a-0d9f-4838-9ee2-1125541b7f44/village-street.jpg
+mirepoix.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a3a585d8-a3d2-4ba5-ba7c-1222d3b09fd2/mirepoix.jpg
+guests-rose-gate.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/db8081a5-b0d7-48c4-b453-3b137d19e769/guests-rose-gate.jpg
+pastry-chef.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1586812530061-7W657M5VTFG2F3ZDVXCZ/pastry-chef.jpg
+caramel-choux-recipe.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587300154571-GB0GAI4BGXSJ8OTAPBT7/caramel-choux-recipe.jpg
+embroidery-hoop.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1588497201992-H8YUWPSCDJ4QTV3EQK99/embroidery-hoop.jpg
+guest-painting.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/11bd61c5-b285-4d3c-825b-71365011efe4/guest-painting.jpg
+lighting-gingerbread.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587871860562-C5BPMAPOVC2XUXRIGA3V/lighting-gingerbread.jpg
+christmas-supper.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587872181698-LM8IIM0UL2P3Q5QSX7A0/christmas-supper.jpg
+vin-chaud.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587816460767-QHL5TA7IZIP6ZIVLKK7A/vin-chaud.jpg
+bruce-christmas-tree.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/43a0b8d6-e4ba-49dd-9f55-3ebe11b58102/bruce-christmas-tree.jpg
+christmas-wreath.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/2552ca54-4b69-481f-98ef-d5b09d2652be/christmas-wreath.jpg
+bath-floral-tiles.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583504658503-6U6R0D9I7GXKUXFOQSQ0/bath-floral-tiles.jpg
+king-suite-four-poster.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1689667618882-TIS33J54WAAI8677PWOS/king-suite-four-poster.jpg
+twin-ground-floor.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/6555e402-1b2d-49da-a0ea-0bfdc40b8fad/twin-ground-floor.jpg
+garden-in-bloom.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/6dafb0dd-0081-45dc-b760-f817bc7e249a/garden-in-bloom.jpg
+roses-on-the-drive.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/dae03a70-1850-40f8-84c8-d0ecaa6b2cfb/roses-on-the-drive.jpg
+chateau-framed-by-roses.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/d6748ca1-6230-44f0-995f-f493afb98d89/chateau-framed-by-roses.jpg
+chateau-at-night.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/chateau-at-night.jpg
+chateau-snowy-peaks.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/c2998346-182b-476a-83cc-fefc2cad0bba/chateau-snowy-peaks.jpg
+bruce-in-the-snow.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/bruce-in-the-snow.jpg
+gate-in-snow.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/06736644-1610-42af-9d66-2e666c4973c8/gate-in-snow.jpg
+breakfast-croissants.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/5589cd5d-9fd8-4363-a8e8-1c7db5e8e8fb/breakfast-croissants.jpg
+
+crepe-cart-collage.jpg is the top-left square of a collage. Each file is at most 1600px on its long
 edge, with an -800 copy; orientation applied and all metadata (including GPS) removed.

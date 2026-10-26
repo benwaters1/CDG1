@@ -107,7 +107,7 @@
   </div>
   <div class="g-full__side">
     {#- 16 Oct (owner): the empty laid table replaced by a workshop group at the long table, candlelit - people, as asked. -#}
-    <figure class="g-full__fig"><img src="{{ rsrc('guests-round-the-table') }}" alt="Guests at the long table by candlelight, beneath an iron chandelier" loading="lazy" style="object-position: center 60%"><figcaption>The long table, by candlelight</figcaption></figure>
+    <figure class="g-full__fig"><img src="{{ rsrc('guests-toasting') }}" alt="Guests raising their glasses down the long table" loading="lazy" style="object-position: center 45%"><figcaption>A toast at the long table</figcaption></figure>
     {% if upcoming %}
     <p class="g-full__k">The next dates</p>
     <ul class="g-full__list">
@@ -138,21 +138,22 @@
 </div></section>
 
 {#- 26 Oct (owner, the retreats deck 1c): eight moments of a retreat, each a photograph, a French title and two lines,
-    every one a way into /workshops. The deck put the guests round the table on "À table", but that photograph is the
-    one beside the retreats just above, so "À table" has the candlelit dinner party: no photograph twice on a page. -#}
+    every one a way into /workshops. The deck put the guests toasting on "À table" and beside the retreats just above;
+    a photograph is never shown twice on a page, so "À table" has the deck's second picture, the long table by
+    candlelight. -#}
 <section class="g-sec g-moments-sec" aria-labelledby="moments-h"><div class="g-wrap">
   <p class="g-fr">Les moments <span class="g-fr__en">A retreat, in eight moments</span></p>
   <h2 class="g-place" id="moments-h">France at Its Most French</h2>
   <ul class="g-moments">
     {%- for slug, alt, fr, line in [
-      ('candlelit-dinner-party', 'Guests at a dinner party by candlelight', 'À table', 'Several courses by candlelight, the silver laid and the conversation long: trout from the farm beside the château, a fillet of beef, a ballotine of guinea fowl, and the wines of the south of France.'),
-      ('cooking-class-kitchen', 'A cooking class in the château kitchen', 'En cuisine', 'Cook beside the château’s chefs and pastry chef, from the morning market to the evening’s dessert.'),
-      ('guests-with-finds', 'Guests outside the château with their brocante finds', 'Chiner', 'The French art of the brocante: old linen, copper, silver and faïence, found in the markets of the valley and carried home.'),
-      ('covered-market', 'A covered market, busy with people', 'Le marché', 'Mirepoix on a Monday morning, beneath its medieval arcades: cheeses, charcuterie, and the people who make them.'),
-      ('guests-uncovering-fresco', 'Two guests uncovering a fresco', 'La restauration', 'Stand beside the restorers as a fresco hidden for generations returns to the light.'),
+      ('guests-round-the-table', 'Guests at the long table by candlelight, beneath an iron chandelier', 'À table', 'Several courses by candlelight, the silver laid and the conversation long: trout from the farm beside the château, a fillet of beef, a ballotine of guinea fowl, and the wines of the south of France.'),
+      ('cooking-class-kitchen', 'Guests cooking together at the kitchen table', 'En cuisine', 'Cook beside the château’s chefs and pastry chef, from the morning market to the evening’s dessert.'),
+      ('brocante-gilt-frame', 'Carrying home a gilt frame from the brocante', 'Chiner', 'The French art of the brocante: old linen, copper, silver and faïence, found in the markets of the valley and carried home.'),
+      ('market-charcuterie', 'The charcuterie stall at the market', 'Le marché', 'Mirepoix on a Monday morning, beneath its medieval arcades: cheeses, charcuterie, and the people who make them.'),
+      ('restoration-scaffold', 'Guests on the scaffold among the frescoes', 'La restauration', 'Stand beside the restorers as a fresco hidden for generations returns to the light.'),
       ('dancing-in-pink', 'A guest dancing, dressed in pink', 'La fête', 'On the last night, everyone dresses for dinner. Later, the candles are set aside for dancing.'),
-      ('the-pool', 'The pool on a summer afternoon', 'Le farniente', 'The pool, a glass of rosé, homemade ice cream, a corner of the library, and nowhere you need to be.'),
-      ('foix-castle', 'The castle of Foix above the town', 'La vallée', 'The castle at Foix, the great cave at Lombrives, and lunch in Ax-les-Thermes, the mountain spa town.')] %}
+      ('garden-with-bruce', 'Guests talking in the garden, Bruce on a lap', 'Le farniente', 'The pool, a glass of rosé, homemade ice cream, a corner of the library, and nowhere you need to be.'),
+      ('foix-castle', 'The castle of Foix above the old town', 'La vallée', 'The castle at Foix, the great cave at Lombrives, and lunch in Ax-les-Thermes, the mountain spa town.')] %}
     <li class="g-moment"><a class="g-moment__a" href="{{ url_for('workshops_public') }}">
       <img class="g-moment__img" src="{{ url_for('static', filename='img/retreats/' ~ slug ~ '-800.jpg') }}" alt="{{ alt }}" loading="lazy">
       <p class="g-moment__t" lang="fr">{{ fr }}</p>
