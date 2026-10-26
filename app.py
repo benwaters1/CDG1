@@ -66644,6 +66644,11 @@ def flush_wanted_translations(exc=None):
     lang = getattr(g, "_lang", None)
     if not lang or lang == "en":
         return
+    if g.pop("_wanted_ours_only", False):
+        ours = template_sentences()
+        wanted = [key for key in wanted if key in ours]
+        if not wanted:
+            return
     seen = where_seen() if request else None
     stamp = datetime.now(timezone.utc).isoformat()
     rows = [(key, lang, seen, stamp) for key in dict.fromkeys(wanted)]
@@ -66779,9 +66784,6 @@ def translate_page(html_text, lang, ours_only=False):
         pieces.append(lead + _as_markup(said) + tail)
         last = end
         changed = True
-    if missing and ours_only:
-        ours = template_sentences()
-        missing = [key for key in missing if key in ours]
     if missing:
         # Held on g and written after the response, never mid-render:
         # a guest is waiting for this page and a write lock is not
@@ -66791,6 +66793,11 @@ def translate_page(html_text, lang, ours_only=False):
             if pending is None:
                 pending = g._wanted_translations = []
             pending.extend(missing)
+            if ours_only:
+                # Narrowed when it is written, not here: reading the template
+                # files costs a third of a second the first time, and that is
+                # not the guest's to wait for.
+                g._wanted_ours_only = True
     if not changed:
         return html_text
     pieces.append(html_text[last:])
