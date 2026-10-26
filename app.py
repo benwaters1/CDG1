@@ -66595,7 +66595,7 @@ def flush_wanted_translations(exc=None):
     lang = getattr(g, "_lang", None)
     if not lang or lang == "en":
         return
-    seen = request.path[:200] if request else None
+    seen = where_seen() if request else None
     stamp = datetime.now(timezone.utc).isoformat()
     rows = [(key, lang, seen, stamp) for key in dict.fromkeys(wanted)]
     note_wanted_translations(rows)
@@ -66684,11 +66684,15 @@ def _translated_values(lang, table, remembered):
     return values
 
 
-def translate_page(html_text, lang):
+def translate_page(html_text, lang, ours_only=False):
     """One rendered page, with every sentence there is a translation for.
 
     Returns the page unchanged when there is nothing to do, so the caller can
     leave the response body alone rather than setting it to itself.
+
+    ours_only: a guest's own page. It is translated exactly the same, but of
+    what is missing only the house's own words are written down -- see
+    is_a_guests_own_page.
     """
     if lang not in translations.TABLES:
         return html_text
@@ -66726,6 +66730,9 @@ def translate_page(html_text, lang):
         pieces.append(lead + _as_markup(said) + tail)
         last = end
         changed = True
+    if missing and ours_only:
+        ours = template_sentences()
+        missing = [key for key in missing if key in ours]
     if missing:
         # Held on g and written after the response, never mid-render:
         # a guest is waiting for this page and a write lock is not
@@ -66739,6 +66746,165 @@ def translate_page(html_text, lang):
         return html_text
     pieces.append(html_text[last:])
     return "".join(pieces)
+
+
+# ---------------------------------------------------------------------------
+# A guest's own pages: only the house's words are written down.
+#
+# The wanted list is sent to a model on the footing that it only ever holds
+# sentences already printed on public pages for anybody to read. A guest's own
+# pages break that. /book/manage/<token> prints the special requests the guest
+# typed, so a French reader of "my husband has a severe nut allergy please"
+# filed that sentence as wanting French, the job sent it to Anthropic, and the
+# answer was kept for good -- under a privacy notice saying Anthropic is sent
+# nothing about a guest's health, and that a dietary note is deleted once the
+# booking is over. Found 23 Oct 2026; nothing errored.
+#
+# WHY NOT translate="no" ON THE TEMPLATES. Those pages arrive whole in
+# handovers, so markup around each guest-written field would survive exactly
+# one -- the reason serve_our_own_photographs works on the response. This
+# needs nothing from the templates. On a guest's own page a sentence is
+# written down only if it is OURS: it stands, word for word, as a run of text
+# in one of our template files. Anything a guest wrote, and anything filled in
+# from a record, is not in a template, so it is never filed -- whichever field
+# it arrives through, including fields that do not exist yet.
+#
+# The page is still translated from everything the house already has. Only
+# the note of what is missing is narrowed, and the cost is small: a sentence
+# with a name or a date in the middle of it waits until it is seen somewhere
+# that is not one person's page.
+# ---------------------------------------------------------------------------
+
+# The keys a guest's own page is opened with: /book/manage/<manage_token>,
+# /my/<token>, /stay/<share_token>, /door/<door_token>, and the Stripe return
+# pages' ?session_id=.
+_A_GUESTS_KEY = re.compile(r"token|session_id", re.I)
+
+
+def is_a_guests_own_page():
+    """Whether the page being answered is about one particular guest.
+
+    Read from the request, never from the page, so it holds whatever the
+    template looks like this week. Any one of these is enough:
+
+      - the address carries a guest's key, in the route or the query. The
+        route lives in app.py, so a token page written tomorrow is covered
+        the day it is written;
+      - it answers a form, and what comes back is about what was sent;
+      - the reader has been recognised as a guest (remember_guest), which
+        puts their name on pages that are otherwise anybody's.
+
+    Not the robots meta, tempting as it is: every page is noindex until the
+    site goes live, and this would have stopped the whole site being filed.
+    """
+    if not has_request_context():
+        return False
+    if request.method not in ("GET", "HEAD"):
+        return True
+    if any(_A_GUESTS_KEY.search(k) for k in (request.view_args or {})):
+        return True
+    if any(_A_GUESTS_KEY.search(k) for k in request.args):
+        return True
+    return bool(session.get("guest_email"))
+
+
+def address_is_a_guests_page(path):
+    """The same test for a stored address -- page_translations.seen_on."""
+    if not path:
+        return False
+    try:
+        _endpoint, args = app.url_map.bind("localhost").match(path, method="GET")
+    except Exception:
+        return False
+    return any(_A_GUESTS_KEY.search(k) for k in args)
+
+
+# Jinja's own syntax, comments and tags: everything in a template source that
+# is not a run of the words it prints.
+_NOT_TEMPLATE_TEXT = re.compile(
+    r"\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\}|<!--.*?-->|<[^>]*>", re.S)
+# The words inside t("...") are ours too: a string the table has no entry
+# for is printed in English and is as much wanted as any other.
+_T_CALL = re.compile(r"""\bt\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')""")
+_TEMPLATE_SENTENCES = None
+
+
+def template_sentences():
+    """Every run of text our templates print, in the form a page key takes.
+
+    Read from the template files once per process. They cannot change inside
+    a running process, and a handover is a deploy, which restarts it -- so the
+    set is never a handover behind, which a kept list would be by Friday.
+    """
+    global _TEMPLATE_SENTENCES
+    if _TEMPLATE_SENTENCES is not None:
+        return _TEMPLATE_SENTENCES
+    found = set()
+    env = app.jinja_env
+    for name in env.list_templates():
+        try:
+            source = env.loader.get_source(env, name)[0]
+        except Exception:
+            continue
+        for piece in _NOT_TEMPLATE_TEXT.split(source):
+            key = translation_key(html_unescape(piece))
+            if key:
+                found.add(key)
+        for double, single in _T_CALL.findall(source):
+            key = translation_key(double or single)
+            if key:
+                found.add(key)
+    _TEMPLATE_SENTENCES = frozenset(found)
+    return _TEMPLATE_SENTENCES
+
+
+def where_seen():
+    """The address to note a sentence against, without a guest's key in it.
+
+    seen_on is kept for as long as the sentence is, and /book/manage/<token>
+    is a door into one guest's booking. The route's own pattern says just as
+    much about where the sentence was."""
+    rule = request.url_rule
+    if rule is not None and any(_A_GUESTS_KEY.search(k)
+                                for k in (request.view_args or {})):
+        return rule.rule[:200]
+    return request.path[:200]
+
+
+def purge_guest_page_translations(conn):
+    """Delete what was written down off a guest's own page and is not ours.
+
+    For the rows filed before is_a_guests_own_page existed, and for any filed
+    by a process still running the old code during a deploy. Every status
+    goes, 'approved' included: a guest's dietary note does not become the
+    house's to keep because somebody approved its French, and a house
+    sentence deleted here is simply filed again the next time it is seen on
+    a page that is nobody's in particular.
+
+    Called by the translation job before it sends anything, and by the daily
+    retention pass, so it happens whether or not the job is switched on.
+    """
+    places = [r["seen_on"] for r in conn.execute(
+        "SELECT DISTINCT seen_on FROM page_translations WHERE seen_on IS NOT NULL")]
+    ours = None
+    doomed = []
+    for place in places:
+        if not address_is_a_guests_page(place):
+            continue
+        if ours is None:
+            ours = template_sentences()
+        doomed.extend(
+            (r["id"],) for r in conn.execute(
+                "SELECT id, source_text FROM page_translations WHERE seen_on = ?",
+                (place,))
+            if r["source_text"] not in ours)
+    if not doomed:
+        return 0
+    conn.executemany("DELETE FROM page_translations WHERE id = ?", doomed)
+    conn.commit()
+    # Or a deleted translation goes on being served until the cache runs out.
+    translation_memory(force=True)
+    return len(doomed)
 
 
 # The public pages carry `<body class="g...">` and the staff app carries
@@ -66771,7 +66937,7 @@ def translate_public_page(response):
     if _PUBLIC_BODY not in raw:
         return response
     body = raw.decode("utf-8", "replace")
-    done = translate_page(body, lang)
+    done = translate_page(body, lang, ours_only=is_a_guests_own_page())
     if done != body:
         response.set_data(done)
     return response
@@ -96243,6 +96409,10 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_sent_outbox(conn))
     cleared.update(purge_held_texts(conn))
     cleared.update(purge_guest_sessions(conn))
+    # A guest's own words, filed for translation off their own page before
+    # that page stopped filing them. The translation job does this too; here
+    # it happens even with that job switched off.
+    cleared["translated guest words"] = purge_guest_page_translations(conn)
     # The keys that make an offline action safe to send twice. No handset is
     # still holding a tap from a month ago, and a row per tap for ever is a
     # table somebody eventually clears out in a hurry.
@@ -99654,6 +99824,9 @@ def run_page_translation_job(conn, limit=None):
     actually served, so a handover that redraws the site on Friday is
     translated by the job without anybody being told it happened.
     """
+    # First, and before the provider check: nothing written down off a
+    # guest's own page that is not the house's words is ever sent.
+    purge_guest_page_translations(conn)
     if not claude_configured():
         return "no model provider configured"
     budget = limit or TRANSLATION_MAX_PER_RUN
