@@ -87,6 +87,13 @@
       {%- if r.arrival_time %}
       <span class="mini-status status-onshift" style="margin-left:4px;">{{ r.arrival_time }}</span>
       {%- endif %}
+      {#- Online check-in from their own booking page: when it is done the
+          register has their fiches and this sheet has what they cannot eat. #}
+      {%- if r.checked_in_online %}
+      <span class="mini-status status-confirmed" style="margin-left:4px;">checked in online</span>
+      {%- else %}
+      <span class="mini-status status-pending" style="margin-left:4px;">not checked in online</span>
+      {%- endif %}
       {#- Which visit this is, when it is one worth saying at the door. The
           people most likely to come back were getting the same greeting as a
           stranger. #}
@@ -105,6 +112,17 @@
     <p>{{ b['party_size'] }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %}
       · {{ date_range(b['arrival_date'], b['departure_date']) }}
       · <span class="upload-hint">{{ b['reference_code'] }}</span></p>
+
+    {% if r.occasion %}
+    {# What they told us they are celebrating, and whether the room is ready
+       for it -- the task raised a few days before they come. #}
+    <p class="field-label">Celebrating</p>
+    <p>{{ r.occasion }}
+      {%- set op = r.occasion_prep %}
+      {%- if op %} · <a href="{{ url_for('occasions_page') }}#task-{{ op.task_id }}" class="small-link">
+        {%- if op.status == 'done' %}prepared{% elif op.total %}{{ op.done }} of {{ op.total }} done{% else %}to prepare{% endif %}</a>
+      {%- else %} · <a href="{{ url_for('occasions_page') }}" class="small-link">not on the list yet</a>{% endif %}</p>
+    {% endif %}
 
     {% if r.dietary %}
     <p class="field-label">Cannot eat</p>

@@ -84,10 +84,6 @@ def _paper(s):
     with m.app.test_request_context(base_url="https://www.chateaugudanes.com"):
         drawn = {}
         for key, _label, subject, body in m.DEFAULT_EMAIL_TEMPLATES:
-            if key in m.UNWRITTEN_LETTERS:
-                # It ships with no words (the atelier recap), so it is drawn
-                # with some: the paper is the house's whatever is written on it.
-                subject, body = "A letter", "Hi {guest_name},\n\nA paragraph.\n\n— Château de Gudanes"
             drawn[key] = m.preview_email_template(key, subject, body)["html"]
     empty = [k for k, h in drawn.items() if not h]
     s.check("every letter the house sends from a template is drawn", not empty, detail=empty)

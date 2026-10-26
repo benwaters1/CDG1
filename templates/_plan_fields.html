@@ -1,0 +1,38 @@
+{# The fields a plan has, for adding one and for editing one. `plan` is the
+   row being edited, or None. #}
+{% set pid = plan.id if plan else 'new' %}
+<div class="refund-fields">
+  <div>
+    <label class="field-label" for="plan-name-{{ pid }}">Name</label>
+    <input type="text" id="plan-name-{{ pid }}" name="name" value="{{ plan.name if plan }}"
+           required maxlength="80" placeholder="The grounds">
+  </div>
+  <div>
+    <label class="field-label" for="plan-kind-{{ pid }}">A picture of</label>
+    <select id="plan-kind-{{ pid }}" name="kind">
+      {% for k, label in kinds.items() %}
+      <option value="{{ k }}" {{ 'selected' if plan and plan.kind == k }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label" for="plan-source-{{ pid }}">Where the picture is from</label>
+    <input type="text" id="plan-source-{{ pid }}" name="source" value="{{ (plan.source or '') if plan }}"
+           maxlength="200" placeholder="Géoportail aerial, 2025">
+  </div>
+  <div>
+    <label class="field-label" for="plan-to-{{ pid }}">Reports go to</label>
+    <select id="plan-to-{{ pid }}" name="reports_to_user_id">
+      <option value="">The owner&rsquo;s list</option>
+      {% for u in people %}
+      <option value="{{ u.id }}" {{ 'selected' if plan and plan.reports_to_user_id == u.id }}>{{ u.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label" for="plan-order-{{ pid }}">Order</label>
+    <input type="number" id="plan-order-{{ pid }}" name="sort_order" value="{{ plan.sort_order if plan else 0 }}"
+           min="-999" max="999">
+    <p class="field-hint">Lowest first. The first is the one a report opens on.</p>
+  </div>
+</div>

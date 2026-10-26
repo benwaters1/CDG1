@@ -238,15 +238,16 @@ def _run(s, oc, ec, conn, mail):
             detail=str(shipped)[:200])
     row = conn.execute("SELECT * FROM email_templates WHERE template_key = ?",
                        (m.RECAP_TEMPLATE_KEY,)).fetchone()
-    s.check("the editor marks it Not written yet",
-            row is not None and m.template_state(row, {}) == "Not written yet")
+    s.check("the editor marks it No wording yet",
+            row is not None and m.template_state(row, {}) == "No wording yet")
     editor = oc.get("/management/email-templates")
     s.check("and lists it", m.EMAIL_TEMPLATE_LABELS[m.RECAP_TEMPLATE_KEY]
             in visible_text(editor.get_data(as_text=True)), editor)
     r = oc.post(f"/management/email-templates/{m.RECAP_TEMPLATE_KEY}/restore",
                 follow_redirects=True)
-    s.check("Restore original wording refuses, since there is none to restore",
-            any("no wording" in f for f in flashes(r)), r, detail=str(flashes(r)))
+    s.check("Restore original wording leaves it empty: there is nothing to restore",
+            any("shipped with no wording" in f for f in flashes(r))
+            and m.recap_wording(conn) is None, r, detail=str(flashes(r)))
 
     s.section("A draft is assembled, and nothing is sent unapproved")
     page = oc.get(page_url)
@@ -315,7 +316,7 @@ def _run(s, oc, ec, conn, mail):
     row = conn.execute("SELECT * FROM email_templates WHERE template_key = ?",
                        (m.RECAP_TEMPLATE_KEY,)).fetchone()
     s.check("and the editor stops calling it unwritten",
-            m.template_state(row, {}) != "Not written yet")
+            m.template_state(row, {}) != "No wording yet")
 
     s.section("What whoever taught it wrote goes in, from their own page")
     token = conn.execute("SELECT instructor_token FROM workshop_sessions WHERE id = ?",

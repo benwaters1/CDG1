@@ -112,6 +112,9 @@ NOT_BROWSED = (
     "management_outlook",
     # The dashboard Home already links to, at the address admin./ opens on.
     "admin_home",
+    # The house guide as a guest reads it, opened from the editor it previews,
+    # one link per language; the editor itself is in the nav and the palette.
+    "preview_house_guide",
 )
 
 

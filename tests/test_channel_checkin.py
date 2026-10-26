@@ -157,7 +157,10 @@ def _checks(s, conn, oc, ec):
     base = {"first_names": "Hana", "surname": "Novak", "guest_email": "zzotaci.hana@example.invalid",
             "guest_phone": "+420 601 234 567", "guest_address": "Na Prikope 1", "guest_city": "Praha",
             "guest_postcode": "11000", "guest_country": "Czech Republic", "nationality": "Czech",
-            "estimated_arrival_time": "16:00-17:00", "dietary_notes": "No nuts", "agree": "on"}
+            "estimated_arrival_time": "16:00-17:00", "dietary_notes": "No nuts", "agree": "on",
+            # R. 814-1: the fiche is signed by the guest (23 October 2026).
+            # Typed, as a guest with no box to draw in signs.
+            "signed_name": "Hana Novak"}
     refused = guest.post(url, data=base)
     s.check("not French and no date of birth: refused, saying why",
             refused.status_code == 200 and "date and place of birth" in refused.get_data(as_text=True)
@@ -171,6 +174,11 @@ def _checks(s, conn, oc, ec):
     fiche = conn.execute("SELECT * FROM channel_police_register WHERE ota_reservation_id = ?", (sid,)).fetchone()
     s.check("and the police fiche made from it", fiche and fiche["surname"] == "Novak"
             and fiche["born_on"] == "1990-04-12" and fiche["nationality"] == "Czech")
+    s.check("signed by the guest, with the mobile and email the law lists",
+            fiche and fiche["signature"] == "Hana Novak" and fiche["signed_at"]
+            and fiche["phone"] == "+420 601 234 567"
+            and fiche["email"] == "zzotaci.hana@example.invalid",
+            detail=str(dict(fiche) if fiche else None))
     prof = conn.execute("SELECT * FROM guests WHERE id = ?", (row["linked_guest_id"],)).fetchone()
     s.check("their profile is the one with their own address", prof and prof["email"] == "zzotaci.hana@example.invalid")
     s.check("the page thanks them", "you are checked in" in guest.get(url).get_data(as_text=True))

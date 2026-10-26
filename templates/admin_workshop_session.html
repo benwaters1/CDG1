@@ -116,7 +116,10 @@
         <td>
           {% if r.holding %}<span class="mini-status status-pending">waiting for the deposit until {{ r.hold_until|house_when }}</span>
           {% elif r.status == 'pending' %}<span class="mini-status status-pending">waiting on you</span>
-          {% else %}<span class="mini-status status-confirmed">confirmed</span>{% endif %}
+          {% else %}<span class="mini-status status-confirmed">confirmed</span>
+          {#- Online check-in from their registration page: done, their
+              fiches are on the register and their arrival time is here. #}
+          {% if row['checkin_done_at'] %}<span class="mini-status status-confirmed">checked in online{% if row['estimated_arrival_time'] %} · {{ row['estimated_arrival_time'] }}{% endif %}</span>{% endif %}{% endif %}
           <span class="upload-hint">{{ 'a room to themselves' if row['occupancy_type'] == 'single' else 'sharing' }}
             {%- if row['requested_roommate'] %} &middot; with {{ row['requested_roommate'] }}{% endif %}</span>
         </td>

@@ -397,10 +397,7 @@
       .then(function(d){
         f.psubject.textContent = d.subject;
         f.pbody.textContent = d.body;
-        if (f.frame) f.frame.srcdoc = d.html || ('<p style="font-family:sans-serif">' +
-            (!f.subject.value.trim() && !f.body.value.trim()
-              ? 'Nothing is written yet, so this letter does not go.'
-              : 'This letter goes as plain text only.') + '</p>');
+        if (f.frame) f.frame.srcdoc = d.html || '<p style="font-family:sans-serif">This letter goes as plain text only.</p>';
         if (d.refused){
           f.warn.hidden = false;
           f.warn.textContent = '';

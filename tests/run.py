@@ -75,6 +75,7 @@ SUITES = [
     "test_operations",
     "test_areas",
     "test_arrivals_sheet",
+    "test_occasion_prep",
     "test_approvals_money",
     "test_closing_loops",
     "test_list_view",
@@ -161,6 +162,8 @@ SUITES = [
     "test_booking_com_mail",
     "test_booking_com_stays",
     "test_door_lock",
+    "test_house_guide",
+    "test_deploy_behind_main",
     "test_room_lineup",
     "test_dining_switch",
     "test_newsletter",
@@ -171,6 +174,7 @@ SUITES = [
     "test_destructive",
     "test_money_ahead",
     "test_maintenance",
+    "test_site_plans",
     "test_backup_alert",
     "test_payments",
     "test_stripe_webhook",
@@ -271,6 +275,7 @@ SUITES = [
     "test_front_desk",
     "test_every_stay_has_a_profile",
     "test_channel_checkin",
+    "test_direct_checkin",
     "test_extras_at_booking",
     "test_chateau_tour",
     "test_no_control_characters",
@@ -359,6 +364,8 @@ SUITES = [
     "test_breakages",
     "test_house_upkeep",
     "test_restaurant_four",
+    "test_restaurant_instant",
+    "test_dining_days",
     "test_buying",
     "test_kitchen",
     "test_kitchen_wall",
@@ -376,6 +383,7 @@ SUITES = [
     "test_share_link",
     "test_travelling_together",
     "test_weather",
+    "test_weather_jobs",
     "test_own_record",
     "test_utc_slices",
     "test_stamp_times",
@@ -435,6 +443,7 @@ SUITES = [
     "test_google_setup_z30",
     "test_contact_topic_z29",
     "test_card_copy_2026_10_22",
+    "test_price_a_night",
     "test_languages_page",
     "test_share_images",
     "test_stripe_webhook_tool",
@@ -524,6 +533,8 @@ SUITES = [
     "test_send_check_french_reply",
     # Shared inboxes and a pinned Guest pane, 19 October 2026.
     "test_addin_shared_inboxes",
+    # 22 October 2026: a new add-in version reaches the owner as a task.
+    "test_addin_version",
     "test_house_calendar",
     "test_house_calendar_default",
     "test_calendar_cards",
@@ -779,6 +790,9 @@ def main(argv):
 
     print(f"Database: {_harness.SCRATCH_DB}")
     print("(a throwaway copy — the real one is untouched)")
+    print(f"Today: {_harness.PINNED_START:%A %d %B %Y}, from "
+          f"{_harness.PINNED_START:%H:%M} at the house")
+    print("(pinned for the whole run, whatever the date — GUDANES_TEST_TODAY moves it)")
     print("\n== Self-check")
     control_ok = _positive_control()
     registry_ok = _registry_complete()
