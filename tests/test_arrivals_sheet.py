@@ -37,6 +37,9 @@ def _cleanup():
                  "(SELECT id FROM bookings WHERE guest_name LIKE ?)", (TAG + "%",))
     conn.execute("DELETE FROM booking_extras WHERE booking_id IN "
                  "(SELECT id FROM bookings WHERE guest_name LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM extras WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM tasks WHERE origin = 'guest_request' AND title LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM restaurant_bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM ota_reservations WHERE reservation_number LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM workshop_bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM workshop_sessions WHERE notes = ?", (TAG,))
@@ -68,8 +71,16 @@ def _booking(ref, *, room_id, arrival, nights=2, **extra):
 
 
 def _days(page):
-    """The page from the first week on: the days, not the calendar above them."""
+    """The days: below the calendar above them, and above the list of what
+    is booked after the window, which both name guests too."""
     at = page.find('class="arr-week"')
+    end = page.find('id="later"')
+    return page[at:end if end > at else len(page)] if at >= 0 else ""
+
+
+def _later(page):
+    """The list of what is booked after the window."""
+    at = page.find('id="later"')
     return page[at:] if at >= 0 else ""
 
 
@@ -121,8 +132,12 @@ def run():
     s.check("and a guest leaving next week, under next week",
             0 < _days(body).find(">Next week") < _days(body).find(f"{TAG} GOES"),
             detail="a room is not ready for an arrival until the departure has gone")
-    s.check("the Monday after is not", f"{TAG} BEYOND" not in body,
+    s.check("the Monday after is not one of the days", f"{TAG} BEYOND" not in _days(body),
             detail="the window ends with next week")
+    s.check("but it is listed as booked further ahead",
+            f"{TAG} BEYOND" in _later(body) and f"{TAG} LAST" not in _later(body),
+            detail="printed 'from tomorrow onwards', a stay after the fortnight was not "
+                   "on the paper at all (26 October 2026)")
     s.check("and the fortnight after is one click on",
             f"date={(last + timedelta(days=1)).isoformat()}" in body)
 
@@ -298,6 +313,33 @@ def run():
             """INSERT INTO booking_extras (category, booking_id, name, unit_price, quantity,
                notes, status, scheduled_for, created_at) VALUES ('room', ?, ?, 40, 1, ?, ?, ?, ?)""",
             (bid, name, notes or None, status, when.isoformat() if when else None, now))
+    # Two boards from a catalogue line that needs three days' notice: one
+    # arranged, one not -- the Extras page's own rule, read by the sheet.
+    board = conn.execute(
+        "INSERT INTO extras (name, price, active, sort_order, lead_time_days) VALUES (?, 80, 0, 999, 3)",
+        (f"{TAG} Board",)).lastrowid
+    for name, arranged in ((f"{TAG} Board unarranged", None), (f"{TAG} Board arranged", now)):
+        conn.execute(
+            """INSERT INTO booking_extras (category, booking_id, extra_id, name, unit_price, quantity,
+               status, scheduled_for, created_at, arranged_at)
+               VALUES ('room', ?, ?, ?, 80, 1, 'confirmed', ?, ?, ?)""",
+            (rich["id"], board, name, (w2 + timedelta(days=2)).isoformat(), now, arranged))
+    # What the guest wrote from their booking page -- a task on the stay --
+    # one still to do and one done; and a dinner at La Table for each of them.
+    for words, status in ((f"{TAG} a note for Jane's anniversary on arrival", "open"),
+                          (f"{TAG} towels for the pool", "done")):
+        conn.execute(
+            """INSERT INTO tasks (title, notes, priority, due_date, status, created_at, origin,
+               booking_id) VALUES (?, ?, 'normal', ?, ?, ?, 'guest_request', ?)""",
+            (words[:120], words, (w2 + timedelta(days=2)).isoformat(), status, now, rich["id"]))
+    for bid, ref, day_, status in ((rich["id"], "RD1", 3, "pending"), (stayer["id"], "RD2", 1, "confirmed")):
+        conn.execute(
+            """INSERT INTO restaurant_bookings (reference_code, manage_token, guest_name, guest_email,
+               party_size, dinner_date, dietary_notes, status, booking_id, created_at)
+               VALUES (?, ?, ?, 'zzar.dinner@example.invalid', 2, ?, ?, ?, ?, ?)""",
+            (f"{TAG}-{ref}", f"tok{TAG}{ref}r".lower(), f"{TAG} Diner {ref}",
+             (w2 + timedelta(days=day_)).isoformat(), "no pork at dinner" if ref == "RD1" else None,
+             status, bid, now))
     # The owner's closure over RICH's nights, as the house closes a room over a
     # Booking.com stay so the site cannot sell it twice: holding the room for
     # the guest, not a second booking. And one over two empty nights.
@@ -378,6 +420,9 @@ def run():
     s.check("and a Booking.com stay that did not say how many is marked, not counted as none",
             cal["totals"][4]["unknown"] and not cal["totals"][3]["unknown"],
             detail=str([t["unknown"] for t in cal["totals"][:7]]))
+    s.check("a named Booking.com guest goes by surname in a narrow cell, like everyone else",
+            unmatched and any(c["short"] == "Channel" for c in unmatched["cells"] if c["kind"] == "channel"),
+            detail=str(unmatched and [c["short"] for c in unmatched["cells"]]))
 
     s.section("On paper: every arrival's extras, time, telephone and asks")
     page = oc.get(f"/admin/arrivals?date={w2.isoformat()}").get_data(as_text=True)
@@ -410,6 +455,26 @@ def run():
     s.check("a Booking.com guest's time, telephone and ask, from their check-in",
             "19:30" in text and "+44 7700 900123" in text and "late check-in please" in text,
             detail="channel_stays() answers None for all three")
+    unarranged = text[text.find(f"{TAG} Board unarranged"):][:90]
+    arranged = text[text.find(f"{TAG} Board arranged"):][:60]
+    s.check("an extra that needs arranging ahead and has not been says so",
+            "not arranged yet" in unarranged.lower(), detail=unarranged)
+    s.check("and one that has been does not",
+            f"{TAG} Board arranged" in text and "not arranged" not in arranged.lower(), detail=arranged)
+    s.check("and one that needs no arranging is not called unarranged",
+            "not arranged" not in text[text.find(f"{TAG} Picnic"):][:40].lower())
+    asked = text[text.find("Asked from their booking page"):][:300]
+    s.check("what they asked from their booking page, in their words",
+            f"{TAG} a note for Jane's anniversary on arrival" in asked
+            and "to do" in asked.lower(),
+            detail="a task on the stay, which the stay's page showed and the sheet did not")
+    s.check("and one done is marked done",
+            f"{TAG} towels for the pool" in asked and "done" in asked[asked.find("towels"):].lower())
+    card = text[text.find(f"{TAG} RICH"):]
+    dinner = card[card.find("Dinner at La Table"):][:160]
+    s.check("their dinner at La Table, with what they cannot eat and that it is to confirm",
+            "no pork at dinner" in dinner and "to confirm" in dinner.lower()
+            and "2 people" in dinner, detail=dinner)
 
     conn = db()
     with m.app.test_request_context("/"):
@@ -419,7 +484,8 @@ def run():
     conn.close()
     s.check("a day with only an extra for somebody already here is not quiet",
             not quiet_but_wanted["nothing_doing"]
-            and [x["name"] for x in quiet_but_wanted["extras_here"]] == [f"{TAG} Late checkout"],
+            and sorted(x["name"] for x in quiet_but_wanted["extras_here"])
+            == ["Dinner at La Table, 2", f"{TAG} Late checkout"],
             detail=str([x["name"] for x in quiet_but_wanted["extras_here"]]))
     s.check("and it is on the page under the guests already here",
             "Extras for guests already here" in text and f"{TAG} Late checkout" in text)
