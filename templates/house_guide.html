@@ -1,0 +1,92 @@
+{% extends "public_base.html" %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block title %}{{ t('The House') }}{% endblock %}
+{% set sticky_bar = 'none' %}
+{% block content %}
+
+{# THE HOUSE, FOR A GUEST WHO IS STAYING. App-owned: no design handover has
+   delivered this file, so none will overwrite it (the door page is the same).
+   Reached from the card on manage_booking.html and shared_stay.html
+   (_house_card.html), and only for a confirmed stay that is not over.
+
+   Every word in a section is the owner's, written on /admin/house-guide in
+   each language; the app adds only the times it already knows, read from
+   where they live. All of it sits inside translate="no": he writes each
+   language himself, and the Wi-Fi code must never reach the page translator,
+   which files what it sees and sends it to a model. Noindex, like every page
+   that is one guest's own. #}
+
+<section class="g-sec g-short g-hguide"><div class="g-wrap g-wrap--narrow">
+  {% if preview %}
+  <p class="g-hguide__preview" translate="no">Preview. This is what a guest reads from their booking
+    page, in the language they read the site in. They see the Wi-Fi code only from the number of
+    days before arrival you set, until checkout.</p>
+  {% endif %}
+  <p class="g-eyebrow">Château de Gudanes</p>
+  <h1 class="g-display">{{ t('The House') }}</h1>
+  {% if booking %}
+  <p class="g-p">{{ booking['room_name'] }} · {{ date_range(booking['arrival_date'], booking['departure_date']) }}</p>
+  {% endif %}
+
+  {% if sections %}
+  {% if sections|length > 3 %}
+  {# A long page on a phone: the titles first, each a jump to its section. #}
+  <nav class="g-hguide__toc" translate="no" aria-label="{{ t('The House') }}">
+    {% for s in sections if s.title %}<a href="#house-{{ s.id }}" lang="{{ s.title_lang }}">{{ s.title }}</a>{% endfor %}
+  </nav>
+  {% endif %}
+
+  {% for s in sections %}
+  <section class="g-mb-card g-hguide__sec" id="house-{{ s.id }}" translate="no">
+    {% if s.title %}<h2 class="g-hguide__h" lang="{{ s.title_lang }}">{{ s.title }}</h2>{% endif %}
+    {% if s.facts %}
+    <ul class="g-hguide__facts">{% for fact in s.facts %}<li>{{ fact }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if s.network or s.code %}
+    <dl class="g-hguide__wifi">
+      {% if s.network %}<div><dt>{{ t('Network') }}</dt><dd><code>{{ s.network }}</code></dd></div>{% endif %}
+      {% if s.code %}<div><dt>{{ t('Code') }}</dt><dd><code class="g-hguide__code">{{ s.code }}</code></dd></div>{% endif %}
+    </dl>
+    {% endif %}
+    {% if s.code_opens %}
+    <p class="g-hint">{{ t('The code will show here from {date}.', date=s.code_opens) }}</p>
+    {% endif %}
+    {% if s.body %}<div class="g-hguide__body" lang="{{ s.body_lang }}">{{ s.body }}</div>{% endif %}
+  </section>
+  {% endfor %}
+  {% else %}
+  <p class="g-p">{{ t('Nothing has been written here yet.') }}</p>
+  {% endif %}
+
+  {# STAGE TWO GOES HERE, and is not built: a plan of the house with the
+     accessible areas marked, on the owner's own drawing or photograph. It
+     arrives as a section kind ('plan' in HOUSE_GUIDE_KINDS) so he places it
+     among the rest, drawn by the pinnable-plan work begun for the grounds
+     map. The app never draws a floor plan of its own: a drawn one was
+     rejected as inaccurate on 9 October 2026. #}
+
+  <p class="g-hint g-hguide__back"><a href="{{ back_url }}">{{ back_label }}</a></p>
+</div></section>
+
+<style>
+.g-hguide__preview{ background: var(--sand-2, #f3eee4); border-left: 2px solid var(--stone, #b9a77c);
+  padding: var(--s3) var(--s4); margin: 0 0 var(--s5); font-size: 15px; }
+.g-hguide__toc{ display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: var(--s4) 0 var(--s5); }
+.g-hguide__toc a{ display: inline-flex; align-items: center; min-height: 44px; }
+.g-hguide__sec{ padding: var(--s5); scroll-margin-top: var(--s5); }
+.g-hguide__h{ font-family: var(--display); font-weight: 400; font-size: var(--t-lede, 1.35rem);
+  color: var(--blue-deep); margin: 0 0 var(--s3); overflow-wrap: anywhere; }
+.g-hguide__facts{ list-style: none; margin: 0 0 var(--s3); padding: 0; font-size: 17px; }
+.g-hguide__facts li{ padding: var(--s1) 0; }
+.g-hguide__wifi{ margin: 0 0 var(--s3); }
+.g-hguide__wifi div{ display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s1) var(--s4);
+  padding: var(--s2) 0; border-bottom: 1px solid var(--line); }
+.g-hguide__wifi dt{ min-width: 6rem; }
+.g-hguide__wifi dd{ margin: 0; flex: 1 1 12rem; }
+.g-hguide__wifi code{ font-size: 18px; overflow-wrap: anywhere; }
+.g-hguide__code{ font-size: 22px !important; letter-spacing: .04em; user-select: all; -webkit-user-select: all; }
+.g-hguide__body{ white-space: pre-line; font-size: 17px; line-height: 1.6; overflow-wrap: anywhere; }
+.g-hguide__back{ margin-top: var(--s5); }
+@media (max-width: 34rem){ .g-hguide__sec{ padding: var(--s4); } }
+</style>
+{% endblock %}

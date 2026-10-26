@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Weather jobs{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Weather jobs</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('maintenance_page') }}" class="btn-ghost">Maintenance</a>
+    <a href="{{ url_for('admin_automation') }}" class="btn-ghost">Automation</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The jobs that only count if they are done before the weather arrives. When the forecast crosses
+  a line below, each job on that list becomes a task for the day it needs doing, on the
+  <a href="{{ url_for('ops_calendar') }}">calendar</a> and on that person's Today list, saying what
+  was forecast. Weather arriving before {{ morning }}:00 is prepared for the evening before, so a
+  frost at six on Thursday is Wednesday evening's job. If the forecast changes and the weather is
+  no longer coming, the jobs close on their own and say why; so does one whose day went by.
+</p>
+
+{% if not switched_on %}
+<div class="alert-band" style="margin-bottom:12px;">
+  <strong>Switched off.</strong> Outdoor jobs from the forecast is off on the
+  <a href="{{ url_for('admin_automation') }}">automation page</a>, so nothing is fetched, raised or
+  closed until it is on again.
+</div>
+{% elif not forecast %}
+<div class="alert-band" style="margin-bottom:12px;">
+  <strong>No forecast yet.</strong> It is fetched every hour; the first one raises the jobs.
+</div>
+{% elif not forecast.fresh %}
+<div class="alert-band" style="margin-bottom:12px;">
+  <strong>The forecast is from {{ forecast.at.isoformat()|house_when }}.</strong>
+  Older than {{ fresh_hours }} hours, so nothing is raised or withdrawn until a fresh one arrives.
+</div>
+{% endif %}
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# ---- the days ahead --------------------------------------------------------- #}
+<h2 class="section-heading">The days ahead</h2>
+{% if not outlook %}
+<div class="empty-state">No forecast to read yet.</div>
+{% else %}
+<p class="upload-hint">
+  Fetched {{ forecast.at.isoformat()|house_when }}. Each day runs from {{ morning }}:00 to
+  {{ morning }}:00 the next morning, so its coldest hour is usually the dawn after it.
+  Jobs are raised for today and the {{ cfg.days_ahead }} day{{ '' if cfg.days_ahead == 1 else 's' }}
+  after; the rest is here to plan by.
+</p>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Day</th><th>Coldest</th><th>Strongest gusts</th><th>Hottest</th>
+    <th>What it asks for</th></tr></thead>
+  <tbody>
+  {% for o in outlook %}
+  <tr>
+    <th scope="row">{{ o.day }}{% if o.today %} <span class="upload-hint">today</span>{% endif %}
+      {% if not o.whole %}<br><span class="upload-hint">the forecast ends partway through</span>{% endif %}</th>
+    <td>{{ o.low }}</td>
+    <td>{{ o.gust }}{% if o.thunder %}<br><span class="upload-hint">thunderstorm from {{ o.thunder }}</span>{% endif %}</td>
+    <td>{{ o.high }}</td>
+    <td>
+      {% for a in o.asks %}
+        <span class="mini-status {{ 'status-pending' if a.why_not else 'status-declined' }}">{{ kind_words[a.kind] }}</span>
+        {{ a.words }}{% if a.why_not %} <span class="upload-hint">· no jobs: {{ a.why_not }}</span>{% endif %}<br>
+      {% else %}
+        <span class="upload-hint">nothing</span>
+      {% endfor %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{# ---- the lines and the lists -------------------------------------------------- #}
+<h2 class="section-heading">The lines, and the jobs for each</h2>
+<p class="upload-hint">
+  Once a job is raised it is only withdrawn when the forecast moves clearly back —
+  {{ margins.frost|int }}°C for frost and heat, {{ margins.storm|int }} km/h for wind — so a
+  forecast wobbling round the line does not raise and close the same job all afternoon. Moving a
+  line yourself takes effect at once.
+</p>
+<form method="post" action="{{ url_for('save_weather_jobs') }}" class="detail-card" style="max-width:940px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="form" value="weather_jobs">
+  {% for kind in kinds %}
+  {% set k = cfg.kinds[kind] %}
+  <h3 style="margin-top:{{ '0' if loop.first else '18px' }};">{{ kind_words[kind] }}</h3>
+  <div class="refund-fields">
+    <div>
+      <label class="field-label" for="wj-{{ kind }}-line">
+        {% if kind == 'frost' %}When the night's low is below (°C)
+        {% elif kind == 'storm' %}When gusts are above (km/h)
+        {% else %}When the day's high is above (°C){% endif %}</label>
+      <input id="wj-{{ kind }}-line" type="number" name="{{ kind }}_line" step="0.5"
+             min="{{ bounds[kind][0]|int }}" max="{{ bounds[kind][1]|int }}"
+             value="{{ '%g'|format(k.line) }}" required>
+    </div>
+    <div>
+      <label class="field-label" for="wj-{{ kind }}-who">Whose list they go on</label>
+      <select id="wj-{{ kind }}-who" name="{{ kind }}_who">
+        <option value="">Nobody — calendar only</option>
+        {% for p in people %}
+        <option value="{{ p['id'] }}" {{ 'selected' if k.who == p['id'] }}>{{ p['name'] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label class="field-label" for="wj-{{ kind }}-list">The jobs, one a line</label>
+      <textarea id="wj-{{ kind }}-list" name="{{ kind }}_list" rows="3">{{ k.jobs|join('\n') }}</textarea>
+      <p class="field-hint">Each becomes its own task, so each can be ticked on its own.</p>
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label class="amenity">
+        <input type="checkbox" name="{{ kind }}_on" value="1" {{ 'checked' if k.on }}>
+        <span>Raise these jobs</span>
+      </label>
+      {% if kind == 'storm' %}
+      <label class="amenity">
+        <input type="checkbox" name="storm_thunder" value="1" {{ 'checked' if k.thunder }}>
+        <span>A thunderstorm counts too, whatever the wind</span>
+      </label>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  <h3 style="margin-top:18px;">How far ahead</h3>
+  <div class="refund-fields">
+    <div>
+      <label class="field-label" for="wj-ahead">Days ahead to raise jobs for</label>
+      <input id="wj-ahead" type="number" name="days_ahead" min="0" max="{{ max_ahead }}" step="1"
+             value="{{ cfg.days_ahead }}" required>
+      <p class="field-hint">0 is today only. Further ahead, the forecast changes its mind more.</p>
+    </div>
+  </div>
+  <button type="submit" class="btn-primary" style="margin-top:10px;">Save</button>
+</form>
+
+{# ---- every job raised ----------------------------------------------------------- #}
+<h2 class="section-heading">Every job the forecast raised</h2>
+<p class="upload-hint">The last ninety days and the days ahead. A job is raised once for its day,
+  however often the forecast is fetched.</p>
+{% include "_list_toolbar.html" %}
+{% if not rows %}
+<div class="empty-state">{% if lv.filtered %}Nothing matches that. <a href="{{ url_for('weather_jobs_page') }}">Show all {{ lv.total }}</a>{% else %}The forecast has not asked for anything yet.{% endif %}</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Day</th><th>Job</th><th>Forecast</th><th>Where it stands</th><th>Whose</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  {% set st = stands(r) %}
+  <tr>
+    <td>{{ day_words(r['job_day']) }}</td>
+    <td>{{ r['job'] }}<br><span class="upload-hint">{{ kind_words.get(r['kind'], r['kind']) }}</span></td>
+    <td>{{ r['forecast'] }}</td>
+    <td><span class="mini-status {{ {'To do': 'status-pending', 'Done': 'status-confirmed', 'Withdrawn': 'status-inactive', 'Went by unticked': 'status-declined'}.get(st, 'status-inactive') }}">{{ st }}</span>
+      {% if r['closed_why'] and st in ('Withdrawn', 'Went by unticked') %}<br><span class="upload-hint">{{ r['closed_why'] }}</span>{% endif %}</td>
+    <td>{{ r['who'] or '—' }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% endblock %}

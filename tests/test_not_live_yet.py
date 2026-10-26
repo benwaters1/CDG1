@@ -286,9 +286,13 @@ def run():
                 "guest_mail_live()" in door and "writes_outside_the_house(" in door,
                 detail="there are two transports and which one is configured is "
                        "an environment variable somebody set months ago")
+        # Since 26 Oct 2026 both holds (Write to guests, and Guest emails) set
+        # one reason and share one block, which is what keeps the letter.
+        held_block = (door.split("if held_why:")[1].split("if resend_enabled()")[0]
+                      if "if held_why:" in door else "")
         s.check("and it holds rather than drops",
-                "queue_undelivered(" in door.split("guest_mail_live()")[0][-600:]
-                or "queue_undelivered(" in door.split("not guest_mail_live()")[1][:900],
+                "held_why = \"the house is not writing to guests yet\"" in door
+                and "queue_undelivered(" in held_block,
                 detail="held, so going live loses nothing")
         texting = src.split("def send_sms(")[1].split("\ndef ")[0]
         s.check("and the door texts go through asks the same question",

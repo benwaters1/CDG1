@@ -4530,6 +4530,9 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 }
 .g-key__v{ margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink); max-width: var(--m-tight); }
 .g .g-key__v a{ color: var(--blue-deep); }
+/* Where to book or read more, under a What's On card: smaller than the
+   description, and allowed to break inside a long address on a phone. */
+.g-key__links{ margin-top: var(--s2); font-size: 14px; color: var(--ink-soft); overflow-wrap: anywhere; }
 
 /* ==========================================================================
    EXTRAS WITH AND WITHOUT A PHOTOGRAPH
@@ -11026,6 +11029,9 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-mb-acts.g-mb-extra--noqty:has(> input[name="action"][value="add_extra"]){ grid-template-columns: minmax(0, 1fr); }
   .g .g-mb-acts.g-mb-extra--noqty:has(> input[name="action"][value="add_extra"]) > button{ grid-column: 1 / -1; }
 }
+/* 23 Oct - the extra a guest followed the letter before arrival to: marked, and not hidden under the sticky header */
+.g .g-mb-extra, .g #dinner{ scroll-margin-top: 96px; }
+.g .g-mb-extra--offered{ background: color-mix(in srgb, var(--gilt) 10%, transparent); box-shadow: inset 2px 0 0 var(--gilt); }
 
 /* 10 Oct - BOOKING PAGE, the end: cancelling (the advice once, the fold as a real link) and the bill with everything else */
 .g .g-mb-cancel{ margin-top: var(--s6); padding-top: var(--s4); border-top: 1px solid var(--line); }
@@ -11797,4 +11803,15 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-cal .g-cal__swatch{ background: transparent; border: 0; width: auto; height: auto; }
   .g .g-cal .g-cal__swatch::before{ content: "12"; font-size: 13px; color: rgba(20, 48, 95, .42); text-decoration: line-through; }
   .g .g-cal .g-cal__key{ font-size: 14px; }
+}
+
+/* "about €650 a night" under a workshop's price (owner, 23 Oct 2026): the same
+   look as "per person", tucked up under the price line. It is its own
+   line after the price rather than inside it, because the currency switcher
+   adds its "≈ £2,250 GBP" to the end of the price's line, and that belongs
+   beside the price it converts, not under the nightly figure. */
+.g .g-wscard__price:has(+ .g-pernight), .g .g-sit__rate:has(+ .g-pernight){ margin-bottom: 0; }
+.g .g-pernight{
+  margin: 2px 0 var(--s4);
+  font-family: var(--ui); font-size: 14.5px; line-height: 1.4; color: var(--ink-2);
 }

@@ -144,8 +144,7 @@
         {% endfor %}
       </div>
       <p class="upload-hint" id="nb_rooms_none" {{ 'hidden' if options|selectattr('free')|selectattr('fits')|list }}>
-        Nothing free for those nights and that party. Try other dates, or
-        <a href="{{ url_for('admin_waitlist') }}">put them on the waiting list</a>.</p>
+        Nothing free for those nights and that party. Try other dates.</p>
       <noscript>
         <p><button type="submit" formmethod="get" class="btn-mini">Show what's free for these dates</button></p>
       </noscript>

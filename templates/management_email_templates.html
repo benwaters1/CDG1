@@ -60,6 +60,7 @@
       <div>
         <strong>{{ t['label'] }}</strong>
         {% if state == 'Needs fixing' %}<span class="mini-status status-declined">needs fixing</span>
+        {% elif state == 'No wording yet' %}<span class="mini-status status-pending">no wording yet</span>
         {% elif state == 'Edited' %}<span class="mini-status status-upcoming">edited{% if t['updated_at'] %} {{ t['updated_at']|house_day|date_short }}{% endif %}</span>
         {% endif %}
         {% if drift.get(key) %}<span class="mini-status status-pending">out of step</span>{% endif %}
@@ -397,7 +398,10 @@
       .then(function(d){
         f.psubject.textContent = d.subject;
         f.pbody.textContent = d.body;
-        if (f.frame) f.frame.srcdoc = d.html || '<p style="font-family:sans-serif">This letter goes as plain text only.</p>';
+        if (f.frame) f.frame.srcdoc = d.html || ('<p style="font-family:sans-serif">' +
+            (!f.subject.value.trim() && !f.body.value.trim()
+              ? 'Nothing is written yet, so this letter does not go.'
+              : 'This letter goes as plain text only.') + '</p>');
         if (d.refused){
           f.warn.hidden = false;
           f.warn.textContent = '';

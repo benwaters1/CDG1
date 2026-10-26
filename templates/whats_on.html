@@ -52,13 +52,31 @@
 
   {% if upcoming %}
   <p class="g-eyebrow" style="margin-top:var(--s8)">Coming Up</p>
-  <h2 class="g-h2">Later this season</h2>
+  {# 26 Oct (owner's brief): the year's dates, not only markets, so "this season" became the year. Ski dates are provisional. #}
+  <h2 class="g-h2">Through the year</h2>
   <div class="g-agenda">
     {% for e in upcoming %}
     <article class="g-agenda__row">
       <div class="g-agenda__when">
         <span class="g-agenda__day">{{ e.date_label }}</span>
         {% if e.time_label %}<span class="g-agenda__time">{{ e.time_label }}</span>{% endif %}
+      </div>
+      <div class="g-agenda__what">
+        <h3 class="g-agenda__title">{{ e.title }}</h3>
+        {% if e.location %}<p class="g-agenda__loc">{{ e.location }}{% if e.distance %} · {{ e.distance }}{%- endif %}</p>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if all_year %}
+  <p class="g-eyebrow" style="margin-top:var(--s8)">All Year</p>
+  <div class="g-agenda">
+    {% for e in all_year %}
+    <article class="g-agenda__row">
+      <div class="g-agenda__when">
+        <span class="g-agenda__day">{{ e.date_label }}</span>
       </div>
       <div class="g-agenda__what">
         <h3 class="g-agenda__title">{{ e.title }}</h3>
@@ -136,7 +154,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Ax-les-Thermes · about twenty minutes</p>
-      <p class="g-key__v">A spa town in the mountains, with skiing at Ax 3 Domaines in winter, about half an hour away</p>
+      <p class="g-key__v">A spa town in the mountains, with skiing at Ax 3 Domaines in winter: about twenty minutes to the gondola in the town, or half an hour to drive up to the slopes</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Niaux · about twenty minutes</p>
@@ -186,7 +204,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Canyoning · Tarascon and Ax-les-Thermes</p>
-      <p class="g-key__v">Guided canyons with Wesh Canyon at Tarascon, or Adret Canyon&rsquo;s hot-water canyon at Ax</p>
+      <p class="g-key__v">Guided canyons with Wesh Canyon at Tarascon, or Adret Canyon&rsquo;s hot-water canyon, which meets in Ax and runs at Thu&egrave;s-entre-Valls in the Pyr&eacute;n&eacute;es-Orientales, more than an hour further on</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Fly fishing · Larcat, a few minutes away</p>
@@ -202,7 +220,7 @@
   <span class="g-hill" aria-hidden="true">{{ illus('ski') }}</span>
   <p class="g-fr">Le ski <span class="g-fr__en">Skiing</span></p>
   <h2 class="g-place">Skiing Nearby</h2>
-  <p class="g-p g-intro">Ax 3 Domaines, above Ax-les-Thermes, is about half an hour from the château; the Plateau de Beille, at the top of the château&rsquo;s road, is the first Nordic area in the Pyrénées, for cross-country skiing, snowshoes and sled dogs, about twenty-five minutes; there is snowshoeing too at the Chioula, above Ax; and Andorra is about an hour.</p>
+  <p class="g-p g-intro">Ax 3 Domaines, above Ax-les-Thermes, is about twenty minutes from the château to the gondola in the town, or half an hour to drive up to the slopes; the Plateau de Beille, at the top of the château&rsquo;s road, is the first Nordic area in the Pyrénées, for cross-country skiing, snowshoes and sled dogs, about twenty-five minutes; there is snowshoeing too at the Chioula, above Ax; and Andorra is about an hour.</p>
   <ul class="g-befgrid g-gallery">
     <li><figure><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Bonascre_Saquet_East.JPG/1280px-Bonascre_Saquet_East.JPG" alt="Snow on the peaks above Ax 3 Domaines" loading="lazy"><figcaption>Ax 3 Domaines<span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Bonascre_Saquet_East.JPG" rel="noopener">Sébastien D&#x27;Arco</a>, <a href="https://creativecommons.org/licenses/by-sa/2.5/" rel="noopener license">CC BY-SA 2.5</a></span></figcaption></figure></li>
     <li><figure><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Saquet_01.jpg/1280px-Saquet_01.jpg" alt="The mountain above the Saquet, Ax 3 Domaines" loading="lazy"><figcaption>Ax 3 Domaines, the Saquet<span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Saquet_01.jpg" rel="noopener">Antoine Blondin</a>, <a href="https://creativecommons.org/licenses/by-sa/3.0/" rel="noopener license">CC BY-SA 3.0</a></span></figcaption></figure></li>
@@ -213,6 +231,225 @@
   </ul>
 </div></section>
 
+
+{#- ============ 26 Oct (owner's brief, gudanes-whats-on-new-sections.md) ============
+    Six sections from the What's On research of 26 October 2026, in the
+    owner's words. Drive times are from the château and rounded; no prices,
+    which change and belong to the operators. Left out on purpose: the wild
+    hot springs at Mérens (possibly private land, bathing may be banned) and
+    Carcanières-les-Bains (no longer a spa). Every link opens in a new tab. -#}
+{% macro site(href, label) %}<a href="{{ href }}" target="_blank" rel="noopener">{{ label }}</a>{% endmacro %}
+
+<!-- ============ THE HOT SPRINGS ============ -->
+<section class="g-sec" id="hot-springs"><div class="g-wrap">
+  <p class="g-fr">Les eaux chaudes <span class="g-fr__en">The hot springs</span></p>
+  <h2 class="g-place">The Hot Springs</h2>
+  <p class="g-p g-intro">Ax-les-Thermes has some sixty hot springs, the hottest in the Pyrenees, rising from the ground at over 70°C.</p>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Les Bains du Couloubret · Ax-les-Thermes, about 20 minutes</p>
+      <p class="g-key__v">Roman-style thermal baths filled with natural spring water at 33 to 38°C. Inside, a glass-roofed pool ringed with columns, with jets and bubble seats, a hot bath, a cold plunge and a thermal steam room. Outside, two pools with views of the mountains. Upstairs, for over-sixteens, saunas and a hammam. Open all year; children from five. Bring your own towel, and leave silver jewellery at home, as the water darkens it.</p>
+      <p class="g-key__v g-key__links">{{ site('https://acqs.com/', 'acqs.com') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">The Bassin des Ladres · Ax-les-Thermes</p>
+      <p class="g-key__v">A medieval stone basin in the middle of Ax where everyone stops to soak their feet in the hot spring water. Free, every day, all year. Test the water first; it is hot.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">A thermal spa half-day · Ax-les-Thermes</p>
+      <p class="g-key__v">For a taste of a real thermal cure, the Thermes d’Ax offer a three-hour “Découverte Aqua” session for adults: three treatments, then the thermal pool, jacuzzis, hammam and sauna. There is also an after-sport version for skiers and cyclists. Booking needed; closed on Sundays.</p>
+      <p class="g-key__v g-key__links">{{ site('https://acqs.com/', 'acqs.com') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Thermes d’Ussat-les-Bains · about 20 minutes</p>
+      <p class="g-key__v">A small spa in a park near Tarascon, newly renovated, with single treatments and massages. Telephone before you go, as opening dates vary.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.thermes-ussat.fr/', 'thermes-ussat.fr') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Caldea · Andorra, about an hour and a half</p>
+      <p class="g-key__v">See <a href="#andorra">Andorra</a>, below.</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ OUTDOORS AND ADVENTURE ============ -->
+<section class="g-sec g-sec--sand" id="outdoors"><div class="g-wrap">
+  <p class="g-fr">Dehors <span class="g-fr__en">Outdoors and adventure</span></p>
+  <h2 class="g-place">Outdoors and Adventure</h2>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Rock climbing · Lordat, 10–15 minutes · Calamès, 25 minutes</p>
+      <p class="g-key__v">The valley is a climbers’ playground. The crag below Château de Lordat has about a hundred routes on pale, marble-like limestone. Calamès, near Tarascon, has more than two hundred routes, faces the sun and can be climbed all year. Beginners go out with a local guide.</p>
+      <p class="g-key__v g-key__links">Guides: Vertikarst ({{ site('https://www.vertikarst.fr/', 'vertikarst.fr') }}) · Caverne &amp; Canyon ({{ site('https://cavernecanyon.com/', 'cavernecanyon.com') }}) · Montcalm Aventure ({{ site('http://www.montcalmaventure.com/', 'montcalmaventure.com') }})</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Via ferrata · Vicdessos, about 40 minutes</p>
+      <p class="g-key__v">Ladders, cables and rope bridges on the cliffs above the Vicdessos valley. It is the only via ferrata in the Ariège, with an easy route from age seven and harder ones from fourteen. Kit is hired on site.</p>
+      <p class="g-key__v g-key__links">Montcalm Aventure · {{ site('http://www.montcalmaventure.com/', 'montcalmaventure.com') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Canyoning · Auzat and Orlu, 30–40 minutes</p>
+      <p class="g-key__v">Guided descents of the mountain gorges, with abseils, jumps and natural water slides. All the kit is provided, and there are trips for first-timers. Summer.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.vertikarst.fr/', 'vertikarst.fr') }} · {{ site('https://cavernecanyon.com/', 'cavernecanyon.com') }} · {{ site('https://acrobranche-ariege.com/', 'acrobranche-ariege.com') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Rafting, canoe and paddleboard · Bouan, 10–15 minutes</p>
+      <p class="g-key__v">Down the Ariège by raft, canoe or kayak, guided or on your own, with a minibus back; paddleboards on the lake below the Sinsat cliffs. May to October.</p>
+      <p class="g-key__v g-key__links">Waterploof · {{ site('http://waterploof.com/', 'waterploof.com') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Paragliding · above Foix or Vicdessos, about an hour</p>
+      <p class="g-key__v">Tandem first flights with an instructor from the mountain take-offs at Prat d’Albis and Port de Lers. Spring to autumn, weather permitting.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.kymaya.com/', 'kymaya.com') }} · {{ site('https://parapente-pyrenees-parapente-ariege.fr/', 'parapente-pyrenees-parapente-ariege.fr') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Mountain biking and the Beille climb · Ax and Beille, 20–25 minutes</p>
+      <p class="g-key__v">In summer the Ax 3 Domaines bike park runs six downhill trails from the Saquet plateau to the village, with the gondola to take you up. Plateau de Beille has gentle mountain-bike loops. For road cyclists, the Tour de France climb to Beille starts at the foot of the château’s road. Bikes and e-bikes can be hired in Ax.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.ax.ski/', 'ax.ski') }} · {{ site('https://www.beille.fr/', 'beille.fr') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Horse riding · Orgeix, about 25 minutes</p>
+      <p class="g-key__v">Rides and treks for every level on the local Mérens horses, and pony rides for small children, at a family farm in the Orlu valley. Booking needed.</p>
+      <p class="g-key__v g-key__links">{{ site('https://harasdescimes.com/', 'harasdescimes.com') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Treetop park and the wolves · Orlu, about 30 minutes</p>
+      <p class="g-key__v">Akrobranch d’Orlu has fifteen treetop courses in a beech wood above a waterfall, from toddler trails to zip lines. Next to it, the Maison des Loups keeps European, Canadian and Arctic wolf packs in large woodland enclosures.</p>
+      <p class="g-key__v g-key__links">{{ site('https://acrobranche-ariege.com/', 'acrobranche-ariege.com') }} · {{ site('https://maisondesloups.com/', 'maisondesloups.com') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Summer at Ax 3 Domaines · about 20 minutes to the gondola, half an hour to drive up</p>
+      <p class="g-key__v">The gondola climbs from the middle of Ax to the Bonascre plateau, and a chairlift carries on to the Saquet viewpoint at about 2,000 metres. Up top: a mountain-kart run, an outdoor pool, mini-golf, donkey walks and a restaurant with the whole valley below. July and August.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.ax.ski/', 'ax.ski') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Walks to the high lakes · from 10 minutes</p>
+      <p class="g-key__v">The mountains around the château are full of lakes. The Étangs de Fontargente, up the Aston valley, are a half-day loop to lakes at 2,145 metres. From Mérens, the walks to the Étang de Comte and the Étang des Bésines are easy family outings. The GR10 crosses the Plateau de Beille. Roughly June to October, depending on the snow.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Fishing</p>
+      <p class="g-key__v">Rivers, mountain streams and high lakes. A permit is needed; buy one at {{ site('https://www.cartedepeche.fr/', 'cartedepeche.fr') }} or at the tourist office in Ax or Tarascon.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.peche-ariege.com/', 'peche-ariege.com') }}</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ WINTER ============ -->
+<section class="g-sec" id="winter"><div class="g-wrap">
+  <p class="g-fr">L’hiver <span class="g-fr__en">Winter</span></p>
+  <h2 class="g-place">Winter</h2>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Ax 3 Domaines · about 20 minutes to the gondola, half an hour to drive up</p>
+      <p class="g-key__v">The valley’s main ski resort: 80 kilometres of runs between 1,400 and 2,400 metres. The gondola leaves from the centre of Ax-les-Thermes, so you can leave the car in town. Ski schools, a snowpark, sledging and snow-tubing. Early December to late March.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.ax.ski/', 'ax.ski') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Plateau de Beille · up the château’s road, about 25 minutes</p>
+      <p class="g-key__v">Our own snow: a high plateau at 1,800 metres with forty kilometres of cross-country trails, snowshoe routes and sledging. The Angaka village there runs dog-sled and sleigh rides and night snowshoe walks. Mid-December to late March.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.beille.fr/', 'beille.fr') }} · {{ site('https://www.angaka.com/', 'angaka.com') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Smaller resorts</p>
+      <p class="g-key__v">Ascou-Pailhères (about 45 minutes), a friendly forest resort above Ax · Le Chioula (about 40 minutes), quiet Nordic trails and dog sledding · Goulier (about 45 minutes), one of the smallest resorts in the Pyrenees, with no queues.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.ascou.ski/fr/', 'ascou.ski') }} · {{ site('https://www.chioula.fr/hiver', 'chioula.fr') }} · {{ site('https://www.goulier-neige.fr/', 'goulier-neige.fr') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">After skiing</p>
+      <p class="g-key__v">Wood-fired Nordic hot tubs and a sauna at the Bains de Bonascre, on the slopes at Ax (ski season, booking needed), or the thermal baths in Ax itself (see <a href="#hot-springs">the hot springs</a>).</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ THE CAVES ============ -->
+<section class="g-sec g-sec--sand" id="caves"><div class="g-wrap">
+  <p class="g-fr">Sous la terre <span class="g-fr__en">The caves</span></p>
+  <h2 class="g-place">The Caves</h2>
+  <p class="g-p g-intro">This valley has one of the richest groups of Ice Age sites in Europe, all within half an hour of the château. Book ahead in summer.</p>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Grotte de Niaux · about 20 minutes</p>
+      <p class="g-key__v">One of the very few caves in the world where you can still see the original prehistoric paintings, not copies. A guide leads you by hand-held lamp through vast dark galleries to the Salon Noir, where more than seventy bison, horses and ibex were painted some 17,000 years ago. The visit takes about an hour and three quarters, at 12°C; wear warm clothes and walking shoes. Numbers are strictly limited, so booking online is essential. Not suitable for under-sixes; no bags or photographs.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.sites-touristiques-ariege.fr/grotte-de-niaux/', 'sites-touristiques-ariege.fr') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Parc de la Préhistoire · Tarascon, about 20 minutes</p>
+      <p class="g-key__v">The perfect partner to Niaux, and a favourite with children. Throw a spear, knap flint, make fire, and walk through a full-size copy of Niaux’s Salon Noir. Allow half a day. Spring to early November.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.sites-touristiques-ariege.fr/parc-de-la-prehistoire/', 'sites-touristiques-ariege.fr') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Grotte de Lombrives · Ussat, about 15 minutes</p>
+      <p class="g-key__v">One of the largest caves in Europe, full of legend: prehistoric shelters, Cathar stories and the mythical tomb of Pyrène. The guided walk crosses vast chambers such as the Cathedral, and a little train takes you up the steep path to the entrance. Open all year, with night walks and candlelit concerts.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.grottedelombrives.com/', 'grottedelombrives.com') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Grotte de Bédeilhac · about 25 minutes</p>
+      <p class="g-key__v">“The giant”: a huge entrance porch and vast chambers, with rare prehistoric art modelled in clay. During the Second World War aircraft were stored inside it. Easier than Niaux for families with younger children.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.sites-touristiques-ariege.fr/grotte-de-bedeilhac/', 'sites-touristiques-ariege.fr') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Grotte de la Vache · Alliat, about 20 minutes</p>
+      <p class="g-key__v">A small cave across the valley from Niaux where the Magdalenians spent their winters; perhaps the home of Niaux’s painters. Sold as a combined ticket with Niaux.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.sites-touristiques-ariege.fr/grotte-de-la-vache/', 'sites-touristiques-ariege.fr') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Underground river of Labouiche · near Foix, about 45 minutes</p>
+      <p class="g-key__v">A boat trip along an underground river sixty metres below the ground, past formations called the Witch and the Unicorn. Suits all ages. April to November and the Christmas holidays.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.labouiche.com/', 'labouiche.com') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Mas d’Azil · about an hour and ten minutes</p>
+      <p class="g-key__v">The river and the road run straight through the hill under a seventy-metre arch, so you drive through the cave. It gave its name to a period of prehistory, the Azilian.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.sites-touristiques-ariege.fr/grotte-du-mas-dazil-2/', 'sites-touristiques-ariege.fr') }}</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ ANDORRA ============ -->
+<section class="g-sec" id="andorra"><div class="g-wrap">
+  <p class="g-fr">L’Andorre <span class="g-fr__en">Andorra</span></p>
+  <h2 class="g-place">Andorra</h2>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Getting there · about an hour</p>
+      <p class="g-key__v">Up the valley through Ax and Mérens, then over the pass to Pas de la Casa on the border. From there the road climbs over the Port d’Envalira, the highest road in the Pyrenees, or through the Envalira tunnel down to Andorra la Vella, about an hour and a half from the château. Bring a passport or ID card: Andorra is outside the EU. From November to May carry snow chains unless the car has winter tyres.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Shopping</p>
+      <p class="g-key__v">Low taxes have made Andorra a shopping trip for generations: Pas de la Casa right at the border, and the long shopping street through Andorra la Vella and Escaldes. Shops are open most days until 8pm.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Caldea · Escaldes-Engordany</p>
+      <p class="g-key__v">The largest thermal spa in southern Europe, in a glass cathedral with an eighty-metre spire. Indoor and outdoor lagoons are fed by the local hot springs, including one with a glass floor over the river. Open every day; book ahead, and only on {{ site('https://www.caldea.com/en/', 'caldea.com') }}.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Grandvalira</p>
+      <p class="g-key__v">The largest ski area in the Pyrenees, with 215 kilometres of runs. The Pas de la Casa side is about an hour from the château. Early December to early April.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.grandvalira.com/en', 'grandvalira.com') }}</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">In summer</p>
+      <p class="g-key__v">Walk the Madriu-Perafita-Claror valley, a UNESCO World Heritage landscape with no roads, or visit the small Romanesque churches of Sant Joan de Caselles and Santa Coloma and the old stone parliament house, Casa de la Vall.</p>
+      <p class="g-key__v g-key__links">{{ site('https://visitandorra.com/en/', 'visitandorra.com') }}</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ CLOSE BY ============ -->
+<section class="g-sec g-sec--sand" id="close-by"><div class="g-wrap">
+  <p class="g-fr">Patrimoine <span class="g-fr__en">Close by</span></p>
+  <h2 class="g-place">Close By</h2>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Château de Lordat · 10–15 minutes</p>
+      <p class="g-key__v">An eleventh-century fortress and Cathar refuge on a rock above our valley, with sweeping views, falconry shows and medieval days in season.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Talcaneô · Luzenac, about 10 minutes</p>
+      <p class="g-key__v">A museum about the talc quarry on the mountain above, the largest in the world, with coach trips up to the quarry on weekdays from May to November.</p>
+    </div>
+  </div>
+</div></section>
 
 <!-- ============ A DAY OUT ============ -->
 {# Researched from the tourist boards and the operators: the Yellow Train leaves from the end of the

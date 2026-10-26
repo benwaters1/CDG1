@@ -105,6 +105,10 @@
               {#- Shown before Confirm, not after: the point is to decide with it. -#}
               <span class="no-show-warning">{{ no_show_history[r['id']] }} previous no-show{{ '' if no_show_history[r['id']] == 1 else 's' }} on this address.{% if r['status'] == 'pending' %} Worth asking for a deposit, or a phone number that answers.{% endif %}</span>
               {% endif %}
+              {#- Why a table booked while tables confirm themselves did not, beside the same decision. -#}
+              {% if r['status'] == 'pending' and r['instant_held'] %}
+              <span class="no-show-warning">Not confirmed automatically: {{ r['instant_held'] }}.</span>
+              {% endif %}
             </td>
             <td data-label="Party">{{ r['party_size'] }}</td>
             <td data-label="Notes">{% if r['dietary_notes'] %}{{ r['dietary_notes'] }}{% else %}<span class="upload-hint">&mdash;</span>{% endif %}

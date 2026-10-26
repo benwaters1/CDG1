@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Guest emails{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Guest emails</h1>
+  <a href="{{ url_for('admin_email_outbox') }}" class="btn-ghost">Held email</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Every email and text the site can send a
+  guest, what sends it, and its full text. Approve each one before switching guest emails on.</p>
+
+<div class="detail-card" style="margin-bottom:16px;">
+  <form method="post" action="{{ url_for('admin_guest_emails_switch') }}"
+        style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if on %}
+      <span class="mini-status status-confirmed">Guest emails: on</span>
+      <span>Booking confirmations and approved letters go. Anything not approved is held.</span>
+      <input type="hidden" name="on" value="0">
+      <button type="submit" class="btn-mini">Turn off</button>
+    {% else %}
+      <span class="mini-status status-declined">Guest emails: off</span>
+      <span>Only booking confirmations go. Everything else is held in
+        <a href="{{ url_for('admin_email_outbox') }}">Held email</a> for you to read.</span>
+      <input type="hidden" name="on" value="1">
+      <button type="submit" class="btn-mini">Turn on</button>
+    {% endif %}
+  </form>
+  {% if held_total or held_texts %}
+  <p class="upload-hint" style="margin:8px 0 0;">Held so far: {{ held_total }}
+    email{{ '' if held_total == 1 else 's' }}{% if held_texts %} and {{ held_texts }}
+    text{{ '' if held_texts == 1 else 's' }}{% endif %}. Nothing held is sent when you turn
+    this on; send or discard each one from Held email.</p>
+  {% endif %}
+</div>
+
+<div class="facet-row">
+  <a class="chip{{ ' is-on' if not state }}" href="{{ url_for('admin_guest_emails') }}">All <span class="chip-n">{{ all_count }}</span></a>
+  <a class="chip{{ ' is-on' if state == 'held' }}" href="{{ url_for('admin_guest_emails', state='held') }}">Held until approved <span class="chip-n">{{ counts.held }}</span></a>
+  <a class="chip{{ ' is-on' if state == 'approved' }}" href="{{ url_for('admin_guest_emails', state='approved') }}">Approved <span class="chip-n">{{ counts.approved }}</span></a>
+  <a class="chip{{ ' is-on' if state == 'confirmation' }}" href="{{ url_for('admin_guest_emails', state='confirmation') }}">Booking confirmations <span class="chip-n">{{ counts.confirmation }}</span></a>
+  <a class="chip{{ ' is-on' if state == 'by_hand' }}" href="{{ url_for('admin_guest_emails', state='by_hand') }}">Written by staff <span class="chip-n">{{ counts.by_hand }}</span></a>
+</div>
+
+{% for r in rows %}
+<div class="detail-card" id="l-{{ r.key|replace(':', '-') }}" style="margin-bottom:12px;">
+  <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
+    <div>
+      <strong>{{ r.name }}</strong>
+      <span class="upload-hint">· {{ r.kind }}</span>
+      {% if r.state == 'held' %}<span class="mini-status status-declined">Held until approved</span>
+      {% elif r.state == 'approved' %}<span class="mini-status status-confirmed">Approved</span>
+      {% elif r.state == 'confirmation' %}<span class="mini-status status-confirmed">Booking confirmation: always sent</span>
+      {% elif r.state == 'key' %}<span class="mini-status status-pending">A private link: always sent</span>
+      {% else %}<span class="mini-status status-pending">Written by staff: always sent</span>{% endif %}
+      {% if r.held %}<a class="upload-hint" href="{{ url_for('admin_email_outbox') }}">{{ r.held }} held</a>{% endif %}
+    </div>
+    {% if r.state in ('held', 'approved') %}
+    <form method="post" action="{{ url_for('admin_guest_emails_approve', state=state or None) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="key" value="{{ r.key }}">
+      {% if r.state == 'approved' %}
+        <input type="hidden" name="undo" value="1">
+        <button type="submit" class="btn-mini">Remove approval</button>
+      {% elif r.unwritten %}
+        <span class="upload-hint">No wording yet</span>
+      {% else %}
+        <button type="submit" class="btn-mini">Approve</button>
+      {% endif %}
+    </form>
+    {% endif %}
+  </div>
+  <p class="manual-body" style="margin:6px 0;"><strong>Sent:</strong> {{ r.trigger or 'Not recorded.' }}</p>
+  {% if r.subject %}<p class="manual-body" style="margin:6px 0;"><strong>Subject:</strong> {{ r.subject }}</p>{% endif %}
+  {% if r.body %}
+  <pre class="manual-body" style="white-space:pre-wrap; font-family:inherit; margin:6px 0 0; padding:10px; border:1px solid var(--line, #ddd); border-radius:6px;">{{ r.body }}</pre>
+  {% elif r.state not in ('by_hand', 'key') %}
+  <p class="upload-hint" style="margin:6px 0 0;">No wording yet: it cannot be sent until it is written.</p>
+  {% endif %}
+  {% if r.approved_at %}<p class="upload-hint" style="margin:6px 0 0;">Approved {{ r.approved_at|date_short }}{% if r.approved_by %} by {{ r.approved_by }}{% endif %}. Changing its wording removes the approval.</p>{% endif %}
+</div>
+{% else %}
+<p class="upload-hint">Nothing here.</p>
+{% endfor %}
+
+{% endblock %}

@@ -81,10 +81,15 @@
     <tbody>
     {% for x in d.arriving %}
     <tr class="{{ 'fd-done' if x.checked_in_at }}">
-      <td>{% if x.kind == 'stay' %}<a href="{{ url_for('admin_booking', booking_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a>{% else %}<a href="{{ url_for('channel_stay_page', reservation_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a> <span class="mini-status status-upcoming">Booking.com</span>
+      <td>{% if x.kind == 'stay' %}<a href="{{ url_for('admin_booking', booking_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a>
+          {% if x.checkin_done_at %}<span class="mini-status status-confirmed">checked in online</span>{% elif not x.checked_in_at %}<span class="mini-status status-pending">not checked in online</span>{% endif %}
+          {% if x.dietary_notes %}<span class="cell-note">Cannot eat: {{ x.dietary_notes }}</span>{% endif %}{% else %}<a href="{{ url_for('channel_stay_page', reservation_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a> <span class="mini-status status-upcoming">Booking.com</span>
           {% if x.checkin_done_at %}<span class="mini-status status-confirmed">checked in online</span>{% else %}<span class="mini-status status-pending">not checked in online</span>{% endif %}{% endif %}
         <span class="cell-note">{{ x.reference_code }}{% if x.guest_phone %} · <a href="tel:{{ x.guest_phone|replace(' ', '') }}" class="small-link">{{ x.guest_phone }}</a>{% endif %}</span>
-        {% if x.special_requests %}<span class="cell-note">{{ x.special_requests }}</span>{% endif %}</td>
+        {% if x.special_requests %}<span class="cell-note">{{ x.special_requests }}</span>{% endif %}
+        {% if x.special_occasion %}<span class="cell-note"><strong>Celebrating:</strong> {{ x.special_occasion }}
+          {%- set op = x.occasion_prep %}{% if op %} · <a href="{{ url_for('occasions_page') }}#task-{{ op.task_id }}" class="small-link">
+          {%- if op.status == 'done' %}prepared{% elif op.total %}{{ op.done }} of {{ op.total }} done{% else %}to prepare{% endif %}</a>{% endif %}</span>{% endif %}</td>
       <td data-label="Room">{{ x.room_name }}</td>
       <td data-label="Expected">{{ x.estimated_arrival_time or '—' }}</td>
       <td data-label="Stay"><span>{{ x.party_size or '?' }} guest{{ '' if x.party_size == 1 else 's' }}</span><span class="cell-note">until {{ x.departure_date|date_short }}</span></td>

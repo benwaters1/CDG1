@@ -5,7 +5,13 @@
 {# EACH DAY, ON ONE PAGE. The arrival card is per booking and the incomplete
    list says only what is missing; neither is the thing somebody wants at
    breakfast. Shows this week and next, day by day (owner, 22 October 2026:
-   "it should be weekly and next"); it was today and tomorrow. #}
+   "it should be weekly and next"); it was today and tomorrow.
+
+   AND ON PAPER (owner, 26 October 2026: "print out the bookings from tomorrow
+   onwards ... the extras, the requested check in times, the details, a
+   calendar"). The rooms night by night at the top, then each day. What is
+   for clicking -- the forms, the links, the date box -- is marked no-print, so
+   the paper carries the guests and nothing the paper cannot use. #}
 
 {#- Today and Tomorrow by name, because those are the two days the desk acts
     on; every other day by its weekday and date. -#}
@@ -13,27 +19,110 @@
   {%- if d == today %}Today{% elif (d - today).days == 1 %}Tomorrow{% else %}{{ d.strftime('%A') }} {{ d.day }} {{ d.strftime('%B') }}{% endif -%}
 {%- endmacro %}
 
+{#- The money shows only where the front desk does. -#}
+{% set money = may('guests') %}
+
 <div class="page-head">
   <h1>Arrivals</h1>
-  <div style="display:flex; gap:10px; align-items:center;">
+  <div class="no-print" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
     <form method="get" action="{{ url_for('arrivals_sheet_page') }}" style="display:flex; gap:6px; align-items:center;">
       <input type="date" name="date" value="{{ day.isoformat() }}" aria-label="Start from which day">
       <button type="submit" class="btn-mini">Show</button>
     </form>
+    <button type="button" class="btn-mini" onclick="window.print()">Print</button>
     <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">All bookings</a>
   </div>
 </div>
 
-<p class="upload-hint arr-window">
+<p class="print-only arr-print-head" style="display:none;">
+  Château de Gudanes · arrivals and departures from
+  {{ window.start.strftime('%A') }} {{ window.start.day }} {{ window.start.strftime('%B') }}
+  to Sunday {{ window.end.day }} {{ window.end.strftime('%B %Y') }}
+  · printed {{ printed_at.day }} {{ printed_at.strftime('%B') }} at {{ printed_at.strftime('%H:%M') }}
+</p>
+
+<p class="upload-hint arr-window no-print">
   Who comes and goes from
   {% if window.start == today %}today{% else %}{{ window.start.strftime('%A') }} {{ window.start.isoformat()|date_short }}{% endif %}
   to Sunday {{ window.end.isoformat()|date_short }}.
   {% if named %}<a href="{{ url_for('arrivals_sheet_page') }}">From today</a> · {% endif %}
+  {% if window.start != tomorrow %}<a href="{{ url_for('arrivals_sheet_page', date=tomorrow.isoformat()) }}">From tomorrow</a> · {% endif %}
   <a href="{{ url_for('arrivals_sheet_page', date=window.after.isoformat()) }}">The fortnight after</a>
 </p>
 
 {#- Where a recorded code comes back to: this same window, at that day. -#}
 {% set here = url_for('arrivals_sheet_page', date=(window.start.isoformat() if named else None)) %}
+
+{% set cal = window.calendar %}
+{% if cal.rows or cal.ateliers %}
+{#- THE ROOMS NIGHT BY NIGHT, so the fortnight can be read at a glance before
+    the days are read one by one. A stay is one cell across its nights; the
+    rows under it are counted from the same cells. -#}
+<section class="arr-cal" id="nights">
+<h2 class="arr-week__h">Night by night
+  <span class="arr-week__dates">{{ date_range(window.start.isoformat(), window.end.isoformat()) }}</span></h2>
+<div class="table-wrap">
+  <table class="data-table arr-cal__grid">
+    <thead>
+      <tr>
+        <th scope="col">Room</th>
+        {%- for n in cal.nights %}
+        <th scope="col"{% if n.weekday() >= 5 or n == today %} class="{{ 'is-weekend' if n.weekday() >= 5 }}{{ ' is-today' if n == today }}"{% endif %}>{{ n.strftime('%a')[:2] }}<br>{{ n.day }}{% if loop.first or n.day == 1 %} {{ n.strftime('%b') }}{% endif %}</th>
+        {%- endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% if cal.ateliers %}
+      <tr>
+        <th scope="row">Atelier</th>
+        {%- for c in cal.ateliers %}
+        <td colspan="{{ c.span }}" class="arr-cal__c{% if c.on %} is-atelier{% endif %}">
+          {%- for a in c.on %}{{ a.title }} · {% if a.guests %}{{ a.guests }} guest{{ '' if a.guests == 1 else 's' }}{% else %}nobody booked yet{% endif %}
+          {%- if a.unroomed %}, {{ a.unroomed }} with no room yet{% endif %}{% if not loop.last %} / {% endif %}{% endfor -%}
+        </td>
+        {%- endfor %}
+      </tr>
+      {% endif %}
+      {% for row in cal.rows %}
+      <tr>
+        <th scope="row">{{ row.room }}</th>
+        {%- for c in row.cells %}
+        <td colspan="{{ c.span }}" class="arr-cal__c is-{{ c.kind }}"
+            {%- if c.label %} title="{{ c.label }}{% if c.party and c.kind != 'closed' %}, {{ c.party }}{% endif %}{% if c.refs %} · {{ c.refs }}{% endif %}"{% endif %}>
+          {%- if c.label %}{% if c.from_before %}&lsaquo; {% endif %}{{ c.label if c.span >= 3 else c.short }}
+          {%- if c.party and c.kind not in ('closed', 'clash') and c.span >= 2 %} ({{ c.party }}){% endif %}
+          {%- if c.kind == 'pending' and c.span >= 2 %}, to confirm{% endif %}
+          {%- if c.runs_on %} &rsaquo;{% endif %}{% endif -%}
+        </td>
+        {%- endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th scope="row">Rooms let</th>
+        {%- for t in cal.totals %}<td>{{ t.rooms }}</td>{% endfor %}
+      </tr>
+      <tr>
+        <th scope="row">Guests asleep</th>
+        {%- for t in cal.totals %}<td>{{ t.guests }}{% if t.unknown %}+{% endif %}</td>{% endfor %}
+      </tr>
+    </tfoot>
+  </table>
+</div>
+<p class="upload-hint arr-cal__key">
+  Each column is a night: the guests in it are at breakfast the next morning.
+  <span class="arr-cal__swatch is-stay"></span> booked direct
+  <span class="arr-cal__swatch is-channel"></span> Booking.com
+  <span class="arr-cal__swatch is-atelier"></span> atelier
+  <span class="arr-cal__swatch is-pending"></span> waiting to be confirmed
+  <span class="arr-cal__swatch is-closed"></span> closed
+  {%- if cal.clashes %} <span class="arr-cal__swatch is-clash"></span> two bookings in one room, to sort out{% endif %}.
+  &lsaquo; arrived before, &rsaquo; stays on after.
+  {%- if cal.totals|selectattr('unknown')|list %} + is a Booking.com stay that did not say how many.{% endif %}
+</p>
+</section>
+{% endif %}
 
 {% for week in window.weeks %}
 <section class="arr-week" id="week-{{ week.monday.strftime('%Y%m%d') }}">
@@ -66,7 +155,7 @@
   <span class="arr-day__date">{% if day == today or (day - today).days == 1 %}{{ day.strftime('%A') }} {% endif %}{{ day.day }} {{ day.strftime('%B') }}</span>
 </h3>
 <p class="upload-hint arr-day__sum">
-  {{ sheet.arriving|length + sheet.channel_arriving|length }} arriving · {{ sheet.leaving|length + sheet.channel_leaving|length }} leaving
+  {{ sheet.arriving_count }} arriving · {{ sheet.leaving_count }} leaving
   {%- if sheet.beds %} · {{ sheet.beds }} guest{{ '' if sheet.beds == 1 else 's' }} coming{% endif %}
   {%- if sheet.beds_unknown %}, and {{ sheet.beds_unknown }} Booking.com
   booking{{ '' if sheet.beds_unknown == 1 else 's' }} that did not say how many{% endif %}
@@ -77,7 +166,7 @@
 <div class="task-list">
   {% for r in sheet.arriving %}
   {% set b = r.booking %}
-  <div class="expense-card">
+  <div class="expense-card arr-card">
     <div class="expense-head">
       <strong>{{ b['guest_name'] }}</strong>
       {%- if r.profile and r.profile['name_pronunciation'] %}
@@ -85,7 +174,16 @@
       {%- endif %}
       <span class="mini-status status-active" style="margin-left:8px;">{{ b['room_name'] }}</span>
       {%- if r.arrival_time %}
-      <span class="mini-status status-onshift" style="margin-left:4px;">{{ r.arrival_time }}</span>
+      {#- Said in words, because on paper a bare "18:30" beside a room could
+          be anything. The profile's time is said as usual, not as promised. -#}
+      <span class="mini-status status-onshift" style="margin-left:4px;">{{ 'usually arrives' if r.arrival_time_usual else 'arriving' }} {{ r.arrival_time }}</span>
+      {%- endif %}
+      {#- Online check-in from their own booking page: when it is done the
+          register has their fiches and this sheet has what they cannot eat. #}
+      {%- if r.checked_in_online %}
+      <span class="mini-status status-confirmed" style="margin-left:4px;">checked in online</span>
+      {%- else %}
+      <span class="mini-status status-pending" style="margin-left:4px;">not checked in online</span>
       {%- endif %}
       {#- Which visit this is, when it is one worth saying at the door. The
           people most likely to come back were getting the same greeting as a
@@ -101,10 +199,76 @@
       {%- endif %}
     </div>
 
-    <p class="field-label">Party</p>
-    <p>{{ b['party_size'] }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %}
-      · {{ date_range(b['arrival_date'], b['departure_date']) }}
-      · <span class="upload-hint">{{ b['reference_code'] }}</span></p>
+    <p class="field-label">Stay</p>
+    <p>{{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %}
+      · {{ r.nights }} night{{ '' if r.nights == 1 else 's' }}, {{ date_range(b['arrival_date'], b['departure_date']) }}
+      · <span class="upload-hint">{{ b['reference_code'] }}</span>
+      {%- if money %}
+      · {% if r.owed > 0 %}<strong>{{ r.owed|money }} to collect</strong> of {{ r.total|money }}{% elif r.total %}paid in full{% endif %}
+      {%- endif %}</p>
+
+    {% if b['guest_phone'] or b['guest_email'] or b['second_contact_name'] or (b['booked_by_name'] and b['booked_by_name'] != b['guest_name']) %}
+    {#- To ring when it is nine o'clock and nobody has come. It was only ever
+        mentioned here when it was missing. -#}
+    <p class="field-label">Reach them</p>
+    <p>
+      {%- if b['guest_phone'] %}<a href="tel:{{ b['guest_phone']|replace(' ', '') }}">{{ b['guest_phone'] }}</a>{% endif %}
+      {%- if b['guest_phone'] and b['guest_email'] %} · {% endif %}
+      {%- if b['guest_email'] %}{{ b['guest_email'] }}{% endif %}
+      {%- if b['booked_by_name'] and b['booked_by_name'] != b['guest_name'] %} · booked by {{ b['booked_by_name'] }}{% endif %}
+      {%- if b['second_contact_name'] %} · also {{ b['second_contact_name'] }}{% endif %}
+    </p>
+    {% endif %}
+
+    {% if r.extras %}
+    {#- What they bought with the stay, with the day each is wanted. -#}
+    <p class="field-label">Extras</p>
+    <ul class="arr-extras">
+      {% for x in r.extras %}
+      <li>{% if x.quantity > 1 %}{{ x.quantity }} × {% endif %}<strong>{{ x.name }}</strong>
+        {%- if x.when %} · {{ x.when }}{% endif %}
+        {%- if x.notes %} · {{ x.notes }}{% endif %}
+        {%- if x.state %} <span class="mini-status {{ 'status-confirmed' if x.state == 'delivered' else 'status-pending' }}">{{ x.state }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% elif b['extras_summary'] %}
+    <p class="field-label">Extras</p>
+    <p>{{ b['extras_summary'] }}</p>
+    {% endif %}
+
+    {% if r.dinners %}
+    <p class="field-label">Dinner at La Table</p>
+    <ul class="arr-extras">
+      {% for x in r.dinners %}
+      <li><strong>{{ x.when }}</strong> · {{ x.party }} {{ 'person' if x.party == 1 else 'people' }}
+        {%- if x.dietary %} · {{ x.dietary }}{% endif %}
+        {%- if x.state %} <span class="mini-status status-pending">{{ x.state }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if r.asks %}
+    {#- What they wrote from their own booking page, each a task on the stay:
+        done or still to do, as the stay's page says. -#}
+    <p class="field-label">Asked from their booking page</p>
+    <ul class="arr-extras">
+      {% for x in r.asks %}
+      <li>{{ x.text }}{% if x.when %} · {{ x.when }}{% endif %}
+        <span class="mini-status {{ 'status-confirmed' if x.done else 'status-pending' }}">{{ 'done' if x.done else 'to do' }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if r.occasion %}
+    {# What they told us they are celebrating, and whether the room is ready
+       for it -- the task raised a few days before they come. #}
+    <p class="field-label">Celebrating</p>
+    <p>{{ r.occasion }}
+      {%- set op = r.occasion_prep %}
+      {%- if op %} · <a href="{{ url_for('occasions_page') }}#task-{{ op.task_id }}" class="small-link">
+        {%- if op.status == 'done' %}prepared{% elif op.total %}{{ op.done }} of {{ op.total }} done{% else %}to prepare{% endif %}</a>
+      {%- else %} · <a href="{{ url_for('occasions_page') }}" class="small-link">not on the list yet</a>{% endif %}</p>
+    {% endif %}
 
     {% if r.dietary %}
     <p class="field-label">Cannot eat</p>
@@ -112,8 +276,6 @@
     {% endif %}
 
     {% if r.requests %}
-    {#- The booking's own box, in their words: a request, or what they cannot
-        eat -- guests write both there -- so it is never called either. -#}
     <p class="field-label">They asked</p>
     <p>{{ r.requests }}</p>
     {% endif %}
@@ -132,6 +294,11 @@
       {%- if b['transfer_arrival_time'] %} · lands {{ b['transfer_arrival_time'] }}{% endif %}
       {%- if b['transfer_notes'] %} · {{ b['transfer_notes'] }}{% endif %}
     </p>
+    {% endif %}
+
+    {% if money and b['owner_note'] %}
+    <p class="field-label">House note</p>
+    <p>{{ b['owner_note'] }}</p>
     {% endif %}
 
     {% if r.caution %}
@@ -158,7 +325,7 @@
       <span class="upload-hint">(cleared — the stay is over)</span>{% endif %}
       {%- if c['issued_to'] %} to {{ c['issued_to'] }}{% endif %}
       {%- if c['note'] %} · {{ c['note'] }}{% endif %}
-      <form method="post" action="{{ url_for('access_code_returned', code_id=c['id']) }}" style="display:inline;">
+      <form method="post" action="{{ url_for('access_code_returned', code_id=c['id']) }}" class="no-print" style="display:inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="back" value="{{ back }}">
         <button type="submit" class="small-link">back</button>
@@ -171,7 +338,7 @@
     {#- Open on today's and tomorrow's arrivals and folded on the days after:
         a code is given at the door, and a fortnight of open forms would bury
         the guests they are for. -#}
-    <details class="arr-code"{% if near %} open{% endif %}>
+    <details class="arr-code no-print"{% if near %} open{% endif %}>
     <summary class="small-link">Record a door code or key</summary>
     <form method="post" action="{{ url_for('issue_access_code', booking_id=b['id']) }}"
           class="expense-actions" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
@@ -189,7 +356,7 @@
     </details>
     {% endif %}
 
-    <p style="margin-top:8px;">
+    <p class="no-print" style="margin-top:8px;">
       <a href="{{ url_for('arrival_card', booking_id=b['id']) }}" class="small-link">Arrival card</a>
       &nbsp;<a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="small-link">Everything about them</a>
     </p>
@@ -198,42 +365,32 @@
 </div>
 {% endif %}
 
-{% if sheet.leaving %}
-{# The other half of the same morning: a room is not ready for an arrival until
-   the departure has gone. #}
-<h4 class="sub-heading">Leaving</h4>
-<div class="table-wrap">
-  <table class="data-table">
-    <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Reference</th></tr></thead>
-    <tbody>
-      {% for b in sheet.leaving %}
-      <tr>
-        <th scope="row">{{ b['guest_name'] }}</th>
-        <td>{{ b['room_name'] }}</td>
-        <td>{{ b['reference_code'] }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
-
 {% if sheet.channel_arriving or sheet.channel_leaving %}
-{# Booking.com's guests. Only what its emails said: no telephone, no arrival
-   time, no card on file here -- those are in the extranet, and the link goes
-   to what the house does know. #}
+{# Booking.com's guests. What its emails said, and what the guest has told us
+   since -- the time they will come, a telephone, what they asked for -- from
+   the extranet or their own online check-in. No bill and no card on file
+   here: those are the channel's. #}
 <h4 class="sub-heading">Through Booking.com</h4>
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th scope="col">Guest</th><th scope="col"></th><th scope="col">Room</th>
-      <th scope="col">Party</th><th scope="col">Reservation</th></tr></thead>
+      <th scope="col">Party</th><th scope="col">Arrives</th><th scope="col">Telephone</th>
+      <th scope="col">They told us</th><th scope="col">Reservation</th></tr></thead>
     <tbody>
       {% for st in sheet.channel_arriving %}
+      {% set t = st.told %}
       <tr>
         <th scope="row">{{ st['guest_name'] }}</th>
-        <td>arriving</td>
+        <td>arriving{% if t and t['checkin_done_at'] %}<br><span class="mini-status status-confirmed">checked in online</span>{% endif %}</td>
         <td>{{ st['room_name'] or 'not stated' }}</td>
         <td>{{ st['party_size'] or 'not stated' }}</td>
+        <td>{{ (t['estimated_arrival_time'] if t else '') or 'not stated' }}</td>
+        <td>{% if t and t['guest_phone'] %}<a href="tel:{{ t['guest_phone']|replace(' ', '') }}">{{ t['guest_phone'] }}</a>{% else %}not stated{% endif %}</td>
+        <td>
+          {%- if t and t['dietary_notes'] %}<strong>Cannot eat:</strong> {{ t['dietary_notes'] }}{% endif %}
+          {%- if t and t['dietary_notes'] and t['special_requests'] %}<br>{% endif %}
+          {%- if t and t['special_requests'] %}{{ t['special_requests'] }}{% endif %}
+        </td>
         <td>{% if not st['reference_code'] %}<span class="upload-hint">only on Booking.com's calendar</span>{% elif can('management_booking_com') %}<a href="{{ url_for('management_booking_com', q=st['reference_code']) }}" class="small-link">{{ st['reference_code'] }}</a>{% else %}{{ st['reference_code'] }}{% endif %}</td>
       </tr>
       {% endfor %}
@@ -243,7 +400,88 @@
         <td>leaving</td>
         <td>{{ st['room_name'] or 'not stated' }}</td>
         <td>{{ st['party_size'] or 'not stated' }}</td>
+        <td></td><td></td><td></td>
         <td>{% if not st['reference_code'] %}<span class="upload-hint">only on Booking.com's calendar</span>{% elif can('management_booking_com') %}<a href="{{ url_for('management_booking_com', q=st['reference_code']) }}" class="small-link">{{ st['reference_code'] }}</a>{% else %}{{ st['reference_code'] }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% for a in sheet.ateliers %}
+{#- An atelier's guests come to the same door and sleep in the same rooms.
+    What each cannot eat is on the atelier's own sheet, which the kitchen
+    and the instructor read. -#}
+<h4 class="sub-heading">{{ 'Atelier begins' if a.begins else 'Atelier ends' }}: {{ a.title }}</h4>
+<p class="upload-hint">{% if a.places %}{{ a.places|length }} booking{{ '' if a.places|length == 1 else 's' }}, {{ a.guests }} guest{{ '' if a.guests == 1 else 's' }}{% else %}Nobody booked on it yet{% endif %}
+  {%- if a.unroomed %} · {{ a.unroomed }} with {{ 'no room yet' if a.begins else 'no room on record' }}{% endif %}
+  <span class="no-print"> · <a href="{{ url_for('workshop_running_sheet', session_id=a.id) }}" class="small-link">its own sheet</a></span></p>
+{% if a.places %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Party</th>
+      {%- if a.begins %}<th scope="col">Arrives</th><th scope="col">Telephone</th>{% endif %}
+      <th scope="col">Reference</th></tr></thead>
+    <tbody>
+      {% for p in a.places %}
+      <tr>
+        <th scope="row">{{ p['guest_name'] }}</th>
+        <td>{{ p['room_name'] or ('no room yet' if a.begins else 'not recorded') }}</td>
+        <td>{{ p['party_size'] }}</td>
+        {%- if a.begins %}
+        <td>{{ p['estimated_arrival_time'] or 'not stated' }}</td>
+        <td>{% if p['guest_phone'] %}<a href="tel:{{ p['guest_phone']|replace(' ', '') }}">{{ p['guest_phone'] }}</a>{% else %}not stated{% endif %}</td>
+        {%- endif %}
+        <td>{{ p['reference_code'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endfor %}
+
+{% if sheet.extras_here %}
+{#- What somebody already in the house has asked for on this day: the dinner
+    on their second night, the late checkout on their last morning. -#}
+<h4 class="sub-heading">Extras for guests already here</h4>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">What</th><th scope="col">Note</th></tr></thead>
+    <tbody>
+      {% for x in sheet.extras_here %}
+      <tr>
+        <th scope="row">{{ x.guest_name }}</th>
+        <td>{{ x.room_name }}</td>
+        <td>{% if x.quantity > 1 %}{{ x.quantity }} × {% endif %}{{ x.name }}
+          {%- if x.state %} <span class="mini-status {{ 'status-confirmed' if x.state == 'delivered' else 'status-pending' }}">{{ x.state }}</span>{% endif %}</td>
+        <td>{{ x.notes }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if sheet.leaving %}
+{# The other half of the same morning: a room is not ready for an arrival until
+   the departure has gone. #}
+<h4 class="sub-heading">Leaving</h4>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Reference</th>
+      {%- if money %}<th scope="col" class="num">To settle</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for b in sheet.leaving %}
+      <tr>
+        <th scope="row">{{ b['guest_name'] }}</th>
+        <td>{{ b['room_name'] }}</td>
+        <td>{{ b['reference_code'] }}</td>
+        {%- if money %}
+        {% set owed = sheet.owed_leaving.get(b['id'], 0) %}
+        <td class="num">{% if owed > 0 %}{{ owed|money }}{% else %}nothing{% endif %}</td>
+        {%- endif %}
       </tr>
       {% endfor %}
     </tbody>
@@ -255,5 +493,36 @@
 {% endfor %}
 </section>
 {% endfor %}
+
+{#- EVERYTHING BOOKED AFTER THE FORTNIGHT, one line each, so a sheet printed
+    "from tomorrow onwards" has every booking on it (26 October 2026). -#}
+<section class="arr-week" id="later">
+<h2 class="arr-week__h">Booked further ahead
+  <span class="arr-week__dates">from {{ window.after.strftime('%A') }} {{ window.after.day }} {{ window.after.strftime('%B') }}</span></h2>
+{% if window.later %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Dates</th><th scope="col">Guest</th><th scope="col">Room</th>
+      <th scope="col">Party</th><th scope="col">Came through</th><th scope="col">Reference</th>
+      {%- if money %}<th scope="col" class="num">Owed</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for x in window.later %}
+      <tr>
+        <th scope="row">{{ date_range(x.arrival, x.departure) }}</th>
+        <td>{{ x.name }}</td>
+        <td>{{ x.room }}</td>
+        <td>{{ x.party or 'not stated' }}</td>
+        <td>{{ x.through }}</td>
+        <td>{{ x.ref or '' }}</td>
+        {%- if money %}<td class="num">{% if x.owed > 0 %}{{ x.owed|money }}{% endif %}</td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="upload-hint">Nothing is booked after {{ window.end.strftime('%A') }} {{ window.end.day }} {{ window.end.strftime('%B') }}.</p>
+{% endif %}
+</section>
 
 {% endblock %}

@@ -116,7 +116,7 @@ function toggleBreak() {
       <span class="stat-tile-icon">{{ icon('leave', 19) }}</span>
       <span class="stat-tile-body">
         <span class="stat-tile-value">{{ stats.waitlist_open }}</span>
-        <span class="stat-tile-label">On waitlist</span>
+        <span class="stat-tile-label">Enquiries</span>
       </span>
     </a>
     {% endif %}
@@ -455,7 +455,7 @@ function toggleBreak() {
                 onclick="toggleTask({{ t['id'] }}, this)" title="{{ {'open': 'Mark in progress', 'in_progress': 'Mark done', 'done': 'Reopen'}[t['status']] }}">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
         <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
         <span class="task-title">
-          {{ t['title'] }}
+          {% if t['origin'] == 'occasion' %}<a href="{{ url_for('occasions_page') }}#task-{{ t['id'] }}">{{ t['title'] }}</a>{% else %}{{ t['title'] }}{% endif %}
           {% if t['priority'] == 'high' %}<span class="mini-status status-declined">high priority</span>{% endif %}
           {% if t['status'] == 'in_progress' %}<span class="mini-status status-pending">in progress</span>{% endif %}
           {% if t['repeat_weekly'] %}<span title="Repeats weekly">↻</span>{% endif %}

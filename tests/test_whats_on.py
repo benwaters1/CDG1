@@ -49,8 +49,13 @@ def run():
                 detail=str(r.status_code))
 
     s.section("The markets are seeded, not invented")
+    # The weekly markets as seeded, read by their own titles. Not every title
+    # with "market" in it: the year's dates have a Christmas market, which is
+    # dated, not weekly (test_whats_on_through_the_year).
+    weekly = [e["title"] for e in m.DEFAULT_WHATS_ON if "Market" in e["title"]]
     seeded = conn.execute(
-        "SELECT title, weekday FROM whats_on WHERE title LIKE '%Market%'").fetchall()
+        "SELECT title, weekday FROM whats_on WHERE title IN (%s)"
+        % ",".join("?" * len(weekly)), weekly).fetchall()
     s.check("four markets are there", len(seeded) >= 4, detail=str(len(seeded)))
     s.check("each one repeats on a weekday rather than a single date",
             all(r["weekday"] is not None for r in seeded))

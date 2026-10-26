@@ -88,10 +88,44 @@
 </div>
 {% endif %}
 
+{# NOTES FOR THE GUESTS. What the person teaching would like everybody to take
+   home -- a recipe, a method, a reading list -- as words, a file, or both. It
+   goes in the recap the château sends after the atelier, which the owner
+   reads before it goes; nothing here is sent by itself. Shut once the recap
+   has gone, because the letter already carries what was here. #}
+{% set rc = data.recap %}
+<h2 id="notes">Notes or recipes for the guests</h2>
+{% if rc and rc['sent_at'] %}
+<p class="g-p">The recap went to the guests on {{ rc['sent_at']|house_day|date_short }},
+  with what was here then.</p>
+{% if rc['notes'] %}<p class="g-p">{% for line in rc['notes'].splitlines() %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>{% endif %}
+{% if rc['notes_file_name'] %}<p class="g-hint">With the file {{ rc['notes_file_name'] }}.</p>{% endif %}
+{% else %}
+<p class="g-p">
+  Anything you would like the guests to take home. The château sends it with
+  the photographs of the week once the atelier is over, after reading it
+  through; you can change it here until then.
+</p>
+<form method="post" action="{{ url_for('instructor_recap_notes', token=data.session['instructor_token']) }}"
+      enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label for="recap-notes" class="g-mb-label">Your notes</label>
+  <textarea id="recap-notes" name="notes" rows="10" maxlength="20000">{{ rc['notes'] if rc and rc['notes'] else '' }}</textarea>
+  <label for="recap-file" class="g-mb-label">A file to go with them (PDF, Word, a picture or text)</label>
+  <input id="recap-file" type="file" name="notes_file" accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png">
+  {% if rc and rc['notes_file_name'] %}
+  <p class="g-hint">Attached now: {{ rc['notes_file_name'] }}.
+    <label class="checkbox-row"><input type="checkbox" name="remove_file" value="1"> <span>Take it off</span></label></p>
+  {% endif %}
+  {% if rc and rc['notes_at'] %}<p class="g-hint">Last saved {{ rc['notes_at']|house_when }}{% if rc['notes_by'] %} by {{ rc['notes_by'] }}{% endif %}.</p>{% endif %}
+  <button type="submit" class="g-btn g-btn--solid">Save the notes</button>
+</form>
+{% endif %}
+
 <p class="g-hint">
-  This page is read-only and shows only this sitting. If something on it is
-  wrong, tell the château rather than working around it &mdash; the same list
-  goes to the kitchen.
+  The rest of this page is read-only and shows only this sitting. If something
+  on it is wrong, tell the château rather than working around it &mdash; the
+  same list goes to the kitchen.
 </p>
 
 </div></section>

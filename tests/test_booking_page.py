@@ -247,7 +247,7 @@ def run():
             'name="reason_code"' in page and "Make the refund" in page
             and 'name="refund_paid"' not in page,
             detail="cancelling and refunding are two deliberate acts, not one tick box")
-    s.check("and cancelling says it moves no money", "It moves no money" in page)
+    s.check("and cancelling says it moves no money", "No money moves" in page)
     s.check("send the confirmation again", "Send the confirmation again" in page)
     s.check("write to the guest, and text them", "Send the letter" in page
             and "Send the text" in page)

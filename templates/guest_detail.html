@@ -320,7 +320,8 @@
     <tr>
       <th scope="row">{{ w['start_date']|date_short }}</th>
       <td>{{ w['title'] }}</td>
-      <td><span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span></td>
+      <td><span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span>
+        {%- if w['recap_sent_at'] %}<br><span class="upload-hint">recap sent {{ w['recap_sent_at']|house_when }}</span>{% endif %}</td>
       {% if is_owner %}
       <td class="num">{% if wm and w['status'] == 'confirmed' %}{{ wm.charged|money }}{% else %}—{% endif %}</td>
       <td class="num">{% if wm and w['status'] == 'confirmed' and wm.owed > 0.005 %}<strong>{{ wm.owed|money }}</strong>{% else %}—{% endif %}</td>

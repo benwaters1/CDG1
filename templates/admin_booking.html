@@ -118,6 +118,10 @@
       <dt>Guests</dt><dd>{{ b['party_size'] }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %} <span class="upload-hint">· room sleeps {{ b['max_occupancy'] }}</span></dd>
       {% if b['special_occasion'] %}<dt>Celebrating</dt><dd>{{ b['special_occasion'] }}</dd>{% endif %}
       {% if b['special_requests'] %}<dt>They asked</dt><dd class="bk-pre">{{ b['special_requests'] }}</dd>{% endif %}
+      {#- Online check-in, from their booking page: what it gave and where the
+          rest went -- the fiches to the register, the note to the kitchen. #}
+      <dt>Online check-in</dt><dd>{% if b['checkin_done_at'] %}done {{ b['checkin_done_at']|house_day|date_short }} <span class="upload-hint">· <a href="{{ url_for('police_register_page') }}">the register</a></span>{% elif b['checked_in_at'] %}<span class="upload-hint">checked in at the door instead</span>{% else %}<span class="upload-hint">not yet{% if b['checkin_letter_sent_at'] %} · link emailed {{ b['checkin_letter_sent_at']|house_day|date_short }}{% endif %} · it is on their booking page</span>{% endif %}</dd>
+      {% if b['dietary_notes'] %}<dt>Cannot eat</dt><dd>{{ b['dietary_notes'] }} <span class="upload-hint">· deleted once the stay is over</span></dd>{% endif %}
       {% if b['transfer_flight_number'] or b['transfer_arrival_time'] or b['transfer_notes'] %}
       <dt>Transfer</dt><dd>{{ b['transfer_flight_number'] or 'flight to be confirmed' }}{% if b['transfer_arrival_time'] %}, landing {{ b['transfer_arrival_time'] }}{% endif %}{% if b['transfer_notes'] %} — {{ b['transfer_notes'] }}{% endif %}</dd>
       {% endif %}
@@ -319,7 +323,7 @@
     <h3 class="bk-subhead">Refunds made</h3>
     <ul class="bk-list">
       {% for r in refund.history %}
-      <li><strong>{{ r['amount']|money }}</strong> · {{ 'to the card' if r['method'] == 'stripe' else r['method']|replace('_', ' ') }} · {{ local_datetime_str(r['created_at']) }}
+      <li><strong>{{ r['amount']|money }}</strong> · {{ refund_method_words(r) }} · {{ local_datetime_str(r['created_at']) }}
         <span class="cell-note">{{ r['reason'] }}{% if r['by_name'] %} — {{ r['by_name'] }}{% endif %}{% if r['guest_told_at'] %} · they were told{% endif %}{% if r['reduces_bill'] %} · {{ r['reduces_bill']|money }} off the bill{% endif %}</span></li>
       {% endfor %}
     </ul>
@@ -332,13 +336,13 @@
    should. The form is the refund desk's own -- it posts there and comes back
    here -- so there is one engine, one ledger, one letter. #}
 <details class="detail-card bk-refund">
-  <summary><h3 style="display:inline;">Give money back</h3>{% if refund.ceiling > 0 %} <span class="upload-hint">up to {{ refund.ceiling|money }}</span>{% endif %}</summary>
+  <summary><h3 style="display:inline;">Refund</h3>{% if refund.ceiling > 0 %} <span class="upload-hint">up to {{ refund.ceiling|money }}</span>{% endif %}</summary>
   {% if not can('refund_desk') %}
   <p class="upload-hint">Giving money back is the owner's call.{% if refund.ceiling > 0 %} {{ refund.ceiling|money }} could go back.{% endif %}</p>
   {% elif refund.ceiling > 0 %}
   <p class="upload-hint">Up to {{ refund.ceiling|money }} can go back. Non-refundable as standard: this is a decision, not a step in cancelling.</p>
   <form method="post" action="{{ url_for('refund_desk', category='room', booking_id=b['id']) }}"
-        onsubmit="return confirm('Make this refund? A refund to a card moves real money.');" class="bk-form-grid">
+        onsubmit="return confirm(this.elements['method'].value === 'stripe' ? 'Send this refund to the card through Stripe? This moves real money.' : 'Record this refund? No money moves.');" class="bk-form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
     <div class="register-field">
       <label class="field-label" for="refund-payment">Against</label>
@@ -354,14 +358,24 @@
       <input id="refund-amount" type="number" name="amount" step="0.01" min="0.01" max="{{ '%.2f'|format(refund.ceiling) }}" placeholder="Blank = all that payment can">
     </div>
     <div class="register-field">
-      <label class="field-label" for="refund-method">How it goes back</label>
-      <select id="refund-method" name="method">
-        <option value="">The way it was paid</option>
-        <option value="stripe">To the card, through Stripe</option>
-        <option value="bank_transfer">Bank transfer, recorded here</option>
-        <option value="cash">Cash, recorded here</option>
-        <option value="other">Some other way, recorded here</option>
+      <label class="field-label" for="refund-method">Refund method</label>
+      <select id="refund-method" name="method" required
+              onchange="var t=this.form.querySelector('.refund-third-party'); if(t){t.hidden=this.value!=='third_party';}">
+        <option value="">Choose…</option>
+        <option value="stripe">Card refund via Stripe (sends the money)</option>
+        <option value="third_party">Refunded via a third party (record only, no money moves)</option>
+        <option value="bank_transfer">Bank transfer (record only)</option>
+        <option value="cash">Cash (record only)</option>
       </select>
+    </div>
+    <div class="register-field refund-third-party" hidden>
+      <label class="field-label" for="refund-via">Refunded via</label>
+      <select id="refund-via" name="refunded_via">
+        <option value="">Choose…</option>
+        {% for key, label in refund_via.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+      </select>
+      <label class="field-label" for="refund-ref" style="margin-top:6px;">Reference</label>
+      <input id="refund-ref" type="text" name="external_reference" maxlength="120" placeholder="e.g. ch_… or the bank's reference">
     </div>
     <div class="register-field">
       <label class="field-label" for="refund-why">Why</label>
@@ -382,7 +396,7 @@
     </fieldset>
     {% endif %}
     {% if refund.email %}
-    <label class="checkbox-row bk-wide"><input type="checkbox" name="tell_guest" value="1" checked> <span>Tell them: a letter to {{ refund.email }} saying what went back and how</span></label>
+    <label class="checkbox-row bk-wide"><input type="checkbox" name="tell_guest" value="1"> <span>Email the guest a refund confirmation ({{ refund.email }})</span></label>
     {% endif %}
     <p class="bk-wide"><button type="submit" class="btn-mini btn-mini-danger">Make the refund</button>
       <a href="{{ url_for('refund_desk', category='room', booking_id=b['id']) }}" class="small-link">Full refund desk</a></p>
@@ -431,9 +445,11 @@
     {% endif %}
 
     {# Only texts that are switched on and have wording are in this list
-       (booking_texts_plan), so with neither the heading goes too. #}
-    {% if texts.texts %}
-    <h3 class="bk-subhead">Texts the house sends by itself</h3>
+       (booking_texts_plan), and the letter offering extras is here only while
+       it is switched on (booking_extras_offer_plan), so with none of them the
+       heading goes too. #}
+    {% if texts.texts or extras_offer %}
+    <h3 class="bk-subhead">Texts and letters the house sends by itself</h3>
     <ul class="bk-list">
       {% for t in texts.texts %}
       <li><strong>The {{ t.label }} text</strong> —
@@ -445,6 +461,21 @@
         {% else %}<span class="upload-hint">only once the stay is confirmed</span>{% endif %}
         {% if t.body %}<span class="cell-note">“{{ t.body }}”</span>{% endif %}</li>
       {% endfor %}
+      {% if extras_offer %}{% set o = extras_offer %}
+      <li id="extras-offer"><strong>The letter offering what they can add</strong> —
+        {% if o.state == 'sent' %}
+          {% if o.outcome == 'held' %}<span class="owed-flag">written {{ local_datetime_str(o.sent_at) }}, waiting in Held Email</span>
+          {% elif o.outcome == 'party' %}<span class="bk-ok">went {{ local_datetime_str(o.sent_at) }}, to whoever leads the party</span>
+          {% else %}<span class="bk-ok">sent {{ local_datetime_str(o.sent_at) }}</span>{% endif %}
+        {% elif o.state == 'due' %}goes the morning of {{ o.due|date_short }}{% if not o.live %} <span class="upload-hint">(not while Write to guests is off)</span>{% endif %}
+          <span class="cell-note">offering {{ o.offers|map(attribute='name')|join(', ') }}</span>
+        {% elif o.state == 'unwritten' %}<span class="owed-flag">will not go: {{ o.reason }}</span> <a href="{{ o.editor }}">write it</a>
+        {% elif o.state == 'cannot' %}<span class="owed-flag">will not go: {{ o.reason }}</span>
+        {% elif o.state == 'party' %}<span class="upload-hint">goes to whoever leads the party, not to this room</span>
+        {% elif o.state == 'missed' %}<span class="upload-hint">not sent; too close to arrival</span>
+        {% elif o.state == 'off' %}<span class="upload-hint">not sent: the stay is {{ b['status'] }}</span>
+        {% else %}<span class="upload-hint">only once the stay is confirmed</span>{% endif %}</li>
+      {% endif %}
     </ul>
     {% endif %}
   </div>
@@ -638,16 +669,15 @@
     <button type="submit" class="btn-mini btn-mini-danger">Decline</button>
   </form>
   {% else %}
-  <p class="upload-hint">Cancelling frees the room, writes to the guest and works the waitlist. It moves no money:
-    {% if refund.ceiling > 0 %}{{ refund.ceiling|money }} paid stays with the house unless you give it back under Money.{% else %}nothing has been paid.{% endif %}</p>
-  <form method="post" action="{{ url_for('cancel_booking_admin', booking_id=b['id']) }}" class="bk-inline-form"
-        onsubmit="return confirm('Cancel {{ b['reference_code'] }}? The guest is told. No money moves.');">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
-    <select name="cancel_reason" aria-label="Why? (optional)">
-      <option value="">Why? (optional)</option>
+  <p class="upload-hint">Cancelling puts the room back on sale and works the waitlist. No money moves:
+    {% if refund.ceiling > 0 %}{{ refund.ceiling|money }} paid is kept unless you refund it first, under Refund.{% else %}nothing has been paid.{% endif %}
+    The next step shows the email, and sends it only if you tick the box.</p>
+  <form method="get" action="{{ url_for('cancel_booking_confirm', booking_id=b['id']) }}" class="bk-inline-form">
+    <select name="cancel_reason" aria-label="Reason (optional)">
+      <option value="">Reason (optional)</option>
       {% for key, label in cancel_reasons.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
     </select>
-    <button type="submit" class="btn-mini btn-mini-danger">Cancel the booking</button>
+    <button type="submit" class="btn-mini btn-mini-danger">Cancel booking</button>
   </form>
   {% endif %}
 </details>

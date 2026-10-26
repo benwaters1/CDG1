@@ -9,8 +9,10 @@
 
 <p style="max-width:52rem;color:#666;margin-bottom:1.5rem">
   Weekly entries repeat automatically — set a day and it appears every week.
-  Dated entries show once. Use the season window for things that only run part
-  of the year, like skiing.
+  Dated entries show once; give a last day for one that runs several. "When, in
+  words" is printed instead of the date (Late December); with no date at all it
+  is listed under All year. Use the season window for weekly things that only
+  run part of the year, like a ski market.
 </p>
 
 <details class="refund-box">
@@ -54,8 +56,16 @@
       </select>
     </div>
     <div>
-      <label for="wo_event_date" class="field-label">Or one date</label>
+      <label for="wo_event_date" class="field-label">Or a date</label>
       <input type="date" id="wo_event_date" name="event_date">
+    </div>
+    <div>
+      <label for="wo_event_until" class="field-label">Last day</label>
+      <input type="date" id="wo_event_until" name="event_until">
+    </div>
+    <div>
+      <label for="wo_when_words" class="field-label">When, in words</label>
+      <input type="text" id="wo_when_words" name="when_words" maxlength="80" placeholder="Late December, or All year">
     </div>
     <div>
       <label for="wo_start_time" class="field-label">From</label>
@@ -107,8 +117,10 @@
       </td>
       <td>
         {% if e['weekday'] is not none %}{{ DAYS[e['weekday']] }}
-        {% elif e['event_date'] %}{{ e['event_date']|date_short }}
+        {% elif e['event_date'] %}{{ e['event_date']|date_short }}{% if e['event_until'] and e['event_until'] != e['event_date'] %} – {{ e['event_until']|date_short }}{% endif %}
+        {% elif e['when_words'] %}{{ e['when_words'] }}
         {% else %}—{% endif %}
+        {% if e['when_words'] and e['event_date'] %}<br><span style="color:#777">shown as “{{ e['when_words'] }}”</span>{% endif %}
         {% if e['start_time'] %}<br><span style="color:#777">{{ e['start_time'] }}{% if e['end_time'] %}–{{ e['end_time'] }}{% endif %}</span>{% endif %}
       </td>
       <td>{{ e['location'] or '—' }}{% if e['distance'] %}<br><span style="color:#777">{{ e['distance'] }}</span>{% endif %}</td>
