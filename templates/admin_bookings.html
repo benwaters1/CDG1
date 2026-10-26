@@ -155,6 +155,8 @@
         <td data-label="Paid" class="num">{{ bill.paid|money if bill.paid else '—' }}{% if bill.refunded %}<span class="cell-note">{{ bill.refunded|money }} refunded</span>{% endif %}</td>
         <td data-label="Owed" class="num">
           {%- if owed %}<strong class="owed-flag">{{ owed|money }}</strong>{% if bill.balance_overdue %}<span class="cell-note owed-flag">overdue</span>{% elif bill.balance_due_date %}<span class="cell-note">due {{ bill.balance_due_date|date_short }}</span>{% endif %}
+          {%- elif bill.to_give_back %}<span class="cell-note owed-flag">{{ bill.to_give_back|money }} to give back</span>
+          {%- elif bill.kept %}<span class="cell-note">{{ bill.kept|money }} kept</span>
           {%- elif bill.overpaid %}<span class="cell-note">{{ bill.overpaid|money }} in credit</span>
           {%- elif b['status'] == 'confirmed' and bill.paid %}<span class="bk-settled">settled</span>
           {%- else %}<span class="upload-hint">—</span>{% endif -%}

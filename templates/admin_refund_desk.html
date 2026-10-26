@@ -32,7 +32,10 @@
   </span></div>
   {% if money.owed is not none %}
   <div class="stat-tile"><span class="stat-tile-body">
-    {% if money.credit > 0 %}
+    {% if money.called_off %}
+    <span class="stat-tile-value">{{ (money.to_give_back or money.kept)|money }}</span>
+    <span class="stat-tile-label">{{ 'To give back' if money.to_give_back else 'Kept' }}: cancelled, nothing is owed</span>
+    {% elif money.credit > 0 %}
     <span class="stat-tile-value">{{ money.credit|money }}</span>
     <span class="stat-tile-label">In credit: more paid than it costs</span>
     {% else %}
