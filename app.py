@@ -412,6 +412,10 @@ AUTOMATION_SETTING_DEFAULTS = {
     # depends on it.
     "automation_door_lock_check_enabled": "1",
     "automation_weather_enabled": "1",
+    # ON: the owner asked for it (22 October 2026), and it writes tasks for
+    # the team, nothing a guest sees. Separate from the reading above, so the
+    # jobs can be stopped without the pages losing the weather.
+    "automation_weather_jobs_enabled": "1",
     "automation_exchange_rates_enabled": "1",
     "automation_photo_mirror_enabled": "1",
     # ON: it asks nobody until GITHUB_READ_TOKEN is set, and the readiness page
@@ -4025,6 +4029,29 @@ def init_db():
             detail TEXT
         );
         CREATE INDEX IF NOT EXISTS door_openings_when ON door_openings(opened_at);
+
+        -- One line per outdoor job the forecast asked for: frost, a storm or
+        -- heat, the house day it is for, and the job in the owner's words.
+        -- The UNIQUE is "once per event": fetching the forecast again for the
+        -- same night meets the row that is already here instead of making a
+        -- second task. The task is the job on somebody's list; this is what
+        -- the house knows about why it is there, and whether the house closed
+        -- it (withdrawn, passed) or a person ticked it (the task says so).
+        CREATE TABLE IF NOT EXISTS weather_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            job_day TEXT NOT NULL,
+            job_key TEXT NOT NULL,
+            job TEXT NOT NULL,
+            task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+            line REAL,
+            forecast TEXT,
+            state TEXT NOT NULL DEFAULT 'raised',
+            raised_at TEXT NOT NULL,
+            closed_at TEXT,
+            closed_why TEXT,
+            UNIQUE (kind, job_day, job_key)
+        );
 
         -- The house's practical information for a staying guest: Wi-Fi,
         -- breakfast, who to call. The owner's own words in each language,
@@ -9330,6 +9357,9 @@ NAV_AREAS = {
         # owner-only by omission rather than by choice.
         "decide_mileage", "delete_maintenance_schedule", "edit_maintenance_schedule", "maintenance_certificate",
         "maintenance_page", "new_maintenance_schedule", "record_maintenance_done", "room_economics_page",
+        # Beside maintenance: the estate's outdoor jobs. Both routes are still
+        # @owner_required -- the lines and lists are the owner's to set.
+        "weather_jobs_page", "save_weather_jobs",
         "room_faults_page", "stock_basket", "stop_cleaning_round",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
@@ -44793,6 +44823,9 @@ PALETTE_PAGES = [
      "report problem broken fallen branch tree damage leak fault photo grounds"),
     ("Plans", "manage_plans",
      "plans upload aerial photo survey cadastre plan of the grounds floors"),
+    ("Weather jobs", "weather_jobs_page",
+     "weather forecast frost storm wind gusts heat outdoor jobs taps pots "
+     "shutters terrace furniture parasols watering garden"),
     ("Social", "management_social",
      "instagram facebook posts marketing schedule"),
     ("Social plans", "social_plans",
@@ -56310,6 +56343,548 @@ def run_weather_job(conn):
         (WEATHER_SETTING, json.dumps(snap)))
     conn.commit()
     return f"{snap['c']}\u00b0C, {WEATHER_WORDS.get(snap['code'], snap['code'])}"
+
+
+# ---------------------------------------------------------------------------
+# THE FORECAST AS THE DAY'S OUTDOOR JOBS. Asked for by the owner on 22 October
+# 2026. The house is at 900 metres in the Ari\u00e8ge: it gets frost, storms off the
+# mountains and summer heat, and each has a few jobs that only count if they
+# are done BEFORE it arrives -- the taps drained the evening before a frost,
+# the terrace furniture tied down before the wind.
+#
+# Three kinds of weather, each with a line the owner sets and a list of jobs
+# the owner writes. When the forecast crosses a line, every job on its list
+# becomes a task for the day it has to be done on, which is what puts it on
+# the calendar and on that person's Today list. Its title says what the
+# forecast said ("\u22123\u00b0C forecast tonight"): a job with no reason on it is a job
+# somebody decides to skip.
+#
+# THE TASKS CLOSE THEMSELVES, on the generate_watch_tasks argument. The only
+# "done" a person has is the tick. The house withdraws a job the forecast stops
+# asking for, and closes one whose day has gone by, and says why in the task
+# each time. Without that half a week of changeable forecasts leaves a list of
+# frosts that never came, and a list like that is not read the morning it
+# lists a real one.
+#
+# ONCE PER EVENT is weather_jobs' UNIQUE (kind, day, job): a forecast fetched
+# again for the same night meets the row that is already there.
+# ---------------------------------------------------------------------------
+
+FORECAST_SETTING = "weather_forecast"
+# Eight days, so the frost night of the seventh -- which ends on the morning of
+# the eighth -- is read whole. Jobs are raised only for the next few days
+# (weather_jobs_days_ahead); the rest is the outlook on the owner's page.
+FORECAST_DAYS = 8
+# Older than this, a forecast is not acted on. It is fetched hourly, so this
+# only bites when Open-Meteo has been out of reach for half a day -- and then
+# withdrawing a job because an old forecast no longer mentions it would be
+# worse than leaving it where it is.
+FORECAST_FRESH_HOURS = 12
+WEATHER_JOB_ORIGIN = "weather"
+WEATHER_JOB_KINDS = ("frost", "storm", "heat")
+WEATHER_JOB_KIND_WORDS = {"frost": "Frost overnight", "storm": "A storm or high wind",
+                          "heat": "Heat"}
+# A job is done in the working day before the weather arrives, so weather that
+# arrives before ten in the morning is prepared for the evening before. A
+# frost at six on Thursday, or a gale at four, is Wednesday's job: nobody is
+# draining taps at four in the morning.
+WEATHER_JOB_MORNING_HOUR = 10
+# Open-Meteo's thunderstorm codes (WEATHER_WORDS reads all three alike).
+THUNDER_CODES = frozenset({95, 96, 99})
+# How far the forecast must move back from the line before a raised job is
+# withdrawn. Without it a night forecast at 0.8\u00b0C, then 1.2, then 0.9 raises,
+# withdraws and reopens the same job all afternoon, and a job that keeps
+# changing its mind is one people stop believing. A line the OWNER moves is
+# not held to this: see generate_weather_jobs.
+WEATHER_JOB_MARGIN = {"frost": 2.0, "storm": 10.0, "heat": 2.0}
+# What a line may be set to. Outside these it is a typing mistake, not a
+# decision: a frost line of 50 would raise the frost jobs every night of the
+# year.
+WEATHER_JOB_LINE_BOUNDS = {"frost": (-20.0, 10.0), "storm": (30.0, 200.0),
+                           "heat": (20.0, 45.0)}
+WEATHER_JOB_MAX_DAYS_AHEAD = 6
+WEATHER_JOB_MAX_JOBS = 12
+WEATHER_JOB_ASSIGNEE_PREFIX = "weather_jobs_assignee_"
+# Live config, like every app_setting: these are only what an unset house
+# starts from, and the owner's page writes over them.
+WEATHER_JOB_SETTING_DEFAULTS = {
+    "weather_jobs_days_ahead": "2",
+    "weather_jobs_frost_on": "1",
+    "weather_jobs_frost_line": "1",
+    "weather_jobs_frost_list": "Drain and cover the outdoor taps\nBring in the pots",
+    "weather_jobs_storm_on": "1",
+    "weather_jobs_storm_line": "70",
+    "weather_jobs_storm_thunder": "1",
+    "weather_jobs_storm_list": "Stack or tie down the terrace furniture\nClose the shutters",
+    "weather_jobs_heat_on": "1",
+    "weather_jobs_heat_line": "30",
+    "weather_jobs_heat_list": "Water the beds\nPut out the parasols",
+}
+
+
+def fetch_forecast(timeout=8):
+    """Ask Open-Meteo for the hours ahead. Raises on anything unusable.
+
+    Hour by hour rather than the daily summary, because the question is not
+    "how cold is Wednesday" but "how cold is the night that starts on
+    Wednesday evening" -- and a daily minimum is mostly the dawn AFTER the
+    night a job is for. Times come back as Unix seconds and are kept as UTC
+    moments, so a clock-change night cannot be misread: one night a year a
+    wall-clock hour happens twice, and another night one never happens.
+    """
+    url = (f"https://api.open-meteo.com/v1/forecast?latitude={WEATHER_LAT}"
+           f"&longitude={WEATHER_LON}"
+           f"&hourly=temperature_2m,wind_gusts_10m,weather_code"
+           f"&forecast_days={FORECAST_DAYS}&wind_speed_unit=kmh"
+           f"&timeformat=unixtime&timezone=Europe%2FParis")
+    req = Request(url, headers={"User-Agent": "chateau-gudanes"})
+    with urlopen(req, timeout=timeout) as r:
+        payload = json.loads(r.read().decode("utf-8"))
+    hourly = payload.get("hourly") or {}
+    times = hourly.get("time") or []
+
+    def column(name, i):
+        values = hourly.get(name) or []
+        return values[i] if i < len(values) else None
+
+    hours = []
+    for i, t in enumerate(times):
+        temp, gust, code = (column("temperature_2m", i), column("wind_gusts_10m", i),
+                            column("weather_code", i))
+        if t is None or (temp is None and gust is None and code is None):
+            continue
+        hours.append([datetime.fromtimestamp(int(t), timezone.utc).isoformat(),
+                      None if temp is None else round(float(temp), 1),
+                      None if gust is None else int(round(float(gust))),
+                      None if code is None else int(code)])
+    if not hours:
+        raise ValueError("no hourly forecast in the response")
+    return {"at": datetime.now(timezone.utc).isoformat(), "hours": hours}
+
+
+def weather_forecast(conn, *, now=None):
+    """The cached hours ahead, or None. NEVER fetches, like weather_now.
+
+    {'at': when it was fetched, 'fresh', 'hours': [{'at': the UTC moment,
+    'local': the house's clock at it, 'temp', 'gust', 'code'}]}. Rubbish in
+    the cache reads as no forecast, which raises nothing and withdraws nothing.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (FORECAST_SETTING,)).fetchone()
+    if not row or not row["value"]:
+        return None
+    try:
+        held = json.loads(row["value"])
+        at = datetime.fromisoformat(held["at"])
+        hours = []
+        for stamp, temp, gust, code in held["hours"]:
+            when = datetime.fromisoformat(stamp)
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            hours.append({"at": when, "local": when.astimezone(LOCAL_TZ),
+                          "temp": None if temp is None else float(temp),
+                          "gust": None if gust is None else float(gust),
+                          "code": None if code is None else int(code)})
+    except (ValueError, KeyError, TypeError):
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    hours.sort(key=lambda h: h["at"])
+    age = (now or datetime.now(timezone.utc)) - at
+    return {"at": at, "hours": hours,
+            "fresh": bool(hours) and age <= timedelta(hours=FORECAST_FRESH_HOURS)}
+
+
+def weather_job_day(local):
+    """The house day the jobs are done on, for weather arriving at `local`."""
+    if local.hour >= WEATHER_JOB_MORNING_HOUR:
+        return local.date()
+    return local.date() - timedelta(days=1)
+
+
+def forecast_days(forecast):
+    """The forecast's hours, filed under the day the jobs for them are done.
+
+    A job day runs from ten in the morning to ten the next morning: Thursday's
+    six o'clock frost is Wednesday's, because Wednesday evening is when the
+    taps are drained. `whole` says whether every hour of that span is in the
+    forecast. Only a whole day can withdraw a job -- the end of the forecast
+    is not the end of the weather.
+    """
+    by_day = {}
+    for h in forecast["hours"]:
+        by_day.setdefault(weather_job_day(h["local"]), []).append(h)
+    out = []
+    for day in sorted(by_day):
+        hours = by_day[day]
+        opens = datetime.combine(day, dtime(WEATHER_JOB_MORNING_HOUR), tzinfo=LOCAL_TZ)
+        last = datetime.combine(day + timedelta(days=1),
+                                dtime(WEATHER_JOB_MORNING_HOUR - 1), tzinfo=LOCAL_TZ)
+        temps = [h for h in hours if h["temp"] is not None]
+        gusts = [h for h in hours if h["gust"] is not None]
+        out.append({
+            "day": day, "hours": hours,
+            "whole": hours[0]["at"] <= opens and hours[-1]["at"] >= last,
+            "low": min(temps, key=lambda h: h["temp"]) if temps else None,
+            "high": max(temps, key=lambda h: h["temp"]) if temps else None,
+            "gust": max(gusts, key=lambda h: h["gust"]) if gusts else None,
+            "thunder": next((h for h in hours if h["code"] in THUNDER_CODES), None),
+        })
+    return out
+
+
+def weather_degrees(c, line=None):
+    """\u22123\u00b0C, with a real minus sign and never "\u22120\u00b0C".
+
+    Whole degrees, except where rounding would put the figure on the wrong side
+    of the line it is being measured against: "1\u00b0C forecast tonight" as the
+    reason for the frost jobs, under a line of 1\u00b0C, reads as a contradiction.
+    0.6\u00b0C is what the forecast said, and it is what the task says.
+    """
+    shown = int(round(c))
+    if line is not None and (shown == line or (shown < line) != (c < line)):
+        text = f"{abs(c):.1f}"
+        return f"\u2212{text}\u00b0C" if c < 0 and text != "0.0" else f"{text}\u00b0C"
+    return f"\u2212{-shown}\u00b0C" if shown < 0 else f"{shown}\u00b0C"
+
+
+def weather_line(kind, line):
+    """The owner's line as the owner typed it: −2.5°C stays −2.5°C."""
+    if kind == "storm":
+        return f"{line:g} km/h"
+    return f"−{-line:g}°C" if line < 0 else f"{line:g}°C"
+
+
+def weather_when(local, day):
+    """When weather arriving at `local` comes, said from the day the job is on."""
+    if local.date() > day or local.hour >= 18:
+        return "tonight"
+    return "this afternoon" if local.hour >= 12 else "this morning"
+
+
+def weather_day_words(day):
+    """'Wednesday 24 October'. Not strftime, which follows the server's locale."""
+    return f"{WHATS_ON_DAYS[day.weekday()]} {day.day} {MONTH_NAMES[day.month - 1]}"
+
+
+def weather_job_verdict(kind, d, k):
+    """What one job day's forecast says about one kind of weather, or None.
+
+    state is 'crosses' (the jobs are wanted), 'clear' (far enough back from
+    the line to withdraw them) or 'near' (inside the margin: nothing new is
+    raised and nothing raised is withdrawn). `words` go in the task's title,
+    `detail` in its notes, and `now` says what the forecast says either way,
+    for the line written when a job is withdrawn.
+    """
+    line, margin, day = k["line"], WEATHER_JOB_MARGIN[kind], d["day"]
+    if kind == "frost":
+        h = d["low"]
+        if not h:
+            return None
+        v = h["temp"]
+        deg = weather_degrees(v, line)
+        state = "crosses" if v < line else "clear" if v >= line + margin else "near"
+        return {"state": state,
+                "words": f"{deg} forecast {weather_when(h['local'], day)}",
+                "detail": (f"{WEATHER_JOB_KIND_WORDS[kind]}: lowest {deg} around "
+                           f"{h['local']:%H:%M} on {weather_day_words(h['local'].date())}, "
+                           f"under the {weather_line(kind, line)} line. If the frost stops "
+                           f"being forecast, this closes on its own."),
+                "now": f"the forecast now says {deg} at the coldest"}
+    if kind == "heat":
+        h = d["high"]
+        if not h:
+            return None
+        v = h["temp"]
+        deg = weather_degrees(v, line)
+        state = "crosses" if v > line else "clear" if v <= line - margin else "near"
+        return {"state": state,
+                "words": f"{deg} forecast {weather_when(h['local'], day)}",
+                "detail": (f"{WEATHER_JOB_KIND_WORDS[kind]}: up to {deg} around "
+                           f"{h['local']:%H:%M} on {weather_day_words(h['local'].date())}, "
+                           f"over the {weather_line(kind, line)} line. If the heat stops "
+                           f"being forecast, this closes on its own."),
+                "now": f"the forecast now says {deg} at the hottest"}
+    # A storm: gusts over the line, or a thunderstorm if the owner counts one.
+    thunder = d["thunder"] if k.get("thunder") else None
+    peak = d["gust"]
+    gusty = peak is not None and peak["gust"] > line
+    if not gusty and not thunder:
+        quiet = peak is None or peak["gust"] <= line - margin
+        return {"state": "clear" if quiet else "near", "words": "", "detail": "",
+                "now": (f"the forecast now says gusts of {int(peak['gust'])} km/h at most"
+                        if peak else "the forecast now says no wind to speak of")
+                       + (" and no thunderstorm" if k.get("thunder") else "")}
+    first = next(h for h in d["hours"]
+                 if (h["gust"] is not None and h["gust"] > line)
+                 or (thunder and h["code"] in THUNDER_CODES))
+    what = [f"gusts of {int(peak['gust'])} km/h"] if gusty else []
+    if thunder:
+        what.append("a thunderstorm")
+    said = []
+    if gusty:
+        said.append(f"gusts up to {int(peak['gust'])} km/h around {peak['local']:%H:%M} "
+                    f"on {weather_day_words(peak['local'].date())}, over the "
+                    f"{weather_line(kind, line)} line")
+    if thunder:
+        said.append(f"a thunderstorm from {thunder['local']:%H:%M} on "
+                    f"{weather_day_words(thunder['local'].date())}")
+    return {"state": "crosses",
+            "words": f"{' and '.join(what)} forecast {weather_when(first['local'], day)}",
+            "detail": (f"{WEATHER_JOB_KIND_WORDS[kind]}: {'; '.join(said)}. If the storm "
+                       f"stops being forecast, this closes on its own."),
+            "now": ""}
+
+
+def weather_job_key(job):
+    """One job, however its spacing or capitals were typed this time."""
+    return " ".join(job.split()).casefold()
+
+
+def weather_job_list(text):
+    """The owner's list, one job a line, blanks and repeats dropped."""
+    jobs, seen = [], set()
+    for line in (text or "").splitlines():
+        job = " ".join(line.split())[:120]
+        if job and weather_job_key(job) not in seen:
+            seen.add(weather_job_key(job))
+            jobs.append(job)
+    return jobs[:WEATHER_JOB_MAX_JOBS]
+
+
+def weather_job_assignees(conn):
+    """kind -> user id. Joined against users, as watch_task_assignees is, so a
+    route to somebody who has left hands the jobs back -- unassigned, they are
+    still on the calendar -- rather than to an account nobody opens."""
+    rows = conn.execute(
+        """SELECT app_settings.key AS key, users.id AS uid
+             FROM app_settings
+             JOIN users ON users.id = CAST(app_settings.value AS INTEGER)
+            WHERE app_settings.key LIKE ? AND users.status = 'active'""",
+        (WEATHER_JOB_ASSIGNEE_PREFIX + "%",)).fetchall()
+    out = {}
+    for r in rows:
+        kind = r["key"][len(WEATHER_JOB_ASSIGNEE_PREFIX):]
+        if kind in WEATHER_JOB_KINDS:
+            out[kind] = r["uid"]
+    return out
+
+
+def weather_job_settings(conn):
+    """The owner's lines and lists, with the defaults for anything unset."""
+    held = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM app_settings WHERE key LIKE 'weather_jobs_%'").fetchall()}
+
+    def get(key):
+        value = held.get(key)
+        return WEATHER_JOB_SETTING_DEFAULTS[key] if value is None else value
+
+    def number(key):
+        try:
+            return float(str(get(key)).replace(",", "."))
+        except (TypeError, ValueError):
+            return float(WEATHER_JOB_SETTING_DEFAULTS[key])
+
+    routes = weather_job_assignees(conn)
+    kinds = {kind: {"kind": kind, "words": WEATHER_JOB_KIND_WORDS[kind],
+                    "on": get(f"weather_jobs_{kind}_on") == "1",
+                    "line": number(f"weather_jobs_{kind}_line"),
+                    "jobs": weather_job_list(get(f"weather_jobs_{kind}_list")),
+                    "who": routes.get(kind)}
+             for kind in WEATHER_JOB_KINDS}
+    kinds["storm"]["thunder"] = get("weather_jobs_storm_thunder") == "1"
+    ahead = int(number("weather_jobs_days_ahead"))
+    return {"days_ahead": max(0, min(ahead, WEATHER_JOB_MAX_DAYS_AHEAD)), "kinds": kinds}
+
+
+def _close_weather_job(conn, row, now, why, state):
+    """Close one job's task the house raised, saying why, in the task itself.
+
+    Appended to the notes rather than kept only here: the task is what the
+    person who was going to do it opens, and "closed" with no reason reads as
+    somebody having done it.
+    """
+    note = (row["task_notes"] or "").rstrip()
+    said = f"Closed on its own, {house_when(now.isoformat())}: {why}."
+    conn.execute("UPDATE tasks SET status = 'done', completed_at = ?, notes = ? WHERE id = ?",
+                 (now.isoformat(), f"{note}\n\n{said}" if note else said, row["task_id"]))
+    conn.execute("""UPDATE weather_jobs SET state = ?, closed_at = ?, closed_why = ?
+                    WHERE id = ?""", (state, now.isoformat(), why, row["id"]))
+
+
+def generate_weather_jobs(conn, *, now=None, today=None):
+    """Raise the jobs the forecast asks for, and close the ones it no longer does.
+
+    Run after every fetch, and after the owner saves the page. Returns what it
+    did, as counts. Everything is keyed on (kind, day, job) in weather_jobs, so
+    running it twice on the same forecast changes nothing the second time.
+
+    Four answers for a job already raised:
+      - its task was TICKED: done is done, and nothing here reopens it;
+      - its task was DELETED by somebody: a decision, so it is not raised again;
+      - the house closed it and the weather is forecast again: reopened, not a
+        second task, so the calendar shows one job that came back;
+      - still open: rewritten in place when the forecast moves (\u22123 to \u22125\u00b0C),
+        withdrawn when the forecast moves clear of the line, and closed when
+        its day has gone by.
+    """
+    now = now or datetime.now(timezone.utc)
+    today = today or house_today()
+    now_iso = now.isoformat()
+    out = {"made": 0, "moved": 0, "reopened": 0, "withdrawn": 0, "passed": 0,
+           "skipped": None}
+
+    # The days gone by first, whatever the forecast says or whether there is
+    # one: a job for a night that is over is not a job any more, and left open
+    # it would sit on somebody's Today list as overdue for good.
+    for r in conn.execute(
+            """SELECT weather_jobs.*, tasks.notes AS task_notes FROM weather_jobs
+                 JOIN tasks ON tasks.id = weather_jobs.task_id
+                WHERE weather_jobs.state = 'raised' AND weather_jobs.job_day < ?
+                  AND tasks.status != 'done'""", (today.isoformat(),)).fetchall():
+        _close_weather_job(conn, r, now, "its day went by and nobody ticked it", "passed")
+        out["passed"] += 1
+
+    forecast = weather_forecast(conn, now=now)
+    if not forecast or not forecast["fresh"]:
+        conn.commit()
+        out["skipped"] = "no forecast yet" if not forecast else "the forecast is too old to act on"
+        return out
+
+    cfg = weather_job_settings(conn)
+    horizon = (today + timedelta(days=cfg["days_ahead"])).isoformat()
+    verdicts = {}
+    for d in forecast_days(forecast):
+        if d["day"] < today:
+            continue
+        for kind in WEATHER_JOB_KINDS:
+            v = weather_job_verdict(kind, d, cfg["kinds"][kind])
+            if v:
+                verdicts[(kind, d["day"].isoformat())] = dict(v, whole=d["whole"])
+
+    held = {(r["kind"], r["job_day"], r["job_key"]): r for r in conn.execute(
+        """SELECT weather_jobs.*, tasks.id AS live_id, tasks.status AS task_status,
+                  tasks.title AS task_title, tasks.notes AS task_notes,
+                  tasks.assigned_to_user_id AS task_who
+             FROM weather_jobs LEFT JOIN tasks ON tasks.id = weather_jobs.task_id
+            WHERE weather_jobs.job_day >= ?""", (today.isoformat(),)).fetchall()}
+
+    wanted = set()
+    for (kind, day_iso), v in sorted(verdicts.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        k = cfg["kinds"][kind]
+        if not k["on"] or v["state"] != "crosses" or day_iso > horizon:
+            continue
+        for job in k["jobs"]:
+            key = (kind, day_iso, weather_job_key(job))
+            wanted.add(key)
+            title = f"{job[0].upper()}{job[1:]} \u2014 {v['words']}"
+            r = held.get(key)
+            if r is None:
+                # The ledger row first, and the task only if this call made
+                # it: two workers on the same fetch cannot both raise one.
+                cur = conn.execute(
+                    """INSERT OR IGNORE INTO weather_jobs (kind, job_day, job_key, job, line,
+                         forecast, state, raised_at) VALUES (?, ?, ?, ?, ?, ?, 'raised', ?)""",
+                    (kind, day_iso, key[2], job, k["line"], v["words"], now_iso))
+                if not cur.rowcount:
+                    continue
+                ledger_id = cur.lastrowid
+                task_id = conn.execute(
+                    """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                         status, origin, created_at)
+                       VALUES (?, ?, ?, 'normal', ?, 'open', ?, ?)""",
+                    (k["who"], title, v["detail"], day_iso, WEATHER_JOB_ORIGIN,
+                     now_iso)).lastrowid
+                conn.execute("UPDATE weather_jobs SET task_id = ? WHERE id = ?",
+                             (task_id, ledger_id))
+                out["made"] += 1
+                continue
+            if r["live_id"] is None:
+                continue
+            if r["task_status"] == "done" and r["state"] != "withdrawn":
+                continue
+            if r["task_status"] == "done":
+                conn.execute(
+                    """UPDATE tasks SET status = 'open', completed_at = NULL, title = ?,
+                         notes = ?, assigned_to_user_id = ? WHERE id = ?""",
+                    (title, v["detail"], k["who"], r["live_id"]))
+                out["reopened"] += 1
+            elif (r["task_title"], r["task_notes"], r["task_who"]) != (title, v["detail"], k["who"]):
+                # Rewritten, not closed and raised again: that would read as
+                # the frost having been dealt with and come back.
+                conn.execute(
+                    "UPDATE tasks SET title = ?, notes = ?, assigned_to_user_id = ? WHERE id = ?",
+                    (title, v["detail"], k["who"], r["live_id"]))
+                out["moved"] += 1
+            conn.execute(
+                """UPDATE weather_jobs SET state = 'raised', line = ?, forecast = ?,
+                     closed_at = NULL, closed_why = NULL WHERE id = ?""",
+                (k["line"], v["words"], r["id"]))
+
+    # The half that matters, as in generate_watch_tasks.
+    for key, r in held.items():
+        if (key in wanted or r["live_id"] is None or r["state"] != "raised"
+                or r["task_status"] == "done"):
+            continue
+        kind, day_iso, job_key = key
+        k = cfg["kinds"][kind]
+        v = verdicts.get((kind, day_iso))
+        if not k["on"]:
+            why = f"the {kind} jobs have been switched off"
+        elif job_key not in {weather_job_key(j) for j in k["jobs"]}:
+            why = f"it is no longer on the {kind} list"
+        elif v is None or not v["whole"]:
+            # The forecast does not reach far enough to say. Silence from
+            # the end of a forecast is not the weather going away.
+            continue
+        elif r["line"] is not None and r["line"] != k["line"] and v["state"] != "crosses":
+            # The owner moved the line. That is a decision, not a wobble in
+            # the forecast, so the margin does not hold the job open against it.
+            why = f"the line was moved to {weather_line(kind, k['line'])}, and {v['now']}"
+        elif v["state"] == "clear":
+            why = v["now"]
+        else:
+            continue
+        _close_weather_job(conn, r, now, why, "withdrawn")
+        out["withdrawn"] += 1
+
+    conn.commit()
+    return out
+
+
+def weather_jobs_summary(r):
+    """One line for the job-status page, saying what it did and did not do."""
+    if r.get("skipped") and not r["passed"]:
+        return f"nothing raised: {r['skipped']}"
+    bits = []
+    if r["made"]:
+        bits.append(f"{r['made']} raised")
+    if r["reopened"]:
+        bits.append(f"{r['reopened']} reopened -- forecast again")
+    if r["moved"]:
+        bits.append(f"{r['moved']} rewritten -- the forecast moved")
+    if r["withdrawn"]:
+        bits.append(f"{r['withdrawn']} withdrawn -- no longer forecast")
+    if r["passed"]:
+        bits.append(f"{r['passed']} closed -- the day went by unticked")
+    if r.get("skipped"):
+        bits.append(f"nothing else: {r['skipped']}")
+    return ", ".join(bits) or "nothing to raise"
+
+
+def run_weather_jobs_job(conn):
+    """Hourly: fetch the hours ahead, then raise and close the outdoor jobs.
+
+    The fetch comes before anything is written, so no write is held open
+    across somebody else's network.
+    """
+    snap = fetch_forecast()
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (FORECAST_SETTING, json.dumps(snap)))
+    conn.commit()
+    return weather_jobs_summary(generate_weather_jobs(conn))
 
 
 def next_free_words(conn, room, arrival, nights, horizon=60):
@@ -77141,6 +77716,8 @@ SETTINGS_PLACES = [
         ("admin_terms", "Terms and conditions", "What a guest agrees to when they book"),
         ("management_documents", "Documents", "Certificates, registration, scans"),
         ("vendors", "Suppliers", "Who the house buys from"),
+        ("weather_jobs_page", "Weather jobs",
+         "The frost, storm and heat lines, and the outdoor jobs each one raises"),
         ("admin_readiness", "Go-live checklist", "What is still to set before guests book here"),
     ]),
     ("Who can open what", "lock", [
@@ -91524,6 +92101,173 @@ def maintenance_page():
         categories=MAINTENANCE_CATEGORIES, required_by=MAINTENANCE_REQUIRED_BY,
         suggestions=MAINTENANCE_SUGGESTIONS, today=house_today(),
         plans=plans, placed=placed)
+
+
+WEATHER_JOB_STANDS = ["To do", "Done", "Withdrawn", "Went by unticked", "Taken off by hand"]
+
+
+def weather_job_stands(r):
+    """Where one raised job stands -- and whose doing that was."""
+    if r["live_id"] is None:
+        return "Taken off by hand"
+    if r["state"] == "withdrawn" and r["task_status"] == "done":
+        return "Withdrawn"
+    if r["state"] == "passed":
+        return "Went by unticked"
+    return "Done" if r["task_status"] == "done" else "To do"
+
+
+@app.route("/management/weather-jobs")
+@owner_required
+def weather_jobs_page():
+    """The outdoor jobs the forecast raises: the lines and lists, the days ahead
+    as the house reads them, and what became of every job it raised."""
+    conn = get_db()
+    now = datetime.now(timezone.utc)
+    today = house_today()
+    cfg = weather_job_settings(conn)
+    forecast = weather_forecast(conn, now=now)
+    switched_on = get_automation_settings(conn).get("automation_weather_jobs_enabled") == "1"
+    last_day = today + timedelta(days=cfg["days_ahead"])
+    outlook = []
+    for d in forecast_days(forecast) if forecast else []:
+        if d["day"] < today:
+            continue
+        asks = []
+        for kind in WEATHER_JOB_KINDS:
+            k = cfg["kinds"][kind]
+            v = weather_job_verdict(kind, d, k)
+            if v and v["state"] == "crosses":
+                asks.append({"kind": kind, "words": v["words"],
+                             "why_not": ("switched off" if not k["on"]
+                                         else "nothing on its list" if not k["jobs"]
+                                         else "further ahead than jobs are raised"
+                                         if d["day"] > last_day else None)})
+        low, high, gust = d["low"], d["high"], d["gust"]
+        outlook.append({
+            "day": weather_day_words(d["day"]), "today": d["day"] == today,
+            "whole": d["whole"], "asks": asks,
+            "low": f"{weather_degrees(low['temp'])} at {low['local']:%H:%M}" if low else "",
+            "high": f"{weather_degrees(high['temp'])} at {high['local']:%H:%M}" if high else "",
+            "gust": f"{int(gust['gust'])} km/h at {gust['local']:%H:%M}" if gust else "",
+            "thunder": f"{d['thunder']['local']:%H:%M}" if d["thunder"] else "",
+        })
+    rows = conn.execute(
+        """SELECT weather_jobs.*, tasks.id AS live_id, tasks.status AS task_status,
+                  users.name AS who
+             FROM weather_jobs
+             LEFT JOIN tasks ON tasks.id = weather_jobs.task_id
+             LEFT JOIN users ON users.id = tasks.assigned_to_user_id
+            WHERE weather_jobs.job_day >= ?""",
+        ((today - timedelta(days=90)).isoformat(),)).fetchall()
+    people = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    conn.close()
+
+    lv = list_view(
+        rows, request.args,
+        search=["job", "forecast", "who", "closed_why"],
+        search_hint="Search a job",
+        facets=[facet("stands", "Where it stands", weather_job_stands,
+                      order=WEATHER_JOB_STANDS),
+                facet("kind", "Weather", lambda r: WEATHER_JOB_KIND_WORDS.get(r["kind"], r["kind"]),
+                      order=[WEATHER_JOB_KIND_WORDS[k] for k in WEATHER_JOB_KINDS])],
+        sorts=[sort_option("latest", "Latest day first",
+                           lambda r: (r["job_day"], -r["id"]), reverse=True),
+               sort_option("earliest", "Earliest day first",
+                           lambda r: (r["job_day"], r["id"]))],
+        default_sort="latest",
+    )
+    stands = [weather_job_stands(r) for r in rows]
+
+    def counted(kind):
+        return sum(1 for o in outlook for a in o["asks"] if a["kind"] == kind)
+
+    span = f"in the next {len(outlook)} days" if outlook else "no forecast"
+    overview = [
+        overview_cell("Jobs to do", stands.count("To do")),
+        overview_cell("Frost nights", counted("frost"), sub=span),
+        overview_cell("Storm days", counted("storm"), sub=span),
+        overview_cell("Hot days", counted("heat"), sub=span),
+        overview_cell("Went by unticked", stands.count("Went by unticked"),
+                      sub="the last 90 days"),
+    ]
+    return render_template(
+        "weather_jobs.html", cfg=cfg, kinds=WEATHER_JOB_KINDS, people=people,
+        outlook=outlook, forecast=forecast, switched_on=switched_on,
+        overview=overview, rows=lv["rows"], lv=lv, stands=weather_job_stands,
+        kind_words=WEATHER_JOB_KIND_WORDS, bounds=WEATHER_JOB_LINE_BOUNDS, max_ahead=WEATHER_JOB_MAX_DAYS_AHEAD,
+        day_words=lambda iso: weather_day_words(parse_date(iso)),
+        fresh_hours=FORECAST_FRESH_HOURS, morning=WEATHER_JOB_MORNING_HOUR,
+        margins=WEATHER_JOB_MARGIN)
+
+
+@app.route("/management/weather-jobs", methods=["POST"])
+@owner_required
+def save_weather_jobs():
+    """The lines, the lists and whose list they go on -- then the jobs again,
+    from the forecast already held, so the owner sees what the change did."""
+    # Half of this form is checkboxes and lists, and an absent checkbox reads
+    # as "off" and an absent list as "no jobs". A post without the form's own
+    # marker -- a double submit, a bot, a page from before a rename -- would
+    # switch every kind off and empty every list, so it changes nothing.
+    if request.form.get("form") != "weather_jobs":
+        flash("Nothing was saved: the form arrived without its fields.", "error")
+        return redirect(url_for("weather_jobs_page"))
+    conn = get_db()
+    values, kept = {}, []
+    for kind in WEATHER_JOB_KINDS:
+        values[f"weather_jobs_{kind}_on"] = "1" if request.form.get(f"{kind}_on") else "0"
+        values[f"weather_jobs_{kind}_list"] = "\n".join(
+            weather_job_list(request.form.get(f"{kind}_list")))
+        raw = (request.form.get(f"{kind}_line") or "").strip()
+        lo, hi = WEATHER_JOB_LINE_BOUNDS[kind]
+        try:
+            line = float(raw.replace(",", ".").replace("−", "-"))
+        except ValueError:
+            line = None
+        if line is not None and lo <= line <= hi:
+            values[f"weather_jobs_{kind}_line"] = f"{line:g}"
+        else:
+            kept.append(f"the {kind} line, which must be from {weather_line(kind, lo)} "
+                        f"to {weather_line(kind, hi)}")
+    values["weather_jobs_storm_thunder"] = "1" if request.form.get("storm_thunder") else "0"
+    raw = (request.form.get("days_ahead") or "").strip()
+    if raw.isdigit() and int(raw) <= WEATHER_JOB_MAX_DAYS_AHEAD:
+        values["weather_jobs_days_ahead"] = str(int(raw))
+    else:
+        kept.append(f"the days ahead, which must be a whole number from 0 to "
+                    f"{WEATHER_JOB_MAX_DAYS_AHEAD}")
+    active = {r["id"] for r in conn.execute("SELECT id FROM users WHERE status = 'active'")}
+    for kind in WEATHER_JOB_KINDS:
+        who = (request.form.get(f"{kind}_who") or "").strip()
+        if who.isdigit() and int(who) in active:
+            values[WEATHER_JOB_ASSIGNEE_PREFIX + kind] = who
+        else:
+            conn.execute("DELETE FROM app_settings WHERE key = ?",
+                         (WEATHER_JOB_ASSIGNEE_PREFIX + kind,))
+    for key, value in values.items():
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+    log_audit(conn, "weather_jobs_saved",
+              details="; ".join(f"{k}={v}" for k, v in sorted(values.items())
+                                if not k.endswith("_list")))
+    conn.commit()
+    r = generate_weather_jobs(conn)
+    conn.close()
+    if kept:
+        flash("Kept as it was: " + "; ".join(kept) + ".", "error")
+    did = [f"{n} {what}" for n, what in ((r["made"], "raised"), (r["reopened"], "reopened"),
+                                         (r["moved"], "rewritten"),
+                                         (r["withdrawn"], "withdrawn"),
+                                         (r["passed"], "closed as gone by")) if n]
+    if r["skipped"]:
+        flash(f"Saved. Nothing raised or withdrawn yet: {r['skipped']}. The jobs follow the "
+              f"next forecast.", "success")
+    else:
+        flash("Saved. " + (("Jobs " + ", ".join(did) + ".") if did
+                           else "The jobs already match the forecast."), "success")
+    return redirect(url_for("weather_jobs_page"))
 
 
 @app.route("/admin/rota-clashes")
@@ -106995,6 +107739,10 @@ AUTOMATION_JOBS = [
     # Hourly. The page reads a cache and never the network, so a slow morning
     # at Open-Meteo is a page with no weather on it rather than a slow page.
     ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
+    # Hourly too, as a job of its own: a storm warning that arrives at two
+    # should be on the list by three, and the margin on each line keeps an
+    # hourly forecast from raising and withdrawing the same job all day.
+    ("weather_jobs", "automation_weather_jobs_enabled", None, 3600, run_weather_jobs_job),
     # Daily. A rate that moves half a per cent overnight does not change what
     # a guest decides, and the figure is labelled as approximate anyway.
     ("exchange_rates", "automation_exchange_rates_enabled", None, 24 * 3600,
@@ -107515,6 +108263,13 @@ AUTOMATION_SWITCHES = [
      "label": "Estate upkeep",
      "what": "Raises a task when scheduled work — the chimney, the boiler, a "
              "certificate — falls due."},
+    {"key": "automation_weather_jobs_enabled", "job": "weather_jobs",
+     "runs": ("run_weather_jobs_job",), "group": "house", "reaches": ("team",),
+     "label": "Outdoor jobs from the forecast",
+     "what": "Hourly: when the forecast crosses a line you set for frost, a storm or "
+             "heat, raises the jobs you listed for it as tasks on the day they need "
+             "doing — the evening before a frost night. Closes any the forecast stops "
+             "asking for, and any whose day went by. Lines and lists are on Weather jobs."},
     {"key": "automation_social_schedule_enabled", "job": "social_schedule",
      "runs": ("run_social_schedule_job",), "group": "house", "reaches": ("team",),
      "label": "Social schedule",
