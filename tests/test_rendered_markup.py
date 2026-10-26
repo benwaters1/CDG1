@@ -303,6 +303,7 @@ ID_TABLES = {
     "work_id": ("restoration_works", "id"),
     "photo_id": ("restoration_photos", "id"),
     "action_id": ("meeting_actions", "id"),
+    "plan_id": ("site_plans", "id"),
 }
 
 # THE GUEST-FACING SITE, which ID_TABLES cannot reach on its own. Ten routes
@@ -330,6 +331,15 @@ ENDPOINT_ARGS = {
     ("legacy_chateau_ateliers_any", "_rest"): "category/2024",
     ("legacy_letter_club_subscription_any", "_rest"):
         "p/seasonal-letter-subscription-from-chteau-de-gudanes",
+    # A job page is only a MAINTENANCE task's (the rest of tasks is people's own
+    # lists), and its photograph only a reported one's.
+    ("maintenance_job", "task_id"): lambda conn: (conn.execute(
+        "SELECT id FROM tasks WHERE origin = 'maintenance' ORDER BY id DESC LIMIT 1"
+    ).fetchone() or [None])[0],
+    ("maintenance_job_photo", "task_id"): lambda conn: (conn.execute(
+        "SELECT task_id FROM plan_pins WHERE task_id IS NOT NULL AND photo_filename "
+        "IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone() or [None])[0],
+    ("maintenance_check", "schedule_id"): ("maintenance_schedules", "id"),
     ("campaign_unsubscribe", "token"): ("campaign_sends", "unsubscribe_token"),
     ("event_quote", "token"): ("event_quotes", "token"),
     ("guest_account", "token"): ("guest_sessions", "token"),

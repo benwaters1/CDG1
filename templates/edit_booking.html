@@ -96,6 +96,11 @@
       <label class="field-label" for="edit_booking-arrival-time">Arriving at</label>
       <input id="edit_booking-arrival-time" type="text" name="estimated_arrival_time" maxlength="60"
              value="{{ booking['estimated_arrival_time'] or '' }}" placeholder="About 4pm, or after dinner">
+      {# What they are celebrating. A few days before they come it becomes a
+         task to prepare for; emptied, the task closes itself. #}
+      <label class="field-label" for="edit_booking-occasion">Celebrating</label>
+      <input id="edit_booking-occasion" type="text" name="special_occasion" maxlength="200"
+             value="{{ booking['special_occasion'] or '' }}" placeholder="Their anniversary, a birthday">
       <label class="field-label" for="edit_booking-special-requests">Notes</label>
       <textarea id="edit_booking-special-requests" name="special_requests" rows="3">{{ booking['special_requests'] or '' }}</textarea>
     </fieldset>

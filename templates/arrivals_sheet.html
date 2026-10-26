@@ -113,6 +113,17 @@
       · {{ date_range(b['arrival_date'], b['departure_date']) }}
       · <span class="upload-hint">{{ b['reference_code'] }}</span></p>
 
+    {% if r.occasion %}
+    {# What they told us they are celebrating, and whether the room is ready
+       for it -- the task raised a few days before they come. #}
+    <p class="field-label">Celebrating</p>
+    <p>{{ r.occasion }}
+      {%- set op = r.occasion_prep %}
+      {%- if op %} · <a href="{{ url_for('occasions_page') }}#task-{{ op.task_id }}" class="small-link">
+        {%- if op.status == 'done' %}prepared{% elif op.total %}{{ op.done }} of {{ op.total }} done{% else %}to prepare{% endif %}</a>
+      {%- else %} · <a href="{{ url_for('occasions_page') }}" class="small-link">not on the list yet</a>{% endif %}</p>
+    {% endif %}
+
     {% if r.dietary %}
     <p class="field-label">Cannot eat</p>
     <p>{{ r.dietary }}</p>
