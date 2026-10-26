@@ -8,6 +8,9 @@
     {# The big-icon screen the home-screen app opens on, for somebody using the
        site in a phone's browser who has not added it to their home screen. #}
     <a href="{{ url_for('phone_home') }}" class="small-link">{{ t('Home screen') }}</a>
+    {#- Their own list is below the rooms and the guests, on purpose (the
+        rooms decide whether somebody has to run). One tap down to it. -#}
+    {% if open_count %}<a href="#my-list" class="small-link">{{ t('My list') }} · {{ open_count }}</a>{% endif %}
     {% if clocked_in %}
       <form method="post" action="{{ url_for('clock_out_action') }}" style="display:inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -191,30 +194,51 @@
 {% endif %}
 
 {# ---- The checklist. One tap is done, and the list is today only. ---- #}
-<h2 class="section-heading">
-  My list
+<h2 class="section-heading" id="my-list">
+  {{ t('My list') }}
   {% if open_count %}<span class="today-count">{{ open_count }}</span>{% endif %}
 </h2>
 
-{% if not my_tasks %}
-  <div class="empty-state">{{ t('Nothing on your list today.') }}</div>
-{% else %}
-  <div class="check-list">
-    {% for task in my_tasks %}
+{#- One tick. A checklist's items say only the item: the room, the guest and
+    the urgency are said once, on the group above them (task_entries). -#}
+{% macro check_row(task, title, sub=None, urgent=False, subject=None) %}
     <div class="check-row {{ 'check-row-done' if task['status'] == 'done' }}" id="task-{{ task['id'] }}">
-      <button type="button" class="check-box" aria-label="Mark done"
+      <button type="button" class="check-box" aria-label="Mark done: {{ title }}"
               onclick="completeTask({{ task['id'] }}, this)">
         <span aria-hidden="true">{{ '✓' if task['status'] == 'done' else '' }}</span>
       </button>
       <span class="check-text">
-        {#- An occasion's task opens its checklist: the flowers, the card. -#}
-        <span class="check-title">{% if task['origin'] == 'occasion' %}<a href="{{ url_for('occasions_page') }}#task-{{ task['id'] }}">{{ task['title'] }}</a>{% else %}{{ task['title'] }}{% endif %}</span>
-        {% if task['room_note'] or task['notes'] %}
-        <span class="check-sub">{{ task['room_note'] or task['notes'] }}</span>
-        {% endif %}
+        <span class="check-title">{{ title }}</span>
+        {% if sub %}<span class="check-sub">{{ sub }}</span>{% endif %}
+        {% if subject %}<a href="{{ subject.url }}" class="check-open">{{ t(subject.words) }}</a>{% endif %}
       </span>
-      {% if task['priority'] == 'high' %}<span class="mini-status status-declined">{{ t('urgent') }}</span>{% endif %}
+      {% if task['status'] != 'done' and task['due_date'] and task['due_date'] < today.isoformat() %}<span class="mini-status status-unpaid">{{ t('from {day}', day=task['due_date']|date_short) }}</span>{% endif %}
+      {% if urgent %}<span class="mini-status status-declined">{{ t('urgent') }}</span>{% endif %}
     </div>
+{% endmacro %}
+{% if not my_tasks %}
+  <div class="empty-state">{{ t('Nothing on your list today.') }}</div>
+{% else %}
+  <div class="check-list">
+    {% for e in task_entries(my_tasks) %}
+    {% if e.group %}
+    <div class="check-group {{ 'check-group-done' if e.done == e.total }}">
+      <div class="check-group-head">
+        <span class="check-text">
+          <span class="check-title">{{ t('{room}: turn it round', room=e.room) if e.turnover else t('{room}: get it ready', room=e.room) }}
+            <span class="check-group-count" data-words="{{ t('{done} of {total} done') }}">{{ t('{done} of {total} done', done=e.done, total=e.total) }}</span></span>
+          {% if e.note %}<span class="check-sub">{{ e.note }}</span>{% endif %}
+          {% if e.subject %}<a href="{{ e.subject.url }}" class="check-open">{{ t(e.subject.words) }}</a>{% endif %}
+        </span>
+        {% if e.urgent %}<span class="mini-status status-declined">{{ t('urgent') }}</span>{% endif %}
+      </div>
+      {% for it in e['items'] %}{{ check_row(it.task, it.item) }}{% endfor %}
+    </div>
+    {% else %}
+    {% set task = e.task %}
+    {{ check_row(task, task['title'], task['room_note'] or task['notes'],
+                 task['priority'] == 'high', e.subject) }}
+    {% endif %}
     {% endfor %}
   </div>
 {% endif %}
@@ -262,6 +286,15 @@ function completeTask(id, btn) {
       var done = data.status === 'done';
       row.classList.toggle('check-row-done', done);
       btn.firstElementChild.textContent = done ? '✓' : '';
+      // A checklist's own count, so "2 of 8 done" moves with the tick.
+      var group = row.closest('.check-group');
+      if (group) {
+        var items = group.querySelectorAll('.check-row');
+        var ticked = group.querySelectorAll('.check-row.check-row-done').length;
+        var count = group.querySelector('.check-group-count');
+        count.textContent = count.dataset.words.replace('{done}', ticked).replace('{total}', items.length);
+        group.classList.toggle('check-group-done', ticked === items.length);
+      }
       var badge = document.querySelector('.section-heading .today-count');
       // Keep the count honest without a reload — a checklist that still claims
       // "4 left" after you ticked one reads as though the tap didn't register.
