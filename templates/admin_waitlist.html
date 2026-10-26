@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Waitlist{% endblock %}
+{% block title %}Enquiries{% endblock %}
 {% block content %}
 
 <div class="page-head">
-  <h1>Waitlist</h1>
+  <h1>Enquiries</h1>
   <a href="{{ url_for('export_waitlist_csv') }}{{ '?' + export_q if export_q }}" class="btn-mini">Export this view</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Guests who wanted dates with nothing available — reach out if a cancellation frees them up. The Contact page's "tell us roughly when" enquiries land here too, so a night that frees up reminds you of them. They wait as Enquiry rather than Open, so the letter that offers a freed room never goes to somebody who only mentioned a month. Answering one, or marking it Closed, ticks its task; Spam takes the task away and sets aside anything more from that address.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">People who have asked about dates. Most come from the Contact page's "tell us roughly when" form; a few are guests who searched the booking page and found every room taken. Each is kept across the dates or the month they asked about, so a night that frees up there reminds you to write back. Contact enquiries wait as Enquiry rather than Open, so the letter that offers a freed room never goes to somebody who only mentioned a month. Answering one, or marking it Closed, ticks its task; Spam takes the task away and sets aside anything more from that address.</p>
 
 {% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
 
 {% if not entries %}
-  <div class="empty-state">{% if lv['total'] %}Nothing matches that. <a href="{{ url_for('admin_waitlist', when='all') }}">Show all {{ lv['total'] }}</a>.{% else %}Nobody on the waitlist right now.{% endif %}</div>
+  <div class="empty-state">{% if lv['total'] %}Nothing matches that. <a href="{{ url_for('admin_waitlist', when='all') }}">Show all {{ lv['total'] }}</a>.{% else %}No enquiries right now.{% endif %}</div>
 {% else %}
   {% for e in entries %}
   <div class="expense-card" id="entry-{{ e['id'] }}">

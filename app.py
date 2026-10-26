@@ -9969,7 +9969,11 @@ OWNER_MENU = [
             _nav("front_desk", "Front Desk", "bookings", ("check_in_booking",), phone=True),
             _nav("arrivals_sheet_page", "Arrivals", "calendar", phone=True),
             _nav("admin_rooms", "Rooms", "rooms", ("new_room", "edit_room")),
-            _nav("admin_waitlist", "Room Waitlist", "leave"),
+            # "Enquiries", not "Room Waitlist" (owner, 22 Oct): it is the
+            # Contact page's questions about dates. A guest only joins a real
+            # waitlist when every room is taken for the dates they searched,
+            # which almost never happens, so the old name described an empty list.
+            _nav("admin_waitlist", "Enquiries", "leave"),
         ]),
         ("While they are here", [
             _nav("breakfast", "Breakfast", "coffee", phone=True),
@@ -40296,7 +40300,7 @@ def _search_sources():
         },
         {
             "key": "waitlist",
-            "label": "Waiting list",
+            "label": "Enquiries",
             "sql": "SELECT * FROM waitlist_entries",
             "fields": ["name", "email", "phone", "notes"],
             "order": "created_at DESC",
@@ -45435,7 +45439,7 @@ PALETTE_PAGES = [
     ("Rooms sold with a fault", "room_faults_page",
      "broken guest arriving unresolved"),
     ("Guest feedback", "admin_feedback", "reviews"),
-    ("Waitlist", "admin_waitlist", ""),
+    ("Enquiries", "admin_waitlist", "waitlist waiting list contact dates asked"),
     ("Breakfast", "breakfast", "orders"),
     ("Team", "directory", "employees staff people who works here"),
     ("Add a team member", "new_employee",
@@ -65854,7 +65858,7 @@ def build_owner_digest(conn):
     lines.append(f"Approvals waiting: {leave_pending + expenses_pending} ({leave_pending} time off, {expenses_pending} expenses)")
     lines.append(f"Open room issues: {room_issues_open}")
     if waitlist_open:
-        lines.append(f"On the waitlist: {waitlist_open}")
+        lines.append(f"Enquiries waiting: {waitlist_open}")
     lines.append("")
     lines.append(f"On shift now: {', '.join(r['name'] for r in on_shift) if on_shift else 'nobody'}")
     lines.append("")
