@@ -4091,3 +4091,9 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 @media (pointer: coarse){
   .plan-zoom .btn-mini{ min-height:44px; min-width:44px; justify-content:center; }
 }
+
+/* What's On, kept up by itself: the weekly look and what the reader found. */
+.wo-look{ margin:6px 0 10px; padding-left:20px; }
+.wo-look li{ margin:2px 0; }
+.wo-problem{ color:var(--rust); font-size:12.5px; }
+.wo-add{ display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin:0 0 6px; }

@@ -480,6 +480,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     # waiting for you; the recap itself only ever goes from the button on the
     # sitting's page.
     "automation_atelier_recap_reminder_enabled": "0",
+    # ON: it only reads the official tourism sites, once a night, and nothing
+    # it finds reaches the public page until the owner adds it.
+    "automation_whats_on_reader_enabled": "1",
     # OFF, and its letter ships with no wording: the owner writes it under
     # Email wording and then switches it on. Same rule as the two texts above,
     # for the same reason -- nothing goes to a guest in words the house did
@@ -7955,6 +7958,46 @@ def init_db():
         # shown instead of the date. See whats_on_when().
         ("whats_on_event_until", "ALTER TABLE whats_on ADD COLUMN event_until TEXT"),
         ("whats_on_when_words", "ALTER TABLE whats_on ADD COLUMN when_words TEXT"),
+        # Kept up by itself (26 October 2026): the official page an entry's
+        # dates are read from, whether they have been (dates_status:
+        # 'confirmed' off that page, 'checked' by the owner, or 'unconfirmed'),
+        # when, what went wrong the last time it was read, and whether it
+        # comes back every year. See run_whats_on_reader_job.
+        ("whats_on_source_url", "ALTER TABLE whats_on ADD COLUMN source_url TEXT"),
+        ("whats_on_dates_status",
+         "ALTER TABLE whats_on ADD COLUMN dates_status TEXT NOT NULL DEFAULT 'unconfirmed'"),
+        ("whats_on_dates_checked_at", "ALTER TABLE whats_on ADD COLUMN dates_checked_at TEXT"),
+        ("whats_on_confirm_problem", "ALTER TABLE whats_on ADD COLUMN confirm_problem TEXT"),
+        ("whats_on_recurs_yearly",
+         "ALTER TABLE whats_on ADD COLUMN recurs_yearly INTEGER NOT NULL DEFAULT 0"),
+        # Everything the official sites list within reach, as last read: kept
+        # behind the scenes, and on the public page only once the owner adds
+        # it. One row per source and its own id for the event.
+        ("whats_on_found", """CREATE TABLE IF NOT EXISTS whats_on_found (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT NOT NULL,
+            source_ref TEXT NOT NULL,
+            url TEXT NOT NULL,
+            title TEXT NOT NULL,
+            town TEXT,
+            starts TEXT,
+            ends TEXT,
+            dates_count INTEGER NOT NULL DEFAULT 1,
+            kind TEXT NOT NULL DEFAULT 'event'
+                CHECK(kind IN ('event','regular','local')),
+            worth INTEGER,
+            english_title TEXT,
+            worth_why TEXT,
+            status TEXT NOT NULL DEFAULT 'new'
+                CHECK(status IN ('new','added','dismissed')),
+            whats_on_id INTEGER REFERENCES whats_on(id) ON DELETE SET NULL,
+            decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            decided_at TEXT,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            gone_at TEXT,
+            UNIQUE(source, source_ref)
+        )"""),
         # Why a table booked while tables confirm themselves (restaurant_instant)
         # was left for the owner instead: "over the 20 covers", "a party of 9".
         # Written once, when it was held, and shown beside Confirm in the queue
@@ -8996,6 +9039,7 @@ def init_db():
     correct_whats_on(conn)
     fix_ax_market_days(conn)
     seed_whats_on_dates(conn)
+    link_whats_on_sources(conn)
 
     for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS,
                      LEAVE_SETTING_DEFAULTS):
@@ -9506,6 +9550,7 @@ NAV_AREAS = {
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         "add_gallery_photos", "admin_gallery", "admin_whats_on", "admin_whats_on_delete",
+        "admin_whats_on_found_add", "admin_whats_on_found_dismiss", "admin_whats_on_checked",
         "admin_whats_on_save", "assign_email_flag", "delete_gallery_photo", "delete_social_post",
         "dismiss_email_flag", "edit_gallery_photo", "edit_gallery_section", "edit_social_post",
         "mark_social_post_posted", "new_social_post", "record_texting_consent", "resolve_email_flag",
@@ -15347,40 +15392,47 @@ DEFAULT_WHATS_ON = [
 # gives no day, so none is ever shown for them. An entry with `when` and no
 # `date` at all ("All year") is listed apart, under All year.
 DEFAULT_WHATS_ON_DATES = [
-    {"title": "Grandvalira (Andorra) ski season opens", "date": "2026-12-04"},
-    {"title": "Ax 3 Domaines ski season opens (provisional)", "date": "2026-12-05"},
+    {"title": "Grandvalira (Andorra) ski season opens", "date": "2026-12-04", "yearly": True},
+    {"title": "Ax 3 Domaines ski season opens (provisional)", "date": "2026-12-05",
+     "yearly": True},
     {"title": "Plateau de Beille, Ascou-Pailhères, Le Chioula and Goulier open for "
-              "the season (provisional)", "date": "2026-12-19"},
+              "the season (provisional)", "date": "2026-12-19", "yearly": True},
     {"title": "Les Flocons d’Ax, the Christmas market and ice rink around the "
               "Bassin des Ladres", "date": "2026-12-20", "until": "2026-12-28",
-     "when": "Late December (2026 dates to come)"},
+     "when": "Late December (2026 dates to come)", "yearly": True},
     {"title": "Beille Trail, a race on the snow at Plateau de Beille",
-     "date": "2027-01-03"},
+     "date": "2027-01-03", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/beille-trail-les-cabannes-fr-6019170/"},
     {"title": "Ski World Cup at Soldeu, Andorra", "date": "2027-03-06",
      "until": "2027-03-07"},
     {"title": "Snow Gay week at Ax 3 Domaines", "date": "2027-03-08",
-     "until": "2027-03-14"},
+     "until": "2027-03-14", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/snow-gay-ax-les-thermes-fr-4653001/"},
     {"title": "Ax 3 Domaines and Plateau de Beille close for the season (provisional)",
-     "date": "2027-03-29"},
+     "date": "2027-03-29", "yearly": True},
     {"title": "Parc de la Préhistoire and the Bédeilhac and La Vache caves reopen",
-     "date": "2027-03-20", "until": "2027-03-31", "when": "Late March"},
+     "date": "2027-03-20", "until": "2027-03-31", "when": "Late March", "yearly": True},
     {"title": "Rafting and canoeing on the Ariège reopen at Bouan (Waterploof)",
-     "date": "2027-05-01", "until": "2027-05-31", "when": "May"},
+     "date": "2027-05-01", "until": "2027-05-31", "when": "May", "yearly": True},
     {"title": "The transhumance, walking the herds up to the summer pastures",
-     "date": "2027-05-01", "until": "2027-05-10", "when": "Early May"},
-    {"title": "L’Ariégeoise cycle race, Tarascon", "date": "2027-06-26"},
+     "date": "2027-05-01", "until": "2027-05-10", "when": "Early May", "yearly": True},
+    {"title": "L’Ariégeoise cycle race, Tarascon", "date": "2027-06-26", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/lariegeoise-la-cyclosportive-des-pyrenees-tarascon-sur-ariege-fr-4221852/"},
     {"title": "Summer season opens at Ax 3 Domaines (gondola, bike park, mountain "
               "karts, pool)", "date": "2027-07-01", "until": "2027-07-07",
-     "when": "Early July"},
+     "when": "Early July", "yearly": True},
     {"title": "UltrAriège mountain trail races, Ax-les-Thermes", "date": "2027-07-16",
-     "until": "2027-07-18"},
+     "until": "2027-07-18", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/trail-de-lultrariege-ax-les-thermes-fr-4268287/"},
     {"title": "Spectacles de Grands Chemins, street theatre in Ax-les-Thermes, "
-              "mostly free", "date": "2027-07-27", "until": "2027-07-31"},
+              "mostly free", "date": "2027-07-27", "until": "2027-07-31", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/spectacles-de-grands-chemins-en-haute-ariege-ax-les-thermes-fr-4222449/"},
     {"title": "Challenge du Montcalm mountain races, Auzat", "date": "2027-08-12",
-     "until": "2027-08-15"},
+     "until": "2027-08-15", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/challenge-du-montcalm-auzat-fr-4357838/"},
     {"title": "Festival des Saveurs, food producers’ festival in Ax-les-Thermes",
      "date": "2027-09-01", "until": "2027-09-10",
-     "when": "Early September (date to come)"},
+     "when": "Early September (date to come)", "yearly": True},
     {"title": "Les Bains du Couloubret thermal baths, Ax-les-Thermes, open all year",
      "when": "All year"},
     {"title": "Grotte de Lombrives open all year", "when": "All year"},
@@ -15453,11 +15505,12 @@ def seed_whats_on_dates(conn):
         conn.execute(
             """INSERT INTO whats_on (title, description, location, distance,
                event_date, event_until, when_words, start_time, end_time,
-               sort_order, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)""",
+               sort_order, source_url, recurs_yearly, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
             (entry["title"], entry.get("description"), entry.get("location"),
              entry.get("distance"), entry.get("date"), entry.get("until"),
-             entry.get("when"), position, datetime.now(timezone.utc).isoformat()))
+             entry.get("when"), position, entry.get("source"),
+             1 if entry.get("yearly") else 0, datetime.now(timezone.utc).isoformat()))
         made += 1
     conn.execute("INSERT INTO app_settings (key, value) VALUES ('whats_on_dates_seeded', ?) "
                  "ON CONFLICT(key) DO NOTHING", (datetime.now(timezone.utc).isoformat(),))
@@ -48794,8 +48847,40 @@ def admin_whats_on():
     """
     conn = get_db()
     events = conn.execute("SELECT * FROM whats_on ORDER BY sort_order, id").fetchall()
+    found = [dict(r) for r in conn.execute(
+        """SELECT whats_on_found.*, decider.name AS decided_by_name
+             FROM whats_on_found
+             LEFT JOIN users decider ON decider.id = whats_on_found.decided_by_user_id
+            WHERE whats_on_found.ends >= ? OR whats_on_found.status = 'added'""",
+        (house_today_iso(),))]
+    look = whats_on_to_look_at(conn)
+    last_run = conn.execute(
+        "SELECT * FROM automation_runs WHERE job_name = 'whats_on_reader'").fetchone()
     conn.close()
-    return render_template("admin_whats_on.html", events=events)
+    lv = list_view(
+        found, request.args,
+        search=["title", "english_title", "town"],
+        search_hint="Search what the sites list",
+        facets=[
+            facet("state", "Where it is", lambda r: (
+                "On the page" if r["status"] == "added" else
+                "Waved away" if r["status"] == "dismissed" else
+                "To look at" if r["kind"] == "event" and r["worth"] != 0 else
+                "Not suggested"),
+                  order=["To look at", "On the page", "Not suggested", "Waved away"],
+                  default="To look at"),
+            facet("kind", "What it is", lambda r: {
+                "event": "An event", "regular": "A regular activity",
+                "local": "A local listing"}[r["kind"]],
+                  order=["An event", "A regular activity", "A local listing"]),
+            facet("source", "Listed by", lambda r: WHATS_ON_SOURCES.get(r["source"], r["source"])),
+        ],
+        sorts=[sort_option("soon", "Soonest first", lambda r: r["starts"] or ""),
+               sort_option("new", "Newest found", lambda r: r["first_seen_at"] or "",
+                           reverse=True)],
+        default_sort="soon")
+    return render_template("admin_whats_on.html", events=events, lv=lv, look=look,
+                           sources=WHATS_ON_SOURCES, last_run=last_run)
 
 
 @app.route("/admin/whats-on/save", methods=["POST"])
@@ -48819,6 +48904,11 @@ def admin_whats_on_save():
         flash("The last day must be a date on or after the first.", "error")
         return redirect(url_for("admin_whats_on"))
     when_words = (f.get("when_words", "") or "").strip()[:80] or None
+    source_url = (f.get("source_url", "") or "").strip()[:500] or None
+    if source_url and not whats_on_source_of(source_url)[0]:
+        flash("The official page has to be an event's page on the tourist office, "
+              "Tourisme Occitanie or Ariège Pyrénées Tourisme.", "error")
+        return redirect(url_for("admin_whats_on"))
     # One shape or the other. A row carrying both would be listed twice in the
     # same week — once as the weekday rule, once as the dated one — and a row
     # carrying neither can never appear at all, so it would look saved and do
@@ -48847,7 +48937,7 @@ def admin_whats_on_save():
         (f.get("season_to", "") or "").strip() or None,
         1 if f.get("is_active") else 0,
         sort_order,
-        event_until, when_words,
+        event_until, when_words, source_url, 1 if f.get("recurs_yearly") else 0,
     )
     conn = get_db()
     entry_id = (f.get("id") or "").strip()
@@ -48855,16 +48945,16 @@ def admin_whats_on_save():
         conn.execute(
             """UPDATE whats_on SET title=?, description=?, location=?, distance=?,
                weekday=?, event_date=?, start_time=?, end_time=?, season_from=?,
-               season_to=?, is_active=?, sort_order=?, event_until=?, when_words=?
-               WHERE id=?""",
+               season_to=?, is_active=?, sort_order=?, event_until=?, when_words=?,
+               source_url=?, recurs_yearly=? WHERE id=?""",
             vals + (int(entry_id),))
         log_audit(conn, "whats_on_edited", target=title)
     else:
         conn.execute(
             """INSERT INTO whats_on (title, description, location, distance, weekday,
                event_date, start_time, end_time, season_from, season_to, is_active,
-               sort_order, event_until, when_words, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               sort_order, event_until, when_words, source_url, recurs_yearly, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             vals + (datetime.now(timezone.utc).isoformat(),))
         log_audit(conn, "whats_on_added", target=title)
     conn.commit()
@@ -48887,6 +48977,602 @@ def admin_whats_on_delete(event_id):
     conn.close()
     flash("Removed.", "success")
     return redirect(url_for("admin_whats_on"))
+
+
+# ---------------------------------------------------------------------------
+# WHAT'S ON, KEPT UP BY ITSELF (owner, 26 October 2026: "i dont wanna add
+# stuff ... it needs to be accurate ... i dont want to be the person
+# advertising wrong shit").
+#
+# Every night the house reads the official tourism sites and does two things.
+#
+#   - IT CONFIRMS. An entry on the page that names its official page has its
+#     dates read off that page and set from it -- the dates the organiser gave
+#     the tourist office, read from the page's own data, never from its prose.
+#     An annual one that has passed comes back as next year's, in words ("July
+#     2027, date to come"), never with a day nobody has published.
+#   - IT FINDS. Every event the sites list within reach is kept, behind the
+#     scenes, for the owner to add with one press or wave away. Nothing found
+#     reaches the public page until then, and regular activities -- a weekly
+#     yoga class, canyoning all summer -- are kept apart from the events.
+#
+# What it cannot confirm it says, on the admin page and in a weekly task,
+# rather than showing a guess as a fact.
+#
+# THE SOURCES, and why these. The tourist office (Pyrénées Ariégeoises) lists
+# Haute-Ariège, and its listing and every event page can be read, with dates
+# in the page's data. Tourisme Occitanie lists the region: its sitemap names
+# every event page, the town is in the address, and a dated page carries
+# schema.org dates. Ariège Pyrénées Tourisme's listing is behind a bot check
+# and is NOT read -- getting round one is not the house's business -- but its
+# event pages load, so one can be an entry's official page. DATAtourisme, the
+# national open data, holds a few dozen Ariège events in a 700 MB daily file,
+# so it is not worth reading.
+# ---------------------------------------------------------------------------
+
+WHATS_ON_SOURCES = {
+    "tourist_office": "Pyrénées Ariégeoises tourist office",
+    "occitanie": "Tourisme Occitanie",
+    "departement": "Ariège Pyrénées Tourisme",
+}
+WHATS_ON_OT_AGENDA = "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/"
+WHATS_ON_OCC_SITEMAPS = (
+    "https://www.tourisme-occitanie.com/diffusio-3/public/sitemaps/sitemap-dsio-fr--1.xml",
+    "https://www.tourisme-occitanie.com/diffusio-3/public/sitemaps/sitemap-dsio-fr--2.xml",
+)
+# The towns within about an hour, as Tourisme Occitanie writes them in an
+# event's address ("...-ax-les-thermes_TFO..."). Further than this a guest is
+# not going for the evening.
+WHATS_ON_TOWNS = (
+    "ax-les-thermes", "tarascon-sur-ariege", "les-cabannes", "foix", "ussat",
+    "ussat-les-bains", "mercus-garrabet", "luzenac", "auzat", "val-de-sos",
+    "vicdessos", "orlu", "orgeix", "merens-les-vals", "lordat", "verdun",
+    "chateau-verdun", "aston", "mirepoix", "montsegur", "niaux", "bedeilhac",
+    "bedeilhac-et-aynat", "ignaux", "ascou", "mijanes", "goulier", "montgaillard",
+    "ornolac-ussat-les-bains", "albies", "garanou", "unac", "vernaux", "savignac-les-ormeaux",
+    "l-hospitalet-pres-l-andorre", "quie", "surba", "arignac", "rabat-les-trois-seigneurs",
+    "saurat", "larcat", "appy", "axiat", "bestiac", "bouan", "sinsat", "caussou",
+    # Not "prades": the Prades the region lists is the town in the
+    # Pyrénées-Orientales, not the Ariège village (dry run, 26 October 2026).
+    "montaillou", "camurac", "lavelanet", "la-bastide-de-serou",
+    "le-mas-d-azil", "saint-paul-de-jarrat", "mercus", "alliat", "capoulet-et-junac",
+    "miglos", "siguer", "gestiès", "lapege", "mijanes", "querigut", "rouze", "le-pla",
+)
+WHATS_ON_MAX_LIST_PAGES = 20
+# A night's reading, at most, so a site that grows tenfold is read in part
+# rather than for an hour.
+WHATS_ON_MAX_PAGES_PER_RUN = 400
+WHATS_ON_PAUSE_SECONDS = 1.0
+# Something listed for this long, or on this many separate dates, is a
+# regular activity rather than an event to plan a day round.
+WHATS_ON_ROUTINE_DAYS = 45
+WHATS_ON_ROUTINE_DATES = 6
+WHATS_ON_UA = ("ChateauDeGudanes/1.0 (+https://www.chateaugudanes.com/whats-on; "
+               "reads the agenda once a night for its own What's On page)")
+
+
+def whats_on_fetch(url, timeout=30):
+    """One page off an official tourism site, as text.
+
+    The only network call the reader makes, so the tests can stand it down
+    and hand it pages instead. Says who it is in the User-Agent: a site that
+    wants to know who reads its agenda every night can."""
+    req = Request(url, headers={"User-Agent": WHATS_ON_UA,
+                                "Accept-Language": "fr,en;q=0.5"})
+    with urlopen(req, timeout=timeout) as r:
+        # Enough for the region's sitemap, which is 15 MB: reading only the
+        # first 4 MB saw a quarter of the region (dry run, 26 October 2026).
+        return r.read(60_000_000).decode("utf-8", "replace")
+
+
+def _official_day(value):
+    """The day a stamp off an official page is on, in its own offset.
+
+    '2027-07-16T00:00:00+02:00' is the 16th: the offset is the house's own, so
+    the date as written is the house's day. Parsed rather than sliced, which
+    would be the same answer here and the wrong habit everywhere else."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+    except ValueError:
+        try:
+            return datetime.strptime(value[:8], "%Y%m%d").date()
+        except ValueError:
+            return None
+
+
+def parse_event_page(page):
+    """What an official event page says, from its own data: {title, town,
+    occurrences: [(first day, last day), ...]} -- or None if it is not one.
+
+    Read from the data the page carries for machines -- schema.org Event, the
+    tourist office's occurrence list, a calendar link's dates -- and never
+    from the sentences around them, which say "every Tuesday except in
+    August" in ways nothing can read reliably."""
+    from html import unescape
+    title = town = None
+    spans = set()
+
+    def keep(start, end):
+        first, last = _official_day(start), _official_day(end)
+        if first:
+            spans.add((first, last if last and last >= first else first))
+
+    for block in re.findall(r'<script[^>]*application/ld\+json[^>]*>([\s\S]*?)</script>', page):
+        try:
+            data = json.loads(block)
+        except ValueError:
+            continue
+        items = (data.get("@graph", [data]) if isinstance(data, dict)
+                 else data if isinstance(data, list) else [])
+        for g in items:
+            if not isinstance(g, dict) or "Event" not in str(g.get("@type", "")):
+                continue
+            title = title or (g.get("name") or "").strip() or None
+            if g.get("startDate"):
+                keep(g.get("startDate"), g.get("endDate"))
+            loc = g.get("location")
+            loc = loc[0] if isinstance(loc, list) and loc else loc
+            if isinstance(loc, dict):
+                addr = loc.get("address") or {}
+                if isinstance(addr, dict):
+                    town = town or (addr.get("addressLocality") or "").strip() or None
+    # The tourist office's own list of when it happens. ONLY that list: the
+    # same page carries other start/end pairs -- what a price is valid for,
+    # "1 January to 31 December" -- and reading every pair on the page put a
+    # March race on every day of the year (26 October 2026).
+    for listed in re.findall(r'"fmaInsert"\s*:\s*\[([\s\S]*?)\]', page):
+        for start, end in re.findall(
+                r'"startDate"\s*:\s*"([^"]+)"\s*,\s*"endDate"\s*:\s*"([^"]+)"', listed):
+            keep(start, end)
+    # Ariège Pyrénées Tourisme gives an event's dates in its calendar link.
+    for raw in re.findall(r'google\.com/calendar/render\?[^"\']+', page):
+        query = unescape(raw)
+        dates = re.search(r"dates=(\d{8})T?\d*/(\d{8})", query)
+        if dates:
+            first, last = _official_day(dates.group(1)), _official_day(dates.group(2))
+            if first:
+                spans.add((first, last if last and last >= first else first))
+        named = re.search(r"[?&]text=([^&]+)", query)
+        if named and not title:
+            from urllib.parse import unquote_plus
+            title = unquote_plus(named.group(1)).strip() or None
+    if not title and not spans:
+        return None
+    return {"title": unescape(title) if title else None,
+            "town": unescape(town) if town else None,
+            "occurrences": sorted(spans)}
+
+
+def next_occurrence(occurrences, today):
+    """The first (first day, last day) that has not ended by today, or None."""
+    return next(((a, b) for a, b in sorted(occurrences) if b >= today), None)
+
+
+def whats_on_source_of(url):
+    """(source, its own id for the event) for an official page, or (None, None)."""
+    url = url or ""
+    m = re.search(r"pyrenees-ariegeoises\.com/.*?-(?:fr|en)-(\d+)/?", url)
+    if m:
+        return "tourist_office", m.group(1)
+    m = re.search(r"tourisme-occitanie\.com/.*?_(TFO[A-Z0-9_]+)/?", url)
+    if m:
+        return "occitanie", m.group(1)
+    m = re.search(r"ariegepyrenees\.com/(?:[a-z]{2}/)?agenda/([a-z0-9-]+)/?", url)
+    if m:
+        return "departement", m.group(1)
+    return None, None
+
+
+def whats_on_tourist_office_pages(fetch):
+    """Every event page the tourist office's agenda lists, walking its pages."""
+    urls = []
+    for page in range(1, WHATS_ON_MAX_LIST_PAGES + 1):
+        try:
+            listing = fetch(f"{WHATS_ON_OT_AGENDA}?listpage={page}")
+        except HTTPError as e:
+            if e.code == 404:           # past the last page
+                break
+            raise
+        found = [u for u in dict.fromkeys(re.findall(
+            r'href="(https://www\.pyrenees-ariegeoises\.com/a-voir-a-faire/sortir/agenda/'
+            r'[a-z0-9-]+-fr-\d+/)"', listing)) if u not in urls]
+        if not found:
+            break
+        urls.extend(found)
+    return urls
+
+
+def whats_on_occitanie_pages(fetch):
+    """The region's event pages in the towns within reach, from its sitemap."""
+    urls = []
+    for sitemap in WHATS_ON_OCC_SITEMAPS:
+        for u in re.findall(r"<loc>([^<]+/fete-et-manifestation/[^<]+)</loc>", fetch(sitemap)):
+            slug = u.rstrip("/").rsplit("/", 1)[-1].split("_TFO", 1)[0]
+            if any(slug == t or slug.endswith("-" + t) for t in WHATS_ON_TOWNS):
+                urls.append(u)
+    return list(dict.fromkeys(urls))
+
+
+# What a resident goes to and a guest at the château does not plan a day
+# round: the weekly film, the loto, storytime, a council talk. Kept, and shown
+# apart, never suggested. Read off the title, in French as the sites write it.
+WHATS_ON_LOCAL_WORDS = re.compile(
+    r"(?i)\b(cin[ée]ma|cin[ée]\s?9|s[ée]ances?|loto|contes?|b[ée]b[ée]s?|"
+    r"bouquine|atelier|stage|conf[ée]rence|r[ée]union|collecte|pr[ée]venti|"
+    r"mammobile|ap[ée]ro bricole|afterwork|permanence|don du sang|"
+    r"assembl[ée]e g[ée]n[ée]rale|inscriptions?)\b")
+
+
+def _title_words(title):
+    """A title's words, lower case and without accents, for telling whether
+    two sites list the same thing."""
+    import unicodedata
+    plain = unicodedata.normalize("NFKD", title or "").encode("ascii", "ignore").decode()
+    return {w for w in re.findall(r"[a-z0-9]+", plain.lower()) if len(w) > 2}
+
+
+def same_event(a, b):
+    """Whether two listings are one event: the same first day, and titles that
+    share most of their words. The region repeats the tourist office's
+    listings under its own references, and a guest should not read it twice."""
+    if not a["starts"] or a["starts"] != b["starts"]:
+        return False
+    wa, wb = _title_words(a["title"]), _title_words(b["title"])
+    if not wa or not wb:
+        return False
+    return len(wa & wb) / min(len(wa), len(wb)) >= 0.6
+
+
+def whats_on_kind(title, occurrences, today):
+    """'regular' for something on most of a season or on many dates, 'local'
+    for what only a resident would go to, else 'event'."""
+    ahead = [o for o in occurrences if o[1] >= today]
+    first = ahead[0] if ahead else None
+    if (len(ahead) > WHATS_ON_ROUTINE_DATES
+            or (first and (first[1] - first[0]).days > WHATS_ON_ROUTINE_DAYS)):
+        return "regular"
+    if WHATS_ON_LOCAL_WORDS.search(title or ""):
+        return "local"
+    return "event"
+
+
+def link_whats_on_sources(conn):
+    """Give the year's dates already in a house their official pages and say
+    which come back every year. Once; an entry the owner has pointed somewhere
+    else, or deleted, is left as it is."""
+    key = "whats_on_sources_linked"
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
+        return 0
+    changed = 0
+    for entry in DEFAULT_WHATS_ON_DATES:
+        changed += conn.execute(
+            """UPDATE whats_on SET source_url = COALESCE(source_url, ?),
+                      recurs_yearly = ? WHERE title = ?""",
+            (entry.get("source"), 1 if entry.get("yearly") else 0,
+             entry["title"])).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO NOTHING", (key, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return changed
+
+
+def whats_on_roll_forward(row, today):
+    """(first day, last day, words) for next year's edition of an annual
+    entry that is over, or None. The day is only where it is filed: the page
+    prints the month and "date to come" until an official page gives one."""
+    on = parse_date(row["event_date"])
+    until = parse_date(row["event_until"]) or on
+    if not on or until >= today:
+        return None
+
+    def later(d, years):
+        try:
+            return d.replace(year=d.year + years)
+        except ValueError:          # 29 February
+            return d.replace(year=d.year + years, day=28)
+    years = 1
+    while later(until, years) < today:      # a house switched off for a year or two
+        years += 1
+    first, last = later(on, years), later(until, years)
+    return first, last, f"{first.strftime('%B')} {first.year}, date to come"
+
+
+def whats_on_classify(rows):
+    """Which found events are worth telling a guest, with an English title:
+    {id: (worth, english title, why)}. Asked of the assistant only where one
+    is configured, and only as a suggestion -- the owner adds or waves away
+    each one, and nothing it says reaches the public page by itself. {} when
+    it cannot be asked, which leaves every event to be looked at."""
+    if not rows or not claude_configured():
+        return {}
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        listing = "\n".join(
+            f"{r['id']}: {r['title']} | {r['town'] or ''} | {r['starts']}"
+            + (f" to {r['ends']}" if r['ends'] and r['ends'] != r['starts'] else "")
+            for r in rows)
+        data, why = claude_structured(
+            client, model="claude-opus-5", max_tokens=8000,
+            system=("You help a small château hotel in the Haute-Ariège choose which local "
+                    "events to tell its guests about. Guests are visitors staying a few "
+                    "nights: festivals, fairs, races, concerts, Christmas markets, cave "
+                    "nights and village fêtes are worth it; a weekly film showing, a loto, "
+                    "a library storytime, a residents' workshop or a council meeting are "
+                    "not. Give each an English title that says plainly what it is, without "
+                    "inventing anything not in the French title."),
+            messages=[{"role": "user", "content": "Events (id: title | town | dates):\n" + listing}],
+            schema={"type": "object", "additionalProperties": False, "required": ["events"],
+                    "properties": {"events": {"type": "array", "items": {
+                        "type": "object", "additionalProperties": False,
+                        "required": ["id", "worth", "english_title", "why"],
+                        "properties": {"id": {"type": "integer"},
+                                       "worth": {"type": "boolean"},
+                                       "english_title": {"type": "string"},
+                                       "why": {"type": "string"}}}}}})
+    except Exception as e:      # an unreachable assistant leaves them to the owner
+        print(f"[whats on] could not ask the assistant: {e}")
+        return {}
+    if not data:
+        return {}
+    return {int(e["id"]): (bool(e["worth"]), (e["english_title"] or "").strip()[:160],
+                           (e["why"] or "").strip()[:240])
+            for e in data.get("events", []) if str(e.get("id", "")).isdigit()}
+
+
+def run_whats_on_reader_job(conn, fetch=None, today=None, classify=None,
+                            pause=WHATS_ON_PAUSE_SECONDS):
+    """Read the official sites: confirm the page's dates, roll annual ones on,
+    and keep everything they list within reach. Returns what it did, in words.
+
+    Read first and written after, one row at a time: nothing of ours is held
+    open while a page is fetched, so a slow tourism site never keeps the rest
+    of the house waiting on the database."""
+    fetch = fetch or whats_on_fetch
+    classify = classify or whats_on_classify
+    today = today or house_today()
+    now = datetime.now(timezone.utc).isoformat()
+    budget = [WHATS_ON_MAX_PAGES_PER_RUN]
+
+    def read(url):
+        if budget[0] <= 0:
+            raise RuntimeError("the night's reading is used up")
+        budget[0] -= 1
+        if pause:
+            time.sleep(pause)
+        return fetch(url)
+
+    said = {"confirmed": 0, "moved": 0, "rolled": 0, "problems": 0, "found": 0, "new": 0}
+
+    # 1. THE PAGE'S OWN ENTRIES, each from its official page.
+    for row in conn.execute("SELECT * FROM whats_on WHERE is_active = 1").fetchall():
+        url = (row["source_url"] or "").strip()
+        problem, update = None, None
+        if url:
+            try:
+                parsed = parse_event_page(read(url))
+            except Exception as e:
+                parsed, problem = None, f"the official page could not be read ({e})"
+            if parsed:
+                nxt = next_occurrence(parsed["occurrences"], today)
+                if nxt:
+                    first, last = nxt
+                    update = (first.isoformat(), last.isoformat() if last != first else None,
+                              None, "confirmed", now)
+                elif not problem:
+                    problem = "the official page gives no date still to come"
+            elif not problem:
+                problem = "the official page no longer shows this event"
+        if not update and row["recurs_yearly"] and row["event_date"]:
+            rolled = whats_on_roll_forward(row, today)
+            if rolled:
+                first, last, words = rolled
+                update = (first.isoformat(), last.isoformat() if last != first else None,
+                          words, "unconfirmed", None)
+                said["rolled"] += 1
+        if update:
+            before = (row["event_date"], row["event_until"], row["when_words"])
+            conn.execute(
+                """UPDATE whats_on SET event_date = ?, event_until = ?, when_words = ?,
+                          dates_status = ?, dates_checked_at = COALESCE(?, dates_checked_at),
+                          confirm_problem = NULL WHERE id = ?""",
+                update + (row["id"],))
+            if update[3] == "confirmed":
+                said["confirmed"] += 1
+                if before != update[:3]:
+                    said["moved"] += 1
+        if problem:
+            conn.execute("UPDATE whats_on SET confirm_problem = ? WHERE id = ?",
+                         (problem[:240], row["id"]))
+            said["problems"] += 1
+        conn.commit()
+
+    # 2. EVERYTHING ELSE THEY LIST, kept behind the scenes.
+    on_page_refs = {}
+    for r in conn.execute("SELECT id, source_url FROM whats_on "
+                          "WHERE COALESCE(source_url, '') != ''"):
+        key = whats_on_source_of(r["source_url"])
+        if key[0]:
+            on_page_refs[key] = r["id"]
+    for source, lister in (("tourist_office", whats_on_tourist_office_pages),
+                           ("occitanie", whats_on_occitanie_pages)):
+        try:
+            pages = lister(read)
+        except Exception as e:
+            print(f"[whats on] {source}: the listing could not be read ({e})")
+            continue
+        read_ok = 0
+        for url in pages:
+            try:
+                parsed = parse_event_page(read(url))
+            except Exception:
+                continue
+            read_ok += 1
+            if not parsed or not parsed["title"]:
+                continue
+            nxt = next_occurrence(parsed["occurrences"], today)
+            if not nxt:
+                continue
+            _src, ref = whats_on_source_of(url)
+            if not ref:
+                continue
+            ahead = [o for o in parsed["occurrences"] if o[1] >= today]
+            kind = whats_on_kind(parsed["title"], parsed["occurrences"], today)
+            town = (parsed["town"] or "").strip().title() or None
+            if source != "tourist_office" and any(
+                    same_event({"starts": nxt[0].isoformat(), "title": parsed["title"]}, other)
+                    for other in conn.execute(
+                        "SELECT title, starts FROM whats_on_found WHERE source = 'tourist_office' "
+                        "AND starts = ?", (nxt[0].isoformat(),))):
+                continue            # the tourist office lists it already
+            cur = conn.execute(
+                """INSERT INTO whats_on_found (source, source_ref, url, title, town, starts,
+                       ends, dates_count, kind, first_seen_at, last_seen_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(source, source_ref) DO UPDATE SET
+                       url = excluded.url, title = excluded.title, town = excluded.town,
+                       starts = excluded.starts, ends = excluded.ends,
+                       dates_count = excluded.dates_count, kind = excluded.kind,
+                       last_seen_at = excluded.last_seen_at, gone_at = NULL""",
+                (source, ref, url, parsed["title"][:200], town, nxt[0].isoformat(),
+                 nxt[1].isoformat(), len(ahead), kind, now, now))
+            said["found"] += 1
+            # Already on the page, from this very official page: it is not
+            # something new to look at.
+            on_page = on_page_refs.get((source, ref))
+            if on_page:
+                conn.execute(
+                    "UPDATE whats_on_found SET status = 'added', whats_on_id = ? "
+                    "WHERE source = ? AND source_ref = ? AND status = 'new'",
+                    (on_page, source, ref))
+            if cur.rowcount and conn.execute(
+                    "SELECT first_seen_at FROM whats_on_found WHERE source = ? AND source_ref = ?",
+                    (source, ref)).fetchone()["first_seen_at"] == now:
+                said["new"] += 1
+            conn.commit()
+        # A listing read in full that no longer names something: it has gone.
+        # Only then -- a listing that half failed proves nothing.
+        if read_ok and read_ok == len(pages):
+            conn.execute("UPDATE whats_on_found SET gone_at = ? WHERE source = ? "
+                         "AND last_seen_at < ? AND gone_at IS NULL", (now, source, now))
+            conn.commit()
+
+    # 3. WHICH NEW EVENTS ARE WORTH A GUEST'S DAY, asked once each.
+    ask = conn.execute(
+        """SELECT * FROM whats_on_found WHERE status = 'new' AND kind = 'event'
+             AND worth IS NULL AND gone_at IS NULL ORDER BY starts LIMIT 120""").fetchall()
+    answers = classify(ask) if ask else {}
+    for found_id, (worth, english, why) in answers.items():
+        conn.execute("UPDATE whats_on_found SET worth = ?, english_title = ?, worth_why = ? "
+                     "WHERE id = ?", (1 if worth else 0, english or None, why or None, found_id))
+    conn.commit()
+
+    bits = [f"{said['confirmed']} confirmed from their official pages"
+            + (f" ({said['moved']} with new dates)" if said["moved"] else "")]
+    if said["rolled"]:
+        bits.append(f"{said['rolled']} rolled on to next year")
+    if said["problems"]:
+        bits.append(f"{said['problems']} could not be confirmed")
+    bits.append(f"{said['found']} listed by the sites, {said['new']} new")
+    return "; ".join(bits)
+
+
+@app.route("/admin/whats-on/found/<int:found_id>/add", methods=["POST"])
+@owner_required
+def admin_whats_on_found_add(found_id):
+    """One press: something the sites list goes on the public page, under its
+    English title where the assistant gave one, with its official page kept so
+    its dates go on being read from there."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM whats_on_found WHERE id = ?", (found_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if row["status"] == "added" and row["whats_on_id"]:
+        conn.close()
+        flash("That one is on the page already.", "error")
+        return redirect(url_for("admin_whats_on") + "#found")
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        """INSERT INTO whats_on (title, location, event_date, event_until, source_url,
+               dates_status, dates_checked_at, recurs_yearly, is_active, sort_order,
+               created_at)
+           VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, 1, 200, ?)""",
+        ((row["english_title"] or row["title"]).strip(), row["town"], row["starts"],
+         row["ends"] if row["ends"] and row["ends"] != row["starts"] else None,
+         row["url"], now, 1 if request.form.get("yearly") else 0, now))
+    conn.execute("""UPDATE whats_on_found SET status = 'added', whats_on_id = ?,
+                       decided_by_user_id = ?, decided_at = ? WHERE id = ?""",
+                 (cur.lastrowid, _my_id(), now, found_id))
+    log_audit(conn, "whats_on_added", target=row["title"], details="from " + row["source"])
+    conn.commit()
+    conn.close()
+    flash("On the page. Its dates are read from its official page every night.", "success")
+    return redirect(url_for("admin_whats_on") + "#found")
+
+
+@app.route("/admin/whats-on/found/<int:found_id>/dismiss", methods=["POST"])
+@owner_required
+def admin_whats_on_found_dismiss(found_id):
+    """Not for our guests -- or, from the same button, back on the list."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM whats_on_found WHERE id = ?", (found_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    back = bool(request.form.get("bring_back"))
+    conn.execute("""UPDATE whats_on_found SET status = ?, decided_by_user_id = ?,
+                       decided_at = ? WHERE id = ?""",
+                 ("new" if back else "dismissed", _my_id(),
+                  datetime.now(timezone.utc).isoformat(), found_id))
+    conn.commit()
+    conn.close()
+    flash("Back on the list." if back else "Waved away. It will not be suggested again.",
+          "success")
+    return redirect(url_for("admin_whats_on") + "#found")
+
+
+@app.route("/admin/whats-on/<int:event_id>/checked", methods=["POST"])
+@owner_required
+def admin_whats_on_checked(event_id):
+    """The owner's word that an entry's dates are right, where no official
+    page could say so: the weekly look, done."""
+    conn = get_db()
+    row = conn.execute("SELECT title FROM whats_on WHERE id = ?", (event_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("""UPDATE whats_on SET dates_status = 'checked', dates_checked_at = ?,
+                       confirm_problem = NULL WHERE id = ?""",
+                 (datetime.now(timezone.utc).isoformat(), event_id))
+    log_audit(conn, "whats_on_checked", target=row["title"])
+    conn.commit()
+    conn.close()
+    flash(f"Marked checked: {row['title']}.", "success")
+    return redirect(url_for("admin_whats_on"))
+
+
+def whats_on_to_look_at(conn, today=None):
+    """What the owner's weekly look is for: {new: events found and not yet
+    added or waved away, unconfirmed: entries in the next four months whose
+    dates nothing has confirmed, problems: entries the reader could not read}."""
+    today = today or house_today()
+    horizon = (today + timedelta(days=120)).isoformat()
+    new = conn.execute(
+        """SELECT * FROM whats_on_found WHERE status = 'new' AND kind = 'event'
+             AND gone_at IS NULL AND COALESCE(worth, 1) = 1 AND ends >= ?
+           ORDER BY starts""", (today.isoformat(),)).fetchall()
+    unconfirmed = conn.execute(
+        """SELECT * FROM whats_on WHERE is_active = 1 AND event_date IS NOT NULL
+             AND dates_status = 'unconfirmed' AND COALESCE(event_until, event_date) >= ?
+             AND event_date <= ? ORDER BY event_date""",
+        (today.isoformat(), horizon)).fetchall()
+    problems = conn.execute(
+        "SELECT * FROM whats_on WHERE is_active = 1 AND confirm_problem IS NOT NULL "
+        "ORDER BY event_date").fetchall()
+    return {"new": new, "unconfirmed": unconfirmed, "problems": problems}
 
 
 @app.route("/restoration")
@@ -90711,6 +91397,7 @@ WATCH_TASK_KINDS = {
     "inbox": "One of the house's own inboxes is not getting its mail",
     "deploy": "The live site is behind main",
     "recap": "An atelier's recap drafted and waiting for you to send it",
+    "whats_on": "What's On: events found to look at, or dates nothing has confirmed",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -94185,6 +94872,31 @@ def watch_task_findings(conn, today=None):
                    "Workshop: Recap after the atelier, first."),
                 r["due"], "normal"))
         found.extend(take("recap", recaps))
+
+    # WHAT'S ON, THE WEEKLY LOOK (owner, 26 October 2026: "i can check
+    # weekly"). One task while there is something for the owner -- events the
+    # sites list and nobody has added or waved away, dates in the next four
+    # months nothing has confirmed, an official page that could not be read --
+    # due on a Monday, and gone once the list is clear.
+    look = whats_on_to_look_at(conn, today)
+    if look["new"] or look["unconfirmed"] or look["problems"]:
+        parts = []
+        if look["new"]:
+            parts.append(f"{len(look['new'])} event{'' if len(look['new']) == 1 else 's'} "
+                         "found on the official sites to add or wave away")
+        if look["unconfirmed"]:
+            parts.append(f"{len(look['unconfirmed'])} date"
+                         f"{'' if len(look['unconfirmed']) == 1 else 's'} in the next four "
+                         "months nothing has confirmed: "
+                         + "; ".join(r["title"] for r in look["unconfirmed"][:6]))
+        if look["problems"]:
+            parts.append("could not be checked: " + "; ".join(
+                f"{r['title']} ({r['confirm_problem']})" for r in look["problems"][:4]))
+        found.append(("whats_on", "Look over What's On",
+                      ". ".join(parts) + ".\n\nAdmin → What's On.",
+                      # The coming Monday, or today when it is one.
+                      (today + timedelta(days=(7 - today.weekday()) % 7)).isoformat(),
+                      "normal"))
 
     return found, dropped
 
@@ -110826,6 +111538,10 @@ AUTOMATION_JOBS = [
     # Hourly. The page reads a cache and never the network, so a slow morning
     # at Open-Meteo is a page with no weather on it rather than a slow page.
     ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
+    # Daily, in the small hours (JOB_HOURS): the official tourism sites, for
+    # What's On. A night missed is a date confirmed a day later.
+    ("whats_on_reader", "automation_whats_on_reader_enabled", None, 24 * 3600,
+     run_whats_on_reader_job),
     # Hourly too, as a job of its own: a storm warning that arrives at two
     # should be on the list by three, and the margin on each line keeps an
     # hourly forecast from raising and withdrawing the same job all day.
@@ -110963,6 +111679,8 @@ JOB_HOURS = {
     "checkin_letter": (9, 12),
     # In the small hours, when nobody is looking at the calendar it rewrites.
     "house_calendar_reconcile": (2, 6),
+    # Reading other people's websites, at an hour they are quietest.
+    "whats_on_reader": (3, 6),
 }
 
 
@@ -111427,6 +112145,13 @@ AUTOMATION_SWITCHES = [
      "label": "Translate new public-page text",
      "what": "Into French and Spanish, only what guests have actually opened, using "
              "Claude — a paid service, capped per run."},
+    {"key": "automation_whats_on_reader_enabled", "job": "whats_on_reader",
+     "runs": ("run_whats_on_reader_job",), "group": "records", "reaches": (),
+     "label": "Keep What's On up to date",
+     "what": "Nightly: reads the tourist office and Tourisme Occitanie, confirms the dates "
+             "of what is on the page from each event's official page, moves an annual "
+             "one on to next year once it is over, and lists what else they show for "
+             "you to add or wave away. Adds nothing to the public page by itself."},
     {"key": "automation_weather_enabled", "job": "weather",
      "runs": ("run_weather_job",), "group": "records", "reaches": (),
      "label": "Weather at the château", "what": "Hourly, for the pages that show it."},
