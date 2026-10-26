@@ -34,12 +34,12 @@
   {% endif %}
 </div>
 
-<div class="chip-row" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
-  <a class="chip{{ ' chip-on' if not state }}" href="{{ url_for('admin_guest_emails') }}">All {{ all_count }}</a>
-  <a class="chip{{ ' chip-on' if state == 'held' }}" href="{{ url_for('admin_guest_emails', state='held') }}">Held until approved {{ counts.held }}</a>
-  <a class="chip{{ ' chip-on' if state == 'approved' }}" href="{{ url_for('admin_guest_emails', state='approved') }}">Approved {{ counts.approved }}</a>
-  <a class="chip{{ ' chip-on' if state == 'confirmation' }}" href="{{ url_for('admin_guest_emails', state='confirmation') }}">Booking confirmations {{ counts.confirmation }}</a>
-  <a class="chip{{ ' chip-on' if state == 'by_hand' }}" href="{{ url_for('admin_guest_emails', state='by_hand') }}">Written by staff {{ counts.by_hand }}</a>
+<div class="facet-row">
+  <a class="chip{{ ' is-on' if not state }}" href="{{ url_for('admin_guest_emails') }}">All <span class="chip-n">{{ all_count }}</span></a>
+  <a class="chip{{ ' is-on' if state == 'held' }}" href="{{ url_for('admin_guest_emails', state='held') }}">Held until approved <span class="chip-n">{{ counts.held }}</span></a>
+  <a class="chip{{ ' is-on' if state == 'approved' }}" href="{{ url_for('admin_guest_emails', state='approved') }}">Approved <span class="chip-n">{{ counts.approved }}</span></a>
+  <a class="chip{{ ' is-on' if state == 'confirmation' }}" href="{{ url_for('admin_guest_emails', state='confirmation') }}">Booking confirmations <span class="chip-n">{{ counts.confirmation }}</span></a>
+  <a class="chip{{ ' is-on' if state == 'by_hand' }}" href="{{ url_for('admin_guest_emails', state='by_hand') }}">Written by staff <span class="chip-n">{{ counts.by_hand }}</span></a>
 </div>
 
 {% for r in rows %}
@@ -77,7 +77,7 @@
   {% elif r.state not in ('by_hand', 'key') %}
   <p class="upload-hint" style="margin:6px 0 0;">No wording yet: it cannot be sent until it is written.</p>
   {% endif %}
-  {% if r.approved_at %}<p class="upload-hint" style="margin:6px 0 0;">Approved {{ r.approved_at|date_short }}. Changing its wording removes the approval.</p>{% endif %}
+  {% if r.approved_at %}<p class="upload-hint" style="margin:6px 0 0;">Approved {{ r.approved_at|date_short }}{% if r.approved_by %} by {{ r.approved_by }}{% endif %}. Changing its wording removes the approval.</p>{% endif %}
 </div>
 {% else %}
 <p class="upload-hint">Nothing here.</p>

@@ -479,6 +479,7 @@ SUITES = [
     "test_mail_redirect",
     "test_not_live_yet",
     "test_guest_emails",
+    "test_refund_cancel_steps",
     "test_chef_program",
     "test_where_the_gates_are",
     "test_columns_that_exist",

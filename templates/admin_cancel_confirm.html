@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Cancel booking {{ b['reference_code'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Cancel booking {{ b['reference_code'] }}</h1>
+  <a href="{{ url_for('admin_booking', booking_id=b['id']) }}" class="btn-ghost">Back to the booking</a>
+</div>
+
+<div class="detail-card" style="margin-bottom:16px;">
+  <p class="manual-body wraps" style="margin:0 0 8px;"><strong>{{ b['guest_name'] }}</strong> ·
+    {{ b['room_name'] }} · {{ b['arrival_date']|date_short }} to {{ b['departure_date']|date_short }}</p>
+  <p class="manual-body" style="margin:0 0 6px;"><strong>What happens</strong></p>
+  <ul class="manual-body wraps" style="margin:0 0 8px;">
+    <li>The booking is cancelled and the room goes back on sale.</li>
+    <li>No money moves. Refund first, from the booking, if any should go back.</li>
+    <li>The guest is emailed only if you tick the box below.</li>
+  </ul>
+  <div class="table-wrap">
+  <table class="data-table">
+    <tbody>
+      <tr><th scope="row">Paid</th><td>{{ m.paid|money }}</td></tr>
+      {% if m.refunded > 0 %}
+      <tr><th scope="row">Refunded</th><td>{{ m.refunded|money }}{% for r in m.refunds %}<span class="cell-note">{{ r['amount']|money }} · {{ refund_method_words(r) }}</span>{% endfor %}</td></tr>
+      {% endif %}
+      <tr><th scope="row">Kept</th><td>{{ m.kept|money }}</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('cancel_booking_admin', booking_id=b['id']) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="back" value="booking">
+  <div class="register-field" style="max-width:360px; margin-bottom:12px;">
+    <label class="field-label" for="cancel-reason">Reason</label>
+    <select id="cancel-reason" name="cancel_reason">
+      <option value="">Choose… (optional)</option>
+      {% for key, label in cancel_reasons.items() %}<option value="{{ key }}"{{ ' selected' if key == reason }}>{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+
+  {% if email %}
+  <label class="checkbox-row" style="margin-bottom:8px;">
+    <input type="checkbox" name="email_guest" value="1">
+    <span>Email the guest a cancellation confirmation ({{ email }})</span>
+  </label>
+  {% else %}
+  <p class="upload-hint">There is no email address on this booking, so no confirmation can be emailed.</p>
+  {% endif %}
+
+  {% if subject %}
+  <div class="detail-card" style="margin:8px 0 16px;">
+    <p class="upload-hint" style="margin:0 0 6px;">Preview: exactly what is sent if the box is ticked.</p>
+    <p class="manual-body" style="margin:0 0 6px;"><strong>Subject:</strong> {{ subject }}</p>
+    <pre class="manual-body" style="white-space:pre-wrap; font-family:inherit; margin:0; padding:10px; border:1px solid var(--line, #ddd); border-radius:6px;">{{ body }}</pre>
+  </div>
+  {% endif %}
+
+  <p><button type="submit" class="btn-mini btn-mini-danger">Cancel booking</button>
+    <a href="{{ url_for('admin_booking', booking_id=b['id']) }}" class="small-link">Keep the booking</a></p>
+</form>
+
+{% endblock %}

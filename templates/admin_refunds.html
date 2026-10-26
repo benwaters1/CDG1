@@ -127,7 +127,7 @@
         </td>
         <td>{{ r['reason'] }}</td>
         <td>
-          {{ 'To the card' if r['method'] == 'stripe' else r['method']|replace('_', ' ')|capitalize }}
+          {{ refund_method_words(r) }}
           {% if r['guest_told_at'] %}<span class="cell-note">they were told</span>{% endif %}
         </td>
         <td>{{ r['refunded_by_name'] or '—' }}</td>

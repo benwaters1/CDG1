@@ -74,8 +74,8 @@
 {% endif %}
 
 {% if ceiling > 0 %}
-<h2 class="section-heading">Give money back</h2>
-<form method="post" onsubmit="return confirm('Make this refund? A refund to a card moves real money.');">
+<h2 class="section-heading">Refund</h2>
+<form method="post" onsubmit="return confirm(this.elements['method'].value === 'stripe' ? 'Send this refund to the card through Stripe? This moves real money.' : 'Record this refund? No money moves.');">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="refund-fields">
     <legend class="field-label">Against which payment</legend>
@@ -101,14 +101,24 @@
       <span class="upload-hint">Blank gives back all that payment can.</span>
     </div>
     <div class="register-field">
-      <label class="field-label" for="refund-method">How it goes back</label>
-      <select id="refund-method" name="method">
-        <option value="">The way it was paid</option>
-        <option value="stripe">To the card, through Stripe</option>
-        <option value="bank_transfer">Bank transfer, recorded here</option>
-        <option value="cash">Cash, recorded here</option>
-        <option value="other">Some other way, recorded here</option>
+      <label class="field-label" for="refund-method">Refund method</label>
+      <select id="refund-method" name="method" required
+              onchange="var t=this.form.querySelector('.refund-third-party'); if(t){t.hidden=this.value!=='third_party';}">
+        <option value="">Choose…</option>
+        <option value="stripe">Card refund via Stripe (sends the money)</option>
+        <option value="third_party">Refunded via a third party (record only, no money moves)</option>
+        <option value="bank_transfer">Bank transfer (record only)</option>
+        <option value="cash">Cash (record only)</option>
       </select>
+    </div>
+    <div class="register-field refund-third-party" hidden>
+      <label class="field-label" for="refund-via">Refunded via</label>
+      <select id="refund-via" name="refunded_via">
+        <option value="">Choose…</option>
+        {% for key, label in refund_via.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+      </select>
+      <label class="field-label" for="refund-ref" style="margin-top:6px;">Reference</label>
+      <input id="refund-ref" type="text" name="external_reference" maxlength="120" placeholder="e.g. ch_… or the bank's reference">
     </div>
     <div class="register-field">
       <label class="field-label" for="refund-why">Why</label>
@@ -143,8 +153,8 @@
 
   {% if email %}
   <label class="checkbox-row">
-    <input type="checkbox" name="tell_guest" value="1" checked>
-    <span>Tell them: a letter to {{ email }} saying what went back and how</span>
+    <input type="checkbox" name="tell_guest" value="1">
+    <span>Email the guest a refund confirmation ({{ email }})</span>
   </label>
   {% endif %}
   <p><button type="submit" class="btn-mini btn-mini-danger">Make the refund</button></p>
@@ -171,7 +181,7 @@
           {% if r['reduces_bill'] %}<span class="cell-note">{{ r['reduces_bill']|money }} off the bill</span>{% endif %}
         </td>
         <td>{{ against.get(r['payment_key'], 'A payment since changed') if r['payment_key'] else 'The booking as a whole' }}</td>
-        <td>{{ 'To the card' if r['method'] == 'stripe' else r['method']|replace('_', ' ')|capitalize }}
+        <td>{{ refund_method_words(r) }}
           {% if r['stripe_refund_id'] %}<span class="cell-note">{{ r['stripe_refund_id'] }}</span>{% endif %}
           {% if r['guest_told_at'] %}<span class="cell-note">they were told</span>{% endif %}
         </td>
