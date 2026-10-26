@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}House guide{% endblock %}
+{% block content %}
+
+{# THE OWNER'S PAGE FOR THE HOUSE GUIDE. Every word a guest reads there is
+   written here, in each language; the app writes none of it. What the app
+   already knows -- the arrival and departure times, the dinner hour -- is
+   read from where it lives, and this page says where. #}
+
+<div class="page-head">
+  <h1>House guide</h1>
+  <div class="hg-preview-links">
+    <span class="upload-hint">See it as a guest would:</span>
+    {% for code in langs %}
+    <a href="{{ url_for('preview_house_guide', lang=code) }}" class="small-link" style="color:var(--steel);">{{ lang_names[code] }}</a>
+    {% endfor %}
+  </div>
+</div>
+<p class="pay-disclaimer">
+  What a guest who is staying reads on their booking page: the Wi-Fi, breakfast, who to call. Every
+  word is yours. A section with nothing written in it is not shown, and a language you have not
+  written shows the words you have written in another, never a machine translation. Guests reach it
+  from their booking page, and from the link they share with their party, only while their stay is
+  confirmed and not over. Until something here is shown, they see no card for it at all.
+</p>
+
+<div class="detail-card hg-card">
+  <h3>From the app, not typed in twice</h3>
+  <ul class="hg-facts">
+    <li><strong>Arrival from {{ check_in }}, departure by {{ check_out }}.</strong>
+      Set in the app itself, the same times the booking pages, the confirmations and Booking.com
+      give. Add an <em>Arrival and departure times</em> section to show them; your own text goes
+      underneath. The booking terms are your own words, on the
+      <a href="{{ url_for('admin_terms') }}">Terms page</a>, and the home page warns you if they
+      give different times.</li>
+    <li><strong>Dinner{% if facts.dinner %} at {{ facts.dinner }}{% endif %}.</strong>
+      {% if facts.dinner %}From the <a href="{{ url_for('admin_restaurant_settings') }}">restaurant settings</a>,
+      while the restaurant is serving. A <em>Dinner time</em> section shows it.
+      {% else %}The restaurant is not serving at the moment, so a <em>Dinner time</em> section shows
+      only what you write in it. The time is in the
+      <a href="{{ url_for('admin_restaurant_settings') }}">restaurant settings</a>.{% endif %}</li>
+    <li><strong>Breakfast.</strong> Breakfast hours are not stored anywhere in the app. Write them in a
+      section of your own words.</li>
+  </ul>
+</div>
+
+<div class="detail-card hg-card">
+  <h3>The Wi-Fi code</h3>
+  <form method="post" action="{{ url_for('save_house_guide_settings') }}" class="hg-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="hg-days">Show it from</label>
+    <input id="hg-days" type="number" name="wifi_days_before" value="{{ days }}" min="0" max="{{ days_max }}" required class="hg-days">
+    <span>days before they arrive, until checkout ({{ check_out }}) on the day they leave.</span>
+    <button type="submit" class="btn-mini">Save</button>
+  </form>
+  <p class="upload-hint" style="margin-top:8px;">Never on a cancelled stay, a stay nobody has confirmed, or one
+    that is over, and never once they are checked out. The network's name shows whenever the page does.</p>
+</div>
+
+{% if not sections %}
+<div class="empty-state">Nothing written yet. Add a section below; guests see nothing until there is
+  something in one.</div>
+{% endif %}
+
+{% for item in sections %}
+{% set row = item.row %}
+<div class="detail-card hg-card" id="section-{{ row['id'] }}">
+  <div class="hg-head">
+    <div class="hg-head__what">
+      <strong>{{ row['title_en'] or row['title_fr'] or row['title_es'] or kinds[row['kind']] }}</strong>
+      <span class="mini-status {{ 'status-active' if item.shown else 'status-pending' }}">{{ kinds[row['kind']] }}</span>
+      <span class="upload-hint">{{ item.status }}{% if item.missing %} No text in {{ item.missing|join(' or ') }} yet: those readers see what you have written in another language.{% endif %}</span>
+    </div>
+    <div class="hg-head__acts">
+      {% if not loop.first %}
+      <form method="post" action="{{ url_for('move_house_guide_section', section_id=row['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="direction" value="up">
+        <button type="submit" class="btn-mini" aria-label="Move up">↑ Up</button>
+      </form>
+      {% endif %}
+      {% if not loop.last %}
+      <form method="post" action="{{ url_for('move_house_guide_section', section_id=row['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="direction" value="down">
+        <button type="submit" class="btn-mini" aria-label="Move down">↓ Down</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('delete_house_guide_section', section_id=row['id']) }}"
+            onsubmit="return confirm('Remove this section and everything written in it?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini btn-mini-danger">Remove</button>
+      </form>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('save_house_guide_section', section_id=row['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if row['kind'] == 'arrival' %}
+    <p class="upload-hint hg-shows">Shows, above your text: arrival from {{ check_in }} · departure by {{ check_out }} (from the app).</p>
+    {% elif row['kind'] == 'dinner' %}
+    <p class="upload-hint hg-shows">{% if facts.dinner %}Shows, above your text: dinner at {{ facts.dinner }} (restaurant settings).{% else %}The restaurant is not serving, so only your text shows.{% endif %}</p>
+    {% elif row['kind'] == 'wifi' %}
+    <div class="hg-wifi">
+      <div>
+        <label class="field-label" for="hg-net-{{ row['id'] }}">Network name</label>
+        <input id="hg-net-{{ row['id'] }}" type="text" name="wifi_network" value="{{ row['wifi_network'] or '' }}"
+               maxlength="{{ limits.wifi }}" autocomplete="off" spellcheck="false">
+      </div>
+      <div>
+        <label class="field-label" for="hg-code-{{ row['id'] }}">Code</label>
+        <input id="hg-code-{{ row['id'] }}" type="text" name="wifi_code" value="{{ row['wifi_code'] or '' }}"
+               maxlength="{{ limits.wifi }}" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <p class="upload-hint">Put the code here rather than in the text below: only this box is kept back until
+      {{ days }} day{{ '' if days == 1 else 's' }} before they arrive.</p>
+    {% endif %}
+    <div class="hg-langs">
+      {% for code in langs %}
+      <fieldset class="hg-lang">
+        <legend>{{ lang_names[code] }}</legend>
+        <label class="field-label" for="hg-t-{{ row['id'] }}-{{ code }}">Title</label>
+        <input id="hg-t-{{ row['id'] }}-{{ code }}" type="text" name="title_{{ code }}" lang="{{ code }}"
+               value="{{ row['title_' ~ code] or '' }}" maxlength="{{ limits.title }}">
+        <label class="field-label" for="hg-b-{{ row['id'] }}-{{ code }}">Text</label>
+        <textarea id="hg-b-{{ row['id'] }}-{{ code }}" name="body_{{ code }}" lang="{{ code }}" rows="5"
+                  maxlength="{{ limits.body }}">{{ row['body_' ~ code] or '' }}</textarea>
+      </fieldset>
+      {% endfor %}
+    </div>
+    <div class="hg-save">
+      <label class="hg-check"><input type="checkbox" name="shown" value="1" {{ 'checked' if row['shown'] }}> Show to guests</label>
+      <button type="submit" class="btn-primary">Save</button>
+    </div>
+  </form>
+</div>
+{% endfor %}
+
+<div class="detail-card hg-card">
+  <h3>Add a section</h3>
+  <form method="post" action="{{ url_for('add_house_guide_section') }}" class="hg-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="hg-kind" class="sr-only">Kind of section</label>
+    <select id="hg-kind" name="kind">
+      {% for key, label in kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn-mini">Add</button>
+  </form>
+  <p class="upload-hint" style="margin-top:8px;">It goes at the end, empty. Move it with Up and Down.</p>
+</div>
+
+<p class="upload-hint" style="margin:16px 0 24px;">
+  Still to come: a plan of the house with the accessible areas marked, drawn on your own plan or photograph.
+  It will be a section you place among these.
+</p>
+
+<style>
+.hg-preview-links{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; }
+.hg-card{ margin-bottom:16px; }
+.hg-facts{ margin:0; padding-left:18px; line-height:1.6; }
+.hg-facts li{ margin-bottom:6px; }
+.hg-inline{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; }
+.hg-days{ width:5.5em; }
+.hg-head{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:8px 16px; margin-bottom:8px; }
+.hg-head__what{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; flex:1 1 18rem; }
+.hg-head__acts{ display:flex; flex-wrap:wrap; gap:6px; }
+.hg-head__acts form{ margin:0; }
+.hg-wifi{ display:grid; grid-template-columns:repeat(auto-fit, minmax(14rem, 1fr)); gap:0 16px; }
+.hg-langs{ display:grid; grid-template-columns:repeat(auto-fit, minmax(16rem, 1fr)); gap:12px 16px; margin-top:8px; }
+.hg-lang{ border:1px solid var(--line, #ddd); border-radius:6px; padding:4px 12px 12px; margin:0; min-width:0; }
+.hg-lang legend{ font-weight:600; padding:0 4px; }
+.hg-lang input, .hg-lang textarea, .hg-wifi input{ width:100%; box-sizing:border-box; }
+.hg-shows{ margin:4px 0 8px; }
+.hg-save{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; margin-top:12px; }
+.hg-check{ display:inline-flex; align-items:center; gap:8px; }
+.sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0; }
+</style>
+{% endblock %}

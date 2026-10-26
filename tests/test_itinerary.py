@@ -53,7 +53,13 @@ def run():
     # an atelier the guest is booked on is not ALSO offered to them -- and a
     # seeded atelier overlapping the stay is a second atelier, correctly
     # offered, which reads here as the bug.
-    arrival = _harness.free_window(room["id"], 3, after_days=40,
+    #
+    # Four nights asked for a three-night stay, so the departure day is clear
+    # too. The itinerary runs to the day they leave and offers an atelier
+    # starting that morning, while free_window only clears the nights slept:
+    # from 23 October it chose 2-5 December, Noël began on the 5th, and was
+    # offered on the last day.
+    arrival = _harness.free_window(room["id"], 4, after_days=40,
                                    clear_of_ateliers=True)
     departure = arrival + timedelta(days=3)
     now = datetime.now(timezone.utc).isoformat()

@@ -4053,6 +4053,24 @@ def init_db():
             UNIQUE (kind, job_day, job_key)
         );
 
+        -- The house's practical information for a staying guest: Wi-Fi,
+        -- breakfast, who to call. The owner's own words in each language,
+        -- written on /admin/house-guide; nothing is put in here by the app.
+        -- Not about any guest, so nothing for the privacy notice to say.
+        CREATE TABLE IF NOT EXISTS house_guide_sections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL DEFAULT 'text'
+                CHECK(kind IN ('text', 'wifi', 'arrival', 'dinner')),
+            title_en TEXT, title_fr TEXT, title_es TEXT,
+            body_en TEXT, body_fr TEXT, body_es TEXT,
+            wifi_network TEXT,
+            wifi_code TEXT,
+            shown INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS channel_police_register (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ota_reservation_id INTEGER NOT NULL REFERENCES ota_reservations(id) ON DELETE CASCADE,
@@ -9129,6 +9147,10 @@ NAV_AREAS = {
         # The front door: who may open it, and opening it from the office.
         "door_lock_page", "save_door_settings", "open_door_now", "set_stay_door_access",
         "make_channel_door_link",
+        # The house guide guests read on their stay's link, Wi-Fi code and all.
+        "house_guide_admin", "add_house_guide_section", "save_house_guide_section",
+        "move_house_guide_section", "delete_house_guide_section",
+        "save_house_guide_settings", "preview_house_guide",
         "cancel_booking_extra_line", "delete_guest", "delete_police_fiche", "delete_room",
         "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
         "export_guests_csv", "guest_full_statement", "guest_statement_csv",
@@ -9748,6 +9770,7 @@ OWNER_MENU = [
             _nav("all_transfers", "Transfers", "truck",
                  ("vehicle_transfers_page", "new_vehicle_transfer")),
             _nav("door_lock_page", "Front Door", "lock"),
+            _nav("house_guide_admin", "House Guide", "rooms", ("preview_house_guide",)),
         ]),
         ("Booking.com", [
             _nav("management_booking_com", "Booking.com Messages", "bell"),
@@ -44124,6 +44147,9 @@ PALETTE_PAGES = [
      "fiches de police print pdf hand over gendarmerie police request signed register"),
     ("Door lock", "door_lock_page",
      "front door lock open remote tuya smart life guests access key nivian"),
+    ("House guide", "house_guide_admin",
+     "wifi wi-fi code password network breakfast times house rules parking "
+     "who to call information for guests staying"),
     ("Transfers", "all_transfers", "airport pickup driving"),
     ("Asset register", "admin_assets", "furniture art antiques insurance valuation"),
     ("Keys & access", "admin_access", "codes alarm fobs"),
@@ -66993,6 +67019,15 @@ def t(text, **kwargs):
 NEVER_TRANSLATE_INSIDE = {"script", "style", "textarea", "code", "pre",
                           "kbd", "samp", "svg"}
 
+# And anything marked translate="no", the HTML attribute for exactly this.
+# For words somebody has already written in each language, and for anything
+# that must not be filed in page_translations or sent to the model: the job
+# that fills that table assumes it only ever sees sentences printed on public
+# pages, and a guest's house guide carries the Wi-Fi code (house_guide.html).
+# Elements that cannot hold text are ignored: they have no end tag to close on.
+_VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input",
+                  "link", "meta", "source", "track", "wbr"}
+
 
 class _TextSpans(HTMLParser):
     """Byte offsets of every text node not inside a tag that forbids it.
@@ -67011,6 +67046,9 @@ class _TextSpans(HTMLParser):
             self.line_at.append(self.line_at[-1] + len(line))
         self.tokens = []
         self.depth = 0
+        # [tag, depth] while inside an element marked translate="no". Counted
+        # by its own tag name, so a <div> inside it does not close it early.
+        self.held = None
         try:
             self.feed(src)
             self.close()
@@ -67028,6 +67066,13 @@ class _TextSpans(HTMLParser):
         self.tokens.append((self._off(), "tag", None))
         if tag in NEVER_TRANSLATE_INSIDE:
             self.depth += 1
+        if tag in _VOID_ELEMENTS:
+            return
+        if self.held:
+            if tag == self.held[0]:
+                self.held[1] += 1
+        elif any(k == "translate" and (v or "").strip().lower() == "no" for k, v in attrs):
+            self.held = [tag, 1]
 
     def handle_startendtag(self, tag, attrs):
         self.tokens.append((self._off(), "tag", None))
@@ -67036,9 +67081,13 @@ class _TextSpans(HTMLParser):
         self.tokens.append((self._off(), "tag", None))
         if tag in NEVER_TRANSLATE_INSIDE and self.depth:
             self.depth -= 1
+        if self.held and tag == self.held[0]:
+            self.held[1] -= 1
+            if not self.held[1]:
+                self.held = None
 
     def handle_data(self, data):
-        self.tokens.append((self._off(), "skip" if self.depth else "data", data))
+        self.tokens.append((self._off(), "skip" if (self.depth or self.held) else "data", data))
 
     def handle_comment(self, data):
         self.tokens.append((self._off(), "tag", None))
@@ -76845,6 +76894,8 @@ SETTINGS_PLACES = [
         ("admin_promo_codes", "Promo codes", "Discount codes for rooms, dinners and ateliers"),
         ("management_channels", "Channels", "What Booking.com and the others take"),
         ("management_booking_com", "Booking.com messages", "Which mailbox their messages arrive in"),
+        ("house_guide_admin", "House guide",
+         "What a staying guest reads: the Wi-Fi, breakfast, who to call, and when the code shows"),
     ]),
     ("Restaurant", "restaurant", [
         ("admin_restaurant_settings", "Restaurant", "Online reservations, capacity, price per person"),
@@ -104199,6 +104250,475 @@ def make_channel_door_link(reservation_id):
     conn.close()
     flash("The door link is ready -- copy it into a Booking.com message to the guest.", "success")
     return redirect(url_for("door_lock_page") + f"#stay-channel-{reservation_id}")
+
+
+# ---------------------------------------------------------------------------
+# THE HOUSE, FOR A GUEST WHO IS STAYING (22 October 2026).
+#
+# The owner asked for "a general house thing to start with (wifi code,
+# breakfast time etc)", to grow later into a plan of the house with the
+# accessible areas marked. This is the first half: sections he writes, orders
+# and switches on at /admin/house-guide, read by a guest on their own stay's
+# link -- the manage link, or the party's share link.
+#
+# NOTHING HERE IS THE APP'S WORDING. The table starts empty and nothing is
+# seeded into it. Practical facts are what a guest plans round, so a wrong one
+# is worse than a missing one -- the guest texts shipped with wording nobody at
+# the house wrote and were switched off for it the same day. A section with
+# nothing written in it is not shown.
+#
+# WHAT THE APP ALREADY KNOWS IS READ, NOT COPIED. Arrival and departure come
+# from CHECK_IN_TIME and CHECK_OUT_TIME, which every booking page, letter and
+# Booking.com already use; the dinner hour from the restaurant's settings, as
+# the itinerary reads it. A copy typed in here would be right on the day and
+# drift the first time either changed. Breakfast hours are stored nowhere in
+# the app, so breakfast is a section the owner writes.
+#
+# THE WI-FI CODE is the one secret on the page. It shows from a few days
+# before arrival (he sets how many) until checkout, on a confirmed stay only,
+# never in an address, and inside translate="no" so the page translator
+# neither files it in page_translations nor sends it to the model. Everything
+# he writes is inside translate="no" too: he writes each language himself.
+#
+# STAGE TWO, NOT BUILT: the plan of the house with the accessible areas
+# marked, on his own drawing or photograph (the pinnable-plan work begun for
+# the grounds map). It comes in as a section kind, 'plan', so he places it
+# among the rest; house_guide.html has the slot. The app never draws a floor
+# plan of its own -- a drawn one was rejected as inaccurate on 9 October.
+# ---------------------------------------------------------------------------
+
+HOUSE_GUIDE_LANGS = ("en", "fr", "es")
+HOUSE_GUIDE_LANG_NAMES = {"en": "English", "fr": "French", "es": "Spanish"}
+# What each kind of section reads from the app, in the owner's words on his
+# page. 'text' reads nothing: it is only what he writes.
+HOUSE_GUIDE_KINDS = {
+    "text": "Your own words",
+    "wifi": "Wi-Fi network and code",
+    "arrival": "Arrival and departure times, from the app",
+    "dinner": "Dinner time, from the restaurant settings",
+}
+HOUSE_GUIDE_WIFI_DAYS_SETTING = "house_guide_wifi_days_before"
+HOUSE_GUIDE_WIFI_DAYS_DEFAULT = 3
+HOUSE_GUIDE_WIFI_DAYS_MAX = 14
+HOUSE_GUIDE_LIMITS = {"title": 120, "body": 4000, "wifi": 120}
+_ES_MONTHS = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+              "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+
+
+def house_wifi_days_before(conn):
+    """How many days before arrival the Wi-Fi code shows: the owner's number."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (HOUSE_GUIDE_WIFI_DAYS_SETTING,)).fetchone()
+    try:
+        days = int((row["value"] if row else "") or HOUSE_GUIDE_WIFI_DAYS_DEFAULT)
+    except (TypeError, ValueError):
+        days = HOUSE_GUIDE_WIFI_DAYS_DEFAULT
+    return max(0, min(days, HOUSE_GUIDE_WIFI_DAYS_MAX))
+
+
+def house_guide_clock(hhmm, lang):
+    """A clock time the way each language writes it: 3pm, 15h, 15:00."""
+    hour, _, minute = str(hhmm or "").partition(":")
+    try:
+        hour, minute = int(hour) % 24, int(minute or 0)
+    except ValueError:
+        return hhmm or ""
+    if lang == "fr":
+        return f"{hour}h{minute:02d}" if minute else f"{hour}h"
+    if lang == "es":
+        return f"{hour}:{minute:02d}"
+    return clock_words(f"{hour:02d}:{minute:02d}")
+
+
+def house_guide_date(day, lang):
+    """A day in the reader's language, the year only when it is not this one."""
+    other_year = day.year != house_today().year
+    if lang == "fr":
+        return f"{day.day} {_FR_MONTHS[day.month - 1]}" + (f" {day.year}" if other_year else "")
+    if lang == "es":
+        return f"{day.day} de {_ES_MONTHS[day.month - 1]}" + (f" de {day.year}" if other_year else "")
+    return f"{day.day} {day.strftime('%B')}" + (f" {day.year}" if other_year else "")
+
+
+def house_guide_facts(conn):
+    """What the house already knows, for the sections that read it rather
+    than having it typed in a second time."""
+    settings = get_restaurant_settings(conn)
+    dinner = ""
+    # Serving at all, the way the booking page decides it can sell a table.
+    if settings and settings["enabled"] and dining_mode(conn) == "open":
+        dinner = (settings["dinner_time"] or "").strip()
+    return {"check_in": CHECK_IN_TIME, "check_out": CHECK_OUT_TIME, "dinner": dinner}
+
+
+def house_wifi_window(conn, booking, now=None):
+    """Whether this stay may be shown the Wi-Fi code now.
+
+    From midnight, house time, the owner's number of days before arrival,
+    until checkout on the day they leave -- CHECK_OUT_TIME, the hour every page
+    gives them -- or until they are checked out, if that comes first. A
+    confirmed stay only. {"show", "state", "opens"}: state is 'open',
+    'before' (with the day it opens), 'over' or 'not_confirmed'.
+    """
+    now = now or datetime.now(timezone.utc)
+    out = {"show": False, "state": "", "opens": None}
+    arrive, leave = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
+    if booking["status"] != "confirmed" or not (arrive and leave):
+        out["state"] = "not_confirmed"
+        return out
+    if booking["checked_out_at"]:
+        out["state"] = "over"
+        return out
+    opens_on = arrive - timedelta(days=house_wifi_days_before(conn))
+    opens = datetime.combine(opens_on, dtime(0, 0), tzinfo=LOCAL_TZ).astimezone(timezone.utc)
+    closes = datetime.combine(leave, dtime.fromisoformat(CHECK_OUT_TIME),
+                              tzinfo=LOCAL_TZ).astimezone(timezone.utc)
+    if now < opens:
+        out.update(state="before", opens=opens_on)
+    elif now >= closes:
+        out["state"] = "over"
+    else:
+        out.update(show=True, state="open")
+    return out
+
+
+def _house_guide_words(row, field, lang):
+    """The owner's words for one field in the reader's language, and which
+    language they are in. Falls back to whatever he has written -- English
+    first, as the site does -- never to a translation nobody wrote."""
+    for code in (lang,) + tuple(c for c in HOUSE_GUIDE_LANGS if c != lang):
+        said = (row[f"{field}_{code}"] or "").strip()
+        if said:
+            return said, code
+    return "", lang
+
+
+def house_guide_sections(conn, lang, *, booking=None, now=None, preview=False):
+    """The sections a guest sees, in the owner's order, ready to draw.
+
+    Only those switched on and with something in them: a section with nothing
+    written is left out rather than drawn as a heading over nothing. The Wi-Fi
+    code is in a section only while house_wifi_window says so; `preview` is
+    the owner looking at his own page, who sees it regardless.
+    """
+    facts = house_guide_facts(conn)
+    if preview:
+        wifi = {"show": True, "state": "open", "opens": None}
+    elif booking is not None:
+        wifi = house_wifi_window(conn, booking, now)
+    else:
+        wifi = {"show": False, "state": "not_confirmed", "opens": None}
+    out = []
+    for row in conn.execute(
+            "SELECT * FROM house_guide_sections WHERE shown = 1 ORDER BY sort_order, id"):
+        title, title_lang = _house_guide_words(row, "title", lang)
+        body, body_lang = _house_guide_words(row, "body", lang)
+        section = {"id": row["id"], "kind": row["kind"], "title": title,
+                   "title_lang": title_lang, "body": body, "body_lang": body_lang,
+                   "facts": [], "network": "", "code": "", "code_opens": None}
+        if row["kind"] == "arrival":
+            section["facts"] = [
+                t("Arrival from {time}", time=house_guide_clock(facts["check_in"], lang)),
+                t("Departure by {time}", time=house_guide_clock(facts["check_out"], lang))]
+        elif row["kind"] == "dinner" and facts["dinner"]:
+            section["facts"] = [t("Dinner at {time}",
+                                  time=house_guide_clock(facts["dinner"], lang))]
+        elif row["kind"] == "wifi":
+            code = (row["wifi_code"] or "").strip()
+            section["network"] = (row["wifi_network"] or "").strip()
+            if code and wifi["show"]:
+                section["code"] = code
+            elif code and wifi["state"] == "before":
+                section["code_opens"] = house_guide_date(wifi["opens"], lang)
+        if not (body or section["facts"] or section["network"]
+                or section["code"] or section["code_opens"]):
+            continue
+        out.append(section)
+    return out
+
+
+def house_guide_booking(conn, kind, token):
+    """The stay a house-guide link belongs to, while it is live, or None.
+
+    Live means confirmed and not past the day they leave. A cancelled stay, a
+    request nobody has confirmed and a stay that is over all get nothing: the
+    page is for somebody who is coming, and it carries the Wi-Fi code.
+    """
+    column = {"manage": "manage_token", "share": "share_token"}.get(kind)
+    if not column or not token:
+        return None
+    row = conn.execute(
+        f"""SELECT bookings.*, rooms.name AS room_name FROM bookings
+              JOIN rooms ON rooms.id = bookings.room_id
+             WHERE bookings.{column} = ?""", (token,)).fetchone()
+    if not row or row["status"] != "confirmed":
+        return None
+    leave = parse_date(row["departure_date"])
+    if not leave or leave < house_today():
+        return None
+    return row
+
+
+def house_guide_card():
+    """What the card on a guest's own page needs (templates/_house_card.html):
+    the link to their house guide and its section titles, or None when there
+    is nothing written for them to read.
+
+    Works out which page it is on from the request, so the card needs nothing
+    passed to it: the include line is the only thing a design handover of
+    manage_booking.html or shared_stay.html has to keep.
+    """
+    if not has_request_context():
+        return None
+    args = request.view_args or {}
+    if request.endpoint == "manage_booking":
+        kind, key, endpoint = "manage", "manage_token", "house_guide_page"
+    elif request.endpoint == "shared_stay":
+        kind, key, endpoint = "share", "share_token", "shared_house_guide"
+    else:
+        return None
+    token = args.get(key)
+    conn = get_db()
+    try:
+        booking = house_guide_booking(conn, kind, token)
+        if booking is None:
+            return None
+        sections = house_guide_sections(conn, current_language(), booking=booking)
+    finally:
+        conn.close()
+    if not sections:
+        return None
+    return {"url": url_for(endpoint, **{key: token}),
+            "titles": [(s["title"], s["title_lang"]) for s in sections if s["title"]]}
+
+
+app.jinja_env.globals["house_guide_card"] = house_guide_card
+
+
+def _render_house_guide(conn, booking, *, back_url, back_label):
+    lang = current_language()
+    sections = house_guide_sections(conn, lang, booking=booking)
+    conn.close()
+    response = app.make_response(render_template(
+        "house_guide.html", sections=sections, booking=booking, lang=lang,
+        back_url=back_url, back_label=back_label, preview=False))
+    # The Wi-Fi code is on it: not kept in a shared browser's cache, or in
+    # anything between here and the guest.
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+@app.route("/book/manage/<manage_token>/house")
+def house_guide_page(manage_token):
+    """The house, for the guest whose booking this is: the owner's sections,
+    and the Wi-Fi code while their stay is near. On the manage link, which is
+    the credential here as everywhere a guest has no login."""
+    conn = get_db()
+    booking = house_guide_booking(conn, "manage", manage_token)
+    if booking is None:
+        conn.close()
+        abort(404)
+    # The language they told us, as on their booking page -- before anything
+    # asks which language this page is in.
+    remember_guest_language(conn, booking["guest_email"])
+    return _render_house_guide(
+        conn, booking, back_label=t("Back to your booking"),
+        back_url=url_for("manage_booking", manage_token=manage_token))
+
+
+@app.route("/stay/<share_token>/house")
+def shared_house_guide(share_token):
+    """The same page for the rest of the party, on the link the booker shares.
+
+    The booker can take that link away (toggle_share_link), and this page goes
+    with it. Nothing about the bill is on it, so nothing is hidden here.
+    """
+    conn = get_db()
+    booking = house_guide_booking(conn, "share", share_token)
+    if booking is None:
+        conn.close()
+        abort(404)
+    return _render_house_guide(
+        conn, booking, back_label=t("Back to your stay"),
+        back_url=url_for("shared_stay", share_token=share_token))
+
+
+def _house_guide_status(row, facts):
+    """Whether guests see this section, and if not why -- for his page."""
+    written = any((row[f"body_{c}"] or "").strip() for c in HOUSE_GUIDE_LANGS)
+    if row["kind"] == "arrival":
+        written = True
+    elif row["kind"] == "dinner" and facts["dinner"]:
+        written = True
+    elif row["kind"] == "wifi" and ((row["wifi_network"] or "").strip()
+                                    or (row["wifi_code"] or "").strip()):
+        written = True
+    if not row["shown"]:
+        return False, "Switched off: guests do not see it."
+    if not written:
+        return False, "Not shown: nothing written in it yet."
+    return True, "Guests see this."
+
+
+@app.route("/admin/house-guide")
+@owner_required
+def house_guide_admin():
+    """The owner's page for the house guide: every section, in order."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM house_guide_sections ORDER BY sort_order, id").fetchall()
+    facts = house_guide_facts(conn)
+    days = house_wifi_days_before(conn)
+    restaurant = get_restaurant_settings(conn)
+    conn.close()
+    sections = []
+    for row in rows:
+        shown, status = _house_guide_status(row, facts)
+        missing = [HOUSE_GUIDE_LANG_NAMES[c] for c in HOUSE_GUIDE_LANGS
+                   if not (row[f"body_{c}"] or "").strip()
+                   and any((row[f"body_{o}"] or "").strip() for o in HOUSE_GUIDE_LANGS)]
+        sections.append({"row": row, "shown": shown, "status": status, "missing": missing})
+    return render_template(
+        "admin_house_guide.html", sections=sections, kinds=HOUSE_GUIDE_KINDS,
+        langs=HOUSE_GUIDE_LANGS, lang_names=HOUSE_GUIDE_LANG_NAMES, facts=facts,
+        restaurant=restaurant, days=days, days_max=HOUSE_GUIDE_WIFI_DAYS_MAX,
+        limits=HOUSE_GUIDE_LIMITS, check_in=clock_words(CHECK_IN_TIME),
+        check_out=clock_words(CHECK_OUT_TIME))
+
+
+@app.route("/admin/house-guide/add", methods=["POST"])
+@owner_required
+def add_house_guide_section():
+    """A new section at the end, empty -- so not shown until he writes in it."""
+    kind = (request.form.get("kind") or "text").strip()
+    if kind not in HOUSE_GUIDE_KINDS:
+        flash("Choose what kind of section to add.", "error")
+        return redirect(url_for("house_guide_admin"))
+    conn = get_db()
+    last = conn.execute("SELECT MAX(sort_order) FROM house_guide_sections").fetchone()[0]
+    cur = conn.execute(
+        "INSERT INTO house_guide_sections (kind, sort_order, created_at) VALUES (?, ?, ?)",
+        (kind, (last or 0) + 10, datetime.now(timezone.utc).isoformat()))
+    section_id = cur.lastrowid
+    log_audit(conn, "house_guide_section_added", target=HOUSE_GUIDE_KINDS[kind])
+    conn.commit()
+    conn.close()
+    flash("Added at the end. Guests see it once there is something in it.", "success")
+    return redirect(url_for("house_guide_admin") + f"#section-{section_id}")
+
+
+@app.route("/admin/house-guide/<int:section_id>/save", methods=["POST"])
+@owner_required
+def save_house_guide_section(section_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM house_guide_sections WHERE id = ?",
+                       (section_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    values = {}
+    for code in HOUSE_GUIDE_LANGS:
+        title = (request.form.get(f"title_{code}") or "").strip()
+        values[f"title_{code}"] = title[:HOUSE_GUIDE_LIMITS["title"]] or None
+        # Line breaks kept as he typed them: the page draws them.
+        body = (request.form.get(f"body_{code}") or "").replace("\r\n", "\n").strip()
+        values[f"body_{code}"] = body[:HOUSE_GUIDE_LIMITS["body"]] or None
+    if row["kind"] == "wifi":
+        for key in ("wifi_network", "wifi_code"):
+            said = (request.form.get(key) or "").strip()
+            values[key] = said[:HOUSE_GUIDE_LIMITS["wifi"]] or None
+    values["shown"] = 1 if request.form.get("shown") else 0
+    values["updated_at"] = datetime.now(timezone.utc).isoformat()
+    conn.execute("UPDATE house_guide_sections SET " + ", ".join(f"{k} = ?" for k in values)
+                 + " WHERE id = ?", (*values.values(), section_id))
+    # Which languages are written, and never the Wi-Fi code: the audit log is
+    # read on screens the code has no business being on.
+    written = [c for c in HOUSE_GUIDE_LANGS if values[f"body_{c}"]]
+    log_audit(conn, "house_guide_section_saved",
+              target=values["title_en"] or HOUSE_GUIDE_KINDS[row["kind"]],
+              details=("text in " + ", ".join(written) if written else "no text")
+                      + ("; on" if values["shown"] else "; off"))
+    conn.commit()
+    conn.close()
+    flash("Saved.", "success")
+    return redirect(url_for("house_guide_admin") + f"#section-{section_id}")
+
+
+@app.route("/admin/house-guide/<int:section_id>/move", methods=["POST"])
+@owner_required
+def move_house_guide_section(section_id):
+    """One place up or down. The order is renumbered first, so two sections
+    that somehow share a number cannot swap into the same place."""
+    step = -1 if request.form.get("direction") == "up" else 1
+    conn = get_db()
+    ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM house_guide_sections ORDER BY sort_order, id")]
+    if section_id not in ids:
+        conn.close()
+        abort(404)
+    at = ids.index(section_id)
+    if 0 <= at + step < len(ids):
+        ids[at], ids[at + step] = ids[at + step], ids[at]
+        for place, sid in enumerate(ids, start=1):
+            conn.execute("UPDATE house_guide_sections SET sort_order = ? WHERE id = ?",
+                         (place * 10, sid))
+        conn.commit()
+    conn.close()
+    return redirect(url_for("house_guide_admin") + f"#section-{section_id}")
+
+
+@app.route("/admin/house-guide/<int:section_id>/delete", methods=["POST"])
+@owner_required
+def delete_house_guide_section(section_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM house_guide_sections WHERE id = ?",
+                       (section_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM house_guide_sections WHERE id = ?", (section_id,))
+    log_audit(conn, "house_guide_section_removed",
+              target=row["title_en"] or HOUSE_GUIDE_KINDS.get(row["kind"], row["kind"]))
+    conn.commit()
+    conn.close()
+    flash("Removed.", "success")
+    return redirect(url_for("house_guide_admin"))
+
+
+@app.route("/admin/house-guide/settings", methods=["POST"])
+@owner_required
+def save_house_guide_settings():
+    raw = (request.form.get("wifi_days_before") or "").strip()
+    if not raw.isdigit() or int(raw) > HOUSE_GUIDE_WIFI_DAYS_MAX:
+        flash(f"Give a number of days from 0 to {HOUSE_GUIDE_WIFI_DAYS_MAX}.", "error")
+        return redirect(url_for("house_guide_admin"))
+    conn = get_db()
+    conn.execute("""INSERT INTO app_settings (key, value) VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                 (HOUSE_GUIDE_WIFI_DAYS_SETTING, str(int(raw))))
+    log_audit(conn, "house_guide_settings_saved",
+              details=f"Wi-Fi code from {int(raw)} days before arrival")
+    conn.commit()
+    conn.close()
+    flash("Saved.", "success")
+    return redirect(url_for("house_guide_admin"))
+
+
+@app.route("/admin/house-guide/preview")
+@owner_required
+def preview_house_guide():
+    """His page as a guest reads it, in whichever language he picks, with the
+    Wi-Fi code showing as it will inside a stay's window."""
+    conn = get_db()
+    lang = current_language()
+    sections = house_guide_sections(conn, lang, preview=True)
+    conn.close()
+    response = app.make_response(render_template(
+        "house_guide.html", sections=sections, booking=None, lang=lang,
+        back_url=url_for("house_guide_admin"), back_label="Back to the editor",
+        preview=True))
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 # ---------------------------------------------------------------------------
