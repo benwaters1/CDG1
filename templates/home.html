@@ -238,7 +238,7 @@
            first sentence is complete on its own; show that. #}
         {% if _rc %}{% set _s1 = _rc.split('. ')[0].rstrip('.') ~ '.' %}<p class="g-p">{{ _s1 if _s1|length <= 200 else _rc|truncate(170) }}</p>{% endif %}
         {% set rate = r.get('rate') or r['price_per_night'] %}
-        {% if rate %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n g-fig" data-eur="{{ rate|int }}">€{{ '{:,.0f}'.format(rate) }}</span><span class="g-price__u">a night · room and breakfast</span></p>{%- endif %}
+        {% if rate %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n g-fig" data-eur="{{ rate|int }}">€{{ '{:,.0f}'.format(rate) }}</span><span class="g-price__u">per room, a night · breakfast included</span></p>{%- endif %}
         {# The homepage showed no facts and no price band — a guest could not
            tell whether this was in their range without clicking through. #}
         <ul class="g-tags g-tags--sm g-tags--icons">
