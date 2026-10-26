@@ -99,6 +99,16 @@ def _run(s, oc, anon, conn, today):
     s.check("and they come before the Journal and the close",
             html.find("Close By</h2>") < html.find("Follow the Restoration"))
 
+    s.section("The owner's answers to the four disagreements (26 October 2026)")
+    s.check("Beille is about 25 minutes, everywhere",
+            "about 35 minutes" not in text and "20–35 minutes" not in text
+            and "Plateau de Beille · up the château’s road, about 25 minutes" in text)
+    s.check("Ax 3 Domaines gives both: the gondola and the drive up",
+            text.count("half an hour to drive up") >= 3
+            and "about half an hour away" not in text, detail=str(text.count("half an hour to drive up")))
+    s.check("Adret's hot-water canyon is where it is, not at Ax",
+            "Thuès-entre-Valls" in text and "hot-water canyon at Ax" not in text)
+
     s.section("What the research said to leave out stays out")
     s.check("no Mérens hot springs", "Mérens hot" not in text
             and "wild hot springs" not in text.lower())
@@ -123,8 +133,10 @@ def _run(s, oc, anon, conn, today):
     missing = [e["title"] for e in m.DEFAULT_WHATS_ON_DATES if e["title"] not in titles]
     s.check(f"all {len(m.DEFAULT_WHATS_ON_DATES)} are in the table", not missing,
             detail=str(missing[:3]))
+    # One market on several days is several rows of one title; the same day twice is not.
     dupes = conn.execute(
-        "SELECT title, COUNT(*) AS n FROM whats_on GROUP BY title HAVING n > 1").fetchall()
+        """SELECT title, COUNT(*) AS n FROM whats_on
+            GROUP BY title, weekday, event_date HAVING n > 1""").fetchall()
     s.check("none twice", not dupes, detail=str([d["title"] for d in dupes]))
     s.check("a placeholder day never stands in for words",
             all(e.get("date") for e in m.DEFAULT_WHATS_ON_DATES if not e.get("when"))
@@ -216,6 +228,54 @@ def _run(s, oc, anon, conn, today):
     listing = oc.get("/admin/whats-on").get_data(as_text=True)
     s.check("and the list shows both", TAG + "Admin span" in listing
             and TAG + "Words only" in listing)
+
+    s.section("The Ax market on its real days")
+    title = "Ax-les-Thermes Market"
+    put_back = _harness.keep_rows(conn, "whats_on", "title = ?", (title,))
+    put_back_mark = _harness.keep_rows(conn, "app_settings", "key = ?",
+                                       ("whats_on_ax_market_days",))
+    try:
+        def as_seeded_before(location="Place Roussel"):
+            conn.execute("DELETE FROM whats_on WHERE title = ?", (title,))
+            conn.execute("DELETE FROM app_settings WHERE key = 'whats_on_ax_market_days'")
+            conn.execute(
+                """INSERT INTO whats_on (title, description, location, distance, weekday,
+                       start_time, end_time, is_active, sort_order, created_at)
+                   VALUES (?, 'Mountain produce.', ?, '25 minutes', 6, '08:00', '13:00',
+                           1, 4, ?)""",
+                (title, location, m.datetime.now(m.timezone.utc).isoformat()))
+            conn.commit()
+
+        def days():
+            return {r_["weekday"]: r_ for r_ in conn.execute(
+                "SELECT * FROM whats_on WHERE title = ?", (title,))}
+
+        as_seeded_before()
+        done = m.fix_ax_market_days(conn)
+        got = days()
+        s.check("a house seeded with Sunday is moved to Tuesday", 1 in got and 6 not in got,
+                detail=str(sorted(got)))
+        s.check("at Place Saint-Jérôme, 7 to 1",
+                got.get(1) is not None and got[1]["location"] == m.AX_MARKET_PLACE
+                and got[1]["start_time"] == "07:00" and got[1]["end_time"] == "13:00")
+        s.check("with Saturday beside it", 5 in got and got[5]["season_from"] is None)
+        s.check("and Thursday from 1 July to 15 August only",
+                3 in got and (got[3]["season_from"], got[3]["season_to"]) == ("07-01", "08-15"))
+        s.check("and it says what it did", done == ["Tuesday", "Saturday", "summer Thursday"],
+                detail=str(done))
+        conn.execute("DELETE FROM whats_on WHERE title = ? AND weekday = 5", (title,))
+        conn.commit()
+        s.check("once: a Saturday deleted afterwards stays deleted",
+                m.fix_ax_market_days(conn) == [] and 5 not in days())
+        as_seeded_before(location="By the church, as I know it")
+        m.fix_ax_market_days(conn)
+        got = days()
+        s.check("a row the owner has edited is left as they wrote it",
+                set(got) == {6} and got[6]["location"] == "By the church, as I know it",
+                detail=str(sorted(got)))
+    finally:
+        put_back()
+        put_back_mark()
 
     s.section("Seeded once: a date the owner deletes stays deleted")
     first = m.DEFAULT_WHATS_ON_DATES[0]["title"]
