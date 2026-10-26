@@ -146,8 +146,12 @@ def run():
         # reached by arithmetic is refused every so often — and it depends on
         # the real calendar, so it passes for months and then does not. The
         # helper twenty lines up exists for this and was not used here.
+        # FOUR nights, though the stay is two: the guest further down adds two
+        # on the end, and they must be free too. Asked for two, the window
+        # from 23 October ran up against Noël and the extra nights were
+        # refused, which read as the tax and the balance not following them.
         arrival = _first_free_for_room(conn, room, m.house_today()
-                                       + timedelta(days=40))
+                                       + timedelta(days=40), nights=4)
         b = _make(conn, room, "MOVE", arrival)
         conn.close()
 
