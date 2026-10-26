@@ -19,8 +19,8 @@ anywhere gives you, is stored under the PREVIOUS day. So it is wrong twice:
 
 Either way the run most likely to be missed is exactly the one the arithmetic
 hides, on the list somebody checks before leaving. The fixture below is a
-pickup at 01:30, not a clock reading, so it fails at any hour rather than only
-in the two-hour window — and the section asserts BOTH: that it is counted as
+pickup at 00:30, not a clock reading, so it fails at any hour rather than only
+in the two-hour window, and in either season — and the section asserts BOTH: that it is counted as
 upcoming rather than today, and that it is not under past.
 
 THE SWEEP is the second half, and its list is PROVED rather than asserted:
@@ -80,12 +80,14 @@ def run():
            VALUES (?, 'ZZ-000-ZZ', ?)""", (TAG + " Land Rover", now))
     vehicle = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
-    # Half past one in the morning, tomorrow, at the house. In UTC that is
+    # Half past midnight, tomorrow, at the house. In UTC that is 22:30 or
     # 23:30 TODAY -- so a slice files it under today and the bucketing calls
-    # it "past" on the morning it is due.
+    # it "past" on the morning it is due. It was half past one, which is
+    # still tomorrow in UTC under winter time (00:30), so from the night the
+    # clocks went back the section's own guard below went red.
     pickup_local = m.datetime.combine(
         today + timedelta(days=1),
-        m.datetime.min.time().replace(hour=1, minute=30)
+        m.datetime.min.time().replace(hour=0, minute=30)
     ).replace(tzinfo=m.LOCAL_TZ)
     pickup_utc = pickup_local.astimezone(m.timezone.utc).isoformat()
 
@@ -98,7 +100,7 @@ def run():
 
     s.section("The fixture really is in the window")
     # Without this the section proves nothing at most hours of the day: if
-    # UTC and the house agree about which day 01:30 falls on, every check
+    # UTC and the house agree about which day 00:30 falls on, every check
     # below passes on a slice as readily as on a conversion.
     s.check("UTC and the house disagree about this pickup's day",
             pickup_utc[:10] != m.house_date_iso(pickup_utc),

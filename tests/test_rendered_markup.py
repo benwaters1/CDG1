@@ -303,6 +303,7 @@ ID_TABLES = {
     "work_id": ("restoration_works", "id"),
     "photo_id": ("restoration_photos", "id"),
     "action_id": ("meeting_actions", "id"),
+    "plan_id": ("site_plans", "id"),
 }
 
 # THE GUEST-FACING SITE, which ID_TABLES cannot reach on its own. Ten routes
@@ -330,6 +331,15 @@ ENDPOINT_ARGS = {
     ("legacy_chateau_ateliers_any", "_rest"): "category/2024",
     ("legacy_letter_club_subscription_any", "_rest"):
         "p/seasonal-letter-subscription-from-chteau-de-gudanes",
+    # A job page is only a MAINTENANCE task's (the rest of tasks is people's own
+    # lists), and its photograph only a reported one's.
+    ("maintenance_job", "task_id"): lambda conn: (conn.execute(
+        "SELECT id FROM tasks WHERE origin = 'maintenance' ORDER BY id DESC LIMIT 1"
+    ).fetchone() or [None])[0],
+    ("maintenance_job_photo", "task_id"): lambda conn: (conn.execute(
+        "SELECT task_id FROM plan_pins WHERE task_id IS NOT NULL AND photo_filename "
+        "IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone() or [None])[0],
+    ("maintenance_check", "schedule_id"): ("maintenance_schedules", "id"),
     ("campaign_unsubscribe", "token"): ("campaign_sends", "unsubscribe_token"),
     ("event_quote", "token"): ("event_quotes", "token"),
     ("guest_account", "token"): ("guest_sessions", "token"),
@@ -355,6 +365,15 @@ ENDPOINT_ARGS = {
     # check-in (22 October 2026).
     ("channel_stay_page", "reservation_id"): ("ota_reservations", "id"),
     ("channel_checkin", "token"): ("ota_reservations", "checkin_token"),
+    # A guest of the house's own checking in online (22 October 2026).
+    ("stay_checkin", "manage_token"): ("bookings", "manage_token"),
+    ("workshop_checkin", "manage_token"): ("workshop_bookings", "manage_token"),
+    # One fiche from the register, to print or to sign at the desk: which
+    # register is a word in the address, the fiche an id in it.
+    ("register_fiche_page", "kind"): "booking",
+    ("register_fiche_page", "fiche_id"): ("police_register", "id"),
+    ("register_sign_at_desk", "kind"): "booking",
+    ("register_sign_at_desk", "fiche_id"): ("police_register", "id"),
     ("workshop_calendar_ics", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_confirmation", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_manage", "manage_token"): ("workshop_bookings", "manage_token"),

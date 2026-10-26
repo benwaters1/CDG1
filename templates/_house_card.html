@@ -1,0 +1,25 @@
+{# THE HOUSE GUIDE, on the guest's own booking page and the party's share page.
+
+   Included from manage_booking.html and shared_stay.html, which arrive from
+   the design side as whole-file replacements: keep the one include line in
+   each when a new version comes in. tests/test_house_guide.py goes red if
+   either is lost, because the page would then exist with nothing leading a
+   guest to it.
+
+   Needs nothing passed to it: house_guide_card() works out from the request
+   which page it is on and whose stay it is. Drawn only while the stay is
+   confirmed and not over, and only once the owner has written something a
+   guest can read -- until then there is no card at all. The titles are his
+   words, so they are kept from the page translator like the page itself. #}
+{% set house = house_guide_card() %}
+{% if house %}
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  <h2 class="g-panel__h">{{ t('The house') }}</h2>
+  {% if house.titles %}
+  <p class="g-hint" translate="no">{% for title, lang in house.titles %}<span lang="{{ lang }}">{{ title }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% endif %}
+  <p class="g-p" style="margin-top:var(--s3);">
+    <a class="g-btn g-btn--solid" href="{{ house.url }}">{{ t('Read about the house') }}</a>
+  </p>
+</div>
+{% endif %}

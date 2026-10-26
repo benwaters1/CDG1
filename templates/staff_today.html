@@ -207,7 +207,8 @@
         <span aria-hidden="true">{{ '✓' if task['status'] == 'done' else '' }}</span>
       </button>
       <span class="check-text">
-        <span class="check-title">{{ task['title'] }}</span>
+        {#- An occasion's task opens its checklist: the flowers, the card. -#}
+        <span class="check-title">{% if task['origin'] == 'occasion' %}<a href="{{ url_for('occasions_page') }}#task-{{ task['id'] }}">{{ task['title'] }}</a>{% else %}{{ task['title'] }}{% endif %}</span>
         {% if task['room_note'] or task['notes'] %}
         <span class="check-sub">{{ task['room_note'] or task['notes'] }}</span>
         {% endif %}
