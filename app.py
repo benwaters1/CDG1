@@ -8994,6 +8994,7 @@ def init_db():
                  position, datetime.now(timezone.utc).isoformat()))
     conn.commit()
     correct_whats_on(conn)
+    fix_ax_market_days(conn)
     seed_whats_on_dates(conn)
 
     for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS,
@@ -15284,6 +15285,8 @@ DEFAULT_GALLERY_SECTIONS = [
 # finds an empty square has been let down by us, not by the internet. Somebody
 # local should check them, and the owner can fix any of it on /admin/whats-on
 # without touching this file.
+AX_MARKET_PLACE = "Place Saint-Jérôme, beside the town hall"
+
 DEFAULT_WHATS_ON = [
     {"title": "Les Cabannes Market",
      "description": "Fruit, vegetables, dairy, meat and artisanal producers. "
@@ -15296,10 +15299,16 @@ DEFAULT_WHATS_ON = [
      "description": "Cheese from the mountain farms, charcuterie, and whatever "
                     "the season has decided.",
      "location": "Place du 19 mars", "distance": "15 minutes", "weekday": 5},
+    # Tuesday and Saturday, 7 to 1, beside the town hall, and Thursdays from
+    # 1 July to 15 August (Tourisme Occitanie's listing, checked 26 October
+    # 2026). It was seeded as Sunday at Place Roussel, which no source gave;
+    # fix_ax_market_days puts a house already seeded right, and adds the
+    # Saturday and the summer Thursday beside this one.
     {"title": "Ax-les-Thermes Market",
      "description": "Mountain produce, and the thermal baths a short walk away "
                     "afterwards.",
-     "location": "Place Roussel", "distance": "25 minutes", "weekday": 6},
+     "location": AX_MARKET_PLACE, "distance": "25 minutes", "weekday": 1,
+     "start_time": "07:00", "end_time": "13:00"},
     {"title": "Foix Market",
      "description": "Friday, in the streets below the counts' castle. The "
                     "biggest of the nearby town markets, and the one to send "
@@ -15376,6 +15385,55 @@ DEFAULT_WHATS_ON_DATES = [
      "when": "All year"},
     {"title": "Grotte de Lombrives open all year", "when": "All year"},
 ]
+
+def fix_ax_market_days(conn):
+    """The Ax market on its real days, once per database. Returns what it did.
+
+    It was seeded as one Sunday market at Place Roussel. It is Tuesday and
+    Saturday, 7 to 1, at Place Saint-Jérôme beside the town hall, and on
+    Thursdays from 1 July to 15 August as well. The Sunday row is moved only
+    while it still reads exactly as seeded -- one the owner has edited is
+    theirs -- and the Saturday and the summer Thursday go in beside the
+    Tuesday one only where it is ours. Once, so a day the owner deletes
+    afterwards stays deleted."""
+    key = "whats_on_ax_market_days"
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
+        return []
+    done = []
+    title = "Ax-les-Thermes Market"
+    moved = conn.execute(
+        """UPDATE whats_on SET weekday = 1, location = ?, start_time = '07:00',
+                  end_time = '13:00'
+            WHERE title = ? AND weekday = 6 AND location = 'Place Roussel'
+              AND start_time = '08:00' AND end_time = '13:00'
+              AND event_date IS NULL AND season_from IS NULL""",
+        (AX_MARKET_PLACE, title)).rowcount
+    if moved:
+        done.append("Tuesday")
+    tuesday = conn.execute(
+        "SELECT * FROM whats_on WHERE title = ? AND weekday = 1 AND location = ? "
+        "ORDER BY id LIMIT 1", (title, AX_MARKET_PLACE)).fetchone()
+    if tuesday:
+        now = datetime.now(timezone.utc).isoformat()
+        for weekday, season, said in ((5, (None, None), "Saturday"),
+                                      (3, ("07-01", "08-15"), "summer Thursday")):
+            if conn.execute("SELECT 1 FROM whats_on WHERE title = ? AND weekday = ?",
+                            (title, weekday)).fetchone():
+                continue
+            conn.execute(
+                """INSERT INTO whats_on (title, description, location, distance, weekday,
+                       start_time, end_time, season_from, season_to, is_active,
+                       sort_order, created_at)
+                   VALUES (?, ?, ?, ?, ?, '07:00', '13:00', ?, ?, ?, ?, ?)""",
+                (title, tuesday["description"], AX_MARKET_PLACE, tuesday["distance"],
+                 weekday, season[0], season[1], tuesday["is_active"],
+                 tuesday["sort_order"], now))
+            done.append(said)
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO NOTHING", (key, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return done
+
 
 def seed_whats_on_dates(conn):
     """Put in DEFAULT_WHATS_ON_DATES, each once. Returns how many went in.
