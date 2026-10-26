@@ -10,7 +10,7 @@ So the seed renames in place. The test that matters is the one below: run the
 catch-up against a database that still holds the old names and check that six
 come out, not eleven.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db
 import _harness
@@ -160,19 +160,39 @@ def run():
             bool(back), detail="documented behaviour, not a silent surprise")
 
     s.section("The public pages render them")
+    # One sitting a year ahead, so the page always has an atelier to name.
+    # Every seeded date is a fixed one in 2026 or 2027, and this check used to
+    # name two ateliers "with dates ahead" by hand: it went red the day Noël's
+    # sitting passed, and with nothing added it would pass on an empty page
+    # once the last seeded date had gone.
+    noel = conn.execute(
+        "SELECT id FROM workshops WHERE title = 'Noël at Gudanes'").fetchone()["id"]
+    ahead = m.house_today() + timedelta(days=400)
+    conn.execute(
+        """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
+                                          capacity, notes, created_at)
+           VALUES (?, ?, ?, 15, 'zz-ateliers sitting ahead', ?)""",
+        (noel, ahead.isoformat(), (ahead + timedelta(days=4)).isoformat(),
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
     anon = m.app.test_client()
     r = anon.get("/workshops")
     s.check("the workshops page opens", r.status_code == 200, detail=str(r.status_code))
     body = r.data.decode("utf-8", "replace")
-    # Names checked against workshops that still have dates ahead of them.
-    # "The Long Weekender" is deliberately NOT one of them: every sitting it
-    # was seeded with is in the past, so the public page hides it — a finished
-    # workshop must not sit there inviting registrations for dates that have
-    # gone. It will reappear the moment it is given a future date in the admin.
-    # See test_workshop_lifecycle for that rule on its own terms.
+    # Names checked against workshops that still have dates ahead of them,
+    # read by the route's own rule rather than listed. "The Long Weekender" is
+    # deliberately NOT one of them: every sitting it was seeded with is in the
+    # past, so the public page hides it — a finished workshop must not sit
+    # there inviting registrations for dates that have gone. It will reappear
+    # the moment it is given a future date in the admin. See
+    # test_workshop_lifecycle for that rule on its own terms.
+    named = [w["title"] for w in conn.execute(
+        "SELECT * FROM workshops WHERE active = 1 AND title NOT LIKE '%Test%'")
+        if m.public_sittings(conn, w["id"], m.house_today())]
+    shown = " ".join(_harness.visible_text(body).split())
     s.check("with the public names on it",
-            "Seven Starry Nights" in body and "Noël at Gudanes" in body,
-            detail="a workshop with dates ahead is missing from the page")
+            "Noël at Gudanes" in named and all(t in shown for t in named),
+            detail="missing from the page: %s" % [t for t in named if t not in shown])
     s.check("and no working title", "Autumn Atelier" not in body)
     s.check("while one whose dates have all passed is not advertised",
             "The Long Weekender" not in body,
@@ -208,5 +228,7 @@ def run():
                    "with no figure is the fault the glance panel was first "
                    "written to fix" % (len(dated), unpriced))
 
+    conn.execute("DELETE FROM workshop_sessions WHERE notes = 'zz-ateliers sitting ahead'")
+    conn.commit()
     conn.close()
     return s
