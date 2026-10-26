@@ -338,6 +338,11 @@ ENDPOINT_ARGS = {
     ("guest_portal_statement", "token"): ("guests", "portal_token"),
     ("guest_portal_data", "token"): ("guests", "portal_token"),
     ("instructor_page", "token"): ("workshop_sessions", "instructor_token"),
+    # An atelier's recap: its pictures and the file whoever taught it left,
+    # read through the recap's own link once it has gone.
+    ("atelier_recap_notes", "token"): ("atelier_recaps", "share_token"),
+    ("atelier_recap_photo", "token"): ("atelier_recaps", "share_token"),
+    ("atelier_recap_photo", "photo_id"): ("atelier_recap_photos", "id"),
     ("newsletter_confirm", "token"): ("newsletter_subscribers", "token"),
     ("newsletter_unsubscribe", "token"): ("newsletter_subscribers", "token"),
     ("onboard", "token"): ("users", "invite_token"),

@@ -224,8 +224,13 @@ def run():
     conn.close()
     undrawn = []
     for key in shipped:
+        subject, body = rows[key]["subject"], rows[key]["body"]
+        if key in m.UNWRITTEN_LETTERS and not (subject or "").strip():
+            # Shipped with no words (the atelier recap): drawn with some, since
+            # a letter nobody has written has nothing to draw.
+            subject, body = "A letter", "Hi {guest_name},\n\nA paragraph."
         r = oc.post(f"/management/email-templates/{key}/preview",
-                    json={"subject": rows[key]["subject"], "body": rows[key]["body"]})
+                    json={"subject": subject, "body": body})
         d = r.get_json() or {}
         if not (d.get("html") or "").lstrip().lower().startswith("<!doctype"):
             undrawn.append(key)

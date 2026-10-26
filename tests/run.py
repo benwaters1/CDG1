@@ -201,6 +201,7 @@ SUITES = [
     "test_staff_language",
     "test_whats_on",
     "test_ateliers",
+    "test_atelier_recap",
     "test_navigation",
     "test_nav_reachable",
     "test_front_page",
