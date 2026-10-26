@@ -14,6 +14,10 @@ WHAT THIS PINS.
     page, in the quote, on the room page's calendar, and in the booking
     itself. "The house is full", not "not available".
   - Four taken does not.
+  - Every channel stay counts as a room let (26 Oct 2026, after 30 Oct sold a
+    fourth room): from Booking.com's emails or the stays page, with or without
+    a room, and a closure typed in as "Booking.com stay". A cancelled one stops
+    counting at once, even while the channel's calendar still shows it.
   - The owner's closures do not count; a channel's imported nights do; a
     channel range that is one of the house's own closures sent back does not,
     and the owner is told the channel is sending them.
@@ -38,6 +42,7 @@ OVER_TASK = f"More than {N} rooms let on%"
 
 def _cleanup(conn):
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM ota_reservations WHERE reservation_number LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM room_blocks WHERE reason LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM blocked_dates WHERE ical_source_id IN "
                  "(SELECT id FROM ical_sources WHERE label LIKE ?)", (TAG + "%",))
@@ -70,6 +75,90 @@ def _book(conn, room_id, a, b, status="confirmed", n=0):
          a.isoformat(), b.isoformat(), status, _harness.datetime_now()))
     conn.commit()
     return conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+
+def _refused_everywhere(conn, spare, a, b):
+    """The spare room, those nights: (gate refuses, calendar greys, feed closes)."""
+    ok, _why = _ask(m.is_range_available, spare["id"], a, b)
+    nights = _ask(m.unavailable_nights, spare["id"], a, b)
+    full = [(x, y) for u, x, y in _ics_spans(_ask(m.generate_room_ics, spare))
+            if u.startswith("full-")]
+    return (not ok, nights.get(a.isoformat()) == m.HOUSE_FULL_NIGHT, (a, b) in full)
+
+
+def _ota(conn, n, room_id, a, b, status="confirmed"):
+    now = _harness.datetime_now()
+    conn.execute(
+        """INSERT INTO ota_reservations (channel, reservation_number, status, guest_name,
+           arrival_date, departure_date, room_id, guests, first_seen_at, updated_at)
+           VALUES ('booking.com', ?, ?, ?, ?, ?, ?, 2, ?, ?)""",
+        (f"{TAG}{n}", status, f"{TAG} Channel {n}", a.isoformat(), b.isoformat(),
+         room_id, now, now))
+    conn.commit()
+
+
+def _channel_stays_count(s, conn, let_rooms, spare, ids, a, b):
+    """26 Oct 2026: on 30 Oct the Twin Room's Booking.com guest was not counted,
+    and the site went on selling a fourth room. Two of the house's own
+    bookings and one channel stay make the full set, however the channel stay
+    is known; a cancelled one stops counting at once."""
+    conn.execute("DELETE FROM bookings WHERE id = ?", (ids[-1],))
+    conn.commit()
+    room = let_rooms[-1]["id"]
+    s.section("Two of the house's bookings and a channel stay are the full set")
+    s.check("two booked: the spare room is for sale",
+            _refused_everywhere(conn, spare, a, b) == (False, False, False),
+            detail=str(_refused_everywhere(conn, spare, a, b)))
+
+    _ota(conn, 1, room, a, b)
+    got = _refused_everywhere(conn, spare, a, b)
+    s.check("a Booking.com stay from its email (or the stays page) counts as let", got[0], detail=str(got))
+    s.check("on the room page's calendar", got[1], detail=str(got))
+    s.check("and in the room's calendar link the channels read", got[2], detail=str(got))
+
+    # The channel's calendar still shows the nights after a cancellation.
+    src = conn.execute("SELECT id FROM ical_sources WHERE label = ?", (TAG + " Booking.com",)).fetchone()
+    conn.execute("INSERT INTO blocked_dates (room_id, ical_source_id, start_date, end_date) "
+                 "VALUES (?, ?, ?, ?)", (room, src["id"] if src else None, a.isoformat(), b.isoformat()))
+    conn.execute("UPDATE ota_reservations SET status = 'cancelled' WHERE reservation_number = ?",
+                 (TAG + "1",))
+    conn.commit()
+    s.check("cancelled: it stops counting straight away, calendar or not",
+            _refused_everywhere(conn, spare, a, b) == (False, False, False),
+            detail=str(_refused_everywhere(conn, spare, a, b)))
+    conn.execute("DELETE FROM blocked_dates WHERE room_id = ? AND start_date = ?", (room, a.isoformat()))
+    conn.commit()
+
+    _ota(conn, 2, None, a, b)
+    s.check("a channel stay with no room yet still takes a room that night",
+            _refused_everywhere(conn, spare, a, b)[0])
+    conn.execute("DELETE FROM ota_reservations WHERE reservation_number = ?", (TAG + "2",))
+    conn.commit()
+
+    s.section("A closure typed in for a channel's stay counts; the house's own do not")
+    m.close_rooms(conn, [room], a, b, "booked", "", TAG + " maintenance", None)
+    conn.commit()
+    s.check("a closure for maintenance is not a room let",
+            _refused_everywhere(conn, spare, a, b) == (False, False, False),
+            detail=str(_refused_everywhere(conn, spare, a, b)))
+    conn.execute("UPDATE room_blocks SET reason = ? WHERE reason = ?",
+                 (TAG + " Booking.com stay", TAG + " maintenance"))
+    conn.commit()
+    got = _refused_everywhere(conn, spare, a, b)
+    s.check("'Booking.com stay' as the reason: the room is let, everywhere",
+            got == (True, True, True), detail=str(got))
+    # As on the live site: the channel's calendar sends the same nights back,
+    # matching the closure exactly.
+    conn.execute("INSERT INTO blocked_dates (room_id, ical_source_id, start_date, end_date) "
+                 "VALUES (?, ?, ?, ?)", (room, src["id"] if src else None, a.isoformat(), b.isoformat()))
+    conn.commit()
+    with m.app.test_request_context():
+        pic = m._availability_picture(conn, fresh=True)
+    s.check("and with the channel's calendar matching it, it is still one room, not two",
+            len(m.rooms_let_on(pic, a)) == len(let_rooms), detail=str(m.rooms_let_on(pic, a)))
+    conn.execute("DELETE FROM blocked_dates WHERE room_id = ? AND start_date = ?", (room, a.isoformat()))
+    conn.execute("DELETE FROM room_blocks WHERE reason LIKE ?", (TAG + "%",))
+    conn.commit()
 
 
 def _ics_spans(feed):
@@ -290,6 +379,8 @@ def _checks(s, conn, put_back):
     known = spans.get(spare["id"], set()) | spans[None]
     s.check("every closure the feed sends is one the count would recognise",
             sent and all(x in known for x in sent), detail=str([x for x in sent if x not in known]))
+
+    _channel_stays_count(s, conn, let_rooms, spare, ids, a, b)
 
     s.section("Workshops are not counted (owner, 18 October)")
     # "Workshops are a separate thing: their rooms aren't the nightly rooms or

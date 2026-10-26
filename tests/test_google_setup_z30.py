@@ -118,7 +118,12 @@ def run():
             and "no other company involved" not in privacy)
     s.check("and says a browser that asks is not counted by Cloudflare either",
             "by us or by Cloudflare" in privacy)
-    s.check("and it is dated", m.PRIVACY_LAST_REVIEWED == "19 October 2026")
+    # Reviewed on or after the day Cloudflare was added; a later review (the
+    # online check-in, 22 October) still covers it.
+    from datetime import datetime as _dt
+    s.check("and it is dated",
+            _dt.strptime(m.PRIVACY_LAST_REVIEWED, "%d %B %Y") >= _dt(2026, 10, 19),
+            detail=m.PRIVACY_LAST_REVIEWED)
     return s
 
 

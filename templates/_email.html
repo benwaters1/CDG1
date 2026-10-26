@@ -330,6 +330,53 @@
 {% endmacro %}
 
 
+{#  The photographs of an atelier, two to a row: the ones the owner cleared for
+    its recap and nothing else. `items` is [{src, alt}]. No words of its own --
+    the owner's letter says what they are. A row with one picture in it gives
+    that picture the whole width rather than leaving half the row empty. #}
+{% macro email_photos(items) %}
+{% for row in items|batch(2) %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="margin:0 0 10px;">
+  <tr>
+    {% for p in row %}
+    <td width="{{ '50%' if row|length == 2 else '100%' }}" valign="top"
+        style="padding:0 {{ '5px' if row|length == 2 and loop.first else '0' }} 0 {{ '5px' if row|length == 2 and loop.last else '0' }}; font-size:0; line-height:0;">
+      <img src="{{ p.src }}" width="{{ 246 if row|length == 2 else 502 }}" alt="{{ p.alt }}"
+           style="display:block; width:100%; height:auto; border:0;"></td>
+    {% endfor %}
+  </tr>
+</table>
+{% endfor %}
+{% if items %}<div style="height:8px; line-height:8px; font-size:0;">&nbsp;</div>{% endif %}
+{% endmacro %}
+
+
+{#  What a stay can still have, one card each, as the letter before arrival
+    offers it: the catalogue's own name, description and price, the notice it
+    needs, and the way to add it on the guest's booking page. No heading of
+    its own -- the owner's words above it say what it is. `items` is
+    [{name, description, price, notice, button, url}]
+    (extras_offers_for_stay in app.py). Not email_extras below, which is the
+    confirmation's own two links. #}
+{% macro email_offers(items) %}
+{% for x in items %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="margin:0 0 18px; border:1px solid {{ RULE }};">
+  <tr>
+    <td style="padding:18px 20px 6px;">
+      <p style="margin:0 0 6px; font-family:{{ SERIF }}; font-size:21px; line-height:1.3; color:{{ NAVY }};">{{ x.name }}</p>
+      {% if x.description %}<p style="margin:0 0 6px; font-family:{{ SANS }}; font-size:14px; line-height:1.6; color:{{ INK }};">{{ x.description }}</p>{% endif %}
+      {% set facts = [x.price, x.notice]|select|list %}
+      {% if facts %}<p style="margin:0 0 10px; font-family:{{ SANS }}; font-size:13px; color:{{ MUTED }};">{{ facts|join(' · ') }}</p>{% endif %}
+      {{ email_button(x.url, x.button, 'quiet') }}
+    </td>
+  </tr>
+</table>
+{% endfor %}
+{% endmacro %}
+
+
 {#  ==========================================================================
     GETTING HERE
     The château is an hour and three quarters from Toulouse on roads that get
@@ -449,7 +496,7 @@
     letter and the confirmation so a paragraph, a card of facts or a notice
     looks the same in both. `first_button` decides whether a button is the
     letter's one solid call or a quiet one. #}
-{% macro email_block(block, statement=None, pay_url='', workshops=[]) %}
+{% macro email_block(block, statement=None, pay_url='', workshops=[], extras=[], photos=[]) %}
   {% if block.kind == 'greeting' %}
     <p style="margin:0 0 18px; font-family:{{ SERIF }}; font-size:19px; line-height:1.5; color:{{ NAVY }};">{{ block.text }}</p>
   {% elif block.kind == 'button' %}
@@ -468,6 +515,10 @@
     {% if statement %}{% include "_email_statement.html" %}{% endif %}
   {% elif block.kind == 'workshops' %}
     {{ email_workshops(workshops) }}
+  {% elif block.kind == 'extras' %}
+    {{ email_offers(extras) }}
+  {% elif block.kind == 'photos' %}
+    {{ email_photos(photos) }}
   {% else %}
     {{ email_text(block.lines or [block.text]) }}
   {% endif %}

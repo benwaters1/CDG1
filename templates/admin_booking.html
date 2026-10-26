@@ -108,6 +108,10 @@
       <dt>Guests</dt><dd>{{ b['party_size'] }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %} <span class="upload-hint">· room sleeps {{ b['max_occupancy'] }}</span></dd>
       {% if b['special_occasion'] %}<dt>Celebrating</dt><dd>{{ b['special_occasion'] }}</dd>{% endif %}
       {% if b['special_requests'] %}<dt>They asked</dt><dd class="bk-pre">{{ b['special_requests'] }}</dd>{% endif %}
+      {#- Online check-in, from their booking page: what it gave and where the
+          rest went -- the fiches to the register, the note to the kitchen. #}
+      <dt>Online check-in</dt><dd>{% if b['checkin_done_at'] %}done {{ b['checkin_done_at']|house_day|date_short }} <span class="upload-hint">· <a href="{{ url_for('police_register_page') }}">the register</a></span>{% elif b['checked_in_at'] %}<span class="upload-hint">checked in at the door instead</span>{% else %}<span class="upload-hint">not yet{% if b['checkin_letter_sent_at'] %} · link emailed {{ b['checkin_letter_sent_at']|house_day|date_short }}{% endif %} · it is on their booking page</span>{% endif %}</dd>
+      {% if b['dietary_notes'] %}<dt>Cannot eat</dt><dd>{{ b['dietary_notes'] }} <span class="upload-hint">· deleted once the stay is over</span></dd>{% endif %}
       {% if b['transfer_flight_number'] or b['transfer_arrival_time'] or b['transfer_notes'] %}
       <dt>Transfer</dt><dd>{{ b['transfer_flight_number'] or 'flight to be confirmed' }}{% if b['transfer_arrival_time'] %}, landing {{ b['transfer_arrival_time'] }}{% endif %}{% if b['transfer_notes'] %} — {{ b['transfer_notes'] }}{% endif %}</dd>
       {% endif %}
@@ -421,9 +425,11 @@
     {% endif %}
 
     {# Only texts that are switched on and have wording are in this list
-       (booking_texts_plan), so with neither the heading goes too. #}
-    {% if texts.texts %}
-    <h3 class="bk-subhead">Texts the house sends by itself</h3>
+       (booking_texts_plan), and the letter offering extras is here only while
+       it is switched on (booking_extras_offer_plan), so with none of them the
+       heading goes too. #}
+    {% if texts.texts or extras_offer %}
+    <h3 class="bk-subhead">Texts and letters the house sends by itself</h3>
     <ul class="bk-list">
       {% for t in texts.texts %}
       <li><strong>The {{ t.label }} text</strong> —
@@ -435,6 +441,21 @@
         {% else %}<span class="upload-hint">only once the stay is confirmed</span>{% endif %}
         {% if t.body %}<span class="cell-note">“{{ t.body }}”</span>{% endif %}</li>
       {% endfor %}
+      {% if extras_offer %}{% set o = extras_offer %}
+      <li id="extras-offer"><strong>The letter offering what they can add</strong> —
+        {% if o.state == 'sent' %}
+          {% if o.outcome == 'held' %}<span class="owed-flag">written {{ local_datetime_str(o.sent_at) }}, waiting in Held Email</span>
+          {% elif o.outcome == 'party' %}<span class="bk-ok">went {{ local_datetime_str(o.sent_at) }}, to whoever leads the party</span>
+          {% else %}<span class="bk-ok">sent {{ local_datetime_str(o.sent_at) }}</span>{% endif %}
+        {% elif o.state == 'due' %}goes the morning of {{ o.due|date_short }}{% if not o.live %} <span class="upload-hint">(not while Write to guests is off)</span>{% endif %}
+          <span class="cell-note">offering {{ o.offers|map(attribute='name')|join(', ') }}</span>
+        {% elif o.state == 'unwritten' %}<span class="owed-flag">will not go: {{ o.reason }}</span> <a href="{{ o.editor }}">write it</a>
+        {% elif o.state == 'cannot' %}<span class="owed-flag">will not go: {{ o.reason }}</span>
+        {% elif o.state == 'party' %}<span class="upload-hint">goes to whoever leads the party, not to this room</span>
+        {% elif o.state == 'missed' %}<span class="upload-hint">not sent; too close to arrival</span>
+        {% elif o.state == 'off' %}<span class="upload-hint">not sent: the stay is {{ b['status'] }}</span>
+        {% else %}<span class="upload-hint">only once the stay is confirmed</span>{% endif %}</li>
+      {% endif %}
     </ul>
     {% endif %}
   </div>

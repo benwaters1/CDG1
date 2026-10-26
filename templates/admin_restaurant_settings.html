@@ -52,6 +52,29 @@
   </label>
   <p class="upload-hint" style="margin-top:6px;">Leave this off until the dining room is actually ready — the reservations queue and settings stay usable either way.</p>
 
+  {# restaurant_instant, in app_settings: the public booking and Dining pages
+     word their promise on it, and restaurant_instant_holds() keeps it. #}
+  <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:10px;">
+    <input type="checkbox" name="restaurant_instant" {{ 'checked' if restaurant_instant }}>
+    Confirm tables automatically when they are booked online
+  </label>
+  <p class="upload-hint" style="margin-top:4px;">On: once the payment goes through
+  (or as soon as the form is sent, when nothing is paid online) the table is
+  confirmed and the guest gets the same confirmation letter the Confirm button
+  sends. The booking page then tells guests their table is confirmed on payment,
+  rather than that they are making a request.</p>
+  <p class="upload-hint" style="margin-top:4px;">A table still comes to you as a
+  request, and the guest is told it is a request, when:</p>
+  <ul class="upload-hint" style="margin:2px 0 0 18px; padding:0;">
+    <li>that evening would go over the covers set above, or the seats on the floor plan — atelier guests eating in count</li>
+    <li>the party is bigger than your biggest table</li>
+    <li>La Table is closed that evening, or not open yet</li>
+    <li>that evening's card is published and its counted stock would run short</li>
+    <li>the guest has a caution on their profile, or has not turned up twice before</li>
+  </ul>
+  <p class="upload-hint" style="margin-top:4px;">The reason is shown beside Confirm in
+  the reservations. Off: every table is a request until you confirm it, as now.</p>
+
   {# Off unless the house asks for it. Nobody's guests should start receiving
      mail because an upgrade shipped with a box ticked. #}
   <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:10px;">
@@ -79,8 +102,9 @@
     <input id="admin_restaurant_settings-dining-reopens" type="text" name="dining_reopens" maxlength="60"
            value="{{ dining_reopens }}" placeholder="April 2027">
     {# 2 Oct: the evenings La Table opens. Shown on the website as the opening hours (Dining page, footer, Stay, the
-       homepage) with the dinner time above, and a table cannot be requested on any other evening. Saved by the patch
-       in PATCH_dining_days.txt. #}
+       homepage) with the dinner time above, and a table cannot be requested on any other evening. Saved by
+       admin_restaurant_settings into app_settings.dining_days; the booking routes refuse a closed evening through
+       restaurant_closed_evening. #}
     {% set _dd = (dining_days if dining_days is defined else '')|string %}
     <p class="field-label" style="margin-top:14px;">Open on these evenings</p>
     <div style="display:flex; flex-wrap:wrap; gap:6px 14px; margin:4px 0 2px;">

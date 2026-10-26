@@ -27,7 +27,7 @@
   {{ email_heading(heading, subheading) }}
 
   {% for block in blocks %}
-    {{ email_block(block, statement=statement, pay_url=pay_url, workshops=workshops) }}
+    {{ email_block(block, statement=statement, pay_url=pay_url, workshops=workshops, extras=extras, photos=photos) }}
   {% endfor %}
 
   {# A receipt is a statement too: the booking's, beneath the words, when

@@ -74,6 +74,10 @@
   {% endif %}
   {# The front door -- keep this line when a new version of this page arrives. #}
   {% include "_door_card.html" %}
+  {# Online check-in -- keep this line when a new version of this page arrives. #}
+  {% include "_checkin_card.html" %}
+  {# The house guide -- keep this line too (tests/test_house_guide.py). #}
+  {% include "_house_card.html" %}
 
 {% if (booking['status']|lower) in ('pending', 'confirmed') %}
 {#- 8 Oct (owner: "is the manage booking good"): ordered by what a guest opens this page for - what is owed and how to
@@ -367,7 +371,8 @@
       quantity (one per booking) get their own columns, so the date menu is not squeezed into the quantity's slot. -#}
   {%- set _xn = (e['name'] ~ ' ' ~ (e['description'] or ''))|lower %}
   {%- set _xk = 'key' if 'tour' in _xn else 'wine' if ('crémant' in _xn or 'cremant' in _xn or 'wine' in _xn or 'champagne' in _xn or 'charcuterie' in _xn) else 'depart' if ('transfer' in _xn or 'airport' in _xn or 'taxi' in _xn or 'station' in _xn) else 'breakfast' if 'breakfast' in _xn else 'yoga' if 'yoga' in _xn else 'horse' if ('riding' in _xn or 'horse' in _xn) else 'hike' if ('hike' in _xn or 'hiking' in _xn) else 'ski' if ' ski' in (' ' ~ _xn) else 'film' if ('film' in _xn or 'cinema' in _xn) else 'laundry' if ('laundry' in _xn or 'ironing' in _xn) else 'candelabra' %}
-  <form method="post" class="g-mb-acts g-mb-extra{{ ' g-mb-extra--noqty' if e['max_qty'] == 1 }}" style="margin-bottom:var(--s2);">
+  {#- id: the letter before arrival links to each extra here (?add=<id>#add-<id>), and the one it was opened at is marked. -#}
+  <form method="post" id="add-{{ e['id'] }}" class="g-mb-acts g-mb-extra{{ ' g-mb-extra--noqty' if e['max_qty'] == 1 }}{{ ' g-mb-extra--offered' if offered_id == e['id'] }}" style="margin-bottom:var(--s2);">
     <div class="g-mb-extra__ill" aria-hidden="true">{{ illus(_xk) }}</div>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add_extra">
@@ -401,7 +406,7 @@
 {% endif %}
 
 {% if dinner_available and _dm == 'open' %}
-<div class="g-mb-card" style="margin-top:var(--s4);">
+<div class="g-mb-card" id="dinner" style="margin-top:var(--s4);">
   <h3>Book dinner</h3>
   <p class="g-hint">
     Join us in the dining room during your stay.

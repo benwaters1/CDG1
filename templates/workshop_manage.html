@@ -83,6 +83,9 @@
     {% endif %}
   </div>
 
+  {# Online check-in -- keep this line when a new version of this page arrives. #}
+  {% include "_checkin_card.html" %}
+
   {% if (booking['status']|lower) not in ('declined', 'cancelled') and total_charged %}
   <div class="g-mb-card" style="margin-top:var(--s3);">
     <dl class="g-facts-list">

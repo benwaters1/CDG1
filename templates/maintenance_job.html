@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}{{ job.task['title'] if job else check.schedule['name'] }}{% endblock %}
+{% block content %}
+
+{% if job %}
+{% set t = job.task %}
+<div class="page-head">
+  <h1>{{ t['title'] }}</h1>
+  <div>
+    <a href="{{ url_for('plan_map', plan_id=job.plan['id']) if job.plan else url_for('plan_map') }}"
+       class="btn-ghost">The map</a>
+  </div>
+</div>
+
+<p class="plan-job-state">
+  <span class="mini-status plan-status--{{ tone }}">{{ label }}</span>
+  {% if t['priority'] == 'high' and t['status'] != 'done' %}<span class="mini-status status-declined">Urgent</span>{% endif %}
+  <span class="upload-hint">
+    {{ (t['assignee_name'] ~ ' has it') if t['assignee_name'] else 'Nobody has it yet' }}
+    {%- if t['due_date'] %} &middot; due {{ t['due_date']|date_short }}{% endif %}
+    &middot; raised {{ t['created_at']|house_when }}
+    {%- if job.pin and job.pin['placed_by_name'] and not job.inherited %} by {{ job.pin['placed_by_name'] }}{% endif %}
+    {%- if t['status'] == 'done' and t['completed_at'] %} &middot; done {{ t['completed_at']|house_when }}{% endif %}
+  </span>
+</p>
+
+{% if job.photo %}
+<figure class="plan-job-photo">
+  <a href="{{ url_for('maintenance_job_photo', task_id=t['id']) }}" target="_blank" rel="noopener">
+    <img src="{{ url_for('maintenance_job_photo', task_id=t['id']) }}" alt="The photograph sent with the report">
+  </a>
+</figure>
+{% endif %}
+
+{% if t['notes'] %}<p class="plan-job-notes">{{ t['notes'] }}</p>{% endif %}
+
+<h2 class="section-heading">Where</h2>
+{% if job.plan %}
+  {% with plan=job.plan, tap=False, marker=None %}{% include "_plan_frame.html" %}{% endwith %}
+  <p class="field-hint">
+    On {{ job.plan['name'] }}{% if job.inherited %}, where {{ job.schedule['name'] }} is kept{% endif %}.
+    {% if can_place and not job.inherited %}
+      <a href="{{ url_for('place_on_plan', plan_id=job.plan['id'], task_id=t['id']) }}" class="small-link">Move the pin</a>
+    {% endif %}
+  </p>
+{% else %}
+  <p class="empty-inline">Not on a plan{% if job.schedule %}, and nor is {{ job.schedule['name'] }}{% endif %}.</p>
+  {% if can_place and plans %}
+  <p class="plan-place-on">
+    {% for p in plans %}
+    <a href="{{ url_for('place_on_plan', plan_id=p['id'], task_id=t['id']) if not job.schedule else url_for('place_on_plan', plan_id=p['id'], schedule_id=job.schedule['id']) }}"
+       class="btn-mini">Put it on {{ p['name'] }}</a>
+    {% endfor %}
+  </p>
+  {% endif %}
+{% endif %}
+
+<h2 class="section-heading">What happens next</h2>
+<div class="plan-job-acts">
+  {% if t['status'] != 'done' %}
+    {% if can_take %}
+    <form method="post" action="{{ url_for('maintenance_job_status', task_id=t['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" name="action" value="take" class="btn-primary">I&rsquo;ll deal with it</button>
+    </form>
+    {% endif %}
+    {% if can_change and t['status'] == 'open' and t['assigned_to_user_id'] %}
+    <form method="post" action="{{ url_for('maintenance_job_status', task_id=t['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" name="action" value="start" class="btn-ghost">Started on it</button>
+    </form>
+    {% endif %}
+    {% if can_change and not job.schedule %}
+    <form method="post" action="{{ url_for('maintenance_job_status', task_id=t['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" name="action" value="done" class="btn-primary">Done</button>
+    </form>
+    {% endif %}
+    {% if not can_take and not can_change %}
+    <p class="field-hint">{{ t['assignee_name'] or 'Somebody' }} has this one.</p>
+    {% endif %}
+  {% elif can_change %}
+    <form method="post" action="{{ url_for('maintenance_job_status', task_id=t['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" name="action" value="reopen" class="btn-ghost">It needs doing again</button>
+    </form>
+  {% else %}
+    <p class="field-hint">Done. It stays on the map for a while, then drops off.</p>
+  {% endif %}
+</div>
+
+{% if job.schedule and t['status'] != 'done' %}
+  {% if can_record %}
+  {# The schedule's own form, posting where the maintenance page posts: the
+     visit moves the next date on, keeps the certificate and closes this job. #}
+  <form method="post" action="{{ url_for('record_maintenance_done', schedule_id=job.schedule['id']) }}"
+        enctype="multipart/form-data" class="detail-card plan-record">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h3>Record it done</h3>
+    <div class="refund-fields">
+      <div><label class="field-label" for="rec-on">When</label>
+        <input id="rec-on" type="date" name="done_on" value="{{ today.isoformat() }}" required></div>
+      <div><label class="field-label" for="rec-by">Who by</label>
+        <input id="rec-by" type="text" name="done_by"></div>
+      <div><label class="field-label" for="rec-cost">Cost (&euro;)</label>
+        <input id="rec-cost" type="text" name="cost" inputmode="decimal"></div>
+      <div><label class="field-label" for="rec-cert">Certificate</label>
+        <input id="rec-cert" type="file" name="certificate"></div>
+    </div>
+    <button type="submit" class="btn-primary">Done &mdash; the next one falls
+      {{ job.schedule['every_months'] }} month{{ '' if job.schedule['every_months'] == 1 else 's' }} later</button>
+  </form>
+  {% else %}
+  <p class="field-hint">
+    This one is on a schedule ({{ job.schedule['name'] }}). The owner records it done, with
+    its certificate, so the next date moves on.
+  </p>
+  {% endif %}
+{% endif %}
+
+{% else %}
+{% set s = check.schedule %}
+<div class="page-head">
+  <h1>{{ s['name'] }}</h1>
+  <div>
+    <a href="{{ url_for('plan_map', plan_id=check.plan['id']) if check.plan else url_for('plan_map') }}"
+       class="btn-ghost">The map</a>
+  </div>
+</div>
+
+<p class="plan-job-state">
+  <span class="mini-status plan-status--{{ tone }}">{{ check.status.label }}</span>
+  <span class="upload-hint">
+    {{ check.category }} &middot; every {{ s['every_months'] }} month{{ '' if s['every_months'] == 1 else 's' }}
+    {%- if s['assignee_name'] %} &middot; {{ s['assignee_name'] }}{% endif %}
+    {%- if s['vendor_name'] %} &middot; {{ s['vendor_name'] }}{% endif %}
+    {%- if check.last %} &middot; last done {{ check.last['done_on']|date_short }}{% else %} &middot; never recorded{% endif %}
+  </span>
+</p>
+{% if check.open_job %}
+<p><a href="{{ url_for('maintenance_job', task_id=check.open_job['id']) }}">It is due: there is a job open for it.</a></p>
+{% endif %}
+{% if s['notes'] %}<p class="plan-job-notes">{{ s['notes'] }}</p>{% endif %}
+
+<h2 class="section-heading">Where it is checked</h2>
+{% if check.plan %}
+  {% with plan=check.plan, tap=False, marker=None %}{% include "_plan_frame.html" %}{% endwith %}
+  {% if can_place %}
+  <p class="field-hint">
+    <a href="{{ url_for('place_on_plan', plan_id=check.plan['id'], schedule_id=s['id']) }}" class="small-link">Move the pin</a>
+  </p>
+  {% endif %}
+{% else %}
+  <p class="empty-inline">Not on a plan{% if s['location'] %} &mdash; {{ s['location'] }}{% endif %}.</p>
+  {% if can_place and plans %}
+  <p class="plan-place-on">
+    {% for p in plans %}
+    <a href="{{ url_for('place_on_plan', plan_id=p['id'], schedule_id=s['id']) }}" class="btn-mini">Put it on {{ p['name'] }}</a>
+    {% endfor %}
+  </p>
+  {% endif %}
+{% endif %}
+
+{% if can_record %}
+<p><a href="{{ url_for('maintenance_page') }}#sched-{{ s['id'] }}" class="small-link">On the maintenance page</a></p>
+{% endif %}
+{% endif %}
+
+{% endblock %}

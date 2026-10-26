@@ -188,6 +188,15 @@ m.send_email_via_resend = _refuse(
 m.fetch_weather = _refuse(
     "Open-Meteo",
     "the page reads a cached reading; stand in for fetch_weather in the test")
+# And its forecast, for the outdoor jobs. A second call to the same service,
+# written later, is exactly the one that would be left out of this list. Kept
+# first, so a suite can read a canned reply through the real parser with
+# urlopen stood in underneath it.
+REAL_FETCH_FORECAST = m.fetch_forecast
+m.fetch_forecast = _refuse(
+    "Open-Meteo, for the forecast",
+    "the jobs read a cached forecast; write one with a fixed set of hours, or "
+    "stand in for fetch_forecast in the test")
 
 # Frankfurter, for exactly the reason above. It needs no key and costs nothing,
 # which is the category that gets left out -- and the whole point of moving
@@ -294,6 +303,20 @@ m.turnstile_siteverify = _refuse(
     "Cloudflare Turnstile",
     "stand in for turnstile_siteverify in the test")
 
+# GitHub, asked every quarter of an hour where main is. It only reads, which is
+# the category that gets left out -- and a suite that reached it would spend the
+# token's hourly allowance from a laptop and pass or fail on what was pushed
+# that afternoon. Token cleared, stood down at github_request (the one way out),
+# and the deployed commit taken away, so no suite is a Railway deployment
+# unless it says so by setting the variable itself.
+m.GITHUB_READ_TOKEN = ""
+# Kept, as the Pennylane one is, so the suite can run the real one with urlopen
+# stood in underneath it: the headers and the refusals are the request's own.
+REAL_GITHUB_REQUEST = m.github_request
+m.github_request = _refuse(
+    "GitHub", "stand in for github_request in the test")
+os.environ.pop("RAILWAY_GIT_COMMIT_SHA", None)
+
 # Proof, rather than the assumption this file used to make. Each of these was
 # true only by accident of what happens to be in .env on one machine.
 assert not m.turnstile_enabled(), "Turnstile has keys under test"
@@ -311,6 +334,8 @@ assert m.fetch_exchange_rates.__name__ == "_blocked", (
 assert m.fetch_weather.__name__ == "_blocked", (
     "the weather fetch is not blocked under test — it needs no key and costs "
     "nothing, which is why it is the one that gets forgotten")
+assert m.fetch_forecast.__name__ == "_blocked", (
+    "the forecast fetch is not blocked under test")
 assert m.webpush.__name__ == "_blocked", (
     "the browser push send is not blocked under test")
 assert m.fetch_one_image.__name__ == "_blocked", (
@@ -333,9 +358,162 @@ assert m.meta_request.__name__ == "_blocked", (
 assert m.tuya_request.__name__ == "_blocked" and not m.tuya_configured(), (
     "the Tuya call is not blocked under test — reaching it would open the "
     "house's front door")
+assert m.github_request.__name__ == "_blocked" and not m.GITHUB_READ_TOKEN, (
+    "the GitHub call is not blocked under test, or its token is still set")
+assert not m.running_commit(), (
+    "RAILWAY_GIT_COMMIT_SHA is set under test, so every suite would be checking a "
+    "deployment against main")
 assert not (m.email_enabled() or m.resend_enabled()), (
     "an email provider is configured under test — a run would send real mail "
     "to the real guest addresses in the copied database")
+
+# ---------------------------------------------------------------------------
+# ONE DAY FOR THE WHOLE RUN.
+#
+# On 22 October 2026 twelve checks went red on a main nobody had touched, and
+# test_booking_page crashed. Not one of them was a fault in the code. Each test
+# reached its dates by counting days from today, and today had moved onto
+# something whose date is fixed -- the Immersive Artisan Workshops holding the
+# house from the 23rd, Noël at Gudanes over 5-9 December -- so the house
+# refused the booking, as it should, and the test read the refusal as a bug.
+# The same suites had passed the week before. A check whose answer depends on
+# the day it is run teaches people to run it again until it passes.
+#
+# So the suite runs on one day, whatever the calendar on the wall says:
+# Thursday 22 October 2026, from ten in the morning at the house, the day the
+# whole suite was last green on both databases. GUDANES_TEST_TODAY moves it
+# (an ISO date). That is also how to go looking for the next of these on
+# purpose: run the booking suites on a few other days, and anything whose
+# answer changes is counting days -- found before the calendar finds it.
+#
+# THE DAY IS PINNED, THE CLOCK STILL RUNS. Every reading is the real clock
+# moved by one fixed amount, so a run starts at 10:00 and a 45-minute run ends
+# at 10:45 on the same day. A stopped clock would be wrong here: every row a
+# run writes would carry the same created_at, and "newest first" is ORDER BY
+# created_at all over this app.
+#
+# BEFORE init_db(), because a fresh seed places some of what it writes from
+# today (the default opening, six weeks out) beside ateliers whose dates are
+# fixed. Seeded after the pin, the two stay where they were on the day this
+# was set -- and those two drifting past each other is exactly what broke.
+#
+# THE TESTS' CLOCK AS WELL AS THE APP'S. 211 suites read the time themselves,
+# datetime.now(timezone.utc) 455 times and datetime.now(m.LOCAL_TZ) 64, to
+# stamp the rows they insert and to work out the dates they ask about. Pin
+# only app.py's and on any day but the pinned one the suite and the app
+# disagree about what day it is, which is this failure made worse. So the
+# stdlib's datetime module hands out the same pinned classes from here on,
+# and every suite imported after this gets them from its own
+# `from datetime import datetime`. Modules imported before keep what they
+# have, which is why app.py's own names are replaced as well, and the script
+# being run directly is caught at the bottom of this block.
+#
+# A pinned class only ever makes REAL datetimes: __new__ hands back the stdlib
+# type, so a stamp is indistinguishable from any other and sqlite3 adapts it as
+# before. The metaclass makes isinstance() say yes to a real one --
+# house_date() asks `isinstance(stamp, datetime)`, and a real datetime failing
+# that check would be parsed as though it were a string.
+#
+# The suites that move the clock themselves (test_house_day, test_service_day,
+# test_extras_at_booking and others) subclass m.datetime and put back what
+# they found, so they now step off this day and back onto it.
+#
+# NOT PINNED, on purpose: time.time(), which the form timer, the signatures and
+# the rate limits use to count elapsed seconds and which must therefore be
+# real; SQLite's own 'now', which stamps the changes log (read by id, never by
+# day); and the browser's clock in the headless-Chrome suites.
+import datetime as _stdlib_datetime  # noqa: E402
+
+_REAL_DATETIME = _stdlib_datetime.datetime
+_REAL_DATE = _stdlib_datetime.date
+_UTC = _stdlib_datetime.timezone.utc
+
+PINNED_DAY = _REAL_DATE.fromisoformat(
+    os.environ.get("GUDANES_TEST_TODAY") or "2026-10-22")
+PINNED_START = _REAL_DATETIME(PINNED_DAY.year, PINNED_DAY.month, PINNED_DAY.day,
+                              10, 0, tzinfo=m.LOCAL_TZ)
+_CLOCK_SHIFT = PINNED_START - _REAL_DATETIME.now(_UTC)
+
+
+class _RealOnesCount(type):
+    """isinstance(x, datetime) stays true of the real thing."""
+
+    def __instancecheck__(cls, obj):
+        return isinstance(obj, cls._real)
+
+    def __subclasscheck__(cls, sub):
+        return issubclass(sub, cls._real)
+
+
+class PinnedDatetime(_REAL_DATETIME, metaclass=_RealOnesCount):
+    _real = _REAL_DATETIME
+
+    def __new__(cls, *args, **kwargs):
+        return _REAL_DATETIME(*args, **kwargs)
+
+    @classmethod
+    def now(cls, tz=None):
+        moment = _REAL_DATETIME.now(_UTC) + _CLOCK_SHIFT
+        return moment.astimezone(tz) if tz else moment.astimezone().replace(tzinfo=None)
+
+    @classmethod
+    def utcnow(cls):
+        return (_REAL_DATETIME.now(_UTC) + _CLOCK_SHIFT).replace(tzinfo=None)
+
+    @classmethod
+    def today(cls):
+        return cls.now()
+
+
+class PinnedDate(_REAL_DATE, metaclass=_RealOnesCount):
+    _real = _REAL_DATE
+
+    def __new__(cls, *args, **kwargs):
+        return _REAL_DATE(*args, **kwargs)
+
+    @classmethod
+    def today(cls):
+        return PinnedDatetime.now().date()
+
+
+m.datetime, m.date = PinnedDatetime, PinnedDate
+_stdlib_datetime.datetime, _stdlib_datetime.date = PinnedDatetime, PinnedDate
+# `python tests/test_x.py` runs the suite as __main__, and most of them import
+# datetime a line or two before they import this file.
+_main = sys.modules.get("__main__")
+for _name, _real, _pinned in (("datetime", _REAL_DATETIME, PinnedDatetime),
+                              ("date", _REAL_DATE, PinnedDate)):
+    if getattr(_main, _name, None) is _real:
+        setattr(_main, _name, _pinned)
+del _main, _name, _real, _pinned
+
+# Proved, as the stood-down providers are above. Every one of these is a way
+# the pin could be installed and still not hold.
+assert m.house_today() == PINNED_DAY, (
+    f"the app thinks today is {m.house_today()}, not the pinned {PINNED_DAY}")
+assert m.house_today_iso() == PINNED_DAY.isoformat()
+assert m.service_day() == PINNED_DAY, (
+    "the till's day is not the pinned day -- the run must start after the "
+    f"{m.POS_SERVICE_ROLLOVER_HOUR}:00 rollover")
+assert abs(m.datetime.now(m.timezone.utc) - PINNED_START) < _stdlib_datetime.timedelta(minutes=1), (
+    "the app's clock does not start at the pinned moment")
+try:
+    _as_a_moment = m.house_date(_REAL_DATETIME.now(_UTC) + _CLOCK_SHIFT)
+except TypeError:
+    _as_a_moment = None
+assert _as_a_moment == PINNED_DAY, (
+    "house_date() does not take a real datetime as a moment -- isinstance() "
+    "against the pinned class is saying no")
+del _as_a_moment
+assert type(m.datetime(2026, 1, 1)) is _REAL_DATETIME and type(m.date(2026, 1, 1)) is _REAL_DATE, (
+    "the pinned classes are making instances of themselves, not real dates")
+from datetime import date as _suite_date, datetime as _suite_datetime  # noqa: E402
+# date.today() is the day where the MACHINE is, which may be either side of
+# the house's at ten in the morning -- hence a day's slack, and only there.
+assert (_suite_datetime.now(m.LOCAL_TZ).date() == PINNED_DAY
+        and abs((_suite_date.today() - PINNED_DAY).days) <= 1), (
+    "a suite importing datetime after this line would read the real clock")
+del _suite_date, _suite_datetime
 
 # On a machine with no database — a fresh clone, or CI — there is nothing to
 # copy, and importing app.py does not create the schema: init_db() only runs

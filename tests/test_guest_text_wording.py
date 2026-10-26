@@ -80,7 +80,7 @@ def _switch_row(html, key):
 
 
 def _texts_block(html):
-    start = html.find("Texts the house sends by itself")
+    start = html.find("Texts and letters the house sends by itself")
     if start < 0:
         return ""
     return html[start:html.find("</ul>", start)]
@@ -205,20 +205,20 @@ def _suite(s, oc, conn):
     html = page.get_data(as_text=True)
     s.check("the booking page opens", page.status_code == 200, detail=str(page.status_code))
     s.check("off and unwritten: no texts block at all",
-            "Texts the house sends by itself" not in html, detail=_texts_block(html)[:200])
+            "Texts and letters the house sends by itself" not in html, detail=_texts_block(html)[:200])
 
     _set(conn, "automation_checkin_text_enabled", "1")
     _set(conn, "automation_checkout_text_enabled", "1")
     html = oc.get(f"/admin/bookings/{booking['id']}").get_data(as_text=True)
     s.check("on but unwritten: still nothing",
-            "Texts the house sends by itself" not in html, detail=_texts_block(html)[:200])
+            "Texts and letters the house sends by itself" not in html, detail=_texts_block(html)[:200])
 
     for key in ("automation_checkin_text_enabled", "automation_checkout_text_enabled"):
         _set(conn, key, None)
     _set(conn, "sms_checkin_template", "Bonjour {guest_name}. {manage_url}")
     html = oc.get(f"/admin/bookings/{booking['id']}").get_data(as_text=True)
     s.check("written but off: still nothing",
-            "Texts the house sends by itself" not in html, detail=_texts_block(html)[:200])
+            "Texts and letters the house sends by itself" not in html, detail=_texts_block(html)[:200])
 
     later = _stay(conn, "LATER", arrive_in=5, nights=3)
     _set(conn, "automation_checkin_text_enabled", "1")

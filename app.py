@@ -412,8 +412,15 @@ AUTOMATION_SETTING_DEFAULTS = {
     # depends on it.
     "automation_door_lock_check_enabled": "1",
     "automation_weather_enabled": "1",
+    # ON: the owner asked for it (22 October 2026), and it writes tasks for
+    # the team, nothing a guest sees. Separate from the reading above, so the
+    # jobs can be stopped without the pages losing the weather.
+    "automation_weather_jobs_enabled": "1",
     "automation_exchange_rates_enabled": "1",
     "automation_photo_mirror_enabled": "1",
+    # ON: it asks nobody until GITHUB_READ_TOKEN is set, and the readiness page
+    # says it is missing.
+    "automation_deploy_check_enabled": "1",
     "automation_card_details_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
@@ -464,6 +471,21 @@ AUTOMATION_SETTING_DEFAULTS = {
     # which put words in the house's mouth to every guest with a mobile.
     "automation_checkin_text_enabled": "0",
     "automation_checkout_text_enabled": "0",
+    # OFF. All it does is raise a task saying an atelier's recap is drafted and
+    # waiting for you; the recap itself only ever goes from the button on the
+    # sitting's page.
+    "automation_atelier_recap_reminder_enabled": "0",
+    # OFF, and its letter ships with no wording: the owner writes it under
+    # Email wording and then switches it on. Same rule as the two texts above,
+    # for the same reason -- nothing goes to a guest in words the house did
+    # not choose. See run_extras_offer_job.
+    "automation_extras_offer_enabled": "0",
+    "automation_extras_offer_days_before": "7",
+    # OFF, and the two letters it sends ship with no words at all
+    # (UNWRITTEN_LETTERS): the online check-in link before arrival goes only
+    # once the owner has written the letter and switched this on.
+    "automation_checkin_letter_enabled": "0",
+    "automation_checkin_letter_days_before": "3",
     "automation_backup_interval_hours": "24",
     "automation_social_schedule_enabled": "1",
     # OFF until somebody turns it on. The switch is the last thing between a
@@ -2385,6 +2407,11 @@ DEFAULT_EMAIL_TEMPLATES = [
      "How was {workshop_title}?",
      "Hi {guest_name},\n\nWe hope you enjoyed {workshop_title}. If you have a moment, we'd love to hear how "
      "it went:\n{feedback_url}\n\n— Château de Gudanes"),
+    # NO WORDING, ON PURPOSE. The recap is the owner's letter to people they
+    # have just spent a week with, and the house's guest texts shipped with
+    # sentences nobody there had written (22 October 2026). So this one ships
+    # empty, and an empty letter cannot be sent: see recap_wording().
+    ("workshop_recap", "Workshop: Recap after the atelier", "", ""),
     ("restaurant_reservation_received", "Restaurant: Reservation received",
      "Dinner reservation received — Château de Gudanes",
      "Hi {guest_name},\n\nYour dinner reservation request for {dinner_date}, party of {party_size}, "
@@ -2478,6 +2505,13 @@ DEFAULT_EMAIL_TEMPLATES = [
      "It asks how to reach you, when you expect to arrive and anything you cannot eat.\n\n"
      "We look forward to welcoming you.\n\n"
      "— Château de Gudanes"),
+    # The link to check in online, before arrival, for a guest who booked
+    # with the house (22 October 2026). SHIPPED WITH NO WORDS, on purpose:
+    # the guest texts went out in sentences the app made up, and the owner
+    # switched them off for it. Nothing sends either of these until the owner
+    # has written it (UNWRITTEN_LETTERS), and the automation is off as well.
+    ("room_checkin_before", "Rooms: Online check-in link, before arrival", "", ""),
+    ("workshop_checkin_before", "Workshop: Online check-in link, before the atelier", "", ""),
     ("room_paid_awaiting", "Rooms: Paid online, dates being confirmed",
      "Payment received — {room_name}",
      "Hi {guest_name},\n\nThank you — your payment of {total_price} has been "
@@ -2519,6 +2553,12 @@ DEFAULT_EMAIL_TEMPLATES = [
      "There is {balance_amount} still outstanding on your stay. You can settle it "
      "online before you travel, or on arrival if you would rather:\n{manage_url}\n\n"
      "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    # NO WORDING, ON PURPOSE. The letter that offers a stay's extras before
+    # arrival is the owner's to write: the guest texts shipped with sentences
+    # nobody at the house had written and were switched off for it on
+    # 22 October 2026. So this ships empty, and an empty letter is not sent:
+    # see extras_offer_wording().
+    ("room_extras_offer", "Rooms: What they can add, before arrival", "", ""),
     ("room_balance_after", "Rooms: Balance still owed, after the stay",
      "Your stay at Château de Gudanes",
      "Hi {guest_name},\n\nWe hope you enjoyed your stay with us.\n\n"
@@ -2714,6 +2754,30 @@ del _fixed
 EMAIL_TEMPLATE_LABELS = {k: label for k, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
 # Letters nothing sends any more, whose stored rows init_db removes.
 RETIRED_EMAIL_TEMPLATES = ("newsletter_confirm",)
+# LETTERS THAT SHIP WITH NO WORDS (22 October 2026). Each goes only once the
+# owner has written it on the email templates page: until then nothing sends
+# it, the page says "No wording yet" rather than "Needs fixing", and there is
+# no shipped wording for a send to fall back on -- Restore original wording
+# empties it again, which is how one is withdrawn. Two guest texts went out
+# in sentences the app made up, which is why these do not.
+# Read from the shipped list rather than kept by hand, so a letter added with
+# no words is one of them without anybody remembering to say so.
+UNWRITTEN_LETTERS = frozenset(k for k, _l, s, b in DEFAULT_EMAIL_TEMPLATES
+                              if not s.strip() and not b.strip())
+
+
+def letter_written(subject, body):
+    """Whether a letter has words to send: a subject and a body, both."""
+    return bool((subject or "").strip() and (body or "").strip())
+
+
+def letter_unwritten(conn, template_key):
+    """True for one of UNWRITTEN_LETTERS the owner has not written yet."""
+    if template_key not in UNWRITTEN_LETTERS:
+        return False
+    row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?",
+                       (template_key,)).fetchone()
+    return not (row and letter_written(row["subject"], row["body"]))
 
 
 # ---------------------------------------------------------------------------
@@ -3990,6 +4054,47 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS door_openings_when ON door_openings(opened_at);
 
+        -- One line per outdoor job the forecast asked for: frost, a storm or
+        -- heat, the house day it is for, and the job in the owner's words.
+        -- The UNIQUE is "once per event": fetching the forecast again for the
+        -- same night meets the row that is already here instead of making a
+        -- second task. The task is the job on somebody's list; this is what
+        -- the house knows about why it is there, and whether the house closed
+        -- it (withdrawn, passed) or a person ticked it (the task says so).
+        CREATE TABLE IF NOT EXISTS weather_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            job_day TEXT NOT NULL,
+            job_key TEXT NOT NULL,
+            job TEXT NOT NULL,
+            task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+            line REAL,
+            forecast TEXT,
+            state TEXT NOT NULL DEFAULT 'raised',
+            raised_at TEXT NOT NULL,
+            closed_at TEXT,
+            closed_why TEXT,
+            UNIQUE (kind, job_day, job_key)
+        );
+
+        -- The house's practical information for a staying guest: Wi-Fi,
+        -- breakfast, who to call. The owner's own words in each language,
+        -- written on /admin/house-guide; nothing is put in here by the app.
+        -- Not about any guest, so nothing for the privacy notice to say.
+        CREATE TABLE IF NOT EXISTS house_guide_sections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL DEFAULT 'text'
+                CHECK(kind IN ('text', 'wifi', 'arrival', 'dinner')),
+            title_en TEXT, title_fr TEXT, title_es TEXT,
+            body_en TEXT, body_fr TEXT, body_es TEXT,
+            wifi_network TEXT,
+            wifi_code TEXT,
+            shown INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS channel_police_register (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ota_reservation_id INTEGER NOT NULL REFERENCES ota_reservations(id) ON DELETE CASCADE,
@@ -3999,6 +4104,28 @@ def init_db():
             born_at TEXT,
             nationality TEXT NOT NULL,
             home_address TEXT,
+            recorded_at TEXT NOT NULL,
+            recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        );
+
+        -- The police register for atelier guests (22 October 2026). Every
+        -- live sitting holds the whole house, so its guests sleep here and
+        -- the fiche is owed for them as for anybody -- and police_register
+        -- cannot hold them, its booking_id being NOT NULL against bookings.
+        -- Its own table for the reason channel_police_register is one: a
+        -- legal register is not rebuilt to change a constraint.
+        CREATE TABLE IF NOT EXISTS workshop_police_register (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workshop_booking_id INTEGER NOT NULL REFERENCES workshop_bookings(id) ON DELETE CASCADE,
+            surname TEXT NOT NULL,
+            first_names TEXT NOT NULL,
+            born_on TEXT,
+            born_at TEXT,
+            nationality TEXT NOT NULL,
+            home_address TEXT,
+            phone TEXT,
+            email TEXT,
+            children_under_15 INTEGER NOT NULL DEFAULT 0,
             recorded_at TEXT NOT NULL,
             recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
         );
@@ -5502,6 +5629,15 @@ def init_db():
          "ALTER TABLE bookings ADD COLUMN checkout_text_sent_at TEXT"),
         ("bookings_feedback_requested_at",
          "ALTER TABLE bookings ADD COLUMN feedback_requested_at TEXT"),
+        # The letter before arrival that offers what can still be added to the
+        # stay: when it was written, and what became of it -- 'sent', 'held'
+        # (the provider would not take it, so it waits in Held Email) or
+        # 'party' (it went to whoever leads the party, not to this room).
+        # Stamped once either way, so nobody is offered the same things twice.
+        ("bookings_extras_offer_sent_at",
+         "ALTER TABLE bookings ADD COLUMN extras_offer_sent_at TEXT"),
+        ("bookings_extras_offer_outcome",
+         "ALTER TABLE bookings ADD COLUMN extras_offer_outcome TEXT"),
         # A reset code rather than a reset link. The code is stored HASHED —
         # the column holds a verifier, not a credential, so a copy of this
         # database is not a set of live passwords-in-waiting. attempts is what
@@ -7283,6 +7419,53 @@ def init_db():
          "ALTER TABLE tasks ADD COLUMN restoration_work_id INTEGER "
          "REFERENCES restoration_works(id) ON DELETE SET NULL"),
 
+        # PLANS OF THE HOUSE (see THE PLANS, beside the maintenance routes). A
+        # plan is a picture the owner uploaded -- an aerial photograph, a
+        # survey plan, a cadastre extract -- and nothing else: the app never
+        # draws one. The width and height are the stored picture's, kept so a
+        # page can reserve its shape before it loads.
+        ("site_plans_table",
+         """CREATE TABLE IF NOT EXISTS site_plans (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              kind TEXT NOT NULL DEFAULT 'grounds'
+                  CHECK(kind IN ('grounds','floor','other')),
+              filename TEXT NOT NULL,
+              width INTEGER NOT NULL,
+              height INTEGER NOT NULL,
+              source TEXT,
+              reports_to_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              active INTEGER NOT NULL DEFAULT 1,
+              created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+              created_at TEXT NOT NULL,
+              image_replaced_at TEXT
+            )"""),
+        # A place on a plan, as FRACTIONS of the picture's width and height,
+        # so it is the same place on a phone and on the office screen. What it
+        # marks is a job (a task), a check on a schedule, or neither. One pin
+        # per job and per schedule: a thing is in one place.
+        ("plan_pins_table",
+         """CREATE TABLE IF NOT EXISTS plan_pins (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              plan_id INTEGER NOT NULL REFERENCES site_plans(id) ON DELETE CASCADE,
+              x REAL NOT NULL CHECK(x >= 0 AND x <= 1),
+              y REAL NOT NULL CHECK(y >= 0 AND y <= 1),
+              task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+              schedule_id INTEGER REFERENCES maintenance_schedules(id) ON DELETE CASCADE,
+              label TEXT,
+              photo_filename TEXT,
+              placed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+              created_at TEXT NOT NULL,
+              moved_at TEXT
+            )"""),
+        ("plan_pins_one_per_task",
+         "CREATE UNIQUE INDEX IF NOT EXISTS plan_pins_one_per_task "
+         "ON plan_pins(task_id) WHERE task_id IS NOT NULL"),
+        ("plan_pins_one_per_schedule",
+         "CREATE UNIQUE INDEX IF NOT EXISTS plan_pins_one_per_schedule "
+         "ON plan_pins(schedule_id) WHERE schedule_id IS NOT NULL"),
+
         # Everything the camera has handed over, and what was decided about
         # it. One row per FILE, keyed on its bytes.
         ("media_intake", """CREATE TABLE IF NOT EXISTS media_intake (
@@ -7411,6 +7594,43 @@ def init_db():
         # When that checklist was made, so it is made once.
         ("ota_reservations_turnover_prepped_at",
          "ALTER TABLE ota_reservations ADD COLUMN turnover_prepped_at TEXT"),
+        # AN OCCASION PREPARED FOR (see OCCASIONS): one row per stay or
+        # atelier place whose guest told us what they are celebrating, made
+        # the day its task is raised. It holds the guest's words and the
+        # arrival the task was last written from, and why the house closed it
+        # if it did. One per booking, by index, so two runs racing cannot
+        # raise the task twice. task_id is a plain number, not a foreign key:
+        # the tasks table has been rebuilt by renaming before, and a rename
+        # rewrites every key pointing at it.
+        ("occasion_preps",
+         """CREATE TABLE IF NOT EXISTS occasion_preps (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              task_id INTEGER,
+              booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE,
+              workshop_booking_id INTEGER
+                  REFERENCES workshop_bookings(id) ON DELETE CASCADE,
+              occasion TEXT NOT NULL,
+              arrival_date TEXT,
+              closed_reason TEXT,
+              created_at TEXT NOT NULL
+            )"""),
+        ("occasion_preps_one_per_stay",
+         "CREATE UNIQUE INDEX IF NOT EXISTS occasion_preps_one_per_stay "
+         "ON occasion_preps(booking_id) WHERE booking_id IS NOT NULL"),
+        ("occasion_preps_one_per_place",
+         "CREATE UNIQUE INDEX IF NOT EXISTS occasion_preps_one_per_place "
+         "ON occasion_preps(workshop_booking_id) WHERE workshop_booking_id IS NOT NULL"),
+        # Its checklist: copied from the owner's standing list when the task
+        # is raised, so changing that list later leaves the ones in hand alone.
+        ("occasion_prep_items",
+         """CREATE TABLE IF NOT EXISTS occasion_prep_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              prep_id INTEGER NOT NULL REFERENCES occasion_preps(id) ON DELETE CASCADE,
+              position INTEGER NOT NULL DEFAULT 0,
+              label TEXT NOT NULL,
+              done_at TEXT,
+              done_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+            )"""),
         # The front door (see THE FRONT DOOR): a stay whose door access the
         # owner has switched off, and a Booking.com stay's own door link --
         # unique, because a link is a key and two stays must never share one.
@@ -7456,6 +7676,45 @@ def init_db():
         ("ota_checkin_token", "ALTER TABLE ota_reservations ADD COLUMN checkin_token TEXT"),
         ("ota_checkin_sent", "ALTER TABLE ota_reservations ADD COLUMN checkin_sent_at TEXT"),
         ("ota_checkin_done", "ALTER TABLE ota_reservations ADD COLUMN checkin_done_at TEXT"),
+        # ONLINE CHECK-IN FOR THE HOUSE'S OWN GUESTS (22 October 2026): a
+        # room stay or an atelier place, from the guest's own booking page.
+        # When they did it; when the letter with the link went (the
+        # automation's stamp, once per stay); and what they cannot eat, a
+        # note about this stay only -- deleted once it is over, as the
+        # privacy notice says (purge_health_notes), and never written into
+        # the changes log (CHANGE_LOG_NEVER reads "dietary").
+        ("bookings_checkin_done_at", "ALTER TABLE bookings ADD COLUMN checkin_done_at TEXT"),
+        ("bookings_checkin_letter_sent_at",
+         "ALTER TABLE bookings ADD COLUMN checkin_letter_sent_at TEXT"),
+        ("bookings_dietary_notes", "ALTER TABLE bookings ADD COLUMN dietary_notes TEXT"),
+        ("workshop_bookings_checkin_done_at",
+         "ALTER TABLE workshop_bookings ADD COLUMN checkin_done_at TEXT"),
+        ("workshop_bookings_checkin_letter_sent_at",
+         "ALTER TABLE workshop_bookings ADD COLUMN checkin_letter_sent_at TEXT"),
+        ("workshop_bookings_estimated_arrival_time",
+         "ALTER TABLE workshop_bookings ADD COLUMN estimated_arrival_time TEXT"),
+        # R. 814-2: "les données relatives aux enfants âgés de moins de 15 ans
+        # peuvent figurer sur la fiche d'un adulte qui les accompagne". How
+        # many ride on this fiche, and nothing else about them: the article
+        # says they MAY be on an adult's, not what of theirs to write.
+        ("police_register_children_under_15",
+         "ALTER TABLE police_register ADD COLUMN children_under_15 INTEGER NOT NULL DEFAULT 0"),
+        ("channel_police_register_children_under_15",
+         "ALTER TABLE channel_police_register ADD COLUMN children_under_15 INTEGER NOT NULL DEFAULT 0"),
+        # R. 814-1: the fiche is "rempli et signé par l'étranger, dès son
+        # arrivée". The register held no signature at all (owner, 23 October
+        # 2026: "e signature"). Drawn on the guest's screen at online check-in
+        # or on the desk's at arrival -- a PNG as a data URL, or the name
+        # typed where no drawing could be made -- with when. And that somebody
+        # at the house LOOKED at the passport: who and when, never a copy. The
+        # CNIL is plain that a hotel may ask to see it and may not copy or scan
+        # it. All of it lives on the fiche, so it goes with it at six months.
+        *[(f"{table}_{col}", f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
+          for table in ("police_register", "channel_police_register",
+                        "workshop_police_register")
+          for col, kind in (("signature", "TEXT"), ("signature_kind", "TEXT"),
+                            ("signed_at", "TEXT"), ("id_checked_at", "TEXT"),
+                            ("id_checked_by_user_id", "INTEGER"))],
         # When the house was told about a booking email (or decided not to
         # be): one letter to reservations@ per email, never two.
         ("ota_mail_house_told_at",
@@ -7620,6 +7879,63 @@ def init_db():
         # every route that writes that column having to clear this one.
         ("newsletter_subscribers_script_removed_at",
          "ALTER TABLE newsletter_subscribers ADD COLUMN script_removed_at TEXT"),
+        # THE RECAP OF AN ATELIER, one per sitting: what whoever taught it left
+        # for the guests, the private link the letter's pictures and file are
+        # read through, and when the owner sent it or decided not to. Nothing
+        # here sends anything: the letter goes from the sitting's page, by the
+        # owner's hand, and from nowhere else.
+        ("atelier_recaps", """CREATE TABLE IF NOT EXISTS atelier_recaps (
+            session_id INTEGER PRIMARY KEY
+                REFERENCES workshop_sessions(id) ON DELETE CASCADE,
+            notes TEXT,
+            notes_file TEXT,
+            notes_file_name TEXT,
+            notes_at TEXT,
+            notes_by TEXT,
+            share_token TEXT UNIQUE,
+            sent_at TEXT,
+            sent_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            set_aside_at TEXT,
+            set_aside_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        )"""),
+        # What the owner said about one photograph of the week, for one recap.
+        # The photograph stays where it arrived -- the tray, the camera roll,
+        # the social list -- and this holds only the decision: whether it goes,
+        # and who is in it. `people` NULL is nobody has said, which never goes.
+        # A person says who is in a picture, never the software
+        # (templates/privacy.html).
+        ("atelier_recap_photos", """CREATE TABLE IF NOT EXISTS atelier_recap_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL
+                REFERENCES workshop_sessions(id) ON DELETE CASCADE,
+            source TEXT NOT NULL CHECK(source IN ('tray','post','camera')),
+            source_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            chosen INTEGER NOT NULL DEFAULT 1,
+            people TEXT CHECK(people IN ('nobody','named','other')),
+            decided_at TEXT,
+            decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            UNIQUE(session_id, source, source_id)
+        )"""),
+        ("atelier_recap_photo_people", """CREATE TABLE IF NOT EXISTS atelier_recap_photo_people (
+            photo_id INTEGER NOT NULL
+                REFERENCES atelier_recap_photos(id) ON DELETE CASCADE,
+            workshop_booking_id INTEGER NOT NULL
+                REFERENCES workshop_bookings(id) ON DELETE CASCADE,
+            PRIMARY KEY (photo_id, workshop_booking_id)
+        )"""),
+        # When this guest's recap was handed to the mail. Claimed BEFORE the
+        # send, so two presses of the button cannot both write to them.
+        ("workshop_bookings_recap_sent_at",
+         "ALTER TABLE workshop_bookings ADD COLUMN recap_sent_at TEXT"),
+        # Why a table booked while tables confirm themselves (restaurant_instant)
+        # was left for the owner instead: "over the 20 covers", "a party of 9".
+        # Written once, when it was held, and shown beside Confirm in the queue
+        # so the decision is made with it rather than from memory of a
+        # notification.
+        ("restaurant_bookings_instant_held",
+         "ALTER TABLE restaurant_bookings ADD COLUMN instant_held TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -8973,6 +9289,11 @@ NAV_AREAS = {
         "admin_reply_times", "guest_recall_page", "admin_linen",
         "admin_arrivals_incomplete",
         "guest_dates", "set_guest_dates",
+        # An occasion's own checklist, the extra offered beside it, and how
+        # far ahead its task is raised -- with the stay's page, where the same
+        # hands already add an extra.
+        "occasions_page", "add_occasion_item", "remove_occasion_item",
+        "add_occasion_extra", "save_occasion_settings",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
         "set_booking_group",
         "set_publish_consent",
@@ -8990,9 +9311,18 @@ NAV_AREAS = {
         # owner-only by omission rather than by choice.
         "add_police_fiche", "bulk_confirm_bookings", "bulk_decline_bookings", "cancel_booking_admin",
         "add_channel_police_fiche", "delete_channel_police_fiche",
+        "add_workshop_police_fiche", "delete_workshop_police_fiche",
+        # Keeping the register: passport seen, signed at the desk, the
+        # printed fiches and the hand-over export.
+        "register_passport_seen", "register_sign_at_desk", "register_fiche_page",
+        "register_print", "register_export_csv",
         # The front door: who may open it, and opening it from the office.
         "door_lock_page", "save_door_settings", "open_door_now", "set_stay_door_access",
         "make_channel_door_link",
+        # The house guide guests read on their stay's link, Wi-Fi code and all.
+        "house_guide_admin", "add_house_guide_section", "save_house_guide_section",
+        "move_house_guide_section", "delete_house_guide_section",
+        "save_house_guide_settings", "preview_house_guide",
         "cancel_booking_extra_line", "delete_guest", "delete_police_fiche", "delete_room",
         "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
         "export_guests_csv", "guest_full_statement", "guest_statement_csv",
@@ -9102,10 +9432,17 @@ NAV_AREAS = {
         "resolve_room_issue", "resolve_vehicle_maintenance", "return_access_item",
         "room_issues", "shopping_list", "toggle_shopping_item", "toggle_vehicle_cleanliness",
         "toggle_vehicle_fuel", "update_asset",
+        # The plans of the house: uploading them, and putting a job or a
+        # check on one. Reporting a problem and reading the map are open to
+        # everybody signed in, so they are not here.
+        "manage_plans", "new_plan", "edit_plan", "place_on_plan", "save_place_on_plan",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         "decide_mileage", "delete_maintenance_schedule", "edit_maintenance_schedule", "maintenance_certificate",
         "maintenance_page", "new_maintenance_schedule", "record_maintenance_done", "room_economics_page",
+        # Beside maintenance: the estate's outdoor jobs. Both routes are still
+        # @owner_required -- the lines and lists are the owner's to set.
+        "weather_jobs_page", "save_weather_jobs",
         "room_faults_page", "stock_basket", "stop_cleaning_round",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
@@ -9337,6 +9674,9 @@ NAV_AREAS = {
         "admin_outlook_addin_people", "admin_outlook_addin_revoke",
         "admin_outlook_addin_revoke_check",
         "admin_outlook_addin_mailboxes", "admin_outlook_addin_settings",
+        # Saying Microsoft 365 has fetched the new add-in: it closes the
+        # owner's warning and task, so it is the owner's to say.
+        "admin_outlook_addin_updated",
         "admin_house_calendar", "admin_house_calendar_sync", "admin_house_calendar_share",
         "admin_house_calendar_shared_by_hand",
         "admin_house_calendar_feed_link", "admin_house_calendar_areas",
@@ -9413,6 +9753,15 @@ AREA_TITLES = {
 # can see, which is how 181 of them accumulated unnoticed.
 OWNER_ONLY_AREAS = {
     "reports_index": "management",
+    # An atelier's recap: the owner approves each one (22 October 2026), so
+    # choosing its photographs, writing down who may appear, and the button
+    # that sends it are the owner's, whatever a preset gives on the sitting's
+    # page. Unmapped like the assistant below; the send checks the role too.
+    "save_atelier_recap_photos": "workshops",
+    "save_atelier_recap_answers": "workshops",
+    "save_atelier_recap_notes": "workshops",
+    "send_atelier_recap": "workshops",
+    "set_aside_atelier_recap": "workshops",
     # Where the backup goes. The page it sits on is comms, but the backup is
     # the whole database -- every guest, every wage -- so whoever can point it
     # somewhere receives all of that every night. The owner's alone.
@@ -9607,9 +9956,11 @@ OWNER_MENU = [
         ("While they are here", [
             _nav("breakfast", "Breakfast", "coffee", phone=True),
             _nav("extras_due_page", "Extras Due", "receipt"),
+            _nav("occasions_page", "Occasions", "star"),
             _nav("all_transfers", "Transfers", "truck",
                  ("vehicle_transfers_page", "new_vehicle_transfer")),
             _nav("door_lock_page", "Front Door", "lock"),
+            _nav("house_guide_admin", "House Guide", "rooms", ("preview_house_guide",)),
         ]),
         ("Booking.com", [
             _nav("management_booking_com", "Booking.com Messages", "bell"),
@@ -9707,6 +10058,12 @@ OWNER_MENU = [
             _nav("management_cleaning", "Cleaning Rounds", "wrench"),
             _nav("room_issues", "Room Issues", "wrench"),
             _nav("room_faults_page", "Sold With a Fault", "wrench"),
+        ]),
+        ("The grounds", [
+            _nav("plan_map", "Map of the Grounds", "pin",
+                 ("maintenance_job", "maintenance_check")),
+            _nav("report_problem", "Report a Problem", "pin", phone=True),
+            _nav("manage_plans", "Plans", "folder", ("place_on_plan",)),
         ]),
         ("What the house owns", [
             _nav("admin_assets", "Asset Register", "building"),
@@ -9816,6 +10173,7 @@ STAFF_MENU = [
             _nav("breakfast", "Breakfast", "coffee", phone=True),
             _nav("all_transfers", "Transfers", "truck"),
             _nav("extras_due_page", "Extras Due", "receipt"),
+            _nav("occasions_page", "Occasions", "star"),
             _nav("guest_dates", "Dates Worth Knowing", "calendar"),
         ]),
     ]),
@@ -9833,6 +10191,9 @@ STAFF_MENU = [
             _nav("shift_handover", "Handover", "receipt", phone=True),
             _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",), phone=True),
             _nav("room_issues", "Room Issues", "wrench"),
+            _nav("report_problem", "Report a Problem", "pin", phone=True),
+            _nav("plan_map", "Map of the Grounds", "pin",
+                 ("maintenance_job", "maintenance_check")),
             _nav("management_cleaning", "Cleaning Rounds", "wrench", ("cleaning_round_done",)),
             _nav("management_visitors", "Visitors On Site", "guests", ("sign_out_visitor",)),
             _nav("management_breakages", "Breakages", "wrench"),
@@ -11379,6 +11740,52 @@ app.jinja_env.globals["euro"] = lambda v: euro(v)
 app.jinja_env.filters["money"] = lambda v, places=2, up_to=None: money(v, places, up_to)
 
 
+# "about €650 a night" under a workshop's price (owner, 23 Oct 2026). Worked
+# out on the page, the price over the nights to the nearest €10, so a new price
+# or a longer week cannot leave a stale figure behind. A card for one set of
+# dates counts that session's nights; a card for the workshop reads its own
+# "4 nights / 5 days".
+NIGHT_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+               "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
+               "twelve": 12, "fourteen": 14}
+
+
+def workshop_nights(workshop, session=None):
+    """How many nights a workshop runs: the session's dates when there is one,
+    else the number its nights_label opens with. None when neither says."""
+    if session is not None:
+        try:
+            start = date.fromisoformat(str(_row_value(session, "start_date")))
+            end = date.fromisoformat(str(_row_value(session, "end_date")))
+        except ValueError:
+            start = end = None
+        if start and end and end > start:
+            return (end - start).days
+    label = str(_row_value(workshop, "nights_label") or "").strip().lower()
+    found = re.match(r"(\d+|[a-z]+)\s+nights?\b", label)
+    if not found:
+        return None
+    word = found.group(1)
+    return int(word) if word.isdigit() else NIGHT_WORDS.get(word)
+
+
+def about_a_night(price, nights):
+    """'about €650 a night': price ÷ nights, rounded half up to the nearest
+    €10. Empty when either is missing, so the page prints nothing at all."""
+    try:
+        price, nights = Decimal(str(price)), int(nights)
+    except (InvalidOperation, TypeError, ValueError):
+        return ""
+    if price <= 0 or nights <= 0:
+        return ""
+    tens = (price / nights / 10).quantize(Decimal(1), rounding=ROUND_HALF_UP) * 10
+    return f"about {money(tens, 0)} a night"
+
+
+app.jinja_env.globals["a_night"] = lambda workshop, session=None: about_a_night(
+    _row_value(workshop, "price_per_person"), workshop_nights(workshop, session))
+
+
 # Who did it, when that is not whoever happens to be signed in. A job run on
 # somebody's page load is not that person's decision: the stale-request expiry
 # runs on the dashboard, so every request it declined was written down as
@@ -11420,6 +11827,9 @@ def log_audit(conn, action, target=None, details=None, via=None, *, actor=ACTOR_
 # stay the guest cancelled themselves is a record that points the wrong way.
 GUEST_AUDIT_ACTIONS = frozenset({
     "booking_confirmed_online", "booking_cancelled_by_guest",
+    # A table booked on the site while tables confirm themselves: confirmed
+    # on it, or left for the owner with the reason (restaurant_instant_holds).
+    "restaurant_booking_confirmed_online", "restaurant_booking_held_for_owner",
     "booking_dates_changed_by_guest", "booking_change_asked_by_guest",
     "booking_contact_changed_by_guest", "guest_extended_stay", "guest_added_extra",
     "guest_wrote_in", "guest_restricted", "guest_asked_to_be_forgotten",
@@ -12137,6 +12547,695 @@ def prep_channel_departures(conn, today=None):
     if made:
         conn.commit()
     return made
+
+
+# ---------------------------------------------------------------------------
+# OCCASIONS. A guest who writes, when they book, that they are coming for their
+# anniversary has told the house something it can act on -- and the words went
+# onto the booking and stopped there (owner, 22 October 2026: an occasion is to
+# be prepared for, not just recorded).
+#
+# Now a stay or an atelier place with an occasion gets a task a few days before
+# it arrives -- the owner says how many -- carrying the guest's own words and a
+# checklist the owner keeps: flowers, a card in the room, the room dressed. It
+# is on the calendar and the staff list like any task.
+#
+# It is the house's to tick off. It closes itself only when there is nothing
+# left to prepare for -- the stay cancelled, the atelier called off, or the
+# occasion taken off the booking -- and its words follow the booking, so a
+# corrected occasion rewrites the task rather than raising a second one. The
+# crémant is offered beside it as a button: nothing goes on a guest's bill
+# without somebody deciding it should.
+# ---------------------------------------------------------------------------
+
+OCCASION_TASK_ORIGIN = "occasion"
+OCCASION_PREP_DAYS_DEFAULT = 3
+OCCASION_PREP_DAYS_MAX = 30
+OCCASION_CHECKLIST_DEFAULT = ("Flowers in the room", "A card in the room",
+                              "The room dressed")
+OCCASION_ITEM_MAX = 120
+OCCASION_ITEMS_MAX = 20
+
+# What the guest's words are about, for the task's title. Looked for in this
+# order, so "our wedding anniversary" is an anniversary and not a wedding, and
+# in the three languages the house is booked in, accents folded away. Nothing
+# found and it is a celebration: the words themselves are on the task anyway.
+OCCASION_KINDS = (
+    ("honeymoon", ("honeymoon", "lune de miel", "luna de miel")),
+    ("anniversary", ("anniversary", "anniversaire de mariage", "aniversario",
+                     "years married", "years together")),
+    ("engagement", ("engagement", "engaged", "proposal", "proposing", "to propose",
+                    "fiancailles", "demande en mariage", "pedida")),
+    ("birthday", ("birthday", "anniversaire", "cumpleanos", "bday")),
+    ("wedding", ("wedding", "mariage", "boda", "just married", "newlywed")),
+    ("retirement", ("retirement", "retiring", "retired", "retraite", "jubilacion")),
+    ("babymoon", ("babymoon",)),
+    ("graduation", ("graduat", "diplome")),
+)
+
+# Who and what, read the same way by the sweep, one stay's follow-up and the
+# page. An atelier place arrives on its sitting's first day, and is in the room
+# the rooming list gave it, if it has one yet.
+OCCASION_STAY_SQL = """
+    SELECT 'stay' AS kind, bookings.id, bookings.guest_name, bookings.party_size,
+           bookings.arrival_date, bookings.departure_date, bookings.status,
+           bookings.special_occasion, bookings.reference_code, bookings.room_id,
+           rooms.name AS room_name, NULL AS workshop_title, NULL AS called_off
+      FROM bookings JOIN rooms ON rooms.id = bookings.room_id"""
+OCCASION_PLACE_SQL = """
+    SELECT 'atelier' AS kind, wb.id, wb.guest_name, wb.party_size,
+           ws.start_date AS arrival_date, ws.end_date AS departure_date, wb.status,
+           wb.special_occasion, wb.reference_code, wb.assigned_room_id AS room_id,
+           rooms.name AS room_name, w.title AS workshop_title,
+           ws.cancelled_at AS called_off
+      FROM workshop_bookings wb
+      JOIN workshop_sessions ws ON ws.id = wb.session_id
+      JOIN workshops w ON w.id = ws.workshop_id
+      LEFT JOIN rooms ON rooms.id = wb.assigned_room_id"""
+
+
+def _occasion_setting(conn, key):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def occasion_prep_days(conn):
+    """How many days before arrival the task goes on the list (live config)."""
+    try:
+        days = int(_occasion_setting(conn, "occasion_prep_days") or OCCASION_PREP_DAYS_DEFAULT)
+    except (TypeError, ValueError):
+        days = OCCASION_PREP_DAYS_DEFAULT
+    return max(0, min(OCCASION_PREP_DAYS_MAX, days))
+
+
+def occasion_checklist(conn):
+    """The owner's standing checklist, one item a line. Empty if they emptied it."""
+    raw = _occasion_setting(conn, "occasion_checklist")
+    if raw is None:
+        return list(OCCASION_CHECKLIST_DEFAULT)
+    items = [" ".join(line.split())[:OCCASION_ITEM_MAX] for line in raw.splitlines()]
+    return [i for i in items if i][:OCCASION_ITEMS_MAX]
+
+
+def _plain_words(text):
+    folded = unicodedata.normalize("NFKD", text or "")
+    return "".join(c for c in folded if not unicodedata.combining(c)).lower()
+
+
+def occasion_extra(conn):
+    """The extra offered beside an occasion. The owner's choice when they have
+    made one; the crémant when they have not; None when they chose nothing, or
+    what they chose is off sale."""
+    chosen = (_occasion_setting(conn, "occasion_extra_id") or "").strip()
+    if chosen == "none":
+        return None
+    if chosen.isdigit():
+        return conn.execute("SELECT * FROM extras WHERE id = ? AND active = 1",
+                            (int(chosen),)).fetchone()
+    for e in conn.execute("SELECT * FROM extras WHERE active = 1 ORDER BY sort_order, id"):
+        if "cremant" in _plain_words(e["name"]):
+            return e
+    return None
+
+
+def occasion_kind(words):
+    """'anniversary', 'birthday' ... or 'celebration' when the words do not say."""
+    plain = _plain_words(words)
+    for kind, signs in OCCASION_KINDS:
+        if any(sign in plain for sign in signs):
+            return kind
+    return "celebration"
+
+
+def occasion_whose(guest_name, party_size):
+    """'the Martins'' for a party, 'Claire Martin's' for one person -- or for a
+    name that does not take a plural kindly, which Dubois and Leroux do not."""
+    name = " ".join((guest_name or "").split())
+    if not name:
+        return "the guests'"
+    surname = name.rsplit(" ", 1)[-1]
+    if (party_size or 1) > 1 and " " in name and surname[-1:].lower() not in ("s", "x", "z"):
+        return f"the {surname}s'"
+    return f"{name}'s"
+
+
+def occasion_day_words(iso):
+    """'Fri 24 Oct', as the house says the day of a stay."""
+    d = parse_date(iso)
+    return f"{d.strftime('%a')} {d.day} {d.strftime('%b')}" if d else (iso or "")
+
+
+def occasion_live(s):
+    """Whether there is still something to prepare for."""
+    return (s["status"] == "confirmed" and not s["called_off"]
+            and bool((s["special_occasion"] or "").strip()))
+
+
+def occasion_task_words(s):
+    """(title, notes, room_note) for one stay or atelier place.
+
+    The guest's own words go in the notes and not the title: the title is what
+    the house calendar sends to everybody's Outlook, which carries names, rooms
+    and dates and nothing a guest wrote."""
+    words = " ".join((s["special_occasion"] or "").split())
+    when = occasion_day_words(s["arrival_date"])
+    if s["kind"] == "stay":
+        where = f"arriving {when}, {s['room_name']}"
+    else:
+        where = (f"arriving {when} for {s['workshop_title']}"
+                 + (f", {s['room_name']}" if s["room_name"] else ""))
+    title = (f"Prepare for {occasion_whose(s['guest_name'], s['party_size'])} "
+             f"{occasion_kind(words)} — {where}")
+    party = s["party_size"] or 1
+    notes = (f"In their words: “{words}”. {party} guest{'' if party == 1 else 's'}, "
+             f"{format_date_range(s['arrival_date'], s['departure_date'])}, "
+             f"{s['reference_code']}.")
+    room_note = f"{s['room_name'] or s['workshop_title']} — {s['guest_name']}"
+    return title, notes, room_note
+
+
+def _occasion_on_shift(conn, day_iso):
+    """Whoever is first on the rota that day, as the arrival prep is given."""
+    row = conn.execute("SELECT user_id FROM shifts WHERE shift_date = ? "
+                       "ORDER BY start_time LIMIT 1", (day_iso,)).fetchone()
+    return row["user_id"] if row else None
+
+
+def follow_occasion(conn, s, *, today, horizon, checklist=None, now_iso=None):
+    """Bring one stay's or atelier place's occasion task into line with its
+    booking. Returns what it did -- "made", "closed", "reopened", "rewritten"
+    -- or None. Does not commit.
+
+    The sweep and a single stay's follow-up both come through here, so a
+    cancellation closes the task the same way whichever of them sees it first.
+    """
+    key = "booking_id" if s["kind"] == "stay" else "workshop_booking_id"
+    now_iso = now_iso or datetime.now(timezone.utc).isoformat()
+    words = " ".join((s["special_occasion"] or "").split())
+    live = occasion_live(s)
+    arrival = s["arrival_date"] or ""
+    prep = conn.execute(f"SELECT * FROM occasion_preps WHERE {key} = ?", (s["id"],)).fetchone()
+
+    if prep is None:
+        if not live or not (today.isoformat() <= arrival <= horizon.isoformat()):
+            return None
+        # The claim first, by the unique index: a run that finds it taken
+        # stops, so two runs racing raise one task between them.
+        cur = conn.execute(
+            f"""INSERT OR IGNORE INTO occasion_preps ({key}, occasion, arrival_date, created_at)
+                VALUES (?, ?, ?, ?)""", (s["id"], words, arrival, now_iso))
+        if not cur.rowcount:
+            return None
+        prep_id = cur.lastrowid
+        title, notes, room_note = occasion_task_words(s)
+        task = conn.execute(
+            """INSERT INTO tasks (assigned_to_user_id, title, notes, room_note, priority,
+                   due_date, status, origin, booking_id, created_at)
+               VALUES (?, ?, ?, ?, 'normal', ?, 'open', ?, ?, ?)""",
+            (_occasion_on_shift(conn, arrival), title, notes, room_note, arrival,
+             OCCASION_TASK_ORIGIN, s["id"] if s["kind"] == "stay" else None, now_iso))
+        conn.execute("UPDATE occasion_preps SET task_id = ? WHERE id = ?",
+                     (task.lastrowid, prep_id))
+        for n, label in enumerate(occasion_checklist(conn) if checklist is None else checklist):
+            conn.execute("INSERT INTO occasion_prep_items (prep_id, position, label) "
+                         "VALUES (?, ?, ?)", (prep_id, n, label))
+        return "made"
+
+    task = (conn.execute("SELECT * FROM tasks WHERE id = ?", (prep["task_id"],)).fetchone()
+            if prep["task_id"] else None)
+    if task is None:
+        # Taken off the task list by hand. That was somebody's decision, and
+        # raising it again tomorrow would overrule it.
+        return None
+
+    if not live:
+        if task["status"] == "done":
+            return None
+        reason = ("cancelled" if s["status"] != "confirmed"
+                  else "called off" if s["called_off"] else "cleared")
+        conn.execute("UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?",
+                     (now_iso, task["id"]))
+        conn.execute("UPDATE occasion_preps SET closed_reason = ? WHERE id = ?",
+                     (reason, prep["id"]))
+        return "closed"
+
+    did = None
+    # Back on the list when the house closed it and it is true again, or when
+    # it was ticked off for words that have since changed: a card that says
+    # happy anniversary is not ready for a birthday.
+    if prep["closed_reason"] or (task["status"] == "done" and words != prep["occasion"]):
+        conn.execute("UPDATE tasks SET status = 'open', completed_at = NULL WHERE id = ?",
+                     (task["id"],))
+        did = "reopened"
+    title, notes, room_note = occasion_task_words(s)
+    # The day moves with the stay, and only then: a task the owner has moved to
+    # another day by hand stays where they put it.
+    due = arrival if arrival != (prep["arrival_date"] or "") else task["due_date"]
+    if (task["title"], task["notes"], task["room_note"], task["due_date"]) != (
+            title, notes, room_note, due):
+        conn.execute("UPDATE tasks SET title = ?, notes = ?, room_note = ?, due_date = ? "
+                     "WHERE id = ?", (title, notes, room_note, due, task["id"]))
+        did = did or "rewritten"
+    if task["assigned_to_user_id"] is None:
+        who = _occasion_on_shift(conn, due)
+        if who:
+            conn.execute("UPDATE tasks SET assigned_to_user_id = ? WHERE id = ?",
+                         (who, task["id"]))
+    if (prep["occasion"], prep["arrival_date"], prep["closed_reason"]) != (words, arrival, None):
+        conn.execute("UPDATE occasion_preps SET occasion = ?, arrival_date = ?, "
+                     "closed_reason = NULL WHERE id = ?", (words, arrival, prep["id"]))
+    return did
+
+
+def generate_occasion_tasks(conn, today=None):
+    """Raise, rewrite and close the occasion tasks. Commits.
+
+    Reads every confirmed stay and place with an occasion arriving inside the
+    window, and every one already raised that is not settled -- wherever its
+    stay has moved to, because a cancellation or a corrected occasion has to
+    reach it. Returns a count of each thing done.
+    """
+    today = today or house_today()
+    horizon = today + timedelta(days=occasion_prep_days(conn))
+    lo, hi = today.isoformat(), horizon.isoformat()
+    ids = {"stay": set(), "atelier": set()}
+    for r in conn.execute(
+            """SELECT id FROM bookings WHERE status = 'confirmed'
+                  AND TRIM(COALESCE(special_occasion, '')) != ''
+                  AND arrival_date BETWEEN ? AND ?""", (lo, hi)):
+        ids["stay"].add(r["id"])
+    for r in conn.execute(
+            """SELECT wb.id FROM workshop_bookings wb
+                 JOIN workshop_sessions ws ON ws.id = wb.session_id
+                WHERE wb.status = 'confirmed' AND ws.cancelled_at IS NULL
+                  AND TRIM(COALESCE(wb.special_occasion, '')) != ''
+                  AND ws.start_date BETWEEN ? AND ?""", (lo, hi)):
+        ids["atelier"].add(r["id"])
+    for r in conn.execute(
+            """SELECT p.booking_id, p.workshop_booking_id FROM occasion_preps p
+                 LEFT JOIN tasks t ON t.id = p.task_id
+                WHERE t.status != 'done' OR p.closed_reason IS NOT NULL
+                   OR p.arrival_date >= ?""", (lo,)):
+        if r["booking_id"]:
+            ids["stay"].add(r["booking_id"])
+        elif r["workshop_booking_id"]:
+            ids["atelier"].add(r["workshop_booking_id"])
+
+    checklist = occasion_checklist(conn)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    counts = dict.fromkeys(("made", "closed", "reopened", "rewritten"), 0)
+    for kind, base, col in (("stay", OCCASION_STAY_SQL, "bookings.id"),
+                            ("atelier", OCCASION_PLACE_SQL, "wb.id")):
+        wanted = sorted(ids[kind])
+        for n in range(0, len(wanted), 500):
+            chunk = wanted[n:n + 500]
+            for s in conn.execute(f"{base} WHERE {col} IN ({','.join('?' * len(chunk))})",
+                                  chunk).fetchall():
+                did = follow_occasion(conn, s, today=today, horizon=horizon,
+                                      checklist=checklist, now_iso=now_iso)
+                if did:
+                    counts[did] += 1
+    # A task whose booking has gone altogether took its preparation with it,
+    # and nothing above can reach it. Closed, not left open for ever.
+    cur = conn.execute(
+        """UPDATE tasks SET status = 'done', completed_at = ?
+            WHERE origin = ? AND status != 'done'
+              AND id NOT IN (SELECT task_id FROM occasion_preps WHERE task_id IS NOT NULL)""",
+        (now_iso, OCCASION_TASK_ORIGIN))
+    counts["closed"] += cur.rowcount or 0
+    conn.commit()
+    return counts
+
+
+def follow_occasion_of(conn, booking_id=None, workshop_booking_id=None):
+    """One stay or place, straight after somebody changed it, so the task does
+    not wait for the next sweep to catch up. Does not commit."""
+    if booking_id:
+        s = conn.execute(f"{OCCASION_STAY_SQL} WHERE bookings.id = ?", (booking_id,)).fetchone()
+    else:
+        s = conn.execute(f"{OCCASION_PLACE_SQL} WHERE wb.id = ?",
+                         (workshop_booking_id,)).fetchone()
+    if not s:
+        return None
+    today = house_today()
+    return follow_occasion(conn, s, today=today,
+                           horizon=today + timedelta(days=occasion_prep_days(conn)))
+
+
+def occasion_states(conn, booking_ids):
+    """{booking_id: {task_id, status, done, total}} for stays whose occasion
+    has a task -- what the arrivals sheet and the front desk say beside it."""
+    if not booking_ids:
+        return {}
+    marks = ",".join("?" * len(booking_ids))
+    out = {}
+    for r in conn.execute(
+            f"""SELECT p.booking_id, t.id AS task_id, t.status,
+                       (SELECT COUNT(*) FROM occasion_prep_items i
+                         WHERE i.prep_id = p.id AND i.done_at IS NOT NULL) AS done,
+                       (SELECT COUNT(*) FROM occasion_prep_items i
+                         WHERE i.prep_id = p.id) AS total
+                  FROM occasion_preps p JOIN tasks t ON t.id = p.task_id
+                 WHERE p.booking_id IN ({marks})""", list(booking_ids)):
+        out[r["booking_id"]] = dict(r)
+    return out
+
+
+def occasions_board(conn, today=None):
+    """Every stay and atelier place still to come, or here now, whose guest
+    told us what they are celebrating -- with how far its preparation has got.
+    """
+    today = today or house_today()
+    iso = today.isoformat()
+    days = occasion_prep_days(conn)
+    subjects = conn.execute(
+        f"""{OCCASION_STAY_SQL} WHERE bookings.status = 'confirmed'
+              AND TRIM(COALESCE(bookings.special_occasion, '')) != ''
+              AND bookings.departure_date >= ?""", (iso,)).fetchall() + conn.execute(
+        f"""{OCCASION_PLACE_SQL} WHERE wb.status = 'confirmed' AND ws.cancelled_at IS NULL
+              AND TRIM(COALESCE(wb.special_occasion, '')) != ''
+              AND ws.end_date >= ?""", (iso,)).fetchall()
+    stay_ids = [s["id"] for s in subjects if s["kind"] == "stay"]
+    place_ids = [s["id"] for s in subjects if s["kind"] == "atelier"]
+    preps = {}
+    if subjects:
+        for p in conn.execute(
+                f"""SELECT p.*, t.status AS task_status, t.title AS task_title,
+                           t.due_date AS task_due, users.name AS assignee
+                      FROM occasion_preps p
+                      LEFT JOIN tasks t ON t.id = p.task_id
+                      LEFT JOIN users ON users.id = t.assigned_to_user_id
+                     WHERE p.booking_id IN ({','.join('?' * len(stay_ids)) or 'NULL'})
+                        OR p.workshop_booking_id IN ({','.join('?' * len(place_ids)) or 'NULL'})""",
+                stay_ids + place_ids):
+            preps[("stay", p["booking_id"]) if p["booking_id"]
+                  else ("atelier", p["workshop_booking_id"])] = p
+    items = {}
+    if preps:
+        prep_ids = [p["id"] for p in preps.values()]
+        for i in conn.execute(
+                f"""SELECT occasion_prep_items.*, users.name AS done_by
+                      FROM occasion_prep_items
+                      LEFT JOIN users ON users.id = occasion_prep_items.done_by_user_id
+                     WHERE occasion_prep_items.prep_id IN ({','.join('?' * len(prep_ids))})
+                     ORDER BY occasion_prep_items.position, occasion_prep_items.id""",
+                prep_ids):
+            items.setdefault(i["prep_id"], []).append(i)
+    extra = occasion_extra(conn)
+    held = {}
+    if extra and stay_ids:
+        for r in conn.execute(
+                f"""SELECT booking_id, SUM(quantity) AS n, MIN(scheduled_for) AS on_day
+                      FROM booking_extras WHERE category = 'room' AND extra_id = ?
+                       AND status != 'cancelled'
+                       AND booking_id IN ({','.join('?' * len(stay_ids))})
+                     GROUP BY booking_id""", [extra["id"]] + stay_ids):
+            held[r["booking_id"]] = r
+
+    rows = []
+    for s in subjects:
+        prep = preps.get((s["kind"], s["id"]))
+        has_task = bool(prep and prep["task_status"])
+        state = ("Prepared" if has_task and prep["task_status"] == "done"
+                 else "To prepare" if has_task
+                 else "Taken off the list" if prep
+                 else "Not on the list yet")
+        mine = items.get(prep["id"], []) if prep else []
+        title, _notes, _room = occasion_task_words(s)
+        arrival = parse_date(s["arrival_date"])
+        rows.append({
+            "subject": s, "prep": prep, "checks": mine, "state": state,
+            "title": prep["task_title"] if has_task else title,
+            "words": " ".join((s["special_occasion"] or "").split()),
+            "done": sum(1 for i in mine if i["done_at"]),
+            "raise_on": (arrival - timedelta(days=days)) if arrival else None,
+            "here": (s["arrival_date"] or "") <= iso,
+            "held": held.get(s["id"]) if s["kind"] == "stay" else None,
+            "days": stay_days(arrival, parse_date(s["departure_date"]),
+                              earliest=today if arrival and arrival < today else None)
+                    if s["kind"] == "stay" and arrival and s["departure_date"] else [],
+        })
+    rows.sort(key=lambda r: (r["subject"]["arrival_date"] or "",
+                             (r["subject"]["guest_name"] or "").lower()))
+    return {"rows": rows, "days": days, "extra": extra}
+
+
+def _occasion_back(task_id=None):
+    return url_for("occasions_page") + (f"#task-{task_id}" if task_id else "")
+
+
+@app.route("/occasions")
+@login_required
+def occasions_page():
+    """The occasions coming up, and how far each one's preparation has got.
+
+    On the staff side, like the extras: dressing a room is a job, not a
+    decision. The owner also sets here how far ahead the task is raised, what
+    its checklist holds and which extra is offered beside it.
+    """
+    conn = get_db()
+    generate_occasion_tasks(conn)
+    board = occasions_board(conn)
+    user = current_user()
+    owner = bool(user and user["role"] == "owner")
+    extras = (conn.execute("SELECT id, name, price FROM extras WHERE active = 1 "
+                           "ORDER BY sort_order, name").fetchall() if owner else [])
+    chosen_extra = (_occasion_setting(conn, "occasion_extra_id") or "") if owner else ""
+    checklist = occasion_checklist(conn)
+    conn.close()
+    lv = list_view(
+        board["rows"], request.args,
+        search=[lambda r: r["subject"]["guest_name"], lambda r: r["words"],
+                lambda r: r["subject"]["room_name"], lambda r: r["subject"]["reference_code"],
+                lambda r: r["subject"]["workshop_title"]],
+        search_hint="Search guest, occasion, room or reference",
+        facets=[
+            facet("kind", "Kind", lambda r: "Stay" if r["subject"]["kind"] == "stay"
+                  else "Atelier", order=["Stay", "Atelier"]),
+            facet("state", "Where it is", lambda r: r["state"],
+                  order=["To prepare", "Not on the list yet", "Prepared",
+                         "Taken off the list"]),
+        ],
+        sorts=[
+            sort_option("soonest", "Soonest first",
+                        lambda r: (r["subject"]["arrival_date"] or "", r["title"])),
+            sort_option("guest", "Guest", lambda r: (r["subject"]["guest_name"] or "").lower()),
+        ],
+        default_sort="soonest",
+    )
+    return render_template("occasions.html", board=board, lv=lv, owner=owner,
+                           extras=extras, chosen_extra=chosen_extra,
+                           checklist=checklist, today=house_today(),
+                           booking_href=booking_href)
+
+
+def _occasion_prep(conn, prep_id):
+    return conn.execute("SELECT * FROM occasion_preps WHERE id = ?", (prep_id,)).fetchone()
+
+
+@app.route("/occasions/items/<int:item_id>/tick", methods=["POST"])
+@login_required
+def tick_occasion_item(item_id):
+    """One thing on an occasion's checklist done, or put back. Anybody on
+    shift may say so, with their name against it. Ticking the last one ticks
+    the task off; putting one back puts the task back on the list."""
+    user = current_user()
+    undo = request.form.get("undo") == "1"
+    conn = get_db()
+    item = conn.execute(
+        """SELECT i.*, p.task_id FROM occasion_prep_items i
+             JOIN occasion_preps p ON p.id = i.prep_id WHERE i.id = ?""", (item_id,)).fetchone()
+    if not item:
+        conn.close()
+        abort(404)
+    if undo:
+        conn.execute("UPDATE occasion_prep_items SET done_at = NULL, done_by_user_id = NULL "
+                     "WHERE id = ?", (item_id,))
+    else:
+        # Only an item not already ticked: a double tap must not move the
+        # name and the moment to whoever tapped second.
+        conn.execute("UPDATE occasion_prep_items SET done_at = ?, done_by_user_id = ? "
+                     "WHERE id = ? AND done_at IS NULL",
+                     (datetime.now(timezone.utc).isoformat(), user["id"], item_id))
+    task = conn.execute("SELECT * FROM tasks WHERE id = ?", (item["task_id"],)).fetchone() \
+        if item["task_id"] else None
+    message = f"{item['label']}: {'put back' if undo else 'done'}."
+    if task:
+        left = conn.execute("SELECT COUNT(*) FROM occasion_prep_items "
+                            "WHERE prep_id = ? AND done_at IS NULL",
+                            (item["prep_id"],)).fetchone()[0]
+        if not undo and not left and task["status"] != "done":
+            mark_task_done(conn, task, done=True)
+            message = f"{item['label']}: done — that was the last, so the task is ticked off."
+        elif undo and task["status"] == "done":
+            mark_task_done(conn, task, done=False)
+            message = f"{item['label']}: put back, and the task is back on the list."
+    conn.commit()
+    conn.close()
+    flash(message, "success")
+    return redirect(_occasion_back(item["task_id"]))
+
+
+@app.route("/occasions/<int:prep_id>/done", methods=["POST"])
+@login_required
+def occasion_done(prep_id):
+    """The whole occasion prepared for -- or not after all. The checklist is
+    the house's own list, not a gate: a guest who asked for no flowers is
+    still ready."""
+    undo = request.form.get("undo") == "1"
+    conn = get_db()
+    prep = _occasion_prep(conn, prep_id)
+    task = conn.execute("SELECT * FROM tasks WHERE id = ?", (prep["task_id"],)).fetchone() \
+        if prep and prep["task_id"] else None
+    if not task:
+        conn.close()
+        abort(404)
+    mark_task_done(conn, task, done=not undo)
+    conn.commit()
+    conn.close()
+    flash("Back on the list." if undo else "Ticked off — ready for them.", "success")
+    return redirect(_occasion_back(task["id"]))
+
+
+@app.route("/occasions/<int:prep_id>/items/add", methods=["POST"])
+@owner_required
+def add_occasion_item(prep_id):
+    """Something this one occasion needs that the standing list does not
+    have: the cake they asked for, the table by the window."""
+    label = " ".join((request.form.get("label") or "").split())[:OCCASION_ITEM_MAX]
+    conn = get_db()
+    prep = _occasion_prep(conn, prep_id)
+    if not prep:
+        conn.close()
+        abort(404)
+    count = conn.execute("SELECT COUNT(*), COALESCE(MAX(position), -1) FROM occasion_prep_items "
+                         "WHERE prep_id = ?", (prep_id,)).fetchone()
+    if not label:
+        conn.close()
+        flash("Say what it is.", "error")
+        return redirect(_occasion_back(prep["task_id"]))
+    if count[0] >= OCCASION_ITEMS_MAX:
+        conn.close()
+        flash(f"A checklist holds {OCCASION_ITEMS_MAX} things at most.", "error")
+        return redirect(_occasion_back(prep["task_id"]))
+    conn.execute("INSERT INTO occasion_prep_items (prep_id, position, label) VALUES (?, ?, ?)",
+                 (prep_id, count[1] + 1, label))
+    # Something new to do is not done: a task already ticked off is back on
+    # the list, or the new item would be on nobody's.
+    task = conn.execute("SELECT * FROM tasks WHERE id = ?", (prep["task_id"],)).fetchone() \
+        if prep["task_id"] else None
+    reopened = bool(task and task["status"] == "done")
+    if reopened:
+        mark_task_done(conn, task, done=False)
+    conn.commit()
+    conn.close()
+    flash(f"Added: {label}." + (" The task is back on the list." if reopened else ""),
+          "success")
+    return redirect(_occasion_back(prep["task_id"]))
+
+
+@app.route("/occasions/items/<int:item_id>/remove", methods=["POST"])
+@owner_required
+def remove_occasion_item(item_id):
+    """Off this occasion's checklist: they asked for no flowers."""
+    conn = get_db()
+    item = conn.execute(
+        """SELECT i.*, p.task_id FROM occasion_prep_items i
+             JOIN occasion_preps p ON p.id = i.prep_id WHERE i.id = ?""", (item_id,)).fetchone()
+    if not item:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM occasion_prep_items WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    flash(f"Taken off the checklist: {item['label']}.", "success")
+    return redirect(_occasion_back(item["task_id"]))
+
+
+@app.route("/occasions/stay/<int:booking_id>/extra", methods=["POST"])
+@owner_required
+def add_occasion_extra(booking_id):
+    """The crémant -- or whichever extra the owner offers -- put on the stay,
+    because somebody pressed the button. Through put_extra_on_stay, as the
+    stay's own page adds one, so the limit per booking, the history and the
+    run sheet are the same whichever way it went on."""
+    conn = get_db()
+    booking = _stay_row(conn, booking_id)
+    if not booking:
+        conn.close()
+        abort(404)
+    prep = conn.execute("SELECT task_id FROM occasion_preps WHERE booking_id = ?",
+                        (booking_id,)).fetchone()
+    back = _occasion_back(prep["task_id"] if prep else None)
+    extra = occasion_extra(conn)
+    raw = (request.form.get("extra_id") or "").strip()
+    # The extra the button was drawn for. If the owner has since chosen
+    # another, the page was out of date and the press is not a decision about
+    # the new one.
+    if not extra or raw != str(extra["id"]):
+        conn.close()
+        flash("That extra is no longer the one offered here. Look again.", "error")
+        return redirect(back)
+    arrival = parse_date(booking["arrival_date"])
+    departure = parse_date(booking["departure_date"])
+    today = house_today()
+    words = " ".join((booking["special_occasion"] or "").split())
+    when_on, when_notes, problem = read_extra_when(
+        request.form.get("extra_when", ""), f"For the occasion: {words}" if words else "",
+        arrival, departure, extra["name"],
+        earliest=today if arrival and arrival < today else None)
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return redirect(back)
+    line_id, message = put_extra_on_stay(conn, booking, extra, 1, when_on=when_on,
+                                         when_notes=when_notes, user_id=current_user()["id"])
+    conn.commit()
+    conn.close()
+    flash(message, "success" if line_id else "error")
+    return redirect(back)
+
+
+@app.route("/occasions/settings", methods=["POST"])
+@owner_required
+def save_occasion_settings():
+    """How far ahead, what the checklist holds, and which extra is offered."""
+    raw_days = (request.form.get("days") or "").strip()
+    if not raw_days.isdigit() or int(raw_days) > OCCASION_PREP_DAYS_MAX:
+        flash(f"Say how many days before they arrive, from 0 to {OCCASION_PREP_DAYS_MAX}.",
+              "error")
+        return redirect(url_for("occasions_page") + "#settings")
+    lines = [" ".join(line.split()) for line in (request.form.get("checklist") or "").splitlines()]
+    lines = [line for line in lines if line]
+    if len(lines) > OCCASION_ITEMS_MAX or any(len(x) > OCCASION_ITEM_MAX for x in lines):
+        flash(f"The checklist holds {OCCASION_ITEMS_MAX} things at most, each up to "
+              f"{OCCASION_ITEM_MAX} characters.", "error")
+        return redirect(url_for("occasions_page") + "#settings")
+    raw_extra = (request.form.get("extra_id") or "").strip()
+    conn = get_db()
+    if raw_extra not in ("", "none") and not (raw_extra.isdigit() and conn.execute(
+            "SELECT 1 FROM extras WHERE id = ? AND active = 1", (int(raw_extra),)).fetchone()):
+        conn.close()
+        flash("Choose an extra that is on sale, or none.", "error")
+        return redirect(url_for("occasions_page") + "#settings")
+    for key, value in (("occasion_prep_days", str(int(raw_days))),
+                       ("occasion_checklist", "\n".join(lines)),
+                       ("occasion_extra_id", raw_extra)):
+        conn.execute("""INSERT INTO app_settings (key, value) VALUES (?, ?)
+                        ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (key, value))
+    log_audit(conn, "occasion_settings_saved",
+              details=f"{int(raw_days)} days ahead, {len(lines)} on the checklist")
+    conn.commit()
+    # A longer notice reaches stays the old one had not: raised now rather
+    # than at the next sweep, so the list says what was just decided.
+    made = generate_occasion_tasks(conn)["made"]
+    conn.close()
+    days = int(raw_days)
+    flash("Saved. The task goes on the list "
+          + ("on the day they arrive" if days == 0
+             else f"{days} day{'' if days == 1 else 's'} before they arrive")
+          + (f"; {made} raised now." if made else "."), "success")
+    return redirect(url_for("occasions_page") + "#settings")
 
 
 def leave_setting(conn, key, cast=float):
@@ -14991,7 +16090,9 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "detail": t["room_note"] or t["notes"] or "",
             "assignee_id": t["assigned_to_user_id"],
             "assignee_name": t["employee_name"],
-            "id": t["id"], "link": None,
+            # An occasion's task opens its checklist; any other, nothing here.
+            "id": t["id"], "link": (url_for("occasions_page") + f"#task-{t['id']}"
+                                    if t["origin"] == OCCASION_TASK_ORIGIN else None),
         })
 
     lo, hi = query_start.isoformat(), query_end.isoformat()
@@ -15475,7 +16576,7 @@ def build_calendar(conn, view, anchor, viewer=None):
         # including their own tasks. Send tasks to the dashboard, where their
         # "What I Need To Do" list actually lives, and leave the rest as plain
         # information rather than links into pages they can't open.
-        rows = [dict(r, link=(url_for("dashboard") if r["kind"] == "task"
+        rows = [dict(r, link=((r.get("link") or url_for("dashboard")) if r["kind"] == "task"
                               else url_for("my_shifts") if r["kind"] == "shift"
                               # The extras due list is theirs: they carry them.
                               else url_for("extras_due_page") if r["kind"] == "extra" else None))
@@ -17115,6 +18216,17 @@ def is_house_full_reason(why):
     return bool(why) and why.startswith("The house is full")
 
 
+def closure_is_channel_stay(reason, note=None):
+    """Whether a closure the house typed in is really a channel's stay.
+
+    Booking.com stays have been kept off sale by hand on the Rooms page with
+    "Booking.com stay" as the reason. That is a room let, and the nightly
+    limit has to count it; the house's own closures do not.
+    """
+    text = f"{reason or ''} {note or ''}".lower()
+    return any(label.lower() in text for label in OTA_CHANNEL_LABELS.values())
+
+
 def own_feed_spans(conn, picture):
     """{room_id: {(first night, DTEND)}} -- and None for every room -- for the
     closures this house's own calendars send the channels.
@@ -17145,10 +18257,14 @@ def _rooms_let_index(conn, picture):
     """picture["let"] = {night: {room_id: [(kind, booking_id, status)]}}, and
     picture["channel_echoes"] = [(room_id, start, end)] left out of it.
 
-    TAKEN: this site's pending and confirmed bookings, in any room, and a
-    channel's imported nights in a room on sale. NOT TAKEN: the owner's
-    closures ("Resting for the winter") -- a room shut is not a room let --
-    and a channel range that is one of the house's own closures sent back.
+    TAKEN: this site's pending and confirmed bookings, in any room; every
+    confirmed channel stay the house knows of (from the emails, or entered on
+    the Booking.com stays page), with or without a room; a closure the house
+    typed in for a channel's stay ("Booking.com stay"); and a channel's
+    imported nights in a room on sale. NOT TAKEN: the house's own closures
+    ("Resting for the winter", maintenance, family) -- a room shut is not a
+    room let -- a channel range that is one of the house's own closures sent
+    back, and a cancelled channel stay whose nights the calendar still shows.
 
     The owner's "keep this open here" choice is not honoured in this count:
     it reopens a channel's nights for sale on THIS site, but if the stay on
@@ -17169,6 +18285,34 @@ def _rooms_let_index(conn, picture):
     for rid, rows in picture["bookings"].items():
         for bid, status, a, b in rows:
             add(rid, a, b, ("booking", bid, status))
+
+    # Every stay a channel sold, as the house knows it: from Booking.com's
+    # emails, or entered by hand on the Booking.com stays page. Confirmed only,
+    # so a cancellation stops counting the moment it is recorded, without
+    # waiting for the channel's calendar to drop the nights. A stay with no
+    # room yet still takes a room that night, so it counts under a key of its
+    # own. Until 26 Oct 2026 none of these counted: on 30 Oct the Twin Room's
+    # Booking.com guest was skipped, and the site sold a fourth room.
+    for st in channel_stays(conn, blocks=False):
+        key = st["room_id"] or ("unassigned", st["ota_reservation_id"])
+        add(key, parse_date(st["arrival_date"]), parse_date(st["departure_date"]),
+            ("channel", None, "confirmed"))
+    cancelled = {(r["room_id"], r["arrival_date"]) for r in conn.execute(
+        """SELECT room_id, arrival_date FROM ota_reservations
+            WHERE status = 'cancelled' AND room_id IS NOT NULL""")}
+    confirmed = {(r["room_id"], r["arrival_date"]) for r in conn.execute(
+        """SELECT room_id, arrival_date FROM ota_reservations
+            WHERE status = 'confirmed' AND room_id IS NOT NULL""")}
+
+    # A closure the house made BY HAND for a channel's stay ("Booking.com
+    # stay" written as its reason) is a room let, not the house shutting it.
+    # Only the house's own closures -- maintenance, family, a workshop, the
+    # winter -- stay out of the count.
+    for row in conn.execute("SELECT room_id, start_date, end_date, reason, note FROM room_blocks"):
+        if closure_is_channel_stay(row["reason"], row["note"]):
+            add(row["room_id"], parse_date(row["start_date"]), parse_date(row["end_date"]),
+                ("channel", None, "confirmed"))
+
     on_sale = {r["id"] for r in conn.execute("SELECT id FROM rooms WHERE active = 1")}
     ours = own_feed_spans(conn, picture)
     echoes = []
@@ -17176,6 +18320,9 @@ def _rooms_let_index(conn, picture):
         rid = row["room_id"]
         a, b = parse_date(row["start_date"]), parse_date(row["end_date"])
         if rid not in on_sale or not (a and b):
+            continue
+        # A cancelled stay whose nights the channel's calendar still shows.
+        if (rid, row["start_date"]) in cancelled - confirmed:
             continue
         if (a, b) in ours.get(rid, ()) or (a, b) in ours[None]:
             echoes.append((rid, a, b))
@@ -17223,7 +18370,9 @@ def rooms_over_the_limit(conn, today=None, days=400):
         let = rooms_let_on(picture, night)
         if len(let) > MAX_ROOMS_LET_PER_NIGHT:
             out.append({"night": night,
-                        "rooms": sorted(names.get(r, f"room {r}") for r in let)})
+                        "rooms": sorted(names.get(r) or ("a Booking.com stay with no room yet"
+                                                         if isinstance(r, tuple) else f"room {r}")
+                                        for r in let)})
     return out
 
 
@@ -25510,7 +26659,8 @@ def dietary_sheet(conn, on_day=None):
     # Sleeping here tonight. Departure day is checkout, so they are not.
     for r in conn.execute(
         """SELECT bookings.guest_name, bookings.party_size, bookings.reference_code,
-                  bookings.special_requests, rooms.name AS room_name,
+                  bookings.special_requests, bookings.dietary_notes AS stay_notes,
+                  rooms.name AS room_name,
                   guests.dietary_notes AS profile_notes, guests.name AS profile_name
              FROM bookings
              LEFT JOIN rooms ON rooms.id = bookings.room_id
@@ -25521,8 +26671,10 @@ def dietary_sheet(conn, on_day=None):
         # The booking's requests stay in with the dietary notes, in red, on
         # purpose: it is where a guest types "no shellfish" as often as "late
         # arrival", and a sheet that showed the second in red is a smaller
-        # fault than one that let the first read as nothing about food.
-        notes = [n for n in ((r["profile_notes"] or "").strip(),
+        # fault than one that let the first read as nothing about food. What
+        # they wrote at online check-in leads: it is about this stay.
+        notes = [n for n in ((r["stay_notes"] or "").strip(),
+                             (r["profile_notes"] or "").strip(),
                              (r["special_requests"] or "").strip()) if n]
         people.append({
             "who": r["guest_name"] or r["profile_name"] or "Guest",
@@ -32263,7 +33415,7 @@ NOTIFICATION_KIND_LABELS = {
     "hr_escalation": "HR", "hr_note": "HR", "hr_note_reply": "HR", "hr_reminder": "HR",
     "performance_review": "HR", "leave_decided": "Time off",
     "inbox_flag_assigned": "Inbox", "inbox_flag_escalated": "Inbox", "inbox_flag_new": "Inbox",
-    "room_issue": "Rooms", "vehicle": "Vehicles",
+    "room_issue": "Rooms", "vehicle": "Vehicles", "maintenance": "Upkeep",
     "shift_auto_closed": "Shifts", "shift_swap_decided": "Shifts",
     "shift_swap_needs_approval": "Shifts", "shift_swap_offer": "Shifts",
     "shift_swap_response": "Shifts", "timesheet": "Shifts",
@@ -37073,6 +38225,27 @@ def owner_home_warnings(conn, today):
         add("blocker", f"Mail to {fault['address']} is not arriving",
             house_inbox_fault_sentence(fault), 1, "mail_log", q=fault["address"])
 
+    # THE POLICE REGISTER, for guests already here: nobody recorded for some
+    # of a party, or a foreign guest's fiche not yet signed (R. 814-1 wants it
+    # signed on arrival). It closes itself: a fiche filled in or signed takes
+    # it off, which is what keeps the panel able to be empty.
+    try:
+        missing = sum(x["outstanding"] for x in stays_missing_fiches(conn, today))
+        here = [r for r in register_rows(conn, (today - timedelta(days=60)).isoformat(),
+                                         today.isoformat())
+                if (r["departure_date"] or "") > today.isoformat()]
+        unsigned = sum(1 for r in here if r["unsigned"])
+    except sqlite3.Error:
+        missing = unsigned = 0
+    if missing or unsigned:
+        parts = ([f"{missing} guest{'' if missing == 1 else 's'} who arrived with no line "
+                  "on it"] if missing else []) + (
+                     [f"{unsigned} fiche{'' if unsigned == 1 else 's'} of guests still here "
+                      "not signed"] if unsigned else [])
+        add("warn", "The police register has gaps",
+            "; ".join(parts) + ". French law wants a signed fiche for each foreign guest "
+            "on arrival.", missing + unsigned, "police_register_page")
+
     # A guest said the stay was poor and nobody has answered. It closes
     # itself: replying or marking it read takes it off this list, which is
     # what keeps the panel able to be empty.
@@ -37623,6 +38796,16 @@ def owner_home_warnings(conn, today):
     if door:
         add("warn", "The front door lock needs looking at", door, 1, "door_lock_page")
 
+    # The live site behind main for over an hour, from the quarter-hourly
+    # check: pushes that are not live. A blocker after a day, which is what
+    # 20-22 October 2026 was. Quiet the moment the check finds it caught up.
+    lag = deploy_lag(conn)
+    if lag and lag["overdue"]:
+        add("blocker" if lag["blocker"] else "warn",
+            f"The live site is {counted(lag['behind_by'], 'commit')} behind "
+            f"{lag['branch']}", deploy_lag_sentence(lag), lag["behind_by"],
+            "admin_readiness")
+
     for check in readiness_checks(conn, include_slow=False):
         if check["ok"] or check["label"] not in FRONT_PAGE_READINESS:
             continue
@@ -37734,6 +38917,13 @@ def owner_home_warnings(conn, today):
             "Outlook gives the whole check five, and past three the add-in gives up and "
             "asks the person to check by eye.",
             speed["count"], "admin_outlook_addin", _anchor="send-checks")
+    # A NEW ADD-IN THAT MICROSOFT 365 HAS NOT FETCHED. The add-in page said
+    # to watch for a new version number, and nobody opens a page to see
+    # whether its number has changed. Closes itself when the owner says
+    # Microsoft has it.
+    stale = addin_version_problem(conn)
+    if stale:
+        add("warn", stale[0], stale[1], 1, "admin_outlook_addin", _anchor="update")
 
     # EXTRAS THE HOUSE HAS PROMISED AND NOT SORTED. The run sheet knew, and
     # nobody opens a run sheet to find out whether there is a problem on it.
@@ -38295,9 +39485,13 @@ def staff_dashboard():
                  LEFT JOIN users AS director
                         ON director.id = tasks.directed_by_user_id
                 WHERE tasks.assigned_to_user_id = ? AND tasks.status != 'done'
-                  AND (tasks.due_date IS NULL OR tasks.due_date <= ?)
+                  AND (tasks.due_date IS NULL OR tasks.due_date <= ?
+                       OR (tasks.origin = ? AND tasks.due_date <= ?))
                 ORDER BY (tasks.due_date IS NULL), tasks.due_date""",
-            (user["id"], today.isoformat()),
+            # An occasion's task is due the day they arrive and is raised days
+            # before, because flowers are ordered ahead: on the list from then.
+            (user["id"], today.isoformat(), OCCASION_TASK_ORIGIN,
+             (today + timedelta(days=occasion_prep_days(conn))).isoformat()),
         ).fetchall()
 
     my_upcoming_shifts = []
@@ -43767,6 +44961,15 @@ PALETTE_PAGES = [
      "front desk reception today check in check out arriving leaving in house rooms ready owed"),
     ("Maintenance", "maintenance_page",
      "repairs upkeep servicing due jobs house"),
+    ("Map of the grounds", "plan_map",
+     "map grounds estate where pins jobs problems aerial gardens park"),
+    ("Report a problem", "report_problem",
+     "report problem broken fallen branch tree damage leak fault photo grounds"),
+    ("Plans", "manage_plans",
+     "plans upload aerial photo survey cadastre plan of the grounds floors"),
+    ("Weather jobs", "weather_jobs_page",
+     "weather forecast frost storm wind gusts heat outdoor jobs taps pots "
+     "shutters terrace furniture parasols watering garden"),
     ("Social", "management_social",
      "instagram facebook posts marketing schedule"),
     ("Social plans", "social_plans",
@@ -43889,8 +45092,13 @@ PALETTE_PAGES = [
      "copy of my data delete me portable"),
     ("Guest register", "police_register_page",
      "police fiche individuelle nationality passport foreign guests declaration prefecture gendarmerie"),
+    ("Print the police fiches", "register_print",
+     "fiches de police print pdf hand over gendarmerie police request signed register"),
     ("Door lock", "door_lock_page",
      "front door lock open remote tuya smart life guests access key nivian"),
+    ("House guide", "house_guide_admin",
+     "wifi wi-fi code password network breakfast times house rules parking "
+     "who to call information for guests staying"),
     ("Transfers", "all_transfers", "airport pickup driving"),
     ("Asset register", "admin_assets", "furniture art antiques insurance valuation"),
     ("Keys & access", "admin_access", "codes alarm fobs"),
@@ -47179,7 +48387,7 @@ def legal_page():
 
 # Bumped by hand when the wording changes. A privacy notice with no date on it
 # tells a reader nothing about whether it still describes the software.
-PRIVACY_LAST_REVIEWED = "19 October 2026"  # Cloudflare Web Analytics added (z30, G7)
+PRIVACY_LAST_REVIEWED = "22 October 2026"  # online check-in for the house's own guests
 
 
 @app.route("/privacy")
@@ -52100,6 +53308,57 @@ def stay_itinerary_page(manage_token):
     return render_template("stay_itinerary.html", booking=booking, days=days)
 
 
+def guest_bookable_extra(conn, extra_id):
+    """The catalogue row a guest may add from their own page, or None.
+
+    guest_bookable is the flag that decides this. The filter also required
+    category = 'room', which is not one of EXTRA_CATEGORIES at all — so no
+    extra could ever match and every guest who tried to add one was told
+    "that isn't something we can add", including the airport transfer the
+    account page invites them to ask for. The category is for grouping the
+    list on the page; whether a guest may add it is what guest_bookable says.
+    """
+    extra_id = str(extra_id or "").strip()
+    if not extra_id.isdigit():
+        return None
+    return conn.execute(
+        """SELECT * FROM extras WHERE id = ? AND active = 1
+           AND guest_bookable = 1""", (int(extra_id),)).fetchone()
+
+
+def guest_extra_refusal(conn, booking, extra, quantity=1):
+    """Why a guest may not add this extra to this stay from its page, in the
+    words the page says it -- or None if they may.
+
+    One answer for the Add button and for the link in the letter before
+    arrival, which opens the page at an extra: a link followed after the
+    notice has run out, or after the guest added it from the page, says what
+    pressing Add would say rather than offering what Add would then refuse.
+    """
+    departure = parse_date(booking["departure_date"])
+    if departure and departure < house_today():
+        return "That stay has already finished."
+    if not extra:
+        return "That isn't something we can add."
+    held_now = extras_held(conn, "room", booking["id"]).get(extra["id"], 0)
+    if extra["max_qty"] and held_now + quantity > extra["max_qty"]:
+        if held_now and extra["max_qty"] == 1:
+            return f"{extra['name']} is already on this booking."
+        if held_now:
+            return (f"We can only do {extra['max_qty']} of those, and {held_now} "
+                    f"{'is' if held_now == 1 else 'are'} already on this booking.")
+        return f"We can only do {extra['max_qty']} of those."
+    # Some things need notice — a transfer booked for tomorrow morning
+    # cannot be arranged, and promising it would be worse than refusing.
+    arrival = parse_date(booking["arrival_date"])
+    lead = extra["lead_time_days"] or 0
+    if lead and (arrival is None or extra_too_soon(extra, arrival)):
+        return (f"{extra['name']} needs {lead} day{'s' if lead != 1 else ''} "
+                f"notice, so it's too late for this stay — call us and we'll "
+                f"see what we can do.")
+    return None
+
+
 @app.route("/book/manage/<manage_token>", methods=["GET", "POST"])
 def manage_booking(manage_token):
     conn = get_db()
@@ -52183,6 +53442,7 @@ def manage_booking(manage_token):
         )
         if cur.rowcount:
             log_audit(conn, "booking_cancelled_by_guest", target=booking["reference_code"])
+            follow_occasion_of(conn, booking_id=booking["id"])
         conn.commit()
         if cur.rowcount:
             owner_to = house_address_for(conn, "rooms")
@@ -52480,49 +53740,20 @@ def manage_booking(manage_token):
         qty_raw = request.form.get("quantity", "1").strip()
         quantity = int(qty_raw) if qty_raw.isdigit() and int(qty_raw) > 0 else 1
         departure = parse_date(booking["departure_date"])
-        # guest_bookable is the flag that decides this. The filter also
-        # required category = 'room', which is not one of EXTRA_CATEGORIES at
-        # all — so no extra could ever match and every guest who tried to add
-        # one was told "that isn't something we can add", including the airport
-        # transfer the account page invites them to ask for. The category is
-        # for grouping the list on the page; whether a guest may add it is what
-        # guest_bookable says.
-        extra = conn.execute(
-            """SELECT * FROM extras WHERE id = ? AND active = 1
-               AND guest_bookable = 1""",
-            (extra_id,)).fetchone() if extra_id.isdigit() else None
-        held_now = (extras_held(conn, "room", booking["id"]).get(extra["id"], 0)
-                    if extra else 0)
+        extra = guest_bookable_extra(conn, extra_id)
+        refusal = guest_extra_refusal(conn, booking, extra, quantity)
 
-        if departure and departure < house_today():
-            flash("That stay has already finished.", "error")
-        elif not extra:
-            flash("That isn't something we can add.", "error")
-        elif extra["max_qty"] and held_now + quantity > extra["max_qty"]:
-            if held_now and extra["max_qty"] == 1:
-                flash(f"{extra['name']} is already on this booking.", "error")
-            elif held_now:
-                flash(f"We can only do {extra['max_qty']} of those, and {held_now} "
-                      f"{'is' if held_now == 1 else 'are'} already on this booking.",
-                      "error")
-            else:
-                flash(f"We can only do {extra['max_qty']} of those.", "error")
+        if refusal:
+            flash(refusal, "error")
         else:
-            # Some things need notice — a transfer booked for tomorrow morning
-            # cannot be arranged, and promising it would be worse than refusing.
             arrival = parse_date(booking["arrival_date"])
-            lead = extra["lead_time_days"] or 0
             when_on, when_notes, when_problem = None, None, None
             if extra["ask_when"] and arrival and departure:
                 when_on, when_notes, when_problem = read_extra_when(
                     request.form.get("extra_when", ""),
                     request.form.get("extra_note", ""),
                     arrival, departure, extra["name"], earliest=house_today())
-            if lead and (arrival is None or extra_too_soon(extra, arrival)):
-                flash(f"{extra['name']} needs {lead} day{'s' if lead != 1 else ''} "
-                      f"notice, so it's too late for this stay — call us and we'll "
-                      f"see what we can do.", "error")
-            elif when_problem:
+            if when_problem:
                 flash(when_problem, "error")
             else:
                 add_booking_extra(conn, "room", booking["id"], extra, quantity,
@@ -52574,6 +53805,8 @@ def manage_booking(manage_token):
             error = "Choose a date within your stay."
         elif dinner_date < min_date:
             error = f"Dinner service isn't open until {format_date_human(min_date.isoformat())}."
+        elif restaurant_closed_evening(conn, dinner_date):
+            error = restaurant_closed_evening(conn, dinner_date)
         elif not party_size or party_size < 1:
             error = "Party size is required."
         elif party_size > restaurant_settings["capacity"]:
@@ -52610,6 +53843,15 @@ def manage_booking(manage_token):
         dinner_min_date = max(stay_start, opening).isoformat()
         dinner_max_date = (stay_end - timedelta(days=1)).isoformat()
         dinner_available = dinner_min_date <= dinner_max_date
+        # A stay that falls wholly on evenings La Table is closed has no
+        # dinner to offer: drawing the form would only let them pick a night
+        # and be refused it.
+        open_days = restaurant_open_weekdays(conn)
+        if dinner_available and open_days is not None:
+            first = parse_date(dinner_min_date)
+            nights = (parse_date(dinner_max_date) - first).days + 1
+            dinner_available = any((first + timedelta(days=n)).weekday() in open_days
+                                   for n in range(min(nights, 7)))
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
     bill = booking_bill(conn, booking["id"])
     # What they can still add. Anything needing more notice than they have left
@@ -52624,6 +53866,18 @@ def manage_booking(manage_token):
         if (e["lead_time_days"] or 0) <= max(days_until, 0)
         # Nor anything the booking already holds as many of as it may.
         and not (e["max_qty"] and held.get(e["id"], 0) >= e["max_qty"])]
+    # Opened from the letter before arrival, at one extra (?add=<id>): that one
+    # is marked, ready for its own Add button. Nothing is added by opening a
+    # link -- a mail scanner opens every link in a letter. If it can no longer
+    # be added, the page says why in the words Add would have used.
+    offered_id = None
+    add_raw = (request.args.get("add") or "").strip()
+    if add_raw and (booking["status"] or "").lower() in ("pending", "confirmed"):
+        refusal = guest_extra_refusal(conn, booking, guest_bookable_extra(conn, add_raw))
+        if refusal:
+            flash(refusal, "error")
+        elif any(str(e["id"]) == add_raw for e in addable):
+            offered_id = int(add_raw)
     # The days a guest can still choose for the extras that ask.
     when_days = []
     if parse_date(booking["arrival_date"]) and parse_date(booking["departure_date"]):
@@ -52656,17 +53910,20 @@ def manage_booking(manage_token):
     # Whether the page may promise an arrival text. Only when one will go:
     # switched on and written by the owner (GUEST_TEXTS has no default).
     arrival_text = guest_text_on(conn, "checkin") and bool(guest_text_wording(conn, "checkin"))
+    # Online check-in, for the card that leads to it (_checkin_card.html).
+    checkin = direct_checkin_card(conn, "booking", manage_token)
     conn.commit()
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
-        door=door, arrival_text=arrival_text,
+        door=door, arrival_text=arrival_text, checkin=checkin,
         addable_rooms=addable_rooms,
         group=group,
         portal_token=portal_token,
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
         dinner_available=dinner_available, bill=bill, addable=addable,
+        offered_id=offered_id,
         when_days=when_days,
         stripe_enabled=stripe_enabled(),
         part_payment_allowed=part_payment_allowed,
@@ -55278,6 +56535,548 @@ def run_weather_job(conn):
     return f"{snap['c']}\u00b0C, {WEATHER_WORDS.get(snap['code'], snap['code'])}"
 
 
+# ---------------------------------------------------------------------------
+# THE FORECAST AS THE DAY'S OUTDOOR JOBS. Asked for by the owner on 22 October
+# 2026. The house is at 900 metres in the Ari\u00e8ge: it gets frost, storms off the
+# mountains and summer heat, and each has a few jobs that only count if they
+# are done BEFORE it arrives -- the taps drained the evening before a frost,
+# the terrace furniture tied down before the wind.
+#
+# Three kinds of weather, each with a line the owner sets and a list of jobs
+# the owner writes. When the forecast crosses a line, every job on its list
+# becomes a task for the day it has to be done on, which is what puts it on
+# the calendar and on that person's Today list. Its title says what the
+# forecast said ("\u22123\u00b0C forecast tonight"): a job with no reason on it is a job
+# somebody decides to skip.
+#
+# THE TASKS CLOSE THEMSELVES, on the generate_watch_tasks argument. The only
+# "done" a person has is the tick. The house withdraws a job the forecast stops
+# asking for, and closes one whose day has gone by, and says why in the task
+# each time. Without that half a week of changeable forecasts leaves a list of
+# frosts that never came, and a list like that is not read the morning it
+# lists a real one.
+#
+# ONCE PER EVENT is weather_jobs' UNIQUE (kind, day, job): a forecast fetched
+# again for the same night meets the row that is already there.
+# ---------------------------------------------------------------------------
+
+FORECAST_SETTING = "weather_forecast"
+# Eight days, so the frost night of the seventh -- which ends on the morning of
+# the eighth -- is read whole. Jobs are raised only for the next few days
+# (weather_jobs_days_ahead); the rest is the outlook on the owner's page.
+FORECAST_DAYS = 8
+# Older than this, a forecast is not acted on. It is fetched hourly, so this
+# only bites when Open-Meteo has been out of reach for half a day -- and then
+# withdrawing a job because an old forecast no longer mentions it would be
+# worse than leaving it where it is.
+FORECAST_FRESH_HOURS = 12
+WEATHER_JOB_ORIGIN = "weather"
+WEATHER_JOB_KINDS = ("frost", "storm", "heat")
+WEATHER_JOB_KIND_WORDS = {"frost": "Frost overnight", "storm": "A storm or high wind",
+                          "heat": "Heat"}
+# A job is done in the working day before the weather arrives, so weather that
+# arrives before ten in the morning is prepared for the evening before. A
+# frost at six on Thursday, or a gale at four, is Wednesday's job: nobody is
+# draining taps at four in the morning.
+WEATHER_JOB_MORNING_HOUR = 10
+# Open-Meteo's thunderstorm codes (WEATHER_WORDS reads all three alike).
+THUNDER_CODES = frozenset({95, 96, 99})
+# How far the forecast must move back from the line before a raised job is
+# withdrawn. Without it a night forecast at 0.8\u00b0C, then 1.2, then 0.9 raises,
+# withdraws and reopens the same job all afternoon, and a job that keeps
+# changing its mind is one people stop believing. A line the OWNER moves is
+# not held to this: see generate_weather_jobs.
+WEATHER_JOB_MARGIN = {"frost": 2.0, "storm": 10.0, "heat": 2.0}
+# What a line may be set to. Outside these it is a typing mistake, not a
+# decision: a frost line of 50 would raise the frost jobs every night of the
+# year.
+WEATHER_JOB_LINE_BOUNDS = {"frost": (-20.0, 10.0), "storm": (30.0, 200.0),
+                           "heat": (20.0, 45.0)}
+WEATHER_JOB_MAX_DAYS_AHEAD = 6
+WEATHER_JOB_MAX_JOBS = 12
+WEATHER_JOB_ASSIGNEE_PREFIX = "weather_jobs_assignee_"
+# Live config, like every app_setting: these are only what an unset house
+# starts from, and the owner's page writes over them.
+WEATHER_JOB_SETTING_DEFAULTS = {
+    "weather_jobs_days_ahead": "2",
+    "weather_jobs_frost_on": "1",
+    "weather_jobs_frost_line": "1",
+    "weather_jobs_frost_list": "Drain and cover the outdoor taps\nBring in the pots",
+    "weather_jobs_storm_on": "1",
+    "weather_jobs_storm_line": "70",
+    "weather_jobs_storm_thunder": "1",
+    "weather_jobs_storm_list": "Stack or tie down the terrace furniture\nClose the shutters",
+    "weather_jobs_heat_on": "1",
+    "weather_jobs_heat_line": "30",
+    "weather_jobs_heat_list": "Water the beds\nPut out the parasols",
+}
+
+
+def fetch_forecast(timeout=8):
+    """Ask Open-Meteo for the hours ahead. Raises on anything unusable.
+
+    Hour by hour rather than the daily summary, because the question is not
+    "how cold is Wednesday" but "how cold is the night that starts on
+    Wednesday evening" -- and a daily minimum is mostly the dawn AFTER the
+    night a job is for. Times come back as Unix seconds and are kept as UTC
+    moments, so a clock-change night cannot be misread: one night a year a
+    wall-clock hour happens twice, and another night one never happens.
+    """
+    url = (f"https://api.open-meteo.com/v1/forecast?latitude={WEATHER_LAT}"
+           f"&longitude={WEATHER_LON}"
+           f"&hourly=temperature_2m,wind_gusts_10m,weather_code"
+           f"&forecast_days={FORECAST_DAYS}&wind_speed_unit=kmh"
+           f"&timeformat=unixtime&timezone=Europe%2FParis")
+    req = Request(url, headers={"User-Agent": "chateau-gudanes"})
+    with urlopen(req, timeout=timeout) as r:
+        payload = json.loads(r.read().decode("utf-8"))
+    hourly = payload.get("hourly") or {}
+    times = hourly.get("time") or []
+
+    def column(name, i):
+        values = hourly.get(name) or []
+        return values[i] if i < len(values) else None
+
+    hours = []
+    for i, t in enumerate(times):
+        temp, gust, code = (column("temperature_2m", i), column("wind_gusts_10m", i),
+                            column("weather_code", i))
+        if t is None or (temp is None and gust is None and code is None):
+            continue
+        hours.append([datetime.fromtimestamp(int(t), timezone.utc).isoformat(),
+                      None if temp is None else round(float(temp), 1),
+                      None if gust is None else int(round(float(gust))),
+                      None if code is None else int(code)])
+    if not hours:
+        raise ValueError("no hourly forecast in the response")
+    return {"at": datetime.now(timezone.utc).isoformat(), "hours": hours}
+
+
+def weather_forecast(conn, *, now=None):
+    """The cached hours ahead, or None. NEVER fetches, like weather_now.
+
+    {'at': when it was fetched, 'fresh', 'hours': [{'at': the UTC moment,
+    'local': the house's clock at it, 'temp', 'gust', 'code'}]}. Rubbish in
+    the cache reads as no forecast, which raises nothing and withdraws nothing.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (FORECAST_SETTING,)).fetchone()
+    if not row or not row["value"]:
+        return None
+    try:
+        held = json.loads(row["value"])
+        at = datetime.fromisoformat(held["at"])
+        hours = []
+        for stamp, temp, gust, code in held["hours"]:
+            when = datetime.fromisoformat(stamp)
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            hours.append({"at": when, "local": when.astimezone(LOCAL_TZ),
+                          "temp": None if temp is None else float(temp),
+                          "gust": None if gust is None else float(gust),
+                          "code": None if code is None else int(code)})
+    except (ValueError, KeyError, TypeError):
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    hours.sort(key=lambda h: h["at"])
+    age = (now or datetime.now(timezone.utc)) - at
+    return {"at": at, "hours": hours,
+            "fresh": bool(hours) and age <= timedelta(hours=FORECAST_FRESH_HOURS)}
+
+
+def weather_job_day(local):
+    """The house day the jobs are done on, for weather arriving at `local`."""
+    if local.hour >= WEATHER_JOB_MORNING_HOUR:
+        return local.date()
+    return local.date() - timedelta(days=1)
+
+
+def forecast_days(forecast):
+    """The forecast's hours, filed under the day the jobs for them are done.
+
+    A job day runs from ten in the morning to ten the next morning: Thursday's
+    six o'clock frost is Wednesday's, because Wednesday evening is when the
+    taps are drained. `whole` says whether every hour of that span is in the
+    forecast. Only a whole day can withdraw a job -- the end of the forecast
+    is not the end of the weather.
+    """
+    by_day = {}
+    for h in forecast["hours"]:
+        by_day.setdefault(weather_job_day(h["local"]), []).append(h)
+    out = []
+    for day in sorted(by_day):
+        hours = by_day[day]
+        opens = datetime.combine(day, dtime(WEATHER_JOB_MORNING_HOUR), tzinfo=LOCAL_TZ)
+        last = datetime.combine(day + timedelta(days=1),
+                                dtime(WEATHER_JOB_MORNING_HOUR - 1), tzinfo=LOCAL_TZ)
+        temps = [h for h in hours if h["temp"] is not None]
+        gusts = [h for h in hours if h["gust"] is not None]
+        out.append({
+            "day": day, "hours": hours,
+            "whole": hours[0]["at"] <= opens and hours[-1]["at"] >= last,
+            "low": min(temps, key=lambda h: h["temp"]) if temps else None,
+            "high": max(temps, key=lambda h: h["temp"]) if temps else None,
+            "gust": max(gusts, key=lambda h: h["gust"]) if gusts else None,
+            "thunder": next((h for h in hours if h["code"] in THUNDER_CODES), None),
+        })
+    return out
+
+
+def weather_degrees(c, line=None):
+    """\u22123\u00b0C, with a real minus sign and never "\u22120\u00b0C".
+
+    Whole degrees, except where rounding would put the figure on the wrong side
+    of the line it is being measured against: "1\u00b0C forecast tonight" as the
+    reason for the frost jobs, under a line of 1\u00b0C, reads as a contradiction.
+    0.6\u00b0C is what the forecast said, and it is what the task says.
+    """
+    shown = int(round(c))
+    if line is not None and (shown == line or (shown < line) != (c < line)):
+        text = f"{abs(c):.1f}"
+        return f"\u2212{text}\u00b0C" if c < 0 and text != "0.0" else f"{text}\u00b0C"
+    return f"\u2212{-shown}\u00b0C" if shown < 0 else f"{shown}\u00b0C"
+
+
+def weather_line(kind, line):
+    """The owner's line as the owner typed it: −2.5°C stays −2.5°C."""
+    if kind == "storm":
+        return f"{line:g} km/h"
+    return f"−{-line:g}°C" if line < 0 else f"{line:g}°C"
+
+
+def weather_when(local, day):
+    """When weather arriving at `local` comes, said from the day the job is on."""
+    if local.date() > day or local.hour >= 18:
+        return "tonight"
+    return "this afternoon" if local.hour >= 12 else "this morning"
+
+
+def weather_day_words(day):
+    """'Wednesday 24 October'. Not strftime, which follows the server's locale."""
+    return f"{WHATS_ON_DAYS[day.weekday()]} {day.day} {MONTH_NAMES[day.month - 1]}"
+
+
+def weather_job_verdict(kind, d, k):
+    """What one job day's forecast says about one kind of weather, or None.
+
+    state is 'crosses' (the jobs are wanted), 'clear' (far enough back from
+    the line to withdraw them) or 'near' (inside the margin: nothing new is
+    raised and nothing raised is withdrawn). `words` go in the task's title,
+    `detail` in its notes, and `now` says what the forecast says either way,
+    for the line written when a job is withdrawn.
+    """
+    line, margin, day = k["line"], WEATHER_JOB_MARGIN[kind], d["day"]
+    if kind == "frost":
+        h = d["low"]
+        if not h:
+            return None
+        v = h["temp"]
+        deg = weather_degrees(v, line)
+        state = "crosses" if v < line else "clear" if v >= line + margin else "near"
+        return {"state": state,
+                "words": f"{deg} forecast {weather_when(h['local'], day)}",
+                "detail": (f"{WEATHER_JOB_KIND_WORDS[kind]}: lowest {deg} around "
+                           f"{h['local']:%H:%M} on {weather_day_words(h['local'].date())}, "
+                           f"under the {weather_line(kind, line)} line. If the frost stops "
+                           f"being forecast, this closes on its own."),
+                "now": f"the forecast now says {deg} at the coldest"}
+    if kind == "heat":
+        h = d["high"]
+        if not h:
+            return None
+        v = h["temp"]
+        deg = weather_degrees(v, line)
+        state = "crosses" if v > line else "clear" if v <= line - margin else "near"
+        return {"state": state,
+                "words": f"{deg} forecast {weather_when(h['local'], day)}",
+                "detail": (f"{WEATHER_JOB_KIND_WORDS[kind]}: up to {deg} around "
+                           f"{h['local']:%H:%M} on {weather_day_words(h['local'].date())}, "
+                           f"over the {weather_line(kind, line)} line. If the heat stops "
+                           f"being forecast, this closes on its own."),
+                "now": f"the forecast now says {deg} at the hottest"}
+    # A storm: gusts over the line, or a thunderstorm if the owner counts one.
+    thunder = d["thunder"] if k.get("thunder") else None
+    peak = d["gust"]
+    gusty = peak is not None and peak["gust"] > line
+    if not gusty and not thunder:
+        quiet = peak is None or peak["gust"] <= line - margin
+        return {"state": "clear" if quiet else "near", "words": "", "detail": "",
+                "now": (f"the forecast now says gusts of {int(peak['gust'])} km/h at most"
+                        if peak else "the forecast now says no wind to speak of")
+                       + (" and no thunderstorm" if k.get("thunder") else "")}
+    first = next(h for h in d["hours"]
+                 if (h["gust"] is not None and h["gust"] > line)
+                 or (thunder and h["code"] in THUNDER_CODES))
+    what = [f"gusts of {int(peak['gust'])} km/h"] if gusty else []
+    if thunder:
+        what.append("a thunderstorm")
+    said = []
+    if gusty:
+        said.append(f"gusts up to {int(peak['gust'])} km/h around {peak['local']:%H:%M} "
+                    f"on {weather_day_words(peak['local'].date())}, over the "
+                    f"{weather_line(kind, line)} line")
+    if thunder:
+        said.append(f"a thunderstorm from {thunder['local']:%H:%M} on "
+                    f"{weather_day_words(thunder['local'].date())}")
+    return {"state": "crosses",
+            "words": f"{' and '.join(what)} forecast {weather_when(first['local'], day)}",
+            "detail": (f"{WEATHER_JOB_KIND_WORDS[kind]}: {'; '.join(said)}. If the storm "
+                       f"stops being forecast, this closes on its own."),
+            "now": ""}
+
+
+def weather_job_key(job):
+    """One job, however its spacing or capitals were typed this time."""
+    return " ".join(job.split()).casefold()
+
+
+def weather_job_list(text):
+    """The owner's list, one job a line, blanks and repeats dropped."""
+    jobs, seen = [], set()
+    for line in (text or "").splitlines():
+        job = " ".join(line.split())[:120]
+        if job and weather_job_key(job) not in seen:
+            seen.add(weather_job_key(job))
+            jobs.append(job)
+    return jobs[:WEATHER_JOB_MAX_JOBS]
+
+
+def weather_job_assignees(conn):
+    """kind -> user id. Joined against users, as watch_task_assignees is, so a
+    route to somebody who has left hands the jobs back -- unassigned, they are
+    still on the calendar -- rather than to an account nobody opens."""
+    rows = conn.execute(
+        """SELECT app_settings.key AS key, users.id AS uid
+             FROM app_settings
+             JOIN users ON users.id = CAST(app_settings.value AS INTEGER)
+            WHERE app_settings.key LIKE ? AND users.status = 'active'""",
+        (WEATHER_JOB_ASSIGNEE_PREFIX + "%",)).fetchall()
+    out = {}
+    for r in rows:
+        kind = r["key"][len(WEATHER_JOB_ASSIGNEE_PREFIX):]
+        if kind in WEATHER_JOB_KINDS:
+            out[kind] = r["uid"]
+    return out
+
+
+def weather_job_settings(conn):
+    """The owner's lines and lists, with the defaults for anything unset."""
+    held = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM app_settings WHERE key LIKE 'weather_jobs_%'").fetchall()}
+
+    def get(key):
+        value = held.get(key)
+        return WEATHER_JOB_SETTING_DEFAULTS[key] if value is None else value
+
+    def number(key):
+        try:
+            return float(str(get(key)).replace(",", "."))
+        except (TypeError, ValueError):
+            return float(WEATHER_JOB_SETTING_DEFAULTS[key])
+
+    routes = weather_job_assignees(conn)
+    kinds = {kind: {"kind": kind, "words": WEATHER_JOB_KIND_WORDS[kind],
+                    "on": get(f"weather_jobs_{kind}_on") == "1",
+                    "line": number(f"weather_jobs_{kind}_line"),
+                    "jobs": weather_job_list(get(f"weather_jobs_{kind}_list")),
+                    "who": routes.get(kind)}
+             for kind in WEATHER_JOB_KINDS}
+    kinds["storm"]["thunder"] = get("weather_jobs_storm_thunder") == "1"
+    ahead = int(number("weather_jobs_days_ahead"))
+    return {"days_ahead": max(0, min(ahead, WEATHER_JOB_MAX_DAYS_AHEAD)), "kinds": kinds}
+
+
+def _close_weather_job(conn, row, now, why, state):
+    """Close one job's task the house raised, saying why, in the task itself.
+
+    Appended to the notes rather than kept only here: the task is what the
+    person who was going to do it opens, and "closed" with no reason reads as
+    somebody having done it.
+    """
+    note = (row["task_notes"] or "").rstrip()
+    said = f"Closed on its own, {house_when(now.isoformat())}: {why}."
+    conn.execute("UPDATE tasks SET status = 'done', completed_at = ?, notes = ? WHERE id = ?",
+                 (now.isoformat(), f"{note}\n\n{said}" if note else said, row["task_id"]))
+    conn.execute("""UPDATE weather_jobs SET state = ?, closed_at = ?, closed_why = ?
+                    WHERE id = ?""", (state, now.isoformat(), why, row["id"]))
+
+
+def generate_weather_jobs(conn, *, now=None, today=None):
+    """Raise the jobs the forecast asks for, and close the ones it no longer does.
+
+    Run after every fetch, and after the owner saves the page. Returns what it
+    did, as counts. Everything is keyed on (kind, day, job) in weather_jobs, so
+    running it twice on the same forecast changes nothing the second time.
+
+    Four answers for a job already raised:
+      - its task was TICKED: done is done, and nothing here reopens it;
+      - its task was DELETED by somebody: a decision, so it is not raised again;
+      - the house closed it and the weather is forecast again: reopened, not a
+        second task, so the calendar shows one job that came back;
+      - still open: rewritten in place when the forecast moves (\u22123 to \u22125\u00b0C),
+        withdrawn when the forecast moves clear of the line, and closed when
+        its day has gone by.
+    """
+    now = now or datetime.now(timezone.utc)
+    today = today or house_today()
+    now_iso = now.isoformat()
+    out = {"made": 0, "moved": 0, "reopened": 0, "withdrawn": 0, "passed": 0,
+           "skipped": None}
+
+    # The days gone by first, whatever the forecast says or whether there is
+    # one: a job for a night that is over is not a job any more, and left open
+    # it would sit on somebody's Today list as overdue for good.
+    for r in conn.execute(
+            """SELECT weather_jobs.*, tasks.notes AS task_notes FROM weather_jobs
+                 JOIN tasks ON tasks.id = weather_jobs.task_id
+                WHERE weather_jobs.state = 'raised' AND weather_jobs.job_day < ?
+                  AND tasks.status != 'done'""", (today.isoformat(),)).fetchall():
+        _close_weather_job(conn, r, now, "its day went by and nobody ticked it", "passed")
+        out["passed"] += 1
+
+    forecast = weather_forecast(conn, now=now)
+    if not forecast or not forecast["fresh"]:
+        conn.commit()
+        out["skipped"] = "no forecast yet" if not forecast else "the forecast is too old to act on"
+        return out
+
+    cfg = weather_job_settings(conn)
+    horizon = (today + timedelta(days=cfg["days_ahead"])).isoformat()
+    verdicts = {}
+    for d in forecast_days(forecast):
+        if d["day"] < today:
+            continue
+        for kind in WEATHER_JOB_KINDS:
+            v = weather_job_verdict(kind, d, cfg["kinds"][kind])
+            if v:
+                verdicts[(kind, d["day"].isoformat())] = dict(v, whole=d["whole"])
+
+    held = {(r["kind"], r["job_day"], r["job_key"]): r for r in conn.execute(
+        """SELECT weather_jobs.*, tasks.id AS live_id, tasks.status AS task_status,
+                  tasks.title AS task_title, tasks.notes AS task_notes,
+                  tasks.assigned_to_user_id AS task_who
+             FROM weather_jobs LEFT JOIN tasks ON tasks.id = weather_jobs.task_id
+            WHERE weather_jobs.job_day >= ?""", (today.isoformat(),)).fetchall()}
+
+    wanted = set()
+    for (kind, day_iso), v in sorted(verdicts.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        k = cfg["kinds"][kind]
+        if not k["on"] or v["state"] != "crosses" or day_iso > horizon:
+            continue
+        for job in k["jobs"]:
+            key = (kind, day_iso, weather_job_key(job))
+            wanted.add(key)
+            title = f"{job[0].upper()}{job[1:]} \u2014 {v['words']}"
+            r = held.get(key)
+            if r is None:
+                # The ledger row first, and the task only if this call made
+                # it: two workers on the same fetch cannot both raise one.
+                cur = conn.execute(
+                    """INSERT OR IGNORE INTO weather_jobs (kind, job_day, job_key, job, line,
+                         forecast, state, raised_at) VALUES (?, ?, ?, ?, ?, ?, 'raised', ?)""",
+                    (kind, day_iso, key[2], job, k["line"], v["words"], now_iso))
+                if not cur.rowcount:
+                    continue
+                ledger_id = cur.lastrowid
+                task_id = conn.execute(
+                    """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                         status, origin, created_at)
+                       VALUES (?, ?, ?, 'normal', ?, 'open', ?, ?)""",
+                    (k["who"], title, v["detail"], day_iso, WEATHER_JOB_ORIGIN,
+                     now_iso)).lastrowid
+                conn.execute("UPDATE weather_jobs SET task_id = ? WHERE id = ?",
+                             (task_id, ledger_id))
+                out["made"] += 1
+                continue
+            if r["live_id"] is None:
+                continue
+            if r["task_status"] == "done" and r["state"] != "withdrawn":
+                continue
+            if r["task_status"] == "done":
+                conn.execute(
+                    """UPDATE tasks SET status = 'open', completed_at = NULL, title = ?,
+                         notes = ?, assigned_to_user_id = ? WHERE id = ?""",
+                    (title, v["detail"], k["who"], r["live_id"]))
+                out["reopened"] += 1
+            elif (r["task_title"], r["task_notes"], r["task_who"]) != (title, v["detail"], k["who"]):
+                # Rewritten, not closed and raised again: that would read as
+                # the frost having been dealt with and come back.
+                conn.execute(
+                    "UPDATE tasks SET title = ?, notes = ?, assigned_to_user_id = ? WHERE id = ?",
+                    (title, v["detail"], k["who"], r["live_id"]))
+                out["moved"] += 1
+            conn.execute(
+                """UPDATE weather_jobs SET state = 'raised', line = ?, forecast = ?,
+                     closed_at = NULL, closed_why = NULL WHERE id = ?""",
+                (k["line"], v["words"], r["id"]))
+
+    # The half that matters, as in generate_watch_tasks.
+    for key, r in held.items():
+        if (key in wanted or r["live_id"] is None or r["state"] != "raised"
+                or r["task_status"] == "done"):
+            continue
+        kind, day_iso, job_key = key
+        k = cfg["kinds"][kind]
+        v = verdicts.get((kind, day_iso))
+        if not k["on"]:
+            why = f"the {kind} jobs have been switched off"
+        elif job_key not in {weather_job_key(j) for j in k["jobs"]}:
+            why = f"it is no longer on the {kind} list"
+        elif v is None or not v["whole"]:
+            # The forecast does not reach far enough to say. Silence from
+            # the end of a forecast is not the weather going away.
+            continue
+        elif r["line"] is not None and r["line"] != k["line"] and v["state"] != "crosses":
+            # The owner moved the line. That is a decision, not a wobble in
+            # the forecast, so the margin does not hold the job open against it.
+            why = f"the line was moved to {weather_line(kind, k['line'])}, and {v['now']}"
+        elif v["state"] == "clear":
+            why = v["now"]
+        else:
+            continue
+        _close_weather_job(conn, r, now, why, "withdrawn")
+        out["withdrawn"] += 1
+
+    conn.commit()
+    return out
+
+
+def weather_jobs_summary(r):
+    """One line for the job-status page, saying what it did and did not do."""
+    if r.get("skipped") and not r["passed"]:
+        return f"nothing raised: {r['skipped']}"
+    bits = []
+    if r["made"]:
+        bits.append(f"{r['made']} raised")
+    if r["reopened"]:
+        bits.append(f"{r['reopened']} reopened -- forecast again")
+    if r["moved"]:
+        bits.append(f"{r['moved']} rewritten -- the forecast moved")
+    if r["withdrawn"]:
+        bits.append(f"{r['withdrawn']} withdrawn -- no longer forecast")
+    if r["passed"]:
+        bits.append(f"{r['passed']} closed -- the day went by unticked")
+    if r.get("skipped"):
+        bits.append(f"nothing else: {r['skipped']}")
+    return ", ".join(bits) or "nothing to raise"
+
+
+def run_weather_jobs_job(conn):
+    """Hourly: fetch the hours ahead, then raise and close the outdoor jobs.
+
+    The fetch comes before anything is written, so no write is held open
+    across somebody else's network.
+    """
+    snap = fetch_forecast()
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (FORECAST_SETTING, json.dumps(snap)))
+    conn.commit()
+    return weather_jobs_summary(generate_weather_jobs(conn))
+
+
 def next_free_words(conn, room, arrival, nights, horizon=60):
     """' · next free from 31 October' -- the soonest arrival, within two
     months of the one asked for, when this room can be had for as many
@@ -56128,14 +57927,232 @@ def refund_restaurant_booking(conn, booking, reason="Reservation cancelled by th
                         method="stripe", user_id=user_id)
 
 
+# What confirm_restaurant_reservation says when there was nothing to confirm:
+# decided already, or cancelled while a payment was settling. The Confirm
+# button answers it with a 404, as it always has.
+RESTAURANT_NOT_WAITING = "it is no longer waiting to be confirmed"
+
+
+def confirm_restaurant_reservation(conn, booking, *, online=False):
+    """Confirm one dinner reservation that is waiting, and send the guest the
+    confirmation letter. None once that is done, or the reason it was not.
+
+    THE ONE CONFIRMATION. The owner's Confirm button and a table that confirms
+    itself on payment (restaurant_instant) both come here, so a rule added to
+    confirming -- the standing instruction below was one -- reaches both. A
+    copy of this body in the automatic path would have been the bulk-decline
+    fault again: the same action, done a second way, quietly doing less.
+
+    `online` is the table that took itself: written down as such, against
+    nobody, because it was not the decision of whoever happens to be signed in
+    on that browser.
+    """
+    # A STANDING INSTRUCTION MEANS THE HOUSE, and the house includes its table.
+    # A stay and an atelier have refused a cautioned guest for a while; a
+    # dinner never asked.
+    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
+    if caution and caution["caution_level"] == "refuse":
+        return (f"there is a standing instruction not to accept a booking from "
+                f"{caution['name']} ({caution['caution']}) — lift it on their profile if that "
+                "has changed")
+    cur = conn.execute(
+        "UPDATE restaurant_bookings SET status = 'confirmed', decided_at = ? WHERE id = ? AND status = 'pending'",
+        (datetime.now(timezone.utc).isoformat(), booking["id"]),
+    )
+    if cur.rowcount == 0:
+        return RESTAURANT_NOT_WAITING
+    if online:
+        log_audit(conn, "restaurant_booking_confirmed_online", target=booking["reference_code"],
+                  details="confirmed itself when it was booked, the evening having room",
+                  actor=None)
+    else:
+        log_audit(conn, "restaurant_booking_confirmed", target=booking["reference_code"])
+    ensure_guest_profile(conn, booking["guest_name"], booking["guest_email"],
+                         booking["guest_phone"])
+    # Committed before the letter: a write left open across the send is the
+    # "database is locked" that loses held mail.
+    conn.commit()
+    send_restaurant_email(conn, booking, "restaurant_confirmed", restaurant_email_context(booking))
+    return None
+
+
+def restaurant_instant_on(conn):
+    """Whether a table booked on the website confirms itself (restaurant_instant).
+
+    Read as the public pages read it -- 1, true, yes or on -- so the promise on
+    the booking page and what happens to the booking cannot disagree about
+    which way the switch is set.
+    """
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'restaurant_instant'").fetchone()
+    return ((row["value"] if row else "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def restaurant_open_weekdays(conn):
+    """The evenings La Table serves, as weekdays (0 = Monday), or None while
+    they have not been set -- and then no evening is closed by them. Read the
+    way _dining_hours.html reads them for the opening hours."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = 'dining_days'").fetchone()
+    days = {int(p) for p in ((row["value"] if row else "") or "").replace(" ", "").split(",")
+            if p.isdigit() and int(p) < 7}
+    return days or None
+
+
+def restaurant_open_days_words(days):
+    """The open evenings as the opening hours word them: "Thursday to Sunday",
+    "Wednesday and Friday to Monday". A run of three or more is a
+    range, and the walk starts just after a closed day so a run over the
+    weekend stays whole -- the same reading as days_text in _dining_hours.html,
+    so a refusal and the hours above the form name the same evenings."""
+    days = set(days or ())
+    if not days:
+        return ""
+    if len(days) == 7:
+        return "every evening"
+    start = next(i for i in range(7) if i in days and (i - 1) % 7 not in days)
+    runs, run = [], []
+    for k in range(7):
+        i = (start + k) % 7
+        if i in days:
+            run.append(i)
+        elif run:
+            runs.append(run)
+            run = []
+    if run:
+        runs.append(run)
+    items = []
+    for r in runs:
+        if len(r) >= 3:
+            items.append(f"{WEEKDAY_NAMES[r[0]]} to {WEEKDAY_NAMES[r[-1]]}")
+        else:
+            items.extend(WEEKDAY_NAMES[i] for i in r)
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def restaurant_closed_evening(conn, day):
+    """Why a table cannot be booked for `day`, in words for the guest, or None
+    when La Table serves that evening -- or when the evenings have not been
+    set, which closes none.
+
+    The date picker greys a closed evening out, but that is the browser being
+    helpful: a form typed into by hand, saved before the owner changed the
+    evenings, or posted from anywhere else, arrives here all the same. Every
+    door a guest can book a table through asks this."""
+    open_days = restaurant_open_weekdays(conn)
+    if open_days is None or day.weekday() in open_days:
+        return None
+    return (f"La Table is closed on {WEEKDAY_NAMES[day.weekday()]}s. It serves dinner "
+            f"{restaurant_open_days_words(open_days)} — please choose one of those evenings.")
+
+
+def restaurant_instant_holds(conn, booking):
+    """Every reason this table should NOT confirm itself, in plain words.
+
+    Empty means the evening has room and nothing about the booking needs the
+    owner's eye, so it is confirmed the moment it is paid. Anything listed
+    leaves it a request: the owner decides, and the guest is told it is a
+    request, never that it is confirmed.
+
+    Only rules the house already keeps, read from where they already live,
+    and checked AFTER the booking is written -- so two paid at once each see
+    the other, and the second of two that would fill the room waits rather
+    than both getting in:
+
+      closed      online booking off, dining closed or switched off, before
+                  the opening date, an evening already gone, or an evening the
+                  opening hours leave out (dining_days)
+      too large   more than the room seats, or more than its biggest table --
+                  laying a party across tables is somebody's decision
+      covers      every reservation that night, waiting or confirmed (the
+                  booking form's rule), and the atelier guests who eat in,
+                  which the covers forecast counts as certain -- against the
+                  covers set on the restaurant's settings and the seats on the
+                  floor plan, whichever is fewer
+      the card    when that evening's card is published, a course whose
+                  counted stock would not reach this party too
+      the guest   a caution on their profile (handle with care, or do not
+                  accept), or the repeated no-shows the queue already warns of
+    """
+    reasons = []
+    settings = get_restaurant_settings(conn)
+    day = parse_date(booking["dinner_date"] or "")
+    party = booking["party_size"] or 0
+    capacity = (settings["capacity"] if settings else 0) or 20
+
+    if not settings or not settings["enabled"]:
+        reasons.append("online reservations are switched off")
+    mode = dining_mode(conn)
+    if mode != "open":
+        reasons.append("dining is closed for the season" if mode == "closed"
+                       else "dining is switched off on the website")
+    if not day:
+        return reasons + ["the date on it could not be read"]
+    if day < house_today():
+        reasons.append("that evening has already gone")
+    opening = parse_date(settings["opening_date"]) if settings and settings["opening_date"] else None
+    if opening and day < opening:
+        reasons.append(f"La Table does not open until {format_date_human(opening.isoformat())}")
+    open_days = restaurant_open_weekdays(conn)
+    if open_days is not None and day.weekday() not in open_days:
+        reasons.append(f"La Table is closed on {day.strftime('%A')}s")
+
+    tables = dining_tables(conn)
+    biggest = max((t["seats"] or 0 for t in tables), default=0)
+    if party > capacity:
+        reasons.append(f"a party of {party} is more than the {capacity} the room takes")
+    elif biggest and party > biggest:
+        reasons.append(f"a party of {party} is more than the biggest table seats ({biggest})")
+
+    booked = capacity - restaurant_remaining_capacity(conn, day.isoformat(), exclude_id=booking["id"])
+    night = dinner_covers_forecast(conn, start=day, days=1)["rows"]
+    atelier = night[0]["atelier"] if night else 0
+    at_table = booked + atelier + party
+    seats = sum(t["seats"] or 0 for t in tables)
+    with_atelier = f", counting {atelier} atelier guest{'' if atelier == 1 else 's'} dining in" if atelier else ""
+    if at_table > capacity:
+        reasons.append(f"that evening would have {at_table} at table against the "
+                       f"{capacity} covers it takes{with_atelier}")
+    elif seats and at_table > seats:
+        reasons.append(f"that evening would have {at_table} at table and the floor plan "
+                       f"seats {seats}{with_atelier}")
+
+    card = menu_for_date(conn, day)
+    if card:
+        short = [MENU_COURSES.get(c["course"], c["course"])
+                 for c in card_capacity(conn, card["id"], day)["courses"]
+                 if c["all_off"] or (not c["untracked"]
+                                     and c["still_to_come"] + party > c["portions"])]
+        if short:
+            reasons.append(f"that evening's card would run short ({', '.join(short)})")
+
+    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
+    if caution and caution["caution_level"] in ("care", "refuse"):
+        reasons.append(f"their guest profile says “{CAUTION_LEVELS[caution['caution_level']]}”")
+    # The queue's own threshold: mark_restaurant_no_show tells the owner from
+    # the second one on, so a table from that address is the owner's call.
+    missed = prior_no_shows(conn, [booking["guest_email"]]).get(
+        (booking["guest_email"] or "").lower(), 0)
+    if missed > 1:
+        reasons.append(f"they have not turned up {missed} times before")
+    return reasons
+
+
 def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner_date, party_size,
                                dietary_notes, booking_id=None, payment_status="unpaid",
                                stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                                deposit_amount=None, total_price_override=None, discount_amount_override=None,
-                               reference_code=None, quiet=False):
+                               reference_code=None, quiet=False, instant=False):
     """Write a dinner reservation down. `quiet` sends nothing -- no "request
     received" letter, no notification -- for a table the house is taking
-    itself (add_restaurant_reservation), which says what it sends."""
+    itself (add_restaurant_reservation), which says what it sends.
+
+    `instant` is a table booked on the website while tables confirm
+    themselves (restaurant_instant_on), and already paid for where payment is
+    taken. It is confirmed here unless restaurant_instant_holds finds a reason
+    not to, and then the guest gets the confirmation letter INSTEAD of "request
+    received" -- not both, a second apart, saying opposite things. One held
+    back gets "request received", as every table did before, and the reason is
+    kept on it for the owner's queue."""
     settings = get_restaurant_settings(conn)
     # Handed in from the card page, which labelled the payment with it. Kept
     # only while no other reservation holds it.
@@ -56186,7 +58203,21 @@ def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner
         return reference_code, manage_token
 
     booking_row = conn.execute("SELECT * FROM restaurant_bookings WHERE manage_token = ?", (manage_token,)).fetchone()
-    send_restaurant_email(conn, booking_row, "restaurant_reservation_received", restaurant_email_context(booking_row))
+    held = []
+    if instant:
+        held = restaurant_instant_holds(conn, booking_row)
+        if not held:
+            # Sends the confirmation letter itself, as the Confirm button does.
+            problem = confirm_restaurant_reservation(conn, booking_row, online=True)
+            held = [problem] if problem else []
+        if held:
+            conn.execute("UPDATE restaurant_bookings SET instant_held = ? WHERE id = ?",
+                         ("; ".join(held), booking_row["id"]))
+            log_audit(conn, "restaurant_booking_held_for_owner", target=reference_code,
+                      details="; ".join(held), actor=None)
+            conn.commit()
+    if not instant or held:
+        send_restaurant_email(conn, booking_row, "restaurant_reservation_received", restaurant_email_context(booking_row))
 
     # The dietary note is NOT copied into the notification body. It used to be,
     # which put the guest's allergy into a second table that nothing deletes —
@@ -56195,6 +58226,15 @@ def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner
     notify_body = ("Dietary notes were given — they are on the reservation."
                    if (dietary_notes or "").strip() else None)
     notify_title = f"Dinner reservation — {guest_name}, party of {party_size} ({format_date_human(dinner_date)})"
+    if instant and not held:
+        notify_title = (f"Dinner confirmed on booking — {guest_name}, party of {party_size} "
+                        f"({format_date_human(dinner_date)})")
+    elif instant:
+        # Said, not left to be noticed: the switch is on, so anyone reading
+        # "Dinner reservation" would take it to be confirmed already.
+        notify_title += " — waiting on you"
+        notify_body = " ".join(filter(None, [
+            f"Not confirmed automatically: {'; '.join(held)}.", notify_body]))
     notified_ids = set()
     owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
     if owner_row:
@@ -56229,6 +58269,10 @@ def create_restaurant_booking_from_stripe_session(conn, session):
         # — more trustworthy than recomputing from deposit_percent at
         # webhook time, since that setting could have changed in between.
         deposit_amount=(session["amount_total"] / 100) if sval(session, "amount_total") else None,
+        # Paid, so this is the moment the booking page promised: confirmed as
+        # soon as the payment goes through, where the evening has room. The
+        # return page and the webhook both arrive here, whichever is first.
+        instant=restaurant_instant_on(conn),
     )
     if remaining < party_size:
         # Money has already changed hands, so the reservation is still
@@ -56317,6 +58361,8 @@ def restaurant_book():
             error = "Choose a valid date."
         elif dinner_date < min_date:
             error = f"We're not taking reservations before {format_date_human(min_date.isoformat())}."
+        elif restaurant_closed_evening(conn, dinner_date):
+            error = restaurant_closed_evening(conn, dinner_date)
         elif not party_size or party_size < 1:
             error = "Party size is required."
         elif party_size > settings["capacity"]:
@@ -56413,6 +58459,10 @@ def restaurant_book():
         reference_code, manage_token = create_restaurant_booking(
             conn, guest_name, guest_email, guest_phone or None, dinner_date.isoformat(), party_size, dietary_notes,
             promo_code=promo_code or None,
+            # Nothing to pay online, so booking it is the moment. The page
+            # says "confirmed as you book" here when the switch is on, and
+            # the same rules decide whether it is.
+            instant=restaurant_instant_on(conn),
         )
         conn.close()
         return redirect(url_for("restaurant_confirmation", manage_token=manage_token))
@@ -58491,6 +60541,10 @@ EMAIL_TEMPLATE_TAGS = {
                                  "party_size", "price_block", "reference_code",
                                  "total_price", "workshop_title"),
     "workshop_feedback_request": ("feedback_url", "guest_name", "workshop_title"),
+    # {photos} and {next_dates} are drawn as pictures and as cards; the plain
+    # half of the letter gets their links. See recap_context().
+    "workshop_recap": ("dates", "guest_name", "instructor_name", "instructor_notes",
+                       "next_dates", "notes_file_url", "photos", "workshop_title"),
     "workshop_payment_received": ("amount", "balance_line", "dates", "guest_name",
                                   "reference_code", "statement_url", "workshop_title"),
     "workshop_statement": ("balance_line", "company_block", "dates", "guest_name",
@@ -58514,6 +60568,13 @@ EMAIL_TEMPLATE_TAGS = {
                            "stay_lines", "total_price"),
     "channel_checkin": ("arrival_date", "checkin_url", "departure_date", "guest_name",
                         "reference_code", "room_name"),
+    # The two letters that ship with no words (UNWRITTEN_LETTERS), and what
+    # the owner can use in them once they write them.
+    "room_checkin_before": ("arrival_date", "checkin_url", "departure_date", "first_name",
+                            "guest_name", "manage_url", "reference_code", "room_name"),
+    "workshop_checkin_before": ("arrival_date", "checkin_url", "departure_date",
+                                "first_name", "guest_name", "manage_url",
+                                "reference_code", "workshop_title"),
     "room_reserved": ("finish_url", "guest_name", "held_until", "reference_code",
                       "room_name", "stay_lines", "total_price"),
     "room_declined": ("arrival_date", "departure_date", "guest_name", "reference_code",
@@ -58529,6 +60590,8 @@ EMAIL_TEMPLATE_TAGS = {
                        "statement_url"),
     "room_balance_before": ("arrival_date", "balance_amount", "guest_name",
                             "manage_url", "reference_code", "room_name"),
+    "room_extras_offer": ("arrival_date", "departure_date", "extras_block", "guest_name",
+                          "manage_url", "reference_code", "room_name"),
     "room_balance_after": ("arrival_date", "balance_amount", "guest_name",
                            "manage_url", "reference_code", "room_name"),
     "room_share_request": ("amount", "arrival_date", "departure_date", "name",
@@ -58565,11 +60628,15 @@ REQUIRED_MERGE_TAGS = {
     "room_paid_awaiting": {"reference_code": "it is how they quote the booking to us"},
     "room_reserved": {"finish_url": "it is the only way for them to finish the booking and pay"},
     "channel_checkin": {"checkin_url": "it is the only way to the check-in form"},
+    "room_checkin_before": {"checkin_url": "it is what the letter is for"},
+    "workshop_checkin_before": {"checkin_url": "it is what the letter is for"},
     "room_updated": {"arrival_date": "it is the date that changed",
                      "departure_date": "it is the date that changed"},
     "room_statement": {"statement_url": "it is the only way to open the statement and settle it"},
     "room_balance_before": {"manage_url": "it is where they pay"},
     "room_balance_after": {"manage_url": "it is where they pay"},
+    "room_extras_offer": {"extras_block": "it is what they can add, each with the "
+                                          "link that adds it to their stay"},
     "refund_issued": {"amount": "it is the sum that went back"},
     "workshop_payment_received": {"amount": "it is the sum they paid"},
     "workshop_statement": {"statement_url": "it is where they read the statement and "
@@ -58610,6 +60677,10 @@ def wording_problems(template_key, subject, body):
     """
     subject, body = subject or "", body or ""
     problems = []
+    # Not written is not wrong: it is a letter that does not go yet
+    # (UNWRITTEN_LETTERS). Half-written is, and is checked like any other.
+    if template_key in UNWRITTEN_LETTERS and not (subject.strip() or body.strip()):
+        return []
     stray = unknown_merge_tags(template_key, subject, body)
     if stray:
         problems.append("nothing fills " + ", ".join("{%s}" % s for s in stray))
@@ -58635,7 +60706,24 @@ def wording_problems(template_key, subject, body):
     for tag, why in REQUIRED_MERGE_TAGS.get(template_key, {}).items():
         if "{%s}" % tag not in text:
             problems.append("it no longer has {%s}, and %s" % (tag, why))
+    if template_key in LETTERS_THAT_NEVER_MENTION_PAYING:
+        said = _PAYING_WORDS.search(text)
+        if said:
+            problems.append("it says “%s”, and this letter never mentions paying: "
+                            "what a guest adds is settled at the house, and the "
+                            "letter does not say so" % said.group(0))
     return problems
+
+
+# Letters that say nothing about paying, by the house's choice rather than by
+# accident. The extras offered before arrival are paid for at the house, and the
+# owner does not tell guests so (October 2026) -- so the letter offering them
+# must not raise money at all, in the owner's words or anybody's. Refused on
+# save and at the send, like any other wording that cannot go.
+LETTERS_THAT_NEVER_MENTION_PAYING = frozenset({"room_extras_offer"})
+_PAYING_WORDS = re.compile(
+    r"\b(?:pay|pays|paid|paying|payment|payments|settle[ds]?|settling|bill|billed|"
+    r"invoice[ds]?|charge[ds]?|on[- ]site|onsite|cash)\b", re.I)
 
 
 def merge_email_text(source, context):
@@ -58824,7 +60912,7 @@ EMAIL_ASSET_VERSION = "20261019"
 _LETTER_EYEBROWS = {
     "Your stay": ("room_request_received", "room_paid_awaiting", "room_reserved",
                   "room_updated", "room_declined", "room_cancelled",
-                  "room_waitlist_opening"),
+                  "room_waitlist_opening", "room_extras_offer"),
     "Payments": tuple(k for k in MONEY_LETTERS if not k.startswith("code:")),
     "Workshops": ("workshop_registration_received", "workshop_confirmed",
                   "workshop_declined", "workshop_cancelled", "workshop_moved",
@@ -58848,7 +60936,7 @@ LETTER_EYEBROW = {key: label for label, keys in _LETTER_EYEBROWS.items() for key
 LETTER_HERO = {
     "room_reserved": "hero-bedroom.jpg", "room_request_received": "hero-bedroom.jpg",
     "room_paid_awaiting": "hero-bedroom.jpg", "room_waitlist_opening": "hero-house.jpg",
-    "room_balance_before": "hero-house.jpg",
+    "room_balance_before": "hero-house.jpg", "room_extras_offer": "hero-bedroom.jpg",
     "room_feedback_request": "hero-window.jpg", "review_invitation": "hero-window.jpg",
     "workshop_feedback_request": "hero-window.jpg",
     "workshop_registration_received": "hero-facade.jpg",
@@ -58947,12 +61035,14 @@ def letter_slot(name):
     return f"{_SLOT}{name}{_SLOT}"
 
 
-def drawn_context(context, *, statement=False, workshops=False):
+def drawn_context(context, *, statement=False, workshops=False, extras=False, photos=False):
     """The merge values for the DRAWN letter: the same words, with the blocks
     that are drawn as something else marked so they can be found again.
 
     {company_block} is small print; {statement_lines} becomes the statement
-    itself when there is one to draw; {workshops_block} becomes the cards."""
+    itself when there is one to draw; {workshops_block} -- and a recap's
+    {next_dates} -- and {extras_block} become the cards; a recap's {photos}
+    become the pictures."""
     out = dict(context)
     company = (out.get("company_block") or "").strip()
     if company:
@@ -58960,8 +61050,14 @@ def drawn_context(context, *, statement=False, workshops=False):
                                          for line in company.split("\n") if line.strip())
     if statement and "statement_lines" in out:
         out["statement_lines"] = letter_slot("statement")
-    if workshops and (out.get("workshops_block") or "").strip():
-        out["workshops_block"] = letter_slot("workshops")
+    if workshops:
+        for tag in ("workshops_block", "next_dates"):
+            if (out.get(tag) or "").strip():
+                out[tag] = letter_slot("workshops")
+    if photos and (out.get("photos") or "").strip():
+        out["photos"] = letter_slot("photos")
+    if extras and (out.get("extras_block") or "").strip():
+        out["extras_block"] = letter_slot("extras")
     return out
 
 
@@ -59123,7 +61219,7 @@ def letter_drawing_context():
 
 
 def letter_html(subject, text, settings=None, statement=None, *, key=None,
-                pay_url="", workshops=None, foot=None):
+                pay_url="", workshops=None, foot=None, extras=None, photos=None):
     """One of the house's letters, drawn, or "" if it cannot be.
 
     Empty rather than raising, the same rule the booking confirmation follows:
@@ -59135,8 +61231,10 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
     heading, the photograph, and which inbox the foot gives. `statement` is a
     booking_statement_view, drawn where {statement_lines} fell or beneath the
     words; `pay_url` puts a button to pay what it says is owed. `workshops`
-    are the cards {workshops_block} becomes. `foot` adds to the foot: an
-    unsubscribe link for a letter somebody asked for.
+    are the cards {workshops_block} becomes, and `extras` the ones
+    {extras_block} becomes. `foot` adds to the foot: an unsubscribe link for a
+    letter somebody asked for. `photos` are the pictures a recap's {photos}
+    becomes, [{src, alt}].
     """
     try:
         if key is None:
@@ -59158,7 +61256,8 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
                 hero=LETTER_HERO.get(key or ""), preheader=letter_preheader(blocks),
                 blocks=blocks, settings=settings or {}, statement=statement,
                 statement_placed=any(b["kind"] == "statement" for b in blocks),
-                pay_url=pay_url, workshops=workshops or [], foot=foot)
+                pay_url=pay_url, workshops=workshops or [], extras=extras or [],
+                foot=foot, photos=photos or [])
     except Exception as e:      # pragma: no cover - the text still goes
         print(f"[email html failed] {subject}: {e}")
         return ""
@@ -59166,7 +61265,7 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
 
 def template_letter_html(template_key, subject, body_src, context, *, conn=None,
                          card=None, statement=None, pay_url="", workshops=None,
-                         foot=None):
+                         foot=None, extras=None, photos=None):
     """The letter as a mail app draws it, from the wording given. "" if it cannot be.
 
     Every letter is the owner's words poured into the one shell -- except the
@@ -59182,10 +61281,11 @@ def template_letter_html(template_key, subject, body_src, context, *, conn=None,
         return confirmation_letter_html(subject, body_src, context, conn=conn,
                                         card=card)
     drawn = drawn_context(context, statement=statement is not None,
-                          workshops=bool(workshops))
+                          workshops=bool(workshops), extras=bool(extras),
+                          photos=bool(photos))
     return letter_html(subject, merge_email_text(body_src, drawn), statement=statement,
                        key=template_key, pay_url=pay_url, workshops=workshops,
-                       foot=foot)
+                       foot=foot, extras=extras, photos=photos)
 
 
 # Where {stay_details} fell, found again after the words are filled in. A
@@ -59314,6 +61414,20 @@ SAMPLE_MERGE_VALUES = {
                        "Cooking in the Cuisine\n12 – 16 April 2027 · €3,800 per person\n"
                        "https://chateaugudanes.com/workshops/352",
     "workshops_url": "https://chateaugudanes.com/workshops",
+    # The recap's. In brackets because they stand for something the page draws
+    # rather than words of the house's: the editor's preview draws two
+    # pictures and a card where these fall.
+    "photos": "(the photographs you clear on the sitting's page)",
+    "instructor_name": "Hélène Marty",
+    "instructor_notes": "(whatever the person who taught it wrote for the guests, as they wrote it)",
+    "notes_file_url": "https://chateaugudanes.com/workshops/recap/5d1e0c/notes",
+    "next_dates": "Noël at Gudanes\n18 – 22 December 2026 · €3,200 per person\n"
+                  "https://chateaugudanes.com/workshops/register/351",
+    # The preview of the extras letter fills this from the catalogue itself
+    # (extras_offer_sample); this stands in only where that is not asked.
+    "extras_block": "A tour of the château — €50.00\n"
+                    "Add to your stay:\n"
+                    "https://chateaugudanes.com/stay/9f2c1a7b?add=17#add-17",
     "finish_url": "https://chateaugudanes.com/booking/9f2c1a7b/finish",
     "held_until": "21 October 2026 at 16:30",
     "amount": "€412.20",
@@ -59388,10 +61502,28 @@ def preview_email_template(template_key, subject_src, body_src):
         used_shipped = True
 
     context = sample_merge_context(template_key)
+    extras = None
+    if template_key == EXTRAS_OFFER_KEY:
+        # The house's own catalogue, as the letter would carry it today, rather
+        # than a made-up list: the owner is writing the words that go above it.
+        conn = get_db()
+        try:
+            extras = extras_offer_sample(conn, context["manage_url"])
+        finally:
+            conn.close()
+        context["extras_block"] = extras_offer_text(extras)
     subject = merge_email_text(subject_src, context).strip()
     body = merge_email_text(body_src, context)
 
-    if template_key == "room_confirmed":
+    unwritten = (template_key in UNWRITTEN_LETTERS
+                 and not (subject_src.strip() or body_src.strip()))
+    if unwritten:
+        # Nothing to send, and nothing pretends otherwise: the page shows the
+        # paper the letter will be written on, with a note to the owner that
+        # never goes anywhere -- this is a preview, not a send.
+        html = letter_html("No wording yet", "Nothing is sent until this letter is "
+                           "written.", key=template_key)
+    elif template_key == "room_confirmed":
         # Its card draws the directions, which read the house's coordinates.
         conn = get_db()
         try:
@@ -59399,8 +61531,20 @@ def preview_email_template(template_key, subject_src, body_src):
                                         conn=conn, card=SAMPLE_CONFIRMATION_CARD)
         finally:
             conn.close()
+    elif template_key == RECAP_TEMPLATE_KEY:
+        # Drawn as it arrives: pictures where {photos} falls and a card where
+        # {next_dates} does, rather than the bracketed stand-ins written out.
+        html = template_letter_html(
+            template_key, subject, body_src, context,
+            photos=[{"src": email_asset(name), "alt": "Noël at Gudanes, 14 October 2026"}
+                    for name in ("hero-table.jpg", "hero-window.jpg")],
+            workshops=[{"title": "Noël at Gudanes", "when": "18 – 22 December 2026",
+                        "price": "€3,200 per person",
+                        "url": "https://chateaugudanes.com/workshops/register/351",
+                        "photo": None}])
     else:
-        html = template_letter_html(template_key, subject, body_src, context)
+        html = template_letter_html(template_key, subject, body_src, context,
+                                    extras=extras)
     return {
         "subject": subject,
         "body": body,
@@ -59440,7 +61584,7 @@ def rendered_letter_keys():
 
 
 def render_email_template(conn, template_key, context, *, statement=None, pay_url="",
-                          workshops=None, foot=None):
+                          workshops=None, foot=None, extras=None, photos=None):
     """Merge-tag substitution against an admin-editable template. Falls back
     to the raw template text (tags left unreplaced) if the context is
     missing a key rather than crashing an email send over a typo.
@@ -59460,12 +61604,12 @@ def render_email_template(conn, template_key, context, *, statement=None, pay_ur
         return None, None, None
     # Drawn from the same wording, read again with the blocks that are drawn
     # as something else marked (the statement, the workshops, small print).
-    # `statement`, `pay_url`, `workshops` and `foot` are what the drawing adds
-    # that is not a merge tag; see letter_html.
+    # `statement`, `pay_url`, `workshops`, `extras`, `foot` and `photos` are what the
+    # drawing adds that is not a merge tag; see letter_html.
     _subject_src, body_src, _ = email_template_source(conn, template_key)
     return subject, body, template_letter_html(
         template_key, subject, body_src, context, conn=conn, statement=statement,
-        pay_url=pay_url, workshops=workshops, foot=foot)
+        pay_url=pay_url, workshops=workshops, foot=foot, extras=extras, photos=photos)
 
 
 def email_template_text(conn, template_key, context):
@@ -59499,6 +61643,11 @@ def email_template_source(conn, template_key):
     """
     row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?", (template_key,)).fetchone()
     shipped = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
+    # A letter that ships with no words and has not been written: nothing to
+    # send, and nothing wrong -- it is not sent, quietly, until it is.
+    if template_key in UNWRITTEN_LETTERS and not (
+            row and letter_written(row["subject"], row["body"])):
+        return None, None, []
     if not row:
         if not shipped:
             return None, None, []
@@ -61047,6 +63196,8 @@ def workshop_manage(manage_token):
             "UPDATE workshop_bookings SET status = 'cancelled', decided_at = ? WHERE id = ? AND status IN ('pending', 'confirmed')",
             (datetime.now(timezone.utc).isoformat(), booking["id"]),
         )
+        if cur.rowcount:
+            follow_occasion_of(conn, workshop_booking_id=booking["id"])
         conn.commit()
         if cur.rowcount:
             owner_to = house_address_for(conn, "workshops")
@@ -61197,6 +63348,8 @@ def workshop_manage(manage_token):
             and workshop_session_remaining_capacity(conn, s["id"]) >= booking["party_size"]
         ]
 
+    # Online check-in, for the card that leads to it (_checkin_card.html).
+    checkin = direct_checkin_card(conn, "workshop", manage_token)
     conn.close()
     # Whether the automatic job is switched on no longer decides what the page
     # promises: the house takes a balance from the card by hand as well, so
@@ -61218,7 +63371,7 @@ def workshop_manage(manage_token):
         custom_fields=custom_fields, custom_responses=custom_responses,
         balance_due=balance_due, total_charged=total_charged, total_paid=total_paid,
         other_sessions=other_sessions,
-        extend_before=extend_before, extend_after=extend_after,
+        extend_before=extend_before, extend_after=extend_after, checkin=checkin,
     )
 
 
@@ -62834,6 +64987,337 @@ def status_page():
             "recovery_token_set": env("OWNER_RECOVERY_TOKEN"),
         },
     })
+
+
+# ---------------------------------------------------------------------------
+# IS THE LIVE SITE RUNNING WHAT IS ON MAIN?
+#
+# From 20 to 22 October 2026 every push to main built on Railway and then
+# failed at "Pre-deploy > Migrate volumes", because a change staged on the
+# Railway canvas was holding the /data volume. Production stayed on 4bcf711
+# for two days, and several sessions reported their work live because they had
+# pushed it. Nothing in the app could have said otherwise: /status printed the
+# commit it was running, and nothing ever compared it with anything.
+#
+# So the house asks GitHub, every quarter of an hour, where main is, and keeps
+# the answer. The owner home, the task list and the readiness page read the
+# kept answer and never the network.
+# ---------------------------------------------------------------------------
+
+GITHUB_API = "https://api.github.com"
+# Read-only, and only ever used to read. A fine-grained token for this one
+# repository with Contents: read -- DEPLOY.md, "Knowing when the live site is
+# behind main". The repository is private, so without it GitHub answers every
+# question with a 404 and there is nothing to compare.
+GITHUB_READ_TOKEN = (os.environ.get("GITHUB_READ_TOKEN") or "").strip()
+# Where the code lives when nothing says otherwise. Railway names the repository
+# it deploys from, and GITHUB_REPO is for a copy deployed some other way; this
+# is the house's own, as HOUSE_ADDIN_ORIGIN is the add-in's.
+HOUSE_GITHUB_REPO = "benwaters1/CDG1"
+DEPLOY_CHECK_SETTING = "deploy_check"
+# A push is normally live in five minutes. An hour is a deploy that did not
+# happen rather than one that is slow, and a day is a blocker: every fix pushed
+# since is not reaching anybody, whatever the session that pushed it said.
+DEPLOY_LAG_HOURS = 1
+DEPLOY_LAG_BLOCKER_HOURS = 24
+
+
+def running_commit():
+    """The commit this process is running, as Railway says, or "" anywhere else.
+
+    Read when asked rather than once at import, like /status reads it: a test
+    stands a deployment in by setting the variable."""
+    return (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or "").strip().lower()
+
+
+def deploy_branch():
+    """The branch Railway deploys from: main, unless Railway says otherwise."""
+    return (os.environ.get("RAILWAY_GIT_BRANCH") or "").strip() or "main"
+
+
+def github_repo():
+    """owner/name of the repository the live site is built from."""
+    named = (os.environ.get("GITHUB_REPO") or "").strip().strip("/")
+    if named:
+        return named
+    owner = (os.environ.get("RAILWAY_GIT_REPO_OWNER") or "").strip()
+    name = (os.environ.get("RAILWAY_GIT_REPO_NAME") or "").strip()
+    return f"{owner}/{name}" if owner and name else HOUSE_GITHUB_REPO
+
+
+def github_request(path, params=None):
+    """One read from GitHub's API: (HTTP status, the answer, or GitHub's message).
+
+    urllib, like every other outbound call here, and the one way out to GitHub,
+    so the harness standing it down covers all of it. Never raises: it runs on
+    a timer with nobody watching, so a failure has to come back as a sentence
+    the check can keep. Status 0 is no answer at all.
+    """
+    query = ("?" + urlencode(params)) if params else ""
+    headers = {"Accept": "application/vnd.github+json",
+               "X-GitHub-Api-Version": "2022-11-28",
+               "User-Agent": "chateau-gudanes"}
+    if GITHUB_READ_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_READ_TOKEN}"
+    req = Request(f"{GITHUB_API}/{path}{query}", headers=headers, method="GET")
+    try:
+        with urlopen(req, timeout=20) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8") or "null")
+    except HTTPError as e:
+        try:
+            message = json.loads(e.read().decode("utf-8")).get("message") or str(e)
+        except Exception:
+            message = str(e)
+        return e.code, message
+    except (URLError, OSError, ValueError) as e:
+        return 0, f"could not reach GitHub ({e})"
+
+
+# What a refusal from GitHub means for this check, said once. A 404 is the
+# misleading one: GitHub gives it for a private repository the token cannot
+# read, as well as for one that is not there, so a token made for the wrong
+# repository reads as "Not Found".
+GITHUB_REFUSALS = {
+    401: "The token was refused, so it has expired or been revoked: make a new one.",
+    403: "GitHub would not answer. Either the hourly limit is used up and the next "
+         "check will work, or the token is not allowed to read this repository.",
+    404: "GitHub says there is no such thing, which is also what it says when the "
+         "token cannot read a private repository. Check the token is for {repo} "
+         "with Contents: read, and that the deployed commit is still on GitHub.",
+}
+
+
+def first_push_past(activities, running):
+    """When main first moved past `running`, from GitHub's record of what
+    changed the branch, or None if the record does not go back that far.
+
+    Not a commit's own date. A commit made at ten and pushed at four carries
+    ten o'clock, and in this repository that is the usual case: work is
+    committed, the owner is asked, and it is pushed when they say. Dated by
+    the commit, every such push would have looked an hour late the moment it
+    landed, before Railway had had five minutes with it.
+    """
+    moves = [a for a in activities or () if isinstance(a, dict)
+             and a.get("activity_type") != "branch_deletion"]
+    # Newest first, as GitHub sends them. The push that left `running` behind
+    # is the one that started from it; failing that (a force push breaks the
+    # chain), the next one after the push that brought it in.
+    for i, a in enumerate(moves):
+        if (a.get("before") or "").lower() == running:
+            return _github_time(a.get("timestamp"))
+        if (a.get("after") or "").lower() == running:
+            return _github_time(moves[i - 1].get("timestamp")) if i else None
+    return None
+
+
+def _github_time(stamp):
+    """GitHub's '2026-10-20T14:05:12Z' as a stored moment, or None.
+
+    The Z is spelled out first: fromisoformat reads it only from Python 3.11,
+    nothing pins the version Railway builds with, and a moment that does not
+    parse is a warning that never shows."""
+    when = (parse_datetime_iso(stamp.replace("Z", "+00:00"))
+            if isinstance(stamp, str) else None)
+    return when.astimezone(timezone.utc).isoformat() if when else None
+
+
+def deploy_check_state(conn):
+    """The last answer from GitHub, as kept, or {} if there has never been one."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (DEPLOY_CHECK_SETTING,)).fetchone()
+    try:
+        held = json.loads(row["value"]) if row and row["value"] else {}
+    except (TypeError, ValueError):
+        held = {}
+    return held if isinstance(held, dict) else {}
+
+
+def check_deploy_against_main(running, previous=None, now=None):
+    """Ask GitHub where main is and how far `running` is behind it. The state
+    to keep, never raising: a failure is kept as `error` beside the last good
+    answer, so a GitHub outage during a stuck deploy does not make the stuck
+    deploy look fixed.
+
+    Three reads at most, one when nothing has moved: where main is (a few
+    bytes), then how far apart the two commits are, then when main first moved
+    past the one Railway is running.
+    """
+    now = now or datetime.now(timezone.utc)
+    repo, branch = github_repo(), deploy_branch()
+    # Only an answer about this same commit carries forward. After a deploy
+    # the last answer is about the previous one and says nothing about this.
+    prev = previous if (previous or {}).get("running") == running else {}
+    state = dict(prev, running=running, repo=repo, branch=branch,
+                 tried_at=now.isoformat(), error=None)
+
+    def refused(status, said):
+        state["error"] = (f"{said} (HTTP {status}). " if status else f"{said}. ") + \
+            GITHUB_REFUSALS.get(status, "").format(repo=repo)
+        state["error"] = state["error"].strip()
+        return state
+
+    status, ref = github_request(f"repos/{repo}/git/ref/heads/{branch}")
+    head = ((ref.get("object") or {}).get("sha") or "").lower() if (
+        status == 200 and isinstance(ref, dict)) else ""
+    if not head:
+        return refused(status, ref if status != 200 else f"no commit at the head of {branch}")
+    if head == running:
+        state.update(head=head, status="identical", behind_by=0, extra=0, since=None,
+                     since_from=None, noticed_at=None, checked_at=now.isoformat())
+        return state
+
+    status, cmp = github_request(f"repos/{repo}/compare/{running}...{head}",
+                                 {"per_page": 1})
+    if status != 200 or not isinstance(cmp, dict):
+        return refused(status, cmp)
+    # GitHub's words are about the second commit: "ahead" means main is ahead.
+    # "diverged" is a live site running a commit main does not have.
+    behind, extra = int(cmp.get("ahead_by") or 0), int(cmp.get("behind_by") or 0)
+    state.update(head=head, status=cmp.get("status") or "", behind_by=behind,
+                 extra=extra, checked_at=now.isoformat())
+    if behind <= 0:
+        state.update(since=None, since_from=None, noticed_at=None)
+        return state
+
+    # When this check first saw it, kept while it stays true: the fallback for
+    # a push older than GitHub's record goes back.
+    state["noticed_at"] = (prev.get("noticed_at") if prev.get("behind_by")
+                           else None) or now.isoformat()
+    since = prev.get("since") if prev.get("since_from") == "push" else None
+    if not since:
+        # Best effort. Without it the answer is still right, only vaguer
+        # about when it started.
+        status, acts = github_request(f"repos/{repo}/activity",
+                                      {"ref": branch, "per_page": 100})
+        if status == 200 and isinstance(acts, list):
+            since = first_push_past(acts, running)
+    state.update(since=since or state["noticed_at"],
+                 since_from="push" if since else "noticed")
+    return state
+
+
+def run_deploy_check_job(conn):
+    """Every quarter of an hour: is the live site running the head of main?
+
+    Kept for the owner home, the task list and the readiness page, which say so
+    once it has been behind for an hour and go quiet when it catches up. With
+    no token there is nothing to ask, and that is a setting missing rather than
+    a job failing; a refusal from GitHub is a failure, so a token that has
+    expired surfaces the way any job that keeps failing does.
+    """
+    running = running_commit()
+    if not running:
+        raise JobNotSetUp("not running on Railway, so there is no deployed commit "
+                          "to compare with main")
+    if not GITHUB_READ_TOKEN:
+        raise JobNotSetUp("GITHUB_READ_TOKEN is not set, and the repository is "
+                          "private, so GitHub will not say where main is")
+    # Read, then the network, then one write: nothing is held open across
+    # GitHub's answer.
+    state = check_deploy_against_main(running, deploy_check_state(conn))
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (DEPLOY_CHECK_SETTING, json.dumps(state)))
+    conn.commit()
+    if state["error"]:
+        raise RuntimeError(state["error"])
+    if not state["behind_by"]:
+        return f"running {running[:7]}, the head of {state['branch']}"
+    return (f"{counted(state['behind_by'], 'commit')} behind {state['branch']} "
+            f"since {local_datetime_str(state['since'])}")
+
+
+def deploy_lag(conn, now=None):
+    """How far the live site is behind main, from the last answer, or None.
+
+    Only an answer about the commit THIS process is running counts. The answer
+    is kept in the database, and the database outlives a deploy: the morning a
+    stuck deploy finally goes through, the answer on file is about the old
+    commit, and believing it would keep the warning up after the problem had
+    gone.
+    """
+    running = running_commit()
+    state = deploy_check_state(conn)
+    if not running or state.get("running") != running:
+        return None
+    behind = int(state.get("behind_by") or 0)
+    since = parse_datetime_iso(state.get("since"))
+    if behind <= 0 or not since:
+        return None
+    hours = ((now or datetime.now(timezone.utc)) - since).total_seconds() / 3600
+    return {"behind_by": behind, "extra": int(state.get("extra") or 0),
+            "running": running, "branch": state.get("branch") or deploy_branch(),
+            "since": state["since"], "pushed": state.get("since_from") == "push",
+            "hours": hours, "overdue": hours > DEPLOY_LAG_HOURS,
+            "blocker": hours >= DEPLOY_LAG_BLOCKER_HOURS}
+
+
+def deploy_lag_sentence(lag):
+    """What is wrong and where to look, in one wording, so the owner home, the
+    task it raises and the readiness page cannot read as three problems."""
+    hours = lag["hours"]
+    ago = (f"{int(hours // 24)} days ago" if hours >= 48 else
+           f"{int(hours)} hours ago" if hours >= 2 else "over an hour ago")
+    when = local_datetime_str(lag["since"])
+    branch = lag["branch"]
+    return (
+        f"Railway is still running {lag['running'][:7]}, and {branch} has "
+        f"{counted(lag['behind_by'], 'commit')} it does not. "
+        + (f"{branch.capitalize()} moved past it on {when}, {ago}. " if lag["pushed"] else
+           f"{branch.capitalize()} had moved past it by {when}, when this check first "
+           f"saw it, {ago}. ")
+        + (f"The live site is also running {counted(lag['extra'], 'commit')} {branch} "
+           "does not have, so it was deployed from somewhere else. " if lag["extra"] else "")
+        + "Nothing pushed since then is live, whatever was said when it was pushed. "
+          "Railway → CDG1 → Deployments shows each attempt and where it "
+          "stopped. One that failed at “Migrate volumes” means a change "
+          "staged on the Railway canvas is holding the volume: press Deploy on the "
+          "canvas to apply it, and the deploy goes through.")
+
+
+def deploy_check_readiness(conn):
+    """The readiness line: (severity, area, label, ok, detail)."""
+    label = "The live site is running main"
+    running = running_commit()
+    if not running:
+        return ("info", "Core", label, False,
+                "Not running on Railway, so there is no deployed commit to compare "
+                "with main.")
+    if not GITHUB_READ_TOKEN:
+        return ("warn", "Core", label, False,
+                f"Nothing can tell. GITHUB_READ_TOKEN is not set and {github_repo()} "
+                "is private, so GitHub will not say where main is. From 20 to 22 "
+                "October 2026 every deploy failed and nothing said so for two days. "
+                "DEPLOY.md, “Knowing when the live site is behind main”, "
+                "says how to make one that can read the repository and nothing else.")
+    state = deploy_check_state(conn)
+    if state.get("running") != running:
+        return ("warn", "Core", label, False,
+                f"Not checked since {running[:7]} was deployed. It is checked every "
+                "quarter of an hour; Admin → Automation has Run now.")
+    # Behind first: a stuck deploy is still stuck while GitHub is not answering,
+    # and the last answer is what says so.
+    lag = deploy_lag(conn)
+    if lag and lag["overdue"]:
+        return ("blocker" if lag["blocker"] else "warn", "Core", label, False,
+                deploy_lag_sentence(lag))
+    # Every attempt clears the error, so one that is here is the latest.
+    if state.get("error"):
+        return ("warn", "Core", label, False,
+                f"The last check could not ask GitHub: {state['error']}"
+                + (f" GitHub last answered on {local_datetime_str(state['checked_at'])}."
+                   if state.get("checked_at") else ""))
+    if lag:
+        return ("warn", "Core", label, True,
+                f"{counted(lag['behind_by'], 'commit')} on {lag['branch']} not live yet, "
+                f"since {local_datetime_str(lag['since'])}. Railway is normally live "
+                "within minutes; after "
+                + ("an hour" if DEPLOY_LAG_HOURS == 1 else counted(DEPLOY_LAG_HOURS, "hour"))
+                + " this says so on the home page.")
+    return ("warn", "Core", label, True,
+            f"Running {running[:7]}, the head of {state.get('branch') or deploy_branch()}, "
+            f"when GitHub was last asked ({local_datetime_str(state.get('checked_at'))}).")
 
 
 @app.route("/api/sync-ical", methods=["GET", "POST"])
@@ -65059,6 +67543,9 @@ def admin_booking(booking_id):
 
     messages, waiting = booking_messages(conn, booking)
     texts = booking_texts_plan(conn, booking)
+    # And the letter before arrival that offers what the stay can add, beside
+    # the texts: only while it is switched on.
+    extras_offer = booking_extras_offer_plan(conn, booking)
 
     # A move asked for on the page: worked out, not applied.
     move, move_problem = None, None
@@ -65118,7 +67605,7 @@ def admin_booking(booking_id):
         payment_methods=MANUAL_PAYMENT_METHODS,
         extras=extras, live_extras=live_extras, addable=addable,
         stay_day_choices=stay_day_choices,
-        messages=messages, waiting=waiting, texts=texts,
+        messages=messages, waiting=waiting, texts=texts, extras_offer=extras_offer,
         move=move, move_problem=move_problem,
         move_arrival=request.args.get("move_arrival", ""),
         move_departure=request.args.get("move_departure", ""),
@@ -65390,11 +67877,10 @@ def add_extra_to_booking(booking_id):
         conn.close()
         flash("Say how many, from 1 to 50.", "error")
         return redirect(back)
-    held_now = extras_held(conn, "room", booking_id).get(extra["id"], 0)
-    if extra["max_qty"] and held_now + quantity > extra["max_qty"]:
+    refusal = extra_over_limit(conn, booking_id, extra, quantity)
+    if refusal:
         conn.close()
-        flash(f"{extra['name']}: at most {extra['max_qty']} on a booking, and "
-              f"{held_now} {'is' if held_now == 1 else 'are'} on it already.", "error")
+        flash(refusal, "error")
         return redirect(back)
     arrival = parse_date(booking["arrival_date"])
     departure = parse_date(booking["departure_date"])
@@ -65409,19 +67895,49 @@ def add_extra_to_booking(booking_id):
             conn.close()
             flash(problem, "error")
             return redirect(back)
-    add_booking_extra(conn, "room", booking_id, extra, quantity, notes=when_notes,
-                      user_id=current_user()["id"], scheduled_for=when_on)
+    line_id, message = put_extra_on_stay(conn, booking, extra, quantity, when_on=when_on,
+                                         when_notes=when_notes, user_id=current_user()["id"])
+    conn.commit()
+    conn.close()
+    flash(message, "success" if line_id else "error")
+    return redirect(back)
+
+
+def extra_over_limit(conn, booking_id, extra, quantity):
+    """Why `quantity` more of `extra` cannot go on this stay, or None."""
+    held_now = extras_held(conn, "room", booking_id).get(extra["id"], 0)
+    if extra["max_qty"] and held_now + quantity > extra["max_qty"]:
+        return (f"{extra['name']}: at most {extra['max_qty']} on a booking, and "
+                f"{held_now} {'is' if held_now == 1 else 'are'} on it already.")
+    return None
+
+
+def put_extra_on_stay(conn, booking, extra, quantity, *, when_on=None, when_notes=None,
+                      user_id=None):
+    """Sell a catalogue extra on a stay from the staff side: (line_id, message),
+    and line_id None when it was refused, with the message saying why. Does not
+    commit.
+
+    The stay's own page and an occasion's button both come through here, so
+    the limit per booking, the line in the stay's history and the short-notice
+    warning are the same whichever way it went on.
+    """
+    if booking["status"] not in ("pending", "confirmed"):
+        return None, "Extras go on a pending or confirmed stay."
+    refusal = extra_over_limit(conn, booking["id"], extra, quantity)
+    if refusal:
+        return None, refusal
+    line_id = add_booking_extra(conn, "room", booking["id"], extra, quantity, notes=when_notes,
+                                user_id=user_id, scheduled_for=when_on)
     log_audit(conn, "booking_extra_added", target=booking["reference_code"],
               details=f"{quantity} × {extra['name']}"
                       + (f", for {format_date_human(when_on)}" if when_on else ""))
-    conn.commit()
-    conn.close()
+    arrival = parse_date(booking["arrival_date"])
     short = bool(extra["lead_time_days"] and arrival and extra_too_soon(extra, arrival))
-    flash(f"{quantity} × {extra['name']} added, {money((extra['price'] or 0) * quantity)} on the bill"
-          + (f", for {format_date_human(when_on)}" if when_on else "") + "."
-          + (f" Short notice: it usually needs {extra['lead_time_days']} days." if short else ""),
-          "success")
-    return redirect(back)
+    return line_id, (
+        f"{quantity} × {extra['name']} added, {money((extra['price'] or 0) * quantity)} on the bill"
+        + (f", for {format_date_human(when_on)}" if when_on else "") + "."
+        + (f" Short notice: it usually needs {extra['lead_time_days']} days." if short else ""))
 
 
 @app.route("/admin/bookings/extras/<int:line_id>/when", methods=["POST"])
@@ -65655,6 +68171,15 @@ def t(text, **kwargs):
 NEVER_TRANSLATE_INSIDE = {"script", "style", "textarea", "code", "pre",
                           "kbd", "samp", "svg"}
 
+# And anything marked translate="no", the HTML attribute for exactly this.
+# For words somebody has already written in each language, and for anything
+# that must not be filed in page_translations or sent to the model: the job
+# that fills that table assumes it only ever sees sentences printed on public
+# pages, and a guest's house guide carries the Wi-Fi code (house_guide.html).
+# Elements that cannot hold text are ignored: they have no end tag to close on.
+_VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input",
+                  "link", "meta", "source", "track", "wbr"}
+
 
 class _TextSpans(HTMLParser):
     """Byte offsets of every text node not inside a tag that forbids it.
@@ -65673,6 +68198,9 @@ class _TextSpans(HTMLParser):
             self.line_at.append(self.line_at[-1] + len(line))
         self.tokens = []
         self.depth = 0
+        # [tag, depth] while inside an element marked translate="no". Counted
+        # by its own tag name, so a <div> inside it does not close it early.
+        self.held = None
         try:
             self.feed(src)
             self.close()
@@ -65690,6 +68218,13 @@ class _TextSpans(HTMLParser):
         self.tokens.append((self._off(), "tag", None))
         if tag in NEVER_TRANSLATE_INSIDE:
             self.depth += 1
+        if tag in _VOID_ELEMENTS:
+            return
+        if self.held:
+            if tag == self.held[0]:
+                self.held[1] += 1
+        elif any(k == "translate" and (v or "").strip().lower() == "no" for k, v in attrs):
+            self.held = [tag, 1]
 
     def handle_startendtag(self, tag, attrs):
         self.tokens.append((self._off(), "tag", None))
@@ -65698,9 +68233,13 @@ class _TextSpans(HTMLParser):
         self.tokens.append((self._off(), "tag", None))
         if tag in NEVER_TRANSLATE_INSIDE and self.depth:
             self.depth -= 1
+        if self.held and tag == self.held[0]:
+            self.held[1] -= 1
+            if not self.held[1]:
+                self.held = None
 
     def handle_data(self, data):
-        self.tokens.append((self._off(), "skip" if self.depth else "data", data))
+        self.tokens.append((self._off(), "skip" if (self.depth or self.held) else "data", data))
 
     def handle_comment(self, data):
         self.tokens.append((self._off(), "tag", None))
@@ -65832,7 +68371,12 @@ def flush_wanted_translations(exc=None):
     lang = getattr(g, "_lang", None)
     if not lang or lang == "en":
         return
-    seen = request.path[:200] if request else None
+    if g.pop("_wanted_ours_only", False):
+        ours = template_sentences()
+        wanted = [key for key in wanted if key in ours]
+        if not wanted:
+            return
+    seen = where_seen() if request else None
     stamp = datetime.now(timezone.utc).isoformat()
     rows = [(key, lang, seen, stamp) for key in dict.fromkeys(wanted)]
     note_wanted_translations(rows)
@@ -65921,11 +68465,15 @@ def _translated_values(lang, table, remembered):
     return values
 
 
-def translate_page(html_text, lang):
+def translate_page(html_text, lang, ours_only=False):
     """One rendered page, with every sentence there is a translation for.
 
     Returns the page unchanged when there is nothing to do, so the caller can
     leave the response body alone rather than setting it to itself.
+
+    ours_only: a guest's own page. It is translated exactly the same, but of
+    what is missing only the house's own words are written down -- see
+    is_a_guests_own_page.
     """
     if lang not in translations.TABLES:
         return html_text
@@ -65972,10 +68520,174 @@ def translate_page(html_text, lang):
             if pending is None:
                 pending = g._wanted_translations = []
             pending.extend(missing)
+            if ours_only:
+                # Narrowed when it is written, not here: reading the template
+                # files costs a third of a second the first time, and that is
+                # not the guest's to wait for.
+                g._wanted_ours_only = True
     if not changed:
         return html_text
     pieces.append(html_text[last:])
     return "".join(pieces)
+
+
+# ---------------------------------------------------------------------------
+# A guest's own pages: only the house's words are written down.
+#
+# The wanted list is sent to a model on the footing that it only ever holds
+# sentences already printed on public pages for anybody to read. A guest's own
+# pages break that. /book/manage/<token> prints the special requests the guest
+# typed, so a French reader of "my husband has a severe nut allergy please"
+# filed that sentence as wanting French, the job sent it to Anthropic, and the
+# answer was kept for good -- under a privacy notice saying Anthropic is sent
+# nothing about a guest's health, and that a dietary note is deleted once the
+# booking is over. Found 23 Oct 2026; nothing errored.
+#
+# WHY NOT translate="no" ON THE TEMPLATES. Those pages arrive whole in
+# handovers, so markup around each guest-written field would survive exactly
+# one -- the reason serve_our_own_photographs works on the response. This
+# needs nothing from the templates. On a guest's own page a sentence is
+# written down only if it is OURS: it stands, word for word, as a run of text
+# in one of our template files. Anything a guest wrote, and anything filled in
+# from a record, is not in a template, so it is never filed -- whichever field
+# it arrives through, including fields that do not exist yet.
+#
+# The page is still translated from everything the house already has. Only
+# the note of what is missing is narrowed, and the cost is small: a sentence
+# with a name or a date in the middle of it waits until it is seen somewhere
+# that is not one person's page.
+# ---------------------------------------------------------------------------
+
+# The keys a guest's own page is opened with: /book/manage/<manage_token>,
+# /my/<token>, /stay/<share_token>, /door/<door_token>, and the Stripe return
+# pages' ?session_id=.
+_A_GUESTS_KEY = re.compile(r"token|session_id", re.I)
+
+
+def is_a_guests_own_page():
+    """Whether the page being answered is about one particular guest.
+
+    Read from the request, never from the page, so it holds whatever the
+    template looks like this week. Any one of these is enough:
+
+      - the address carries a guest's key, in the route or the query. The
+        route lives in app.py, so a token page written tomorrow is covered
+        the day it is written;
+      - it answers a form, and what comes back is about what was sent;
+      - the reader has been recognised as a guest (remember_guest), which
+        puts their name on pages that are otherwise anybody's.
+
+    Not the robots meta, tempting as it is: every page is noindex until the
+    site goes live, and this would have stopped the whole site being filed.
+    """
+    if not has_request_context():
+        return False
+    if request.method not in ("GET", "HEAD"):
+        return True
+    if any(_A_GUESTS_KEY.search(k) for k in (request.view_args or {})):
+        return True
+    if any(_A_GUESTS_KEY.search(k) for k in request.args):
+        return True
+    return bool(session.get("guest_email"))
+
+
+def address_is_a_guests_page(path):
+    """The same test for a stored address -- page_translations.seen_on."""
+    if not path:
+        return False
+    try:
+        _endpoint, args = app.url_map.bind("localhost").match(path, method="GET")
+    except Exception:
+        return False
+    return any(_A_GUESTS_KEY.search(k) for k in args)
+
+
+# Jinja's own syntax, comments and tags: everything in a template source that
+# is not a run of the words it prints.
+_NOT_TEMPLATE_TEXT = re.compile(
+    r"\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\}|<!--.*?-->|<[^>]*>", re.S)
+# The words inside t("...") are ours too: a string the table has no entry
+# for is printed in English and is as much wanted as any other.
+_T_CALL = re.compile(r"""\bt\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')""")
+_TEMPLATE_SENTENCES = None
+
+
+def template_sentences():
+    """Every run of text our templates print, in the form a page key takes.
+
+    Read from the template files once per process. They cannot change inside
+    a running process, and a handover is a deploy, which restarts it -- so the
+    set is never a handover behind, which a kept list would be by Friday.
+    """
+    global _TEMPLATE_SENTENCES
+    if _TEMPLATE_SENTENCES is not None:
+        return _TEMPLATE_SENTENCES
+    found = set()
+    env = app.jinja_env
+    for name in env.list_templates():
+        try:
+            source = env.loader.get_source(env, name)[0]
+        except Exception:
+            continue
+        for piece in _NOT_TEMPLATE_TEXT.split(source):
+            key = translation_key(html_unescape(piece))
+            if key:
+                found.add(key)
+        for double, single in _T_CALL.findall(source):
+            key = translation_key(double or single)
+            if key:
+                found.add(key)
+    _TEMPLATE_SENTENCES = frozenset(found)
+    return _TEMPLATE_SENTENCES
+
+
+def where_seen():
+    """The address to note a sentence against, without a guest's key in it.
+
+    seen_on is kept for as long as the sentence is, and /book/manage/<token>
+    is a door into one guest's booking. The route's own pattern says just as
+    much about where the sentence was."""
+    rule = request.url_rule
+    if rule is not None and any(_A_GUESTS_KEY.search(k)
+                                for k in (request.view_args or {})):
+        return rule.rule[:200]
+    return request.path[:200]
+
+
+def purge_guest_page_translations(conn):
+    """Delete what was written down off a guest's own page and is not ours.
+
+    For the rows filed before is_a_guests_own_page existed, and for any filed
+    by a process still running the old code during a deploy. Every status
+    goes, 'approved' included: a guest's dietary note does not become the
+    house's to keep because somebody approved its French, and a house
+    sentence deleted here is simply filed again the next time it is seen on
+    a page that is nobody's in particular.
+
+    Called by the translation job before it sends anything, and by the daily
+    retention pass, so it happens whether or not the job is switched on.
+    """
+    places = [r["seen_on"] for r in conn.execute(
+        "SELECT DISTINCT seen_on FROM page_translations WHERE seen_on IS NOT NULL")]
+    ours = None
+    doomed = []
+    for place in places:
+        if not address_is_a_guests_page(place):
+            continue
+        if ours is None:
+            ours = template_sentences()
+        doomed.extend(
+            (r["id"],) for r in conn.execute(
+                "SELECT id, source_text FROM page_translations WHERE seen_on = ?",
+                (place,))
+            if r["source_text"] not in ours)
+    if not doomed:
+        return 0
+    conn.executemany("DELETE FROM page_translations WHERE id = ?", doomed)
+    conn.commit()
+    # Or a deleted translation goes on being served until the cache runs out.
+    translation_memory(force=True)
+    return len(doomed)
 
 
 # The public pages carry `<body class="g...">` and the staff app carries
@@ -66008,7 +68720,7 @@ def translate_public_page(response):
     if _PUBLIC_BODY not in raw:
         return response
     body = raw.decode("utf-8", "replace")
-    done = translate_page(body, lang)
+    done = translate_page(body, lang, ours_only=is_a_guests_own_page())
     if done != body:
         response.set_data(done)
     return response
@@ -67090,6 +69802,73 @@ def cancel_booking_extra_line(line_id):
     return redirect(request.referrer or url_for("admin_bookings"))
 
 
+# The three registers, one per kind of stay and field for field the same: the
+# house's own room bookings, Booking.com's stays, and atelier places. What each
+# is keyed by, so one insert serves all three and a fiche is the same fiche
+# whichever way the guest came and whoever filled it in.
+POLICE_REGISTERS = {
+    "booking": ("police_register", "booking_id"),
+    "channel": ("channel_police_register", "ota_reservation_id"),
+    "workshop": ("workshop_police_register", "workshop_booking_id"),
+}
+
+
+def insert_police_fiche(conn, kind, stay_id, fiche):
+    """Write one fiche to the register for this kind of stay. The caller commits.
+
+    `fiche` is police_fiche_fields' dict, or the online check-in's, which has
+    the same keys; recorded_by_user_id is None when the guest filled it in.
+    """
+    table, column = POLICE_REGISTERS[kind]
+    conn.execute(
+        f"""INSERT INTO {table} ({column}, surname, first_names, born_on, born_at,
+               nationality, home_address, phone, email, children_under_15,
+               recorded_at, recorded_by_user_id, signature, signature_kind, signed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (stay_id, fiche["surname"], fiche["first_names"], fiche.get("born_on"),
+         fiche.get("born_at"), fiche["nationality"], fiche.get("home_address"),
+         fiche.get("phone"), fiche.get("email"),
+         int(fiche.get("children_under_15") or 0),
+         fiche.get("recorded_at") or datetime.now(timezone.utc).isoformat(),
+         fiche.get("recorded_by_user_id"), fiche.get("signature"),
+         fiche.get("signature_kind"), fiche.get("signed_at")))
+
+
+# A drawn signature arrives as a PNG data URL from the signature pad. Capped:
+# a signature is a few kilobytes, and an unbounded field on a public form is
+# somewhere to park anything.
+SIGNATURE_PREFIX = "data:image/png;base64,"
+SIGNATURE_MAX_CHARS = 200_000
+
+
+def read_signature(drawn, typed, name):
+    """(signature, kind, problem) from a signature pad and its typed fallback.
+
+    Drawn wins: a PNG that is really a PNG and not too large. Without a drawing
+    -- no script, or a screen nobody could draw on -- the guest types their
+    full name, which must be the name on the fiche: a simple electronic
+    signature either way. (None, None, None) when neither was given.
+    """
+    drawn = (drawn or "").strip()
+    typed = " ".join((typed or "").split())[:200]
+    if drawn:
+        if not drawn.startswith(SIGNATURE_PREFIX) or len(drawn) > SIGNATURE_MAX_CHARS:
+            return None, None, "That signature could not be read; please sign again."
+        try:
+            raw = base64.b64decode(drawn[len(SIGNATURE_PREFIX):], validate=True)
+        except (ValueError, binascii.Error):
+            return None, None, "That signature could not be read; please sign again."
+        if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+            return None, None, "That signature could not be read; please sign again."
+        return drawn, "drawn", None
+    if typed:
+        if typed.casefold() != " ".join((name or "").split()).casefold():
+            return None, None, ("To sign by typing, type your full name exactly as it is "
+                                "written above.")
+        return typed, "typed", None
+    return None, None, None
+
+
 def police_fiche_fields(form):
     """One fiche from the register form, read and checked: (fields, problem).
 
@@ -67112,8 +69891,13 @@ def police_fiche_fields(form):
     # than an entry with one field empty.
     phone = form.get("phone", "").strip()[:40]
     email = form.get("email", "").strip()[:200]
+    # R. 814-2: a child under fifteen may go on the fiche of the adult with
+    # them. A number, so a family of four is two fiches and not four.
+    children_raw = (form.get("children_under_15", "") or "").strip()
     if not surname or not first_names or not nationality:
         return None, "A surname, first names and nationality are what the register asks for."
+    if children_raw and not (children_raw.isdigit() and int(children_raw) <= 20):
+        return None, "The number of children under 15 could not be read."
     born_on = parse_date(born_on_raw) if born_on_raw else None
     if born_on_raw and not born_on:
         return None, "That date of birth could not be read."
@@ -67123,6 +69907,7 @@ def police_fiche_fields(form):
             "born_on": born_on.isoformat() if born_on else None, "born_at": born_at or None,
             "nationality": nationality, "home_address": home_address or None,
             "phone": phone or None, "email": email or None,
+            "children_under_15": int(children_raw or 0),
             "recorded_at": datetime.now(timezone.utc).isoformat(),
             "recorded_by_user_id": current_user()["id"] if current_user() else None}, None
 
@@ -67142,15 +69927,7 @@ def add_police_fiche(booking_id):
         flash(problem, "error")
         return redirect(url_for("police_register_page"))
 
-    conn.execute(
-        """INSERT INTO police_register (booking_id, surname, first_names, born_on,
-           born_at, nationality, home_address, phone, email,
-           recorded_at, recorded_by_user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (booking_id, fiche["surname"], fiche["first_names"], fiche["born_on"],
-         fiche["born_at"], fiche["nationality"], fiche["home_address"],
-         fiche["phone"], fiche["email"],
-         fiche["recorded_at"], fiche["recorded_by_user_id"]))
+    insert_police_fiche(conn, "booking", booking_id, fiche)
     # The name is not in the audit line. Who touched the register and when is
     # worth recording; copying a guest's name into a second table that is not
     # purged with the first would be keeping it after the fiche has gone.
@@ -67200,15 +69977,7 @@ def add_channel_police_fiche(reservation_id):
         conn.close()
         flash(problem, "error")
         return redirect(url_for("police_register_page"))
-    conn.execute(
-        """INSERT INTO channel_police_register (ota_reservation_id, surname, first_names,
-               born_on, born_at, nationality, home_address, phone, email,
-               recorded_at, recorded_by_user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (reservation_id, fiche["surname"], fiche["first_names"], fiche["born_on"],
-         fiche["born_at"], fiche["nationality"], fiche["home_address"],
-         fiche["phone"], fiche["email"],
-         fiche["recorded_at"], fiche["recorded_by_user_id"]))
+    insert_police_fiche(conn, "channel", reservation_id, fiche)
     # As for the house's own: the act is recorded, the name is not.
     log_audit(conn, "police_fiche_recorded", target=f"Booking.com {stay['reservation_number']}")
     conn.commit()
@@ -67232,6 +70001,58 @@ def delete_channel_police_fiche(fiche_id):
         abort(404)
     conn.execute("DELETE FROM channel_police_register WHERE id = ?", (fiche_id,))
     log_audit(conn, "police_fiche_removed", target=f"Booking.com {row['reservation_number']}")
+    conn.commit()
+    conn.close()
+    flash("Removed from the register.", "success")
+    return redirect(url_for("police_register_page"))
+
+
+@app.route("/admin/workshops/registrations/<int:registration_id>/register", methods=["POST"])
+@owner_required
+def add_workshop_police_fiche(registration_id):
+    """Record one atelier guest on the police register.
+
+    Every live sitting holds the whole house, so its guests sleep here and the
+    fiche is owed for them exactly as for a room guest. A place that was
+    cancelled, or on a sitting called off, is nobody arriving.
+    """
+    conn = get_db()
+    place = conn.execute(
+        f"""SELECT workshop_bookings.* FROM workshop_bookings
+              JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             WHERE workshop_bookings.id = ? AND workshop_bookings.status = 'confirmed'
+               AND {SESSION_IS_LIVE}""", (registration_id,)).fetchone()
+    if not place:
+        conn.close()
+        abort(404)
+    fiche, problem = police_fiche_fields(request.form)
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return redirect(url_for("police_register_page"))
+    insert_police_fiche(conn, "workshop", registration_id, fiche)
+    log_audit(conn, "police_fiche_recorded", target=place["reference_code"])
+    conn.commit()
+    conn.close()
+    flash("Added to the register.", "success")
+    return redirect(url_for("police_register_page"))
+
+
+@app.route("/admin/register/workshop/<int:fiche_id>/delete", methods=["POST"])
+@owner_required
+def delete_workshop_police_fiche(fiche_id):
+    """Remove an atelier guest's fiche, for the reason one is ever removed."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT workshop_police_register.id, workshop_bookings.reference_code
+             FROM workshop_police_register
+             JOIN workshop_bookings ON workshop_bookings.id = workshop_police_register.workshop_booking_id
+            WHERE workshop_police_register.id = ?""", (fiche_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM workshop_police_register WHERE id = ?", (fiche_id,))
+    log_audit(conn, "police_fiche_removed", target=row["reference_code"])
     conn.commit()
     conn.close()
     flash("Removed from the register.", "success")
@@ -67975,22 +70796,18 @@ def data_request_erase():
     return redirect(url_for("data_requests"))
 
 
-@app.route("/admin/register")
-@owner_required
-def police_register_page():
-    """The register itself, which is the thing that gets asked for.
+def register_rows(conn, start, end):
+    """Every fiche for stays arriving between two days, from all three
+    registers, each marked with its `kind` -- 'booking', 'channel' or
+    'workshop' -- so a row knows which register it is in.
 
     Ordered by arrival, because that is how the question comes: who was
     staying here in the week of such and such.
     """
-    conn = get_db()
-    today = house_today()
-    start = parse_date(request.args.get("from", "")) or (today - timedelta(days=30))
-    end = parse_date(request.args.get("to", "")) or today
-    rows = conn.execute(
+    rows = [dict(r, kind="booking", source="Room") for r in conn.execute(
         """SELECT police_register.*, bookings.reference_code, bookings.arrival_date,
                   bookings.departure_date, rooms.name AS room_name,
-                  users.name AS recorded_by
+                  users.name AS recorded_by, checker.name AS id_checked_by
              FROM police_register
              JOIN bookings ON bookings.id = police_register.booking_id
              LEFT JOIN rooms ON rooms.id = bookings.room_id
@@ -67998,30 +70815,233 @@ def police_register_page():
              -- gendarmerie can ask for, and an entry with nobody's name
              -- against it is one nobody can vouch for.
              LEFT JOIN users ON users.id = police_register.recorded_by_user_id
-            WHERE bookings.arrival_date >= ? AND bookings.arrival_date <= ?
-            ORDER BY bookings.arrival_date, police_register.surname""",
-        (start.isoformat(), end.isoformat())).fetchall()
+             LEFT JOIN users AS checker ON checker.id = police_register.id_checked_by_user_id
+            WHERE bookings.arrival_date >= ? AND bookings.arrival_date <= ?""",
+        (start, end)).fetchall()]
     # The same register, for guests who booked through Booking.com: one list,
     # because the question it answers -- who was staying here that week -- does
     # not care how anybody booked.
-    rows = [dict(r) for r in rows] + [dict(r) for r in conn.execute(
+    rows += [dict(r, kind="channel", source="Booking.com") for r in conn.execute(
         """SELECT channel_police_register.*,
                   ota_reservations.reservation_number AS reference_code,
                   ota_reservations.arrival_date, ota_reservations.departure_date,
-                  rooms.name AS room_name, users.name AS recorded_by
+                  rooms.name AS room_name, users.name AS recorded_by,
+                  checker.name AS id_checked_by
              FROM channel_police_register
              JOIN ota_reservations ON ota_reservations.id = channel_police_register.ota_reservation_id
              LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
              LEFT JOIN users ON users.id = channel_police_register.recorded_by_user_id
+             LEFT JOIN users AS checker ON checker.id = channel_police_register.id_checked_by_user_id
             WHERE ota_reservations.arrival_date >= ? AND ota_reservations.arrival_date <= ?""",
-        (start.isoformat(), end.isoformat())).fetchall()]
+        (start, end)).fetchall()]
+    # And the atelier guests, who sleep here for the sitting: arrived on its
+    # first day, left on its last, in the room they were given if they were.
+    rows += [dict(r, kind="workshop", source="Atelier") for r in conn.execute(
+        """SELECT workshop_police_register.*,
+                  workshop_bookings.reference_code,
+                  workshop_sessions.start_date AS arrival_date,
+                  workshop_sessions.end_date AS departure_date,
+                  COALESCE(rooms.name, workshops.title) AS room_name,
+                  users.name AS recorded_by, checker.name AS id_checked_by
+             FROM workshop_police_register
+             JOIN workshop_bookings ON workshop_bookings.id = workshop_police_register.workshop_booking_id
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+             LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
+             LEFT JOIN users ON users.id = workshop_police_register.recorded_by_user_id
+             LEFT JOIN users AS checker ON checker.id = workshop_police_register.id_checked_by_user_id
+            WHERE workshop_sessions.start_date >= ? AND workshop_sessions.start_date <= ?""",
+        (start, end)).fetchall()]
+    today = house_today().isoformat()
+    for r in rows:
+        r["french"] = is_french_national(r["nationality"])
+        r["arrived"] = (r["arrival_date"] or "9999") <= today
+        # What is still owed on this fiche, in the words the chips use. A
+        # French national's line is not a fiche and needs no signature.
+        r["unsigned"] = not r["french"] and not r["signed_at"]
+        r["id_unseen"] = r["arrived"] and not r["id_checked_at"]
     rows.sort(key=lambda r: (r["arrival_date"] or "", r["surname"] or ""))
+    return rows
+
+
+def register_span(args, today=None):
+    """The from/to of a register view, as ISO days: the last thirty days to
+    the next fortnight unless asked, so tonight's arrivals are on it."""
+    today = today or house_today()
+    start = parse_date(args.get("from", "")) or (today - timedelta(days=30))
+    end = parse_date(args.get("to", "")) or (today + timedelta(days=14))
+    return start.isoformat(), end.isoformat()
+
+
+@app.route("/admin/register")
+@owner_required
+def police_register_page():
+    """The register itself, which is the thing that gets asked for -- and the
+    place it is kept in order: who has signed, whose passport somebody has
+    looked at, and the print-out for the gendarmerie."""
+    conn = get_db()
+    today = house_today()
+    start, end = register_span(request.args, today)
+    rows = register_rows(conn, start, end)
     missing = stays_missing_fiches(conn, today)
     conn.close()
+    lv = list_view(
+        rows, request.args,
+        search=["surname", "first_names", "nationality", "reference_code", "room_name"],
+        search_hint="A name, a nationality, a reference or a room",
+        facets=[
+            facet("todo", "Still to do", lambda r: (
+                "Not signed" if r["unsigned"] else
+                ("Passport not seen" if r["id_unseen"] else None)),
+                  order=["Not signed", "Passport not seen"]),
+            facet("who", "Fiche", lambda r: "French national" if r["french"] else "Fiche de police",
+                  order=["Fiche de police", "French national"]),
+            facet("source", "Booked", lambda r: r["source"],
+                  order=["Room", "Booking.com", "Atelier"]),
+        ],
+        sorts=[
+            sort_option("arrival", "By arrival", lambda r: (r["arrival_date"] or "",
+                                                            r["surname"] or "")),
+            sort_option("name", "By surname", lambda r: (r["surname"] or "").lower()),
+        ],
+        default_sort="arrival",
+    )
+    summary = {"cells": [
+        overview_cell("On the register", len(rows), hint="for these dates"),
+        overview_cell("Fiches de police", sum(1 for r in rows if not r["french"])),
+        overview_cell("Not signed", sum(1 for r in rows if r["unsigned"]),
+                      alert=any(r["unsigned"] and r["arrived"] for r in rows),
+                      hint="R. 814-1: signed by the guest on arrival"),
+        overview_cell("Passport not seen", sum(1 for r in rows if r["id_unseen"]),
+                      alert=any(r["id_unseen"] for r in rows),
+                      hint="looked at, never copied"),
+        overview_cell("Waiting to be filled in", sum(x["outstanding"] for x in missing),
+                      alert=bool(missing), hint="people in stays that have begun"),
+    ]}
     return render_template(
-        "police_register.html", rows=rows, missing=missing,
-        start=start.isoformat(), end=end.isoformat(),
-        keep_months=POLICE_REGISTER_KEEP_MONTHS)
+        "police_register.html", rows=lv["rows"], lv=lv, missing=missing, summary=summary,
+        start=start, end=end, keep_months=POLICE_REGISTER_KEEP_MONTHS)
+
+
+def register_fiche(conn, kind, fiche_id):
+    """One fiche from any register, with its stay's reference and dates, or
+    None. `kind` is checked against POLICE_REGISTERS: it is part of a URL."""
+    if kind not in POLICE_REGISTERS:
+        return None
+    table, _column = POLICE_REGISTERS[kind]
+    row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (fiche_id,)).fetchone()
+    if not row:
+        return None
+    # The stay's own dates and reference, read the way register_rows reads
+    # them, over a span wide enough to hold any stay.
+    found = next((r for r in register_rows(conn, "0000-01-01", "9999-12-31")
+                  if r["kind"] == kind and r["id"] == fiche_id), None)
+    return found
+
+
+@app.route("/admin/register/<kind>/<int:fiche_id>/passport-seen", methods=["POST"])
+@owner_required
+def register_passport_seen(kind, fiche_id):
+    """Somebody at the house has looked at this guest's passport or identity
+    card and it matches the fiche. Who and when -- and never a copy: the CNIL
+    is plain that a hotel may ask to see it and may not copy or scan it."""
+    conn = get_db()
+    fiche = register_fiche(conn, kind, fiche_id)
+    if not fiche:
+        conn.close()
+        abort(404)
+    table, _column = POLICE_REGISTERS[kind]
+    me = current_user()
+    conn.execute(f"UPDATE {table} SET id_checked_at = ?, id_checked_by_user_id = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), me["id"] if me else None, fiche_id))
+    log_audit(conn, "police_fiche_id_seen", target=fiche["reference_code"])
+    conn.commit()
+    conn.close()
+    flash("Noted: the passport was seen. Nothing of it is kept.", "success")
+    return redirect(request.form.get("back") or url_for("police_register_page"))
+
+
+@app.route("/admin/register/<kind>/<int:fiche_id>/sign", methods=["GET", "POST"])
+@owner_required
+def register_sign_at_desk(kind, fiche_id):
+    """The guest signs their fiche at the desk, on the house's screen: for a
+    fiche the desk typed in, or one checked in online without a signature.
+    The page shows the fiche so they sign what they have read."""
+    conn = get_db()
+    fiche = register_fiche(conn, kind, fiche_id)
+    if not fiche:
+        conn.close()
+        abort(404)
+    if request.method == "POST":
+        signature, sig_kind, problem = read_signature(
+            request.form.get("signature"), request.form.get("signed_name"),
+            f"{fiche['first_names']} {fiche['surname']}")
+        if not problem and not signature:
+            problem = "Nothing was signed: sign in the box, or type the full name."
+        if problem:
+            conn.close()
+            flash(problem, "error")
+            return redirect(url_for("register_sign_at_desk", kind=kind, fiche_id=fiche_id))
+        table, _column = POLICE_REGISTERS[kind]
+        conn.execute(f"UPDATE {table} SET signature = ?, signature_kind = ?, signed_at = ? "
+                     "WHERE id = ?", (signature, sig_kind,
+                                     datetime.now(timezone.utc).isoformat(), fiche_id))
+        log_audit(conn, "police_fiche_signed", target=fiche["reference_code"],
+                  via="the desk")
+        conn.commit()
+        conn.close()
+        flash("Signed.", "success")
+        return redirect(url_for("police_register_page"))
+    conn.close()
+    return render_template("register_sign.html", fiche=fiche, kind=kind)
+
+
+@app.route("/admin/register/<kind>/<int:fiche_id>/fiche")
+@owner_required
+def register_fiche_page(kind, fiche_id):
+    """One fiche individuelle de police, laid out to print or to show."""
+    conn = get_db()
+    fiche = register_fiche(conn, kind, fiche_id)
+    conn.close()
+    if not fiche:
+        abort(404)
+    return render_template("register_fiches.html", fiches=[fiche], single=True,
+                           start=None, end=None)
+
+
+@app.route("/admin/register/print")
+@owner_required
+def register_print():
+    """Every fiche de police for a period, to print or to save as a PDF and
+    hand over when the police or gendarmerie ask (R. 814-3). French nationals'
+    lines are left out: they are not fiches, and the request is for fiches."""
+    conn = get_db()
+    start, end = register_span(request.args)
+    fiches = [r for r in register_rows(conn, start, end) if not r["french"]]
+    log_audit(conn, "police_register_printed", details=f"{start} to {end}, {len(fiches)} fiche(s)")
+    conn.commit()
+    conn.close()
+    return render_template("register_fiches.html", fiches=fiches, single=False,
+                           start=start, end=end)
+
+
+@app.route("/admin/register/export.csv")
+@owner_required
+def register_export_csv():
+    """The fiches for a period as a spreadsheet, for an electronic hand-over
+    (R. 814-3 allows it). Fiches only, and the fields the law lists: no
+    signature image, which belongs on the printed fiche."""
+    conn = get_db()
+    start, end = register_span(request.args)
+    fiches = [r for r in register_rows(conn, start, end) if not r["french"]]
+    log_audit(conn, "police_register_exported", details=f"{start} to {end}, {len(fiches)} fiche(s)")
+    conn.commit()
+    conn.close()
+    fields = ["surname", "first_names", "born_on", "born_at", "nationality", "home_address",
+              "phone", "email", "arrival_date", "departure_date", "children_under_15",
+              "signed_at", "id_checked_at", "room_name", "reference_code"]
+    return csv_response(fields, [{k: r.get(k) or "" for k in fields} for r in fiches],
+                        f"fiches_de_police_{start}_{end}.csv")
 
 
 @app.route("/admin/bookings/<int:booking_id>/prepare-arrival", methods=["POST"])
@@ -68315,6 +71335,7 @@ def cancel_booking_admin(booking_id):
         return redirect(booking_return(booking_id))
     log_audit(conn, "booking_cancelled", target=booking["reference_code"],
               details=CANCEL_REASONS.get(why) if why else None)
+    follow_occasion_of(conn, booking_id=booking_id)
     conn.commit()
 
     # Cancelling does NOT refund on its own. House terms are non-refundable,
@@ -69004,6 +72025,7 @@ BOOKING_EDIT_FIELDS = (
     ("guest_name", "guest's name", "person"),
     ("guest_address", "home address", "person"), ("guest_city", "town", "person"),
     ("guest_postcode", "postcode", "person"), ("guest_country", "country", "person"),
+    ("special_occasion", "occasion", "person"),
 )
 
 
@@ -69067,6 +72089,13 @@ def edit_booking(booking_id):
         typed_time = request.form.get("estimated_arrival_time")
         arrival_time = (booking["estimated_arrival_time"] if typed_time is None
                         else (typed_time.strip()[:60] or None))
+        # What they are celebrating, which only the booking form could set: a
+        # guest who rang to say it was her birthday had nowhere to go. Emptied,
+        # the task to prepare for it closes itself.
+        typed_occasion = request.form.get("special_occasion")
+        occasion = (booking["special_occasion"] if typed_occasion is None
+                    else (" ".join(typed_occasion.split())
+                          [:GUEST_DETAIL_LIMITS["special_occasion"]] or None))
         # Somebody who is not staying. Both empty means the guest is the payer,
         # which is almost every booking.
         second_name = request.form.get("second_contact_name", "").strip()[:120]
@@ -69186,7 +72215,7 @@ def edit_booking(booking_id):
             "booked_by_name": booked_by_name or None, "booked_by_email": booked_by_email or None,
             "second_contact_name": second_name or None,
             "second_contact_email": second_email or None,
-            "guest_name": guest_name, **address})
+            "guest_name": guest_name, "special_occasion": occasion, **address})
         if new_room:
             changes.insert(0, f"room {booking['room_name']} → {new_room['name']}")
         conn.execute(
@@ -69195,7 +72224,8 @@ def edit_booking(booking_id):
                source=?, heard_via=?, booked_by_name=?, booked_by_email=?,
                second_contact_name=?, second_contact_email=?,
                guest_email=?, estimated_arrival_time=?, guest_name=?, room_id=?,
-               guest_address=?, guest_city=?, guest_postcode=?, guest_country=? WHERE id=?""",
+               guest_address=?, guest_city=?, guest_postcode=?, guest_country=?,
+               special_occasion=? WHERE id=?""",
             (arrival.isoformat(), departure.isoformat(), party_size, guest_phone or None,
              special_requests or None, new_total, under_18, source, heard_via,
              booked_by_name or None, booked_by_email or None,
@@ -69205,7 +72235,7 @@ def edit_booking(booking_id):
              guest_email or "", arrival_time, guest_name,
              new_room["id"] if new_room else booking["room_id"],
              address["guest_address"], address["guest_city"], address["guest_postcode"],
-             address["guest_country"],
+             address["guest_country"], occasion,
              booking_id),
         )
         stamp_room_total(conn, booking_id, new_room_portion,
@@ -69214,6 +72244,9 @@ def edit_booking(booking_id):
         # The tax used to be recomputed inline right here and the schedule not
         # at all, which is how one of nine cells came to be covered.
         restamp_stay(conn, booking_id)
+        # The occasion's task, if it has one: new words, new dates, a new room
+        # rewrite it, and an occasion emptied closes it.
+        follow_occasion_of(conn, booking_id=booking_id)
         if changes:
             log_audit(conn, "booking_edited", target=booking["reference_code"],
                       details="; ".join(changes))
@@ -69696,27 +72729,16 @@ def confirm_restaurant_booking(reservation_id):
     if not booking:
         conn.close()
         abort(404)
-    # A STANDING INSTRUCTION MEANS THE HOUSE, and the house includes its table.
-    # A stay and an atelier have refused a cautioned guest for a while; a
-    # dinner never asked.
-    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
-    if caution and caution["caution_level"] == "refuse":
-        conn.close()
-        flash(f"Not confirmed: there is a standing instruction not to accept a booking from "
-              f"{caution['name']} ({caution['caution']}) — lift it on their profile if that "
-              "has changed.", "error")
-        return redirect(url_for("admin_restaurant"))
-    cur = conn.execute(
-        "UPDATE restaurant_bookings SET status = 'confirmed', decided_at = ? WHERE id = ? AND status = 'pending'",
-        (datetime.now(timezone.utc).isoformat(), reservation_id),
-    )
-    if cur.rowcount == 0:
+    # The same confirmation a table that confirms itself on payment gets,
+    # letter included (confirm_restaurant_reservation).
+    problem = confirm_restaurant_reservation(conn, booking)
+    if problem == RESTAURANT_NOT_WAITING:
         conn.close()
         abort(404)
-    log_audit(conn, "restaurant_booking_confirmed", target=booking["reference_code"])
-    ensure_guest_profile(conn, booking["guest_name"], booking["guest_email"],
-                         booking["guest_phone"])
-    conn.commit()
+    if problem:
+        conn.close()
+        flash(f"Not confirmed: {problem}.", "error")
+        return redirect(url_for("admin_restaurant"))
 
     confirmed_total = conn.execute(
         "SELECT COALESCE(SUM(party_size), 0) AS t FROM restaurant_bookings WHERE dinner_date = ? AND status = 'confirmed'",
@@ -69727,7 +72749,6 @@ def confirm_restaurant_booking(reservation_id):
     if settings and confirmed_total > settings["capacity"]:
         capacity_note = f" Heads up — confirmed covers for {booking['dinner_date']} now total {confirmed_total}, over the {settings['capacity']}-seat cap."
 
-    send_restaurant_email(conn, booking, "restaurant_confirmed", restaurant_email_context(booking))
     conn.close()
     flash("Reservation confirmed." + capacity_note, "success" if not capacity_note else "error")
     return redirect(url_for("admin_restaurant"))
@@ -69996,6 +73017,30 @@ def admin_restaurant_settings():
                        ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
                     (key, value))
             log_audit(conn, "dining_mode_set", target=mode, details=reopens or None)
+        # Tables confirming themselves. In app_settings beside the dining
+        # switch for the same reason: the booking page words its promise on it.
+        instant = "1" if request.form.get("restaurant_instant") else "0"
+        if instant != ("1" if restaurant_instant_on(conn) else "0"):
+            conn.execute(
+                """INSERT INTO app_settings (key, value) VALUES ('restaurant_instant', ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (instant,))
+            log_audit(conn, "restaurant_instant_set", target="on" if instant == "1" else "off")
+        # The evenings La Table serves, 0 = Monday. In app_settings for the
+        # same reason again: the opening hours on the public pages and the
+        # booking page's date picker read them through `site`. The boxes were
+        # drawn for weeks before anything saved them, so every tick was thrown
+        # away. None ticked is blank, which closes no evening and lets each
+        # page keep its general wording -- see restaurant_open_weekdays.
+        days = ",".join(str(d) for d in sorted(
+            {int(d) for d in request.form.getlist("dining_days") if d.isdigit() and int(d) < 7}))
+        days_row = conn.execute("SELECT value FROM app_settings WHERE key = 'dining_days'").fetchone()
+        if days != ((days_row["value"] if days_row else "") or ""):
+            conn.execute(
+                """INSERT INTO app_settings (key, value) VALUES ('dining_days', ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (days,))
+            log_audit(conn, "dining_days_set",
+                      target=restaurant_open_days_words(int(d) for d in days.split(",") if d)
+                      or "not set")
         log_audit(conn, "restaurant_settings_updated")
         conn.commit()
         conn.close()
@@ -70008,11 +73053,15 @@ def admin_restaurant_settings():
         "SELECT value FROM app_settings WHERE key = 'dining_reopens'").fetchone()
     employees = conn.execute("SELECT * FROM users WHERE role IN ('owner', 'employee') ORDER BY role DESC, name").fetchall()
     rate_overrides = conn.execute("SELECT * FROM restaurant_rate_overrides ORDER BY start_date").fetchall()
+    instant = restaurant_instant_on(conn)
+    open_days = restaurant_open_weekdays(conn)
     conn.close()
     return render_template(
         "admin_restaurant_settings.html", settings=settings, employees=employees, rate_overrides=rate_overrides,
         dining_modes=DINING_MODES, dining_mode=mode_now,
         dining_reopens=(reopens_row["value"] if reopens_row else "") or "",
+        restaurant_instant=instant,
+        dining_days=",".join(str(d) for d in sorted(open_days or ())),
     )
 
 
@@ -71578,6 +74627,15 @@ def join_restaurant_waitlist():
         conn.close()
         flash("Enter a valid date, or leave it blank and we will ask.", "error")
         return redirect(url_for("restaurant_book"))
+    # A place on the waitlist for an evening La Table does not serve is a
+    # promise nothing will ever keep: no table frees up that night, so the
+    # job that writes to the list never does, and the guest waits for nothing.
+    closed = restaurant_closed_evening(conn, parse_date(desired_date)) if desired_date else None
+    if closed:
+        conn.commit()      # keep the rate-limit entry
+        conn.close()
+        flash(closed, "error")
+        return redirect(url_for("restaurant_book"))
 
     party_size = int(party_size_raw) if party_size_raw.isdigit() else None
     conn.execute(
@@ -72672,6 +75730,895 @@ def instructor_page(token):
     return render_template("instructor_sheet.html", data=data)
 
 
+# ---------------------------------------------------------------------------
+# THE RECAP OF AN ATELIER
+#
+# The ateliers are mostly how people come to know the house rather than a
+# teaching business (owner, 22 October 2026), so what a guest takes home
+# matters: the week's photographs, what whoever taught it wrote down for them
+# -- a recipe, a method -- and when they could come back. One letter, after it
+# ends, and three rules shape all of it.
+#
+#   - THE OWNER SENDS IT. It is drafted on the sitting's page once the atelier
+#     is over, and nothing sends it but the owner's button there. Its
+#     automation switch only raises a task saying a draft is waiting.
+#   - IN THE OWNER'S WORDS. It ships with no wording, and a letter with none
+#     cannot be sent (recap_wording). The guest texts shipped with sentences
+#     the app had made up and were switched off for it on 22 October 2026.
+#   - NOBODY'S FACE WITHOUT THEIR YES. A person says who is in each photograph,
+#     never the software (templates/privacy.html), and a picture goes only if
+#     everybody in it has said they are happy to appear. Not asked is not yes.
+#     Asked again whenever a guest opens the letter, so a yes withdrawn later
+#     takes the picture out of the letters the others already have.
+# ---------------------------------------------------------------------------
+
+RECAP_TEMPLATE_KEY = "workshop_recap"
+RECAP_REMINDER_SWITCH = "automation_atelier_recap_reminder_enabled"
+# A letter of forty photographs is one nobody reaches the end of, and some
+# mail apps cut a long one off.
+RECAP_MOST_PHOTOS = 12
+RECAP_NEXT_DATES = 3
+# How long after an atelier its reminder stays on the task list.
+RECAP_REMIND_DAYS = 30
+RECAP_NOTES_MAX = 20000
+RECAP_PEOPLE = {
+    "nobody": "Nobody is in it",
+    "named": "Only the people ticked",
+    "other": "Somebody not on this sitting, or not ticked here",
+}
+RECAP_ALREADY = "already sent"
+
+
+def recap_row(conn, session_id, *, make=False):
+    """The sitting's recap row, made -- with its private link -- when asked.
+    With the names of whoever sent it and whoever set it aside."""
+    def read():
+        return conn.execute(
+            """SELECT atelier_recaps.*, sender.name AS sent_by_name,
+                      aside.name AS set_aside_by_name
+                 FROM atelier_recaps
+                 LEFT JOIN users sender ON sender.id = atelier_recaps.sent_by_user_id
+                 LEFT JOIN users aside ON aside.id = atelier_recaps.set_aside_by_user_id
+                WHERE atelier_recaps.session_id = ?""", (session_id,)).fetchone()
+    row = read()
+    if row or not make:
+        return row
+    conn.execute(
+        "INSERT OR IGNORE INTO atelier_recaps (session_id, share_token, created_at) "
+        "VALUES (?, ?, ?)",
+        (session_id, secrets.token_urlsafe(24), datetime.now(timezone.utc).isoformat()))
+    return read()
+
+
+def recap_wording(conn):
+    """(subject, body) as the owner wrote the recap, or None.
+
+    None while either is blank, and while the wording is something the send
+    would refuse. Every other letter falls back to its shipped wording then;
+    this one shipped with none, so there is nothing to fall back to, and no
+    wording means no letter.
+    """
+    row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?",
+                       (RECAP_TEMPLATE_KEY,)).fetchone()
+    if not row:
+        return None
+    subject, body = (row["subject"] or "").strip(), (row["body"] or "").strip()
+    if not subject or not body or wording_problems(RECAP_TEMPLATE_KEY, subject, body):
+        return None
+    return subject, body
+
+
+def recap_session(conn, session_id):
+    return conn.execute(
+        """SELECT ws.*, w.title, w.instructor_name, w.price_per_person,
+                  w.active AS workshop_active
+             FROM workshop_sessions ws JOIN workshops w ON w.id = ws.workshop_id
+            WHERE ws.id = ?""", (session_id,)).fetchone()
+
+
+def recap_participants(conn, session_id):
+    """Everybody the recap is for: the confirmed places, never one cancelled or
+    declined, each with their answer about appearing in photographs.
+
+    The answer is read off the guest's PROFILE, as photo_declines reads it: it
+    belongs to a person and holds across every stay. An atelier place is
+    linked to a profile by its address and nothing else. It is the lead's
+    answer alone -- the others on a place of two have none on file, and the
+    page says so beside the tick.
+
+    A "no" to being quoted from their feedback (publish_consent) counts
+    against the photographs as well: somebody who asked for their words not
+    to be shown has not said yes to their face.
+    """
+    rows = conn.execute(
+        """SELECT * FROM workshop_bookings
+            WHERE session_id = ? AND status = 'confirmed'
+            ORDER BY guest_name COLLATE NOCASE, id""", (session_id,)).fetchall()
+    if not rows:
+        return []
+    ids = [r["id"] for r in rows]
+    marks = ",".join("?" * len(ids))
+    party = {}
+    for g in conn.execute(
+            f"""SELECT workshop_booking_id, guest_name FROM workshop_booking_guests
+                 WHERE workshop_booking_id IN ({marks}) ORDER BY is_lead DESC, id""", ids):
+        party.setdefault(g["workshop_booking_id"], []).append(g["guest_name"])
+    no_quote = {r["workshop_booking_id"] for r in conn.execute(
+        f"""SELECT workshop_booking_id FROM workshop_feedback
+             WHERE workshop_booking_id IN ({marks}) AND publish_consent = 0""", ids)}
+    out = []
+    for r in rows:
+        email = (r["guest_email"] or "").strip()
+        profile_id = guest_for_contact(conn, address=email) if "@" in email else None
+        profile = (conn.execute("SELECT photo_consent, photo_consent_at FROM guests "
+                                "WHERE id = ?", (profile_id,)).fetchone()
+                   if profile_id else None)
+        answer = (profile["photo_consent"] if profile else None) or "unknown"
+        if answer not in PHOTO_CONSENT:
+            answer = "unknown"
+        if answer == "no":
+            why = "would rather not appear"
+        elif r["id"] in no_quote:
+            why = "said no to being quoted from their feedback"
+        elif answer != "yes":
+            why = "has not been asked about photographs"
+        else:
+            why = None
+        out.append({
+            "id": r["id"], "row": r, "label": r["guest_name"], "email": email,
+            "with": [n for n in party.get(r["id"], []) if n and n != r["guest_name"]],
+            "profile_id": profile_id, "answer": answer,
+            "answer_label": PHOTO_CONSENT[answer],
+            "answered_at": profile["photo_consent_at"] if profile else None,
+            "no_quote": r["id"] in no_quote, "cleared": why is None, "why": why,
+        })
+    return out
+
+
+def recap_photo_candidates(conn, session):
+    """Every photograph that could be from this sitting, wherever it came in.
+
+    Placed by the day it was taken, off the camera's own clock -- set to the
+    house's time, see photo_taken_on -- from the first day to the last. One
+    with no such day is placed by the day it ARRIVED, which for a card read at
+    the end of the week is still the week. Three ways in, one list: the tray,
+    the photo page's posts and the camera roll. A frame that went from the
+    tray to a post is the same file, and is listed once.
+    """
+    first = parse_date(session["start_date"])
+    last = parse_date(session["end_date"]) or first
+    if not first:
+        return []
+    lo, hi = first.isoformat(), last.isoformat()
+    since, until = house_day_window(first, last)
+    found = {}
+
+    def keep(source, source_id, filename, day, folder, saw_people=None):
+        if not filename or not day or not (first <= day <= last) or filename in found:
+            return
+        if not os.path.exists(os.path.join(folder, filename)):
+            return
+        found[filename] = {"source": source, "source_id": source_id, "filename": filename,
+                           "key": f"{source}:{source_id}", "taken": day, "folder": folder,
+                           "saw_people": saw_people}
+
+    for r in conn.execute(
+            """SELECT id, filename, taken_on, arrived_at FROM photo_inbox
+                WHERE dismissed = 0
+                  AND (taken_on BETWEEN ? AND ?
+                       OR (taken_on IS NULL AND arrived_at >= ? AND arrived_at < ?))""",
+            (lo, hi, since, until)):
+        keep("tray", r["id"], r["filename"],
+             parse_date(r["taken_on"]) if r["taken_on"] else house_date(r["arrived_at"]),
+             UPLOAD_DIR)
+    for r in conn.execute(
+            """SELECT id, image_filename, taken_on, created_at FROM social_posts
+                WHERE COALESCE(image_filename, '') != ''
+                  AND (taken_on BETWEEN ? AND ?
+                       OR (taken_on IS NULL AND created_at >= ? AND created_at < ?))""",
+            (lo, hi, since, until)):
+        keep("post", r["id"], r["image_filename"],
+             parse_date(r["taken_on"]) if r["taken_on"] else house_date(r["created_at"]),
+             UPLOAD_DIR)
+    # The camera roll's own judgement of whether there is a person in a frame
+    # is shown beside it, and decides nothing: a person says who is in it.
+    for r in conn.execute(
+            """SELECT id, filename, taken_at, created_at, has_people FROM media_intake
+                WHERE kind = 'photo' AND status != 'rejected'
+                  AND COALESCE(taken_at, created_at) >= ?
+                  AND COALESCE(taken_at, created_at) < ?""", (since, until)):
+        keep("camera", r["id"], r["filename"], house_date(r["taken_at"] or r["created_at"]),
+             ROOM_PHOTO_DIR, bool(r["has_people"]))
+    return sorted(found.values(), key=lambda p: (p["taken"], p["filename"]))
+
+
+def recap_photo_verdict(photo):
+    """(goes, why not) for one photograph -- the one answer, asked by the page,
+    the letter, and the link a guest opens the picture through."""
+    if not photo["chosen"]:
+        return False, "you left it out"
+    if photo["people"] is None:
+        return False, "nobody has said who is in it"
+    if photo["people"] == "other":
+        return False, ("somebody in it is not on this sitting or not ticked, and the "
+                       "house has no answer from them")
+    if photo["people"] == "named":
+        if photo["gone"]:
+            return False, "somebody ticked as in it no longer has a place on this sitting"
+        if not photo["who"]:
+            return False, "it is marked as having people in it, and nobody is ticked"
+        refusing = [p for p in photo["who"] if not p["cleared"]]
+        if refusing:
+            return False, "; ".join(f"{p['label']} {p['why']}" for p in refusing)
+    return True, None
+
+
+def recap_photos(conn, session, participants):
+    """The week's photographs, each with what was decided about it and
+    whether it goes."""
+    decided = {(r["source"], r["source_id"]): r for r in conn.execute(
+        """SELECT atelier_recap_photos.*, decider.name AS decided_by_name
+             FROM atelier_recap_photos
+             LEFT JOIN users decider ON decider.id = atelier_recap_photos.decided_by_user_id
+            WHERE atelier_recap_photos.session_id = ?""", (session["id"],))}
+    ticked = {}
+    for r in conn.execute(
+            """SELECT atelier_recap_photo_people.photo_id,
+                      atelier_recap_photo_people.workshop_booking_id
+                 FROM atelier_recap_photo_people
+                 JOIN atelier_recap_photos
+                   ON atelier_recap_photos.id = atelier_recap_photo_people.photo_id
+                WHERE atelier_recap_photos.session_id = ?""", (session["id"],)):
+        ticked.setdefault(r["photo_id"], []).append(r["workshop_booking_id"])
+    by_id = {p["id"]: p for p in participants}
+    out = []
+    for c in recap_photo_candidates(conn, session):
+        d = decided.get((c["source"], c["source_id"]))
+        ids = ticked.get(d["id"], []) if d else []
+        photo = dict(c, decision_id=d["id"] if d else None,
+                     decided_by=d["decided_by_name"] if d else None,
+                     decided_at=d["decided_at"] if d else None,
+                     chosen=bool(d["chosen"]) if d else True,
+                     people=d["people"] if d else None,
+                     who=[by_id[i] for i in ids if i in by_id],
+                     gone=[i for i in ids if i not in by_id], ticked=set(ids))
+        photo["goes"], photo["why"] = recap_photo_verdict(photo)
+        out.append(photo)
+    return out
+
+
+def recap_next_dates(conn, session, today):
+    """The next dates of the same atelier a guest can still take a place on,
+    by the rule every public page uses (public_sittings), each with its link."""
+    if not session["workshop_active"]:
+        return []
+    out = []
+    for s in public_sittings(conn, session["workshop_id"], today):
+        if s["id"] == session["id"]:
+            continue
+        out.append({
+            "title": session["title"],
+            "when": format_date_range(s["start_date"], s["end_date"] or s["start_date"]),
+            "price": (f"{euro(session['price_per_person'])} per person"
+                      if session["price_per_person"] else ""),
+            "url": external_url("workshop_register", session_id=s["id"]),
+            "photo": None,
+        })
+        if len(out) >= RECAP_NEXT_DATES:
+            break
+    return out
+
+
+def recap_refusal(member, held_back):
+    """Why this guest is not to be sent the recap now, or None. Asked by the
+    page, and again from the database at the moment of sending."""
+    row = member["row"]
+    if row["status"] != "confirmed":
+        return "no longer has a place on this sitting"
+    if row["recap_sent_at"]:
+        return f"{RECAP_ALREADY} on {format_date_human(house_date_iso(row['recap_sent_at']))}"
+    email = (row["guest_email"] or "").strip()
+    if "@" not in email:
+        return GROUP_NO_EMAIL
+    if row["do_not_email"]:
+        return GROUP_DO_NOT_EMAIL
+    if email.lower() in held_back:
+        return GROUP_RESTRICTED
+    return None
+
+
+def recap_plan(conn, participants):
+    """(going, left out): who the recap would go to now, and who not, why.
+
+    One letter per address: two places booked from one inbox are written to
+    once, and the second is stamped with the first."""
+    held_back = restricted_addresses(conn)
+    going, left_out, by_address = [], [], {}
+    for p in participants:
+        why = recap_refusal(p, held_back)
+        if why:
+            left_out.append((p["label"], why))
+            continue
+        address = p["email"].lower()
+        if address in by_address:
+            by_address[address]["also"].append(p)
+            continue
+        entry = dict(p, also=[])
+        by_address[address] = entry
+        going.append(entry)
+    return going, left_out
+
+
+def recap_draft(conn, session_id, today=None):
+    """Everything the sitting's page shows about its recap -- and what the send
+    reads, so what the owner looked at is what goes. None for no such sitting."""
+    today = today or house_today()
+    session = recap_session(conn, session_id)
+    if not session:
+        return None
+    recap = recap_row(conn, session_id)
+    last = parse_date(session["end_date"]) or parse_date(session["start_date"])
+    participants = recap_participants(conn, session_id)
+    photos = recap_photos(conn, session, participants)
+    going = [p for p in photos if p["goes"]]
+    planned, left_out = recap_plan(conn, participants)
+    draft = {
+        "session": session, "recap": recap, "today": today,
+        "over": bool(last and last < today),
+        "drafted_on": (last + timedelta(days=1)) if last else None,
+        "participants": participants, "photos": photos,
+        "in_letter": going[:RECAP_MOST_PHOTOS], "over_limit": going[RECAP_MOST_PHOTOS:],
+        "next_dates": recap_next_dates(conn, session, today),
+        "wording": recap_wording(conn), "going": planned, "left_out": left_out,
+        "had_it": [p for p in participants if p["row"]["recap_sent_at"]],
+    }
+    draft["blocked"] = recap_blocked(draft)
+    return draft
+
+
+def recap_blocked(draft):
+    """Why the recap cannot be sent now, or None. The page leaves the button
+    off on it and the send refuses on it: one answer, asked in both places."""
+    session, recap = draft["session"], draft["recap"]
+    if session["cancelled_at"]:
+        return "This sitting was called off, so there is no recap to send."
+    if not draft["over"]:
+        when = draft["drafted_on"]
+        return ("It is drafted here once the atelier is over"
+                + (f", on {format_date_human(when.isoformat())}." if when else "."))
+    if recap and recap["set_aside_at"]:
+        return "You set this recap aside. Bring it back to send it."
+    if not draft["wording"]:
+        return ("The recap has no wording yet, so it cannot be sent. Write it under "
+                "Email wording, “Workshop: Recap after the atelier”.")
+    if not draft["participants"]:
+        return "Nobody had a confirmed place on this sitting."
+    if not draft["going"]:
+        return "Everybody on this sitting who can be written to has had it."
+    return None
+
+
+def recap_letter_parts(draft, *, for_owner=False):
+    """What the letter carries besides the words -- the same for everybody on
+    the sitting: the pictures, the cards, and the plain-text links to both.
+
+    `for_owner` points the pictures and the file at the house's own copies,
+    for the preview on the sitting's page; the guests' private links answer
+    only once the recap has gone."""
+    session, recap = draft["session"], draft["recap"]
+    token = recap["share_token"] if recap else None
+    photos, links = [], []
+    for p in draft["in_letter"]:
+        if for_owner or not token:
+            src = url_for("uploaded_file", filename=p["filename"])
+        else:
+            src = external_url("atelier_recap_photo", token=token, photo_id=p["decision_id"])
+            links.append(src)
+        photos.append({"src": src,
+                       "alt": f"{session['title']}, {format_date_human(p['taken'].isoformat())}"})
+    file_url = ""
+    if recap and recap["notes_file"]:
+        file_url = (url_for("uploaded_file", filename=recap["notes_file"])
+                    if for_owner or not token
+                    else external_url("atelier_recap_notes", token=token))
+    cards = draft["next_dates"]
+    cards_text = "\n\n".join(
+        "\n".join(x for x in (c["title"], " · ".join(y for y in (c["when"], c["price"]) if y),
+                              c["url"]) if x) for c in cards)
+    return {"photos": photos, "photos_text": "\n".join(links) if links else
+            ("\n".join(p["src"] for p in photos) if photos else ""),
+            "cards": cards, "cards_text": cards_text, "file_url": file_url}
+
+
+def recap_context(draft, row, parts):
+    """The merge tags the recap fills in, for one guest."""
+    session, recap = draft["session"], draft["recap"]
+    return {
+        "guest_name": row["guest_name"],
+        "workshop_title": session["title"],
+        "dates": format_date_range(session["start_date"],
+                                   session["end_date"] or session["start_date"]),
+        "instructor_name": session["instructor_name"] or "",
+        "photos": parts["photos_text"],
+        "instructor_notes": ((recap["notes"] or "").strip() if recap else ""),
+        "notes_file_url": parts["file_url"],
+        "next_dates": parts["cards_text"],
+    }
+
+
+def recap_preview(conn, draft):
+    """The letter as the first guest on the list will get it, for the page:
+    {subject, html, to, unfilled}, or None while there is no wording.
+
+    `unfilled` names the tags the owner's wording uses that come out empty for
+    this sitting -- {instructor_notes} with no notes left -- so a sentence
+    leading into nothing is seen here rather than in somebody's inbox."""
+    if not draft["wording"]:
+        return None
+    who = (draft["going"] or draft["participants"] or [None])[0]
+    row = who["row"] if who else {"guest_name": SAMPLE_MERGE_VALUES["guest_name"]}
+    parts = recap_letter_parts(draft, for_owner=True)
+    context = recap_context(draft, row, parts)
+    subject, body, html = render_email_template(
+        conn, RECAP_TEMPLATE_KEY, context, workshops=parts["cards"] or None,
+        photos=parts["photos"] or None)
+    if not subject:
+        return None
+    used = set(re.findall(r"\{(\w+)\}", " ".join(draft["wording"])))
+    return {"subject": subject, "body": body, "html": html,
+            "to": who["label"] if who else None,
+            "unfilled": sorted(t for t in used if t in context and not str(context[t]).strip())}
+
+
+def send_recap_one(conn, draft, member, parts, *, user_id=None, held_back=None):
+    """Write the recap to one guest: ("sent" | "held" | None, why not).
+
+    The one action the send repeats. Whether they get it is decided HERE, from
+    the database, not trusted from the page: a place cancelled since the page
+    was drawn is not written to, and their stamp is claimed BEFORE the letter
+    goes, so a second press -- or a second tab -- finds it taken and sends
+    nothing. "held" is kept, to go when mail can (Write to guests off, or no
+    provider): stamped all the same, since it will arrive.
+    """
+    held_back = restricted_addresses(conn) if held_back is None else held_back
+    row = conn.execute("SELECT * FROM workshop_bookings WHERE id = ?",
+                       (member["id"],)).fetchone()
+    if not row or row["session_id"] != draft["session"]["id"]:
+        return None, "no longer has a place on this sitting"
+    why = recap_refusal(dict(member, row=row), held_back)
+    if why:
+        if why in (GROUP_NO_EMAIL, GROUP_DO_NOT_EMAIL, GROUP_RESTRICTED):
+            log_workshop_message(conn, row["id"], "Recap", row["guest_email"] or "",
+                                 f"skipped — {why}")
+            conn.commit()
+        return None, why
+    if not recap_wording(conn):
+        return None, "the recap has no wording yet"
+    subject, body, letter = render_email_template(
+        conn, RECAP_TEMPLATE_KEY, recap_context(draft, row, parts),
+        workshops=parts["cards"] or None, photos=parts["photos"] or None)
+    if not subject:
+        return None, "the recap has no wording yet"
+    now = datetime.now(timezone.utc).isoformat()
+    claimed = conn.execute(
+        "UPDATE workshop_bookings SET recap_sent_at = ? "
+        "WHERE id = ? AND recap_sent_at IS NULL AND status = 'confirmed'",
+        (now, row["id"])).rowcount
+    if not claimed:
+        conn.commit()
+        return None, RECAP_ALREADY
+    also = [m["id"] for m in member.get("also", [])]
+    if also:
+        conn.execute(
+            f"UPDATE workshop_bookings SET recap_sent_at = ? WHERE recap_sent_at IS NULL "
+            f"AND id IN ({','.join('?' * len(also))})", (now, *also))
+    # Nothing of ours held open across the network: the mail log is written
+    # by another connection, and would wait on this one.
+    conn.commit()
+    address = row["guest_email"].strip()
+    report = {}
+    sent = send_email(address, subject, body, html=letter, area="workshops",
+                      about=("workshop", row["id"]), template_key=RECAP_TEMPLATE_KEY,
+                      sent_by=user_id, report=report)
+    if not sent and report.get("stopped"):
+        # Refused for good -- an address that bounced -- so it is not theirs
+        # yet, and the page goes on saying it has not gone.
+        conn.execute(
+            f"UPDATE workshop_bookings SET recap_sent_at = NULL WHERE recap_sent_at = ? "
+            f"AND id IN ({','.join('?' * (1 + len(also)))})", (now, row["id"], *also))
+        log_workshop_message(conn, row["id"], subject, address,
+                             "not sent — " + report["why"].rstrip("."))
+        conn.commit()
+        return None, report["why"].rstrip(".")
+    log_workshop_message(conn, row["id"], subject, address, "sent" if sent else "held")
+    conn.commit()
+    return ("sent" if sent else "held"), None
+
+
+def send_recap(conn, session_id, *, expect, user_id=None, today=None):
+    """Send the recap to everybody on the sitting who has not had it.
+
+    The owner's button calls this and nothing else does. (message, category)
+    for the page, or None for no such sitting. Everybody it leaves out is
+    named, through bulk_message, except those who already have it.
+    """
+    draft = recap_draft(conn, session_id, today)
+    if not draft:
+        return None
+    if draft["blocked"]:
+        return draft["blocked"], "error"
+    if str(expect) != str(len(draft["going"])):
+        return (f"The list has changed since you looked: it is {len(draft['going'])} now. "
+                "Check who it goes to and send it again.", "error")
+    draft["recap"] = recap_row(conn, session_id, make=True)
+    conn.commit()
+    parts = recap_letter_parts(draft)
+    held_back = restricted_addresses(conn)
+    sent, held, skipped = 0, 0, []
+    # The ones it will refuse go through the one-guest function as well: that
+    # is where a refusal is decided and written on their history, so the send
+    # to everybody cannot leave somebody out more quietly than one letter would.
+    going_ids = {m["id"] for m in draft["going"]}
+    covered = {a["id"] for m in draft["going"] for a in m["also"]}
+    refused = [dict(p, also=[]) for p in draft["participants"]
+               if p["id"] not in going_ids and p["id"] not in covered
+               and not p["row"]["recap_sent_at"]]
+    for member in draft["going"] + refused:
+        outcome, why = send_recap_one(conn, draft, member, parts, user_id=user_id,
+                                      held_back=held_back)
+        if outcome == "sent":
+            sent += 1
+        elif outcome == "held":
+            held += 1
+        elif not why.startswith(RECAP_ALREADY):
+            skipped.append((member["label"], why))
+    if sent or held:
+        conn.execute(
+            "UPDATE atelier_recaps SET sent_at = COALESCE(sent_at, ?), "
+            "sent_by_user_id = COALESCE(sent_by_user_id, ?) WHERE session_id = ?",
+            (datetime.now(timezone.utc).isoformat(), user_id, session_id))
+    log_audit(conn, "atelier_recap_sent",
+              target=f"{draft['session']['title']}, {draft['session']['start_date']}",
+              details=f"{sent} sent, {held} kept to go, {len(skipped)} not")
+    conn.commit()
+    return bulk_message("Sent", "recap", sent + held, skipped,
+                        detail=(f"{held} kept, to go when mail to guests can" if held else ""))
+
+
+def atelier_recaps_to_approve(conn, today=None):
+    """The recaps drafted and waiting: [{session, waiting, written, due}].
+
+    An atelier over within the last RECAP_REMIND_DAYS, not called off, its
+    recap neither sent nor set aside, with somebody on it still to have it.
+    What the reminder raises a task for; it sends nothing."""
+    today = today or house_today()
+    since = (today - timedelta(days=RECAP_REMIND_DAYS)).isoformat()
+    written = bool(recap_wording(conn))
+    out = []
+    for s in conn.execute(
+            """SELECT ws.*, w.title FROM workshop_sessions ws
+                 JOIN workshops w ON w.id = ws.workshop_id
+                 LEFT JOIN atelier_recaps r ON r.session_id = ws.id
+                WHERE ws.cancelled_at IS NULL
+                  AND COALESCE(ws.end_date, ws.start_date) < ?
+                  AND COALESCE(ws.end_date, ws.start_date) >= ?
+                  AND r.sent_at IS NULL AND r.set_aside_at IS NULL
+                ORDER BY COALESCE(ws.end_date, ws.start_date)""",
+            (today.isoformat(), since)).fetchall():
+        waiting = conn.execute(
+            """SELECT COUNT(*) AS n FROM workshop_bookings
+                WHERE session_id = ? AND status = 'confirmed' AND recap_sent_at IS NULL""",
+            (s["id"],)).fetchone()["n"]
+        if not waiting:
+            continue
+        end = parse_date(s["end_date"]) or parse_date(s["start_date"])
+        out.append({"session": s, "waiting": waiting, "written": written,
+                    "due": (end + timedelta(days=1)).isoformat()})
+    return out
+
+
+def save_recap_notes(conn, session_id, *, text, upload=None, remove_file=False, by=""):
+    """What whoever taught it leaves for the guests: (saved, what to say).
+
+    Written by them from their teaching link, or by the owner on the sitting's
+    page; the same function either way. Shut once the recap has gone -- the
+    letter already carries what was here, and a file changed underneath it
+    would make the letter say one thing and its link another."""
+    recap = recap_row(conn, session_id, make=True)
+    if recap["sent_at"]:
+        return False, ("The recap has already gone, with what was here then, so this "
+                       "cannot be changed now.")
+    text = (text or "").replace("\r\n", "\n").strip()
+    if len(text) > RECAP_NOTES_MAX:
+        return False, (f"That is longer than the {RECAP_NOTES_MAX:,} characters this takes. "
+                       "Put the long part in a file instead.")
+    stored, original = recap["notes_file"], recap["notes_file_name"]
+    if upload is not None and upload.filename:
+        if not allowed_file(upload.filename):
+            return False, ("That kind of file cannot be added. A PDF, a Word document, "
+                           "a picture or a text file can.")
+        data = upload.read()
+        if not data:
+            return False, "That file was empty, so nothing was saved."
+        name = "recapnotes_%s_%s" % (secrets.token_hex(6),
+                                    secure_filename(upload.filename) or "notes")
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        with open(os.path.join(UPLOAD_DIR, name), "wb") as fh:
+            fh.write(data)
+        stored, original = name, upload.filename[:120]
+    elif remove_file:
+        stored, original = None, None
+    if recap["notes_file"] and recap["notes_file"] != stored:
+        # Only ever one of ours, by its name: nothing else is taken off the volume.
+        old = recap["notes_file"]
+        if old.startswith("recapnotes_") and os.path.exists(os.path.join(UPLOAD_DIR, old)):
+            os.remove(os.path.join(UPLOAD_DIR, old))
+    conn.execute(
+        """UPDATE atelier_recaps SET notes = ?, notes_file = ?, notes_file_name = ?,
+                  notes_at = ?, notes_by = ? WHERE session_id = ?""",
+        (text or None, stored, original, datetime.now(timezone.utc).isoformat(),
+         (by or "")[:80] or None, session_id))
+    if not text and not stored:
+        return True, "Saved. There is nothing from the atelier in the recap now."
+    return True, "Saved. It goes in the recap the owner sends after the atelier."
+
+
+def save_recap_photo_decisions(conn, session, form, user_id=None):
+    """Write down, for each photograph on the form, whether it goes and who is
+    in it. Returns how many were saved. A photograph not of this sitting, or a
+    tick for somebody without a confirmed place on it, is not taken."""
+    candidates = {c["key"]: c for c in recap_photo_candidates(conn, session)}
+    confirmed = {r["id"] for r in conn.execute(
+        "SELECT id FROM workshop_bookings WHERE session_id = ? AND status = 'confirmed'",
+        (session["id"],))}
+    now = datetime.now(timezone.utc).isoformat()
+    saved = 0
+    for key in form.getlist("photo"):
+        c = candidates.get(key)
+        if not c:
+            continue
+        people = form.get(f"people-{key}") or None
+        if people not in RECAP_PEOPLE:
+            people = None
+        who = {int(x) for x in form.getlist(f"who-{key}") if str(x).isdigit()} & confirmed
+        # Ticking somebody says there is somebody in it, whether or not the
+        # line above was chosen; and only "only these people" keeps the ticks.
+        if who and people is None:
+            people = "named"
+        if people != "named":
+            who = set()
+        conn.execute(
+            """INSERT INTO atelier_recap_photos (session_id, source, source_id, filename,
+                   chosen, people, decided_at, decided_by_user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(session_id, source, source_id) DO UPDATE SET
+                   chosen = excluded.chosen, people = excluded.people,
+                   filename = excluded.filename, decided_at = excluded.decided_at,
+                   decided_by_user_id = excluded.decided_by_user_id""",
+            (session["id"], c["source"], c["source_id"], c["filename"],
+             1 if form.get(f"chosen-{key}") else 0, people, now, user_id))
+        photo_id = conn.execute(
+            "SELECT id FROM atelier_recap_photos WHERE session_id = ? AND source = ? "
+            "AND source_id = ?", (session["id"], c["source"], c["source_id"])).fetchone()["id"]
+        conn.execute("DELETE FROM atelier_recap_photo_people WHERE photo_id = ?", (photo_id,))
+        for booking_id in sorted(who):
+            conn.execute("INSERT INTO atelier_recap_photo_people (photo_id, "
+                         "workshop_booking_id) VALUES (?, ?)", (photo_id, booking_id))
+        saved += 1
+    return saved
+
+
+def _recap_back(session_id):
+    return redirect(url_for("admin_workshop_session", session_id=session_id) + "#recap")
+
+
+def _my_id():
+    """Who is signed in, by id, or None."""
+    user = current_user()
+    return user["id"] if user else None
+
+
+def _recap_session_or_404(conn, session_id):
+    session = recap_session(conn, session_id)
+    if not session:
+        conn.close()
+        abort(404)
+    return session
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/recap/photos", methods=["POST"])
+@owner_required
+def save_atelier_recap_photos(session_id):
+    """Which of the week's photographs go, and who is in each."""
+    conn = get_db()
+    session = _recap_session_or_404(conn, session_id)
+    saved = save_recap_photo_decisions(conn, session, request.form,
+                                       user_id=_my_id())
+    conn.commit()
+    draft = recap_draft(conn, session_id)
+    conn.close()
+    going = len(draft["in_letter"])
+    flash(f"Saved {saved} photograph{'' if saved == 1 else 's'}. "
+          f"{going} go{'es' if going == 1 else ''} in the recap."
+          + (f" Only the first {RECAP_MOST_PHOTOS} go: leave some out to choose which."
+             if draft["over_limit"] else ""), "success")
+    return _recap_back(session_id)
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/recap/answers", methods=["POST"])
+@owner_required
+def save_atelier_recap_answers(session_id):
+    """Write down what each guest said about appearing in photographs.
+
+    Onto their PROFILE, where every page that publishes a photograph reads it,
+    with the date and how it was asked kept the way the guest's own page keeps
+    it. Most atelier guests have never been asked anywhere else, and this is
+    the page where whoever met them that week is looking at their pictures."""
+    conn = get_db()
+    _recap_session_or_404(conn, session_id)
+    now = datetime.now(timezone.utc).isoformat()
+    changed = []
+    for p in recap_participants(conn, session_id):
+        answer = request.form.get(f"answer-{p['id']}")
+        if answer not in PHOTO_CONSENT or answer == p["answer"]:
+            continue
+        guest_id = p["profile_id"] or ensure_guest_profile(
+            conn, p["row"]["guest_name"], p["email"], p["row"]["guest_phone"])
+        if not guest_id:
+            continue
+        before = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+        conn.execute("UPDATE guests SET photo_consent = ?, photo_consent_at = ? WHERE id = ?",
+                     (answer, now, guest_id))
+        record_profile_changes(conn, before, {"photo_consent": answer},
+                               _my_id(), at=now)
+        record_consent(conn, "photos", PHOTO_CONSENT_GRANTED.get(answer),
+                       "asked at the atelier, written down on its recap",
+                       guest_id=guest_id, email=p["email"], at=now)
+        changed.append(p["label"])
+    conn.commit()
+    conn.close()
+    flash(("Written on their profiles: " + ", ".join(changed) + ".") if changed
+          else "Nothing had changed, so nothing was written.", "success")
+    return _recap_back(session_id)
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/recap/notes", methods=["POST"])
+@owner_required
+def save_atelier_recap_notes(session_id):
+    """The notes, put right by the owner before the recap goes."""
+    conn = get_db()
+    _recap_session_or_404(conn, session_id)
+    user = current_user()
+    ok, message = save_recap_notes(
+        conn, session_id, text=request.form.get("notes", ""),
+        upload=request.files.get("notes_file"),
+        remove_file=bool(request.form.get("remove_file")),
+        by=(user["name"] if user else ""))
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return _recap_back(session_id)
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/recap/send", methods=["POST"])
+@owner_required
+def send_atelier_recap(session_id):
+    """The one way the recap goes: the owner, having looked."""
+    user = current_user()
+    if not user or user["role"] != "owner":
+        abort(403)
+    conn = get_db()
+    _recap_session_or_404(conn, session_id)
+    message, category = send_recap(conn, session_id, expect=request.form.get("expect", ""),
+                                   user_id=_my_id())
+    conn.close()
+    flash(message, category)
+    return _recap_back(session_id)
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/recap/set-aside", methods=["POST"])
+@owner_required
+def set_aside_atelier_recap(session_id):
+    """No recap for this sitting -- or, from the same button, one after all.
+    Kept rather than deleted: the notes and the choices are still there."""
+    conn = get_db()
+    _recap_session_or_404(conn, session_id)
+    recap = recap_row(conn, session_id, make=True)
+    if request.form.get("bring_back"):
+        conn.execute("UPDATE atelier_recaps SET set_aside_at = NULL, "
+                     "set_aside_by_user_id = NULL WHERE session_id = ?", (session_id,))
+        message = "The recap is back, ready to send."
+    elif recap["sent_at"]:
+        message = "It has already gone, so there is nothing to set aside."
+    else:
+        conn.execute("UPDATE atelier_recaps SET set_aside_at = ?, set_aside_by_user_id = ? "
+                     "WHERE session_id = ?",
+                     (datetime.now(timezone.utc).isoformat(), _my_id(),
+                      session_id))
+        message = "Set aside: no recap for this sitting, and no reminder about it."
+    conn.commit()
+    conn.close()
+    flash(message, "success")
+    return _recap_back(session_id)
+
+
+@app.route("/workshops/teaching/<token>/notes", methods=["POST"])
+def instructor_recap_notes(token):
+    """Notes or recipes for the guests, from whoever teaches. Their link is the
+    key, as it is for the page they are on."""
+    conn = get_db()
+    session = conn.execute(
+        """SELECT ws.id, w.instructor_name FROM workshop_sessions ws
+             JOIN workshops w ON w.id = ws.workshop_id
+            WHERE ws.instructor_token = ?""", (token,)).fetchone()
+    if not session:
+        conn.close()
+        abort(404)
+    ok, message = save_recap_notes(
+        conn, session["id"], text=request.form.get("notes", ""),
+        upload=request.files.get("notes_file"),
+        remove_file=bool(request.form.get("remove_file")),
+        by=session["instructor_name"] or "whoever teaches it")
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("instructor_page", token=token) + "#notes")
+
+
+def _recap_by_token(conn, token):
+    """A recap that has gone, by its private link, or None."""
+    return conn.execute("SELECT * FROM atelier_recaps WHERE share_token = ? "
+                        "AND sent_at IS NOT NULL", (token,)).fetchone()
+
+
+@app.route("/workshops/recap/<token>/photo/<int:photo_id>")
+def atelier_recap_photo(token, photo_id):
+    """One photograph from a recap, for the guests it went to.
+
+    No login -- a letter is opened from somebody's inbox -- so the long private
+    link is the key, as it is for a booking. It answers only once the recap has
+    gone, only for a photograph of that sitting, and only while it STILL goes:
+    the verdict is asked again on every open, so somebody who later says they
+    would rather not appear is taken out of letters the others already have.
+    """
+    conn = get_db()
+    recap = _recap_by_token(conn, token)
+    photo = None
+    if recap:
+        session = recap_session(conn, recap["session_id"])
+        photo = next((p for p in recap_photos(conn, session,
+                                              recap_participants(conn, session["id"]))
+                      if p["decision_id"] == photo_id and p["goes"]), None)
+    conn.close()
+    if not photo:
+        abort(404)
+    path = photo_rendition(photo["filename"], "social", source_dir=photo["folder"])
+    if not path:
+        abort(404)
+    response = send_from_directory(os.path.dirname(path), os.path.basename(path))
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    # Short, and private: the answer can change, and a shared cache must not
+    # go on handing out a picture the house has taken down.
+    response.headers["Cache-Control"] = "private, max-age=600"
+    return response
+
+
+@app.route("/workshops/recap/<token>/notes")
+def atelier_recap_notes(token):
+    """The file whoever taught it left for the guests, once the recap has gone."""
+    conn = get_db()
+    recap = _recap_by_token(conn, token)
+    conn.close()
+    if not recap or not recap["notes_file"] or not os.path.exists(
+            os.path.join(UPLOAD_DIR, recap["notes_file"])):
+        abort(404)
+    response = send_from_directory(UPLOAD_DIR, recap["notes_file"],
+                                   download_name=recap["notes_file_name"]
+                                   or recap["notes_file"])
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
+
+
 @app.route("/admin/workshops/<int:workshop_id>/sessions/new", methods=["POST"])
 @owner_required
 def new_workshop_session(workshop_id):
@@ -73297,6 +77244,9 @@ def admin_workshop_session(session_id):
                      for r in rows.get(programme["id"], []) if r["session"]["id"] == session_id), None)
     registered_ever = conn.execute(
         "SELECT COUNT(*) AS c FROM workshop_bookings WHERE session_id = ?", (session_id,)).fetchone()["c"]
+    # The recap, drafted once it is over: the same draft the send reads.
+    recap = recap_draft(conn, session_id, today)
+    recap_letter = recap_preview(conn, recap) if recap and recap["over"] else None
     conn.close()
     order = {"pending": 0, "confirmed": 1}
     live.sort(key=lambda r: (order.get(r["status"], 2), (r["who"] or "").lower()))
@@ -73320,7 +77270,10 @@ def admin_workshop_session(session_id):
     gone = [r for r in regs if not r["live"]]
     return render_template("admin_workshop_session.html", session=session, live=live,
                            gone=gone, figures=figures, rooms=rooms, today=today,
-                           standing=standing, registered_ever=registered_ever)
+                           standing=standing, registered_ever=registered_ever,
+                           recap=recap, recap_letter=recap_letter,
+                           recap_people=RECAP_PEOPLE, photo_answers=PHOTO_CONSENT,
+                           recap_most=RECAP_MOST_PHOTOS)
 
 
 def workshop_register_view(conn, args, today=None):
@@ -74194,6 +78147,8 @@ def edit_workshop_registration(registration_id):
     if changed:
         log_audit(conn, "workshop_registration_edited", target=reg["reference_code"],
                   details=", ".join(changed))
+    # The occasion's task follows the words: rewritten, or closed if emptied.
+    follow_occasion_of(conn, workshop_booking_id=registration_id)
     conn.commit()
     conn.close()
     flash(f"{reg['reference_code']} saved." if changed else "Nothing had changed.", "success")
@@ -74545,6 +78500,7 @@ def cancel_one_registration_and_follow_up(conn, registration, *,
         return False, [], 0.0, False
     log_audit(conn, "workshop_registration_cancelled",
               target=registration["reference_code"], details=reason or "")
+    follow_occasion_of(conn, workshop_booking_id=registration["id"])
     conn.commit()
     send_workshop_email(conn, registration, "workshop_cancelled",
                         workshop_email_context(registration))
@@ -74704,6 +78660,8 @@ def instructor_sheet(conn, token):
         "dietary": [p for p in people if (p["dietary_notes"] or "").strip()],
         "materials": plan["lines"] if plan else [],
         "rooming": rooming,
+        # What they have left for the guests' recap, and whether it has gone.
+        "recap": recap_row(conn, session["id"]),
     }
 
 
@@ -75170,6 +79128,8 @@ SETTINGS_PLACES = [
         ("admin_terms", "Terms and conditions", "What a guest agrees to when they book"),
         ("management_documents", "Documents", "Certificates, registration, scans"),
         ("vendors", "Suppliers", "Who the house buys from"),
+        ("weather_jobs_page", "Weather jobs",
+         "The frost, storm and heat lines, and the outdoor jobs each one raises"),
         ("admin_readiness", "Go-live checklist", "What is still to set before guests book here"),
     ]),
     ("Who can open what", "lock", [
@@ -75199,6 +79159,10 @@ SETTINGS_PLACES = [
         ("admin_promo_codes", "Promo codes", "Discount codes for rooms, dinners and ateliers"),
         ("management_channels", "Channels", "What Booking.com and the others take"),
         ("management_booking_com", "Booking.com messages", "Which mailbox their messages arrive in"),
+        ("occasions_page", "Occasions",
+         "How far ahead a guest's anniversary or birthday is prepared for, and its checklist"),
+        ("house_guide_admin", "House guide",
+         "What a staying guest reads: the Wi-Fi, breakfast, who to call, and when the code shows"),
     ]),
     ("Restaurant", "restaurant", [
         ("admin_restaurant_settings", "Restaurant", "Online reservations, capacity, price per person"),
@@ -82051,6 +86015,15 @@ def channel_checkin(token):
             problem = "For a guest who is not French, the law asks for your date and place of birth."
         elif request.form.get("agree") != "on":
             problem = "Please confirm the details are right."
+        # R. 814-1: signed by the guest, when there is a fiche to sign.
+        signature = sig_kind = None
+        if foreign and not problem:
+            signature, sig_kind, sig_problem = read_signature(
+                request.form.get("signature"), request.form.get("signed_name"),
+                f"{first} {last}")
+            problem = sig_problem or (None if signature else
+                                      "For a guest who is not French, the law asks for the "
+                                      "fiche to be signed: sign in the box, or type your full name.")
         if problem:
             flash(problem, "error")
         else:
@@ -82065,12 +86038,16 @@ def channel_checkin(token):
                     (stay["id"],)).fetchone():
                 home = ", ".join(x for x in (f["guest_address"], f"{f['guest_city']} {f['guest_postcode']}".strip(),
                                              f["guest_country"]) if x)
-                conn.execute(
-                    """INSERT INTO channel_police_register (ota_reservation_id, surname, first_names,
-                           born_on, born_at, nationality, home_address, recorded_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (stay["id"], last, first, parse_date(born_on).isoformat(), born_at,
-                     nationality, home, datetime.now(timezone.utc).isoformat()))
+                # Through the one insert every register uses, with the mobile
+                # and email R. 814-2 lists, which this fiche used to leave out.
+                stamp = datetime.now(timezone.utc).isoformat()
+                insert_police_fiche(conn, "channel", stay["id"], {
+                    "surname": last, "first_names": first,
+                    "born_on": parse_date(born_on).isoformat(), "born_at": born_at,
+                    "nationality": nationality, "home_address": home,
+                    "phone": f["guest_phone"] or None, "email": values["guest_email"],
+                    "recorded_at": stamp, "signature": signature,
+                    "signature_kind": sig_kind, "signed_at": stamp})
             link_ota_profile(conn, stay["id"])
             log_audit(conn, "channel_checkin_done", target=stay["reservation_number"],
                       via="the guest's check-in link")
@@ -82083,6 +86060,370 @@ def channel_checkin(token):
     return render_template("channel_checkin.html", stay=stay, form=form, token=token,
                            stay_details=details,
                            suggested_nationality=nationality_for_country(details["guest_country"]))
+
+
+# ---------------------------------------------------------------------------
+# ONLINE CHECK-IN FOR THE HOUSE'S OWN GUESTS (owner, 22 October 2026: "online
+# check-in for direct guests, following the police rules").
+#
+# A room stay or an atelier place -- every live sitting holds the whole house,
+# so its guests sleep here -- checked in from a link on the guest's own booking
+# page, and in the letter before arrival once the owner has written it. It asks
+# when they will arrive and what they cannot eat, and for each adult in the
+# party a name and a nationality; only from an adult who is not French does it
+# ask what the fiche individuelle de police lists (CESEDA R. 814-2): date and
+# place of birth, usual home, mobile and email. Arrival and departure are the
+# stay's own. A child under fifteen goes on an adult's fiche, as a number, as
+# the same article allows. No passport number and no scan, as everywhere else.
+#
+# The fiches go to the registers the desk fills in, through the same insert,
+# so the register page, its "waiting to be filled in" list and the six-month
+# purge treat them exactly as one typed at the door. A French adult is written
+# the way the register page tells the desk to write one -- their name and
+# their nationality, nothing more -- so the stay counts as done.
+#
+# NOT A SIGNATURE. R. 814-1 has the foreign guest sign the fiche on arrival.
+# The tick at the foot of the form says the details are right; it is not a
+# signature, and the register has never held one.
+# ---------------------------------------------------------------------------
+
+# Where each kind of stay keeps its own columns and its fiches.
+DIRECT_CHECKIN_TABLES = {"booking": "bookings", "workshop": "workshop_bookings"}
+
+
+def direct_checkin_stay(conn, kind, manage_token):
+    """The stay a check-in link is for, with what the form needs, or None.
+
+    One shape for both kinds: arrival_date and departure_date are a sitting's
+    first and last day for an atelier place, and `names` are the people the
+    registration already named, to put in the boxes for them.
+    """
+    if kind == "booking":
+        row = conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 LEFT JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.manage_token = ?""", (manage_token or "",)).fetchone()
+        if not row:
+            return None
+        return dict(row, kind="booking", stay_name=row["room_name"] or "Your room",
+                    session_live=True, children_asked=True,
+                    names=[row["guest_name"] or ""])
+    row = conn.execute(
+        """SELECT workshop_bookings.*, workshop_sessions.start_date AS arrival_date,
+                  workshop_sessions.end_date AS departure_date,
+                  workshop_sessions.cancelled_at AS session_cancelled_at,
+                  workshops.title, rooms.name AS room_name
+             FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+             LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
+            WHERE workshop_bookings.manage_token = ?""", (manage_token or "",)).fetchone()
+    if not row:
+        return None
+    names = [r["guest_name"] for r in conn.execute(
+        """SELECT guest_name FROM workshop_booking_guests WHERE workshop_booking_id = ?
+            ORDER BY is_lead DESC, id""", (row["id"],)).fetchall()]
+    # Ateliers are for adults (owner), so every place is asked for as one.
+    return dict(row, kind="workshop", stay_name=row["title"] or "Your atelier",
+                session_live=not row["session_cancelled_at"], children_asked=False,
+                names=names or [row["guest_name"] or ""])
+
+
+def direct_checkin_state(stay, today=None):
+    """Where a stay's online check-in stands, in one word.
+
+    'open' to fill in; 'done' once they have; 'desk' once they were checked in
+    at the door, where the fiche is the desk's to fill; 'over' when the stay
+    has ended; 'not_yet' while it is not a confirmed stay (a request waiting
+    for an answer, a cancelled place, a sitting called off).
+    """
+    if stay["status"] != "confirmed" or not stay.get("session_live", True):
+        return "not_yet"
+    if stay.get("checkin_done_at"):
+        return "done"
+    if stay.get("checked_in_at"):
+        return "desk"
+    day = (today or house_today()).isoformat()
+    if (stay.get("departure_date") or "") and stay["departure_date"] <= day:
+        return "over"
+    return "open"
+
+
+def direct_checkin_url(kind, manage_token):
+    """The guest's own link to the form, as a letter carries it."""
+    endpoint = "stay_checkin" if kind == "booking" else "workshop_checkin"
+    return url_for(endpoint, manage_token=manage_token, _external=True)
+
+
+def read_direct_checkin(form, stay):
+    """The check-in form, read and checked: (values, problem).
+
+    One block per adult -- the party less any children under fifteen -- each
+    p<n>_surname, p<n>_first_names, p<n>_nationality and, only where the
+    nationality is not French, p<n>_born_on, p<n>_born_at, p<n>_home,
+    p<n>_phone and p<n>_email. Whatever a French adult's block carries beyond
+    the first three is not read, so nothing the law does not ask is kept
+    because a box happened to be filled in.
+    """
+    party = max(1, int(stay["party_size"] or 1))
+    under_15 = 0
+    if stay["children_asked"] and party > 1:
+        raw = (form.get("children_under_15") or "0").strip()
+        if not raw.isdigit() or int(raw) > party - 1:
+            return None, ("The number of children under 15 has to leave at least one "
+                          "adult in a party of %d." % party)
+        under_15 = int(raw)
+    adults = party - under_15
+    people = []
+    for n in range(1, adults + 1):
+        def got(key, limit):
+            return (form.get(f"p{n}_{key}") or "").strip()[:limit]
+        who = "you" if n == 1 else f"guest {n}"
+        person = {"surname": got("surname", 100), "first_names": got("first_names", 120),
+                  "nationality": got("nationality", 60)}
+        if not person["surname"] or not person["first_names"]:
+            return None, f"Please give the first name and surname of {who}."
+        if not person["nationality"]:
+            return None, f"Please give the nationality of {who}."
+        if not is_french_national(person["nationality"]):
+            born_on = parse_date(got("born_on", 10))
+            born_at, home = got("born_at", 120), got("home", 300)
+            phone, email = got("phone", 40), got("email", 200).lower()
+            if not born_on or born_on > house_today():
+                return None, (f"For {who}, not being French, the law asks for a date of "
+                              "birth, and that one could not be read.")
+            if not born_at:
+                return None, f"For {who}, not being French, the law asks for a place of birth."
+            if not home:
+                return None, f"For {who}, not being French, the law asks for a home address."
+            if email and not EMAIL_RE.match(email):
+                return None, f"The email address for {who} does not look right."
+            # R. 814-1: the fiche is signed by the guest it is about.
+            signature, kind, trouble = read_signature(
+                form.get(f"p{n}_signature"), form.get(f"p{n}_signed_name"),
+                f"{person['first_names']} {person['surname']}")
+            if trouble:
+                return None, trouble if n == 1 else f"For guest {n}: {trouble}"
+            if not signature:
+                return None, (f"For {who}, not being French, the law asks for the fiche to be "
+                              "signed: sign in the box, or type the full name.")
+            person.update(born_on=born_on.isoformat(), born_at=born_at, home_address=home,
+                          phone=phone or None, email=email or None, signature=signature,
+                          signature_kind=kind,
+                          signed_at=datetime.now(timezone.utc).isoformat())
+        people.append(person)
+    if form.get("agree") != "on":
+        return None, "Please confirm the details are right."
+    # The children go on the first adult who is not French, whose fiche is
+    # the one that would be handed over; with nobody foreign, on the first
+    # adult's line, so the register still counts the whole party.
+    if under_15:
+        holder = next((p for p in people if not is_french_national(p["nationality"])),
+                      people[0])
+        holder["children_under_15"] = under_15
+    return {"people": people, "children_under_15": under_15,
+            "arrival_time": (form.get("estimated_arrival_time") or "").strip()[:60],
+            "dietary_notes": (form.get("dietary_notes") or "").strip()[:500]}, None
+
+
+def record_direct_checkin(conn, stay, values):
+    """Write a check-in: the stay's arrival time and dietary note, and its
+    fiches. The caller commits.
+
+    The fiches only where the stay has none yet. A desk that has already
+    written the register at the door is not second-guessed by a form, and a
+    second set would count the party twice.
+    """
+    table = DIRECT_CHECKIN_TABLES[stay["kind"]]
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        f"""UPDATE {table}
+               SET estimated_arrival_time = COALESCE(NULLIF(?, ''), estimated_arrival_time),
+                   dietary_notes = ?, checkin_done_at = ?
+             WHERE id = ?""",
+        (values["arrival_time"], values["dietary_notes"] or None, now, stay["id"]))
+    register, column = POLICE_REGISTERS[stay["kind"]]
+    if conn.execute(f"SELECT 1 FROM {register} WHERE {column} = ?",
+                    (stay["id"],)).fetchone():
+        return 0
+    for person in values["people"]:
+        insert_police_fiche(conn, stay["kind"], stay["id"],
+                            dict(person, recorded_at=now, recorded_by_user_id=None))
+    return len(values["people"])
+
+
+def direct_checkin_page(kind, manage_token):
+    """The form, its answer, and the page that thanks them."""
+    conn = get_db()
+    stay = direct_checkin_stay(conn, kind, manage_token)
+    if not stay:
+        conn.close()
+        abort(404)
+    state = direct_checkin_state(stay)
+    form = request.form if request.method == "POST" else {}
+    if request.method == "POST" and state == "open":
+        values, problem = read_direct_checkin(request.form, stay)
+        if problem:
+            flash(problem, "error")
+        else:
+            record_direct_checkin(conn, stay, values)
+            # The act, not the people: names in the audit trail outlive the
+            # six months the register keeps them for.
+            log_audit(conn, "direct_checkin_done", target=stay["reference_code"],
+                      via="the guest's check-in link")
+            conn.commit()
+            conn.close()
+            endpoint = "stay_checkin" if kind == "booking" else "workshop_checkin"
+            return redirect(url_for(endpoint, manage_token=manage_token))
+    back = (url_for("manage_booking", manage_token=manage_token) if kind == "booking"
+            else url_for("workshop_manage", manage_token=manage_token))
+    conn.close()
+    country = house_country_name(stay.get("guest_country"))
+    return render_template(
+        "stay_checkin.html", stay=stay, state=state, form=form, back=back,
+        party=max(1, int(stay["party_size"] or 1)),
+        home=address_one_line(stay),
+        suggested_nationality=nationality_for_country(country),
+        french_words=sorted(FRENCH_NATIONALITY_WORDS),
+        nationalities=sorted(set(NATIONALITY_BY_COUNTRY.values())))
+
+
+# THE LETTER BEFORE ARRIVAL with the link to check in online: a new
+# automation, OFF until the owner switches it on, and even then nothing goes
+# until the owner has written the letter (UNWRITTEN_LETTERS). Days before
+# arrival is the owner's number under Automation; this is what it starts at.
+CHECKIN_LETTER_DAYS_BEFORE = 3
+CHECKIN_LETTER_KEYS = {"booking": "room_checkin_before", "workshop": "workshop_checkin_before"}
+
+
+def checkin_letter_days(conn):
+    """How many days before arrival the check-in letter goes (0 to 30)."""
+    raw = get_automation_settings(conn).get("automation_checkin_letter_days_before")
+    try:
+        return max(0, min(30, int(raw)))
+    except (TypeError, ValueError):
+        return CHECKIN_LETTER_DAYS_BEFORE
+
+
+def send_direct_checkin_letter(conn, kind, stay_id):
+    """The letter with the online check-in link, to one stay's guest, once.
+
+    Only to a stay whose check-in is open, and only in the owner's words: with
+    the letter unwritten it says so and stamps nothing, so writing it later
+    still reaches every stay that is due. Commits before it sends. Held, like
+    every letter to a guest, while Write to guests is off. (sent, why_not).
+    """
+    table = DIRECT_CHECKIN_TABLES[kind]
+    key = CHECKIN_LETTER_KEYS[kind]
+    row = conn.execute(f"SELECT manage_token FROM {table} WHERE id = ?", (stay_id,)).fetchone()
+    stay = direct_checkin_stay(conn, kind, row["manage_token"]) if row else None
+    if not stay:
+        return False, "there is no such stay"
+    state = direct_checkin_state(stay)
+    if state != "open":
+        return False, {"done": "they have checked in online already",
+                       "desk": "they were checked in at the door",
+                       "over": "the stay is over"}.get(state, "it is not a confirmed stay")
+    if letter_unwritten(conn, key):
+        return False, "the letter has no wording yet"
+    to = (stay["guest_email"] or "").strip()
+    if "@" not in to:
+        return False, "there is no address for them"
+    whole = " ".join((stay["guest_name"] or "").split())
+    context = {
+        "guest_name": whole or "there",
+        "first_name": whole.split(" ")[0] if whole else "there",
+        "arrival_date": format_date_human(stay["arrival_date"]) if stay["arrival_date"] else "",
+        "departure_date": (format_date_human(stay["departure_date"])
+                           if stay["departure_date"] else ""),
+        "checkin_url": direct_checkin_url(kind, stay["manage_token"]),
+        "reference_code": stay["reference_code"],
+    }
+    if kind == "booking":
+        context.update(room_name=stay["stay_name"],
+                       manage_url=url_for("manage_booking", manage_token=stay["manage_token"],
+                                          _external=True))
+    else:
+        context.update(workshop_title=stay["stay_name"],
+                       manage_url=url_for("workshop_manage", manage_token=stay["manage_token"],
+                                          _external=True))
+    subject, body, letter = render_email_template(conn, key, context)
+    if not subject:
+        return False, "the letter has no wording yet"
+    conn.commit()
+    delivered = bool(send_email(to, subject, body, html=letter,
+                                area="rooms" if kind == "booking" else "workshops",
+                                about=("room" if kind == "booking" else "workshop", stay_id)))
+    conn.execute(f"UPDATE {table} SET checkin_letter_sent_at = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), stay_id))
+    conn.commit()
+    return True, ("" if delivered else "held until mail to guests is switched on")
+
+
+def run_checkin_letter_job(conn, today=None):
+    """Email each stay arriving in the next N days its check-in link, once.
+
+    N is the owner's number under Automation. A stay booked closer than that
+    is written to on the first morning after it is confirmed, so nobody is
+    missed for booking late. Not to a guest who has checked in online, was
+    checked in at the door, or has already been sent it. Nothing at all --
+    and nothing stamped -- while a letter has no wording: that is "Couldn't
+    run" on the Automation page, not "Worked".
+    """
+    unwritten = [k for k in CHECKIN_LETTER_KEYS if letter_unwritten(conn, CHECKIN_LETTER_KEYS[k])]
+    if len(unwritten) == len(CHECKIN_LETTER_KEYS):
+        raise JobNotSetUp("neither check-in letter has any wording yet")
+    day = today or house_today()
+    first, last = day.isoformat(), (day + timedelta(days=checkin_letter_days(conn))).isoformat()
+    due = []
+    if "booking" not in unwritten:
+        due += [("booking", r["id"]) for r in conn.execute(
+            """SELECT id FROM bookings
+                WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date <= ?
+                  AND checkin_letter_sent_at IS NULL AND checkin_done_at IS NULL
+                  AND checked_in_at IS NULL""", (first, last)).fetchall()]
+    if "workshop" not in unwritten:
+        due += [("workshop", r["id"]) for r in conn.execute(
+            f"""SELECT workshop_bookings.id FROM workshop_bookings
+                  JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                 WHERE workshop_bookings.status = 'confirmed' AND {SESSION_IS_LIVE}
+                   AND workshop_sessions.start_date >= ? AND workshop_sessions.start_date <= ?
+                   AND workshop_bookings.checkin_letter_sent_at IS NULL
+                   AND workshop_bookings.checkin_done_at IS NULL""", (first, last)).fetchall()]
+    sent = held = 0
+    for kind, stay_id in due:
+        ok, why = send_direct_checkin_letter(conn, kind, stay_id)
+        sent += 1 if ok and not why else 0
+        held += 1 if ok and why else 0
+    out = f"sent {sent} check-in letter(s)"
+    if held:
+        out += f", {held} held until mail to guests is switched on"
+    if unwritten:
+        out += ("; the " + " and the ".join("room" if k == "booking" else "atelier"
+                                            for k in unwritten)
+                + " letter has no wording yet, so it does not go")
+    return out
+
+
+def direct_checkin_card(conn, kind, manage_token):
+    """What the booking page's check-in card needs: {"state", "url", "done_at"}."""
+    stay = direct_checkin_stay(conn, kind, manage_token)
+    if not stay:
+        return None
+    return {"state": direct_checkin_state(stay), "done_at": stay.get("checkin_done_at"),
+            "url": direct_checkin_url(kind, manage_token)}
+
+
+@app.route("/book/manage/<manage_token>/check-in", methods=["GET", "POST"])
+def stay_checkin(manage_token):
+    """A room guest's online check-in, from their booking page."""
+    return direct_checkin_page("booking", manage_token)
+
+
+@app.route("/workshops/manage/<manage_token>/check-in", methods=["GET", "POST"])
+def workshop_checkin(manage_token):
+    """An atelier guest's online check-in, from their registration page."""
+    return direct_checkin_page("workshop", manage_token)
 
 
 @app.route("/admin/channel-stays/add", methods=["POST"])
@@ -83677,17 +88018,20 @@ def photo_from_data_url(raw):
         return None
 
 
-def photo_rendition(stored_name, size):
+def photo_rendition(stored_name, size, source_dir=None):
     """The path to this photograph at `size`, making it if it is not there yet.
 
     Made once and kept. Regenerated if the master is ever replaced, which is
     what the mtime comparison is for: without it, swapping a website picture
     would leave every size showing the picture it replaced, and the admin page
     would show the new one while the public site showed the old.
+
+    `source_dir` for a master kept somewhere other than the uploads: the
+    camera roll keeps its frames beside the room photographs.
     """
     if size not in PHOTO_SIZES:
         raise ValueError("No such photograph size: %s" % size)
-    source = os.path.join(UPLOAD_DIR, stored_name)
+    source = os.path.join(source_dir or UPLOAD_DIR, stored_name)
     if not os.path.exists(source):
         return None
     out_dir = os.path.join(PHOTO_DERIVED_DIR, size)
@@ -83817,6 +88161,20 @@ PUBLIC_SETTINGS = (
     # it reopens. Every public page reads it, through `site`. Set on the
     # restaurant settings page; the restaurant's booking route refuses too.
     "dining_mode", "dining_reopens",
+    # Whether a table confirms itself once paid. The booking page and the
+    # Dining page word their promise on it ("confirmed as soon as the payment
+    # goes through"), and both were reading a key that was never allowed out,
+    # so the switch could not have reached them. Set on the restaurant
+    # settings page; restaurant_instant_holds() is what keeps the promise.
+    "restaurant_instant",
+    # La Table's opening hours: the evenings it serves (0 = Monday, comma-
+    # separated) and the dinner time. _dining_hours.html words them on the
+    # Dining page, the footer, Stay and the homepage, and the booking page's
+    # date picker greys out the rest. Both were read by every one of those
+    # pages and allowed out by none, so the hours never appeared. dining_days
+    # is saved on the restaurant settings page; dining_time is not a key of
+    # its own -- see _load.
+    "dining_days", "dining_time",
 )
 
 
@@ -83856,6 +88214,13 @@ class LazyPublicSettings:
                     # two.
                     self._data["tourist_tax"] = tax_rate(
                         conn, "city_tax_per_adult_per_night")
+                    # The dinner time the restaurant settings page saves, the
+                    # one the booking page already prints as "seating from".
+                    # The hours were written to read app_settings.dining_time,
+                    # which nothing writes; a second copy would only drift.
+                    restaurant = get_restaurant_settings(conn)
+                    self._data["dining_time"] = ((restaurant["dinner_time"] if restaurant else "")
+                                                 or "").strip() or None
                 finally:
                     conn.close()
             except Exception:
@@ -85511,10 +89876,13 @@ WATCH_TASK_KINDS = {
     "door": "The front door lock needs attention",
     "letters": "A guest letter out of step with the house rules on payment",
     "sendcheck": "An Outlook the check on Send cannot run in",
+    "addin_version": "A new Outlook add-in that Microsoft 365 has not fetched",
     "terms": "Booking terms that give a different arrival or departure time",
     "extras": "An extra a guest has paid for, to arrange or hand over",
     "rooms_let": "A night with more rooms let than the house has bathrooms for",
     "inbox": "One of the house's own inboxes is not getting its mail",
+    "deploy": "The live site is behind main",
+    "recap": "An atelier's recap drafted and waiting for you to send it",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -85565,7 +89933,7 @@ POLICE_REGISTER_KEEP_MONTHS = 6
 # and on either language, since a French guest writes "française" and an
 # English-speaking one writes "French" about the same person.
 FRENCH_NATIONALITY_WORDS = {"fr", "france", "french", "francais", "française",
-                            "francaise", "française"}
+                            "francaise", "français"}
 
 
 def is_french_national(nationality):
@@ -85598,8 +89966,24 @@ def police_register_needed(conn, booking_id):
     exempt = sum(1 for f in have if is_french_national(f["nationality"]))
     party = booking["party_size"] or 1
     return {"booking": booking, "fiches": have, "party": party,
-            "recorded": len(have), "exempt": exempt,
-            "outstanding": max(0, party - len(have))}
+            "recorded": fiche_people(have), "exempt": exempt,
+            "outstanding": max(0, party - fiche_people(have))}
+
+
+def fiche_people(fiches):
+    """How many of the party these fiches account for: each adult, and the
+    children under fifteen written on an adult's (R. 814-2). Without the
+    children, a family of four with both parents recorded read as two short
+    for as long as it stayed."""
+    return sum(1 + int(_row_value(f, "children_under_15") or 0) for f in fiches)
+
+
+def _row_value(row, key):
+    """row[key], or None where the row has no such column (an older copy)."""
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return None
 
 
 def stays_missing_fiches(conn, today=None, days_back=30):
@@ -85628,6 +90012,19 @@ def stays_missing_fiches(conn, today=None, days_back=30):
             state = channel_register_needed(conn, st)
             if state["outstanding"]:
                 out.append(state)
+    # And the ateliers' guests, who sleep here for the sitting.
+    for place in conn.execute(
+            f"""SELECT workshop_bookings.*, workshop_sessions.start_date,
+                       workshop_sessions.end_date, workshops.title
+                  FROM workshop_bookings
+                  JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                 WHERE workshop_bookings.status = 'confirmed' AND {SESSION_IS_LIVE}
+                   AND workshop_sessions.start_date <= ? AND workshop_sessions.start_date >= ?""",
+            (day.isoformat(), since)).fetchall():
+        state = workshop_register_needed(conn, place)
+        if state["outstanding"]:
+            out.append(state)
     out.sort(key=lambda x: x["booking"]["arrival_date"] or "")
     return out
 
@@ -85646,8 +90043,25 @@ def channel_register_needed(conn, stay):
     party = stay["party_size"] or 1
     return {"booking": stay, "fiches": have, "party": party,
             "party_known": bool(stay["party_size"]), "channel": stay["channel"],
-            "recorded": len(have), "exempt": exempt,
-            "outstanding": max(0, party - len(have))}
+            "recorded": fiche_people(have), "exempt": exempt,
+            "outstanding": max(0, party - fiche_people(have))}
+
+
+def workshop_register_needed(conn, place):
+    """police_register_needed, for an atelier place: one row of
+    workshop_bookings joined to its sitting (start_date, end_date, title)."""
+    have = conn.execute(
+        "SELECT * FROM workshop_police_register WHERE workshop_booking_id = ? ORDER BY id",
+        (place["id"],)).fetchall()
+    exempt = sum(1 for f in have if is_french_national(f["nationality"]))
+    party = place["party_size"] or 1
+    # Read by the register page with a booking's names, so the sitting's
+    # dates are given as the stay's.
+    booking = dict(place, arrival_date=place["start_date"],
+                   departure_date=place["end_date"])
+    return {"booking": booking, "fiches": have, "party": party,
+            "kind": "workshop", "recorded": fiche_people(have), "exempt": exempt,
+            "outstanding": max(0, party - fiche_people(have))}
 
 
 def purge_police_register(conn, today=None):
@@ -85671,6 +90085,16 @@ def purge_police_register(conn, today=None):
                SELECT id FROM ota_reservations
                 WHERE COALESCE(departure_date, '') != '' AND departure_date < ?)""",
         (cutoff,))
+    gone += max(0, cur.rowcount)
+    # An atelier guest's, from the day the sitting ended, which is when they
+    # left.
+    cur = conn.execute(
+        """DELETE FROM workshop_police_register WHERE workshop_booking_id IN (
+               SELECT workshop_bookings.id FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                WHERE COALESCE(workshop_sessions.end_date, '') != ''
+                  AND workshop_sessions.end_date < ?)""",
+        (cutoff,))
     return {"police register entries": gone + max(0, cur.rowcount)}
 
 
@@ -85692,7 +90116,7 @@ ANONYMISE_RATHER_THAN_DELETE = {
     # "anonymised" stay still said who had stayed.
     "bookings": ("guest_name", "guest_email", "guest_phone", "special_requests",
                  "second_contact_name", "second_contact_email", "booked_by_name",
-                 "booked_by_email"),
+                 "booked_by_email", "dietary_notes"),
     "restaurant_bookings": ("guest_name", "guest_email", "guest_phone", "dietary_notes"),
     "workshop_bookings": ("guest_name", "guest_email", "guest_phone"),
     "refunds": ("guest_name", "guest_email"),
@@ -88083,7 +92507,8 @@ def guest_data_export(conn, email):
     if workshop_ids:
         marks = ",".join("?" * len(workshop_ids))
         for table, column in (("workshop_feedback", "workshop_booking_id"),
-                              ("workshop_booking_guests", "workshop_booking_id")):
+                              ("workshop_booking_guests", "workshop_booking_id"),
+                              ("workshop_police_register", "workshop_booking_id")):
             try:
                 rows = conn.execute(
                     f"SELECT * FROM {table} WHERE {column} IN ({marks})",
@@ -88221,6 +92646,17 @@ def guest_data_erase(conn, email):
             continue
         if cur.rowcount:
             deleted[table] = deleted.get(table, 0) + cur.rowcount
+    # An atelier place's fiches, on the same footing.
+    try:
+        cur = conn.execute(
+            """DELETE FROM workshop_police_register WHERE workshop_booking_id IN (
+                    SELECT id FROM workshop_bookings WHERE guest_name = ?)""",
+            (ERASED_MARKER,))
+        if cur.rowcount:
+            deleted["workshop_police_register"] = (deleted.get("workshop_police_register", 0)
+                                                   + cur.rowcount)
+    except sqlite3.OperationalError:
+        pass
 
     # And out of the record of who did what, which outlives everything else.
     scrubbed = scrub_audit_trail(conn, [email] + numbers + names)
@@ -88804,6 +93240,15 @@ def watch_task_findings(conn, today=None):
         found.append(("inbox", f"Mail to {fault['address']} is not arriving",
                       house_inbox_fault_sentence(fault), today.isoformat(), "high"))
 
+    # The live site an hour or more behind main. One task while it is; titled
+    # by nothing that moves, so the count and the hours are rewritten in the
+    # note, and it closes itself on the first run after the check finds the
+    # live site on main's head.
+    lag = deploy_lag(conn)
+    if lag and lag["overdue"]:
+        found.append(("deploy", "Find out why the live site is behind main",
+                      deploy_lag_sentence(lag), today.isoformat(), "high"))
+
     # The booking terms naming an arrival or departure time the pages
     # contradict. Titled by what is wrong and nothing that moves, so saving
     # terms that agree closes it. Never rewritten here: they are the owner's
@@ -88853,6 +93298,15 @@ def watch_task_findings(conn, today=None):
             today.isoformat(), "high"))
     found.extend(take("sendcheck", unchecked))
 
+    # A new add-in that Microsoft 365 has not fetched. Titled by the version,
+    # so it closes when the owner says Microsoft has it, and a second change
+    # before then replaces it rather than sitting beside it.
+    stale = addin_version_problem(conn)
+    if stale:
+        found.append(("addin_version", stale[0],
+                      stale[1] + "\n\nManagement → Outlook add-in (/admin/outlook-addin).",
+                      today.isoformat(), "normal"))
+
     # AN EXTRA TO ARRANGE OR HAND OVER. On the calendar on the day it has to be
     # arranged by, so the transfer is booked the day before rather than found
     # on the morning. Titled by the extra, the guest and the reference and
@@ -88881,6 +93335,28 @@ def watch_task_findings(conn, today=None):
                                r["days_off"]).isoformat(),
                 "high" if r["arrange_now"] else "normal"))
     found.extend(take("extras", extras_jobs))
+
+    # AN ATELIER'S RECAP, drafted and not sent -- only while its switch is on,
+    # which it is not unless the owner turned it on. Titled by the atelier and
+    # its dates, so sending the recap or setting it aside closes that one, and
+    # a month after the atelier it closes by itself.
+    if get_automation_settings(conn).get(RECAP_REMINDER_SWITCH) == "1":
+        recaps = []
+        for r in atelier_recaps_to_approve(conn, today):
+            s = r["session"]
+            recaps.append((
+                "recap",
+                f"Look over the recap for {s['title']}, "
+                f"{format_date_range(s['start_date'], s['end_date'] or s['start_date'])}",
+                f"It ended on {format_date_human(s['end_date'] or s['start_date'])}, and "
+                f"{r['waiting']} {'guest has' if r['waiting'] == 1 else 'guests have'} not "
+                "had it. It goes when you send it from the sitting's page, after "
+                "looking at the photographs, the notes and the wording — never by itself."
+                + ("" if r["written"] else
+                   "\n\nThe recap has no wording yet: write it under Email wording, "
+                   "Workshop: Recap after the atelier, first."),
+                r["due"], "normal"))
+        found.extend(take("recap", recaps))
 
     return found, dropped
 
@@ -89058,6 +93534,12 @@ def maintenance_page():
     vendor_list = conn.execute("SELECT id, name FROM vendors ORDER BY name").fetchall()
     policies = conn.execute(
         "SELECT id, provider, coverage_type FROM insurance_policies ORDER BY provider").fetchall()
+    # Where each one is, for the ones put on a plan (see THE PLANS).
+    plans = site_plans(conn)
+    placed = {r["schedule_id"]: r for r in conn.execute(
+        """SELECT plan_pins.schedule_id, site_plans.id AS plan_id, site_plans.name AS plan_name
+             FROM plan_pins JOIN site_plans ON site_plans.id = plan_pins.plan_id
+            WHERE plan_pins.schedule_id IS NOT NULL""")}
     conn.close()
     overview = [
         overview_cell("On a schedule", len(live)),
@@ -89070,7 +93552,175 @@ def maintenance_page():
         "maintenance.html", schedules=rows, overview=overview, exposed=exposed,
         employees=employees, vendors=vendor_list, policies=policies,
         categories=MAINTENANCE_CATEGORIES, required_by=MAINTENANCE_REQUIRED_BY,
-        suggestions=MAINTENANCE_SUGGESTIONS, today=house_today())
+        suggestions=MAINTENANCE_SUGGESTIONS, today=house_today(),
+        plans=plans, placed=placed)
+
+
+WEATHER_JOB_STANDS = ["To do", "Done", "Withdrawn", "Went by unticked", "Taken off by hand"]
+
+
+def weather_job_stands(r):
+    """Where one raised job stands -- and whose doing that was."""
+    if r["live_id"] is None:
+        return "Taken off by hand"
+    if r["state"] == "withdrawn" and r["task_status"] == "done":
+        return "Withdrawn"
+    if r["state"] == "passed":
+        return "Went by unticked"
+    return "Done" if r["task_status"] == "done" else "To do"
+
+
+@app.route("/management/weather-jobs")
+@owner_required
+def weather_jobs_page():
+    """The outdoor jobs the forecast raises: the lines and lists, the days ahead
+    as the house reads them, and what became of every job it raised."""
+    conn = get_db()
+    now = datetime.now(timezone.utc)
+    today = house_today()
+    cfg = weather_job_settings(conn)
+    forecast = weather_forecast(conn, now=now)
+    switched_on = get_automation_settings(conn).get("automation_weather_jobs_enabled") == "1"
+    last_day = today + timedelta(days=cfg["days_ahead"])
+    outlook = []
+    for d in forecast_days(forecast) if forecast else []:
+        if d["day"] < today:
+            continue
+        asks = []
+        for kind in WEATHER_JOB_KINDS:
+            k = cfg["kinds"][kind]
+            v = weather_job_verdict(kind, d, k)
+            if v and v["state"] == "crosses":
+                asks.append({"kind": kind, "words": v["words"],
+                             "why_not": ("switched off" if not k["on"]
+                                         else "nothing on its list" if not k["jobs"]
+                                         else "further ahead than jobs are raised"
+                                         if d["day"] > last_day else None)})
+        low, high, gust = d["low"], d["high"], d["gust"]
+        outlook.append({
+            "day": weather_day_words(d["day"]), "today": d["day"] == today,
+            "whole": d["whole"], "asks": asks,
+            "low": f"{weather_degrees(low['temp'])} at {low['local']:%H:%M}" if low else "",
+            "high": f"{weather_degrees(high['temp'])} at {high['local']:%H:%M}" if high else "",
+            "gust": f"{int(gust['gust'])} km/h at {gust['local']:%H:%M}" if gust else "",
+            "thunder": f"{d['thunder']['local']:%H:%M}" if d["thunder"] else "",
+        })
+    rows = conn.execute(
+        """SELECT weather_jobs.*, tasks.id AS live_id, tasks.status AS task_status,
+                  users.name AS who
+             FROM weather_jobs
+             LEFT JOIN tasks ON tasks.id = weather_jobs.task_id
+             LEFT JOIN users ON users.id = tasks.assigned_to_user_id
+            WHERE weather_jobs.job_day >= ?""",
+        ((today - timedelta(days=90)).isoformat(),)).fetchall()
+    people = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    conn.close()
+
+    lv = list_view(
+        rows, request.args,
+        search=["job", "forecast", "who", "closed_why"],
+        search_hint="Search a job",
+        facets=[facet("stands", "Where it stands", weather_job_stands,
+                      order=WEATHER_JOB_STANDS),
+                facet("kind", "Weather", lambda r: WEATHER_JOB_KIND_WORDS.get(r["kind"], r["kind"]),
+                      order=[WEATHER_JOB_KIND_WORDS[k] for k in WEATHER_JOB_KINDS])],
+        sorts=[sort_option("latest", "Latest day first",
+                           lambda r: (r["job_day"], -r["id"]), reverse=True),
+               sort_option("earliest", "Earliest day first",
+                           lambda r: (r["job_day"], r["id"]))],
+        default_sort="latest",
+    )
+    stands = [weather_job_stands(r) for r in rows]
+
+    def counted(kind):
+        return sum(1 for o in outlook for a in o["asks"] if a["kind"] == kind)
+
+    span = f"in the next {len(outlook)} days" if outlook else "no forecast"
+    overview = [
+        overview_cell("Jobs to do", stands.count("To do")),
+        overview_cell("Frost nights", counted("frost"), sub=span),
+        overview_cell("Storm days", counted("storm"), sub=span),
+        overview_cell("Hot days", counted("heat"), sub=span),
+        overview_cell("Went by unticked", stands.count("Went by unticked"),
+                      sub="the last 90 days"),
+    ]
+    return render_template(
+        "weather_jobs.html", cfg=cfg, kinds=WEATHER_JOB_KINDS, people=people,
+        outlook=outlook, forecast=forecast, switched_on=switched_on,
+        overview=overview, rows=lv["rows"], lv=lv, stands=weather_job_stands,
+        kind_words=WEATHER_JOB_KIND_WORDS, bounds=WEATHER_JOB_LINE_BOUNDS, max_ahead=WEATHER_JOB_MAX_DAYS_AHEAD,
+        day_words=lambda iso: weather_day_words(parse_date(iso)),
+        fresh_hours=FORECAST_FRESH_HOURS, morning=WEATHER_JOB_MORNING_HOUR,
+        margins=WEATHER_JOB_MARGIN)
+
+
+@app.route("/management/weather-jobs", methods=["POST"])
+@owner_required
+def save_weather_jobs():
+    """The lines, the lists and whose list they go on -- then the jobs again,
+    from the forecast already held, so the owner sees what the change did."""
+    # Half of this form is checkboxes and lists, and an absent checkbox reads
+    # as "off" and an absent list as "no jobs". A post without the form's own
+    # marker -- a double submit, a bot, a page from before a rename -- would
+    # switch every kind off and empty every list, so it changes nothing.
+    if request.form.get("form") != "weather_jobs":
+        flash("Nothing was saved: the form arrived without its fields.", "error")
+        return redirect(url_for("weather_jobs_page"))
+    conn = get_db()
+    values, kept = {}, []
+    for kind in WEATHER_JOB_KINDS:
+        values[f"weather_jobs_{kind}_on"] = "1" if request.form.get(f"{kind}_on") else "0"
+        values[f"weather_jobs_{kind}_list"] = "\n".join(
+            weather_job_list(request.form.get(f"{kind}_list")))
+        raw = (request.form.get(f"{kind}_line") or "").strip()
+        lo, hi = WEATHER_JOB_LINE_BOUNDS[kind]
+        try:
+            line = float(raw.replace(",", ".").replace("−", "-"))
+        except ValueError:
+            line = None
+        if line is not None and lo <= line <= hi:
+            values[f"weather_jobs_{kind}_line"] = f"{line:g}"
+        else:
+            kept.append(f"the {kind} line, which must be from {weather_line(kind, lo)} "
+                        f"to {weather_line(kind, hi)}")
+    values["weather_jobs_storm_thunder"] = "1" if request.form.get("storm_thunder") else "0"
+    raw = (request.form.get("days_ahead") or "").strip()
+    if raw.isdigit() and int(raw) <= WEATHER_JOB_MAX_DAYS_AHEAD:
+        values["weather_jobs_days_ahead"] = str(int(raw))
+    else:
+        kept.append(f"the days ahead, which must be a whole number from 0 to "
+                    f"{WEATHER_JOB_MAX_DAYS_AHEAD}")
+    active = {r["id"] for r in conn.execute("SELECT id FROM users WHERE status = 'active'")}
+    for kind in WEATHER_JOB_KINDS:
+        who = (request.form.get(f"{kind}_who") or "").strip()
+        if who.isdigit() and int(who) in active:
+            values[WEATHER_JOB_ASSIGNEE_PREFIX + kind] = who
+        else:
+            conn.execute("DELETE FROM app_settings WHERE key = ?",
+                         (WEATHER_JOB_ASSIGNEE_PREFIX + kind,))
+    for key, value in values.items():
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+    log_audit(conn, "weather_jobs_saved",
+              details="; ".join(f"{k}={v}" for k, v in sorted(values.items())
+                                if not k.endswith("_list")))
+    conn.commit()
+    r = generate_weather_jobs(conn)
+    conn.close()
+    if kept:
+        flash("Kept as it was: " + "; ".join(kept) + ".", "error")
+    did = [f"{n} {what}" for n, what in ((r["made"], "raised"), (r["reopened"], "reopened"),
+                                         (r["moved"], "rewritten"),
+                                         (r["withdrawn"], "withdrawn"),
+                                         (r["passed"], "closed as gone by")) if n]
+    if r["skipped"]:
+        flash(f"Saved. Nothing raised or withdrawn yet: {r['skipped']}. The jobs follow the "
+              f"next forecast.", "success")
+    else:
+        flash("Saved. " + (("Jobs " + ", ".join(did) + ".") if did
+                           else "The jobs already match the forecast."), "success")
+    return redirect(url_for("weather_jobs_page"))
 
 
 @app.route("/admin/rota-clashes")
@@ -89601,6 +94251,872 @@ def delete_maintenance_schedule(schedule_id):
     conn.close()
     flash("Retired. Everything recorded against it is kept.", "success")
     return redirect(url_for("maintenance_page"))
+
+
+# ---------------------------------------------------------------------------
+# THE PLANS: pictures of the house that things can be pinned to.
+#
+# Starting with the grounds. Somebody on the far side of the park finds a
+# branch down across the drive. On their phone they open the plan, tap where
+# it is, take a photograph, write a line and send. It becomes a maintenance
+# job like any other -- a task, origin 'maintenance', on somebody's list and
+# on the calendar -- and the map shows it where it is.
+#
+# THE APP NEVER DRAWS A PLAN. On 9 October 2026 a floor plan drawn on the
+# design side was put in front of the owner, who rejected it as not even
+# accurate, and it was deleted (RULED_OUT_PARTIALS in tools/repair_handover.py
+# keeps it out). Accuracy comes from one place: a picture the owner uploads --
+# an aerial photograph, a survey plan, a cadastre extract. Nothing here
+# generates, traces or tidies one.
+#
+# A PIN IS FRACTIONS, NOT PIXELS. x and y are how far across and down the
+# picture it is, 0 to 1, so a pin is on the same spot on a 390px phone and on
+# the office screen, and stays there if the picture is stored smaller.
+# pin_from_tap is that arithmetic, done once, here.
+#
+# JOBS STAY TASKS. There is no second job list. A report is a row in tasks,
+# exactly as a schedule's job is, and the pin hangs off it. A job with no pin
+# works everywhere it did before; a schedule's job takes its schedule's pin,
+# found by title, the way record_maintenance_visit finds the task.
+#
+# FOR GUESTS LATER. `kind` says what a plan is a picture of -- the grounds, a
+# floor of the house -- and nothing here assumes grounds, so a later piece can
+# mark areas of a floor for guests (the accessible rooms) on the same pictures.
+# Today the pictures are served to staff only; a guest-facing one would be a
+# deliberate new route, not this one opened up.
+# ---------------------------------------------------------------------------
+
+PLAN_KINDS = {
+    "grounds": "The grounds",
+    "floor": "A floor of the house",
+    "other": "Something else",
+}
+
+# Smaller than this and nothing can be put anywhere precisely: a picture of
+# the whole estate 400px across puts the gate and the chapel a fingertip apart.
+PLAN_MIN_EDGE = 800
+
+# A job finished this recently stays on the map under its own chip, so whoever
+# walks past the gate can see the branch was dealt with. Older is history, and
+# a map of every problem the house has ever had is a map nobody reads.
+PLAN_DONE_SHOWN_DAYS = 30
+
+# The chips on the map. A job being dealt with is still open -- it sits under
+# both -- so "Open" is everything not finished.
+PLAN_JOB_STATUSES = {
+    "open": "Open",
+    "in_progress": "Being dealt with",
+    "done": "Done lately",
+    "not_due": "Checks not due yet",
+}
+PLAN_JOB_SOURCES = {
+    "reported": "Reported",
+    "schedule": "On a schedule",
+    "other": "Other jobs",
+}
+PLAN_JOB_WHERE = {"here": "On this plan", "unplaced": "Not placed yet"}
+
+# The pin's colour, by what state the thing it marks is in.
+PLAN_PIN_TONES = {"open": "open", "in_progress": "doing", "done": "done",
+                  "not_due": "check"}
+
+
+def pin_from_tap(tap_x, tap_y, shown_w, shown_h):
+    """Where a tap landed on a plan, as the fractions a pin is stored in.
+
+    `tap_x` and `tap_y` are pixels from the picture's top-left corner as it
+    was SHOWN, and `shown_w` and `shown_h` the size it was shown at -- which on
+    a phone is nothing like the size it is stored at, and need not be. Returns
+    (x, y), or None for a tap off the picture or a size that is nonsense.
+    """
+    try:
+        tx, ty, w, h = (float(str(v).strip()) for v in (tap_x, tap_y, shown_w, shown_h))
+    except (TypeError, ValueError):
+        return None
+    if not all(v == v and abs(v) != float("inf") for v in (tx, ty, w, h)):
+        return None                    # NaN or infinity, which float() accepts
+    if w <= 0 or h <= 0 or not (0 <= tx <= w) or not (0 <= ty <= h):
+        return None
+    return round(tx / w, 5), round(ty / h, 5)
+
+
+def _plan_picture_bytes(upload, what):
+    """An upload's bytes put through photo_master. (jpeg, width, height).
+
+    Raises ValueError with the sentence to show. `what` is the word for the
+    thing in that sentence -- "plan" or "photograph".
+    """
+    name = upload.filename or ""
+    ok, why = allowed_image(name)
+    if not ok:
+        raise ValueError(why)
+    data = upload.read()
+    if not data:
+        raise ValueError("That file was empty.")
+    try:
+        jpeg, _taken = photo_master(data, name)
+    except ValueError:
+        raise ValueError(f"That {what} could not be read as a picture. Save it as a "
+                         "JPEG or PNG and try again.")
+    from PIL import Image
+    with Image.open(io.BytesIO(jpeg)) as im:
+        width, height = im.size
+    return jpeg, width, height
+
+
+def _write_beside_room_photos(prefix, jpeg):
+    """Put a picture on the volume beside the room photographs, under a name
+    nobody can guess. Returns the stored name."""
+    stored = "%s_%s.jpg" % (prefix, secrets.token_hex(8))
+    os.makedirs(ROOM_PHOTO_DIR, exist_ok=True)
+    with open(os.path.join(ROOM_PHOTO_DIR, stored), "wb") as fh:
+        fh.write(jpeg)
+    return stored
+
+
+def store_plan_image(upload):
+    """A plan the owner uploaded, normalised and stored. (filename, w, h).
+
+    Raises ValueError with the sentence to show. A cadastre extract arrives as
+    a PDF, which is the commonest wrong file and the easiest to fix, so it is
+    answered with how to fix it rather than with "not a picture".
+    """
+    name = (upload.filename or "") if upload else ""
+    if not name:
+        raise ValueError("Choose the picture of the plan to upload.")
+    if name.lower().endswith(".pdf"):
+        raise ValueError(
+            "That is a PDF, and a plan has to be a picture to put pins on. Open "
+            "it, zoom to the part you want, and take a screenshot -- or export "
+            "the page as a PNG or JPEG -- then upload that.")
+    jpeg, width, height = _plan_picture_bytes(upload, "plan")
+    if max(width, height) < PLAN_MIN_EDGE:
+        raise ValueError(
+            f"That picture is only {max(width, height)} pixels across at its "
+            f"longest, too small to put a pin anywhere precisely. Upload one at "
+            f"least {PLAN_MIN_EDGE} across -- a screenshot of a whole screen is plenty.")
+    return _write_beside_room_photos("plan", jpeg), width, height
+
+
+def store_report_photo(upload):
+    """The photograph sent with a report: its stored name, or None if none
+    was sent. Raises ValueError with the sentence to show. photo_master drops
+    the EXIF on the way in, so where the phone was is not kept with it."""
+    if not upload or not upload.filename:
+        return None
+    jpeg, _w, _h = _plan_picture_bytes(upload, "photograph")
+    return _write_beside_room_photos("report", jpeg)
+
+
+def site_plans(conn):
+    """The plans in use, in the owner's order: the first is the one a report
+    opens on."""
+    return conn.execute(
+        "SELECT * FROM site_plans WHERE active = 1 ORDER BY sort_order, id").fetchall()
+
+
+def set_pin(conn, plan_id, x, y, *, task_id=None, schedule_id=None, photo=None,
+            user_id=None):
+    """Put a job or a check on a plan, or move it if it is on one already.
+
+    One pin per job and per schedule, so moving it keeps the photograph that
+    came with the report. Returns the pin's id. Does not commit.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    key, value = ("task_id", task_id) if task_id else ("schedule_id", schedule_id)
+    there = (conn.execute(f"SELECT id FROM plan_pins WHERE {key} = ?", (value,)).fetchone()
+             if value else None)
+    if there:
+        conn.execute("UPDATE plan_pins SET plan_id = ?, x = ?, y = ?, moved_at = ? WHERE id = ?",
+                     (plan_id, x, y, now, there["id"]))
+        return there["id"]
+    cur = conn.execute(
+        """INSERT INTO plan_pins (plan_id, x, y, task_id, schedule_id, photo_filename,
+                                  placed_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (plan_id, x, y, task_id, schedule_id, photo, user_id, now))
+    return cur.lastrowid
+
+
+def plan_report_recipients(conn, plan, *, dangerous=False, reporter_id=None):
+    """Who hears about a report as it arrives.
+
+    Whoever the plan's reports go to, when the owner has said, and they are
+    still here; otherwise the owner. Something dangerous goes to the owner as
+    well, whoever else has it. Never the person who sent it.
+    """
+    who = []
+    if plan and plan["reports_to_user_id"]:
+        row = conn.execute("SELECT id FROM users WHERE id = ? AND status = 'active'",
+                           (plan["reports_to_user_id"],)).fetchone()
+        if row:
+            who.append(row["id"])
+    if not who or dangerous:
+        who += [r["id"] for r in conn.execute(
+            "SELECT id FROM users WHERE role = 'owner' AND status = 'active' ORDER BY id")]
+    return [u for u in dict.fromkeys(who) if u != reporter_id]
+
+
+def report_problem_on_plan(conn, plan, *, line, point=None, photo=None,
+                           dangerous=False, user=None):
+    """Something somebody found, made a maintenance job with its pin.
+
+    The title carries the plan's name the way a room issue carries the room's:
+    it reads right on a task list, and it can never be taken for a schedule's
+    own job, which generate_maintenance_tasks and record_maintenance_visit
+    both recognise by title alone. Goes to whoever the plan's reports go to,
+    or to nobody -- which is the owner's own list, as with any unassigned task.
+    Due today, so it is on today's calendar. Commits. Returns the task id.
+    """
+    line = " ".join((line or "").split())
+    title = f"{plan['name'] if plan else 'Reported'}: {line}"
+    if len(title) > 140:
+        title = title[:139].rstrip() + "…"
+    who = user["name"] if user else "Somebody"
+    notes = (f"{line}\n\nReported by {who}"
+             + (f" on the plan of {plan['name']}" if plan else "")
+             + (", as dangerous." if dangerous else "."))
+    assignee = None
+    if plan and plan["reports_to_user_id"]:
+        row = conn.execute("SELECT id FROM users WHERE id = ? AND status = 'active'",
+                           (plan["reports_to_user_id"],)).fetchone()
+        assignee = row["id"] if row else None
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                              status, origin, created_at)
+           VALUES (?, ?, ?, ?, ?, 'open', 'maintenance', ?)""",
+        (assignee, title, notes, "high" if dangerous else "normal",
+         house_today_iso(), now))
+    task_id = cur.lastrowid
+    if plan and point:
+        set_pin(conn, plan["id"], point[0], point[1], task_id=task_id, photo=photo,
+                user_id=user["id"] if user else None)
+    elif photo:
+        # No plan uploaded yet, so nowhere to put a pin -- and the photograph is
+        # still the report. A pin needs a place, so it waits in the notes.
+        conn.execute("UPDATE tasks SET notes = ? WHERE id = ?",
+                     (notes + "\nA photograph came with it.", task_id))
+    log_audit(conn, "problem_reported", target=title,
+              details=f"plan {plan['id']}" if plan else "no plan")
+    # Committed BEFORE anybody is told: telling them pushes to a phone, over
+    # the network, and a write held open across that locks every other writer.
+    conn.commit()
+    link = url_for("maintenance_job", task_id=task_id)
+    body = line + (" It looks dangerous." if dangerous else "")
+    for uid in plan_report_recipients(conn, plan, dangerous=dangerous,
+                                      reporter_id=user["id"] if user else None):
+        send_notification(conn, uid, "maintenance", f"Reported: {line}"[:120], body,
+                          link=link, related_task_id=task_id)
+    return task_id
+
+
+def maintenance_schedule_for_task(conn, task):
+    """The schedule a maintenance job was raised for, or None. Matched by
+    title, which is how the schedules recognise their own jobs."""
+    if not task or (task["origin"] or "") != "maintenance":
+        return None
+    for s in conn.execute(
+            "SELECT * FROM maintenance_schedules ORDER BY active DESC, id").fetchall():
+        if maintenance_task_title(s) == task["title"]:
+            return s
+    return None
+
+
+def plan_jobs(conn, *, now=None):
+    """Every maintenance job, and every placed check, with where it is.
+
+    One dict per thing the map can show: a job (a task with origin
+    'maintenance') that is open or was finished in the last
+    PLAN_DONE_SHOWN_DAYS, and a check on a schedule that has been put on a
+    plan and has no job open just now. `plan_id`, `x`, `y` are its pin, or
+    None for a job that is on no plan -- which is still a job.
+    """
+    now = now or datetime.now(timezone.utc)
+    since = (now - timedelta(days=PLAN_DONE_SHOWN_DAYS)).isoformat()
+    pins = {r["task_id"]: r for r in conn.execute(
+        """SELECT plan_pins.*, users.name AS placed_by_name FROM plan_pins
+             LEFT JOIN users ON users.id = plan_pins.placed_by_user_id
+            WHERE plan_pins.task_id IS NOT NULL""")}
+    schedules = conn.execute(
+        """SELECT maintenance_schedules.*, plan_pins.plan_id AS pin_plan_id,
+                  plan_pins.x AS pin_x, plan_pins.y AS pin_y
+             FROM maintenance_schedules
+             LEFT JOIN plan_pins ON plan_pins.schedule_id = maintenance_schedules.id
+            WHERE maintenance_schedules.active = 1 ORDER BY maintenance_schedules.id""").fetchall()
+    by_title = {}
+    for s in schedules:
+        by_title.setdefault(maintenance_task_title(s), s)
+
+    rows, open_titles = [], set()
+    for t in conn.execute(
+            """SELECT tasks.*, users.name AS assignee_name FROM tasks
+                 LEFT JOIN users ON users.id = tasks.assigned_to_user_id
+                WHERE tasks.origin = 'maintenance'
+                  AND (tasks.status != 'done' OR tasks.completed_at >= ?)
+                ORDER BY tasks.created_at, tasks.id""", (since,)).fetchall():
+        pin, sched = pins.get(t["id"]), by_title.get(t["title"])
+        if t["status"] != "done":
+            open_titles.add(t["title"])
+        where = ((pin["plan_id"], pin["x"], pin["y"]) if pin
+                 else (sched["pin_plan_id"], sched["pin_x"], sched["pin_y"])
+                 if sched and sched["pin_plan_id"] else (None, None, None))
+        status = t["status"] if t["status"] in ("open", "in_progress", "done") else "open"
+        rows.append({
+            "kind": "job", "id": t["id"], "title": t["title"], "notes": t["notes"] or "",
+            "status": status, "priority": t["priority"], "due_date": t["due_date"],
+            "created_at": t["created_at"], "completed_at": t["completed_at"],
+            "assignee_id": t["assigned_to_user_id"], "assignee_name": t["assignee_name"],
+            "source": "reported" if pin and not sched else "schedule" if sched else "other",
+            "schedule_id": sched["id"] if sched else None,
+            "plan_id": where[0], "x": where[1], "y": where[2],
+            "photo": bool(pin and pin["photo_filename"]),
+            "placed_by_name": pin["placed_by_name"] if pin else None,
+            "bucket": (["open", "in_progress"] if status == "in_progress"
+                       else [status]),
+            "link": url_for("maintenance_job", task_id=t["id"]),
+        })
+    for s in schedules:
+        if not s["pin_plan_id"] or maintenance_task_title(s) in open_titles:
+            continue
+        state = maintenance_status(s)
+        rows.append({
+            "kind": "check", "id": s["id"], "title": maintenance_task_title(s),
+            "notes": s["notes"] or "", "status": "not_due",
+            "status_label": state["label"], "priority": "normal",
+            "due_date": state["due"].isoformat() if state["due"] else None,
+            "created_at": None, "completed_at": None,
+            "assignee_id": s["assigned_to_user_id"], "assignee_name": None,
+            "source": "schedule", "schedule_id": s["id"],
+            "plan_id": s["pin_plan_id"], "x": s["pin_x"], "y": s["pin_y"],
+            "photo": False, "placed_by_name": None,
+            # Overdue with no job raised yet is owed, whatever the job runner
+            # has or has not got round to.
+            "bucket": ["open"] if state["state"] in ("overdue", "soon") else ["not_due"],
+            "link": url_for("maintenance_check", schedule_id=s["id"]),
+        })
+    for r in rows:
+        r["tone"] = PLAN_PIN_TONES.get(
+            "in_progress" if "in_progress" in r["bucket"] else r["bucket"][0], "open")
+    return rows
+
+
+_PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2}
+
+
+@app.route("/plans")
+@app.route("/plans/<int:plan_id>")
+@login_required
+def plan_map(plan_id=None):
+    """A plan with the house's maintenance jobs pinned where they are."""
+    conn = get_db()
+    plans = site_plans(conn)
+    if plan_id is not None:
+        plan = conn.execute("SELECT * FROM site_plans WHERE id = ?", (plan_id,)).fetchone()
+        if not plan:
+            conn.close()
+            abort(404)
+    else:
+        plan = plans[0] if plans else None
+    jobs = plan_jobs(conn)
+    conn.close()
+
+    # This plan's jobs, and the open ones that are on no plan at all -- they
+    # are still the house's jobs, and listing them here is how they get placed.
+    here = []
+    for j in jobs:
+        if plan and j["plan_id"] == plan["id"]:
+            j["where"] = "here"
+        elif j["plan_id"] is None and j["kind"] == "job" and j["status"] != "done":
+            j["where"] = "unplaced"
+        else:
+            continue
+        here.append(j)
+    facets = [
+        facet("status", "Status", lambda r: r["bucket"], default="open",
+              order=list(PLAN_JOB_STATUSES), labels=PLAN_JOB_STATUSES),
+        facet("source", "What", lambda r: r["source"],
+              order=list(PLAN_JOB_SOURCES), labels=PLAN_JOB_SOURCES),
+    ]
+    if plan:
+        facets.append(facet("where", "Where", lambda r: r["where"],
+                            order=list(PLAN_JOB_WHERE), labels=PLAN_JOB_WHERE))
+    lv = list_view(
+        here, request.args,
+        search=("title", "notes", "assignee_name", "placed_by_name"),
+        facets=facets,
+        sorts=[
+            sort_option("urgent", "Most urgent",
+                        lambda r: (_PRIORITY_RANK.get(r["priority"], 1),
+                                   r["due_date"] or "9999")),
+            sort_option("waiting", "Waiting longest", lambda r: r["created_at"] or "9999"),
+            sort_option("newest", "Newest first", lambda r: r["created_at"] or "",
+                        reverse=True),
+        ],
+        search_hint="Search the jobs")
+    # Numbered in the order the list is in, so pin 3 is the third line below.
+    n = 0
+    for r in lv["rows"]:
+        if plan and r["plan_id"] == plan["id"]:
+            n += 1
+            r["n"] = n
+        else:
+            r["n"] = None
+    open_by_plan = {}
+    for j in jobs:
+        if j["plan_id"] and "open" in j["bucket"]:
+            open_by_plan[j["plan_id"]] = open_by_plan.get(j["plan_id"], 0) + 1
+    user = current_user()
+    return render_template(
+        "plan_map.html", plan=plan, plans=plans, lv=lv,
+        pins=[r for r in lv["rows"] if r["n"]], open_by_plan=open_by_plan,
+        can_manage=can_reach(user, "manage_plans"),
+        can_place=can_reach(user, "place_on_plan"),
+        done_days=PLAN_DONE_SHOWN_DAYS)
+
+
+@app.route("/plans/<int:plan_id>/image")
+@login_required
+def plan_image(plan_id):
+    """The picture itself, by the plan's id, never by a name off the URL."""
+    conn = get_db()
+    row = conn.execute("SELECT filename FROM site_plans WHERE id = ?", (plan_id,)).fetchone()
+    conn.close()
+    if not row or not os.path.exists(os.path.join(ROOM_PHOTO_DIR, row["filename"])):
+        abort(404)
+    return send_from_directory(ROOM_PHOTO_DIR, row["filename"])
+
+
+def _report_form(plans, plan, *, line="", point=None, dangerous=False):
+    return render_template("report_problem.html", plans=plans, plan=plan,
+                           line=line, point=point, dangerous=dangerous)
+
+
+@app.route("/report-a-problem")
+@login_required
+def report_problem():
+    """Tap where it is on the plan, add a photograph and a line, and send."""
+    conn = get_db()
+    plans = site_plans(conn)
+    conn.close()
+    wanted = request.args.get("plan", type=int)
+    plan = next((p for p in plans if p["id"] == wanted), plans[0] if plans else None)
+    return _report_form(plans, plan)
+
+
+@app.route("/report-a-problem", methods=["POST"])
+@login_required
+def submit_problem_report():
+    user = current_user()
+    f = request.form
+    conn = get_db()
+    plans = site_plans(conn)
+    wanted = (f.get("plan_id") or "").strip()
+    plan = next((p for p in plans if str(p["id"]) == wanted), None)
+    line = " ".join((f.get("line") or "").split())
+    point = pin_from_tap(f.get("tap_x"), f.get("tap_y"), f.get("shown_w"), f.get("shown_h"))
+    dangerous = bool(f.get("dangerous"))
+    error = None
+    if not line:
+        error = "Say in a few words what is wrong -- it becomes the job's title."
+    elif (wanted or plans) and not plan:
+        # A page left open on a plan the owner has since retired: the tap was
+        # on a picture that is no longer the map, so it is not taken.
+        error = "That plan is no longer in use. Choose one and tap where it is."
+    elif plan and not point:
+        error = "Tap the plan where it is, so whoever goes out to it can find it."
+    photo = None
+    if not error:
+        try:
+            photo = store_report_photo(request.files.get("photo"))
+        except ValueError as e:
+            error = str(e)
+    if error:
+        conn.close()
+        flash(error, "error")
+        # Everything they wrote and where they tapped comes back with the
+        # message: a report typed with cold hands is not typed twice.
+        return _report_form(plans, plan or (plans[0] if plans else None),
+                            line=line, point=point if plan else None,
+                            dangerous=dangerous)
+    task_id = report_problem_on_plan(conn, plan, line=line, point=point, photo=photo,
+                                     dangerous=dangerous, user=user)
+    conn.close()
+    flash("Sent. It is a job now" + (", pinned where you tapped." if plan else ".")
+          , "success")
+    return redirect(url_for("maintenance_job", task_id=task_id))
+
+
+def maintenance_job_detail(conn, task_id):
+    """One maintenance job with everything its page shows, or None."""
+    task = conn.execute(
+        """SELECT tasks.*, users.name AS assignee_name FROM tasks
+             LEFT JOIN users ON users.id = tasks.assigned_to_user_id
+            WHERE tasks.id = ? AND tasks.origin = 'maintenance'""", (task_id,)).fetchone()
+    if not task:
+        return None
+    pin = conn.execute(
+        """SELECT plan_pins.*, users.name AS placed_by_name FROM plan_pins
+             LEFT JOIN users ON users.id = plan_pins.placed_by_user_id
+            WHERE plan_pins.task_id = ?""", (task_id,)).fetchone()
+    sched = maintenance_schedule_for_task(conn, task)
+    inherited = False
+    if not pin and sched:
+        pin = conn.execute("SELECT * FROM plan_pins WHERE schedule_id = ?",
+                           (sched["id"],)).fetchone()
+        inherited = bool(pin)
+    plan = (conn.execute("SELECT * FROM site_plans WHERE id = ?", (pin["plan_id"],)).fetchone()
+            if pin else None)
+    return {"task": task, "pin": pin, "plan": plan, "schedule": sched,
+            "inherited": inherited,
+            "photo": bool(pin and not inherited and pin["photo_filename"])}
+
+
+@app.route("/maintenance/jobs/<int:task_id>")
+@login_required
+def maintenance_job(task_id):
+    """One job: what, where on the plan, the photograph, and who has it."""
+    user = current_user()
+    conn = get_db()
+    job = maintenance_job_detail(conn, task_id)
+    plans = site_plans(conn) if job else []
+    conn.close()
+    if not job:
+        abort(404)
+    t = job["task"]
+    mine = t["assigned_to_user_id"] == user["id"]
+    status = t["status"] if t["status"] in ("open", "in_progress", "done") else "open"
+    tone = PLAN_PIN_TONES[status]
+    pins = ([{"x": job["pin"]["x"], "y": job["pin"]["y"], "n": None, "tone": tone,
+              "link": url_for("maintenance_job", task_id=t["id"]), "title": t["title"]}]
+            if job["plan"] else [])
+    return render_template(
+        "maintenance_job.html", job=job, check=None, plans=plans, pins=pins, tone=tone,
+        label={"open": "Open", "in_progress": "Being dealt with", "done": "Done"}[status],
+        mine=mine, can_change=mine or user["role"] == "owner",
+        can_take=not t["assigned_to_user_id"] and t["status"] != "done",
+        can_place=can_reach(user, "place_on_plan"),
+        can_record=bool(job["schedule"]) and can_reach(user, "record_maintenance_done"),
+        today=house_today())
+
+
+@app.route("/maintenance/jobs/<int:task_id>/status", methods=["POST"])
+@login_required
+def maintenance_job_status(task_id):
+    """Take a job on, start it, finish it or open it again.
+
+    Whoever has it, or the owner, may move it on; anybody may take one that
+    nobody has. A schedule's own job is finished by recording the visit,
+    which moves the next date on and keeps the certificate -- ticking the task
+    alone would leave the schedule owed and raise the same job tomorrow.
+    """
+    user = current_user()
+    action = (request.form.get("action") or "").strip()
+    conn = get_db()
+    task = conn.execute("SELECT * FROM tasks WHERE id = ? AND origin = 'maintenance'",
+                        (task_id,)).fetchone()
+    if not task:
+        conn.close()
+        abort(404)
+    mine = task["assigned_to_user_id"] == user["id"]
+    allowed = mine or user["role"] == "owner"
+    said, ok = None, False
+    if action == "take":
+        if task["assigned_to_user_id"] and not mine:
+            holder = conn.execute("SELECT name FROM users WHERE id = ?",
+                                  (task["assigned_to_user_id"],)).fetchone()
+            said = f"{holder['name'] if holder else 'Somebody'} already has this one."
+        elif task["status"] == "done":
+            said = "That one is already done."
+        else:
+            conn.execute("UPDATE tasks SET assigned_to_user_id = ?, status = 'in_progress' "
+                         "WHERE id = ?", (user["id"], task_id))
+            said, ok = "It's yours, and marked as being dealt with.", True
+    elif action in ("start", "done", "reopen"):
+        if not allowed:
+            said = "Only whoever has this job, or the owner, can change it."
+        elif action == "done" and maintenance_schedule_for_task(conn, task):
+            said = ("This one is on a schedule: record the visit on the maintenance "
+                    "page, so the next date moves on and the certificate is kept.")
+        elif action == "start":
+            conn.execute("UPDATE tasks SET status = 'in_progress' WHERE id = ?", (task_id,))
+            said, ok = "Marked as being dealt with.", True
+        else:
+            mark_task_done(conn, task, done=action == "done")
+            said, ok = ("Done. It stays on the map for a while so people can see."
+                        if action == "done" else "Opened again."), True
+    else:
+        said = "That is not something this page does."
+    if ok:
+        log_audit(conn, f"maintenance_job_{action}", target=task["title"])
+    conn.commit()
+    conn.close()
+    flash(said, "success" if ok else "error")
+    return redirect(url_for("maintenance_job", task_id=task_id))
+
+
+@app.route("/maintenance/jobs/<int:task_id>/photo")
+@login_required
+def maintenance_job_photo(task_id):
+    """The photograph sent with a report, served by its job."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT plan_pins.photo_filename AS f FROM plan_pins
+             JOIN tasks ON tasks.id = plan_pins.task_id
+            WHERE plan_pins.task_id = ? AND tasks.origin = 'maintenance'""",
+        (task_id,)).fetchone()
+    conn.close()
+    if not row or not row["f"] or not os.path.exists(os.path.join(ROOM_PHOTO_DIR, row["f"])):
+        abort(404)
+    return send_from_directory(ROOM_PHOTO_DIR, row["f"])
+
+
+@app.route("/maintenance/checks/<int:schedule_id>")
+@login_required
+def maintenance_check(schedule_id):
+    """A check on a schedule: where it is, when it was last done, when it is next."""
+    user = current_user()
+    conn = get_db()
+    sched = conn.execute(
+        """SELECT maintenance_schedules.*, users.name AS assignee_name,
+                  vendors.name AS vendor_name
+             FROM maintenance_schedules
+             LEFT JOIN users ON users.id = maintenance_schedules.assigned_to_user_id
+             LEFT JOIN vendors ON vendors.id = maintenance_schedules.vendor_id
+            WHERE maintenance_schedules.id = ?""", (schedule_id,)).fetchone()
+    if not sched:
+        conn.close()
+        abort(404)
+    pin = conn.execute("SELECT * FROM plan_pins WHERE schedule_id = ?",
+                       (schedule_id,)).fetchone()
+    plan = (conn.execute("SELECT * FROM site_plans WHERE id = ?", (pin["plan_id"],)).fetchone()
+            if pin else None)
+    open_job = conn.execute(
+        """SELECT id FROM tasks WHERE origin = 'maintenance' AND title = ?
+             AND status != 'done' ORDER BY id DESC LIMIT 1""",
+        (maintenance_task_title(sched),)).fetchone()
+    last = conn.execute(
+        "SELECT * FROM maintenance_visits WHERE schedule_id = ? ORDER BY done_on DESC LIMIT 1",
+        (schedule_id,)).fetchone()
+    plans = site_plans(conn)
+    conn.close()
+    state = maintenance_status(sched)
+    tone = "open" if state["state"] in ("overdue", "soon") else "check"
+    pins = ([{"x": pin["x"], "y": pin["y"], "n": None, "tone": tone,
+              "link": url_for("maintenance_check", schedule_id=schedule_id),
+              "title": sched["name"]}] if plan else [])
+    return render_template(
+        "maintenance_job.html", job=None, plans=plans, pins=pins, tone=tone,
+        check={"schedule": sched, "pin": pin, "plan": plan, "open_job": open_job,
+               "last": last, "status": state,
+               "category": MAINTENANCE_CATEGORIES.get(sched["category"], sched["category"])},
+        can_place=can_reach(user, "place_on_plan"),
+        can_record=can_reach(user, "maintenance_page"),
+        today=house_today())
+
+
+def _plan_fields(f):
+    name = " ".join((f.get("name") or "").split())
+    if not name:
+        return None, "Give the plan a name -- it is what a report says it is on."
+    kind = (f.get("kind") or "grounds").strip()
+    reports_to = (f.get("reports_to_user_id") or "").strip()
+    try:
+        order = int(f.get("sort_order") or 0)
+    except ValueError:
+        order = 0
+    return {
+        "name": name[:80],
+        "kind": kind if kind in PLAN_KINDS else "grounds",
+        "source": " ".join((f.get("source") or "").split())[:200] or None,
+        "reports_to_user_id": int(reports_to) if reports_to.isdigit() else None,
+        "sort_order": max(-999, min(999, order)),
+    }, None
+
+
+@app.route("/management/plans")
+@owner_required
+def manage_plans():
+    """The pictures the house is mapped on, and adding one."""
+    conn = get_db()
+    # Who put each picture up: the map is only as true as the picture, so
+    # whoever chose it is somebody to ask.
+    plans = [dict(p) for p in conn.execute(
+        """SELECT site_plans.*, users.name AS added_by_name FROM site_plans
+             LEFT JOIN users ON users.id = site_plans.created_by_user_id
+            ORDER BY site_plans.active DESC, site_plans.sort_order, site_plans.id""")]
+    counts = {r["plan_id"]: r for r in conn.execute(
+        """SELECT plan_pins.plan_id,
+                  SUM(CASE WHEN tasks.id IS NOT NULL AND tasks.status != 'done'
+                           THEN 1 ELSE 0 END) AS open_jobs,
+                  SUM(CASE WHEN plan_pins.schedule_id IS NOT NULL THEN 1 ELSE 0 END) AS checks
+             FROM plan_pins LEFT JOIN tasks ON tasks.id = plan_pins.task_id
+            GROUP BY plan_pins.plan_id""")}
+    for p in plans:
+        c = counts.get(p["id"])
+        p["open_jobs"] = (c["open_jobs"] or 0) if c else 0
+        p["checks"] = (c["checks"] or 0) if c else 0
+    people = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    conn.close()
+    lv = list_view(
+        plans, request.args, search=("name", "source"),
+        facets=[facet("state", "In use", lambda p: "live" if p["active"] else "retired",
+                      order=["live", "retired"],
+                      labels={"live": "In use", "retired": "Retired"}),
+                facet("kind", "Of", lambda p: p["kind"], order=list(PLAN_KINDS),
+                      labels=PLAN_KINDS)],
+        sorts=[sort_option("order", "The order a report offers them",
+                           lambda p: (not p["active"], p["sort_order"], p["id"])),
+               sort_option("name", "Name", lambda p: p["name"].lower())],
+        search_hint="Search the plans")
+    return render_template("manage_plans.html", lv=lv, people=people, kinds=PLAN_KINDS,
+                           min_edge=PLAN_MIN_EDGE)
+
+
+@app.route("/management/plans/new", methods=["POST"])
+@owner_required
+def new_plan():
+    fields, error = _plan_fields(request.form)
+    stored = None
+    if not error:
+        try:
+            stored, width, height = store_plan_image(request.files.get("image"))
+        except ValueError as e:
+            error = str(e)
+    if error:
+        flash(error, "error")
+        return redirect(url_for("manage_plans"))
+    conn = get_db()
+    cols = list(fields) + ["filename", "width", "height", "created_by_user_id", "created_at"]
+    cur = conn.execute(
+        f"INSERT INTO site_plans ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+        list(fields.values()) + [stored, width, height, session.get("user_id"),
+                                 datetime.now(timezone.utc).isoformat()])
+    plan_id = cur.lastrowid
+    log_audit(conn, "plan_added", target=fields["name"])
+    conn.commit()
+    conn.close()
+    flash(f"{fields['name']} is up. Tap Report a Problem on a phone to try it.", "success")
+    return redirect(url_for("plan_map", plan_id=plan_id))
+
+
+@app.route("/management/plans/<int:plan_id>/edit", methods=["POST"])
+@owner_required
+def edit_plan(plan_id):
+    """Rename, reorder, retire or bring back a plan, or give it a sharper picture.
+
+    A new picture keeps every pin where it was AS A FRACTION of the picture, so
+    it must be the same view -- a sharper copy, not a different crop. A
+    different view is a new plan, and the page says so beside the box.
+    """
+    fields, error = _plan_fields(request.form)
+    conn = get_db()
+    plan = conn.execute("SELECT * FROM site_plans WHERE id = ?", (plan_id,)).fetchone()
+    if not plan:
+        conn.close()
+        abort(404)
+    replaced = None
+    if not error and request.files.get("image") and request.files["image"].filename:
+        try:
+            replaced = store_plan_image(request.files["image"])
+        except ValueError as e:
+            error = str(e)
+    if error:
+        conn.close()
+        flash(error, "error")
+        return redirect(url_for("manage_plans"))
+    fields["active"] = 1 if request.form.get("active") else 0
+    if replaced:
+        fields.update(filename=replaced[0], width=replaced[1], height=replaced[2],
+                      image_replaced_at=datetime.now(timezone.utc).isoformat())
+    conn.execute(f"UPDATE site_plans SET {', '.join(k + ' = ?' for k in fields)} WHERE id = ?",
+                 list(fields.values()) + [plan_id])
+    log_audit(conn, "plan_edited", target=fields["name"],
+              details="new picture" if replaced else None)
+    conn.commit()
+    conn.close()
+    if replaced:
+        # The old picture goes once the new one is written and recorded. Before,
+        # and a failure in between would leave the plan pointing at nothing.
+        try:
+            os.remove(os.path.join(ROOM_PHOTO_DIR, plan["filename"]))
+        except OSError:
+            pass
+    flash("Saved." + (" New picture in; every pin kept its place on it." if replaced else "")
+          + ("" if fields["active"] else " Retired: it no longer opens for a report, "
+             "and its jobs keep their pins."), "success")
+    return redirect(url_for("manage_plans"))
+
+
+def _placing(conn, args):
+    """What is being put on a plan: ('task', row) or ('schedule', row), or None."""
+    task_id = str(args.get("task_id") or args.get("task") or "").strip()
+    sched_id = str(args.get("schedule_id") or args.get("schedule") or "").strip()
+    if task_id.isdigit():
+        row = conn.execute("SELECT * FROM tasks WHERE id = ? AND origin = 'maintenance'",
+                           (int(task_id),)).fetchone()
+        return ("task", row) if row else None
+    if sched_id.isdigit():
+        row = conn.execute("SELECT * FROM maintenance_schedules WHERE id = ?",
+                           (int(sched_id),)).fetchone()
+        return ("schedule", row) if row else None
+    return None
+
+
+@app.route("/management/plans/<int:plan_id>/place")
+@owner_required
+def place_on_plan(plan_id):
+    """Tap where a job or a check is, to put it on this plan."""
+    conn = get_db()
+    plan = conn.execute("SELECT * FROM site_plans WHERE id = ?", (plan_id,)).fetchone()
+    what = _placing(conn, request.args)
+    if not plan or not what:
+        conn.close()
+        abort(404)
+    kind, row = what
+    pin = conn.execute(f"SELECT * FROM plan_pins WHERE {kind}_id = ?", (row["id"],)).fetchone()
+    plans = site_plans(conn)
+    conn.close()
+    title = row["title"] if kind == "task" else maintenance_task_title(row)
+    return render_template("place_on_plan.html", plan=plan, plans=plans, kind=kind,
+                           row=row, title=title, pin=pin)
+
+
+@app.route("/management/plans/<int:plan_id>/place", methods=["POST"])
+@owner_required
+def save_place_on_plan(plan_id):
+    conn = get_db()
+    plan = conn.execute("SELECT * FROM site_plans WHERE id = ?", (plan_id,)).fetchone()
+    what = _placing(conn, request.form)
+    if not plan or not what:
+        conn.close()
+        abort(404)
+    kind, row = what
+    back = (url_for("maintenance_job", task_id=row["id"]) if kind == "task"
+            else url_for("maintenance_page") + f"#sched-{row['id']}")
+    title = row["title"] if kind == "task" else maintenance_task_title(row)
+    if request.form.get("remove"):
+        conn.execute(f"DELETE FROM plan_pins WHERE {kind}_id = ?", (row["id"],))
+        log_audit(conn, "plan_pin_removed", target=title)
+        conn.commit()
+        conn.close()
+        flash(f"Taken off the plan. {title} is still a "
+              f"{'job' if kind == 'task' else 'check on the schedule'}.", "success")
+        return redirect(back)
+    f = request.form
+    point = pin_from_tap(f.get("tap_x"), f.get("tap_y"), f.get("shown_w"), f.get("shown_h"))
+    if not point:
+        conn.close()
+        flash("Tap the plan where it is first.", "error")
+        return redirect(url_for("place_on_plan", plan_id=plan_id, **{f"{kind}_id": row["id"]}))
+    set_pin(conn, plan_id, point[0], point[1], user_id=session.get("user_id"),
+            **{f"{kind}_id": row["id"]})
+    log_audit(conn, "plan_pin_placed", target=title, details=plan["name"])
+    conn.commit()
+    conn.close()
+    flash(f"{title} is on {plan['name']}.", "success")
+    return redirect(back)
 
 
 @app.route("/management/vehicles")
@@ -90313,8 +95829,11 @@ TEMPLATE_STAGES = [
     ("deposit", "Deposit"), ("reminder", "Reminder"), ("balance", "Balance due"),
     ("quote", "Quote"), ("updated", "Changed"),
     ("waitlist", "Waitlist"), ("declined", "Declined"), ("cancelled", "Cancelled"),
-    ("not_running", "Cancelled"), ("feedback", "After the stay"),
+    ("not_running", "Cancelled"),
+    ("extras_offer", "Before the stay"),
+    ("feedback", "After the stay"), ("recap", "After the stay"),
     ("review", "After the stay"), ("newsletter", "Signing up"),
+    ("checkin", "Before arrival"),
 ]
 
 # WHEN EACH ONE GOES, AND TO WHOM. The page listed thirty-odd letters by name
@@ -90347,6 +95866,16 @@ EMAIL_TEMPLATE_INFO = {
                         "has not checked in online yet, or when you press Email the link "
                         "on the stay", "The Booking.com guest, through Booking.com's own "
                         "address for them"),
+    "room_checkin_before": ("Not until you have written it. Then, with Email the check-in "
+                            "link before arrival switched on under Automation, once to each "
+                            "confirmed stay, in the morning, as many days before arrival as "
+                            "you set there — unless they have checked in online already",
+                            "The guest"),
+    "workshop_checkin_before": ("Not until you have written it. Then, with Email the check-in "
+                                "link before arrival switched on under Automation, once to "
+                                "each confirmed atelier place, in the morning, as many days "
+                                "before the atelier as you set there — unless they have "
+                                "checked in online already", "The guest"),
     "room_declined": ("When you decline a booking request", "The guest, and anyone "
                                                             "they asked us to copy"),
     "room_cancelled": ("When the house cancels a booking from the bookings list",
@@ -90361,6 +95890,12 @@ EMAIL_TEMPLATE_INFO = {
                             "chase a balance before the stay", "Whoever pays, and anyone copied"),
     "room_balance_after": ("When you chase a balance still owed after the stay",
                            "Whoever pays, and anyone copied"),
+    "room_extras_offer": ("Once before a stay, the morning it comes within the days set "
+                          "under Automation, Offer what a guest can add — while that is "
+                          "switched on and once you have written this. It ships with no "
+                          "wording, and cannot be sent without yours",
+                          "The guest, and anyone they asked us to copy; one letter to a "
+                          "party. Never a cancelled stay, nor one with nothing left to offer"),
     "room_share_request": ("When you ask one person for their share of a bill",
                            "The person named on that share"),
     "room_feedback_request": ("The days after departure, or at once when a stay is "
@@ -90400,6 +95935,11 @@ EMAIL_TEMPLATE_INFO = {
     "workshop_moved": ("When you move a registration to another date of the same "
                        "atelier, from the registrations page", "The guest"),
     "workshop_feedback_request": ("The days after an atelier ends", "The guest"),
+    "workshop_recap": ("Never by itself. When you send an atelier's recap from its sitting's "
+                       "page, once it is over and once you have written this — it ships "
+                       "with no wording, and cannot be sent without yours",
+                       "Each guest confirmed on that sitting, once; never anybody "
+                       "cancelled or declined"),
     "workshop_waitlist_opening": ("When a place frees up on an atelier somebody is "
                                   "waiting for", "The person on the waiting list"),
     "workshop_not_running": ("When you call off an atelier's dates", "Everybody on "
@@ -90456,6 +95996,9 @@ def template_state(row, defaults):
     # text: a tag nothing fills, a stray brace, a link taken out. The send
     # quietly uses the shipped wording for all of them, so a page that marked
     # only one of the four showed "Edited" over a letter nobody was receiving.
+    if (row["template_key"] in UNWRITTEN_LETTERS
+            and not letter_written(row["subject"], row["body"])):
+        return "No wording yet"
     if wording_problems(row["template_key"], row["subject"], row["body"]):
         return "Needs fixing"
     want = defaults.get(row["template_key"])
@@ -90566,7 +96109,7 @@ def email_templates_page(draft=None):
                   order=list(dict.fromkeys(label for _t, label in TEMPLATE_STAGES))
                   + ["Other"]),
             facet("state", "Wording", lambda t: states[t["template_key"]],
-                  order=["Needs fixing", "Edited", "Original wording"]),
+                  order=["Needs fixing", "No wording yet", "Edited", "Original wording"]),
             facet("use", "Last 90 days",
                   lambda t: "Went out" if usage.get(t["template_key"], {}).get("sent")
                   else "Did not go out",
@@ -90723,8 +96266,13 @@ def restore_email_template(template_key):
     log_audit(conn, "email_template_restored", target=template_key)
     conn.commit()
     conn.close()
-    flash("Restored to the original wording. What it said before is in its history.",
-          "success")
+    if template_key in UNWRITTEN_LETTERS:
+        # It shipped with no words, so going back to them withdraws it.
+        flash("Emptied: it shipped with no wording, so it will not be sent until it "
+              "is written again. What it said before is in its history.", "success")
+    else:
+        flash("Restored to the original wording. What it said before is in its history.",
+              "success")
     return redirect(url_for("management_email_templates"))
 
 
@@ -93743,6 +99291,10 @@ def readiness_checks(conn, *, include_slow=True):
               "be the original. Set PUBLIC_BASE_URL to https://www.chateaugudanes.com "
               "(or the bare domain, whichever the house uses).")
 
+    # Whether the live site is running main, from the quarter-hourly check, and
+    # whether there can be a check at all: the repository is private.
+    add(*deploy_check_readiness(conn))
+
     # Asked without the request's name: this page may be open on admin. or on
     # Railway, and the answer must not depend on which.
     addin_known = addin_base_source(from_request=False)[0]
@@ -94378,6 +99930,8 @@ def send_backup_email(to_address, zip_bytes, filename, note=""):
 HEALTH_NOTE_FIELDS = [
     ("restaurant_bookings", ["dietary_notes"], "dinner_date"),
     ("workshop_bookings", ["dietary_notes", "medical_notes"], None),
+    # What a room guest said at online check-in, once they have left.
+    ("bookings", ["dietary_notes"], "departure_date"),
 ]
 
 
@@ -94427,6 +99981,14 @@ def purge_health_notes(conn, today=None):
                 OR (medical_notes IS NOT NULL AND TRIM(medical_notes) != ''))""",
         (iso,)).rowcount
     cleared["workshop_bookings"] = n
+
+    # A room guest's, from their online check-in, once they have left. The
+    # departure day is the last morning they are here, so it goes the day
+    # after, as a Booking.com guest's does below.
+    cleared["bookings"] = conn.execute(
+        """UPDATE bookings SET dietary_notes = NULL
+            WHERE dietary_notes IS NOT NULL AND TRIM(dietary_notes) != ''
+              AND departure_date < ?""", (iso,)).rowcount
 
     # A Booking.com guest's dietary needs, from their online check-in, once
     # they have left.
@@ -94670,6 +100232,10 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_sent_outbox(conn))
     cleared.update(purge_held_texts(conn))
     cleared.update(purge_guest_sessions(conn))
+    # A guest's own words, filed for translation off their own page before
+    # that page stopped filing them. The translation job does this too; here
+    # it happens even with that job switched off.
+    cleared["translated guest words"] = purge_guest_page_translations(conn)
     # The keys that make an offline action safe to send twice. No handset is
     # still holding a tap from a month ago, and a row per tap for ever is a
     # table somebody eventually clears out in a hurry.
@@ -95335,12 +100901,15 @@ def staff_today():
     my_tasks = conn.execute(
         """SELECT * FROM tasks
            WHERE assigned_to_user_id = ?
-             AND (due_date IS NULL OR due_date <= ?)
+             AND (due_date IS NULL OR due_date <= ? OR (origin = ? AND due_date <= ?))
              AND (status != 'done' OR completed_at >= ?)
            ORDER BY status = 'done', (due_date IS NULL), due_date, id""",
         # due_date is a date; completed_at is a moment, and "done today" is
-        # since the house's midnight.
-        (user["id"], today.isoformat(), house_moment(today)),
+        # since the house's midnight. An occasion's task is due the day they
+        # arrive but raised days before, for flowers ordered ahead.
+        (user["id"], today.isoformat(), OCCASION_TASK_ORIGIN,
+         (today + timedelta(days=occasion_prep_days(conn))).isoformat(),
+         house_moment(today)),
     ).fetchall()
 
     my_shift_today = conn.execute(
@@ -96631,6 +102200,200 @@ def decide_leave(request_id):
 ACCESS_CODE_KEEP_DAYS = 7
 
 
+def sheet_extras(conn, booking_ids):
+    """Each stay's extras for the arrivals sheet, by booking: every line not
+    cancelled, soonest first, with the day it is wanted and whether it is
+    still to confirm. One query for the lot, not one a row."""
+    out = {}
+    if not booking_ids:
+        return out
+    marks = ",".join("?" * len(booking_ids))
+    for line in conn.execute(
+            f"""SELECT booking_extras.*, extras.category AS extra_category
+                  FROM booking_extras LEFT JOIN extras ON extras.id = booking_extras.extra_id
+                 WHERE booking_extras.category = 'room'
+                   AND booking_extras.booking_id IN ({marks})
+                   AND COALESCE(booking_extras.status, '') != 'cancelled'
+                 ORDER BY booking_extras.scheduled_for IS NULL, booking_extras.scheduled_for,
+                          booking_extras.created_at, booking_extras.id""",
+            list(booking_ids)).fetchall():
+        d = parse_date(line["scheduled_for"])
+        out.setdefault(line["booking_id"], []).append({
+            "name": line["name"],
+            "quantity": line["quantity"] or 1,
+            "day": d.isoformat() if d else None,
+            # Weekday first: "the Saturday" is how the house talks about a stay.
+            "when": f"{d.strftime('%a')} {d.day} {d.strftime('%b')}" if d else "",
+            "notes": (line["notes"] or "").strip(),
+            "state": {"delivered": "delivered", "requested": "to confirm"}.get(line["status"], ""),
+            "transfer": extra_is_transfer(line["extra_category"], line["name"],
+                                          line["revenue_category"]),
+        })
+    return out
+
+
+def arrivals_calendar(conn, start, end, channel=None):
+    """Who sleeps in which room each night from `start` to `end`, for the top
+    of the arrivals sheet (owner, 26 October 2026: "a calendar").
+
+    A row a room and a column a night. A stay is one cell across the nights it
+    covers -- arrival night to the night before it leaves -- marked where it
+    began before the window or runs on after it. The house's own stays,
+    Booking.com's, the atelier places the rooming list has put in a room, and
+    the owner's closures; a stay still waiting to be confirmed is drawn as
+    one. Two in one room on one night is drawn as a clash, because the
+    printout is where somebody would otherwise find it, at the door.
+
+    Under it, for each night, the rooms let and the guests asleep -- which is
+    tomorrow's breakfast -- counted from the same cells, so the totals cannot
+    disagree with the grid above them.
+    """
+    nights = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    first, after = start.isoformat(), (end + timedelta(days=1)).isoformat()
+    rooms = [dict(r) for r in conn.execute(
+        "SELECT id, name FROM rooms WHERE active = 1 ORDER BY sort_order, name")]
+    names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    occupants = []   # (room key, first night, night it leaves, occupant)
+    for b in conn.execute(
+            """SELECT id, room_id, guest_name, party_size, arrival_date, departure_date,
+                      status, reference_code FROM bookings
+                WHERE status IN ('confirmed', 'pending') AND no_show_at IS NULL
+                  AND arrival_date < ? AND departure_date > ?""", (after, first)).fetchall():
+        occupants.append((b["room_id"], b["arrival_date"], b["departure_date"], {
+            "key": f"b{b['id']}", "name": b["guest_name"], "party": b["party_size"],
+            "kind": "stay" if b["status"] == "confirmed" else "pending",
+            "ref": b["reference_code"]}))
+    if channel is None:
+        channel = channel_stays(conn)
+    for st in channel:
+        if st["arrival_date"] < after and st["departure_date"] > first:
+            occupants.append((st["room_id"] or "unmatched", st["arrival_date"],
+                              st["departure_date"], {
+                "key": f"c{st.get('ota_reservation_id') or st['room_id']}{st['arrival_date']}",
+                "name": st["guest_name"] if st.get("named") else st["channel"],
+                "party": st["party_size"], "kind": "channel",
+                "ref": st["reference_code"]}))
+    # An atelier place sleeps from its sitting's first night to the night
+    # before it ends, as the calendar holds it; a one-day sitting, its day.
+    ateliers = []
+    for s in conn.execute(
+            f"""SELECT workshop_sessions.id, workshop_sessions.start_date,
+                       workshop_sessions.end_date, workshops.title
+                  FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                 WHERE workshop_sessions.start_date < ? AND workshop_sessions.end_date >= ?
+                   AND {SESSION_IS_LIVE}""", (after, first)).fetchall():
+        leaves = max(s["end_date"], (parse_date(s["start_date"]) + timedelta(days=1)).isoformat())
+        if leaves <= first:
+            continue   # its guests leave on the window's first morning
+        places = conn.execute(
+            """SELECT id, guest_name, party_size, assigned_room_id, reference_code
+                 FROM workshop_bookings WHERE session_id = ? AND status = 'confirmed'""",
+            (s["id"],)).fetchall()
+        unroomed = 0
+        for p in places:
+            if p["assigned_room_id"]:
+                occupants.append((p["assigned_room_id"], s["start_date"], leaves, {
+                    "key": f"w{p['id']}", "name": p["guest_name"], "party": p["party_size"],
+                    "kind": "atelier", "ref": p["reference_code"]}))
+            else:
+                unroomed += p["party_size"] or 0
+        ateliers.append({"title": s["title"], "from": s["start_date"], "leaves": leaves,
+                         "guests": sum((p["party_size"] or 0) for p in places),
+                         "unroomed": unroomed})
+    for c in conn.execute(
+            """SELECT id, room_id, start_date, end_date, reason FROM room_blocks
+                WHERE start_date < ? AND end_date > ?""", (after, first)).fetchall():
+        occupants.append((c["room_id"], c["start_date"], c["end_date"], {
+            "key": f"x{c['id']}", "name": "Closed", "party": 0, "kind": "closed",
+            "ref": (c["reason"] or "").strip()}))
+
+    # A room with somebody in it is drawn even when it is off sale, and the
+    # Booking.com stays no room has been matched to get a row of their own.
+    shown = {r["id"] for r in rooms}
+    for key in dict.fromkeys(o[0] for o in occupants):
+        if key not in shown and key != "unmatched":
+            rooms.append({"id": key, "name": names.get(key) or "A room since removed"})
+            shown.add(key)
+    if any(o[0] == "unmatched" for o in occupants):
+        rooms.append({"id": "unmatched", "name": "Booking.com, room not matched"})
+
+    def segments(cover):
+        """Consecutive nights with the same people in them, as one cell each."""
+        out = []
+        for i, night in enumerate(nights):
+            who = cover(night.isoformat())
+            ids = tuple(o["key"] for o in who)
+            if out and out[-1]["ids"] == ids:
+                out[-1]["span"] += 1
+                continue
+            out.append({"ids": ids, "who": who, "span": 1, "first": i})
+        return out
+
+    rows = []
+    let = [0] * len(nights)
+    guests = [0] * len(nights)
+    unknown = [False] * len(nights)
+    for room in rooms:
+        mine = [o for o in occupants if o[0] == room["id"]]
+
+        def cover(iso, mine=mine):
+            # A CLOSURE UNDER A GUEST is the house holding the room for them,
+            # not a second booking: the owner closes a room over the nights of
+            # a Booking.com stay so the website cannot sell it too. Drawn only
+            # where nobody is in the room, or every one of those printed as a
+            # clash.
+            here = [o[3] for o in mine if o[1] <= iso < o[2]]
+            return [o for o in here if o["kind"] != "closed"] or here[:1]
+        cells = segments(cover)
+        for cell in cells:
+            who = cell["who"]
+            people = [o for o in who if o["kind"] != "closed"]
+            cell["kind"] = ("clash" if len(who) > 1 else who[0]["kind"]) if who else "free"
+            cell["label"] = " / ".join(o["name"] or "" for o in who)
+            # The surname alone where the cell is a night or two wide: a
+            # name cut off on paper cannot be hovered over to read the rest.
+            cell["short"] = " / ".join(((o["name"] or "").split() or [""])[-1]
+                                       if o["kind"] in ("stay", "pending", "atelier") else o["name"]
+                                       for o in who)
+            cell["party"] = sum((o["party"] or 0) for o in people)
+            cell["refs"] = " · ".join(o["ref"] for o in who if o["ref"])
+            span_first = nights[cell["first"]].isoformat()
+            span_last = nights[cell["first"] + cell["span"] - 1].isoformat()
+            cell["from_before"] = bool(who) and any(o[1] < span_first for o in mine
+                                                    if o[3] in who) and cell["first"] == 0
+            cell["runs_on"] = bool(who) and cell["first"] + cell["span"] == len(nights) and any(
+                o[2] > (parse_date(span_last) + timedelta(days=1)).isoformat()
+                for o in mine if o[3] in who)
+            if people:
+                for i in range(cell["first"], cell["first"] + cell["span"]):
+                    let[i] += 1
+                    guests[i] += cell["party"]
+                    unknown[i] = unknown[i] or any(not o["party"] for o in people)
+        rows.append({"room": room["name"], "cells": cells})
+    # The atelier places with no room yet are still asleep in the house.
+    band = []
+    for i, night in enumerate(nights):
+        iso = night.isoformat()
+        on = [a for a in ateliers if a["from"] <= iso < a["leaves"]]
+        guests[i] += sum(a["unroomed"] for a in on)
+        band.append(on)
+    atelier_cells = []
+    for i, on in enumerate(band):
+        ids = tuple(a["title"] + a["from"] for a in on)
+        if atelier_cells and atelier_cells[-1]["ids"] == ids:
+            atelier_cells[-1]["span"] += 1
+        else:
+            atelier_cells.append({"ids": ids, "span": 1, "on": on})
+    return {
+        "nights": nights,
+        "rows": rows,
+        "ateliers": atelier_cells if any(c["on"] for c in atelier_cells) else [],
+        "clashes": sum(1 for r in rows for c in r["cells"] if c["kind"] == "clash"),
+        "totals": [{"rooms": let[i], "guests": guests[i], "unknown": unknown[i]}
+                   for i in range(len(nights))],
+    }
+
+
 def arrivals_sheet(conn, day=None, channel=None):
     """One day's arrivals and departures, with everything about each on the row.
 
@@ -96678,12 +102441,21 @@ def arrivals_sheet(conn, day=None, channel=None):
                      WHERE booking_id IN ({marks}) AND returned_at IS NULL
                      ORDER BY issued_at""", [b["id"] for b in arriving]).fetchall():
             codes.setdefault(r["booking_id"], []).append(r)
+    # What each is celebrating, and how far its preparation has got.
+    occasions = occasion_states(conn, [b["id"] for b in arriving])
+    # WHAT THEY HAVE BOUGHT WITH THE STAY, line by line with the day each is
+    # wanted (owner, 26 October 2026: "make sure everything there like the
+    # extras"). The sheet carried none of it, so the hamper, the dinner and
+    # the car from Toulouse were on the Extras page and not on the paper the
+    # door works from.
+    extras = sheet_extras(conn, [b["id"] for b in arriving])
 
     rows = []
     for b in arriving:
         email = (b["guest_email"] or "").strip().lower()
         profile = profiles.get(email)
         caution = guest_caution_for(conn, email=b["guest_email"], name=b["guest_name"])
+        lines = extras.get(b["id"], [])
         # WHAT IS STILL UNANSWERED, said on the row rather than on a second
         # page. These are the questions somebody would otherwise ask at the
         # door, which is the worst moment to ask any of them.
@@ -96695,8 +102467,15 @@ def arrivals_sheet(conn, day=None, channel=None):
         if not (b["estimated_arrival_time"] or "").strip() and not (
                 profile and (profile["usual_arrival_time"] or "").strip()):
             missing.append("no arrival time")
-        if booking_has_transfer(b) and not (b["transfer_arrival_time"] or "").strip():
+        # A transfer chosen with the stay or added to it since -- the summary
+        # is written once, at booking -- and no time for it anywhere: not on
+        # the booking, and not in what the guest wrote beside the line.
+        transfer_lines = [x for x in lines if x["transfer"]]
+        if ((booking_has_transfer(b) or transfer_lines)
+                and not (b["transfer_arrival_time"] or "").strip()
+                and not any(x["notes"] for x in transfer_lines)):
             missing.append("transfer with no time")
+        bill = booking_bill(conn, b["id"])
         rows.append({
             "booking": b,
             "profile": profile,
@@ -96712,31 +102491,128 @@ def arrivals_sheet(conn, day=None, channel=None):
             "arrival_time": (b["estimated_arrival_time"] or "").strip()
                             or ((profile["usual_arrival_time"] or "").strip()
                                 if profile else ""),
+            # Said as "usually" on the paper when it is the profile's: a time
+            # read as this stay's is a time somebody waits up for.
+            "arrival_time_usual": not (b["estimated_arrival_time"] or "").strip(),
+            # What they said at online check-in first: it is about this stay
+            # and the newest thing they told us.
             "dietary": " · ".join(x for x in [
-                (profile["dietary_notes"] or "").strip() if profile else "",
-                (b["special_requests"] or "").strip()] if x),
+                (b["dietary_notes"] or "").strip(),
+                (profile["dietary_notes"] or "").strip() if profile else ""] if x),
+            # What they asked for, on its own. It was joined onto the dietary
+            # line and printed under "Cannot eat", so "a quiet room, please"
+            # read as an allergy and an allergy could hide in a paragraph.
+            "requests": (b["special_requests"] or "").strip(),
+            "extras": lines,
+            "nights": max((parse_date(b["departure_date"]) - day).days, 0)
+                      if parse_date(b["departure_date"]) else 0,
+            # From the bill, the one definition of what a stay owes. The page
+            # shows it only to hands that can see the front desk.
+            "owed": round(bill["owed"], 2) if bill else 0.0,
+            "total": round(bill["total"], 2) if bill else 0.0,
             "access_needs": (profile["access_needs"] or "").strip() if profile else "",
+            "checked_in_online": b["checkin_done_at"],
             "missing": missing,
+            "occasion": " ".join((b["special_occasion"] or "").split()),
+            "occasion_prep": occasions.get(b["id"]),
         })
+    # What is still to settle as each one leaves, from the same bill.
+    owed_leaving = {}
+    for b in leaving:
+        bill = booking_bill(conn, b["id"])
+        owed_leaving[b["id"]] = round(bill["owed"], 2) if bill else 0.0
     # Booking.com's guests, on their own list: the sheet's rows are the house's
-    # bookings with everything that hangs off them -- codes, transfers, a
-    # telephone to ring -- and a Booking.com stay has none of that to show.
+    # bookings with everything that hangs off them -- codes, transfers, a bill
+    # -- and a Booking.com stay has none of that to show.
     if channel is None:
         channel = channel_stays(conn)
     channel_arriving = [st for st in channel if st["arrival_date"] == iso]
     channel_leaving = [st for st in channel if st["departure_date"] == iso]
+    # BUT WHAT THEIR GUEST TOLD US, they do have: the time they will come, a
+    # telephone, what they asked for and cannot eat, from the extranet or the
+    # guest's own online check-in (22 October 2026). channel_stays() answers
+    # None for all of it, because it was written before the columns were, so
+    # the sheet showed a Booking.com guest's name and nothing they had said.
+    # Read here, for the stays on the sheet, rather than added to every list
+    # channel_stays() feeds -- one of which sends letters to guest_email.
+    told = {}
+    ids = [st["ota_reservation_id"] for st in channel_arriving if st.get("ota_reservation_id")]
+    if ids:
+        marks = ",".join("?" * len(ids))
+        told = {r["id"]: r for r in conn.execute(
+            f"""SELECT id, estimated_arrival_time, guest_phone, guest_email,
+                       special_requests, dietary_notes, checkin_done_at
+                  FROM ota_reservations WHERE id IN ({marks})""", ids).fetchall()}
+    channel_arriving = [dict(st, told=told.get(st.get("ota_reservation_id")))
+                        for st in channel_arriving]
+    channel_arriving.sort(key=lambda st: (
+        ((st["told"]["estimated_arrival_time"] or "").strip() if st["told"] else "") or "99:99",
+        st["room_name"] or ""))
+    # AN ATELIER BEGINS OR ENDS. Its guests sleep in the rooms and come to the
+    # same door, and were on no part of this sheet: on the first day it was
+    # simply quiet. Who is coming and when, and who goes on the last day; what
+    # each cannot eat is on the atelier's own sheet, which the kitchen reads.
+    ateliers = []
+    for s in conn.execute(
+            f"""SELECT workshop_sessions.id, workshop_sessions.start_date,
+                       workshop_sessions.end_date, workshops.title
+                  FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                 WHERE (workshop_sessions.start_date = ? OR workshop_sessions.end_date = ?)
+                   AND {SESSION_IS_LIVE}
+                 ORDER BY workshop_sessions.start_date, workshops.title""", (iso, iso)).fetchall():
+        places = conn.execute(
+            """SELECT wb.guest_name, wb.party_size, wb.guest_phone, wb.estimated_arrival_time,
+                      wb.reference_code, rooms.name AS room_name
+                 FROM workshop_bookings wb LEFT JOIN rooms ON rooms.id = wb.assigned_room_id
+                WHERE wb.session_id = ? AND wb.status = 'confirmed'
+                ORDER BY COALESCE(NULLIF(wb.estimated_arrival_time, ''), '99:99'), wb.guest_name""",
+            (s["id"],)).fetchall()
+        ateliers.append({
+            "id": s["id"], "title": s["title"],
+            # A one-day sitting begins and ends on the same day: it begins.
+            "begins": s["start_date"] == iso,
+            "places": places,
+            "guests": sum((p["party_size"] or 0) for p in places),
+            "unroomed": sum(1 for p in places if not p["room_name"]),
+        })
+    # WHAT IS WANTED TODAY BY SOMEBODY ALREADY HERE: the dinner on their second
+    # night, the late checkout on their last morning. An arriving guest's
+    # extras are on their own row; these belonged to nobody on the sheet, so a
+    # fortnight printed from tomorrow lost every one for a guest who came today.
+    here = conn.execute(
+        """SELECT bookings.id, bookings.guest_name, rooms.name AS room_name
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed' AND bookings.no_show_at IS NULL
+              AND bookings.arrival_date < ? AND bookings.departure_date >= ?""",
+        (iso, iso)).fetchall()
+    staying = {b["id"]: b for b in here}
+    wanted = [dict(x, guest_name=staying[bid]["guest_name"], room_name=staying[bid]["room_name"])
+              for bid, xs in sheet_extras(conn, list(staying)).items()
+              for x in xs if x["day"] == iso]
+    wanted.sort(key=lambda x: (x["room_name"] or "", x["name"]))
     return {
         "day": day,
         "arriving": rows,
         "leaving": leaving,
+        "owed_leaving": owed_leaving,
         "channel_arriving": channel_arriving,
         "channel_leaving": channel_leaving,
+        "ateliers": ateliers,
+        "extras_here": wanted,
+        # Everybody coming through the door and going out of it, whichever
+        # book they are in, so the day's line adds up to the rows under it.
+        "arriving_count": (len(rows) + len(channel_arriving)
+                           + sum(len(a["places"]) for a in ateliers if a["begins"])),
+        "leaving_count": (len(leaving) + len(channel_leaving)
+                          + sum(len(a["places"]) for a in ateliers if not a["begins"])),
         "beds": (sum((b["party_size"] or 0) for b in arriving)
-                 + sum((st["party_size"] or 0) for st in channel_arriving)),
+                 + sum((st["party_size"] or 0) for st in channel_arriving)
+                 + sum(a["guests"] for a in ateliers if a["begins"])),
         "beds_unknown": sum(1 for st in channel_arriving if not st["party_size"]),
         # Said plainly, because an empty sheet and a sheet nobody built look
         # identical otherwise.
-        "nothing_doing": not (arriving or leaving or channel_arriving or channel_leaving),
+        "nothing_doing": not (arriving or leaving or channel_arriving or channel_leaving
+                              or ateliers or wanted),
     }
 
 
@@ -96786,11 +102662,12 @@ def arrivals_weeks(conn, start=None):
                 week["entries"].append({"quiet": True, "first": day, "last": day})
         else:
             week["entries"].append({"quiet": False, "sheet": sheet})
-            week["arriving"] += len(sheet["arriving"]) + len(sheet["channel_arriving"])
-            week["leaving"] += len(sheet["leaving"]) + len(sheet["channel_leaving"])
+            week["arriving"] += sheet["arriving_count"]
+            week["leaving"] += sheet["leaving_count"]
             week["guests"] += sheet["beds"]
         day += timedelta(days=1)
     return {"start": start, "end": end, "weeks": weeks,
+            "calendar": arrivals_calendar(conn, start, end, channel=channel),
             "after": end + timedelta(days=1)}
 
 
@@ -96847,8 +102724,10 @@ def front_desk_day(conn, today=None):
                      WHERE {col} IN ({marks}) AND origin != 'checklist'""", keys).fetchall():
             tally = prep.setdefault((kind, t["owner"]), {"open": 0, "done": 0})
             tally["done" if t["status"] == "done" else "open"] += 1
+    occasions = occasion_states(conn, ids)
     for x in arriving:
         x["prep"] = prep.get((x["kind"], x["id"]))
+        x["occasion_prep"] = occasions.get(x["id"]) if x["kind"] == "stay" else None
     # The house as a whole tonight, room by room.
     by_room = []
     for r in rooms:
@@ -96949,7 +102828,11 @@ def arrivals_sheet_page():
     window = arrivals_weeks(conn, named or today)
     conn.close()
     return render_template("arrivals_sheet.html", window=window,
-                           today=today, day=window["start"], named=bool(named))
+                           today=today, day=window["start"], named=bool(named),
+                           tomorrow=today + timedelta(days=1),
+                           # On the paper, so a copy found in a drawer says
+                           # how old it is.
+                           printed_at=datetime.now(LOCAL_TZ))
 
 
 @app.route("/admin/bookings/<int:booking_id>/access-code", methods=["POST"])
@@ -97937,12 +103820,18 @@ def run_housekeeping_job(conn):
     unheld = release_lapsed_workshop_holds(conn)
     prepped = auto_prep_upcoming_arrivals(conn, today)
     turned = prep_channel_departures(conn, today)
+    # Every ten minutes, with the arrival prep: a stay cancelled at noon has its
+    # occasion task closed by ten past, whichever of the many ways it was
+    # cancelled.
+    occasions = generate_occasion_tasks(conn, today)
     return (f"told about {told} waiting request(s), expired {expired} stale "
             f"booking(s), released {released} reservation(s) not taken up, "
             f"sent {checkins} Booking.com check-in link(s), "
             f"released {unheld} atelier place(s) held for a deposit that never came, "
             f"prepped {prepped} arrival(s), "
-            f"{turned} Booking.com room(s) to turn round")
+            f"{turned} Booking.com room(s) to turn round, "
+            f"{occasions['made']} occasion(s) to prepare for raised and "
+            f"{occasions['closed']} closed")
 
 
 LANGUAGE_NAMES = {"fr": "French", "es": "Spanish"}
@@ -98077,6 +103966,9 @@ def run_page_translation_job(conn, limit=None):
     actually served, so a handover that redraws the site on Friday is
     translated by the job without anybody being told it happened.
     """
+    # First, and before the provider check: nothing written down off a
+    # guest's own page that is not the house's words is ever sent.
+    purge_guest_page_translations(conn)
     if not claude_configured():
         return "no model provider configured"
     budget = limit or TRANSLATION_MAX_PER_RUN
@@ -98254,6 +104146,374 @@ def run_room_balance_reminder_job(conn, days_before):
     if not owing:
         return "nobody arriving soon owes anything"
     return f"reminded {sent} of {owing} guest(s) with a balance outstanding"
+
+
+# ---------------------------------------------------------------------------
+# WHAT A STAY CAN STILL HAVE, OFFERED BEFORE THE GUEST ARRIVES.
+#
+# One letter, about a week out (the owner sets the days), listing what is on
+# sale that this stay has not got and still has the notice for: the tour, the
+# crémant board, a transfer, whatever the catalogue holds -- and dinner at La
+# Table when the stay could book it. Each comes with a link that opens the
+# guest's own booking page at that extra, where the Add button they would have
+# pressed anyway puts it on the stay. Nothing is added by following a link:
+# mail scanners open every link in a letter, and a GET that sold a transfer
+# would sell one to every guest whose inbox is scanned.
+#
+# Four rules shape it, each the house's rather than this letter's own:
+#   - THE OWNER'S WORDS. It ships with none (UNWRITTEN_LETTERS) and does not go
+#     until they are written. The cards under the words carry only what the
+#     catalogue says -- the name, the description, the price, the notice -- and
+#     a button named for the part of the page it opens.
+#   - NOTHING ABOUT PAYING. Extras are paid for at the house and guests are not
+#     told so; the letter's wording is refused if it raises money at all
+#     (LETTERS_THAT_NEVER_MENTION_PAYING).
+#   - OFF until switched on, and only while Write to guests is on: an offer
+#     held in the outbox and released a fortnight later offers things the stay
+#     no longer has the notice for.
+#   - ONCE PER STAY, and one letter to a party, like the guest texts.
+# ---------------------------------------------------------------------------
+EXTRAS_OFFER_KEY = "room_extras_offer"
+EXTRAS_OFFER_SWITCH = "automation_extras_offer_enabled"
+EXTRAS_OFFER_DAYS_SETTING = "automation_extras_offer_days_before"
+EXTRAS_OFFER_DEFAULT_DAYS = 7
+# Never with fewer days than this to go. By then the guest is packing or on the
+# road, the arrival text is about to tell them where to go, and most of what is
+# worth offering needs more notice than is left.
+EXTRAS_OFFER_LEAST_DAYS = 2
+# The words on each card's button, which are the words the page it opens uses
+# for that part of itself: "Add to your stay" heads the extras on the booking
+# page and "Book dinner" heads its dinner card.
+EXTRAS_OFFER_ADD = "Add to your stay"
+EXTRAS_OFFER_DINNER = "Book dinner"
+
+
+def extras_offer_days(settings):
+    """How many days before arrival the letter goes, as the owner set it."""
+    try:
+        return max(0, int(settings.get(EXTRAS_OFFER_DAYS_SETTING)))
+    except (TypeError, ValueError):
+        return EXTRAS_OFFER_DEFAULT_DAYS
+
+
+def extras_offer_wording(conn):
+    """(subject, body) as the owner wrote the letter, or None.
+
+    None while either is blank, and while the wording is something the send
+    would refuse. Every other letter falls back to its shipped wording then;
+    this one shipped with none, so there is nothing to fall back to, and no
+    wording means no letter.
+    """
+    row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?",
+                       (EXTRAS_OFFER_KEY,)).fetchone()
+    if not row:
+        return None
+    subject, body = (row["subject"] or "").strip(), (row["body"] or "").strip()
+    if not subject or not body or wording_problems(EXTRAS_OFFER_KEY, subject, body):
+        return None
+    return subject, body
+
+
+def _notice_words(days):
+    """"3 days' notice", the way the booking form says it beside an extra."""
+    return f"{days} day's notice" if days == 1 else f"{days} days' notice"
+
+
+def _extra_offer_card(extra, url):
+    return {"kind": "extra", "extra_id": extra["id"], "name": extra["name"],
+            "description": (extra["description"] or "").strip(),
+            "price": money(extra["price"] or 0),
+            "notice": _notice_words(extra["lead_time_days"])
+            if extra["lead_time_days"] else "",
+            "button": EXTRAS_OFFER_ADD, "url": url}
+
+
+def _dinner_offer_card(settings, url):
+    price = settings["price_per_person"] if settings else None
+    return {"kind": "dinner", "extra_id": None, "name": "La Table", "description": "",
+            "price": f"{euro(price)} per person" if price else "", "notice": "",
+            "button": EXTRAS_OFFER_DINNER, "url": url}
+
+
+def _offerable_extras(conn):
+    """The catalogue a guest may add from, in the order their page lists it."""
+    return conn.execute(
+        """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
+           ORDER BY category, sort_order, name""").fetchall()
+
+
+def _taking_dinner_bookings(conn):
+    """The restaurant's settings while a stay's page takes a table, else None."""
+    settings = get_restaurant_settings(conn)
+    if not settings or not settings["enabled"] or dining_mode(conn) != "open":
+        return None
+    return settings
+
+
+def dinner_offer_evenings(conn, booking, today=None):
+    """The evenings of this stay it could still book a table on from its page.
+
+    The page's own rule (a confirmed stay, the restaurant open for bookings,
+    from the opening date), and then the evenings worth offering: ones it has
+    no table on yet, that La Table serves, with room for the party.
+    """
+    if booking["status"] != "confirmed":
+        return []
+    settings = _taking_dinner_bookings(conn)
+    arrival = parse_date(booking["arrival_date"] or "")
+    departure = parse_date(booking["departure_date"] or "")
+    if not settings or not arrival or not departure:
+        return []
+    opening = parse_date(settings["opening_date"] or "") if settings["opening_date"] else None
+    earliest = max(d for d in (arrival, opening, today or house_today()) if d)
+    taken = {r["dinner_date"] for r in conn.execute(
+        """SELECT dinner_date FROM restaurant_bookings
+            WHERE booking_id = ? AND status IN ('pending', 'confirmed')""",
+        (booking["id"],))}
+    open_days = restaurant_open_weekdays(conn)
+    party = booking["party_size"] or 1
+    return [d for d in stay_days(arrival, departure, earliest=earliest)
+            if d.isoformat() not in taken
+            and (open_days is None or d.weekday() in open_days)
+            and restaurant_remaining_capacity(conn, d.isoformat()) >= party]
+
+
+def extras_offers_for_stay(conn, booking, today=None):
+    """What the letter offers this stay, as cards. [] when there is nothing.
+
+    From the catalogue: on sale, something a guest may add, with the notice it
+    needs still left before arrival (extra_too_soon -- the rule the booking page
+    and its Add button use, so nothing is offered that the page would refuse),
+    and not already on the stay in any number. Then dinner, while there is an
+    evening the stay could book.
+
+    Each card: {kind, extra_id, name, description, price, notice, button, url}.
+    """
+    day = today or house_today()
+    arrival = parse_date(booking["arrival_date"] or "")
+    departure = parse_date(booking["departure_date"] or "")
+    if not arrival or not departure or departure <= arrival:
+        return []
+    held = extras_held(conn, "room", booking["id"])
+    token = booking["manage_token"]
+    out = []
+    for extra in _offerable_extras(conn):
+        if held.get(extra["id"]) or extra_too_soon(extra, arrival, day):
+            continue
+        out.append(_extra_offer_card(extra, external_url(
+            "manage_booking", manage_token=token, add=extra["id"],
+            _anchor=f"add-{extra['id']}")))
+    if dinner_offer_evenings(conn, booking, day):
+        out.append(_dinner_offer_card(
+            get_restaurant_settings(conn),
+            external_url("manage_booking", manage_token=token, _anchor="dinner")))
+    return out
+
+
+def extras_offer_sample(conn, manage_url):
+    """The cards as the catalogue stands, for the editor's preview: everything a
+    guest may add, and dinner while the restaurant takes bookings."""
+    out = [_extra_offer_card(e, f"{manage_url}?add={e['id']}#add-{e['id']}")
+           for e in _offerable_extras(conn)]
+    settings = _taking_dinner_bookings(conn)
+    if settings:
+        out.append(_dinner_offer_card(settings, f"{manage_url}#dinner"))
+    return out
+
+
+def extras_offer_text(offers):
+    """The cards written out, for the plain half of the letter: what
+    {extras_block} reads where a mail app shows no pictures."""
+    parts = []
+    for o in offers:
+        head = o["name"] + (f" — {o['price']}" if o["price"] else "")
+        lines = [head] + [x for x in (o["description"], o["notice"]) if x]
+        parts.append("\n".join(lines + [o["button"] + ":", o["url"]]))
+    return "\n\n".join(parts)
+
+
+def extras_offer_refusal(conn, booking):
+    """Why this stay's guest is not written to at all, or None.
+
+    The same three the after-stay letters keep: no address, asked not to be
+    written to, and a guest the house has a standing instruction about.
+    """
+    email = (booking["guest_email"] or "").strip()
+    if not email:
+        return "there is no email address on the booking"
+    if conn.execute("SELECT 1 FROM email_optouts WHERE LOWER(email) = LOWER(?)",
+                    (email,)).fetchone():
+        return "they asked not to be written to"
+    if guest_restricted(conn, email=email):
+        return "there is a standing instruction about this guest"
+    return None
+
+
+def run_extras_offer_job(conn, days_before=None, today=None):
+    """Write once to each stay coming up with what it can still add.
+
+    Which stays: confirmed, not yet written to, not checked in, arriving
+    between EXTRAS_OFFER_LEAST_DAYS and `days_before` days from today. A
+    window rather than one day, like the room balance reminder: a stay booked
+    inside the window hears the next morning, and a morning the job did not run
+    costs nothing. Nobody nearer than the least, ever.
+
+    Not stamped while there is nothing to offer, so an extra put on sale the
+    next day is offered the next morning; nor while the guest is not to be
+    written to. Stamped once written, whether the provider took it or it waits
+    in Held Email -- a second copy the next morning is worse than one that
+    waits -- with which it was, so the stay's page can say.
+
+    Nothing at all while it is switched off, unwritten, or while Write to
+    guests is off: that is "Couldn't run" with the reason, and every stay is
+    still unstamped for the day it can.
+    """
+    settings = get_automation_settings(conn)
+    if settings.get(EXTRAS_OFFER_SWITCH) != "1":
+        raise JobNotSetUp("it is switched off")
+    if not extras_offer_wording(conn):
+        raise JobNotSetUp("the letter has no wording yet; write it under Email "
+                          f"wording, “{EMAIL_TEMPLATE_LABELS[EXTRAS_OFFER_KEY]}”")
+    if not guest_mail_live():
+        raise JobNotSetUp("Write to guests is off, so no offer was sent")
+    days = extras_offer_days(settings) if days_before is None else days_before
+    if days < EXTRAS_OFFER_LEAST_DAYS:
+        raise JobNotSetUp(f"it is set to {days} day{'' if days == 1 else 's'} before "
+                          f"arrival, and it never goes with fewer than "
+                          f"{EXTRAS_OFFER_LEAST_DAYS} to go")
+    day = today or house_today()
+    first = (day + timedelta(days=EXTRAS_OFFER_LEAST_DAYS)).isoformat()
+    last = (day + timedelta(days=days)).isoformat()
+    coming = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND bookings.extras_offer_sent_at IS NULL
+              AND bookings.checked_in_at IS NULL
+              AND bookings.arrival_date >= ? AND bookings.arrival_date <= ?
+            ORDER BY bookings.arrival_date, bookings.id""", (first, last)).fetchall()
+    if not coming:
+        return (f"nobody arriving {format_date_short(first)} to "
+                f"{format_date_short(last)} is still to hear")
+    by_id = {b["id"]: b for b in coming}
+    sent = held = nothing = 0
+    skipped = {}
+    for lead_id in party_lead_bookings(conn, list(by_id)):
+        booking = by_id[lead_id]
+        refusal = extras_offer_refusal(conn, booking)
+        if refusal:
+            skipped[refusal] = skipped.get(refusal, 0) + 1
+            continue
+        offers = extras_offers_for_stay(conn, booking, day)
+        if not offers:
+            nothing += 1
+            continue
+        subject, body, letter = render_email_template(conn, "room_extras_offer", {
+            "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
+            "room_name": booking["room_name"],
+            "arrival_date": format_date_human(booking["arrival_date"]),
+            "departure_date": format_date_human(booking["departure_date"]),
+            "reference_code": booking["reference_code"] or "",
+            "manage_url": external_url("manage_booking",
+                                       manage_token=booking["manage_token"]),
+            "extras_block": extras_offer_text(offers),
+        }, extras=offers)
+        if not subject:
+            continue
+        # Nothing of ours is held open across the network: everything above
+        # only read, and the stamps below are committed before the next send.
+        delivered = write_about_stay(booking, subject, body, side="stay", html=letter)
+        stamp = datetime.now(timezone.utc).isoformat()
+        conn.execute("UPDATE bookings SET extras_offer_sent_at = ?, extras_offer_outcome = ? "
+                     "WHERE id = ?", (stamp, "sent" if delivered else "held", booking["id"]))
+        # The other rooms of the party are in this letter's household, and the
+        # next run would otherwise write to the first of them instead.
+        if booking["party_id"]:
+            for other in coming:
+                if other["party_id"] == booking["party_id"] and other["id"] != booking["id"]:
+                    conn.execute(
+                        "UPDATE bookings SET extras_offer_sent_at = ?, "
+                        "extras_offer_outcome = 'party' WHERE id = ? "
+                        "AND extras_offer_sent_at IS NULL", (stamp, other["id"]))
+        conn.commit()
+        if delivered:
+            sent += 1
+        else:
+            held += 1
+    parts = [f"wrote to {sent}"] if sent else []
+    if held:
+        parts.append(f"{held} waiting in Held Email")
+    if nothing:
+        parts.append(f"{nothing} with nothing left to offer")
+    for why, n in skipped.items():
+        parts.append(f"{n} not written to: {why}")
+    return ", ".join(parts) or "nothing to send"
+
+
+def booking_extras_offer_plan(conn, booking, today=None):
+    """The letter before arrival, for the stay's own page: whether and when it
+    went, or when it will and what it would offer, or why it will not.
+
+    None while it is switched off: a stay's page that promised a letter nothing
+    is going to send would be wrong, and one already sent is on the page with
+    the rest of what the guest was told.
+    """
+    settings = get_automation_settings(conn)
+    if settings.get(EXTRAS_OFFER_SWITCH) != "1":
+        return None
+    day = today or house_today()
+    days = extras_offer_days(settings)
+    arrival = parse_date(booking["arrival_date"] or "")
+    plan = {"sent_at": booking["extras_offer_sent_at"],
+            "outcome": booking["extras_offer_outcome"], "due": None, "offers": [],
+            "reason": None, "live": guest_mail_live(),
+            "editor": url_for("management_email_templates") + f"#tpl-{EXTRAS_OFFER_KEY}"}
+    if booking["extras_offer_sent_at"]:
+        plan["state"] = "sent"
+    elif booking["status"] in ("cancelled", "declined"):
+        plan["state"] = "off"
+    elif booking["status"] != "confirmed":
+        plan["state"] = "not_confirmed"
+    elif (not arrival or booking["checked_in_at"]
+          or (arrival - day).days < EXTRAS_OFFER_LEAST_DAYS):
+        plan["state"] = "missed"
+    elif days < EXTRAS_OFFER_LEAST_DAYS:
+        plan["state"], plan["reason"] = "cannot", (
+            f"it is set to go {days} day{'' if days == 1 else 's'} before arrival, "
+            f"and it never goes with fewer than {EXTRAS_OFFER_LEAST_DAYS}")
+    elif not extras_offer_wording(conn):
+        plan["state"], plan["reason"] = "unwritten", "the letter has no wording yet"
+    elif booking["party_id"] and party_lead_bookings(
+            conn, [r["id"] for r in conn.execute(
+                "SELECT id FROM bookings WHERE party_id = ? AND status = 'confirmed'",
+                (booking["party_id"],))]) != [booking["id"]]:
+        plan["state"] = "party"
+    else:
+        refusal = extras_offer_refusal(conn, booking)
+        offers = extras_offers_for_stay(conn, booking, day)
+        if refusal:
+            plan["state"], plan["reason"] = "cannot", refusal
+        elif not offers:
+            plan["state"], plan["reason"] = "cannot", (
+                "there is nothing left to offer: what is on sale is on the stay "
+                "already or needs more notice than is left")
+        else:
+            due = max(day, arrival - timedelta(days=days))
+            if due == day and today is None and not extras_offer_runs_today(conn):
+                due = day + timedelta(days=1)
+            if (arrival - due).days < EXTRAS_OFFER_LEAST_DAYS:
+                plan["state"] = "missed"
+            else:
+                plan["state"], plan["offers"] = "due", offers
+                plan["due"] = due.isoformat()
+    return plan
+
+
+def extras_offer_runs_today(conn):
+    """Whether the morning run is still to come today, on the house's clock."""
+    window = JOB_HOURS["extras_offer"]
+    return (datetime.now(LOCAL_TZ).hour < window[1]
+            and job_window_open(conn, "extras_offer", (0, window[1])))
 
 
 def run_workshop_balance_reminder_job(conn, days_before):
@@ -101881,6 +108141,475 @@ def make_channel_door_link(reservation_id):
 
 
 # ---------------------------------------------------------------------------
+# THE HOUSE, FOR A GUEST WHO IS STAYING (22 October 2026).
+#
+# The owner asked for "a general house thing to start with (wifi code,
+# breakfast time etc)", to grow later into a plan of the house with the
+# accessible areas marked. This is the first half: sections he writes, orders
+# and switches on at /admin/house-guide, read by a guest on their own stay's
+# link -- the manage link, or the party's share link.
+#
+# NOTHING HERE IS THE APP'S WORDING. The table starts empty and nothing is
+# seeded into it. Practical facts are what a guest plans round, so a wrong one
+# is worse than a missing one -- the guest texts shipped with wording nobody at
+# the house wrote and were switched off for it the same day. A section with
+# nothing written in it is not shown.
+#
+# WHAT THE APP ALREADY KNOWS IS READ, NOT COPIED. Arrival and departure come
+# from CHECK_IN_TIME and CHECK_OUT_TIME, which every booking page, letter and
+# Booking.com already use; the dinner hour from the restaurant's settings, as
+# the itinerary reads it. A copy typed in here would be right on the day and
+# drift the first time either changed. Breakfast hours are stored nowhere in
+# the app, so breakfast is a section the owner writes.
+#
+# THE WI-FI CODE is the one secret on the page. It shows from a few days
+# before arrival (he sets how many) until checkout, on a confirmed stay only,
+# never in an address, and inside translate="no" so the page translator
+# neither files it in page_translations nor sends it to the model. Everything
+# he writes is inside translate="no" too: he writes each language himself.
+#
+# STAGE TWO, NOT BUILT: the plan of the house with the accessible areas
+# marked, on his own drawing or photograph (the pinnable-plan work begun for
+# the grounds map). It comes in as a section kind, 'plan', so he places it
+# among the rest; house_guide.html has the slot. The app never draws a floor
+# plan of its own -- a drawn one was rejected as inaccurate on 9 October.
+# ---------------------------------------------------------------------------
+
+HOUSE_GUIDE_LANGS = ("en", "fr", "es")
+HOUSE_GUIDE_LANG_NAMES = {"en": "English", "fr": "French", "es": "Spanish"}
+# What each kind of section reads from the app, in the owner's words on his
+# page. 'text' reads nothing: it is only what he writes.
+HOUSE_GUIDE_KINDS = {
+    "text": "Your own words",
+    "wifi": "Wi-Fi network and code",
+    "arrival": "Arrival and departure times, from the app",
+    "dinner": "Dinner time, from the restaurant settings",
+}
+HOUSE_GUIDE_WIFI_DAYS_SETTING = "house_guide_wifi_days_before"
+HOUSE_GUIDE_WIFI_DAYS_DEFAULT = 3
+HOUSE_GUIDE_WIFI_DAYS_MAX = 14
+HOUSE_GUIDE_LIMITS = {"title": 120, "body": 4000, "wifi": 120}
+_ES_MONTHS = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+              "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+
+
+def house_wifi_days_before(conn):
+    """How many days before arrival the Wi-Fi code shows: the owner's number."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (HOUSE_GUIDE_WIFI_DAYS_SETTING,)).fetchone()
+    try:
+        days = int((row["value"] if row else "") or HOUSE_GUIDE_WIFI_DAYS_DEFAULT)
+    except (TypeError, ValueError):
+        days = HOUSE_GUIDE_WIFI_DAYS_DEFAULT
+    return max(0, min(days, HOUSE_GUIDE_WIFI_DAYS_MAX))
+
+
+def house_guide_clock(hhmm, lang):
+    """A clock time the way each language writes it: 3pm, 15h, 15:00."""
+    hour, _, minute = str(hhmm or "").partition(":")
+    try:
+        hour, minute = int(hour) % 24, int(minute or 0)
+    except ValueError:
+        return hhmm or ""
+    if lang == "fr":
+        return f"{hour}h{minute:02d}" if minute else f"{hour}h"
+    if lang == "es":
+        return f"{hour}:{minute:02d}"
+    return clock_words(f"{hour:02d}:{minute:02d}")
+
+
+def house_guide_date(day, lang):
+    """A day in the reader's language, the year only when it is not this one."""
+    other_year = day.year != house_today().year
+    if lang == "fr":
+        return f"{day.day} {_FR_MONTHS[day.month - 1]}" + (f" {day.year}" if other_year else "")
+    if lang == "es":
+        return f"{day.day} de {_ES_MONTHS[day.month - 1]}" + (f" de {day.year}" if other_year else "")
+    return f"{day.day} {day.strftime('%B')}" + (f" {day.year}" if other_year else "")
+
+
+def house_guide_facts(conn):
+    """What the house already knows, for the sections that read it rather
+    than having it typed in a second time."""
+    settings = get_restaurant_settings(conn)
+    dinner = ""
+    # Serving at all, the way the booking page decides it can sell a table.
+    if settings and settings["enabled"] and dining_mode(conn) == "open":
+        dinner = (settings["dinner_time"] or "").strip()
+    return {"check_in": CHECK_IN_TIME, "check_out": CHECK_OUT_TIME, "dinner": dinner}
+
+
+def house_wifi_window(conn, booking, now=None):
+    """Whether this stay may be shown the Wi-Fi code now.
+
+    From midnight, house time, the owner's number of days before arrival,
+    until checkout on the day they leave -- CHECK_OUT_TIME, the hour every page
+    gives them -- or until they are checked out, if that comes first. A
+    confirmed stay only. {"show", "state", "opens"}: state is 'open',
+    'before' (with the day it opens), 'over' or 'not_confirmed'.
+    """
+    now = now or datetime.now(timezone.utc)
+    out = {"show": False, "state": "", "opens": None}
+    arrive, leave = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
+    if booking["status"] != "confirmed" or not (arrive and leave):
+        out["state"] = "not_confirmed"
+        return out
+    if booking["checked_out_at"]:
+        out["state"] = "over"
+        return out
+    opens_on = arrive - timedelta(days=house_wifi_days_before(conn))
+    opens = datetime.combine(opens_on, dtime(0, 0), tzinfo=LOCAL_TZ).astimezone(timezone.utc)
+    closes = datetime.combine(leave, dtime.fromisoformat(CHECK_OUT_TIME),
+                              tzinfo=LOCAL_TZ).astimezone(timezone.utc)
+    if now < opens:
+        out.update(state="before", opens=opens_on)
+    elif now >= closes:
+        out["state"] = "over"
+    else:
+        out.update(show=True, state="open")
+    return out
+
+
+def _house_guide_words(row, field, lang):
+    """The owner's words for one field in the reader's language, and which
+    language they are in. Falls back to whatever he has written -- English
+    first, as the site does -- never to a translation nobody wrote."""
+    for code in (lang,) + tuple(c for c in HOUSE_GUIDE_LANGS if c != lang):
+        said = (row[f"{field}_{code}"] or "").strip()
+        if said:
+            return said, code
+    return "", lang
+
+
+def house_guide_sections(conn, lang, *, booking=None, now=None, preview=False):
+    """The sections a guest sees, in the owner's order, ready to draw.
+
+    Only those switched on and with something in them: a section with nothing
+    written is left out rather than drawn as a heading over nothing. The Wi-Fi
+    code is in a section only while house_wifi_window says so; `preview` is
+    the owner looking at his own page, who sees it regardless.
+    """
+    facts = house_guide_facts(conn)
+    if preview:
+        wifi = {"show": True, "state": "open", "opens": None}
+    elif booking is not None:
+        wifi = house_wifi_window(conn, booking, now)
+    else:
+        wifi = {"show": False, "state": "not_confirmed", "opens": None}
+    out = []
+    for row in conn.execute(
+            "SELECT * FROM house_guide_sections WHERE shown = 1 ORDER BY sort_order, id"):
+        title, title_lang = _house_guide_words(row, "title", lang)
+        body, body_lang = _house_guide_words(row, "body", lang)
+        section = {"id": row["id"], "kind": row["kind"], "title": title,
+                   "title_lang": title_lang, "body": body, "body_lang": body_lang,
+                   "facts": [], "network": "", "code": "", "code_opens": None}
+        if row["kind"] == "arrival":
+            section["facts"] = [
+                t("Arrival from {time}", time=house_guide_clock(facts["check_in"], lang)),
+                t("Departure by {time}", time=house_guide_clock(facts["check_out"], lang))]
+        elif row["kind"] == "dinner" and facts["dinner"]:
+            section["facts"] = [t("Dinner at {time}",
+                                  time=house_guide_clock(facts["dinner"], lang))]
+        elif row["kind"] == "wifi":
+            code = (row["wifi_code"] or "").strip()
+            section["network"] = (row["wifi_network"] or "").strip()
+            if code and wifi["show"]:
+                section["code"] = code
+            elif code and wifi["state"] == "before":
+                section["code_opens"] = house_guide_date(wifi["opens"], lang)
+        if not (body or section["facts"] or section["network"]
+                or section["code"] or section["code_opens"]):
+            continue
+        out.append(section)
+    return out
+
+
+def house_guide_booking(conn, kind, token):
+    """The stay a house-guide link belongs to, while it is live, or None.
+
+    Live means confirmed and not past the day they leave. A cancelled stay, a
+    request nobody has confirmed and a stay that is over all get nothing: the
+    page is for somebody who is coming, and it carries the Wi-Fi code.
+    """
+    column = {"manage": "manage_token", "share": "share_token"}.get(kind)
+    if not column or not token:
+        return None
+    row = conn.execute(
+        f"""SELECT bookings.*, rooms.name AS room_name FROM bookings
+              JOIN rooms ON rooms.id = bookings.room_id
+             WHERE bookings.{column} = ?""", (token,)).fetchone()
+    if not row or row["status"] != "confirmed":
+        return None
+    leave = parse_date(row["departure_date"])
+    if not leave or leave < house_today():
+        return None
+    return row
+
+
+def house_guide_card():
+    """What the card on a guest's own page needs (templates/_house_card.html):
+    the link to their house guide and its section titles, or None when there
+    is nothing written for them to read.
+
+    Works out which page it is on from the request, so the card needs nothing
+    passed to it: the include line is the only thing a design handover of
+    manage_booking.html or shared_stay.html has to keep.
+    """
+    if not has_request_context():
+        return None
+    args = request.view_args or {}
+    if request.endpoint == "manage_booking":
+        kind, key, endpoint = "manage", "manage_token", "house_guide_page"
+    elif request.endpoint == "shared_stay":
+        kind, key, endpoint = "share", "share_token", "shared_house_guide"
+    else:
+        return None
+    token = args.get(key)
+    conn = get_db()
+    try:
+        booking = house_guide_booking(conn, kind, token)
+        if booking is None:
+            return None
+        sections = house_guide_sections(conn, current_language(), booking=booking)
+    finally:
+        conn.close()
+    if not sections:
+        return None
+    return {"url": url_for(endpoint, **{key: token}),
+            "titles": [(s["title"], s["title_lang"]) for s in sections if s["title"]]}
+
+
+app.jinja_env.globals["house_guide_card"] = house_guide_card
+
+
+def _render_house_guide(conn, booking, *, back_url, back_label):
+    lang = current_language()
+    sections = house_guide_sections(conn, lang, booking=booking)
+    conn.close()
+    response = app.make_response(render_template(
+        "house_guide.html", sections=sections, booking=booking, lang=lang,
+        back_url=back_url, back_label=back_label, preview=False))
+    # The Wi-Fi code is on it: not kept in a shared browser's cache, or in
+    # anything between here and the guest.
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+@app.route("/book/manage/<manage_token>/house")
+def house_guide_page(manage_token):
+    """The house, for the guest whose booking this is: the owner's sections,
+    and the Wi-Fi code while their stay is near. On the manage link, which is
+    the credential here as everywhere a guest has no login."""
+    conn = get_db()
+    booking = house_guide_booking(conn, "manage", manage_token)
+    if booking is None:
+        conn.close()
+        abort(404)
+    # The language they told us, as on their booking page -- before anything
+    # asks which language this page is in.
+    remember_guest_language(conn, booking["guest_email"])
+    return _render_house_guide(
+        conn, booking, back_label=t("Back to your booking"),
+        back_url=url_for("manage_booking", manage_token=manage_token))
+
+
+@app.route("/stay/<share_token>/house")
+def shared_house_guide(share_token):
+    """The same page for the rest of the party, on the link the booker shares.
+
+    The booker can take that link away (toggle_share_link), and this page goes
+    with it. Nothing about the bill is on it, so nothing is hidden here.
+    """
+    conn = get_db()
+    booking = house_guide_booking(conn, "share", share_token)
+    if booking is None:
+        conn.close()
+        abort(404)
+    return _render_house_guide(
+        conn, booking, back_label=t("Back to your stay"),
+        back_url=url_for("shared_stay", share_token=share_token))
+
+
+def _house_guide_status(row, facts):
+    """Whether guests see this section, and if not why -- for his page."""
+    written = any((row[f"body_{c}"] or "").strip() for c in HOUSE_GUIDE_LANGS)
+    if row["kind"] == "arrival":
+        written = True
+    elif row["kind"] == "dinner" and facts["dinner"]:
+        written = True
+    elif row["kind"] == "wifi" and ((row["wifi_network"] or "").strip()
+                                    or (row["wifi_code"] or "").strip()):
+        written = True
+    if not row["shown"]:
+        return False, "Switched off: guests do not see it."
+    if not written:
+        return False, "Not shown: nothing written in it yet."
+    return True, "Guests see this."
+
+
+@app.route("/admin/house-guide")
+@owner_required
+def house_guide_admin():
+    """The owner's page for the house guide: every section, in order."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM house_guide_sections ORDER BY sort_order, id").fetchall()
+    facts = house_guide_facts(conn)
+    days = house_wifi_days_before(conn)
+    restaurant = get_restaurant_settings(conn)
+    conn.close()
+    sections = []
+    for row in rows:
+        shown, status = _house_guide_status(row, facts)
+        missing = [HOUSE_GUIDE_LANG_NAMES[c] for c in HOUSE_GUIDE_LANGS
+                   if not (row[f"body_{c}"] or "").strip()
+                   and any((row[f"body_{o}"] or "").strip() for o in HOUSE_GUIDE_LANGS)]
+        sections.append({"row": row, "shown": shown, "status": status, "missing": missing})
+    return render_template(
+        "admin_house_guide.html", sections=sections, kinds=HOUSE_GUIDE_KINDS,
+        langs=HOUSE_GUIDE_LANGS, lang_names=HOUSE_GUIDE_LANG_NAMES, facts=facts,
+        restaurant=restaurant, days=days, days_max=HOUSE_GUIDE_WIFI_DAYS_MAX,
+        limits=HOUSE_GUIDE_LIMITS, check_in=clock_words(CHECK_IN_TIME),
+        check_out=clock_words(CHECK_OUT_TIME))
+
+
+@app.route("/admin/house-guide/add", methods=["POST"])
+@owner_required
+def add_house_guide_section():
+    """A new section at the end, empty -- so not shown until he writes in it."""
+    kind = (request.form.get("kind") or "text").strip()
+    if kind not in HOUSE_GUIDE_KINDS:
+        flash("Choose what kind of section to add.", "error")
+        return redirect(url_for("house_guide_admin"))
+    conn = get_db()
+    last = conn.execute("SELECT MAX(sort_order) FROM house_guide_sections").fetchone()[0]
+    cur = conn.execute(
+        "INSERT INTO house_guide_sections (kind, sort_order, created_at) VALUES (?, ?, ?)",
+        (kind, (last or 0) + 10, datetime.now(timezone.utc).isoformat()))
+    section_id = cur.lastrowid
+    log_audit(conn, "house_guide_section_added", target=HOUSE_GUIDE_KINDS[kind])
+    conn.commit()
+    conn.close()
+    flash("Added at the end. Guests see it once there is something in it.", "success")
+    return redirect(url_for("house_guide_admin") + f"#section-{section_id}")
+
+
+@app.route("/admin/house-guide/<int:section_id>/save", methods=["POST"])
+@owner_required
+def save_house_guide_section(section_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM house_guide_sections WHERE id = ?",
+                       (section_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    values = {}
+    for code in HOUSE_GUIDE_LANGS:
+        title = (request.form.get(f"title_{code}") or "").strip()
+        values[f"title_{code}"] = title[:HOUSE_GUIDE_LIMITS["title"]] or None
+        # Line breaks kept as he typed them: the page draws them.
+        body = (request.form.get(f"body_{code}") or "").replace("\r\n", "\n").strip()
+        values[f"body_{code}"] = body[:HOUSE_GUIDE_LIMITS["body"]] or None
+    if row["kind"] == "wifi":
+        for key in ("wifi_network", "wifi_code"):
+            said = (request.form.get(key) or "").strip()
+            values[key] = said[:HOUSE_GUIDE_LIMITS["wifi"]] or None
+    values["shown"] = 1 if request.form.get("shown") else 0
+    values["updated_at"] = datetime.now(timezone.utc).isoformat()
+    conn.execute("UPDATE house_guide_sections SET " + ", ".join(f"{k} = ?" for k in values)
+                 + " WHERE id = ?", (*values.values(), section_id))
+    # Which languages are written, and never the Wi-Fi code: the audit log is
+    # read on screens the code has no business being on.
+    written = [c for c in HOUSE_GUIDE_LANGS if values[f"body_{c}"]]
+    log_audit(conn, "house_guide_section_saved",
+              target=values["title_en"] or HOUSE_GUIDE_KINDS[row["kind"]],
+              details=("text in " + ", ".join(written) if written else "no text")
+                      + ("; on" if values["shown"] else "; off"))
+    conn.commit()
+    conn.close()
+    flash("Saved.", "success")
+    return redirect(url_for("house_guide_admin") + f"#section-{section_id}")
+
+
+@app.route("/admin/house-guide/<int:section_id>/move", methods=["POST"])
+@owner_required
+def move_house_guide_section(section_id):
+    """One place up or down. The order is renumbered first, so two sections
+    that somehow share a number cannot swap into the same place."""
+    step = -1 if request.form.get("direction") == "up" else 1
+    conn = get_db()
+    ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM house_guide_sections ORDER BY sort_order, id")]
+    if section_id not in ids:
+        conn.close()
+        abort(404)
+    at = ids.index(section_id)
+    if 0 <= at + step < len(ids):
+        ids[at], ids[at + step] = ids[at + step], ids[at]
+        for place, sid in enumerate(ids, start=1):
+            conn.execute("UPDATE house_guide_sections SET sort_order = ? WHERE id = ?",
+                         (place * 10, sid))
+        conn.commit()
+    conn.close()
+    return redirect(url_for("house_guide_admin") + f"#section-{section_id}")
+
+
+@app.route("/admin/house-guide/<int:section_id>/delete", methods=["POST"])
+@owner_required
+def delete_house_guide_section(section_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM house_guide_sections WHERE id = ?",
+                       (section_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM house_guide_sections WHERE id = ?", (section_id,))
+    log_audit(conn, "house_guide_section_removed",
+              target=row["title_en"] or HOUSE_GUIDE_KINDS.get(row["kind"], row["kind"]))
+    conn.commit()
+    conn.close()
+    flash("Removed.", "success")
+    return redirect(url_for("house_guide_admin"))
+
+
+@app.route("/admin/house-guide/settings", methods=["POST"])
+@owner_required
+def save_house_guide_settings():
+    raw = (request.form.get("wifi_days_before") or "").strip()
+    if not raw.isdigit() or int(raw) > HOUSE_GUIDE_WIFI_DAYS_MAX:
+        flash(f"Give a number of days from 0 to {HOUSE_GUIDE_WIFI_DAYS_MAX}.", "error")
+        return redirect(url_for("house_guide_admin"))
+    conn = get_db()
+    conn.execute("""INSERT INTO app_settings (key, value) VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                 (HOUSE_GUIDE_WIFI_DAYS_SETTING, str(int(raw))))
+    log_audit(conn, "house_guide_settings_saved",
+              details=f"Wi-Fi code from {int(raw)} days before arrival")
+    conn.commit()
+    conn.close()
+    flash("Saved.", "success")
+    return redirect(url_for("house_guide_admin"))
+
+
+@app.route("/admin/house-guide/preview")
+@owner_required
+def preview_house_guide():
+    """His page as a guest reads it, in whichever language he picks, with the
+    Wi-Fi code showing as it will inside a stay's window."""
+    conn = get_db()
+    lang = current_language()
+    sections = house_guide_sections(conn, lang, preview=True)
+    conn.close()
+    response = app.make_response(render_template(
+        "house_guide.html", sections=sections, booking=None, lang=lang,
+        back_url=url_for("house_guide_admin"), back_label="Back to the editor",
+        preview=True))
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+# ---------------------------------------------------------------------------
 # THE HOUSE CALENDAR.
 #
 # One real Microsoft 365 calendar -- the house mailbox's own default calendar,
@@ -103155,6 +109884,10 @@ AUTOMATION_JOBS = [
     # Hourly. The page reads a cache and never the network, so a slow morning
     # at Open-Meteo is a page with no weather on it rather than a slow page.
     ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
+    # Hourly too, as a job of its own: a storm warning that arrives at two
+    # should be on the list by three, and the margin on each line keeps an
+    # hourly forecast from raising and withdrawing the same job all day.
+    ("weather_jobs", "automation_weather_jobs_enabled", None, 3600, run_weather_jobs_job),
     # Daily. A rate that moves half a per cent overnight does not change what
     # a guest decides, and the figure is labelled as approximate anyway.
     ("exchange_rates", "automation_exchange_rates_enabled", None, 24 * 3600,
@@ -103206,6 +109939,15 @@ AUTOMATION_JOBS = [
      run_checkin_text_job),
     ("checkout_text", "automation_checkout_text_enabled", None, 24 * 3600,
      run_checkout_text_job),
+    # The letter offering what a stay can add. Daily, in the morning: it is
+    # stamped per stay, so a second run sends nothing twice, and a stay booked
+    # inside its window hears the next morning.
+    ("extras_offer", "automation_extras_offer_enabled", None, 24 * 3600,
+     run_extras_offer_job),
+    # The letter with the online check-in link. Daily, in the morning (see
+    # JOB_HOURS); each stay is stamped, so a run twice sends nothing twice.
+    ("checkin_letter", "automation_checkin_letter_enabled", None, 24 * 3600,
+     run_checkin_letter_job),
     # Deliberately shipped disabled: this is the only job that takes money
     # with nobody present. Turn it on under Automation once a test booking
     # has been charged end to end in Stripe test mode, including a card
@@ -103228,6 +109970,12 @@ AUTOMATION_JOBS = [
     # and every page reads what is kept rather than asking.
     ("card_details", "automation_card_details_enabled", None, 24 * 3600,
      run_card_details_job),
+    # Every quarter of an hour, so a deploy that did not happen is on the home
+    # page within the hour it is late by rather than the next morning. One
+    # small read from GitHub while nothing has moved; above the photographs,
+    # which can take a minute.
+    ("deploy_check", "automation_deploy_check_enabled", None, 900,
+     run_deploy_check_job),
     # LAST ON PURPOSE. These run one after another in a single background
     # thread, so everything below a job waits for it -- and this one is the
     # only one that spends up to a minute on somebody else's network. It was
@@ -103265,6 +110013,12 @@ JOB_HOURS = {
     # somebody reading "checkout is at eleven" at ten past ten has been told
     # too late to do anything about it.
     "checkout_text": (17, 21),
+    # The letter offering a stay's extras, in the morning like a letter from
+    # somebody at the house, and never at whatever hour the process restarted.
+    "extras_offer": (9, 12),
+    # The letter with the online check-in link: a morning letter, from nine
+    # to noon on the house's clock, which is what its label says.
+    "checkin_letter": (9, 12),
     # In the small hours, when nobody is looking at the calendar it rewrites.
     "house_calendar_reconcile": (2, 6),
 }
@@ -103520,6 +110274,30 @@ AUTOMATION_SWITCHES = [
      "label": "Text a guest the evening before they leave",
      "what": "Your own words, sent the evening before departure. Nothing until "
              "you have written it and a texting service is connected."},
+    {"key": "automation_extras_offer_enabled", "job": "extras_offer",
+     "runs": ("run_extras_offer_job",), "group": "guests", "reaches": ("guests",),
+     "letters": ("room_extras_offer",),
+     "label": "Offer what a guest can add, before they arrive",
+     "what": "Your own letter, emailed once to each confirmed stay between 9am and "
+             "noon on the first morning it is within the days set below of arrival "
+             "— so a stay booked later than that hears the next morning — and never "
+             "with fewer than {offer_least_days} days to go. It lists what is on sale "
+             "that the stay has not got and still has the notice for, each with a "
+             "link that opens their booking page at it, and dinner at La Table when "
+             "they could book it. Never to a cancelled stay, never twice, and one "
+             "letter to a party. Nothing until you have written it, and nothing "
+             "while Write to guests is off: an offer is not kept to send later.",
+     "fields": (("automation_extras_offer_days_before", "Days before arrival", "days"),)},
+    {"key": "automation_checkin_letter_enabled", "job": "checkin_letter",
+     "runs": ("run_checkin_letter_job",), "group": "guests", "reaches": ("guests",),
+     "letters": ("room_checkin_before", "workshop_checkin_before"),
+     "label": "Email the check-in link before arrival",
+     "what": "Your own letter with the link to check in online, once to each guest who "
+             "booked with the house — a room or an atelier — between 9am and noon "
+             "(French time), {checkin_letter_days} days before they arrive; a stay "
+             "booked closer than that gets it the next morning. Not to anyone who has "
+             "checked in online already. Nothing until you have written the letter.",
+     "fields": (("automation_checkin_letter_days_before", "Days before arrival", "days"),)},
     {"key": "automation_waitlist_autonotify_enabled", "job": None,
      "runs": ("notify_room_waitlist_opening", "notify_restaurant_waitlist_opening",
               "notify_workshop_waitlist_opening"),
@@ -103536,7 +110314,10 @@ AUTOMATION_SWITCHES = [
              "answered within {decline_hours} hours, and the guest is emailed that "
              "it was declined (one with any money on it, even a deposit, is left "
              "for you, and this never refunds anything); "
-             "and lays out the checklist for arrivals in the next {prep_days} days."},
+             "lays out the checklist for arrivals in the next {prep_days} days; "
+             "and raises a task to prepare for an occasion a guest told us about, "
+             "as far ahead as the Occasions page says, closing it if the stay is "
+             "cancelled or the occasion taken off."},
     {"key": "automation_health_notes_purge_enabled", "job": "health_notes_purge",
      "runs": ("run_health_notes_purge_job",), "group": "guests",
      "reaches": ("guests", "you"),
@@ -103594,6 +110375,15 @@ AUTOMATION_SWITCHES = [
      "label": "Tell me when atelier balances fall due",
      "what": "Notifies you the morning a balance falls due, once each — balances "
              "are taken by hand, so this is what collects them."},
+    {"key": "automation_atelier_recap_reminder_enabled", "job": None,
+     "runs": ("atelier_recaps_to_approve", "generate_watch_tasks"), "group": "house",
+     "reaches": ("you",),
+     "label": "Remind me when an atelier's recap is ready",
+     "what": "Once an atelier is over, raises a task for you to look over its recap — the "
+             "photographs, the notes, the wording — and send it. It never sends the recap: "
+             "that is a button on the sitting's page. The task goes when you send it or set "
+             "it aside, or a month after the atelier. Needs Turn blocking findings into "
+             "tasks on as well."},
     {"key": "automation_workshop_decision_enabled", "job": "workshop_decision",
      "runs": ("run_workshop_decision_job",), "group": "house", "reaches": ("you",),
      "label": "Tell me when an atelier will not fill",
@@ -103649,6 +110439,13 @@ AUTOMATION_SWITCHES = [
      "label": "Estate upkeep",
      "what": "Raises a task when scheduled work — the chimney, the boiler, a "
              "certificate — falls due."},
+    {"key": "automation_weather_jobs_enabled", "job": "weather_jobs",
+     "runs": ("run_weather_jobs_job",), "group": "house", "reaches": ("team",),
+     "label": "Outdoor jobs from the forecast",
+     "what": "Hourly: when the forecast crosses a line you set for frost, a storm or "
+             "heat, raises the jobs you listed for it as tasks on the day they need "
+             "doing — the evening before a frost night. Closes any the forecast stops "
+             "asking for, and any whose day went by. Lines and lists are on Weather jobs."},
     {"key": "automation_social_schedule_enabled", "job": "social_schedule",
      "runs": ("run_social_schedule_job",), "group": "house", "reaches": ("team",),
      "label": "Social schedule",
@@ -103667,6 +110464,12 @@ AUTOMATION_SWITCHES = [
      "runs": ("run_card_details_job",), "group": "records", "reaches": (),
      "label": "Name the card behind each payment",
      "what": "Asks Stripe for a card payment's brand and last four, for statements."},
+    {"key": "automation_deploy_check_enabled", "job": "deploy_check",
+     "runs": ("run_deploy_check_job",), "group": "records", "reaches": (),
+     "label": "Notice when the live site is behind main",
+     "what": "Every quarter of an hour, asks GitHub where main is and compares it "
+             "with the commit Railway is running. An hour behind, it says so on the "
+             "home page. Reads only; nothing until a GitHub read token is set."},
     {"key": "automation_door_lock_check_enabled", "job": "door_lock_check",
      "runs": ("run_door_lock_check_job",), "group": "records", "reaches": (),
      "label": "Check the front door lock",
@@ -103721,12 +110524,18 @@ def admin_automation():
     # switch, so the row says so beside the switch rather than letting an
     # owner tick it and wait for a message that cannot exist.
     unwritten = {kind for kind in GUEST_TEXTS if not guest_text_wording(conn, kind)}
+    # And the same for a letter that ships with no words: each row names
+    # its own that are still unwritten, beside the switch.
+    unwritten_letters = {k for k in UNWRITTEN_LETTERS if letter_unwritten(conn, k)}
+    letter_days = checkin_letter_days(conn)
     conn.close()
 
     windows = house_windows()
     facts = {"decline_hours": STALE_PENDING_BOOKING_HOURS,
              "prep_days": windows["arrival_prep_days"],
-             "digest_hours": windows["digest_interval_hours"]}
+             "digest_hours": windows["digest_interval_hours"],
+             "offer_least_days": EXTRAS_OFFER_LEAST_DAYS,
+             "checkin_letter_days": letter_days}
     groups, everything = [], []
     for key, title, about in AUTOMATION_GROUPS:
         entries = []
@@ -103737,6 +110546,9 @@ def admin_automation():
                        what=e["what"].format(**facts),
                        run=last_runs.get(e["job"]) if e["job"] else None,
                        no_wording=e.get("text") in unwritten,
+                       letters_unwritten=[(k, EMAIL_TEMPLATE_LABELS.get(k, k))
+                                          for k in e.get("letters", ())
+                                          if k in unwritten_letters],
                        reach_words=[AUTOMATION_REACH_WORDS[r] for r in e["reaches"]],
                        fields=[(f, label, kind, settings.get(f))
                                for f, label, kind in e.get("fields", ())])
@@ -104176,6 +110988,12 @@ ADDIN_SESSION_DAYS = 30
 ADDIN_SHARED_KEY_SETTING = "addin_shared_key_allowed"
 ADDIN_UNMATCHED_SETTING = "addin_unmatched_signins"
 ADDIN_HOUSE_NOTES_SETTING = "addin_house_notes"
+# The add-in version the owner last said Microsoft 365 has fetched. Microsoft
+# keeps handing Outlook the manifest it fetched last until somebody opens the
+# add-in in Integrated apps and chooses Update, so a new OUTLOOK_ADDIN_VERSION
+# reaches nobody on its own, and nothing in Outlook says it is out of date.
+# Set by the button on the add-in page; see addin_version_problem.
+ADDIN_CONFIRMED_VERSION_SETTING = "addin_manifest_confirmed_version"
 
 
 class AddinAuthError(Exception):
@@ -104199,6 +111017,59 @@ def addin_shared_key_allowed(conn):
     row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
                        (ADDIN_SHARED_KEY_SETTING,)).fetchone()
     return (row["value"] if row else "1") != "0"
+
+
+def addin_version_state(conn):
+    """Which add-in Microsoft 365 is handing out, as far as anybody has said.
+
+    `behind` is the one that matters: the app serves a version nobody has
+    confirmed Microsoft has fetched. With nothing ever confirmed, it counts
+    only once some Outlook has reached the add-in, because an add-in nobody
+    has installed has nothing to update, and a line saying otherwise on a
+    fresh copy would be a panel that can never be empty.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (ADDIN_CONFIRMED_VERSION_SETTING,)).fetchone()
+    confirmed = ((row["value"] if row else "") or "").strip()
+    said = conn.execute(
+        """SELECT audit_log.created_at, users.name FROM audit_log
+             LEFT JOIN users ON users.id = audit_log.actor_user_id
+            WHERE audit_log.action = 'addin_manifest_updated' AND audit_log.target = ?
+            ORDER BY audit_log.created_at DESC, audit_log.id DESC LIMIT 1""",
+        (confirmed,)).fetchone() if confirmed else None
+    in_use = bool(confirmed) or bool(conn.execute(
+        """SELECT 1 FROM addin_sessions UNION ALL SELECT 1 FROM addin_check_keys
+           UNION ALL SELECT 1 FROM addin_send_checks LIMIT 1""").fetchone())
+    return {"running": OUTLOOK_ADDIN_VERSION, "confirmed": confirmed,
+            "confirmed_at": said["created_at"] if said else None,
+            "confirmed_by": said["name"] if said else None,
+            "behind": in_use and confirmed != OUTLOOK_ADDIN_VERSION}
+
+
+def addin_version_problem(conn):
+    """(title, detail) when the app serves an add-in version nobody has said
+    Microsoft 365 has fetched, else None. One sentence for the owner home and
+    the task it raises, so they cannot word it apart.
+
+    The version is in the title on purpose: it is the task's dedupe key, and a
+    second change before the first was fetched is a new job, not the old one.
+    Closes itself when the owner presses the button on the add-in page.
+    """
+    state = addin_version_state(conn)
+    if not state["behind"]:
+        return None
+    running = state["running"]
+    if state["confirmed"]:
+        said = (f"The add-in is now version {running}; Microsoft 365 was last "
+                f"updated to {state['confirmed']}.")
+    else:
+        said = (f"The add-in is version {running}, and nobody has yet said "
+                "which version Microsoft 365 has fetched.")
+    return (f"Update the Outlook add-in to version {running} in Microsoft 365",
+            said + " Outlook keeps the add-in Microsoft fetched last, so a change "
+            "reaches nobody until somebody opens it in the Microsoft 365 admin "
+            "centre, Settings, Integrated apps, and chooses Update. Then press "
+            "\"I've updated it in Microsoft 365\" on the add-in page and this closes.")
 
 
 _MS_KEYS = {"keys": {}, "fetched_at": 0.0, "tried_at": 0.0}
@@ -106662,7 +113533,9 @@ def kitchen_sheet(conn, day):
                   AND bookings.departure_date > ?
                 ORDER BY bookings.guest_name""", (day_iso, day_iso)).fetchall():
         covers += int(booking["party_size"] or 0)
-        notes = clean(booking["profile_dietary"], booking["special_requests"])
+        # What they wrote at online check-in first: it is about this stay.
+        notes = clean(booking["dietary_notes"], booking["profile_dietary"],
+                      booking["special_requests"])
         if notes:
             rows.append({"who": booking["guest_name"],
                          "where": booking["room_name"] or "room to be confirmed",
@@ -108973,6 +115846,12 @@ def assistant_read_tool(conn, user, name, args):
                 bits.append(f"at {r['arrival_time']}")
             if r["dietary"]:
                 bits.append(f"CANNOT EAT: {r['dietary']}")
+            if r["requests"]:
+                bits.append(f"asked: {r['requests']}")
+            if r["extras"]:
+                bits.append("extras: " + "; ".join(
+                    (f"{x['quantity']} × " if x["quantity"] > 1 else "") + x["name"]
+                    + (f" ({x['when']})" if x["when"] else "") for x in r["extras"]))
             if r["milestone"]:
                 bits.append(str(r["milestone"]))
             # A standing instruction about somebody is the one thing on this
@@ -110294,6 +117173,7 @@ def _admin_addin_context(conn):
         "addin_base_from": addin_from,
         "railway_public_domain": RAILWAY_PUBLIC_DOMAIN,
         "manifest_version": OUTLOOK_ADDIN_VERSION,
+        "addin_version": addin_version_state(conn),
         "token_configured": bool(GUEST_LOOKUP_TOKEN),
         "shared_key_allowed": addin_shared_key_allowed(conn),
         "sso_configured": addin_sso_configured(), "sso_client_id": ADDIN_CLIENT_ID,
@@ -110480,6 +117360,51 @@ def admin_outlook_addin_settings():
                        "The shared key no longer opens anything; only people signed in to "
                        "Microsoft 365 can use the add-in."), "success")
     return redirect(url_for("admin_outlook_addin") + "#settings")
+
+
+@app.route("/admin/outlook-addin/updated", methods=["POST"])
+@owner_required
+def admin_outlook_addin_updated():
+    """The owner has chosen Update in Microsoft 365's Integrated apps, so
+    Microsoft has fetched the manifest this app serves.
+
+    Records the version the page showed, and only if it is still the one
+    running: an app redeployed while the page was open serves a manifest
+    Microsoft has not seen, and taking the press for that one would close
+    the warning about exactly the change that has not been fetched.
+    """
+    shown = (request.form.get("version") or "").strip()
+    if shown != OUTLOOK_ADDIN_VERSION:
+        flash(("Not recorded. " + (
+            f"The page showed version {shown} and the add-in is now {OUTLOOK_ADDIN_VERSION}: "
+            "it changed while the page was open, so Microsoft 365 may not have this one. "
+            if shown else "The press did not say which version it was for. ")
+            + "Choose Update in Integrated apps again, then press the button below."), "error")
+        return redirect(url_for("admin_outlook_addin") + "#update")
+    conn = get_db()
+    before = addin_version_state(conn)["confirmed"]
+    if before == OUTLOOK_ADDIN_VERSION:
+        conn.close()
+        flash(f"Already recorded: Microsoft 365 has version {OUTLOOK_ADDIN_VERSION}.", "success")
+        return redirect(url_for("admin_outlook_addin") + "#update")
+    stale = addin_version_problem(conn)
+    conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                 (ADDIN_CONFIRMED_VERSION_SETTING, OUTLOOK_ADDIN_VERSION))
+    log_audit(conn, "addin_manifest_updated", target=OUTLOOK_ADDIN_VERSION,
+              details=f"Microsoft 365 had {before or 'a version nobody recorded'}")
+    # The task that asked for this, closed now rather than on tomorrow's
+    # pass, which would find it no longer true and close it anyway. By its
+    # title, the way that pass closes it.
+    if stale:
+        conn.execute(
+            """UPDATE tasks SET status = 'done', completed_at = ?
+                WHERE origin = ? AND title = ? AND status != 'done'""",
+            (datetime.now(timezone.utc).isoformat(), WATCH_TASK_ORIGIN, stale[0]))
+    conn.commit()
+    conn.close()
+    flash(f"Recorded: Microsoft 365 has version {OUTLOOK_ADDIN_VERSION}. Outlook picks it "
+          "up over the next few hours (Microsoft says up to a day).", "success")
+    return redirect(url_for("admin_outlook_addin") + "#update")
 
 
 @app.route("/guests/<int:guest_id>/emails")

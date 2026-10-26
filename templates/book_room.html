@@ -54,7 +54,7 @@
           now the quote's own nightly figure, and the date script below keeps it in step. -#}
       {%- set _q = initial_quote if (initial_quote is defined and initial_quote and initial_quote.available and initial_quote.per_night) else none %}
       {%- set _pn = _q.per_night if _q else room['price_per_night'] %}
-      {% if room['price_per_night'] %}<span class="g-fig" id="room_top_price" data-base="{{ room['price_per_night'] }}" data-eur="{{ _pn }}">€{{ ('{:,.0f}' if (_pn|float) == (_pn|int) else '{:,.2f}').format(_pn|float) }}</span> <span id="room_top_label">{{ 'a night for your dates' if _q else 'per night' }}</span>, room and breakfast{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
+      {% if room['price_per_night'] %}<span class="g-fig" id="room_top_price" data-base="{{ room['price_per_night'] }}" data-eur="{{ _pn }}">€{{ ('{:,.0f}' if (_pn|float) == (_pn|int) else '{:,.2f}').format(_pn|float) }}</span> <span id="room_top_label">{{ 'per room, a night for your dates' if _q else 'per room, a night' }}</span>, room and breakfast{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
     {#- 10 Oct (owner: "when you click dates and book a room it still has select dates at the top - you have to scroll to see
         your entered dates"). The chosen dates, under the price, and the way on to the form that already holds them. -#}
     {%- if arrival and departure %}
@@ -734,7 +734,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     var v = pn || parseFloat(el.getAttribute('data-base'));
     el.setAttribute('data-eur', v);
     el.textContent='€'+(Math.round(v)===v ? v.toLocaleString('en-GB') : v.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}));
-    if(lab) lab.textContent = pn ? 'a night for your dates' : 'per night';
+    if(lab) lab.textContent = pn ? 'per room, a night for your dates' : 'per room, a night';
   }
   [arrive,depart,party].forEach(function(el){ el.addEventListener('change',refreshQuote); });
   /* party_size is filled in by script, and script fires no event, so a guest

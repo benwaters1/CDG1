@@ -3663,6 +3663,32 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .ws-change .ws-change-more form{ margin:0; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .ws-calloff input[type=text]{ width:auto; max-width:220px; }
 
+/* An atelier's recap, on the sitting's page. The week's photographs as cards,
+   each saying whether it goes and why not; two to a row on a phone. */
+.recap{ margin-top:18px; }
+.recap-h{ margin:20px 0 6px; font-size:15px; color:var(--ink); }
+.recap-photos{ display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:12px; margin:10px 0 14px; }
+.recap-photo{ margin:0; padding:8px; border:1px solid var(--parchment-line); border-radius:10px; background:var(--parchment); display:flex; flex-direction:column; gap:6px; min-width:0; }
+.recap-photo.is-going{ border-color:var(--success); }
+.recap-photo img{ display:block; width:100%; height:150px; object-fit:cover; border-radius:6px; }
+.recap-photo figcaption{ display:flex; flex-direction:column; gap:6px; font-size:13px; min-width:0; }
+.recap-photo fieldset{ border:0; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; min-width:0; }
+.recap-photo legend{ padding:0 0 2px; font-size:12px; color:var(--ink-soft); }
+.recap-who{ display:flex; flex-direction:column; gap:2px; padding-left:22px; }
+.recap-verdict{ font-size:12.5px; overflow-wrap:anywhere; }
+.recap-verdict.is-going{ color:var(--success); font-weight:600; }
+.recap-verdict.is-out{ color:var(--rust); }
+.recap-notes{ white-space:pre-wrap; overflow-wrap:anywhere; margin:6px 0; padding:10px 12px; background:var(--parchment); border:1px solid var(--parchment-line); border-radius:8px; font-size:14px; font-family:inherit; }
+.recap-dates, .recap-left{ margin:6px 0; padding-left:20px; }
+.recap-unfilled{ color:var(--gold-on-warn); }
+.recap-preview{ display:block; width:100%; min-height:640px; border:1px solid var(--parchment-line); border-radius:8px; background:var(--surface); }
+.recap-actions{ display:flex; flex-wrap:wrap; gap:12px 18px; align-items:center; margin-top:16px; padding-top:14px; border-top:1px solid var(--parchment-line); }
+.recap-actions form{ margin:0; }
+@media (max-width: 480px){
+  .recap-photos{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+  .recap-photo img{ height:110px; }
+}
+
 /* ---------- The calendar as drawn: bars for what lasts, groups for the day ----------
    A week (and each week of a month) is three bands over one set of column
    rules: the day headings, the bars of what lasts across those days on a grid
@@ -3862,6 +3888,60 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .arr-quiet strong{ color:var(--ink); font-weight:600; }
 .arr-code{ margin-top:8px; padding-top:10px; border-top:1px dashed var(--parchment-line); }
 .arr-code > summary{ cursor:pointer; }
+.arr-extras{ margin:0 0 4px; padding-left:18px; }
+.arr-extras li{ margin:0 0 3px; }
+/* The rooms night by night at the top of the arrivals sheet (26 October
+   2026): a row a room, a column a night, a stay one cell across its nights.
+   Each kind is told apart by its edge as well as its fill, so it still reads
+   off a black-and-white printer. A fixed layout, so the nights are the same
+   width whoever is in them; wide enough to scroll on a phone rather than
+   squash fourteen nights into one screen. */
+.arr-cal{ margin-bottom:28px; }
+.arr-cal__grid{ table-layout:fixed; min-width:760px; font-size:11.5px;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.arr-cal__grid thead th{ padding:6px 3px; text-align:center; font-size:10px; line-height:1.3; letter-spacing:0.02em; }
+.arr-cal__grid thead th:first-child{ text-align:left; width:150px; padding-left:10px; }
+.arr-cal__grid thead th.is-weekend{ background:var(--parchment); }
+.arr-cal__grid thead th.is-today{ color:var(--ink); }
+.arr-cal__grid td, .arr-cal__grid tbody th, .arr-cal__grid tfoot th{
+  padding:6px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  border-left:1px solid var(--parchment-line);
+}
+.arr-cal__grid tbody th, .arr-cal__grid tfoot th{ padding-left:10px; border-left:none; }
+.arr-cal__grid tfoot td{ text-align:center; }
+.arr-cal__grid tbody tr:hover{ background:none; }
+.arr-cal__c.is-stay{ background:var(--status-success-bg); border:1.5px solid var(--success); }
+.arr-cal__c.is-channel{ background:var(--status-neutral-bg); border:1.5px solid var(--steel); }
+.arr-cal__c.is-atelier{ background:var(--status-warn-bg); border:1.5px solid var(--gold-soft); }
+.arr-cal__c.is-pending{ background:var(--surface); border:1.5px dashed var(--ink-soft); }
+.arr-cal__c.is-closed{ color:var(--ink-soft); border:1.5px solid var(--parchment-line);
+  background:repeating-linear-gradient(135deg, var(--parchment) 0 5px, var(--parchment-line) 5px 6px); }
+.arr-cal__c.is-clash{ background:var(--status-danger-bg); border:2px solid var(--danger); color:var(--danger); font-weight:600; }
+.arr-cal__key{ margin:-8px 0 0; line-height:1.9; }
+.arr-cal__swatch{ display:inline-block; width:12px; height:12px; margin:0 2px 0 8px; vertical-align:-1px; border-radius:2px; }
+.arr-cal__swatch.is-stay{ background:var(--status-success-bg); border:1.5px solid var(--success); }
+.arr-cal__swatch.is-channel{ background:var(--status-neutral-bg); border:1.5px solid var(--steel); }
+.arr-cal__swatch.is-atelier{ background:var(--status-warn-bg); border:1.5px solid var(--gold-soft); }
+.arr-cal__swatch.is-pending{ background:var(--surface); border:1.5px dashed var(--ink-soft); }
+.arr-cal__swatch.is-closed{ background:var(--parchment-line); border:1.5px solid var(--parchment-line); }
+.arr-cal__swatch.is-clash{ background:var(--status-danger-bg); border:2px solid var(--danger); }
+/* ON PAPER: the calendar on the first page whole, a guest's card never cut
+   in two, a heading never left at the foot of a page without what it heads,
+   and the links read as the words they are. */
+@media print{
+  /* The box to save a view: a ?date= is a filter, so it offers to keep one,
+     and on paper it was the first thing printed. */
+  body.staff-shell:has(.arr-cal) .list-toolbar{ display:none !important; }
+  .arr-print-head{ font-size:11px; margin:0 0 10px; color:#000; }
+  .arr-cal .table-wrap, .arr-week .table-wrap{ overflow:visible; box-shadow:none; border-color:#999; }
+  .arr-cal__grid{ min-width:0; font-size:9px; }
+  .arr-cal__grid thead th:first-child{ width:105px; }
+  .arr-cal{ break-inside:avoid; }
+  .arr-card{ break-inside:avoid; }
+  .arr-week__h, .arr-day__h, .arr-day__sum, .arr-day .sub-heading{ break-after:avoid; }
+  .arr-day{ break-inside:auto; }
+  .arr-week a, .arr-card a{ color:inherit; text-decoration:none; }
+}
 /* The guest list as a directory (19 October 2026). */
 .gu-house{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; margin:0 0 20px; }
 .gu-house__col{ background:var(--surface); border:1px solid var(--parchment-line); border-radius:12px; padding:12px 16px; }
@@ -3933,3 +4013,81 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .cs-paste{ margin-bottom:12px; }
 .cs-paste > summary{ cursor:pointer; font-weight:600; }
 .cs-form{ margin:0; }
+/* THE PLANS (22 October 2026): a picture the owner uploaded, with pins on it.
+   The app never draws the plan -- the picture is the upload, nothing else. A
+   pin sits at left:x% top:y% of the picture, so it stays on its spot at any
+   width; its point is the spot (translate -50%,-100%), and the whole 44px box
+   is the target, because it is tapped outdoors. Zoom draws the picture wider
+   INSIDE .plan-scroll, so the page itself never goes sideways on a phone. */
+.plan-switch{ display:flex; flex-wrap:wrap; gap:7px; margin:0 0 12px; }
+.plan-tools{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0 0 8px; }
+.plan-zoom{ display:inline-flex; gap:6px; }
+.plan-zoom .btn-mini[aria-pressed="true"]{ background:var(--ink); border-color:var(--ink); color:var(--surface); }
+.plan-scroll{ max-width:100%; max-height:80vh; overflow:auto; border:1px solid var(--parchment-line);
+  border-radius:10px; background:var(--surface); -webkit-overflow-scrolling:touch; margin:0 0 14px; }
+.plan-frame{ position:relative; width:100%; line-height:0; touch-action:manipulation; }
+.plan-frame[data-zoom="2"]{ width:200%; }
+.plan-frame[data-zoom="3"]{ width:300%; }
+.plan-frame > img{ display:block; width:100%; height:auto; max-width:none;
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+.plan-frame.is-tappable{ cursor:crosshair; }
+.plan-pin{ position:absolute; z-index:1; width:44px; height:44px; transform:translate(-50%, -100%);
+  display:flex; align-items:flex-start; justify-content:center; text-decoration:none; line-height:1;
+  -webkit-tap-highlight-color:transparent; }
+.plan-pin[hidden]{ display:none; }
+.plan-pin{ --pin:var(--danger); --pin-ink:#fff; }
+.plan-pin-dot{ display:flex; align-items:center; justify-content:center; width:30px; height:30px;
+  margin-top:1px; border-radius:50%; background:var(--pin); border:2px solid #fff;
+  box-shadow:0 1px 4px rgba(0,0,0,.45); color:var(--pin-ink); font:700 13px/1 'IBM Plex Mono', monospace; }
+/* The tail: from the bottom of the head down to the spot itself. */
+.plan-pin::after{ content:""; position:absolute; left:50%; bottom:0; transform:translateX(-50%);
+  border-left:6px solid transparent; border-right:6px solid transparent; border-top:12px solid var(--pin); }
+.plan-pin--open{ --pin:var(--danger); }
+.plan-pin--doing{ --pin:var(--gold); --pin-ink:var(--chestnut-deep); }
+.plan-pin--done{ --pin:var(--success); }
+.plan-pin--check{ --pin:var(--steel); }
+.plan-pin--marker{ --pin:var(--chestnut-deep); }
+.plan-pin--marker{ pointer-events:none; z-index:2; }
+.plan-pin--marker .plan-pin-dot{ font-size:18px; }
+.plan-pin:focus-visible{ outline:none; }
+.plan-pin:focus-visible .plan-pin-dot{ box-shadow:0 0 0 4px var(--focus-ring); }
+.plan-legend{ display:flex; flex-wrap:wrap; gap:6px 14px; margin:-6px 0 14px; font-size:12px; color:var(--ink-soft); }
+.plan-key::before{ content:""; display:inline-block; width:10px; height:10px; border-radius:50%;
+  margin-right:6px; vertical-align:-1px; background:var(--danger); }
+.plan-key--open::before{ background:var(--danger); }
+.plan-key--doing::before{ background:var(--gold); }
+.plan-jobs td{ vertical-align:top; }
+.plan-where{ margin:0; }
+.plan-where a + a{ margin-left:2px; }
+.plan-key--done::before{ background:var(--success); }
+.plan-key--check::before{ background:var(--steel); }
+.plan-status--open{ background:var(--status-danger-bg); color:var(--danger); }
+.plan-status--doing{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
+.plan-status--done{ background:var(--status-success-bg); color:var(--success); }
+.plan-status--check{ background:var(--status-info-bg); color:var(--steel-deep); }
+.plan-report{ max-width:760px; }
+.plan-report input[type=text]{ width:100%; }
+.plan-step{ margin:0 0 8px; }
+.plan-tap-said{ color:var(--success); font-weight:600; }
+.plan-danger{ display:flex; gap:10px; align-items:flex-start; margin:16px 0; }
+.plan-danger input{ margin-top:3px; }
+.plan-check{ display:flex; gap:10px; align-items:center; margin:10px 0; }
+.plan-send{ min-height:48px; padding:0 28px; }
+.plan-job-state{ display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin:-10px 0 14px; }
+.plan-job-photo{ margin:0 0 14px; }
+.plan-job-photo img{ display:block; max-width:100%; max-height:60vh; height:auto; border-radius:10px;
+  border:1px solid var(--parchment-line); }
+.plan-job-notes{ white-space:pre-line; max-width:720px; }
+.plan-job-acts{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 14px; }
+.plan-job-acts form{ margin:0; }
+.plan-place-on{ display:flex; flex-wrap:wrap; gap:8px; }
+.plan-record{ max-width:760px; }
+.plan-intro{ max-width:760px; }
+.plan-cards{ display:grid; gap:12px; max-width:940px; margin:0 0 10px; }
+.plan-card > summary{ display:flex; gap:12px; align-items:center; cursor:pointer; }
+.plan-thumb{ width:96px; height:64px; object-fit:cover; border-radius:6px; border:1px solid var(--parchment-line); flex-shrink:0; }
+.plan-card-says{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.plan-add{ max-width:940px; }
+@media (pointer: coarse){
+  .plan-zoom .btn-mini{ min-height:44px; min-width:44px; justify-content:center; }
+}

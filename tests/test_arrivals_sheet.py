@@ -35,6 +35,12 @@ def _cleanup():
     conn = db()
     conn.execute("DELETE FROM booking_access_codes WHERE booking_id IN "
                  "(SELECT id FROM bookings WHERE guest_name LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM booking_extras WHERE booking_id IN "
+                 "(SELECT id FROM bookings WHERE guest_name LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM ota_reservations WHERE reservation_number LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM workshop_bookings WHERE guest_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM workshop_sessions WHERE notes = ?", (TAG,))
+    conn.execute("DELETE FROM room_blocks WHERE reason = ?", (TAG,))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM guests WHERE name LIKE ?", (TAG + "%",))
     conn.commit()
@@ -61,6 +67,12 @@ def _booking(ref, *, room_id, arrival, nights=2, **extra):
     return row
 
 
+def _days(page):
+    """The page from the first week on: the days, not the calendar above them."""
+    at = page.find('class="arr-week"')
+    return page[at:] if at >= 0 else ""
+
+
 def run():
     s = Suite("The arrivals sheet")
     _cleanup()
@@ -75,8 +87,10 @@ def run():
     body = oc.get("/admin/arrivals").get_data(as_text=True)
     s.check("tomorrow's guest is on it, to get ready for", f"{TAG} TOM" in body)
     s.check("and so is today's, to receive", f"{TAG} TODAY" in body)
-    # Read from the page's own heading: the menu has a "Today" of its own.
-    sheet = body[body.find("<h1>Arrivals</h1>"):]
+    # Read from the days, below the rooms-by-night calendar (26 October
+    # 2026), which names every guest first; and below the menu, which has a
+    # "Today" of its own.
+    sheet = _days(body)
     s.check("today first", sheet.find(f"{TAG} TODAY") < sheet.find(f"{TAG} TOM")
             and 0 < sheet.find(">Today") < sheet.find(f"{TAG} TODAY")
             < sheet.find(">Tomorrow") < sheet.find(f"{TAG} TOM"),
@@ -105,7 +119,7 @@ def run():
     s.check("the last day of next week is on it", f"{TAG} LAST" in body,
             detail=f"{TAG} LAST arrives {last.isoformat()}, the Sunday of next week")
     s.check("and a guest leaving next week, under next week",
-            body.find(">Next week") < body.find(f"{TAG} GOES"),
+            0 < _days(body).find(">Next week") < _days(body).find(f"{TAG} GOES"),
             detail="a room is not ready for an arrival until the departure has gone")
     s.check("the Monday after is not", f"{TAG} BEYOND" not in body,
             detail="the window ends with next week")
@@ -187,8 +201,9 @@ def run():
     s.check("and no empty panel for any of them",
             "Nobody is arriving or leaving on this day" not in page)
     s.check("the stay is there", f"{TAG} MID" in page)
-    s.check("and one neither starting nor ending in the window is not",
-            f"{TAG} ACROSS" not in page)
+    s.check("and one neither starting nor ending in the window is not on any day",
+            f"{TAG} ACROSS" not in _days(page),
+            detail="it is in the calendar above the days, asleep in its room")
     s.check("weeks that are neither this nor next are named by their Monday",
             f"Week of {m.format_date_short(monday.isoformat())}" in page)
     conn = db()
@@ -231,6 +246,9 @@ def run():
     s.check("their usual arrival time is used", "16:00" in body,
             detail="a guest who always arrives at six should not be asked "
                    "every time")
+    s.check("said as their usual, not as this stay's",
+            "usually arrives 16:00" in body,
+            detail="on paper a time read as promised is a time somebody waits up for")
     s.check("what they cannot eat comes with them", "coeliac" in body)
     # THE ONE THAT MATTERS in a house with eighteenth-century stairs: the
     # ground-floor decision is made before they arrive or not at all.
@@ -238,6 +256,190 @@ def run():
             "cannot manage stairs" in body,
             detail="it was on the profile and nothing carried it to the "
                    "morning somebody had to act on it")
+
+    s.section("A clash in one room is drawn as one, not as either guest")
+    # ACROSS and MID were written straight to the table into the same room
+    # on the same nights. The paper is where somebody would otherwise find it.
+    conn = db()
+    with m.app.test_request_context("/"):
+        cal = m.arrivals_calendar(conn, monday, monday + timedelta(days=13))
+    conn.close()
+    mine = next((r for r in cal["rows"] if r["room"] == room["name"]), None)
+    shape_a = [(c["kind"], c["first"], c["span"]) for c in (mine or {}).get("cells", [])]
+    s.check("the two nights both are in it are one clash",
+            shape_a == [("stay", 0, 2), ("clash", 2, 2), ("stay", 4, 10)],
+            detail=str(shape_a))
+    s.check("and the stay already here when the window opens says so",
+            mine and mine["cells"][0]["from_before"] and mine["cells"][-1]["runs_on"],
+            detail="‹ arrived before, › stays on after")
+
+    s.section("On paper: the rooms night by night (owner, 26 October 2026)")
+    # "print out the bookings from tomorrow onwards ... the extras, the
+    # requested check in times, the details, a calendar". A fortnight of its
+    # own, asked of the calendar, so nothing else of this suite's is in it.
+    w2 = _harness.free_window(room["id"], 21, after_days=700, clear_of_ateliers=True)
+    w2 = w2 + timedelta(days=(7 - w2.weekday()) % 7)
+    now = datetime.now(timezone.utc).isoformat()
+    stayer = _booking("STAYER", room_id=room["id"], arrival=w2 - timedelta(days=1), nights=3,
+                      party_size=1)
+    rich = _booking("RICH", room_id=room["id"], arrival=w2 + timedelta(days=2), nights=3,
+                    guest_phone="+33 6 12 34 56 78", estimated_arrival_time="17:45",
+                    special_requests="a cot by the window", dietary_notes="no pork",
+                    total_price=900)
+    _booking("WAITS", room_id=room["id"], arrival=w2 + timedelta(days=5), nights=2,
+             status="pending")
+    conn = db()
+    for bid, name, status, when, notes in (
+            (rich["id"], f"{TAG} Champagne", "requested", w2 + timedelta(days=3), "in the room by six"),
+            (rich["id"], f"{TAG} Picnic", "confirmed", None, ""),
+            (rich["id"], f"{TAG} Withdrawn", "cancelled", w2 + timedelta(days=3), ""),
+            (stayer["id"], f"{TAG} Late checkout", "confirmed", w2 + timedelta(days=1), "till two")):
+        conn.execute(
+            """INSERT INTO booking_extras (category, booking_id, name, unit_price, quantity,
+               notes, status, scheduled_for, created_at) VALUES ('room', ?, ?, 40, 1, ?, ?, ?, ?)""",
+            (bid, name, notes or None, status, when.isoformat() if when else None, now))
+    # The owner's closure over RICH's nights, as the house closes a room over a
+    # Booking.com stay so the site cannot sell it twice: holding the room for
+    # the guest, not a second booking. And one over two empty nights.
+    for a_, z_ in ((2, 5), (12, 14)):
+        conn.execute("INSERT INTO room_blocks (room_id, start_date, end_date, reason, created_at) "
+                     "VALUES (?, ?, ?, ?, ?)",
+                     (room["id"], (w2 + timedelta(days=a_)).isoformat(),
+                      (w2 + timedelta(days=z_)).isoformat(), TAG, now))
+    # A Booking.com guest who told us their time and number at online
+    # check-in, in no room yet; and an atelier with one place roomed and one not.
+    conn.execute(
+        """INSERT INTO ota_reservations (channel, reservation_number, status, guest_name,
+           arrival_date, departure_date, room_id, guests, first_seen_at, updated_at,
+           estimated_arrival_time, guest_phone, special_requests)
+           VALUES ('booking.com', ?, 'confirmed', ?, ?, ?, NULL, NULL, ?, ?, '19:30',
+                   '+44 7700 900123', 'late check-in please')""",
+        (f"{TAG}BK1", f"{TAG} Channel", (w2 + timedelta(days=4)).isoformat(),
+         (w2 + timedelta(days=6)).isoformat(), now, now))
+    workshop = conn.execute("SELECT id, title FROM workshops ORDER BY id LIMIT 1").fetchone()
+    session_id = None
+    if workshop:
+        session_id = conn.execute(
+            """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity,
+               notes, created_at) VALUES (?, ?, ?, 12, ?, ?)""",
+            (workshop["id"], (w2 + timedelta(days=8)).isoformat(),
+             (w2 + timedelta(days=11)).isoformat(), TAG, now)).lastrowid
+        for ref, party, room_id, eta in (("WA", 2, room["id"], "15:00"), ("WB", 1, None, None)):
+            conn.execute(
+                """INSERT INTO workshop_bookings (session_id, reference_code, manage_token,
+                   guest_name, guest_email, party_size, status, created_at,
+                   assigned_room_id, estimated_arrival_time)
+                   VALUES (?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)""",
+                (session_id, f"{TAG}-{ref}", f"tok{TAG}{ref}w".lower(), f"{TAG} Place {ref}",
+                 f"zzar.{ref}@example.invalid".lower(), party, now, room_id, eta))
+    conn.commit()
+    with m.app.test_request_context("/"):
+        cal = m.arrivals_calendar(conn, w2, w2 + timedelta(days=13))
+    conn.close()
+    s.check("an atelier to try this on", bool(workshop), detail="reported rather than skipped")
+    mine = next((r for r in cal["rows"] if r["room"] == room["name"]), None)
+    shape = [(c["kind"], c["first"], c["span"]) for c in (mine or {}).get("cells", [])]
+    s.check("a room's fortnight: here already, a stay, one to confirm, a free night, an atelier",
+            shape == [("stay", 0, 2), ("stay", 2, 3), ("pending", 5, 2), ("free", 7, 1),
+                      ("atelier", 8, 3), ("free", 11, 1), ("closed", 12, 2)], detail=str(shape))
+    s.check("a closure under a guest is the room held for them, not a clash",
+            ("stay", 2, 3) in shape and "clash" not in [k for k, _f, _n in shape],
+            detail="the owner closes a room over a Booking.com stay so the site cannot sell it")
+    s.check("each stay a cell across its nights, under its guest's name",
+            mine and mine["cells"][1]["label"] == f"{TAG} RICH"
+            and mine["cells"][0]["from_before"] and not mine["cells"][1]["from_before"],
+            detail=str(mine and [c["label"] for c in mine["cells"]]))
+    unmatched = next((r for r in cal["rows"] if r["room"] == "Booking.com, room not matched"), None)
+    s.check("a Booking.com stay with no room yet has a row of its own",
+            unmatched and any(c["kind"] == "channel" and c["first"] == 4 and c["span"] == 2
+                              for c in unmatched["cells"]),
+            detail=str(unmatched and [(c["kind"], c["first"], c["span"]) for c in unmatched["cells"]]))
+    band = [(c["span"], [a["title"] for a in c["on"]]) for c in cal["ateliers"]]
+    s.check("the atelier is a band across the nights it holds",
+            workshop and any(span == 3 and workshop["title"] in t for span, t in band),
+            detail=str(band))
+    # THE TOTALS ARE THE GRID'S. Counted again here from the cells, for every
+    # night, so a total that drifts from the rows above it is caught whatever
+    # else is booked in the house that fortnight.
+    drift = []
+    for i, t in enumerate(cal["totals"]):
+        cells = [c for r in cal["rows"] for c in r["cells"]
+                 if c["first"] <= i < c["first"] + c["span"] and c["kind"] not in ("free", "closed")]
+        if t["rooms"] != len(cells):
+            drift.append(f"night {i}: {t['rooms']} rooms for {len(cells)} cells")
+        if t["guests"] < sum(c["party"] for c in cells):
+            drift.append(f"night {i}: {t['guests']} guests under {sum(c['party'] for c in cells)}")
+    s.check("rooms let each night is the cells in that column", not drift, detail="; ".join(drift[:3]))
+    s.check("and the guests asleep count the atelier place with no room",
+            cal["totals"][8]["guests"] - sum(c["party"] for r in cal["rows"] for c in r["cells"]
+                                             if c["first"] <= 8 < c["first"] + c["span"]
+                                             and c["kind"] not in ("free", "closed")) == 1,
+            detail=f"{cal['totals'][8]}")
+    s.check("and a Booking.com stay that did not say how many is marked, not counted as none",
+            cal["totals"][4]["unknown"] and not cal["totals"][3]["unknown"],
+            detail=str([t["unknown"] for t in cal["totals"][:7]]))
+
+    s.section("On paper: every arrival's extras, time, telephone and asks")
+    page = oc.get(f"/admin/arrivals?date={w2.isoformat()}").get_data(as_text=True)
+    days = _days(page)
+    text = _harness.visible_text(days)
+    s.check("the calendar is on the page, in a box that scrolls",
+            'class="data-table arr-cal__grid"' in page
+            and page.find('class="table-wrap"') < page.find("arr-cal__grid"))
+    s.check("the arrival time in words, not a bare figure", "arriving 17:45" in text,
+            detail="on paper '17:45' beside a room could be anything")
+    s.check("the telephone to ring", "+33 6 12 34 56 78" in text)
+    s.check("the extras, each with its day and what the guest wrote",
+            f"{TAG} Champagne" in text and "in the room by six" in text
+            and f"{TAG} Picnic" in text,
+            detail="they were on the Extras page and not on the paper the door works from")
+    champagne = text[text.find(f"{TAG} Champagne"):][:120]
+    s.check("one still to confirm says so", "to confirm" in champagne.lower(), detail=champagne)
+    s.check("and one withdrawn is not there", f"{TAG} Withdrawn" not in page)
+    eat = text[text.find("Cannot eat"):text.find("They asked")]
+    s.check("what they cannot eat under Cannot eat, and nothing else",
+            "no pork" in eat and "a cot by the window" not in eat, detail=eat[:120])
+    s.check("what they asked for under its own heading",
+            "a cot by the window" in text[text.find("They asked"):][:80])
+    s.check("what is still owed, for the owner", "to collect" in text)
+    emp = ec.get(f"/admin/arrivals?date={w2.isoformat()}")
+    emp_text = _harness.visible_text(emp.get_data(as_text=True))
+    s.check("and not for an employee, who still sees the rest",
+            emp.status_code == 200 and "to collect" not in emp_text
+            and f"{TAG} Champagne" in emp_text and "+33 6 12 34 56 78" in emp_text)
+    s.check("a Booking.com guest's time, telephone and ask, from their check-in",
+            "19:30" in text and "+44 7700 900123" in text and "late check-in please" in text,
+            detail="channel_stays() answers None for all three")
+
+    conn = db()
+    with m.app.test_request_context("/"):
+        quiet_but_wanted = m.arrivals_sheet(conn, w2 + timedelta(days=1))
+        begins = m.arrivals_sheet(conn, w2 + timedelta(days=8))
+        ends = m.arrivals_sheet(conn, w2 + timedelta(days=11))
+    conn.close()
+    s.check("a day with only an extra for somebody already here is not quiet",
+            not quiet_but_wanted["nothing_doing"]
+            and [x["name"] for x in quiet_but_wanted["extras_here"]] == [f"{TAG} Late checkout"],
+            detail=str([x["name"] for x in quiet_but_wanted["extras_here"]]))
+    s.check("and it is on the page under the guests already here",
+            "Extras for guests already here" in text and f"{TAG} Late checkout" in text)
+    s.check("an atelier's first day has its guests coming, counted with the rest",
+            [a["begins"] for a in begins["ateliers"]] == [True]
+            and begins["arriving_count"] == 2 and begins["beds"] == 3,
+            detail=f"{begins['arriving_count']} arriving, {begins['beds']} guests")
+    s.check("with the time each said they would come", f"{TAG} Place WA" in text and "15:00" in text)
+    s.check("and its last day has them going",
+            [a["begins"] for a in ends["ateliers"]] == [False] and ends["leaving_count"] == 2,
+            detail=f"{ends['leaving_count']} leaving")
+
+    s.section("And it prints")
+    s.check("a Print button", "window.print()" in page)
+    s.check("a line on the paper saying which days and when it was printed",
+            "arr-print-head" in page and "printed" in page)
+    s.check("the forms and links for clicking are marked not to print",
+            'class="arr-code no-print"' in page and 'class="upload-hint arr-window no-print"' in page)
+    s.check("and from tomorrow is one click",
+            f'date={(m.house_today() + timedelta(days=1)).isoformat()}"' in page)
 
     s.section("Recording what was given to get in")
     b = _booking("CODE", room_id=room["id"], arrival=tomorrow)

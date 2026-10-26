@@ -1,0 +1,84 @@
+{#
+  A plan the owner uploaded, with pins on it.
+
+  Used as {% with tap=..., pins=[...], marker=... %}{% include "_plan_frame.html" %}{% endwith %}
+  with `plan` in scope. Each pin is a dict: x, y (fractions), n, tone, link, title.
+
+  THE APP NEVER DRAWS THE PLAN. The picture is the owner's upload and nothing
+  else -- a plan drawn here was rejected as inaccurate on 9 October 2026.
+
+  A pin is placed by PERCENTAGES of the picture (left: x*100%, top: y*100%), so
+  it sits on the same spot at any width: tests/test_site_plans measures that in
+  a browser at a phone's width and a desk's. Each pin is a 44px target with its
+  point at the spot, because it is tapped outdoors.
+
+  With tap=True a tap on the picture moves the marker there and fills the
+  enclosing form's tap_x, tap_y, shown_w and shown_h -- where the finger landed
+  and how big the picture was drawn. pin_from_tap turns those into fractions on
+  the server, so the arithmetic is done in one place.
+
+  Zoom draws the picture wider INSIDE its own scrolling box, so the page itself
+  never goes sideways on a phone.
+#}
+<div class="plan-tools">
+  <span class="plan-zoom" role="group" aria-label="Zoom">
+    <button type="button" class="btn-mini" data-zoom="1" aria-pressed="true">Whole plan</button>
+    <button type="button" class="btn-mini" data-zoom="2" aria-pressed="false">2&times;</button>
+    <button type="button" class="btn-mini" data-zoom="3" aria-pressed="false">3&times;</button>
+  </span>
+  {% if tap %}<span class="upload-hint">Zoom in to tap precisely; scroll the plan to move about.</span>{% endif %}
+</div>
+<div class="plan-scroll">
+  <div class="plan-frame{{ ' is-tappable' if tap }}" data-zoom="1" id="plan-frame">
+    <img src="{{ url_for('plan_image', plan_id=plan['id'], v=plan['filename']) }}"
+         width="{{ plan['width'] }}" height="{{ plan['height'] }}"
+         alt="{{ plan['name'] }}" draggable="false">
+    {% for p in pins %}
+    <a class="plan-pin plan-pin--{{ p.tone }}" href="{{ p.link }}"
+       style="left:{{ '%.3f'|format(p.x * 100) }}%; top:{{ '%.3f'|format(p.y * 100) }}%"
+       title="{{ p.title }}" aria-label="{{ (p.n ~ '. ') if p.n }}{{ p.title }}"><span class="plan-pin-dot">{{ p.n or '' }}</span></a>
+    {% endfor %}
+    {% if tap %}
+    <span class="plan-pin plan-pin--marker" id="plan-marker" aria-hidden="true"
+          {% if marker %}style="left:{{ '%.3f'|format(marker[0] * 100) }}%; top:{{ '%.3f'|format(marker[1] * 100) }}%"{% else %}hidden{% endif %}><span class="plan-pin-dot">+</span></span>
+    {% endif %}
+  </div>
+</div>
+<script>
+(function () {
+  var frame = document.getElementById('plan-frame');
+  if (!frame) return;
+  var img = frame.querySelector('img');
+  var zooms = document.querySelectorAll('.plan-zoom [data-zoom]');
+  [].forEach.call(zooms, function (b) {
+    b.addEventListener('click', function () {
+      frame.setAttribute('data-zoom', b.getAttribute('data-zoom'));
+      [].forEach.call(zooms, function (o) {
+        o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
+      });
+    });
+  });
+  if (!frame.classList.contains('is-tappable')) return;
+  var form = frame.closest('form');
+  var marker = document.getElementById('plan-marker');
+  function put(name, v) {
+    var el = form && form.querySelector('[name="' + name + '"]');
+    if (el) el.value = v;
+  }
+  frame.addEventListener('click', function (e) {
+    var r = img.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    var x = Math.min(Math.max(e.clientX - r.left, 0), r.width);
+    var y = Math.min(Math.max(e.clientY - r.top, 0), r.height);
+    put('tap_x', x.toFixed(2));
+    put('tap_y', y.toFixed(2));
+    put('shown_w', r.width.toFixed(2));
+    put('shown_h', r.height.toFixed(2));
+    marker.style.left = (x / r.width * 100) + '%';
+    marker.style.top = (y / r.height * 100) + '%';
+    marker.hidden = false;
+    var said = document.getElementById('plan-tap-said');
+    if (said) said.textContent = 'Pinned. Tap again to move it.';
+  });
+})();
+</script>
