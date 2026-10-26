@@ -21,6 +21,7 @@ These now use keep=False, the same rule a password-reset link uses: a message
 that is only true while the dates are free should not be kept. Nothing is
 queued, the entry stays open, and the owner is told to work the list by hand.
 """
+import re
 from datetime import datetime, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -192,6 +193,31 @@ def run():
             follow_redirects=True)
     s.check("a status can be set by hand", _status(other["id"]) == "contacted",
             detail=f"got {_status(other['id'])!r}")
+
+    s.section("It is called Enquiries, because that is what it holds")
+    # The owner, 22 October: "there is no room waitlist". A guest only joins
+    # one when every room is taken for the dates they searched, so the page
+    # called Room Waitlist was in practice the Contact page's questions about
+    # dates. Renamed, with the address and the reminder left as they were.
+    s.check("the page is headed Enquiries", "<h1>Enquiries</h1>" in body,
+            detail="the heading still says Waitlist")
+    link = re.search(r'<a[^>]*href="/admin/waitlist"[^>]*>(.*?)</a>', body, re.S)
+    s.check("and the menu calls it Enquiries",
+            bool(link) and "Enquiries" in link.group(1)
+            and "Waitlist" not in link.group(1),
+            detail=(link.group(1).strip()[:120] if link else "no menu link to it"))
+    s.check("with no Room Waitlist left on the page", "Room Waitlist" not in body)
+    asked = _room_entry("Fabienne", "2033-11-01", "2033-12-01", status="enquiry")
+    conn = db()
+    try:
+        reminded = [r["id"] for r in m.matching_waitlist_entries(
+            conn, "2033-11-12", "2033-11-14")]
+    finally:
+        conn.close()
+    s.check("a night freed in the month they asked about still reminds you of them",
+            asked["id"] in reminded,
+            detail=f"entry {dict(asked)} not among {reminded}: the rename must not "
+                   "take the reminder with it")
 
     s.section("Guards")
     s.check("an employee cannot read the waitlist",
