@@ -102,8 +102,9 @@
     <input id="admin_restaurant_settings-dining-reopens" type="text" name="dining_reopens" maxlength="60"
            value="{{ dining_reopens }}" placeholder="April 2027">
     {# 2 Oct: the evenings La Table opens. Shown on the website as the opening hours (Dining page, footer, Stay, the
-       homepage) with the dinner time above, and a table cannot be requested on any other evening. Saved by the patch
-       in PATCH_dining_days.txt. #}
+       homepage) with the dinner time above, and a table cannot be requested on any other evening. Saved by
+       admin_restaurant_settings into app_settings.dining_days; the booking routes refuse a closed evening through
+       restaurant_closed_evening. #}
     {% set _dd = (dining_days if dining_days is defined else '')|string %}
     <p class="field-label" style="margin-top:14px;">Open on these evenings</p>
     <div style="display:flex; flex-wrap:wrap; gap:6px 14px; margin:4px 0 2px;">

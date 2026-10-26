@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Report a problem{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Report a problem</h1>
+  <div>
+    <a href="{{ url_for('plan_map', plan_id=plan['id']) if plan else url_for('plan_map') }}"
+       class="btn-ghost">See what is already reported</a>
+  </div>
+</div>
+
+{% if plans|length > 1 %}
+<nav class="plan-switch" aria-label="Which plan">
+  {% for p in plans %}
+  <a href="{{ url_for('report_problem', plan=p['id']) }}"
+     class="chip {{ 'is-on' if plan and p['id'] == plan['id'] }}">{{ p['name'] }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+<form method="post" action="{{ url_for('submit_problem_report') }}"
+      enctype="multipart/form-data" class="plan-report">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  {% if plan %}
+  <input type="hidden" name="plan_id" value="{{ plan['id'] }}">
+  {# Where the finger landed and how big the plan was drawn, filled by the tap.
+     Sent back after a message, they are the same place written over a picture
+     10000 across, which pin_from_tap reads exactly the same way. #}
+  <input type="hidden" name="tap_x" value="{{ '%.2f'|format(point[0] * 10000) if point }}">
+  <input type="hidden" name="tap_y" value="{{ '%.2f'|format(point[1] * 10000) if point }}">
+  <input type="hidden" name="shown_w" value="{{ '10000' if point }}">
+  <input type="hidden" name="shown_h" value="{{ '10000' if point }}">
+  <p class="plan-step"><strong>1.</strong> Tap where it is on {{ plan['name'] }}.</p>
+  {% with tap=True, pins=[], marker=point %}{% include "_plan_frame.html" %}{% endwith %}
+  {# Below the plan, not beside the instruction above it: text that appears
+     above the picture on the first tap wraps on a phone and moves the picture
+     down a line, so the second tap lands somewhere else. #}
+  <p id="plan-tap-said" class="plan-tap-said" aria-live="polite">{{ 'Pinned. Tap again to move it.' if point }}</p>
+  {% else %}
+  <div class="empty-state">
+    There is no plan of the grounds to tap on yet, so this goes as a job without a
+    place on the map. Say where it is in the line below.
+  </div>
+  {% endif %}
+
+  <label class="field-label" for="report-line">
+    <strong>{{ '2.' if plan else '1.' }}</strong> What is wrong
+  </label>
+  <input type="text" id="report-line" name="line" value="{{ line }}" maxlength="200" required
+         autocomplete="off" placeholder="Fallen branch by the gate">
+
+  <label class="field-label" for="report-photo">
+    <strong>{{ '3.' if plan else '2.' }}</strong> A photograph
+  </label>
+  <input type="file" id="report-photo" name="photo" accept="image/*">
+  <p class="field-hint">
+    Optional, and worth it: it saves somebody a walk out to see how bad it is.
+    {% if line or point %}If you had chosen one, choose it again &mdash; a browser
+    never keeps a photograph across a message.{% endif %}
+  </p>
+
+  <label class="plan-danger">
+    <input type="checkbox" name="dangerous" value="1" {{ 'checked' if dangerous }}>
+    <span>It is dangerous or in the way &mdash; somebody could get hurt, or a car cannot get past.
+      The owner is told straight away.</span>
+  </label>
+
+  <button type="submit" class="btn-primary plan-send">Send</button>
+</form>
+
+{% endblock %}

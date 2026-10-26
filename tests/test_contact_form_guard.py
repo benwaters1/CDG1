@@ -239,9 +239,12 @@ def run():
                     and any("already gone" in f for f in flashes(r)), detail=str(flashes(r)))
 
         s.section("An enquiry is never offered a room by letter")
-        # Twenty months out, where nobody else in a copied database is waiting.
-        arrival = m.parse_date(_month_shift(first, 20) + "-10")
-        r, _letters = _post(anon, _rough("offer", rough_month=_month_shift(first, 20)))
+        # Twenty-three months out, where nobody else in a copied database is
+        # waiting -- and never November next year, where this suite's own
+        # "tell me when it opens" entry is. It was twenty, which lands there
+        # every March: that entry was first in the queue and took the offer.
+        arrival = m.parse_date(_month_shift(first, 23) + "-10")
+        r, _letters = _post(anon, _rough("offer", rough_month=_month_shift(first, 23)))
         enquiry, _task = _saved("offer")
         conn = db()
         # Somebody genuinely waiting for those nights, who joined AFTER the

@@ -76,6 +76,8 @@
   {% include "_door_card.html" %}
   {# Online check-in -- keep this line when a new version of this page arrives. #}
   {% include "_checkin_card.html" %}
+  {# The house guide -- keep this line too (tests/test_house_guide.py). #}
+  {% include "_house_card.html" %}
 
 {% if (booking['status']|lower) in ('pending', 'confirmed') %}
 {#- 8 Oct (owner: "is the manage booking good"): ordered by what a guest opens this page for - what is owed and how to
