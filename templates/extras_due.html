@@ -41,13 +41,13 @@
     {% if l['guest_phone'] %}<a class="small-link" href="tel:{{ l['guest_phone']|replace(' ', '') }}">{{ l['guest_phone'] }}</a>{% endif %}
     {% if r.in_house %}<span class="mini-status status-current">here now</span>{% endif %}
   </td>
-  <td>
+  <td data-label="{{ 'Was for' if r.overdue else 'When' }}">
     {% if r.overdue %}<span class="mini-status status-unpaid">{{ r.when|date_short }}</span>
     {% elif r.today %}<span class="mini-status status-confirmed">today</span>
     {% elif r.when %}{{ r.when|date_short }}
     {% else %}<span class="upload-hint">during their stay</span>{% endif %}
   </td>
-  <td>
+  <td data-label="Arranging">
     {% if r.arranged %}
       <span class="mini-status status-confirmed">arranged</span>
       <span class="upload-hint">
@@ -63,7 +63,7 @@
       <span class="upload-hint">nothing to arrange</span>
     {% endif %}
   </td>
-  {% if owner %}<td class="num">{{ r.value|money }}</td>{% endif %}
+  {% if owner %}<td class="num" data-label="Worth">{{ r.value|money }}</td>{% endif %}
   <td>
     {% if not unconfirmed %}
     <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
@@ -149,7 +149,7 @@
 {% for key, label, rows in groups if rows %}
 <h2 class="section-heading" id="due-{{ key }}">{{ label }} — {{ rows|length }}</h2>
 <div class="table-wrap">
-  <table class="data-table">
+  <table class="data-table phone-cards">
     <thead><tr>
       <th>What</th><th>Guest and stay</th><th>{{ 'Was for' if key == 'overdue' else 'When' }}</th>
       <th>Arranging</th>{% if owner %}<th class="num">Worth</th>{% endif %}<th></th>
@@ -174,7 +174,7 @@ reason to charge for it, not to stop.</p>
 list above the moment the stay is confirmed. Here so that a paid stay waiting on
 you, with a car to the airport on it, is not on no list at all.</p>
 <div class="table-wrap">
-  <table class="data-table">
+  <table class="data-table phone-cards">
     <thead><tr><th>What</th><th>Guest and stay</th><th>When</th><th>Arranging</th><th class="num">Worth</th><th></th></tr></thead>
     <tbody>
       {% for r in due.unconfirmed %}{{ due_row(r, unconfirmed=True) }}{% endfor %}

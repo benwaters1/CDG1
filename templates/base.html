@@ -282,7 +282,11 @@ setInterval(pollUnreadNotifications, 30000);
 {% endif %}
 
 function toggleTask(id, btn) {
-  var row = btn.closest('.task-row');
+  // The row on a list, the card in a day of the week, or a line of a stay's
+  // checklist. Looking only for .task-row, a tick in the week view saved and
+  // then said "Could not update that task": the card was not found, and
+  // reading its classes threw after the save had landed.
+  var row = btn.closest('.task-item, .task-row, .task-card');
   fetch('/tasks/' + id + '/toggle', { method: 'POST' })
     .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
     .then(function(data) {

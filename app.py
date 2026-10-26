@@ -14614,6 +14614,40 @@ def month_words(value):
 
 
 app.jinja_env.filters["month_words"] = month_words
+
+
+def waitlist_when_words(entry):
+    """When somebody on the waitlist wants to come, in words.
+
+    The Waitlist and Search printed "2026-12-01 → 2027-01-01". A Contact
+    enquiry's rough month is stored as its first night to the first of the next
+    month (see contact_page), and reads as the month it is: "December 2026".
+    """
+    a, d = entry["desired_arrival"], entry["desired_departure"]
+    came, goes = parse_date(a or ""), parse_date(d or "")
+    if came and goes and came.day == 1 and goes.day == 1 and goes == (
+            date(came.year + 1, 1, 1) if came.month == 12
+            else date(came.year, came.month + 1, 1)):
+        return month_words(came)
+    if came and goes:
+        return format_date_range(a, d)
+    return format_date_short(a or d or "")
+
+
+# "Around 2026-12" is the house's own words on a Contact enquiry's note, written
+# by contact_page before it said the month in words. The rest of the note is
+# what the guest typed, so only that phrase is read again.
+_AROUND_A_MONTH = re.compile(r"\bAround (\d{4}-\d{2})\b")
+
+
+def enquiry_note_words(text):
+    if not text:
+        return text
+    return _AROUND_A_MONTH.sub(lambda m: "Around " + month_words(m.group(1)), text)
+
+
+app.jinja_env.globals["waitlist_when"] = waitlist_when_words
+app.jinja_env.filters["enquiry_note_words"] = enquiry_note_words
 app.jinja_env.filters["qty"] = lambda v, places=2: quantity(v, places)
 app.jinja_env.filters["box"] = lambda v, places=None: box_value(v, places)
 
@@ -16244,6 +16278,9 @@ def build_overview(conn, view, anchor, fetch_window=None):
     rows = []
     for t in _overview_task_range(conn, query_start, query_end):
         is_owner_task = owner_id is not None and t["assigned_to_user_id"] == owner_id
+        # What the task is about, where the person looking may open it: the
+        # stay, the enquiry. A task with none opens the task list (build_calendar).
+        subject = task_subject(t)
         rows.append({
             "kind": "task",
             "lane": "owner" if is_owner_task else "task",
@@ -16259,9 +16296,8 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "detail": t["room_note"] or t["notes"] or "",
             "assignee_id": t["assigned_to_user_id"],
             "assignee_name": t["employee_name"],
-            # An occasion's task opens its checklist; any other, nothing here.
-            "id": t["id"], "link": (url_for("occasions_page") + f"#task-{t['id']}"
-                                    if t["origin"] == OCCASION_TASK_ORIGIN else None),
+            "id": t["id"], "link": subject["url"] if subject else None,
+            "open_words": subject["words"] if subject else None,
         })
 
     lo, hi = query_start.isoformat(), query_end.isoformat()
@@ -17266,7 +17302,8 @@ def calendar_cards(conn, rows, owner_view):
                   ("For", "me" if r["lane"] == "owner" else (r.get("assignee_name") or "nobody yet")),
                   ("Priority", r.get("priority") if r.get("priority") not in (None, "", "normal") else ""),
                   ("Notes", r.get("detail") or "")],
-                 open_words="Open in tasks" if owner_view else "My list")
+                 open_words=r.get("open_words")
+                 or ("Open in tasks" if owner_view else "My list"))
         elif kind == "shift":
             hours = "–".join(x for x in (f.get("start") or "", f.get("end") or "") if x)
             card(r, f"{f.get('who')} on" + (f" {hours}" if hours else ""), _cal_day(r["date"]),
@@ -39310,7 +39347,7 @@ def owner_home_warnings(conn, today):
     if gaps:
         with_guests = [g for g in gaps if g["in_house"] or g["arrivals"]]
         add("blocker" if with_guests else "warn", "Days with nobody on",
-            (f"{with_guests[0]['date']} has guests and nobody rostered"
+            (f"{format_date_short(with_guests[0]['date'])} has guests and nobody rostered"
              if with_guests else f"first is {format_date_short(gaps[0]['date'])}"),
             len(gaps), "cover_gaps_page")
 
@@ -39643,16 +39680,29 @@ def owner_home_day(conn, today, user):
     if covers:
         rows.append({"time": "19:30", "kind": "dinner", "title": "Dinner service",
                      "detail": f"{covers} covers", "assignee": None, "done": False})
-    for t in conn.execute(
+    tasks = conn.execute(
             """SELECT tasks.*, users.name AS who FROM tasks
                LEFT JOIN users ON users.id = tasks.assigned_to_user_id
                WHERE tasks.due_date = ? ORDER BY tasks.status, tasks.id""",
-            (today.isoformat(),)).fetchall():
-        # Every row opens something. A task that came from an enquiry opens
-        # the enquiry, where answering or marking it spam settles the task;
-        # any other task opens the task list at it.
-        href = (_day_link("admin_waitlist", when="all") + f"#entry-{t['waitlist_entry_id']}"
-                if t["waitlist_entry_id"] else _day_link("admin_tasks"))
+            (today.isoformat(),)).fetchall()
+    for e in task_entries(tasks, user):
+        # Every row opens something: what the task is about where there is a
+        # page for it (task_subject) -- the enquiry, where answering or marking
+        # it spam settles the task; the booking -- and the task list otherwise.
+        href = (e["subject"] or {}).get("url") or _day_link("admin_tasks")
+        if e["group"]:
+            # A room's checklist is one thing on the day, not eight rows each
+            # saying who is arriving.
+            people = {t["assigned_to_user_id"] for t in e["tasks"]}
+            first = e["tasks"][0]
+            rows.append({"time": "", "kind": "task", "title": e["heading"],
+                         "detail": f"{e['done']} of {e['total']} done"
+                                   + (f" · {e['note']}" if e["note"] else ""),
+                         "assignee": ("Mine" if people == {user["id"]}
+                                      else first["who"] if len(people) == 1 else None),
+                         "done": e["done"] == e["total"], "href": href})
+            continue
+        t = e["task"]
         rows.append({"time": "", "kind": "task", "title": t["title"],
                      "detail": t["room_note"] or "",
                      "assignee": "Mine" if t["assigned_to_user_id"] == user["id"] else t["who"],
@@ -39880,8 +39930,10 @@ def staff_dashboard():
         auto_prepped_count = auto_prep_upcoming_arrivals(conn, today)
         if auto_prepped_count:
             flash(
-                f"Auto-prepped {auto_prepped_count} arriving booking{'' if auto_prepped_count == 1 else 's'} "
-                f"— room setup tasks assigned.", "success",
+                f"{auto_prepped_count} stay{' is' if auto_prepped_count == 1 else 's are'} "
+                f"arriving soon: the checklist to get "
+                f"{'its room' if auto_prepped_count == 1 else 'their rooms'} ready is made, "
+                f"for whoever is on that day.", "success",
             )
         # And the Booking.com rooms emptying today, for the same reason the
         # arrival prep is here: the job runs every ten minutes, and the owner
@@ -40390,8 +40442,9 @@ def _search_sources():
                        "bookings.second_contact_email", "rooms.name"],
             "order": "bookings.arrival_date DESC",
             "name": lambda r: r["guest_name"],
-            "line": lambda r: (f"{r['room_name']} \u00b7 {r['arrival_date']} to "
-                               f"{r['departure_date']} \u00b7 {r['reference_code']}"),
+            "line": lambda r: (f"{r['room_name']} \u00b7 "
+                               f"{format_date_range(r['arrival_date'], r['departure_date'])}"
+                               f" \u00b7 {r['reference_code']}"),
             "status": lambda r: (r["status"], r["status"]),
             "href": lambda r: url_for("admin_booking", booking_id=r["id"]),
         },
@@ -40415,7 +40468,7 @@ def _search_sources():
                        "dietary_notes"],
             "order": "dinner_date DESC",
             "name": lambda r: r["guest_name"],
-            "line": lambda r: (f"{r['dinner_date']} \u00b7 party of "
+            "line": lambda r: (f"{format_date_short(r['dinner_date'])} \u00b7 party of "
                                f"{r['party_size']} \u00b7 {r['reference_code']}"),
             "status": lambda r: (r["status"], r["status"]),
             "href": lambda r: url_for("admin_restaurant"),
@@ -40447,10 +40500,12 @@ def _search_sources():
             "order": "created_at DESC",
             "name": lambda r: r["contact_name"],
             "line": lambda r: ((r["event_type"] or "").capitalize()
-                               + (f" \u00b7 {r['preferred_date']}" if r["preferred_date"] else "")
+                               + (f" \u00b7 {format_date_short(r['preferred_date'])}"
+                                  if r["preferred_date"] else "")
                                + f" \u00b7 {r['reference_code']}"),
             "status": lambda r: (r["status"], r["status"]),
-            "href": lambda r: url_for("admin_events"),
+            # The event itself, not the list it is somewhere in.
+            "href": lambda r: url_for("admin_event", event_id=r["id"]),
         },
         {
             "key": "expenses",
@@ -40459,9 +40514,10 @@ def _search_sources():
             "fields": ["vendor_name", "description", "invoice_number", "doc_type"],
             "order": "submitted_at DESC",
             "name": lambda r: r["vendor_name"] or r["description"] or "(no name)",
-            "line": lambda r: (f"\u20ac{float(r['amount'] or 0):,.2f} \u00b7 "
+            "line": lambda r: (f"{money(r['amount'] or 0)} \u00b7 "
                                + (r["description"] or "")
-                               + (f" \u00b7 due {r['due_date']}" if r["due_date"] else "")),
+                               + (f" \u00b7 due {format_date_short(r['due_date'])}"
+                                  if r["due_date"] else "")),
             "status": lambda r: (r["status"], r["status"]),
             "href": lambda r: url_for("expenses"),
         },
@@ -40496,10 +40552,15 @@ def _search_sources():
             "order": "tasks.due_date DESC",
             "name": lambda r: r["title"],
             "line": lambda r: ((r["assigned_to_name"] or "Unassigned")
-                               + (f" \u00b7 {r['due_date']}" if r["due_date"] else "")),
+                               + (f" \u00b7 {format_date_short(r['due_date'])}"
+                                  if r["due_date"] else "")),
             "status": lambda r: (r["status"],
                                  "onshift" if r["status"] == "done" else "pending"),
-            "href": lambda r: url_for("admin_tasks"),
+            # What the task is about where there is a page for it, else the
+            # day it is on -- not the whole of this week's tasks.
+            "href": lambda r: ((task_subject(r) or {}).get("url")
+                               or (url_for("admin_tasks", view="day", date=r["due_date"])
+                                   if r["due_date"] else url_for("admin_tasks"))),
         },
         {
             "key": "rooms",
@@ -40508,7 +40569,7 @@ def _search_sources():
             "fields": ["name", "description"],
             "order": "sort_order",
             "name": lambda r: r["name"],
-            "line": lambda r: f"\u20ac{float(r['price_per_night'] or 0):,.0f}/night",
+            "line": lambda r: f"{euro(r['price_per_night'] or 0)} a night",
             "href": lambda r: url_for("edit_room", room_id=r["id"]),
         },
         {
@@ -40518,13 +40579,13 @@ def _search_sources():
             "fields": ["name", "email", "phone", "notes"],
             "order": "created_at DESC",
             "name": lambda r: r["name"],
-            "line": lambda r: (f"{r['desired_arrival'] or '?'} \u2192 "
-                               f"{r['desired_departure'] or '?'} \u00b7 {r['email'] or ''}"),
+            "line": lambda r: " \u00b7 ".join(x for x in (
+                waitlist_when_words(r), r["email"] or "") if x),
             "status": lambda r: (
                 r["status"],
                 "onshift" if r["status"] == "booked"
                 else ("inactive" if r["status"] == "closed" else "pending")),
-            "href": lambda r: url_for("admin_waitlist"),
+            "href": lambda r: url_for("admin_waitlist", when="all") + f"#entry-{r['id']}",
         },
         {
             "key": "recurring_costs",
@@ -40533,7 +40594,7 @@ def _search_sources():
             "fields": ["label", "category", "notes"],
             "order": "label",
             "name": lambda r: r["label"],
-            "line": lambda r: f"\u20ac{float(r['amount'] or 0):,.2f} / {r['frequency']}",
+            "line": lambda r: f"{money(r['amount'] or 0)} / {r['frequency']}",
             "status": lambda r: ("active" if r["active"] else "paused",
                                  "onshift" if r["active"] else "inactive"),
             "href": lambda r: url_for("management_recurring_costs"),
@@ -40570,7 +40631,8 @@ def _search_sources():
             "name": lambda r: (r["caption"] or "")[:60]
                               + ("\u2026" if len(r["caption"] or "") > 60 else ""),
             "line": lambda r: ((r["platform"] or "")
-                               + (f" \u00b7 {r['scheduled_date']}" if r["scheduled_date"] else "")),
+                               + (f" \u00b7 {format_date_short(r['scheduled_date'])}"
+                                  if r["scheduled_date"] else "")),
             "status": lambda r: (r["status"],
                                  "onshift" if r["status"] == "posted" else "pending"),
             "href": lambda r: url_for("management_social"),
@@ -82222,10 +82284,28 @@ def reports_index():
     Thirty-six of them were reachable only through the command palette, which
     is no use to somebody who does not already know the report exists.
     """
-    rows = report_catalogue()
+    # One line a page. The palette keeps two names for one page -- "Event run
+    # sheet" is how somebody asks for Events -- and the index printed both,
+    # each with the same sentence. The shorter name leads; the other is said
+    # beside it and still found by a search.
+    merged = {}
+    for r in report_catalogue():
+        kept = merged.get(r["endpoint"])
+        if kept is None:
+            merged[r["endpoint"]] = dict(r, also=[])
+            continue
+        if len(r["label"]) < len(kept["label"]):
+            kept["also"].append(kept["label"])
+            kept["label"] = r["label"]
+        else:
+            kept["also"].append(r["label"])
+        kept["keywords"] = f"{kept['keywords']} {r['keywords']}"
+    rows = list(merged.values())
+    for r in rows:
+        r["also_words"] = " ".join(r["also"])
     lv = list_view(
         rows, request.args,
-        search=["label", "what", "keywords"],
+        search=["label", "what", "keywords", "also_words"],
         search_hint="Search what you want to know, not what the page is called",
         facets=[
             facet("area", "Part of the house", lambda r: r["area_title"],
@@ -101179,9 +101259,9 @@ def run_backup_email_job(conn):
 @app.route("/calendar")
 @login_required
 def ops_calendar():
-    """The main working calendar — day/week/month, every item clickable and
-    filterable. Employees get it too (it's the "what's on" view), and see only
-    what is theirs to see."""
+    """The house's calendar by day, week or month: stays, dinners, ateliers,
+    events, tasks and the rota, each one opening to everything about it.
+    Everybody has it, and each person sees what is theirs to see."""
     view = request.args.get("view", "week")
     anchor = parse_date(request.args.get("date", "")) or house_today()
     user = current_user()
@@ -101864,6 +101944,156 @@ def phone_home():
         conn.close()
     return render_template("phone_home.html", clocked_in=clocked_in,
                            open_tasks=open_tasks, today=today)
+
+
+# WHAT A TASK IS ABOUT, AND WHERE IT OPENS.
+#
+# A task raised by a stay, an enquiry, a meeting or a piece of restoration work
+# carries the key to it, and nothing drew it. "Cot in the Family Suite for the
+# Okafors" could be ticked on Today, Tasks, the calendar and Search and opened
+# from none of them, so whoever had it went looking for the stay by name; Search
+# sent every task to the Tasks page. Only the owner home's day list opened an
+# enquiry. One answer here, for every list that draws a task.
+TASK_SUBJECTS = (
+    # (the task's column, the page, the page's argument, the words on the link)
+    ("booking_id", "admin_booking", "booking_id", "Open the booking"),
+    ("ota_reservation_id", "channel_stay_page", "reservation_id", "Open the Booking.com stay"),
+    ("waitlist_entry_id", "admin_waitlist", None, "Open the enquiry"),
+    ("meeting_id", "meeting_page", "meeting_id", "Open the meeting"),
+    ("restoration_work_id", "restoration_work_page", "work_id", "Open the work"),
+)
+
+
+def _whole_person(user):
+    """The person's full row, when a caller holds only part of one.
+
+    Some callers of owner_home_day hold an id and a name and nothing else,
+    and which pages somebody may open is read off their role and their
+    access: guessed from a partial row it raised, and the day did not draw.
+    """
+    if not user or "role" in user.keys():
+        return user
+    conn = get_db()
+    try:
+        return conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+    finally:
+        conn.close()
+
+
+def task_subject(task, user=None):
+    """{"words", "url"} for the thing this task is about, or None.
+
+    Only a page this person may open: a link that answers 403 is worse than
+    none, which is the rule the calendar's chips keep. And only inside a
+    request, because owner_home_day is also read by the assistant outside one.
+    """
+    if not has_request_context():
+        return None
+    keys = task.keys()
+    # An occasion's task opens its checklist -- the flowers, the card -- on a
+    # page everybody signed in may open.
+    if "origin" in keys and task["origin"] == OCCASION_TASK_ORIGIN:
+        return {"words": "Open its checklist",
+                "url": url_for("occasions_page") + f"#task-{task['id']}"}
+    for column, endpoint, arg, words in TASK_SUBJECTS:
+        key = task[column] if column in keys else None
+        if not key:
+            continue
+        user = _whole_person(user or current_user())
+        if not user or not can_reach(user, endpoint):
+            return None
+        if arg is None:
+            # The waitlist page draws each entry under #entry-<id>, closed ones
+            # too when it is asked for all of them.
+            return {"words": words, "url": url_for(endpoint, when="all") + f"#entry-{key}"}
+        return {"words": words, "url": url_for(endpoint, **{arg: key})}
+    return None
+
+
+def checklist_key(task):
+    """Which stay's checklist a task belongs to, or None if it stands alone.
+
+    Arrival prep and turnover are made as one task per item, titled
+    "<room>: <item>", tied to the stay, due the same day and carrying the
+    same note -- so these four things together are the checklist.
+    """
+    keys = task.keys()
+    if "origin" not in keys or task["origin"] != "checklist":
+        return None
+    if "booking_id" in keys and task["booking_id"]:
+        stay = ("booking", task["booking_id"])
+    elif "ota_reservation_id" in keys and task["ota_reservation_id"]:
+        stay = ("channel", task["ota_reservation_id"])
+    else:
+        return None
+    room, sep, item = (task["title"] or "").partition(": ")
+    if not sep or not item:
+        return None
+    return (stay, task["due_date"], room, item in CHECKOUT_CHECKLIST)
+
+
+def task_entries(tasks, user=None):
+    """The tasks as a list reads them: one stay's checklist as one entry.
+
+    A room being made ready is eight tasks, each "urgent" and each saying "The
+    Okafor family arriving 22 October 2026, party of 4." On 22 October an
+    employee's Today held thirteen rows and eight were that room; Thursday on
+    Tasks was sixteen cards. The room board already read them as one room and
+    the lists did not. Each task is still its own tick here: the group only says
+    the shared part once, at the place its first task stood.
+
+    Every entry is {"group": bool, ...}. A lone task: "task", "subject". A
+    checklist: "heading", "room", "note", "items" ({"task", "item"}), "total",
+    "done", "urgent" (an open item is high priority), "due_date", "people"
+    (who has its items, where the rows say), "subject".
+    """
+    # Who is looking, read once for the list rather than once a task.
+    if has_request_context():
+        user = _whole_person(user or current_user())
+    entries, groups = [], {}
+    for t in tasks:
+        key = checklist_key(t)
+        if key is None:
+            entries.append({"group": False, "task": t})
+            continue
+        if key not in groups:
+            groups[key] = {"group": True, "room": key[2], "turnover": key[3],
+                           "due_date": key[1], "tasks": [], "items": []}
+            entries.append(groups[key])
+        groups[key]["tasks"].append(t)
+        groups[key]["items"].append({"task": t, "item": t["title"].partition(": ")[2]})
+    out = []
+    for e in entries:
+        if e["group"] and len(e["tasks"]) == 1:
+            # A checklist with one item left in it reads best as that task.
+            e = {"group": False, "task": e["tasks"][0]}
+        if not e["group"]:
+            e["subject"] = task_subject(e["task"], user)
+            out.append(e)
+            continue
+        first = e["tasks"][0]
+        keys = first.keys()
+        e["heading"] = (f"{e['room']}: turn it round" if e["turnover"]
+                        else f"{e['room']}: get it ready")
+        e["note"] = ((first["room_note"] if "room_note" in keys else None)
+                     or (first["notes"] if "notes" in keys else None) or "")
+        e["total"] = len(e["tasks"])
+        e["done"] = sum(1 for t in e["tasks"] if t["status"] == "done")
+        e["urgent"] = any(t["priority"] == "high" and t["status"] != "done"
+                          for t in e["tasks"])
+        e["people"] = []
+        if "employee_name" in keys:
+            for t in e["tasks"]:
+                name = t["employee_name"] or "Unassigned"
+                if name not in e["people"]:
+                    e["people"].append(name)
+        e["subject"] = task_subject(first, user)
+        out.append(e)
+    return out
+
+
+app.jinja_env.globals["task_entries"] = task_entries
+app.jinja_env.globals["task_subject"] = task_subject
 
 
 def mark_task_done(conn, task, done=True):
@@ -118735,7 +118965,9 @@ def contact_page():
 
     said = [CONTACT_TOPICS[topic]]
     if month:
-        said.append("Around %s" % month)
+        # The month in words: "2026-12" is how the form sends it, not how the
+        # house writes it (enquiry_note_words reads the older ones).
+        said.append("Around %s" % month_words(month))
     # The length only when somebody gave one. "Length not decided" on every
     # wedding enquiry described a form field, not the enquiry.
     if n:
