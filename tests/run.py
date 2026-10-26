@@ -205,6 +205,7 @@ SUITES = [
     "test_claude_answers",
     "test_staff_language",
     "test_whats_on",
+    "test_whats_on_through_the_year",
     "test_ateliers",
     "test_atelier_recap",
     "test_navigation",

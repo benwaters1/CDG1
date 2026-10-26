@@ -7949,6 +7949,12 @@ def init_db():
         # send, so two presses of the button cannot both write to them.
         ("workshop_bookings_recap_sent_at",
          "ALTER TABLE workshop_bookings ADD COLUMN recap_sent_at TEXT"),
+        # What's On dates that are not one day (26 October 2026): the last day
+        # of something that runs several ("8-14 March"), and the house's own
+        # words for a date nobody has fixed yet ("Late December", "All year"),
+        # shown instead of the date. See whats_on_when().
+        ("whats_on_event_until", "ALTER TABLE whats_on ADD COLUMN event_until TEXT"),
+        ("whats_on_when_words", "ALTER TABLE whats_on ADD COLUMN when_words TEXT"),
         # Why a table booked while tables confirm themselves (restaurant_instant)
         # was left for the owner instead: "over the 20 covers", "a party of 9".
         # Written once, when it was held, and shown beside Confirm in the queue
@@ -8988,6 +8994,7 @@ def init_db():
                  position, datetime.now(timezone.utc).isoformat()))
     conn.commit()
     correct_whats_on(conn)
+    seed_whats_on_dates(conn)
 
     for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS,
                      LEAVE_SETTING_DEFAULTS):
@@ -15318,6 +15325,87 @@ DEFAULT_WHATS_ON = [
      # shape could not hold without inventing both.
      "weekday": None, "start_time": None, "end_time": None},
 ]
+
+# THROUGH THE YEAR: the dates the owner's What's On brief of 26 October 2026
+# lists, so the dates list shows more than markets. Each appears when it falls
+# inside the list's window, and goes once it is over. Ski dates are the
+# resorts' provisional ones. Seeded once (seed_whats_on_dates): one the owner
+# edits or deletes on /admin/whats-on stays as they left it.
+#
+# `when` is the brief's own words for a date that is not fixed ("Late
+# December", "Early July"); it is what the page prints. Their `date` and
+# `until` are only where the line is placed and how long it stays -- the brief
+# gives no day, so none is ever shown for them. An entry with `when` and no
+# `date` at all ("All year") is listed apart, under All year.
+DEFAULT_WHATS_ON_DATES = [
+    {"title": "Grandvalira (Andorra) ski season opens", "date": "2026-12-04"},
+    {"title": "Ax 3 Domaines ski season opens (provisional)", "date": "2026-12-05"},
+    {"title": "Plateau de Beille, Ascou-Pailhères, Le Chioula and Goulier open for "
+              "the season (provisional)", "date": "2026-12-19"},
+    {"title": "Les Flocons d’Ax, the Christmas market and ice rink around the "
+              "Bassin des Ladres", "date": "2026-12-20", "until": "2026-12-28",
+     "when": "Late December (2026 dates to come)"},
+    {"title": "Beille Trail, a race on the snow at Plateau de Beille",
+     "date": "2027-01-03"},
+    {"title": "Ski World Cup at Soldeu, Andorra", "date": "2027-03-06",
+     "until": "2027-03-07"},
+    {"title": "Snow Gay week at Ax 3 Domaines", "date": "2027-03-08",
+     "until": "2027-03-14"},
+    {"title": "Ax 3 Domaines and Plateau de Beille close for the season (provisional)",
+     "date": "2027-03-29"},
+    {"title": "Parc de la Préhistoire and the Bédeilhac and La Vache caves reopen",
+     "date": "2027-03-20", "until": "2027-03-31", "when": "Late March"},
+    {"title": "Rafting and canoeing on the Ariège reopen at Bouan (Waterploof)",
+     "date": "2027-05-01", "until": "2027-05-31", "when": "May"},
+    {"title": "The transhumance, walking the herds up to the summer pastures",
+     "date": "2027-05-01", "until": "2027-05-10", "when": "Early May"},
+    {"title": "L’Ariégeoise cycle race, Tarascon", "date": "2027-06-26"},
+    {"title": "Summer season opens at Ax 3 Domaines (gondola, bike park, mountain "
+              "karts, pool)", "date": "2027-07-01", "until": "2027-07-07",
+     "when": "Early July"},
+    {"title": "UltrAriège mountain trail races, Ax-les-Thermes", "date": "2027-07-16",
+     "until": "2027-07-18"},
+    {"title": "Spectacles de Grands Chemins, street theatre in Ax-les-Thermes, "
+              "mostly free", "date": "2027-07-27", "until": "2027-07-31"},
+    {"title": "Challenge du Montcalm mountain races, Auzat", "date": "2027-08-12",
+     "until": "2027-08-15"},
+    {"title": "Festival des Saveurs, food producers’ festival in Ax-les-Thermes",
+     "date": "2027-09-01", "until": "2027-09-10",
+     "when": "Early September (date to come)"},
+    {"title": "Les Bains du Couloubret thermal baths, Ax-les-Thermes, open all year",
+     "when": "All year"},
+    {"title": "Grotte de Lombrives open all year", "when": "All year"},
+]
+
+def seed_whats_on_dates(conn):
+    """Put in DEFAULT_WHATS_ON_DATES, each once. Returns how many went in.
+
+    Once ever, not "while missing": the mark is set the first time, so a date
+    the owner deletes is not back on the next restart -- the same promise the
+    markets make, kept by a mark because these titles are not the owner's
+    to keep stable the way a market's name is."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'whats_on_dates_seeded'"
+                    ).fetchone():
+        return 0
+    made = 0
+    for position, entry in enumerate(DEFAULT_WHATS_ON_DATES, start=100):
+        if conn.execute("SELECT 1 FROM whats_on WHERE title = ?",
+                        (entry["title"],)).fetchone():
+            continue
+        conn.execute(
+            """INSERT INTO whats_on (title, description, location, distance,
+               event_date, event_until, when_words, start_time, end_time,
+               sort_order, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)""",
+            (entry["title"], entry.get("description"), entry.get("location"),
+             entry.get("distance"), entry.get("date"), entry.get("until"),
+             entry.get("when"), position, datetime.now(timezone.utc).isoformat()))
+        made += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('whats_on_dates_seeded', ?) "
+                 "ON CONFLICT(key) DO NOTHING", (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    return made
+
 
 # Corrections to markets a house was already seeded with, which the seed above
 # cannot make: it only inserts a market that is missing. Each runs once per
@@ -22069,6 +22157,21 @@ def mark_booking_extra_arranged(conn, line_id, user_id=None, note="", undo=False
     return True, f"{line['name']} marked arranged."
 
 
+def extra_arranging(transfer, notice_days, arranged_at, has_run):
+    """(needs arranging ahead, has been arranged) for one sold extra, the one
+    rule the Extras page and the arrivals sheet both read.
+
+    Only what needs doing ahead is arranged: a transfer, or anything the
+    catalogue gives notice for. A bottle from the cellar does not need
+    arranging; it needs carrying upstairs. Arranged by a person saying so, or
+    -- for a transfer -- by a run on the Transfers page for the stay, which is
+    the same test that page uses to take a stay off "asked for, nothing
+    arranged".
+    """
+    return (bool(transfer) or int(notice_days or 0) > 0,
+            bool(arranged_at) or (bool(transfer) and bool(has_run)))
+
+
 def extras_due(conn, today=None):
     """What the house still owes its guests, soonest first.
 
@@ -22115,14 +22218,8 @@ def extras_due(conn, today=None):
         transfer = extra_is_transfer(line["extra_category"], line["name"],
                                      line["revenue_category"] or line["extra_revenue_category"])
         notice = int(line["lead_time_days"] or 0)
-        # Arranged by a person saying so, or -- for a transfer -- by a run on
-        # the Transfers page for the stay, which is the same test that page
-        # uses to take a stay off "asked for, nothing arranged".
-        arranged = bool(line["arranged_at"]) or (transfer and bool(line["has_run"]))
-        # Only what needs doing ahead has an "arrange by": a transfer, or
-        # anything the catalogue gives notice for. A bottle from the cellar
-        # does not need arranging; it needs carrying upstairs.
-        needs_arranging = transfer or notice > 0
+        needs_arranging, arranged = extra_arranging(transfer, notice, line["arranged_at"],
+                                                    line["has_run"])
         # A car is never arranged the morning it is needed: a transfer the
         # catalogue gives no notice for is still to be booked the day before.
         if transfer:
@@ -48517,6 +48614,22 @@ def whats_on_date_label(d):
     return f"{d.day} {d.strftime('%B')}"
 
 
+def whats_on_when(row, on, until):
+    """How a dated entry's date is printed: the house's own words when it has
+    them ("Late December"), else the day, or the days it runs ("8–14 March",
+    "28 June – 2 July", "30 December – 2 January 2027")."""
+    words = (row["when_words"] or "").strip()
+    if words:
+        return words
+    if until == on:
+        return whats_on_date_label(on)
+    if until.year != on.year:
+        return f"{whats_on_date_label(on)} – {whats_on_date_label(until)} {until.year}"
+    if until.month == on.month:
+        return f"{on.day}–{until.day} {until.strftime('%B')}"
+    return f"{whats_on_date_label(on)} – {whats_on_date_label(until)}"
+
+
 @app.route("/whats-on")
 def whats_on():
     """The markets and whatever else is on, for the week a guest is here.
@@ -48557,21 +48670,40 @@ def whats_on():
                 "is_today": offset == 0,
             })
 
+    all_year = []
     for r in rows:
         if not r["event_date"]:
+            # The house's words and no date ("All year"): always on, so listed
+            # apart rather than placed on a day it does not belong to.
+            if r["weekday"] is None and (r["when_words"] or "").strip():
+                all_year.append({"title": r["title"], "description": r["description"],
+                                 "location": r["location"], "distance": r["distance"],
+                                 "date_label": r["when_words"].strip()})
             continue
         on = parse_date(r["event_date"])
-        if not on or on < today:
+        until = parse_date(r["event_until"]) or on
+        if not on or until < on or until < today:
             continue
+        # Still on today, though it began before: it belongs to this week.
+        running = on <= today <= until
         item = {
             "title": r["title"], "description": r["description"],
             "location": r["location"], "distance": r["distance"],
-            "day_label": t("Today") if on == today else t(WHATS_ON_DAYS[on.weekday()]),
-            "date_label": whats_on_date_label(on),
+            "day_label": (t("Today") if running
+                          else (r["when_words"] or "").strip() or t(WHATS_ON_DAYS[on.weekday()])),
+            # The year only when it is not this one: "26 June 2027" in October.
+            "date_label": (whats_on_when(r, on, until)
+                           + (f" {until.year}" if until.year != today.year
+                              and not (r["when_words"] or "").strip()
+                              and str(until.year) not in whats_on_when(r, on, until)
+                              else "")),
             "time_label": whats_on_time_label(r),
-            "is_today": on == today,
+            "is_today": running,
+            "starts": on,
         }
         (this_week if on <= today + timedelta(days=6) else upcoming).append(item)
+    # In the order they happen, whatever order they were entered in.
+    upcoming.sort(key=lambda e: e["starts"])
 
     # The standing rhythm, listed once per entry rather than once per matching
     # day. Out-of-season entries are left out here as well as above: a ski
@@ -48590,7 +48722,7 @@ def whats_on():
     week_label = (f"{whats_on_date_label(today)} – "
                   f"{whats_on_date_label(today + timedelta(days=6))}")
     return render_template("whats_on.html", this_week=this_week,
-                           upcoming=upcoming, standing=standing,
+                           upcoming=upcoming, standing=standing, all_year=all_year,
                            week_label=week_label, weather=weather)
 
 
@@ -48623,15 +48755,21 @@ def admin_whats_on_save():
     if event_date and not parse_date(event_date):
         flash("That date isn't a date.", "error")
         return redirect(url_for("admin_whats_on"))
+    event_until = (f.get("event_until", "") or "").strip() or None
+    if event_until and (not event_date or not parse_date(event_until)
+                        or parse_date(event_until) < parse_date(event_date)):
+        flash("The last day must be a date on or after the first.", "error")
+        return redirect(url_for("admin_whats_on"))
+    when_words = (f.get("when_words", "") or "").strip()[:80] or None
     # One shape or the other. A row carrying both would be listed twice in the
     # same week — once as the weekday rule, once as the dated one — and a row
     # carrying neither can never appear at all, so it would look saved and do
-    # nothing.
-    if event_date:
+    # nothing. Words alone ("All year") are a third shape: listed apart.
+    if event_date or when_words:
         weekday = None
     elif weekday is None:
-        flash("Choose a weekday for something that repeats, or a date for a one-off.",
-              "error")
+        flash("Choose a weekday for something that repeats, a date for a one-off, "
+              "or words such as All year.", "error")
         return redirect(url_for("admin_whats_on"))
 
     try:
@@ -48651,6 +48789,7 @@ def admin_whats_on_save():
         (f.get("season_to", "") or "").strip() or None,
         1 if f.get("is_active") else 0,
         sort_order,
+        event_until, when_words,
     )
     conn = get_db()
     entry_id = (f.get("id") or "").strip()
@@ -48658,15 +48797,16 @@ def admin_whats_on_save():
         conn.execute(
             """UPDATE whats_on SET title=?, description=?, location=?, distance=?,
                weekday=?, event_date=?, start_time=?, end_time=?, season_from=?,
-               season_to=?, is_active=?, sort_order=? WHERE id=?""",
+               season_to=?, is_active=?, sort_order=?, event_until=?, when_words=?
+               WHERE id=?""",
             vals + (int(entry_id),))
         log_audit(conn, "whats_on_edited", target=title)
     else:
         conn.execute(
             """INSERT INTO whats_on (title, description, location, distance, weekday,
                event_date, start_time, end_time, season_from, season_to, is_active,
-               sort_order, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               sort_order, event_until, when_words, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             vals + (datetime.now(timezone.utc).isoformat(),))
         log_audit(conn, "whats_on_added", target=title)
     conn.commit()
@@ -102839,7 +102979,10 @@ def sheet_extras(conn, booking_ids):
         return out
     marks = ",".join("?" * len(booking_ids))
     for line in conn.execute(
-            f"""SELECT booking_extras.*, extras.category AS extra_category
+            f"""SELECT booking_extras.*, extras.category AS extra_category,
+                       extras.revenue_category AS extra_revenue_category, extras.lead_time_days,
+                       EXISTS (SELECT 1 FROM vehicle_transfers vt
+                                WHERE vt.booking_id = booking_extras.booking_id) AS has_run
                   FROM booking_extras LEFT JOIN extras ON extras.id = booking_extras.extra_id
                  WHERE booking_extras.category = 'room'
                    AND booking_extras.booking_id IN ({marks})
@@ -102848,6 +102991,15 @@ def sheet_extras(conn, booking_ids):
                           booking_extras.created_at, booking_extras.id""",
             list(booking_ids)).fetchall():
         d = parse_date(line["scheduled_for"])
+        transfer = extra_is_transfer(line["extra_category"], line["name"],
+                                     line["revenue_category"] or line["extra_revenue_category"])
+        needs, arranged = extra_arranging(transfer, line["lead_time_days"],
+                                          line["arranged_at"], line["has_run"])
+        state = {"delivered": "delivered", "requested": "to confirm"}.get(line["status"], "")
+        if not state and needs and not arranged:
+            # Said on the paper as the Extras page says it: the crémant
+            # board a guest booked is no use found unarranged at the door.
+            state = "not arranged yet"
         out.setdefault(line["booking_id"], []).append({
             "name": line["name"],
             "quantity": line["quantity"] or 1,
@@ -102855,11 +103007,47 @@ def sheet_extras(conn, booking_ids):
             # Weekday first: "the Saturday" is how the house talks about a stay.
             "when": f"{d.strftime('%a')} {d.day} {d.strftime('%b')}" if d else "",
             "notes": (line["notes"] or "").strip(),
-            "state": {"delivered": "delivered", "requested": "to confirm"}.get(line["status"], ""),
-            "transfer": extra_is_transfer(line["extra_category"], line["name"],
-                                          line["revenue_category"]),
+            "state": state,
+            "transfer": transfer,
         })
     return out
+
+
+def sheet_asks_and_dinners(conn, booking_ids):
+    """({booking: [request]}, {booking: [dinner]}) for the arrivals sheet.
+
+    A request is a task the guest raised from their booking page (origin
+    'guest_request'), done or not, in the guest's own words. A dinner is a
+    table at La Table booked against the stay, unless it was declined or
+    cancelled."""
+    asks, dinners = {}, {}
+    if not booking_ids:
+        return asks, dinners
+    marks = ",".join("?" * len(booking_ids))
+    for t in conn.execute(
+            f"""SELECT booking_id, title, notes, due_date, status FROM tasks
+                 WHERE booking_id IN ({marks}) AND origin = 'guest_request'
+                 ORDER BY created_at, id""", list(booking_ids)).fetchall():
+        title, notes = (t["title"] or "").strip(), (t["notes"] or "").strip()
+        # The title is the first 120 characters of what they wrote, and the
+        # note all of it -- except a transfer, titled for what it is.
+        text = notes if notes.startswith(title) else " — ".join(x for x in (title, notes) if x)
+        d = parse_date(t["due_date"])
+        asks.setdefault(t["booking_id"], []).append({
+            "text": text, "done": t["status"] == "done",
+            "when": f"{d.strftime('%a')} {d.day} {d.strftime('%b')}" if d else ""})
+    for r in conn.execute(
+            f"""SELECT booking_id, dinner_date, party_size, dietary_notes, status
+                  FROM restaurant_bookings
+                 WHERE booking_id IN ({marks}) AND status IN ('pending', 'confirmed')
+                 ORDER BY dinner_date, id""", list(booking_ids)).fetchall():
+        d = parse_date(r["dinner_date"])
+        dinners.setdefault(r["booking_id"], []).append({
+            "day": d.isoformat() if d else None,
+            "when": f"{d.strftime('%a')} {d.day} {d.strftime('%b')}" if d else "",
+            "party": r["party_size"], "dietary": (r["dietary_notes"] or "").strip(),
+            "state": "to confirm" if r["status"] == "pending" else ""})
+    return asks, dinners
 
 
 def arrivals_calendar(conn, start, end, channel=None):
@@ -102880,6 +103068,9 @@ def arrivals_calendar(conn, start, end, channel=None):
     """
     nights = [start + timedelta(days=i) for i in range((end - start).days + 1)]
     first, after = start.isoformat(), (end + timedelta(days=1)).isoformat()
+
+    def surname(name):
+        return ((name or "").split() or [""])[-1]
     rooms = [dict(r) for r in conn.execute(
         "SELECT id, name FROM rooms WHERE active = 1 ORDER BY sort_order, name")]
     names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
@@ -102901,6 +103092,7 @@ def arrivals_calendar(conn, start, end, channel=None):
                               st["departure_date"], {
                 "key": f"c{st.get('ota_reservation_id') or st['room_id']}{st['arrival_date']}",
                 "name": st["guest_name"] if st.get("named") else st["channel"],
+                "short": surname(st["guest_name"]) if st.get("named") else st["channel"],
                 "party": st["party_size"], "kind": "channel",
                 "ref": st["reference_code"]}))
     # An atelier place sleeps from its sitting's first night to the night
@@ -102982,8 +103174,8 @@ def arrivals_calendar(conn, start, end, channel=None):
             cell["label"] = " / ".join(o["name"] or "" for o in who)
             # The surname alone where the cell is a night or two wide: a
             # name cut off on paper cannot be hovered over to read the rest.
-            cell["short"] = " / ".join(((o["name"] or "").split() or [""])[-1]
-                                       if o["kind"] in ("stay", "pending", "atelier") else o["name"]
+            cell["short"] = " / ".join(o.get("short") or (surname(o["name"])
+                                       if o["kind"] in ("stay", "pending", "atelier") else o["name"])
                                        for o in who)
             cell["party"] = sum((o["party"] or 0) for o in people)
             cell["refs"] = " · ".join(o["ref"] for o in who if o["ref"])
@@ -103079,6 +103271,12 @@ def arrivals_sheet(conn, day=None, channel=None):
     # the car from Toulouse were on the Extras page and not on the paper the
     # door works from.
     extras = sheet_extras(conn, [b["id"] for b in arriving])
+    # WHAT THEY ASKED FROM THEIR OWN BOOKING PAGE, and the dinners they booked
+    # there. A request is a task on the stay ("a note for Jane's anniversary
+    # on arrival") and a dinner a table at La Table; the stay's own page shows
+    # both and the sheet showed neither, so the paper at the door was missing
+    # the one thing the guest had written to say.
+    asks, dinners = sheet_asks_and_dinners(conn, [b["id"] for b in arriving])
 
     rows = []
     for b in arriving:
@@ -103133,6 +103331,8 @@ def arrivals_sheet(conn, day=None, channel=None):
             # line and printed under "Cannot eat", so "a quiet room, please"
             # read as an allergy and an allergy could hide in a paragraph.
             "requests": (b["special_requests"] or "").strip(),
+            "asks": asks.get(b["id"], []),
+            "dinners": dinners.get(b["id"], []),
             "extras": lines,
             "nights": max((parse_date(b["departure_date"]) - day).days, 0)
                       if parse_date(b["departure_date"]) else 0,
@@ -103219,6 +103419,11 @@ def arrivals_sheet(conn, day=None, channel=None):
     wanted = [dict(x, guest_name=staying[bid]["guest_name"], room_name=staying[bid]["room_name"])
               for bid, xs in sheet_extras(conn, list(staying)).items()
               for x in xs if x["day"] == iso]
+    wanted += [{"name": f"Dinner at La Table, {x['party']}", "quantity": 1,
+                "notes": x["dietary"], "state": x["state"],
+                "guest_name": staying[bid]["guest_name"], "room_name": staying[bid]["room_name"]}
+               for bid, xs in sheet_asks_and_dinners(conn, list(staying))[1].items()
+               for x in xs if x["day"] == iso]
     wanted.sort(key=lambda x: (x["room_name"] or "", x["name"]))
     return {
         "day": day,
@@ -103298,7 +103503,56 @@ def arrivals_weeks(conn, start=None):
         day += timedelta(days=1)
     return {"start": start, "end": end, "weeks": weeks,
             "calendar": arrivals_calendar(conn, start, end, channel=channel),
+            "later": arrivals_later(conn, end, channel=channel),
             "after": end + timedelta(days=1)}
+
+
+def arrivals_later(conn, end, channel=None):
+    """Everything booked to arrive after the window, one line each, soonest
+    first: the house's stays (and those waiting to be confirmed), Booking.com's,
+    and the ateliers that begin.
+
+    The owner printed "the bookings from tomorrow onwards" (26 October 2026);
+    the window is a fortnight, and a stay on the 12th was simply not on the
+    paper. The days in detail stay a fortnight -- a page per week of empty
+    panels helps nobody -- and what comes after is listed, so nothing booked
+    is missing from what was printed.
+    """
+    after = end.isoformat()
+    out = []
+    for b in conn.execute(
+            """SELECT bookings.id, bookings.guest_name, bookings.arrival_date,
+                      bookings.departure_date, bookings.party_size, bookings.status,
+                      bookings.reference_code, rooms.name AS room_name
+                 FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.status IN ('confirmed', 'pending') AND bookings.arrival_date > ?
+                ORDER BY bookings.arrival_date, rooms.name""", (after,)).fetchall():
+        bill = booking_bill(conn, b["id"])
+        out.append({"arrival": b["arrival_date"], "departure": b["departure_date"],
+                    "name": b["guest_name"], "room": b["room_name"], "party": b["party_size"],
+                    "through": "direct" if b["status"] == "confirmed" else "direct, to confirm",
+                    "ref": b["reference_code"],
+                    "owed": round(bill["owed"], 2) if bill else 0.0})
+    if channel is None:
+        channel = channel_stays(conn)
+    for st in channel:
+        if st["arrival_date"] > after:
+            out.append({"arrival": st["arrival_date"], "departure": st["departure_date"],
+                        "name": st["guest_name"], "room": st["room_name"] or "room not matched",
+                        "party": st["party_size"], "through": st["channel"],
+                        "ref": st["reference_code"], "owed": 0.0})
+    for s in conn.execute(
+            f"""SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title,
+                       COALESCE((SELECT SUM(party_size) FROM workshop_bookings wb
+                                  WHERE wb.session_id = workshop_sessions.id
+                                    AND wb.status = 'confirmed'), 0) AS guests
+                  FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                 WHERE workshop_sessions.start_date > ? AND {SESSION_IS_LIVE}""", (after,)).fetchall():
+        out.append({"arrival": s["start_date"], "departure": s["end_date"],
+                    "name": f"Atelier: {s['title']}", "room": "", "party": s["guests"],
+                    "through": "atelier", "ref": "", "owed": 0.0})
+    out.sort(key=lambda x: (x["arrival"], x["name"] or ""))
+    return out
 
 
 def front_desk_day(conn, today=None):

@@ -4530,6 +4530,9 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 }
 .g-key__v{ margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink); max-width: var(--m-tight); }
 .g .g-key__v a{ color: var(--blue-deep); }
+/* Where to book or read more, under a What's On card: smaller than the
+   description, and allowed to break inside a long address on a phone. */
+.g-key__links{ margin-top: var(--s2); font-size: 14px; color: var(--ink-soft); overflow-wrap: anywhere; }
 
 /* ==========================================================================
    EXTRAS WITH AND WITHOUT A PHOTOGRAPH
