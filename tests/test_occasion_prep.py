@@ -360,6 +360,9 @@ def _run(s, oc, ec, emp, room, today):
     _booking("Q", room_id=other["id"], arrival=today, nights=1, guest_name=f"{TAG} Q Quiet")
     _sweep(today)
     sheet = oc.get("/admin/arrivals").get_data(as_text=True)
+    # The days, not the rooms-by-night calendar above them, which names
+    # every guest first (26 October 2026).
+    sheet = sheet[sheet.find('class="arr-week"'):]
     card = _card(sheet, f"{TAG} H Dupont")
     s.check("the arrivals sheet says what they are celebrating",
             "Celebrating" in card and "Honeymoon" in card, detail=card[:200])
