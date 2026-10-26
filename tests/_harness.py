@@ -162,6 +162,15 @@ REAL_PENNYLANE_REQUEST = m._pennylane_request
 m._pennylane_request = _refuse(
     "Pennylane", "the token is live; stand in for _pennylane_request in the test")
 
+# Guest emails: off (26 Oct 2026) holds every letter the house writes by itself
+# until the owner approves it. Hundreds of suites check that a letter is
+# written when something happens, and that is still the thing worth checking;
+# so here the gate lets everything through, and test_guest_emails puts the
+# real one back to test the gate itself. Nothing reaches a guest either way:
+# send_email is stood in for below.
+REAL_GUEST_LETTER_HELD_WHY = m.guest_letter_held_why
+m.guest_letter_held_why = lambda key: None
+
 # Texting, blocked before there is anything to leak rather than after. There
 # are no credentials for it yet, so nothing could go out today — which is
 # exactly why this belongs here now: the Stripe hole existed because the block

@@ -383,6 +383,11 @@ HOUSE_SETTING_DEFAULTS = {
     # off deliberately while getting ready, and the pages say so loudly while
     # it is off.
     "guest_mail_live": "1",
+    # Guest emails: off -- every letter the house writes by itself is held
+    # until the owner has approved its wording, booking confirmations apart.
+    # "0" because the owner asked for it off (26 Oct 2026); see
+    # guest_letter_held_why().
+    "guest_emails_on": "0",
 }
 # Paid leave is EARNED, month by month, not granted in a lump on the 1st of
 # January. Somebody who works June to September has earned about ten days, not a
@@ -3954,6 +3959,15 @@ def init_db():
             updated_at TEXT
         );
 
+        -- Guest emails: the letters the owner has read and approved, and the
+        -- wording he approved (a fingerprint), so an edit lapses it.
+        CREATE TABLE IF NOT EXISTS guest_letter_approvals (
+            letter_key TEXT PRIMARY KEY,
+            wording_hash TEXT NOT NULL DEFAULT '',
+            approved_at TEXT NOT NULL,
+            approved_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        );
+
         -- What each template said BEFORE every change to it, and who changed
         -- it. Without this the only way back from an edit was the shipped
         -- wording, so an owner who rewrote a letter well, then had it rewritten
@@ -6439,6 +6453,12 @@ def init_db():
         # still going ahead put the money straight back on the bill.
         ("refunds_payment_key", "ALTER TABLE refunds ADD COLUMN payment_key TEXT"),
         ("refunds_reason_code", "ALTER TABLE refunds ADD COLUMN reason_code TEXT"),
+        # A refund made outside the system -- in the Stripe dashboard, through
+        # RetreatGuru, by the bank -- recorded here so the books match, with
+        # where it was made and its reference (owner, 26 Oct 2026). Stored as
+        # method 'other', which the CHECK on method already allows.
+        ("refunds_refunded_via", "ALTER TABLE refunds ADD COLUMN refunded_via TEXT"),
+        ("refunds_external_reference", "ALTER TABLE refunds ADD COLUMN external_reference TEXT"),
         ("refunds_reduces_bill",
          "ALTER TABLE refunds ADD COLUMN reduces_bill REAL NOT NULL DEFAULT 0"),
         ("refunds_guest_told_at", "ALTER TABLE refunds ADD COLUMN guest_told_at TEXT"),
@@ -9453,6 +9473,8 @@ NAV_AREAS = {
         "website_analytics",
         "admin_languages", "admin_languages_switcher", "admin_languages_queue",
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
+        # Guest emails: the page and its switch stay @owner_required.
+        "admin_guest_emails", "admin_guest_emails_switch", "admin_guest_emails_approve",
         "newsletter_subscribers_page", "take_off_script_signups",
         "campaign_send_detail", "allow_email_again", "remove_email_optout",
         "admin_images", "admin_image_upload",
@@ -10078,6 +10100,7 @@ OWNER_MENU = [
         ("Email", [
             _nav("admin_emails", "Guest Email", "contacts", ("edit_campaign_template",)),
             _nav("management_email_templates", "Email Wording", "megaphone"),
+            _nav("admin_guest_emails", "Guest Emails", "bell"),
             _nav("admin_email_outbox", "Held Email", "bell"),
             _nav("newsletter_subscribers_page", "Newsletter", "contacts"),
             _nav("admin_inbox_flags", "Inbox Flags", "bell", (), "open_email_flags_count"),
@@ -31165,6 +31188,10 @@ def held_reason_words(reason):
     said = (reason or "").lower()
     if "not writing to guests" in said:
         return "Writing to guests is off"
+    if "guest emails are off" in said:
+        return "Guest emails are off"
+    if "not approved yet" in said:
+        return "Waiting for your approval"
     if "no email provider" in said:
         return "Email is not connected"
     if "reject" in said or "refused" in said:
@@ -31172,14 +31199,18 @@ def held_reason_words(reason):
     return (reason or "Not recorded").capitalize()
 
 
-HELD_REASONS = ["Writing to guests is off", "Email is not connected",
+HELD_REASONS = ["Writing to guests is off", "Guest emails are off",
+                "Waiting for your approval", "Email is not connected",
                 "The provider refused it"]
 # The same three, as the end of a sentence that starts with a number.
 HELD_REASON_PHRASES = {
     "Writing to guests is off": "because Write to guests is off",
+    "Guest emails are off": "because Guest emails are off",
+    "Waiting for your approval": "waiting for you to approve the letter",
     "Email is not connected": "because email is not connected",
     "The provider refused it": "refused by the provider",
 }
+GUEST_EMAILS_HOLDS = ("Guest emails are off", "Waiting for your approval")
 HELD_AGES = ["This week", "Older, still sendable", "Too old to send by itself"]
 
 
@@ -31237,6 +31268,245 @@ def held_mail_list_view(conn, args):
         ],
         default_sort="recent",
     )
+
+
+# ---------------------------------------------------------------------------
+# GUEST EMAILS (owner, 26 October 2026): one page with every letter and text
+# the house can send a guest, what sends it, its full text, and whether it is
+# going -- and the switch. "I'll approve each one before the switch goes back
+# on." See guest_letter_held_why() for the rule itself.
+# ---------------------------------------------------------------------------
+
+# What sends each one, in a sentence. Read from the code that sends it.
+LETTER_TRIGGERS = {
+    'pos_receipt': ("Sent when staff press Email receipt on a till bill. Also sent automatically, once per tab, when a tab is fully settled, if the restaurant's auto-email-receipt setting is on and an address is known."),
+    'workshop_registration_received': ('Sent when someone registers for an atelier (online, or added by staff) and the place cannot be confirmed on the spot. Not sent if it confirms.'),
+    'workshop_confirmed': ('Sent automatically when an online registration is confirmed: at once if there is no card deposit, or when the card deposit arrives. Also sent when staff press Confirm, add a registration by hand, or take back a released place.'),
+    'workshop_declined': ('Sent when staff press Decline on a registration.'),
+    'workshop_cancelled': ('Sent when staff cancel a registration, and to every registrant when staff call off a whole sitting.'),
+    'workshop_payment_received': ('Sent automatically when a card payment towards an atelier comes through, other than the first deposit.'),
+    'workshop_statement': ('Sent when staff press Send statement on a registration, or send statements to everyone on a session who owes something.'),
+    'event_payment_received': ('Sent automatically when a card payment towards an event comes through.'),
+    'house_payment_received': ("Sent to the house's own inbox whenever a guest pays by card for a stay, an atelier or an event. Not to a guest."),
+    'workshop_deposit_receipt': ('Sent automatically when the first atelier deposit is paid by card. Also sent when staff press Mark deposit paid for a deposit received another way.'),
+    'event_balance_reminder': ('Sent by the daily event-balance job, once per balance (or per unpaid instalment), when the due date is 21 days away or less, overdue included.'),
+    'workshop_moved': ('Sent when staff move a registration to other dates with "tell the guest" ticked.'),
+    'workshop_balance_reminder': ('Sent by the daily atelier-balance job, once per confirmed unpaid registration, when the balance falls due within 7 days (overdue included). Also sent when staff press Send pay link on the Balances page.'),
+    'review_invitation': ('Sent by the daily job to a guest whose stay feedback was glowing, once, 2 or more days after they gave it (only once a review page link is set). Also sent when staff press Ask for a review on a feedback entry.'),
+    'room_feedback_request': ('Sent by the daily job 3 days after departure to a confirmed stay with no feedback. Also sent at once when staff check a stay out at the desk. Once per stay.'),
+    'workshop_feedback_request': ('Sent by the daily job once per confirmed registration, on or after the day after the atelier ends.'),
+    'workshop_recap': ("Sent only when staff press Send recap on a sitting's page after the atelier, to each confirmed guest. Never sent until written."),
+    'restaurant_reservation_received': ('Sent when a table is booked online and does not confirm itself on the spot.'),
+    'restaurant_confirmed': ('Sent automatically when an online table confirms itself. Also sent when staff press Confirm, or add a reservation by hand with "tell them" ticked.'),
+    'restaurant_declined': ('Sent when staff press Decline on a dinner reservation.'),
+    'restaurant_cancelled': ('Sent when staff cancel a dinner reservation.'),
+    'room_waitlist_opening': ('Sent automatically to the longest-waiting room waitlist entry whose dates overlap, when a room booking is declined or cancelled, a calendar sync frees nights, or a previous offer lapses after 48 hours. Never kept to send later.'),
+    'restaurant_waitlist_opening': ('Sent automatically to the dinner waiting list for that night when staff decline or cancel a reservation on it.'),
+    'workshop_waitlist_opening': ('Sent automatically to the waiting list for a sitting when staff decline or cancel a registration on it.'),
+    'event_inquiry_received': ('Sent automatically when someone submits the event enquiry form.'),
+    'event_inquiry_confirmed': ("Sent when staff first set an enquiry's status to Confirmed."),
+    'event_inquiry_declined': ("Sent when staff first set an enquiry's status to Declined."),
+    'room_confirmed': ('Sent automatically when an online room booking confirms itself (paid by card, or bookable without payment), when a guest adds a room, or pays for a reserved room. Also sent when staff press Confirm, add a confirmed booking, or press Resend confirmation.'),
+    'room_request_received': ('Sent automatically when a room booking with nothing paid is not confirmed on the spot. Also sent when staff rebook a returning guest.'),
+    'room_reserved': ('Sent when staff reserve a room for a guest from Add a booking, or press Resend reservation link.'),
+    'channel_checkin': ('Sent every 10 minutes by the housekeeping run to each confirmed future Booking.com stay with a guest address that has not been sent it or checked in. Also sent when staff press Email the link.'),
+    'room_checkin_before': ('Sent between 09:00 and 12:00, once, to each confirmed stay arriving within 3 days that has not checked in. Needs its Automation switch on and your wording.'),
+    'workshop_checkin_before': ('Sent between 09:00 and 12:00, once, to each confirmed atelier place starting within 3 days. Needs its Automation switch on and your wording.'),
+    'room_paid_awaiting': ('Sent automatically when an online booking paid by card cannot be confirmed on the spot.'),
+    'room_declined': ('Sent when staff press Decline on a pending request. Also sent automatically when an unpaid request nobody answered within 48 hours is declined.'),
+    'room_cancelled': ('Sent only when staff tick "Email the guest a cancellation confirmation" when cancelling a booking, after seeing the preview.'),
+    'room_updated': ('Sent when staff move a booking\'s dates with "tell the guest" ticked, or save the edit form after changing dates, party size or room.'),
+    'room_payment_received': ('Sent automatically when a card payment for a stay comes through: a balance, a bill share, or a reserved room.'),
+    'room_statement': ("Sent when a guest presses Email my statement on their booking page, or staff send a stay's statement."),
+    'room_balance_before': ('Sent by the daily room-balance job, once per confirmed stay, when the balance due date (or arrival) is 7 days away or less and something is owed. Also sent when staff press Chase before departure.'),
+    'room_extras_offer': ('Sent between 09:00 and 12:00, once per stay, to confirmed stays arriving in 2 to 7 days. Needs its Automation switch on and your wording.'),
+    'room_balance_after': ('Sent only when staff press Chase on a balance still owed after departure.'),
+    'room_share_request': ('Sent when staff add a bill share with Send ticked, or press Send on a share.'),
+    'guest_account_statement': ("Sent when staff email a statement from a guest's record."),
+    'guest_link_updated': ('Sent when staff issue a new private link and choose to send it.'),
+    'refund_issued': ('Sent only when staff tick "Email the guest a refund confirmation" when making a refund.'),
+    'workshop_not_running': ("Sent to the waiting list when staff call off an atelier's dates."),
+    'event_quote': ('Sent when staff press Send quote on an event quote.'),
+    'newsletter_welcome': ('Sent automatically when someone subscribes to the newsletter on the site.'),
+    'code:send_autocharge_taken_email': ('Sent when an atelier balance is taken from the saved card: by the daily autocharge job on or after the due date, or when staff press Take from the card or Retry.'),
+    'code:send_autocharge_failed_email': ('Sent on the same occasions when the card is refused. The owner is emailed as well.'),
+}
+
+# Letters written in the code rather than stored, to a guest, with their text
+# as the code writes it ({...} is filled in for each guest).
+CODE_LETTERS_TO_GUESTS = {
+    "code:send_autocharge_taken_email": (
+        "Balance paid — {workshop}",
+        "Hi {guest_name},\n\nAs arranged, we have taken the remaining €{amount} for "
+        "{workshop} ({reference}) from the card you registered with. Nothing further "
+        "is owed.\n\n{manage link}\n\n— Château de Gudanes"),
+    "code:send_autocharge_failed_email": (
+        "Payment did not go through — {workshop}",
+        "Hi {guest_name},\n\nWe tried to take the remaining €{amount} for {workshop} "
+        "({reference}) from the card you registered with, and it did not go through. "
+        "Nothing has been taken.\n\nYou can pay it here whenever suits you:\n"
+        "{manage link}\n\nIf it keeps refusing, reply to this email and we will sort it "
+        "out another way.\n\n— Château de Gudanes"),
+}
+HAND_WRITTEN_LABELS = {
+    "code:reply_to_feedback": ("Guests: a reply to their feedback",
+                               "Written by staff on the feedback page, and sent when they press Send."),
+    "code:reply_booking_com_message": ("Guests: a reply to a Booking.com message",
+                                       "Written by staff on the Booking.com message, and sent when they press Send."),
+    "group:": ("To everyone on a session, in a party or dining one night",
+               "Written by staff on the session, booking or dinner list, and sent when they press Send."),
+    "code:write_to_guest": ("Guests: a letter written on their record",
+                            "Written by staff on a guest's record, and sent when they press Send."),
+    "code:write_about_booking": ("Guests: a letter written on a booking",
+                                 "Written by staff on a booking's page, and sent when they press Send."),
+    "text:by_hand": ("Text: typed on a booking",
+                     "Typed by staff on a booking's page, and sent when they press Send."),
+}
+
+
+def guest_letter_rows(conn):
+    """Every letter and text to a guest, as the Guest emails page lists them."""
+    approvals = guest_letter_approvals(conn)
+    held = {}
+    for r in conn.execute(
+            """SELECT mail_log.template_key AS k, COUNT(*) AS n FROM mail_log
+                 JOIN email_outbox ON email_outbox.id = mail_log.outbox_id
+                WHERE mail_log.status = 'held' AND email_outbox.sent_at IS NULL
+                GROUP BY mail_log.template_key"""):
+        held[r["k"]] = r["n"]
+    rows = []
+
+    def add(key, name, subject, body, kind, trigger=None):
+        if letter_always_goes(key):
+            state = "confirmation" if key in CONFIRMATION_LETTERS else "by_hand"
+        else:
+            state = "approved" if key in approvals else "held"
+        appr = approvals.get(key)
+        rows.append({
+            "key": key, "name": name, "kind": kind, "subject": subject or "",
+            "body": body or "",
+            "trigger": trigger or LETTER_TRIGGERS.get(key) or "",
+            "state": state, "held": held.get(key, 0),
+            "approved_at": appr["approved_at"] if appr else None,
+            "unwritten": not (body or "").strip(),
+        })
+
+    for key, label, _s, _b in DEFAULT_EMAIL_TEMPLATES:
+        subject, body = letter_wording(conn, key) or ("", "")
+        add(key, label, subject, body, "Email")
+    for key, (subject, body) in CODE_LETTERS_TO_GUESTS.items():
+        add(key, LETTERS_IN_CODE.get(key[5:], key), subject, body, "Email")
+    for c in conn.execute("SELECT * FROM campaign_templates ORDER BY name").fetchall():
+        if c["trigger_active"] and c["trigger_event"]:
+            when = {"arrival": "arrival", "departure": "departure",
+                    "workshop_start": "the start of an atelier"}.get(c["trigger_event"],
+                                                                     c["trigger_event"])
+            days = c["trigger_offset_days"] or 0
+            trigger = (f"Sent automatically {abs(days)} day{'s' if abs(days) != 1 else ''} "
+                       f"{'before' if days < 0 else 'after'} {when}." if days else
+                       f"Sent automatically on the day of {when}.")
+        else:
+            trigger = "Sent when you send the campaign from Guest Email."
+        add("campaign:" + (c["name"] or ""), f"Campaign: {c['name']}", c["subject"], c["body"],
+            "Email", trigger)
+    for kind, cfg in GUEST_TEXTS.items():
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                           (cfg["setting"],)).fetchone()
+        add("text:" + kind, f"Text: {cfg['label']}", "", (row["value"] if row else "") or "",
+            "Text", f"Sent automatically {cfg['when']}, when its Automation switch is on.")
+    add("text:room_waitlist", "Text: a room has come free", "",
+        "A room has come free at Chateau de Gudanes for {dates}. First to book has it: {link}",
+        "Text", "Sent automatically to the room waiting list when a room comes free for "
+                "their dates (only if they gave a mobile number).")
+    for key, (name, trigger) in HAND_WRITTEN_LABELS.items():
+        add(key, name, "", "", "Text" if key.startswith("text:") else "Email", trigger)
+    # A key, not a letter: a guest asking for the link to their bookings gets
+    # it whatever the switch says (send_email's despite_switch at its call).
+    add("code:guest_account_request", "Guests: a link to their bookings", "", "", "Email",
+        "Sent automatically when a guest asks on My account for a link to their bookings. "
+        "It is a private key, so it is always sent.")
+    rows[-1]["state"] = "key"
+    order = {"held": 0, "approved": 1, "confirmation": 2, "by_hand": 3, "key": 4}
+    rows.sort(key=lambda r: (order[r["state"]], r["name"].lower()))
+    return rows
+
+
+@app.route("/admin/guest-emails")
+@owner_required
+def admin_guest_emails():
+    """Every letter and text the house can send a guest, and the switch."""
+    conn = get_db()
+    rows = guest_letter_rows(conn)
+    held_total = conn.execute(
+        """SELECT COUNT(*) AS n FROM email_outbox
+            WHERE sent_at IS NULL AND (reason LIKE '%guest emails are off%'
+                                       OR reason LIKE '%not approved yet%')""").fetchone()["n"]
+    held_texts = conn.execute(
+        """SELECT COUNT(*) AS n FROM sms_outbox
+            WHERE sent_at IS NULL AND (reason LIKE '%guest emails are off%'
+                                       OR reason LIKE '%not approved yet%')""").fetchone()["n"]
+    conn.close()
+    state = request.args.get("state", "")
+    shown = [r for r in rows if not state or r["state"] == state]
+    counts = {k: sum(1 for r in rows if r["state"] == k)
+              for k in ("held", "approved", "confirmation", "by_hand", "key")}
+    return render_template("admin_guest_emails.html", rows=shown, all_count=len(rows),
+                           counts=counts, state=state, on=guest_emails_on(),
+                           held_total=held_total, held_texts=held_texts)
+
+
+@app.route("/admin/guest-emails/switch", methods=["POST"])
+@owner_required
+def admin_guest_emails_switch():
+    on = request.form.get("on") == "1"
+    conn = get_db()
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('guest_emails_on', ?) "
+                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                 ("1" if on else "0",))
+    log_audit(conn, "guest_emails_switch", details="on" if on else "off")
+    conn.commit()
+    conn.close()
+    flash("Guest emails: on. Approved letters and booking confirmations go."
+          if on else "Guest emails: off. Only booking confirmations go.", "success")
+    return redirect(url_for("admin_guest_emails"))
+
+
+@app.route("/admin/guest-emails/approve", methods=["POST"])
+@owner_required
+def admin_guest_emails_approve():
+    key = (request.form.get("key") or "").strip()
+    undo = request.form.get("undo") == "1"
+    conn = get_db()
+    known = {r["key"]: r for r in guest_letter_rows(conn)}
+    if key not in known or known[key]["state"] in ("confirmation", "by_hand", "key"):
+        conn.close()
+        flash("That letter cannot be approved here.", "error")
+        return redirect(url_for("admin_guest_emails"))
+    if undo:
+        conn.execute("DELETE FROM guest_letter_approvals WHERE letter_key = ?", (key,))
+        log_audit(conn, "guest_letter_unapproved", target=key)
+        msg = f"Approval removed: {known[key]['name']}. It is held again."
+    elif known[key]["unwritten"]:
+        conn.close()
+        flash(f"{known[key]['name']} has no wording yet. Write it first.", "error")
+        return redirect(url_for("admin_guest_emails"))
+    else:
+        conn.execute(
+            """INSERT INTO guest_letter_approvals (letter_key, wording_hash, approved_at,
+                   approved_by_user_id) VALUES (?, ?, ?, ?)
+               ON CONFLICT(letter_key) DO UPDATE SET wording_hash = excluded.wording_hash,
+                   approved_at = excluded.approved_at,
+                   approved_by_user_id = excluded.approved_by_user_id""",
+            (key, letter_wording_hash(conn, key), datetime.now(timezone.utc).isoformat(),
+             session.get("user_id")))
+        log_audit(conn, "guest_letter_approved", target=key)
+        msg = (f"Approved: {known[key]['name']}. It goes from now." if guest_emails_on()
+               else f"Approved: {known[key]['name']}. It goes once Guest emails are on.")
+    conn.commit()
+    conn.close()
+    flash(msg, "success")
+    back = {"state": request.args.get("state")} if request.args.get("state") else {}
+    return redirect(url_for("admin_guest_emails", **back) + "#l-" + key.replace(":", "-"))
 
 
 @app.route("/admin/email-outbox")
@@ -31371,6 +31641,14 @@ def send_email_outbox():
              f"held past the {EMAIL_OUTBOX_STALE_DAYS} days this house sends "
              "within")
             for r in stale]
+        # Held by Guest emails: never sent in a batch. That hold exists so the
+        # owner reads each letter first; one he opens and sends goes.
+        by_guest_emails = [r for r in rows
+                           if held_reason_words(r["reason"]) in GUEST_EMAILS_HOLDS]
+        rows = [r for r in rows if r not in by_guest_emails]
+        skipped += [(f"{r['subject'] or 'no subject'} to {r['to_address']}",
+                     "held by Guest emails: open it and send it on its own")
+                    for r in by_guest_emails]
 
     sent = failed = 0
     for row in rows:
@@ -32208,6 +32486,135 @@ def guest_mail_live():
     if has_request_context():
         g._guest_mail_live = live
     return live
+
+
+# GUEST EMAILS: OFF (owner, 26 October 2026). "Turn off every automatic email
+# and text to guests -- cancel, refund, booking, changes, reminders ... but
+# don't turn off booking confirmations." Until the owner has read each letter
+# and the process behind it, every letter the house writes BY ITSELF is held,
+# kept in Held Email to be read, and goes only once its wording is approved on
+# the Guest emails page AND the switch is on.
+#
+# What still goes, always:
+#   - a booking confirmation (the letters below), which the owner kept on;
+#   - a letter a person wrote at the time: a reply to feedback or to a
+#     Booking.com message, a letter to a party or a session, a text typed on
+#     a booking. The house is not putting words in anybody's mouth there;
+#   - a credential, a test to the house's own inbox, and a held letter
+#     somebody chose to send by hand (despite_switch, as before).
+CONFIRMATION_LETTERS = frozenset({
+    "room_request_received", "room_confirmed", "room_paid_awaiting",
+    "workshop_registration_received", "workshop_confirmed",
+    "restaurant_reservation_received", "restaurant_confirmed",
+})
+HAND_WRITTEN_LETTERS = frozenset({
+    "code:reply_to_feedback", "code:reply_booking_com_message", "text:by_hand",
+    "code:write_to_guest", "code:write_about_booking",
+})
+HAND_WRITTEN_PREFIXES = ("group:",)
+
+
+def guest_emails_on():
+    """The Guest emails switch: whether approved letters may go."""
+    if has_request_context():
+        cached = g.get("_guest_emails_on")
+        if cached is not None:
+            return cached
+    on = False
+    try:
+        conn = get_db()
+        try:
+            row = conn.execute("SELECT value FROM app_settings WHERE key = 'guest_emails_on'"
+                               ).fetchone()
+        finally:
+            conn.close()
+        on = ((row["value"] if row else HOUSE_SETTING_DEFAULTS["guest_emails_on"])
+              or "0") == "1"
+    except Exception:
+        # A database that will not open: hold. A held letter is read and sent
+        # later; one that went with wording nobody approved cannot be unsent.
+        on = False
+    if has_request_context():
+        g._guest_emails_on = on
+    return on
+
+
+def letter_wording(conn, key):
+    """(subject, body) a letter or text is sent with now, or None if it has none."""
+    if not key:
+        return None
+    if key in CODE_LETTERS_TO_GUESTS:
+        return CODE_LETTERS_TO_GUESTS[key]
+    if key.startswith("campaign:"):
+        row = conn.execute("SELECT subject, body FROM campaign_templates WHERE name = ?",
+                           (key[len("campaign:"):],)).fetchone()
+        return (row["subject"], row["body"]) if row else None
+    if key.startswith("text:") and key[5:] in GUEST_TEXTS:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                           (GUEST_TEXTS[key[5:]]["setting"],)).fetchone()
+        return ("", (row["value"] if row else "") or "")
+    if ":" in key:
+        return None
+    row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?",
+                       (key,)).fetchone()
+    if row:
+        return row["subject"], row["body"]
+    for k, _label, subject, body in DEFAULT_EMAIL_TEMPLATES:
+        if k == key:
+            return subject, body
+    return None
+
+
+def letter_wording_hash(conn, key):
+    """A fingerprint of a letter's wording; '' for one with none.
+
+    An approval is of the words the owner read. Change a letter's wording --
+    stored, a campaign, a text, or one written in the code -- and its approval
+    lapses, so nothing goes in words he has not seen.
+    """
+    words = letter_wording(conn, key)
+    if not words:
+        return ""
+    return hashlib.sha256("\n\n".join(words).encode("utf-8")).hexdigest()[:20]
+
+
+def guest_letter_approvals(conn):
+    """{key: approval row} for every letter approved in its current wording."""
+    out = {}
+    for r in conn.execute("SELECT * FROM guest_letter_approvals").fetchall():
+        if (r["wording_hash"] or "") == letter_wording_hash(conn, r["letter_key"]):
+            out[r["letter_key"]] = r
+    return out
+
+
+def letter_always_goes(key):
+    """A booking confirmation, or words a person wrote at the time."""
+    key = key or ""
+    return (key in CONFIRMATION_LETTERS or key in HAND_WRITTEN_LETTERS
+            or key.startswith(HAND_WRITTEN_PREFIXES))
+
+
+def guest_letter_held_why(key):
+    """Why a letter or text to a guest is held by Guest emails, or None if it goes."""
+    if letter_always_goes(key):
+        return None
+    if not guest_emails_on():
+        return "guest emails are off"
+    approved = g.get("_guest_letter_approvals") if has_request_context() else None
+    if approved is None:
+        try:
+            conn = get_db()
+            try:
+                approved = set(guest_letter_approvals(conn))
+            finally:
+                conn.close()
+        except Exception:
+            approved = set()
+        if has_request_context():
+            g._guest_letter_approvals = approved
+    if (key or "") not in approved:
+        return "this letter's wording is not approved yet"
+    return None
 
 
 def resend_enabled():
@@ -33064,6 +33471,8 @@ LETTERS_IN_CODE = {
     "change_staff_email": "Account: the sign-in address changed",
     "send_staff_sign_in_letter": "Account: an invitation, or a link to set a new password",
     "guest_account_request": "Guests: a link to their bookings",
+    "write_to_guest": "Guests: a letter written on their record",
+    "write_about_booking": "Guests: a letter written on a booking",
     "reply_to_feedback": "Guests: a reply to their feedback",
     "reply_booking_com_message": "Guests: a reply to a Booking.com message",
     "test_email_provider": "A test that mail goes out",
@@ -33209,13 +33618,24 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # nothing was lost. Credentials are exempt: keep=False is a password reset
     # or a staff invitation, short-lived by design and addressed to the
     # house's own people, and holding one locks somebody out.
-    if (writes_outside_the_house(to_address) and not guest_mail_live()
-            and not despite_switch):
-        why = "the house is not writing to guests yet"
+    #
+    # GUEST EMAILS: OFF (owner, 26 Oct 2026) is the second hold, at the same
+    # door: every letter the house writes by itself waits until the owner has
+    # read and approved its wording -- except a booking confirmation, and a
+    # letter a person wrote at the time. See guest_letter_held_why().
+    held_why = None
+    if writes_outside_the_house(to_address) and not despite_switch:
+        if not guest_mail_live():
+            held_why = "the house is not writing to guests yet"
+        else:
+            held_why = guest_letter_held_why(template_key)
+    if held_why:
+        why = held_why
         print(f"[email held — {why}] To: {to_address} | Subject: {subject}")
         if report is not None:
             report["why"] = ("Writing to guests is switched off until the house "
-                             "goes live.")
+                             "goes live." if not guest_mail_live() else
+                             f"Held: {why}. It is in Held Email.")
         if not keep:
             # Only true now, so not queued: the same answer as having no
             # provider at all. The waitlist callers already read False as
@@ -58934,7 +59354,8 @@ def file_guest_text(conn, number, body, *, delivered, channel="sms", booking_id=
 
 
 def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
-             channel="sms", template_id="", variables=None, note="", booking_id=None):
+             channel="sms", template_id="", variables=None, note="", booking_id=None,
+             letter=None):
     """Send a text, or keep it until there is a way to.
 
     Returns (sent, refusal). A refusal is a decision — the wrong number, a
@@ -58973,6 +59394,21 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
             """INSERT INTO sms_outbox (phone, body, purpose, reason, created_at,
                channel) VALUES (?, ?, ?, 'the house is not writing to guests yet', ?, ?)""",
             (number, body, purpose, datetime.now(timezone.utc).isoformat(), channel))
+        file_guest_text(conn, number, body, delivered=False, channel=channel,
+                        booking_id=booking_id)
+        return False, None          # held, not refused
+    # GUEST EMAILS: OFF holds texts too (owner, 26 Oct 2026: "every automatic
+    # email and text"). `letter` names the text; one a person typed on a
+    # booking is "text:by_hand" and goes. Unnamed is the house writing by
+    # itself, and held.
+    held_why = guest_letter_held_why(letter or "text:automatic")
+    if held_why:
+        if not hold:
+            return False, f"{held_why}, and this message would be stale later"
+        conn.execute(
+            """INSERT INTO sms_outbox (phone, body, purpose, reason, created_at,
+               channel) VALUES (?, ?, ?, ?, ?, ?)""",
+            (number, body, purpose, held_why, datetime.now(timezone.utc).isoformat(), channel))
         file_guest_text(conn, number, body, delivered=False, channel=channel,
                         booking_id=booking_id)
         return False, None          # held, not refused
@@ -59318,7 +59754,8 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
         went, send_refusal = send_sms(
             conn, number, guest_text_body(conn, booking, kind),
             purpose="transactional", channel=channel, template_id=template_id,
-            variables=guest_text_variables(conn, booking, kind), note=note)
+            variables=guest_text_variables(conn, booking, kind), note=note,
+            letter="text:" + kind)
         if send_refusal:
             skipped += 1
             reasons[send_refusal] = reasons.get(send_refusal, 0) + 1
@@ -67826,7 +68263,8 @@ def text_about_booking(booking_id):
         flash("Say something in the text.", "error")
         return redirect(back)
     went, refusal = send_sms(conn, booking["guest_phone"], body,
-                             purpose="transactional", booking_id=booking_id)
+                             purpose="transactional", booking_id=booking_id,
+                             letter="text:by_hand")
     if refusal:
         conn.close()
         flash(f"Not sent: {refusal}.", "error")
@@ -71475,6 +71913,23 @@ def export_refunds_csv():
                   "reduces_bill", "stripe_refund_id", "guest_told_at", "refunded_by_name"]
     return csv_response(fieldnames, lv["rows"],
                         "refunds_filtered.csv" if lv["filtered"] else "refunds.csv")
+
+
+# Refunded via a third party: where. The form's short list (owner, 26 Oct 2026).
+REFUND_VIA = {
+    "stripe_dashboard": "Stripe dashboard",
+    "retreatguru": "RetreatGuru",
+    "bank": "Bank",
+    "other": "Other",
+}
+# What the guest's letter says about a refund made there.
+REFUND_VIA_HOW_LINES = {
+    "stripe_dashboard": ("It is going back to the card you paid with. Banks usually take "
+                         "five to ten working days to show it."),
+    "retreatguru": "It is going back through RetreatGuru, the way you paid.",
+    "bank": "It is coming to you by bank transfer.",
+    "other": "",
+}
 
 
 REFUND_HOW_LINES = {
@@ -79136,6 +79591,8 @@ SETTINGS_PLACES = [
     ("Writing to guests", "megaphone", [
         ("admin_automation", "Automation and Write to guests",
          "What runs by itself, and the one switch that holds every letter and text"),
+        ("admin_guest_emails", "Guest emails",
+         "Which letters and texts go to guests, each one approved, and the switch"),
         ("management_email_templates", "Email wording", "What every letter the house sends says"),
         ("admin_emails", "Guest email and technical mail",
          "Whether mail is going out, where replies land, and where backups and "
@@ -105462,7 +105919,7 @@ def notify_room_waitlist_opening(conn, arrival_iso, departure_iso, *, skip_entry
             f"A room has come free at Chateau de Gudanes for "
             f"{format_date_human(entry['desired_arrival'])}. "
             f"First to book has it: {book_url}",
-            purpose="transactional", hold=False)
+            purpose="transactional", hold=False, letter="text:room_waitlist")
 
         # Contacted if EITHER reached them. Marking on the email alone meant a
         # guest who was successfully texted stayed 'open' and would be told
