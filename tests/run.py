@@ -201,6 +201,7 @@ SUITES = [
     "test_offline",
     "test_translations",
     "test_page_translation",
+    "test_translation_guest_words",
     "test_claude_answers",
     "test_staff_language",
     "test_whats_on",
