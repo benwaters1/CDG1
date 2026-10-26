@@ -236,6 +236,29 @@
     <p>{{ b['extras_summary'] }}</p>
     {% endif %}
 
+    {% if r.dinners %}
+    <p class="field-label">Dinner at La Table</p>
+    <ul class="arr-extras">
+      {% for x in r.dinners %}
+      <li><strong>{{ x.when }}</strong> · {{ x.party }} {{ 'person' if x.party == 1 else 'people' }}
+        {%- if x.dietary %} · {{ x.dietary }}{% endif %}
+        {%- if x.state %} <span class="mini-status status-pending">{{ x.state }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if r.asks %}
+    {#- What they wrote from their own booking page, each a task on the stay:
+        done or still to do, as the stay's page says. -#}
+    <p class="field-label">Asked from their booking page</p>
+    <ul class="arr-extras">
+      {% for x in r.asks %}
+      <li>{{ x.text }}{% if x.when %} · {{ x.when }}{% endif %}
+        <span class="mini-status {{ 'status-confirmed' if x.done else 'status-pending' }}">{{ 'done' if x.done else 'to do' }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
     {% if r.occasion %}
     {# What they told us they are celebrating, and whether the room is ready
        for it -- the task raised a few days before they come. #}
@@ -392,7 +415,7 @@
     and the instructor read. -#}
 <h4 class="sub-heading">{{ 'Atelier begins' if a.begins else 'Atelier ends' }}: {{ a.title }}</h4>
 <p class="upload-hint">{% if a.places %}{{ a.places|length }} booking{{ '' if a.places|length == 1 else 's' }}, {{ a.guests }} guest{{ '' if a.guests == 1 else 's' }}{% else %}Nobody booked on it yet{% endif %}
-  {%- if a.unroomed %} · {{ a.unroomed }} with no room yet{% endif %}
+  {%- if a.unroomed %} · {{ a.unroomed }} with {{ 'no room yet' if a.begins else 'no room on record' }}{% endif %}
   <span class="no-print"> · <a href="{{ url_for('workshop_running_sheet', session_id=a.id) }}" class="small-link">its own sheet</a></span></p>
 {% if a.places %}
 <div class="table-wrap">
@@ -404,7 +427,7 @@
       {% for p in a.places %}
       <tr>
         <th scope="row">{{ p['guest_name'] }}</th>
-        <td>{{ p['room_name'] or 'no room yet' }}</td>
+        <td>{{ p['room_name'] or ('no room yet' if a.begins else 'not recorded') }}</td>
         <td>{{ p['party_size'] }}</td>
         {%- if a.begins %}
         <td>{{ p['estimated_arrival_time'] or 'not stated' }}</td>
@@ -470,5 +493,36 @@
 {% endfor %}
 </section>
 {% endfor %}
+
+{#- EVERYTHING BOOKED AFTER THE FORTNIGHT, one line each, so a sheet printed
+    "from tomorrow onwards" has every booking on it (26 October 2026). -#}
+<section class="arr-week" id="later">
+<h2 class="arr-week__h">Booked further ahead
+  <span class="arr-week__dates">from {{ window.after.strftime('%A') }} {{ window.after.day }} {{ window.after.strftime('%B') }}</span></h2>
+{% if window.later %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Dates</th><th scope="col">Guest</th><th scope="col">Room</th>
+      <th scope="col">Party</th><th scope="col">Came through</th><th scope="col">Reference</th>
+      {%- if money %}<th scope="col" class="num">Owed</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for x in window.later %}
+      <tr>
+        <th scope="row">{{ date_range(x.arrival, x.departure) }}</th>
+        <td>{{ x.name }}</td>
+        <td>{{ x.room }}</td>
+        <td>{{ x.party or 'not stated' }}</td>
+        <td>{{ x.through }}</td>
+        <td>{{ x.ref or '' }}</td>
+        {%- if money %}<td class="num">{% if x.owed > 0 %}{{ x.owed|money }}{% endif %}</td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="upload-hint">Nothing is booked after {{ window.end.strftime('%A') }} {{ window.end.day }} {{ window.end.strftime('%B') }}.</p>
+{% endif %}
+</section>
 
 {% endblock %}

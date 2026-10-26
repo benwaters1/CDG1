@@ -22157,6 +22157,21 @@ def mark_booking_extra_arranged(conn, line_id, user_id=None, note="", undo=False
     return True, f"{line['name']} marked arranged."
 
 
+def extra_arranging(transfer, notice_days, arranged_at, has_run):
+    """(needs arranging ahead, has been arranged) for one sold extra, the one
+    rule the Extras page and the arrivals sheet both read.
+
+    Only what needs doing ahead is arranged: a transfer, or anything the
+    catalogue gives notice for. A bottle from the cellar does not need
+    arranging; it needs carrying upstairs. Arranged by a person saying so, or
+    -- for a transfer -- by a run on the Transfers page for the stay, which is
+    the same test that page uses to take a stay off "asked for, nothing
+    arranged".
+    """
+    return (bool(transfer) or int(notice_days or 0) > 0,
+            bool(arranged_at) or (bool(transfer) and bool(has_run)))
+
+
 def extras_due(conn, today=None):
     """What the house still owes its guests, soonest first.
 
@@ -22203,14 +22218,8 @@ def extras_due(conn, today=None):
         transfer = extra_is_transfer(line["extra_category"], line["name"],
                                      line["revenue_category"] or line["extra_revenue_category"])
         notice = int(line["lead_time_days"] or 0)
-        # Arranged by a person saying so, or -- for a transfer -- by a run on
-        # the Transfers page for the stay, which is the same test that page
-        # uses to take a stay off "asked for, nothing arranged".
-        arranged = bool(line["arranged_at"]) or (transfer and bool(line["has_run"]))
-        # Only what needs doing ahead has an "arrange by": a transfer, or
-        # anything the catalogue gives notice for. A bottle from the cellar
-        # does not need arranging; it needs carrying upstairs.
-        needs_arranging = transfer or notice > 0
+        needs_arranging, arranged = extra_arranging(transfer, notice, line["arranged_at"],
+                                                    line["has_run"])
         # A car is never arranged the morning it is needed: a transfer the
         # catalogue gives no notice for is still to be booked the day before.
         if transfer:
@@ -102797,7 +102806,10 @@ def sheet_extras(conn, booking_ids):
         return out
     marks = ",".join("?" * len(booking_ids))
     for line in conn.execute(
-            f"""SELECT booking_extras.*, extras.category AS extra_category
+            f"""SELECT booking_extras.*, extras.category AS extra_category,
+                       extras.revenue_category AS extra_revenue_category, extras.lead_time_days,
+                       EXISTS (SELECT 1 FROM vehicle_transfers vt
+                                WHERE vt.booking_id = booking_extras.booking_id) AS has_run
                   FROM booking_extras LEFT JOIN extras ON extras.id = booking_extras.extra_id
                  WHERE booking_extras.category = 'room'
                    AND booking_extras.booking_id IN ({marks})
@@ -102806,6 +102818,15 @@ def sheet_extras(conn, booking_ids):
                           booking_extras.created_at, booking_extras.id""",
             list(booking_ids)).fetchall():
         d = parse_date(line["scheduled_for"])
+        transfer = extra_is_transfer(line["extra_category"], line["name"],
+                                     line["revenue_category"] or line["extra_revenue_category"])
+        needs, arranged = extra_arranging(transfer, line["lead_time_days"],
+                                          line["arranged_at"], line["has_run"])
+        state = {"delivered": "delivered", "requested": "to confirm"}.get(line["status"], "")
+        if not state and needs and not arranged:
+            # Said on the paper as the Extras page says it: the crémant
+            # board a guest booked is no use found unarranged at the door.
+            state = "not arranged yet"
         out.setdefault(line["booking_id"], []).append({
             "name": line["name"],
             "quantity": line["quantity"] or 1,
@@ -102813,11 +102834,47 @@ def sheet_extras(conn, booking_ids):
             # Weekday first: "the Saturday" is how the house talks about a stay.
             "when": f"{d.strftime('%a')} {d.day} {d.strftime('%b')}" if d else "",
             "notes": (line["notes"] or "").strip(),
-            "state": {"delivered": "delivered", "requested": "to confirm"}.get(line["status"], ""),
-            "transfer": extra_is_transfer(line["extra_category"], line["name"],
-                                          line["revenue_category"]),
+            "state": state,
+            "transfer": transfer,
         })
     return out
+
+
+def sheet_asks_and_dinners(conn, booking_ids):
+    """({booking: [request]}, {booking: [dinner]}) for the arrivals sheet.
+
+    A request is a task the guest raised from their booking page (origin
+    'guest_request'), done or not, in the guest's own words. A dinner is a
+    table at La Table booked against the stay, unless it was declined or
+    cancelled."""
+    asks, dinners = {}, {}
+    if not booking_ids:
+        return asks, dinners
+    marks = ",".join("?" * len(booking_ids))
+    for t in conn.execute(
+            f"""SELECT booking_id, title, notes, due_date, status FROM tasks
+                 WHERE booking_id IN ({marks}) AND origin = 'guest_request'
+                 ORDER BY created_at, id""", list(booking_ids)).fetchall():
+        title, notes = (t["title"] or "").strip(), (t["notes"] or "").strip()
+        # The title is the first 120 characters of what they wrote, and the
+        # note all of it -- except a transfer, titled for what it is.
+        text = notes if notes.startswith(title) else " — ".join(x for x in (title, notes) if x)
+        d = parse_date(t["due_date"])
+        asks.setdefault(t["booking_id"], []).append({
+            "text": text, "done": t["status"] == "done",
+            "when": f"{d.strftime('%a')} {d.day} {d.strftime('%b')}" if d else ""})
+    for r in conn.execute(
+            f"""SELECT booking_id, dinner_date, party_size, dietary_notes, status
+                  FROM restaurant_bookings
+                 WHERE booking_id IN ({marks}) AND status IN ('pending', 'confirmed')
+                 ORDER BY dinner_date, id""", list(booking_ids)).fetchall():
+        d = parse_date(r["dinner_date"])
+        dinners.setdefault(r["booking_id"], []).append({
+            "day": d.isoformat() if d else None,
+            "when": f"{d.strftime('%a')} {d.day} {d.strftime('%b')}" if d else "",
+            "party": r["party_size"], "dietary": (r["dietary_notes"] or "").strip(),
+            "state": "to confirm" if r["status"] == "pending" else ""})
+    return asks, dinners
 
 
 def arrivals_calendar(conn, start, end, channel=None):
@@ -102838,6 +102895,9 @@ def arrivals_calendar(conn, start, end, channel=None):
     """
     nights = [start + timedelta(days=i) for i in range((end - start).days + 1)]
     first, after = start.isoformat(), (end + timedelta(days=1)).isoformat()
+
+    def surname(name):
+        return ((name or "").split() or [""])[-1]
     rooms = [dict(r) for r in conn.execute(
         "SELECT id, name FROM rooms WHERE active = 1 ORDER BY sort_order, name")]
     names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
@@ -102859,6 +102919,7 @@ def arrivals_calendar(conn, start, end, channel=None):
                               st["departure_date"], {
                 "key": f"c{st.get('ota_reservation_id') or st['room_id']}{st['arrival_date']}",
                 "name": st["guest_name"] if st.get("named") else st["channel"],
+                "short": surname(st["guest_name"]) if st.get("named") else st["channel"],
                 "party": st["party_size"], "kind": "channel",
                 "ref": st["reference_code"]}))
     # An atelier place sleeps from its sitting's first night to the night
@@ -102940,8 +103001,8 @@ def arrivals_calendar(conn, start, end, channel=None):
             cell["label"] = " / ".join(o["name"] or "" for o in who)
             # The surname alone where the cell is a night or two wide: a
             # name cut off on paper cannot be hovered over to read the rest.
-            cell["short"] = " / ".join(((o["name"] or "").split() or [""])[-1]
-                                       if o["kind"] in ("stay", "pending", "atelier") else o["name"]
+            cell["short"] = " / ".join(o.get("short") or (surname(o["name"])
+                                       if o["kind"] in ("stay", "pending", "atelier") else o["name"])
                                        for o in who)
             cell["party"] = sum((o["party"] or 0) for o in people)
             cell["refs"] = " · ".join(o["ref"] for o in who if o["ref"])
@@ -103037,6 +103098,12 @@ def arrivals_sheet(conn, day=None, channel=None):
     # the car from Toulouse were on the Extras page and not on the paper the
     # door works from.
     extras = sheet_extras(conn, [b["id"] for b in arriving])
+    # WHAT THEY ASKED FROM THEIR OWN BOOKING PAGE, and the dinners they booked
+    # there. A request is a task on the stay ("a note for Jane's anniversary
+    # on arrival") and a dinner a table at La Table; the stay's own page shows
+    # both and the sheet showed neither, so the paper at the door was missing
+    # the one thing the guest had written to say.
+    asks, dinners = sheet_asks_and_dinners(conn, [b["id"] for b in arriving])
 
     rows = []
     for b in arriving:
@@ -103091,6 +103158,8 @@ def arrivals_sheet(conn, day=None, channel=None):
             # line and printed under "Cannot eat", so "a quiet room, please"
             # read as an allergy and an allergy could hide in a paragraph.
             "requests": (b["special_requests"] or "").strip(),
+            "asks": asks.get(b["id"], []),
+            "dinners": dinners.get(b["id"], []),
             "extras": lines,
             "nights": max((parse_date(b["departure_date"]) - day).days, 0)
                       if parse_date(b["departure_date"]) else 0,
@@ -103177,6 +103246,11 @@ def arrivals_sheet(conn, day=None, channel=None):
     wanted = [dict(x, guest_name=staying[bid]["guest_name"], room_name=staying[bid]["room_name"])
               for bid, xs in sheet_extras(conn, list(staying)).items()
               for x in xs if x["day"] == iso]
+    wanted += [{"name": f"Dinner at La Table, {x['party']}", "quantity": 1,
+                "notes": x["dietary"], "state": x["state"],
+                "guest_name": staying[bid]["guest_name"], "room_name": staying[bid]["room_name"]}
+               for bid, xs in sheet_asks_and_dinners(conn, list(staying))[1].items()
+               for x in xs if x["day"] == iso]
     wanted.sort(key=lambda x: (x["room_name"] or "", x["name"]))
     return {
         "day": day,
@@ -103256,7 +103330,56 @@ def arrivals_weeks(conn, start=None):
         day += timedelta(days=1)
     return {"start": start, "end": end, "weeks": weeks,
             "calendar": arrivals_calendar(conn, start, end, channel=channel),
+            "later": arrivals_later(conn, end, channel=channel),
             "after": end + timedelta(days=1)}
+
+
+def arrivals_later(conn, end, channel=None):
+    """Everything booked to arrive after the window, one line each, soonest
+    first: the house's stays (and those waiting to be confirmed), Booking.com's,
+    and the ateliers that begin.
+
+    The owner printed "the bookings from tomorrow onwards" (26 October 2026);
+    the window is a fortnight, and a stay on the 12th was simply not on the
+    paper. The days in detail stay a fortnight -- a page per week of empty
+    panels helps nobody -- and what comes after is listed, so nothing booked
+    is missing from what was printed.
+    """
+    after = end.isoformat()
+    out = []
+    for b in conn.execute(
+            """SELECT bookings.id, bookings.guest_name, bookings.arrival_date,
+                      bookings.departure_date, bookings.party_size, bookings.status,
+                      bookings.reference_code, rooms.name AS room_name
+                 FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.status IN ('confirmed', 'pending') AND bookings.arrival_date > ?
+                ORDER BY bookings.arrival_date, rooms.name""", (after,)).fetchall():
+        bill = booking_bill(conn, b["id"])
+        out.append({"arrival": b["arrival_date"], "departure": b["departure_date"],
+                    "name": b["guest_name"], "room": b["room_name"], "party": b["party_size"],
+                    "through": "direct" if b["status"] == "confirmed" else "direct, to confirm",
+                    "ref": b["reference_code"],
+                    "owed": round(bill["owed"], 2) if bill else 0.0})
+    if channel is None:
+        channel = channel_stays(conn)
+    for st in channel:
+        if st["arrival_date"] > after:
+            out.append({"arrival": st["arrival_date"], "departure": st["departure_date"],
+                        "name": st["guest_name"], "room": st["room_name"] or "room not matched",
+                        "party": st["party_size"], "through": st["channel"],
+                        "ref": st["reference_code"], "owed": 0.0})
+    for s in conn.execute(
+            f"""SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title,
+                       COALESCE((SELECT SUM(party_size) FROM workshop_bookings wb
+                                  WHERE wb.session_id = workshop_sessions.id
+                                    AND wb.status = 'confirmed'), 0) AS guests
+                  FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                 WHERE workshop_sessions.start_date > ? AND {SESSION_IS_LIVE}""", (after,)).fetchall():
+        out.append({"arrival": s["start_date"], "departure": s["end_date"],
+                    "name": f"Atelier: {s['title']}", "room": "", "party": s["guests"],
+                    "through": "atelier", "ref": "", "owed": 0.0})
+    out.sort(key=lambda x: (x["arrival"], x["name"] or ""))
+    return out
 
 
 def front_desk_day(conn, today=None):
