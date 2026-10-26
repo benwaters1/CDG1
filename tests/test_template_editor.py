@@ -91,6 +91,8 @@ MAY_WRITE_IN_CODE = {
     "write_about_stay": "the helper every stay letter goes through",
 }
 TEMPLATE_CALLS = ("render_email_template(", "email_template_text(",
+                  # The cancellation letter with its money paragraph (26 Oct 2026).
+                  "cancellation_letter(",
                   "balance_request_email(", "booking_confirmation_html(",
                   "ask_room_feedback(", "send_workshop_email(",
                   "send_restaurant_email(", "send_event_email(")
@@ -461,7 +463,9 @@ def run():
     sent, fake = _capture()
     m.send_email = fake
     try:
-        oc.post(f"/admin/bookings/{bid}/cancel", data={}, follow_redirects=True)
+        # Only when ticked since 26 Oct 2026; ticked, everybody is told.
+        oc.post(f"/admin/bookings/{bid}/cancel", data={"email_guest": "1"},
+                follow_redirects=True)
     finally:
         m.send_email = was
     told = sorted({x["to"] for x in sent if x["subject"].startswith("Booking cancelled")})

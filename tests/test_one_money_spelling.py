@@ -46,6 +46,7 @@ GUEST_FACING = {
     "statement_balance_line": "the line that ends it",
     "send_room_statement": "the statement emailed to the guest",
     "send_reservation_link": "the letter holding a room for a guest, with its price",
+    "cancellation_money_paragraph": "the cancellation letter: what was refunded, and kept",
     "mark_booking_payment_paid": "the guest's payment letter",
     "event_payment_context": "the same, for an event",
     "workshop_payment_context": "the same, for an atelier",

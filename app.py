@@ -9337,7 +9337,7 @@ NAV_AREAS = {
         
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
-        "add_police_fiche", "bulk_confirm_bookings", "bulk_decline_bookings", "cancel_booking_admin",
+        "add_police_fiche", "bulk_confirm_bookings", "bulk_decline_bookings", "cancel_booking_admin", "cancel_booking_confirm",
         "add_channel_police_fiche", "delete_channel_police_fiche",
         "add_workshop_police_fiche", "delete_workshop_police_fiche",
         # Keeping the register: passport seen, signed at the desk, the
@@ -31600,6 +31600,7 @@ def guest_letter_rows(conn):
             "trigger": trigger or LETTER_TRIGGERS.get(key) or "",
             "state": state, "held": held.get(key, 0),
             "approved_at": appr["approved_at"] if appr else None,
+            "approved_by": appr["approved_by"] if appr else None,
             "unwritten": not (body or "").strip(),
         })
 
@@ -32726,6 +32727,16 @@ HAND_WRITTEN_LETTERS = frozenset({
 HAND_WRITTEN_PREFIXES = ("group:",)
 
 
+def letter_chosen_by_staff(key, why):
+    """Mark one letter, for the rest of this request, as one a person chose to
+    send -- a box they ticked after reading it -- so Guest emails does not hold
+    it. Nothing else in the request is let through."""
+    if has_request_context():
+        chosen = dict(g.get("_chosen_letters") or {})
+        chosen[key] = why
+        g._chosen_letters = chosen
+
+
 def guest_emails_on():
     """The Guest emails switch: whether approved letters may go."""
     if has_request_context():
@@ -32793,7 +32804,11 @@ def letter_wording_hash(conn, key):
 def guest_letter_approvals(conn):
     """{key: approval row} for every letter approved in its current wording."""
     out = {}
-    for r in conn.execute("SELECT * FROM guest_letter_approvals").fetchall():
+    for r in conn.execute(
+            """SELECT guest_letter_approvals.*, users.name AS approved_by
+                 FROM guest_letter_approvals
+                 LEFT JOIN users ON users.id = guest_letter_approvals.approved_by_user_id"""
+            ).fetchall():
         if (r["wording_hash"] or "") == letter_wording_hash(conn, r["letter_key"]):
             out[r["letter_key"]] = r
     return out
@@ -33765,6 +33780,10 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # wrote it in code. Asked before a test redirect rewrites the subject.
     if not template_key:
         template_key = rendered_letter_keys().get(subject) or letter_in_code_key()
+    # A letter a person chose to send, in this request, after seeing it: the
+    # refund and cancellation letters, sent only when their box is ticked.
+    if not despite_switch and has_request_context():
+        despite_switch = (g.get("_chosen_letters") or {}).get(template_key)
     # A letter about money answers to accounts, whoever sent it (MONEY_LETTERS).
     if template_key in MONEY_LETTERS:
         area = "accounts"
@@ -61268,7 +61287,7 @@ EMAIL_TEMPLATE_TAGS = {
     "room_declined": ("arrival_date", "departure_date", "guest_name", "reference_code",
                       "refund_note", "room_name"),
     "room_cancelled": ("arrival_date", "departure_date", "guest_name",
-                       "reference_code", "room_name"),
+                       "reference_code", "refund_paragraph", "room_name"),
     "room_updated": ("arrival_date", "checkin_url", "departure_date", "guest_name",
                      "party_size", "reference_code", "room_name"),
     "room_payment_received": ("account_block", "amount", "balance_line", "guest_name",
@@ -71994,6 +72013,114 @@ def bulk_decline_bookings():
     return redirect(url_for("admin_bookings"))
 
 
+def cancellation_money(conn, booking):
+    """Where the money stands on a stay being cancelled, for the letter and the
+    confirmation step: what was paid, what has gone back and how, what is kept.
+
+    position: 'none_paid', 'full' (all of it refunded), 'part', or 'nothing'
+    (paid and none of it refunded).
+    """
+    paid = round(amount_paid_for(conn, "room", booking), 2)
+    rows = conn.execute("SELECT * FROM refunds WHERE category = 'room' AND booking_id = ? "
+                        "AND amount > 0 ORDER BY created_at", (booking["id"],)).fetchall()
+    refunded = round(sum(r["amount"] or 0 for r in rows), 2)
+    kept = round(max(0.0, paid - refunded), 2)
+    if paid <= 0.005:
+        position = "none_paid"
+    elif refunded <= 0.005:
+        position = "nothing"
+    elif kept <= 0.005:
+        position = "full"
+    else:
+        position = "part"
+    hows = {(r["refunded_via"] or ("card" if r["method"] == "stripe" else r["method"]))
+            for r in rows}
+    how = ""
+    if len(hows) == 1:
+        how = {"card": " to the card you paid with. Banks usually take five to ten working "
+                       "days to show it",
+               "stripe_dashboard": " to the card you paid with. Banks usually take five to "
+                                   "ten working days to show it",
+               "retreatguru": " through RetreatGuru, the way you paid",
+               "bank": " by bank transfer", "bank_transfer": " by bank transfer",
+               "cash": " in cash"}.get(next(iter(hows)), "")
+    return {"paid": paid, "refunded": refunded, "kept": kept, "position": position,
+            "refunds": rows, "how": how}
+
+
+def cancellation_money_paragraph(m):
+    """The cancellation letter's sentence about money, for where it stands."""
+    if m["position"] == "full":
+        return f"We have refunded the €{m['refunded']:,.2f} you paid{m['how']}."
+    if m["position"] == "part":
+        return (f"We have refunded €{m['refunded']:,.2f}{m['how']}. Under our booking terms "
+                f"the remaining €{m['kept']:,.2f} is non-refundable and is kept.")
+    if m["position"] == "nothing":
+        return (f"Under our booking terms, bookings are non-refundable once confirmed and "
+                f"paid for, so the €{m['paid']:,.2f} you paid is not refunded.")
+    return ""
+
+
+def cancellation_letter(conn, booking):
+    """(subject, body) of the cancellation letter as it would go now, money
+    paragraph included -- what the confirmation step previews, word for word.
+
+    The stored wording may not have the {refund_paragraph} tag (it is live
+    config, and the shipped one did not), so the paragraph is put in before
+    the reference line when the tag is not there.
+    """
+    m = cancellation_money(conn, booking)
+    paragraph = cancellation_money_paragraph(m)
+    subject, body, _html = render_email_template(conn, "room_cancelled", {
+        "guest_name": booking["guest_name"],
+        "room_name": booking["room_name"],
+        "arrival_date": format_date_human(booking["arrival_date"]),
+        "departure_date": format_date_human(booking["departure_date"]),
+        "reference_code": booking["reference_code"],
+        "refund_paragraph": paragraph,
+    })
+    if subject and paragraph and paragraph not in body:
+        if "\n\nReference code:" in body:
+            body = body.replace("\n\nReference code:", f"\n\n{paragraph}\n\nReference code:", 1)
+        else:
+            parts = body.rsplit("\n\n", 1)
+            body = (f"{parts[0]}\n\n{paragraph}\n\n{parts[1]}" if len(parts) == 2
+                    else f"{body}\n\n{paragraph}")
+    return subject, body
+
+
+@app.route("/admin/bookings/<int:booking_id>/cancel/confirm")
+@owner_required
+def cancel_booking_confirm(booking_id):
+    """The step before cancelling: what happens, the money, and the letter.
+
+    Owner, 26 Oct 2026: "Often the guest has already emailed and I will reply
+    myself, so it must never be automatic." So nothing is sent unless the box
+    is ticked, and the box starts unticked, under a preview of exactly what
+    would go.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+        (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    if booking["status"] not in ("pending", "confirmed"):
+        conn.close()
+        flash("That booking was already cancelled or decided.", "error")
+        return redirect(booking_return(booking_id))
+    m = cancellation_money(conn, booking)
+    subject, body = cancellation_letter(conn, booking)
+    conn.close()
+    return render_template("admin_cancel_confirm.html", b=booking, m=m,
+                           subject=subject, body=body,
+                           email=booking["guest_email"],
+                           cancel_reasons=CANCEL_REASONS,
+                           reason=request.args.get("cancel_reason", ""))
+
+
 @app.route("/admin/bookings/<int:booking_id>/cancel", methods=["POST"])
 @owner_required
 def cancel_booking_admin(booking_id):
@@ -72054,18 +72181,25 @@ def cancel_booking_admin(booking_id):
             refund_note += " Not refunded: " + "; ".join(errors) + "."
     still_held = refundable_amount(conn, "room", booking)
 
+    # ONLY WHEN THE BOX IS TICKED (owner, 26 Oct 2026): "it must never send an
+    # email unless the box is ticked". The letter is the one the confirmation
+    # step previewed, money paragraph and all, and it goes because a person
+    # chose it after reading it -- Guest emails does not hold it.
+    #
     # Through write_about_stay, like the confirmation, so anybody the guest
-    # asked us to copy hears the booking is gone. This went to the guest alone:
-    # the copied party was told it was confirmed and never that it was not.
-    subject, body, letter = render_email_template(conn, "room_cancelled", {
-        "guest_name": booking["guest_name"],
-        "room_name": booking["room_name"],
-        "arrival_date": format_date_human(booking["arrival_date"]),
-        "departure_date": format_date_human(booking["departure_date"]),
-        "reference_code": booking["reference_code"],
-    })
-    if subject:
-        write_about_stay(booking, subject, body, html=letter)
+    # asked us to copy hears the booking is gone.
+    emailed = ""
+    if request.form.get("email_guest") == "1":
+        subject, body = cancellation_letter(conn, booking)
+        if subject and booking["guest_email"]:
+            letter_chosen_by_staff("room_cancelled", "staff ticked 'Email the guest a "
+                                                     "cancellation confirmation'")
+            write_about_stay(booking, subject, body)
+            emailed = " The guest was emailed a cancellation confirmation."
+        else:
+            emailed = " No email went: there is no address on the booking."
+    else:
+        emailed = " No email was sent."
     notified = notify_room_waitlist_opening(conn, booking["arrival_date"], booking["departure_date"])
     if notified:
         waitlist_note = f" Notified {len(notified)} waitlist guest{'s' if len(notified) != 1 else ''} automatically."
@@ -72075,7 +72209,8 @@ def cancel_booking_admin(booking_id):
     conn.close()
     money_note = (f" {money(still_held)} is still held — issue a refund from the booking if you want to give any of it back."
                   if still_held > 0 else "")
-    flash("Booking cancelled." + refund_note + money_note + waitlist_note, "success")
+    flash("Booking cancelled. The room is back on sale." + emailed + refund_note + money_note
+          + waitlist_note, "success")
     return redirect(booking_return(booking_id))
 
 
@@ -72189,6 +72324,21 @@ REFUND_VIA_HOW_LINES = {
 }
 
 
+def refund_method_words(row):
+    """How one refund went back, as the staff pages say it."""
+    via = row["refunded_via"] if "refunded_via" in row.keys() else None
+    if via:
+        ref = row["external_reference"] if "external_reference" in row.keys() else None
+        return (f"Refunded via a third party ({REFUND_VIA.get(via, via)})"
+                + (f", ref {ref}" if ref else ""))
+    return {"stripe": "Card refund via Stripe", "bank_transfer": "Bank transfer",
+            "cash": "Cash", "other": "Other"}.get(row["method"], row["method"] or "")
+
+
+app.jinja_env.globals["refund_method_words"] = refund_method_words
+app.jinja_env.globals["refund_via"] = REFUND_VIA
+
+
 REFUND_HOW_LINES = {
     "stripe": ("It is going back to the card you paid with. Banks usually take five to "
                "ten working days to show it."),
@@ -72207,7 +72357,7 @@ def _refund_balance_line(category, booking, owed):
     return "Nothing more is owed on it."
 
 
-def send_refund_letter(conn, category, booking_id, amount, method):
+def send_refund_letter(conn, category, booking_id, amount, method, via=None):
     """Tell whoever paid that money has gone back, and how it is travelling.
 
     A refund was the one movement of a guest's money nobody wrote to them
@@ -72216,7 +72366,9 @@ def send_refund_letter(conn, category, booking_id, amount, method):
     silence, which reads as a mistake to anybody checking a statement.
     Returns whether a letter went.
     """
-    base = {"amount": f"€{amount:,.2f}", "refund_how": REFUND_HOW_LINES.get(method, "")}
+    base = {"amount": f"€{amount:,.2f}",
+            "refund_how": (REFUND_VIA_HOW_LINES.get(via, "") if via
+                           else REFUND_HOW_LINES.get(method, ""))}
     if category == "room":
         b = conn.execute(
             """SELECT bookings.*, rooms.name AS room_name FROM bookings
@@ -72363,8 +72515,22 @@ def refund_desk_submit(conn, category, booking, form, user_id):
     choice = (form.get("payment") or "").strip()
     payments = payments_received(conn, category, booking)
     ids, errors = [], []
+    # Refunded via a third party (owner, 26 Oct 2026): money that already went
+    # back somewhere else -- the Stripe dashboard, RetreatGuru, the bank --
+    # recorded here so the books match, and nothing moves. Stored as 'other',
+    # with where and the reference beside it.
+    asked = (form.get("method") or "").strip()
+    via = ref = None
+    if asked == "third_party":
+        via = (form.get("refunded_via") or "").strip()
+        if via not in REFUND_VIA:
+            return "Refunded via a third party: say where it was refunded.", "error"
+        ref = " ".join((form.get("external_reference") or "").split())[:120] or None
+        asked = "other"
 
     def natural_method(p):
+        if asked in REFUND_METHODS:
+            return asked
         if p and p["card"]:
             return "stripe"
         return p["method"] if p and p["method"] in REFUND_METHODS else "other"
@@ -72389,9 +72555,7 @@ def refund_desk_submit(conn, category, booking, form, user_id):
         raw = (form.get("amount") or "").strip()
         amount = raw or (chosen["refundable"] if chosen
                          else refundable_amount(conn, category, booking))
-        method = (form.get("method") or "").strip()
-        if method not in REFUND_METHODS:
-            method = natural_method(chosen)
+        method = natural_method(chosen)
         ok, err, new = make_refund(
             conn, category, booking, amount, reason, method=method, user_id=user_id,
             payment_key=chosen["key"] if chosen else None, reason_code=reason_code,
@@ -72402,26 +72566,35 @@ def refund_desk_submit(conn, category, booking, form, user_id):
     if not ids:
         return "Refund failed: " + ("; ".join(errors) or "nothing was refunded."), "error"
 
+    if via:
+        conn.execute(f"UPDATE refunds SET refunded_via = ?, external_reference = ? "
+                     f"WHERE id IN ({','.join('?' * len(ids))})", [via, ref] + ids)
     rows = conn.execute(f"SELECT * FROM refunds WHERE id IN ({','.join('?' * len(ids))})",
                         ids).fetchall()
     total = round(sum(r["amount"] or 0 for r in rows), 2)
     off = round(sum(r["reduces_bill"] or 0 for r in rows), 2)
-    ref = _booking_field(booking, "reference_code") or f"#{booking['id']}"
-    log_audit(conn, "refund_issued", target=f"{REFUND_AUDIT_WORDS[category]} {ref}",
+    booking_ref = _booking_field(booking, "reference_code") or f"#{booking['id']}"
+    how = (f" Refunded via a third party ({REFUND_VIA[via]}"
+           + (f", ref {ref}" if ref else "") + "); no money moved here.") if via else ""
+    log_audit(conn, "refund_issued", target=f"{REFUND_AUDIT_WORDS[category]} {booking_ref}",
               details=f"{money(total)} — {reason}"
-                      + (f"; {money(off)} taken off the bill" if off > 0.005 else ""))
+                      + (f"; {money(off)} taken off the bill" if off > 0.005 else "") + how)
     conn.commit()
     told = ""
+    # Only when the box is ticked, and then because a person chose it: it goes
+    # whatever Guest emails says (owner, 26 Oct 2026).
     if form.get("tell_guest") == "1" and _booking_field(booking, "guest_email", "contact_email"):
         methods = {r["method"] for r in rows}
+        letter_chosen_by_staff("refund_issued", "staff ticked 'Email the guest a refund "
+                                                "confirmation'")
         if send_refund_letter(conn, category, booking["id"], total,
-                              methods.pop() if len(methods) == 1 else "other"):
+                              methods.pop() if len(methods) == 1 else "other", via=via):
             conn.execute(f"UPDATE refunds SET guest_told_at = ? "
                          f"WHERE id IN ({','.join('?' * len(ids))})",
                          [datetime.now(timezone.utc).isoformat()] + ids)
             told = " They have been told."
         conn.commit()
-    msg = (f"Refund of {money(total)} recorded."
+    msg = (f"Refund of {money(total)} recorded." + how
            + (f" {money(off)} came off the bill." if off > 0.005 else "") + told)
     if errors:
         return msg + " Not all of it went: " + "; ".join(errors), "error"
@@ -96588,7 +96761,7 @@ EMAIL_TEMPLATE_INFO = {
                                 "checked in online already", "The guest"),
     "room_declined": ("When you decline a booking request", "The guest, and anyone "
                                                             "they asked us to copy"),
-    "room_cancelled": ("When the house cancels a booking from the bookings list",
+    "room_cancelled": ("Only when you tick it while cancelling a booking, after the preview",
                        "The guest, and anyone they asked us to copy"),
     "room_updated": ("When the house changes a booking's dates or party",
                      "The guest, and anyone they asked us to copy"),
