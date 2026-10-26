@@ -213,6 +213,174 @@ added on the person's card, where the ledger is.</p>
 </details>
 {% endif %}
 
+{#- THE RECAP. Drafted here once the atelier is over -- the week's photographs,
+    what whoever taught it left for the guests, the next dates, and the letter
+    as they will get it -- and sent from here, by this page's button and by
+    nothing else. A photograph goes only when somebody has said who is in it
+    and every one of them is happy to appear. -#}
+{% if recap and not session['cancelled_at'] %}{% set rc = recap.recap %}{% set owner_hand = can('send_atelier_recap') %}
+<section class="detail-card recap" id="recap">
+  <div class="ev-card-head">
+    <h2 class="section-heading">The recap</h2>
+    <a class="small-link" href="{{ url_for('management_email_templates', q='Recap after the atelier') }}">Its wording</a>
+  </div>
+
+  {% if rc and rc['sent_at'] %}
+  <p><span class="mini-status status-confirmed">Sent {{ rc['sent_at']|house_day|date_short }}</span>
+    {% if rc['sent_by_name'] %}by {{ rc['sent_by_name'] }}{% endif %}
+    &middot; {{ recap.had_it|length }} of {{ recap.participants|length }} on this sitting {{ 'has' if recap.had_it|length == 1 else 'have' }} it.</p>
+  {% elif rc and rc['set_aside_at'] %}
+  <p><span class="mini-status status-declined">Set aside {{ rc['set_aside_at']|house_day|date_short }}</span>{% if rc['set_aside_by_name'] %} by {{ rc['set_aside_by_name'] }}{% endif %}. No recap for this sitting, and no reminder about it.</p>
+  {% endif %}
+  {% if recap.blocked %}<p class="upload-hint">{{ recap.blocked }}</p>{% endif %}
+
+  {% if recap.over %}
+  {#- The week's photographs: each says whether it goes, and why not. -#}
+  <h3 class="recap-h">Photographs of the week &mdash; {{ recap.in_letter|length }} of {{ recap.photos|length }} go</h3>
+  {% if recap.photos %}
+  <p class="upload-hint">Taken from {{ session['start_date']|date_short }} to {{ (session['end_date'] or session['start_date'])|date_short }}, from the tray, the camera roll and the photographs page. Say who is in each one: a picture goes only if everybody in it is happy to appear{% if recap.over_limit %}, and only the first {{ recap_most }} that may go are in the letter{% endif %}.</p>
+  <form method="post" action="{{ url_for('save_atelier_recap_photos', session_id=session['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="recap-photos">
+      {% for p in recap.photos %}{% set k = p.key %}
+      <figure class="recap-photo{{ ' is-going' if p.goes }}">
+        <input type="hidden" name="photo" value="{{ k }}">
+        <a href="{{ url_for('uploaded_file', filename=p.filename) }}" target="_blank" rel="noopener">
+          <img src="{{ url_for('uploaded_file', filename=p.filename) }}" alt="{{ session['title'] }}, {{ p.taken.isoformat()|date_short }}" loading="lazy" width="200" height="150"></a>
+        <figcaption>
+          <label class="checkbox-row"><input type="checkbox" name="chosen-{{ k }}" value="1"{{ ' checked' if p.chosen }}> <span>In the recap</span></label>
+          <fieldset>
+            <legend>Who is in it{% if p.saw_people %} &middot; the camera roll thought somebody is{% endif %}</legend>
+            {% for value, words in recap_people.items() %}
+            <label class="checkbox-row"><input type="radio" name="people-{{ k }}" value="{{ value }}"{{ ' checked' if p.people == value }}> <span>{{ words }}</span></label>
+            {% if value == 'named' and recap.participants %}
+            <div class="recap-who">
+              {% for who in recap.participants %}
+              <label class="checkbox-row"><input type="checkbox" name="who-{{ k }}" value="{{ who.id }}"{{ ' checked' if who.id in p.ticked }}> <span>{{ who.label }}{% if who.with %} <span class="upload-hint">(not {{ who.with|join(', ') }})</span>{% endif %}</span></label>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% endfor %}
+          </fieldset>
+          <span class="recap-verdict {{ 'is-going' if p.goes else 'is-out' }}">{% if p.goes %}Goes{% else %}Left out: {{ p.why }}{% endif %}</span>
+          {% if p.decided_at %}<span class="upload-hint">Said {{ p.decided_at|house_when }}{% if p.decided_by %} by {{ p.decided_by }}{% endif %}</span>{% endif %}
+        </figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn-primary">Save the photographs</button>
+  </form>
+  {% else %}
+  <p class="upload-hint">No photograph taken on those days has come in yet &mdash; through the tray, the camera roll or the photographs page.</p>
+  {% endif %}
+
+  {#- What each guest said about appearing. Written onto their profile. -#}
+  {% if recap.participants %}
+  <h3 class="recap-h">Who is happy to appear</h3>
+  <form method="post" action="{{ url_for('save_atelier_recap_answers', session_id=session['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th scope="col">Guest</th><th scope="col">What they said</th><th scope="col">Their photographs</th></tr></thead>
+        <tbody>
+          {% for p in recap.participants %}
+          <tr>
+            <th scope="row">{{ p.label }}{% if p.with %}<br><span class="upload-hint">their answer only, not {{ p.with|join(', ') }}'s</span>{% endif %}</th>
+            <td><select name="answer-{{ p.id }}" aria-label="What {{ p.label }} said about photographs">
+                {% for value, words in photo_answers.items() %}<option value="{{ value }}"{{ ' selected' if p.answer == value }}>{{ words }}</option>{% endfor %}
+              </select>
+              {% if p.answered_at %}<span class="upload-hint">since {{ p.answered_at|house_day|date_short }}</span>{% endif %}</td>
+            <td>{% if p.cleared %}<span class="mini-status status-confirmed">may go</span>{% else %}<span class="upload-hint">not shown: {{ p.why }}</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="upload-hint">Written on each guest's profile, where every page that publishes a photograph reads it, with today's date and how they were asked.</p>
+    <button type="submit" class="btn-mini">Save their answers</button>
+  </form>
+  {% endif %}
+  {% endif %}
+
+  {#- What whoever taught it left for the guests. -#}
+  <h3 class="recap-h">From {{ session['instructor_name'] or 'whoever taught it' }}</h3>
+  {% if rc and (rc['notes'] or rc['notes_file']) %}
+    {% if rc['notes'] %}<div class="recap-notes">{{ rc['notes'] }}</div>{% endif %}
+    {% if rc['notes_file'] %}<p><a href="{{ url_for('uploaded_file', filename=rc['notes_file']) }}" target="_blank" rel="noopener">{{ rc['notes_file_name'] or 'The file' }}</a></p>{% endif %}
+    {% if rc['notes_at'] %}<p class="upload-hint">Saved {{ rc['notes_at']|house_when }}{% if rc['notes_by'] %} by {{ rc['notes_by'] }}{% endif %}.</p>{% endif %}
+  {% else %}
+  <p class="upload-hint">Nothing yet. {% if session['instructor_token'] %}Their teaching link has a box for notes or recipes, and a file.{% else %}Make a link for whoever teaches, below, and it has a box for notes or recipes, and a file.{% endif %}</p>
+  {% endif %}
+  {% if not (rc and rc['sent_at']) %}
+  <details class="refund-box">
+    <summary>Change the notes</summary>
+    <form method="post" action="{{ url_for('save_atelier_recap_notes', session_id=session['id']) }}" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-label" for="recap-notes">Notes</label>
+      <textarea id="recap-notes" name="notes" rows="8" maxlength="20000">{{ rc['notes'] if rc and rc['notes'] else '' }}</textarea>
+      <label class="field-label" for="recap-file">A file</label>
+      <input id="recap-file" type="file" name="notes_file">
+      {% if rc and rc['notes_file'] %}<label class="checkbox-row"><input type="checkbox" name="remove_file" value="1"> <span>Take {{ rc['notes_file_name'] or 'the file' }} off</span></label>{% endif %}
+      <button type="submit" class="btn-mini">Save the notes</button>
+    </form>
+  </details>
+  {% endif %}
+
+  {% if recap.over %}
+  <h3 class="recap-h">The next dates</h3>
+  {% if recap.next_dates %}
+  <ul class="recap-dates">
+    {% for d in recap.next_dates %}<li><a href="{{ d.url }}" target="_blank" rel="noopener">{{ d.when }}</a>{% if d.price %} <span class="upload-hint">{{ d.price }}</span>{% endif %}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="upload-hint">None on sale. {{ '{next_dates}' }} comes out empty until there are.</p>
+  {% endif %}
+
+  <h3 class="recap-h">Who it goes to</h3>
+  {% if recap.going %}
+  <p>{% for m in recap.going %}{{ m.label }}{% if m.also %} <span class="upload-hint">(and {{ m.also|map(attribute='label')|join(', ') }}, same address)</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+  {% endif %}
+  {% if recap.left_out %}
+  <ul class="recap-left">
+    {% for label, why in recap.left_out %}<li>{{ label }} &mdash; {{ why }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <p class="upload-hint">Only guests with a confirmed place. Anybody cancelled or declined is never written to.</p>
+
+  {% if recap_letter %}
+  <h3 class="recap-h">The letter{% if recap_letter.to %}, as {{ recap_letter.to }} will get it{% endif %}</h3>
+  <p><strong>{{ recap_letter.subject }}</strong></p>
+  {% for tag in recap_letter.unfilled %}
+  <p class="upload-hint recap-unfilled">Your wording uses {{ '{' ~ tag ~ '}' }}, and it is empty for this sitting, so whatever leads into it leads into nothing.</p>
+  {% endfor %}
+  {% if recap_letter.html %}
+  <iframe class="recap-preview" srcdoc="{{ recap_letter.html }}" sandbox="allow-same-origin" title="The recap as it arrives" loading="lazy"></iframe>
+  {% else %}
+  <pre class="recap-notes">{{ recap_letter.body }}</pre>
+  {% endif %}
+  {% endif %}
+
+  <div class="recap-actions">
+    {% if not recap.blocked and owner_hand %}
+    <form method="post" action="{{ url_for('send_atelier_recap', session_id=session['id']) }}"
+          onsubmit="return confirm('Send the recap to {{ recap.going|length }} {{ 'guest' if recap.going|length == 1 else 'guests' }} now?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="expect" value="{{ recap.going|length }}">
+      <button type="submit" class="btn-primary" style="margin-top:0;">Send the recap to {{ recap.going|length }} {{ 'guest' if recap.going|length == 1 else 'guests' }}</button>
+    </form>
+    {% endif %}
+    {% if not (rc and rc['sent_at']) and owner_hand %}
+    <form method="post" action="{{ url_for('set_aside_atelier_recap', session_id=session['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if rc and rc['set_aside_at'] %}<input type="hidden" name="bring_back" value="1">{% endif %}
+      <button type="submit" class="btn-mini">{{ 'Bring the recap back' if rc and rc['set_aside_at'] else 'No recap for this sitting' }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
 {#- CHANGING THE SITTING ITSELF, on the sitting's own page. Its places could be
     changed only from the workshops page, its dates from nowhere at all, and
     its minimum and the day it is decided never again once it was made; the
