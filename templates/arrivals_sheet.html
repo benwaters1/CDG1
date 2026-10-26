@@ -87,6 +87,13 @@
       {%- if r.arrival_time %}
       <span class="mini-status status-onshift" style="margin-left:4px;">{{ r.arrival_time }}</span>
       {%- endif %}
+      {#- Online check-in from their own booking page: when it is done the
+          register has their fiches and this sheet has what they cannot eat. #}
+      {%- if r.checked_in_online %}
+      <span class="mini-status status-confirmed" style="margin-left:4px;">checked in online</span>
+      {%- else %}
+      <span class="mini-status status-pending" style="margin-left:4px;">not checked in online</span>
+      {%- endif %}
       {#- Which visit this is, when it is one worth saying at the door. The
           people most likely to come back were getting the same greeting as a
           stranger. #}

@@ -108,6 +108,9 @@
           <span class="g-fig" data-eur="{{ w['price_per_person'] }}">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span>
           <span>per person · all meals and drinks</span>
         </p>
+        {#- 23 Oct (owner): what it comes to a night, from the price and the nights (a_night in app.py). -#}
+        {%- set _an = a_night(w) %}{% if _an %}
+        <p class="g-pernight">{{ _an }}</p>{% endif %}
         {% endif %}
         <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">See this retreat</a>
       </div>
@@ -241,6 +244,8 @@
           <span class="g-fig">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span>
           <span>per person · all meals and drinks</span>
         </p>
+        {%- set _an = a_night(w, r.session) %}{% if _an %}
+        <p class="g-pernight">{{ _an }}</p>{% endif %}
         {% endif %}
         {% if r.remaining > 0 %}
         <a href="{{ url_for('workshop_register', session_id=r.session['id']) }}" class="g-btn g-btn--solid">Book these dates</a>

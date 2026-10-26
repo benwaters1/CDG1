@@ -1,0 +1,23 @@
+{#- THE SIGNATURE ON A FICHE DE POLICE (CESEDA R. 814-1: "signée par l'étranger").
+    signature_pad(field, typed_field, id): a box to sign in with a finger or a
+    mouse, posted as a PNG in `field`; and, for a screen nobody can draw on or
+    a browser with no script, the full name typed in `typed_field`, which the
+    server holds to the name on the fiche. Either is a simple electronic
+    signature, kept with the fiche and deleted with it at six months. The
+    drawing is static/signature-pad.js; the desk's own copy of this markup,
+    in the staff page's classes, is _signature_pad_staff.html.
+    Import: {% from '_signature_pad.html' import signature_pad %} -#}
+{% macro signature_pad(field, typed_field, id, label='Signature') %}
+<div class="g-field" data-sigpad>
+  <label for="{{ id }}_typed">{{ label }}</label>
+  <canvas id="{{ id }}_canvas" width="600" height="180" data-sig-canvas hidden
+          style="width:100%; max-width:30rem; height:9rem; background:#fff; border:1px solid var(--line, #ccc); touch-action:none;"
+          aria-label="Sign here with your finger or mouse"></canvas>
+  <input type="hidden" name="{{ field }}" data-sig-value>
+  <span class="g-hint" data-sig-help hidden>Sign in the box with your finger or mouse. <button type="button" class="g-btn g-btn--sm" data-sig-clear>Clear</button></span>
+  <input type="text" id="{{ id }}_typed" name="{{ typed_field }}" autocomplete="off" data-sig-typed
+         placeholder="Or type your full name to sign">
+  <span class="g-hint" data-sig-typed-help>Type your full name, exactly as above, to sign.</span>
+</div>
+<script src="{{ url_for('static', filename='signature-pad.js') }}" defer></script>
+{% endmacro %}

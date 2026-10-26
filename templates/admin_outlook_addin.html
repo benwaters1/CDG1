@@ -24,6 +24,10 @@
     <tr><th scope="row">The add-in Outlook installs</th>
         <td>Version {{ manifest_version }} · <a href="{{ manifest_url }}">{{ manifest_url }}</a>
             {% if addin_base_from == 'request' %}<br><span class="upload-hint">This address is the one this page was opened on. Set <code>ADDIN_BASE_URL</code> in Railway to say it for certain.</span>{% endif %}</td></tr>
+    <tr><th scope="row">The add-in Microsoft 365 has</th>
+        <td>{% if addin_version.confirmed == manifest_version %}<span class="mini-status status-confirmed">up to date</span> Version {{ addin_version.confirmed }}{% if addin_version.confirmed_at %}, updated {{ addin_version.confirmed_at|house_day|date_short }}{% if addin_version.confirmed_by %} by {{ addin_version.confirmed_by }}{% endif %}{% endif %}
+            {% elif addin_version.confirmed %}<span class="mini-status status-declined">out of date</span> Version {{ addin_version.confirmed }}, as last recorded. Outlook is still on it until Microsoft fetches {{ manifest_version }}: <a href="#update">update it</a>
+            {% else %}<span class="mini-status status-pending">not recorded</span> Nobody has said which version Microsoft 365 has fetched. <a href="#update">Say so</a>{% endif %}</td></tr>
     <tr><th scope="row">Where the add-in lives</th>
         <td><code>{{ addin_origin }}</code>, from
             {% if addin_base_from == 'setting' %}<code>ADDIN_BASE_URL</code>{% elif addin_base_from == 'railway' %}Railway's own address for this service (<code>RAILWAY_PUBLIC_DOMAIN</code>){% elif addin_base_from == 'house' %}the address built into the app for the house's own names, as neither <code>ADDIN_BASE_URL</code> nor <code>RAILWAY_PUBLIC_DOMAIN</code> names one{% if railway_public_domain %} (Railway's variable says <code>{{ railway_public_domain }}</code>, which is not a Railway address){% endif %}{% else %}the address this page was opened on{% endif %}.
@@ -78,7 +82,19 @@
     <li>It reaches Outlook within a few hours (Microsoft says up to 24). It then appears as
       <em>Gudanes</em> on every message, on desktops, the web and phones.</li>
   </ol>
-  <p class="upload-hint">When this page shows a new version number, open the add-in in Integrated apps and choose "Update" so Microsoft fetches the new manifest; Outlook keeps the old one until then.</p>
+  <div id="update">
+    <p class="upload-hint">When this page shows a new version number, open the add-in in Integrated apps and choose "Update" so Microsoft fetches the new manifest; Outlook keeps the old one until then. Then press the button here. Until you do, your home page says the add-in needs updating, and the daily task run puts it on the task list.</p>
+    {% if addin_version.confirmed == manifest_version %}
+    <p class="upload-hint">Microsoft 365 has version {{ manifest_version }}{% if addin_version.confirmed_at %}, recorded {{ addin_version.confirmed_at|house_day|date_short }}{% if addin_version.confirmed_by %} by {{ addin_version.confirmed_by }}{% endif %}{% endif %}.</p>
+    {% else %}
+    <form method="post" action="{{ url_for('admin_outlook_addin_updated') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="version" value="{{ manifest_version }}">
+      <p class="manual-body wraps"><strong>Version {{ manifest_version }}</strong>{% if addin_version.confirmed %} is new: Microsoft 365 was last updated to {{ addin_version.confirmed }}.{% else %}: nobody has said yet whether Microsoft 365 has it.{% endif %}</p>
+      <button type="submit" class="btn-mini">I've updated it in Microsoft 365</button>
+    </form>
+    {% endif %}
+  </div>
   <p class="manual-body wraps"><strong>One person, to try it first:</strong> Outlook on the web → Settings → Mail → Customise actions → Get add-ins → My add-ins → Add a custom add-in → From URL, and paste the address above.</p>
 </div>
 
