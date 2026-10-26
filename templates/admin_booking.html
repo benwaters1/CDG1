@@ -108,6 +108,10 @@
       <dt>Guests</dt><dd>{{ b['party_size'] }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %} <span class="upload-hint">· room sleeps {{ b['max_occupancy'] }}</span></dd>
       {% if b['special_occasion'] %}<dt>Celebrating</dt><dd>{{ b['special_occasion'] }}</dd>{% endif %}
       {% if b['special_requests'] %}<dt>They asked</dt><dd class="bk-pre">{{ b['special_requests'] }}</dd>{% endif %}
+      {#- Online check-in, from their booking page: what it gave and where the
+          rest went -- the fiches to the register, the note to the kitchen. #}
+      <dt>Online check-in</dt><dd>{% if b['checkin_done_at'] %}done {{ b['checkin_done_at']|house_day|date_short }} <span class="upload-hint">· <a href="{{ url_for('police_register_page') }}">the register</a></span>{% elif b['checked_in_at'] %}<span class="upload-hint">checked in at the door instead</span>{% else %}<span class="upload-hint">not yet{% if b['checkin_letter_sent_at'] %} · link emailed {{ b['checkin_letter_sent_at']|house_day|date_short }}{% endif %} · it is on their booking page</span>{% endif %}</dd>
+      {% if b['dietary_notes'] %}<dt>Cannot eat</dt><dd>{{ b['dietary_notes'] }} <span class="upload-hint">· deleted once the stay is over</span></dd>{% endif %}
       {% if b['transfer_flight_number'] or b['transfer_arrival_time'] or b['transfer_notes'] %}
       <dt>Transfer</dt><dd>{{ b['transfer_flight_number'] or 'flight to be confirmed' }}{% if b['transfer_arrival_time'] %}, landing {{ b['transfer_arrival_time'] }}{% endif %}{% if b['transfer_notes'] %} — {{ b['transfer_notes'] }}{% endif %}</dd>
       {% endif %}

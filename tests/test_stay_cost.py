@@ -78,7 +78,7 @@ def run():
     # no guest can read. Asking for the formatted price is asking whether it
     # was rendered for a person.
     s.check("the nightly rate is in the HTML, not only in a script",
-            "€250" in body and "per night" in body,
+            "€250" in body and "per room, a night" in body,
             detail="a price that exists only once a script runs is a price "
                    "some guests never see")
     s.check("and the minimum stay is stated",
@@ -208,7 +208,7 @@ def run():
     import re as _re2
     markup = _re2.sub(r"(?is)<script.*?</script>", "", body)
     s.check("the nightly rate is in the markup",
-            "€250" in markup and "per night" in markup,
+            "€250" in markup and "per room, a night" in markup,
             detail="a price that exists only once a script runs is a price "
                    "some guests never see")
     s.check("so is the minimum stay", "3-night minimum" in markup,

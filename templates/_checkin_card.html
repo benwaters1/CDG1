@@ -1,0 +1,23 @@
+{# ONLINE CHECK-IN, on the guest's own booking page (22 October 2026).
+
+   Included from manage_booking.html and workshop_manage.html, which arrive
+   from the design side as whole-file replacements: keep the one include line
+   in each when a new version comes in. tests/test_direct_checkin.py goes red
+   if either is lost, because the form would then exist with nothing leading a
+   guest to it except a letter the owner may not have written yet.
+
+   Needs `checkin` -- {"state", "url", "done_at"} from direct_checkin_card() --
+   in the context. Says nothing for a stay that cannot be checked in. #}
+{% if checkin and checkin.state in ('open', 'done') %}
+<div class="g-mb-card" style="margin-top:var(--s4);" id="check-in">
+  <h2 class="g-panel__h">Check in online</h2>
+  {% if checkin.state == 'done' %}
+  <p class="g-hint">Done — thank you. You checked in online on {{ checkin.done_at|house_day|date_short }}.</p>
+  {% else %}
+  <p class="g-hint">When you expect to arrive, anything you cannot eat, and for anyone who is not French, the details French law asks a guest house to keep.</p>
+  <p class="g-p" style="margin-top:var(--s3);">
+    <a class="g-btn g-btn--solid" href="{{ checkin.url }}">Check in online</a>
+  </p>
+  {% endif %}
+</div>
+{% endif %}

@@ -1,0 +1,18 @@
+{#- The signature box for the DESK's screen: the same box as
+    _signature_pad.html, in the classes a staff page loads (style.css), for a
+    guest signing their fiche at arrival. Script: static/signature-pad.js.
+    Import: {% from '_signature_pad_staff.html' import signature_pad %} -#}
+{% macro signature_pad(field, typed_field, id, label='Signature') %}
+<div data-sigpad>
+  <label class="field-label" for="{{ id }}_typed">{{ label }}</label>
+  <canvas id="{{ id }}_canvas" width="600" height="180" data-sig-canvas hidden
+          style="width:100%; max-width:30rem; height:9rem; background:#fff; border:1px solid var(--parchment-line, #ccc); touch-action:none;"
+          aria-label="Sign here with a finger or the mouse"></canvas>
+  <input type="hidden" name="{{ field }}" data-sig-value>
+  <span class="field-hint" data-sig-help hidden>Sign in the box. <button type="button" class="btn-mini" data-sig-clear>Clear</button></span>
+  <input type="text" id="{{ id }}_typed" name="{{ typed_field }}" autocomplete="off" data-sig-typed
+         placeholder="Or type the full name to sign">
+  <span class="field-hint" data-sig-typed-help>Type the full name, exactly as on the fiche, to sign.</span>
+</div>
+<script src="{{ url_for('static', filename='signature-pad.js') }}" defer></script>
+{% endmacro %}

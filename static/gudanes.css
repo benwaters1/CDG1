@@ -11801,3 +11801,14 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-cal .g-cal__swatch::before{ content: "12"; font-size: 13px; color: rgba(20, 48, 95, .42); text-decoration: line-through; }
   .g .g-cal .g-cal__key{ font-size: 14px; }
 }
+
+/* "about €650 a night" under a workshop's price (owner, 23 Oct 2026): the same
+   look as "per person", tucked up under the price line. It is its own
+   line after the price rather than inside it, because the currency switcher
+   adds its "≈ £2,250 GBP" to the end of the price's line, and that belongs
+   beside the price it converts, not under the nightly figure. */
+.g .g-wscard__price:has(+ .g-pernight), .g .g-sit__rate:has(+ .g-pernight){ margin-bottom: 0; }
+.g .g-pernight{
+  margin: 2px 0 var(--s4);
+  font-family: var(--ui); font-size: 14.5px; line-height: 1.4; color: var(--ink-2);
+}

@@ -223,11 +223,13 @@ def _checks(s, oc, conn):
             rendered == (None, None, None), detail=str(rendered)[:120])
     page = oc.get("/management/email-templates").get_data(as_text=True)
     card = page[page.find(f'id="tpl-{KEY}"'):][:900]
-    s.check("the wording page calls it not written yet", "not written yet" in card,
+    s.check("the wording page says it has no wording yet", "no wording yet" in card,
             detail=card[:300])
     r = oc.post(f"/management/email-templates/{KEY}/restore", follow_redirects=True)
-    s.check("and there is no original to restore it to",
-            any("no wording" in f for f in flashes(r)), detail=str(flashes(r)))
+    s.check("and restoring it leaves it empty, which is how one is withdrawn",
+            any("Emptied" in f for f in flashes(r)) and conn.execute(
+                "SELECT subject, body FROM email_templates WHERE template_key = ?",
+                (KEY,)).fetchone()[:] == ("", ""), detail=str(flashes(r)))
     auto = oc.get("/admin/automation").get_data(as_text=True)
     at = auto.find(f'id="{SWITCH}"')
     row = auto[at:auto.find('<div class="auto-row', at + 10)] if at >= 0 else ""

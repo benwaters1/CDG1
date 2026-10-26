@@ -60,7 +60,7 @@
       <div>
         <strong>{{ t['label'] }}</strong>
         {% if state == 'Needs fixing' %}<span class="mini-status status-declined">needs fixing</span>
-        {% elif state == 'Not written yet' %}<span class="mini-status status-pending">not written yet</span>
+        {% elif state == 'No wording yet' %}<span class="mini-status status-pending">no wording yet</span>
         {% elif state == 'Edited' %}<span class="mini-status status-upcoming">edited{% if t['updated_at'] %} {{ t['updated_at']|house_day|date_short }}{% endif %}</span>
         {% endif %}
         {% if drift.get(key) %}<span class="mini-status status-pending">out of step</span>{% endif %}

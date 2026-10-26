@@ -224,16 +224,8 @@ def run():
     conn.close()
     undrawn = []
     for key in shipped:
-        subject, body = rows[key]["subject"], rows[key]["body"]
-        if key in m.UNWRITTEN_LETTERS and not (subject or "").strip():
-            # Shipped with no words (the extras offered before arrival): drawn
-            # with some, and with any tag it cannot go without, since a letter
-            # nobody has written has nothing to draw.
-            subject = "A letter"
-            body = ("Hi {guest_name},\n\nA paragraph.\n\n"
-                    + "".join("{%s}\n\n" % t for t in m.REQUIRED_MERGE_TAGS.get(key, {})))
         r = oc.post(f"/management/email-templates/{key}/preview",
-                    json={"subject": subject, "body": body})
+                    json={"subject": rows[key]["subject"], "body": rows[key]["body"]})
         d = r.get_json() or {}
         if not (d.get("html") or "").lstrip().lower().startswith("<!doctype"):
             undrawn.append(key)

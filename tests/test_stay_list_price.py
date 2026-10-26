@@ -53,7 +53,7 @@ def run():
         s.check("two ordinary nights are the standard rate twice",
                 _euros(rate * 2) in plain and "for 2 nights" in plain, detail=plain)
         s.check("and the nightly figure beneath is the standard rate",
-                f"{_euros(rate)} a night" in plain and "average" not in plain, detail=plain)
+                f"{_euros(rate)} per room, a night" in plain and "average" not in plain, detail=plain)
 
         s.section("A night the rate card sells for one euro")
         conn.execute(
@@ -73,7 +73,7 @@ def run():
         s.check("the total is the rate card's, night by night",
                 total == round(1 + rate, 2) and _euros(total) in mixed, detail=f"{total}: {mixed}")
         s.check("and the nightly figure says it is an average, because the nights differ",
-                f"{_euros(round(total / 2, 2))} a night on average" in mixed, detail=mixed)
+                f"{_euros(round(total / 2, 2))} per room, a night on average" in mixed, detail=mixed)
     finally:
         conn.execute("DELETE FROM room_rate_overrides WHERE label = ?", (TAG,))
         conn.commit()
