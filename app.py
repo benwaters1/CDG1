@@ -18144,6 +18144,17 @@ def is_house_full_reason(why):
     return bool(why) and why.startswith("The house is full")
 
 
+def closure_is_channel_stay(reason, note=None):
+    """Whether a closure the house typed in is really a channel's stay.
+
+    Booking.com stays have been kept off sale by hand on the Rooms page with
+    "Booking.com stay" as the reason. That is a room let, and the nightly
+    limit has to count it; the house's own closures do not.
+    """
+    text = f"{reason or ''} {note or ''}".lower()
+    return any(label.lower() in text for label in OTA_CHANNEL_LABELS.values())
+
+
 def own_feed_spans(conn, picture):
     """{room_id: {(first night, DTEND)}} -- and None for every room -- for the
     closures this house's own calendars send the channels.
@@ -18174,10 +18185,14 @@ def _rooms_let_index(conn, picture):
     """picture["let"] = {night: {room_id: [(kind, booking_id, status)]}}, and
     picture["channel_echoes"] = [(room_id, start, end)] left out of it.
 
-    TAKEN: this site's pending and confirmed bookings, in any room, and a
-    channel's imported nights in a room on sale. NOT TAKEN: the owner's
-    closures ("Resting for the winter") -- a room shut is not a room let --
-    and a channel range that is one of the house's own closures sent back.
+    TAKEN: this site's pending and confirmed bookings, in any room; every
+    confirmed channel stay the house knows of (from the emails, or entered on
+    the Booking.com stays page), with or without a room; a closure the house
+    typed in for a channel's stay ("Booking.com stay"); and a channel's
+    imported nights in a room on sale. NOT TAKEN: the house's own closures
+    ("Resting for the winter", maintenance, family) -- a room shut is not a
+    room let -- a channel range that is one of the house's own closures sent
+    back, and a cancelled channel stay whose nights the calendar still shows.
 
     The owner's "keep this open here" choice is not honoured in this count:
     it reopens a channel's nights for sale on THIS site, but if the stay on
@@ -18198,6 +18213,34 @@ def _rooms_let_index(conn, picture):
     for rid, rows in picture["bookings"].items():
         for bid, status, a, b in rows:
             add(rid, a, b, ("booking", bid, status))
+
+    # Every stay a channel sold, as the house knows it: from Booking.com's
+    # emails, or entered by hand on the Booking.com stays page. Confirmed only,
+    # so a cancellation stops counting the moment it is recorded, without
+    # waiting for the channel's calendar to drop the nights. A stay with no
+    # room yet still takes a room that night, so it counts under a key of its
+    # own. Until 26 Oct 2026 none of these counted: on 30 Oct the Twin Room's
+    # Booking.com guest was skipped, and the site sold a fourth room.
+    for st in channel_stays(conn, blocks=False):
+        key = st["room_id"] or ("unassigned", st["ota_reservation_id"])
+        add(key, parse_date(st["arrival_date"]), parse_date(st["departure_date"]),
+            ("channel", None, "confirmed"))
+    cancelled = {(r["room_id"], r["arrival_date"]) for r in conn.execute(
+        """SELECT room_id, arrival_date FROM ota_reservations
+            WHERE status = 'cancelled' AND room_id IS NOT NULL""")}
+    confirmed = {(r["room_id"], r["arrival_date"]) for r in conn.execute(
+        """SELECT room_id, arrival_date FROM ota_reservations
+            WHERE status = 'confirmed' AND room_id IS NOT NULL""")}
+
+    # A closure the house made BY HAND for a channel's stay ("Booking.com
+    # stay" written as its reason) is a room let, not the house shutting it.
+    # Only the house's own closures -- maintenance, family, a workshop, the
+    # winter -- stay out of the count.
+    for row in conn.execute("SELECT room_id, start_date, end_date, reason, note FROM room_blocks"):
+        if closure_is_channel_stay(row["reason"], row["note"]):
+            add(row["room_id"], parse_date(row["start_date"]), parse_date(row["end_date"]),
+                ("channel", None, "confirmed"))
+
     on_sale = {r["id"] for r in conn.execute("SELECT id FROM rooms WHERE active = 1")}
     ours = own_feed_spans(conn, picture)
     echoes = []
@@ -18205,6 +18248,9 @@ def _rooms_let_index(conn, picture):
         rid = row["room_id"]
         a, b = parse_date(row["start_date"]), parse_date(row["end_date"])
         if rid not in on_sale or not (a and b):
+            continue
+        # A cancelled stay whose nights the channel's calendar still shows.
+        if (rid, row["start_date"]) in cancelled - confirmed:
             continue
         if (a, b) in ours.get(rid, ()) or (a, b) in ours[None]:
             echoes.append((rid, a, b))
@@ -18252,7 +18298,9 @@ def rooms_over_the_limit(conn, today=None, days=400):
         let = rooms_let_on(picture, night)
         if len(let) > MAX_ROOMS_LET_PER_NIGHT:
             out.append({"night": night,
-                        "rooms": sorted(names.get(r, f"room {r}") for r in let)})
+                        "rooms": sorted(names.get(r) or ("a Booking.com stay with no room yet"
+                                                         if isinstance(r, tuple) else f"room {r}")
+                                        for r in let)})
     return out
 
 
