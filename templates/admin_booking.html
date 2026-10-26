@@ -65,11 +65,21 @@
   {% if can('record_history_page') %}<a href="{{ url_for('record_history_page', kind='booking', record_id=b['id']) }}">What changed</a>{% endif %}
 </nav>
 
+{#- Done from here. The stay's requests and jobs were listed on its page with
+    nothing to press, so settling one meant finding the same task again on
+    Tasks. The same tick as everywhere else (/tasks/<id>/complete), offered
+    only to somebody that route lets tick it: the owner, or whoever has it. -#}
+{% macro stay_tick(t) %}
+{% if t['status'] != 'done' and (user['role'] == 'owner' or t['assigned_to_user_id'] == user['id']) %}
+<button type="button" class="btn-mini bk-tick-done" onclick="stayTaskDone({{ t['id'] }}, this)">Mark done</button>
+{% endif %}
+{% endmacro %}
 {% if requests_open %}
 <div class="detail-card bk-alert">
   <h3>Waiting on the house</h3>
   {% for t in requests_open %}
-  <p><strong>{{ t['title'] }}</strong>{% if t['due_date'] %} <span class="upload-hint">· {{ t['due_date']|date_short }}</span>{% endif %}<br>
+  <p class="bk-request" data-task-id="{{ t['id'] }}"><strong>{{ t['title'] }}</strong>{% if t['due_date'] %} <span class="upload-hint">· {{ t['due_date']|date_short }}</span>{% endif %}
+     {{ stay_tick(t) }}<br>
      <span class="upload-hint">{{ t['notes'] }}</span></p>
   {% endfor %}
 </div>
@@ -588,9 +598,9 @@
   {% if stay_tasks %}
   <ul class="bk-list bk-tasks">
     {% for t in stay_tasks %}
-    <li><span class="mini-status {{ 'status-paid' if t['status'] == 'done' else 'status-pending' }}">{{ 'done' if t['status'] == 'done' else 'to do' }}</span>
+    <li data-task-id="{{ t['id'] }}"><span class="mini-status {{ 'status-paid' if t['status'] == 'done' else 'status-pending' }}">{{ 'done' if t['status'] == 'done' else 'to do' }}</span>
       {{ t['title'] }}{% if t['due_date'] %} <span class="upload-hint">· {{ t['due_date']|date_short }}</span>{% endif %}
-      <span class="upload-hint">· {{ t['assignee'] or 'nobody yet' }}</span></li>
+      <span class="upload-hint">· {{ t['assignee'] or 'nobody yet' }}</span> {{ stay_tick(t) }}</li>
     {% endfor %}
   </ul>
   {% endif %}
@@ -685,4 +695,19 @@
 })();
 </script>
 
+<script>
+function stayTaskDone(id, btn) {
+  btn.disabled = true;
+  fetch('/tasks/' + id + '/complete', { method: 'POST' })
+    .then(function(r) { if (!r.ok) throw new Error('failed'); return r.json(); })
+    .then(function(data) {
+      var line = btn.closest('[data-task-id]');
+      var badge = line.querySelector('.mini-status');
+      if (badge) { badge.className = 'mini-status status-paid'; badge.textContent = 'done'; }
+      else { line.classList.add('bk-request-done'); }
+      btn.remove();
+    })
+    .catch(function() { btn.disabled = false; alert("Couldn't save that — check your connection and try again."); });
+}
+</script>
 {% endblock %}

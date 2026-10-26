@@ -27,6 +27,7 @@
         <tr>
           <td style="width:26%;">
             <a href="{{ url_for(p.endpoint) }}"><strong>{{ p.label }}</strong></a>
+            {% if p.also %}<span class="upload-hint" style="display:block;">also: {{ p.also|join(', ') }}</span>{% endif %}
           </td>
           <td>
             {% if p.described %}{{ p.what }}

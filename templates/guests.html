@@ -102,7 +102,7 @@
     where they live, how often and how long they have stayed, when last and
     when next, and anything to know. It was a column of half-width cards. -#}
 <div class="table-wrap">
-  <table class="data-table gu-table">
+  <table class="data-table gu-table phone-cards">
     <thead><tr>
       {% if can('bulk_tag_guests') %}<th scope="col"><span class="visually-hidden">Tick</span></th>{% endif %}
       <th scope="col">Guest</th><th scope="col">Contact</th><th scope="col">Lives in</th>
@@ -126,10 +126,10 @@
         {% if g['email'] %}<span class="gu-line">{{ g['email'] }}</span>{% else %}<span class="upload-hint">no email</span>{% endif %}
         {% if g['phone'] %}<span class="gu-line"><a class="small-link" href="tel:{{ g['phone']|replace(' ', '') }}">{{ g['phone'] }}</a></span>{% endif %}
       </td>
-      <td>{{ h.get('country') or '' }}</td>
-      <td class="num">{% if h.get('stays') %}{{ h.stays }}<span class="cell-note">{{ h.nights }} night{{ '' if h.nights == 1 else 's' }}</span>{% else %}<span class="upload-hint">first time</span>{% endif %}</td>
-      <td>{{ h.last|date_short if h.get('last') else '' }}</td>
-      <td>{% if h.get('next') %}<strong>{{ h.next|date_short }}</strong>{% endif %}</td>
+      <td data-label="Lives in">{{ h.get('country') or '' }}</td>
+      <td class="num" data-label="Stays">{% if h.get('stays') %}{{ h.stays }}<span class="cell-note">{{ h.nights }} night{{ '' if h.nights == 1 else 's' }}</span>{% else %}<span class="upload-hint">first time</span>{% endif %}</td>
+      <td data-label="Last here">{{ h.last|date_short if h.get('last') else '' }}</td>
+      <td data-label="Next">{% if h.get('next') %}<strong>{{ h.next|date_short }}</strong>{% endif %}</td>
       <td class="gu-know">
         {%- if g['dietary_notes'] %}<span class="gu-line"><b>Diet:</b> {{ g['dietary_notes'] }}</span>{% endif -%}
         {%- if g['access_needs'] %}<span class="gu-line"><b>Needs:</b> {{ g['access_needs'] }}</span>{% endif -%}
