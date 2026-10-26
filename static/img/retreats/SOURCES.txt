@@ -55,7 +55,7 @@ guests-toasting.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad
 brocante-gilt-frame.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1481179212968-BJ7WLHYBYGMTUL6RSR4A/brocante-gilt-frame.jpg
 market-charcuterie.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1588058662677-2C0OQN38VO1Q0BOU2JM0/market-charcuterie.jpg
 restoration-scaffold.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1481095122697-MSGWFDFVRUYX1B6P0EHM/restoration-scaffold.jpg
-garden-with-bruce.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/49f1267d-26d2-4f04-b908-73c78a327184/garden-with-bruce.jpg
+garden-conversation.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/49f1267d-26d2-4f04-b908-73c78a327184/garden-with-bruce.jpg
 foix-castle.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1481616074741-RYJEHZMD9TK30AACGC1R/foix-castle.jpg
 crepe-cart.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1724521431407-76Z5NM7NBYO9QZW1KHIC/crepe-cart.jpg
 village-boulangerie.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1423686965587-0X5ITQNUPVOFVWZ289QS/village-boulangerie.jpg
@@ -98,7 +98,7 @@ guest-painting.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c
 lighting-gingerbread.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587871860562-C5BPMAPOVC2XUXRIGA3V/lighting-gingerbread.jpg
 christmas-supper.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587872181698-LM8IIM0UL2P3Q5QSX7A0/christmas-supper.jpg
 vin-chaud.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587816460767-QHL5TA7IZIP6ZIVLKK7A/vin-chaud.jpg
-bruce-christmas-tree.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/43a0b8d6-e4ba-49dd-9f55-3ebe11b58102/bruce-christmas-tree.jpg
+dog-by-the-christmas-tree.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/43a0b8d6-e4ba-49dd-9f55-3ebe11b58102/bruce-christmas-tree.jpg
 christmas-wreath.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/2552ca54-4b69-481f-98ef-d5b09d2652be/christmas-wreath.jpg
 bath-floral-tiles.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583504658503-6U6R0D9I7GXKUXFOQSQ0/bath-floral-tiles.jpg
 king-suite-four-poster.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1689667618882-TIS33J54WAAI8677PWOS/king-suite-four-poster.jpg
@@ -108,7 +108,7 @@ roses-on-the-drive.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69
 chateau-framed-by-roses.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/d6748ca1-6230-44f0-995f-f493afb98d89/chateau-framed-by-roses.jpg
 chateau-at-night.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/chateau-at-night.jpg
 chateau-snowy-peaks.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/c2998346-182b-476a-83cc-fefc2cad0bba/chateau-snowy-peaks.jpg
-bruce-in-the-snow.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/bruce-in-the-snow.jpg
+running-in-the-snow.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/bruce-in-the-snow.jpg
 gate-in-snow.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/06736644-1610-42af-9d66-2e666c4973c8/gate-in-snow.jpg
 breakfast-croissants.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/5589cd5d-9fd8-4363-a8e8-1c7db5e8e8fb/breakfast-croissants.jpg
 
