@@ -580,6 +580,8 @@ SUITES = [
     "test_route_map",
     # 19 October 2026: the phone's home screen the owner expected and never got.
     "test_phone_home",
+    # 26 October 2026: the owner's retreats copy deck, its photographs and old pages.
+    "test_retreats_deck",
 ]
 
 

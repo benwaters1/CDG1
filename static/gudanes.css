@@ -11815,3 +11815,75 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   margin: 2px 0 var(--s4);
   font-family: var(--ui); font-size: 14.5px; line-height: 1.4; color: var(--ink-2);
 }
+
+/* ==========================================================================
+   THE RETREATS DECK (26 Oct 2026: the owner's copy for the home page,
+   /workshops and every retreat page). The eight moments on the home page,
+   the day at Gudanes and the photograph grids on /workshops, the "every day"
+   strip above a retreat's days, and the day titles in French with the English
+   beneath them. The photographs are the house's own (static/img/retreats).
+   tools/repair_handover.py puts this block back from git if a handover's
+   stylesheet arrives without it.
+   ========================================================================== */
+.g .g-moments{ list-style: none; margin: var(--s6) 0 0; padding: 0; display: grid; gap: var(--s5) var(--s4); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 64rem){ .g .g-moments{ grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s6) var(--s5); } }
+.g .g-moment{ margin: 0; min-width: 0; }
+.g .g-moment__a{ display: block; color: var(--ink); text-decoration: none !important; }
+.g .g-moment__img{ display: block; width: 100%; aspect-ratio: 4 / 5; height: auto; object-fit: cover; border: 1px solid color-mix(in srgb, var(--gilt) 35%, transparent); transition: opacity .2s; }
+.g .g-moment__a:hover .g-moment__img, .g .g-moment__a:focus-visible .g-moment__img{ opacity: .88; }
+.g .g-moment__t{ display: block; margin: var(--s3) 0 var(--s1); font-weight: 400; font-family: var(--display); font-style: italic; font-size: clamp(22px, .8vw + 17px, 27px); line-height: 1.15; color: var(--blue-deep); }
+.g .g-moment__p{ display: block; margin: 0; font-family: var(--serif); font-size: var(--t-small); line-height: 1.55; color: var(--ink-2); }
+.g .g-moment .g-credit, .g .g-rgrid .g-credit{ display: block; margin-top: 4px; font-family: var(--ui); font-size: 11px; line-height: 1.4; color: var(--ink-2); opacity: .85; }
+.g .g-moment .g-credit a, .g .g-rgrid .g-credit a{ color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+/* French words are set in italics, with the English around them making the meaning clear (the deck's rule). A
+   plain <em> in body copy is this stylesheet's emphasis -- medium weight, blue, upright -- so only words marked
+   lang="fr" are lifted out of it, and <i> carries the deck's quiet italic ("nothing to pay at the end"). */
+.g em[lang="fr"]{ font-style: italic; font-weight: inherit; color: inherit; }
+
+/* The home page's retreats band: three paragraphs now, and a line for each date */
+.g .g-full__p + .g-full__p{ margin-top: var(--s4); }
+.g .g-full .g-full__row a .g-full__hook{ grid-column: 1; font-family: var(--serif); font-style: italic; font-size: 16px !important; line-height: 1.4; color: rgba(255,255,255,.88); }
+.g .g-full .g-full__row a .g-full__night{ font-size: 14px !important; color: rgba(255,255,255,.7); }
+.g .g-full .g-full__row a .g-full__go{ grid-row: 1 / span 5; }
+
+/* Une journée à Gudanes: a photograph and a moment of the day, one under another */
+.g .g-day{ list-style: none; margin: var(--s6) 0 0; padding: 0; display: grid; gap: var(--s6); max-width: 60rem; }
+.g .g-day__i{ display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
+.g .g-day figure{ margin: 0; }
+.g .g-day img{ display: block; width: 100%; aspect-ratio: 3 / 2; height: auto; object-fit: cover; border: 1px solid color-mix(in srgb, var(--gilt) 35%, transparent); }
+.g .g-day__t{ margin: 0 0 var(--s2); font-family: var(--display); font-weight: 400; font-size: var(--t-h3); line-height: 1.2; color: var(--blue-deep); }
+.g .g-day__t em{ font-style: italic; }
+.g .g-day__en{ display: block; margin-top: .3rem; font-weight: 400; font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.g .g-day__p{ margin: 0; font-family: var(--serif); font-size: var(--t-base); line-height: 1.7; color: var(--ink); max-width: 38rem; }
+@media (min-width: 48rem){
+  .g .g-day__i{ grid-template-columns: 18rem minmax(0, 1fr); gap: var(--s6); align-items: center; }
+  .g .g-day__b{ border-left: 1px solid var(--line); padding: var(--s2) 0 var(--s2) var(--s5); }
+}
+
+/* The photographs under each section of /workshops: the gallery grid, four or two across where the section has them */
+.g .g-rgrid{ margin-top: var(--s6); }
+@media (min-width: 64rem){
+  .g .g-rgrid--4{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .g .g-rgrid--2{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.g .g-rgrid--2 img{ aspect-ratio: 4 / 3; }
+.g .g-vallee{ margin: var(--s3) 0 0; padding: 0 0 0 1.2em; list-style: disc; font-family: var(--serif); font-size: var(--t-base); line-height: 1.7; color: var(--ink); max-width: 40rem; }
+.g .g-vallee li{ margin: 0; font-size: var(--t-base); }
+.g .g-vallee li::marker{ color: var(--gilt); }
+.g .g-permission{ margin-top: var(--s5); font-family: var(--display); font-size: clamp(22px, 1vw + 17px, 28px); line-height: 1.3; color: var(--blue-deep); }
+
+/* A retreat's days: the French title in italics, the English beneath it */
+.g .g-journey__t em.g-journey__fr{ display: inline; margin: 0; font-style: italic; font-size: inherit; color: inherit; white-space: normal; }
+.g .g-journey__t .g-journey__en{ display: block; margin-top: .3rem; font-weight: 400; font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+
+/* What happens every day, said once above the days */
+.g .g-everyday{ position: relative; z-index: 1; list-style: none; margin: var(--s6) 0 var(--s7); padding: 0; display: grid; gap: var(--s4); grid-template-columns: minmax(0, 1fr); max-width: 64rem; }
+@media (min-width: 52rem){ .g .g-everyday{ grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.g .g-everyday__i{ display: grid; grid-template-columns: 3.4rem minmax(0, 1fr); gap: var(--s4); align-items: start; padding: var(--s4) var(--s5); background: var(--white); border: 1px solid var(--line); min-width: 0; }
+.g .g-everyday__ill{ display: block; color: var(--gilt); }
+.g .g-everyday__ill svg{ display: block; width: 3.4rem; height: auto; }
+.g .g-everyday__b{ display: block; min-width: 0; }
+.g .g-everyday__fr{ display: block; margin: 0; font-family: var(--display); font-style: italic; font-size: 22px; line-height: 1.2; color: var(--blue-deep); }
+.g .g-everyday__en{ display: block; margin: .2rem 0 var(--s2); font-weight: 400; font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.g .g-everyday__p{ display: block; margin: 0; font-family: var(--serif); font-size: var(--t-small); line-height: 1.6; color: var(--ink); }

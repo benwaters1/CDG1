@@ -29212,6 +29212,53 @@ def turned_away(conn, days=365, today=None):
 
 
 MIRROR_DIR = os.environ.get("GUDANES_MIRROR_DIR") or os.path.join(DATA_DIR, "mirrored")
+
+# THE RETREATS DECK'S PHOTOGRAPHS (owner, 26 October 2026), held in the code
+# rather than on the volume. The deck chose 41 pictures from the old
+# Squarespace site, which expires on 14 November 2026, and each was copied to
+# static/img/retreats; SOURCES.txt there says where each came from. The new
+# words point at those files directly, but the older galleries on the retreat
+# pages -- and any handover that brings one back -- still ask for some of the
+# same pictures by their Squarespace address, so the photo swap serves the
+# house's copy for those too, at any size. Read from SOURCES.txt rather than
+# kept in a second list here, so a picture added there is swapped the moment
+# its file is in the folder, and one whose file has gone is not swapped for a
+# 404 of our own making.
+HOUSE_COPIES_DIR = os.path.join(BASE_DIR, "static", "img", "retreats")
+_HOUSE_COPY_SMALL = ("100w", "300w", "500w", "750w", "1000w")
+
+
+def _house_copies():
+    """{Squarespace address: the house's copy} for the retreats deck."""
+    out = {}
+    try:
+        lines = io.open(os.path.join(HOUSE_COPIES_DIR, "SOURCES.txt"),
+                        encoding="utf-8").read().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        parts = line.split()
+        if len(parts) < 2 or not parts[1].startswith("https://images.squarespace-cdn.com/"):
+            continue
+        slug, url = parts[0][:-len(".jpg")], parts[1]
+        if not parts[0].endswith(".jpg") or not os.path.exists(
+                os.path.join(HOUSE_COPIES_DIR, slug + ".jpg")):
+            continue
+        big = "/static/img/retreats/%s.jpg" % slug
+        small = ("/static/img/retreats/%s-800.jpg" % slug
+                 if os.path.exists(os.path.join(HOUSE_COPIES_DIR, slug + "-800.jpg")) else big)
+        # Squarespace answers for one picture with and without /v1/ in its path,
+        # and the templates use both.
+        twin = (url.replace("/content/v1/", "/content/", 1) if "/content/v1/" in url
+                else url.replace("/content/", "/content/v1/", 1))
+        for base in (url, twin):
+            out[base] = big
+            for size in _HOUSE_COPY_SMALL:
+                out[base + "?format=" + size] = small
+    return out
+
+
+HOUSE_COPIES = _house_copies()
 # Only this host. "Download whatever the templates point at" is a fetcher
 # aimed by whoever last edited a template, which is a different and much worse
 # tool than a mirror of one CDN.
@@ -29393,8 +29440,14 @@ def mirror_coverage(conn):
     """
     wanted = hotlinked_urls()
     have = mirrored_index(conn)
-    missing = [u for u in wanted if u not in have]
-    held = [u for u in wanted if u in have]
+
+    def is_held(u):
+        # On the volume, or in the code as one of the retreats deck's
+        # photographs (HOUSE_COPIES), which is held at every size.
+        return u in have or u in HOUSE_COPIES or u.split("?", 1)[0] in HOUSE_COPIES
+
+    missing = [u for u in wanted if not is_held(u)]
+    held = [u for u in wanted if is_held(u)]
     orphans = sorted(set(have) - set(wanted))
     errors, total_bytes = [], 0
     try:
@@ -64126,8 +64179,10 @@ def serve_our_own_photographs(response):
     if b"squarespace-cdn.com" not in raw:
         return response
     body = raw.decode("utf-8", "replace")
+    # The house's copies in the code first, then the owner's own swaps over
+    # them: a picture swapped in the admin is the house saying "not that one".
     swapped = swap_mirrored(body, mirror_cache_index(),
-                            site_override_cache_index())
+                            dict(HOUSE_COPIES, **site_override_cache_index()))
     if swapped != body:
         response.set_data(swapped)
     return response
@@ -118675,6 +118730,15 @@ LEGACY_PATHS = [
     ("/gallery-overview", "gallery_page", True),
     ("/nestled-within-a-mountainous-valley", "gallery_page", True),
     ("/follow", "contact_page", True),
+    # 26 October 2026 (the owner's retreats deck, section 7): old pages that
+    # still turn up in search with the 2026 offers and prices on them. The
+    # 2026 and 2024 programmes go to the retreats as they are now. /4-nights
+    # was one of two four-night retreats and nobody now can say which, so it
+    # gets the list of them rather than a guess.
+    ("/4-nights", "workshops_public", True),
+    ("/stay-2026", "workshops_public", True),
+    ("/stay-2024", "workshops_public", True),
+    ("/workshops-2026", "workshops_public", True),
 ]
 
 # Old addresses that were ONE atelier, sent to it by the words of its title,
@@ -118690,6 +118754,10 @@ LEGACY_ATELIERS = [
     ("/3-nights", "Antique Finds"),
     ("/the-weekender", "Antique Finds"),
     ("/7-nights", "Seven Starry Nights"),
+    # 26 October 2026 (the retreats deck, section 7). /5-nights still shows in
+    # search with the 2026 cooking offer at its old price.
+    ("/5-nights", "Cooking Cuisine"),
+    ("/christmas", "Noel"),
 ]
 
 # Whole sections of the old site, for the pages under them that no sitemap
