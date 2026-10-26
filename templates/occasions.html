@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Occasions{% endblock %}
+{% block content %}
+
+{#
+  The occasions guests told us about -- an anniversary, a birthday -- and how
+  far each one's preparation has got (owner, 22 October 2026: prepared for, not
+  just recorded).
+
+  A few days before they arrive each one becomes a task, on the calendar and on
+  somebody's list, with the guest's own words and a checklist. Anybody on shift
+  ticks the checklist; the last thing ticked ticks the task off. The house
+  closes it only when there is nothing left to prepare for: the stay cancelled,
+  or the occasion taken off the booking.
+
+  The crémant is a button beside a stay, never automatic. Prices are shown to
+  the owner, who presses it, and not to the shift.
+#}
+{%- macro day_words(d) -%}{{ d.strftime('%a') }} {{ d.day }} {{ d.strftime('%b') }}{%- endmacro %}
+
+<div class="page-head">
+  <h1>Occasions</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('extras_due_page') }}" class="small-link">Extras due</a>
+    <a href="{{ url_for('arrivals_sheet_page') }}" class="small-link">Arrivals</a>
+    {% if owner %}<a href="#settings" class="small-link">How they are prepared</a>{% endif %}
+  </div>
+</div>
+
+<p class="upload-hint">
+  Each goes on the task list
+  {% if board.days == 0 %}on the day they arrive{% else %}{{ board.days }} day{{ '' if board.days == 1 else 's' }} before they arrive{% endif %},
+  for whoever is first on the rota that day.
+</p>
+
+{% set counts = {} %}
+{% for r in board.rows %}{% set _ = counts.update({r.state: counts.get(r.state, 0) + 1}) %}{% endfor %}
+<div class="stat-tiles">
+  <a class="stat-tile" href="{{ url_for('occasions_page', state='To prepare') }}">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-gold' if counts.get('To prepare') else 'stat-tile-icon-success' }}">{{ icon('tasks', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.get('To prepare', 0) }}</span><span class="stat-tile-label">To prepare</span></span>
+  </a>
+  <a class="stat-tile" href="{{ url_for('occasions_page', state='Not on the list yet') }}">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.get('Not on the list yet', 0) }}</span><span class="stat-tile-label">Further ahead</span></span>
+  </a>
+  <a class="stat-tile" href="{{ url_for('occasions_page', state='Prepared') }}">
+    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('star', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.get('Prepared', 0) }}</span><span class="stat-tile-label">Prepared</span></span>
+  </a>
+</div>
+
+{% if not board.rows %}
+  <div class="empty-state">No guest coming has told us of an occasion. When one does,
+  on the booking form or to you, it appears here.</div>
+{% else %}
+  {% include "_list_toolbar.html" %}
+  {% if not lv.rows %}
+    <div class="empty-state">Nothing matches that.
+      <a href="{{ url_for('occasions_page') }}">Show all {{ board.rows|length }}</a></div>
+  {% endif %}
+{% endif %}
+
+<div class="task-list">
+{% for r in lv.rows %}
+{% set s = r.subject %}
+{% set p = r.prep %}
+<div class="expense-card" id="{% if p and p['task_id'] %}task-{{ p['task_id'] }}{% else %}occ-{{ s['kind'] }}-{{ s['id'] }}{% endif %}">
+  <div class="expense-head">
+    <strong>{{ r.title }}</strong>
+    <span class="mini-status {{ {'To prepare': 'status-pending', 'Prepared': 'status-confirmed', 'Taken off the list': 'status-inactive'}.get(r.state, 'status-upcoming') }}" style="margin-left:auto;">{{ r.state }}</span>
+  </div>
+
+  <p class="field-label">In their words</p>
+  <p>“{{ r.words }}”</p>
+  <p class="upload-hint">
+    {% if s['kind'] == 'stay' %}{{ s['room_name'] }}{% else %}{{ s['workshop_title'] }}{% if s['room_name'] %} · {{ s['room_name'] }}{% endif %}{% endif %}
+    · {{ date_range(s['arrival_date'], s['departure_date']) }}
+    · {{ s['party_size'] or 1 }} guest{{ '' if (s['party_size'] or 1) == 1 else 's' }}
+    · {% if owner and s['kind'] == 'stay' %}<a href="{{ booking_href(s['id'], s['reference_code']) }}">{{ s['reference_code'] }}</a>{% else %}{{ s['reference_code'] }}{% endif %}
+    {% if r.here %}<span class="mini-status status-current">here now</span>{% endif %}
+  </p>
+
+  {% if r.state == 'Not on the list yet' %}
+    <p class="upload-hint">
+      {%- if r.here %}They had arrived before it could go on the list.
+      {%- else %}Goes on the task list on {{ r.raise_on.isoformat()|date_short }}.{% endif %}</p>
+  {% elif r.state == 'Taken off the list' %}
+    <p class="upload-hint">Its task was taken off the list by hand, so it is not raised again.</p>
+  {% else %}
+    <p class="field-label">For {{ p['assignee'] or 'nobody yet' }}{% if p['task_due'] %} · ready by {{ p['task_due']|date_short }}{% endif %}</p>
+    {% if r.checks %}
+    <div class="task-list">
+      {% for i in r.checks %}
+      <div class="task-row {{ 'task-done' if i['done_at'] }}">
+        <form method="post" action="{{ url_for('tick_occasion_item', item_id=i['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if i['done_at'] %}<input type="hidden" name="undo" value="1">{% endif %}
+          <button type="submit" class="task-check" aria-pressed="{{ 'true' if i['done_at'] else 'false' }}"
+                  aria-label="{{ 'Put back' if i['done_at'] else 'Done' }}: {{ i['label'] }}">{{ '✓' if i['done_at'] else '' }}</button>
+        </form>
+        <span class="task-title">{{ i['label'] }}
+          {%- if i['done_at'] %} <span class="upload-hint">— {{ i['done_by'] or 'somebody' }}, {{ i['done_at']|date_short }}</span>{% endif %}</span>
+        {% if can('remove_occasion_item') %}
+        <form method="post" action="{{ url_for('remove_occasion_item', item_id=i['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="doc-delete" aria-label="Take {{ i['label'] }} off this checklist" title="Take it off this checklist">×</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <p class="upload-hint">{{ r.done }} of {{ r.checks|length }} done.</p>
+    {% endif %}
+    <div class="expense-actions" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      {% if can('add_occasion_item') %}
+      <form method="post" action="{{ url_for('add_occasion_item', prep_id=p['id']) }}" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="label" maxlength="120" placeholder="Something else for this one" aria-label="Something else for this one">
+        <button type="submit" class="btn-mini">Add</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('occasion_done', prep_id=p['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if r.state == 'Prepared' %}
+        <input type="hidden" name="undo" value="1">
+        <button type="submit" class="small-link" style="background:none; border:0; padding:0; cursor:pointer;">Not ready after all</button>
+        {% else %}
+        <button type="submit" class="btn-mini">Ready for them</button>
+        {% endif %}
+      </form>
+    </div>
+  {% endif %}
+
+  {% if board.extra and s['kind'] == 'stay' and can('add_occasion_extra') %}
+    {#- Pressed, never automatic: it goes on their bill only when somebody
+        decides it should. -#}
+    {% if r.held %}
+    <p class="upload-hint">{{ board.extra['name'] }} is on their stay
+      {%- if r.held['on_day'] %} for {{ r.held['on_day']|date_short }}{% endif %}.</p>
+    {% elif r.days %}
+    <form method="post" action="{{ url_for('add_occasion_extra', booking_id=s['id']) }}"
+          style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="extra_id" value="{{ board.extra['id'] }}">
+      <select name="extra_when" aria-label="Which day">
+        {% for d in r.days %}
+        <option value="{{ 'arrival' if d.isoformat() == s['arrival_date'] else d.isoformat() }}">
+          {%- if d.isoformat() == s['arrival_date'] %}On arrival, {% endif %}{{ day_words(d) }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn-mini">Add {{ board.extra['name'] }}, {{ board.extra['price']|money }}</button>
+      <span class="upload-hint">On their bill only if you press it.</span>
+    </form>
+    {% endif %}
+  {% elif board.extra and s['kind'] == 'atelier' and owner %}
+    <p class="upload-hint">Extras go on stays: for an atelier, {{ board.extra['name'] }} is arranged by hand.</p>
+  {% endif %}
+</div>
+{% endfor %}
+</div>
+
+{% if owner %}
+<h2 class="section-heading" id="settings">How occasions are prepared</h2>
+<div class="expense-card">
+  <form method="post" action="{{ url_for('save_occasion_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-label" for="occ-days">Days before they arrive that the task goes on the list</label>
+    <input id="occ-days" type="number" name="days" min="0" max="30" value="{{ board.days }}" required>
+    <p class="field-hint">0 puts it on the list on the day they arrive. Flowers ordered from the village usually want two or three.</p>
+
+    <label class="field-label" for="occ-checklist">The checklist, one thing a line</label>
+    <textarea id="occ-checklist" name="checklist" rows="5">{{ checklist|join('\n') }}</textarea>
+    <p class="field-hint">Copied onto each occasion when its task is raised, so changing it leaves the
+      ones already raised as they are. Each of those can have something added or taken off above.</p>
+
+    <label class="field-label" for="occ-extra">The extra offered beside a stay</label>
+    <select id="occ-extra" name="extra_id">
+      <option value="" {{ 'selected' if not chosen_extra }}>The crémant (whichever extra on sale has crémant in its name)</option>
+      {% for e in extras %}
+      <option value="{{ e['id'] }}" {{ 'selected' if chosen_extra == e['id']|string }}>{{ e['name'] }}, {{ e['price']|money }}</option>
+      {% endfor %}
+      <option value="none" {{ 'selected' if chosen_extra == 'none' }}>None: no button</option>
+    </select>
+    <p class="field-hint">A button for whoever prepares the occasion to press, never added by itself.</p>
+
+    <button type="submit" class="btn-mini">Save</button>
+  </form>
+</div>
+{% endif %}
+
+{% endblock %}
