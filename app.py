@@ -475,6 +475,12 @@ AUTOMATION_SETTING_DEFAULTS = {
     # waiting for you; the recap itself only ever goes from the button on the
     # sitting's page.
     "automation_atelier_recap_reminder_enabled": "0",
+    # OFF, and its letter ships with no wording: the owner writes it under
+    # Email wording and then switches it on. Same rule as the two texts above,
+    # for the same reason -- nothing goes to a guest in words the house did
+    # not choose. See run_extras_offer_job.
+    "automation_extras_offer_enabled": "0",
+    "automation_extras_offer_days_before": "7",
     # OFF, and the two letters it sends ship with no words at all
     # (UNWRITTEN_LETTERS): the online check-in link before arrival goes only
     # once the owner has written the letter and switched this on.
@@ -2547,6 +2553,12 @@ DEFAULT_EMAIL_TEMPLATES = [
      "There is {balance_amount} still outstanding on your stay. You can settle it "
      "online before you travel, or on arrival if you would rather:\n{manage_url}\n\n"
      "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    # NO WORDING, ON PURPOSE. The letter that offers a stay's extras before
+    # arrival is the owner's to write: the guest texts shipped with sentences
+    # nobody at the house had written and were switched off for it on
+    # 22 October 2026. So this ships empty, and an empty letter is not sent:
+    # see extras_offer_wording().
+    ("room_extras_offer", "Rooms: What they can add, before arrival", "", ""),
     ("room_balance_after", "Rooms: Balance still owed, after the stay",
      "Your stay at Château de Gudanes",
      "Hi {guest_name},\n\nWe hope you enjoyed your stay with us.\n\n"
@@ -2748,8 +2760,10 @@ RETIRED_EMAIL_TEMPLATES = ("newsletter_confirm",)
 # no shipped wording for a send to fall back on -- Restore original wording
 # empties it again, which is how one is withdrawn. Two guest texts went out
 # in sentences the app made up, which is why these do not.
-# The atelier recap joined them on 23 October 2026 (recap_wording).
-UNWRITTEN_LETTERS = ("room_checkin_before", "workshop_checkin_before", "workshop_recap")
+# Read from the shipped list rather than kept by hand, so a letter added with
+# no words is one of them without anybody remembering to say so.
+UNWRITTEN_LETTERS = frozenset(k for k, _l, s, b in DEFAULT_EMAIL_TEMPLATES
+                              if not s.strip() and not b.strip())
 
 
 def letter_written(subject, body):
@@ -5615,6 +5629,15 @@ def init_db():
          "ALTER TABLE bookings ADD COLUMN checkout_text_sent_at TEXT"),
         ("bookings_feedback_requested_at",
          "ALTER TABLE bookings ADD COLUMN feedback_requested_at TEXT"),
+        # The letter before arrival that offers what can still be added to the
+        # stay: when it was written, and what became of it -- 'sent', 'held'
+        # (the provider would not take it, so it waits in Held Email) or
+        # 'party' (it went to whoever leads the party, not to this room).
+        # Stamped once either way, so nobody is offered the same things twice.
+        ("bookings_extras_offer_sent_at",
+         "ALTER TABLE bookings ADD COLUMN extras_offer_sent_at TEXT"),
+        ("bookings_extras_offer_outcome",
+         "ALTER TABLE bookings ADD COLUMN extras_offer_outcome TEXT"),
         # A reset code rather than a reset link. The code is stored HASHED —
         # the column holds a verifier, not a credential, so a copy of this
         # database is not a set of live passwords-in-waiting. attempts is what
@@ -53233,6 +53256,57 @@ def stay_itinerary_page(manage_token):
     return render_template("stay_itinerary.html", booking=booking, days=days)
 
 
+def guest_bookable_extra(conn, extra_id):
+    """The catalogue row a guest may add from their own page, or None.
+
+    guest_bookable is the flag that decides this. The filter also required
+    category = 'room', which is not one of EXTRA_CATEGORIES at all — so no
+    extra could ever match and every guest who tried to add one was told
+    "that isn't something we can add", including the airport transfer the
+    account page invites them to ask for. The category is for grouping the
+    list on the page; whether a guest may add it is what guest_bookable says.
+    """
+    extra_id = str(extra_id or "").strip()
+    if not extra_id.isdigit():
+        return None
+    return conn.execute(
+        """SELECT * FROM extras WHERE id = ? AND active = 1
+           AND guest_bookable = 1""", (int(extra_id),)).fetchone()
+
+
+def guest_extra_refusal(conn, booking, extra, quantity=1):
+    """Why a guest may not add this extra to this stay from its page, in the
+    words the page says it -- or None if they may.
+
+    One answer for the Add button and for the link in the letter before
+    arrival, which opens the page at an extra: a link followed after the
+    notice has run out, or after the guest added it from the page, says what
+    pressing Add would say rather than offering what Add would then refuse.
+    """
+    departure = parse_date(booking["departure_date"])
+    if departure and departure < house_today():
+        return "That stay has already finished."
+    if not extra:
+        return "That isn't something we can add."
+    held_now = extras_held(conn, "room", booking["id"]).get(extra["id"], 0)
+    if extra["max_qty"] and held_now + quantity > extra["max_qty"]:
+        if held_now and extra["max_qty"] == 1:
+            return f"{extra['name']} is already on this booking."
+        if held_now:
+            return (f"We can only do {extra['max_qty']} of those, and {held_now} "
+                    f"{'is' if held_now == 1 else 'are'} already on this booking.")
+        return f"We can only do {extra['max_qty']} of those."
+    # Some things need notice — a transfer booked for tomorrow morning
+    # cannot be arranged, and promising it would be worse than refusing.
+    arrival = parse_date(booking["arrival_date"])
+    lead = extra["lead_time_days"] or 0
+    if lead and (arrival is None or extra_too_soon(extra, arrival)):
+        return (f"{extra['name']} needs {lead} day{'s' if lead != 1 else ''} "
+                f"notice, so it's too late for this stay — call us and we'll "
+                f"see what we can do.")
+    return None
+
+
 @app.route("/book/manage/<manage_token>", methods=["GET", "POST"])
 def manage_booking(manage_token):
     conn = get_db()
@@ -53614,49 +53688,20 @@ def manage_booking(manage_token):
         qty_raw = request.form.get("quantity", "1").strip()
         quantity = int(qty_raw) if qty_raw.isdigit() and int(qty_raw) > 0 else 1
         departure = parse_date(booking["departure_date"])
-        # guest_bookable is the flag that decides this. The filter also
-        # required category = 'room', which is not one of EXTRA_CATEGORIES at
-        # all — so no extra could ever match and every guest who tried to add
-        # one was told "that isn't something we can add", including the airport
-        # transfer the account page invites them to ask for. The category is
-        # for grouping the list on the page; whether a guest may add it is what
-        # guest_bookable says.
-        extra = conn.execute(
-            """SELECT * FROM extras WHERE id = ? AND active = 1
-               AND guest_bookable = 1""",
-            (extra_id,)).fetchone() if extra_id.isdigit() else None
-        held_now = (extras_held(conn, "room", booking["id"]).get(extra["id"], 0)
-                    if extra else 0)
+        extra = guest_bookable_extra(conn, extra_id)
+        refusal = guest_extra_refusal(conn, booking, extra, quantity)
 
-        if departure and departure < house_today():
-            flash("That stay has already finished.", "error")
-        elif not extra:
-            flash("That isn't something we can add.", "error")
-        elif extra["max_qty"] and held_now + quantity > extra["max_qty"]:
-            if held_now and extra["max_qty"] == 1:
-                flash(f"{extra['name']} is already on this booking.", "error")
-            elif held_now:
-                flash(f"We can only do {extra['max_qty']} of those, and {held_now} "
-                      f"{'is' if held_now == 1 else 'are'} already on this booking.",
-                      "error")
-            else:
-                flash(f"We can only do {extra['max_qty']} of those.", "error")
+        if refusal:
+            flash(refusal, "error")
         else:
-            # Some things need notice — a transfer booked for tomorrow morning
-            # cannot be arranged, and promising it would be worse than refusing.
             arrival = parse_date(booking["arrival_date"])
-            lead = extra["lead_time_days"] or 0
             when_on, when_notes, when_problem = None, None, None
             if extra["ask_when"] and arrival and departure:
                 when_on, when_notes, when_problem = read_extra_when(
                     request.form.get("extra_when", ""),
                     request.form.get("extra_note", ""),
                     arrival, departure, extra["name"], earliest=house_today())
-            if lead and (arrival is None or extra_too_soon(extra, arrival)):
-                flash(f"{extra['name']} needs {lead} day{'s' if lead != 1 else ''} "
-                      f"notice, so it's too late for this stay — call us and we'll "
-                      f"see what we can do.", "error")
-            elif when_problem:
+            if when_problem:
                 flash(when_problem, "error")
             else:
                 add_booking_extra(conn, "room", booking["id"], extra, quantity,
@@ -53769,6 +53814,18 @@ def manage_booking(manage_token):
         if (e["lead_time_days"] or 0) <= max(days_until, 0)
         # Nor anything the booking already holds as many of as it may.
         and not (e["max_qty"] and held.get(e["id"], 0) >= e["max_qty"])]
+    # Opened from the letter before arrival, at one extra (?add=<id>): that one
+    # is marked, ready for its own Add button. Nothing is added by opening a
+    # link -- a mail scanner opens every link in a letter. If it can no longer
+    # be added, the page says why in the words Add would have used.
+    offered_id = None
+    add_raw = (request.args.get("add") or "").strip()
+    if add_raw and (booking["status"] or "").lower() in ("pending", "confirmed"):
+        refusal = guest_extra_refusal(conn, booking, guest_bookable_extra(conn, add_raw))
+        if refusal:
+            flash(refusal, "error")
+        elif any(str(e["id"]) == add_raw for e in addable):
+            offered_id = int(add_raw)
     # The days a guest can still choose for the extras that ask.
     when_days = []
     if parse_date(booking["arrival_date"]) and parse_date(booking["departure_date"]):
@@ -53814,6 +53871,7 @@ def manage_booking(manage_token):
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
         dinner_available=dinner_available, bill=bill, addable=addable,
+        offered_id=offered_id,
         when_days=when_days,
         stripe_enabled=stripe_enabled(),
         part_payment_allowed=part_payment_allowed,
@@ -60480,6 +60538,8 @@ EMAIL_TEMPLATE_TAGS = {
                        "statement_url"),
     "room_balance_before": ("arrival_date", "balance_amount", "guest_name",
                             "manage_url", "reference_code", "room_name"),
+    "room_extras_offer": ("arrival_date", "departure_date", "extras_block", "guest_name",
+                          "manage_url", "reference_code", "room_name"),
     "room_balance_after": ("arrival_date", "balance_amount", "guest_name",
                            "manage_url", "reference_code", "room_name"),
     "room_share_request": ("amount", "arrival_date", "departure_date", "name",
@@ -60523,6 +60583,8 @@ REQUIRED_MERGE_TAGS = {
     "room_statement": {"statement_url": "it is the only way to open the statement and settle it"},
     "room_balance_before": {"manage_url": "it is where they pay"},
     "room_balance_after": {"manage_url": "it is where they pay"},
+    "room_extras_offer": {"extras_block": "it is what they can add, each with the "
+                                          "link that adds it to their stay"},
     "refund_issued": {"amount": "it is the sum that went back"},
     "workshop_payment_received": {"amount": "it is the sum they paid"},
     "workshop_statement": {"statement_url": "it is where they read the statement and "
@@ -60592,7 +60654,24 @@ def wording_problems(template_key, subject, body):
     for tag, why in REQUIRED_MERGE_TAGS.get(template_key, {}).items():
         if "{%s}" % tag not in text:
             problems.append("it no longer has {%s}, and %s" % (tag, why))
+    if template_key in LETTERS_THAT_NEVER_MENTION_PAYING:
+        said = _PAYING_WORDS.search(text)
+        if said:
+            problems.append("it says “%s”, and this letter never mentions paying: "
+                            "what a guest adds is settled at the house, and the "
+                            "letter does not say so" % said.group(0))
     return problems
+
+
+# Letters that say nothing about paying, by the house's choice rather than by
+# accident. The extras offered before arrival are paid for at the house, and the
+# owner does not tell guests so (October 2026) -- so the letter offering them
+# must not raise money at all, in the owner's words or anybody's. Refused on
+# save and at the send, like any other wording that cannot go.
+LETTERS_THAT_NEVER_MENTION_PAYING = frozenset({"room_extras_offer"})
+_PAYING_WORDS = re.compile(
+    r"\b(?:pay|pays|paid|paying|payment|payments|settle[ds]?|settling|bill|billed|"
+    r"invoice[ds]?|charge[ds]?|on[- ]site|onsite|cash)\b", re.I)
 
 
 def merge_email_text(source, context):
@@ -60781,7 +60860,7 @@ EMAIL_ASSET_VERSION = "20261019"
 _LETTER_EYEBROWS = {
     "Your stay": ("room_request_received", "room_paid_awaiting", "room_reserved",
                   "room_updated", "room_declined", "room_cancelled",
-                  "room_waitlist_opening"),
+                  "room_waitlist_opening", "room_extras_offer"),
     "Payments": tuple(k for k in MONEY_LETTERS if not k.startswith("code:")),
     "Workshops": ("workshop_registration_received", "workshop_confirmed",
                   "workshop_declined", "workshop_cancelled", "workshop_moved",
@@ -60805,7 +60884,7 @@ LETTER_EYEBROW = {key: label for label, keys in _LETTER_EYEBROWS.items() for key
 LETTER_HERO = {
     "room_reserved": "hero-bedroom.jpg", "room_request_received": "hero-bedroom.jpg",
     "room_paid_awaiting": "hero-bedroom.jpg", "room_waitlist_opening": "hero-house.jpg",
-    "room_balance_before": "hero-house.jpg",
+    "room_balance_before": "hero-house.jpg", "room_extras_offer": "hero-bedroom.jpg",
     "room_feedback_request": "hero-window.jpg", "review_invitation": "hero-window.jpg",
     "workshop_feedback_request": "hero-window.jpg",
     "workshop_registration_received": "hero-facade.jpg",
@@ -60904,13 +60983,14 @@ def letter_slot(name):
     return f"{_SLOT}{name}{_SLOT}"
 
 
-def drawn_context(context, *, statement=False, workshops=False, photos=False):
+def drawn_context(context, *, statement=False, workshops=False, extras=False, photos=False):
     """The merge values for the DRAWN letter: the same words, with the blocks
     that are drawn as something else marked so they can be found again.
 
     {company_block} is small print; {statement_lines} becomes the statement
     itself when there is one to draw; {workshops_block} -- and a recap's
-    {next_dates} -- become the cards; a recap's {photos} become the pictures."""
+    {next_dates} -- and {extras_block} become the cards; a recap's {photos}
+    become the pictures."""
     out = dict(context)
     company = (out.get("company_block") or "").strip()
     if company:
@@ -60924,6 +61004,8 @@ def drawn_context(context, *, statement=False, workshops=False, photos=False):
                 out[tag] = letter_slot("workshops")
     if photos and (out.get("photos") or "").strip():
         out["photos"] = letter_slot("photos")
+    if extras and (out.get("extras_block") or "").strip():
+        out["extras_block"] = letter_slot("extras")
     return out
 
 
@@ -61085,7 +61167,7 @@ def letter_drawing_context():
 
 
 def letter_html(subject, text, settings=None, statement=None, *, key=None,
-                pay_url="", workshops=None, foot=None, photos=None):
+                pay_url="", workshops=None, foot=None, extras=None, photos=None):
     """One of the house's letters, drawn, or "" if it cannot be.
 
     Empty rather than raising, the same rule the booking confirmation follows:
@@ -61097,9 +61179,10 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
     heading, the photograph, and which inbox the foot gives. `statement` is a
     booking_statement_view, drawn where {statement_lines} fell or beneath the
     words; `pay_url` puts a button to pay what it says is owed. `workshops`
-    are the cards {workshops_block} becomes. `foot` adds to the foot: an
-    unsubscribe link for a letter somebody asked for. `photos` are the
-    pictures a recap's {photos} becomes, [{src, alt}].
+    are the cards {workshops_block} becomes, and `extras` the ones
+    {extras_block} becomes. `foot` adds to the foot: an unsubscribe link for a
+    letter somebody asked for. `photos` are the pictures a recap's {photos}
+    becomes, [{src, alt}].
     """
     try:
         if key is None:
@@ -61121,8 +61204,8 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
                 hero=LETTER_HERO.get(key or ""), preheader=letter_preheader(blocks),
                 blocks=blocks, settings=settings or {}, statement=statement,
                 statement_placed=any(b["kind"] == "statement" for b in blocks),
-                pay_url=pay_url, workshops=workshops or [], foot=foot,
-                photos=photos or [])
+                pay_url=pay_url, workshops=workshops or [], extras=extras or [],
+                foot=foot, photos=photos or [])
     except Exception as e:      # pragma: no cover - the text still goes
         print(f"[email html failed] {subject}: {e}")
         return ""
@@ -61130,7 +61213,7 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
 
 def template_letter_html(template_key, subject, body_src, context, *, conn=None,
                          card=None, statement=None, pay_url="", workshops=None,
-                         foot=None, photos=None):
+                         foot=None, extras=None, photos=None):
     """The letter as a mail app draws it, from the wording given. "" if it cannot be.
 
     Every letter is the owner's words poured into the one shell -- except the
@@ -61146,10 +61229,11 @@ def template_letter_html(template_key, subject, body_src, context, *, conn=None,
         return confirmation_letter_html(subject, body_src, context, conn=conn,
                                         card=card)
     drawn = drawn_context(context, statement=statement is not None,
-                          workshops=bool(workshops), photos=bool(photos))
+                          workshops=bool(workshops), extras=bool(extras),
+                          photos=bool(photos))
     return letter_html(subject, merge_email_text(body_src, drawn), statement=statement,
                        key=template_key, pay_url=pay_url, workshops=workshops,
-                       foot=foot, photos=photos)
+                       foot=foot, extras=extras, photos=photos)
 
 
 # Where {stay_details} fell, found again after the words are filled in. A
@@ -61287,6 +61371,11 @@ SAMPLE_MERGE_VALUES = {
     "notes_file_url": "https://chateaugudanes.com/workshops/recap/5d1e0c/notes",
     "next_dates": "Noël at Gudanes\n18 – 22 December 2026 · €3,200 per person\n"
                   "https://chateaugudanes.com/workshops/register/351",
+    # The preview of the extras letter fills this from the catalogue itself
+    # (extras_offer_sample); this stands in only where that is not asked.
+    "extras_block": "A tour of the château — €50.00\n"
+                    "Add to your stay:\n"
+                    "https://chateaugudanes.com/stay/9f2c1a7b?add=17#add-17",
     "finish_url": "https://chateaugudanes.com/booking/9f2c1a7b/finish",
     "held_until": "21 October 2026 at 16:30",
     "amount": "€412.20",
@@ -61361,6 +61450,16 @@ def preview_email_template(template_key, subject_src, body_src):
         used_shipped = True
 
     context = sample_merge_context(template_key)
+    extras = None
+    if template_key == EXTRAS_OFFER_KEY:
+        # The house's own catalogue, as the letter would carry it today, rather
+        # than a made-up list: the owner is writing the words that go above it.
+        conn = get_db()
+        try:
+            extras = extras_offer_sample(conn, context["manage_url"])
+        finally:
+            conn.close()
+        context["extras_block"] = extras_offer_text(extras)
     subject = merge_email_text(subject_src, context).strip()
     body = merge_email_text(body_src, context)
 
@@ -61392,7 +61491,8 @@ def preview_email_template(template_key, subject_src, body_src):
                         "url": "https://chateaugudanes.com/workshops/register/351",
                         "photo": None}])
     else:
-        html = template_letter_html(template_key, subject, body_src, context)
+        html = template_letter_html(template_key, subject, body_src, context,
+                                    extras=extras)
     return {
         "subject": subject,
         "body": body,
@@ -61432,7 +61532,7 @@ def rendered_letter_keys():
 
 
 def render_email_template(conn, template_key, context, *, statement=None, pay_url="",
-                          workshops=None, foot=None, photos=None):
+                          workshops=None, foot=None, extras=None, photos=None):
     """Merge-tag substitution against an admin-editable template. Falls back
     to the raw template text (tags left unreplaced) if the context is
     missing a key rather than crashing an email send over a typo.
@@ -61452,12 +61552,12 @@ def render_email_template(conn, template_key, context, *, statement=None, pay_ur
         return None, None, None
     # Drawn from the same wording, read again with the blocks that are drawn
     # as something else marked (the statement, the workshops, small print).
-    # `statement`, `pay_url`, `workshops`, `foot` and `photos` are what the
+    # `statement`, `pay_url`, `workshops`, `extras`, `foot` and `photos` are what the
     # drawing adds that is not a merge tag; see letter_html.
     _subject_src, body_src, _ = email_template_source(conn, template_key)
     return subject, body, template_letter_html(
         template_key, subject, body_src, context, conn=conn, statement=statement,
-        pay_url=pay_url, workshops=workshops, foot=foot, photos=photos)
+        pay_url=pay_url, workshops=workshops, foot=foot, extras=extras, photos=photos)
 
 
 def email_template_text(conn, template_key, context):
@@ -67391,6 +67491,9 @@ def admin_booking(booking_id):
 
     messages, waiting = booking_messages(conn, booking)
     texts = booking_texts_plan(conn, booking)
+    # And the letter before arrival that offers what the stay can add, beside
+    # the texts: only while it is switched on.
+    extras_offer = booking_extras_offer_plan(conn, booking)
 
     # A move asked for on the page: worked out, not applied.
     move, move_problem = None, None
@@ -67450,7 +67553,7 @@ def admin_booking(booking_id):
         payment_methods=MANUAL_PAYMENT_METHODS,
         extras=extras, live_extras=live_extras, addable=addable,
         stay_day_choices=stay_day_choices,
-        messages=messages, waiting=waiting, texts=texts,
+        messages=messages, waiting=waiting, texts=texts, extras_offer=extras_offer,
         move=move, move_problem=move_problem,
         move_arrival=request.args.get("move_arrival", ""),
         move_departure=request.args.get("move_departure", ""),
@@ -68216,7 +68319,12 @@ def flush_wanted_translations(exc=None):
     lang = getattr(g, "_lang", None)
     if not lang or lang == "en":
         return
-    seen = request.path[:200] if request else None
+    if g.pop("_wanted_ours_only", False):
+        ours = template_sentences()
+        wanted = [key for key in wanted if key in ours]
+        if not wanted:
+            return
+    seen = where_seen() if request else None
     stamp = datetime.now(timezone.utc).isoformat()
     rows = [(key, lang, seen, stamp) for key in dict.fromkeys(wanted)]
     note_wanted_translations(rows)
@@ -68305,11 +68413,15 @@ def _translated_values(lang, table, remembered):
     return values
 
 
-def translate_page(html_text, lang):
+def translate_page(html_text, lang, ours_only=False):
     """One rendered page, with every sentence there is a translation for.
 
     Returns the page unchanged when there is nothing to do, so the caller can
     leave the response body alone rather than setting it to itself.
+
+    ours_only: a guest's own page. It is translated exactly the same, but of
+    what is missing only the house's own words are written down -- see
+    is_a_guests_own_page.
     """
     if lang not in translations.TABLES:
         return html_text
@@ -68356,10 +68468,174 @@ def translate_page(html_text, lang):
             if pending is None:
                 pending = g._wanted_translations = []
             pending.extend(missing)
+            if ours_only:
+                # Narrowed when it is written, not here: reading the template
+                # files costs a third of a second the first time, and that is
+                # not the guest's to wait for.
+                g._wanted_ours_only = True
     if not changed:
         return html_text
     pieces.append(html_text[last:])
     return "".join(pieces)
+
+
+# ---------------------------------------------------------------------------
+# A guest's own pages: only the house's words are written down.
+#
+# The wanted list is sent to a model on the footing that it only ever holds
+# sentences already printed on public pages for anybody to read. A guest's own
+# pages break that. /book/manage/<token> prints the special requests the guest
+# typed, so a French reader of "my husband has a severe nut allergy please"
+# filed that sentence as wanting French, the job sent it to Anthropic, and the
+# answer was kept for good -- under a privacy notice saying Anthropic is sent
+# nothing about a guest's health, and that a dietary note is deleted once the
+# booking is over. Found 23 Oct 2026; nothing errored.
+#
+# WHY NOT translate="no" ON THE TEMPLATES. Those pages arrive whole in
+# handovers, so markup around each guest-written field would survive exactly
+# one -- the reason serve_our_own_photographs works on the response. This
+# needs nothing from the templates. On a guest's own page a sentence is
+# written down only if it is OURS: it stands, word for word, as a run of text
+# in one of our template files. Anything a guest wrote, and anything filled in
+# from a record, is not in a template, so it is never filed -- whichever field
+# it arrives through, including fields that do not exist yet.
+#
+# The page is still translated from everything the house already has. Only
+# the note of what is missing is narrowed, and the cost is small: a sentence
+# with a name or a date in the middle of it waits until it is seen somewhere
+# that is not one person's page.
+# ---------------------------------------------------------------------------
+
+# The keys a guest's own page is opened with: /book/manage/<manage_token>,
+# /my/<token>, /stay/<share_token>, /door/<door_token>, and the Stripe return
+# pages' ?session_id=.
+_A_GUESTS_KEY = re.compile(r"token|session_id", re.I)
+
+
+def is_a_guests_own_page():
+    """Whether the page being answered is about one particular guest.
+
+    Read from the request, never from the page, so it holds whatever the
+    template looks like this week. Any one of these is enough:
+
+      - the address carries a guest's key, in the route or the query. The
+        route lives in app.py, so a token page written tomorrow is covered
+        the day it is written;
+      - it answers a form, and what comes back is about what was sent;
+      - the reader has been recognised as a guest (remember_guest), which
+        puts their name on pages that are otherwise anybody's.
+
+    Not the robots meta, tempting as it is: every page is noindex until the
+    site goes live, and this would have stopped the whole site being filed.
+    """
+    if not has_request_context():
+        return False
+    if request.method not in ("GET", "HEAD"):
+        return True
+    if any(_A_GUESTS_KEY.search(k) for k in (request.view_args or {})):
+        return True
+    if any(_A_GUESTS_KEY.search(k) for k in request.args):
+        return True
+    return bool(session.get("guest_email"))
+
+
+def address_is_a_guests_page(path):
+    """The same test for a stored address -- page_translations.seen_on."""
+    if not path:
+        return False
+    try:
+        _endpoint, args = app.url_map.bind("localhost").match(path, method="GET")
+    except Exception:
+        return False
+    return any(_A_GUESTS_KEY.search(k) for k in args)
+
+
+# Jinja's own syntax, comments and tags: everything in a template source that
+# is not a run of the words it prints.
+_NOT_TEMPLATE_TEXT = re.compile(
+    r"\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\}|<!--.*?-->|<[^>]*>", re.S)
+# The words inside t("...") are ours too: a string the table has no entry
+# for is printed in English and is as much wanted as any other.
+_T_CALL = re.compile(r"""\bt\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')""")
+_TEMPLATE_SENTENCES = None
+
+
+def template_sentences():
+    """Every run of text our templates print, in the form a page key takes.
+
+    Read from the template files once per process. They cannot change inside
+    a running process, and a handover is a deploy, which restarts it -- so the
+    set is never a handover behind, which a kept list would be by Friday.
+    """
+    global _TEMPLATE_SENTENCES
+    if _TEMPLATE_SENTENCES is not None:
+        return _TEMPLATE_SENTENCES
+    found = set()
+    env = app.jinja_env
+    for name in env.list_templates():
+        try:
+            source = env.loader.get_source(env, name)[0]
+        except Exception:
+            continue
+        for piece in _NOT_TEMPLATE_TEXT.split(source):
+            key = translation_key(html_unescape(piece))
+            if key:
+                found.add(key)
+        for double, single in _T_CALL.findall(source):
+            key = translation_key(double or single)
+            if key:
+                found.add(key)
+    _TEMPLATE_SENTENCES = frozenset(found)
+    return _TEMPLATE_SENTENCES
+
+
+def where_seen():
+    """The address to note a sentence against, without a guest's key in it.
+
+    seen_on is kept for as long as the sentence is, and /book/manage/<token>
+    is a door into one guest's booking. The route's own pattern says just as
+    much about where the sentence was."""
+    rule = request.url_rule
+    if rule is not None and any(_A_GUESTS_KEY.search(k)
+                                for k in (request.view_args or {})):
+        return rule.rule[:200]
+    return request.path[:200]
+
+
+def purge_guest_page_translations(conn):
+    """Delete what was written down off a guest's own page and is not ours.
+
+    For the rows filed before is_a_guests_own_page existed, and for any filed
+    by a process still running the old code during a deploy. Every status
+    goes, 'approved' included: a guest's dietary note does not become the
+    house's to keep because somebody approved its French, and a house
+    sentence deleted here is simply filed again the next time it is seen on
+    a page that is nobody's in particular.
+
+    Called by the translation job before it sends anything, and by the daily
+    retention pass, so it happens whether or not the job is switched on.
+    """
+    places = [r["seen_on"] for r in conn.execute(
+        "SELECT DISTINCT seen_on FROM page_translations WHERE seen_on IS NOT NULL")]
+    ours = None
+    doomed = []
+    for place in places:
+        if not address_is_a_guests_page(place):
+            continue
+        if ours is None:
+            ours = template_sentences()
+        doomed.extend(
+            (r["id"],) for r in conn.execute(
+                "SELECT id, source_text FROM page_translations WHERE seen_on = ?",
+                (place,))
+            if r["source_text"] not in ours)
+    if not doomed:
+        return 0
+    conn.executemany("DELETE FROM page_translations WHERE id = ?", doomed)
+    conn.commit()
+    # Or a deleted translation goes on being served until the cache runs out.
+    translation_memory(force=True)
+    return len(doomed)
 
 
 # The public pages carry `<body class="g...">` and the staff app carries
@@ -68392,7 +68668,7 @@ def translate_public_page(response):
     if _PUBLIC_BODY not in raw:
         return response
     body = raw.decode("utf-8", "replace")
-    done = translate_page(body, lang)
+    done = translate_page(body, lang, ours_only=is_a_guests_own_page())
     if done != body:
         response.set_data(done)
     return response
@@ -95501,7 +95777,9 @@ TEMPLATE_STAGES = [
     ("deposit", "Deposit"), ("reminder", "Reminder"), ("balance", "Balance due"),
     ("quote", "Quote"), ("updated", "Changed"),
     ("waitlist", "Waitlist"), ("declined", "Declined"), ("cancelled", "Cancelled"),
-    ("not_running", "Cancelled"), ("feedback", "After the stay"), ("recap", "After the stay"),
+    ("not_running", "Cancelled"),
+    ("extras_offer", "Before the stay"),
+    ("feedback", "After the stay"), ("recap", "After the stay"),
     ("review", "After the stay"), ("newsletter", "Signing up"),
     ("checkin", "Before arrival"),
 ]
@@ -95560,6 +95838,12 @@ EMAIL_TEMPLATE_INFO = {
                             "chase a balance before the stay", "Whoever pays, and anyone copied"),
     "room_balance_after": ("When you chase a balance still owed after the stay",
                            "Whoever pays, and anyone copied"),
+    "room_extras_offer": ("Once before a stay, the morning it comes within the days set "
+                          "under Automation, Offer what a guest can add — while that is "
+                          "switched on and once you have written this. It ships with no "
+                          "wording, and cannot be sent without yours",
+                          "The guest, and anyone they asked us to copy; one letter to a "
+                          "party. Never a cancelled stay, nor one with nothing left to offer"),
     "room_share_request": ("When you ask one person for their share of a bill",
                            "The person named on that share"),
     "room_feedback_request": ("The days after departure, or at once when a stay is "
@@ -99896,6 +100180,10 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_sent_outbox(conn))
     cleared.update(purge_held_texts(conn))
     cleared.update(purge_guest_sessions(conn))
+    # A guest's own words, filed for translation off their own page before
+    # that page stopped filing them. The translation job does this too; here
+    # it happens even with that job switched off.
+    cleared["translated guest words"] = purge_guest_page_translations(conn)
     # The keys that make an offline action safe to send twice. No handset is
     # still holding a tap from a month ago, and a row per tap for ever is a
     # table somebody eventually clears out in a hurry.
@@ -103322,6 +103610,9 @@ def run_page_translation_job(conn, limit=None):
     actually served, so a handover that redraws the site on Friday is
     translated by the job without anybody being told it happened.
     """
+    # First, and before the provider check: nothing written down off a
+    # guest's own page that is not the house's words is ever sent.
+    purge_guest_page_translations(conn)
     if not claude_configured():
         return "no model provider configured"
     budget = limit or TRANSLATION_MAX_PER_RUN
@@ -103499,6 +103790,374 @@ def run_room_balance_reminder_job(conn, days_before):
     if not owing:
         return "nobody arriving soon owes anything"
     return f"reminded {sent} of {owing} guest(s) with a balance outstanding"
+
+
+# ---------------------------------------------------------------------------
+# WHAT A STAY CAN STILL HAVE, OFFERED BEFORE THE GUEST ARRIVES.
+#
+# One letter, about a week out (the owner sets the days), listing what is on
+# sale that this stay has not got and still has the notice for: the tour, the
+# crémant board, a transfer, whatever the catalogue holds -- and dinner at La
+# Table when the stay could book it. Each comes with a link that opens the
+# guest's own booking page at that extra, where the Add button they would have
+# pressed anyway puts it on the stay. Nothing is added by following a link:
+# mail scanners open every link in a letter, and a GET that sold a transfer
+# would sell one to every guest whose inbox is scanned.
+#
+# Four rules shape it, each the house's rather than this letter's own:
+#   - THE OWNER'S WORDS. It ships with none (UNWRITTEN_LETTERS) and does not go
+#     until they are written. The cards under the words carry only what the
+#     catalogue says -- the name, the description, the price, the notice -- and
+#     a button named for the part of the page it opens.
+#   - NOTHING ABOUT PAYING. Extras are paid for at the house and guests are not
+#     told so; the letter's wording is refused if it raises money at all
+#     (LETTERS_THAT_NEVER_MENTION_PAYING).
+#   - OFF until switched on, and only while Write to guests is on: an offer
+#     held in the outbox and released a fortnight later offers things the stay
+#     no longer has the notice for.
+#   - ONCE PER STAY, and one letter to a party, like the guest texts.
+# ---------------------------------------------------------------------------
+EXTRAS_OFFER_KEY = "room_extras_offer"
+EXTRAS_OFFER_SWITCH = "automation_extras_offer_enabled"
+EXTRAS_OFFER_DAYS_SETTING = "automation_extras_offer_days_before"
+EXTRAS_OFFER_DEFAULT_DAYS = 7
+# Never with fewer days than this to go. By then the guest is packing or on the
+# road, the arrival text is about to tell them where to go, and most of what is
+# worth offering needs more notice than is left.
+EXTRAS_OFFER_LEAST_DAYS = 2
+# The words on each card's button, which are the words the page it opens uses
+# for that part of itself: "Add to your stay" heads the extras on the booking
+# page and "Book dinner" heads its dinner card.
+EXTRAS_OFFER_ADD = "Add to your stay"
+EXTRAS_OFFER_DINNER = "Book dinner"
+
+
+def extras_offer_days(settings):
+    """How many days before arrival the letter goes, as the owner set it."""
+    try:
+        return max(0, int(settings.get(EXTRAS_OFFER_DAYS_SETTING)))
+    except (TypeError, ValueError):
+        return EXTRAS_OFFER_DEFAULT_DAYS
+
+
+def extras_offer_wording(conn):
+    """(subject, body) as the owner wrote the letter, or None.
+
+    None while either is blank, and while the wording is something the send
+    would refuse. Every other letter falls back to its shipped wording then;
+    this one shipped with none, so there is nothing to fall back to, and no
+    wording means no letter.
+    """
+    row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?",
+                       (EXTRAS_OFFER_KEY,)).fetchone()
+    if not row:
+        return None
+    subject, body = (row["subject"] or "").strip(), (row["body"] or "").strip()
+    if not subject or not body or wording_problems(EXTRAS_OFFER_KEY, subject, body):
+        return None
+    return subject, body
+
+
+def _notice_words(days):
+    """"3 days' notice", the way the booking form says it beside an extra."""
+    return f"{days} day's notice" if days == 1 else f"{days} days' notice"
+
+
+def _extra_offer_card(extra, url):
+    return {"kind": "extra", "extra_id": extra["id"], "name": extra["name"],
+            "description": (extra["description"] or "").strip(),
+            "price": money(extra["price"] or 0),
+            "notice": _notice_words(extra["lead_time_days"])
+            if extra["lead_time_days"] else "",
+            "button": EXTRAS_OFFER_ADD, "url": url}
+
+
+def _dinner_offer_card(settings, url):
+    price = settings["price_per_person"] if settings else None
+    return {"kind": "dinner", "extra_id": None, "name": "La Table", "description": "",
+            "price": f"{euro(price)} per person" if price else "", "notice": "",
+            "button": EXTRAS_OFFER_DINNER, "url": url}
+
+
+def _offerable_extras(conn):
+    """The catalogue a guest may add from, in the order their page lists it."""
+    return conn.execute(
+        """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
+           ORDER BY category, sort_order, name""").fetchall()
+
+
+def _taking_dinner_bookings(conn):
+    """The restaurant's settings while a stay's page takes a table, else None."""
+    settings = get_restaurant_settings(conn)
+    if not settings or not settings["enabled"] or dining_mode(conn) != "open":
+        return None
+    return settings
+
+
+def dinner_offer_evenings(conn, booking, today=None):
+    """The evenings of this stay it could still book a table on from its page.
+
+    The page's own rule (a confirmed stay, the restaurant open for bookings,
+    from the opening date), and then the evenings worth offering: ones it has
+    no table on yet, that La Table serves, with room for the party.
+    """
+    if booking["status"] != "confirmed":
+        return []
+    settings = _taking_dinner_bookings(conn)
+    arrival = parse_date(booking["arrival_date"] or "")
+    departure = parse_date(booking["departure_date"] or "")
+    if not settings or not arrival or not departure:
+        return []
+    opening = parse_date(settings["opening_date"] or "") if settings["opening_date"] else None
+    earliest = max(d for d in (arrival, opening, today or house_today()) if d)
+    taken = {r["dinner_date"] for r in conn.execute(
+        """SELECT dinner_date FROM restaurant_bookings
+            WHERE booking_id = ? AND status IN ('pending', 'confirmed')""",
+        (booking["id"],))}
+    open_days = restaurant_open_weekdays(conn)
+    party = booking["party_size"] or 1
+    return [d for d in stay_days(arrival, departure, earliest=earliest)
+            if d.isoformat() not in taken
+            and (open_days is None or d.weekday() in open_days)
+            and restaurant_remaining_capacity(conn, d.isoformat()) >= party]
+
+
+def extras_offers_for_stay(conn, booking, today=None):
+    """What the letter offers this stay, as cards. [] when there is nothing.
+
+    From the catalogue: on sale, something a guest may add, with the notice it
+    needs still left before arrival (extra_too_soon -- the rule the booking page
+    and its Add button use, so nothing is offered that the page would refuse),
+    and not already on the stay in any number. Then dinner, while there is an
+    evening the stay could book.
+
+    Each card: {kind, extra_id, name, description, price, notice, button, url}.
+    """
+    day = today or house_today()
+    arrival = parse_date(booking["arrival_date"] or "")
+    departure = parse_date(booking["departure_date"] or "")
+    if not arrival or not departure or departure <= arrival:
+        return []
+    held = extras_held(conn, "room", booking["id"])
+    token = booking["manage_token"]
+    out = []
+    for extra in _offerable_extras(conn):
+        if held.get(extra["id"]) or extra_too_soon(extra, arrival, day):
+            continue
+        out.append(_extra_offer_card(extra, external_url(
+            "manage_booking", manage_token=token, add=extra["id"],
+            _anchor=f"add-{extra['id']}")))
+    if dinner_offer_evenings(conn, booking, day):
+        out.append(_dinner_offer_card(
+            get_restaurant_settings(conn),
+            external_url("manage_booking", manage_token=token, _anchor="dinner")))
+    return out
+
+
+def extras_offer_sample(conn, manage_url):
+    """The cards as the catalogue stands, for the editor's preview: everything a
+    guest may add, and dinner while the restaurant takes bookings."""
+    out = [_extra_offer_card(e, f"{manage_url}?add={e['id']}#add-{e['id']}")
+           for e in _offerable_extras(conn)]
+    settings = _taking_dinner_bookings(conn)
+    if settings:
+        out.append(_dinner_offer_card(settings, f"{manage_url}#dinner"))
+    return out
+
+
+def extras_offer_text(offers):
+    """The cards written out, for the plain half of the letter: what
+    {extras_block} reads where a mail app shows no pictures."""
+    parts = []
+    for o in offers:
+        head = o["name"] + (f" — {o['price']}" if o["price"] else "")
+        lines = [head] + [x for x in (o["description"], o["notice"]) if x]
+        parts.append("\n".join(lines + [o["button"] + ":", o["url"]]))
+    return "\n\n".join(parts)
+
+
+def extras_offer_refusal(conn, booking):
+    """Why this stay's guest is not written to at all, or None.
+
+    The same three the after-stay letters keep: no address, asked not to be
+    written to, and a guest the house has a standing instruction about.
+    """
+    email = (booking["guest_email"] or "").strip()
+    if not email:
+        return "there is no email address on the booking"
+    if conn.execute("SELECT 1 FROM email_optouts WHERE LOWER(email) = LOWER(?)",
+                    (email,)).fetchone():
+        return "they asked not to be written to"
+    if guest_restricted(conn, email=email):
+        return "there is a standing instruction about this guest"
+    return None
+
+
+def run_extras_offer_job(conn, days_before=None, today=None):
+    """Write once to each stay coming up with what it can still add.
+
+    Which stays: confirmed, not yet written to, not checked in, arriving
+    between EXTRAS_OFFER_LEAST_DAYS and `days_before` days from today. A
+    window rather than one day, like the room balance reminder: a stay booked
+    inside the window hears the next morning, and a morning the job did not run
+    costs nothing. Nobody nearer than the least, ever.
+
+    Not stamped while there is nothing to offer, so an extra put on sale the
+    next day is offered the next morning; nor while the guest is not to be
+    written to. Stamped once written, whether the provider took it or it waits
+    in Held Email -- a second copy the next morning is worse than one that
+    waits -- with which it was, so the stay's page can say.
+
+    Nothing at all while it is switched off, unwritten, or while Write to
+    guests is off: that is "Couldn't run" with the reason, and every stay is
+    still unstamped for the day it can.
+    """
+    settings = get_automation_settings(conn)
+    if settings.get(EXTRAS_OFFER_SWITCH) != "1":
+        raise JobNotSetUp("it is switched off")
+    if not extras_offer_wording(conn):
+        raise JobNotSetUp("the letter has no wording yet; write it under Email "
+                          f"wording, “{EMAIL_TEMPLATE_LABELS[EXTRAS_OFFER_KEY]}”")
+    if not guest_mail_live():
+        raise JobNotSetUp("Write to guests is off, so no offer was sent")
+    days = extras_offer_days(settings) if days_before is None else days_before
+    if days < EXTRAS_OFFER_LEAST_DAYS:
+        raise JobNotSetUp(f"it is set to {days} day{'' if days == 1 else 's'} before "
+                          f"arrival, and it never goes with fewer than "
+                          f"{EXTRAS_OFFER_LEAST_DAYS} to go")
+    day = today or house_today()
+    first = (day + timedelta(days=EXTRAS_OFFER_LEAST_DAYS)).isoformat()
+    last = (day + timedelta(days=days)).isoformat()
+    coming = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND bookings.extras_offer_sent_at IS NULL
+              AND bookings.checked_in_at IS NULL
+              AND bookings.arrival_date >= ? AND bookings.arrival_date <= ?
+            ORDER BY bookings.arrival_date, bookings.id""", (first, last)).fetchall()
+    if not coming:
+        return (f"nobody arriving {format_date_short(first)} to "
+                f"{format_date_short(last)} is still to hear")
+    by_id = {b["id"]: b for b in coming}
+    sent = held = nothing = 0
+    skipped = {}
+    for lead_id in party_lead_bookings(conn, list(by_id)):
+        booking = by_id[lead_id]
+        refusal = extras_offer_refusal(conn, booking)
+        if refusal:
+            skipped[refusal] = skipped.get(refusal, 0) + 1
+            continue
+        offers = extras_offers_for_stay(conn, booking, day)
+        if not offers:
+            nothing += 1
+            continue
+        subject, body, letter = render_email_template(conn, "room_extras_offer", {
+            "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
+            "room_name": booking["room_name"],
+            "arrival_date": format_date_human(booking["arrival_date"]),
+            "departure_date": format_date_human(booking["departure_date"]),
+            "reference_code": booking["reference_code"] or "",
+            "manage_url": external_url("manage_booking",
+                                       manage_token=booking["manage_token"]),
+            "extras_block": extras_offer_text(offers),
+        }, extras=offers)
+        if not subject:
+            continue
+        # Nothing of ours is held open across the network: everything above
+        # only read, and the stamps below are committed before the next send.
+        delivered = write_about_stay(booking, subject, body, side="stay", html=letter)
+        stamp = datetime.now(timezone.utc).isoformat()
+        conn.execute("UPDATE bookings SET extras_offer_sent_at = ?, extras_offer_outcome = ? "
+                     "WHERE id = ?", (stamp, "sent" if delivered else "held", booking["id"]))
+        # The other rooms of the party are in this letter's household, and the
+        # next run would otherwise write to the first of them instead.
+        if booking["party_id"]:
+            for other in coming:
+                if other["party_id"] == booking["party_id"] and other["id"] != booking["id"]:
+                    conn.execute(
+                        "UPDATE bookings SET extras_offer_sent_at = ?, "
+                        "extras_offer_outcome = 'party' WHERE id = ? "
+                        "AND extras_offer_sent_at IS NULL", (stamp, other["id"]))
+        conn.commit()
+        if delivered:
+            sent += 1
+        else:
+            held += 1
+    parts = [f"wrote to {sent}"] if sent else []
+    if held:
+        parts.append(f"{held} waiting in Held Email")
+    if nothing:
+        parts.append(f"{nothing} with nothing left to offer")
+    for why, n in skipped.items():
+        parts.append(f"{n} not written to: {why}")
+    return ", ".join(parts) or "nothing to send"
+
+
+def booking_extras_offer_plan(conn, booking, today=None):
+    """The letter before arrival, for the stay's own page: whether and when it
+    went, or when it will and what it would offer, or why it will not.
+
+    None while it is switched off: a stay's page that promised a letter nothing
+    is going to send would be wrong, and one already sent is on the page with
+    the rest of what the guest was told.
+    """
+    settings = get_automation_settings(conn)
+    if settings.get(EXTRAS_OFFER_SWITCH) != "1":
+        return None
+    day = today or house_today()
+    days = extras_offer_days(settings)
+    arrival = parse_date(booking["arrival_date"] or "")
+    plan = {"sent_at": booking["extras_offer_sent_at"],
+            "outcome": booking["extras_offer_outcome"], "due": None, "offers": [],
+            "reason": None, "live": guest_mail_live(),
+            "editor": url_for("management_email_templates") + f"#tpl-{EXTRAS_OFFER_KEY}"}
+    if booking["extras_offer_sent_at"]:
+        plan["state"] = "sent"
+    elif booking["status"] in ("cancelled", "declined"):
+        plan["state"] = "off"
+    elif booking["status"] != "confirmed":
+        plan["state"] = "not_confirmed"
+    elif (not arrival or booking["checked_in_at"]
+          or (arrival - day).days < EXTRAS_OFFER_LEAST_DAYS):
+        plan["state"] = "missed"
+    elif days < EXTRAS_OFFER_LEAST_DAYS:
+        plan["state"], plan["reason"] = "cannot", (
+            f"it is set to go {days} day{'' if days == 1 else 's'} before arrival, "
+            f"and it never goes with fewer than {EXTRAS_OFFER_LEAST_DAYS}")
+    elif not extras_offer_wording(conn):
+        plan["state"], plan["reason"] = "unwritten", "the letter has no wording yet"
+    elif booking["party_id"] and party_lead_bookings(
+            conn, [r["id"] for r in conn.execute(
+                "SELECT id FROM bookings WHERE party_id = ? AND status = 'confirmed'",
+                (booking["party_id"],))]) != [booking["id"]]:
+        plan["state"] = "party"
+    else:
+        refusal = extras_offer_refusal(conn, booking)
+        offers = extras_offers_for_stay(conn, booking, day)
+        if refusal:
+            plan["state"], plan["reason"] = "cannot", refusal
+        elif not offers:
+            plan["state"], plan["reason"] = "cannot", (
+                "there is nothing left to offer: what is on sale is on the stay "
+                "already or needs more notice than is left")
+        else:
+            due = max(day, arrival - timedelta(days=days))
+            if due == day and today is None and not extras_offer_runs_today(conn):
+                due = day + timedelta(days=1)
+            if (arrival - due).days < EXTRAS_OFFER_LEAST_DAYS:
+                plan["state"] = "missed"
+            else:
+                plan["state"], plan["offers"] = "due", offers
+                plan["due"] = due.isoformat()
+    return plan
+
+
+def extras_offer_runs_today(conn):
+    """Whether the morning run is still to come today, on the house's clock."""
+    window = JOB_HOURS["extras_offer"]
+    return (datetime.now(LOCAL_TZ).hour < window[1]
+            and job_window_open(conn, "extras_offer", (0, window[1])))
 
 
 def run_workshop_balance_reminder_job(conn, days_before):
@@ -108924,6 +109583,11 @@ AUTOMATION_JOBS = [
      run_checkin_text_job),
     ("checkout_text", "automation_checkout_text_enabled", None, 24 * 3600,
      run_checkout_text_job),
+    # The letter offering what a stay can add. Daily, in the morning: it is
+    # stamped per stay, so a second run sends nothing twice, and a stay booked
+    # inside its window hears the next morning.
+    ("extras_offer", "automation_extras_offer_enabled", None, 24 * 3600,
+     run_extras_offer_job),
     # The letter with the online check-in link. Daily, in the morning (see
     # JOB_HOURS); each stay is stamped, so a run twice sends nothing twice.
     ("checkin_letter", "automation_checkin_letter_enabled", None, 24 * 3600,
@@ -108993,6 +109657,9 @@ JOB_HOURS = {
     # somebody reading "checkout is at eleven" at ten past ten has been told
     # too late to do anything about it.
     "checkout_text": (17, 21),
+    # The letter offering a stay's extras, in the morning like a letter from
+    # somebody at the house, and never at whatever hour the process restarted.
+    "extras_offer": (9, 12),
     # The letter with the online check-in link: a morning letter, from nine
     # to noon on the house's clock, which is what its label says.
     "checkin_letter": (9, 12),
@@ -109251,9 +109918,23 @@ AUTOMATION_SWITCHES = [
      "label": "Text a guest the evening before they leave",
      "what": "Your own words, sent the evening before departure. Nothing until "
              "you have written it and a texting service is connected."},
+    {"key": "automation_extras_offer_enabled", "job": "extras_offer",
+     "runs": ("run_extras_offer_job",), "group": "guests", "reaches": ("guests",),
+     "letters": ("room_extras_offer",),
+     "label": "Offer what a guest can add, before they arrive",
+     "what": "Your own letter, emailed once to each confirmed stay between 9am and "
+             "noon on the first morning it is within the days set below of arrival "
+             "— so a stay booked later than that hears the next morning — and never "
+             "with fewer than {offer_least_days} days to go. It lists what is on sale "
+             "that the stay has not got and still has the notice for, each with a "
+             "link that opens their booking page at it, and dinner at La Table when "
+             "they could book it. Never to a cancelled stay, never twice, and one "
+             "letter to a party. Nothing until you have written it, and nothing "
+             "while Write to guests is off: an offer is not kept to send later.",
+     "fields": (("automation_extras_offer_days_before", "Days before arrival", "days"),)},
     {"key": "automation_checkin_letter_enabled", "job": "checkin_letter",
      "runs": ("run_checkin_letter_job",), "group": "guests", "reaches": ("guests",),
-     "letters": UNWRITTEN_LETTERS,
+     "letters": ("room_checkin_before", "workshop_checkin_before"),
      "label": "Email the check-in link before arrival",
      "what": "Your own letter with the link to check in online, once to each guest who "
              "booked with the house — a room or an atelier — between 9am and noon "
@@ -109487,10 +110168,9 @@ def admin_automation():
     # switch, so the row says so beside the switch rather than letting an
     # owner tick it and wait for a message that cannot exist.
     unwritten = {kind for kind in GUEST_TEXTS if not guest_text_wording(conn, kind)}
-    # And the same for a letter that ships with no words: the row says which
-    # of them is still unwritten, beside the switch.
-    unwritten_letters = [EMAIL_TEMPLATE_LABELS.get(k, k) for k in UNWRITTEN_LETTERS
-                         if letter_unwritten(conn, k)]
+    # And the same for a letter that ships with no words: each row names
+    # its own that are still unwritten, beside the switch.
+    unwritten_letters = {k for k in UNWRITTEN_LETTERS if letter_unwritten(conn, k)}
     letter_days = checkin_letter_days(conn)
     conn.close()
 
@@ -109498,6 +110178,7 @@ def admin_automation():
     facts = {"decline_hours": STALE_PENDING_BOOKING_HOURS,
              "prep_days": windows["arrival_prep_days"],
              "digest_hours": windows["digest_interval_hours"],
+             "offer_least_days": EXTRAS_OFFER_LEAST_DAYS,
              "checkin_letter_days": letter_days}
     groups, everything = [], []
     for key, title, about in AUTOMATION_GROUPS:
@@ -109509,7 +110190,9 @@ def admin_automation():
                        what=e["what"].format(**facts),
                        run=last_runs.get(e["job"]) if e["job"] else None,
                        no_wording=e.get("text") in unwritten,
-                       letters_unwritten=unwritten_letters if e.get("letters") else [],
+                       letters_unwritten=[(k, EMAIL_TEMPLATE_LABELS.get(k, k))
+                                          for k in e.get("letters", ())
+                                          if k in unwritten_letters],
                        reach_words=[AUTOMATION_REACH_WORDS[r] for r in e["reaches"]],
                        fields=[(f, label, kind, settings.get(f))
                                for f, label, kind in e.get("fields", ())])

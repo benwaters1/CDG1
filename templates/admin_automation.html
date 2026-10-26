@@ -75,8 +75,8 @@
           Until then nothing is sent, even with this switched on.</p>
         {% endif %}
         {% if e.letters_unwritten %}
-        <p class="upload-hint"><strong>No wording yet</strong> for {{ e.letters_unwritten|join(' or ') }} &mdash;
-          <a href="{{ url_for('management_email_templates', q='check-in link') }}">write it on Email templates</a>.
+        <p class="upload-hint"><strong>No wording yet</strong> for {{ e.letters_unwritten|map('last')|join(' or ') }} &mdash;
+          <a href="{{ url_for('management_email_templates') }}#tpl-{{ e.letters_unwritten[0][0] }}">write it on Email templates</a>.
           Until then that letter is not sent, even with this switched on.</p>
         {% endif %}
         {% if e.needs == 'graph' and not graph_enabled %}
