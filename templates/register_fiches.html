@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Fiches de police{% endblock %}
+{% block content %}
+{# The fiches individuelles de police, one to a printed page: to hand over
+   when the police or gendarmerie ask for them (CESEDA R. 814-3), on paper or
+   saved as a PDF from the print dialogue. The fields are R. 814-2's list,
+   in French and English as the official model has them, with the guest's
+   signature. Fiches only: a French national's line is not one. #}
+<div class="page-head no-print">
+  <h1>{% if single %}Fiche de police{% else %}Fiches de police{% endif %}</h1>
+  <div>
+    <button type="button" class="btn-primary" onclick="window.print()">Print</button>
+    <a href="{{ url_for('police_register_page') }}" class="btn-mini">The register</a>
+  </div>
+</div>
+{% if not single %}
+<p class="upload-hint no-print">{{ fiches|length }} fiche{{ '' if fiches|length == 1 else 's' }} for stays arriving {{ start|date_short }} to {{ end|date_short }}. To send them, print to PDF.</p>
+{% endif %}
+
+{% for f in fiches %}
+<section class="fiche-sheet">
+  <p class="fiche-sheet__house">Château de Gudanes · 2 Route de Beille, 09310 Château-Verdun</p>
+  <h2 class="fiche-sheet__title">Fiche individuelle de police <span>/ Individual police form</span></h2>
+  <dl class="fiche-sheet__fields">
+    <dt>Nom / Surname</dt><dd>{{ f['surname'] }}</dd>
+    <dt>Prénoms / First names</dt><dd>{{ f['first_names'] }}</dd>
+    <dt>Date de naissance / Date of birth</dt><dd>{{ f['born_on']|date_short if f['born_on'] else '—' }}</dd>
+    <dt>Lieu de naissance / Place of birth</dt><dd>{{ f['born_at'] or '—' }}</dd>
+    <dt>Nationalité / Nationality</dt><dd>{{ f['nationality'] }}</dd>
+    <dt>Domicile habituel / Usual home</dt><dd>{{ f['home_address'] or '—' }}</dd>
+    <dt>Téléphone mobile / Mobile</dt><dd>{{ f['phone'] or '—' }}</dd>
+    <dt>Adresse électronique / Email</dt><dd>{{ f['email'] or '—' }}</dd>
+    <dt>Date d'arrivée / Arrival</dt><dd>{{ f['arrival_date']|date_short }}</dd>
+    <dt>Date de départ prévue / Expected departure</dt><dd>{{ f['departure_date']|date_short }}</dd>
+    <dt>Enfants de moins de 15 ans / Children under 15</dt><dd>{{ f['children_under_15'] or 0 }}</dd>
+  </dl>
+  <p class="fiche-sheet__label">Signature</p>
+  {% if f['signature_kind'] == 'drawn' and f['signature'] %}
+  <img class="fiche-sheet__sig" src="{{ f['signature'] }}" alt="Signature of {{ f['first_names'] }} {{ f['surname'] }}">
+  {% elif f['signature'] %}
+  <p class="fiche-sheet__typed">{{ f['signature'] }} <span>(signed by typing the name)</span></p>
+  {% else %}
+  <p class="fiche-sheet__typed"><span>Not signed</span></p>
+  {% endif %}
+  <p class="fiche-sheet__foot">{% if f['signed_at'] %}Signed {{ f['signed_at']|house_day|date_short }}.{% endif %}
+    {% if f['id_checked_at'] %}Identity document seen {{ f['id_checked_at']|house_day|date_short }}{% if f['id_checked_by'] %} by {{ f['id_checked_by'] }}{% endif %}; no copy kept.{% endif %}
+    Ref. {{ f['reference_code'] }}</p>
+</section>
+{% else %}
+<div class="empty-state">No fiches de police for those dates.</div>
+{% endfor %}
+
+<style>
+/* One fiche to a printed page, with the page furniture hidden: what is
+   handed to the gendarmerie is the fiche and nothing else. */
+.fiche-sheet{ max-width: 40em; margin: var(--s4) 0; padding: var(--s4);
+  border: 1px solid var(--parchment-line); border-radius: 8px; }
+.fiche-sheet__house{ margin: 0 0 var(--s2); font-size: 12px; color: var(--steel); }
+.fiche-sheet__title{ margin: 0 0 var(--s3); font-size: 20px; }
+.fiche-sheet__title span{ font-weight: 400; color: var(--steel); font-size: 15px; }
+.fiche-sheet__fields{ display: grid; grid-template-columns: minmax(10em, 16em) 1fr;
+  gap: 6px 16px; margin: 0; }
+.fiche-sheet__fields dt{ color: var(--steel); font-size: 13px; }
+.fiche-sheet__fields dd{ margin: 0; }
+.fiche-sheet__label{ margin: var(--s3) 0 4px; font-size: 13px; color: var(--steel); }
+.fiche-sheet__sig{ display: block; max-width: 18em; height: auto; border-bottom: 1px solid var(--parchment-line); }
+.fiche-sheet__typed{ margin: 0; font-style: italic; }
+.fiche-sheet__typed span{ font-style: normal; color: var(--steel); font-size: 13px; }
+.fiche-sheet__foot{ margin: var(--s3) 0 0; font-size: 12px; color: var(--steel); }
+@media (max-width: 600px){ .fiche-sheet__fields{ grid-template-columns: 1fr; } }
+@media print{
+  .fiche-sheet{ border: 0; padding: 0; margin: 0; page-break-after: always; break-after: page; }
+}
+</style>
+{% endblock %}

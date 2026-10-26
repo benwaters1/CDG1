@@ -26,6 +26,9 @@ def _iso(days):
 def _cleanup(conn):
     conn.execute("DELETE FROM restaurant_bookings WHERE reference_code LIKE ?",
                  (TAG + "%",))
+    conn.execute("DELETE FROM workshop_police_register WHERE workshop_booking_id IN "
+                 "(SELECT id FROM workshop_bookings WHERE guest_email LIKE ? "
+                 "OR reference_code LIKE ?)", (TAG + "%", TAG + "%"))
     conn.execute("DELETE FROM workshop_bookings WHERE guest_email LIKE ? "
                  "OR reference_code LIKE ?", (TAG + "%", TAG + "%"))
     conn.execute("DELETE FROM workshop_sessions WHERE notes LIKE ?", (TAG + "%",))
@@ -359,9 +362,118 @@ def run():
                 detail="reported rather than skipped: every check above would "
                        "pass on nothing")
 
+    _online_checkin(s, conn, now)
     _microsoft_and_anthropic(s, conn)
     _cleanup(conn)
     return s
+
+
+def _online_checkin(s, conn, now):
+    """The online check-in for the house's own guests (22 October 2026), and
+    each thing the notice says about it, checked against the code."""
+    s.section("Online check-in: what it asks, and how long it is kept")
+    page = m.app.test_client().get("/privacy").get_data(as_text=True)
+    text = re.sub(r"\s+", " ", page)
+    s.check("the notice says there is an online check-in, and what it asks",
+            "If you check in online" in text
+            and "for each adult staying a name and a nationality" in text)
+
+    # "only for someone who is not French does it ask for the rest": the form
+    # is read so that a French adult's block keeps nothing past the name.
+    stay = {"party_size": 2, "children_asked": True}
+    form = {"p1_first_names": "Élodie", "p1_surname": "Rouvière", "p1_nationality": "French",
+            "p1_born_on": "1980-01-01", "p1_born_at": "Lyon", "p1_home": "Lyon",
+            "p1_phone": "+33 6 00 00 00 00", "p1_email": "e@example.invalid",
+            "p2_first_names": "Ada", "p2_surname": "Lovelace", "p2_nationality": "British",
+            "p2_born_on": "1984-06-11", "p2_born_at": "Leeds", "p2_home": "York",
+            "p2_signed_name": "Ada Lovelace", "agree": "on"}
+    with m.app.test_request_context():
+        got, problem = m.read_direct_checkin(form, stay)
+    french, british = (got or {"people": [{}, {}]})["people"]
+    s.check("a French adult's birth, address, mobile and email are not kept",
+            not problem and not ({"born_on", "born_at", "home_address", "phone", "email"}
+                                 & set(french)), detail=str(problem or french))
+    s.check("and everything else the fiche lists is, for anybody who is not French",
+            british.get("born_on") == "1984-06-11" and british.get("born_at") == "Leeds"
+            and british.get("home_address") == "York")
+    s.check("the notice says a French national's register line is a name and French",
+            "notes only your name and that you are French" in text)
+
+    s.check("the fiche paragraph names the mobile and email the register keeps",
+            "your mobile number and email address" in text
+            and {"phone", "email"} <= {c[1] for c in conn.execute(
+                "PRAGMA table_info(police_register)")})
+    s.check("and says a child under 15 goes on it as a number, nothing else",
+            "A child under 15 travelling with you goes on your fiche as a number" in text
+            and "children_under_15" in {c[1] for c in conn.execute(
+                "PRAGMA table_info(police_register)")})
+
+    # The signature and the passport (23 October 2026): signed, kept with the
+    # fiche -- so the six-month purge takes it -- and the passport seen, never
+    # copied, which the CNIL requires and the schema can be read to show.
+    s.check("the notice says the fiche is signed and the signature kept with it",
+            "you sign on your own screen when you check in online" in text
+            and "the signature is kept with the fiche" in text)
+    cols = {c[1] for c in conn.execute("PRAGMA table_info(police_register)")}
+    s.check("and the signature is a column of the fiche itself, purged with it",
+            {"signature", "signed_at"} <= cols)
+    s.check("the notice says the passport is seen and never copied",
+            "we keep no copy or scan of it" in text
+            and "note only that it was seen, when, and by whom" in text)
+    s.check("and nothing in any register could hold a copy",
+            not any({c[1] for c in conn.execute(f"PRAGMA table_info({t})")}
+                    & {"passport", "passport_photo", "scan", "id_scan", "photo",
+                       "photo_filename", "document"}
+                    for t in ("police_register", "channel_police_register",
+                              "workshop_police_register"))
+            and {"id_checked_at", "id_checked_by_user_id"} <= cols)
+
+    # "a stay, a table, a workshop -- is deleted once that booking is over"
+    s.check("the notice counts a stay among the notes deleted afterwards",
+            "a stay, a table, a workshop" in text)
+    room = conn.execute("SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    left = m.house_today() - timedelta(days=1)
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+               guest_email, arrival_date, departure_date, party_size, status,
+               total_price, created_at, dietary_notes)
+           VALUES (?, ?, ?, 'Diner', ?, ?, ?, 1, 'confirmed', 100, ?, 'no gluten')""",
+        (room["id"], TAG + "CI", (TAG + "ci").lower(), TAG + "ci@example.invalid",
+         (left - timedelta(days=2)).isoformat(), left.isoformat(), now))
+    conn.commit()
+    with m.app.test_request_context():
+        m.purge_health_notes(conn)
+    conn.commit()
+    s.check("and a stay's note really is cleared once it is over",
+            conn.execute("SELECT dietary_notes FROM bookings WHERE reference_code = ?",
+                         (TAG + "CI",)).fetchone()[0] is None)
+
+    # "for a room, a stay booked through Booking.com, or an atelier, which ends
+    # on its last day"
+    s.check("the notice says an atelier's fiche goes six months after its last day",
+            "or an atelier, which ends on its last day" in text)
+    ws = conn.execute("SELECT id FROM workshops LIMIT 1").fetchone()["id"]
+    ended = m.house_today() - timedelta(days=6 * 31 + 3)
+    sid = conn.execute(
+        """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity,
+               notes, created_at) VALUES (?, ?, ?, 8, ?, ?)""",
+        (ws, (ended - timedelta(days=4)).isoformat(), ended.isoformat(),
+         TAG + "fiche", now)).lastrowid
+    wid = conn.execute(
+        """INSERT INTO workshop_bookings (session_id, reference_code, manage_token,
+               guest_name, guest_email, status, created_at)
+           VALUES (?, ?, ?, 'Maker', ?, 'confirmed', ?)""",
+        (sid, TAG + "WF", TAG + "wftok", TAG + "wf@example.invalid", now)).lastrowid
+    conn.execute("""INSERT INTO workshop_police_register (workshop_booking_id, surname,
+                    first_names, nationality, recorded_at) VALUES (?, 'X', 'Y', 'Swiss', ?)""",
+                 (wid, now))
+    conn.commit()
+    with m.app.test_request_context():
+        m.purge_police_register(conn)
+    conn.commit()
+    s.check("and an atelier's fiche really does go then",
+            not conn.execute("SELECT 1 FROM workshop_police_register WHERE workshop_booking_id = ?",
+                             (wid,)).fetchone())
 
 
 def _microsoft_and_anthropic(s, conn):
