@@ -471,6 +471,10 @@ AUTOMATION_SETTING_DEFAULTS = {
     # which put words in the house's mouth to every guest with a mobile.
     "automation_checkin_text_enabled": "0",
     "automation_checkout_text_enabled": "0",
+    # OFF. All it does is raise a task saying an atelier's recap is drafted and
+    # waiting for you; the recap itself only ever goes from the button on the
+    # sitting's page.
+    "automation_atelier_recap_reminder_enabled": "0",
     # OFF, and its letter ships with no wording: the owner writes it under
     # Email wording and then switches it on. Same rule as the two texts above,
     # for the same reason -- nothing goes to a guest in words the house did
@@ -2403,6 +2407,11 @@ DEFAULT_EMAIL_TEMPLATES = [
      "How was {workshop_title}?",
      "Hi {guest_name},\n\nWe hope you enjoyed {workshop_title}. If you have a moment, we'd love to hear how "
      "it went:\n{feedback_url}\n\n— Château de Gudanes"),
+    # NO WORDING, ON PURPOSE. The recap is the owner's letter to people they
+    # have just spent a week with, and the house's guest texts shipped with
+    # sentences nobody there had written (22 October 2026). So this one ships
+    # empty, and an empty letter cannot be sent: see recap_wording().
+    ("workshop_recap", "Workshop: Recap after the atelier", "", ""),
     ("restaurant_reservation_received", "Restaurant: Reservation received",
      "Dinner reservation received — Château de Gudanes",
      "Hi {guest_name},\n\nYour dinner reservation request for {dinner_date}, party of {party_size}, "
@@ -7870,6 +7879,56 @@ def init_db():
         # every route that writes that column having to clear this one.
         ("newsletter_subscribers_script_removed_at",
          "ALTER TABLE newsletter_subscribers ADD COLUMN script_removed_at TEXT"),
+        # THE RECAP OF AN ATELIER, one per sitting: what whoever taught it left
+        # for the guests, the private link the letter's pictures and file are
+        # read through, and when the owner sent it or decided not to. Nothing
+        # here sends anything: the letter goes from the sitting's page, by the
+        # owner's hand, and from nowhere else.
+        ("atelier_recaps", """CREATE TABLE IF NOT EXISTS atelier_recaps (
+            session_id INTEGER PRIMARY KEY
+                REFERENCES workshop_sessions(id) ON DELETE CASCADE,
+            notes TEXT,
+            notes_file TEXT,
+            notes_file_name TEXT,
+            notes_at TEXT,
+            notes_by TEXT,
+            share_token TEXT UNIQUE,
+            sent_at TEXT,
+            sent_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            set_aside_at TEXT,
+            set_aside_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        )"""),
+        # What the owner said about one photograph of the week, for one recap.
+        # The photograph stays where it arrived -- the tray, the camera roll,
+        # the social list -- and this holds only the decision: whether it goes,
+        # and who is in it. `people` NULL is nobody has said, which never goes.
+        # A person says who is in a picture, never the software
+        # (templates/privacy.html).
+        ("atelier_recap_photos", """CREATE TABLE IF NOT EXISTS atelier_recap_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL
+                REFERENCES workshop_sessions(id) ON DELETE CASCADE,
+            source TEXT NOT NULL CHECK(source IN ('tray','post','camera')),
+            source_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            chosen INTEGER NOT NULL DEFAULT 1,
+            people TEXT CHECK(people IN ('nobody','named','other')),
+            decided_at TEXT,
+            decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            UNIQUE(session_id, source, source_id)
+        )"""),
+        ("atelier_recap_photo_people", """CREATE TABLE IF NOT EXISTS atelier_recap_photo_people (
+            photo_id INTEGER NOT NULL
+                REFERENCES atelier_recap_photos(id) ON DELETE CASCADE,
+            workshop_booking_id INTEGER NOT NULL
+                REFERENCES workshop_bookings(id) ON DELETE CASCADE,
+            PRIMARY KEY (photo_id, workshop_booking_id)
+        )"""),
+        # When this guest's recap was handed to the mail. Claimed BEFORE the
+        # send, so two presses of the button cannot both write to them.
+        ("workshop_bookings_recap_sent_at",
+         "ALTER TABLE workshop_bookings ADD COLUMN recap_sent_at TEXT"),
         # Why a table booked while tables confirm themselves (restaurant_instant)
         # was left for the owner instead: "over the 20 covers", "a party of 9".
         # Written once, when it was held, and shown beside Confirm in the queue
@@ -9694,6 +9753,15 @@ AREA_TITLES = {
 # can see, which is how 181 of them accumulated unnoticed.
 OWNER_ONLY_AREAS = {
     "reports_index": "management",
+    # An atelier's recap: the owner approves each one (22 October 2026), so
+    # choosing its photographs, writing down who may appear, and the button
+    # that sends it are the owner's, whatever a preset gives on the sitting's
+    # page. Unmapped like the assistant below; the send checks the role too.
+    "save_atelier_recap_photos": "workshops",
+    "save_atelier_recap_answers": "workshops",
+    "save_atelier_recap_notes": "workshops",
+    "send_atelier_recap": "workshops",
+    "set_aside_atelier_recap": "workshops",
     # Where the backup goes. The page it sits on is comms, but the backup is
     # the whole database -- every guest, every wage -- so whoever can point it
     # somewhere receives all of that every night. The owner's alone.
@@ -60469,6 +60537,10 @@ EMAIL_TEMPLATE_TAGS = {
                                  "party_size", "price_block", "reference_code",
                                  "total_price", "workshop_title"),
     "workshop_feedback_request": ("feedback_url", "guest_name", "workshop_title"),
+    # {photos} and {next_dates} are drawn as pictures and as cards; the plain
+    # half of the letter gets their links. See recap_context().
+    "workshop_recap": ("dates", "guest_name", "instructor_name", "instructor_notes",
+                       "next_dates", "notes_file_url", "photos", "workshop_title"),
     "workshop_payment_received": ("amount", "balance_line", "dates", "guest_name",
                                   "reference_code", "statement_url", "workshop_title"),
     "workshop_statement": ("balance_line", "company_block", "dates", "guest_name",
@@ -60959,13 +61031,14 @@ def letter_slot(name):
     return f"{_SLOT}{name}{_SLOT}"
 
 
-def drawn_context(context, *, statement=False, workshops=False, extras=False):
+def drawn_context(context, *, statement=False, workshops=False, extras=False, photos=False):
     """The merge values for the DRAWN letter: the same words, with the blocks
     that are drawn as something else marked so they can be found again.
 
     {company_block} is small print; {statement_lines} becomes the statement
-    itself when there is one to draw; {workshops_block} and {extras_block}
-    become the cards."""
+    itself when there is one to draw; {workshops_block} -- and a recap's
+    {next_dates} -- and {extras_block} become the cards; a recap's {photos}
+    become the pictures."""
     out = dict(context)
     company = (out.get("company_block") or "").strip()
     if company:
@@ -60973,8 +61046,12 @@ def drawn_context(context, *, statement=False, workshops=False, extras=False):
                                          for line in company.split("\n") if line.strip())
     if statement and "statement_lines" in out:
         out["statement_lines"] = letter_slot("statement")
-    if workshops and (out.get("workshops_block") or "").strip():
-        out["workshops_block"] = letter_slot("workshops")
+    if workshops:
+        for tag in ("workshops_block", "next_dates"):
+            if (out.get(tag) or "").strip():
+                out[tag] = letter_slot("workshops")
+    if photos and (out.get("photos") or "").strip():
+        out["photos"] = letter_slot("photos")
     if extras and (out.get("extras_block") or "").strip():
         out["extras_block"] = letter_slot("extras")
     return out
@@ -61138,7 +61215,7 @@ def letter_drawing_context():
 
 
 def letter_html(subject, text, settings=None, statement=None, *, key=None,
-                pay_url="", workshops=None, foot=None, extras=None):
+                pay_url="", workshops=None, foot=None, extras=None, photos=None):
     """One of the house's letters, drawn, or "" if it cannot be.
 
     Empty rather than raising, the same rule the booking confirmation follows:
@@ -61152,7 +61229,8 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
     words; `pay_url` puts a button to pay what it says is owed. `workshops`
     are the cards {workshops_block} becomes, and `extras` the ones
     {extras_block} becomes. `foot` adds to the foot: an unsubscribe link for a
-    letter somebody asked for.
+    letter somebody asked for. `photos` are the pictures a recap's {photos}
+    becomes, [{src, alt}].
     """
     try:
         if key is None:
@@ -61175,7 +61253,7 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
                 blocks=blocks, settings=settings or {}, statement=statement,
                 statement_placed=any(b["kind"] == "statement" for b in blocks),
                 pay_url=pay_url, workshops=workshops or [], extras=extras or [],
-                foot=foot)
+                foot=foot, photos=photos or [])
     except Exception as e:      # pragma: no cover - the text still goes
         print(f"[email html failed] {subject}: {e}")
         return ""
@@ -61183,7 +61261,7 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
 
 def template_letter_html(template_key, subject, body_src, context, *, conn=None,
                          card=None, statement=None, pay_url="", workshops=None,
-                         foot=None, extras=None):
+                         foot=None, extras=None, photos=None):
     """The letter as a mail app draws it, from the wording given. "" if it cannot be.
 
     Every letter is the owner's words poured into the one shell -- except the
@@ -61199,10 +61277,11 @@ def template_letter_html(template_key, subject, body_src, context, *, conn=None,
         return confirmation_letter_html(subject, body_src, context, conn=conn,
                                         card=card)
     drawn = drawn_context(context, statement=statement is not None,
-                          workshops=bool(workshops), extras=bool(extras))
+                          workshops=bool(workshops), extras=bool(extras),
+                          photos=bool(photos))
     return letter_html(subject, merge_email_text(body_src, drawn), statement=statement,
                        key=template_key, pay_url=pay_url, workshops=workshops,
-                       foot=foot, extras=extras)
+                       foot=foot, extras=extras, photos=photos)
 
 
 # Where {stay_details} fell, found again after the words are filled in. A
@@ -61331,6 +61410,15 @@ SAMPLE_MERGE_VALUES = {
                        "Cooking in the Cuisine\n12 – 16 April 2027 · €3,800 per person\n"
                        "https://chateaugudanes.com/workshops/352",
     "workshops_url": "https://chateaugudanes.com/workshops",
+    # The recap's. In brackets because they stand for something the page draws
+    # rather than words of the house's: the editor's preview draws two
+    # pictures and a card where these fall.
+    "photos": "(the photographs you clear on the sitting's page)",
+    "instructor_name": "Hélène Marty",
+    "instructor_notes": "(whatever the person who taught it wrote for the guests, as they wrote it)",
+    "notes_file_url": "https://chateaugudanes.com/workshops/recap/5d1e0c/notes",
+    "next_dates": "Noël at Gudanes\n18 – 22 December 2026 · €3,200 per person\n"
+                  "https://chateaugudanes.com/workshops/register/351",
     # The preview of the extras letter fills this from the catalogue itself
     # (extras_offer_sample); this stands in only where that is not asked.
     "extras_block": "A tour of the château — €50.00\n"
@@ -61439,6 +61527,17 @@ def preview_email_template(template_key, subject_src, body_src):
                                         conn=conn, card=SAMPLE_CONFIRMATION_CARD)
         finally:
             conn.close()
+    elif template_key == RECAP_TEMPLATE_KEY:
+        # Drawn as it arrives: pictures where {photos} falls and a card where
+        # {next_dates} does, rather than the bracketed stand-ins written out.
+        html = template_letter_html(
+            template_key, subject, body_src, context,
+            photos=[{"src": email_asset(name), "alt": "Noël at Gudanes, 14 October 2026"}
+                    for name in ("hero-table.jpg", "hero-window.jpg")],
+            workshops=[{"title": "Noël at Gudanes", "when": "18 – 22 December 2026",
+                        "price": "€3,200 per person",
+                        "url": "https://chateaugudanes.com/workshops/register/351",
+                        "photo": None}])
     else:
         html = template_letter_html(template_key, subject, body_src, context,
                                     extras=extras)
@@ -61481,7 +61580,7 @@ def rendered_letter_keys():
 
 
 def render_email_template(conn, template_key, context, *, statement=None, pay_url="",
-                          workshops=None, foot=None, extras=None):
+                          workshops=None, foot=None, extras=None, photos=None):
     """Merge-tag substitution against an admin-editable template. Falls back
     to the raw template text (tags left unreplaced) if the context is
     missing a key rather than crashing an email send over a typo.
@@ -61501,12 +61600,12 @@ def render_email_template(conn, template_key, context, *, statement=None, pay_ur
         return None, None, None
     # Drawn from the same wording, read again with the blocks that are drawn
     # as something else marked (the statement, the workshops, small print).
-    # `statement`, `pay_url`, `workshops`, `extras` and `foot` are what the
+    # `statement`, `pay_url`, `workshops`, `extras`, `foot` and `photos` are what the
     # drawing adds that is not a merge tag; see letter_html.
     _subject_src, body_src, _ = email_template_source(conn, template_key)
     return subject, body, template_letter_html(
         template_key, subject, body_src, context, conn=conn, statement=statement,
-        pay_url=pay_url, workshops=workshops, foot=foot, extras=extras)
+        pay_url=pay_url, workshops=workshops, foot=foot, extras=extras, photos=photos)
 
 
 def email_template_text(conn, template_key, context):
@@ -75627,6 +75726,895 @@ def instructor_page(token):
     return render_template("instructor_sheet.html", data=data)
 
 
+# ---------------------------------------------------------------------------
+# THE RECAP OF AN ATELIER
+#
+# The ateliers are mostly how people come to know the house rather than a
+# teaching business (owner, 22 October 2026), so what a guest takes home
+# matters: the week's photographs, what whoever taught it wrote down for them
+# -- a recipe, a method -- and when they could come back. One letter, after it
+# ends, and three rules shape all of it.
+#
+#   - THE OWNER SENDS IT. It is drafted on the sitting's page once the atelier
+#     is over, and nothing sends it but the owner's button there. Its
+#     automation switch only raises a task saying a draft is waiting.
+#   - IN THE OWNER'S WORDS. It ships with no wording, and a letter with none
+#     cannot be sent (recap_wording). The guest texts shipped with sentences
+#     the app had made up and were switched off for it on 22 October 2026.
+#   - NOBODY'S FACE WITHOUT THEIR YES. A person says who is in each photograph,
+#     never the software (templates/privacy.html), and a picture goes only if
+#     everybody in it has said they are happy to appear. Not asked is not yes.
+#     Asked again whenever a guest opens the letter, so a yes withdrawn later
+#     takes the picture out of the letters the others already have.
+# ---------------------------------------------------------------------------
+
+RECAP_TEMPLATE_KEY = "workshop_recap"
+RECAP_REMINDER_SWITCH = "automation_atelier_recap_reminder_enabled"
+# A letter of forty photographs is one nobody reaches the end of, and some
+# mail apps cut a long one off.
+RECAP_MOST_PHOTOS = 12
+RECAP_NEXT_DATES = 3
+# How long after an atelier its reminder stays on the task list.
+RECAP_REMIND_DAYS = 30
+RECAP_NOTES_MAX = 20000
+RECAP_PEOPLE = {
+    "nobody": "Nobody is in it",
+    "named": "Only the people ticked",
+    "other": "Somebody not on this sitting, or not ticked here",
+}
+RECAP_ALREADY = "already sent"
+
+
+def recap_row(conn, session_id, *, make=False):
+    """The sitting's recap row, made -- with its private link -- when asked.
+    With the names of whoever sent it and whoever set it aside."""
+    def read():
+        return conn.execute(
+            """SELECT atelier_recaps.*, sender.name AS sent_by_name,
+                      aside.name AS set_aside_by_name
+                 FROM atelier_recaps
+                 LEFT JOIN users sender ON sender.id = atelier_recaps.sent_by_user_id
+                 LEFT JOIN users aside ON aside.id = atelier_recaps.set_aside_by_user_id
+                WHERE atelier_recaps.session_id = ?""", (session_id,)).fetchone()
+    row = read()
+    if row or not make:
+        return row
+    conn.execute(
+        "INSERT OR IGNORE INTO atelier_recaps (session_id, share_token, created_at) "
+        "VALUES (?, ?, ?)",
+        (session_id, secrets.token_urlsafe(24), datetime.now(timezone.utc).isoformat()))
+    return read()
+
+
+def recap_wording(conn):
+    """(subject, body) as the owner wrote the recap, or None.
+
+    None while either is blank, and while the wording is something the send
+    would refuse. Every other letter falls back to its shipped wording then;
+    this one shipped with none, so there is nothing to fall back to, and no
+    wording means no letter.
+    """
+    row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?",
+                       (RECAP_TEMPLATE_KEY,)).fetchone()
+    if not row:
+        return None
+    subject, body = (row["subject"] or "").strip(), (row["body"] or "").strip()
+    if not subject or not body or wording_problems(RECAP_TEMPLATE_KEY, subject, body):
+        return None
+    return subject, body
+
+
+def recap_session(conn, session_id):
+    return conn.execute(
+        """SELECT ws.*, w.title, w.instructor_name, w.price_per_person,
+                  w.active AS workshop_active
+             FROM workshop_sessions ws JOIN workshops w ON w.id = ws.workshop_id
+            WHERE ws.id = ?""", (session_id,)).fetchone()
+
+
+def recap_participants(conn, session_id):
+    """Everybody the recap is for: the confirmed places, never one cancelled or
+    declined, each with their answer about appearing in photographs.
+
+    The answer is read off the guest's PROFILE, as photo_declines reads it: it
+    belongs to a person and holds across every stay. An atelier place is
+    linked to a profile by its address and nothing else. It is the lead's
+    answer alone -- the others on a place of two have none on file, and the
+    page says so beside the tick.
+
+    A "no" to being quoted from their feedback (publish_consent) counts
+    against the photographs as well: somebody who asked for their words not
+    to be shown has not said yes to their face.
+    """
+    rows = conn.execute(
+        """SELECT * FROM workshop_bookings
+            WHERE session_id = ? AND status = 'confirmed'
+            ORDER BY guest_name COLLATE NOCASE, id""", (session_id,)).fetchall()
+    if not rows:
+        return []
+    ids = [r["id"] for r in rows]
+    marks = ",".join("?" * len(ids))
+    party = {}
+    for g in conn.execute(
+            f"""SELECT workshop_booking_id, guest_name FROM workshop_booking_guests
+                 WHERE workshop_booking_id IN ({marks}) ORDER BY is_lead DESC, id""", ids):
+        party.setdefault(g["workshop_booking_id"], []).append(g["guest_name"])
+    no_quote = {r["workshop_booking_id"] for r in conn.execute(
+        f"""SELECT workshop_booking_id FROM workshop_feedback
+             WHERE workshop_booking_id IN ({marks}) AND publish_consent = 0""", ids)}
+    out = []
+    for r in rows:
+        email = (r["guest_email"] or "").strip()
+        profile_id = guest_for_contact(conn, address=email) if "@" in email else None
+        profile = (conn.execute("SELECT photo_consent, photo_consent_at FROM guests "
+                                "WHERE id = ?", (profile_id,)).fetchone()
+                   if profile_id else None)
+        answer = (profile["photo_consent"] if profile else None) or "unknown"
+        if answer not in PHOTO_CONSENT:
+            answer = "unknown"
+        if answer == "no":
+            why = "would rather not appear"
+        elif r["id"] in no_quote:
+            why = "said no to being quoted from their feedback"
+        elif answer != "yes":
+            why = "has not been asked about photographs"
+        else:
+            why = None
+        out.append({
+            "id": r["id"], "row": r, "label": r["guest_name"], "email": email,
+            "with": [n for n in party.get(r["id"], []) if n and n != r["guest_name"]],
+            "profile_id": profile_id, "answer": answer,
+            "answer_label": PHOTO_CONSENT[answer],
+            "answered_at": profile["photo_consent_at"] if profile else None,
+            "no_quote": r["id"] in no_quote, "cleared": why is None, "why": why,
+        })
+    return out
+
+
+def recap_photo_candidates(conn, session):
+    """Every photograph that could be from this sitting, wherever it came in.
+
+    Placed by the day it was taken, off the camera's own clock -- set to the
+    house's time, see photo_taken_on -- from the first day to the last. One
+    with no such day is placed by the day it ARRIVED, which for a card read at
+    the end of the week is still the week. Three ways in, one list: the tray,
+    the photo page's posts and the camera roll. A frame that went from the
+    tray to a post is the same file, and is listed once.
+    """
+    first = parse_date(session["start_date"])
+    last = parse_date(session["end_date"]) or first
+    if not first:
+        return []
+    lo, hi = first.isoformat(), last.isoformat()
+    since, until = house_day_window(first, last)
+    found = {}
+
+    def keep(source, source_id, filename, day, folder, saw_people=None):
+        if not filename or not day or not (first <= day <= last) or filename in found:
+            return
+        if not os.path.exists(os.path.join(folder, filename)):
+            return
+        found[filename] = {"source": source, "source_id": source_id, "filename": filename,
+                           "key": f"{source}:{source_id}", "taken": day, "folder": folder,
+                           "saw_people": saw_people}
+
+    for r in conn.execute(
+            """SELECT id, filename, taken_on, arrived_at FROM photo_inbox
+                WHERE dismissed = 0
+                  AND (taken_on BETWEEN ? AND ?
+                       OR (taken_on IS NULL AND arrived_at >= ? AND arrived_at < ?))""",
+            (lo, hi, since, until)):
+        keep("tray", r["id"], r["filename"],
+             parse_date(r["taken_on"]) if r["taken_on"] else house_date(r["arrived_at"]),
+             UPLOAD_DIR)
+    for r in conn.execute(
+            """SELECT id, image_filename, taken_on, created_at FROM social_posts
+                WHERE COALESCE(image_filename, '') != ''
+                  AND (taken_on BETWEEN ? AND ?
+                       OR (taken_on IS NULL AND created_at >= ? AND created_at < ?))""",
+            (lo, hi, since, until)):
+        keep("post", r["id"], r["image_filename"],
+             parse_date(r["taken_on"]) if r["taken_on"] else house_date(r["created_at"]),
+             UPLOAD_DIR)
+    # The camera roll's own judgement of whether there is a person in a frame
+    # is shown beside it, and decides nothing: a person says who is in it.
+    for r in conn.execute(
+            """SELECT id, filename, taken_at, created_at, has_people FROM media_intake
+                WHERE kind = 'photo' AND status != 'rejected'
+                  AND COALESCE(taken_at, created_at) >= ?
+                  AND COALESCE(taken_at, created_at) < ?""", (since, until)):
+        keep("camera", r["id"], r["filename"], house_date(r["taken_at"] or r["created_at"]),
+             ROOM_PHOTO_DIR, bool(r["has_people"]))
+    return sorted(found.values(), key=lambda p: (p["taken"], p["filename"]))
+
+
+def recap_photo_verdict(photo):
+    """(goes, why not) for one photograph -- the one answer, asked by the page,
+    the letter, and the link a guest opens the picture through."""
+    if not photo["chosen"]:
+        return False, "you left it out"
+    if photo["people"] is None:
+        return False, "nobody has said who is in it"
+    if photo["people"] == "other":
+        return False, ("somebody in it is not on this sitting or not ticked, and the "
+                       "house has no answer from them")
+    if photo["people"] == "named":
+        if photo["gone"]:
+            return False, "somebody ticked as in it no longer has a place on this sitting"
+        if not photo["who"]:
+            return False, "it is marked as having people in it, and nobody is ticked"
+        refusing = [p for p in photo["who"] if not p["cleared"]]
+        if refusing:
+            return False, "; ".join(f"{p['label']} {p['why']}" for p in refusing)
+    return True, None
+
+
+def recap_photos(conn, session, participants):
+    """The week's photographs, each with what was decided about it and
+    whether it goes."""
+    decided = {(r["source"], r["source_id"]): r for r in conn.execute(
+        """SELECT atelier_recap_photos.*, decider.name AS decided_by_name
+             FROM atelier_recap_photos
+             LEFT JOIN users decider ON decider.id = atelier_recap_photos.decided_by_user_id
+            WHERE atelier_recap_photos.session_id = ?""", (session["id"],))}
+    ticked = {}
+    for r in conn.execute(
+            """SELECT atelier_recap_photo_people.photo_id,
+                      atelier_recap_photo_people.workshop_booking_id
+                 FROM atelier_recap_photo_people
+                 JOIN atelier_recap_photos
+                   ON atelier_recap_photos.id = atelier_recap_photo_people.photo_id
+                WHERE atelier_recap_photos.session_id = ?""", (session["id"],)):
+        ticked.setdefault(r["photo_id"], []).append(r["workshop_booking_id"])
+    by_id = {p["id"]: p for p in participants}
+    out = []
+    for c in recap_photo_candidates(conn, session):
+        d = decided.get((c["source"], c["source_id"]))
+        ids = ticked.get(d["id"], []) if d else []
+        photo = dict(c, decision_id=d["id"] if d else None,
+                     decided_by=d["decided_by_name"] if d else None,
+                     decided_at=d["decided_at"] if d else None,
+                     chosen=bool(d["chosen"]) if d else True,
+                     people=d["people"] if d else None,
+                     who=[by_id[i] for i in ids if i in by_id],
+                     gone=[i for i in ids if i not in by_id], ticked=set(ids))
+        photo["goes"], photo["why"] = recap_photo_verdict(photo)
+        out.append(photo)
+    return out
+
+
+def recap_next_dates(conn, session, today):
+    """The next dates of the same atelier a guest can still take a place on,
+    by the rule every public page uses (public_sittings), each with its link."""
+    if not session["workshop_active"]:
+        return []
+    out = []
+    for s in public_sittings(conn, session["workshop_id"], today):
+        if s["id"] == session["id"]:
+            continue
+        out.append({
+            "title": session["title"],
+            "when": format_date_range(s["start_date"], s["end_date"] or s["start_date"]),
+            "price": (f"{euro(session['price_per_person'])} per person"
+                      if session["price_per_person"] else ""),
+            "url": external_url("workshop_register", session_id=s["id"]),
+            "photo": None,
+        })
+        if len(out) >= RECAP_NEXT_DATES:
+            break
+    return out
+
+
+def recap_refusal(member, held_back):
+    """Why this guest is not to be sent the recap now, or None. Asked by the
+    page, and again from the database at the moment of sending."""
+    row = member["row"]
+    if row["status"] != "confirmed":
+        return "no longer has a place on this sitting"
+    if row["recap_sent_at"]:
+        return f"{RECAP_ALREADY} on {format_date_human(house_date_iso(row['recap_sent_at']))}"
+    email = (row["guest_email"] or "").strip()
+    if "@" not in email:
+        return GROUP_NO_EMAIL
+    if row["do_not_email"]:
+        return GROUP_DO_NOT_EMAIL
+    if email.lower() in held_back:
+        return GROUP_RESTRICTED
+    return None
+
+
+def recap_plan(conn, participants):
+    """(going, left out): who the recap would go to now, and who not, why.
+
+    One letter per address: two places booked from one inbox are written to
+    once, and the second is stamped with the first."""
+    held_back = restricted_addresses(conn)
+    going, left_out, by_address = [], [], {}
+    for p in participants:
+        why = recap_refusal(p, held_back)
+        if why:
+            left_out.append((p["label"], why))
+            continue
+        address = p["email"].lower()
+        if address in by_address:
+            by_address[address]["also"].append(p)
+            continue
+        entry = dict(p, also=[])
+        by_address[address] = entry
+        going.append(entry)
+    return going, left_out
+
+
+def recap_draft(conn, session_id, today=None):
+    """Everything the sitting's page shows about its recap -- and what the send
+    reads, so what the owner looked at is what goes. None for no such sitting."""
+    today = today or house_today()
+    session = recap_session(conn, session_id)
+    if not session:
+        return None
+    recap = recap_row(conn, session_id)
+    last = parse_date(session["end_date"]) or parse_date(session["start_date"])
+    participants = recap_participants(conn, session_id)
+    photos = recap_photos(conn, session, participants)
+    going = [p for p in photos if p["goes"]]
+    planned, left_out = recap_plan(conn, participants)
+    draft = {
+        "session": session, "recap": recap, "today": today,
+        "over": bool(last and last < today),
+        "drafted_on": (last + timedelta(days=1)) if last else None,
+        "participants": participants, "photos": photos,
+        "in_letter": going[:RECAP_MOST_PHOTOS], "over_limit": going[RECAP_MOST_PHOTOS:],
+        "next_dates": recap_next_dates(conn, session, today),
+        "wording": recap_wording(conn), "going": planned, "left_out": left_out,
+        "had_it": [p for p in participants if p["row"]["recap_sent_at"]],
+    }
+    draft["blocked"] = recap_blocked(draft)
+    return draft
+
+
+def recap_blocked(draft):
+    """Why the recap cannot be sent now, or None. The page leaves the button
+    off on it and the send refuses on it: one answer, asked in both places."""
+    session, recap = draft["session"], draft["recap"]
+    if session["cancelled_at"]:
+        return "This sitting was called off, so there is no recap to send."
+    if not draft["over"]:
+        when = draft["drafted_on"]
+        return ("It is drafted here once the atelier is over"
+                + (f", on {format_date_human(when.isoformat())}." if when else "."))
+    if recap and recap["set_aside_at"]:
+        return "You set this recap aside. Bring it back to send it."
+    if not draft["wording"]:
+        return ("The recap has no wording yet, so it cannot be sent. Write it under "
+                "Email wording, “Workshop: Recap after the atelier”.")
+    if not draft["participants"]:
+        return "Nobody had a confirmed place on this sitting."
+    if not draft["going"]:
+        return "Everybody on this sitting who can be written to has had it."
+    return None
+
+
+def recap_letter_parts(draft, *, for_owner=False):
+    """What the letter carries besides the words -- the same for everybody on
+    the sitting: the pictures, the cards, and the plain-text links to both.
+
+    `for_owner` points the pictures and the file at the house's own copies,
+    for the preview on the sitting's page; the guests' private links answer
+    only once the recap has gone."""
+    session, recap = draft["session"], draft["recap"]
+    token = recap["share_token"] if recap else None
+    photos, links = [], []
+    for p in draft["in_letter"]:
+        if for_owner or not token:
+            src = url_for("uploaded_file", filename=p["filename"])
+        else:
+            src = external_url("atelier_recap_photo", token=token, photo_id=p["decision_id"])
+            links.append(src)
+        photos.append({"src": src,
+                       "alt": f"{session['title']}, {format_date_human(p['taken'].isoformat())}"})
+    file_url = ""
+    if recap and recap["notes_file"]:
+        file_url = (url_for("uploaded_file", filename=recap["notes_file"])
+                    if for_owner or not token
+                    else external_url("atelier_recap_notes", token=token))
+    cards = draft["next_dates"]
+    cards_text = "\n\n".join(
+        "\n".join(x for x in (c["title"], " · ".join(y for y in (c["when"], c["price"]) if y),
+                              c["url"]) if x) for c in cards)
+    return {"photos": photos, "photos_text": "\n".join(links) if links else
+            ("\n".join(p["src"] for p in photos) if photos else ""),
+            "cards": cards, "cards_text": cards_text, "file_url": file_url}
+
+
+def recap_context(draft, row, parts):
+    """The merge tags the recap fills in, for one guest."""
+    session, recap = draft["session"], draft["recap"]
+    return {
+        "guest_name": row["guest_name"],
+        "workshop_title": session["title"],
+        "dates": format_date_range(session["start_date"],
+                                   session["end_date"] or session["start_date"]),
+        "instructor_name": session["instructor_name"] or "",
+        "photos": parts["photos_text"],
+        "instructor_notes": ((recap["notes"] or "").strip() if recap else ""),
+        "notes_file_url": parts["file_url"],
+        "next_dates": parts["cards_text"],
+    }
+
+
+def recap_preview(conn, draft):
+    """The letter as the first guest on the list will get it, for the page:
+    {subject, html, to, unfilled}, or None while there is no wording.
+
+    `unfilled` names the tags the owner's wording uses that come out empty for
+    this sitting -- {instructor_notes} with no notes left -- so a sentence
+    leading into nothing is seen here rather than in somebody's inbox."""
+    if not draft["wording"]:
+        return None
+    who = (draft["going"] or draft["participants"] or [None])[0]
+    row = who["row"] if who else {"guest_name": SAMPLE_MERGE_VALUES["guest_name"]}
+    parts = recap_letter_parts(draft, for_owner=True)
+    context = recap_context(draft, row, parts)
+    subject, body, html = render_email_template(
+        conn, RECAP_TEMPLATE_KEY, context, workshops=parts["cards"] or None,
+        photos=parts["photos"] or None)
+    if not subject:
+        return None
+    used = set(re.findall(r"\{(\w+)\}", " ".join(draft["wording"])))
+    return {"subject": subject, "body": body, "html": html,
+            "to": who["label"] if who else None,
+            "unfilled": sorted(t for t in used if t in context and not str(context[t]).strip())}
+
+
+def send_recap_one(conn, draft, member, parts, *, user_id=None, held_back=None):
+    """Write the recap to one guest: ("sent" | "held" | None, why not).
+
+    The one action the send repeats. Whether they get it is decided HERE, from
+    the database, not trusted from the page: a place cancelled since the page
+    was drawn is not written to, and their stamp is claimed BEFORE the letter
+    goes, so a second press -- or a second tab -- finds it taken and sends
+    nothing. "held" is kept, to go when mail can (Write to guests off, or no
+    provider): stamped all the same, since it will arrive.
+    """
+    held_back = restricted_addresses(conn) if held_back is None else held_back
+    row = conn.execute("SELECT * FROM workshop_bookings WHERE id = ?",
+                       (member["id"],)).fetchone()
+    if not row or row["session_id"] != draft["session"]["id"]:
+        return None, "no longer has a place on this sitting"
+    why = recap_refusal(dict(member, row=row), held_back)
+    if why:
+        if why in (GROUP_NO_EMAIL, GROUP_DO_NOT_EMAIL, GROUP_RESTRICTED):
+            log_workshop_message(conn, row["id"], "Recap", row["guest_email"] or "",
+                                 f"skipped — {why}")
+            conn.commit()
+        return None, why
+    if not recap_wording(conn):
+        return None, "the recap has no wording yet"
+    subject, body, letter = render_email_template(
+        conn, RECAP_TEMPLATE_KEY, recap_context(draft, row, parts),
+        workshops=parts["cards"] or None, photos=parts["photos"] or None)
+    if not subject:
+        return None, "the recap has no wording yet"
+    now = datetime.now(timezone.utc).isoformat()
+    claimed = conn.execute(
+        "UPDATE workshop_bookings SET recap_sent_at = ? "
+        "WHERE id = ? AND recap_sent_at IS NULL AND status = 'confirmed'",
+        (now, row["id"])).rowcount
+    if not claimed:
+        conn.commit()
+        return None, RECAP_ALREADY
+    also = [m["id"] for m in member.get("also", [])]
+    if also:
+        conn.execute(
+            f"UPDATE workshop_bookings SET recap_sent_at = ? WHERE recap_sent_at IS NULL "
+            f"AND id IN ({','.join('?' * len(also))})", (now, *also))
+    # Nothing of ours held open across the network: the mail log is written
+    # by another connection, and would wait on this one.
+    conn.commit()
+    address = row["guest_email"].strip()
+    report = {}
+    sent = send_email(address, subject, body, html=letter, area="workshops",
+                      about=("workshop", row["id"]), template_key=RECAP_TEMPLATE_KEY,
+                      sent_by=user_id, report=report)
+    if not sent and report.get("stopped"):
+        # Refused for good -- an address that bounced -- so it is not theirs
+        # yet, and the page goes on saying it has not gone.
+        conn.execute(
+            f"UPDATE workshop_bookings SET recap_sent_at = NULL WHERE recap_sent_at = ? "
+            f"AND id IN ({','.join('?' * (1 + len(also)))})", (now, row["id"], *also))
+        log_workshop_message(conn, row["id"], subject, address,
+                             "not sent — " + report["why"].rstrip("."))
+        conn.commit()
+        return None, report["why"].rstrip(".")
+    log_workshop_message(conn, row["id"], subject, address, "sent" if sent else "held")
+    conn.commit()
+    return ("sent" if sent else "held"), None
+
+
+def send_recap(conn, session_id, *, expect, user_id=None, today=None):
+    """Send the recap to everybody on the sitting who has not had it.
+
+    The owner's button calls this and nothing else does. (message, category)
+    for the page, or None for no such sitting. Everybody it leaves out is
+    named, through bulk_message, except those who already have it.
+    """
+    draft = recap_draft(conn, session_id, today)
+    if not draft:
+        return None
+    if draft["blocked"]:
+        return draft["blocked"], "error"
+    if str(expect) != str(len(draft["going"])):
+        return (f"The list has changed since you looked: it is {len(draft['going'])} now. "
+                "Check who it goes to and send it again.", "error")
+    draft["recap"] = recap_row(conn, session_id, make=True)
+    conn.commit()
+    parts = recap_letter_parts(draft)
+    held_back = restricted_addresses(conn)
+    sent, held, skipped = 0, 0, []
+    # The ones it will refuse go through the one-guest function as well: that
+    # is where a refusal is decided and written on their history, so the send
+    # to everybody cannot leave somebody out more quietly than one letter would.
+    going_ids = {m["id"] for m in draft["going"]}
+    covered = {a["id"] for m in draft["going"] for a in m["also"]}
+    refused = [dict(p, also=[]) for p in draft["participants"]
+               if p["id"] not in going_ids and p["id"] not in covered
+               and not p["row"]["recap_sent_at"]]
+    for member in draft["going"] + refused:
+        outcome, why = send_recap_one(conn, draft, member, parts, user_id=user_id,
+                                      held_back=held_back)
+        if outcome == "sent":
+            sent += 1
+        elif outcome == "held":
+            held += 1
+        elif not why.startswith(RECAP_ALREADY):
+            skipped.append((member["label"], why))
+    if sent or held:
+        conn.execute(
+            "UPDATE atelier_recaps SET sent_at = COALESCE(sent_at, ?), "
+            "sent_by_user_id = COALESCE(sent_by_user_id, ?) WHERE session_id = ?",
+            (datetime.now(timezone.utc).isoformat(), user_id, session_id))
+    log_audit(conn, "atelier_recap_sent",
+              target=f"{draft['session']['title']}, {draft['session']['start_date']}",
+              details=f"{sent} sent, {held} kept to go, {len(skipped)} not")
+    conn.commit()
+    return bulk_message("Sent", "recap", sent + held, skipped,
+                        detail=(f"{held} kept, to go when mail to guests can" if held else ""))
+
+
+def atelier_recaps_to_approve(conn, today=None):
+    """The recaps drafted and waiting: [{session, waiting, written, due}].
+
+    An atelier over within the last RECAP_REMIND_DAYS, not called off, its
+    recap neither sent nor set aside, with somebody on it still to have it.
+    What the reminder raises a task for; it sends nothing."""
+    today = today or house_today()
+    since = (today - timedelta(days=RECAP_REMIND_DAYS)).isoformat()
+    written = bool(recap_wording(conn))
+    out = []
+    for s in conn.execute(
+            """SELECT ws.*, w.title FROM workshop_sessions ws
+                 JOIN workshops w ON w.id = ws.workshop_id
+                 LEFT JOIN atelier_recaps r ON r.session_id = ws.id
+                WHERE ws.cancelled_at IS NULL
+                  AND COALESCE(ws.end_date, ws.start_date) < ?
+                  AND COALESCE(ws.end_date, ws.start_date) >= ?
+                  AND r.sent_at IS NULL AND r.set_aside_at IS NULL
+                ORDER BY COALESCE(ws.end_date, ws.start_date)""",
+            (today.isoformat(), since)).fetchall():
+        waiting = conn.execute(
+            """SELECT COUNT(*) AS n FROM workshop_bookings
+                WHERE session_id = ? AND status = 'confirmed' AND recap_sent_at IS NULL""",
+            (s["id"],)).fetchone()["n"]
+        if not waiting:
+            continue
+        end = parse_date(s["end_date"]) or parse_date(s["start_date"])
+        out.append({"session": s, "waiting": waiting, "written": written,
+                    "due": (end + timedelta(days=1)).isoformat()})
+    return out
+
+
+def save_recap_notes(conn, session_id, *, text, upload=None, remove_file=False, by=""):
+    """What whoever taught it leaves for the guests: (saved, what to say).
+
+    Written by them from their teaching link, or by the owner on the sitting's
+    page; the same function either way. Shut once the recap has gone -- the
+    letter already carries what was here, and a file changed underneath it
+    would make the letter say one thing and its link another."""
+    recap = recap_row(conn, session_id, make=True)
+    if recap["sent_at"]:
+        return False, ("The recap has already gone, with what was here then, so this "
+                       "cannot be changed now.")
+    text = (text or "").replace("\r\n", "\n").strip()
+    if len(text) > RECAP_NOTES_MAX:
+        return False, (f"That is longer than the {RECAP_NOTES_MAX:,} characters this takes. "
+                       "Put the long part in a file instead.")
+    stored, original = recap["notes_file"], recap["notes_file_name"]
+    if upload is not None and upload.filename:
+        if not allowed_file(upload.filename):
+            return False, ("That kind of file cannot be added. A PDF, a Word document, "
+                           "a picture or a text file can.")
+        data = upload.read()
+        if not data:
+            return False, "That file was empty, so nothing was saved."
+        name = "recapnotes_%s_%s" % (secrets.token_hex(6),
+                                    secure_filename(upload.filename) or "notes")
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        with open(os.path.join(UPLOAD_DIR, name), "wb") as fh:
+            fh.write(data)
+        stored, original = name, upload.filename[:120]
+    elif remove_file:
+        stored, original = None, None
+    if recap["notes_file"] and recap["notes_file"] != stored:
+        # Only ever one of ours, by its name: nothing else is taken off the volume.
+        old = recap["notes_file"]
+        if old.startswith("recapnotes_") and os.path.exists(os.path.join(UPLOAD_DIR, old)):
+            os.remove(os.path.join(UPLOAD_DIR, old))
+    conn.execute(
+        """UPDATE atelier_recaps SET notes = ?, notes_file = ?, notes_file_name = ?,
+                  notes_at = ?, notes_by = ? WHERE session_id = ?""",
+        (text or None, stored, original, datetime.now(timezone.utc).isoformat(),
+         (by or "")[:80] or None, session_id))
+    if not text and not stored:
+        return True, "Saved. There is nothing from the atelier in the recap now."
+    return True, "Saved. It goes in the recap the owner sends after the atelier."
+
+
+def save_recap_photo_decisions(conn, session, form, user_id=None):
+    """Write down, for each photograph on the form, whether it goes and who is
+    in it. Returns how many were saved. A photograph not of this sitting, or a
+    tick for somebody without a confirmed place on it, is not taken."""
+    candidates = {c["key"]: c for c in recap_photo_candidates(conn, session)}
+    confirmed = {r["id"] for r in conn.execute(
+        "SELECT id FROM workshop_bookings WHERE session_id = ? AND status = 'confirmed'",
+        (session["id"],))}
+    now = datetime.now(timezone.utc).isoformat()
+    saved = 0
+    for key in form.getlist("photo"):
+        c = candidates.get(key)
+        if not c:
+            continue
+        people = form.get(f"people-{key}") or None
+        if people not in RECAP_PEOPLE:
+            people = None
+        who = {int(x) for x in form.getlist(f"who-{key}") if str(x).isdigit()} & confirmed
+        # Ticking somebody says there is somebody in it, whether or not the
+        # line above was chosen; and only "only these people" keeps the ticks.
+        if who and people is None:
+            people = "named"
+        if people != "named":
+            who = set()
+        conn.execute(
+            """INSERT INTO atelier_recap_photos (session_id, source, source_id, filename,
+                   chosen, people, decided_at, decided_by_user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(session_id, source, source_id) DO UPDATE SET
+                   chosen = excluded.chosen, people = excluded.people,
+                   filename = excluded.filename, decided_at = excluded.decided_at,
+                   decided_by_user_id = excluded.decided_by_user_id""",
+            (session["id"], c["source"], c["source_id"], c["filename"],
+             1 if form.get(f"chosen-{key}") else 0, people, now, user_id))
+        photo_id = conn.execute(
+            "SELECT id FROM atelier_recap_photos WHERE session_id = ? AND source = ? "
+            "AND source_id = ?", (session["id"], c["source"], c["source_id"])).fetchone()["id"]
+        conn.execute("DELETE FROM atelier_recap_photo_people WHERE photo_id = ?", (photo_id,))
+        for booking_id in sorted(who):
+            conn.execute("INSERT INTO atelier_recap_photo_people (photo_id, "
+                         "workshop_booking_id) VALUES (?, ?)", (photo_id, booking_id))
+        saved += 1
+    return saved
+
+
+def _recap_back(session_id):
+    return redirect(url_for("admin_workshop_session", session_id=session_id) + "#recap")
+
+
+def _my_id():
+    """Who is signed in, by id, or None."""
+    user = current_user()
+    return user["id"] if user else None
+
+
+def _recap_session_or_404(conn, session_id):
+    session = recap_session(conn, session_id)
+    if not session:
+        conn.close()
+        abort(404)
+    return session
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/recap/photos", methods=["POST"])
+@owner_required
+def save_atelier_recap_photos(session_id):
+    """Which of the week's photographs go, and who is in each."""
+    conn = get_db()
+    session = _recap_session_or_404(conn, session_id)
+    saved = save_recap_photo_decisions(conn, session, request.form,
+                                       user_id=_my_id())
+    conn.commit()
+    draft = recap_draft(conn, session_id)
+    conn.close()
+    going = len(draft["in_letter"])
+    flash(f"Saved {saved} photograph{'' if saved == 1 else 's'}. "
+          f"{going} go{'es' if going == 1 else ''} in the recap."
+          + (f" Only the first {RECAP_MOST_PHOTOS} go: leave some out to choose which."
+             if draft["over_limit"] else ""), "success")
+    return _recap_back(session_id)
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/recap/answers", methods=["POST"])
+@owner_required
+def save_atelier_recap_answers(session_id):
+    """Write down what each guest said about appearing in photographs.
+
+    Onto their PROFILE, where every page that publishes a photograph reads it,
+    with the date and how it was asked kept the way the guest's own page keeps
+    it. Most atelier guests have never been asked anywhere else, and this is
+    the page where whoever met them that week is looking at their pictures."""
+    conn = get_db()
+    _recap_session_or_404(conn, session_id)
+    now = datetime.now(timezone.utc).isoformat()
+    changed = []
+    for p in recap_participants(conn, session_id):
+        answer = request.form.get(f"answer-{p['id']}")
+        if answer not in PHOTO_CONSENT or answer == p["answer"]:
+            continue
+        guest_id = p["profile_id"] or ensure_guest_profile(
+            conn, p["row"]["guest_name"], p["email"], p["row"]["guest_phone"])
+        if not guest_id:
+            continue
+        before = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+        conn.execute("UPDATE guests SET photo_consent = ?, photo_consent_at = ? WHERE id = ?",
+                     (answer, now, guest_id))
+        record_profile_changes(conn, before, {"photo_consent": answer},
+                               _my_id(), at=now)
+        record_consent(conn, "photos", PHOTO_CONSENT_GRANTED.get(answer),
+                       "asked at the atelier, written down on its recap",
+                       guest_id=guest_id, email=p["email"], at=now)
+        changed.append(p["label"])
+    conn.commit()
+    conn.close()
+    flash(("Written on their profiles: " + ", ".join(changed) + ".") if changed
+          else "Nothing had changed, so nothing was written.", "success")
+    return _recap_back(session_id)
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/recap/notes", methods=["POST"])
+@owner_required
+def save_atelier_recap_notes(session_id):
+    """The notes, put right by the owner before the recap goes."""
+    conn = get_db()
+    _recap_session_or_404(conn, session_id)
+    user = current_user()
+    ok, message = save_recap_notes(
+        conn, session_id, text=request.form.get("notes", ""),
+        upload=request.files.get("notes_file"),
+        remove_file=bool(request.form.get("remove_file")),
+        by=(user["name"] if user else ""))
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return _recap_back(session_id)
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/recap/send", methods=["POST"])
+@owner_required
+def send_atelier_recap(session_id):
+    """The one way the recap goes: the owner, having looked."""
+    user = current_user()
+    if not user or user["role"] != "owner":
+        abort(403)
+    conn = get_db()
+    _recap_session_or_404(conn, session_id)
+    message, category = send_recap(conn, session_id, expect=request.form.get("expect", ""),
+                                   user_id=_my_id())
+    conn.close()
+    flash(message, category)
+    return _recap_back(session_id)
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/recap/set-aside", methods=["POST"])
+@owner_required
+def set_aside_atelier_recap(session_id):
+    """No recap for this sitting -- or, from the same button, one after all.
+    Kept rather than deleted: the notes and the choices are still there."""
+    conn = get_db()
+    _recap_session_or_404(conn, session_id)
+    recap = recap_row(conn, session_id, make=True)
+    if request.form.get("bring_back"):
+        conn.execute("UPDATE atelier_recaps SET set_aside_at = NULL, "
+                     "set_aside_by_user_id = NULL WHERE session_id = ?", (session_id,))
+        message = "The recap is back, ready to send."
+    elif recap["sent_at"]:
+        message = "It has already gone, so there is nothing to set aside."
+    else:
+        conn.execute("UPDATE atelier_recaps SET set_aside_at = ?, set_aside_by_user_id = ? "
+                     "WHERE session_id = ?",
+                     (datetime.now(timezone.utc).isoformat(), _my_id(),
+                      session_id))
+        message = "Set aside: no recap for this sitting, and no reminder about it."
+    conn.commit()
+    conn.close()
+    flash(message, "success")
+    return _recap_back(session_id)
+
+
+@app.route("/workshops/teaching/<token>/notes", methods=["POST"])
+def instructor_recap_notes(token):
+    """Notes or recipes for the guests, from whoever teaches. Their link is the
+    key, as it is for the page they are on."""
+    conn = get_db()
+    session = conn.execute(
+        """SELECT ws.id, w.instructor_name FROM workshop_sessions ws
+             JOIN workshops w ON w.id = ws.workshop_id
+            WHERE ws.instructor_token = ?""", (token,)).fetchone()
+    if not session:
+        conn.close()
+        abort(404)
+    ok, message = save_recap_notes(
+        conn, session["id"], text=request.form.get("notes", ""),
+        upload=request.files.get("notes_file"),
+        remove_file=bool(request.form.get("remove_file")),
+        by=session["instructor_name"] or "whoever teaches it")
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("instructor_page", token=token) + "#notes")
+
+
+def _recap_by_token(conn, token):
+    """A recap that has gone, by its private link, or None."""
+    return conn.execute("SELECT * FROM atelier_recaps WHERE share_token = ? "
+                        "AND sent_at IS NOT NULL", (token,)).fetchone()
+
+
+@app.route("/workshops/recap/<token>/photo/<int:photo_id>")
+def atelier_recap_photo(token, photo_id):
+    """One photograph from a recap, for the guests it went to.
+
+    No login -- a letter is opened from somebody's inbox -- so the long private
+    link is the key, as it is for a booking. It answers only once the recap has
+    gone, only for a photograph of that sitting, and only while it STILL goes:
+    the verdict is asked again on every open, so somebody who later says they
+    would rather not appear is taken out of letters the others already have.
+    """
+    conn = get_db()
+    recap = _recap_by_token(conn, token)
+    photo = None
+    if recap:
+        session = recap_session(conn, recap["session_id"])
+        photo = next((p for p in recap_photos(conn, session,
+                                              recap_participants(conn, session["id"]))
+                      if p["decision_id"] == photo_id and p["goes"]), None)
+    conn.close()
+    if not photo:
+        abort(404)
+    path = photo_rendition(photo["filename"], "social", source_dir=photo["folder"])
+    if not path:
+        abort(404)
+    response = send_from_directory(os.path.dirname(path), os.path.basename(path))
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    # Short, and private: the answer can change, and a shared cache must not
+    # go on handing out a picture the house has taken down.
+    response.headers["Cache-Control"] = "private, max-age=600"
+    return response
+
+
+@app.route("/workshops/recap/<token>/notes")
+def atelier_recap_notes(token):
+    """The file whoever taught it left for the guests, once the recap has gone."""
+    conn = get_db()
+    recap = _recap_by_token(conn, token)
+    conn.close()
+    if not recap or not recap["notes_file"] or not os.path.exists(
+            os.path.join(UPLOAD_DIR, recap["notes_file"])):
+        abort(404)
+    response = send_from_directory(UPLOAD_DIR, recap["notes_file"],
+                                   download_name=recap["notes_file_name"]
+                                   or recap["notes_file"])
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
+
+
 @app.route("/admin/workshops/<int:workshop_id>/sessions/new", methods=["POST"])
 @owner_required
 def new_workshop_session(workshop_id):
@@ -76252,6 +77240,9 @@ def admin_workshop_session(session_id):
                      for r in rows.get(programme["id"], []) if r["session"]["id"] == session_id), None)
     registered_ever = conn.execute(
         "SELECT COUNT(*) AS c FROM workshop_bookings WHERE session_id = ?", (session_id,)).fetchone()["c"]
+    # The recap, drafted once it is over: the same draft the send reads.
+    recap = recap_draft(conn, session_id, today)
+    recap_letter = recap_preview(conn, recap) if recap and recap["over"] else None
     conn.close()
     order = {"pending": 0, "confirmed": 1}
     live.sort(key=lambda r: (order.get(r["status"], 2), (r["who"] or "").lower()))
@@ -76275,7 +77266,10 @@ def admin_workshop_session(session_id):
     gone = [r for r in regs if not r["live"]]
     return render_template("admin_workshop_session.html", session=session, live=live,
                            gone=gone, figures=figures, rooms=rooms, today=today,
-                           standing=standing, registered_ever=registered_ever)
+                           standing=standing, registered_ever=registered_ever,
+                           recap=recap, recap_letter=recap_letter,
+                           recap_people=RECAP_PEOPLE, photo_answers=PHOTO_CONSENT,
+                           recap_most=RECAP_MOST_PHOTOS)
 
 
 def workshop_register_view(conn, args, today=None):
@@ -77662,6 +78656,8 @@ def instructor_sheet(conn, token):
         "dietary": [p for p in people if (p["dietary_notes"] or "").strip()],
         "materials": plan["lines"] if plan else [],
         "rooming": rooming,
+        # What they have left for the guests' recap, and whether it has gone.
+        "recap": recap_row(conn, session["id"]),
     }
 
 
@@ -87018,17 +88014,20 @@ def photo_from_data_url(raw):
         return None
 
 
-def photo_rendition(stored_name, size):
+def photo_rendition(stored_name, size, source_dir=None):
     """The path to this photograph at `size`, making it if it is not there yet.
 
     Made once and kept. Regenerated if the master is ever replaced, which is
     what the mtime comparison is for: without it, swapping a website picture
     would leave every size showing the picture it replaced, and the admin page
     would show the new one while the public site showed the old.
+
+    `source_dir` for a master kept somewhere other than the uploads: the
+    camera roll keeps its frames beside the room photographs.
     """
     if size not in PHOTO_SIZES:
         raise ValueError("No such photograph size: %s" % size)
-    source = os.path.join(UPLOAD_DIR, stored_name)
+    source = os.path.join(source_dir or UPLOAD_DIR, stored_name)
     if not os.path.exists(source):
         return None
     out_dir = os.path.join(PHOTO_DERIVED_DIR, size)
@@ -88879,6 +89878,7 @@ WATCH_TASK_KINDS = {
     "rooms_let": "A night with more rooms let than the house has bathrooms for",
     "inbox": "One of the house's own inboxes is not getting its mail",
     "deploy": "The live site is behind main",
+    "recap": "An atelier's recap drafted and waiting for you to send it",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -92332,6 +93332,28 @@ def watch_task_findings(conn, today=None):
                 "high" if r["arrange_now"] else "normal"))
     found.extend(take("extras", extras_jobs))
 
+    # AN ATELIER'S RECAP, drafted and not sent -- only while its switch is on,
+    # which it is not unless the owner turned it on. Titled by the atelier and
+    # its dates, so sending the recap or setting it aside closes that one, and
+    # a month after the atelier it closes by itself.
+    if get_automation_settings(conn).get(RECAP_REMINDER_SWITCH) == "1":
+        recaps = []
+        for r in atelier_recaps_to_approve(conn, today):
+            s = r["session"]
+            recaps.append((
+                "recap",
+                f"Look over the recap for {s['title']}, "
+                f"{format_date_range(s['start_date'], s['end_date'] or s['start_date'])}",
+                f"It ended on {format_date_human(s['end_date'] or s['start_date'])}, and "
+                f"{r['waiting']} {'guest has' if r['waiting'] == 1 else 'guests have'} not "
+                "had it. It goes when you send it from the sitting's page, after "
+                "looking at the photographs, the notes and the wording — never by itself."
+                + ("" if r["written"] else
+                   "\n\nThe recap has no wording yet: write it under Email wording, "
+                   "Workshop: Recap after the atelier, first."),
+                r["due"], "normal"))
+        found.extend(take("recap", recaps))
+
     return found, dropped
 
 
@@ -94805,7 +95827,7 @@ TEMPLATE_STAGES = [
     ("waitlist", "Waitlist"), ("declined", "Declined"), ("cancelled", "Cancelled"),
     ("not_running", "Cancelled"),
     ("extras_offer", "Before the stay"),
-    ("feedback", "After the stay"),
+    ("feedback", "After the stay"), ("recap", "After the stay"),
     ("review", "After the stay"), ("newsletter", "Signing up"),
     ("checkin", "Before arrival"),
 ]
@@ -94909,6 +95931,11 @@ EMAIL_TEMPLATE_INFO = {
     "workshop_moved": ("When you move a registration to another date of the same "
                        "atelier, from the registrations page", "The guest"),
     "workshop_feedback_request": ("The days after an atelier ends", "The guest"),
+    "workshop_recap": ("Never by itself. When you send an atelier's recap from its sitting's "
+                       "page, once it is over and once you have written this — it ships "
+                       "with no wording, and cannot be sent without yours",
+                       "Each guest confirmed on that sitting, once; never anybody "
+                       "cancelled or declined"),
     "workshop_waitlist_opening": ("When a place frees up on an atelier somebody is "
                                   "waiting for", "The person on the waiting list"),
     "workshop_not_running": ("When you call off an atelier's dates", "Everybody on "
@@ -109040,6 +110067,15 @@ AUTOMATION_SWITCHES = [
      "label": "Tell me when atelier balances fall due",
      "what": "Notifies you the morning a balance falls due, once each — balances "
              "are taken by hand, so this is what collects them."},
+    {"key": "automation_atelier_recap_reminder_enabled", "job": None,
+     "runs": ("atelier_recaps_to_approve", "generate_watch_tasks"), "group": "house",
+     "reaches": ("you",),
+     "label": "Remind me when an atelier's recap is ready",
+     "what": "Once an atelier is over, raises a task for you to look over its recap — the "
+             "photographs, the notes, the wording — and send it. It never sends the recap: "
+             "that is a button on the sitting's page. The task goes when you send it or set "
+             "it aside, or a month after the atelier. Needs Turn blocking findings into "
+             "tasks on as well."},
     {"key": "automation_workshop_decision_enabled", "job": "workshop_decision",
      "runs": ("run_workshop_decision_job",), "group": "house", "reaches": ("you",),
      "label": "Tell me when an atelier will not fill",

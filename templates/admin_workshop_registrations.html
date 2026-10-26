@@ -335,6 +335,9 @@
     {% elif r['assigned_room_name'] %}
     <p class="upload-hint">Room: {{ r['assigned_room_name'] }}</p>
     {% endif %}
+    {% if r['recap_sent_at'] %}
+    <p class="upload-hint">The recap went {{ r['recap_sent_at']|house_when }}. <a href="{{ url_for('admin_workshop_session', session_id=r['session_id']) }}#recap">The recap</a></p>
+    {% endif %}
 
     <details style="margin-top:8px;">
       <summary class="small-link" style="color:var(--steel); cursor:pointer;">Sent messages ({{ messages_by_booking.get(r['id'], [])|length }})</summary>
