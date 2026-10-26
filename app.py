@@ -7929,6 +7929,12 @@ def init_db():
         # send, so two presses of the button cannot both write to them.
         ("workshop_bookings_recap_sent_at",
          "ALTER TABLE workshop_bookings ADD COLUMN recap_sent_at TEXT"),
+        # What's On dates that are not one day (26 October 2026): the last day
+        # of something that runs several ("8-14 March"), and the house's own
+        # words for a date nobody has fixed yet ("Late December", "All year"),
+        # shown instead of the date. See whats_on_when().
+        ("whats_on_event_until", "ALTER TABLE whats_on ADD COLUMN event_until TEXT"),
+        ("whats_on_when_words", "ALTER TABLE whats_on ADD COLUMN when_words TEXT"),
         # Why a table booked while tables confirm themselves (restaurant_instant)
         # was left for the owner instead: "over the 20 covers", "a party of 9".
         # Written once, when it was held, and shown beside Confirm in the queue
@@ -8968,6 +8974,7 @@ def init_db():
                  position, datetime.now(timezone.utc).isoformat()))
     conn.commit()
     correct_whats_on(conn)
+    seed_whats_on_dates(conn)
 
     for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS,
                      LEAVE_SETTING_DEFAULTS):
@@ -15291,6 +15298,87 @@ DEFAULT_WHATS_ON = [
      # shape could not hold without inventing both.
      "weekday": None, "start_time": None, "end_time": None},
 ]
+
+# THROUGH THE YEAR: the dates the owner's What's On brief of 26 October 2026
+# lists, so the dates list shows more than markets. Each appears when it falls
+# inside the list's window, and goes once it is over. Ski dates are the
+# resorts' provisional ones. Seeded once (seed_whats_on_dates): one the owner
+# edits or deletes on /admin/whats-on stays as they left it.
+#
+# `when` is the brief's own words for a date that is not fixed ("Late
+# December", "Early July"); it is what the page prints. Their `date` and
+# `until` are only where the line is placed and how long it stays -- the brief
+# gives no day, so none is ever shown for them. An entry with `when` and no
+# `date` at all ("All year") is listed apart, under All year.
+DEFAULT_WHATS_ON_DATES = [
+    {"title": "Grandvalira (Andorra) ski season opens", "date": "2026-12-04"},
+    {"title": "Ax 3 Domaines ski season opens (provisional)", "date": "2026-12-05"},
+    {"title": "Plateau de Beille, Ascou-Pailhères, Le Chioula and Goulier open for "
+              "the season (provisional)", "date": "2026-12-19"},
+    {"title": "Les Flocons d’Ax, the Christmas market and ice rink around the "
+              "Bassin des Ladres", "date": "2026-12-20", "until": "2026-12-28",
+     "when": "Late December (2026 dates to come)"},
+    {"title": "Beille Trail, a race on the snow at Plateau de Beille",
+     "date": "2027-01-03"},
+    {"title": "Ski World Cup at Soldeu, Andorra", "date": "2027-03-06",
+     "until": "2027-03-07"},
+    {"title": "Snow Gay week at Ax 3 Domaines", "date": "2027-03-08",
+     "until": "2027-03-14"},
+    {"title": "Ax 3 Domaines and Plateau de Beille close for the season (provisional)",
+     "date": "2027-03-29"},
+    {"title": "Parc de la Préhistoire and the Bédeilhac and La Vache caves reopen",
+     "date": "2027-03-20", "until": "2027-03-31", "when": "Late March"},
+    {"title": "Rafting and canoeing on the Ariège reopen at Bouan (Waterploof)",
+     "date": "2027-05-01", "until": "2027-05-31", "when": "May"},
+    {"title": "The transhumance, walking the herds up to the summer pastures",
+     "date": "2027-05-01", "until": "2027-05-10", "when": "Early May"},
+    {"title": "L’Ariégeoise cycle race, Tarascon", "date": "2027-06-26"},
+    {"title": "Summer season opens at Ax 3 Domaines (gondola, bike park, mountain "
+              "karts, pool)", "date": "2027-07-01", "until": "2027-07-07",
+     "when": "Early July"},
+    {"title": "UltrAriège mountain trail races, Ax-les-Thermes", "date": "2027-07-16",
+     "until": "2027-07-18"},
+    {"title": "Spectacles de Grands Chemins, street theatre in Ax-les-Thermes, "
+              "mostly free", "date": "2027-07-27", "until": "2027-07-31"},
+    {"title": "Challenge du Montcalm mountain races, Auzat", "date": "2027-08-12",
+     "until": "2027-08-15"},
+    {"title": "Festival des Saveurs, food producers’ festival in Ax-les-Thermes",
+     "date": "2027-09-01", "until": "2027-09-10",
+     "when": "Early September (date to come)"},
+    {"title": "Les Bains du Couloubret thermal baths, Ax-les-Thermes, open all year",
+     "when": "All year"},
+    {"title": "Grotte de Lombrives open all year", "when": "All year"},
+]
+
+def seed_whats_on_dates(conn):
+    """Put in DEFAULT_WHATS_ON_DATES, each once. Returns how many went in.
+
+    Once ever, not "while missing": the mark is set the first time, so a date
+    the owner deletes is not back on the next restart -- the same promise the
+    markets make, kept by a mark because these titles are not the owner's
+    to keep stable the way a market's name is."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'whats_on_dates_seeded'"
+                    ).fetchone():
+        return 0
+    made = 0
+    for position, entry in enumerate(DEFAULT_WHATS_ON_DATES, start=100):
+        if conn.execute("SELECT 1 FROM whats_on WHERE title = ?",
+                        (entry["title"],)).fetchone():
+            continue
+        conn.execute(
+            """INSERT INTO whats_on (title, description, location, distance,
+               event_date, event_until, when_words, start_time, end_time,
+               sort_order, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)""",
+            (entry["title"], entry.get("description"), entry.get("location"),
+             entry.get("distance"), entry.get("date"), entry.get("until"),
+             entry.get("when"), position, datetime.now(timezone.utc).isoformat()))
+        made += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('whats_on_dates_seeded', ?) "
+                 "ON CONFLICT(key) DO NOTHING", (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    return made
+
 
 # Corrections to markets a house was already seeded with, which the seed above
 # cannot make: it only inserts a market that is missing. Each runs once per
@@ -48074,6 +48162,22 @@ def whats_on_date_label(d):
     return f"{d.day} {d.strftime('%B')}"
 
 
+def whats_on_when(row, on, until):
+    """How a dated entry's date is printed: the house's own words when it has
+    them ("Late December"), else the day, or the days it runs ("8–14 March",
+    "28 June – 2 July", "30 December – 2 January 2027")."""
+    words = (row["when_words"] or "").strip()
+    if words:
+        return words
+    if until == on:
+        return whats_on_date_label(on)
+    if until.year != on.year:
+        return f"{whats_on_date_label(on)} – {whats_on_date_label(until)} {until.year}"
+    if until.month == on.month:
+        return f"{on.day}–{until.day} {until.strftime('%B')}"
+    return f"{whats_on_date_label(on)} – {whats_on_date_label(until)}"
+
+
 @app.route("/whats-on")
 def whats_on():
     """The markets and whatever else is on, for the week a guest is here.
@@ -48114,21 +48218,40 @@ def whats_on():
                 "is_today": offset == 0,
             })
 
+    all_year = []
     for r in rows:
         if not r["event_date"]:
+            # The house's words and no date ("All year"): always on, so listed
+            # apart rather than placed on a day it does not belong to.
+            if r["weekday"] is None and (r["when_words"] or "").strip():
+                all_year.append({"title": r["title"], "description": r["description"],
+                                 "location": r["location"], "distance": r["distance"],
+                                 "date_label": r["when_words"].strip()})
             continue
         on = parse_date(r["event_date"])
-        if not on or on < today:
+        until = parse_date(r["event_until"]) or on
+        if not on or until < on or until < today:
             continue
+        # Still on today, though it began before: it belongs to this week.
+        running = on <= today <= until
         item = {
             "title": r["title"], "description": r["description"],
             "location": r["location"], "distance": r["distance"],
-            "day_label": t("Today") if on == today else t(WHATS_ON_DAYS[on.weekday()]),
-            "date_label": whats_on_date_label(on),
+            "day_label": (t("Today") if running
+                          else (r["when_words"] or "").strip() or t(WHATS_ON_DAYS[on.weekday()])),
+            # The year only when it is not this one: "26 June 2027" in October.
+            "date_label": (whats_on_when(r, on, until)
+                           + (f" {until.year}" if until.year != today.year
+                              and not (r["when_words"] or "").strip()
+                              and str(until.year) not in whats_on_when(r, on, until)
+                              else "")),
             "time_label": whats_on_time_label(r),
-            "is_today": on == today,
+            "is_today": running,
+            "starts": on,
         }
         (this_week if on <= today + timedelta(days=6) else upcoming).append(item)
+    # In the order they happen, whatever order they were entered in.
+    upcoming.sort(key=lambda e: e["starts"])
 
     # The standing rhythm, listed once per entry rather than once per matching
     # day. Out-of-season entries are left out here as well as above: a ski
@@ -48147,7 +48270,7 @@ def whats_on():
     week_label = (f"{whats_on_date_label(today)} – "
                   f"{whats_on_date_label(today + timedelta(days=6))}")
     return render_template("whats_on.html", this_week=this_week,
-                           upcoming=upcoming, standing=standing,
+                           upcoming=upcoming, standing=standing, all_year=all_year,
                            week_label=week_label, weather=weather)
 
 
@@ -48180,15 +48303,21 @@ def admin_whats_on_save():
     if event_date and not parse_date(event_date):
         flash("That date isn't a date.", "error")
         return redirect(url_for("admin_whats_on"))
+    event_until = (f.get("event_until", "") or "").strip() or None
+    if event_until and (not event_date or not parse_date(event_until)
+                        or parse_date(event_until) < parse_date(event_date)):
+        flash("The last day must be a date on or after the first.", "error")
+        return redirect(url_for("admin_whats_on"))
+    when_words = (f.get("when_words", "") or "").strip()[:80] or None
     # One shape or the other. A row carrying both would be listed twice in the
     # same week — once as the weekday rule, once as the dated one — and a row
     # carrying neither can never appear at all, so it would look saved and do
-    # nothing.
-    if event_date:
+    # nothing. Words alone ("All year") are a third shape: listed apart.
+    if event_date or when_words:
         weekday = None
     elif weekday is None:
-        flash("Choose a weekday for something that repeats, or a date for a one-off.",
-              "error")
+        flash("Choose a weekday for something that repeats, a date for a one-off, "
+              "or words such as All year.", "error")
         return redirect(url_for("admin_whats_on"))
 
     try:
@@ -48208,6 +48337,7 @@ def admin_whats_on_save():
         (f.get("season_to", "") or "").strip() or None,
         1 if f.get("is_active") else 0,
         sort_order,
+        event_until, when_words,
     )
     conn = get_db()
     entry_id = (f.get("id") or "").strip()
@@ -48215,15 +48345,16 @@ def admin_whats_on_save():
         conn.execute(
             """UPDATE whats_on SET title=?, description=?, location=?, distance=?,
                weekday=?, event_date=?, start_time=?, end_time=?, season_from=?,
-               season_to=?, is_active=?, sort_order=? WHERE id=?""",
+               season_to=?, is_active=?, sort_order=?, event_until=?, when_words=?
+               WHERE id=?""",
             vals + (int(entry_id),))
         log_audit(conn, "whats_on_edited", target=title)
     else:
         conn.execute(
             """INSERT INTO whats_on (title, description, location, distance, weekday,
                event_date, start_time, end_time, season_from, season_to, is_active,
-               sort_order, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               sort_order, event_until, when_words, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             vals + (datetime.now(timezone.utc).isoformat(),))
         log_audit(conn, "whats_on_added", target=title)
     conn.commit()
