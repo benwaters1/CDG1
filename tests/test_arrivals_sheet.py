@@ -667,10 +667,56 @@ def run():
         s.check("the registrations say it as the arrivals sheet does",
                 "Arriving about 15:00 (they told us)" in rp and "Celebrating Her fiftieth birthday" in rp
                 and "Cannot eat no dairy" in rp, detail=rp[:400])
+        raw = oc.get(f"/admin/workshops/registrations?session_id={session_id}").get_data(as_text=True)
+        chips = re.findall(r'class="mini-status ([\w-]+)">Paid in full<', raw)
+        s.check("paid in full is drawn as good news, never in the danger colour",
+                chips and all(c == "status-paid" for c in chips),
+                detail=f"{chips} -- it was red on every registration")
         ws = _harness.visible_text(oc.get(f"/workshops/{session_id}/sheet").get_data(as_text=True))
         s.check("and the instructor's sheet says when they come and who is celebrating",
                 "Arriving about 15:00 (they told us)" in ws and "Celebrating" in ws
                 and "Worth knowing" not in ws, detail=ws[:400])
+
+    s.section("Booking.com's guests: arriving in their own table, leaving with everybody")
+    table = page[page.find("Arriving through Booking.com"):]
+    table = table[:table.find("</table>")]
+    heads = re.findall(r'<th scope="col"[^>]*>(.*?)</th>', table[:table.find("</thead>")])
+    s.check("every column of it has a heading",
+            heads and all(h.strip() for h in heads),
+            detail=f"{heads} -- one said 'arriving' or 'leaving' under no heading at all")
+    s.check("and its time is said as theirs, about", "about 19:30" in _harness.visible_text(table),
+            detail=_harness.visible_text(table)[:300])
+    gone = page[page.find(f'id="day-{(w2 + timedelta(days=6)).strftime("%Y%m%d")}"'):]
+    gone = gone[:gone.find("</section>")]
+    leaving = _harness.visible_text(gone[gone.find("Leaving</h4>"):])
+    s.check("a Booking.com guest leaving is in the one list of who leaves",
+            f"{TAG} Channel" in leaving and "paid to Booking.com" in leaving,
+            detail=leaving[:300])
+    s.check("not in a table of its own with three empty cells",
+            "Through Booking.com" not in gone and "Arriving through Booking.com" not in gone)
+    css = open(os.path.join(m.BASE_DIR, "static", "style.css"), encoding="utf-8").read()
+    s.check("tables that turn into cards on a phone stay tables on paper",
+            "@media screen and (max-width: 760px){\n  .bk-stack, .phone-cards{ min-width:0; }" in css,
+            detail="A4 is narrower than 760px: the extras due sheet printed one extra to a card")
+
+    s.section("The front desk and the bookings list say it the same way")
+    desk = oc.get("/admin/desk").get_data(as_text=True)
+    desk = desk[desk.find('id="arriving"'):]
+    row = _harness.visible_text(desk[desk.find(f"{TAG} TODAY"):desk.find("</tr>", desk.find(f"{TAG} TODAY"))])
+    s.check("an arrival with no time says so in words, not with a dash",
+            "not given" in row and "—" not in row, detail=row)
+    listed = _harness.visible_text(oc.get("/admin/bookings").get_data(as_text=True))
+    s.check("the bookings list says a time as theirs, about",
+            "arriving about 18:30" in listed, detail="it said 'arriving 18:30', as if promised")
+
+    s.section("On a phone the list to tick is a card a room")
+    css = open(os.path.join(m.BASE_DIR, "static", "style.css"), encoding="utf-8").read()
+    phone = re.search(r"@media screen and \(max-width: 640px\)\{(.*?)\n\}", css, re.S)
+    s.check("its rows stack, screen only, so the paper keeps its columns",
+            phone is not None and ".arr-ready tr{ display:grid" in phone.group(1),
+            detail="as a table it scrolled sideways and hid Room ready and the extras")
+    s.check("and each box says what it is for",
+            'data-label="Sheets washed"' in page and 'data-label="Room ready"' in page)
 
     s.section("Where Printable sheet goes")
     with m.app.test_request_context("/"):

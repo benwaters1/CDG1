@@ -370,7 +370,7 @@ def _run(s, oc, ec, owner, conn):
     page = oc.get(f"/admin/arrivals?date={tomorrow.isoformat()}").get_data(as_text=True)
     text = visible_text(page)
     s.check("on the page, with what the email did not say said as not stated",
-            "Through Booking.com" in text and f"Ada {TAG} Lowe" in text and "not stated" in text,
+            "Arriving through Booking.com" in text and f"Ada {TAG} Lowe" in text and "not stated" in text,
             detail=text[:300])
     s.check("the owner can follow the reservation to its emails",
             'href="/management/booking-com?q=9876600004"' in page)

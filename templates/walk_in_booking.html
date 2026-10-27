@@ -187,8 +187,8 @@
           <div class="nb-pay">
             <input id="wi_taken" type="number" name="amount_taken" step="0.01" min="0" inputmode="decimal"
                    value="{{ f.get('amount_taken', '') }}" placeholder="0.00">
-            <select id="wi_method" name="method" aria-label="How it was paid">
-              {% for v, label in [('cash', 'Cash'), ('card_in_person', 'Card, in person'), ('bank_transfer', 'Bank transfer'), ('other', 'Something else')] %}
+            <select id="wi_method" name="method" aria-label="Payment method">
+              {% for v, label in [('cash', 'Cash'), ('card_in_person', 'Card (in person)'), ('bank_transfer', 'Bank transfer'), ('other', 'Other')] %}
               <option value="{{ v }}" {{ 'selected' if f.get('method') == v }}>{{ label }}</option>
               {% endfor %}
             </select>
