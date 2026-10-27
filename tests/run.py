@@ -153,6 +153,7 @@ SUITES = [
     "test_house_ledger",
     "test_management_reports",
     "test_campaign_email",
+    "test_campaign_queue",
     "test_workshop_announce",
     "test_email_outbox",
     "test_email_provider",

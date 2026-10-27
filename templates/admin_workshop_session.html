@@ -2,6 +2,7 @@
 {% from "_icons.html" import icon %}
 {% block title %}{{ session['title'] }} · {{ date_range(session['start_date'], session['end_date']) }}{% endblock %}
 {% block content %}
+{% from "_stay_bits.html" import arrival_line, room_words %}
 
 {#
   One sitting of a workshop, as the owner runs it: the places, the money, the
@@ -101,7 +102,7 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr>
-      <th>Who</th><th>Place</th><th>Money</th><th>Room</th><th>Kitchen</th><th></th>
+      <th scope="col">Who</th><th scope="col">Place</th><th scope="col">Money</th><th scope="col">Room</th><th scope="col">Food &amp; health</th><th scope="col"><span class="visually-hidden">Actions</span></th>
     </tr></thead>
     <tbody>
       {% for r in live %}
@@ -112,6 +113,11 @@
           {%- if r.party_size > 1 %} <span class="upload-hint">party of {{ r.party_size }}{% if r.party_names %}: {{ r.party_names|join(', ') }}{% endif %}</span>{% endif %}
           <span class="upload-hint">{{ r.reference }}
             {%- if r.phone %} &middot; <a class="small-link" href="tel:{{ r.phone|replace(' ', '') }}">{{ r.phone }}</a>{% endif %}</span>
+          {#- When they come, said as the arrivals sheet says it (27 October
+              2026). It was only ever shown inside the "checked in online"
+              chip, so a time given any other way was nowhere on the page. -#}
+          <span class="ws-when">{{ arrival_line(arrival_words(row['estimated_arrival_time']), house=False) }}</span>
+          {%- if row['special_occasion'] %}<span class="ws-celebrating">Celebrating: {{ row['special_occasion'] }}</span>{% endif %}
         </td>
         <td>
           {% if r.holding %}<span class="mini-status status-pending">waiting for the deposit until {{ r.hold_until|house_when }}</span>
@@ -119,8 +125,8 @@
           {% else %}<span class="mini-status status-confirmed">confirmed</span>
           {#- Online check-in from their registration page: done, their
               fiches are on the register and their arrival time is here. #}
-          {% if row['checkin_done_at'] %}<span class="mini-status status-confirmed">checked in online{% if row['estimated_arrival_time'] %} · {{ row['estimated_arrival_time'] }}{% endif %}</span>{% endif %}{% endif %}
-          <span class="upload-hint">{{ 'a room to themselves' if row['occupancy_type'] == 'single' else 'sharing' }}
+          {% if row['checkin_done_at'] %}<span class="mini-status status-confirmed">checked in online</span>{% endif %}{% endif %}
+          <span class="upload-hint">{{ room_words.get(row['occupancy_type'], 'sharing a room') }}
             {%- if row['requested_roommate'] %} &middot; with {{ row['requested_roommate'] }}{% endif %}</span>
         </td>
         <td>
@@ -146,9 +152,9 @@
           </form>
         </td>
         <td>
-          {% if row['dietary_notes'] %}<span>{{ row['dietary_notes'] }}</span>{% endif %}
+          {% if row['dietary_notes'] %}<span class="ws-diet">Cannot eat: {{ row['dietary_notes'] }}</span>{% endif %}
           {% if row['medical_notes'] %}<span class="upload-hint">Health: {{ row['medical_notes'] }}</span>{% endif %}
-          {% if not row['dietary_notes'] and not row['medical_notes'] %}<span class="upload-hint">nothing said</span>{% endif %}
+          {% if not row['dietary_notes'] and not row['medical_notes'] %}<span class="upload-hint">none given</span>{% endif %}
         </td>
         <td>
           <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">

@@ -217,9 +217,10 @@ def run():
     hub = oc.get("/admin/emails").get_data(as_text=True)
     s.check("and Guest email lists it as one send, linked",
             f"/admin/emails/sends/{result['send_id']}" in hub)
-    message, category = m.campaign_result_message(result)
-    s.check("what the send says is not a green success when nobody has it yet",
-            category == "error" and "kept" in message, detail=message)
+    # Send now queues and the letters go after it, so what a send did is said
+    # on its own page rather than in a line when Send is pressed.
+    s.check("what the send says is not a success when nobody has it yet",
+            '<div class="overview-label">Sent</div>' not in page)
 
     s.section("Guest email: is mail going out, in words")
     s.check("the page asks the question", "Is mail going out?" in hub)

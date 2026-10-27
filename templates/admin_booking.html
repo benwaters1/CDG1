@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ b['guest_name'] }} · {{ b['reference_code'] }}{% endblock %}
 {% block content %}
+{% from "_stay_bits.html" import arrival_line, flags %}
 
 {# ONE STAY. Who, where and when at the top; then what they asked for and when
    they want it, the money and the refunds, every letter and text, moving the
@@ -16,6 +17,13 @@
       {{ b['room_name'] }} · {{ date_range(b['arrival_date'], b['departure_date']) }} ·
       {{ nights }} night{{ '' if nights == 1 else 's' }} · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}
     </p>
+    {#- When they come, in words, beside the house's hour -- while that is
+        still to happen (owner, 27 October 2026: "the check in time ... isn't
+        very clear"). It was a bare "17:45" after the date, four rows down. -#}
+    {% if b['status'] in ('pending', 'confirmed') and not b['checked_in_at'] and not b['no_show_at']
+          and (b['arrival_date'] or '') >= today_iso %}
+    <p class="bk-arrives">{{ arrival_line(arrival_words(b['estimated_arrival_time'], usual_arrival)) }}</p>
+    {% endif %}
     <p class="bk-chips">
       <span class="mini-status status-{{ b['status'] }}">{{ b['status'] }}</span>
       {% if where %}<span class="mini-status {{ 'status-onshift' if where == 'Here now' else 'status-declined' if where == 'Did not arrive' else 'status-past' if where == 'Gone' else 'status-upcoming' }}">{{ where }}</span>{% endif %}
@@ -30,6 +38,12 @@
       {% if caution %}<a href="{{ url_for('guest_detail', guest_id=caution['id']) }}" class="mini-status status-declined" title="{{ caution['caution'] }}">{{ caution_levels[caution['caution_level']] }}</a>{% endif %}
       <span class="bk-ref">{{ b['reference_code'] }}</span>
     </p>
+    {#- What changes how they are met -- the occasion and how far it is
+        prepared, what they cannot eat -- under the name, as on the arrivals
+        sheet, rather than as two rows among fourteen in The stay. -#}
+    {{ flags(occasion=b['special_occasion'], prep=occasion_prep,
+             show_prep=(b['status'] == 'confirmed' and (b['departure_date'] or '') >= today_iso),
+             dietary=b['dietary_notes'], diet_hint='deleted once the stay is over') }}
     {#- 18 Oct: a room reserved for a guest from Add a booking, waiting on them. -#}
     {% if b['reserved_until'] and b['status'] == 'pending' %}
     <p class="pay-disclaimer" style="margin-top:6px;">
@@ -81,10 +95,18 @@
 {% if requests_open %}
 <div class="detail-card bk-alert">
   <h3>Waiting on the house</h3>
+  <p class="upload-hint bk-alert__why">What they asked from their booking page, not done yet.</p>
   {% for t in requests_open %}
-  <p class="bk-request" data-task-id="{{ t['id'] }}"><strong>{{ t['title'] }}</strong>{% if t['due_date'] %} <span class="upload-hint">· {{ t['due_date']|date_short }}</span>{% endif %}
-     {{ stay_tick(t) }}<br>
-     <span class="upload-hint">{{ t['notes'] }}</span></p>
+  {#- The title is the first 120 characters of what they wrote and the note
+      all of it, so for most requests the two are the same words: say them
+      once (it printed every request twice, bold and then small). And the day
+      it is for in words -- "the day they arrive" rather than a bare date. -#}
+  {% set words = (t['notes'] or '').strip() %}
+  {% set whole = words if words and words.startswith(t['title']) else '' %}
+  <p class="bk-request" data-task-id="{{ t['id'] }}"><strong>{{ whole or t['title'] }}</strong>
+     {%- if t['due_date'] %} <span class="upload-hint">· for {{ 'the day they arrive, ' if t['due_date'] == b['arrival_date'] }}{{ t['due_date']|date_short }}</span>{% endif %}
+     {{ stay_tick(t) }}
+     {%- if words and not whole %}<br><span class="upload-hint">{{ words }}</span>{% endif %}</p>
   {% endfor %}
 </div>
 {% endif %}
@@ -118,15 +140,25 @@
     <h3>The stay</h3>
     <dl class="bk-facts">
       <dt>Room</dt><dd>{{ b['room_name'] }}</dd>
-      <dt>Arrives</dt><dd>{{ b['arrival_date']|date_short }}{% if b['estimated_arrival_time'] %}, {{ b['estimated_arrival_time'] }}{% endif %}</dd>
-      <dt>Leaves</dt><dd>{{ b['departure_date']|date_short }}</dd>
+      {#- The day, then the guest's time said as theirs and the house's hour
+          beside it; a bare "17:45" after the date read as either. -#}
+      <dt>Arrives</dt><dd>{{ b['arrival_date']|date_short }}<br>{{ arrival_line(arrival_words(b['estimated_arrival_time'], usual_arrival)) }}</dd>
+      <dt>Leaves</dt><dd>{{ b['departure_date']|date_short }} <span class="upload-hint">· check-out by {{ check_out_time }}</span></dd>
       <dt>Guests</dt><dd>{{ b['party_size'] }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %} <span class="upload-hint">· room sleeps {{ b['max_occupancy'] }}</span></dd>
-      {% if b['special_occasion'] %}<dt>Celebrating</dt><dd>{{ b['special_occasion'] }}</dd>{% endif %}
-      {% if b['special_requests'] %}<dt>They asked</dt><dd class="bk-pre">{{ b['special_requests'] }}</dd>{% endif %}
+      {#- Celebrating and Cannot eat are under the name at the top, with how
+          far the occasion is prepared: here as well they were the same fact
+          twice on one page. -#}
+      {% if b['special_requests'] %}<dt>They asked</dt><dd class="bk-pre">{{ b['special_requests'] }} <span class="upload-hint">· when booking</span></dd>{% endif %}
+      {% if dinners %}
+      {#- Their tables at La Table, booked with the stay or since. -#}
+      <dt>Dinner at La Table</dt>
+      <dd>{% for x in dinners %}<span class="arr-ask">{{ x.when }} · {{ x.party }} {{ 'person' if x.party == 1 else 'people' }}
+        {%- if x.dietary %} · {{ x.dietary }}{% endif %}
+        {%- if x.state %} <span class="mini-status status-pending">{{ x.state }}</span>{% endif %}</span>{% endfor %}</dd>
+      {% endif %}
       {#- Online check-in, from their booking page: what it gave and where the
           rest went -- the fiches to the register, the note to the kitchen. #}
       <dt>Online check-in</dt><dd>{% if b['checkin_done_at'] %}done {{ b['checkin_done_at']|house_day|date_short }} <span class="upload-hint">· <a href="{{ url_for('police_register_page') }}">the register</a></span>{% elif b['checked_in_at'] %}<span class="upload-hint">checked in at the door instead</span>{% else %}<span class="upload-hint">not yet{% if b['checkin_letter_sent_at'] %} · link emailed {{ b['checkin_letter_sent_at']|house_day|date_short }}{% endif %} · it is on their booking page</span>{% endif %}</dd>
-      {% if b['dietary_notes'] %}<dt>Cannot eat</dt><dd>{{ b['dietary_notes'] }} <span class="upload-hint">· deleted once the stay is over</span></dd>{% endif %}
       {% if b['transfer_flight_number'] or b['transfer_arrival_time'] or b['transfer_notes'] %}
       <dt>Transfer</dt><dd>{{ b['transfer_flight_number'] or 'flight to be confirmed' }}{% if b['transfer_arrival_time'] %}, landing {{ b['transfer_arrival_time'] }}{% endif %}{% if b['transfer_notes'] %} — {{ b['transfer_notes'] }}{% endif %}</dd>
       {% endif %}
@@ -625,6 +657,9 @@
     <p class="bk-ok">✓ Arrival prep assigned {{ b['arrival_prepped_at']|house_day|date_short }}.</p>
     {% elif not b['checked_out_at'] %}
     {% set on_shift = scheduled.get(b['arrival_date'], []) %}
+    {#- Said what it does: a bare "Prepare the room — who?" box gave no clue
+        that it makes a job for somebody and puts it on the calendar. -#}
+    <p class="upload-hint bk-housekeeping__why">Who makes up the room before they arrive on {{ b['arrival_date']|date_short }}: it goes on their list and the calendar as a job.</p>
     <form method="post" action="{{ url_for('prepare_arrival', booking_id=b['id']) }}" class="bk-inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
       <select name="assigned_to_user_id" required aria-label="Who prepares the arrival">

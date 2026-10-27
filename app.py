@@ -453,6 +453,16 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_email_scan_enabled": "1",
     "automation_hr_escalation_enabled": "1",
     "automation_campaign_triggers_enabled": "1",
+    # ON: a campaign somebody pressed Send on goes out through this, a little
+    # at a time. Off holds every campaign where it is, which is what it is for.
+    "automation_campaign_queue_enabled": "1",
+    # How many campaign letters a day, per way of sending. Microsoft 365 takes
+    # about 10,000 recipients a day from one mailbox for EVERYTHING it sends --
+    # confirmations, replies, the owner's own mail -- so campaigns get well
+    # under half. Resend's ceiling depends on the plan bought; a new sending
+    # domain that jumps to thousands a day is also how mail lands in spam.
+    "automation_campaign_daily_limit_mailbox": "4000",
+    "automation_campaign_daily_limit_resend": "5000",
     "automation_email_unanswered_hours": "24",
     "automation_email_scan_lookback_days": "14",
     "automation_stale_shift_enabled": "1",
@@ -984,6 +994,36 @@ def clock_words(value):
 
 CHECK_IN_WORDS = clock_words(CHECK_IN_TIME)
 CHECK_OUT_WORDS = clock_words(CHECK_OUT_TIME)
+
+
+def arrival_words(own="", usual=""):
+    """When a guest will come, said so nobody takes it for the house's time.
+
+    Three answers, and each reads differently (owner, 27 October 2026: the
+    check-in time "isn't very clear"). The time the guest gave for this stay;
+    the time they usually come, from their earlier stays, which is a guess
+    and is said as one; or nothing, said in words -- a blank reads as "no
+    arrival", and a 15:00 filled in for them reads as something they said.
+    The house's check-in hour is a different fact and goes beside it, never in
+    its place. The big booking systems keep the two apart for this reason
+    (Guesty, OPERA); one that fills the guest's from the house's leaves staff
+    unable to tell which they are looking at.
+
+    `early` is a time before check-in, when the room may not be ready yet: the
+    one thing about the time worth seeing at a glance.
+    """
+    own, usual = (own or "").strip(), (usual or "").strip()
+    time = own or usual
+    clock = re.match(r"(\d{1,2})[:.h](\d{2})", time)
+    early = bool(clock) and f"{int(clock.group(1)):02d}:{clock.group(2)}" < CHECK_IN_TIME
+    if own:
+        text, source = f"Arriving about {own}", "they told us"
+    elif usual:
+        text, source = f"Usually arrives about {usual}", "from their past stays, not said for this one"
+    else:
+        text, source = "Arrival time not given", ""
+    return {"time": time, "given": bool(own), "missing": not time, "early": early,
+            "text": text, "source": source}
 
 # A time as the terms might write it: 4pm, 4 p.m., 16:00, 16h, 4.30pm.
 _TERMS_TIME = r"(\d{1,2})(?:\s*[:.h]\s*(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|h\b)?"
@@ -4182,6 +4222,50 @@ def init_db():
             dedupe_key TEXT,
             sent_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
             created_at TEXT NOT NULL
+        );
+
+        -- A campaign too big to send in one go, written down when Send is
+        -- pressed: the letter AS IT WAS then, so editing the template on day
+        -- three does not change what the last ten thousand read, and how the
+        -- send is getting on. The newsletter list is ~25,000 people and the
+        -- house mailbox takes about 10,000 letters a day in all, so a send to
+        -- it lasts days. campaign_queue below is the people still to write to.
+        CREATE TABLE IF NOT EXISTS campaign_runs (
+            send_id TEXT PRIMARY KEY,
+            template_id INTEGER REFERENCES campaign_templates(id) ON DELETE SET NULL,
+            template_name TEXT,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            area TEXT,
+            extra_context TEXT,
+            dedupe_key TEXT,
+            sent_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            state TEXT NOT NULL DEFAULT 'going'
+                CHECK(state IN ('going','paused','stopped','done')),
+            problem TEXT,
+            refusals INTEGER NOT NULL DEFAULT 0,
+            total INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            finished_at TEXT
+        );
+
+        -- One row per person a campaign is still to reach, written up front.
+        -- 'sending' is claimed and committed BEFORE the letter goes, so a
+        -- restart mid-letter leaves a row that says so -- and that row is
+        -- never sent again: a letter that may have gone is reported, not
+        -- repeated. UNIQUE so nobody is on one send twice.
+        CREATE TABLE IF NOT EXISTS campaign_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            send_id TEXT NOT NULL REFERENCES campaign_runs(send_id) ON DELETE CASCADE,
+            recipient_email TEXT NOT NULL,
+            recipient_name TEXT,
+            state TEXT NOT NULL DEFAULT 'queued'
+                CHECK(state IN ('queued','sending','done','stopped')),
+            outcome TEXT,
+            unsubscribe_token TEXT,
+            claimed_at TEXT,
+            done_at TEXT,
+            UNIQUE(send_id, recipient_email)
         );
 
         -- Guests who have asked not to receive campaign email. Checked on
@@ -8494,6 +8578,11 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_dedupe ON campaign_sends(dedupe_key)",
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_template ON campaign_sends(template_id)",
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_unsub ON campaign_sends(unsubscribe_token)",
+        # A send's own page reads its rows by send_id, and the pace counts the
+        # letters of the last day and hour on every run of the queue.
+        "CREATE INDEX IF NOT EXISTS idx_campaign_sends_send_id ON campaign_sends(send_id)",
+        "CREATE INDEX IF NOT EXISTS idx_campaign_sends_created ON campaign_sends(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_campaign_queue_state ON campaign_queue(state, send_id, id)",
         "CREATE INDEX IF NOT EXISTS idx_pennylane_accounts_class ON pennylane_accounts(account_class, number)",
         "CREATE INDEX IF NOT EXISTS idx_guest_sessions_token ON guest_sessions(token)",
         "CREATE INDEX IF NOT EXISTS idx_guest_sessions_email ON guest_sessions(email, created_at)",
@@ -9557,7 +9646,7 @@ NAV_AREAS = {
         "admin_guest_emails", "admin_guest_emails_switch", "admin_guest_emails_approve",
         "newsletter_subscribers_page", "take_off_script_signups",
         "import_squarespace_newsletter",
-        "campaign_send_detail", "allow_email_again", "remove_email_optout",
+        "campaign_send_detail", "campaign_send_control", "allow_email_again", "remove_email_optout",
         "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
         "delete_campaign_template", "discard_email_outbox", "held_email_ticked",
@@ -11837,6 +11926,7 @@ app.jinja_env.globals["check_in_hour"] = int(CHECK_IN_TIME[:2])
 app.jinja_env.globals["check_in_time"] = CHECK_IN_TIME
 app.jinja_env.globals["check_out_time"] = CHECK_OUT_TIME
 app.jinja_env.globals["clock_words"] = clock_words
+app.jinja_env.globals["arrival_words"] = arrival_words
 # Money on a page was formatted inline, template by template, with
 # '%.2f'|format and a euro sign typed next to it. One definition instead, so a
 # figure reads the same wherever it appears.
@@ -30606,6 +30696,7 @@ def admin_emails():
     templates = conn.execute(
         "SELECT * FROM campaign_templates ORDER BY area, name").fetchall()
     recent = campaign_sends_summary(conn)
+    under_way = campaign_runs_under_way(conn)
     health = email_health(conn)
     stop_list = list_page(not_written_to_view(conn, request.args), request.args)
     waiting = [held_reason_words(r["reason"]) for r in conn.execute(
@@ -30617,6 +30708,7 @@ def admin_emails():
                if words in waiting]
     conn.close()
     return render_template("admin_emails.html", templates=templates, recent=recent,
+                           under_way=under_way,
                            health=health, lv=stop_list,
                            areas=CAMPAIGN_AREAS, held=held, held_by=held_by)
 
@@ -30813,14 +30905,21 @@ def send_campaign_template(template_id):
               f"recipient{'' if len(audience) == 1 else 's'}.", "error")
         return redirect(url_for("edit_campaign_template", template_id=template_id))
 
-    result = send_campaign(conn, template, audience, user["id"])
-    message, category = campaign_result_message(result)
-    log_audit(conn, "campaign_sent", target=template["name"], details=message)
+    # Queued, not sent here: to the newsletter that is days of letters, and
+    # this request would be ended long before. The automation thread sends it
+    # at the mailbox's pace; the send's own page says how far it has got.
+    queued = queue_campaign(conn, template, audience, user["id"])
+    message, category = campaign_queued_message(conn, queued)
+    if queued["send_id"]:
+        log_audit(conn, "campaign_sent", target=template["name"], details=message)
     conn.commit()
     conn.close()
+    start_campaign_drain()
     flash(message, category)
     # To the send itself: who it reached, who it is waiting for, who not and why.
-    return redirect(url_for("campaign_send_detail", send_id=result["send_id"]))
+    send_id = queued["send_id"] or queued["already_send_id"]
+    return redirect(url_for("campaign_send_detail", send_id=send_id) if send_id
+                    else url_for("edit_campaign_template", template_id=template_id))
 
 
 @app.route("/unsubscribe/<token>", methods=["GET", "POST"])
@@ -63850,9 +63949,133 @@ def campaign_reply_area(template):
 PROMO_REPLY_AREAS = {"room": "rooms", "restaurant": "restaurant", "workshop": "workshops"}
 
 
+# What campaign_sends says about a letter while it is on its way. Written
+# BEFORE the send, so a restart in the middle leaves the truth behind it.
+CAMPAIGN_IN_FLIGHT_WORDS = ("The house stopped while this letter was going out, so it may "
+                            "have gone. It is not sent again: nobody gets a campaign twice.")
+
+# Which counter each outcome of campaign_letter adds to, for the line a send
+# reports back.
+CAMPAIGN_TALLY = {"sent": "sent", "test": "sent", "held": "held", "failed": "failed",
+                  "stopped": "failed", "withheld": "withheld",
+                  "unsubscribed": "withheld", "skipped": "skipped"}
+
+
+def campaign_letter_from(template, user_id, send_id, dedupe_key=None,
+                         extra_context=None, area=None):
+    """A campaign as campaign_letter reads it, from a template row or dict."""
+    return {"template_id": template["id"], "template_name": template["name"],
+            "subject": template["subject"], "body": template["body"],
+            "area": area or campaign_reply_area(template),
+            "extra_context": extra_context or None, "user_id": user_id,
+            "send_id": send_id, "dedupe_key": dedupe_key}
+
+
+def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset(),
+                    as_test=False, unsub_token=None):
+    """Write one letter of a campaign, record it, and say what became of it.
+
+    The one place a campaign letter is written: for a send of a few
+    (send_campaign), for a send to a list the queue works through over days
+    (drain_campaign_queue), and for the letters set to go around a stay. Three
+    callers and one set of rules, so none of them can drift -- a rule that
+    lived in one route and not the queue would simply not happen to the
+    newsletter. Returns (outcome, detail): sent, test, held, failed, stopped,
+    withheld, unsubscribed or skipped.
+
+    `letter` is campaign_letter_from()'s dict.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    address = (email or "").strip().lower()
+    for refused, outcome, why in (
+            # Not to anybody who asked us to stop using their details. Here,
+            # where every campaign goes, so no audience anybody builds can
+            # send round it.
+            (held_back, "withheld", "asked us to stop using their details"),
+            # And asked again at the moment of sending, not only when the list
+            # was drawn. A send to the newsletter lasts a week: somebody who
+            # unsubscribes on Tuesday is not written to on Friday.
+            (opted_out, "unsubscribed", "has unsubscribed from campaigns")):
+        if not as_test and address in refused:
+            # Recorded, so the send's own page can say who was left out.
+            conn.execute(
+                """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
+                   recipient_name, subject, status, detail, sent_by_user_id, created_at,
+                   outcome, send_id) VALUES (?, ?, ?, ?, ?, 'skipped', ?, ?, ?, ?, ?)""",
+                (letter["template_id"], letter["template_name"], email, name,
+                 letter["subject"], why, letter["user_id"], now_iso, outcome,
+                 letter["send_id"]))
+            conn.commit()
+            return outcome, why
+    key = f"{letter['dedupe_key']}:{email}" if letter.get("dedupe_key") else None
+    if key and conn.execute(
+        "SELECT 1 FROM campaign_sends WHERE dedupe_key = ?", (key,)
+    ).fetchone():
+        return "skipped", None
+    context = campaign_context_for(name, email)
+    if letter.get("extra_context"):
+        context.update(letter["extra_context"])
+    subject, body = render_campaign(letter["subject"], letter["body"], context)
+    # Every marketing message carries its own unsubscribe key, and the row that
+    # holds it is written and COMMITTED BEFORE the send: the link in the email
+    # always resolves, even for somebody quick off the mark, and nothing is
+    # held open across the network call. It is written as "on its way", so a
+    # restart part way through leaves a row saying the letter may have gone --
+    # with its dedupe key on it -- rather than no row, and a letter sent again.
+    unsub_token = unsub_token or secrets.token_urlsafe(24)
+    body = body + campaign_unsubscribe_footer(conn, unsub_token)
+    row_id = conn.execute(
+        """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
+           recipient_name, subject, status, detail, dedupe_key, sent_by_user_id,
+           created_at, unsubscribe_token, outcome, send_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sending', ?)""",
+        (letter["template_id"], letter["template_name"], email, name, subject,
+         "test" if as_test else "failed", CAMPAIGN_IN_FLIGHT_WORDS, key,
+         letter["user_id"], now_iso, unsub_token, letter["send_id"])).lastrowid
+    conn.commit()
+    report = {}
+    try:
+        ok = send_email(email, subject, body, area=letter.get("area"), report=report,
+                        template_key="campaign:" + (letter["template_name"] or ""))
+        status = ("test" if as_test else "sent") if ok is not False else "failed"
+        # NOT SENT IS NOT FAILED. With no provider, or Write to guests off,
+        # the letter is kept and goes when it can -- and the page said
+        # "3 failed" about three letters waiting perfectly safely.
+        outcome = (status if ok is not False
+                   else "stopped" if report.get("stopped") else "held")
+        detail = None if ok is not False else (report.get("why") or "kept, and goes when mail can")
+    except Exception as e:
+        status, outcome, detail = "failed", "failed", str(e)[:200]
+    # Stamped with the moment it went, which is what the pace counts.
+    conn.execute(
+        "UPDATE campaign_sends SET status = ?, outcome = ?, detail = ?, created_at = ? "
+        "WHERE id = ?",
+        (status, outcome, detail, datetime.now(timezone.utc).isoformat(), row_id))
+    # Committed per recipient, not after the loop. Held open, this row's
+    # write blocks the NEXT recipient's send from queueing its undelivered
+    # message on its own connection -- so a two hundred person campaign with
+    # no provider configured dropped a hundred and ninety-nine held
+    # messages and left campaign_sends rows saying "failed" with nothing to
+    # retry from. Per-recipient durability is also what you want if the
+    # loop dies halfway.
+    conn.commit()
+    return outcome, detail
+
+
+def campaign_opted_out(conn):
+    """Every address on the unsubscribe list, as campaign_letter compares them."""
+    return {(r["email"] or "").strip().lower()
+            for r in conn.execute("SELECT email FROM email_optouts").fetchall()}
+
+
 def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
                   as_test=False, extra_context=None, area=None):
-    """Send one campaign to a set of recipients, logging every one.
+    """Send one campaign to a few people now, logging every one.
+
+    For a test to yourself and the letters set to go around a stay: a handful
+    at a time, from a job or a person waiting on the answer. A campaign to a
+    list goes through queue_campaign instead, which sends at the mailbox's
+    pace over as many days as it takes.
 
     `dedupe_key` makes an automated send idempotent — the same template for the
     same guest and the same trigger date won't go twice however often the job
@@ -63865,80 +64088,490 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
 
     `area` is whose inbox the replies reach; left out, the template's own.
     """
-    area = area or campaign_reply_area(template)
-    now_iso = datetime.now(timezone.utc).isoformat()
-    sent = failed = skipped = withheld = held = 0
     # One send, one id: the page lists a send as a line, and grouping by the
     # minute it happened split any send that ran past the top of a minute.
-    send_id = secrets.token_hex(6)
-    # Not to anybody who asked us to stop using their details. Here, where every
-    # campaign goes, so no audience anybody builds can send round it.
+    letter = campaign_letter_from(template, user_id, secrets.token_hex(6), dedupe_key,
+                                  extra_context, area)
+    counts = dict.fromkeys(("sent", "failed", "skipped", "withheld", "held"), 0)
     held_back = restricted_addresses(conn)
+    opted_out = campaign_opted_out(conn)
     for email, name in recipients.items():
-        if not as_test and (email or "").strip().lower() in held_back:
-            withheld += 1
-            # Recorded, so the send's own page can say who was left out.
-            conn.execute(
-                """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
-                   recipient_name, subject, status, detail, sent_by_user_id, created_at,
-                   outcome, send_id) VALUES (?, ?, ?, ?, ?, 'skipped', ?, ?, ?, 'withheld', ?)""",
-                (template["id"], template["name"], email, name, template["subject"],
-                 "asked us to stop using their details", user_id, now_iso, send_id))
-            conn.commit()
+        outcome, _detail = campaign_letter(conn, letter, email, name, held_back=held_back,
+                                           opted_out=opted_out, as_test=as_test)
+        counts[CAMPAIGN_TALLY[outcome]] += 1
+    return dict(counts, total=len(recipients), send_id=letter["send_id"])
+
+
+# ---------------------------------------------------------------------------
+# A CAMPAIGN TO A LIST, A LITTLE AT A TIME.
+#
+# Send used to write every letter inside the request that pressed it. To the
+# newsletter -- ~25,000 people once the Squarespace list is in -- that is hours,
+# and Railway ends a request after two minutes, so the send would stop
+# wherever it had got to with nothing saying where. And the house mailbox
+# (Microsoft 365) takes about 10,000 recipients a day for everything it sends,
+# so the provider would have refused the rest anyway, along with that day's
+# booking confirmations.
+#
+# Now Send writes the letter and the list down (queue_campaign) and is done in
+# a second. The automation thread works through the list at a pace under the
+# day's limit (drain_campaign_queue), picks up where it was after a restart,
+# and never writes to anybody twice: a letter is claimed and committed before
+# it goes, and one that was going when the house stopped is reported as "may
+# have gone", never sent again.
+# ---------------------------------------------------------------------------
+
+# Letters a minute each way of sending takes at most. Microsoft 365 refuses a
+# mailbox more than 30 a minute; Resend more than a couple a second.
+CAMPAIGN_MINUTE_LIMITS = {"mailbox": 25, "resend": 100}
+CAMPAIGN_TRANSPORT_WORDS = {"mailbox": "the house mailbox", "resend": "Resend"}
+# The longest one run of the queue sends for, so the automation thread gets on
+# with everything else it does -- and a Run now press answers inside the
+# server's two minutes.
+CAMPAIGN_RUN_SECONDS = 90
+# A letter claimed longer ago than this was going when the house stopped.
+CAMPAIGN_INTERRUPTED_AFTER = timedelta(minutes=10)
+# The provider refusing this many letters in a row pauses the send, rather than
+# offering it the whole list one refusal at a time.
+CAMPAIGN_REFUSALS_TO_PAUSE = 3
+# Start on a send the moment it is queued, not at the next run of the thread.
+# The tests send the queue themselves.
+CAMPAIGN_DRAIN_ON_SEND = True
+_CAMPAIGN_DRAIN_LOCK = threading.Lock()
+
+CAMPAIGN_RUN_STATE_WORDS = {"going": "Going out", "paused": "Paused",
+                            "stopped": "Stopped", "done": "Finished"}
+
+
+def campaign_transport():
+    """Which way campaign letters leave: the same choice send_email makes."""
+    if resend_enabled():
+        return "resend"
+    if email_enabled():
+        return "mailbox"
+    return None
+
+
+def campaign_daily_limit(conn, transport=None):
+    """How many campaign letters a day the owner allows through this way out."""
+    key = f"automation_campaign_daily_limit_{transport or campaign_transport() or 'mailbox'}"
+    try:
+        return max(0, int(get_automation_settings(conn).get(key)))
+    except (TypeError, ValueError):
+        return int(AUTOMATION_SETTING_DEFAULTS[key])
+
+
+def campaign_letters_since(conn, since):
+    """Campaign letters that have left, or may have, since a moment."""
+    return conn.execute(
+        """SELECT COUNT(*) AS n FROM campaign_sends WHERE created_at >= ?
+              AND (status IN ('sent', 'test') OR outcome IN ('sending', 'interrupted'))""",
+        (since.isoformat(),)).fetchone()["n"]
+
+
+def campaign_allowance(conn, now=None):
+    """How many campaign letters may go now.
+
+    Two windows, both counted from what has actually gone, so a restart, a
+    redeploy or a run that came late changes nothing: no more than the day's
+    limit in any 24 hours, and no more than a twenty-fourth of it in any hour.
+    The second spreads a long send across the day instead of spending it in
+    the first minutes after midnight, the burst providers read as a spammer.
+    Every campaign letter counts, the ones set to go around a stay included.
+    """
+    now = now or datetime.now(timezone.utc)
+    transport = campaign_transport()
+    limit = campaign_daily_limit(conn, transport)
+    hour_limit = -(-limit // 24)
+    day_used = campaign_letters_since(conn, now - timedelta(hours=24))
+    hour_used = campaign_letters_since(conn, now - timedelta(hours=1))
+    return {"transport": transport, "limit": limit, "hour_limit": hour_limit,
+            "day_used": day_used, "hour_used": hour_used,
+            "now": max(0, min(limit - day_used, hour_limit - hour_used))}
+
+
+def campaign_waiting_why(conn, run):
+    """Why a queued campaign cannot go just now, or None.
+
+    The holds send_email puts on each letter, asked ONCE for the whole send.
+    Asked letter by letter, a send to 25,000 with Write to guests off put
+    25,000 letters in Held Email, each to be opened and sent by hand -- and the
+    day mail came on, a list that long released at once is 25,000 letters in
+    an afternoon through a mailbox that takes 10,000 a day. Waiting here, the
+    send stays one line that says what it is waiting for, and goes at its pace
+    the moment it can.
+    """
+    if get_automation_settings(conn).get("automation_campaign_queue_enabled") != "1":
+        return "sending campaigns is switched off on the Automation page"
+    if MAIL_REDIRECT_TO:
+        return None              # a test deployment sends it all to its own inbox
+    if not email_enabled():
+        return "no way of sending email is connected yet"
+    if not guest_mail_live():
+        return "Write to guests is switched off"
+    held = guest_letter_held_why("campaign:" + (run["template_name"] or ""))
+    if held:
+        return held
+    if not campaign_daily_limit(conn):
+        return "the daily limit for campaign letters is 0"
+    return None
+
+
+def campaign_already_on(conn, template):
+    """Addresses already on a send of this campaign that is still going or
+    paused: a second press of Send, or a second list that overlaps the first,
+    does not write to them twice."""
+    if template["id"] is not None:
+        where, arg = "campaign_runs.template_id = ?", template["id"]
+    else:
+        where, arg = "campaign_runs.template_id IS NULL AND campaign_runs.template_name = ?", \
+            template["name"]
+    rows = conn.execute(
+        f"""SELECT LOWER(campaign_queue.recipient_email) AS e, campaign_runs.send_id
+              FROM campaign_queue JOIN campaign_runs
+                ON campaign_runs.send_id = campaign_queue.send_id
+             WHERE campaign_runs.state IN ('going', 'paused') AND {where}
+               AND campaign_queue.state != 'stopped'""", (arg,)).fetchall()
+    return {r["e"]: r["send_id"] for r in rows}
+
+
+def queue_campaign(conn, template, recipients, user_id, dedupe_key=None,
+                   extra_context=None, area=None):
+    """Write a campaign down to go, everybody on it, and return at once.
+
+    The letter is kept as it is now, so an edit to the template while the send
+    is under way changes nothing already promised. Returns {send_id, total,
+    already, already_send_id}: `already` is how many were left off because
+    they are on a send of this campaign still going. send_id is None when that
+    was everybody.
+    """
+    letter = campaign_letter_from(template, user_id, secrets.token_hex(6), dedupe_key,
+                                  extra_context, area)
+    already_on = campaign_already_on(conn, template)
+    held_back = restricted_addresses(conn)
+    people, withheld, already = {}, {}, 0
+    for email, name in recipients.items():
+        address = (email or "").strip()
+        if not address or address.lower() in people or address.lower() in withheld:
             continue
-        key = f"{dedupe_key}:{email}" if dedupe_key else None
-        if key and conn.execute(
-            "SELECT 1 FROM campaign_sends WHERE dedupe_key = ?", (key,)
-        ).fetchone():
-            skipped += 1
+        if address.lower() in already_on:
+            already += 1
             continue
-        context = campaign_context_for(name, email)
-        if extra_context:
-            context.update(extra_context)
-        subject, body = render_campaign(template["subject"], template["body"], context)
-        # Every marketing message carries its own unsubscribe key. Written
-        # BEFORE the send so the link in the email is always one that resolves —
-        # a footer pointing at a row that doesn't exist yet would 404 for anyone
-        # quick off the mark.
-        unsub_token = secrets.token_urlsafe(24)
-        body = body + campaign_unsubscribe_footer(conn, unsub_token)
-        report = {}
-        try:
-            ok = send_email(email, subject, body, area=area, report=report,
-                            template_key="campaign:" + (template["name"] or ""))
-            status = ("test" if as_test else "sent") if ok is not False else "failed"
-            # NOT SENT IS NOT FAILED. With no provider, or Write to guests off,
-            # the letter is kept and goes when it can -- and the page said
-            # "3 failed" about three letters waiting perfectly safely.
-            outcome = (status if ok is not False
-                       else "stopped" if report.get("stopped") else "held")
-            detail = None if ok is not False else (report.get("why") or "kept, and goes when mail can")
-        except Exception as e:
-            status, outcome, detail = "failed", "failed", str(e)[:200]
-        conn.execute(
-            """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
-               recipient_name, subject, status, detail, dedupe_key, sent_by_user_id,
-               created_at, unsubscribe_token, outcome, send_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (template["id"], template["name"], email, name, subject, status, detail,
-             key, user_id, now_iso, unsub_token, outcome, send_id),
-        )
-        # Committed per recipient, not after the loop. Held open, this row's
-        # INSERT blocks the NEXT recipient's send from queueing its undelivered
-        # message on its own connection — so a two hundred person campaign with
-        # no provider configured dropped a hundred and ninety-nine held
-        # messages and left campaign_sends rows saying "failed" with nothing to
-        # retry from. Per-recipient durability is also what you want if the
-        # loop dies halfway.
-        conn.commit()
-        if status in ("sent", "test"):
-            sent += 1
-        elif outcome == "held":
-            held += 1
+        # Somebody who asked us to stop using their details is left off now,
+        # and the line that says what Send did says so -- and asked again as
+        # each letter goes, for anybody who asks while the send is under way.
+        (withheld if address.lower() in held_back else people)[address.lower()] =             (address, name)
+    result = {"send_id": None, "total": len(people), "withheld": len(withheld),
+              "already": already, "already_send_id": next(iter(already_on.values()), None)}
+    if not people:
+        return result
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO campaign_runs (send_id, template_id, template_name, subject, body,
+               area, extra_context, dedupe_key, sent_by_user_id, total, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (letter["send_id"], letter["template_id"], letter["template_name"],
+         letter["subject"], letter["body"], letter["area"],
+         json.dumps(extra_context) if extra_context else None, dedupe_key, user_id,
+         len(people) + len(withheld), now_iso))
+    conn.executemany(
+        """INSERT INTO campaign_queue (send_id, recipient_email, recipient_name,
+               unsubscribe_token) VALUES (?, ?, ?, ?)""",
+        [(letter["send_id"], address, name, secrets.token_urlsafe(24))
+         for address, name in people.values()])
+    conn.commit()
+    for address, name in withheld.values():
+        # Written by the one door, which records them and sends nothing.
+        campaign_letter(conn, letter, address, name, held_back=held_back)
+    result["send_id"] = letter["send_id"]
+    return result
+
+
+def campaign_letter_from_run(run):
+    """A queued campaign as campaign_letter reads it: the letter as it was
+    when Send was pressed, never the template as it is now."""
+    try:
+        extra = json.loads(run["extra_context"]) if run["extra_context"] else None
+    except ValueError:
+        extra = None
+    return {"template_id": run["template_id"], "template_name": run["template_name"],
+            "subject": run["subject"], "body": run["body"], "area": run["area"],
+            "extra_context": extra, "user_id": run["sent_by_user_id"],
+            "send_id": run["send_id"], "dedupe_key": run["dedupe_key"]}
+
+
+def recover_interrupted_campaign_letters(conn, now=None):
+    """Settle the letters that were going out when the house stopped.
+
+    A letter whose campaign_sends row was never written was never sent -- the
+    row goes in before the send -- so it goes back in the queue. One whose row
+    says it was on its way may have gone: it is marked so and NOT sent again.
+    Somebody missing one letter of a campaign is a shrug; somebody getting the
+    same letter twice is how a house ends up in a spam folder. Returns how many
+    may have gone.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - CAMPAIGN_INTERRUPTED_AFTER).isoformat()
+    maybe = 0
+    for r in conn.execute(
+            "SELECT id, unsubscribe_token FROM campaign_queue "
+            "WHERE state = 'sending' AND claimed_at < ?", (cutoff,)).fetchall():
+        written = conn.execute(
+            "SELECT 1 FROM campaign_sends WHERE unsubscribe_token = ?",
+            (r["unsubscribe_token"],)).fetchone()
+        if written:
+            maybe += conn.execute(
+                "UPDATE campaign_queue SET state = 'done', outcome = 'interrupted', "
+                "done_at = ? WHERE id = ? AND state = 'sending'",
+                (now.isoformat(), r["id"])).rowcount
         else:
-            failed += 1
-    return {"sent": sent, "failed": failed, "skipped": skipped, "withheld": withheld,
-            "held": held, "total": len(recipients), "send_id": send_id}
+            conn.execute("UPDATE campaign_queue SET state = 'queued', claimed_at = NULL "
+                         "WHERE id = ? AND state = 'sending'", (r["id"],))
+    # And any campaign letter at all left "on its way" -- the queue's, or one
+    # of a send of a few that stopped in the middle.
+    conn.execute("UPDATE campaign_sends SET outcome = 'interrupted' "
+                 "WHERE outcome = 'sending' AND created_at < ?", (cutoff,))
+    conn.commit()
+    return maybe
+
+
+def campaign_run_finished(conn, send_id):
+    """Mark a send finished once nobody on it is still to go."""
+    left = conn.execute(
+        "SELECT COUNT(*) AS n FROM campaign_queue WHERE send_id = ? "
+        "AND state IN ('queued', 'sending')", (send_id,)).fetchone()["n"]
+    if not left:
+        conn.execute("UPDATE campaign_runs SET state = 'done', finished_at = ? "
+                     "WHERE send_id = ? AND state = 'going'",
+                     (datetime.now(timezone.utc).isoformat(), send_id))
+        conn.commit()
+    return not left
+
+
+def drain_campaign_queue(conn, *, budget=None, sleep=time.sleep,
+                         seconds=CAMPAIGN_RUN_SECONDS, mind_the_holds=True):
+    """Send the next letters of whatever campaigns are queued, as many as the
+    pace allows, and stop.
+
+    Run by the automation thread every few minutes, and once straight after
+    Send. Oldest send first. One run at a time: a run already under way means
+    this one has nothing to do.
+
+    `budget` (letters, in place of the pace), `sleep` (None for no gap between
+    letters) and `mind_the_holds` are for the tests, which send a handful with
+    send_email stood in.
+    """
+    if not _CAMPAIGN_DRAIN_LOCK.acquire(blocking=False):
+        return "already sending"
+    try:
+        return _drain_campaign_queue(conn, budget, sleep, seconds, mind_the_holds)
+    finally:
+        _CAMPAIGN_DRAIN_LOCK.release()
+
+
+def _drain_campaign_queue(conn, budget, sleep, seconds, mind_the_holds):
+    maybe = recover_interrupted_campaign_letters(conn)
+    notes = [f"{maybe} letter(s) were going out when the house stopped; not sent again"
+             ] if maybe else []
+    runs = conn.execute("SELECT * FROM campaign_runs WHERE state = 'going' "
+                        "ORDER BY created_at, send_id").fetchall()
+    if not runs:
+        return "; ".join(["no campaign waiting to go"] + notes)
+    pace = campaign_allowance(conn)
+    left = pace["now"] if budget is None else budget
+    minute = CAMPAIGN_MINUTE_LIMITS.get(pace["transport"])
+    gap = 60.0 / minute if (minute and sleep) else 0
+    started = time.monotonic()
+    held_back = restricted_addresses(conn)
+    opted_out = campaign_opted_out(conn)
+    sent = 0
+    for run in runs:
+        if mind_the_holds:
+            why = campaign_waiting_why(conn, run)
+            if why:
+                notes.append(f"{run['template_name']} is waiting: {why}")
+                continue
+        letter = campaign_letter_from_run(run)
+        refused = False
+        while left > 0 and time.monotonic() - started < seconds:
+            # Asked before every letter: Pause or Stop pressed mid-run takes
+            # effect at the next letter, not at the end of the run.
+            if conn.execute("SELECT state FROM campaign_runs WHERE send_id = ?",
+                            (run["send_id"],)).fetchone()["state"] != "going":
+                break
+            row = conn.execute(
+                "SELECT * FROM campaign_queue WHERE send_id = ? AND state = 'queued' "
+                "ORDER BY id LIMIT 1", (run["send_id"],)).fetchone()
+            if not row:
+                break
+            # The claim is the lock: only one runner can move a row off
+            # 'queued', and it is committed before anything goes.
+            claimed = conn.execute(
+                "UPDATE campaign_queue SET state = 'sending', claimed_at = ? "
+                "WHERE id = ? AND state = 'queued'",
+                (datetime.now(timezone.utc).isoformat(), row["id"])).rowcount
+            conn.commit()
+            if not claimed:
+                continue
+            outcome, detail = campaign_letter(
+                conn, letter, row["recipient_email"], row["recipient_name"],
+                held_back=held_back, opted_out=opted_out,
+                unsub_token=row["unsubscribe_token"])
+            conn.execute("UPDATE campaign_queue SET state = 'done', outcome = ?, done_at = ? "
+                         "WHERE id = ?",
+                         (outcome, datetime.now(timezone.utc).isoformat(), row["id"]))
+            if outcome in ("sent", "test"):
+                sent += 1
+                if run["refusals"]:
+                    conn.execute("UPDATE campaign_runs SET refusals = 0, problem = NULL "
+                                 "WHERE send_id = ?", (run["send_id"],))
+            elif outcome == "held":
+                # The provider would not take it (the holds were asked above,
+                # so it is not Write to guests). The rest of the list will
+                # not fare better this minute; and if it keeps happening, the
+                # send waits for somebody rather than walking the whole list
+                # into Held Email one refusal at a time.
+                refused = True
+                conn.execute("UPDATE campaign_runs SET refusals = refusals + 1, problem = ? "
+                             "WHERE send_id = ?", (detail, run["send_id"]))
+                tally = conn.execute("SELECT refusals FROM campaign_runs WHERE send_id = ?",
+                                     (run["send_id"],)).fetchone()["refusals"]
+                if tally >= CAMPAIGN_REFUSALS_TO_PAUSE:
+                    conn.execute("UPDATE campaign_runs SET state = 'paused' "
+                                 "WHERE send_id = ? AND state = 'going'", (run["send_id"],))
+                    notes.append(f"{run['template_name']} paused: the provider refused "
+                                 f"{tally} letters running")
+            conn.commit()
+            if outcome in ("sent", "test", "held", "failed"):
+                left -= 1            # it reached the way out, whatever it said
+                if gap and left > 0:
+                    sleep(gap)
+            if refused:
+                break
+        campaign_run_finished(conn, run["send_id"])
+        if refused or left <= 0 or time.monotonic() - started >= seconds:
+            break
+    still = conn.execute(
+        "SELECT COUNT(*) AS n FROM campaign_queue JOIN campaign_runs "
+        "ON campaign_runs.send_id = campaign_queue.send_id "
+        "WHERE campaign_queue.state = 'queued' AND campaign_runs.state = 'going'"
+    ).fetchone()["n"]
+    head = f"{sent} campaign letter(s) sent"
+    if still:
+        head += f", {still:,} still to go"
+        if budget is None and left <= 0:
+            head += f" (at most {pace['limit']:,} a day)"
+    return "; ".join([head] + notes)
+
+
+def run_campaign_queue_job(conn):
+    """The automation thread's turn at the campaigns waiting to go."""
+    return drain_campaign_queue(conn)
+
+
+def _drain_campaigns_in_background():
+    try:
+        with app.test_request_context(base_url=PUBLIC_BASE_URL or None):
+            g.change_job = "campaign_queue"
+            conn = get_db()
+            conn.actor, conn.endpoint = "job", "campaign_queue"
+            try:
+                if get_automation_settings(conn).get(
+                        "automation_campaign_queue_enabled") == "1":
+                    print(f"[campaign] {drain_campaign_queue(conn)}")
+            finally:
+                conn.close()
+    except Exception as e:
+        print(f"[campaign] could not start on the send: {type(e).__name__}: {e}")
+
+
+def start_campaign_drain():
+    """Start on a send now rather than at the automation thread's next run,
+    up to five minutes off: a campaign to twenty people goes while the owner
+    is still looking at the page. Within the pace like any other run."""
+    if CAMPAIGN_DRAIN_ON_SEND:
+        threading.Thread(target=_drain_campaigns_in_background, daemon=True).start()
+
+
+def campaign_progress(conn, send_id, now=None):
+    """How a queued send is getting on: where everybody on it is, what it is
+    waiting for if anything, and when the last letter should go. None for a
+    send that was never queued -- a test, or a send from before the queue."""
+    # Who pressed Send: writing to the whole list is the loudest thing anybody
+    # here can do, and it says whose decision it was.
+    run = conn.execute(
+        """SELECT campaign_runs.*, users.name AS sent_by FROM campaign_runs
+             LEFT JOIN users ON users.id = campaign_runs.sent_by_user_id
+            WHERE campaign_runs.send_id = ?""", (send_id,)).fetchone()
+    if not run:
+        return None
+    now = now or datetime.now(timezone.utc)
+    states = {r["state"]: r["n"] for r in conn.execute(
+        "SELECT state, COUNT(*) AS n FROM campaign_queue WHERE send_id = ? GROUP BY state",
+        (send_id,)).fetchall()}
+    to_go = states.get("queued", 0)
+    # Letters of sends queued before this one go first.
+    ahead = conn.execute(
+        """SELECT COUNT(*) AS n FROM campaign_queue JOIN campaign_runs
+             ON campaign_runs.send_id = campaign_queue.send_id
+            WHERE campaign_queue.state = 'queued' AND campaign_runs.state = 'going'
+              AND (campaign_runs.created_at < ? OR
+                   (campaign_runs.created_at = ? AND campaign_runs.send_id < ?))""",
+        (run["created_at"], run["created_at"], send_id)).fetchone()["n"]
+    pace = campaign_allowance(conn, now)
+    waiting = (campaign_waiting_why(conn, run)
+               if run["state"] == "going" and to_go else None)
+    finish = None
+    if run["state"] == "going" and to_go and not waiting and pace["limit"]:
+        finish = now + timedelta(seconds=(ahead + to_go) * 86400 / pace["limit"])
+    return {"run": run, "state_words": CAMPAIGN_RUN_STATE_WORDS[run["state"]],
+            "total": run["total"], "to_go": to_go, "ahead": ahead,
+            "stopped": states.get("stopped", 0), "waiting": waiting,
+            "problem": run["problem"] if run["state"] in ("going", "paused") else None,
+            "finish": finish, "pace": pace,
+            "transport_words": CAMPAIGN_TRANSPORT_WORDS.get(pace["transport"])}
+
+
+def campaign_finish_words(finish, now=None):
+    """When the last letter should go, as somebody would say it."""
+    if not finish:
+        return None
+    now = now or datetime.now(timezone.utc)
+    hours = (finish - now).total_seconds() / 3600
+    if hours < 1:
+        return "within the hour"
+    if hours < 20:
+        return f"in about {round(hours)} hour{'' if round(hours) == 1 else 's'}"
+    return "about " + format_date_short(house_date_iso(finish.isoformat()))
+
+
+def campaign_queued_message(conn, queued):
+    """What pressing Send says it did: queued for how many, and when they
+    should all have it. (message, flash category)."""
+    if not queued["send_id"]:
+        if queued["withheld"] and not queued["already"]:
+            return (f"Nothing was queued: everybody on that list asked us to stop using "
+                    f"their details ({queued['withheld']:,}).", "error")
+        if not queued["already"]:
+            return "Nobody on that list to write to. Nothing was queued.", "error"
+        return ("Everybody on that list is already on a send of this campaign that is "
+                "still going out. Nothing new was queued.", "error")
+    progress = campaign_progress(conn, queued["send_id"])
+    n = queued["total"]
+    parts = [f"Queued for {n:,} {'person' if n == 1 else 'people'}"
+             f"{campaign_held_back_note(queued['withheld'])}."]
+    if queued["already"]:
+        parts.append(f"{queued['already']:,} already on a send of this campaign still going "
+                     "out were left off, so nobody gets it twice.")
+    if progress["waiting"]:
+        parts.append(f"It is waiting: {progress['waiting']}. It goes by itself once that "
+                     "changes.")
+        return " ".join(parts), "error"
+    when = campaign_finish_words(progress["finish"])
+    if progress["transport_words"] and when:
+        parts.append(f"Campaign letters go through {progress['transport_words']} at up to "
+                     f"{progress['pace']['limit']:,} a day, so the last should go {when}.")
+    return " ".join(parts), "success"
 
 
 # What became of one letter in a campaign, in words. Rows from before outcomes
@@ -63947,6 +64580,9 @@ CAMPAIGN_OUTCOME_WORDS = {
     "sent": "Sent", "test": "A test", "held": "Kept, goes when mail can",
     "failed": "Did not go", "withheld": "Held back: asked us to stop using their details",
     "stopped": "Not sent: on the stop list", "skipped": "Already sent before",
+    "unsubscribed": "Not sent: unsubscribed", "sending": "On its way",
+    "interrupted": "May have gone: the house stopped as it went, so not sent again",
+    "queued": "Still to go", "stopped_by_owner": "Not sent: the send was stopped",
 }
 
 
@@ -64074,26 +64710,122 @@ def not_written_to_view(conn, args):
 @app.route("/admin/emails/sends/<send_id>")
 @owner_required
 def campaign_send_detail(send_id):
-    """One send: who it reached, who it is waiting for, who not, and why."""
+    """One send: who it reached, who it is waiting for, who not, and why --
+    and for a send still going out, how far it has got and when it ends.
+
+    Searchable and a page at a time: a send to the newsletter is 25,000 lines,
+    and the one somebody is looking for is "did Mme Martin get it?".
+    """
     conn = get_db()
     rows = conn.execute(
         "SELECT * FROM campaign_sends WHERE send_id = ? ORDER BY recipient_email",
         (send_id,)).fetchall()
+    progress = campaign_progress(conn, send_id)
+    # Everybody the queue has not written a line for yet: still to go, left
+    # off when the send was stopped, or already sent this before.
+    waiting = conn.execute(
+        """SELECT recipient_email, recipient_name, state, outcome FROM campaign_queue
+            WHERE send_id = ? AND (state IN ('queued', 'stopped') OR outcome = 'skipped')
+            ORDER BY recipient_email""", (send_id,)).fetchall()
     conn.close()
-    if not rows:
+    if not rows and not progress:
         abort(404)
     people = []
     for r in rows:
         outcome = r["outcome"] or r["status"]
         people.append({"email": r["recipient_email"], "name": r["recipient_name"],
                        "outcome": outcome,
-                       "words": CAMPAIGN_OUTCOME_WORDS.get(outcome, outcome),
                        "detail": r["detail"] if outcome not in ("sent", "test") else ""})
+    for r in waiting:
+        outcome = ("queued" if r["state"] == "queued" else
+                   "stopped_by_owner" if r["state"] == "stopped" else r["outcome"])
+        people.append({"email": r["recipient_email"], "name": r["recipient_name"],
+                       "outcome": outcome, "detail": ""})
+    for p in people:
+        p["words"] = CAMPAIGN_OUTCOME_WORDS.get(p["outcome"], p["outcome"])
     counts = {}
     for p in people:
         counts[p["words"]] = counts.get(p["words"], 0) + 1
-    return render_template("campaign_send.html", first=rows[0], people=people,
+    lv = list_page(list_view(
+        people, request.args,
+        search=["email", "name"],
+        search_hint="Search a name or an address",
+        facets=[facet("what", "What happened", lambda p: p["words"],
+                      order=list(dict.fromkeys(CAMPAIGN_OUTCOME_WORDS.values())))],
+        sorts=[sort_option("email", "By address", lambda p: p["email"] or ""),
+               sort_option("name", "By name", lambda p: (p["name"] or p["email"] or "").lower())],
+        default_sort="email"), request.args)
+    first = progress["run"] if progress else rows[0]
+    return render_template("campaign_send.html", first=first, people=people, lv=lv,
+                           progress=progress, send_id=send_id,
+                           finish_words=campaign_finish_words(progress["finish"])
+                           if progress else None,
                            counts=sorted(counts.items(), key=lambda kv: -kv[1]))
+
+
+# What each control on a send does to it: (from states, to state, audit, flash).
+CAMPAIGN_RUN_CONTROLS = {
+    "pause": (("going",), "paused", "campaign_paused",
+              "Paused. Nobody else is written to until you press Carry on."),
+    "resume": (("paused",), "going", "campaign_resumed",
+               "Carrying on, at the same pace as before."),
+    "stop": (("going", "paused"), "stopped", "campaign_stopped",
+             "Stopped. Everybody still to go has been left off, and will not be written to "
+             "by this send."),
+}
+
+
+@app.route("/admin/emails/sends/<send_id>/<action>", methods=["POST"])
+@owner_required
+def campaign_send_control(send_id, action):
+    """Pause a send, carry it on, or stop it for good.
+
+    A send that lasts a week needs a way to change your mind on Wednesday: a
+    wrong date in the letter, a complaint, a mailbox that started bouncing.
+    Stop leaves everybody still to go off for good; a letter already on its
+    way finishes going.
+    """
+    if action not in CAMPAIGN_RUN_CONTROLS:
+        abort(404)
+    allowed, to_state, audit, said = CAMPAIGN_RUN_CONTROLS[action]
+    conn = get_db()
+    run = conn.execute("SELECT * FROM campaign_runs WHERE send_id = ?", (send_id,)).fetchone()
+    if not run:
+        conn.close()
+        abort(404)
+    if run["state"] not in allowed:
+        conn.close()
+        flash(f"This send is {CAMPAIGN_RUN_STATE_WORDS[run['state']].lower()}; nothing "
+              "was changed.", "error")
+        return redirect(url_for("campaign_send_detail", send_id=send_id))
+    marks = ",".join("?" * len(allowed))
+    conn.execute(
+        f"UPDATE campaign_runs SET state = ?, refusals = 0, "
+        f"problem = CASE WHEN ? = 'going' THEN NULL ELSE problem END, "
+        f"finished_at = CASE WHEN ? = 'stopped' THEN ? ELSE finished_at END "
+        f"WHERE send_id = ? AND state IN ({marks})",
+        (to_state, to_state, to_state, datetime.now(timezone.utc).isoformat(), send_id,
+         *allowed))
+    left_off = 0
+    if to_state == "stopped":
+        left_off = conn.execute(
+            "UPDATE campaign_queue SET state = 'stopped', outcome = 'stopped_by_owner' "
+            "WHERE send_id = ? AND state = 'queued'", (send_id,)).rowcount
+    log_audit(conn, audit, target=run["template_name"],
+              details=f"{left_off} left off" if to_state == "stopped" else None)
+    conn.commit()
+    conn.close()
+    if to_state == "going":
+        start_campaign_drain()
+    flash(said, "success")
+    return redirect(url_for("campaign_send_detail", send_id=send_id))
+
+
+def campaign_runs_under_way(conn):
+    """Every send still going out or paused, with how it is getting on."""
+    return [campaign_progress(conn, r["send_id"]) for r in conn.execute(
+        "SELECT send_id FROM campaign_runs WHERE state IN ('going', 'paused') "
+        "ORDER BY created_at").fetchall()]
 
 
 @app.route("/admin/emails/stopped/<int:suppression_id>/allow", methods=["POST"])
@@ -64139,23 +64871,6 @@ def remove_email_optout(optout_id):
     conn.close()
     flash(f"{row['email']} will receive campaigns again.", "success")
     return redirect(url_for("admin_emails"))
-
-
-def campaign_result_message(result):
-    """What a campaign send says it did: sent, kept to go later, did not go,
-    held back -- each in its own words, because "3 failed" about three letters
-    waiting safely for the mail to be connected sent the owner looking for a
-    fault that was not there. (message, flash category)."""
-    parts = [f"Sent to {result['sent']} of {result['total']}"]
-    if result.get("held"):
-        parts.append(f"{result['held']} kept, to go when mail can")
-    if result["failed"]:
-        parts.append(f"{result['failed']} did not go")
-    message = ", ".join(parts) + campaign_held_back_note(result["withheld"]) + "."
-    # Green only when every letter went just now. Kept is not failed, but a
-    # send that reached nobody yet is not a success either.
-    went_now = result["sent"] and not (result["failed"] or result.get("held"))
-    return message, ("success" if went_now else "error")
 
 
 def campaign_held_back_note(withheld):
@@ -69732,6 +70447,17 @@ def admin_booking(booking_id):
             (booking["arrival_date"], today.isoformat())).fetchall():
         scheduled.setdefault(row["shift_date"], set()).add(row["user_id"])
     group = booking_group(conn, booking_id)
+    # Their dinners at La Table, booked with the stay or since. The arrivals
+    # sheet showed them and the stay's own page did not (27 October 2026).
+    dinners = sheet_asks_and_dinners(conn, [booking_id])[1].get(booking_id, [])
+    # The time they usually come, from earlier stays, said as that when this
+    # stay has none of its own -- the same rule as the arrivals sheet.
+    usual_arrival = ""
+    if (booking["guest_email"] or "").strip():
+        known = conn.execute("SELECT usual_arrival_time FROM guests WHERE LOWER(email) = LOWER(?)",
+                             (booking["guest_email"].strip(),)).fetchone()
+        usual_arrival = (known["usual_arrival_time"] or "") if known else ""
+    occasion_prep = occasion_states(conn, [booking_id]).get(booking_id)
     conn.close()
 
     if not arrival or not departure:
@@ -69765,6 +70491,7 @@ def admin_booking(booking_id):
         stays_here=stays_here, employees=employees, scheduled=scheduled,
         group=group, where=where, today_iso=today.isoformat(),
         decline_reasons=DECLINE_REASONS, cancel_reasons=CANCEL_REASONS,
+        dinners=dinners, usual_arrival=usual_arrival, occasion_prep=occasion_prep,
     )
 
 
@@ -76888,8 +77615,10 @@ def send_promo_code_blast(code_id):
         subject = subject.replace(two, one).replace(one, two)
         body_template = body_template.replace(two, one).replace(one, two)
 
+    # Queued like any campaign: "every past guest" and the newsletter can be
+    # thousands, which is days of letters at the mailbox's pace.
     user = current_user()
-    result = send_campaign(
+    queued = queue_campaign(
         conn,
         {"id": None, "name": f"Promo code {promo['code']}",
          "subject": subject, "body": body_template},
@@ -76898,12 +77627,16 @@ def send_promo_code_blast(code_id):
         extra_context={"promo_code": promo["code"]},
         area=PROMO_REPLY_AREAS.get(promo["applies_to"]),
     )
-    message, category = campaign_result_message(result)
-    log_audit(conn, "promo_blast_sent", target=promo["code"], details=message)
+    message, category = campaign_queued_message(conn, queued)
+    if queued["send_id"]:
+        log_audit(conn, "promo_blast_sent", target=promo["code"], details=message)
     conn.commit()
     conn.close()
+    start_campaign_drain()
     flash(message, category)
-    return redirect(url_for("admin_promo_codes"))
+    send_id = queued["send_id"] or queued["already_send_id"]
+    return redirect(url_for("campaign_send_detail", send_id=send_id) if send_id
+                    else url_for("admin_promo_codes"))
 
 
 def matching_restaurant_waitlist_entries(conn, dinner_date_iso):
@@ -112791,6 +113524,10 @@ AUTOMATION_JOBS = [
     ("meta_token", "automation_meta_token_enabled", None, 24 * 3600,
      run_meta_token_job),
     ("campaign_triggers", "automation_campaign_triggers_enabled", None, 21600, run_campaign_triggers_job),
+    # Every run of the thread (under its five minutes, so none is skipped): a
+    # campaign to a list goes a little at a time, and the pace is worked out
+    # from what has gone, so a late or missed run sends nothing extra.
+    ("campaign_queue", "automation_campaign_queue_enabled", None, 240, run_campaign_queue_job),
     ("backup_email", "automation_backup_email_enabled", "automation_backup_interval_hours", None, run_backup_email_job),
     # Daily is enough: it works a month ahead, so a missed day costs
     # nothing and a slot is never generated at short notice.
@@ -113111,6 +113848,19 @@ AUTOMATION_SWITCHES = [
      "label": "Letters set to go around a stay",
      "what": "Sends each letter you have set to go at a time around a stay or an "
              "atelier — before arrival, after departure — once per guest."},
+    {"key": "automation_campaign_queue_enabled", "job": "campaign_queue",
+     "runs": ("run_campaign_queue_job",), "group": "guests", "reaches": ("guests",),
+     "label": "Send campaigns, a little at a time",
+     "what": "Sends a campaign or a code you pressed Send on to the people on its list, "
+             "oldest send first, never more than the number a day set below and no more "
+             "than a twenty-fourth of it in any hour, so a send to the whole newsletter "
+             "takes days and the house's own mail keeps going. Nobody is written to twice, "
+             "and anybody who unsubscribes meanwhile is left off. Off, every send waits "
+             "where it is.",
+     "fields": (("automation_campaign_daily_limit_mailbox",
+                 "Campaign letters a day through the house mailbox", "letters"),
+                ("automation_campaign_daily_limit_resend",
+                 "Campaign letters a day through Resend", "letters"))},
     {"key": "automation_room_balance_reminder_enabled", "job": "room_balance_reminder",
      "runs": ("run_room_balance_reminder_job",), "group": "guests", "reaches": ("guests",),
      "label": "Room balance reminders",
@@ -114307,6 +115057,8 @@ GUEST_DOSSIER_TABLES = {
     "guest_tags": "shown",
     "consent_events": "shown, as what they have said about being written to",
     "campaign_sends": "shown with the letters",
+    "campaign_queue": "left out: a campaign letter still to go is not a letter sent; "
+                      "once it goes it is shown with the letters",
     "email_outbox": "shown with the letters: anything held rather than sent",
     "lost_property": "shown: something they left behind, while it waits",
     "payment_disputes": "shown to the owner, as a warning while open",

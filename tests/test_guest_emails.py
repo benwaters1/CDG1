@@ -13,12 +13,15 @@ for every other suite, so this one puts the real one back):
   - Off: a cancellation, a refund, a reminder is held, kept, and not sent; a
     booking confirmation goes; a letter a person wrote at the time goes.
   - On: a letter goes only once approved; changing its wording lapses the
-    approval; one with no wording cannot be approved.
+    approval; one with no wording cannot be approved; the page names who
+    approved it.
   - Texts: an automatic one is held, one typed on a booking is not.
   - A letter with no name at all is held, never guessed into going.
   - "Send all" on Held email never sends one held by this switch.
   - The page lists every stored letter with what sends it and its full text.
 """
+from markupsafe import escape
+
 from _harness import Suite, clients, db
 import _harness
 
@@ -66,6 +69,7 @@ def run():
     s = Suite("Guest emails: off")
     oc, _ec, _owner, _emp = clients()
     _cleanup()
+    s.check("there is an owner with a name to look for", bool(_owner["name"]))
     sent = []
     conn = db()
     keep = {k: (r["value"] if r else None) for k in ("guest_mail_live", "guest_emails_on")
@@ -83,7 +87,7 @@ def run():
         (sent.append({"to": to, "subject": subj}), (True, None))[1])
     m.guest_letter_held_why = _harness.REAL_GUEST_LETTER_HELD_WHY
     try:
-        _checks(s, oc, sent)
+        _checks(s, oc, sent, _owner["name"])
     finally:
         (m.send_email_via_resend, m.resend_enabled, m.guest_letter_held_why,
          m.send_held_letter) = was
@@ -105,7 +109,7 @@ def run():
     return s
 
 
-def _checks(s, oc, sent):
+def _checks(s, oc, sent, owner_name):
     _setting("guest_mail_live", "1")
 
     s.section("Off by default: the deploy switches it off")
@@ -171,6 +175,16 @@ def _checks(s, oc, sent):
             and "not approved yet" in row["reason"], detail=repr(row and row["reason"]))
     r = oc.post("/admin/guest-emails/approve", data={"key": "room_cancelled"})
     s.check("approving it", r.status_code == 302)
+    # Scoped to this letter's own card: the owner's name is in the header of
+    # every staff page, so a check reading the whole page would pass with the
+    # approver never shown.
+    listed = oc.get("/admin/guest-emails").get_data(as_text=True)
+    at = listed.find('id="l-room_cancelled"')
+    card = listed[at:listed.find('class="detail-card"', at + 1)] if at >= 0 else ""
+    s.check("the page names who approved it",
+            "by " + str(escape(owner_name)) in card,
+            detail=" ".join(card.split())[-240:] + " -- a letter cleared to go to every "
+                   "guest with nobody's name against it is a decision nobody can be asked about")
     del sent[:]
     _send("room_cancelled", "ZZGE on approved")
     s.check("approved and on: it goes", bool(sent) and not _held("ZZGE on approved"))
