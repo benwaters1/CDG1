@@ -1,0 +1,62 @@
+{#- PIECES OF A STAY, SAID ONE WAY on every page that shows one: the arrivals
+    sheet, the stay's own page, the atelier pages (owner, 27 October 2026: "some
+    of it isn't very clear, the anniversary, the check in time ... make sure
+    it's all perfect and easy"). Written once so the sheet and the booking can
+    never word the same fact two ways. -#}
+
+{#- An atelier place's room arrangement, in words. The session page tested for
+    'single', which no registration has ever been -- the private room is
+    'solo' -- so a guest who paid for a room to themselves read as sharing. -#}
+{% set room_words = {'double': 'sharing a room', 'triple': 'three to a room',
+                     'solo': 'a room to themselves', 'single': 'a room to themselves'} %}
+
+{#- When they come. `w` is arrival_words(): the guest's own time, their usual
+    one said as a guess, or "not given" in words -- and the house's check-in
+    hour beside it, never in its place. A time before check-in says so, since
+    the room may not be ready. -#}
+{% macro arrival_line(w, house=True) -%}
+<span class="when-line{% if w.missing %} is-missing{% elif w.early %} is-early{% endif %}"><strong>{{ w.text }}</strong>
+  {%- if w.source %} <span class="when-line__src">({{ w.source }})</span>{% endif %}
+  {%- if w.early %} <span class="when-line__early">· before check-in at {{ check_in_time }}</span>
+  {%- elif house %} <span class="when-line__house">· check-in from {{ check_in_time }}</span>{% endif %}</span>
+{%- endmacro %}
+
+{#- How far an occasion's preparation has got, from occasion_states(). -#}
+{% macro occasion_prep_words(op) -%}
+{%- if op %}<a href="{{ url_for('occasions_page') }}#task-{{ op.task_id }}" class="small-link">
+  {%- if op.status == 'done' %}prepared{% elif op.total %}{{ op.done }} of {{ op.total }} done{% else %}to prepare{% endif %}</a>
+{%- else %}<a href="{{ url_for('occasions_page') }}" class="small-link">preparation not started</a>{% endif -%}
+{%- endmacro %}
+
+{#- WHAT CHANGES HOW THEY ARE MET, first and in words: the occasion beside
+    the name rather than four headings down, what they cannot eat in a field
+    of its own, what they need from the house, and anything the house has
+    decided about them. The way the established systems flag them -- a word
+    and a mark at the top, the job it sets off kept apart, with its own state.
+    Nothing at all when there is nothing to say. -#}
+{% macro flags(occasion='', prep=None, show_prep=True, dietary='', diet_hint='', health='', access='', caution='', no_shows=0) -%}
+{%- if occasion or dietary or health or access or caution or no_shows %}
+<ul class="stay-flags">
+  {%- if occasion %}
+  <li class="stay-flag is-occasion"><span class="stay-flag__k">Celebrating</span> <span class="stay-flag__v">{{ occasion }}</span>
+    {%- if show_prep %} <span class="stay-flag__state">· {{ occasion_prep_words(prep) }}</span>{% endif %}</li>
+  {%- endif %}
+  {%- if dietary %}
+  <li class="stay-flag is-diet"><span class="stay-flag__k">Cannot eat</span> <span class="stay-flag__v">{{ dietary }}</span>
+    {%- if diet_hint %} <span class="stay-flag__state">· {{ diet_hint }}</span>{% endif %}</li>
+  {%- endif %}
+  {%- if health %}
+  <li class="stay-flag"><span class="stay-flag__k">Health</span> <span class="stay-flag__v">{{ health }}</span></li>
+  {%- endif %}
+  {%- if access %}
+  <li class="stay-flag"><span class="stay-flag__k">Needs from the house</span> <span class="stay-flag__v">{{ access }}</span></li>
+  {%- endif %}
+  {%- if caution %}
+  <li class="stay-flag is-warn"><span class="stay-flag__k">Standing instruction</span> <span class="stay-flag__v">{{ caution }}</span></li>
+  {%- endif %}
+  {%- if no_shows %}
+  <li class="stay-flag is-warn"><span class="stay-flag__k">Did not arrive</span> <span class="stay-flag__v">{{ no_shows }}&times; before</span></li>
+  {%- endif %}
+</ul>
+{%- endif %}
+{%- endmacro %}

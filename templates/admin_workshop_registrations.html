@@ -2,6 +2,7 @@
 {% from "_icons.html" import icon %}
 {% block title %}Workshop Registrations{% endblock %}
 {% block content %}
+{% from "_stay_bits.html" import arrival_line, flags, room_words %}
 
 <div class="page-head">
   <h1>{% if panel %}{{ panel.title }}{% else %}Workshop Registrations{% endif %}</h1>
@@ -125,20 +126,26 @@
     </div>
     <p class="manual-body wraps">
       {{ r['start_date']|date_short }}{% if r['end_date'] != r['start_date'] %} → {{ r['end_date']|date_short }}{% endif %}
-      · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['single_supplement'] %} (+{{ r['single_supplement']|money(0) }} pp single){% endif %}{% if r['total_price'] %} · {{ r['total_price']|money }}{% endif %}
+      · Party of {{ r['party_size'] }} · {{ room_words.get(r['occupancy_type'], (r['occupancy_type'] or '')|capitalize) }}{% if r['single_supplement'] %} (+{{ r['single_supplement']|money(0) }} pp single){% endif %}{% if r['total_price'] %} · {{ r['total_price']|money }}{% endif %}
     </p>
-    {# Links, not text: an address you can click is one you write to. #}
-    <p class="upload-hint">
-      <a href="mailto:{{ r['guest_email'] }}">{{ r['guest_email'] }}</a>{% if r['guest_phone'] %} · <a href="tel:{{ r['guest_phone'] }}">{{ r['guest_phone'] }}</a>{% endif %}
-      · <a href="{{ url_for('guest_by_email', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">their record</a>
-    </p>
-    {% if r['guest_address'] or r['guest_country'] %}<p class="upload-hint">Address: {{ [r['guest_address'], ((r['guest_city'] or '') ~ ' ' ~ (r['guest_postcode'] or ''))|trim, r['guest_country']]|select|join(', ') }}</p>{% endif %}
-    {% if r['requested_roommate'] %}<p class="upload-hint">Travelling with: {{ r['requested_roommate'] }}</p>{% endif %}
-    {% if r['bed_preference'] %}<p class="upload-hint">Bed preference: {{ r['bed_preference'] }}</p>{% endif %}
-    {% if r['dietary_notes'] %}<p class="upload-hint">Dietary: {{ r['dietary_notes'] }}</p>{% endif %}
-    {% if r['medical_notes'] %}<p class="upload-hint">Medical: {{ r['medical_notes'] }}</p>{% endif %}
-    {% if r['special_occasion'] %}<p class="upload-hint">Occasion: {{ r['special_occasion'] }}</p>{% endif %}
-    {% if r['notes'] %}<p class="upload-hint">Notes: {{ r['notes'] }}</p>{% endif %}
+    {#- When they come, what they are celebrating and what they cannot eat,
+        said as the arrivals sheet and the stay's page say them (27 October
+        2026): they were seven grey lines of equal weight, "Occasion:" among
+        "Bed preference:". -#}
+    {% if r['status'] in ('pending', 'confirmed') %}
+    <p class="arr-card__when">{{ arrival_line(arrival_words(r['estimated_arrival_time']), house=False) }}</p>
+    {% endif %}
+    {{ flags(occasion=r['special_occasion'], show_prep=False, dietary=r['dietary_notes'], health=r['medical_notes']) }}
+    <dl class="bk-facts arr-facts">
+      {# Links, not text: an address you can click is one you write to. #}
+      <dt>Reach them</dt>
+      <dd><a href="mailto:{{ r['guest_email'] }}">{{ r['guest_email'] }}</a>{% if r['guest_phone'] %} · <a href="tel:{{ r['guest_phone'] }}">{{ r['guest_phone'] }}</a>{% endif %}
+        · <a href="{{ url_for('guest_by_email', email=r['guest_email']) }}" class="small-link">their record</a></dd>
+      {% if r['guest_address'] or r['guest_country'] %}<dt>Address</dt><dd>{{ [r['guest_address'], ((r['guest_city'] or '') ~ ' ' ~ (r['guest_postcode'] or ''))|trim, r['guest_country']]|select|join(', ') }}</dd>{% endif %}
+      {% if r['requested_roommate'] %}<dt>Travelling with</dt><dd>{{ r['requested_roommate'] }}</dd>{% endif %}
+      {% if r['bed_preference'] %}<dt>Bed preference</dt><dd>{{ r['bed_preference'] }}</dd>{% endif %}
+      {% if r['notes'] %}<dt>Notes</dt><dd>{{ r['notes'] }}</dd>{% endif %}
+    </dl>
 
     {# A private room is not bookable on the public form — it is quoted per
        enquiry — so this is where an arrangement made by phone or email gets

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_stay_bits.html" import arrival_line, room_words %}
 {% block title %}{{ session['title'] }} — running sheet{% endblock %}
 
 {# Nothing about money is loaded for this page, so nothing about money can
@@ -78,10 +79,12 @@
 
 {% if sheet.occasions %}
 <div class="detail-card">
-  <h2 class="section-heading">Worth knowing</h2>
+  {#- Named for what it is: "Worth knowing" over an "Occasion" column hid
+      that this is who is celebrating something (27 October 2026). -#}
+  <h2 class="section-heading">Celebrating</h2>
   <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Who</th><th>Occasion</th></tr></thead>
+      <thead><tr><th scope="col">Who</th><th scope="col">What</th></tr></thead>
       <tbody>
         {% for d in sheet.occasions %}
         <tr><td>{{ d.who }}</td><td>{{ d.note }}</td></tr>
@@ -105,7 +108,10 @@
         <b>{{ b['guest_name'] }}</b>
         {%- if b['party_size'] and b['party_size'] > 1 %} · party of {{ b['party_size'] }}{% endif %}
         {%- if b['room_name'] %} · {{ b['room_name'] }}{% endif %}
-        {%- if b['occupancy_type'] %} · {{ b['occupancy_type']|capitalize }}{% endif %}
+        {%- if b['occupancy_type'] %} · {{ room_words.get(b['occupancy_type'], b['occupancy_type']) }}{% endif %}
+        {#- When they come, said as every other sheet says it: "Double" on
+            its own told the instructor nothing, and the time was not here. -#}
+        <div class="ws-when">{{ arrival_line(arrival_words(b['estimated_arrival_time']), house=False) }}</div>
 
         {% if r.party %}
         <div class="upload-hint" style="margin-top:2px;">
@@ -118,10 +124,10 @@
         {% endif %}
 
         {% if b['dietary_notes'] %}
-        <div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Diet</span>{{ b['dietary_notes'] }}</div>
+        <div class="ws-diet" style="margin-top:2px;">Cannot eat: {{ b['dietary_notes'] }}</div>
         {% endif %}
         {% if b['medical_notes'] %}
-        <div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Medical</span>{{ b['medical_notes'] }}</div>
+        <div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Health</span>{{ b['medical_notes'] }}</div>
         {% endif %}
 
         {# The workshop's own questions. Somebody set these because the

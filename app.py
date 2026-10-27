@@ -985,6 +985,36 @@ def clock_words(value):
 CHECK_IN_WORDS = clock_words(CHECK_IN_TIME)
 CHECK_OUT_WORDS = clock_words(CHECK_OUT_TIME)
 
+
+def arrival_words(own="", usual=""):
+    """When a guest will come, said so nobody takes it for the house's time.
+
+    Three answers, and each reads differently (owner, 27 October 2026: the
+    check-in time "isn't very clear"). The time the guest gave for this stay;
+    the time they usually come, from their earlier stays, which is a guess
+    and is said as one; or nothing, said in words -- a blank reads as "no
+    arrival", and a 15:00 filled in for them reads as something they said.
+    The house's check-in hour is a different fact and goes beside it, never in
+    its place. The big booking systems keep the two apart for this reason
+    (Guesty, OPERA); one that fills the guest's from the house's leaves staff
+    unable to tell which they are looking at.
+
+    `early` is a time before check-in, when the room may not be ready yet: the
+    one thing about the time worth seeing at a glance.
+    """
+    own, usual = (own or "").strip(), (usual or "").strip()
+    time = own or usual
+    clock = re.match(r"(\d{1,2})[:.h](\d{2})", time)
+    early = bool(clock) and f"{int(clock.group(1)):02d}:{clock.group(2)}" < CHECK_IN_TIME
+    if own:
+        text, source = f"Arriving about {own}", "they told us"
+    elif usual:
+        text, source = f"Usually arrives about {usual}", "from their past stays, not said for this one"
+    else:
+        text, source = "Arrival time not given", ""
+    return {"time": time, "given": bool(own), "missing": not time, "early": early,
+            "text": text, "source": source}
+
 # A time as the terms might write it: 4pm, 4 p.m., 16:00, 16h, 4.30pm.
 _TERMS_TIME = r"(\d{1,2})(?:\s*[:.h]\s*(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|h\b)?"
 _TERMS_ARRIVAL = re.compile(
@@ -11823,6 +11853,7 @@ app.jinja_env.globals["check_in_hour"] = int(CHECK_IN_TIME[:2])
 app.jinja_env.globals["check_in_time"] = CHECK_IN_TIME
 app.jinja_env.globals["check_out_time"] = CHECK_OUT_TIME
 app.jinja_env.globals["clock_words"] = clock_words
+app.jinja_env.globals["arrival_words"] = arrival_words
 # Money on a page was formatted inline, template by template, with
 # '%.2f'|format and a euro sign typed next to it. One definition instead, so a
 # figure reads the same wherever it appears.
@@ -69531,6 +69562,17 @@ def admin_booking(booking_id):
             (booking["arrival_date"], today.isoformat())).fetchall():
         scheduled.setdefault(row["shift_date"], set()).add(row["user_id"])
     group = booking_group(conn, booking_id)
+    # Their dinners at La Table, booked with the stay or since. The arrivals
+    # sheet showed them and the stay's own page did not (27 October 2026).
+    dinners = sheet_asks_and_dinners(conn, [booking_id])[1].get(booking_id, [])
+    # The time they usually come, from earlier stays, said as that when this
+    # stay has none of its own -- the same rule as the arrivals sheet.
+    usual_arrival = ""
+    if (booking["guest_email"] or "").strip():
+        known = conn.execute("SELECT usual_arrival_time FROM guests WHERE LOWER(email) = LOWER(?)",
+                             (booking["guest_email"].strip(),)).fetchone()
+        usual_arrival = (known["usual_arrival_time"] or "") if known else ""
+    occasion_prep = occasion_states(conn, [booking_id]).get(booking_id)
     conn.close()
 
     if not arrival or not departure:
@@ -69564,6 +69606,7 @@ def admin_booking(booking_id):
         stays_here=stays_here, employees=employees, scheduled=scheduled,
         group=group, where=where, today_iso=today.isoformat(),
         decline_reasons=DECLINE_REASONS, cancel_reasons=CANCEL_REASONS,
+        dinners=dinners, usual_arrival=usual_arrival, occasion_prep=occasion_prep,
     )
 
 
