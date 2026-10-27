@@ -105008,7 +105008,8 @@ def arrivals_sheet(conn, day=None, channel=None):
     wanted.sort(key=lambda x: (x["room_name"] or "", x["name"]))
     return {
         "day": day,
-        "checklist": sheet_checklist(iso, rows, channel_arriving, ateliers, wanted),
+        "checklist": sheet_checklist(iso, rows, leaving, channel_arriving,
+                                     channel_leaving, ateliers, wanted),
         "arriving": rows,
         "leaving": leaving,
         "owed_leaving": owed_leaving,
@@ -105033,55 +105034,89 @@ def arrivals_sheet(conn, day=None, channel=None):
     }
 
 
-def sheet_checklist(iso, rows, channel_arriving, ateliers, wanted):
+def sheet_checklist(iso, rows, leaving, channel_arriving, channel_leaving, ateliers, wanted):
     """One day's rooms to get ready, as a list to tick on paper.
 
     The owner, 27 October 2026: "a proper print sheet ... a spot for ticks for
     a checklist, people prefer a piece of paper especially in a house like
-    this. Not complicated, just sheets washed, room ready, the extras." So a
-    line a room that somebody comes into, whichever book they are in, with
-    its extras for that day; and a line for a guest already in the house who
-    has an extra that day, with nothing to make up.
+    this. Not complicated, just sheets washed, room ready, the extras."
 
-    An arrival's extras for a later night of the stay are not on its line:
-    they are on that night's list, under the guests already here, so each is
-    ticked on the day it happens and on no other. An atelier place with no
-    room has no room to make up, and the atelier's own table says so.
+    A LINE A ROOM, not a line a guest. A room somebody leaves needs its sheets
+    washed whether or not anybody comes into it, and the morning a room turns
+    over is one job: Harriet leaves the Twin Room and Pierre arrives at four
+    is one line, with one box for the sheets and one for the room. It began as
+    a line per arrival, and a printed run of it had no box at all for the
+    sheets of a room left empty -- the commonest sheets in the house.
+    Whichever book they are in: the house's, Booking.com's, an atelier's.
+
+    The extras are ticked on the day they happen and on no other. An arrival's
+    extras for a later night are on that night's list, beside the guest in
+    the house, with nothing to make up -- or on their room's line if they are
+    leaving that day (the late checkout). An atelier place with no room has
+    no room to make up, and the atelier's own table says so.
     """
-    def tick(name, quantity, state):
+    def tick(name, quantity, state, note=""):
         # The state comes with it: a box for a board nobody has ordered, with
         # no word that it is not arranged, hides the one thing worth knowing.
         return {"label": f"{quantity} × {name}" if (quantity or 1) > 1 else name,
+                "note": (note or "").strip(),
                 "done": state == "delivered",
                 "state": "" if state == "delivered" else (state or "")}
 
-    out = []
+    lines = {}
+
+    def line(room, guest=""):
+        # A Booking.com stay with no room yet is a line of its own, under its
+        # guest, so two of them are never one room.
+        key = room or f"?{guest}"
+        if key not in lines:
+            lines[key] = {"room": room or "Room not stated", "arriving": [],
+                          "leaving": [], "staying": [], "ticks": []}
+        return lines[key]
+
+    for b in leaving:
+        line(b["room_name"])["leaving"].append(b["guest_name"])
+    for st in channel_leaving:
+        line(st["room_name"], st["guest_name"])["leaving"].append(st["guest_name"])
+    for a in ateliers:
+        for p in a["places"]:
+            if not p["room_name"]:
+                continue
+            if a["begins"]:
+                line(p["room_name"])["arriving"].append(
+                    {"guest": p["guest_name"], "time": (p["estimated_arrival_time"] or "").strip()})
+            else:
+                line(p["room_name"])["leaving"].append(p["guest_name"])
     for r in rows:
         b = r["booking"]
-        ticks = [tick(x["name"], x["quantity"], x["state"])
-                 for x in r["extras"] if not x["day"] or x["day"] <= iso]
-        ticks += [tick(f"Dinner at La Table, {d['party']}", 1, "")
-                  for d in r["dinners"] if d["day"] == iso]
-        out.append({"room": b["room_name"], "guest": b["guest_name"],
-                    "time": r["arrival_time"], "arriving": True, "ticks": ticks})
+        c = line(b["room_name"])
+        c["arriving"].append({"guest": b["guest_name"], "time": r["arrival_time"]})
+        c["ticks"] += [tick(x["name"], x["quantity"], x["state"], x["notes"])
+                       for x in r["extras"] if not x["day"] or x["day"] <= iso]
+        c["ticks"] += [tick(f"Dinner at La Table, {d['party']}", 1, "", d["dietary"])
+                       for d in r["dinners"] if d["day"] == iso]
     for st in channel_arriving:
         told = st["told"]
-        out.append({"room": st["room_name"] or "Room not stated", "guest": st["guest_name"],
-                    "time": ((told["estimated_arrival_time"] or "").strip() if told else ""),
-                    "arriving": True, "ticks": []})
-    for a in ateliers:
-        if a["begins"]:
-            out += [{"room": p["room_name"], "guest": p["guest_name"],
-                     "time": (p["estimated_arrival_time"] or "").strip(),
-                     "arriving": True, "ticks": []}
-                    for p in a["places"] if p["room_name"]]
-    here = {}
+        line(st["room_name"], st["guest_name"])["arriving"].append(
+            {"guest": st["guest_name"],
+             "time": ((told["estimated_arrival_time"] or "").strip() if told else "")})
     for x in wanted:
-        here.setdefault((x["room_name"], x["guest_name"]), []).append(
-            tick(x["name"], x["quantity"], x["state"]))
-    out += [{"room": room, "guest": guest, "time": "", "arriving": False, "ticks": ticks}
-            for (room, guest), ticks in here.items()]
-    return out
+        c = line(x["room_name"])
+        if x["guest_name"] not in c["leaving"] + c["staying"]:
+            c["staying"].append(x["guest_name"])
+        c["ticks"].append(tick(x["name"], x["quantity"], x["state"], x["notes"]))
+
+    for c in lines.values():
+        c["turnover"] = bool(c["arriving"] or c["leaving"])
+
+    def order(c):
+        # The rooms somebody is coming into, soonest first, because that is
+        # the hour each has to be ready by; then the rooms only left; then
+        # the guests in the house with something wanted.
+        times = [a["time"] or "99:99" for a in c["arriving"]]
+        return (0 if c["arriving"] else 1 if c["leaving"] else 2,
+                min(times) if times else "", c["room"])
+    return sorted(lines.values(), key=order)
 
 
 ARRIVALS_WEEKS = 2

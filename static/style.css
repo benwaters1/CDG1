@@ -1921,7 +1921,9 @@ button.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-sh
 
 /* ---------- Print (today-sheet and anything else meant to be posted) ---------- */
 @media print{
-  .no-print, .topbar, .sidebar, .flash-wrap{ display:none !important; }
+  /* The offer of notifications sits outside .flash-wrap and is shown by a
+     script as an inline style, so it printed across the top of every sheet. */
+  .no-print, .topbar, .sidebar, .flash-wrap, #push-prompt{ display:none !important; }
   .print-only{ display:block !important; }
   body{ background:#fff !important; color:#000 !important; }
   .page{ max-width:none; padding:0; }
@@ -3996,8 +3998,14 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .arr-ready .arr-ready__col{ width:13%; text-align:center; white-space:normal; }
 .tick-box{ display:inline-block; flex:none; width:16px; height:16px; border:1.5px solid var(--ink);
   border-radius:2px; vertical-align:-3px; font-size:12px; line-height:13px; text-align:center; }
-.arr-ready__extra{ display:inline-flex; align-items:baseline; gap:7px; margin:0 16px 5px 0; }
-.arr-ready__extra .tick-box{ align-self:center; }
+.arr-ready__who{ display:block; }
+.arr-ready__who .upload-hint{ display:block; }
+.arr-ready__who + .arr-ready__who{ margin-top:3px; }
+/* One extra a line, its box at the top of it, so a long note wraps under
+   its own words and never under the next box. */
+.arr-ready__extra{ display:flex; align-items:flex-start; gap:7px; margin:0 0 5px; }
+.arr-ready__extra:last-child{ margin-bottom:0; }
+.arr-ready__extra .tick-box{ margin-top:1px; }
 /* ON PAPER: the calendar on the first page whole, a guest's card never cut
    in two, a heading never left at the foot of a page without what it heads,
    and the links read as the words they are. */
@@ -4012,8 +4020,23 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
   .arr-cal{ break-inside:avoid; }
   .arr-card{ break-inside:avoid; }
   .arr-ready{ min-width:0; }
+  /* A day's list is one piece of paper's worth: never half on one page and
+     half on the next, which is how the first printed run came out. */
+  .arr-ready-wrap{ break-inside:avoid; }
   .arr-ready tr{ break-inside:avoid; }
   .tick-box{ border-color:#000; }
+  /* The cards at a reading size for paper. At the screen's they ran half a
+     page each, so a busy day was three pages of mostly margin. */
+  .arr-week__h{ font-size:19px; }
+  .arr-day{ padding-top:10px; }
+  .arr-day__h{ font-size:16px; }
+  .arr-card{ padding:8px 12px; margin-bottom:6px; font-size:11.5px; line-height:1.35; }
+  .arr-card .expense-head{ gap:6px; margin-bottom:4px; padding-bottom:5px; }
+  .arr-card .expense-head strong{ font-size:13px; }
+  .arr-card .field-label{ font-size:9px; margin:6px 0 1px; }
+  .arr-card p{ margin:0; }
+  .arr-card .mini-status{ font-size:8.5px; padding:1px 6px; }
+  .arr-extras li{ margin:0; }
   .arr-week__h, .arr-day__h, .arr-day__sum, .arr-day .sub-heading{ break-after:avoid; }
   .arr-day{ break-inside:auto; }
   .arr-week a, .arr-card a{ color:inherit; text-decoration:none; }

@@ -167,9 +167,11 @@
     for a pen, and a box on screen that can be clicked but saves nothing
     reads as broken. An extra already delivered is printed ticked. -#}
 <h4 class="sub-heading">To get ready</h4>
-<div class="table-wrap">
+{#- A line a room: who leaves it, who comes into it, who is in it with
+    something wanted today. Kept whole on one page when printed. -#}
+<div class="table-wrap arr-ready-wrap">
   <table class="data-table arr-ready">
-    <thead><tr><th scope="col" class="arr-ready__room">Room</th><th scope="col" class="arr-ready__guest">Guest</th>
+    <thead><tr><th scope="col" class="arr-ready__room">Room</th><th scope="col" class="arr-ready__guest">Who</th>
       <th scope="col" class="arr-ready__col">Sheets washed</th>
       <th scope="col" class="arr-ready__col">Room ready</th>
       <th scope="col">Extras</th></tr></thead>
@@ -177,16 +179,22 @@
       {% for c in sheet.checklist %}
       <tr>
         <th scope="row">{{ c.room }}</th>
-        <td>{{ c.guest }}{% if c.time %}<br><span class="upload-hint">arriving {{ c.time }}</span>{% endif %}</td>
-        {%- if c.arriving %}
+        <td>
+          {%- for n in c.leaving %}<span class="arr-ready__who">{{ n }} <span class="upload-hint">leaves</span></span>{% endfor %}
+          {%- for a in c.arriving %}<span class="arr-ready__who">{{ a.guest }} <span class="upload-hint">arrives{% if a.time %} {{ a.time }}{% endif %}</span></span>{% endfor %}
+          {%- for n in c.staying %}<span class="arr-ready__who">{{ n }} <span class="upload-hint">in the house</span></span>{% endfor -%}
+        </td>
+        {%- if c.turnover %}
         <td class="arr-ready__col"><span class="tick-box" aria-hidden="true"></span></td>
         <td class="arr-ready__col"><span class="tick-box" aria-hidden="true"></span></td>
         {%- else %}
-        <td colspan="2" class="arr-ready__col upload-hint">already in the house</td>
+        <td colspan="2" class="arr-ready__col upload-hint">nothing to make up</td>
         {%- endif %}
         <td>
           {%- for t in c.ticks %}
-          <span class="arr-ready__extra"><span class="tick-box{% if t.done %} is-done{% endif %}" aria-hidden="true">{% if t.done %}✓{% endif %}</span>{{ t.label }}{% if t.done %} <span class="upload-hint">(delivered)</span>{% elif t.state %} <span class="mini-status status-pending">{{ t.state }}</span>{% endif %}</span>
+          <span class="arr-ready__extra"><span class="tick-box{% if t.done %} is-done{% endif %}" aria-hidden="true">{% if t.done %}✓{% endif %}</span><span>{{ t.label }}
+            {%- if t.note %} <span class="upload-hint">· {{ t.note }}</span>{% endif %}
+            {%- if t.done %} <span class="upload-hint">(delivered)</span>{% elif t.state %} <span class="mini-status status-pending">{{ t.state }}</span>{% endif %}</span></span>
           {%- else %}<span class="upload-hint">none</span>{% endfor -%}
         </td>
       </tr>
@@ -477,27 +485,11 @@
 {% endif %}
 {% endfor %}
 
-{% if sheet.extras_here %}
-{#- What somebody already in the house has asked for on this day: the dinner
-    on their second night, the late checkout on their last morning. -#}
-<h4 class="sub-heading">Extras for guests already here</h4>
-<div class="table-wrap">
-  <table class="data-table">
-    <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">What</th><th scope="col">Note</th></tr></thead>
-    <tbody>
-      {% for x in sheet.extras_here %}
-      <tr>
-        <th scope="row">{{ x.guest_name }}</th>
-        <td>{{ x.room_name }}</td>
-        <td>{% if x.quantity > 1 %}{{ x.quantity }} × {% endif %}{{ x.name }}
-          {%- if x.state %} <span class="mini-status {{ 'status-confirmed' if x.state == 'delivered' else 'status-pending' }}">{{ x.state }}</span>{% endif %}</td>
-        <td>{{ x.notes }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
+{#- What somebody already in the house wants on this day -- the dinner on
+    their second night, the late checkout on their last morning -- is on the
+    room's line under To get ready, with its note. It had a table of its own
+    here as well, and the same thing on paper twice is a box ticked in one
+    place and not the other. -#}
 
 {% if sheet.leaving %}
 {# The other half of the same morning: a room is not ready for an arrival until

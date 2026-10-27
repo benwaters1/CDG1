@@ -22,6 +22,8 @@ Two things carry this file.
   because who was given what and whether a key came back is worth having; the
   value is blanked.
 """
+import os
+import re
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -487,8 +489,11 @@ def run():
             and sorted(x["name"] for x in quiet_but_wanted["extras_here"])
             == ["Dinner at La Table, 2", f"{TAG} Late checkout"],
             detail=str([x["name"] for x in quiet_but_wanted["extras_here"]]))
-    s.check("and it is on the page under the guests already here",
-            "Extras for guests already here" in text and f"{TAG} Late checkout" in text)
+    s.check("and it is on the page once, on its room's line, with its note",
+            text.count(f"{TAG} Late checkout") == 1 and "till two" in text
+            and "Extras for guests already here" not in text,
+            detail="it had a table of its own as well as the line to tick: on paper "
+                   "twice is a box ticked in one place and not the other")
     s.check("an atelier's first day has its guests coming, counted with the rest",
             [a["begins"] for a in begins["ateliers"]] == [True]
             and begins["arriving_count"] == 2 and begins["beds"] == 3,
@@ -517,19 +522,29 @@ def run():
         (rich["id"], f"{TAG} Flowers", (w2 + timedelta(days=2)).isoformat(), now))
     conn.commit()
     with m.app.test_request_context("/"):
-        on = {n: m.arrivals_sheet(conn, w2 + timedelta(days=n))["checklist"] for n in (2, 3, 4, 8)}
+        on = {n: m.arrivals_sheet(conn, w2 + timedelta(days=n))["checklist"] for n in (2, 3, 4, 5, 8)}
     conn.close()
 
     def line(n, guest):
-        return next((c for c in on[n] if c["guest"] == f"{TAG} {guest}"), None)
+        """The line a guest is on that day, coming, going or in the house."""
+        name = f"{TAG} {guest}"
+        return next((c for c in on[n]
+                     if name in [a["guest"] for a in c["arriving"]] + c["leaving"] + c["staying"]), None)
 
     def labels(c):
         return [t["label"] for t in (c or {}).get("ticks", [])]
 
     arrives = line(2, "RICH")
-    s.check("the day they come: their room, to make up",
-            arrives and arrives["arriving"] and arrives["room"] == room["name"]
-            and arrives["time"] == "17:45", detail=str(arrives))
+    s.check("the day they come: their room, to make up, with the time they come",
+            arrives and arrives["turnover"] and arrives["room"] == room["name"]
+            and arrives["arriving"] == [{"guest": f"{TAG} RICH", "time": "17:45"}], detail=str(arrives))
+    s.check("and the guest leaving it that morning is on the same line: one room, one job",
+            arrives and arrives["leaving"] == [f"{TAG} STAYER"]
+            and sum(1 for c in on[2] if c["room"] == room["name"]) == 1, detail=str(on[2]))
+    gone = line(5, "RICH")
+    s.check("a room left with nobody coming still has its sheets to wash",
+            gone and gone["turnover"] and gone["leaving"] == [f"{TAG} RICH"] and not gone["arriving"],
+            detail="the first printed run had no box at all for a room left empty")
     s.check("with that day's extras, and those with no day",
             arrives and {f"{TAG} Board unarranged", f"{TAG} Board arranged", f"{TAG} Picnic",
                          f"2 × {TAG} Flowers"} <= set(labels(arrives)), detail=str(labels(arrives)))
@@ -541,13 +556,17 @@ def run():
             detail=str(arrives and arrives["ticks"]))
     second = line(3, "RICH")
     s.check("the next day they are in the house, with the champagne and their dinner, and no room to make up",
-            second and not second["arriving"]
+            second and not second["turnover"] and second["staying"] == [f"{TAG} RICH"]
             and sorted(labels(second)) == sorted([f"{TAG} Champagne", "Dinner at La Table, 2"]),
             detail=str(second))
+    bubbles = next((t for t in (second or {}).get("ticks", []) if t["label"] == f"{TAG} Champagne"), {})
+    s.check("with what the guest wrote beside it, and that it is still to confirm",
+            bubbles.get("note") == "in the room by six" and bubbles.get("state") == "to confirm",
+            detail=str(bubbles))
     channel = line(4, "Channel")
     s.check("a Booking.com guest's room is on the list too, with their time",
-            channel and channel["arriving"] and channel["room"] == "Room not stated"
-            and channel["time"] == "19:30", detail=str(on[4]))
+            channel and channel["turnover"] and channel["room"] == "Room not stated"
+            and channel["arriving"] == [{"guest": f"{TAG} Channel", "time": "19:30"}], detail=str(on[4]))
     if workshop:
         s.check("and an atelier guest with a room, but not one with none to make up",
                 line(8, "Place WA") and line(8, "Place WB") is None, detail=str(on[8]))
@@ -561,12 +580,27 @@ def run():
             "Sheets washed" in ready and "Room ready" in ready
             and ready.count('class="tick-box"') >= 2, detail=_harness.visible_text(ready)[:200])
     s.check("and a box beside each extra",
-            f'</span>{TAG} Picnic' in ready, detail=ready[ready.find("Picnic") - 120:][:160])
+            f'aria-hidden="true"></span><span>{TAG} Picnic' in ready,
+            detail=ready[ready.find("Picnic") - 120:][:160])
     s.check("drawn boxes for a pen, not checkboxes that save nothing",
             'type="checkbox"' not in ready)
     s.check("the delivered one printed ticked", 'tick-box is-done' in ready and "✓" in ready)
     s.check("in a box that scrolls on a phone",
-            '<div class="table-wrap">' in ready[:ready.find("arr-ready")])
+            '<div class="table-wrap arr-ready-wrap">' in ready)
+
+    s.section("And it is fit for paper")
+    css = open(os.path.join(m.BASE_DIR, "static", "style.css"), encoding="utf-8").read()
+    printing = " ".join(re.findall(r"@media print\s*\{(.*?)\n\}", css, re.S))
+    s.check("a day's list is never cut in two across pages",
+            re.search(r"\.arr-ready-wrap\s*\{[^}]*break-inside:\s*avoid", printing) is not None,
+            detail="the first printed run had Friday's list half on one page and half on the next")
+    s.check("the offer of notifications is kept off the paper",
+            re.search(r"#push-prompt[^{]*\{[^}]*display:\s*none\s*!important", printing) is not None,
+            detail="a script shows it as an inline style, outside .flash-wrap, so only "
+                   "!important in the print rules keeps it off")
+    s.check("and a guest's card is set at a size for paper",
+            re.search(r"\.arr-card\s*\{[^}]*font-size", printing) is not None,
+            detail="at the screen's size each card ran half a page")
 
     s.section("Where Printable sheet goes")
     with m.app.test_request_context("/"):
