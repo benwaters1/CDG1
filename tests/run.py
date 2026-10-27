@@ -330,6 +330,7 @@ SUITES = [
     "test_digest_and_hub",
     "test_guest_self_service",
     "test_private_urls",
+    "test_private_stays",
     "test_optout_and_flags",
     "test_till_and_toggles",
     "test_till_merge_money",

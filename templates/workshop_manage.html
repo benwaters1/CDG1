@@ -12,7 +12,8 @@
     <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
     <circle cx="60" cy="13" r="1.4"/>
   </svg>
-  <p class="g-eyebrow">{{ t('Your workshop') }}</p>
+  {#- z30: a private stay is never called a workshop on the guest's side. -#}
+  <p class="g-eyebrow">{{ t('Your stay') if booking['is_private'] else t('Your workshop') }}</p>
   <h1>{{ booking['title'] }}</h1>
   {#- A place held while the deposit is paid is not yet confirmed, and one
       whose hold ran out is not cancelled by anybody: each says what it is. -#}
@@ -178,7 +179,7 @@
      first and it takes a deliberate second action to open. #}
   <details class="g-cancel-fold" style="margin-top:var(--s4);">
     <summary>I need to cancel</summary>
-    <p class="g-hint" style="margin-top:var(--s3)">Registrations are non-refundable, deposit included. Write to us before you cancel — we can usually move you to another workshop instead.</p>
+    <p class="g-hint" style="margin-top:var(--s3)">Registrations are non-refundable, deposit included. Write to us before you cancel{% if not booking['is_private'] %} — we can usually move you to another workshop instead{% endif %}.</p>
     <p class="g-hint"><a href="mailto:{{ contact_address('workshops') }}">Write to us first</a></p>
     <form method="post" onsubmit="return confirm('Cancel this registration? It is non-refundable and cannot be undone.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
