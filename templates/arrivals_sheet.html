@@ -50,7 +50,7 @@
   </div>
 </div>
 
-<p class="print-only arr-print-head" style="display:none;">
+<p class="print-only arr-print-head arr-print-head--window" style="display:none;">
   Château de Gudanes · arrivals and departures from
   {{ window.start.strftime('%A') }} {{ window.start.day }} {{ window.start.strftime('%B') }}
   to Sunday {{ window.end.day }} {{ window.end.strftime('%B %Y') }}
@@ -166,9 +166,19 @@
 {% set near = (day - today).days <= 1 %}
 {% set back = here ~ '#day-' ~ day.strftime('%Y%m%d') %}
 <section class="arr-day" id="day-{{ day.strftime('%Y%m%d') }}">
+{#- ONE DAY ON ITS OWN SHEET. The morning's list is what housekeeping takes
+    round the house, and Print gave them the whole fortnight (27 October
+    2026). Printed alone, the day carries its own line: whose house, which
+    day, and when it was printed, so a copy left on a trolley says how old
+    it is. -#}
+<p class="arr-print-head arr-print-head--day" style="display:none;">
+  Château de Gudanes · {{ day.strftime('%A') }} {{ day.day }} {{ day.strftime('%B %Y') }}
+  · printed {{ printed_at.day }} {{ printed_at.strftime('%B') }} at {{ printed_at.strftime('%H:%M') }}
+</p>
 <h3 class="arr-day__h">
   {%- if day == today %}Today{% elif (day - today).days == 1 %}Tomorrow{% else %}{{ day.strftime('%A') }}{% endif %}
   <span class="arr-day__date">{% if day == today or (day - today).days == 1 %}{{ day.strftime('%A') }} {% endif %}{{ day.day }} {{ day.strftime('%B') }}</span>
+  <button type="button" class="small-link no-print arr-print-day" data-day="day-{{ day.strftime('%Y%m%d') }}">Print this day</button>
 </h3>
 <p class="upload-hint arr-day__sum">
   {{ sheet.arriving_count }} arriving · {{ sheet.leaving_count }} leaving
@@ -529,5 +539,28 @@
 <p class="upload-hint">Nothing is booked after {{ window.end.strftime('%A') }} {{ window.end.day }} {{ window.end.strftime('%B') }}.</p>
 {% endif %}
 </section>
+
+<script>
+/* Print one day: mark it, print, and unmark it once the dialog closes. The
+   print rules hide everything but the marked day while the mark is on. */
+(function () {
+  function done() {
+    document.body.removeAttribute('data-print-day');
+    [].forEach.call(document.querySelectorAll('.arr-day.is-printing'),
+                    function (d) { d.classList.remove('is-printing'); });
+  }
+  window.addEventListener('afterprint', done);
+  [].forEach.call(document.querySelectorAll('.arr-print-day'), function (b) {
+    b.addEventListener('click', function () {
+      var day = document.getElementById(b.getAttribute('data-day'));
+      if (!day) return;
+      done();
+      day.classList.add('is-printing');
+      document.body.setAttribute('data-print-day', b.getAttribute('data-day'));
+      window.print();
+    });
+  });
+})();
+</script>
 
 {% endblock %}
