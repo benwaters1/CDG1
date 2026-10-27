@@ -94,7 +94,7 @@
         <div><dt>The weather</dt><dd>Mountain weather. Warm days, cold evenings, whatever the season</dd></div>
         <div><dt>Dietary needs</dt><dd>Tell us from your booking link and the kitchen will work around them</dd></div>
         <div><dt>Arriving early</dt><dd>Rooms can often be taken the night before. Ask</dd></div>
-        <div><dt>Everything else</dt><dd>{%- from '_stay_or_workshop.html' import tx_flag, ex_flag -%}{%- set _ctx = tx_flag(booking)|trim == 'yes' -%}{%- set _cex = ex_flag(booking)|trim == 'yes' -%}Already included, the full experience: all meals and drinks, the activities (all optional), a formal dinner in the Salon de Musique, a tour of the château{% if _ctx %}, the transfers{% endif %}{% if _cex %}, the excursions{% endif %}</dd></div>
+        <div><dt>Everything else</dt><dd>{%- from '_stay_or_workshop.html' import tx_flag, ex_flag -%}{%- set _ctx = tx_flag(booking)|trim == 'yes' -%}{%- set _cex = ex_flag(booking)|trim == 'yes' -%}Already included: every meal and every glass, the classes (all optional), a last-night banquet in the Salon de Musique, a tour of the château{% if _ctx %}, the journey from Toulouse{% endif %}{% if _cex %}, the outings{% endif %}</dd></div>
       </dl>
     </div>
   </div>

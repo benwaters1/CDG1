@@ -193,10 +193,18 @@ def run():
         s.check("and the figure cannot exceed a hundred per cent",
                 isinstance(cover["percent"], int) and 0 <= cover["percent"] <= 100,
                 detail=str(cover["percent"]))
+        # Nothing is on this test's volume, so what counts as held is only the
+        # retreats deck's photographs, which the code holds itself (26 Oct,
+        # HOUSE_COPIES). The orphan must add nothing to that.
+        in_code = [u for u in cover["wanted"]
+                   if u in m.HOUSE_COPIES or u.split("?", 1)[0] in m.HOUSE_COPIES]
         s.check("a file on the disk the site does not ask for adds nothing "
                 "to the figure",
-                cover["held"] == 0 and cover["percent"] == 0,
-                detail="held=%s percent=%s" % (cover["held"], cover["percent"]))
+                cover["held"] == len(in_code)
+                and cover["percent"] == (round(len(in_code) / len(cover["wanted"]) * 100)
+                                         if cover["wanted"] else 100),
+                detail="held=%s percent=%s, of which in the code %s"
+                       % (cover["held"], cover["percent"], len(in_code)))
         s.check("it is kept rather than deleted — the site dropping a "
                 "photograph is not the house wanting it gone",
                 FAKE_URL in m.mirrored_index(conn))

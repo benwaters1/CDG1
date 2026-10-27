@@ -4,6 +4,8 @@
 {% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO, ROOM_STANDIN %}
 {% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {% from '_illus.html' import illus %}
+{% from '_ws_copy.html' import ws_hook with context %}
+{% from '_retreat_photos.html' import rphoto, rsrc, rcredit with context %}
 {% block title %}A French Château Experience in the Pyrénées{% endblock %}
 {% block description %}A French château experience in the Pyrénées: a Class I Historic Monument under restoration, open to guests for a night or a workshop retreat.{% endblock %}
 {% block og_desc %}An eighteenth-century Class I Historic Monument in the Ariège, still under restoration and open to guests. Rooms, dinner, and workshop retreats.{% endblock %}
@@ -81,7 +83,8 @@
     {# The second way in (owner, 1 Oct: push them towards the workshops) - the hero offered a room and nothing else. #}
     {#- 10 Oct (Code, for the owner): "Or come for THE FULL EXPERIENCE" did not read - said plainly now. One line on a phone:
         the full sentence from 640px up, a shorter one below (measured: fits a 360px phone). -#}
-    <p class="g-hero__alt"><span class="g-hero__alttext"><span class="g-hero__altlong">Or the full experience: a retreat of three to seven nights at the château</span><span class="g-hero__altshort">Or the full experience: a retreat, three to seven nights</span></span> <a class="g-hero__altbtn" href="{{ url_for('workshops_public') }}">See the retreats</a></p>
+    {#- 26 Oct (owner, the retreats deck 1a). The short form is for a phone, from 360px up. -#}
+    <p class="g-hero__alt"><span class="g-hero__alttext"><span class="g-hero__altlong">Or stay longer, as a guest of the house: three to seven nights of <em lang="fr">la vie de château</em>.</span><span class="g-hero__altshort">Or three to seven nights of <em lang="fr">la vie de château</em>.</span></span> <a class="g-hero__altbtn" href="{{ url_for('workshops_public') }}">See the retreats</a></p>
 </div>
   <button type="button" class="g-hero__pause" id="g-hero-pause" aria-label="Pause video">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
@@ -91,31 +94,40 @@
 <!-- ============ LA PLEINE EXPÉRIENCE - the château in full, under the calendar (2 Oct) ============ -->
 <section class="g-full" aria-labelledby="full-h"><div class="g-wrap g-full__in">
   <div class="g-full__copy">
-    <p class="g-full__fr" lang="fr">La pleine expérience <span class="g-full__fren" lang="en">The château in full</span></p>
-    <h2 class="g-full__h" id="full-h">Experience the Château in Full</h2>
-    <p class="g-full__p">Built in 1741, very nearly lost, and now coming back to life. A workshop retreat lets you live inside it for three to seven nights: all meals and drinks, the brocantes, the kitchen, the valley, a candlelit dinner in the Salon de Musique, and the run of the château with a small group.</p>
+    {#- 26 Oct (owner, the retreats deck 1b): in place of "Experience the Château in Full". -#}
+    <p class="g-full__fr" lang="fr">L’art de vivre <span class="g-full__fren" lang="en">The art of living</span></p>
+    <h2 class="g-full__h" id="full-h">La Vie de Château</h2>
+    <p class="g-full__p">For two centuries Gudanes was a house of guests. Then, for decades, it fell silent. Now, for a few weeks each year, its doors open again to a small company who come to live France as the French have always lived it.</p>
+    <p class="g-full__p">Mornings begin with bread from the village <em lang="fr">boulangerie</em> and crêpes on the terrace. The days belong to the kitchen and the château’s chefs, to the markets and brocantes of the Ariège, to the castle at Foix, or to the restorers’ scaffold as a fresco returns to the light. Afternoons are for the pool, a glass of the region’s wine and a book from the library. Every evening ends <em lang="fr">à table</em>: the apéritif as the mountains turn blue, dinner of several courses by candlelight, and on the last night a banquet in the Salon de Musique, then dancing.</p>
+    <p class="g-full__p">Guests arrive as strangers and leave as friends, and so many of them return.</p>
     <p class="g-full__btns">
-      <a class="g-full__cta" href="{{ url_for('workshops_public') }}">Discover the Full Experience</a>
+      <a class="g-full__cta" href="{{ url_for('workshops_public') }}">Discover the retreats</a>
       <a class="g-full__link" href="{{ url_for('restoration_page') }}#monument">The story of the château</a>
     </p>
   </div>
   <div class="g-full__side">
     {#- 16 Oct (owner): the empty laid table replaced by a workshop group at the long table, candlelit - people, as asked. -#}
-    <figure class="g-full__fig"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/64c3e06f-00b3-4c61-9f61-4b3476de1d30/Screenshot+2026-08-15+at+5.54.52+pm.png?format=1500w" alt="A workshop group at the long table by candlelight, beneath an iron chandelier" loading="lazy" style="object-position: center 60%"><figcaption>The dining room, laid by candlelight</figcaption></figure>
+    <figure class="g-full__fig"><img src="{{ rsrc('guests-toasting') }}" alt="Guests raising their glasses down the long table" loading="lazy" style="object-position: center 45%"><figcaption>A toast at the long table</figcaption></figure>
     {% if upcoming %}
     <p class="g-full__k">The next dates</p>
     <ul class="g-full__list">
       {% for s in upcoming[:3] %}
+      {#- 26 Oct (owner, the retreats deck 1d and 5): name, dates, nights and the Admin's price, with a line for each. -#}
+      {%- set _hk = ws_hook(s)|trim %}{% set _an = a_night(s, s) %}
       <li class="g-full__row"><a href="{{ url_for('workshop_detail', workshop_id=s['workshop_id']) }}">
         <span class="g-full__t">{{ s['title'] }}</span>
+        {% if _hk %}<span class="g-full__hook">{{ _hk }}</span>{% endif %}
         <span class="g-full__d">{{ date_range(s['start_date'], s['end_date']) }}</span>
-        <span class="g-full__m">{{ s['nights_label'] or '' }}{% if s['nights_label'] and s['price_per_person'] %} · {% endif %}{% if s['price_per_person'] %}€{{ '{:,.0f}'.format(s['price_per_person']) }} per person, all meals and drinks{% endif %}</span>
+        <span class="g-full__m">{{ s['nights_label'] or '' }}{% if s['nights_label'] and s['price_per_person'] %} · {% endif %}{% if s['price_per_person'] %}<span data-eur="{{ s['price_per_person']|int }}">€{{ '{:,.0f}'.format(s['price_per_person']) }}</span> per person · nothing to pay at the end{% endif %}</span>
+        {% if s['price_per_person'] and _an %}<span class="g-full__m g-full__night">{{ _an }}</span>{% endif %}
         <span class="g-full__go" aria-hidden="true">→</span>
       </a></li>
       {% endfor %}
     </ul>
+    {#- 26 Oct (owner, the retreats deck 1e). -#}
+    <p class="g-full__note">Many of our guests return, some year after year, each time for a different retreat. This autumn, every guest at the Autumn Atelier had stayed with us before.</p>
     {% else %}
-    <p class="g-full__k">Every workshop</p>
+    <p class="g-full__k">Every retreat</p>
     <ul class="g-full__threads">
       <li lang="fr">La Brocante <span lang="en">The antique fairs of the valley</span></li>
       <li lang="fr">La Cuisine <span lang="en">French cooking at the château</span></li>
@@ -125,7 +137,31 @@
   </div>
 </div></section>
 
-
+{#- 26 Oct (owner, the retreats deck 1c): eight moments of a retreat, each a photograph, a French title and two lines,
+    every one a way into /workshops. The deck put the guests toasting on "À table" and beside the retreats just above;
+    a photograph is never shown twice on a page, so "À table" has the deck's second picture, the long table by
+    candlelight. -#}
+<section class="g-sec g-moments-sec" aria-labelledby="moments-h"><div class="g-wrap">
+  <p class="g-fr">Les moments <span class="g-fr__en">A retreat, in eight moments</span></p>
+  <h2 class="g-place" id="moments-h">France at Its Most French</h2>
+  <ul class="g-moments">
+    {%- for slug, alt, fr, line in [
+      ('guests-round-the-table', 'Guests at the long table by candlelight, beneath an iron chandelier', 'À table', 'Several courses by candlelight, the silver laid and the conversation long: trout from the farm beside the château, a fillet of beef, a ballotine of guinea fowl, and the wines of the south of France.'),
+      ('cooking-class-kitchen', 'Guests cooking together at the kitchen table', 'En cuisine', 'Cook beside the château’s chefs and pastry chef, from the morning market to the evening’s dessert.'),
+      ('brocante-gilt-frame', 'Carrying home a gilt frame from the brocante', 'Chiner', 'The French art of the brocante: old linen, copper, silver and faïence, found in the markets of the valley and carried home.'),
+      ('market-charcuterie', 'The charcuterie stall at the market', 'Le marché', 'Mirepoix on a Monday morning, beneath its medieval arcades: cheeses, charcuterie, and the people who make them.'),
+      ('restoration-scaffold', 'Guests on the scaffold among the frescoes', 'La restauration', 'Stand beside the restorers as a fresco hidden for generations returns to the light.'),
+      ('dancing-in-pink', 'A guest dancing, dressed in pink', 'La fête', 'On the last night, everyone dresses for dinner. Later, the candles are set aside for dancing.'),
+      ('garden-conversation', 'Guests talking in the garden, a dog on a lap', 'Le farniente', 'The pool, a glass of rosé, homemade ice cream, a corner of the library, and nowhere you need to be.'),
+      ('foix-castle', 'The castle of Foix above the old town', 'La vallée', 'The castle at Foix, the great cave at Lombrives, and lunch in Ax-les-Thermes, the mountain spa town.')] %}
+    <li class="g-moment"><a class="g-moment__a" href="{{ url_for('workshops_public') }}">
+      <img class="g-moment__img" src="{{ url_for('static', filename='img/retreats/' ~ slug ~ '-800.jpg') }}" alt="{{ alt }}" loading="lazy">
+      <p class="g-moment__t" lang="fr">{{ fr }}</p>
+      <p class="g-moment__p">{{ line }}</p>
+    </a>{{ rcredit(slug) }}</li>
+    {%- endfor %}
+  </ul>
+</div></section>
 
 {# 1 Oct: the crest band (the Marquis de Sales, 1850) and What It Took (tonnes, years, counts) are off the homepage - fewer, safer statements. #}
 
@@ -154,9 +190,11 @@
 
 <section class="g-sec"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('pool') }}</div>
-  <p class="g-fr">L’art de vivre <span class="g-fr__en">The art of living</span></p>
-  <p class="g-eyebrow">The Gudanes Experience</p>
-  <h2 class="g-place">La Vie de Château</h2>
+  {#- 26 Oct: "L'art de vivre / La Vie de Château" is the retreats' heading now (the deck, 1b), so a night here is
+      called what it is rather than having the same heading twice on one page. -#}
+  <p class="g-fr">Une nuit au château <span class="g-fr__en">A night at the château</span></p>
+  <p class="g-eyebrow">Stay the Night</p>
+  <h2 class="g-place">A Night at Gudanes</h2>
   <p class="g-p g-lede-first">There is a particular pleasure in waking in a château like this: light across old stone, the valley below, and breakfast waiting. The days are slow here by design, with the pool, the grounds and the mountains on every side.</p>
   <p class="g-p">Nothing is staged. The château is lived in while it is brought back. A night here is your room, breakfast in the morning and the lounge to come back to.</p>
 </div></section>
@@ -272,7 +310,8 @@
        eyebrow and its first line was word for word their lede. It keeps the
        paragraph that matters - the walls and what is new within them. #}
     <h2 class="g-place">Brocante Antiques and New Comforts</h2>
-    <p class="g-p">It is a restoration, not a renovation: the walls stay as the centuries left them, protected by law. Within them, each room mixes antiques found at the brocantes of the valley with what has to be new, the beds and the bathrooms, so the château feels lived in rather than furnished.</p>
+    {#- 26 Oct (owner, the retreats deck 1h): the walls are not to be the highlight. -#}
+    <p class="g-p">A restoration, not a renovation. New floors, new bathrooms and good French beds, among antiques found at the brocantes of the valley and fresh flowers in every room. The château feels lived in, never furnished.</p>
     <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--line">See the rooms</a></p>
   </div>
 </div></section>
@@ -401,10 +440,10 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Come and see it</h2>
-  <p class="g-close__p">The rooms are few. If a date suits, take it, for a night or for a workshop.</p>
+  <p class="g-close__p">The rooms are few. If a date suits, take it, for a night or for a retreat.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Discover the full experience</a>
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Discover the retreats</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us anything</a>
   </div>
 </div></section>
