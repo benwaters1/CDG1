@@ -27,8 +27,8 @@ import _harness
 m = _harness.m
 
 WORKSHOPS = {
-    "Immersive Artisan Workshops": "Four autumn days learning the crafts of the French house from those who still practise them:",
-    "Noël at Gudanes": "Four December days as the château fills for Christmas:",
+    # 27 Oct (owner): the Immersive Artisan Workshops are off the site; Noël has a new card, without embroidery or candles.
+    "Noël at Gudanes": "Four December days at home in the château: a gingerbread château to ice,",
     "Cooking in the Cuisine": "Five summer days with the château’s chefs and pastry chef:",
     "Antique & French Finds": "Three days of chiner in the markets, brocantes and vide-greniers of the Ariège,",
     "Seven Starry Nights": "A week of French summer with everything:",
