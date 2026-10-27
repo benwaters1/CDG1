@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Arrivals{% endblock %}
 {% block content %}
+{% from "_stay_bits.html" import arrival_line, flags %}
 
 {# EACH DAY, ON ONE PAGE. The arrival card is per booking and the incomplete
    list says only what is missing; neither is the thing somebody wants at
@@ -181,7 +182,7 @@
         <th scope="row">{{ c.room }}</th>
         <td>
           {%- for n in c.leaving %}<span class="arr-ready__who">{{ n }} <span class="upload-hint">leaves</span></span>{% endfor %}
-          {%- for a in c.arriving %}<span class="arr-ready__who">{{ a.guest }} <span class="upload-hint">arrives{% if a.time %} {{ a.time }}{% endif %}</span></span>{% endfor %}
+          {%- for a in c.arriving %}<span class="arr-ready__who">{{ a.guest }} <span class="upload-hint">arrives{% if a.time %} about {{ a.time }}{% else %}, time not given{% endif %}</span></span>{% endfor %}
           {%- for n in c.staying %}<span class="arr-ready__who">{{ n }} <span class="upload-hint">in the house</span></span>{% endfor -%}
         </td>
         {%- if c.turnover %}
@@ -209,173 +210,132 @@
 <div class="task-list">
   {% for r in sheet.arriving %}
   {% set b = r.booking %}
+  {% set w = arrival_words(b['estimated_arrival_time'], r.profile['usual_arrival_time'] if r.profile else '') %}
   <div class="expense-card arr-card">
-    <div class="expense-head">
-      <strong>{{ b['guest_name'] }}</strong>
-      {%- if r.profile and r.profile['name_pronunciation'] %}
-      <span class="upload-hint">&nbsp;({{ r.profile['name_pronunciation'] }})</span>
-      {%- endif %}
-      <span class="mini-status status-active" style="margin-left:8px;">{{ b['room_name'] }}</span>
-      {%- if r.arrival_time %}
-      {#- Said in words, because on paper a bare "18:30" beside a room could
-          be anything. The profile's time is said as usual, not as promised. -#}
-      <span class="mini-status status-onshift" style="margin-left:4px;">{{ 'usually arrives' if r.arrival_time_usual else 'arriving' }} {{ r.arrival_time }}</span>
-      {%- endif %}
-      {#- Online check-in from their own booking page: when it is done the
-          register has their fiches and this sheet has what they cannot eat. #}
-      {%- if r.checked_in_online %}
-      <span class="mini-status status-confirmed" style="margin-left:4px;">checked in online</span>
-      {%- else %}
-      <span class="mini-status status-pending" style="margin-left:4px;">not checked in online</span>
-      {%- endif %}
-      {#- Which visit this is, when it is one worth saying at the door. The
-          people most likely to come back were getting the same greeting as a
-          stranger. #}
-      {%- if r.milestone %}
-      <span class="mini-status status-active" style="margin-left:4px;" title="Say something">{{ r.milestone }}{{ 'rd' if r.milestone == 3 else 'th' }} stay</span>
-      {%- endif %}
-      {%- if r.profile and r.profile['vip'] %}
-      <span class="mini-status status-active" style="margin-left:4px;">VIP</span>
-      {%- endif %}
-      {%- if r.profile and r.profile['language'] and r.profile['language'] != 'en' %}
-      <span class="mini-status status-pending" style="margin-left:4px;">reads {{ languages.get(r.profile['language'], r.profile['language']) }}</span>
-      {%- endif %}
+    {#- WHO AND WHERE on the first line, and on the next the time they come,
+        in words, beside the house's own (owner, 27 October 2026: "the check in
+        time ... isn't very clear"). Then what changes how they are met --
+        the occasion, what they cannot eat -- and only then the rest. -#}
+    <div class="arr-card__head">
+      <p class="arr-card__who"><strong class="arr-card__name">{{ b['guest_name'] }}</strong>
+        {%- if r.profile and r.profile['name_pronunciation'] %} <span class="upload-hint">({{ r.profile['name_pronunciation'] }})</span>{% endif %}
+        <span class="arr-card__room">{{ b['room_name'] }}</span></p>
+      <p class="arr-card__tags">
+        {#- Which visit this is, when it is one worth saying at the door. The
+            people most likely to come back were getting the same greeting as a
+            stranger. #}
+        {%- if r.milestone %}<span class="mini-status status-active" title="Say something">{{ r.milestone }}{{ 'rd' if r.milestone == 3 else 'th' }} stay</span>{% endif %}
+        {%- if r.profile and r.profile['vip'] %}<span class="mini-status status-active">VIP</span>{% endif %}
+        {%- if r.profile and r.profile['language'] and r.profile['language'] != 'en' %}<span class="mini-status status-pending">reads {{ languages.get(r.profile['language'], r.profile['language']) }}</span>{% endif %}
+        {#- Online check-in from their own booking page: when it is done the
+            register has their fiches and this sheet has what they cannot eat. #}
+        <span class="mini-status {{ 'status-confirmed' if r.checked_in_online else 'status-pending' }}">{{ 'checked in online' if r.checked_in_online else 'not checked in online' }}</span>
+      </p>
     </div>
+    <p class="arr-card__when">{{ arrival_line(w) }}</p>
+    {{ flags(occasion=r.occasion, prep=r.occasion_prep, dietary=r.dietary, access=r.access_needs,
+             caution=(r.caution['caution'] if r.caution else ''), no_shows=r.prior_no_shows) }}
 
-    <p class="field-label">Stay</p>
-    <p>{{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %}
-      · {{ r.nights }} night{{ '' if r.nights == 1 else 's' }}, {{ date_range(b['arrival_date'], b['departure_date']) }}
-      · <span class="upload-hint">{{ b['reference_code'] }}</span>
-      {%- if money %}
-      · {% if r.owed > 0 %}<strong>{{ r.owed|money }} to collect</strong> of {{ r.total|money }}{% elif r.total %}paid in full{% endif %}
-      {%- endif %}</p>
+    <dl class="bk-facts arr-facts">
+      <dt>Stay</dt>
+      <dd>{{ r.nights }} night{{ '' if r.nights == 1 else 's' }}, {{ date_range(b['arrival_date'], b['departure_date']) }}
+        · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %}
+        · <span class="upload-hint">{{ b['reference_code'] }}</span>
+        {%- if money %} · {% if r.owed > 0 %}<strong>{{ r.owed|money }} to collect</strong> of {{ r.total|money }}{% elif r.total %}paid in full{% endif %}{% endif %}</dd>
 
-    {% if b['guest_phone'] or b['guest_email'] or b['second_contact_name'] or (b['booked_by_name'] and b['booked_by_name'] != b['guest_name']) %}
-    {#- To ring when it is nine o'clock and nobody has come. It was only ever
-        mentioned here when it was missing. -#}
-    <p class="field-label">Reach them</p>
-    <p>
-      {%- if b['guest_phone'] %}<a href="tel:{{ b['guest_phone']|replace(' ', '') }}">{{ b['guest_phone'] }}</a>{% endif %}
-      {%- if b['guest_phone'] and b['guest_email'] %} · {% endif %}
-      {%- if b['guest_email'] %}{{ b['guest_email'] }}{% endif %}
-      {%- if b['booked_by_name'] and b['booked_by_name'] != b['guest_name'] %} · booked by {{ b['booked_by_name'] }}{% endif %}
-      {%- if b['second_contact_name'] %} · also {{ b['second_contact_name'] }}{% endif %}
-    </p>
-    {% endif %}
+      {% if r.requests or r.asks %}
+      {#- WHAT THEY ASKED, in one place: what they wrote when booking, and each
+          request from their booking page with whether it is done. It was two
+          headings -- "They asked" and "Asked from their booking page" -- for
+          what the door reads as one thing. -#}
+      <dt>They asked</dt>
+      <dd>
+        {%- if r.requests %}<span class="arr-ask">{{ r.requests }} <span class="upload-hint">· when booking</span></span>{% endif %}
+        {%- for x in r.asks %}<span class="arr-ask">{{ x.text }}{% if x.when %} <span class="upload-hint">· for {{ x.when }}</span>{% endif %}
+          <span class="mini-status {{ 'status-confirmed' if x.done else 'status-pending' }}">{{ 'done' if x.done else 'to do' }}</span></span>{% endfor -%}
+      </dd>
+      {% endif %}
 
-    {% if r.extras %}
-    {#- What they bought with the stay, with the day each is wanted. -#}
-    <p class="field-label">Extras</p>
-    <ul class="arr-extras">
-      {% for x in r.extras %}
-      <li>{% if x.quantity > 1 %}{{ x.quantity }} × {% endif %}<strong>{{ x.name }}</strong>
-        {%- if x.when %} · {{ x.when }}{% endif %}
-        {%- if x.notes %} · {{ x.notes }}{% endif %}
-        {%- if x.state %} <span class="mini-status {{ 'status-confirmed' if x.state == 'delivered' else 'status-pending' }}">{{ x.state }}</span>{% endif %}</li>
+      {% if r.extras %}
+      {#- What they bought with the stay, with the day each is wanted. -#}
+      <dt>Extras</dt>
+      <dd><ul class="arr-extras">
+        {% for x in r.extras %}
+        <li>{% if x.quantity > 1 %}{{ x.quantity }} × {% endif %}<strong>{{ x.name }}</strong>
+          {%- if x.when %} · {{ x.when }}{% endif %}
+          {%- if x.notes %} · {{ x.notes }}{% endif %}
+          {%- if x.state %} <span class="mini-status {{ 'status-confirmed' if x.state == 'delivered' else 'status-pending' }}">{{ x.state }}</span>{% endif %}</li>
+        {% endfor %}
+      </ul></dd>
+      {% elif b['extras_summary'] %}
+      <dt>Extras</dt><dd>{{ b['extras_summary'] }}</dd>
+      {% endif %}
+
+      {% if r.dinners %}
+      <dt>Dinner at La Table</dt>
+      <dd><ul class="arr-extras">
+        {% for x in r.dinners %}
+        <li><strong>{{ x.when }}</strong> · {{ x.party }} {{ 'person' if x.party == 1 else 'people' }}
+          {%- if x.dietary %} · {{ x.dietary }}{% endif %}
+          {%- if x.state %} <span class="mini-status status-pending">{{ x.state }}</span>{% endif %}</li>
+        {% endfor %}
+      </ul></dd>
+      {% endif %}
+
+      {% if b['transfer_flight_number'] or b['transfer_arrival_time'] or b['transfer_notes'] %}
+      <dt>Meeting them</dt>
+      <dd>
+        {%- if b['transfer_flight_number'] %}Flight {{ b['transfer_flight_number'] }}{% endif %}
+        {%- if b['transfer_arrival_time'] %} · lands {{ b['transfer_arrival_time'] }}{% endif %}
+        {%- if b['transfer_notes'] %} · {{ b['transfer_notes'] }}{% endif %}
+      </dd>
+      {% endif %}
+
+      {% if b['guest_phone'] or b['guest_email'] or b['second_contact_name'] or (b['booked_by_name'] and b['booked_by_name'] != b['guest_name']) %}
+      {#- To ring when it is nine o'clock and nobody has come. -#}
+      <dt>Reach them</dt>
+      <dd>
+        {%- if b['guest_phone'] %}<a href="tel:{{ b['guest_phone']|replace(' ', '') }}">{{ b['guest_phone'] }}</a>{% endif %}
+        {%- if b['guest_phone'] and b['guest_email'] %} · {% endif %}
+        {%- if b['guest_email'] %}{{ b['guest_email'] }}{% endif %}
+        {%- if b['booked_by_name'] and b['booked_by_name'] != b['guest_name'] %} · booked by {{ b['booked_by_name'] }}{% endif %}
+        {%- if b['second_contact_name'] %} · also {{ b['second_contact_name'] }}{% endif %}
+      </dd>
+      {% endif %}
+
+      {% if money and b['owner_note'] %}
+      <dt>House note</dt><dd>{{ b['owner_note'] }}</dd>
+      {% endif %}
+
+      {#- The questions somebody would otherwise ask at the door, which is the
+          worst moment to ask any of them. The arrival time is said on the line
+          above, in words, so it is not said twice here. -#}
+      {% set to_ask = r.missing|reject('equalto', 'no arrival time')|list %}
+      {% if to_ask %}
+      <dt>Still to ask</dt>
+      <dd>{% for x in to_ask %}<span class="mini-status status-pending" style="margin-right:4px;">{{ x }}</span>{% endfor %}</dd>
+      {% endif %}
+
+      {% if r.codes %}
+      <dt>Given out</dt>
+      <dd>
+      {% for c in r.codes %}
+      <span class="arr-ask">
+        {{ 'Key' if c['kind'] == 'key' else 'Code' }}
+        {%- if c['value'] %} <code>{{ c['value'] }}</code>{% else %}
+        <span class="upload-hint">(cleared — the stay is over)</span>{% endif %}
+        {%- if c['issued_to'] %} to {{ c['issued_to'] }}{% endif %}
+        {%- if c['note'] %} · {{ c['note'] }}{% endif %}
+        <form method="post" action="{{ url_for('access_code_returned', code_id=c['id']) }}" class="no-print" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="back" value="{{ back }}">
+          <button type="submit" class="small-link">back</button>
+        </form>
+      </span>
       {% endfor %}
-    </ul>
-    {% elif b['extras_summary'] %}
-    <p class="field-label">Extras</p>
-    <p>{{ b['extras_summary'] }}</p>
-    {% endif %}
-
-    {% if r.dinners %}
-    <p class="field-label">Dinner at La Table</p>
-    <ul class="arr-extras">
-      {% for x in r.dinners %}
-      <li><strong>{{ x.when }}</strong> · {{ x.party }} {{ 'person' if x.party == 1 else 'people' }}
-        {%- if x.dietary %} · {{ x.dietary }}{% endif %}
-        {%- if x.state %} <span class="mini-status status-pending">{{ x.state }}</span>{% endif %}</li>
-      {% endfor %}
-    </ul>
-    {% endif %}
-
-    {% if r.asks %}
-    {#- What they wrote from their own booking page, each a task on the stay:
-        done or still to do, as the stay's page says. -#}
-    <p class="field-label">Asked from their booking page</p>
-    <ul class="arr-extras">
-      {% for x in r.asks %}
-      <li>{{ x.text }}{% if x.when %} · {{ x.when }}{% endif %}
-        <span class="mini-status {{ 'status-confirmed' if x.done else 'status-pending' }}">{{ 'done' if x.done else 'to do' }}</span></li>
-      {% endfor %}
-    </ul>
-    {% endif %}
-
-    {% if r.occasion %}
-    {# What they told us they are celebrating, and whether the room is ready
-       for it -- the task raised a few days before they come. #}
-    <p class="field-label">Celebrating</p>
-    <p>{{ r.occasion }}
-      {%- set op = r.occasion_prep %}
-      {%- if op %} · <a href="{{ url_for('occasions_page') }}#task-{{ op.task_id }}" class="small-link">
-        {%- if op.status == 'done' %}prepared{% elif op.total %}{{ op.done }} of {{ op.total }} done{% else %}to prepare{% endif %}</a>
-      {%- else %} · <a href="{{ url_for('occasions_page') }}" class="small-link">not on the list yet</a>{% endif %}</p>
-    {% endif %}
-
-    {% if r.dietary %}
-    <p class="field-label">Cannot eat</p>
-    <p>{{ r.dietary }}</p>
-    {% endif %}
-
-    {% if r.requests %}
-    <p class="field-label">They asked</p>
-    <p>{{ r.requests }}</p>
-    {% endif %}
-
-    {% if r.access_needs %}
-    {# Read here rather than found on the profile afterwards: the ground-floor
-       decision is made before they arrive or not at all. #}
-    <p class="field-label">Needs from the house</p>
-    <p>{{ r.access_needs }}</p>
-    {% endif %}
-
-    {% if b['transfer_flight_number'] or b['transfer_arrival_time'] or b['transfer_notes'] %}
-    <p class="field-label">Meeting them</p>
-    <p>
-      {%- if b['transfer_flight_number'] %}Flight {{ b['transfer_flight_number'] }}{% endif %}
-      {%- if b['transfer_arrival_time'] %} · lands {{ b['transfer_arrival_time'] }}{% endif %}
-      {%- if b['transfer_notes'] %} · {{ b['transfer_notes'] }}{% endif %}
-    </p>
-    {% endif %}
-
-    {% if money and b['owner_note'] %}
-    <p class="field-label">House note</p>
-    <p>{{ b['owner_note'] }}</p>
-    {% endif %}
-
-    {% if r.caution %}
-    <p><span class="mini-status status-declined">standing instruction</span>
-      {{ r.caution['caution'] }}</p>
-    {% endif %}
-    {% if r.prior_no_shows %}
-    <p><span class="mini-status status-declined">did not arrive {{ r.prior_no_shows }}&times; before</span></p>
-    {% endif %}
-
-    {% if r.missing %}
-    {# The questions somebody would otherwise ask at the door, which is the
-       worst moment to ask any of them. #}
-    <p class="field-label">Still unanswered</p>
-    <p>{% for m in r.missing %}<span class="mini-status status-pending" style="margin-right:4px;">{{ m }}</span>{% endfor %}</p>
-    {% endif %}
-
-    {% if r.codes %}
-    <p class="field-label">Given out</p>
-    {% for c in r.codes %}
-    <p>
-      {{ 'Key' if c['kind'] == 'key' else 'Code' }}
-      {%- if c['value'] %} <code>{{ c['value'] }}</code>{% else %}
-      <span class="upload-hint">(cleared — the stay is over)</span>{% endif %}
-      {%- if c['issued_to'] %} to {{ c['issued_to'] }}{% endif %}
-      {%- if c['note'] %} · {{ c['note'] }}{% endif %}
-      <form method="post" action="{{ url_for('access_code_returned', code_id=c['id']) }}" class="no-print" style="display:inline;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="back" value="{{ back }}">
-        <button type="submit" class="small-link">back</button>
-      </form>
-    </p>
-    {% endfor %}
-    {% endif %}
+      </dd>
+      {% endif %}
+    </dl>
 
     {% if may('guests') %}
     {#- Open on today's and tomorrow's arrivals and folded on the days after:
@@ -399,9 +359,10 @@
     </details>
     {% endif %}
 
-    <p class="no-print" style="margin-top:8px;">
+    <p class="no-print arr-card__links">
+      <a href="{{ url_for('admin_booking', booking_id=b['id']) }}" class="small-link">The booking</a>
       <a href="{{ url_for('arrival_card', booking_id=b['id']) }}" class="small-link">Arrival card</a>
-      &nbsp;<a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="small-link">Everything about them</a>
+      <a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="small-link">Everything about them</a>
     </p>
   </div>
   {% endfor %}

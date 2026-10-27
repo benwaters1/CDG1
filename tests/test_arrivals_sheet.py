@@ -245,7 +245,8 @@ def run():
     body = oc.get("/admin/arrivals").get_data(as_text=True)
     s.check("a booking with no telephone says so", "no telephone" in body,
             detail="the questions somebody would otherwise ask at the door")
-    s.check("and one with no arrival time too", "no arrival time" in body)
+    s.check("and one with no arrival time says so in words", "Arrival time not given" in body,
+            detail="a blank reads as no arrival, and a 15:00 filled in reads as theirs")
 
     s.section("The profile answers what the booking does not")
     conn = db()
@@ -264,7 +265,7 @@ def run():
             detail="a guest who always arrives at six should not be asked "
                    "every time")
     s.check("said as their usual, not as this stay's",
-            "usually arrives 16:00" in body,
+            "Usually arrives about 16:00" in body and "from their past stays" in body,
             detail="on paper a time read as promised is a time somebody waits up for")
     s.check("what they cannot eat comes with them", "coeliac" in body)
     # THE ONE THAT MATTERS in a house with eighteenth-century stairs: the
@@ -433,7 +434,7 @@ def run():
     s.check("the calendar is on the page, in a box that scrolls",
             'class="data-table arr-cal__grid"' in page
             and page.find('class="table-wrap"') < page.find("arr-cal__grid"))
-    s.check("the arrival time in words, not a bare figure", "arriving 17:45" in text,
+    s.check("the arrival time in words, not a bare figure", "Arriving about 17:45 (they told us)" in text,
             detail="on paper '17:45' beside a room could be anything")
     s.check("the telephone to ring", "+33 6 12 34 56 78" in text)
     s.check("the extras, each with its day and what the guest wrote",
@@ -465,7 +466,7 @@ def run():
             f"{TAG} Board arranged" in text and "not arranged" not in arranged.lower(), detail=arranged)
     s.check("and one that needs no arranging is not called unarranged",
             "not arranged" not in text[text.find(f"{TAG} Picnic"):][:40].lower())
-    asked = text[text.find("Asked from their booking page"):][:300]
+    asked = text[text.find("They asked"):][:300]
     s.check("what they asked from their booking page, in their words",
             f"{TAG} a note for Jane's anniversary on arrival" in asked
             and "to do" in asked.lower(),
@@ -601,6 +602,75 @@ def run():
     s.check("and a guest's card is set at a size for paper",
             re.search(r"\.arr-card\s*\{[^}]*font-size", printing) is not None,
             detail="at the screen's size each card ran half a page")
+
+    s.section("Easy to read: the time, the occasion, the requests (owner, 27 October 2026)")
+    # "some of it isn't very clear, the anniversary, the check in time etc on
+    # both the booking and the print sheet".
+    conn = db()
+    conn.execute("UPDATE bookings SET special_occasion = ? WHERE id = ?",
+                 ("Our tenth anniversary", rich["id"]))
+    conn.commit()
+    conn.close()
+    page = oc.get(f"/admin/arrivals?date={w2.isoformat()}").get_data(as_text=True)
+    at = page.find(f"{TAG} RICH</strong>")
+    card = _harness.visible_text(page[at:page.find("expense-card arr-card", at)])
+    order = [card.find(x) for x in ("Arriving about 17:45", "Celebrating Our tenth anniversary",
+                                    "Cannot eat", "They asked")]
+    s.check("on the card: the time they come, then the occasion and what they cannot eat, then the rest",
+            at > 0 and -1 not in order and order == sorted(order), detail=f"{order} {card[:300]}")
+    s.check("the time said beside the house's own, never in its place",
+            f"check-in from {m.CHECK_IN_TIME}" in card, detail=card[:200])
+    s.check("what they asked is under one heading, not two",
+            "Asked from their booking page" not in page and card.count("They asked") == 1)
+
+    bp = oc.get(f"/admin/bookings/{rich['id']}").get_data(as_text=True)
+    head = _harness.visible_text(bp[:bp.find('class="bk-tabs"')])
+    s.check("the booking: the time they come under the name, said as theirs",
+            "Arriving about 17:45 (they told us)" in head and f"check-in from {m.CHECK_IN_TIME}" in head,
+            detail=head[-400:])
+    s.check("and the occasion beside it, with how far it is prepared",
+            "Celebrating Our tenth anniversary" in head and "preparation not started" in head,
+            detail=head[-400:])
+    s.check("and what they cannot eat, with when it is deleted",
+            "Cannot eat no pork" in head and "deleted once the stay is over" in head)
+    box = _harness.visible_text(bp[bp.find("Waiting on the house"):bp.find('class="stat-tiles"')])
+    s.check("a request is said once, not twice", box.count("Jane's anniversary") == 1, detail=box)
+    s.check("with the day it is for in words", "for the day they arrive" in box, detail=box)
+    stay = _harness.visible_text(bp[bp.find("<h3>The stay</h3>"):bp.find('id="extras"')])
+    s.check("the stay says when they leave by",
+            f"check-out by {m.CHECK_OUT_TIME}" in stay, detail=stay[:300])
+    s.check("and their dinners at La Table, which it never showed",
+            "Dinner at La Table" in stay and "no pork at dinner" in stay, detail=stay[-300:])
+    s.check("and does not say the occasion or the diet a second time",
+            "Celebrating" not in stay and "Cannot eat" not in stay, detail=stay[:300])
+
+    if workshop:
+        s.section("And the atelier pages say it the same way")
+        conn = db()
+        conn.execute("UPDATE workshop_bookings SET occupancy_type = 'solo', special_occasion = ?, "
+                     "dietary_notes = ? WHERE reference_code = ?",
+                     ("Her fiftieth birthday", "no dairy", f"{TAG}-WB"))
+        conn.commit()
+        conn.close()
+        sp = _harness.visible_text(oc.get(f"/admin/workshops/sessions/{session_id}").get_data(as_text=True))
+        s.check("the sitting's page says when each comes, or that they have not said",
+                "Arriving about 15:00 (they told us)" in sp and "Arrival time not given" in sp,
+                detail="it was only ever inside the checked-in-online chip")
+        wb = sp[sp.find(f"{TAG} Place WB"):][:400]
+        s.check("a room to themselves is said as that, not as sharing",
+                "a room to themselves" in wb and "sharing" not in wb,
+                detail=f"the page tested for 'single'; the private room is 'solo': {wb}")
+        s.check("with what they are celebrating and cannot eat, in words",
+                "Celebrating: Her fiftieth birthday" in wb and "Cannot eat: no dairy" in wb, detail=wb)
+        rp = _harness.visible_text(oc.get(f"/admin/workshops/registrations?session_id={session_id}")
+                                   .get_data(as_text=True))
+        s.check("the registrations say it as the arrivals sheet does",
+                "Arriving about 15:00 (they told us)" in rp and "Celebrating Her fiftieth birthday" in rp
+                and "Cannot eat no dairy" in rp, detail=rp[:400])
+        ws = _harness.visible_text(oc.get(f"/workshops/{session_id}/sheet").get_data(as_text=True))
+        s.check("and the instructor's sheet says when they come and who is celebrating",
+                "Arriving about 15:00 (they told us)" in ws and "Celebrating" in ws
+                and "Worth knowing" not in ws, detail=ws[:400])
 
     s.section("Where Printable sheet goes")
     with m.app.test_request_context("/"):
