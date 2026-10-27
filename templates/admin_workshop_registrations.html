@@ -23,7 +23,7 @@
 <div class="detail-card register-panel">
   <p class="register-panel__when">
     {{ panel.start_date|date_short }}{% if panel.end_date and panel.end_date != panel.start_date %} to {{ panel.end_date|date_short }}{% endif %}
-    {% if panel.called_off %}<span class="mini-status status-overdue">called off</span>{% elif panel.over %}<span class="mini-status status-inactive">over</span>{% endif %}
+    {% if panel.called_off %}<span class="mini-status status-overdue">called off</span>{% elif panel.over %}<span class="mini-status status-past">over</span>{% endif %}
   </p>
   <div class="detail-grid">
     <div><span class="detail-label">Coming</span>{{ panel.people }} {{ 'person' if panel.people == 1 else 'people' }}, {{ panel.confirmed }} confirmed{% if panel.pending %}, {{ panel.pending }} pending{% endif %}{% if panel.holding %}, {{ panel.holding }} waiting for the deposit{% endif %}</div>
@@ -119,7 +119,9 @@
         {% else %}
         <span class="mini-status status-{{ r['status'] }}" style="margin-left:8px;">{{ r['status'] }}</span>
         {% endif %}
-        {% if reg['money'] %}<span class="mini-status {{ 'status-overdue' if reg['money'] in ('Deposit unpaid', 'Balance owed') else 'status-inactive' }}">{{ reg['money'] }}</span>{% endif %}
+        {#- Green for settled, red only for owed: "Paid in full" was drawn in
+            the danger colour on every registration, the alarm for good news. -#}
+        {% if reg['money'] %}<span class="mini-status {{ 'status-overdue' if reg['money'] in ('Deposit unpaid', 'Balance owed') else 'status-paid' if reg['money'] == 'Paid in full' else 'status-pending' }}">{{ reg['money'] }}</span>{% endif %}
         {% if r['id'] in suspect_ids %}<span class="mini-status status-overdue">looks like a bot</span>{% endif %}
       </div>
       <span class="upload-hint">{{ r['reference_code'] }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='workshop_booking', record_id=r['id']) }}" class="small-link">What changed</a>{% endif %}</span>
@@ -343,8 +345,8 @@
     <p class="upload-hint">The recap went {{ r['recap_sent_at']|house_when }}. <a href="{{ url_for('admin_workshop_session', session_id=r['session_id']) }}#recap">The recap</a></p>
     {% endif %}
 
-    <details style="margin-top:8px;">
-      <summary class="small-link" style="color:var(--steel); cursor:pointer;">Sent messages ({{ messages_by_booking.get(r['id'], [])|length }})</summary>
+    <details class="register-edit">
+      <summary class="small-link">Sent messages ({{ messages_by_booking.get(r['id'], [])|length }})</summary>
       {% if messages_by_booking.get(r['id']) %}
       <div class="mini-list" style="margin-top:6px;">
         {% for m in messages_by_booking[r['id']] %}

@@ -667,6 +667,11 @@ def run():
         s.check("the registrations say it as the arrivals sheet does",
                 "Arriving about 15:00 (they told us)" in rp and "Celebrating Her fiftieth birthday" in rp
                 and "Cannot eat no dairy" in rp, detail=rp[:400])
+        raw = oc.get(f"/admin/workshops/registrations?session_id={session_id}").get_data(as_text=True)
+        chips = re.findall(r'class="mini-status ([\w-]+)">Paid in full<', raw)
+        s.check("paid in full is drawn as good news, never in the danger colour",
+                chips and all(c == "status-paid" for c in chips),
+                detail=f"{chips} -- it was red on every registration")
         ws = _harness.visible_text(oc.get(f"/workshops/{session_id}/sheet").get_data(as_text=True))
         s.check("and the instructor's sheet says when they come and who is celebrating",
                 "Arriving about 15:00 (they told us)" in ws and "Celebrating" in ws
