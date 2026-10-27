@@ -699,6 +699,23 @@ def run():
             "@media screen and (max-width: 760px){\n  .bk-stack, .phone-cards{ min-width:0; }" in css,
             detail="A4 is narrower than 760px: the extras due sheet printed one extra to a card")
 
+    s.section("One day printed on its own")
+    # The morning's list is what housekeeping takes round the house, and Print
+    # gave them the whole fortnight (27 October 2026).
+    days = re.findall(r'<section class="arr-day" id="(day-\d+)"', page)
+    buttons = re.findall(r'class="small-link no-print arr-print-day" data-day="(day-\d+)"', page)
+    s.check("every day has its own Print this day, for that day",
+            days and buttons == days, detail=f"{len(days)} days, buttons for {buttons[:3]}")
+    s.check("printed alone, a day says whose house, which day and when it was printed",
+            page.count('class="arr-print-head arr-print-head--day"') == len(days))
+    printing = " ".join(re.findall(r"@media print\s*\{(.*?)\n\}", css, re.S))
+    hidden = re.search(r"([^{}]*)\{\s*display:none !important;\s*\}",
+                       printing[printing.find("body[data-print-day] .arr-cal"):])
+    s.check("and everything else stays off that paper: the fortnight, the other days, what is booked later",
+            hidden is not None and all(x in hidden.group(1) for x in (
+                ".arr-cal", ".arr-day:not(.is-printing)", "#later", ".arr-print-head--window")),
+            detail=hidden.group(1) if hidden else "no rule")
+
     s.section("The front desk and the bookings list say it the same way")
     desk = oc.get("/admin/desk").get_data(as_text=True)
     desk = desk[desk.find('id="arriving"'):]
