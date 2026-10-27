@@ -343,6 +343,22 @@ def run():
     s.check("the afternoon has an easel and a box of watercolours",
             "the library, or an easel and a box of watercolours. Or a brocante" in ws_words)
     s.check("and the morning keeps a visiting artisan", "with a visiting artisan, or on the restorers’ scaffold" in ws_words)
+    # 27 Oct (owner): the sorbet stays the afternoon picture; the painting goes to the restoration page instead.
+    s.check("the afternoon picture is still the sorbet",
+            re.search(r'<li class="g-day__i">\s*<figure><img src="/static/img/retreats/sorbet-pouring\.jpg"[^>]*></figure>'
+                      r'\s*<div class="g-day__b">\s*<h3 class="g-day__t"><em lang="fr">L’après-midi</em>', ws_html) is not None
+            and "guest-painting" not in ws_html)
+    resto = c.get("/restoration").get_data(as_text=True)
+    s.check("the painting is on the restoration page, captioned for what it shows",
+            "img/retreats/guest-painting.jpg" in resto
+            and "<figcaption>Painting a beam by hand, before the old painted walls</figcaption>" in resto
+            and "guest" not in re.search(r'alt="([^"]*)"[^>]*>\s*<figcaption>Painting a beam', resto).group(1).lower()
+            if "guest-painting" in resto else False)
+    # The Autumn Atelier is over (owner, 27 Oct): "this autumn" goes stale in December, the year does not.
+    for path in ("/", "/workshops"):
+        page = words(shown[path]) if path in shown else words(c.get(path).get_data(as_text=True))
+        s.check(f"{path}: the Autumn Atelier line carries its year",
+                "In autumn 2026, every guest at the Autumn Atelier" in page and "This autumn, every guest" not in page)
 
     # 27 Oct (owner): "no card, no page, no date". Switched off once at start-up, not deleted:
     # its bookings and its money stay on the books.
