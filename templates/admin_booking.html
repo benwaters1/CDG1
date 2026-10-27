@@ -221,7 +221,9 @@
           {% endif %}
           <form method="post" action="{{ url_for('mark_extra_delivered', line_id=x.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-ghost">Handed over</button>
+            {#- A button that looks like one: as plain text among the folds it
+                read as a heading, not as the thing to press. -#}
+            <button type="submit" class="btn-mini">Handed over</button>
           </form>
           {% endif %}
           {% if x.status not in ('cancelled', 'delivered') and stay_day_choices %}
@@ -322,7 +324,7 @@
     {% elif bill.deposit %}<p class="upload-hint">Deposit {{ bill.deposit|money }} — {% if bill.deposit_paid %}paid{% elif bill.deposit_received %}{{ bill.deposit_received|money }} paid{% else %}not paid yet{% endif %}.{% if bill.balance_due_date %} Balance due {{ bill.balance_due_date|date_short }}{% if bill.balance_overdue %}, <strong class="owed-flag">overdue</strong>{% endif %}.{% endif %}</p>{% endif %}
     <form method="post" action="{{ url_for('send_stay_statement', booking_id=b['id']) }}" class="bk-inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
-      <button type="submit" class="btn-ghost">{{ 'Email the bill with a Pay now link' if bill.owed > 0.005 and b['guest_email'] else 'Email the statement' }}</button>
+      <button type="submit" class="btn-ghost">{{ 'Email the bill with a Pay now link' if bill.owed > 0.005 and b['guest_email'] else 'Email the bill to the guest' }}</button>
     </form>
   </div>
 
@@ -331,12 +333,14 @@
     {% if refund.payments %}
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th scope="col">When</th><th scope="col">How</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Gone back</th></tr></thead>
+        <thead><tr><th scope="col">When</th><th scope="col">Payment method</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Refunded</th></tr></thead>
         <tbody>
         {% for p in refund.payments %}
           <tr>
+            {#- The method says Stripe itself now, so a card payment taken
+                through it needs no second note saying so. -#}
             <td>{{ p.at|house_day|date_short if p.at else '—' }}</td>
-            <td>{{ p.method_label }}{% if p.card %}<span class="cell-note">card, through Stripe</span>{% elif p.reference %}<span class="cell-note">{{ p.reference }}</span>{% endif %}{% if p.payer %}<span class="cell-note">{{ p.payer }}</span>{% endif %}</td>
+            <td>{{ p.method_label }}{% if not p.card and p.reference %}<span class="cell-note">{{ p.reference }}</span>{% endif %}{% if p.payer %}<span class="cell-note">{{ p.payer }}</span>{% endif %}</td>
             <td class="num">{{ p.amount|money }}</td>
             <td class="num">{{ p.refunded|money if p.refunded else '—' }}</td>
           </tr>
@@ -358,7 +362,7 @@
       <div class="bk-take__row">
         <input type="number" name="amount" step="0.01" min="0.01" max="{{ '%.2f'|format(bill.owed) }}"
                value="{{ '%.2f'|format(bill.owed) }}" aria-label="How much" required inputmode="decimal">
-        <select name="method" aria-label="How it was paid">
+        <select name="method" aria-label="Payment method">
           {% for key, label in payment_methods.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
         </select>
         <input type="text" name="reference" placeholder="Reference (optional)" aria-label="Reference">
@@ -386,9 +390,9 @@
 <details class="detail-card bk-refund">
   <summary><h3 style="display:inline;">Refund</h3>{% if refund.ceiling > 0 %} <span class="upload-hint">up to {{ refund.ceiling|money }}</span>{% endif %}</summary>
   {% if not can('refund_desk') %}
-  <p class="upload-hint">Giving money back is the owner's call.{% if refund.ceiling > 0 %} {{ refund.ceiling|money }} could go back.{% endif %}</p>
+  <p class="upload-hint">Refunds are the owner's call.{% if refund.ceiling > 0 %} Up to {{ refund.ceiling|money }} refundable.{% endif %}</p>
   {% elif refund.ceiling > 0 %}
-  <p class="upload-hint">Up to {{ refund.ceiling|money }} can go back. Non-refundable as standard: this is a decision, not a step in cancelling.</p>
+  <p class="upload-hint">Up to {{ refund.ceiling|money }} refundable. Non-refundable as standard: this is a decision, not a step in cancelling.</p>
   <form method="post" action="{{ url_for('refund_desk', category='room', booking_id=b['id']) }}"
         onsubmit="return confirm(this.elements['method'].value === 'stripe' ? 'Send this refund to the card through Stripe? This moves real money.' : 'Record this refund? No money moves.');" class="bk-form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
@@ -398,7 +402,7 @@
         {% for p in refund.payments if p.refundable > 0 %}
         <option value="{{ p.key }}">{{ p.method_label }}, {{ p.at|house_day|date_short if p.at else 'earlier' }} — up to {{ p.refundable|money }}</option>
         {% endfor %}
-        {% if refund.refundable_count > 1 %}<option value="all">All of it, {{ refund.ceiling|money }}, each back the way it came</option>{% endif %}
+        {% if refund.refundable_count > 1 %}<option value="all">All of it, {{ refund.ceiling|money }}, each payment refunded the way it came</option>{% endif %}
       </select>
     </div>
     <div class="register-field">
@@ -450,7 +454,7 @@
       <a href="{{ url_for('refund_desk', category='room', booking_id=b['id']) }}" class="small-link">Full refund desk</a></p>
   </form>
   {% else %}
-  <p class="upload-hint">Nothing has been paid that could go back.</p>
+  <p class="upload-hint">Nothing paid, so nothing to refund.</p>
   {% endif %}
 </details>
 </section>

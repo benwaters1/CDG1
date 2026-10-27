@@ -275,6 +275,10 @@ m.anthropic.Anthropic = _refuse(
 m.fetch_one_image = _refuse(
     "the Squarespace CDN",
     "stand in for fetch_one_image in the test; a real run downloads 93 images")
+# A campaign queued by a route is sent by a thread started from that route,
+# which in a test would be sending in the background while the suite reads the
+# result. A suite sends the queue itself, with send_queued_campaigns() below.
+m.CAMPAIGN_DRAIN_ON_SEND = False
 # The What's On reader reads three tourism sites every night: a suite hands it
 # pages through run_whats_on_reader_job(fetch=...) instead.
 m.whats_on_fetch = _refuse(
@@ -902,6 +906,37 @@ WORKSHOP_DETAILS = {k: v for k, v in BOOKING_DETAILS.items()
 
 def db():
     return m.get_db()
+
+
+def send_queued_campaigns(conn=None):
+    """Send every campaign letter waiting in the queue, now and all at once.
+
+    What the automation thread does over days, for a suite that has queued a
+    handful through a route and stood send_email in: no pace, no gap between
+    letters, and the holds put aside -- the harness connects no provider, so
+    asked, every send would wait for one. A suite testing the holds or the
+    pace calls drain_campaign_queue itself."""
+    own = conn is None
+    conn = conn or m.get_db()
+
+    def still_to_go():
+        return conn.execute(
+            "SELECT COUNT(*) FROM campaign_queue JOIN campaign_runs "
+            "ON campaign_runs.send_id = campaign_queue.send_id "
+            "WHERE campaign_queue.state = 'queued' AND campaign_runs.state = 'going'"
+        ).fetchone()[0]
+    try:
+        # Run after run, as the thread would: a run stops at the first letter
+        # the provider refuses, and the next run tries again.
+        said, before = [], None
+        while still_to_go() and still_to_go() != before:
+            before = still_to_go()
+            said.append(m.drain_campaign_queue(conn, budget=10 ** 6, sleep=None,
+                                               mind_the_holds=False))
+        return "; ".join(said)
+    finally:
+        if own:
+            conn.close()
 
 
 def keep_rows(conn, table, where, params=()):

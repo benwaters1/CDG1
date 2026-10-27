@@ -188,7 +188,7 @@ def _run(s, sent):
     notice = notice or {"subject": "", "body": "", "about": "x"}
     s.check("who paid, how much, by which card, for which booking",
             notice["subject"] == f"Payment received from {TAG} Guest"
-            and "Amount: €300.00" in notice["body"] and "How: Card, online, Visa ····4242" in notice["body"]
+            and "Amount: €300.00" in notice["body"] and "How: Card (Stripe), Visa ····4242" in notice["body"]
             and f"{TAG}S" in notice["body"], detail=notice["body"][:500])
     s.check("with the statement, and the way to the booking's payments",
             "Total paid" in notice["body"] and f"/admin/refunds/room/{stay['id']}" in notice["body"],

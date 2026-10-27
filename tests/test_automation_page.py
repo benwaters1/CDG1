@@ -44,7 +44,8 @@ m = _harness.m
 # Wording page lists is one, and so is the stay's own writer, the atelier's,
 # a campaign, a text, and the card-refused note.
 GUEST_DOORS = {"render_email_template", "write_about_stay", "send_workshop_email",
-               "send_campaign", "send_sms", "send_autocharge_failed_email"}
+               "send_campaign", "campaign_letter", "send_sms",
+               "send_autocharge_failed_email"}
 CHANNELS = {"send_email": "email", "send_backup_email": "email",
             "sms_provider_send": "text", "send_notification": "notification",
             "publish_social_post": "post",
@@ -140,7 +141,7 @@ def run():
             not wrong, detail=", ".join(wrong))
     fields = [f for e in entries for f, _l, kind in e.get("fields", ())
               if f not in m.AUTOMATION_SETTING_DEFAULTS
-              or kind not in ("hours", "days", "days_back")]
+              or kind not in ("hours", "days", "days_back", "letters")]
     s.check("every number on it is a real setting", not fields, detail=str(fields))
 
     s.section("It claims what the code does")

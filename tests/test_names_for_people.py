@@ -78,7 +78,7 @@ def run():
             detail=" ".join(chips.split())[:300])
 
     s.section("How something was paid, in words")
-    s.check("a card payment online", m.payment_method_label("stripe") == "Card, online")
+    s.check("a card payment online", m.payment_method_label("stripe") == "Card (Stripe)")
     s.check("one on the terminal", m.payment_method_label("card_terminal")
             == m.POS_PAYMENT_METHODS["card_terminal"])
     s.check("and a key it has never seen is at least not a key",

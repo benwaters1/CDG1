@@ -201,6 +201,29 @@
 </div>
 {% endif %}
 
+{% if under_way %}
+<h2 class="section-heading">Going out now</h2>
+<p class="upload-hint">A campaign to a list goes a little at a time, under the number of letters a day the mailbox
+  takes, so the house's own mail keeps arriving. Oldest first.</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Queued</th><th scope="col">Campaign</th><th scope="col">Subject</th>
+      <th scope="col" class="num">Still to go</th><th scope="col">Last letter goes</th></tr></thead>
+    <tbody>
+      {% for p in under_way %}
+      <tr>
+        <td><a href="{{ url_for('campaign_send_detail', send_id=p.run['send_id']) }}">{{ local_datetime_str(p.run['created_at']) }}</a></td>
+        <td>{{ p.run['template_name'] or '—' }}</td>
+        <td>{{ p.run['subject'] }}</td>
+        <td class="num">{{ '{:,}'.format(p.to_go) }} of {{ '{:,}'.format(p.total) }}</td>
+        <td>{% if p.run['state'] == 'paused' %}<span class="mini-status status-pending">Paused</span>{% elif p.waiting %}<span class="mini-status status-pending">Waiting: {{ p.waiting }}</span>{% elif p.finish %}{{ local_datetime_str(p.finish.isoformat()) }}{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 <h2 class="section-heading">Recent sends</h2>
 {% if not recent %}
   <div class="empty-state">No campaign sent yet.</div>
