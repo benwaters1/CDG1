@@ -46261,8 +46261,12 @@ PALETTE_PAGES = [
     ("Money ahead", "money_ahead_page",
      "cash flow forecast expected incoming coming in runway money due to arrive "
      "balances arriving weeks outlook labour cost rostered wages"),
+    # The sheet the house prints: "Printable sheet" on the home pages opens it.
+    ("Arrivals sheet", "arrivals_sheet_page",
+     "print printable sheet paper checklist tick sheets washed room ready "
+     "extras arrivals departures fortnight schedule"),
     ("Today sheet", "today_sheet",
-     "today print run sheet arrivals departures handover"),
+     "today run sheet shifts departures handover"),
     ("Front desk", "front_desk",
      "front desk reception today check in check out arriving leaving in house rooms ready owed"),
     ("Maintenance", "maintenance_page",
@@ -105663,6 +105667,7 @@ def arrivals_sheet(conn, day=None, channel=None):
     wanted.sort(key=lambda x: (x["room_name"] or "", x["name"]))
     return {
         "day": day,
+        "checklist": sheet_checklist(iso, rows, channel_arriving, ateliers, wanted),
         "arriving": rows,
         "leaving": leaving,
         "owed_leaving": owed_leaving,
@@ -105685,6 +105690,57 @@ def arrivals_sheet(conn, day=None, channel=None):
         "nothing_doing": not (arriving or leaving or channel_arriving or channel_leaving
                               or ateliers or wanted),
     }
+
+
+def sheet_checklist(iso, rows, channel_arriving, ateliers, wanted):
+    """One day's rooms to get ready, as a list to tick on paper.
+
+    The owner, 27 October 2026: "a proper print sheet ... a spot for ticks for
+    a checklist, people prefer a piece of paper especially in a house like
+    this. Not complicated, just sheets washed, room ready, the extras." So a
+    line a room that somebody comes into, whichever book they are in, with
+    its extras for that day; and a line for a guest already in the house who
+    has an extra that day, with nothing to make up.
+
+    An arrival's extras for a later night of the stay are not on its line:
+    they are on that night's list, under the guests already here, so each is
+    ticked on the day it happens and on no other. An atelier place with no
+    room has no room to make up, and the atelier's own table says so.
+    """
+    def tick(name, quantity, state):
+        # The state comes with it: a box for a board nobody has ordered, with
+        # no word that it is not arranged, hides the one thing worth knowing.
+        return {"label": f"{quantity} × {name}" if (quantity or 1) > 1 else name,
+                "done": state == "delivered",
+                "state": "" if state == "delivered" else (state or "")}
+
+    out = []
+    for r in rows:
+        b = r["booking"]
+        ticks = [tick(x["name"], x["quantity"], x["state"])
+                 for x in r["extras"] if not x["day"] or x["day"] <= iso]
+        ticks += [tick(f"Dinner at La Table, {d['party']}", 1, "")
+                  for d in r["dinners"] if d["day"] == iso]
+        out.append({"room": b["room_name"], "guest": b["guest_name"],
+                    "time": r["arrival_time"], "arriving": True, "ticks": ticks})
+    for st in channel_arriving:
+        told = st["told"]
+        out.append({"room": st["room_name"] or "Room not stated", "guest": st["guest_name"],
+                    "time": ((told["estimated_arrival_time"] or "").strip() if told else ""),
+                    "arriving": True, "ticks": []})
+    for a in ateliers:
+        if a["begins"]:
+            out += [{"room": p["room_name"], "guest": p["guest_name"],
+                     "time": (p["estimated_arrival_time"] or "").strip(),
+                     "arriving": True, "ticks": []}
+                    for p in a["places"] if p["room_name"]]
+    here = {}
+    for x in wanted:
+        here.setdefault((x["room_name"], x["guest_name"]), []).append(
+            tick(x["name"], x["quantity"], x["state"]))
+    out += [{"room": room, "guest": guest, "time": "", "arriving": False, "ticks": ticks}
+            for (room, guest), ticks in here.items()]
+    return out
 
 
 ARRIVALS_WEEKS = 2

@@ -161,6 +161,41 @@
   booking{{ '' if sheet.beds_unknown == 1 else 's' }} that did not say how many{% endif %}
 </p>
 
+{% if sheet.checklist %}
+{#- TO TICK ON PAPER (owner, 27 October 2026: "a spot for ticks ... sheets
+    washed, room ready, the extras"). Drawn boxes, not checkboxes: they are
+    for a pen, and a box on screen that can be clicked but saves nothing
+    reads as broken. An extra already delivered is printed ticked. -#}
+<h4 class="sub-heading">To get ready</h4>
+<div class="table-wrap">
+  <table class="data-table arr-ready">
+    <thead><tr><th scope="col" class="arr-ready__room">Room</th><th scope="col" class="arr-ready__guest">Guest</th>
+      <th scope="col" class="arr-ready__col">Sheets washed</th>
+      <th scope="col" class="arr-ready__col">Room ready</th>
+      <th scope="col">Extras</th></tr></thead>
+    <tbody>
+      {% for c in sheet.checklist %}
+      <tr>
+        <th scope="row">{{ c.room }}</th>
+        <td>{{ c.guest }}{% if c.time %}<br><span class="upload-hint">arriving {{ c.time }}</span>{% endif %}</td>
+        {%- if c.arriving %}
+        <td class="arr-ready__col"><span class="tick-box" aria-hidden="true"></span></td>
+        <td class="arr-ready__col"><span class="tick-box" aria-hidden="true"></span></td>
+        {%- else %}
+        <td colspan="2" class="arr-ready__col upload-hint">already in the house</td>
+        {%- endif %}
+        <td>
+          {%- for t in c.ticks %}
+          <span class="arr-ready__extra"><span class="tick-box{% if t.done %} is-done{% endif %}" aria-hidden="true">{% if t.done %}✓{% endif %}</span>{{ t.label }}{% if t.done %} <span class="upload-hint">(delivered)</span>{% elif t.state %} <span class="mini-status status-pending">{{ t.state }}</span>{% endif %}</span>
+          {%- else %}<span class="upload-hint">none</span>{% endfor -%}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {% if sheet.arriving %}
 <h4 class="sub-heading">Arriving</h4>
 <div class="task-list">
