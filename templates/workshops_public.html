@@ -60,7 +60,6 @@
     {% for w in workshops %}
     {% set WS_CARD_IMG = {
       'Antique': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fa0ac24f-4a8c-4140-8a2f-41dc5beb9b99/AB23770B-DF11-4893-95A0-C89825994C9A.jpg?format=1000w",
-      'Artisan': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b146f7d-b922-485d-a1db-87385a1c1e30/825819a7-e5b4-4509-be9d-6e44688f6857.JPG?format=1000w",
       'Noël':    url_for('static', filename='img/retreats/noel-at-gudanes-800.jpg'),
       'Cooking': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/27199697-d1e3-4a6d-b875-e8c325e1b231/Screenshot+2026-08-12+at+8.39.43+pm.png?format=1000w",
       'Seven':   "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1000w"
@@ -115,7 +114,7 @@
       ('crepe-cart', 'Crêpes made at the crêpe cart, in a red beret', 'Le petit-déjeuner', 'Breakfast', 'Bread and croissants from the village <em lang="fr">boulangerie</em>, coffee on the terrace, and on some mornings the crêpe cart.'),
       ('cooking-class-hands', 'The cooking class from above, hands at work', 'La matinée', 'The morning', 'At the stove with the chefs, at the market with the producers, with a visiting artisan, or on the restorers’ scaffold.'),
       ('lunch-outdoors-many', 'The long lunch on the lawn, many guests', 'Le déjeuner', 'Lunch', 'A long table in the garden, or lunch out in the valley: Foix beneath its castle, or Ax-les-Thermes among the hot springs.'),
-      ('sorbet-pouring', 'Wine poured over sorbet in a crystal coupe', 'L’après-midi', 'The afternoon', 'The pool and a glass of rosé, pétanque on the lawn, homemade ice cream, the library. Or a brocante, or the great cave at Lombrives.'),
+      ('sorbet-pouring', 'Wine poured over sorbet in a crystal coupe', 'L’après-midi', 'The afternoon', 'The pool and a glass of rosé, pétanque on the lawn, homemade ice cream, the library, or an easel and a box of watercolours. Or a brocante, or the great cave at Lombrives.'),
       ('pink-cocktails', 'Pink cocktails on a silver tray', 'L’apéritif', 'As the light goes', 'As the mountains turn blue: a Kir Royale, a Lillet tonic, the château’s own botanical syrups.'),
       ('candlelit-dinner-salon', 'Dinner by candlelight in the salon, the long table', 'Le dîner', 'Dinner', 'Several courses by candlelight, or the barbecue on the terrace, or the last-night banquet, dressed for the occasion. Then a French film under the stars, or dancing.')] %}
     <li class="g-day__i">
@@ -159,7 +158,6 @@
   <h2 class="g-place">The Art of the Find</h2>
   <p class="g-p g-lede-first">The French have a word for it: <em lang="fr">chiner</em>, to hunt, unhurried, for beautiful old things. On market mornings across the Ariège the squares fill with dealers’ tables: linen sheets embroidered with forgotten monograms, copper pans, café-au-lait bowls, silver, faïence, gilt frames, the occasional portrait. We take you to the markets, the village <em lang="fr">vide-greniers</em> and the dealers we know, and help you bargain in French. Much of what furnishes the château’s own rooms was found in just this way. Whatever you find comes home with you: a piece of France for your own table.</p>
   <ul class="g-befgrid g-gallery g-rgrid g-rgrid--4">
-    <li>{{ rphoto('brocante-gilt-frame', 'Carrying home a gilt frame from the brocante', 'Carried home from the brocante', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
     <li>{{ rphoto('vide-grenier', 'A vide-grenier on the green, people browsing', 'A vide-grenier on the green', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
     <li>{{ rphoto('brocante-stalls', 'Brocante stalls in the square', 'Stalls in the square', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
     <li>{{ rphoto('brocante-china', 'Tables of old china', 'Tables of old china', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
@@ -217,8 +215,8 @@
     <li>and in summer, the river and the mountains.</li>
   </ul>
   <ul class="g-befgrid g-gallery g-rgrid">
-    <li>{{ rphoto('mountain-walk', 'Guests walking in the mountains, Bruce leading', 'In the mountains') }}</li>
-    <li>{{ rphoto('village-street', 'Guests strolling a village street with Bruce', 'A village street') }}</li>
+    <li>{{ rphoto('mountain-walk', 'Guests walking in the mountains, the dog leading', 'In the mountains') }}</li>
+    <li>{{ rphoto('village-street', 'Guests strolling a village street with the dog', 'A village street') }}</li>
     <li>{{ rphoto('mirepoix', 'The half-timbered houses of Mirepoix', 'Mirepoix') }}</li>
     <li>{{ rphoto('foix-castle', 'The castle of Foix above the old town', 'The castle of the Counts of Foix') }}</li>
     <li>{{ rphoto('lombrives-cave-mouth', 'The mouth of the great cave at Lombrives', 'The great cave at Lombrives') }}</li>
@@ -275,7 +273,6 @@
      Cooking, Artisans and Seven-night ateliers (Chambre Bleue, bedroom 3, Chambre du Parc). #}
   {% set WS_PIC = {
     'Antique': "/static/img/xx/shelves-of-china.jpg",
-    'Artisan': "/static/img/dining/tureen-of-herbs.jpg",
     'Noël':    "/static/img/dining/garland-staircase.jpg",
     'Cooking': "/static/img/xx/tomato-tart-above.jpg",
     'Seven':   "/static/img/dining/long-table-tall-candles.jpg"

@@ -12,6 +12,7 @@
 {% from '_lightbox.html' import lightbox %}
 {% from '_beforeafter.html' import before_after, before_after_script %}
 {% from '_marks.html' import mark %}
+{% from '_animals.html' import animals_note %}
 {# `galleries` comes from gallery_page(): a list of
      { 'slug': ..., 'title': ..., 'blurb': ..., 'images': [{'url','caption'}, ...] }
    The slug is the anchor id, because the site menu links to #inside, #grounds,
@@ -25,7 +26,7 @@
     now - and the bathrooms, from the old site's bathrooms page. -#}
 {#- 26 Oct (owner, the Booking.com photo swaps): the full-size pictures that replace the low-quality ones there go
     here too, so the site and Booking.com match - the four in the grounds, the King Suite's four-poster and the bath. The
-    night, the snowy peaks, Bruce in the snow and the croissants were already in this gallery; the photo swap now serves
+    night, the snowy peaks, Alfred in the snow and the croissants were already in this gallery; the photo swap now serves
     those from the house's own copies. -#}
 {% set FALLBACK = {
   'inside': [
@@ -118,7 +119,7 @@
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aabd8580-5420-43e7-92c9-779b82294ee3/home-7.jpg?format=1500w", 'caption': 'The meadow, mist on the hills'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c2998346-182b-476a-83cc-fefc2cad0bba/P1260363.jpeg?format=1500w", 'caption': 'Wildflowers'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/54da3cc9-ec56-4445-8d66-b8c80fc8ffc1/Screenshot+2026-08-15+at+6.56.27+pm.png?format=1500w", 'caption': 'Autumn'},
-    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/Chateau+de+Gudanes+-+Winter.jpeg?format=1500w", 'caption': 'Snow'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/Chateau+de+Gudanes+-+Winter.jpeg?format=1500w", 'caption': 'Alfred'},
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587892891915-NZ0CL0Q7H20GV9705G6V/Gates%2BIn%2BSnow.jpg?format=1500w", 'caption': 'The gates in snow'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1500w", 'caption': 'At night'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aa7e337d-6a3c-437b-9b9f-a128c57f849e/Screenshot+2026-07-31+at+2.08.26+pm.png?format=1500w", 'caption': 'The late sun'},
@@ -333,6 +334,9 @@
       <p class="g-empty">Photographs are being prepared. In the meantime, the most recent work is posted to
         <a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a>.</p>
     {% endif %}
+    {#- 27 Oct: Alfred, in the snow, is in this gallery, and wherever the animals are named the allergy line goes
+        with them (test_animals). -#}
+    {{ animals_note() }}
   </div>
 </section>
 

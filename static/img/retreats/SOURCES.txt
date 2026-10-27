@@ -3,7 +3,6 @@ Squarespace site before it expired on 14 November 2026, so the site no longer de
 Commons photographs are credited on the page beside them, as their licences require.
 
 guests-round-the-table.jpg  https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/64c3e06f-00b3-4c61-9f61-4b3476de1d30/Screenshot+2026-08-15+at+5.54.52+pm.png
-cooking-class-kitchen.jpg  https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1582798909935-HTB0747EBXEO4B6RPRYC/food+6.jpg
 guests-with-finds.jpg  https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1513910082044-BAZXIZW9PHPPZEAXVP32/IMG_7665.JPG
 covered-market.jpg  https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1588058667180-NI0TSN47EKNF3G8XUUPA/market+m2.jpg
 guests-uncovering-fresco.jpg  https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1421602176174-K3W64FCHNI9CRQ78SIZH/januaryblog2.jpg
@@ -52,7 +51,6 @@ The second version of the deck's section 6, and the Booking.com photo swaps (bot
 The name at the end of each address is only a name: Squarespace serves the picture by the part before it.
 
 guests-toasting.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1724501214096-XBFUPVID66ZTGZV68S4T/guests-toasting.jpg
-brocante-gilt-frame.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1481179212968-BJ7WLHYBYGMTUL6RSR4A/brocante-gilt-frame.jpg
 market-charcuterie.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1588058662677-2C0OQN38VO1Q0BOU2JM0/market-charcuterie.jpg
 restoration-scaffold.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1481095122697-MSGWFDFVRUYX1B6P0EHM/restoration-scaffold.jpg
 garden-conversation.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/49f1267d-26d2-4f04-b908-73c78a327184/garden-with-bruce.jpg
@@ -92,7 +90,6 @@ village-street.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c
 mirepoix.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a3a585d8-a3d2-4ba5-ba7c-1222d3b09fd2/mirepoix.jpg
 guests-rose-gate.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/db8081a5-b0d7-48c4-b453-3b137d19e769/guests-rose-gate.jpg
 pastry-chef.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1586812530061-7W657M5VTFG2F3ZDVXCZ/pastry-chef.jpg
-caramel-choux-recipe.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587300154571-GB0GAI4BGXSJ8OTAPBT7/caramel-choux-recipe.jpg
 embroidery-hoop.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1588497201992-H8YUWPSCDJ4QTV3EQK99/embroidery-hoop.jpg
 guest-painting.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/11bd61c5-b285-4d3c-825b-71365011efe4/guest-painting.jpg
 lighting-gingerbread.jpg  https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587871860562-C5BPMAPOVC2XUXRIGA3V/lighting-gingerbread.jpg
@@ -108,7 +105,7 @@ roses-on-the-drive.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69
 chateau-framed-by-roses.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/d6748ca1-6230-44f0-995f-f493afb98d89/chateau-framed-by-roses.jpg
 chateau-at-night.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/chateau-at-night.jpg
 chateau-snowy-peaks.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/c2998346-182b-476a-83cc-fefc2cad0bba/chateau-snowy-peaks.jpg
-running-in-the-snow.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/bruce-in-the-snow.jpg
+alfred-in-the-snow.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/bruce-in-the-snow.jpg
 gate-in-snow.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/06736644-1610-42af-9d66-2e666c4973c8/gate-in-snow.jpg
 breakfast-croissants.jpg  https://images.squarespace-cdn.com/content/6a55fc287fb69872c3cc49bd/5589cd5d-9fd8-4363-a8e8-1c7db5e8e8fb/breakfast-croissants.jpg
 
