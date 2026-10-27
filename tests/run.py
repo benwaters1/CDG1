@@ -580,6 +580,7 @@ SUITES = [
     "test_newsletter_signup",
     # 22 October 2026: script sign-ups from before the guards, already on the list.
     "test_newsletter_script_signups",
+    "test_newsletter_squarespace_import",
     "test_route_map",
     # 19 October 2026: the phone's home screen the owner expected and never got.
     "test_phone_home",
@@ -589,6 +590,8 @@ SUITES = [
     "test_tasks_open_what_they_are_about",
     "test_a_busy_day_in_words",
     "test_buttons_within_reach_on_a_phone",
+    # 26 October 2026: the owner's retreats copy deck, its photographs and old pages.
+    "test_retreats_deck",
 ]
 
 

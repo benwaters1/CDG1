@@ -7,10 +7,13 @@
 {#- 6 Oct: 2048px (Booking.com serves the same photograph larger with the same signature; 1024 was soft across a room
     page) - the small room cards ask for the 1024 one. -#}
 {%- set _BK = 'https://cf.bstatic.com/xdata/images/hotel/max2048x2048/' -%}
+{#- 26 Oct (owner, the Booking.com photo swaps): the King Suite leads with its four-poster, full size, as Booking.com
+    now shows it. -#}
 {#- 6 Oct (owner): the King Room is the four-poster bed that is not gold - the château's own photographs (none on
     Booking.com). -#}
 {%- set ROOM_PHOTOS = {
   'The King Suite': [
+    (url_for('static', filename='img/retreats/king-suite-four-poster.jpg'), 'The King Suite, the four-poster'),
     ('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=2500w', 'The King Suite, the four-poster bed'),
     ('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/b2a8b7f3-150f-42cf-b311-ea8901270793/Screenshot+2023-08-23+at+2.28.50+pm.png?format=1500w', 'The King Suite, the four-poster and its canopy'),
   ],
@@ -66,8 +69,10 @@
 {%- set BATH_PHOTO = (_BK ~ '799433081.jpg?k=10f484ed1a3138706d9d005e29e3187c577281eeff9cbfb7cf598085565fb638&o=', 'One of the ground-floor bathrooms') -%}
 {#- 12 Oct (owner: "more bathroom photos"): the bathrooms as finished in 2019, from the old site's bathrooms page
     (vicente-yuste-2air, Before & After - The Château Bathrooms). The room page shows one to three of these. -#}
+{#- 26 Oct (owner, the Booking.com photo swaps): the bath under the floral tiles, full size, as Booking.com shows it. -#}
 {%- set BATH_PHOTOS = [
   BATH_PHOTO,
+  (url_for('static', filename='img/retreats/bath-floral-tiles.jpg'), 'A claw-foot bath under the floral tiles'),
   ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583504973197-GYZ22GF1PB0L7P92T7RV/Screen+Shot+2020-03-06+at+10.23.55+pm.png?format=1500w', 'A bathroom papered in blue, the claw-foot bath on the old terracotta'),
   ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503062603-2KFI7H38VBDWSPTOMLIB/IMG_0977.jpg?format=1500w', 'A hand-painted basin on the reclaimed terracotta'),
   ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503973363-BORNI4RB6JAHAQXXA46X/IMG_1144.JPG?format=1500w', 'A bathroom window open onto the mountains')

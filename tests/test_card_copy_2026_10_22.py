@@ -1,5 +1,10 @@
 """The card paragraphs on Workshops and Stay, as the owner wrote them (22 October 2026).
 
+The workshop cards were rewritten again on 26 October, in the retreats copy
+deck (test_retreats_deck holds the rest of it); the lines below are those.
+The room paragraphs are as they were on the 22nd, which the deck's section 8
+confirmed word for word.
+
 Only the description paragraph on each card changed; nights, dates, prices,
 the feature lines and the buttons are as they were. The copy lives in
 _ws_copy.html (ws_lead) and _room_copy.html (room_copy), which arrive from
@@ -22,11 +27,11 @@ import _harness
 m = _harness.m
 
 WORKSHOPS = {
-    "Immersive Artisan Workshops": "Four nights at the château, learning traditional crafts from people who still practise them.",
-    "Noël at Gudanes": "The château’s first Noël atelier: four December nights as Gudanes fills with festive warmth.",
-    "Cooking in the Cuisine": "Five nights in celebration of French cuisine.",
-    "Antique & French Finds": "Three nights for the romance of the French brocante.",
-    "Seven Starry Nights": "A week of long, golden summer days, balancing exploring with doing nothing at all.",
+    "Immersive Artisan Workshops": "Four autumn days learning the crafts of the French house from those who still practise them:",
+    "Noël at Gudanes": "Four December days as the château fills for Christmas:",
+    "Cooking in the Cuisine": "Five summer days with the château’s chefs and pastry chef:",
+    "Antique & French Finds": "Three days of chiner in the markets, brocantes and vide-greniers of the Ariège,",
+    "Seven Starry Nights": "A week of French summer with everything:",
 }
 ROOMS = {
     "The Twin Room": "looking out to the mountains",
@@ -48,6 +53,8 @@ def run():
             said = m.app.jinja_env.from_string(
                 "{% from '_ws_copy.html' import ws_lead %}{{ ws_lead(w) }}").render(
                 w={"title": title, "nights_label": ""})
+        # Read as a guest reads it: the French words carry their italics as markup.
+        said = re.sub(r"<[^>]+>", "", said)
         s.check(title, said.startswith(opening), detail=said[:120])
 
     s.section("Each room card says what the owner wrote")

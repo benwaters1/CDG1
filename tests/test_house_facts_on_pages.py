@@ -265,7 +265,8 @@ def run():
         unpriced = []
         for url in ("/facilities", "/gallery", "/press", "/story", "/"):
             body = m.app.test_client().get(url).get_data(as_text=True)
-            if "all meals and drinks" not in body or "g-three" not in body:
+            # The panel's workshop card, by its words since 26 Oct (the retreats deck).
+            if "nothing to pay at the end" not in body or "g-three" not in body:
                 continue
             if f"&euro;{figure}" not in body and f"€{figure}" not in body:
                 unpriced.append(url)
