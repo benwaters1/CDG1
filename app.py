@@ -73912,11 +73912,13 @@ TRANSACTION_TYPES = {
     "reversal": ("Refund put back", "Refund"),
 }
 
-# How a payment or refund was made, as a chip. The words are the statement's.
+# How a payment or refund was made, as a chip. The words are the statement's,
+# so they follow PAYMENT_METHOD_WORDS and payment_method_words(): a label
+# renamed there and not here files every card payment under Other.
 TRANSACTION_METHODS = {
-    "Card, online": "Card", "Card, by payment link": "Card", "Card, in person": "Card",
-    "Card, at the terminal": "Card", "Online": "Card", "Bank transfer": "Bank transfer",
-    "Cash": "Cash", "Gift voucher": "Gift voucher",
+    "Card (Stripe)": "Card", "Card (Stripe payment link)": "Card", "Card (in person)": "Card",
+    "Card (terminal)": "Card", "Card (Stripe, via RetreatGuru)": "Card", "Online": "Card",
+    "Bank transfer": "Bank transfer", "Cash": "Cash", "Gift voucher": "Gift voucher",
 }
 
 # When each kind of booking ends, for the list's "Ends" column.

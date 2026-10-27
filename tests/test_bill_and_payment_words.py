@@ -115,6 +115,23 @@ def _checks(s, oc):
             list(m.MANUAL_PAYMENT_METHODS.values())
             == ["Cash", "Bank transfer", "Card (in person)", "Other"],
             detail=f"{list(m.MANUAL_PAYMENT_METHODS.values())}")
+    # The transactions page files each payment under a chip by looking its
+    # WORDS up, so a label renamed in one place and not the other sends every
+    # card payment to Other without a thing going red.
+    labels = set(m.PAYMENT_METHOD_WORDS.values()) | {"Card (Stripe, via RetreatGuru)"}
+    unfiled = sorted(w for w in labels if w.startswith("Card")
+                     and m.TRANSACTION_METHODS.get(w) != "Card")
+    s.check("every card label is filed under Card on the transactions page", not unfiled,
+            detail=f"{unfiled}")
+    s.check("and cash, transfer and voucher under their own",
+            all(m.TRANSACTION_METHODS.get(w) == w for w in ("Cash", "Bank transfer", "Gift voucher")))
+    page = oc.get("/admin/bookings/walk-in").get_data(as_text=True)
+    sel = page[page.find('id="wi_method"'):]
+    sel = sel[:sel.find("</select>")]
+    s.check("the walk-in page offers the same four choices",
+            sorted(re.findall(r">([^<]+)</option>", sel))
+            == sorted(m.MANUAL_PAYMENT_METHODS.values()) and 'aria-label="Payment method"' in sel,
+            detail=f"{re.findall(r'>([^<]+)</option>', sel)}")
 
     # Tess, as she was recorded on 15 October, a stay owing money, and a stay
     # with a refund on it.
@@ -193,3 +210,18 @@ def _checks(s, oc):
             line.get("what") == "Paid, card (Stripe, via RetreatGuru)", detail=f"{line.get('what')}")
     s.check("and the method column says the same",
             line.get("method") == "Card (Stripe, via RetreatGuru)", detail=f"{line.get('method')}")
+
+    s.section("The transactions page files each payment where it belongs")
+    conn = db()
+    today = house_today()
+    rows = m.house_transactions(conn, (today - timedelta(days=1)).isoformat(),
+                                (today + timedelta(days=2)).isoformat())
+    conn.close()
+    by_person = {}
+    for r in rows:
+        if r.get("line") == "payment" and TAG in (r.get("person") or ""):
+            by_person.setdefault(r["person"].rsplit(" ", 1)[-1], set()).add(r["how"])
+    for ref, want in (("OWE", {"Card"}), ("TESS", {"Card"}), ("SET", {"Card"}),
+                      ("REF", {"Bank transfer"})):
+        s.check(f"{ref}: {', '.join(sorted(want))}", by_person.get(ref) == want,
+                detail=f"{by_person.get(ref)}")
