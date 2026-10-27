@@ -1,0 +1,278 @@
+{#- ==========================================================================
+    THE PICTURE COMPONENTS (image layout brief, 27 Oct 2026)
+    The site showed its photographs as blocks of identical rectangles, usually
+    all in one place. These are the twelve ways a photograph is set on a page
+    now, built once and used everywhere. /design shows every one of them.
+
+    A photograph is the same three-item list the templates already use for
+    their galleries: [src, alt, caption]. The caption may be left off.
+
+        {% from '_pictures.html' import cadre, passe_partout, album, carrousel,
+              mosaique, avant_apres, bande, split, plein, medaillon, carnet,
+              carte_postale, see_all, seal, divider, pictures_script %}
+
+    Every image goes through pic() (app.py): width and height set, lazy unless
+    it is the hero, and a WebP srcset where the house holds the file.
+
+    Captions are .g-pc__cap. The owner hid every caption under a photograph
+    on 15 Oct, and that rule still stands on every page: a caption shows only
+    inside .g-caps (the /design page), until the owner says otherwise.
+
+    Nothing here moves for somebody who has asked for reduced motion.
+    ========================================================================== -#}
+{%- from '_marks.html' import monogram -%}
+
+{%- macro _cap(p, cls='') -%}
+{%- if p|length > 2 and p[2] -%}<figcaption class="g-pc__cap {{ cls }}">{{ p[2] }}</figcaption>{%- endif -%}
+{%- endmacro -%}
+
+{#- A. LE CADRE. The photograph hangs like a painting: gilt moulding, a dark
+    line, a cream mount. shape: 'rect', 'oval' or 'arch' (the tall windows).
+    plaque: a brass label under the frame, in small capitals. -#}
+{% macro cadre(p, plaque='', shape='rect', sizes='(min-width: 64rem) 40vw, 90vw', cls='') -%}
+<figure class="g-cadre g-cadre--{{ shape }} g-rv {{ cls }}">
+  <div class="g-cadre__frame"><div class="g-cadre__mount">{{ pic(p[0], p[1], sizes=sizes, cls='g-cadre__img') }}</div></div>
+  {%- if plaque %}<figcaption class="g-cadre__plaque"><span>{{ plaque }}</span></figcaption>{% endif %}
+</figure>
+{%- endmacro %}
+
+{#- B. LE PASSE-PARTOUT. A wide cream mount with a hairline gilt edge and a
+    museum label. Quieter than the frame: food, objects, finds. -#}
+{% macro passe_partout(p, sizes='(min-width: 64rem) 30vw, 90vw', cls='') -%}
+<figure class="g-pp g-rv {{ cls }}">
+  <div class="g-pp__mount">{{ pic(p[0], p[1], sizes=sizes) }}</div>
+  {{- _cap(p, 'g-pp__label') }}
+</figure>
+{%- endmacro %}
+
+{#- C. L'ALBUM. Two or three photographs with white borders, tilted and
+    overlapping, held by paper corners. Guests, evenings, friends. -#}
+{% macro album(photos, cls='') -%}
+<div class="g-album g-album--{{ photos[:3]|length }} g-rv {{ cls }}">
+  {%- for p in photos[:3] %}
+  <figure class="g-album__p">
+    <div class="g-album__f">{{ pic(p[0], p[1], sizes='(min-width: 64rem) 26vw, 80vw') }}</div>
+    {{- _cap(p, 'g-album__hand') }}
+  </figure>
+  {%- endfor %}
+</div>
+{%- endmacro %}
+
+{#- D. LE CARROUSEL. Scroll-snap slides with the next one peeking in, thin
+    gilt arrows and a counter. Swipes on a phone; arrows and the keyboard on
+    a desktop; never moves on its own. A slide may be a dict with href and
+    title (a room card) instead of a plain photograph. -#}
+{% macro carrousel(slides, label, cls='') -%}
+<section class="g-car {{ cls }}" data-car aria-roledescription="carousel" aria-label="{{ label }}">
+  <div class="g-car__track" data-car-track tabindex="0">
+    {%- for s in slides %}
+    {%- set p = [s.src, s.alt, s.cap] if s is mapping else s %}
+    <figure class="g-car__s" aria-roledescription="slide" aria-label="{{ loop.index }} / {{ slides|length }}">
+      {%- if s is mapping and s.href %}<a class="g-car__a" href="{{ s.href }}">{% endif %}
+      <div class="g-car__f">{{ pic(p[0], p[1], sizes='(min-width: 64rem) 46vw, 84vw') }}</div>
+      {%- if s is mapping and s.title %}<p class="g-car__t">{{ s.title }}</p>{% endif %}
+      {%- if s is mapping and s.href %}</a>{% endif %}
+      {{- _cap(p, 'g-car__cap') }}
+    </figure>
+    {%- endfor %}
+  </div>
+  <div class="g-car__bar">
+    <button type="button" class="g-car__btn" data-car-prev aria-label="Previous photograph"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4 7 12l8 8"/></svg></button>
+    <span class="g-car__n" data-car-n aria-live="polite">1 / {{ slides|length }}</span>
+    <button type="button" class="g-car__btn" data-car-next aria-label="Next photograph"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 4 8 8-8 8"/></svg></button>
+  </div>
+</section>
+{%- endmacro %}
+
+{#- E. LA MOSAÏQUE. One large photograph and two or three small ('lead'),
+    or two tall and one wide ('tall'). Never more than four. -#}
+{% macro mosaique(photos, layout='lead', cls='') -%}
+{%- set ps = photos[:4] -%}
+<div class="g-mos g-mos--{{ layout }} g-mos--{{ ps|length }} g-rv {{ cls }}">
+  {%- for p in ps %}
+  <figure class="g-mos__i">{{ pic(p[0], p[1], sizes=('(min-width: 64rem) 50vw, 100vw' if loop.first else '(min-width: 64rem) 25vw, 50vw')) }}{{ _cap(p) }}</figure>
+  {%- endfor %}
+</div>
+{%- endmacro %}
+
+{#- F. AVANT / APRÈS. The before-and-after slider the site already has
+    (_beforeafter.html: its classes, its stylesheet rules and its script),
+    drawn here through pic() so both photographs carry their sizes, and
+    given a gilt handle. -#}
+{% macro avant_apres(id, before, after, title, before_note, after_note) -%}
+<div class="g-aa g-rv">
+<figure class="g-ba" data-ba id="ba-{{ id }}">
+  <div class="g-ba__f">
+    {{ pic(after, title ~ ' — as it is now. ' ~ after_note, sizes='(min-width: 64rem) 70vw, 100vw', cls='g-ba__img g-ba__img--after') }}
+    <div class="g-ba__clip" data-ba-clip>
+      {{ pic(before, title ~ ' — as it was found. ' ~ before_note, sizes='(min-width: 64rem) 70vw, 100vw', cls='g-ba__img g-ba__img--before') }}
+    </div>
+    <span class="g-ba__tag g-ba__tag--b">As found</span>
+    <span class="g-ba__tag g-ba__tag--a">Now</span>
+    <input class="g-ba__range" type="range" min="0" max="100" value="50"
+           data-ba-range aria-label="Reveal {{ title }} before or after restoration">
+    <span class="g-ba__handle" data-ba-handle aria-hidden="true"></span>
+  </div>
+  <figcaption class="g-ba__cap">
+    <span class="g-ba__t">{{ title }}</span>
+    <span class="g-ba__n"><b>Found</b> {{ before_note }}</span>
+    <span class="g-ba__n"><b>Now</b> {{ after_note }}</span>
+  </figcaption>
+</figure>
+</div>
+{%- endmacro %}
+
+{#- G. LA BANDE. 'drift': a full-width strip that drifts slowly sideways,
+    pauses under the pointer or the keyboard, and does not move at all for
+    reduced motion (it scrolls by hand instead). 'contact': a contact sheet
+    with sprocket edges, which scrolls by hand. -#}
+{% macro bande(photos, label, mode='drift', cls='') -%}
+<section class="g-bande g-bande--{{ mode }} {{ cls }}" aria-label="{{ label }}"{% if mode == 'drift' %} data-bande{% endif %} tabindex="0">
+  <div class="g-bande__row" data-bande-row>
+    {%- for p in photos %}
+    <figure class="g-bande__i">{{ pic(p[0], p[1], sizes='22rem') }}{% if mode == 'contact' %}<span class="g-bande__no" aria-hidden="true">{{ loop.index }}A</span>{% endif %}</figure>
+    {%- endfor %}
+  </div>
+</section>
+{%- endmacro %}
+
+{#- H. LE SPLIT. Words on one side, a photograph on the other, swapping
+    sides each time (flip). A second, smaller photograph may be tucked over
+    one corner. The default way to illustrate a paragraph.
+        {% call split(photo, flip=True, tuck=other) %} ...the words... {% endcall %} -#}
+{% macro split(p, flip=False, tuck=None, cls='') -%}
+<div class="g-sp{% if flip %} g-sp--flip{% endif %}{% if tuck %} g-sp--tuck{% endif %} {{ cls }}">
+  <div class="g-sp__text">{{ caller() }}</div>
+  <div class="g-sp__media g-rv">
+    <figure class="g-sp__main">{{ pic(p[0], p[1], sizes='(min-width: 64rem) 45vw, 100vw') }}{{ _cap(p) }}</figure>
+    {%- if tuck %}<figure class="g-sp__tuck">{{ pic(tuck[0], tuck[1], sizes='(min-width: 64rem) 16vw, 40vw') }}</figure>{% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{#- I. PLEIN CADRE. One wide photograph across the page between sections,
+    with an optional line over it. Moves a little slower than the page where
+    the browser can do that in CSS; still everywhere else. -#}
+{% macro plein(p, line='', by='', cls='', pos='') -%}
+<div class="g-plein {{ cls }}">
+  <div class="g-plein__f">{{ pic(p[0], p[1], sizes='100vw', cls='g-plein__img', pos=pos) }}</div>
+  {%- if line %}
+  <div class="g-plein__over"><p class="g-plein__t">{{ line }}</p>{% if by %}<p class="g-plein__by">{{ by }}</p>{% endif %}</div>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{#- J. LE MÉDAILLON. A small round or oval photograph in a gilt ring, set
+    into the column of text: Bruce, Alfred, the chef, a dish, a detail. -#}
+{% macro medaillon(p, shape='round', side='right', cls='') -%}
+<figure class="g-med g-med--{{ shape }} g-med--{{ side }} {{ cls }}"><div class="g-med__ring">{{ pic(p[0], p[1], sizes='12rem') }}</div></figure>
+{%- endmacro %}
+
+{#- K. LE CARNET. A photograph pinned to the side of an itinerary day like a
+    travel journal: tilted, with a strip of paper tape. side is where it
+    sits, opposite the day's line drawing. -#}
+{% macro carnet(p, side='right', cls='') -%}
+<figure class="g-carnet g-carnet--{{ side }} g-rv {{ cls }}">
+  <span class="g-carnet__tape" aria-hidden="true"></span>
+  {{ pic(p[0], p[1], sizes='(min-width: 64rem) 18rem, 70vw') }}
+</figure>
+{%- endmacro %}
+
+{#- L. LA CARTE POSTALE. A photograph with a white postcard border, a stamp
+    in the corner and a postmark over the
+    edge. Sparingly: /history, /story, Follow the Restoration. The stamp's
+    face is the house's own crowned G (_marks.html), in creeper red. -#}
+{% macro carte_postale(p, cls='') -%}
+<figure class="g-cp g-rv {{ cls }}">
+  <div class="g-cp__card">{{ pic(p[0], p[1], sizes='(min-width: 64rem) 34vw, 86vw') }}</div>
+  <span class="g-cp__stamp" aria-hidden="true"><span class="g-cp__stamp-in">{{ monogram() }}</span></span>
+  <svg class="g-cp__mark" viewBox="0 0 140 70" aria-hidden="true"><circle cx="35" cy="35" r="27"/><circle cx="35" cy="35" r="21"/><path d="M66 22c10-6 20 6 30 0s20 6 30 0M66 35c10-6 20 6 30 0s20 6 30 0M66 48c10-6 20 6 30 0s20 6 30 0"/></svg>
+</figure>
+{%- endmacro %}
+
+{#- "See all 23 photos": opens the lightbox on the whole set, which is kept
+    in the page but not shown. Needs {{ lightbox() }} on the page. -#}
+{% macro see_all(photos, words) -%}
+<div class="g-seeall" data-lb-group>
+  <button type="button" class="g-seeall__b" data-lb-open>{{ words }}</button>
+  <div hidden>{% for p in photos %}{{ pic(p[0], p[1], sizes='90vw') }}{% endfor %}</div>
+</div>
+{%- endmacro %}
+
+{#- The wax seal, beside a signature quote. Decoration only. -#}
+{% macro seal(cls='') -%}
+<svg class="g-seal {{ cls }}" viewBox="0 0 64 64" aria-hidden="true"><path class="g-seal__wax" d="M32 3c5 0 7 4 11 5s9-1 11 3-1 8 1 12 6 6 5 11-6 6-7 10 1 9-3 11-8 0-12 2-6 6-11 6-7-4-11-5-9 1-11-3 1-8-1-12-6-6-5-11 6-6 7-10-1-9 3-11 8 0 12-2 6-6 11-6z"/><circle class="g-seal__ring" cx="32" cy="32" r="18"/><path class="g-seal__g" d="M39 25.5a9 9 0 1 0 1.5 9H32"/></svg>
+{%- endmacro %}
+
+{#- A section divider in the engraving's hand: a drawn line, a leaf, a line. -#}
+{% macro divider(cls='') -%}
+<div class="g-div {{ cls }}" aria-hidden="true"><svg viewBox="0 0 320 24"><path d="M2 13c40-3 80 2 120-1 10-1 18-6 26-6m22 0c8 0 16 5 26 6 40 3 80-2 122 1"/><path d="M160 4c-6 4-6 12 0 16 6-4 6-12 0-16z"/><circle cx="148" cy="12" r="1.6"/><circle cx="172" cy="12" r="1.6"/></svg></div>
+{%- endmacro %}
+
+{#- Once per page, after the last component: carousels, the drifting strip
+    and the gentle rise as photographs come into view. -#}
+{% macro pictures_script() -%}
+<script>
+(function(){
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* The carousels. Native scrolling does the work, so a swipe is a swipe;
+     the arrows and the keyboard only ask it to move one slide. */
+  document.querySelectorAll('[data-car]').forEach(function(car){
+    var track = car.querySelector('[data-car-track]'),
+        slides = [].slice.call(track.children),
+        n = car.querySelector('[data-car-n]');
+    function at(){
+      var x = track.scrollLeft, best = 0, d = Infinity;
+      slides.forEach(function(s, i){ var e = Math.abs(s.offsetLeft - track.offsetLeft - x); if(e < d){ d = e; best = i; } });
+      return best;
+    }
+    function go(i){
+      i = Math.max(0, Math.min(slides.length - 1, i));
+      track.scrollTo({left: slides[i].offsetLeft - track.offsetLeft, behavior: still ? 'auto' : 'smooth'});
+    }
+    function paint(){ if(n) n.textContent = (at() + 1) + ' / ' + slides.length; }
+    car.querySelector('[data-car-prev]').addEventListener('click', function(){ go(at() - 1); });
+    car.querySelector('[data-car-next]').addEventListener('click', function(){ go(at() + 1); });
+    track.addEventListener('keydown', function(e){
+      if(e.key === 'ArrowLeft'){ e.preventDefault(); go(at() - 1); }
+      if(e.key === 'ArrowRight'){ e.preventDefault(); go(at() + 1); }
+    });
+    var t; track.addEventListener('scroll', function(){ clearTimeout(t); t = setTimeout(paint, 60); }, {passive: true});
+    paint();
+  });
+
+  /* The drifting strip. A copy of the photographs follows the originals so
+     the loop has no seam; the copy is painted, not <img>, so the lightbox
+     and a screen reader see each photograph once. */
+  if(!still){
+    document.querySelectorAll('[data-bande]').forEach(function(b){
+      var row = b.querySelector('[data-bande-row]');
+      [].slice.call(row.children).forEach(function(f){
+        var i = f.querySelector('img'), ghost = document.createElement('span');
+        ghost.className = 'g-bande__i g-bande__ghost';
+        ghost.setAttribute('aria-hidden', 'true');
+        function paintGhost(){
+          ghost.style.backgroundImage = 'url("' + (i.currentSrc || i.src) + '")';
+          if(i.width && i.height) ghost.style.aspectRatio = i.getAttribute('width') + ' / ' + i.getAttribute('height');
+        }
+        if(i.complete) paintGhost(); else i.addEventListener('load', paintGhost);
+        paintGhost();
+        row.appendChild(ghost);
+      });
+      b.classList.add('is-drifting');
+    });
+  }
+
+  /* Photographs rise a little and fade in as they arrive. Only once the
+     script has run, so nothing is ever hidden from a page without it. */
+  if(!still && 'IntersectionObserver' in window){
+    document.documentElement.classList.add('g-rv-on');
+    var io = new IntersectionObserver(function(es){
+      es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('is-in'); io.unobserve(e.target); } });
+    }, {rootMargin: '0px 0px -8% 0px'});
+    document.querySelectorAll('.g-rv').forEach(function(el){ io.observe(el); });
+  }
+})();
+</script>
+{%- endmacro %}

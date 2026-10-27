@@ -84,6 +84,8 @@
 {# style.css (the admin stylesheet, 153 KB) is no longer linked here. The rules public pages
    needed from it are at the end of gudanes.css. Admin pages keep their own link. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='gudanes.css') }}">
+{#- 27 Oct: the picture components (_pictures.html), a house file kept apart from gudanes.css so a handover cannot drop it. -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='gudanes-pictures.css') }}">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <script>
 (function() {
