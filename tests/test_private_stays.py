@@ -305,7 +305,10 @@ def run():
 
     path = f"/workshops/register/{sid}"
     s.check("the form without the key is a 404", anon.get(path).status_code == 404)
-    s.check("with a wrong key, a 404", anon.get(path + "?k=" + token[:-1] + "x").status_code == 404)
+    # One character off. Never "always end it in x": a token can end in x
+    # already, and then the wrong key is the right one (it did, once in 64).
+    wrong = token[:-1] + ("y" if token[-1] == "x" else "x")
+    s.check("with a wrong key, a 404", wrong != token and anon.get(path + "?k=" + wrong).status_code == 404)
     r = anon.get(path + "?k=" + token)
     form = r.get_data(as_text=True)
     s.check("with the right key it answers", r.status_code == 200, detail=str(r.status_code))
