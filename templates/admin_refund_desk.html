@@ -18,18 +18,22 @@
 </p>
 
 <div class="stat-tiles">
+  {#- Total, Paid, Refunded (only when there is one), Balance due: the bill's
+      own lines (owner, 27 October 2026). -#}
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ money.cost|money }}</span>
-    <span class="stat-tile-label">{{ 'What it costs' if stands else 'What it would have cost' }}</span>
+    <span class="stat-tile-label">Total</span>
   </span></div>
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{{ money.received|money }}</span>
-    <span class="stat-tile-label">Received, after refunds</span>
+    <span class="stat-tile-value">{{ money.paid|money }}</span>
+    <span class="stat-tile-label">Paid</span>
   </span></div>
+  {% if money.refunded %}
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ money.refunded|money }}</span>
-    <span class="stat-tile-label">Refunded{% if money.taken_off %}, {{ money.taken_off|money }} of it off the bill{% endif %}</span>
+    <span class="stat-tile-label">Refunded{% if money.taken_off %}, {{ money.taken_off|money }} off the bill{% endif %}</span>
   </span></div>
+  {% endif %}
   {% if money.owed is not none %}
   <div class="stat-tile"><span class="stat-tile-body">
     {% if money.called_off %}
@@ -37,10 +41,10 @@
     <span class="stat-tile-label">{{ 'To give back' if money.to_give_back else 'Kept' }}: cancelled, nothing is owed</span>
     {% elif money.credit > 0 %}
     <span class="stat-tile-value">{{ money.credit|money }}</span>
-    <span class="stat-tile-label">In credit: more paid than it costs</span>
+    <span class="stat-tile-label">In credit</span>
     {% else %}
     <span class="stat-tile-value">{{ money.owed|money }}</span>
-    <span class="stat-tile-label">Still owed</span>
+    <span class="stat-tile-label">Balance due</span>
     {% endif %}
   </span></div>
   {% endif %}
@@ -48,13 +52,13 @@
 
 <h2 class="section-heading">What came in</h2>
 {% if not payments %}
-  <div class="empty-state">No payment is recorded against this {{ kind|lower }}, so there is nothing to give back.</div>
+  <div class="empty-state">No payment recorded on this {{ kind|lower }}, so nothing to refund.</div>
 {% else %}
 <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th>When</th><th>How</th><th>From</th><th class="num">Paid</th>
-          <th class="num">Gone back</th><th class="num">Can go back</th></tr>
+      <tr><th>When</th><th>Payment method</th><th>From</th><th class="num">Paid</th>
+          <th class="num">Refunded</th><th class="num">Refundable</th></tr>
     </thead>
     <tbody>
     {% for p in payments %}
@@ -62,7 +66,7 @@
         <td>{{ p.at|house_day|date_short if p.at else '—' }}</td>
         <td>{{ p.method_label }}
           {% if p.label %}<span class="cell-note">{{ p.label }}</span>{% endif %}
-          {% if p.card %}<span class="cell-note">can go back to the card</span>
+          {% if p.card %}<span class="cell-note">refundable to the card</span>
           {% elif p.reference %}<span class="cell-note">{{ p.reference }}</span>{% endif %}
         </td>
         <td>{{ p.payer or p.taken_by or '—' }}</td>
@@ -85,23 +89,23 @@
     {% for p in payments if p.refundable > 0 %}
     <label class="checkbox-row refund-reason">
       <input type="radio" name="payment" value="{{ p.key }}" {{ 'checked' if loop.first }}>
-      <span>{{ p.method_label }}, {{ p.at|house_day|date_short if p.at else 'earlier' }}: {{ p.refundable|money }} can go back{% if p.payer %} ({{ p.payer }}'s share){% endif %}</span>
+      <span>{{ p.method_label }}, {{ p.at|house_day|date_short if p.at else 'earlier' }}: {{ p.refundable|money }} refundable{% if p.payer %} ({{ p.payer }}'s share){% endif %}</span>
     </label>
     {% endfor %}
     {% if refundable_count > 1 %}
     <label class="checkbox-row refund-reason">
       <input type="radio" name="payment" value="all">
-      <span>All of it, {{ ceiling|money }}: each payment back the way it came</span>
+      <span>All of it, {{ ceiling|money }}: each payment refunded the way it came</span>
     </label>
     {% endif %}
   </fieldset>
 
   <div class="refund-fields">
     <div class="register-field">
-      <label class="field-label" for="refund-amount">How much (€)</label>
+      <label class="field-label" for="refund-amount">Amount (€)</label>
       <input id="refund-amount" type="number" name="amount" step="0.01" min="0.01"
              max="{{ '%.2f'|format(ceiling) }}" placeholder="All that payment can">
-      <span class="upload-hint">Blank gives back all that payment can.</span>
+      <span class="upload-hint">Leave blank to refund all that payment can.</span>
     </div>
     <div class="register-field">
       <label class="field-label" for="refund-method">Refund method</label>
@@ -163,7 +167,7 @@
   <p><button type="submit" class="btn-mini btn-mini-danger">Make the refund</button></p>
 </form>
 {% else %}
-  <p class="upload-hint">Nothing is left to give back on this {{ kind|lower }}.</p>
+  <p class="upload-hint">Nothing left to refund on this {{ kind|lower }}.</p>
 {% endif %}
 
 <h2 class="section-heading">Refunds made</h2>
@@ -173,7 +177,7 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th>When</th><th class="num">Amount</th><th>Against</th><th>How</th>
+      <tr><th>When</th><th class="num">Amount</th><th>Against</th><th>Refund method</th>
           <th>Why</th><th>By</th><th></th></tr>
     </thead>
     <tbody>

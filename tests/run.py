@@ -483,6 +483,7 @@ SUITES = [
     "test_guest_emails",
     "test_refund_cancel_steps",
     "test_cancelled_owes_nothing",
+    "test_bill_and_payment_words",
     "test_chef_program",
     "test_where_the_gates_are",
     "test_columns_that_exist",

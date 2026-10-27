@@ -524,8 +524,8 @@ AUTOMATION_SETTING_DEFAULTS = {
 MANUAL_PAYMENT_METHODS = {
     "cash": "Cash",
     "bank_transfer": "Bank transfer",
-    "card_in_person": "Card, in person",
-    "other": "Something else",
+    "card_in_person": "Card (in person)",
+    "other": "Other",
 }
 
 # What the house asks for on an event, unless the owner types something else
@@ -23190,7 +23190,7 @@ POS_PAYMENT_METHODS = {
 # How a payment was made, for a person to read. The ledgers store a key --
 # "stripe", "card_terminal" -- and the workshop register printed it as stored.
 PAYMENT_METHOD_LABELS = {**MANUAL_PAYMENT_METHODS, **POS_PAYMENT_METHODS,
-                         "stripe": "Card, online", "online": "Online", "card": "Card",
+                         "stripe": "Card (Stripe)", "online": "Online", "card": "Card",
                          "transfer": "Bank transfer", "voucher": "Gift voucher"}
 
 
@@ -33108,7 +33108,7 @@ def tell_house_of_payment(conn, category, booking_id, amount, ref=None):
         "reference_code": view["booking"]["ref"],
         "amount": f"{money(amount)}",
         "paid_at": local_datetime_str(datetime.now(timezone.utc).isoformat()),
-        "paid_how": "Card, online" + (f", {card}" if card else ""),
+        "paid_how": "Card (Stripe)" + (f", {card}" if card else ""),
         "balance_line": (f"Still to pay: {money(view['owed'])}." if view["owed"]
                          else "Now paid in full."),
         "booking_url": external_url("refund_desk", category=category, booking_id=booking_id),
@@ -35353,11 +35353,31 @@ BILL_REDUCED, BILL_STANDS = "reduce", "stands"
 
 # How each way of paying reads to a person.
 PAYMENT_METHOD_WORDS = {
-    "stripe": "Card, online", "card_link": "Card, by payment link",
-    "online": "Online", "card_in_person": "Card, in person",
-    "card_terminal": "Card, at the terminal", "cash": "Cash",
+    "stripe": "Card (Stripe)", "card_link": "Card (Stripe payment link)",
+    "online": "Online", "card_in_person": "Card (in person)",
+    "card_terminal": "Card (terminal)", "cash": "Cash",
     "bank_transfer": "Bank transfer", "voucher": "Gift voucher", "other": "Other",
 }
+
+
+def payment_method_words(method, reference=None, note=None):
+    """What a payment was, said the same way wherever a person reads it.
+
+    The method alone said "Other" for a card payment taken in Stripe and
+    recorded by hand -- Tess Hoffman's EUR 64.50 among them (owner, 27 October
+    2026) -- with the charge id sitting in the reference all along. A payment
+    brought across from RetreatGuru says so, and so does a bare charge (ch_)
+    recorded by hand: the house's own card payments all go through Checkout and
+    carry a PaymentIntent, so a charge with none is one RetreatGuru took.
+    """
+    note = note or ""
+    ref = reference.strip() if isinstance(reference, str) else ""
+    card = method == "stripe" or bool(_card_ref(ref))
+    if "RetreatGuru" in note or (method == "other" and ref.startswith("ch_")):
+        return "Card (Stripe, via RetreatGuru)" if card else "Via RetreatGuru"
+    if method == "other" and card:
+        return "Card (Stripe)"
+    return PAYMENT_METHOD_WORDS.get(method, (method or "other").replace("_", " ").capitalize())
 
 
 def _intent_id(session):
@@ -35738,8 +35758,7 @@ def payments_received(conn, category, booking):
     ceiling = refundable_amount(conn, category, booking)
     for i in items:
         i["refundable"] = round(max(0.0, min(i["amount"] - i["refunded"], ceiling)), 2)
-        i["method_label"] = PAYMENT_METHOD_WORDS.get(
-            i["method"], (i["method"] or "other").replace("_", " ").capitalize())
+        i["method_label"] = payment_method_words(i["method"], i["reference"], i["label"])
     return items
 
 
@@ -63365,7 +63384,7 @@ SAMPLE_MERGE_VALUES = {
     # 8 Oct: the house's payment notice is sent with these - without them its preview showed "{guest_email}" and the like
     "guest_email": "marie.dubois@example.com",
     "paid_at": "8 October 2026, 14:32",
-    "paid_how": "Card, online, Visa ending 4242",
+    "paid_how": "Card (Stripe), Visa ending 4242",
     "booking_url": "https://chateaugudanes.com/admin/refunds/room/4417",
 }
 
@@ -73686,6 +73705,10 @@ def refund_desk_context(conn, category, booking):
                  "received": round(gross - back, 2), "refunded": back,
                  "owed": None, "credit": 0.0}
     money["taken_off"] = round(given, 2)
+    # Paid is what came in before anything went back: "received" is net of
+    # refunds for every kind, and "Received, after refunds" read as though
+    # every guest had been given money back. Refunded is its own line.
+    money["paid"] = round((money["received"] or 0) + (money["refunded"] or 0), 2)
     payments = payments_received(conn, category, booking)
     against = {p["key"]: p["method_label"] + (f", {house_date_iso(p['at'])}" if p["at"] else "")
                for p in payments}
@@ -93109,7 +93132,10 @@ def booking_money_lines(conn, category, row, asking=False):
         # A refund goes back against a payment, so it goes back to that card.
         cards = {p["key"]: p["card"] for p in payments}
         for p in payments:
-            add(p["at"], f"Paid, {p['method_label'].lower()}"
+            # Only the first letter comes down: "card (Stripe, via
+            # RetreatGuru)", not "card (stripe, via retreatguru)".
+            how = p["method_label"][:1].lower() + p["method_label"][1:]
+            add(p["at"], f"Paid, {how}"
                 + (f" ({p['payer']})" if p["payer"] else ""), paid=p["amount"],
                 line="payment", method=p["method_label"], card=p["card"], payer=p["payer"],
                 note=p["label"] or (f"A share of the bill, paid by {p['payer']}"
@@ -93200,7 +93226,10 @@ def booking_money_lines(conn, category, row, asking=False):
                 add(t["created_at"], t["description"], charge=-t["amount"], line="discount")
             elif t["kind"] == "payment":
                 add(t["created_at"], f"Paid: {t['description']}", paid=t["amount"],
-                    line="payment", method=method_words(t["method"]),
+                    line="payment",
+                    method=payment_method_words(
+                        t["method"], t["stripe_ref"] if "stripe_ref" in t.keys() else None,
+                        t["description"]),
                     card=_card_ref(t["stripe_ref"]) if "stripe_ref" in t.keys() else None,
                     note=t["description"])
             elif t["kind"] == "refund":
