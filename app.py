@@ -9528,6 +9528,7 @@ NAV_AREAS = {
         # Guest emails: the page and its switch stay @owner_required.
         "admin_guest_emails", "admin_guest_emails_switch", "admin_guest_emails_approve",
         "newsletter_subscribers_page", "take_off_script_signups",
+        "import_squarespace_newsletter",
         "campaign_send_detail", "allow_email_again", "remove_email_optout",
         "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
@@ -31450,7 +31451,10 @@ def newsletter_list_view(rows, args):
                 # Only the ones the sign-up box would refuse today; everybody
                 # else is not "not a script", they are simply not in question.
                 facet("script", "Sign-up", lambda r: SCRIPT_SIGNUP_CHIP if r["script"] else None,
-                      order=[SCRIPT_SIGNUP_CHIP])],
+                      order=[SCRIPT_SIGNUP_CHIP]),
+                facet("source", "Came from",
+                      lambda r: "Squarespace" if r["source"] == SQUARESPACE_SOURCE else "This site",
+                      order=["This site", "Squarespace"])],
         sorts=[
             sort_option("recent", "Newest first",
                         lambda r: (r["created_at"] or "", r["id"]), reverse=True),
@@ -31491,6 +31495,389 @@ def newsletter_subscribers_page():
             else "still on the list, and the next campaign writes to them"))
     return render_template("admin_newsletter.html", lv=lv, rows=lv["rows"],
                            overview=overview, scripts=scripts)
+
+
+# ---------------------------------------------------------------------------
+# THE OLD SQUARESPACE LIST, BROUGHT ACROSS.
+#
+# The newsletter on the old site had some twenty-five thousand people on it,
+# gathered over years, and this list started empty on 19 October 2026. Those
+# people asked for the newsletter -- from the house, on the house's own site --
+# so bringing them onto the house's new list is the same list kept, not a list
+# bought. What comes across is what the privacy notice says the newsletter
+# holds: the address, and when they joined. Names stay in the file.
+#
+# Nobody is written to when they come across. A welcome letter to twenty-five
+# thousand people, most of whom joined years ago, is a campaign nobody chose to
+# send -- and a mail account that sends one is a mail account that gets
+# stopped.
+# ---------------------------------------------------------------------------
+
+SQUARESPACE_IMPORT_KIND = "squarespace_newsletter"
+SQUARESPACE_DRAFT_HOURS = 24
+SQUARESPACE_SOURCE = "squarespace"
+SQUARESPACE_CONSENT_HOW = "subscribed on the old Squarespace site; brought across with its list"
+
+# Headers, lower-cased, in the order they are preferred. The export's exact
+# spelling is not documented anywhere the house can point to, so every
+# reasonable one is read -- and the check page says which column each came
+# from, so a wrong guess is in front of the owner before anything is written.
+_SQS_EMAIL_HEADERS = ("email", "email address", "e-mail", "email_address", "e-mail address",
+                      "subscriber email", "subscriber")
+_SQS_DATE_HEADERS = ("subscribed on", "subscribed at", "subscribed date", "date subscribed",
+                     "subscription date", "date added", "added on", "added", "created on",
+                     "created at", "created", "signed up", "joined", "date")
+_SQS_STATUS_HEADERS = ("status", "subscription status", "subscriber status", "email status",
+                       "marketing status", "email marketing", "accepts marketing",
+                       "accepts email marketing", "subscribed to marketing", "subscribed",
+                       "email subscription", "opted in", "opt in")
+# What a status column says about somebody who is no longer on the list.
+_SQS_OFF_WORDS = {"unsubscribed", "no", "false", "0", "n", "not subscribed", "opted out",
+                  "opted-out", "optout", "cleaned", "bounced", "complained", "spam",
+                  "inactive", "suppressed", "blocked", "removed", "deleted"}
+_SQS_SLASH_DATE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})(.*)$")
+
+SQS_SKIP_UNSUBSCRIBED = "unsubscribed in Squarespace"
+SQS_SKIP_OPTOUT = "on the do-not-write list"
+SQS_SKIP_RESTRICTED = "asked us to stop using their details"
+SQS_SKIP_LEFT = "left this list here, and is not put back by an old list"
+SQS_SKIP_TAKEN_OFF = "taken off this list as a script sign-up"
+SQS_SKIP_NOT_EMAIL = "not an email address"
+
+
+def _sqs_header(headers, wanted, *, avoid=()):
+    """The first header in `wanted` order that the file has, else the first
+    that contains one of them, never one containing a word in `avoid`."""
+    usable = [h for h in headers if h and not any(a in h for a in avoid)]
+    for w in wanted:
+        if w in usable:
+            return w
+    for w in wanted:
+        for h in usable:
+            if w in h:
+                return h
+    return None
+
+
+def _sqs_moment(value, day_first):
+    """A sign-up date as the export writes it, as a stored moment, or None.
+
+    A date alone is put at noon UTC, which is the same day in the Ariège
+    whatever the season. A time with no zone is read as the house's own. A
+    date after today is no date: the file is wrong about it, and a subscriber
+    who joins in the future would sort above everybody who really did.
+    """
+    text = (value or "").strip()
+    if not text:
+        return None
+    m = _SQS_SLASH_DATE.match(text)
+    if m:
+        a, b, year, rest = int(m.group(1)), int(m.group(2)), m.group(3), m.group(4)
+        day, month = (a, b) if day_first else (b, a)
+        year = int(year) + (2000 if len(year) == 2 else 0)
+        text = f"{year:04d}-{month:02d}-{day:02d}{rest}"
+    moment = None
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00").replace(" UTC", "+00:00"))
+    except ValueError:
+        for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %I:%M %p", "%b %d, %Y", "%B %d, %Y",
+                    "%b %d, %Y %I:%M %p", "%B %d, %Y %I:%M %p", "%d %b %Y", "%d %B %Y"):
+            try:
+                moment = datetime.strptime(text, fmt)
+                break
+            except ValueError:
+                continue
+    if moment is None:
+        return None
+    if moment.tzinfo is None:
+        if (moment.hour, moment.minute, moment.second) == (0, 0, 0) and len(text) <= 12:
+            moment = moment.replace(hour=12, tzinfo=timezone.utc)
+        else:
+            moment = moment.replace(tzinfo=LOCAL_TZ)
+    moment = moment.astimezone(timezone.utc)
+    if moment > datetime.now(timezone.utc):
+        return None
+    return moment.isoformat()
+
+
+def parse_squarespace_list(text):
+    """The Squarespace mailing-list export, read. Decides nothing, writes nothing.
+
+    Returns (people, columns, problems):
+      people   -- one per ADDRESS, lower-cased, in the order the file has them:
+                  {email, at, off}. `at` is when they joined, or None; `off` is
+                  True if the file says they are no longer subscribed. An address
+                  twice is one person, joined at the earlier date, and off if
+                  either row says so -- a stop said once is a stop.
+      columns  -- {"email", "date", "status", "names"}: the header each was read
+                  from, or None, so the check page can say so.
+      problems -- (label, reason) for every row with no usable address.
+    """
+    import csv as _csv
+    import io as _io
+    try:
+        rows = list(_csv.reader(_io.StringIO(text or "")))
+    except Exception:                            # pragma: no cover - malformed
+        return [], {}, [("the file", "could not be read as a CSV")]
+    rows = [r for r in rows if any((c or "").strip() for c in r)]
+    if not rows:
+        return [], {}, [("the file", "is empty")]
+    headers = [(h or "").strip().lower().lstrip("﻿").strip() for h in rows[0]]
+    email_h = _sqs_header(headers, _SQS_EMAIL_HEADERS,
+                          avoid=("status", "marketing", "subscri", "date", "verified"))
+    if email_h is None and len(headers) == 1 and EMAIL_RE.match(headers[0]):
+        # A bare column of addresses with no header: the first line is a person.
+        headers, email_h, body = ["email"], "email", rows
+    else:
+        body = rows[1:]
+    if email_h is None:
+        return [], {}, [("the file", "has no column of email addresses")]
+    date_h = _sqs_header(headers, _SQS_DATE_HEADERS, avoid=("unsubscri", "updated", "last"))
+    status_h = next((h for h in headers if "unsubscri" in h), None) or _sqs_header(
+        headers, _SQS_STATUS_HEADERS, avoid=("date",))
+    names = [h for h in headers if "name" in h]
+    columns = {"email": email_h, "date": date_h, "status": status_h, "names": names}
+
+    at_col = headers.index(email_h)
+    date_col = headers.index(date_h) if date_h else None
+    status_col = headers.index(status_h) if status_h else None
+
+    def cell(row, i):
+        return (row[i] if i is not None and i < len(row) else "") or ""
+
+    # Day first or month first, decided once for the whole column: 03/04/2021
+    # is March in a file that also has 25/12/2020 nowhere, April in one that does.
+    day_first = False
+    if date_col is not None:
+        for row in body:
+            m = _SQS_SLASH_DATE.match(cell(row, date_col).strip())
+            if m and int(m.group(1)) > 12:
+                day_first = True
+                break
+
+    people, problems = {}, []
+    for line, row in enumerate(body, start=2 if body is not rows else 1):
+        email = cell(row, at_col).strip().lower()
+        if not email or not EMAIL_RE.match(email):
+            problems.append((email or f"line {line}", SQS_SKIP_NOT_EMAIL))
+            continue
+        status = cell(row, status_col).strip().lower()
+        if status_h and "unsubscri" in status_h:
+            off = bool(status) and status not in ("no", "false", "0", "n", "subscribed")
+        else:
+            off = status in _SQS_OFF_WORDS
+        at = _sqs_moment(cell(row, date_col), day_first)
+        was = people.get(email)
+        if was:
+            was["off"] = was["off"] or off
+            if at and (not was["at"] or at < was["at"]):
+                was["at"] = at
+            continue
+        people[email] = {"email": email, "at": at, "off": off}
+    return list(people.values()), columns, problems
+
+
+def plan_squarespace_import(conn, people):
+    """What bringing `people` across would do, against the list as it is now.
+
+    Returns {"add", "confirm", "already", "skipped"}:
+      add      -- people new to this list;
+      confirm  -- people here under the old confirm-first box who never pressed
+                  the link; Squarespace has them as subscribed, which is the
+                  yes the link was asking for. [(subscriber id, person)];
+      already  -- addresses on this list already, left exactly as they are;
+      skipped  -- (address, why) for everybody NOT brought across.
+
+    The same rules as the sign-up box, so the old list cannot put on anybody
+    the box would turn away: no address on the do-not-write list, nobody who
+    asked us to stop using their details, nobody who left this list, no Gmail
+    address with a dot between most of its letters, and one spelling per Gmail
+    inbox -- the one already here, or else the earliest in the file.
+    """
+    existing = {(r["email"] or "").strip().lower(): r for r in conn.execute(
+        "SELECT id, email, confirmed_at, unsubscribed_at, script_removed_at "
+        "FROM newsletter_subscribers").fetchall()}
+    optouts = {(r["email"] or "").strip().lower()
+               for r in conn.execute("SELECT email FROM email_optouts").fetchall()}
+    held_back = restricted_addresses(conn)
+    inboxes = {}
+    for email, r in existing.items():
+        if r["confirmed_at"] and not r["unsubscribed_at"] and gmail_inbox(email):
+            inboxes.setdefault(gmail_inbox(email), email)
+
+    out = {"add": [], "confirm": [], "already": [], "skipped": []}
+    # Earliest first, so the spelling kept for a Gmail inbox is the one that
+    # joined first; undated people after the dated, in the file's order.
+    ordered = sorted(enumerate(people), key=lambda p: (p[1]["at"] is None, p[1]["at"] or "", p[0]))
+    for _, p in ordered:
+        email = p["email"]
+        row = existing.get(email)
+        if row and row["confirmed_at"] and not row["unsubscribed_at"]:
+            out["already"].append(email)
+            continue
+        why = None
+        if p["off"]:
+            why = SQS_SKIP_UNSUBSCRIBED
+        elif email in optouts:
+            why = SQS_SKIP_OPTOUT
+        elif email in held_back:
+            why = SQS_SKIP_RESTRICTED
+        elif row and row["unsubscribed_at"]:
+            why = (SQS_SKIP_TAKEN_OFF if row["script_removed_at"] == row["unsubscribed_at"]
+                   else SQS_SKIP_LEFT)
+        elif scattered_gmail_dots(email):
+            why = SCRIPT_SIGNUP_DOTS
+        elif gmail_inbox(email) and inboxes.get(gmail_inbox(email), email) != email:
+            why = f"another spelling of {inboxes[gmail_inbox(email)]}, which is on the list"
+        if why:
+            out["skipped"].append((email, why))
+            continue
+        if gmail_inbox(email):
+            inboxes.setdefault(gmail_inbox(email), email)
+        if row:
+            out["confirm"].append((row["id"], p))
+        else:
+            out["add"].append(p)
+    # Back in the file's order for anybody reading the lists.
+    order = {p["email"]: i for i, p in enumerate(people)}
+    out["add"].sort(key=lambda p: order[p["email"]])
+    out["skipped"].sort(key=lambda s: order.get(s[0], 0))
+    return out
+
+
+def run_squarespace_import(conn, plan, *, at, user=None):
+    """Put the plan on the list. Returns (added, confirmed): how many of each
+    the list actually took, which is what the page reports -- not the plan.
+
+    Each one is on the list from when Squarespace says they joined, and their
+    yes is written down at that same moment with how, so the record and the
+    list agree to the second and the startup backfill finds nothing missing.
+    Nobody is written to: confirm_sent_at stays empty, because no letter went.
+    """
+    added = confirmed = 0
+    for p in plan["add"]:
+        joined = p["at"] or at
+        if conn.execute(
+                """INSERT OR IGNORE INTO newsletter_subscribers (email, token, source,
+                     created_at, confirmed_at) VALUES (?, ?, ?, ?, ?)""",
+                (p["email"], secrets.token_urlsafe(32), SQUARESPACE_SOURCE,
+                 joined, joined)).rowcount:
+            record_consent(conn, "newsletter", 1, SQUARESPACE_CONSENT_HOW,
+                           email=p["email"], at=joined, recorded_by=user)
+            added += 1
+    for sid, p in plan["confirm"]:
+        if conn.execute(
+                "UPDATE newsletter_subscribers SET confirmed_at = ? "
+                "WHERE id = ? AND confirmed_at IS NULL AND unsubscribed_at IS NULL",
+                (at, sid)).rowcount:
+            record_consent(conn, "newsletter", 1, SQUARESPACE_CONSENT_HOW,
+                           email=p["email"], at=at, recorded_by=user)
+            confirmed += 1
+    return added, confirmed
+
+
+def _sqs_text(raw):
+    """An uploaded file as text, whichever encoding the export used."""
+    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return ""                                    # pragma: no cover - latin-1 reads anything
+
+
+def _sqs_reasons(skipped, shown=8):
+    """Who was not brought across, grouped by why: [(why, count, [examples])]."""
+    by = {}
+    for email, why in skipped:
+        by.setdefault(why, []).append(email)
+    return sorted(((why, len(who), who[:shown]) for why, who in by.items()),
+                  key=lambda g: -g[1])
+
+
+@app.route("/admin/newsletter/import", methods=["GET", "POST"])
+@owner_required
+def import_squarespace_newsletter():
+    """Bring the old Squarespace mailing list across: check first, then run.
+
+    A check reads the file, writes nothing to the list, and keeps what it read
+    for a day so the run is of exactly what was looked at. The run is worked
+    out again against the list as it is then -- somebody may have unsubscribed
+    in between -- and writes in one go.
+    """
+    user = current_user()
+    conn = get_db()
+    conn.execute("DELETE FROM import_drafts WHERE kind = ? AND created_at < ?",
+                 (SQUARESPACE_IMPORT_KIND, (datetime.now(timezone.utc)
+                                            - timedelta(hours=SQUARESPACE_DRAFT_HOURS)).isoformat()))
+    conn.commit()
+    brought = conn.execute(
+        "SELECT COUNT(*) AS c FROM newsletter_subscribers WHERE source = ?",
+        (SQUARESPACE_SOURCE,)).fetchone()["c"]
+
+    if request.method == "GET":
+        conn.close()
+        return render_template("admin_newsletter_import.html", plan=None, brought=brought)
+
+    if request.form.get("action", "check") == "check":
+        upload = request.files.get("list")
+        if not upload or not upload.filename:
+            conn.close()
+            flash("Choose the exported file first.", "error")
+            return redirect(url_for("import_squarespace_newsletter"))
+        people, columns, problems = parse_squarespace_list(_sqs_text(upload.read()))
+        if not people:
+            conn.close()
+            message, category = bulk_message("Read", "address", 0, problems or
+                                             [("the file", "has nobody in it")])
+            flash(message, category)
+            return redirect(url_for("import_squarespace_newsletter"))
+        token = secrets.token_urlsafe(18)
+        conn.execute("INSERT INTO import_drafts (token, kind, payload, created_at, user_id) "
+                     "VALUES (?, ?, ?, ?, ?)",
+                     (token, SQUARESPACE_IMPORT_KIND,
+                      json.dumps({"people": people, "columns": columns,
+                                  "problems": problems, "filename": upload.filename}),
+                      datetime.now(timezone.utc).isoformat(), user["id"] if user else None))
+        conn.commit()
+        plan = plan_squarespace_import(conn, people)
+        conn.close()
+        return render_template(
+            "admin_newsletter_import.html", plan=plan, brought=brought, token=token,
+            columns=columns, read=len(people), filename=upload.filename,
+            undated=sum(1 for p in people if not p["at"]),
+            reasons=_sqs_reasons(problems + plan["skipped"]))
+
+    # action == "run"
+    token = request.form.get("token", "")
+    draft = conn.execute("SELECT * FROM import_drafts WHERE token = ? AND kind = ?",
+                         (token, SQUARESPACE_IMPORT_KIND)).fetchone()
+    if not draft:
+        conn.close()
+        flash("That check is more than a day old or has already been run. Check the file again.",
+              "error")
+        return redirect(url_for("import_squarespace_newsletter"))
+    payload = json.loads(draft["payload"])
+    plan = plan_squarespace_import(conn, payload["people"])
+    now_iso = datetime.now(timezone.utc).isoformat()
+    added, confirmed = run_squarespace_import(conn, plan, at=now_iso, user=user)
+    conn.execute("DELETE FROM import_drafts WHERE token = ?", (token,))
+    log_audit(conn, "newsletter_squarespace_imported", target=payload.get("filename") or "",
+              details=f"{added} added, {confirmed} confirmed, {len(plan['already'])} already on "
+                      f"the list, {len(plan['skipped']) + len(payload['problems'])} not brought across")
+    conn.commit()
+    conn.close()
+    skipped = [tuple(p) for p in payload["problems"]] + plan["skipped"]
+    detail = []
+    if confirmed:
+        detail.append(f"{confirmed} of them were waiting to confirm here")
+    if plan["already"]:
+        detail.append(f"{len(plan['already'])} already on the list, left as they were")
+    detail.append("nobody has been written to")
+    message, category = bulk_message("Brought across", "subscriber", added + confirmed,
+                                     skipped, detail="; ".join(detail))
+    flash(message, category)
+    return redirect(url_for("newsletter_subscribers_page", source="Squarespace"))
 
 
 @app.route("/admin/emails/optout", methods=["POST"])
@@ -45590,6 +45977,9 @@ PALETTE_PAGES = [
     ("Add a booking", "walk_in_booking",
      "desk telephone email book a room tonight arrival no reservation walk in walk-in "
      "reserve hold payment link agreed price"),
+    ("Bring the Squarespace list across", "import_squarespace_newsletter",
+     "squarespace newsletter mailing list import export csv subscribers old site "
+     "bring across email list"),
     ("Why they cancel", "management_cancellations",
      "cancellation reason why cancelled enquiry conversion events won lost"),
     ("Shift handover", "shift_handover",
@@ -93146,8 +93536,11 @@ def set_guest_restriction(conn, guest_id, on, how, user_id=None):
 PHOTO_CONSENT_GRANTED = {"yes": 1, "no": 0}
 
 
+_SIGNED_IN = object()
+
+
 def record_consent(conn, channel, granted, how, *, email=None, phone=None, guest_id=None,
-                   at=None):
+                   at=None, recorded_by=_SIGNED_IN):
     """Write down that somebody said yes, or no, and how.
 
     `granted` is 1, 0, or None for "asked, and not answered yet". `at` is the
@@ -93155,8 +93548,15 @@ def record_consent(conn, channel, granted, how, *, email=None, phone=None, guest
     startup backfill can tell a line already written from one never written.
     Who recorded it is whoever is signed in: a person writing down what they
     were told, or nobody -- the guest, by a link.
+
+    `recorded_by` is that user's row, for a caller writing thousands of lines
+    in one request: looking the sign-in up opens a connection of its own, and
+    the Squarespace list's twenty-five thousand took three and a half minutes
+    doing it once a line.
     """
-    user = current_user() if has_request_context() else None
+    user = recorded_by
+    if user is _SIGNED_IN:
+        user = current_user() if has_request_context() else None
     email = (email or "").strip().lower() or None
     if guest_id is None:
         guest_id = guest_for_contact(conn, address=email, phone=phone)

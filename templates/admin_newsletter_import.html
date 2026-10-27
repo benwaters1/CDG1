@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Bring the Squarespace list across{% endblock %}
+{% block content %}
+
+{#- The old site's mailing list onto this one. Check first, then run: the check
+    writes nothing to the list, and the run is of exactly the file checked. -#}
+
+<div class="page-head">
+  <h1>Bring the Squarespace list across</h1>
+  <a href="{{ url_for('newsletter_subscribers_page') }}" class="btn-ghost">Newsletter</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The newsletter on the old Squarespace site has its own list, and nobody on it is on this one.
+  This brings them across: each address goes on the list from the day Squarespace says it
+  joined, with that recorded as how they said yes. <strong>Nobody is written to.</strong>
+  Names in the file are left behind: the newsletter keeps an address and nothing else.
+  {% if brought %}<strong>{{ brought }}</strong> address{{ '' if brought == 1 else 'es' }} came
+  across from Squarespace already; bringing the same file again adds nobody twice.{% endif %}
+</p>
+
+<div class="detail-card">
+  <h3>1. Check the file</h3>
+  <p class="upload-hint">
+    In Squarespace: Marketing, Email Campaigns, Mailing Lists, then the three dots beside the
+    list and Export. Upload the CSV it gives you. Checking it saves nothing to the list.
+  </p>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="check">
+    <input type="file" name="list" accept=".csv,text/csv" required aria-label="Squarespace mailing list export">
+    <button type="submit" class="btn-primary" style="margin-top:12px;">Check the file</button>
+  </form>
+</div>
+
+{% if plan %}
+<h2 class="section-heading">What bringing {{ filename }} across would do</h2>
+<p class="upload-hint" style="margin-top:-8px;"><strong>Nothing has been saved yet.</strong></p>
+
+<div class="mini-list">
+  <div class="mini-row">
+    <span class="mini-name">Addresses read from the file</span>
+    <span class="mini-role">{{ read }}</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">New to the list, and would go on it</span>
+    <span class="mini-role">{{ plan.add|length }}</span>
+  </div>
+  {% if plan.confirm %}
+  <div class="mini-row">
+    <span class="mini-name">Waiting to confirm here, and would go on it</span>
+    <span class="mini-role">{{ plan.confirm|length }}</span>
+  </div>
+  {% endif %}
+  <div class="mini-row">
+    <span class="mini-name">Already on the list, left as they are</span>
+    <span class="mini-role">{{ plan.already|length }}</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">Not brought across</span>
+    <span class="mini-role">{{ reasons|sum(attribute=1) }}</span>
+  </div>
+</div>
+
+<h3 class="section-heading">How the file was read</h3>
+<ul class="upload-hint">
+  <li>Addresses from the column <strong>{{ columns.email }}</strong>.</li>
+  {% if columns.date %}
+  <li>When each joined from <strong>{{ columns.date }}</strong>{% if undated %}; {{ undated }} had no date
+    that could be read, and would be dated today{% endif %}.</li>
+  {% else %}
+  <li><strong>No column says when they joined</strong>, so each would be dated today.</li>
+  {% endif %}
+  {% if columns.status %}
+  <li>Who has unsubscribed from <strong>{{ columns.status }}</strong>.</li>
+  {% else %}
+  <li><strong>No column says who has unsubscribed</strong>, so everybody in the file is taken as
+    subscribed. Make sure it is the export of the list, not of every contact.</li>
+  {% endif %}
+  {% if columns.names %}<li>{{ columns.names|join(', ') }}: left behind.</li>{% endif %}
+</ul>
+
+{% if reasons %}
+<h3 class="section-heading">Not brought across, and why</h3>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Why</th><th scope="col">How many</th><th scope="col">For example</th></tr></thead>
+    <tbody>
+      {% for why, count, examples in reasons %}
+      <tr>
+        <th scope="row">{{ why|capitalize }}</th>
+        <td>{{ count }}</td>
+        <td>{{ examples|join(', ') }}{% if count > examples|length %} and {{ count - examples|length }} more{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% set going = plan.add|length + plan.confirm|length %}
+<div class="detail-card">
+  <h3>2. Bring them across</h3>
+  {% if going %}
+  <p class="upload-hint">
+    Puts {{ going }} address{{ '' if going == 1 else 'es' }} on the newsletter list. Nobody is
+    written to. The next campaign to Newsletter subscribers goes to them.
+  </p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="run">
+    <input type="hidden" name="token" value="{{ token }}">
+    <button type="submit" class="btn-primary">Put {{ going }} on the list</button>
+  </form>
+  {% else %}
+  <p class="upload-hint">There is nobody in this file to add.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
