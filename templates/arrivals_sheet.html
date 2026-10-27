@@ -180,18 +180,18 @@
       {% for c in sheet.checklist %}
       <tr>
         <th scope="row">{{ c.room }}</th>
-        <td>
+        <td class="arr-ready__whocell">
           {%- for n in c.leaving %}<span class="arr-ready__who">{{ n }} <span class="upload-hint">leaves</span></span>{% endfor %}
           {%- for a in c.arriving %}<span class="arr-ready__who">{{ a.guest }} <span class="upload-hint">arrives{% if a.time %} about {{ a.time }}{% else %}, time not given{% endif %}</span></span>{% endfor %}
           {%- for n in c.staying %}<span class="arr-ready__who">{{ n }} <span class="upload-hint">in the house</span></span>{% endfor -%}
         </td>
         {%- if c.turnover %}
-        <td class="arr-ready__col"><span class="tick-box" aria-hidden="true"></span></td>
-        <td class="arr-ready__col"><span class="tick-box" aria-hidden="true"></span></td>
+        <td class="arr-ready__col" data-label="Sheets washed"><span class="tick-box" aria-hidden="true"></span></td>
+        <td class="arr-ready__col" data-label="Room ready"><span class="tick-box" aria-hidden="true"></span></td>
         {%- else %}
         <td colspan="2" class="arr-ready__col upload-hint">nothing to make up</td>
         {%- endif %}
-        <td>
+        <td class="arr-ready__extras">
           {%- for t in c.ticks %}
           <span class="arr-ready__extra"><span class="tick-box{% if t.done %} is-done{% endif %}" aria-hidden="true">{% if t.done %}✓{% endif %}</span><span>{{ t.label }}
             {%- if t.note %} <span class="upload-hint">· {{ t.note }}</span>{% endif %}

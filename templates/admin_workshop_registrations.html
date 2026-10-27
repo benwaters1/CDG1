@@ -145,14 +145,18 @@
       {% if r['requested_roommate'] %}<dt>Travelling with</dt><dd>{{ r['requested_roommate'] }}</dd>{% endif %}
       {% if r['bed_preference'] %}<dt>Bed preference</dt><dd>{{ r['bed_preference'] }}</dd>{% endif %}
       {% if r['notes'] %}<dt>Notes</dt><dd>{{ r['notes'] }}</dd>{% endif %}
+      {% if guests_by_booking.get(r['id']) %}<dt>Party</dt><dd>{% for g in guests_by_booking[r['id']] %}{{ g['guest_name'] }}{{ ' (lead)' if g['is_lead'] }}{{ ', ' if not loop.last }}{% endfor %}</dd>{% endif %}
+      {#- The workshop's own questions, each under its own label. -#}
+      {% for cr in custom_responses_by_booking.get(r['id'], []) %}<dt>{{ cr['label'] }}</dt><dd>{{ cr['value'] }}</dd>{% endfor %}
+      <dt>Registered</dt><dd>{{ r['created_at']|house_day|date_short }}{% if r['decided_at'] %} <span class="upload-hint">· decided {{ r['decided_at']|house_day|date_short }}</span>{% endif %}</dd>
     </dl>
 
     {# A private room is not bookable on the public form — it is quoted per
        enquiry — so this is where an arrangement made by phone or email gets
        recorded, and priced. Saving reprices the registration and its deposit
        and balance through the same arithmetic the booking itself uses. #}
-    <details style="margin-top:6px;">
-      <summary class="small-link" style="color:var(--steel); cursor:pointer;">Room arrangement</summary>
+    <details class="register-edit">
+      <summary class="small-link">Room arrangement</summary>
       <form method="post" action="{{ url_for('set_workshop_occupancy', registration_id=r['id']) }}"
             style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -229,13 +233,6 @@
     </details>
     {% endif %}
 
-    {% if custom_responses_by_booking.get(r['id']) %}
-    {% for cr in custom_responses_by_booking[r['id']] %}<p class="upload-hint">{{ cr['label'] }}: {{ cr['value'] }}</p>{% endfor %}
-    {% endif %}
-    {% if guests_by_booking.get(r['id']) %}
-    <p class="upload-hint">Party: {% for g in guests_by_booking[r['id']] %}{{ g['guest_name'] }}{{ ' (lead)' if g['is_lead'] }}{{ ', ' if not loop.last }}{% endfor %}</p>
-    {% endif %}
-    <p class="upload-hint">Submitted {{ r['created_at']|house_day|date_short }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day|date_short }}{% endif %}</p>
 
     {% set balance = balance_by_booking.get(r['id']) %}
     {% if r['total_price'] or (transactions_by_booking.get(r['id'])) %}

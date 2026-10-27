@@ -47,7 +47,7 @@
 <div class="detail-card bk-week">
   <div class="bk-week-col">
     <span class="detail-label">Arriving today</span>
-    {% for b in arriving_today %}<a href="{{ url_for('admin_booking', booking_id=b['id']) if b['kind'] == 'stay' else url_for('channel_stay_page', reservation_id=b['id']) }}">{{ b['guest_name'] }}</a>{% if b['kind'] == 'channel' %} <span class="mini-status status-upcoming">Booking.com</span>{% endif %} <span class="upload-hint">{{ b['room_name'] }}{% if b['estimated_arrival_time'] %} · {{ b['estimated_arrival_time'] }}{% endif %}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
+    {% for b in arriving_today %}<a href="{{ url_for('admin_booking', booking_id=b['id']) if b['kind'] == 'stay' else url_for('channel_stay_page', reservation_id=b['id']) }}">{{ b['guest_name'] }}</a>{% if b['kind'] == 'channel' %} <span class="mini-status status-upcoming">Booking.com</span>{% endif %} <span class="upload-hint">{{ b['room_name'] }}{% if b['estimated_arrival_time'] %} · arriving about {{ b['estimated_arrival_time'] }}{% else %} · arrival time not given{% endif %}</span><br>{% else %}<span class="upload-hint">Nobody</span>{% endfor %}
   </div>
   <div class="bk-week-col">
     <span class="detail-label">Leaving today</span>
@@ -145,7 +145,7 @@
         <td data-label="Room" class="bk-room">{{ b['room_name'] }}</td>
         <td data-label="Stay" class="bk-stay">
           <strong>{{ date_range(b['arrival_date'], b['departure_date']) }}</strong>
-          <span class="cell-note">{{ bill.nights }} night{{ '' if bill.nights == 1 else 's' }} · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}{% if b['guests_under_18'] %} ({{ b['guests_under_18'] }} under 18){% endif %}{% if b['estimated_arrival_time'] %} · arriving {{ b['estimated_arrival_time'] }}{% endif %}</span>
+          <span class="cell-note">{{ bill.nights }} night{{ '' if bill.nights == 1 else 's' }} · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}{% if b['guests_under_18'] %} ({{ b['guests_under_18'] }} under 18){% endif %}{% if b['estimated_arrival_time'] %} · arriving about {{ b['estimated_arrival_time'] }}{% endif %}</span>
           {% for x in extras_by_booking.get(b['id'], []) %}
           <span class="bk-extra">{{ x.name }}{% if x.quantity > 1 %} ×{{ x.quantity }}{% endif %}{% if x.when %} <span class="bk-when">{{ x.when }}</span>{% endif %}{% if x.status == 'delivered' %} <span class="bk-done">✓</span>{% endif %}</span>
           {% endfor %}

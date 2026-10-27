@@ -221,7 +221,9 @@
           {% endif %}
           <form method="post" action="{{ url_for('mark_extra_delivered', line_id=x.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-ghost">Handed over</button>
+            {#- A button that looks like one: as plain text among the folds it
+                read as a heading, not as the thing to press. -#}
+            <button type="submit" class="btn-mini">Handed over</button>
           </form>
           {% endif %}
           {% if x.status not in ('cancelled', 'delivered') and stay_day_choices %}
