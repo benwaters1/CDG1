@@ -19,7 +19,11 @@
     <p class="bk-chips">
       <span class="mini-status status-{{ b['status'] }}">{{ b['status'] }}</span>
       {% if where %}<span class="mini-status {{ 'status-onshift' if where == 'Here now' else 'status-declined' if where == 'Did not arrive' else 'status-past' if where == 'Gone' else 'status-upcoming' }}">{{ where }}</span>{% endif %}
-      {% if bill.owed %}<span class="mini-status status-overdue">{{ bill.owed|money }} owed</span>
+      {#- A cancelled or declined stay owes nothing (26 October 2026): what it
+          holds is kept, or the guest's to give back, and never "owed". -#}
+      {% if bill.to_give_back %}<span class="mini-status status-overdue">{{ bill.to_give_back|money }} to give back</span>
+      {% elif bill.kept %}<span class="mini-status status-past">{{ bill.kept|money }} kept</span>
+      {% elif bill.owed %}<span class="mini-status status-overdue">{{ bill.owed|money }} balance due</span>
       {% elif bill.paid and b['status'] == 'confirmed' %}<span class="mini-status status-paid">paid</span>{% endif %}
       {% if b['party_name'] %}<a href="{{ url_for('party_statement', party_id=b['party_id']) }}" class="mini-status status-upcoming">{{ b['party_name'] }}</a>{% endif %}
       {% if stays_here and stays_here['n'] > 1 %}<a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="mini-status status-onshift">returning · stay {{ stays_here['n'] }} · {{ stays_here['spend']|money(0) }}</a>{% endif %}
@@ -86,13 +90,14 @@
 {% endif %}
 
 <div class="stat-tiles">
-  <div class="stat-tile"><span class="stat-tile-body"><span class="stat-tile-value">{{ bill.total|money }}</span><span class="stat-tile-label">The stay costs</span></span></div>
-  <div class="stat-tile"><span class="stat-tile-body"><span class="stat-tile-value">{{ bill.paid|money }}</span><span class="stat-tile-label">Paid, after refunds</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body"><span class="stat-tile-value">{{ bill.total|money }}</span><span class="stat-tile-label">Total</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body"><span class="stat-tile-value">{{ bill.received|money }}</span><span class="stat-tile-label">Paid</span></span></div>
+  {% if bill.refunded %}<div class="stat-tile"><span class="stat-tile-body"><span class="stat-tile-value">{{ bill.refunded|money }}</span><span class="stat-tile-label">Refunded</span></span></div>{% endif %}
   <div class="stat-tile"><span class="stat-tile-body">
-    {% if bill.overpaid %}<span class="stat-tile-value">{{ bill.overpaid|money }}</span><span class="stat-tile-label">In credit</span>
-    {% else %}<span class="stat-tile-value{{ ' owed-flag' if bill.owed }}">{{ bill.owed|money }}</span><span class="stat-tile-label">Still owed{% if bill.balance_due_date and bill.owed %}, due {{ bill.balance_due_date|date_short }}{% endif %}</span>{% endif %}
+    {% if bill.called_off %}<span class="stat-tile-value{{ ' owed-flag' if bill.to_give_back }}">{{ (bill.to_give_back or bill.kept)|money }}</span><span class="stat-tile-label">{{ 'To give back' if bill.to_give_back else 'Kept' }}</span>
+    {% elif bill.overpaid %}<span class="stat-tile-value">{{ bill.overpaid|money }}</span><span class="stat-tile-label">In credit</span>
+    {% else %}<span class="stat-tile-value{{ ' owed-flag' if bill.owed }}">{{ bill.owed|money }}</span><span class="stat-tile-label">Balance due{% if bill.balance_due_date and bill.owed %} by {{ bill.balance_due_date|date_short }}{% endif %}</span>{% endif %}
   </span></div>
-  <div class="stat-tile"><span class="stat-tile-body"><span class="stat-tile-value">{{ bill.refunded|money }}</span><span class="stat-tile-label">Refunded</span></span></div>
 </div>
 
 {# ---------------------------------------------------------------- stay #}
@@ -264,14 +269,25 @@
           <tr><th scope="row">{{ l.label }}</th><td class="num">{{ l.amount|money }}</td></tr>
         {% endfor %}
         </tbody>
+        {#- Total, Paid, Refunded (only when there is one), then what is left:
+            Balance due on a stay that stands, Kept on one that was called off.
+            "Paid, after refunds" read as though every guest had been given
+            money back. Each run adds up: Total - Paid + Refunded is the
+            balance; Paid - Refunded is what was kept. -#}
         <tfoot>
           <tr><th scope="row">Total</th><td class="num">{{ bill.total|money }}</td></tr>
-          <tr><th scope="row">Paid, after refunds</th><td class="num">{{ bill.paid|money }}</td></tr>
-          <tr><th scope="row">{{ 'In credit' if bill.overpaid else 'Still owed' }}</th><td class="num{{ ' owed-flag' if bill.owed }}">{{ (bill.overpaid or bill.owed)|money }}</td></tr>
+          <tr><th scope="row">Paid</th><td class="num">{{ bill.received|money }}</td></tr>
+          {% if bill.refunded %}<tr><th scope="row">Refunded</th><td class="num">{{ bill.refunded|money }}</td></tr>{% endif %}
+          {% if bill.called_off %}
+          <tr><th scope="row">{{ 'To give back' if bill.to_give_back else 'Kept' }}</th><td class="num{{ ' owed-flag' if bill.to_give_back }}">{{ (bill.to_give_back or bill.kept)|money }}</td></tr>
+          {% else %}
+          <tr><th scope="row">{{ 'In credit' if bill.overpaid else 'Balance due' }}</th><td class="num{{ ' owed-flag' if bill.owed }}">{{ (bill.overpaid or bill.owed)|money }}</td></tr>
+          {% endif %}
         </tfoot>
       </table>
     </div>
-    {% if bill.deposit %}<p class="upload-hint">Deposit {{ bill.deposit|money }} — {{ 'paid' if bill.deposit_paid else 'not paid yet' }}.{% if bill.balance_due_date %} Balance due {{ bill.balance_due_date|date_short }}{% if bill.balance_overdue %}, <strong class="owed-flag">overdue</strong>{% endif %}.{% endif %}</p>{% endif %}
+    {% if bill.called_off %}<p class="upload-hint">{{ b['status']|capitalize }}: nothing is owed. {% if bill.to_give_back %}The house said no, so what is held is the guest's.{% else %}What was paid and not refunded is kept under the non-refundable terms.{% endif %}</p>
+    {% elif bill.deposit %}<p class="upload-hint">Deposit {{ bill.deposit|money }} — {% if bill.deposit_paid %}paid{% elif bill.deposit_received %}{{ bill.deposit_received|money }} paid{% else %}not paid yet{% endif %}.{% if bill.balance_due_date %} Balance due {{ bill.balance_due_date|date_short }}{% if bill.balance_overdue %}, <strong class="owed-flag">overdue</strong>{% endif %}.{% endif %}</p>{% endif %}
     <form method="post" action="{{ url_for('send_stay_statement', booking_id=b['id']) }}" class="bk-inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
       <button type="submit" class="btn-ghost">{{ 'Email the bill with a Pay now link' if bill.owed > 0.005 and b['guest_email'] else 'Email the statement' }}</button>

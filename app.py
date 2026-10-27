@@ -22757,8 +22757,29 @@ def booking_bill(conn, booking_id):
         lines.append({"label": "Reduction, refunded", "amount": -taken_off,
                       "kind": "refund_reduction"})
     total = round(sum(l["amount"] for l in lines), 2)
-    paid = round((booking["amount_paid"] or 0) - refunded, 2)
-    owed = round(max(total - paid, 0.0), 2)
+    received = round(booking["amount_paid"] or 0, 2)
+    paid = round(received - refunded, 2)
+    held = round(max(paid, 0.0), 2)
+
+    # A STAY THAT WAS CALLED OFF OWES NOTHING (26 October 2026). The bill went
+    # on asking for its price after the stay was cancelled: Tess Hoffman,
+    # refunded her EUR 64.50 in full, read "Cancelled · EUR 150.50 owed", and
+    # every page that reads `owed` without first asking whether the stay
+    # stands -- the guest's own portal, the guest record, the party, the
+    # add-in -- said the same. So the answer is given here, once.
+    #
+    # What was paid and not refunded is not owed either way. Under the
+    # non-refundable terms it is KEPT. Where the house is the one who said no
+    # (held_money_is_theirs) it is the guest's, and is to give back. Never
+    # "in credit" and never chased: the same split the statement's kept line
+    # makes, so the two cannot disagree.
+    called_off = (booking["status"] or "") in ("cancelled", "declined")
+    theirs = called_off and held_money_is_theirs("room", booking)
+    if called_off:
+        owed = overpaid = 0.0
+    else:
+        owed = round(max(total - paid, 0.0), 2)
+        overpaid = round(max(paid - total, 0.0), 2)
 
     # When the stay was taken on a deposit, WHEN the rest falls due is part of
     # the bill and not only how much. `owed` stays the single figure everything
@@ -22770,6 +22791,16 @@ def booking_bill(conn, booking_id):
     due_date = booking["balance_due_date"] if "balance_due_date" in booking.keys() else None
     deposit_amount = booking["deposit_amount"] if "deposit_amount" in booking.keys() else None
     deposit_paid_at = booking["deposit_paid_at"] if "deposit_paid_at" in booking.keys() else None
+    deposit = round(deposit_amount, 2) if deposit_amount else None
+    # Whether the deposit is paid is a question about money, not only about a
+    # stamp. Read off deposit_paid_at alone, a stay with EUR 64.50 in against a
+    # EUR 215 deposit said "Deposit EUR 215.00 — not paid yet" under a payment
+    # of EUR 64.50 marked as the deposit. The stamp still counts while nothing
+    # has gone back since; otherwise what is held decides.
+    deposit_paid = bool(deposit and (held >= deposit - 0.005
+                                     or (deposit_paid_at and refunded <= 0.005)))
+    deposit_received = (deposit if deposit_paid
+                        else round(min(held, deposit), 2) if deposit else 0.0)
     overdue = bool(due_date and owed > 0.005
                    and due_date < house_today_iso())
     return {
@@ -22777,13 +22808,21 @@ def booking_bill(conn, booking_id):
         "lines": lines,
         "nights": nights,
         "total": total,
-        "paid": max(paid, 0.0),
+        # Paid is net of refunds, as everything that reads it expects;
+        # `received` is what came in before any went back, for a bill that
+        # lists Paid and Refunded on lines of their own.
+        "paid": held,
+        "received": max(received, 0.0),
         "refunded": round(refunded, 2),
         "taken_off": taken_off,
         "owed": owed,
-        "overpaid": round(max(paid - total, 0.0), 2),
-        "deposit": round(deposit_amount, 2) if deposit_amount else None,
-        "deposit_paid": bool(deposit_paid_at),
+        "overpaid": overpaid,
+        "called_off": called_off,
+        "kept": held if called_off and not theirs else 0.0,
+        "to_give_back": held if theirs else 0.0,
+        "deposit": deposit,
+        "deposit_paid": deposit_paid,
+        "deposit_received": deposit_received,
         "balance_due_date": due_date,
         "balance_overdue": overdue,
     }
@@ -73628,7 +73667,11 @@ def refund_desk_context(conn, category, booking):
                 "when": format_date_range(row["arrival_date"], row["departure_date"]),
                 "back": url_for("admin_booking", booking_id=bid)}
         money = {"cost": bill["total"], "received": bill["paid"], "refunded": bill["refunded"],
-                 "owed": bill["owed"], "credit": bill["overpaid"]}
+                 "owed": bill["owed"], "credit": bill["overpaid"],
+                 # A cancelled stay owes nothing: what it holds is kept, or
+                 # the guest's to give back. Room stays only, for now.
+                 "called_off": bill["called_off"], "kept": bill["kept"],
+                 "to_give_back": bill["to_give_back"]}
     elif category == "workshop":
         row = conn.execute(
             """SELECT wb.*, ws.start_date, ws.end_date, w.title FROM workshop_bookings wb
@@ -94098,10 +94141,16 @@ def party_detail(conn, party_id):
              JOIN rooms ON rooms.id = bookings.room_id
             WHERE bookings.party_id = ?
             ORDER BY bookings.arrival_date, rooms.name""", (party_id,)).fetchall()
-    total = owed = paid = 0.0
+    total = owed = paid = kept = 0.0
     for b in stays:
         bill = booking_bill(conn, b["id"])
         if not bill:
+            continue
+        # A cancelled stay is no part of what the party costs and owes nothing.
+        # What it kept is counted apart, so the whole party, less what was
+        # received, is still exactly what is owed.
+        if bill["called_off"]:
+            kept += bill["kept"]
             continue
         total += bill["total"]
         owed += bill["owed"]
@@ -94112,6 +94161,7 @@ def party_detail(conn, party_id):
         "party": party, "stays": stays, "rooms": len(stays),
         "guests": sum((b["party_size"] or 1) for b in stays),
         "total": round(total, 2), "owed": round(owed, 2), "paid": round(paid, 2),
+        "kept": round(kept, 2),
         # The span of the whole group, which is not any one booking's dates.
         "arrival": min(arrivals).isoformat() if arrivals else None,
         "departure": max(departures).isoformat() if departures else None,
@@ -113955,7 +114005,9 @@ def _dossier_items(conn, *, stays, dinners, workshops, events, addresses, money_
             b["status"], b["party_size"], b["special_requests"],
             _dossier_link("admin_bookings", money_on, q=b["reference_code"]),
             amount=bill["total"] if bill else None,
-            owed=round(bill["total"] - bill["paid"], 2) if bill else None,
+            # A cancelled stay owes nothing, whatever its price was.
+            owed=(0.0 if bill["called_off"] else round(bill["total"] - bill["paid"], 2))
+            if bill else None,
             detail=", ".join(detail))
     stay_ids = [b["id"] for b in stays]
     if stay_ids:
