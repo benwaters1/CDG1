@@ -164,7 +164,7 @@ def _run(s):
             and card_row["guest_id"] == gid and card_row["kind"] == "Stay"
             and room["name"] in card_row["booking_what"]
             and card_row["ends"] == (arrive + timedelta(days=2)).isoformat()
-            and card_row["method"] == "Card, online" and card_row["card_words"] == "Visa ····4242"
+            and card_row["method"] == "Card (Stripe)" and card_row["card_words"] == "Visa ····4242"
             and card_row["day"] == today.isoformat(),
             detail=str({k: card_row[k] for k in ("person", "kind", "booking_what", "ends", "method",
                                                  "card_words", "day")}) if card_row else "no row")

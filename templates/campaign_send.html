@@ -6,31 +6,100 @@
   <h1>{{ first['template_name'] or 'A campaign' }}</h1>
   <a href="{{ url_for('admin_emails') }}" class="btn-mini">Back to Guest email</a>
 </div>
+{% if progress %}
+<p class="page-intro">“{{ first['subject'] }}”, queued {{ local_datetime_str(first['created_at']) }}{% if progress.run['sent_by'] %} by {{ progress.run['sent_by'] }}{% endif %} for {{ '{:,}'.format(progress.total) }} {{ 'address' if progress.total == 1 else 'addresses' }}.
+  {{ progress.state_words }}{% if progress.run['state'] in ('done', 'stopped') and progress.run['finished_at'] %} {{ local_datetime_str(progress.run['finished_at']) }}{% endif %}.</p>
+
+<div class="overview-band">
+  <div class="overview-cell">
+    <div class="overview-value">{{ '{:,}'.format(progress.total) }}</div>
+    <div class="overview-label">Queued</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ '{:,}'.format(progress.to_go) }}</div>
+    <div class="overview-label">Still to go</div>
+  </div>
+  {% if progress.run['state'] == 'going' and progress.to_go %}
+  <div class="overview-cell{% if progress.waiting %} overview-cell-alert{% endif %}">
+    <div class="overview-value">{% if progress.waiting %}Waiting{% elif finish_words %}{{ finish_words[0]|upper }}{{ finish_words[1:] }}{% else %}—{% endif %}</div>
+    <div class="overview-label">{% if progress.waiting %}{{ progress.waiting }}{% else %}Last letter goes{% endif %}</div>
+  </div>
+  {% endif %}
+  {% if progress.transport_words %}
+  <div class="overview-cell">
+    <div class="overview-value">{{ '{:,}'.format(progress.pace.limit) }}</div>
+    <div class="overview-label">A day at most, through {{ progress.transport_words }}: {{ '{:,}'.format(progress.pace.day_used) }} since this time yesterday, {{ progress.pace.hour_used }} of {{ progress.pace.hour_limit }} this hour</div>
+  </div>
+  {% endif %}
+</div>
+
+{% if progress.waiting %}
+<p class="upload-hint">Waiting: {{ progress.waiting }}.
+  {% if 'approved' in progress.waiting or 'guest emails' in progress.waiting %}The wording is approved on <a href="{{ url_for('admin_guest_emails') }}">Guest emails</a>.
+  {% elif 'Write to guests' in progress.waiting or 'Automation' in progress.waiting or 'daily limit' in progress.waiting %}That is on the <a href="{{ url_for('admin_automation') }}">Automation page</a>.
+  {% endif %}It goes by itself, at its pace, once that changes.</p>
+{% endif %}
+{% if progress.problem %}
+<div class="flash flash-error">The provider refused the last letter{% if progress.run['refusals'] > 1 %}s ({{ progress.run['refusals'] }} running){% endif %}: {{ progress.problem }}{% if progress.run['state'] == 'paused' %} The send is paused until you carry it on.{% endif %}</div>
+{% endif %}
+{% if progress.ahead and progress.run['state'] == 'going' %}
+<p class="upload-hint">{{ '{:,}'.format(progress.ahead) }} letters of sends queued before this one go first.</p>
+{% endif %}
+
+{% if progress.run['state'] in ('going', 'paused') %}
+<div class="expense-actions">
+  {% if progress.run['state'] == 'going' %}
+  <form method="post" action="{{ url_for('campaign_send_control', send_id=send_id, action='pause') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">Pause</button>
+  </form>
+  {% else %}
+  <form method="post" action="{{ url_for('campaign_send_control', send_id=send_id, action='resume') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">Carry on</button>
+  </form>
+  {% endif %}
+  <form method="post" action="{{ url_for('campaign_send_control', send_id=send_id, action='stop') }}"
+        onsubmit="return confirm('Stop this send for good? Nobody still to go will be written to by it.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini btn-mini-danger">Stop for good</button>
+  </form>
+</div>
+{% endif %}
+<p class="upload-hint">What became of each letter so far:</p>
+{% else %}
 <p class="page-intro">“{{ first['subject'] }}”, sent {{ local_datetime_str(first['created_at']) }} to {{ people|length }} {{ 'address' if people|length == 1 else 'addresses' }}.</p>
+{% endif %}
 
 <div class="overview-band">
   {% for words, n in counts %}
   <div class="overview-cell">
-    <div class="overview-value">{{ n }}</div>
+    <div class="overview-value">{{ '{:,}'.format(n) }}</div>
     <div class="overview-label">{{ words }}</div>
   </div>
   {% endfor %}
 </div>
 
+{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
+{% if not lv['rows'] %}
+  <div class="empty-state">Nothing matches that.</div>
+{% else %}
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th scope="col">To</th><th scope="col">What happened</th><th scope="col">Why</th></tr></thead>
     <tbody>
-      {% for p in people %}
+      {% for p in lv['rows'] %}
       <tr>
         <td>{{ p.name or p.email }}{% if p.name %}<br><span class="cell-note">{{ p.email }}</span>{% endif %}</td>
-        <td><span class="mini-status status-{{ 'confirmed' if p.outcome in ('sent', 'test') else 'pending' if p.outcome == 'held' else 'overdue' }}">{{ p.words }}</span></td>
+        <td><span class="mini-status status-{{ 'confirmed' if p.outcome in ('sent', 'test') else 'pending' if p.outcome in ('held', 'queued', 'sending') else 'overdue' }}">{{ p.words }}</span></td>
         <td>{{ p.detail or '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+{% with lv = lv %}{% include "_list_pager.html" %}{% endwith %}
+{% endif %}
 <p class="upload-hint">Each letter's own line, and whether it arrived once delivery reports are connected, is in the <a href="{{ url_for('mail_log') }}">mail log</a>.</p>
 
 {% endblock %}

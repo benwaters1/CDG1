@@ -126,6 +126,14 @@ def _clear_sends():
     conn.close()
 
 
+def _send(client, url, **kw):
+    """Press Send, then send what it queued: what the automation thread does
+    over days, done here at once."""
+    r = client.post(url, **kw)
+    _harness.send_queued_campaigns()
+    return r
+
+
 def run():
     s = Suite("Promo code blast")
     _cleanup()
@@ -192,7 +200,7 @@ def run():
         m.send_email = capture
 
         s.section("Every message carries a way out")
-        r = oc.post(send_url,
+        r = _send(oc, send_url,
                     data={"segment": "room", "subject": "A little something",
                           "body": "Hi {guest_name}, use {promo_code}."},
                     follow_redirects=True)
@@ -246,7 +254,7 @@ def run():
 
             s.section("And the next blast leaves them alone")
             sent_mail.clear()
-            oc.post(send_url, data={"segment": "room", "subject": "Another offer",
+            _send(oc, send_url, data={"segment": "room", "subject": "Another offer",
                                     "body": "Hi {guest_name}."}, follow_redirects=True)
             mailed = {to for to, _s, _b in sent_mail}
             s.check("they are not mailed again", ADDR_A not in mailed,
@@ -263,7 +271,7 @@ def run():
         found = re.search(r'name="recipients_counted" value="([0-9a-f]+)"', page)
         s.check("the page carries what it counted", bool(found))
         sent_mail.clear()
-        r = oc.post(send_url, data={"segment": "room", "subject": "Counted",
+        r = _send(oc, send_url, data={"segment": "room", "subject": "Counted",
                                     "body": "Hi {guest_name}.",
                                     "recipients_counted": "0" * 20},
                     follow_redirects=True)
@@ -271,7 +279,7 @@ def run():
                 not sent_mail and any("changed since it was counted" in f for f in flashes(r)),
                 detail=f"{len(sent_mail)} sent; {flashes(r)[:1]}")
         if found:
-            oc.post(send_url, data={"segment": "room", "subject": "Counted",
+            _send(oc, send_url, data={"segment": "room", "subject": "Counted",
                                     "body": "Hi {guest_name}.",
                                     "recipients_counted": found.group(1)},
                     follow_redirects=True)
@@ -286,7 +294,7 @@ def run():
         s.section("Bodies already typed into this form still work")
         _clear_optouts()
         sent_mail.clear()
-        oc.post(send_url,
+        _send(oc, send_url,
                 data={"segment": "room", "subject": "Code {promo_code} for you",
                       "body": "Hi {guest_name}, {{guest_name}} too, code {promo_code}."},
                 follow_redirects=True)
@@ -326,7 +334,7 @@ def run():
         shown = re.search(r"<strong>(\d+)</strong>\s*guest", html)
         s.check("it shows a count", bool(shown), detail="no count to decide on")
         sent_mail.clear()
-        oc.post(send_url, data={"segment": "room", "subject": "Offer",
+        _send(oc, send_url, data={"segment": "room", "subject": "Offer",
                                 "body": "Hi {guest_name}."}, follow_redirects=True)
         if shown:
             s.check("and it is exactly how many are mailed",
@@ -340,22 +348,23 @@ def run():
         s.section("A send that fails is recorded, not lost")
         _clear_sends()
         m.send_email = lambda *a, **kw: False
-        r = oc.post(send_url, data={"segment": "room", "subject": "Will not arrive",
+        r = _send(oc, send_url, data={"segment": "room", "subject": "Will not arrive",
                                     "body": "Hi {guest_name}."}, follow_redirects=True)
         rows = _sends()
         s.check("a row is still written for each", len(rows) == 2, detail=f"{len(rows)}")
         s.check("marked failed rather than sent",
                 bool(rows) and all(row["status"] == "failed" for row in rows),
                 detail=f"{[row['status'] for row in rows]}")
-        said = " ".join(flashes(r)).lower()
         # A letter send_email did not deliver is kept to go later (or refused
-        # outright); either way nobody has it yet, and the page must say so
-        # in an error, not a green "sent".
-        page = r.get_data(as_text=True)
+        # outright); either way nobody has it yet, and the send's own page --
+        # where Send now takes the owner, since the letters go after it --
+        # must say so, not count them as sent.
+        page = oc.get(r.request.path).get_data(as_text=True)
         s.check("and the owner is told, not shown a success",
-                ("kept" in said or "did not go" in said) and "Sent to 0 of 2" in " ".join(flashes(r))
-                and '<div class="flash flash-success">' not in page,
-                detail=f"{flashes(r)[:1]} - a blast nobody received was reported as sent")
+                r.request.path.startswith("/admin/emails/sends/")
+                and "Kept, goes when mail can" in page
+                and '<div class="overview-label">Sent</div>' not in page,
+                detail=f"{r.request.path} - a blast nobody received was reported as sent")
         m.send_email = capture
 
         s.section("Nothing goes without a subject and a message")
@@ -363,7 +372,7 @@ def run():
         sent_mail.clear()
         for label, data in (("no subject", {"segment": "room", "subject": "  ", "body": "Hi"}),
                             ("no message", {"segment": "room", "subject": "Hi", "body": "  "})):
-            oc.post(send_url, data=data, follow_redirects=True)
+            _send(oc, send_url, data=data, follow_redirects=True)
             s.check(f"{label}: nobody is mailed", not sent_mail, detail=f"{sent_mail[:1]}")
         s.check("and nothing is recorded as having gone", not _sends(),
                 detail=f"{len(_sends())} row(s)")

@@ -242,7 +242,7 @@ def run():
     s.check("the extra, its day and the note",
             f"{TAG} Crémant board" in page and "6pm, on the terrace" in page
             and m.format_date_short(second_day) in page)
-    s.check("what came in, and how", "card, through Stripe" in page and "€200.00" in page)
+    s.check("what came in, and how", "Card (Stripe)" in page and "€200.00" in page)
     s.check("a refund form, apart from cancelling",
             'name="reason_code"' in page and "Make the refund" in page
             and 'name="refund_paid"' not in page,

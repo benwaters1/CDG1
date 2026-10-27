@@ -442,7 +442,7 @@ def _run(s, oc, ec, sent):
     page = oc.get(f"/admin/refunds/room/{desk['id']}")
     text = page.get_data(as_text=True)
     s.check("it opens on the stay's payments", page.status_code == 200
-            and "Card, online" in text and "Cash" in text and "Can go back" in text, page)
+            and "Card (Stripe)" in text and "Cash" in text and "Refundable" in text, page)
     s.check("and offers all of it, each payment back the way it came", 'value="all"' in text)
     r = oc.post(f"/admin/refunds/room/{desk['id']}", data={"payment": "", "amount": "10"},
                 follow_redirects=True)

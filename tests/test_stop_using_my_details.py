@@ -226,6 +226,8 @@ def _run(s, oc, owner, sent):
         told = " ".join(flashes(oc.post(
             f"/admin/emails/{template['id']}/send",
             data={"segments": "profiles", "confirm_count": "2"}, follow_redirects=True)))
+        # Send queues it; the automation thread sends it, at once here.
+        _harness.send_queued_campaigns()
         conn = db()
         conn.execute("""INSERT INTO promo_codes (code, discount_type, discount_value, created_at)
                         VALUES (?, 'percent', 10, ?)""", (f"{TAG}TEN", now))
@@ -236,6 +238,7 @@ def _run(s, oc, owner, sent):
             f"/admin/promo-codes/{code}/blast/send",
             data={"segment": "room", "subject": "Ten off", "body": "Use {promo_code}."},
             follow_redirects=True)))
+        _harness.send_queued_campaigns()
     finally:
         m.campaign_audience, m.promo_blast_recipients = real_audience, real_blast
     trail = _one("SELECT details FROM audit_log WHERE action = 'campaign_sent' AND target = ? "

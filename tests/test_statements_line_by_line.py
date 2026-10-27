@@ -218,7 +218,7 @@ def _run(s):
             detail=str([(x["day"], x["what"]) for x in view["charges"]]))
     s.check("each payment is on its own line, dated, by how, with the card it came from",
             [(x["paid"], x["method"], x["card_words"]) for x in view["payments"]]
-            == [(300.0, "Card, online", "Visa ····4242"), (150.0, "Bank transfer", None)]
+            == [(300.0, "Card (Stripe)", "Visa ····4242"), (150.0, "Bank transfer", None)]
             and "Visa ····4242" in text and "€300.00" in text and "€150.00" in text,
             detail=str([(x["paid"], x["method"], x["card_words"]) for x in view["payments"]]))
     s.check("the refund is a line of its own, to the card it went back to",
