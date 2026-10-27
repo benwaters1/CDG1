@@ -3567,7 +3567,10 @@ section[id]{ scroll-margin-top:80px; }
    not there until you swiped for it. Each cell says what it is (data-label)
    and the action cells run the width of the card. */
 .bk-stack, .phone-cards{ position:relative; }
-@media (max-width: 760px){
+/* Screen only. A4 is narrower than 760px, so printed these tables came out
+   as a column of cards -- the extras due sheet, which has its own Print
+   button, printed one extra to a card (27 October 2026). */
+@media screen and (max-width: 760px){
   .bk-stack, .phone-cards{ min-width:0; }
   .bk-stack thead, .phone-cards thead{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
   .bk-stack, .bk-stack tbody, .bk-stack tr, .bk-stack td, .bk-stack tbody th,
@@ -4028,6 +4031,9 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
   .arr-ready td.arr-ready__col{ width:auto; text-align:left; }
   .arr-ready td.arr-ready__col[data-label]::after{ content:attr(data-label); margin-left:8px; font-size:13.5px; }
   .arr-ready .tick-box{ width:20px; height:20px; vertical-align:-5px; }
+  /* The day's other lists turn to cards on a phone; whose card it is is
+     its heading, not a line in the same small type as the rest. */
+  .arr-day .phone-cards tbody th{ font-size:15px; font-weight:600; padding-bottom:4px; }
 }
 /* A STAY'S ARRIVAL LINE AND ITS FLAGS, worded and drawn one way on every
    page that shows a stay (_stay_bits.html, 27 October 2026). The flags are

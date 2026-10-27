@@ -20,6 +20,21 @@
   {%- if d == today %}Today{% elif (d - today).days == 1 %}Tomorrow{% else %}{{ d.strftime('%A') }} {{ d.day }} {{ d.strftime('%B') }}{% endif -%}
 {%- endmacro %}
 
+{#- A Booking.com reservation number: a link to its emails for whoever can
+    open that page, the number for everybody else. -#}
+{% macro reservation_ref(st) -%}
+{%- if not st['reference_code'] %}<span class="upload-hint">only on Booking.com's calendar</span>
+{%- elif can('management_booking_com') %}<a href="{{ url_for('management_booking_com', q=st['reference_code']) }}" class="small-link">{{ st['reference_code'] }}</a>
+{%- else %}{{ st['reference_code'] }}{% endif -%}
+{%- endmacro %}
+{#- A time in a column already called Arrives: "about 19:30", or "not given"
+    in words -- the same rule as the arrival line, kept short for a cell. -#}
+{% macro arrives_cell(time) -%}
+{%- set w = arrival_words(time) %}
+{%- if w.time %}about {{ w.time }}{% if w.early %} <span class="when-line__early">· before check-in at {{ check_in_time }}</span>{% endif %}
+{%- else %}<span class="when-line is-missing"><strong>not given</strong></span>{% endif -%}
+{%- endmacro %}
+
 {#- The money shows only where the front desk does. -#}
 {% set money = may('guests') %}
 
@@ -369,43 +384,36 @@
 </div>
 {% endif %}
 
-{% if sheet.channel_arriving or sheet.channel_leaving %}
-{# Booking.com's guests. What its emails said, and what the guest has told us
-   since -- the time they will come, a telephone, what they asked for -- from
-   the extranet or their own online check-in. No bill and no card on file
-   here: those are the channel's. #}
-<h4 class="sub-heading">Through Booking.com</h4>
+{% if sheet.channel_arriving %}
+{# Booking.com's guests coming today. What its emails said, and what the
+   guest has told us since -- the time they will come, a telephone, what they
+   asked for -- from the extranet or their own online check-in. No bill and
+   no card on file here: those are the channel's. Those leaving are under
+   Leaving with everybody else: the table had an unheaded column saying
+   "arriving" or "leaving", and three empty cells on every departure.
+   "Not stated" is what Booking.com's email left out; "not given" is what
+   the guest has not told us yet. #}
+<h4 class="sub-heading">Arriving through Booking.com</h4>
 <div class="table-wrap">
-  <table class="data-table">
-    <thead><tr><th scope="col">Guest</th><th scope="col"></th><th scope="col">Room</th>
-      <th scope="col">Party</th><th scope="col">Arrives</th><th scope="col">Telephone</th>
+  <table class="data-table phone-cards">
+    <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Party</th>
+      <th scope="col">Arrives</th><th scope="col">Telephone</th>
       <th scope="col">They told us</th><th scope="col">Reservation</th></tr></thead>
     <tbody>
       {% for st in sheet.channel_arriving %}
       {% set t = st.told %}
       <tr>
-        <th scope="row">{{ st['guest_name'] }}</th>
-        <td>arriving{% if t and t['checkin_done_at'] %}<br><span class="mini-status status-confirmed">checked in online</span>{% endif %}</td>
-        <td>{{ st['room_name'] or 'not stated' }}</td>
-        <td>{{ st['party_size'] or 'not stated' }}</td>
-        <td>{{ (t['estimated_arrival_time'] if t else '') or 'not stated' }}</td>
-        <td>{% if t and t['guest_phone'] %}<a href="tel:{{ t['guest_phone']|replace(' ', '') }}">{{ t['guest_phone'] }}</a>{% else %}not stated{% endif %}</td>
-        <td>
-          {%- if t and t['dietary_notes'] %}<strong>Cannot eat:</strong> {{ t['dietary_notes'] }}{% endif %}
-          {%- if t and t['dietary_notes'] and t['special_requests'] %}<br>{% endif %}
-          {%- if t and t['special_requests'] %}{{ t['special_requests'] }}{% endif %}
+        <th scope="row">{{ st['guest_name'] }}{% if t and t['checkin_done_at'] %} <span class="mini-status status-confirmed">checked in online</span>{% endif %}</th>
+        <td data-label="Room">{{ st['room_name'] or 'not stated' }}</td>
+        <td data-label="Party">{{ st['party_size'] or 'not stated' }}</td>
+        <td data-label="Arrives">{{ arrives_cell(t['estimated_arrival_time'] if t else '') }}</td>
+        <td data-label="Telephone">{% if t and t['guest_phone'] %}<a href="tel:{{ t['guest_phone']|replace(' ', '') }}">{{ t['guest_phone'] }}</a>{% else %}<span class="upload-hint">not given</span>{% endif %}</td>
+        <td data-label="They told us">
+          {%- if t and t['dietary_notes'] %}<span class="ws-diet">Cannot eat: {{ t['dietary_notes'] }}</span>{% endif %}
+          {%- if t and t['special_requests'] %}<span>{{ t['special_requests'] }}</span>{% endif %}
+          {%- if not (t and (t['dietary_notes'] or t['special_requests'])) %}<span class="upload-hint">nothing yet</span>{% endif -%}
         </td>
-        <td>{% if not st['reference_code'] %}<span class="upload-hint">only on Booking.com's calendar</span>{% elif can('management_booking_com') %}<a href="{{ url_for('management_booking_com', q=st['reference_code']) }}" class="small-link">{{ st['reference_code'] }}</a>{% else %}{{ st['reference_code'] }}{% endif %}</td>
-      </tr>
-      {% endfor %}
-      {% for st in sheet.channel_leaving %}
-      <tr>
-        <th scope="row">{{ st['guest_name'] }}</th>
-        <td>leaving</td>
-        <td>{{ st['room_name'] or 'not stated' }}</td>
-        <td>{{ st['party_size'] or 'not stated' }}</td>
-        <td></td><td></td><td></td>
-        <td>{% if not st['reference_code'] %}<span class="upload-hint">only on Booking.com's calendar</span>{% elif can('management_booking_com') %}<a href="{{ url_for('management_booking_com', q=st['reference_code']) }}" class="small-link">{{ st['reference_code'] }}</a>{% else %}{{ st['reference_code'] }}{% endif %}</td>
+        <td data-label="Reservation">{{ reservation_ref(st) }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -423,7 +431,7 @@
   <span class="no-print"> · <a href="{{ url_for('workshop_running_sheet', session_id=a.id) }}" class="small-link">its own sheet</a></span></p>
 {% if a.places %}
 <div class="table-wrap">
-  <table class="data-table">
+  <table class="data-table phone-cards">
     <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Party</th>
       {%- if a.begins %}<th scope="col">Arrives</th><th scope="col">Telephone</th>{% endif %}
       <th scope="col">Reference</th></tr></thead>
@@ -431,13 +439,13 @@
       {% for p in a.places %}
       <tr>
         <th scope="row">{{ p['guest_name'] }}</th>
-        <td>{{ p['room_name'] or ('no room yet' if a.begins else 'not recorded') }}</td>
-        <td>{{ p['party_size'] }}</td>
+        <td data-label="Room">{{ p['room_name'] or ('no room yet' if a.begins else 'not recorded') }}</td>
+        <td data-label="Party">{{ p['party_size'] }}</td>
         {%- if a.begins %}
-        <td>{{ p['estimated_arrival_time'] or 'not stated' }}</td>
-        <td>{% if p['guest_phone'] %}<a href="tel:{{ p['guest_phone']|replace(' ', '') }}">{{ p['guest_phone'] }}</a>{% else %}not stated{% endif %}</td>
+        <td data-label="Arrives">{{ arrives_cell(p['estimated_arrival_time']) }}</td>
+        <td data-label="Telephone">{% if p['guest_phone'] %}<a href="tel:{{ p['guest_phone']|replace(' ', '') }}">{{ p['guest_phone'] }}</a>{% else %}<span class="upload-hint">not given</span>{% endif %}</td>
         {%- endif %}
-        <td>{{ p['reference_code'] }}</td>
+        <td data-label="Reference">{{ p['reference_code'] }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -452,24 +460,33 @@
     here as well, and the same thing on paper twice is a box ticked in one
     place and not the other. -#}
 
-{% if sheet.leaving %}
+{% if sheet.leaving or sheet.channel_leaving %}
 {# The other half of the same morning: a room is not ready for an arrival until
-   the departure has gone. #}
+   the departure has gone. Booking.com's departures with the house's own: who
+   leaves is one list, whichever book they are in. #}
 <h4 class="sub-heading">Leaving</h4>
 <div class="table-wrap">
-  <table class="data-table">
+  <table class="data-table phone-cards">
     <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Reference</th>
       {%- if money %}<th scope="col" class="num">To settle</th>{% endif %}</tr></thead>
     <tbody>
       {% for b in sheet.leaving %}
       <tr>
         <th scope="row">{{ b['guest_name'] }}</th>
-        <td>{{ b['room_name'] }}</td>
-        <td>{{ b['reference_code'] }}</td>
+        <td data-label="Room">{{ b['room_name'] }}</td>
+        <td data-label="Reference">{{ b['reference_code'] }}</td>
         {%- if money %}
         {% set owed = sheet.owed_leaving.get(b['id'], 0) %}
-        <td class="num">{% if owed > 0 %}{{ owed|money }}{% else %}nothing{% endif %}</td>
+        <td class="num" data-label="To settle">{% if owed > 0 %}{{ owed|money }}{% else %}nothing{% endif %}</td>
         {%- endif %}
+      </tr>
+      {% endfor %}
+      {% for st in sheet.channel_leaving %}
+      <tr>
+        <th scope="row">{{ st['guest_name'] }} <span class="mini-status status-upcoming">Booking.com</span></th>
+        <td data-label="Room">{{ st['room_name'] or 'not stated' }}</td>
+        <td data-label="Reference">{{ reservation_ref(st) }}</td>
+        {%- if money %}<td class="num" data-label="To settle"><span class="upload-hint">paid to Booking.com</span></td>{% endif %}
       </tr>
       {% endfor %}
     </tbody>

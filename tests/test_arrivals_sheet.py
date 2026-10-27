@@ -677,6 +677,28 @@ def run():
                 "Arriving about 15:00 (they told us)" in ws and "Celebrating" in ws
                 and "Worth knowing" not in ws, detail=ws[:400])
 
+    s.section("Booking.com's guests: arriving in their own table, leaving with everybody")
+    table = page[page.find("Arriving through Booking.com"):]
+    table = table[:table.find("</table>")]
+    heads = re.findall(r'<th scope="col"[^>]*>(.*?)</th>', table[:table.find("</thead>")])
+    s.check("every column of it has a heading",
+            heads and all(h.strip() for h in heads),
+            detail=f"{heads} -- one said 'arriving' or 'leaving' under no heading at all")
+    s.check("and its time is said as theirs, about", "about 19:30" in _harness.visible_text(table),
+            detail=_harness.visible_text(table)[:300])
+    gone = page[page.find(f'id="day-{(w2 + timedelta(days=6)).strftime("%Y%m%d")}"'):]
+    gone = gone[:gone.find("</section>")]
+    leaving = _harness.visible_text(gone[gone.find("Leaving</h4>"):])
+    s.check("a Booking.com guest leaving is in the one list of who leaves",
+            f"{TAG} Channel" in leaving and "paid to Booking.com" in leaving,
+            detail=leaving[:300])
+    s.check("not in a table of its own with three empty cells",
+            "Through Booking.com" not in gone and "Arriving through Booking.com" not in gone)
+    css = open(os.path.join(m.BASE_DIR, "static", "style.css"), encoding="utf-8").read()
+    s.check("tables that turn into cards on a phone stay tables on paper",
+            "@media screen and (max-width: 760px){\n  .bk-stack, .phone-cards{ min-width:0; }" in css,
+            detail="A4 is narrower than 760px: the extras due sheet printed one extra to a card")
+
     s.section("The front desk and the bookings list say it the same way")
     desk = oc.get("/admin/desk").get_data(as_text=True)
     desk = desk[desk.find('id="arriving"'):]
