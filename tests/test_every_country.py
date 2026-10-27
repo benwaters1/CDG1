@@ -31,7 +31,10 @@ def run():
     s = Suite("Every country can book, and the pickers search")
     conn = db()
     room = conn.execute("SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
-    sess = conn.execute("SELECT id FROM workshop_sessions WHERE start_date >= ? AND cancelled_at IS NULL "
+    # a sitting of a workshop still on sale: one switched off 404s (27 Oct)
+    sess = conn.execute("SELECT workshop_sessions.id FROM workshop_sessions "
+                        "JOIN workshops ON workshops.id = workshop_sessions.workshop_id "
+                        "WHERE workshops.active = 1 AND start_date >= ? AND cancelled_at IS NULL "
                         "ORDER BY start_date LIMIT 1", (m.house_today().isoformat(),)).fetchone()
     conn.close()
     guest = m.app.test_client()

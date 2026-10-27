@@ -8918,6 +8918,20 @@ def init_db():
             print(f"Added {len(added)} atelier(s) missing from this database: "
                   f"{', '.join(added)}")
 
+    # 27 Oct 2026 (owner): the Immersive Artisan Workshops come off the site
+    # entirely -- no card, no page, no date. Switched off rather than deleted,
+    # because its bookings and its money stay on the books. Once, and recorded,
+    # for the same reason as the top-up above: switching it back on in the
+    # admin must survive the next deploy.
+    if not conn.execute("SELECT 1 FROM app_settings WHERE key = 'artisan_workshops_retired'").fetchone():
+        off = conn.execute("UPDATE workshops SET active = 0 WHERE title = ? AND active = 1",
+                           (RETIRED_WORKSHOP_TITLE,)).rowcount
+        conn.execute("INSERT INTO app_settings (key, value) VALUES ('artisan_workshops_retired', ?)",
+                     (datetime.now(timezone.utc).isoformat(),))
+        conn.commit()
+        if off:
+            print(f"{RETIRED_WORKSHOP_TITLE} taken off the site")
+
     moved, repriced = apply_workshop_deposit_percent(conn)
     if moved or repriced:
         print(f"Workshop deposit set to {WORKSHOP_DEPOSIT_PERCENT}%: {moved} atelier(s), "
@@ -15871,6 +15885,10 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
                        'decade. Between those mornings there is cooking in the château '
                        'kitchens, the brocantes of the valley, and dinner by '
                        'candlelight every evening.']}]
+
+
+# Off the site since 27 Oct 2026 (owner): switched off once at start-up, see init_db.
+RETIRED_WORKSHOP_TITLE = "Immersive Artisan Workshops"
 
 
 # The placeholder titles this file used before the real ones were known. Rows

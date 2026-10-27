@@ -223,9 +223,11 @@ def run():
     # leftover from whichever suite ran last -- cancelled, or already over --
     # and its registration page 404s, so this check passed on its own and
     # failed in a full run. The same trap caught test_rendered_markup.
+    # And a workshop that is still on sale: one switched off 404s too (27 Oct).
     ses2 = conn2.execute(
-        """SELECT id FROM workshop_sessions
-            WHERE cancelled_at IS NULL AND start_date >= ?
+        """SELECT workshop_sessions.id FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshops.active = 1 AND cancelled_at IS NULL AND start_date >= ?
             ORDER BY start_date LIMIT 1""",
         (m.house_today().isoformat(),)).fetchone()
     pub2 = m.app.test_client()

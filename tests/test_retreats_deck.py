@@ -42,12 +42,11 @@ m = _harness.m
 
 # kind: (the card line, the heading line, the opening paragraph), each as it opens
 DECK = {
-    "noel": ("Four December days as the château fills for Christmas",
-             "A French Christmas in a château, made by hand",
+    # 27 Oct: the Noël card and heading rewritten (no embroidery, no candles); the Immersive Artisan
+    # Workshops off the site, so no words of their own -- see "Off the site" below.
+    "noel": ("Four December days at home in the château: a gingerbread château to ice",
+             "A French Christmas in a château, by the fire",
              "Four days in December as the château fills for Noël"),
-    "autumn": ("Four autumn days learning the crafts of the French house",
-               "The old crafts of the French house",
-               "Four autumn days learning the crafts of the old French house"),
     "cooking": ("Five summer days with the château’s chefs and pastry chef",
                 "French cooking, in the kitchens where it belongs",
                 "Five summer days in the kitchens of a château built in 1741"),
@@ -58,10 +57,10 @@ DECK = {
                "A French summer, from first light to the last dance",
                "A week of long, golden days in the Pyrénées"),
 }
-TITLES = {"noel": "Noël at Gudanes", "autumn": "Immersive Artisan Workshops",
+TITLES = {"noel": "Noël at Gudanes",
           "cooking": "Cooking in the Cuisine", "finds": "Antique & French Finds",
           "starry": "Seven Starry Nights"}
-NIGHTS = {"noel": "4 nights / 5 days", "autumn": "4 nights / 5 days", "cooking": "5 nights / 6 days",
+NIGHTS = {"noel": "4 nights / 5 days", "cooking": "5 nights / 6 days",
           "finds": "3 nights / 4 days", "starry": "7 nights / 8 days"}
 NEVER = ["all meals and drinks", "activities", "unique", "once in a lifetime",
          "welcome drinks", "why the walls are left as they are",
@@ -229,6 +228,27 @@ def run():
                     "eighteenth-century frescoes" not in journey and "walls are left" not in journey)
         if kind == "finds":
             s.check("the three nights do not go to Mirepoix", "Mirepoix" not in journey)
+        if kind in ("cooking", "starry"):
+            s.check(f"{w['title']}: a visiting artisan, kept", "visiting artisan" in seen)
+        if kind == "noel":
+            # 27 Oct (owner): no embroidery or candle-pouring, no outings; day 3 is the gingerbread château
+            made = re.findall(r"embroider\w*|candles? (?:poured|made)|pour(?:ing)? candles|candle-pouring"
+                              r"|a last morning of making", seen, re.I)
+            s.check("Noël: no embroidery or candle-pouring on the page", not made, detail=", ".join(made))
+            s.check("Noël: and none on its card", not re.search(r"embroider|candle", words(macro("ws_lead", w)), re.I))
+            if len(days) == 5:
+                s.check("Noël: day three is the gingerbread château",
+                        "Le pain d’épices" in days[2] and "gingerbread château" in days[2]
+                        and "champagne jellies" in days[2] and "French wines by the fire" in days[2],
+                        detail=days[2][:160])
+                s.check("Noël: the last day opens slowly, with watercolours and the tree",
+                        "watercolours at the long table" in days[3] and "dress the tree" in days[3]
+                        and "Cocktail hour in the Château Bar" in days[3], detail=days[3][:160])
+            s.check("Noël: no outings", not re.search(r"\bFoix\b|Lombrives|Ax-les-Thermes|Mirepoix|transfer from Toulouse",
+                                                       journey), detail=journey[:120])
+            s.check("Noël: the tasting by the fire and cocktail hour are on the programme",
+                    "La dégustation French wines by the fire" in seen
+                    and "L’heure du cocktail Cocktail hour in the Château Bar" in seen)
 
     s.section("No price typed into the words")
     comment = re.compile(r"\{#.*?#\}|<!--.*?-->", re.S)
@@ -276,6 +296,72 @@ def run():
             "img/retreats/guests-toasting" in home_html and "img/retreats/guests-toasting" in ws_html)
     s.check("and no Commons credit is left for a photograph no longer shown",
             "Patrick Castay" not in home_html + ws_html and "Babsy" not in ws_html)
+
+    # 27 Oct (owner): three photographs out of the deck everywhere, new leads, and the dogs named as they are.
+    s.section("The deck's 27 October photographs")
+    dropped = {"cooking-class-kitchen": "1582798909935-HTB0747EBXEO4B6RPRYC",
+               "brocante-gilt-frame": "1481179212968-BJ7WLHYBYGMTUL6RSR4A",
+               "caramel-choux-recipe": "1587300154571-GB0GAI4BGXSJ8OTAPBT7"}
+    shown = {p: r.get_data(as_text=True) for p, r in pages.items()}
+    shown["/gallery"] = c.get("/gallery").get_data(as_text=True)
+    for slug, asset in dropped.items():
+        on = [p for p, html in shown.items() if slug in html or asset in html]
+        s.check(f"{slug} is on no page", not on, detail=", ".join(on))
+        s.check(f"{slug} is out of the folder and the list",
+                not os.path.exists(os.path.join(RETREATS, slug + ".jpg"))
+                and not any(line.startswith(slug + ".jpg") for line in sources))
+    moments = home_html[home_html.find('class="g-moments"'):]
+    moments = moments[:moments.find("</ul>")]
+    for slug, fr in (("red-beret-tart", "En cuisine"), ("vide-grenier", "Chiner")):
+        s.check(f"the home page: {fr} is the {slug}",
+                re.search(r"%s-800\.jpg[^>]*>\s*<p[^>]*>%s<" % (slug, fr), moments) is not None)
+    chiner = img_srcs(ws_html[ws_html.find("============ CHINER"):])
+    s.check("/workshops: the vide-grenier leads Chiner",
+            bool(chiner) and chiner[0].split("?")[0].endswith("img/retreats/vide-grenier.jpg"),
+            detail=chiner[0] if chiner else "no photographs")
+    for w, _sittings in offer:
+        html = shown["/workshops/%d" % w["id"]]
+        hero = re.search(r'class="g-hero__img" src="([^"]+)"', html)
+        hero = hero.group(1) if hero else ""
+        if kind_of(w["title"]) == "finds":
+            s.check("Antique & French Finds opens on the brocante stalls",
+                    hero.endswith("img/retreats/brocante-stalls.jpg"), detail=hero)
+        if kind_of(w["title"]) == "cooking":
+            s.check("Cooking in the Cuisine opens on the cooking class from above",
+                    hero.endswith("img/retreats/cooking-class-hands.jpg"), detail=hero)
+        s.check(f"{w['title']}: its lead picture is not in its gallery too",
+                not hero or html.count(hero.split("/static/img/retreats/")[-1]) == 1)
+    gallery_src = io.open(os.path.join(_harness.ROOT, "templates", "gallery.html"), encoding="utf-8").read()
+    s.check("the dog in the snow is captioned Alfred",
+            re.search(r"42ac040d-dc88-4253-8d3d-7084f6e05ea4[^}]*'caption': 'Alfred'", gallery_src) is not None)
+    s.check("and the deck's other dogs are 'the dog', not Bruce",
+            not any(x in html for html in shown.values()
+                    for x in ("Bruce leading", "street with Bruce", "Bruce by the tree")))
+
+    s.section("/workshops: the afternoon, and a visiting artisan")
+    ws_words = words(ws_html)
+    s.check("the afternoon has an easel and a box of watercolours",
+            "the library, or an easel and a box of watercolours. Or a brocante" in ws_words)
+    s.check("and the morning keeps a visiting artisan", "with a visiting artisan, or on the restorers’ scaffold" in ws_words)
+
+    # 27 Oct (owner): "no card, no page, no date". Switched off once at start-up, not deleted:
+    # its bookings and its money stay on the books.
+    s.section("Off the site: the Immersive Artisan Workshops")
+    conn = db()
+    gone = conn.execute("SELECT id, active FROM workshops WHERE title = ?", (m.RETIRED_WORKSHOP_TITLE,)).fetchall()
+    flag = conn.execute("SELECT 1 FROM app_settings WHERE key = 'artisan_workshops_retired'").fetchone()
+    conn.close()
+    s.check("switched off, and the switch recorded so a deploy never repeats it",
+            bool(gone) and all(not r["active"] for r in gone) and flag is not None,
+            detail=", ".join("#%d active=%s" % (r["id"], r["active"]) for r in gone))
+    for r in gone:
+        page = c.get("/workshops/%d" % r["id"])
+        s.check(f"its page (/workshops/{r['id']}) is gone, not a redirect naming it", page.status_code == 404,
+                detail=str(page.status_code))
+    for path, html in shown.items():
+        s.check(f"{path}: no card, no date, no name", not re.search(r"Immersive|Artisan Workshops", html),
+                detail=path)
+    s.check("and it has no words of its own left to show", not kind_of(m.RETIRED_WORKSHOP_TITLE))
 
     s.section("The old pages land somewhere that answers")
     for path in ("/5-nights", "/christmas", "/4-nights", "/stay-2026", "/stay-2024", "/workshops-2026"):
