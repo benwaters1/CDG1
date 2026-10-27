@@ -38,6 +38,14 @@
     <span class="stat-tile-label">Still owed</span>
     <span class="stat-tile-value">{{ party.owed|money }}</span>
   </div>
+  {#- A cancelled stay is left out of the three above, so they add up; what it
+      kept under the non-refundable terms is its own figure. -#}
+  {% if party.kept %}
+  <div class="stat-tile">
+    <span class="stat-tile-label">Kept on cancelled stays</span>
+    <span class="stat-tile-value">{{ party.kept|money }}</span>
+  </div>
+  {% endif %}
 </div>
 
 {# The lines, not just the number. A total somebody has to trust is a total
@@ -49,6 +57,7 @@
   <div class="expense-head">
     <strong>{{ stay['room_name'] }}</strong>
     <span class="upload-hint">&nbsp;{{ stay['guest_name'] }} · {{ stay['reference_code'] }}</span>
+    {%- if bill.called_off %} <span class="mini-status status-{{ stay['status'] }}">{{ stay['status'] }}</span>{% endif %}
     {%- if stay['booked_by_name'] %}
     <span class="mini-status status-pending" style="margin-left:6px;"
           title="The bill goes to them; the arrival details go to the guest">booked by {{ stay['booked_by_name'] }}</span>
@@ -70,11 +79,17 @@
           <th scope="row">This room</th>
           <td class="num"><strong>{{ bill.total|money }}</strong></td>
         </tr>
+        {% if bill.called_off %}
+        <tr><th scope="row">Paid</th><td class="num">{{ bill.received|money }}</td></tr>
+        {% if bill.refunded %}<tr><th scope="row">Refunded</th><td class="num">{{ bill.refunded|money }}</td></tr>{% endif %}
+        <tr><th scope="row">{{ 'To give back' if bill.to_give_back else 'Kept' }}</th><td class="num">{{ (bill.to_give_back or bill.kept)|money }}</td></tr>
+        {% else %}
         {% if bill.paid %}
         <tr><th scope="row">Received</th><td class="num">{{ bill.paid|money }}</td></tr>
         {% endif %}
         {% if bill.owed %}
         <tr><th scope="row">Still owed</th><td class="num">{{ bill.owed|money }}</td></tr>
+        {% endif %}
         {% endif %}
       </tbody>
     </table>

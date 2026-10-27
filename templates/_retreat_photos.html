@@ -1,0 +1,32 @@
+{#- THE RETREATS DECK'S PHOTOGRAPHS (owner, 26 Oct 2026). Every one is the house's own copy in static/img/retreats,
+    taken from the old Squarespace site before it expired on 14 November 2026, or from Wikimedia Commons; never a
+    hot-link. static/img/retreats/SOURCES.txt says where each came from.
+    rphoto(slug, alt, cap='', sizes=..., pos='')  a <figure> with its srcset and caption; a Commons photograph's
+                                                  credit follows the figure rather than sitting in its caption,
+                                                  because the owner has every photo caption hidden (15 Oct) and the
+                                                  licence still requires the credit to be seen.
+    rsrc(slug)                                    the 1600px file's address, for a hero or a tile. -#}
+{#- the width of each file, -800 and full, so srcset says what each really is -#}
+{%- set RW = {'a-christmas-table': (800, 1600), 'antique-sewing-kit': (600, 1200), 'antique-shop': (800, 1600), 'apothecary-jars': (800, 1600), 'bassin-des-ladres': (800, 1600), 'bath-floral-tiles': (600, 1200), 'breakfast-croissants': (640, 1280), 'brocante-2cv': (800, 1600), 'brocante-accordion': (533, 1067), 'brocante-bunting': (800, 1600), 'brocante-china': (800, 1600), 'brocante-plane-trees': (800, 1600), 'brocante-stalls': (800, 1600), 'brooches-and-portraits': (533, 1067), 'dog-by-the-christmas-tree': (600, 1200), 'alfred-in-the-snow': (800, 1600), 'candlelit-dinner-party': (800, 1600), 'candlelit-dinner-salon': (800, 1600), 'cellists-in-the-salon': (600, 1200), 'chateau-apron-plate': (600, 1200), 'chateau-at-night': (800, 1600), 'chateau-framed-by-roses': (600, 1200), 'chateau-snowy-peaks': (800, 1600), 'cheeses-at-the-market': (300, 300), 'chef-across-the-lawn': (524, 876), 'chef-from-the-garden': (524, 876), 'christmas-supper': (800, 1600), 'christmas-wreath': (736, 960), 'cooking-class-hands': (800, 1600), 'covered-market': (800, 960), 'crepe-cart': (698, 1125), 'crepe-cart-collage': (676, 676), 'croquembouche': (600, 1200), 'dancing-bw': (800, 1600), 'dancing-in-pink': (533, 1067), 'dancing-shoes': (800, 1600), 'dancing-velvet-suit': (533, 1067), 'dealers-table': (800, 1600), 'embroidery-hoop': (800, 1600), 'film-under-the-stars': (599, 946), 'fire-pit-lawn': (450, 750), 'foix-castle': (770, 1540), 'foix-castle-lespinet': (800, 1600), 'fresco-uncovered-by-hand': (800, 1571), 'garden-in-bloom': (800, 1600), 'garden-conversation': (532, 886), 'gate-in-snow': (800, 1600), 'gingerbread-under-lights': (600, 750), 'group-of-guests': (800, 1600), 'guest-at-a-fresco': (600, 720), 'guest-in-costume': (800, 1600), 'guest-painting': (800, 1600), 'guest-working-on-the-wall': (800, 1600), 'guests-rose-gate': (528, 896), 'guests-round-the-table': (532, 898), 'guests-toasting': (600, 1200), 'guests-uncovering-fresco': (800, 1600), 'guests-with-baskets': (530, 902), 'guests-with-finds': (800, 1600), 'icing-gingerbread-chateau': (600, 750), 'king-suite-four-poster': (451, 901), 'lawn-afternoon': (800, 1262), 'lighting-gingerbread': (600, 1200), 'lombrives-cave-mouth': (800, 1600), 'long-lunch-outdoors': (533, 1067), 'lunch-outdoors-many': (800, 1600), 'market-charcuterie': (600, 960), 'marshmallows-by-the-fire': (600, 1200), 'medieval-kitchen-table': (600, 1200), 'mille-feuille': (800, 1600), 'mirepoix': (533, 1067), 'mirepoix-arcades': (800, 1600), 'mountain-walk': (800, 1600), 'noel-at-gudanes': (800, 1600), 'old-french-linen': (600, 1200), 'party-at-the-table': (600, 1200), 'party-string-lights': (697, 697), 'pastry-chef': (533, 1067), 'pastry-kitchen-with-bruce': (678, 1112), 'pink-cocktails': (600, 1200), 'plated-spring-dish': (528, 898), 'plated-starter': (610, 908), 'plating-asparagus': (568, 1137), 'pocket-watches': (800, 1600), 'red-beret-tart': (600, 1200), 'restoration-scaffold': (800, 1600), 'restorer-painted-wall': (800, 1600), 'roast-birds': (800, 1600), 'roast-on-old-china': (600, 1200), 'roses-on-the-drive': (800, 1600), 'shared-dish': (600, 1200), 'sorbet-pouring': (533, 1067), 'sparkling-tray': (800, 1600), 'the-library': (596, 1190), 'the-pool': (797, 1262), 'trout-on-the-grill': (800, 1600), 'twin-ground-floor': (450, 900), 'uncovering-fresco': (800, 1600), 'vide-grenier': (800, 1600), 'village-boulangerie': (800, 1600), 'village-street': (800, 1600), 'vin-chaud': (800, 1230)} -%}
+{#- Commons: (photographer, licence, the file's page, the licence's page) -#}
+{%- set RCREDIT = {
+  'foix-castle-lespinet': ('Patrick Castay', 'CC BY 3.0', 'https://commons.wikimedia.org/wiki/File:Ch%C3%A2teau_de_Foix_Lespinet.JPG', 'https://creativecommons.org/licenses/by/3.0/'),
+  'mirepoix-arcades': ('Babsy', 'CC BY 3.0', 'https://commons.wikimedia.org/wiki/File:Mirepoix,_place_des_Couverts.JPG', 'https://creativecommons.org/licenses/by/3.0/'),
+  'lombrives-cave-mouth': ('Traumrune', 'CC BY-SA 3.0', 'https://commons.wikimedia.org/wiki/File:Ussat-les-Bains_14.JPG', 'https://creativecommons.org/licenses/by-sa/3.0/'),
+  'bassin-des-ladres': ('Jeunamateur', 'CC BY-SA 3.0', 'https://commons.wikimedia.org/wiki/File:Bassin_des_ladres.jpg', 'https://creativecommons.org/licenses/by-sa/3.0/')
+} -%}
+
+{% macro rsrc(slug) -%}
+{{- url_for('static', filename='img/retreats/' ~ slug ~ '.jpg') -}}
+{%- endmacro %}
+
+{% macro rcredit(slug) -%}
+{%- set c = RCREDIT.get(slug) -%}
+{#- small, not span: the stylesheet holds every span in main at 15px, which made the credit louder than its caption. -#}
+{%- if c %}<small class="g-credit">Photo <a href="{{ c[2] }}" rel="noopener">{{ c[0] }}</a>, <a href="{{ c[3] }}" rel="noopener license">{{ c[1] }}</a></small>{% endif -%}
+{%- endmacro %}
+
+{% macro rphoto(slug, alt, cap='', sizes='(min-width: 64rem) 33vw, 50vw', pos='') -%}
+{%- set w = RW.get(slug, (800, 1600)) -%}
+<figure><img src="{{ rsrc(slug) }}" srcset="{{ url_for('static', filename='img/retreats/' ~ slug ~ '-800.jpg') }} {{ w[0] }}w, {{ rsrc(slug) }} {{ w[1] }}w" sizes="{{ sizes }}" alt="{{ alt }}" loading="lazy"{% if pos %} style="object-position: {{ pos }}"{% endif %}>{% if cap %}<figcaption>{{ cap }}</figcaption>{% endif %}</figure>{{ rcredit(slug) }}
+{%- endmacro %}

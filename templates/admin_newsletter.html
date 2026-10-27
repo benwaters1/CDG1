@@ -4,14 +4,18 @@
 
 <div class="page-head">
   <h1>Newsletter</h1>
-  <a href="{{ url_for('admin_emails') }}" class="btn-ghost">Back to emails</a>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('import_squarespace_newsletter') }}" class="btn-ghost">Bring the Squarespace list across</a>
+    <a href="{{ url_for('admin_emails') }}" class="btn-ghost">Back to emails</a>
+  </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
   One list. An address joins from the sign-up box in the site's menu, its footer, the
   Contact page or a Journal band, is on the list as it presses the button, and is thanked
   once. Typing it again sends nothing. Scripts are turned away before anything is written:
   the bot guard, and Gmail addresses spelt with a dot between most of their letters.
-  "Waiting to confirm" is only somebody who asked under the old confirm-first box. To write
+  "Waiting to confirm" is only somebody who asked under the old confirm-first box. The old
+  Squarespace site's list is brought across from its export, with nobody written to. To write
   to the list, send a campaign to <a href="{{ url_for('admin_emails') }}">Newsletter subscribers</a>.
 </p>
 
