@@ -105749,7 +105749,6 @@ def arrivals_sheet(conn, day=None, channel=None):
         "channel_arriving": channel_arriving,
         "channel_leaving": channel_leaving,
         "ateliers": ateliers,
-        "extras_here": wanted,
         # Everybody coming through the door and going out of it, whichever
         # book they are in, so the day's line adds up to the rows under it.
         "arriving_count": (len(rows) + len(channel_arriving)

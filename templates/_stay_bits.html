@@ -15,7 +15,7 @@
     hour beside it, never in its place. A time before check-in says so, since
     the room may not be ready. -#}
 {% macro arrival_line(w, house=True) -%}
-<span class="when-line{% if w.missing %} is-missing{% elif w.early %} is-early{% endif %}"><strong>{{ w.text }}</strong>
+<span class="when-line{% if w.missing %} is-missing{% endif %}"><strong>{{ w.text }}</strong>
   {%- if w.source %} <span class="when-line__src">({{ w.source }})</span>{% endif %}
   {%- if w.early %} <span class="when-line__early">· before check-in at {{ check_in_time }}</span>
   {%- elif house %} <span class="when-line__house">· check-in from {{ check_in_time }}</span>{% endif %}</span>

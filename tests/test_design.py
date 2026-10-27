@@ -170,6 +170,7 @@ NAMED_NOT_DRAWN = {
     "pass__now": "one slot in the pass's bar; its label and its figure are drawn",
     "pi-drop__meta": "the wrapper round the chosen photograph's name and facts",
     "pi-edit__side": "the second column of .pi-edit, placed by its grid",
+    "stay-flag__v": "what a stay flag says, in the flag's own type beside its drawn label",
 }
 
 _IDENT = re.compile(r"-?[a-zA-Z_][\w-]*$")

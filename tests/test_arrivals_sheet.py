@@ -485,11 +485,13 @@ def run():
         begins = m.arrivals_sheet(conn, w2 + timedelta(days=8))
         ends = m.arrivals_sheet(conn, w2 + timedelta(days=11))
     conn.close()
+    # Read off the room lines the page draws, not a list of its own: the
+    # extras used to have a section, and the key it was drawn from outlived it.
+    ticked = sorted(t["label"] for c in quiet_but_wanted["checklist"] for t in c["ticks"])
     s.check("a day with only an extra for somebody already here is not quiet",
             not quiet_but_wanted["nothing_doing"]
-            and sorted(x["name"] for x in quiet_but_wanted["extras_here"])
-            == ["Dinner at La Table, 2", f"{TAG} Late checkout"],
-            detail=str([x["name"] for x in quiet_but_wanted["extras_here"]]))
+            and ticked == ["Dinner at La Table, 2", f"{TAG} Late checkout"],
+            detail=str(ticked))
     s.check("and it is on the page once, on its room's line, with its note",
             text.count(f"{TAG} Late checkout") == 1 and "till two" in text
             and "Extras for guests already here" not in text,
