@@ -275,6 +275,11 @@ m.anthropic.Anthropic = _refuse(
 m.fetch_one_image = _refuse(
     "the Squarespace CDN",
     "stand in for fetch_one_image in the test; a real run downloads 93 images")
+# The What's On reader reads three tourism sites every night: a suite hands it
+# pages through run_whats_on_reader_job(fetch=...) instead.
+m.whats_on_fetch = _refuse(
+    "the tourism sites What's On reads",
+    "pass fetch= to run_whats_on_reader_job with the pages the test needs")
 
 # Meta, which is the newest of these and the one with the loudest failure.
 # publish_social_post puts a photograph and a caption on the house's real
