@@ -9781,6 +9781,8 @@ NAV_AREAS = {
         # bot said to be a real person: both the registrations desk.
         "take_back_released_registration", "clear_registration_bot_check",
         "delete_workshop_session", "edit_workshop", "export_workshop_feedback_csv",
+        # A private stay's link made anew, from its programme page (z30).
+        "rotate_private_link",
         "export_workshop_registrations_csv", "export_workshop_waitlist_csv", "new_workshop",
         "new_workshop_session", "toggle_workshop_feedback_featured",
         "update_workshop_waitlist_status",
