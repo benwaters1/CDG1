@@ -206,6 +206,7 @@ SUITES = [
     "test_staff_language",
     "test_whats_on",
     "test_whats_on_through_the_year",
+    "test_whats_on_kept_up",
     "test_ateliers",
     "test_atelier_recap",
     "test_navigation",
@@ -481,6 +482,7 @@ SUITES = [
     "test_not_live_yet",
     "test_guest_emails",
     "test_refund_cancel_steps",
+    "test_cancelled_owes_nothing",
     "test_chef_program",
     "test_where_the_gates_are",
     "test_columns_that_exist",
@@ -578,9 +580,18 @@ SUITES = [
     "test_newsletter_signup",
     # 22 October 2026: script sign-ups from before the guards, already on the list.
     "test_newsletter_script_signups",
+    "test_newsletter_squarespace_import",
     "test_route_map",
     # 19 October 2026: the phone's home screen the owner expected and never got.
     "test_phone_home",
+    # 22 October 2026, the staff side read on a busy day: a task opens what it
+    # is about and a room's checklist reads as one; dates, labels and search
+    # hits in the house's words; the button you came for, within reach.
+    "test_tasks_open_what_they_are_about",
+    "test_a_busy_day_in_words",
+    "test_buttons_within_reach_on_a_phone",
+    # 26 October 2026: the owner's retreats copy deck, its photographs and old pages.
+    "test_retreats_deck",
 ]
 
 

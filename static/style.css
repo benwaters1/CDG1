@@ -864,6 +864,44 @@ body.staff-shell .week-day-head{ color:var(--ivory); font-family:'Inter',sans-se
 @media (max-width: 900px){
   .week-grid{ grid-template-columns:repeat(7, minmax(120px,1fr)); }
 }
+/* On a phone the week is a list of days, one under another. Seven columns of
+   120px put Monday to Wednesday on the screen and today off it: Tasks is a
+   home-screen tile, and opening it on a Thursday showed two empty days. A day
+   with nothing on it is one line. */
+@media (max-width: 600px){
+  .week-grid{ grid-template-columns:1fr; overflow-x:visible; }
+  .week-day-col{ min-height:0; }
+  .week-day-col-empty{ padding:6px 8px; }
+  .week-day-col-empty .week-day-head{ border-bottom:none; padding-bottom:0; }
+}
+/* Dragging is a mouse's way of moving a task; a touch screen moves them with
+   the ticks and Move day. */
+@media (pointer: coarse){ .week-drag-hint{ display:none; } }
+
+/* A stay's checklist on Tasks: what it is for, once, and its items under it.
+   Each item keeps its own tick, pick box and remove. */
+.task-group{ display:flex; flex-direction:column; gap:6px; background:var(--parchment);
+  border:1px solid var(--parchment-line); border-radius:11px; padding:8px; }
+.task-group-head{ display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; padding:2px 4px; }
+.task-group-note{ flex-basis:100%; font-size:12.5px; color:var(--ink-soft); overflow-wrap:anywhere; }
+.task-open{ font-size:12.5px; color:var(--steel); }
+.task-word-btn{ color:var(--steel); background:none; border:none; cursor:pointer; font-size:12.5px; padding:0; }
+.task-row form.task-send{ display:inline-flex; gap:4px; align-items:center; }
+.task-send select{ font-size:12px; padding:2px 4px; width:auto; }
+/* Today's column in the week, so the eye lands on it first. */
+.week-day-col-today{ border-color:var(--gold); }
+.task-card-foot{ display:flex; flex-wrap:wrap; gap:4px 10px; align-items:center; margin-top:4px; }
+.task-card-foot form{ display:inline; }
+.task-items{ display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+.task-item .task-card-head{ margin:0; gap:4px 6px; }
+/* Beside the tick where the day is wide enough, under it where it is not --
+   never squeezed to a letter a line. */
+.task-item-title{ font-weight:400; margin:0; flex:1 1 64px; min-width:0; overflow-wrap:normal; }
+@media (pointer: fine){
+  .task-item .task-check{ width:22px; height:22px; font-size:13px; border-radius:5px; }
+}
+.task-item.task-done .task-item-title{ text-decoration:line-through; color:var(--ink-soft); }
+.task-group-card.task-done > .task-card-title{ text-decoration:none; }
 
 /* ---------- Expenses ---------- */
 /* The app's main list-item card — used by ~30 templates (bookings, expenses,
@@ -1344,6 +1382,15 @@ body.staff-shell .btn-mini.btn-mini-active:hover{
 .check-sub{ font-size:12.5px; color:var(--ink-soft); }
 .check-row-done .check-box{ background:var(--status-success-bg); border-color:var(--success); }
 .check-row-done .check-title{ text-decoration:line-through; color:var(--ink-soft); }
+/* A stay's checklist: what it is for, said once, and its items under it. The
+   items keep their own tick; the card around them is the room. */
+.check-group{ display:flex; flex-direction:column; gap:6px; background:var(--parchment);
+  border:1px solid var(--parchment-line); border-radius:12px; padding:10px; }
+.check-group-head{ display:flex; align-items:flex-start; gap:10px; padding:2px 4px 4px; }
+.check-group-head .check-title{ font-weight:600; }
+.check-group-count{ font-weight:400; font-size:12.5px; color:var(--ink-soft); margin-left:6px; white-space:nowrap; }
+.check-group-done .check-group-head .check-title{ color:var(--ink-soft); }
+.check-open{ font-size:12.5px; color:var(--steel); align-self:flex-start; }
 
 @media (max-width:520px){
   .guest-card-top{ flex-direction:column; gap:1px; }
@@ -1874,7 +1921,9 @@ button.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-sh
 
 /* ---------- Print (today-sheet and anything else meant to be posted) ---------- */
 @media print{
-  .no-print, .topbar, .sidebar, .flash-wrap{ display:none !important; }
+  /* The offer of notifications sits outside .flash-wrap and is shown by a
+     script as an inline style, so it printed across the top of every sheet. */
+  .no-print, .topbar, .sidebar, .flash-wrap, #push-prompt{ display:none !important; }
   .print-only{ display:block !important; }
   body{ background:#fff !important; color:#000 !important; }
   .page{ max-width:none; padding:0; }
@@ -3413,7 +3462,7 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
    against: absolutely placed with no positioned ancestor, they escaped the
    table-wrap's scroll box and dragged a desk-width page to 1360px whenever
    the table was wider than its box. */
-.bk-table, .bk-stack{ position:relative; }
+.bk-table{ position:relative; }
 .bk-table .bk-tick{ width:1%; }
 .bk-guest{ min-width:11rem; }
 .bk-room{ white-space:nowrap; }
@@ -3506,19 +3555,31 @@ section[id]{ scroll-margin-top:80px; }
 .bk-danger > summary{ cursor:pointer; color:var(--danger); }
 .bk-housekeeping p{ margin:0 0 var(--s2) 0; }
 .bk-note{ margin-bottom:var(--s3); }
-/* The add-ons on one stay, stacked on a phone like the list's rows. */
+/* The add-ons on one stay, stacked on a phone like the list's rows -- and,
+   as .phone-cards, every table whose row carries the button somebody came
+   for. In a table-wrap that button sat past the right edge on a 390px phone:
+   Check in on Front Desk, Walk it on Room Checks, Handed over on Extras Due.
+   The table scrolled sideways, so nothing looked broken; the button was just
+   not there until you swiped for it. Each cell says what it is (data-label)
+   and the action cells run the width of the card. */
+.bk-stack, .phone-cards{ position:relative; }
 @media (max-width: 760px){
-  .bk-stack{ min-width:0; }
-  .bk-stack thead{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
-  .bk-stack, .bk-stack tbody, .bk-stack tr, .bk-stack td, .bk-stack tbody th{ display:block; width:100%; }
-  .bk-stack tr{ border-bottom:1px solid var(--parchment-line); padding:var(--s3); }
-  .bk-stack tbody tr:last-child{ border-bottom:none; }
-  .bk-stack td, .bk-stack tbody th{ border:none; padding:3px 0; }
-  .bk-stack td[data-label]{ display:grid; grid-template-columns:5.5rem 1fr; column-gap:var(--s3); justify-items:end; text-align:right; }
-  .bk-stack td[data-label] > *{ grid-column:2; }
-  .bk-stack td[data-label]::before{ content:attr(data-label); grid-column:1; grid-row:1 / span 20; justify-self:start; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); text-align:left; }
+  .bk-stack, .phone-cards{ min-width:0; }
+  .bk-stack thead, .phone-cards thead{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+  .bk-stack, .bk-stack tbody, .bk-stack tr, .bk-stack td, .bk-stack tbody th,
+  .phone-cards, .phone-cards tbody, .phone-cards tr, .phone-cards td, .phone-cards tbody th{ display:block; width:100%; box-sizing:border-box; }
+  .bk-stack tr, .phone-cards tr{ border-bottom:1px solid var(--parchment-line); padding:var(--s3); }
+  .bk-stack tbody tr:last-child, .phone-cards tbody tr:last-child{ border-bottom:none; }
+  .bk-stack td, .bk-stack tbody th, .phone-cards td, .phone-cards tbody th{ border:none; padding:3px 0; }
+  .bk-stack td[data-label], .phone-cards td[data-label]{ display:grid; grid-template-columns:5.5rem 1fr; column-gap:var(--s3); justify-items:end; text-align:right; }
+  .bk-stack td[data-label] > *, .phone-cards td[data-label] > *{ grid-column:2; }
+  .bk-stack td[data-label]::before, .phone-cards td[data-label]::before{ content:attr(data-label); grid-column:1; grid-row:1 / span 20; justify-self:start; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); text-align:left; }
+  .phone-cards td.num{ text-align:right; }
+  .phone-cards td:not([data-label]) form, .phone-cards td:not([data-label]) select{ max-width:100%; }
 }
 .bk-tasks .mini-status{ margin-right:6px; }
+.bk-tasks li .bk-tick-done, .bk-request .bk-tick-done{ margin-left:6px; }
+.bk-request-done strong{ text-decoration:line-through; color:var(--ink-soft); }
 
 /* ---------- Extras: the days a supplier is shut ---------- */
 .days-off{ border:0; margin:0; padding:0; min-width:0; display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; }
@@ -3925,6 +3986,72 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .arr-cal__swatch.is-pending{ background:var(--surface); border:1.5px dashed var(--ink-soft); }
 .arr-cal__swatch.is-closed{ background:var(--parchment-line); border:1.5px solid var(--parchment-line); }
 .arr-cal__swatch.is-clash{ background:var(--status-danger-bg); border:2px solid var(--danger); }
+/* Each day's rooms to get ready, with boxes to tick in pen (27 October
+   2026). The boxes are drawn: a checkbox on screen that saves nothing reads
+   as broken. Dark edges, so they survive a black-and-white printer. */
+/* Fixed columns, so every day's list lines up under the one before it on the
+   page; wide enough to scroll on a phone rather than squash a name. */
+.arr-ready{ table-layout:fixed; min-width:600px; }
+.arr-ready .arr-ready__room{ width:20%; }
+.arr-ready .arr-ready__guest{ width:22%; }
+.arr-ready td, .arr-ready tbody th{ vertical-align:top; }
+.arr-ready .arr-ready__col{ width:13%; text-align:center; white-space:normal; }
+.tick-box{ display:inline-block; flex:none; width:16px; height:16px; border:1.5px solid var(--ink);
+  border-radius:2px; vertical-align:-3px; font-size:12px; line-height:13px; text-align:center; }
+.arr-ready__who{ display:block; }
+.arr-ready__who .upload-hint{ display:block; }
+.arr-ready__who + .arr-ready__who{ margin-top:3px; }
+/* One extra a line, its box at the top of it, so a long note wraps under
+   its own words and never under the next box. */
+.arr-ready__extra{ display:flex; align-items:flex-start; gap:7px; margin:0 0 5px; }
+.arr-ready__extra:last-child{ margin-bottom:0; }
+.arr-ready__extra .tick-box{ margin-top:1px; }
+/* A STAY'S ARRIVAL LINE AND ITS FLAGS, worded and drawn one way on every
+   page that shows a stay (_stay_bits.html, 27 October 2026). The flags are
+   what changes how somebody is met, so they sit under the name: a coloured
+   edge AND a word for each, so they still read off a black-and-white printer. */
+.when-line{ font-size:14px; color:var(--ink); }
+.when-line strong{ font-weight:600; }
+.when-line__src, .when-line__house{ color:var(--ink-soft); font-size:12.5px; }
+.when-line.is-missing strong{ color:var(--rust); }
+.when-line__early{ color:var(--rust); font-weight:600; font-size:12.5px; }
+.stay-flags{ list-style:none; margin:10px 0 2px; padding:0; display:flex; flex-direction:column; gap:6px; }
+.stay-flag{ display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 10px; padding:7px 12px;
+  border-radius:8px; border-left:4px solid var(--gold); background:var(--status-warn-bg); font-size:14px; }
+.stay-flag__k{ flex:none; min-width:9.5em; font-size:11px; font-weight:700; text-transform:uppercase;
+  letter-spacing:0.05em; color:var(--gold-on-warn); }
+.stay-flag__state{ font-size:12.5px; color:var(--ink-soft); }
+.stay-flag.is-occasion{ border-left-color:var(--cal-extra-ink); background:var(--cal-extra-bg); }
+.stay-flag.is-occasion .stay-flag__k{ color:var(--cal-extra-ink); }
+.stay-flag.is-diet{ border-left-color:var(--danger); background:var(--status-danger-bg); }
+.stay-flag.is-diet .stay-flag__k, .stay-flag.is-warn .stay-flag__k{ color:var(--danger); }
+.stay-flag.is-warn{ border-left-color:var(--rust); background:var(--status-danger-bg); }
+/* The arrival card: who and which room, then when, then the flags, then the
+   rest as label and answer, the way the stay's own page lists them. */
+.arr-card__head{ display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap;
+  gap:6px 12px; padding-bottom:8px; border-bottom:1px solid var(--parchment-line); }
+.arr-card__who{ margin:0; display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 12px; }
+.arr-card__name{ font-size:17px; letter-spacing:-0.01em; }
+.arr-card__room{ font-size:14px; font-weight:600; color:var(--gold-soft); }
+.arr-card__tags{ margin:0; display:flex; flex-wrap:wrap; gap:4px; }
+.arr-card .arr-card__when{ margin:10px 0 0; }
+.arr-facts{ margin-top:12px; }
+.arr-ask{ display:block; }
+.arr-ask + .arr-ask{ margin-top:3px; }
+.arr-facts .arr-extras{ margin:0; padding-left:16px; }
+.arr-card .arr-card__links{ display:flex; flex-wrap:wrap; gap:6px 16px; margin:10px 0 0; }
+/* The stay's own page says the same things the same way, under the name. */
+.bk-arrives{ margin:2px 0 6px; }
+.bk-title .stay-flags{ max-width:46rem; margin-top:10px; }
+.bk-alert__why{ margin:-6px 0 8px; }
+.bk-housekeeping__why{ margin:0 0 6px; }
+/* And the atelier pages, in the same words. */
+.ws-celebrating{ display:block; margin-top:3px; font-size:12.5px; color:var(--cal-extra-ink); font-weight:600; }
+.ws-diet{ display:block; font-weight:600; color:var(--danger); }
+.ws-when{ display:block; margin-top:2px; }
+/* A label run into its answer ("MEDICALasthma") on the running sheet. */
+.doc-row .upload-hint .detail-label{ margin-right:6px; }
+.ws-when .when-line, .data-table .when-line{ font-size:13px; }
 /* ON PAPER: the calendar on the first page whole, a guest's card never cut
    in two, a heading never left at the foot of a page without what it heads,
    and the links read as the words they are. */
@@ -3938,6 +4065,36 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
   .arr-cal__grid thead th:first-child{ width:105px; }
   .arr-cal{ break-inside:avoid; }
   .arr-card{ break-inside:avoid; }
+  .arr-ready{ min-width:0; }
+  /* A day's list is one piece of paper's worth: never half on one page and
+     half on the next, which is how the first printed run came out. */
+  .arr-ready-wrap{ break-inside:avoid; }
+  .arr-ready tr{ break-inside:avoid; }
+  .tick-box{ border-color:#000; }
+  /* The cards at a reading size for paper. At the screen's they ran half a
+     page each, so a busy day was three pages of mostly margin. */
+  .arr-week__h{ font-size:19px; }
+  .arr-day{ padding-top:10px; }
+  .arr-day__h{ font-size:16px; }
+  .arr-card{ padding:8px 12px; margin-bottom:6px; font-size:11.5px; line-height:1.35; }
+  .arr-card .expense-head{ gap:6px; margin-bottom:4px; padding-bottom:5px; }
+  .arr-card .expense-head strong{ font-size:13px; }
+  .arr-card .field-label{ font-size:9px; margin:6px 0 1px; }
+  .arr-card p{ margin:0; }
+  .arr-card .mini-status{ font-size:8.5px; padding:1px 6px; }
+  .arr-extras li{ margin:0; }
+  .arr-card__name{ font-size:13.5px; }
+  .arr-card__room{ font-size:12px; color:#000; }
+  .arr-card__head{ padding-bottom:4px; }
+  .arr-card .arr-card__when{ margin-top:5px; }
+  .when-line, .stay-flag{ font-size:11.5px; }
+  .when-line__src, .when-line__house, .when-line__early, .stay-flag__state{ font-size:10.5px; }
+  .stay-flags{ margin:5px 0 2px; gap:3px; }
+  .stay-flag{ padding:3px 8px; border-left-width:3px; border-radius:4px;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .stay-flag__k{ font-size:8.5px; }
+  .arr-facts{ margin-top:6px; gap:2px 10px; font-size:11.5px; }
+  .arr-facts dt{ font-size:8.5px; padding-top:1px; }
   .arr-week__h, .arr-day__h, .arr-day__sum, .arr-day .sub-heading{ break-after:avoid; }
   .arr-day{ break-inside:auto; }
   .arr-week a, .arr-card a{ color:inherit; text-decoration:none; }
@@ -4091,3 +4248,9 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 @media (pointer: coarse){
   .plan-zoom .btn-mini{ min-height:44px; min-width:44px; justify-content:center; }
 }
+
+/* What's On, kept up by itself: the weekly look and what the reader found. */
+.wo-look{ margin:6px 0 10px; padding-left:20px; }
+.wo-look li{ margin:2px 0; }
+.wo-problem{ color:var(--rust); font-size:12.5px; }
+.wo-add{ display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin:0 0 6px; }

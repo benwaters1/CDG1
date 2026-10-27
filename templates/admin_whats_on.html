@@ -15,6 +15,22 @@
   run part of the year, like a ski market.
 </p>
 
+{#- Kept up by itself (26 October 2026): what the nightly reader needs from
+    the owner, which is a weekly look and nothing else. -#}
+<section class="detail-card" style="margin-bottom:1.5rem" id="look">
+  <h2 class="section-heading">This week</h2>
+  <ul class="wo-look">
+    <li><a href="#found"><strong>{{ look.new|length }}</strong> event{{ '' if look.new|length == 1 else 's' }} found to look at</a></li>
+    <li><strong>{{ look.unconfirmed|length }}</strong> date{{ '' if look.unconfirmed|length == 1 else 's' }} in the next four months not confirmed</li>
+    {% if look.problems %}<li class="wo-problem"><strong>{{ look.problems|length }}</strong> official page{{ '' if look.problems|length == 1 else 's' }} could not be read</li>{% endif %}
+  </ul>
+  <p class="upload-hint">
+    {% if last_run %}Last read {{ last_run['last_ran_at']|house_when }}{% if last_run['last_message'] %}: {{ last_run['last_message'] }}{% endif %}.
+    {% else %}Not read yet. It runs each night between 3 and 6, or from Automation.{% endif %}
+    Sources: {{ sources.values()|join(', ') }}.
+  </p>
+</section>
+
 <details class="refund-box">
   <summary>+ Add something to What's On</summary>
 <form method="post" action="{{ url_for('admin_whats_on_save') }}" class="detail-card" style="margin-bottom:2rem">
@@ -33,6 +49,18 @@
     <div>
       <label for="wo_distance" class="field-label">Distance</label>
       <input type="text" id="wo_distance" name="distance" placeholder="3 minutes">
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;margin-top:1rem">
+    <div>
+      <label for="wo_source_url" class="field-label">Official page</label>
+      <input type="url" id="wo_source_url" name="source_url" placeholder="https://www.pyrenees-ariegeoises.com/…">
+    </div>
+    <div style="display:flex;align-items:flex-end">
+      <label for="wo_recurs" style="display:flex;align-items:center;gap:.5rem">
+        <input type="checkbox" id="wo_recurs" name="recurs_yearly"> Every year
+      </label>
     </div>
   </div>
 
@@ -105,7 +133,7 @@
 <div class="table-wrap">
 <table class="data-table">
   <thead>
-    <tr><th>Title</th><th>When</th><th>Where</th><th>Season</th><th>Live</th><th></th></tr>
+    <tr><th>Title</th><th>When</th><th>Dates</th><th>Where</th><th>Season</th><th>Live</th><th></th></tr>
   </thead>
   <tbody>
     {% set DAYS = ['Mondays','Tuesdays','Wednesdays','Thursdays','Fridays','Saturdays','Sundays'] %}
@@ -122,6 +150,19 @@
         {% else %}—{% endif %}
         {% if e['when_words'] and e['event_date'] %}<br><span style="color:#777">shown as “{{ e['when_words'] }}”</span>{% endif %}
         {% if e['start_time'] %}<br><span style="color:#777">{{ e['start_time'] }}{% if e['end_time'] %}–{{ e['end_time'] }}{% endif %}</span>{% endif %}
+      </td>
+      <td>
+        {% if e['weekday'] is not none %}<span class="upload-hint">weekly</span>
+        {% elif e['dates_status'] == 'confirmed' %}<span class="mini-status status-confirmed">Confirmed</span>{% if e['dates_checked_at'] %}<br><span class="upload-hint">{{ e['dates_checked_at']|house_day|date_short }}{% if e['source_url'] %}, <a href="{{ e['source_url'] }}" target="_blank" rel="noopener">official page</a>{% endif %}</span>{% endif %}
+        {% elif e['dates_status'] == 'checked' %}<span class="mini-status status-confirmed">Checked</span><br><span class="upload-hint">by you, {{ e['dates_checked_at']|house_day|date_short }}</span>
+        {% elif e['event_date'] %}<span class="mini-status status-pending">Unconfirmed</span>
+          <form method="post" action="{{ url_for('admin_whats_on_checked', event_id=e['id']) }}" style="margin-top:4px">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Checked</button>
+          </form>
+        {% endif %}
+        {% if e['confirm_problem'] %}<br><span class="wo-problem">{{ e['confirm_problem'] }}</span>{% endif %}
+        {% if e['recurs_yearly'] %}<br><span class="upload-hint">every year</span>{% endif %}
       </td>
       <td>{{ e['location'] or '—' }}{% if e['distance'] %}<br><span style="color:#777">{{ e['distance'] }}</span>{% endif %}</td>
       <td>{% if e['season_from'] %}{{ e['season_from']|day_month }} → {{ e['season_to']|day_month }}{% else %}All year{% endif %}</td>
@@ -140,6 +181,56 @@
 </div>
 {% else %}
 <p style="color:#777">Nothing added yet. The public page shows the standing market list until you add entries here.</p>
+{% endif %}
+
+{#- What the official sites list within reach, as the reader last found it.
+    Nothing here is on the public page until it is added. -#}
+<h2 class="section-heading" id="found" style="margin-top:2rem">Found on the official sites</h2>
+<p class="upload-hint">Events listed within about an hour. Add puts one on the public page, with its dates read from its official page every night. Regular activities and local listings are kept apart and never suggested.</p>
+{% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
+{% if lv.rows %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th scope="col">When</th><th scope="col">What</th><th scope="col">Where</th><th scope="col">Listed by</th><th scope="col"></th></tr></thead>
+  <tbody>
+    {% for f in lv.rows %}
+    <tr>
+      <th scope="row">{{ f['starts']|date_short }}{% if f['ends'] and f['ends'] != f['starts'] %} – {{ f['ends']|date_short }}{% endif %}
+        {% if f['dates_count'] > 1 %}<br><span class="upload-hint">{{ f['dates_count'] }} dates</span>{% endif %}</th>
+      <td>{% if f['english_title'] %}<strong>{{ f['english_title'] }}</strong><br><span class="upload-hint">{{ f['title'] }}</span>{% else %}<strong>{{ f['title'] }}</strong>{% endif %}
+        {% if f['worth_why'] %}<br><span class="upload-hint">{{ f['worth_why'] }}</span>{% endif %}
+        {% if f['gone_at'] %}<br><span class="wo-problem">no longer listed</span>{% endif %}</td>
+      <td>{{ f['town'] or '—' }}</td>
+      <td><a href="{{ f['url'] }}" target="_blank" rel="noopener">{{ sources.get(f['source'], f['source']) }}</a></td>
+      <td>
+        {% if f['status'] == 'added' %}<span class="mini-status status-confirmed">On the page</span>
+        {% elif f['status'] == 'dismissed' %}
+          <form method="post" action="{{ url_for('admin_whats_on_found_dismiss', found_id=f['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="bring_back" value="1">
+            <button type="submit" class="btn-mini">Bring back</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('admin_whats_on_found_add', found_id=f['id']) }}" class="wo-add">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="checkbox-row"><input type="checkbox" name="yearly" value="1"> <span>Every year</span></label>
+            <button type="submit" class="btn-mini">Add</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_whats_on_found_dismiss', found_id=f['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-text-danger">Not for us</button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% elif lv.total %}
+<p class="empty-state">Nothing matches that.</p>
+{% else %}
+<p class="empty-state">Nothing found yet. The reader runs each night.</p>
 {% endif %}
 
 {% endblock %}

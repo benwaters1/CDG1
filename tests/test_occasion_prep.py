@@ -363,6 +363,9 @@ def _run(s, oc, ec, emp, room, today):
     # The days, not the rooms-by-night calendar above them, which names
     # every guest first (26 October 2026).
     sheet = sheet[sheet.find('class="arr-week"'):]
+    # The guests' cards, not the day's list of rooms to get ready above them,
+    # which names every arrival first too (27 October 2026).
+    sheet = sheet[sheet.find('class="expense-card arr-card"'):]
     card = _card(sheet, f"{TAG} H Dupont")
     s.check("the arrivals sheet says what they are celebrating",
             "Celebrating" in card and "Honeymoon" in card, detail=card[:200])

@@ -2007,6 +2007,18 @@ def repair_route_map():
     return n
 
 
+# THE RETREATS DECK (26 October 2026). The owner's copy for the home page,
+# /workshops and the retreat pages brought new pieces with it -- the eight
+# moments, the day at Gudanes, the photograph grids, the "every day" strip and
+# the day titles -- whose rules sit in one commented block of gudanes.css. A
+# handover's stylesheet drawn from an older copy would drop the block and every
+# one of them would fall back to an unstyled list, which renders and reports
+# nothing. test_retreats_deck goes red on it; this puts it back.
+def repair_retreats_css():
+    """The retreats deck's rules in the stylesheet."""
+    return _restore_css_section(".g .g-moments{", "the retreats deck rules")
+
+
 def main():
     steps = [
         ("the robots block in public_base", repair_parent_robots_block),
@@ -2062,6 +2074,7 @@ def main():
         ("the one newsletter form: footer, Contact, no ticks, bot guard",
          repair_newsletter_signup),
         ("the route map on Contact", repair_route_map),
+        ("the retreats deck's rules in the stylesheet", repair_retreats_css),
     ]
     total, failed = 0, []
     for label, fn in steps:

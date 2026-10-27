@@ -480,6 +480,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     # waiting for you; the recap itself only ever goes from the button on the
     # sitting's page.
     "automation_atelier_recap_reminder_enabled": "0",
+    # ON: it only reads the official tourism sites, once a night, and nothing
+    # it finds reaches the public page until the owner adds it.
+    "automation_whats_on_reader_enabled": "1",
     # OFF, and its letter ships with no wording: the owner writes it under
     # Email wording and then switches it on. Same rule as the two texts above,
     # for the same reason -- nothing goes to a guest in words the house did
@@ -981,6 +984,36 @@ def clock_words(value):
 
 CHECK_IN_WORDS = clock_words(CHECK_IN_TIME)
 CHECK_OUT_WORDS = clock_words(CHECK_OUT_TIME)
+
+
+def arrival_words(own="", usual=""):
+    """When a guest will come, said so nobody takes it for the house's time.
+
+    Three answers, and each reads differently (owner, 27 October 2026: the
+    check-in time "isn't very clear"). The time the guest gave for this stay;
+    the time they usually come, from their earlier stays, which is a guess
+    and is said as one; or nothing, said in words -- a blank reads as "no
+    arrival", and a 15:00 filled in for them reads as something they said.
+    The house's check-in hour is a different fact and goes beside it, never in
+    its place. The big booking systems keep the two apart for this reason
+    (Guesty, OPERA); one that fills the guest's from the house's leaves staff
+    unable to tell which they are looking at.
+
+    `early` is a time before check-in, when the room may not be ready yet: the
+    one thing about the time worth seeing at a glance.
+    """
+    own, usual = (own or "").strip(), (usual or "").strip()
+    time = own or usual
+    clock = re.match(r"(\d{1,2})[:.h](\d{2})", time)
+    early = bool(clock) and f"{int(clock.group(1)):02d}:{clock.group(2)}" < CHECK_IN_TIME
+    if own:
+        text, source = f"Arriving about {own}", "they told us"
+    elif usual:
+        text, source = f"Usually arrives about {usual}", "from their past stays, not said for this one"
+    else:
+        text, source = "Arrival time not given", ""
+    return {"time": time, "given": bool(own), "missing": not time, "early": early,
+            "text": text, "source": source}
 
 # A time as the terms might write it: 4pm, 4 p.m., 16:00, 16h, 4.30pm.
 _TERMS_TIME = r"(\d{1,2})(?:\s*[:.h]\s*(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|h\b)?"
@@ -7955,6 +7988,46 @@ def init_db():
         # shown instead of the date. See whats_on_when().
         ("whats_on_event_until", "ALTER TABLE whats_on ADD COLUMN event_until TEXT"),
         ("whats_on_when_words", "ALTER TABLE whats_on ADD COLUMN when_words TEXT"),
+        # Kept up by itself (26 October 2026): the official page an entry's
+        # dates are read from, whether they have been (dates_status:
+        # 'confirmed' off that page, 'checked' by the owner, or 'unconfirmed'),
+        # when, what went wrong the last time it was read, and whether it
+        # comes back every year. See run_whats_on_reader_job.
+        ("whats_on_source_url", "ALTER TABLE whats_on ADD COLUMN source_url TEXT"),
+        ("whats_on_dates_status",
+         "ALTER TABLE whats_on ADD COLUMN dates_status TEXT NOT NULL DEFAULT 'unconfirmed'"),
+        ("whats_on_dates_checked_at", "ALTER TABLE whats_on ADD COLUMN dates_checked_at TEXT"),
+        ("whats_on_confirm_problem", "ALTER TABLE whats_on ADD COLUMN confirm_problem TEXT"),
+        ("whats_on_recurs_yearly",
+         "ALTER TABLE whats_on ADD COLUMN recurs_yearly INTEGER NOT NULL DEFAULT 0"),
+        # Everything the official sites list within reach, as last read: kept
+        # behind the scenes, and on the public page only once the owner adds
+        # it. One row per source and its own id for the event.
+        ("whats_on_found", """CREATE TABLE IF NOT EXISTS whats_on_found (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT NOT NULL,
+            source_ref TEXT NOT NULL,
+            url TEXT NOT NULL,
+            title TEXT NOT NULL,
+            town TEXT,
+            starts TEXT,
+            ends TEXT,
+            dates_count INTEGER NOT NULL DEFAULT 1,
+            kind TEXT NOT NULL DEFAULT 'event'
+                CHECK(kind IN ('event','regular','local')),
+            worth INTEGER,
+            english_title TEXT,
+            worth_why TEXT,
+            status TEXT NOT NULL DEFAULT 'new'
+                CHECK(status IN ('new','added','dismissed')),
+            whats_on_id INTEGER REFERENCES whats_on(id) ON DELETE SET NULL,
+            decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            decided_at TEXT,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            gone_at TEXT,
+            UNIQUE(source, source_ref)
+        )"""),
         # Why a table booked while tables confirm themselves (restaurant_instant)
         # was left for the owner instead: "over the 20 covers", "a party of 9".
         # Written once, when it was held, and shown beside Confirm in the queue
@@ -8875,6 +8948,20 @@ def init_db():
             print(f"Added {len(added)} atelier(s) missing from this database: "
                   f"{', '.join(added)}")
 
+    # 27 Oct 2026 (owner): the Immersive Artisan Workshops come off the site
+    # entirely -- no card, no page, no date. Switched off rather than deleted,
+    # because its bookings and its money stay on the books. Once, and recorded,
+    # for the same reason as the top-up above: switching it back on in the
+    # admin must survive the next deploy.
+    if not conn.execute("SELECT 1 FROM app_settings WHERE key = 'artisan_workshops_retired'").fetchone():
+        off = conn.execute("UPDATE workshops SET active = 0 WHERE title = ? AND active = 1",
+                           (RETIRED_WORKSHOP_TITLE,)).rowcount
+        conn.execute("INSERT INTO app_settings (key, value) VALUES ('artisan_workshops_retired', ?)",
+                     (datetime.now(timezone.utc).isoformat(),))
+        conn.commit()
+        if off:
+            print(f"{RETIRED_WORKSHOP_TITLE} taken off the site")
+
     moved, repriced = apply_workshop_deposit_percent(conn)
     if moved or repriced:
         print(f"Workshop deposit set to {WORKSHOP_DEPOSIT_PERCENT}%: {moved} atelier(s), "
@@ -8996,6 +9083,7 @@ def init_db():
     correct_whats_on(conn)
     fix_ax_market_days(conn)
     seed_whats_on_dates(conn)
+    link_whats_on_sources(conn)
 
     for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS,
                      LEAVE_SETTING_DEFAULTS):
@@ -9484,6 +9572,7 @@ NAV_AREAS = {
         # Guest emails: the page and its switch stay @owner_required.
         "admin_guest_emails", "admin_guest_emails_switch", "admin_guest_emails_approve",
         "newsletter_subscribers_page", "take_off_script_signups",
+        "import_squarespace_newsletter",
         "campaign_send_detail", "allow_email_again", "remove_email_optout",
         "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
@@ -9506,6 +9595,7 @@ NAV_AREAS = {
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         "add_gallery_photos", "admin_gallery", "admin_whats_on", "admin_whats_on_delete",
+        "admin_whats_on_found_add", "admin_whats_on_found_dismiss", "admin_whats_on_checked",
         "admin_whats_on_save", "assign_email_flag", "delete_gallery_photo", "delete_social_post",
         "dismiss_email_flag", "edit_gallery_photo", "edit_gallery_section", "edit_social_post",
         "mark_social_post_posted", "new_social_post", "record_texting_consent", "resolve_email_flag",
@@ -11763,6 +11853,7 @@ app.jinja_env.globals["check_in_hour"] = int(CHECK_IN_TIME[:2])
 app.jinja_env.globals["check_in_time"] = CHECK_IN_TIME
 app.jinja_env.globals["check_out_time"] = CHECK_OUT_TIME
 app.jinja_env.globals["clock_words"] = clock_words
+app.jinja_env.globals["arrival_words"] = arrival_words
 # Money on a page was formatted inline, template by template, with
 # '%.2f'|format and a euro sign typed next to it. One definition instead, so a
 # figure reads the same wherever it appears.
@@ -14614,6 +14705,40 @@ def month_words(value):
 
 
 app.jinja_env.filters["month_words"] = month_words
+
+
+def waitlist_when_words(entry):
+    """When somebody on the waitlist wants to come, in words.
+
+    The Waitlist and Search printed "2026-12-01 → 2027-01-01". A Contact
+    enquiry's rough month is stored as its first night to the first of the next
+    month (see contact_page), and reads as the month it is: "December 2026".
+    """
+    a, d = entry["desired_arrival"], entry["desired_departure"]
+    came, goes = parse_date(a or ""), parse_date(d or "")
+    if came and goes and came.day == 1 and goes.day == 1 and goes == (
+            date(came.year + 1, 1, 1) if came.month == 12
+            else date(came.year, came.month + 1, 1)):
+        return month_words(came)
+    if came and goes:
+        return format_date_range(a, d)
+    return format_date_short(a or d or "")
+
+
+# "Around 2026-12" is the house's own words on a Contact enquiry's note, written
+# by contact_page before it said the month in words. The rest of the note is
+# what the guest typed, so only that phrase is read again.
+_AROUND_A_MONTH = re.compile(r"\bAround (\d{4}-\d{2})\b")
+
+
+def enquiry_note_words(text):
+    if not text:
+        return text
+    return _AROUND_A_MONTH.sub(lambda m: "Around " + month_words(m.group(1)), text)
+
+
+app.jinja_env.globals["waitlist_when"] = waitlist_when_words
+app.jinja_env.filters["enquiry_note_words"] = enquiry_note_words
 app.jinja_env.filters["qty"] = lambda v, places=2: quantity(v, places)
 app.jinja_env.filters["box"] = lambda v, places=None: box_value(v, places)
 
@@ -15347,40 +15472,47 @@ DEFAULT_WHATS_ON = [
 # gives no day, so none is ever shown for them. An entry with `when` and no
 # `date` at all ("All year") is listed apart, under All year.
 DEFAULT_WHATS_ON_DATES = [
-    {"title": "Grandvalira (Andorra) ski season opens", "date": "2026-12-04"},
-    {"title": "Ax 3 Domaines ski season opens (provisional)", "date": "2026-12-05"},
+    {"title": "Grandvalira (Andorra) ski season opens", "date": "2026-12-04", "yearly": True},
+    {"title": "Ax 3 Domaines ski season opens (provisional)", "date": "2026-12-05",
+     "yearly": True},
     {"title": "Plateau de Beille, Ascou-Pailhères, Le Chioula and Goulier open for "
-              "the season (provisional)", "date": "2026-12-19"},
+              "the season (provisional)", "date": "2026-12-19", "yearly": True},
     {"title": "Les Flocons d’Ax, the Christmas market and ice rink around the "
               "Bassin des Ladres", "date": "2026-12-20", "until": "2026-12-28",
-     "when": "Late December (2026 dates to come)"},
+     "when": "Late December (2026 dates to come)", "yearly": True},
     {"title": "Beille Trail, a race on the snow at Plateau de Beille",
-     "date": "2027-01-03"},
+     "date": "2027-01-03", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/beille-trail-les-cabannes-fr-6019170/"},
     {"title": "Ski World Cup at Soldeu, Andorra", "date": "2027-03-06",
      "until": "2027-03-07"},
     {"title": "Snow Gay week at Ax 3 Domaines", "date": "2027-03-08",
-     "until": "2027-03-14"},
+     "until": "2027-03-14", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/snow-gay-ax-les-thermes-fr-4653001/"},
     {"title": "Ax 3 Domaines and Plateau de Beille close for the season (provisional)",
-     "date": "2027-03-29"},
+     "date": "2027-03-29", "yearly": True},
     {"title": "Parc de la Préhistoire and the Bédeilhac and La Vache caves reopen",
-     "date": "2027-03-20", "until": "2027-03-31", "when": "Late March"},
+     "date": "2027-03-20", "until": "2027-03-31", "when": "Late March", "yearly": True},
     {"title": "Rafting and canoeing on the Ariège reopen at Bouan (Waterploof)",
-     "date": "2027-05-01", "until": "2027-05-31", "when": "May"},
+     "date": "2027-05-01", "until": "2027-05-31", "when": "May", "yearly": True},
     {"title": "The transhumance, walking the herds up to the summer pastures",
-     "date": "2027-05-01", "until": "2027-05-10", "when": "Early May"},
-    {"title": "L’Ariégeoise cycle race, Tarascon", "date": "2027-06-26"},
+     "date": "2027-05-01", "until": "2027-05-10", "when": "Early May", "yearly": True},
+    {"title": "L’Ariégeoise cycle race, Tarascon", "date": "2027-06-26", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/lariegeoise-la-cyclosportive-des-pyrenees-tarascon-sur-ariege-fr-4221852/"},
     {"title": "Summer season opens at Ax 3 Domaines (gondola, bike park, mountain "
               "karts, pool)", "date": "2027-07-01", "until": "2027-07-07",
-     "when": "Early July"},
+     "when": "Early July", "yearly": True},
     {"title": "UltrAriège mountain trail races, Ax-les-Thermes", "date": "2027-07-16",
-     "until": "2027-07-18"},
+     "until": "2027-07-18", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/trail-de-lultrariege-ax-les-thermes-fr-4268287/"},
     {"title": "Spectacles de Grands Chemins, street theatre in Ax-les-Thermes, "
-              "mostly free", "date": "2027-07-27", "until": "2027-07-31"},
+              "mostly free", "date": "2027-07-27", "until": "2027-07-31", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/spectacles-de-grands-chemins-en-haute-ariege-ax-les-thermes-fr-4222449/"},
     {"title": "Challenge du Montcalm mountain races, Auzat", "date": "2027-08-12",
-     "until": "2027-08-15"},
+     "until": "2027-08-15", "yearly": True,
+     "source": "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/challenge-du-montcalm-auzat-fr-4357838/"},
     {"title": "Festival des Saveurs, food producers’ festival in Ax-les-Thermes",
      "date": "2027-09-01", "until": "2027-09-10",
-     "when": "Early September (date to come)"},
+     "when": "Early September (date to come)", "yearly": True},
     {"title": "Les Bains du Couloubret thermal baths, Ax-les-Thermes, open all year",
      "when": "All year"},
     {"title": "Grotte de Lombrives open all year", "when": "All year"},
@@ -15453,11 +15585,12 @@ def seed_whats_on_dates(conn):
         conn.execute(
             """INSERT INTO whats_on (title, description, location, distance,
                event_date, event_until, when_words, start_time, end_time,
-               sort_order, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)""",
+               sort_order, source_url, recurs_yearly, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
             (entry["title"], entry.get("description"), entry.get("location"),
              entry.get("distance"), entry.get("date"), entry.get("until"),
-             entry.get("when"), position, datetime.now(timezone.utc).isoformat()))
+             entry.get("when"), position, entry.get("source"),
+             1 if entry.get("yearly") else 0, datetime.now(timezone.utc).isoformat()))
         made += 1
     conn.execute("INSERT INTO app_settings (key, value) VALUES ('whats_on_dates_seeded', ?) "
                  "ON CONFLICT(key) DO NOTHING", (datetime.now(timezone.utc).isoformat(),))
@@ -15783,6 +15916,10 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
                        'decade. Between those mornings there is cooking in the château '
                        'kitchens, the brocantes of the valley, and dinner by '
                        'candlelight every evening.']}]
+
+
+# Off the site since 27 Oct 2026 (owner): switched off once at start-up, see init_db.
+RETIRED_WORKSHOP_TITLE = "Immersive Artisan Workshops"
 
 
 # The placeholder titles this file used before the real ones were known. Rows
@@ -16244,6 +16381,9 @@ def build_overview(conn, view, anchor, fetch_window=None):
     rows = []
     for t in _overview_task_range(conn, query_start, query_end):
         is_owner_task = owner_id is not None and t["assigned_to_user_id"] == owner_id
+        # What the task is about, where the person looking may open it: the
+        # stay, the enquiry. A task with none opens the task list (build_calendar).
+        subject = task_subject(t)
         rows.append({
             "kind": "task",
             "lane": "owner" if is_owner_task else "task",
@@ -16259,9 +16399,8 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "detail": t["room_note"] or t["notes"] or "",
             "assignee_id": t["assigned_to_user_id"],
             "assignee_name": t["employee_name"],
-            # An occasion's task opens its checklist; any other, nothing here.
-            "id": t["id"], "link": (url_for("occasions_page") + f"#task-{t['id']}"
-                                    if t["origin"] == OCCASION_TASK_ORIGIN else None),
+            "id": t["id"], "link": subject["url"] if subject else None,
+            "open_words": subject["words"] if subject else None,
         })
 
     lo, hi = query_start.isoformat(), query_end.isoformat()
@@ -17266,7 +17405,8 @@ def calendar_cards(conn, rows, owner_view):
                   ("For", "me" if r["lane"] == "owner" else (r.get("assignee_name") or "nobody yet")),
                   ("Priority", r.get("priority") if r.get("priority") not in (None, "", "normal") else ""),
                   ("Notes", r.get("detail") or "")],
-                 open_words="Open in tasks" if owner_view else "My list")
+                 open_words=r.get("open_words")
+                 or ("Open in tasks" if owner_view else "My list"))
         elif kind == "shift":
             hours = "–".join(x for x in (f.get("start") or "", f.get("end") or "") if x)
             card(r, f"{f.get('who')} on" + (f" {hours}" if hours else ""), _cal_day(r["date"]),
@@ -22648,8 +22788,29 @@ def booking_bill(conn, booking_id):
         lines.append({"label": "Reduction, refunded", "amount": -taken_off,
                       "kind": "refund_reduction"})
     total = round(sum(l["amount"] for l in lines), 2)
-    paid = round((booking["amount_paid"] or 0) - refunded, 2)
-    owed = round(max(total - paid, 0.0), 2)
+    received = round(booking["amount_paid"] or 0, 2)
+    paid = round(received - refunded, 2)
+    held = round(max(paid, 0.0), 2)
+
+    # A STAY THAT WAS CALLED OFF OWES NOTHING (26 October 2026). The bill went
+    # on asking for its price after the stay was cancelled: Tess Hoffman,
+    # refunded her EUR 64.50 in full, read "Cancelled · EUR 150.50 owed", and
+    # every page that reads `owed` without first asking whether the stay
+    # stands -- the guest's own portal, the guest record, the party, the
+    # add-in -- said the same. So the answer is given here, once.
+    #
+    # What was paid and not refunded is not owed either way. Under the
+    # non-refundable terms it is KEPT. Where the house is the one who said no
+    # (held_money_is_theirs) it is the guest's, and is to give back. Never
+    # "in credit" and never chased: the same split the statement's kept line
+    # makes, so the two cannot disagree.
+    called_off = (booking["status"] or "") in ("cancelled", "declined")
+    theirs = called_off and held_money_is_theirs("room", booking)
+    if called_off:
+        owed = overpaid = 0.0
+    else:
+        owed = round(max(total - paid, 0.0), 2)
+        overpaid = round(max(paid - total, 0.0), 2)
 
     # When the stay was taken on a deposit, WHEN the rest falls due is part of
     # the bill and not only how much. `owed` stays the single figure everything
@@ -22661,6 +22822,16 @@ def booking_bill(conn, booking_id):
     due_date = booking["balance_due_date"] if "balance_due_date" in booking.keys() else None
     deposit_amount = booking["deposit_amount"] if "deposit_amount" in booking.keys() else None
     deposit_paid_at = booking["deposit_paid_at"] if "deposit_paid_at" in booking.keys() else None
+    deposit = round(deposit_amount, 2) if deposit_amount else None
+    # Whether the deposit is paid is a question about money, not only about a
+    # stamp. Read off deposit_paid_at alone, a stay with EUR 64.50 in against a
+    # EUR 215 deposit said "Deposit EUR 215.00 — not paid yet" under a payment
+    # of EUR 64.50 marked as the deposit. The stamp still counts while nothing
+    # has gone back since; otherwise what is held decides.
+    deposit_paid = bool(deposit and (held >= deposit - 0.005
+                                     or (deposit_paid_at and refunded <= 0.005)))
+    deposit_received = (deposit if deposit_paid
+                        else round(min(held, deposit), 2) if deposit else 0.0)
     overdue = bool(due_date and owed > 0.005
                    and due_date < house_today_iso())
     return {
@@ -22668,13 +22839,21 @@ def booking_bill(conn, booking_id):
         "lines": lines,
         "nights": nights,
         "total": total,
-        "paid": max(paid, 0.0),
+        # Paid is net of refunds, as everything that reads it expects;
+        # `received` is what came in before any went back, for a bill that
+        # lists Paid and Refunded on lines of their own.
+        "paid": held,
+        "received": max(received, 0.0),
         "refunded": round(refunded, 2),
         "taken_off": taken_off,
         "owed": owed,
-        "overpaid": round(max(paid - total, 0.0), 2),
-        "deposit": round(deposit_amount, 2) if deposit_amount else None,
-        "deposit_paid": bool(deposit_paid_at),
+        "overpaid": overpaid,
+        "called_off": called_off,
+        "kept": held if called_off and not theirs else 0.0,
+        "to_give_back": held if theirs else 0.0,
+        "deposit": deposit,
+        "deposit_paid": deposit_paid,
+        "deposit_received": deposit_received,
         "balance_due_date": due_date,
         "balance_overdue": overdue,
     }
@@ -29212,6 +29391,78 @@ def turned_away(conn, days=365, today=None):
 
 
 MIRROR_DIR = os.environ.get("GUDANES_MIRROR_DIR") or os.path.join(DATA_DIR, "mirrored")
+
+# THE RETREATS DECK'S PHOTOGRAPHS (owner, 26 October 2026), held in the code
+# rather than on the volume. The deck chose a hundred-odd pictures from the old
+# Squarespace site, which expires on 14 November 2026, and each was copied to
+# static/img/retreats; SOURCES.txt there says where each came from. The new
+# words point at those files directly, but the older galleries on the retreat
+# pages -- and any handover that brings one back -- still ask for some of the
+# same pictures by their Squarespace address, so the photo swap serves the
+# house's copy for those too, at any size. Read from SOURCES.txt rather than
+# kept in a second list here, so a picture added there is swapped the moment
+# its file is in the folder, and one whose file has gone is not swapped for a
+# 404 of our own making.
+#
+# Matched on the picture, not on the whole address. Squarespace serves a photo
+# by the account and asset in its path and ignores the name after them, so
+# ".../9b008241-.../IMG_4368.JPG" (a template) and ".../9b008241-.../chateau-
+# at-night.jpg" (the deck) are one photograph -- and SOURCES.txt holds the
+# deck's spelling. Every address the templates use is looked up by its asset
+# (_house_copies_in_templates, once hotlinked_urls exists further down).
+HOUSE_COPIES_DIR = os.path.join(BASE_DIR, "static", "img", "retreats")
+_HOUSE_COPY_SMALL = ("100w", "300w", "500w", "750w", "1000w")
+_HOUSE_COPY_ASSET = re.compile(r"/content/(?:v1/)?[0-9a-f]{24}/([^/?#]+)/")
+_HOUSE_COPY_BY_ASSET = {}      # asset id -> (the 1600px copy, the 800px copy)
+
+
+def _house_copies():
+    """{Squarespace address: the house's copy} for the retreats deck."""
+    out = {}
+    try:
+        lines = io.open(os.path.join(HOUSE_COPIES_DIR, "SOURCES.txt"),
+                        encoding="utf-8").read().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        parts = line.split()
+        if len(parts) < 2 or not parts[1].startswith("https://images.squarespace-cdn.com/"):
+            continue
+        slug, url = parts[0][:-len(".jpg")], parts[1]
+        if not parts[0].endswith(".jpg") or not os.path.exists(
+                os.path.join(HOUSE_COPIES_DIR, slug + ".jpg")):
+            continue
+        big = "/static/img/retreats/%s.jpg" % slug
+        small = ("/static/img/retreats/%s-800.jpg" % slug
+                 if os.path.exists(os.path.join(HOUSE_COPIES_DIR, slug + "-800.jpg")) else big)
+        # Squarespace answers for one picture with and without /v1/ in its path,
+        # and the templates use both.
+        twin = (url.replace("/content/v1/", "/content/", 1) if "/content/v1/" in url
+                else url.replace("/content/", "/content/v1/", 1))
+        for base in (url, twin):
+            out[base] = big
+            for size in _HOUSE_COPY_SMALL:
+                out[base + "?format=" + size] = small
+        asset = _HOUSE_COPY_ASSET.search(url)
+        if asset:
+            _HOUSE_COPY_BY_ASSET.setdefault(asset.group(1), (big, small))
+    return out
+
+
+def _house_copies_in_templates(urls):
+    """{address a template uses: the house's copy} for every held picture,
+    whatever name the template happens to give it."""
+    out = {}
+    for url in urls:
+        asset = _HOUSE_COPY_ASSET.search(url)
+        held = _HOUSE_COPY_BY_ASSET.get(asset.group(1)) if asset else None
+        if held:
+            size = url.split("?format=", 1)[1] if "?format=" in url else ""
+            out[url] = held[1] if size in _HOUSE_COPY_SMALL else held[0]
+    return out
+
+
+HOUSE_COPIES = _house_copies()
 # Only this host. "Download whatever the templates point at" is a fetcher
 # aimed by whoever last edited a template, which is a different and much worse
 # tool than a mirror of one CDN.
@@ -29308,6 +29559,10 @@ def hotlinked_urls():
     return urls
 
 
+# The retreats deck's copies, for every address the templates use for them.
+HOUSE_COPIES.update(_house_copies_in_templates(hotlinked_urls()))
+
+
 def mirrored_index(conn):
     """{source_url: filename} for every copy actually on the disk.
 
@@ -29393,8 +29648,14 @@ def mirror_coverage(conn):
     """
     wanted = hotlinked_urls()
     have = mirrored_index(conn)
-    missing = [u for u in wanted if u not in have]
-    held = [u for u in wanted if u in have]
+
+    def is_held(u):
+        # On the volume, or in the code as one of the retreats deck's
+        # photographs (HOUSE_COPIES), which is held at every size.
+        return u in have or u in HOUSE_COPIES or u.split("?", 1)[0] in HOUSE_COPIES
+
+    missing = [u for u in wanted if not is_held(u)]
+    held = [u for u in wanted if is_held(u)]
     orphans = sorted(set(have) - set(wanted))
     errors, total_bytes = [], 0
     try:
@@ -31278,7 +31539,10 @@ def newsletter_list_view(rows, args):
                 # Only the ones the sign-up box would refuse today; everybody
                 # else is not "not a script", they are simply not in question.
                 facet("script", "Sign-up", lambda r: SCRIPT_SIGNUP_CHIP if r["script"] else None,
-                      order=[SCRIPT_SIGNUP_CHIP])],
+                      order=[SCRIPT_SIGNUP_CHIP]),
+                facet("source", "Came from",
+                      lambda r: "Squarespace" if r["source"] == SQUARESPACE_SOURCE else "This site",
+                      order=["This site", "Squarespace"])],
         sorts=[
             sort_option("recent", "Newest first",
                         lambda r: (r["created_at"] or "", r["id"]), reverse=True),
@@ -31319,6 +31583,389 @@ def newsletter_subscribers_page():
             else "still on the list, and the next campaign writes to them"))
     return render_template("admin_newsletter.html", lv=lv, rows=lv["rows"],
                            overview=overview, scripts=scripts)
+
+
+# ---------------------------------------------------------------------------
+# THE OLD SQUARESPACE LIST, BROUGHT ACROSS.
+#
+# The newsletter on the old site had some twenty-five thousand people on it,
+# gathered over years, and this list started empty on 19 October 2026. Those
+# people asked for the newsletter -- from the house, on the house's own site --
+# so bringing them onto the house's new list is the same list kept, not a list
+# bought. What comes across is what the privacy notice says the newsletter
+# holds: the address, and when they joined. Names stay in the file.
+#
+# Nobody is written to when they come across. A welcome letter to twenty-five
+# thousand people, most of whom joined years ago, is a campaign nobody chose to
+# send -- and a mail account that sends one is a mail account that gets
+# stopped.
+# ---------------------------------------------------------------------------
+
+SQUARESPACE_IMPORT_KIND = "squarespace_newsletter"
+SQUARESPACE_DRAFT_HOURS = 24
+SQUARESPACE_SOURCE = "squarespace"
+SQUARESPACE_CONSENT_HOW = "subscribed on the old Squarespace site; brought across with its list"
+
+# Headers, lower-cased, in the order they are preferred. The export's exact
+# spelling is not documented anywhere the house can point to, so every
+# reasonable one is read -- and the check page says which column each came
+# from, so a wrong guess is in front of the owner before anything is written.
+_SQS_EMAIL_HEADERS = ("email", "email address", "e-mail", "email_address", "e-mail address",
+                      "subscriber email", "subscriber")
+_SQS_DATE_HEADERS = ("subscribed on", "subscribed at", "subscribed date", "date subscribed",
+                     "subscription date", "date added", "added on", "added", "created on",
+                     "created at", "created", "signed up", "joined", "date")
+_SQS_STATUS_HEADERS = ("status", "subscription status", "subscriber status", "email status",
+                       "marketing status", "email marketing", "accepts marketing",
+                       "accepts email marketing", "subscribed to marketing", "subscribed",
+                       "email subscription", "opted in", "opt in")
+# What a status column says about somebody who is no longer on the list.
+_SQS_OFF_WORDS = {"unsubscribed", "no", "false", "0", "n", "not subscribed", "opted out",
+                  "opted-out", "optout", "cleaned", "bounced", "complained", "spam",
+                  "inactive", "suppressed", "blocked", "removed", "deleted"}
+_SQS_SLASH_DATE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})(.*)$")
+
+SQS_SKIP_UNSUBSCRIBED = "unsubscribed in Squarespace"
+SQS_SKIP_OPTOUT = "on the do-not-write list"
+SQS_SKIP_RESTRICTED = "asked us to stop using their details"
+SQS_SKIP_LEFT = "left this list here, and is not put back by an old list"
+SQS_SKIP_TAKEN_OFF = "taken off this list as a script sign-up"
+SQS_SKIP_NOT_EMAIL = "not an email address"
+
+
+def _sqs_header(headers, wanted, *, avoid=()):
+    """The first header in `wanted` order that the file has, else the first
+    that contains one of them, never one containing a word in `avoid`."""
+    usable = [h for h in headers if h and not any(a in h for a in avoid)]
+    for w in wanted:
+        if w in usable:
+            return w
+    for w in wanted:
+        for h in usable:
+            if w in h:
+                return h
+    return None
+
+
+def _sqs_moment(value, day_first):
+    """A sign-up date as the export writes it, as a stored moment, or None.
+
+    A date alone is put at noon UTC, which is the same day in the Ariège
+    whatever the season. A time with no zone is read as the house's own. A
+    date after today is no date: the file is wrong about it, and a subscriber
+    who joins in the future would sort above everybody who really did.
+    """
+    text = (value or "").strip()
+    if not text:
+        return None
+    m = _SQS_SLASH_DATE.match(text)
+    if m:
+        a, b, year, rest = int(m.group(1)), int(m.group(2)), m.group(3), m.group(4)
+        day, month = (a, b) if day_first else (b, a)
+        year = int(year) + (2000 if len(year) == 2 else 0)
+        text = f"{year:04d}-{month:02d}-{day:02d}{rest}"
+    moment = None
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00").replace(" UTC", "+00:00"))
+    except ValueError:
+        for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %I:%M %p", "%b %d, %Y", "%B %d, %Y",
+                    "%b %d, %Y %I:%M %p", "%B %d, %Y %I:%M %p", "%d %b %Y", "%d %B %Y"):
+            try:
+                moment = datetime.strptime(text, fmt)
+                break
+            except ValueError:
+                continue
+    if moment is None:
+        return None
+    if moment.tzinfo is None:
+        if (moment.hour, moment.minute, moment.second) == (0, 0, 0) and len(text) <= 12:
+            moment = moment.replace(hour=12, tzinfo=timezone.utc)
+        else:
+            moment = moment.replace(tzinfo=LOCAL_TZ)
+    moment = moment.astimezone(timezone.utc)
+    if moment > datetime.now(timezone.utc):
+        return None
+    return moment.isoformat()
+
+
+def parse_squarespace_list(text):
+    """The Squarespace mailing-list export, read. Decides nothing, writes nothing.
+
+    Returns (people, columns, problems):
+      people   -- one per ADDRESS, lower-cased, in the order the file has them:
+                  {email, at, off}. `at` is when they joined, or None; `off` is
+                  True if the file says they are no longer subscribed. An address
+                  twice is one person, joined at the earlier date, and off if
+                  either row says so -- a stop said once is a stop.
+      columns  -- {"email", "date", "status", "names"}: the header each was read
+                  from, or None, so the check page can say so.
+      problems -- (label, reason) for every row with no usable address.
+    """
+    import csv as _csv
+    import io as _io
+    try:
+        rows = list(_csv.reader(_io.StringIO(text or "")))
+    except Exception:                            # pragma: no cover - malformed
+        return [], {}, [("the file", "could not be read as a CSV")]
+    rows = [r for r in rows if any((c or "").strip() for c in r)]
+    if not rows:
+        return [], {}, [("the file", "is empty")]
+    headers = [(h or "").strip().lower().lstrip("﻿").strip() for h in rows[0]]
+    email_h = _sqs_header(headers, _SQS_EMAIL_HEADERS,
+                          avoid=("status", "marketing", "subscri", "date", "verified"))
+    if email_h is None and len(headers) == 1 and EMAIL_RE.match(headers[0]):
+        # A bare column of addresses with no header: the first line is a person.
+        headers, email_h, body = ["email"], "email", rows
+    else:
+        body = rows[1:]
+    if email_h is None:
+        return [], {}, [("the file", "has no column of email addresses")]
+    date_h = _sqs_header(headers, _SQS_DATE_HEADERS, avoid=("unsubscri", "updated", "last"))
+    status_h = next((h for h in headers if "unsubscri" in h), None) or _sqs_header(
+        headers, _SQS_STATUS_HEADERS, avoid=("date",))
+    names = [h for h in headers if "name" in h]
+    columns = {"email": email_h, "date": date_h, "status": status_h, "names": names}
+
+    at_col = headers.index(email_h)
+    date_col = headers.index(date_h) if date_h else None
+    status_col = headers.index(status_h) if status_h else None
+
+    def cell(row, i):
+        return (row[i] if i is not None and i < len(row) else "") or ""
+
+    # Day first or month first, decided once for the whole column: 03/04/2021
+    # is March in a file that also has 25/12/2020 nowhere, April in one that does.
+    day_first = False
+    if date_col is not None:
+        for row in body:
+            m = _SQS_SLASH_DATE.match(cell(row, date_col).strip())
+            if m and int(m.group(1)) > 12:
+                day_first = True
+                break
+
+    people, problems = {}, []
+    for line, row in enumerate(body, start=2 if body is not rows else 1):
+        email = cell(row, at_col).strip().lower()
+        if not email or not EMAIL_RE.match(email):
+            problems.append((email or f"line {line}", SQS_SKIP_NOT_EMAIL))
+            continue
+        status = cell(row, status_col).strip().lower()
+        if status_h and "unsubscri" in status_h:
+            off = bool(status) and status not in ("no", "false", "0", "n", "subscribed")
+        else:
+            off = status in _SQS_OFF_WORDS
+        at = _sqs_moment(cell(row, date_col), day_first)
+        was = people.get(email)
+        if was:
+            was["off"] = was["off"] or off
+            if at and (not was["at"] or at < was["at"]):
+                was["at"] = at
+            continue
+        people[email] = {"email": email, "at": at, "off": off}
+    return list(people.values()), columns, problems
+
+
+def plan_squarespace_import(conn, people):
+    """What bringing `people` across would do, against the list as it is now.
+
+    Returns {"add", "confirm", "already", "skipped"}:
+      add      -- people new to this list;
+      confirm  -- people here under the old confirm-first box who never pressed
+                  the link; Squarespace has them as subscribed, which is the
+                  yes the link was asking for. [(subscriber id, person)];
+      already  -- addresses on this list already, left exactly as they are;
+      skipped  -- (address, why) for everybody NOT brought across.
+
+    The same rules as the sign-up box, so the old list cannot put on anybody
+    the box would turn away: no address on the do-not-write list, nobody who
+    asked us to stop using their details, nobody who left this list, no Gmail
+    address with a dot between most of its letters, and one spelling per Gmail
+    inbox -- the one already here, or else the earliest in the file.
+    """
+    existing = {(r["email"] or "").strip().lower(): r for r in conn.execute(
+        "SELECT id, email, confirmed_at, unsubscribed_at, script_removed_at "
+        "FROM newsletter_subscribers").fetchall()}
+    optouts = {(r["email"] or "").strip().lower()
+               for r in conn.execute("SELECT email FROM email_optouts").fetchall()}
+    held_back = restricted_addresses(conn)
+    inboxes = {}
+    for email, r in existing.items():
+        if r["confirmed_at"] and not r["unsubscribed_at"] and gmail_inbox(email):
+            inboxes.setdefault(gmail_inbox(email), email)
+
+    out = {"add": [], "confirm": [], "already": [], "skipped": []}
+    # Earliest first, so the spelling kept for a Gmail inbox is the one that
+    # joined first; undated people after the dated, in the file's order.
+    ordered = sorted(enumerate(people), key=lambda p: (p[1]["at"] is None, p[1]["at"] or "", p[0]))
+    for _, p in ordered:
+        email = p["email"]
+        row = existing.get(email)
+        if row and row["confirmed_at"] and not row["unsubscribed_at"]:
+            out["already"].append(email)
+            continue
+        why = None
+        if p["off"]:
+            why = SQS_SKIP_UNSUBSCRIBED
+        elif email in optouts:
+            why = SQS_SKIP_OPTOUT
+        elif email in held_back:
+            why = SQS_SKIP_RESTRICTED
+        elif row and row["unsubscribed_at"]:
+            why = (SQS_SKIP_TAKEN_OFF if row["script_removed_at"] == row["unsubscribed_at"]
+                   else SQS_SKIP_LEFT)
+        elif scattered_gmail_dots(email):
+            why = SCRIPT_SIGNUP_DOTS
+        elif gmail_inbox(email) and inboxes.get(gmail_inbox(email), email) != email:
+            why = f"another spelling of {inboxes[gmail_inbox(email)]}, which is on the list"
+        if why:
+            out["skipped"].append((email, why))
+            continue
+        if gmail_inbox(email):
+            inboxes.setdefault(gmail_inbox(email), email)
+        if row:
+            out["confirm"].append((row["id"], p))
+        else:
+            out["add"].append(p)
+    # Back in the file's order for anybody reading the lists.
+    order = {p["email"]: i for i, p in enumerate(people)}
+    out["add"].sort(key=lambda p: order[p["email"]])
+    out["skipped"].sort(key=lambda s: order.get(s[0], 0))
+    return out
+
+
+def run_squarespace_import(conn, plan, *, at, user=None):
+    """Put the plan on the list. Returns (added, confirmed): how many of each
+    the list actually took, which is what the page reports -- not the plan.
+
+    Each one is on the list from when Squarespace says they joined, and their
+    yes is written down at that same moment with how, so the record and the
+    list agree to the second and the startup backfill finds nothing missing.
+    Nobody is written to: confirm_sent_at stays empty, because no letter went.
+    """
+    added = confirmed = 0
+    for p in plan["add"]:
+        joined = p["at"] or at
+        if conn.execute(
+                """INSERT OR IGNORE INTO newsletter_subscribers (email, token, source,
+                     created_at, confirmed_at) VALUES (?, ?, ?, ?, ?)""",
+                (p["email"], secrets.token_urlsafe(32), SQUARESPACE_SOURCE,
+                 joined, joined)).rowcount:
+            record_consent(conn, "newsletter", 1, SQUARESPACE_CONSENT_HOW,
+                           email=p["email"], at=joined, recorded_by=user)
+            added += 1
+    for sid, p in plan["confirm"]:
+        if conn.execute(
+                "UPDATE newsletter_subscribers SET confirmed_at = ? "
+                "WHERE id = ? AND confirmed_at IS NULL AND unsubscribed_at IS NULL",
+                (at, sid)).rowcount:
+            record_consent(conn, "newsletter", 1, SQUARESPACE_CONSENT_HOW,
+                           email=p["email"], at=at, recorded_by=user)
+            confirmed += 1
+    return added, confirmed
+
+
+def _sqs_text(raw):
+    """An uploaded file as text, whichever encoding the export used."""
+    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return ""                                    # pragma: no cover - latin-1 reads anything
+
+
+def _sqs_reasons(skipped, shown=8):
+    """Who was not brought across, grouped by why: [(why, count, [examples])]."""
+    by = {}
+    for email, why in skipped:
+        by.setdefault(why, []).append(email)
+    return sorted(((why, len(who), who[:shown]) for why, who in by.items()),
+                  key=lambda g: -g[1])
+
+
+@app.route("/admin/newsletter/import", methods=["GET", "POST"])
+@owner_required
+def import_squarespace_newsletter():
+    """Bring the old Squarespace mailing list across: check first, then run.
+
+    A check reads the file, writes nothing to the list, and keeps what it read
+    for a day so the run is of exactly what was looked at. The run is worked
+    out again against the list as it is then -- somebody may have unsubscribed
+    in between -- and writes in one go.
+    """
+    user = current_user()
+    conn = get_db()
+    conn.execute("DELETE FROM import_drafts WHERE kind = ? AND created_at < ?",
+                 (SQUARESPACE_IMPORT_KIND, (datetime.now(timezone.utc)
+                                            - timedelta(hours=SQUARESPACE_DRAFT_HOURS)).isoformat()))
+    conn.commit()
+    brought = conn.execute(
+        "SELECT COUNT(*) AS c FROM newsletter_subscribers WHERE source = ?",
+        (SQUARESPACE_SOURCE,)).fetchone()["c"]
+
+    if request.method == "GET":
+        conn.close()
+        return render_template("admin_newsletter_import.html", plan=None, brought=brought)
+
+    if request.form.get("action", "check") == "check":
+        upload = request.files.get("list")
+        if not upload or not upload.filename:
+            conn.close()
+            flash("Choose the exported file first.", "error")
+            return redirect(url_for("import_squarespace_newsletter"))
+        people, columns, problems = parse_squarespace_list(_sqs_text(upload.read()))
+        if not people:
+            conn.close()
+            message, category = bulk_message("Read", "address", 0, problems or
+                                             [("the file", "has nobody in it")])
+            flash(message, category)
+            return redirect(url_for("import_squarespace_newsletter"))
+        token = secrets.token_urlsafe(18)
+        conn.execute("INSERT INTO import_drafts (token, kind, payload, created_at, user_id) "
+                     "VALUES (?, ?, ?, ?, ?)",
+                     (token, SQUARESPACE_IMPORT_KIND,
+                      json.dumps({"people": people, "columns": columns,
+                                  "problems": problems, "filename": upload.filename}),
+                      datetime.now(timezone.utc).isoformat(), user["id"] if user else None))
+        conn.commit()
+        plan = plan_squarespace_import(conn, people)
+        conn.close()
+        return render_template(
+            "admin_newsletter_import.html", plan=plan, brought=brought, token=token,
+            columns=columns, read=len(people), filename=upload.filename,
+            undated=sum(1 for p in people if not p["at"]),
+            reasons=_sqs_reasons(problems + plan["skipped"]))
+
+    # action == "run"
+    token = request.form.get("token", "")
+    draft = conn.execute("SELECT * FROM import_drafts WHERE token = ? AND kind = ?",
+                         (token, SQUARESPACE_IMPORT_KIND)).fetchone()
+    if not draft:
+        conn.close()
+        flash("That check is more than a day old or has already been run. Check the file again.",
+              "error")
+        return redirect(url_for("import_squarespace_newsletter"))
+    payload = json.loads(draft["payload"])
+    plan = plan_squarespace_import(conn, payload["people"])
+    now_iso = datetime.now(timezone.utc).isoformat()
+    added, confirmed = run_squarespace_import(conn, plan, at=now_iso, user=user)
+    conn.execute("DELETE FROM import_drafts WHERE token = ?", (token,))
+    log_audit(conn, "newsletter_squarespace_imported", target=payload.get("filename") or "",
+              details=f"{added} added, {confirmed} confirmed, {len(plan['already'])} already on "
+                      f"the list, {len(plan['skipped']) + len(payload['problems'])} not brought across")
+    conn.commit()
+    conn.close()
+    skipped = [tuple(p) for p in payload["problems"]] + plan["skipped"]
+    detail = []
+    if confirmed:
+        detail.append(f"{confirmed} of them were waiting to confirm here")
+    if plan["already"]:
+        detail.append(f"{len(plan['already'])} already on the list, left as they were")
+    detail.append("nobody has been written to")
+    message, category = bulk_message("Brought across", "subscriber", added + confirmed,
+                                     skipped, detail="; ".join(detail))
+    flash(message, category)
+    return redirect(url_for("newsletter_subscribers_page", source="Squarespace"))
 
 
 @app.route("/admin/emails/optout", methods=["POST"])
@@ -39271,7 +39918,7 @@ def owner_home_warnings(conn, today):
     if gaps:
         with_guests = [g for g in gaps if g["in_house"] or g["arrivals"]]
         add("blocker" if with_guests else "warn", "Days with nobody on",
-            (f"{with_guests[0]['date']} has guests and nobody rostered"
+            (f"{format_date_short(with_guests[0]['date'])} has guests and nobody rostered"
              if with_guests else f"first is {format_date_short(gaps[0]['date'])}"),
             len(gaps), "cover_gaps_page")
 
@@ -39604,16 +40251,29 @@ def owner_home_day(conn, today, user):
     if covers:
         rows.append({"time": "19:30", "kind": "dinner", "title": "Dinner service",
                      "detail": f"{covers} covers", "assignee": None, "done": False})
-    for t in conn.execute(
+    tasks = conn.execute(
             """SELECT tasks.*, users.name AS who FROM tasks
                LEFT JOIN users ON users.id = tasks.assigned_to_user_id
                WHERE tasks.due_date = ? ORDER BY tasks.status, tasks.id""",
-            (today.isoformat(),)).fetchall():
-        # Every row opens something. A task that came from an enquiry opens
-        # the enquiry, where answering or marking it spam settles the task;
-        # any other task opens the task list at it.
-        href = (_day_link("admin_waitlist", when="all") + f"#entry-{t['waitlist_entry_id']}"
-                if t["waitlist_entry_id"] else _day_link("admin_tasks"))
+            (today.isoformat(),)).fetchall()
+    for e in task_entries(tasks, user):
+        # Every row opens something: what the task is about where there is a
+        # page for it (task_subject) -- the enquiry, where answering or marking
+        # it spam settles the task; the booking -- and the task list otherwise.
+        href = (e["subject"] or {}).get("url") or _day_link("admin_tasks")
+        if e["group"]:
+            # A room's checklist is one thing on the day, not eight rows each
+            # saying who is arriving.
+            people = {t["assigned_to_user_id"] for t in e["tasks"]}
+            first = e["tasks"][0]
+            rows.append({"time": "", "kind": "task", "title": e["heading"],
+                         "detail": f"{e['done']} of {e['total']} done"
+                                   + (f" · {e['note']}" if e["note"] else ""),
+                         "assignee": ("Mine" if people == {user["id"]}
+                                      else first["who"] if len(people) == 1 else None),
+                         "done": e["done"] == e["total"], "href": href})
+            continue
+        t = e["task"]
         rows.append({"time": "", "kind": "task", "title": t["title"],
                      "detail": t["room_note"] or "",
                      "assignee": "Mine" if t["assigned_to_user_id"] == user["id"] else t["who"],
@@ -39841,8 +40501,10 @@ def staff_dashboard():
         auto_prepped_count = auto_prep_upcoming_arrivals(conn, today)
         if auto_prepped_count:
             flash(
-                f"Auto-prepped {auto_prepped_count} arriving booking{'' if auto_prepped_count == 1 else 's'} "
-                f"— room setup tasks assigned.", "success",
+                f"{auto_prepped_count} stay{' is' if auto_prepped_count == 1 else 's are'} "
+                f"arriving soon: the checklist to get "
+                f"{'its room' if auto_prepped_count == 1 else 'their rooms'} ready is made, "
+                f"for whoever is on that day.", "success",
             )
         # And the Booking.com rooms emptying today, for the same reason the
         # arrival prep is here: the job runs every ten minutes, and the owner
@@ -40351,8 +41013,9 @@ def _search_sources():
                        "bookings.second_contact_email", "rooms.name"],
             "order": "bookings.arrival_date DESC",
             "name": lambda r: r["guest_name"],
-            "line": lambda r: (f"{r['room_name']} \u00b7 {r['arrival_date']} to "
-                               f"{r['departure_date']} \u00b7 {r['reference_code']}"),
+            "line": lambda r: (f"{r['room_name']} \u00b7 "
+                               f"{format_date_range(r['arrival_date'], r['departure_date'])}"
+                               f" \u00b7 {r['reference_code']}"),
             "status": lambda r: (r["status"], r["status"]),
             "href": lambda r: url_for("admin_booking", booking_id=r["id"]),
         },
@@ -40376,7 +41039,7 @@ def _search_sources():
                        "dietary_notes"],
             "order": "dinner_date DESC",
             "name": lambda r: r["guest_name"],
-            "line": lambda r: (f"{r['dinner_date']} \u00b7 party of "
+            "line": lambda r: (f"{format_date_short(r['dinner_date'])} \u00b7 party of "
                                f"{r['party_size']} \u00b7 {r['reference_code']}"),
             "status": lambda r: (r["status"], r["status"]),
             "href": lambda r: url_for("admin_restaurant"),
@@ -40408,10 +41071,12 @@ def _search_sources():
             "order": "created_at DESC",
             "name": lambda r: r["contact_name"],
             "line": lambda r: ((r["event_type"] or "").capitalize()
-                               + (f" \u00b7 {r['preferred_date']}" if r["preferred_date"] else "")
+                               + (f" \u00b7 {format_date_short(r['preferred_date'])}"
+                                  if r["preferred_date"] else "")
                                + f" \u00b7 {r['reference_code']}"),
             "status": lambda r: (r["status"], r["status"]),
-            "href": lambda r: url_for("admin_events"),
+            # The event itself, not the list it is somewhere in.
+            "href": lambda r: url_for("admin_event", event_id=r["id"]),
         },
         {
             "key": "expenses",
@@ -40420,9 +41085,10 @@ def _search_sources():
             "fields": ["vendor_name", "description", "invoice_number", "doc_type"],
             "order": "submitted_at DESC",
             "name": lambda r: r["vendor_name"] or r["description"] or "(no name)",
-            "line": lambda r: (f"\u20ac{float(r['amount'] or 0):,.2f} \u00b7 "
+            "line": lambda r: (f"{money(r['amount'] or 0)} \u00b7 "
                                + (r["description"] or "")
-                               + (f" \u00b7 due {r['due_date']}" if r["due_date"] else "")),
+                               + (f" \u00b7 due {format_date_short(r['due_date'])}"
+                                  if r["due_date"] else "")),
             "status": lambda r: (r["status"], r["status"]),
             "href": lambda r: url_for("expenses"),
         },
@@ -40457,10 +41123,15 @@ def _search_sources():
             "order": "tasks.due_date DESC",
             "name": lambda r: r["title"],
             "line": lambda r: ((r["assigned_to_name"] or "Unassigned")
-                               + (f" \u00b7 {r['due_date']}" if r["due_date"] else "")),
+                               + (f" \u00b7 {format_date_short(r['due_date'])}"
+                                  if r["due_date"] else "")),
             "status": lambda r: (r["status"],
                                  "onshift" if r["status"] == "done" else "pending"),
-            "href": lambda r: url_for("admin_tasks"),
+            # What the task is about where there is a page for it, else the
+            # day it is on -- not the whole of this week's tasks.
+            "href": lambda r: ((task_subject(r) or {}).get("url")
+                               or (url_for("admin_tasks", view="day", date=r["due_date"])
+                                   if r["due_date"] else url_for("admin_tasks"))),
         },
         {
             "key": "rooms",
@@ -40469,7 +41140,7 @@ def _search_sources():
             "fields": ["name", "description"],
             "order": "sort_order",
             "name": lambda r: r["name"],
-            "line": lambda r: f"\u20ac{float(r['price_per_night'] or 0):,.0f}/night",
+            "line": lambda r: f"{euro(r['price_per_night'] or 0)} a night",
             "href": lambda r: url_for("edit_room", room_id=r["id"]),
         },
         {
@@ -40479,13 +41150,13 @@ def _search_sources():
             "fields": ["name", "email", "phone", "notes"],
             "order": "created_at DESC",
             "name": lambda r: r["name"],
-            "line": lambda r: (f"{r['desired_arrival'] or '?'} \u2192 "
-                               f"{r['desired_departure'] or '?'} \u00b7 {r['email'] or ''}"),
+            "line": lambda r: " \u00b7 ".join(x for x in (
+                waitlist_when_words(r), r["email"] or "") if x),
             "status": lambda r: (
                 r["status"],
                 "onshift" if r["status"] == "booked"
                 else ("inactive" if r["status"] == "closed" else "pending")),
-            "href": lambda r: url_for("admin_waitlist"),
+            "href": lambda r: url_for("admin_waitlist", when="all") + f"#entry-{r['id']}",
         },
         {
             "key": "recurring_costs",
@@ -40494,7 +41165,7 @@ def _search_sources():
             "fields": ["label", "category", "notes"],
             "order": "label",
             "name": lambda r: r["label"],
-            "line": lambda r: f"\u20ac{float(r['amount'] or 0):,.2f} / {r['frequency']}",
+            "line": lambda r: f"{money(r['amount'] or 0)} / {r['frequency']}",
             "status": lambda r: ("active" if r["active"] else "paused",
                                  "onshift" if r["active"] else "inactive"),
             "href": lambda r: url_for("management_recurring_costs"),
@@ -40531,7 +41202,8 @@ def _search_sources():
             "name": lambda r: (r["caption"] or "")[:60]
                               + ("\u2026" if len(r["caption"] or "") > 60 else ""),
             "line": lambda r: ((r["platform"] or "")
-                               + (f" \u00b7 {r['scheduled_date']}" if r["scheduled_date"] else "")),
+                               + (f" \u00b7 {format_date_short(r['scheduled_date'])}"
+                                  if r["scheduled_date"] else "")),
             "status": lambda r: (r["status"],
                                  "onshift" if r["status"] == "posted" else "pending"),
             "href": lambda r: url_for("management_social"),
@@ -45393,6 +46065,9 @@ PALETTE_PAGES = [
     ("Add a booking", "walk_in_booking",
      "desk telephone email book a room tonight arrival no reservation walk in walk-in "
      "reserve hold payment link agreed price"),
+    ("Bring the Squarespace list across", "import_squarespace_newsletter",
+     "squarespace newsletter mailing list import export csv subscribers old site "
+     "bring across email list"),
     ("Why they cancel", "management_cancellations",
      "cancellation reason why cancelled enquiry conversion events won lost"),
     ("Shift handover", "shift_handover",
@@ -45549,8 +46224,12 @@ PALETTE_PAGES = [
     ("Money ahead", "money_ahead_page",
      "cash flow forecast expected incoming coming in runway money due to arrive "
      "balances arriving weeks outlook labour cost rostered wages"),
+    # The sheet the house prints: "Printable sheet" on the home pages opens it.
+    ("Arrivals sheet", "arrivals_sheet_page",
+     "print printable sheet paper checklist tick sheets washed room ready "
+     "extras arrivals departures fortnight schedule"),
     ("Today sheet", "today_sheet",
-     "today print run sheet arrivals departures handover"),
+     "today run sheet shifts departures handover"),
     ("Front desk", "front_desk",
      "front desk reception today check in check out arriving leaving in house rooms ready owed"),
     ("Maintenance", "maintenance_page",
@@ -48794,8 +49473,40 @@ def admin_whats_on():
     """
     conn = get_db()
     events = conn.execute("SELECT * FROM whats_on ORDER BY sort_order, id").fetchall()
+    found = [dict(r) for r in conn.execute(
+        """SELECT whats_on_found.*, decider.name AS decided_by_name
+             FROM whats_on_found
+             LEFT JOIN users decider ON decider.id = whats_on_found.decided_by_user_id
+            WHERE whats_on_found.ends >= ? OR whats_on_found.status = 'added'""",
+        (house_today_iso(),))]
+    look = whats_on_to_look_at(conn)
+    last_run = conn.execute(
+        "SELECT * FROM automation_runs WHERE job_name = 'whats_on_reader'").fetchone()
     conn.close()
-    return render_template("admin_whats_on.html", events=events)
+    lv = list_view(
+        found, request.args,
+        search=["title", "english_title", "town"],
+        search_hint="Search what the sites list",
+        facets=[
+            facet("state", "Where it is", lambda r: (
+                "On the page" if r["status"] == "added" else
+                "Waved away" if r["status"] == "dismissed" else
+                "To look at" if r["kind"] == "event" and r["worth"] != 0 else
+                "Not suggested"),
+                  order=["To look at", "On the page", "Not suggested", "Waved away"],
+                  default="To look at"),
+            facet("kind", "What it is", lambda r: {
+                "event": "An event", "regular": "A regular activity",
+                "local": "A local listing"}[r["kind"]],
+                  order=["An event", "A regular activity", "A local listing"]),
+            facet("source", "Listed by", lambda r: WHATS_ON_SOURCES.get(r["source"], r["source"])),
+        ],
+        sorts=[sort_option("soon", "Soonest first", lambda r: r["starts"] or ""),
+               sort_option("new", "Newest found", lambda r: r["first_seen_at"] or "",
+                           reverse=True)],
+        default_sort="soon")
+    return render_template("admin_whats_on.html", events=events, lv=lv, look=look,
+                           sources=WHATS_ON_SOURCES, last_run=last_run)
 
 
 @app.route("/admin/whats-on/save", methods=["POST"])
@@ -48819,6 +49530,11 @@ def admin_whats_on_save():
         flash("The last day must be a date on or after the first.", "error")
         return redirect(url_for("admin_whats_on"))
     when_words = (f.get("when_words", "") or "").strip()[:80] or None
+    source_url = (f.get("source_url", "") or "").strip()[:500] or None
+    if source_url and not whats_on_source_of(source_url)[0]:
+        flash("The official page has to be an event's page on the tourist office, "
+              "Tourisme Occitanie or Ariège Pyrénées Tourisme.", "error")
+        return redirect(url_for("admin_whats_on"))
     # One shape or the other. A row carrying both would be listed twice in the
     # same week — once as the weekday rule, once as the dated one — and a row
     # carrying neither can never appear at all, so it would look saved and do
@@ -48847,7 +49563,7 @@ def admin_whats_on_save():
         (f.get("season_to", "") or "").strip() or None,
         1 if f.get("is_active") else 0,
         sort_order,
-        event_until, when_words,
+        event_until, when_words, source_url, 1 if f.get("recurs_yearly") else 0,
     )
     conn = get_db()
     entry_id = (f.get("id") or "").strip()
@@ -48855,16 +49571,16 @@ def admin_whats_on_save():
         conn.execute(
             """UPDATE whats_on SET title=?, description=?, location=?, distance=?,
                weekday=?, event_date=?, start_time=?, end_time=?, season_from=?,
-               season_to=?, is_active=?, sort_order=?, event_until=?, when_words=?
-               WHERE id=?""",
+               season_to=?, is_active=?, sort_order=?, event_until=?, when_words=?,
+               source_url=?, recurs_yearly=? WHERE id=?""",
             vals + (int(entry_id),))
         log_audit(conn, "whats_on_edited", target=title)
     else:
         conn.execute(
             """INSERT INTO whats_on (title, description, location, distance, weekday,
                event_date, start_time, end_time, season_from, season_to, is_active,
-               sort_order, event_until, when_words, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               sort_order, event_until, when_words, source_url, recurs_yearly, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             vals + (datetime.now(timezone.utc).isoformat(),))
         log_audit(conn, "whats_on_added", target=title)
     conn.commit()
@@ -48887,6 +49603,602 @@ def admin_whats_on_delete(event_id):
     conn.close()
     flash("Removed.", "success")
     return redirect(url_for("admin_whats_on"))
+
+
+# ---------------------------------------------------------------------------
+# WHAT'S ON, KEPT UP BY ITSELF (owner, 26 October 2026: "i dont wanna add
+# stuff ... it needs to be accurate ... i dont want to be the person
+# advertising wrong shit").
+#
+# Every night the house reads the official tourism sites and does two things.
+#
+#   - IT CONFIRMS. An entry on the page that names its official page has its
+#     dates read off that page and set from it -- the dates the organiser gave
+#     the tourist office, read from the page's own data, never from its prose.
+#     An annual one that has passed comes back as next year's, in words ("July
+#     2027, date to come"), never with a day nobody has published.
+#   - IT FINDS. Every event the sites list within reach is kept, behind the
+#     scenes, for the owner to add with one press or wave away. Nothing found
+#     reaches the public page until then, and regular activities -- a weekly
+#     yoga class, canyoning all summer -- are kept apart from the events.
+#
+# What it cannot confirm it says, on the admin page and in a weekly task,
+# rather than showing a guess as a fact.
+#
+# THE SOURCES, and why these. The tourist office (Pyrénées Ariégeoises) lists
+# Haute-Ariège, and its listing and every event page can be read, with dates
+# in the page's data. Tourisme Occitanie lists the region: its sitemap names
+# every event page, the town is in the address, and a dated page carries
+# schema.org dates. Ariège Pyrénées Tourisme's listing is behind a bot check
+# and is NOT read -- getting round one is not the house's business -- but its
+# event pages load, so one can be an entry's official page. DATAtourisme, the
+# national open data, holds a few dozen Ariège events in a 700 MB daily file,
+# so it is not worth reading.
+# ---------------------------------------------------------------------------
+
+WHATS_ON_SOURCES = {
+    "tourist_office": "Pyrénées Ariégeoises tourist office",
+    "occitanie": "Tourisme Occitanie",
+    "departement": "Ariège Pyrénées Tourisme",
+}
+WHATS_ON_OT_AGENDA = "https://www.pyrenees-ariegeoises.com/a-voir-a-faire/sortir/agenda/"
+WHATS_ON_OCC_SITEMAPS = (
+    "https://www.tourisme-occitanie.com/diffusio-3/public/sitemaps/sitemap-dsio-fr--1.xml",
+    "https://www.tourisme-occitanie.com/diffusio-3/public/sitemaps/sitemap-dsio-fr--2.xml",
+)
+# The towns within about an hour, as Tourisme Occitanie writes them in an
+# event's address ("...-ax-les-thermes_TFO..."). Further than this a guest is
+# not going for the evening.
+WHATS_ON_TOWNS = (
+    "ax-les-thermes", "tarascon-sur-ariege", "les-cabannes", "foix", "ussat",
+    "ussat-les-bains", "mercus-garrabet", "luzenac", "auzat", "val-de-sos",
+    "vicdessos", "orlu", "orgeix", "merens-les-vals", "lordat", "verdun",
+    "chateau-verdun", "aston", "mirepoix", "montsegur", "niaux", "bedeilhac",
+    "bedeilhac-et-aynat", "ignaux", "ascou", "mijanes", "goulier", "montgaillard",
+    "ornolac-ussat-les-bains", "albies", "garanou", "unac", "vernaux", "savignac-les-ormeaux",
+    "l-hospitalet-pres-l-andorre", "quie", "surba", "arignac", "rabat-les-trois-seigneurs",
+    "saurat", "larcat", "appy", "axiat", "bestiac", "bouan", "sinsat", "caussou",
+    # Not "prades": the Prades the region lists is the town in the
+    # Pyrénées-Orientales, not the Ariège village (dry run, 26 October 2026).
+    "montaillou", "camurac", "lavelanet", "la-bastide-de-serou",
+    "le-mas-d-azil", "saint-paul-de-jarrat", "mercus", "alliat", "capoulet-et-junac",
+    "miglos", "siguer", "gestiès", "lapege", "mijanes", "querigut", "rouze", "le-pla",
+)
+WHATS_ON_MAX_LIST_PAGES = 20
+# A night's reading, at most, so a site that grows tenfold is read in part
+# rather than for an hour.
+WHATS_ON_MAX_PAGES_PER_RUN = 400
+WHATS_ON_PAUSE_SECONDS = 1.0
+# Something listed for this long, or on this many separate dates, is a
+# regular activity rather than an event to plan a day round.
+WHATS_ON_ROUTINE_DAYS = 45
+WHATS_ON_ROUTINE_DATES = 6
+WHATS_ON_UA = ("ChateauDeGudanes/1.0 (+https://www.chateaugudanes.com/whats-on; "
+               "reads the agenda once a night for its own What's On page)")
+
+
+def whats_on_fetch(url, timeout=30):
+    """One page off an official tourism site, as text.
+
+    The only network call the reader makes, so the tests can stand it down
+    and hand it pages instead. Says who it is in the User-Agent: a site that
+    wants to know who reads its agenda every night can."""
+    req = Request(url, headers={"User-Agent": WHATS_ON_UA,
+                                "Accept-Language": "fr,en;q=0.5"})
+    with urlopen(req, timeout=timeout) as r:
+        # Enough for the region's sitemap, which is 15 MB: reading only the
+        # first 4 MB saw a quarter of the region (dry run, 26 October 2026).
+        return r.read(60_000_000).decode("utf-8", "replace")
+
+
+def _official_day(value):
+    """The day a stamp off an official page is on, in its own offset.
+
+    '2027-07-16T00:00:00+02:00' is the 16th: the offset is the house's own, so
+    the date as written is the house's day. Parsed rather than sliced, which
+    would be the same answer here and the wrong habit everywhere else."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+    except ValueError:
+        try:
+            return datetime.strptime(value[:8], "%Y%m%d").date()
+        except ValueError:
+            return None
+
+
+def parse_event_page(page):
+    """What an official event page says, from its own data: {title, town,
+    occurrences: [(first day, last day), ...]} -- or None if it is not one.
+
+    Read from the data the page carries for machines -- schema.org Event, the
+    tourist office's occurrence list, a calendar link's dates -- and never
+    from the sentences around them, which say "every Tuesday except in
+    August" in ways nothing can read reliably."""
+    from html import unescape
+    title = town = None
+    spans = set()
+
+    def keep(start, end):
+        first, last = _official_day(start), _official_day(end)
+        if first:
+            spans.add((first, last if last and last >= first else first))
+
+    for block in re.findall(r'<script[^>]*application/ld\+json[^>]*>([\s\S]*?)</script>', page):
+        try:
+            data = json.loads(block)
+        except ValueError:
+            continue
+        items = (data.get("@graph", [data]) if isinstance(data, dict)
+                 else data if isinstance(data, list) else [])
+        for g in items:
+            if not isinstance(g, dict) or "Event" not in str(g.get("@type", "")):
+                continue
+            title = title or (g.get("name") or "").strip() or None
+            if g.get("startDate"):
+                keep(g.get("startDate"), g.get("endDate"))
+            loc = g.get("location")
+            loc = loc[0] if isinstance(loc, list) and loc else loc
+            if isinstance(loc, dict):
+                addr = loc.get("address") or {}
+                if isinstance(addr, dict):
+                    town = town or (addr.get("addressLocality") or "").strip() or None
+    # The tourist office's own list of when it happens. ONLY that list: the
+    # same page carries other start/end pairs -- what a price is valid for,
+    # "1 January to 31 December" -- and reading every pair on the page put a
+    # March race on every day of the year (26 October 2026).
+    for listed in re.findall(r'"fmaInsert"\s*:\s*\[([\s\S]*?)\]', page):
+        for start, end in re.findall(
+                r'"startDate"\s*:\s*"([^"]+)"\s*,\s*"endDate"\s*:\s*"([^"]+)"', listed):
+            keep(start, end)
+    # Ariège Pyrénées Tourisme gives an event's dates in its calendar link.
+    for raw in re.findall(r'google\.com/calendar/render\?[^"\']+', page):
+        query = unescape(raw)
+        dates = re.search(r"dates=(\d{8})T?\d*/(\d{8})", query)
+        if dates:
+            first, last = _official_day(dates.group(1)), _official_day(dates.group(2))
+            if first:
+                spans.add((first, last if last and last >= first else first))
+        named = re.search(r"[?&]text=([^&]+)", query)
+        if named and not title:
+            from urllib.parse import unquote_plus
+            title = unquote_plus(named.group(1)).strip() or None
+    if not title and not spans:
+        return None
+    return {"title": unescape(title) if title else None,
+            "town": unescape(town) if town else None,
+            "occurrences": sorted(spans)}
+
+
+def next_occurrence(occurrences, today):
+    """The first (first day, last day) that has not ended by today, or None."""
+    return next(((a, b) for a, b in sorted(occurrences) if b >= today), None)
+
+
+def whats_on_source_of(url):
+    """(source, its own id for the event) for an official page, or (None, None)."""
+    url = url or ""
+    m = re.search(r"pyrenees-ariegeoises\.com/.*?-(?:fr|en)-(\d+)/?", url)
+    if m:
+        return "tourist_office", m.group(1)
+    m = re.search(r"tourisme-occitanie\.com/.*?_(TFO[A-Z0-9_]+)/?", url)
+    if m:
+        return "occitanie", m.group(1)
+    m = re.search(r"ariegepyrenees\.com/(?:[a-z]{2}/)?agenda/([a-z0-9-]+)/?", url)
+    if m:
+        return "departement", m.group(1)
+    return None, None
+
+
+def whats_on_tourist_office_pages(fetch):
+    """Every event page the tourist office's agenda lists, walking its pages."""
+    urls = []
+    for page in range(1, WHATS_ON_MAX_LIST_PAGES + 1):
+        try:
+            listing = fetch(f"{WHATS_ON_OT_AGENDA}?listpage={page}")
+        except HTTPError as e:
+            if e.code == 404:           # past the last page
+                break
+            raise
+        found = [u for u in dict.fromkeys(re.findall(
+            r'href="(https://www\.pyrenees-ariegeoises\.com/a-voir-a-faire/sortir/agenda/'
+            r'[a-z0-9-]+-fr-\d+/)"', listing)) if u not in urls]
+        if not found:
+            break
+        urls.extend(found)
+    return urls
+
+
+def whats_on_occitanie_pages(fetch):
+    """The region's event pages in the towns within reach, from its sitemap."""
+    urls = []
+    for sitemap in WHATS_ON_OCC_SITEMAPS:
+        for u in re.findall(r"<loc>([^<]+/fete-et-manifestation/[^<]+)</loc>", fetch(sitemap)):
+            slug = u.rstrip("/").rsplit("/", 1)[-1].split("_TFO", 1)[0]
+            if any(slug == t or slug.endswith("-" + t) for t in WHATS_ON_TOWNS):
+                urls.append(u)
+    return list(dict.fromkeys(urls))
+
+
+# What a resident goes to and a guest at the château does not plan a day
+# round: the weekly film, the loto, storytime, a council talk. Kept, and shown
+# apart, never suggested. Read off the title, in French as the sites write it.
+WHATS_ON_LOCAL_WORDS = re.compile(
+    r"(?i)\b(cin[ée]ma|cin[ée]\s?9|s[ée]ances?|loto|contes?|b[ée]b[ée]s?|"
+    r"bouquine|atelier|stage|conf[ée]rence|r[ée]union|collecte|pr[ée]venti|"
+    r"mammobile|ap[ée]ro bricole|afterwork|permanence|don du sang|"
+    r"assembl[ée]e g[ée]n[ée]rale|inscriptions?)\b")
+
+
+def _title_words(title):
+    """A title's words, lower case and without accents, for telling whether
+    two sites list the same thing."""
+    import unicodedata
+    plain = unicodedata.normalize("NFKD", title or "").encode("ascii", "ignore").decode()
+    return {w for w in re.findall(r"[a-z0-9]+", plain.lower()) if len(w) > 2}
+
+
+def same_event(a, b):
+    """Whether two listings are one event: the same first day, and titles that
+    share most of their words. The region repeats the tourist office's
+    listings under its own references, and a guest should not read it twice."""
+    if not a["starts"] or a["starts"] != b["starts"]:
+        return False
+    wa, wb = _title_words(a["title"]), _title_words(b["title"])
+    if not wa or not wb:
+        return False
+    return len(wa & wb) / min(len(wa), len(wb)) >= 0.6
+
+
+def whats_on_kind(title, occurrences, today):
+    """'regular' for something on most of a season or on many dates, 'local'
+    for what only a resident would go to, else 'event'."""
+    ahead = [o for o in occurrences if o[1] >= today]
+    first = ahead[0] if ahead else None
+    if (len(ahead) > WHATS_ON_ROUTINE_DATES
+            or (first and (first[1] - first[0]).days > WHATS_ON_ROUTINE_DAYS)):
+        return "regular"
+    if WHATS_ON_LOCAL_WORDS.search(title or ""):
+        return "local"
+    return "event"
+
+
+def link_whats_on_sources(conn):
+    """Give the year's dates already in a house their official pages and say
+    which come back every year. Once; an entry the owner has pointed somewhere
+    else, or deleted, is left as it is."""
+    key = "whats_on_sources_linked"
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
+        return 0
+    changed = 0
+    for entry in DEFAULT_WHATS_ON_DATES:
+        changed += conn.execute(
+            """UPDATE whats_on SET source_url = COALESCE(source_url, ?),
+                      recurs_yearly = ? WHERE title = ?""",
+            (entry.get("source"), 1 if entry.get("yearly") else 0,
+             entry["title"])).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO NOTHING", (key, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return changed
+
+
+def whats_on_roll_forward(row, today):
+    """(first day, last day, words) for next year's edition of an annual
+    entry that is over, or None. The day is only where it is filed: the page
+    prints the month and "date to come" until an official page gives one."""
+    on = parse_date(row["event_date"])
+    until = parse_date(row["event_until"]) or on
+    if not on or until >= today:
+        return None
+
+    def later(d, years):
+        try:
+            return d.replace(year=d.year + years)
+        except ValueError:          # 29 February
+            return d.replace(year=d.year + years, day=28)
+    years = 1
+    while later(until, years) < today:      # a house switched off for a year or two
+        years += 1
+    first, last = later(on, years), later(until, years)
+    return first, last, f"{first.strftime('%B')} {first.year}, date to come"
+
+
+def whats_on_classify(rows):
+    """Which found events are worth telling a guest, with an English title:
+    {id: (worth, english title, why)}. Asked of the assistant only where one
+    is configured, and only as a suggestion -- the owner adds or waves away
+    each one, and nothing it says reaches the public page by itself. {} when
+    it cannot be asked, which leaves every event to be looked at."""
+    if not rows or not claude_configured():
+        return {}
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        listing = "\n".join(
+            f"{r['id']}: {r['title']} | {r['town'] or ''} | {r['starts']}"
+            + (f" to {r['ends']}" if r['ends'] and r['ends'] != r['starts'] else "")
+            for r in rows)
+        data, why = claude_structured(
+            client, model="claude-opus-5", max_tokens=8000,
+            system=("You help a small château hotel in the Haute-Ariège choose which local "
+                    "events to tell its guests about. Guests are visitors staying a few "
+                    "nights: festivals, fairs, races, concerts, Christmas markets, cave "
+                    "nights and village fêtes are worth it; a weekly film showing, a loto, "
+                    "a library storytime, a residents' workshop or a council meeting are "
+                    "not. Give each an English title that says plainly what it is, without "
+                    "inventing anything not in the French title."),
+            messages=[{"role": "user", "content": "Events (id: title | town | dates):\n" + listing}],
+            schema={"type": "object", "additionalProperties": False, "required": ["events"],
+                    "properties": {"events": {"type": "array", "items": {
+                        "type": "object", "additionalProperties": False,
+                        "required": ["id", "worth", "english_title", "why"],
+                        "properties": {"id": {"type": "integer"},
+                                       "worth": {"type": "boolean"},
+                                       "english_title": {"type": "string"},
+                                       "why": {"type": "string"}}}}}})
+    except Exception as e:      # an unreachable assistant leaves them to the owner
+        print(f"[whats on] could not ask the assistant: {e}")
+        return {}
+    if not data:
+        return {}
+    return {int(e["id"]): (bool(e["worth"]), (e["english_title"] or "").strip()[:160],
+                           (e["why"] or "").strip()[:240])
+            for e in data.get("events", []) if str(e.get("id", "")).isdigit()}
+
+
+def run_whats_on_reader_job(conn, fetch=None, today=None, classify=None,
+                            pause=WHATS_ON_PAUSE_SECONDS):
+    """Read the official sites: confirm the page's dates, roll annual ones on,
+    and keep everything they list within reach. Returns what it did, in words.
+
+    Read first and written after, one row at a time: nothing of ours is held
+    open while a page is fetched, so a slow tourism site never keeps the rest
+    of the house waiting on the database."""
+    fetch = fetch or whats_on_fetch
+    classify = classify or whats_on_classify
+    today = today or house_today()
+    now = datetime.now(timezone.utc).isoformat()
+    budget = [WHATS_ON_MAX_PAGES_PER_RUN]
+
+    def read(url):
+        if budget[0] <= 0:
+            raise RuntimeError("the night's reading is used up")
+        budget[0] -= 1
+        if pause:
+            time.sleep(pause)
+        return fetch(url)
+
+    said = {"confirmed": 0, "moved": 0, "rolled": 0, "problems": 0, "found": 0, "new": 0}
+
+    # 1. THE PAGE'S OWN ENTRIES, each from its official page.
+    for row in conn.execute("SELECT * FROM whats_on WHERE is_active = 1").fetchall():
+        url = (row["source_url"] or "").strip()
+        problem, update = None, None
+        if url:
+            try:
+                parsed = parse_event_page(read(url))
+            except Exception as e:
+                parsed, problem = None, f"the official page could not be read ({e})"
+            if parsed:
+                nxt = next_occurrence(parsed["occurrences"], today)
+                if nxt:
+                    first, last = nxt
+                    update = (first.isoformat(), last.isoformat() if last != first else None,
+                              None, "confirmed", now)
+                elif not problem:
+                    problem = "the official page gives no date still to come"
+            elif not problem:
+                problem = "the official page no longer shows this event"
+        if not update and row["recurs_yearly"] and row["event_date"]:
+            rolled = whats_on_roll_forward(row, today)
+            if rolled:
+                first, last, words = rolled
+                update = (first.isoformat(), last.isoformat() if last != first else None,
+                          words, "unconfirmed", None)
+                said["rolled"] += 1
+        if update:
+            before = (row["event_date"], row["event_until"], row["when_words"])
+            conn.execute(
+                """UPDATE whats_on SET event_date = ?, event_until = ?, when_words = ?,
+                          dates_status = ?, dates_checked_at = COALESCE(?, dates_checked_at),
+                          confirm_problem = NULL WHERE id = ?""",
+                update + (row["id"],))
+            if update[3] == "confirmed":
+                said["confirmed"] += 1
+                if before != update[:3]:
+                    said["moved"] += 1
+        if problem:
+            conn.execute("UPDATE whats_on SET confirm_problem = ? WHERE id = ?",
+                         (problem[:240], row["id"]))
+            said["problems"] += 1
+        conn.commit()
+
+    # 2. EVERYTHING ELSE THEY LIST, kept behind the scenes.
+    on_page_refs = {}
+    for r in conn.execute("SELECT id, source_url FROM whats_on "
+                          "WHERE COALESCE(source_url, '') != ''"):
+        key = whats_on_source_of(r["source_url"])
+        if key[0]:
+            on_page_refs[key] = r["id"]
+    for source, lister in (("tourist_office", whats_on_tourist_office_pages),
+                           ("occitanie", whats_on_occitanie_pages)):
+        try:
+            pages = lister(read)
+        except Exception as e:
+            print(f"[whats on] {source}: the listing could not be read ({e})")
+            continue
+        read_ok = 0
+        for url in pages:
+            try:
+                parsed = parse_event_page(read(url))
+            except Exception:
+                continue
+            read_ok += 1
+            if not parsed or not parsed["title"]:
+                continue
+            nxt = next_occurrence(parsed["occurrences"], today)
+            if not nxt:
+                continue
+            _src, ref = whats_on_source_of(url)
+            if not ref:
+                continue
+            ahead = [o for o in parsed["occurrences"] if o[1] >= today]
+            kind = whats_on_kind(parsed["title"], parsed["occurrences"], today)
+            town = (parsed["town"] or "").strip().title() or None
+            if source != "tourist_office" and any(
+                    same_event({"starts": nxt[0].isoformat(), "title": parsed["title"]}, other)
+                    for other in conn.execute(
+                        "SELECT title, starts FROM whats_on_found WHERE source = 'tourist_office' "
+                        "AND starts = ?", (nxt[0].isoformat(),))):
+                continue            # the tourist office lists it already
+            cur = conn.execute(
+                """INSERT INTO whats_on_found (source, source_ref, url, title, town, starts,
+                       ends, dates_count, kind, first_seen_at, last_seen_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(source, source_ref) DO UPDATE SET
+                       url = excluded.url, title = excluded.title, town = excluded.town,
+                       starts = excluded.starts, ends = excluded.ends,
+                       dates_count = excluded.dates_count, kind = excluded.kind,
+                       last_seen_at = excluded.last_seen_at, gone_at = NULL""",
+                (source, ref, url, parsed["title"][:200], town, nxt[0].isoformat(),
+                 nxt[1].isoformat(), len(ahead), kind, now, now))
+            said["found"] += 1
+            # Already on the page, from this very official page: it is not
+            # something new to look at.
+            on_page = on_page_refs.get((source, ref))
+            if on_page:
+                conn.execute(
+                    "UPDATE whats_on_found SET status = 'added', whats_on_id = ? "
+                    "WHERE source = ? AND source_ref = ? AND status = 'new'",
+                    (on_page, source, ref))
+            if cur.rowcount and conn.execute(
+                    "SELECT first_seen_at FROM whats_on_found WHERE source = ? AND source_ref = ?",
+                    (source, ref)).fetchone()["first_seen_at"] == now:
+                said["new"] += 1
+            conn.commit()
+        # A listing read in full that no longer names something: it has gone.
+        # Only then -- a listing that half failed proves nothing.
+        if read_ok and read_ok == len(pages):
+            conn.execute("UPDATE whats_on_found SET gone_at = ? WHERE source = ? "
+                         "AND last_seen_at < ? AND gone_at IS NULL", (now, source, now))
+            conn.commit()
+
+    # 3. WHICH NEW EVENTS ARE WORTH A GUEST'S DAY, asked once each.
+    ask = conn.execute(
+        """SELECT * FROM whats_on_found WHERE status = 'new' AND kind = 'event'
+             AND worth IS NULL AND gone_at IS NULL ORDER BY starts LIMIT 120""").fetchall()
+    answers = classify(ask) if ask else {}
+    for found_id, (worth, english, why) in answers.items():
+        conn.execute("UPDATE whats_on_found SET worth = ?, english_title = ?, worth_why = ? "
+                     "WHERE id = ?", (1 if worth else 0, english or None, why or None, found_id))
+    conn.commit()
+
+    bits = [f"{said['confirmed']} confirmed from their official pages"
+            + (f" ({said['moved']} with new dates)" if said["moved"] else "")]
+    if said["rolled"]:
+        bits.append(f"{said['rolled']} rolled on to next year")
+    if said["problems"]:
+        bits.append(f"{said['problems']} could not be confirmed")
+    bits.append(f"{said['found']} listed by the sites, {said['new']} new")
+    return "; ".join(bits)
+
+
+@app.route("/admin/whats-on/found/<int:found_id>/add", methods=["POST"])
+@owner_required
+def admin_whats_on_found_add(found_id):
+    """One press: something the sites list goes on the public page, under its
+    English title where the assistant gave one, with its official page kept so
+    its dates go on being read from there."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM whats_on_found WHERE id = ?", (found_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if row["status"] == "added" and row["whats_on_id"]:
+        conn.close()
+        flash("That one is on the page already.", "error")
+        return redirect(url_for("admin_whats_on") + "#found")
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        """INSERT INTO whats_on (title, location, event_date, event_until, source_url,
+               dates_status, dates_checked_at, recurs_yearly, is_active, sort_order,
+               created_at)
+           VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, 1, 200, ?)""",
+        ((row["english_title"] or row["title"]).strip(), row["town"], row["starts"],
+         row["ends"] if row["ends"] and row["ends"] != row["starts"] else None,
+         row["url"], now, 1 if request.form.get("yearly") else 0, now))
+    conn.execute("""UPDATE whats_on_found SET status = 'added', whats_on_id = ?,
+                       decided_by_user_id = ?, decided_at = ? WHERE id = ?""",
+                 (cur.lastrowid, _my_id(), now, found_id))
+    log_audit(conn, "whats_on_added", target=row["title"], details="from " + row["source"])
+    conn.commit()
+    conn.close()
+    flash("On the page. Its dates are read from its official page every night.", "success")
+    return redirect(url_for("admin_whats_on") + "#found")
+
+
+@app.route("/admin/whats-on/found/<int:found_id>/dismiss", methods=["POST"])
+@owner_required
+def admin_whats_on_found_dismiss(found_id):
+    """Not for our guests -- or, from the same button, back on the list."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM whats_on_found WHERE id = ?", (found_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    back = bool(request.form.get("bring_back"))
+    conn.execute("""UPDATE whats_on_found SET status = ?, decided_by_user_id = ?,
+                       decided_at = ? WHERE id = ?""",
+                 ("new" if back else "dismissed", _my_id(),
+                  datetime.now(timezone.utc).isoformat(), found_id))
+    conn.commit()
+    conn.close()
+    flash("Back on the list." if back else "Waved away. It will not be suggested again.",
+          "success")
+    return redirect(url_for("admin_whats_on") + "#found")
+
+
+@app.route("/admin/whats-on/<int:event_id>/checked", methods=["POST"])
+@owner_required
+def admin_whats_on_checked(event_id):
+    """The owner's word that an entry's dates are right, where no official
+    page could say so: the weekly look, done."""
+    conn = get_db()
+    row = conn.execute("SELECT title FROM whats_on WHERE id = ?", (event_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("""UPDATE whats_on SET dates_status = 'checked', dates_checked_at = ?,
+                       confirm_problem = NULL WHERE id = ?""",
+                 (datetime.now(timezone.utc).isoformat(), event_id))
+    log_audit(conn, "whats_on_checked", target=row["title"])
+    conn.commit()
+    conn.close()
+    flash(f"Marked checked: {row['title']}.", "success")
+    return redirect(url_for("admin_whats_on"))
+
+
+def whats_on_to_look_at(conn, today=None):
+    """What the owner's weekly look is for: {new: events found and not yet
+    added or waved away, unconfirmed: entries in the next four months whose
+    dates nothing has confirmed, problems: entries the reader could not read}."""
+    today = today or house_today()
+    horizon = (today + timedelta(days=120)).isoformat()
+    new = conn.execute(
+        """SELECT * FROM whats_on_found WHERE status = 'new' AND kind = 'event'
+             AND gone_at IS NULL AND COALESCE(worth, 1) = 1 AND ends >= ?
+           ORDER BY starts""", (today.isoformat(),)).fetchall()
+    unconfirmed = conn.execute(
+        """SELECT * FROM whats_on WHERE is_active = 1 AND event_date IS NOT NULL
+             AND dates_status = 'unconfirmed' AND COALESCE(event_until, event_date) >= ?
+             AND event_date <= ? ORDER BY event_date""",
+        (today.isoformat(), horizon)).fetchall()
+    problems = conn.execute(
+        "SELECT * FROM whats_on WHERE is_active = 1 AND confirm_problem IS NOT NULL "
+        "ORDER BY event_date").fetchall()
+    return {"new": new, "unconfirmed": unconfirmed, "problems": problems}
 
 
 @app.route("/restoration")
@@ -63473,16 +64785,10 @@ def workshops_public():
     # else this route reads.
     deposit_pct = workshop_deposit_to_show(conn)
     conn.close()
-    # What the panel at the top of the page quotes. The ateliers are priced
-    # individually, so the lowest is the honest single figure and the template
-    # says "from" whenever there is more than one of them.
-    priced = sorted((w for w in workshops if w["price_per_person"]),
-                    key=lambda w: w["price_per_person"])
-    glance_workshop = priced[0] if priced else None
-    glance_from = len({w["price_per_person"] for w in priced}) > 1
+    # The glance panel and its "from" figure went with the retreats deck (26
+    # Oct): each retreat's own price is on its card and its dates.
     return render_template(
         "workshops_public.html", workshops=workshops,
-        glance_workshop=glance_workshop, glance_from=glance_from,
         deposit_pct=deposit_pct,
         balance_days=WORKSHOP_BALANCE_DAYS,
         sessions_by_workshop=sessions_by_workshop,
@@ -64145,8 +65451,10 @@ def serve_our_own_photographs(response):
     if b"squarespace-cdn.com" not in raw:
         return response
     body = raw.decode("utf-8", "replace")
+    # The house's copies in the code first, then the owner's own swaps over
+    # them: a picture swapped in the admin is the house saying "not that one".
     swapped = swap_mirrored(body, mirror_cache_index(),
-                            site_override_cache_index())
+                            dict(HOUSE_COPIES, **site_override_cache_index()))
     if swapped != body:
         response.set_data(swapped)
     return response
@@ -68235,6 +69543,17 @@ def admin_booking(booking_id):
             (booking["arrival_date"], today.isoformat())).fetchall():
         scheduled.setdefault(row["shift_date"], set()).add(row["user_id"])
     group = booking_group(conn, booking_id)
+    # Their dinners at La Table, booked with the stay or since. The arrivals
+    # sheet showed them and the stay's own page did not (27 October 2026).
+    dinners = sheet_asks_and_dinners(conn, [booking_id])[1].get(booking_id, [])
+    # The time they usually come, from earlier stays, said as that when this
+    # stay has none of its own -- the same rule as the arrivals sheet.
+    usual_arrival = ""
+    if (booking["guest_email"] or "").strip():
+        known = conn.execute("SELECT usual_arrival_time FROM guests WHERE LOWER(email) = LOWER(?)",
+                             (booking["guest_email"].strip(),)).fetchone()
+        usual_arrival = (known["usual_arrival_time"] or "") if known else ""
+    occasion_prep = occasion_states(conn, [booking_id]).get(booking_id)
     conn.close()
 
     if not arrival or not departure:
@@ -68268,6 +69587,7 @@ def admin_booking(booking_id):
         stays_here=stays_here, employees=employees, scheduled=scheduled,
         group=group, where=where, today_iso=today.isoformat(),
         decline_reasons=DECLINE_REASONS, cancel_reasons=CANCEL_REASONS,
+        dinners=dinners, usual_arrival=usual_arrival, occasion_prep=occasion_prep,
     )
 
 
@@ -72394,7 +73714,11 @@ def refund_desk_context(conn, category, booking):
                 "when": format_date_range(row["arrival_date"], row["departure_date"]),
                 "back": url_for("admin_booking", booking_id=bid)}
         money = {"cost": bill["total"], "received": bill["paid"], "refunded": bill["refunded"],
-                 "owed": bill["owed"], "credit": bill["overpaid"]}
+                 "owed": bill["owed"], "credit": bill["overpaid"],
+                 # A cancelled stay owes nothing: what it holds is kept, or
+                 # the guest's to give back. Room stays only, for now.
+                 "called_off": bill["called_off"], "kept": bill["kept"],
+                 "to_give_back": bill["to_give_back"]}
     elif category == "workshop":
         row = conn.execute(
             """SELECT wb.*, ws.start_date, ws.end_date, w.title FROM workshop_bookings wb
@@ -82179,10 +83503,28 @@ def reports_index():
     Thirty-six of them were reachable only through the command palette, which
     is no use to somebody who does not already know the report exists.
     """
-    rows = report_catalogue()
+    # One line a page. The palette keeps two names for one page -- "Event run
+    # sheet" is how somebody asks for Events -- and the index printed both,
+    # each with the same sentence. The shorter name leads; the other is said
+    # beside it and still found by a search.
+    merged = {}
+    for r in report_catalogue():
+        kept = merged.get(r["endpoint"])
+        if kept is None:
+            merged[r["endpoint"]] = dict(r, also=[])
+            continue
+        if len(r["label"]) < len(kept["label"]):
+            kept["also"].append(kept["label"])
+            kept["label"] = r["label"]
+        else:
+            kept["also"].append(r["label"])
+        kept["keywords"] = f"{kept['keywords']} {r['keywords']}"
+    rows = list(merged.values())
+    for r in rows:
+        r["also_words"] = " ".join(r["also"])
     lv = list_view(
         rows, request.args,
-        search=["label", "what", "keywords"],
+        search=["label", "what", "keywords", "also_words"],
         search_hint="Search what you want to know, not what the page is called",
         facets=[
             facet("area", "Part of the house", lambda r: r["area_title"],
@@ -90711,6 +92053,7 @@ WATCH_TASK_KINDS = {
     "inbox": "One of the house's own inboxes is not getting its mail",
     "deploy": "The live site is behind main",
     "recap": "An atelier's recap drafted and waiting for you to send it",
+    "whats_on": "What's On: events found to look at, or dates nothing has confirmed",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -92301,8 +93644,11 @@ def set_guest_restriction(conn, guest_id, on, how, user_id=None):
 PHOTO_CONSENT_GRANTED = {"yes": 1, "no": 0}
 
 
+_SIGNED_IN = object()
+
+
 def record_consent(conn, channel, granted, how, *, email=None, phone=None, guest_id=None,
-                   at=None):
+                   at=None, recorded_by=_SIGNED_IN):
     """Write down that somebody said yes, or no, and how.
 
     `granted` is 1, 0, or None for "asked, and not answered yet". `at` is the
@@ -92310,8 +93656,15 @@ def record_consent(conn, channel, granted, how, *, email=None, phone=None, guest
     startup backfill can tell a line already written from one never written.
     Who recorded it is whoever is signed in: a person writing down what they
     were told, or nobody -- the guest, by a link.
+
+    `recorded_by` is that user's row, for a caller writing thousands of lines
+    in one request: looking the sign-in up opens a connection of its own, and
+    the Squarespace list's twenty-five thousand took three and a half minutes
+    doing it once a line.
     """
-    user = current_user() if has_request_context() else None
+    user = recorded_by
+    if user is _SIGNED_IN:
+        user = current_user() if has_request_context() else None
     email = (email or "").strip().lower() or None
     if guest_id is None:
         guest_id = guest_for_contact(conn, address=email, phone=phone)
@@ -92835,10 +94188,16 @@ def party_detail(conn, party_id):
              JOIN rooms ON rooms.id = bookings.room_id
             WHERE bookings.party_id = ?
             ORDER BY bookings.arrival_date, rooms.name""", (party_id,)).fetchall()
-    total = owed = paid = 0.0
+    total = owed = paid = kept = 0.0
     for b in stays:
         bill = booking_bill(conn, b["id"])
         if not bill:
+            continue
+        # A cancelled stay is no part of what the party costs and owes nothing.
+        # What it kept is counted apart, so the whole party, less what was
+        # received, is still exactly what is owed.
+        if bill["called_off"]:
+            kept += bill["kept"]
             continue
         total += bill["total"]
         owed += bill["owed"]
@@ -92849,6 +94208,7 @@ def party_detail(conn, party_id):
         "party": party, "stays": stays, "rooms": len(stays),
         "guests": sum((b["party_size"] or 1) for b in stays),
         "total": round(total, 2), "owed": round(owed, 2), "paid": round(paid, 2),
+        "kept": round(kept, 2),
         # The span of the whole group, which is not any one booking's dates.
         "arrival": min(arrivals).isoformat() if arrivals else None,
         "departure": max(departures).isoformat() if departures else None,
@@ -94185,6 +95545,31 @@ def watch_task_findings(conn, today=None):
                    "Workshop: Recap after the atelier, first."),
                 r["due"], "normal"))
         found.extend(take("recap", recaps))
+
+    # WHAT'S ON, THE WEEKLY LOOK (owner, 26 October 2026: "i can check
+    # weekly"). One task while there is something for the owner -- events the
+    # sites list and nobody has added or waved away, dates in the next four
+    # months nothing has confirmed, an official page that could not be read --
+    # due on a Monday, and gone once the list is clear.
+    look = whats_on_to_look_at(conn, today)
+    if look["new"] or look["unconfirmed"] or look["problems"]:
+        parts = []
+        if look["new"]:
+            parts.append(f"{len(look['new'])} event{'' if len(look['new']) == 1 else 's'} "
+                         "found on the official sites to add or wave away")
+        if look["unconfirmed"]:
+            parts.append(f"{len(look['unconfirmed'])} date"
+                         f"{'' if len(look['unconfirmed']) == 1 else 's'} in the next four "
+                         "months nothing has confirmed: "
+                         + "; ".join(r["title"] for r in look["unconfirmed"][:6]))
+        if look["problems"]:
+            parts.append("could not be checked: " + "; ".join(
+                f"{r['title']} ({r['confirm_problem']})" for r in look["problems"][:4]))
+        found.append(("whats_on", "Look over What's On",
+                      ". ".join(parts) + ".\n\nAdmin → What's On.",
+                      # The coming Monday, or today when it is one.
+                      (today + timedelta(days=(7 - today.weekday()) % 7)).isoformat(),
+                      "normal"))
 
     return found, dropped
 
@@ -101129,9 +102514,9 @@ def run_backup_email_job(conn):
 @app.route("/calendar")
 @login_required
 def ops_calendar():
-    """The main working calendar — day/week/month, every item clickable and
-    filterable. Employees get it too (it's the "what's on" view), and see only
-    what is theirs to see."""
+    """The house's calendar by day, week or month: stays, dinners, ateliers,
+    events, tasks and the rota, each one opening to everything about it.
+    Everybody has it, and each person sees what is theirs to see."""
     view = request.args.get("view", "week")
     anchor = parse_date(request.args.get("date", "")) or house_today()
     user = current_user()
@@ -101814,6 +103199,156 @@ def phone_home():
         conn.close()
     return render_template("phone_home.html", clocked_in=clocked_in,
                            open_tasks=open_tasks, today=today)
+
+
+# WHAT A TASK IS ABOUT, AND WHERE IT OPENS.
+#
+# A task raised by a stay, an enquiry, a meeting or a piece of restoration work
+# carries the key to it, and nothing drew it. "Cot in the Family Suite for the
+# Okafors" could be ticked on Today, Tasks, the calendar and Search and opened
+# from none of them, so whoever had it went looking for the stay by name; Search
+# sent every task to the Tasks page. Only the owner home's day list opened an
+# enquiry. One answer here, for every list that draws a task.
+TASK_SUBJECTS = (
+    # (the task's column, the page, the page's argument, the words on the link)
+    ("booking_id", "admin_booking", "booking_id", "Open the booking"),
+    ("ota_reservation_id", "channel_stay_page", "reservation_id", "Open the Booking.com stay"),
+    ("waitlist_entry_id", "admin_waitlist", None, "Open the enquiry"),
+    ("meeting_id", "meeting_page", "meeting_id", "Open the meeting"),
+    ("restoration_work_id", "restoration_work_page", "work_id", "Open the work"),
+)
+
+
+def _whole_person(user):
+    """The person's full row, when a caller holds only part of one.
+
+    Some callers of owner_home_day hold an id and a name and nothing else,
+    and which pages somebody may open is read off their role and their
+    access: guessed from a partial row it raised, and the day did not draw.
+    """
+    if not user or "role" in user.keys():
+        return user
+    conn = get_db()
+    try:
+        return conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+    finally:
+        conn.close()
+
+
+def task_subject(task, user=None):
+    """{"words", "url"} for the thing this task is about, or None.
+
+    Only a page this person may open: a link that answers 403 is worse than
+    none, which is the rule the calendar's chips keep. And only inside a
+    request, because owner_home_day is also read by the assistant outside one.
+    """
+    if not has_request_context():
+        return None
+    keys = task.keys()
+    # An occasion's task opens its checklist -- the flowers, the card -- on a
+    # page everybody signed in may open.
+    if "origin" in keys and task["origin"] == OCCASION_TASK_ORIGIN:
+        return {"words": "Open its checklist",
+                "url": url_for("occasions_page") + f"#task-{task['id']}"}
+    for column, endpoint, arg, words in TASK_SUBJECTS:
+        key = task[column] if column in keys else None
+        if not key:
+            continue
+        user = _whole_person(user or current_user())
+        if not user or not can_reach(user, endpoint):
+            return None
+        if arg is None:
+            # The waitlist page draws each entry under #entry-<id>, closed ones
+            # too when it is asked for all of them.
+            return {"words": words, "url": url_for(endpoint, when="all") + f"#entry-{key}"}
+        return {"words": words, "url": url_for(endpoint, **{arg: key})}
+    return None
+
+
+def checklist_key(task):
+    """Which stay's checklist a task belongs to, or None if it stands alone.
+
+    Arrival prep and turnover are made as one task per item, titled
+    "<room>: <item>", tied to the stay, due the same day and carrying the
+    same note -- so these four things together are the checklist.
+    """
+    keys = task.keys()
+    if "origin" not in keys or task["origin"] != "checklist":
+        return None
+    if "booking_id" in keys and task["booking_id"]:
+        stay = ("booking", task["booking_id"])
+    elif "ota_reservation_id" in keys and task["ota_reservation_id"]:
+        stay = ("channel", task["ota_reservation_id"])
+    else:
+        return None
+    room, sep, item = (task["title"] or "").partition(": ")
+    if not sep or not item:
+        return None
+    return (stay, task["due_date"], room, item in CHECKOUT_CHECKLIST)
+
+
+def task_entries(tasks, user=None):
+    """The tasks as a list reads them: one stay's checklist as one entry.
+
+    A room being made ready is eight tasks, each "urgent" and each saying "The
+    Okafor family arriving 22 October 2026, party of 4." On 22 October an
+    employee's Today held thirteen rows and eight were that room; Thursday on
+    Tasks was sixteen cards. The room board already read them as one room and
+    the lists did not. Each task is still its own tick here: the group only says
+    the shared part once, at the place its first task stood.
+
+    Every entry is {"group": bool, ...}. A lone task: "task", "subject". A
+    checklist: "heading", "room", "note", "items" ({"task", "item"}), "total",
+    "done", "urgent" (an open item is high priority), "due_date", "people"
+    (who has its items, where the rows say), "subject".
+    """
+    # Who is looking, read once for the list rather than once a task.
+    if has_request_context():
+        user = _whole_person(user or current_user())
+    entries, groups = [], {}
+    for t in tasks:
+        key = checklist_key(t)
+        if key is None:
+            entries.append({"group": False, "task": t})
+            continue
+        if key not in groups:
+            groups[key] = {"group": True, "room": key[2], "turnover": key[3],
+                           "due_date": key[1], "tasks": [], "items": []}
+            entries.append(groups[key])
+        groups[key]["tasks"].append(t)
+        groups[key]["items"].append({"task": t, "item": t["title"].partition(": ")[2]})
+    out = []
+    for e in entries:
+        if e["group"] and len(e["tasks"]) == 1:
+            # A checklist with one item left in it reads best as that task.
+            e = {"group": False, "task": e["tasks"][0]}
+        if not e["group"]:
+            e["subject"] = task_subject(e["task"], user)
+            out.append(e)
+            continue
+        first = e["tasks"][0]
+        keys = first.keys()
+        e["heading"] = (f"{e['room']}: turn it round" if e["turnover"]
+                        else f"{e['room']}: get it ready")
+        e["note"] = ((first["room_note"] if "room_note" in keys else None)
+                     or (first["notes"] if "notes" in keys else None) or "")
+        e["total"] = len(e["tasks"])
+        e["done"] = sum(1 for t in e["tasks"] if t["status"] == "done")
+        e["urgent"] = any(t["priority"] == "high" and t["status"] != "done"
+                          for t in e["tasks"])
+        e["people"] = []
+        if "employee_name" in keys:
+            for t in e["tasks"]:
+                name = t["employee_name"] or "Unassigned"
+                if name not in e["people"]:
+                    e["people"].append(name)
+        e["subject"] = task_subject(first, user)
+        out.append(e)
+    return out
+
+
+app.jinja_env.globals["task_entries"] = task_entries
+app.jinja_env.globals["task_subject"] = task_subject
 
 
 def mark_task_done(conn, task, done=True):
@@ -103485,6 +105020,8 @@ def arrivals_sheet(conn, day=None, channel=None):
     wanted.sort(key=lambda x: (x["room_name"] or "", x["name"]))
     return {
         "day": day,
+        "checklist": sheet_checklist(iso, rows, leaving, channel_arriving,
+                                     channel_leaving, ateliers, wanted),
         "arriving": rows,
         "leaving": leaving,
         "owed_leaving": owed_leaving,
@@ -103507,6 +105044,91 @@ def arrivals_sheet(conn, day=None, channel=None):
         "nothing_doing": not (arriving or leaving or channel_arriving or channel_leaving
                               or ateliers or wanted),
     }
+
+
+def sheet_checklist(iso, rows, leaving, channel_arriving, channel_leaving, ateliers, wanted):
+    """One day's rooms to get ready, as a list to tick on paper.
+
+    The owner, 27 October 2026: "a proper print sheet ... a spot for ticks for
+    a checklist, people prefer a piece of paper especially in a house like
+    this. Not complicated, just sheets washed, room ready, the extras."
+
+    A LINE A ROOM, not a line a guest. A room somebody leaves needs its sheets
+    washed whether or not anybody comes into it, and the morning a room turns
+    over is one job: Harriet leaves the Twin Room and Pierre arrives at four
+    is one line, with one box for the sheets and one for the room. It began as
+    a line per arrival, and a printed run of it had no box at all for the
+    sheets of a room left empty -- the commonest sheets in the house.
+    Whichever book they are in: the house's, Booking.com's, an atelier's.
+
+    The extras are ticked on the day they happen and on no other. An arrival's
+    extras for a later night are on that night's list, beside the guest in
+    the house, with nothing to make up -- or on their room's line if they are
+    leaving that day (the late checkout). An atelier place with no room has
+    no room to make up, and the atelier's own table says so.
+    """
+    def tick(name, quantity, state, note=""):
+        # The state comes with it: a box for a board nobody has ordered, with
+        # no word that it is not arranged, hides the one thing worth knowing.
+        return {"label": f"{quantity} × {name}" if (quantity or 1) > 1 else name,
+                "note": (note or "").strip(),
+                "done": state == "delivered",
+                "state": "" if state == "delivered" else (state or "")}
+
+    lines = {}
+
+    def line(room, guest=""):
+        # A Booking.com stay with no room yet is a line of its own, under its
+        # guest, so two of them are never one room.
+        key = room or f"?{guest}"
+        if key not in lines:
+            lines[key] = {"room": room or "Room not stated", "arriving": [],
+                          "leaving": [], "staying": [], "ticks": []}
+        return lines[key]
+
+    for b in leaving:
+        line(b["room_name"])["leaving"].append(b["guest_name"])
+    for st in channel_leaving:
+        line(st["room_name"], st["guest_name"])["leaving"].append(st["guest_name"])
+    for a in ateliers:
+        for p in a["places"]:
+            if not p["room_name"]:
+                continue
+            if a["begins"]:
+                line(p["room_name"])["arriving"].append(
+                    {"guest": p["guest_name"], "time": (p["estimated_arrival_time"] or "").strip()})
+            else:
+                line(p["room_name"])["leaving"].append(p["guest_name"])
+    for r in rows:
+        b = r["booking"]
+        c = line(b["room_name"])
+        c["arriving"].append({"guest": b["guest_name"], "time": r["arrival_time"]})
+        c["ticks"] += [tick(x["name"], x["quantity"], x["state"], x["notes"])
+                       for x in r["extras"] if not x["day"] or x["day"] <= iso]
+        c["ticks"] += [tick(f"Dinner at La Table, {d['party']}", 1, "", d["dietary"])
+                       for d in r["dinners"] if d["day"] == iso]
+    for st in channel_arriving:
+        told = st["told"]
+        line(st["room_name"], st["guest_name"])["arriving"].append(
+            {"guest": st["guest_name"],
+             "time": ((told["estimated_arrival_time"] or "").strip() if told else "")})
+    for x in wanted:
+        c = line(x["room_name"])
+        if x["guest_name"] not in c["leaving"] + c["staying"]:
+            c["staying"].append(x["guest_name"])
+        c["ticks"].append(tick(x["name"], x["quantity"], x["state"], x["notes"]))
+
+    for c in lines.values():
+        c["turnover"] = bool(c["arriving"] or c["leaving"])
+
+    def order(c):
+        # The rooms somebody is coming into, soonest first, because that is
+        # the hour each has to be ready by; then the rooms only left; then
+        # the guests in the house with something wanted.
+        times = [a["time"] or "99:99" for a in c["arriving"]]
+        return (0 if c["arriving"] else 1 if c["leaving"] else 2,
+                min(times) if times else "", c["room"])
+    return sorted(lines.values(), key=order)
 
 
 ARRIVALS_WEEKS = 2
@@ -110826,6 +112448,10 @@ AUTOMATION_JOBS = [
     # Hourly. The page reads a cache and never the network, so a slow morning
     # at Open-Meteo is a page with no weather on it rather than a slow page.
     ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
+    # Daily, in the small hours (JOB_HOURS): the official tourism sites, for
+    # What's On. A night missed is a date confirmed a day later.
+    ("whats_on_reader", "automation_whats_on_reader_enabled", None, 24 * 3600,
+     run_whats_on_reader_job),
     # Hourly too, as a job of its own: a storm warning that arrives at two
     # should be on the list by three, and the margin on each line keeps an
     # hourly forecast from raising and withdrawing the same job all day.
@@ -110963,6 +112589,8 @@ JOB_HOURS = {
     "checkin_letter": (9, 12),
     # In the small hours, when nobody is looking at the calendar it rewrites.
     "house_calendar_reconcile": (2, 6),
+    # Reading other people's websites, at an hour they are quietest.
+    "whats_on_reader": (3, 6),
 }
 
 
@@ -111427,6 +113055,13 @@ AUTOMATION_SWITCHES = [
      "label": "Translate new public-page text",
      "what": "Into French and Spanish, only what guests have actually opened, using "
              "Claude — a paid service, capped per run."},
+    {"key": "automation_whats_on_reader_enabled", "job": "whats_on_reader",
+     "runs": ("run_whats_on_reader_job",), "group": "records", "reaches": (),
+     "label": "Keep What's On up to date",
+     "what": "Nightly: reads the tourist office and Tourisme Occitanie, confirms the dates "
+             "of what is on the page from each event's official page, moves an annual "
+             "one on to next year once it is over, and lists what else they show for "
+             "you to add or wave away. Adds nothing to the public page by itself."},
     {"key": "automation_weather_enabled", "job": "weather",
      "runs": ("run_weather_job",), "group": "records", "reaches": (),
      "label": "Weather at the château", "what": "Hourly, for the pages that show it."},
@@ -112504,7 +114139,9 @@ def _dossier_items(conn, *, stays, dinners, workshops, events, addresses, money_
             b["status"], b["party_size"], b["special_requests"],
             _dossier_link("admin_bookings", money_on, q=b["reference_code"]),
             amount=bill["total"] if bill else None,
-            owed=round(bill["total"] - bill["paid"], 2) if bill else None,
+            # A cancelled stay owes nothing, whatever its price was.
+            owed=(0.0 if bill["called_off"] else round(bill["total"] - bill["paid"], 2))
+            if bill else None,
             detail=", ".join(detail))
     stay_ids = [b["id"] for b in stays]
     if stay_ids:
@@ -118683,7 +120320,9 @@ def contact_page():
 
     said = [CONTACT_TOPICS[topic]]
     if month:
-        said.append("Around %s" % month)
+        # The month in words: "2026-12" is how the form sends it, not how the
+        # house writes it (enquiry_note_words reads the older ones).
+        said.append("Around %s" % month_words(month))
     # The length only when somebody gave one. "Length not decided" on every
     # wedding enquiry described a form field, not the enquiry.
     if n:
@@ -118848,6 +120487,15 @@ LEGACY_PATHS = [
     ("/gallery-overview", "gallery_page", True),
     ("/nestled-within-a-mountainous-valley", "gallery_page", True),
     ("/follow", "contact_page", True),
+    # 26 October 2026 (the owner's retreats deck, section 7): old pages that
+    # still turn up in search with the 2026 offers and prices on them. The
+    # 2026 and 2024 programmes go to the retreats as they are now. /4-nights
+    # was one of two four-night retreats and nobody now can say which, so it
+    # gets the list of them rather than a guess.
+    ("/4-nights", "workshops_public", True),
+    ("/stay-2026", "workshops_public", True),
+    ("/stay-2024", "workshops_public", True),
+    ("/workshops-2026", "workshops_public", True),
 ]
 
 # Old addresses that were ONE atelier, sent to it by the words of its title,
@@ -118863,6 +120511,10 @@ LEGACY_ATELIERS = [
     ("/3-nights", "Antique Finds"),
     ("/the-weekender", "Antique Finds"),
     ("/7-nights", "Seven Starry Nights"),
+    # 26 October 2026 (the retreats deck, section 7). /5-nights still shows in
+    # search with the 2026 cooking offer at its old price.
+    ("/5-nights", "Cooking Cuisine"),
+    ("/christmas", "Noel"),
 ]
 
 # Whole sections of the old site, for the pages under them that no sitemap

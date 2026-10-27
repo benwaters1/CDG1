@@ -46,9 +46,10 @@
         <span class="g-three__n">02</span>
         <div class="g-three__b">
           <span class="g-three__ill" aria-hidden="true">{{ illus('candelabra') }}</span>
-          <h3 class="g-three__t">The full experience</h3>
-          <p class="g-three__d">Retreats of three to seven nights, with all meals and drinks, cooking classes, the brocantes, yoga, kayaking and hiking: in a small group sharing the château.</p>
-          {% if _wsf %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n">&euro;{{ '{:,.0f}'.format(_wsf) }}</span><span class="g-price__u">per person · all meals and drinks</span></p>{% else %}<p class="g-price"><span class="g-price__u">Per person · all meals and drinks</span></p>{% endif %}
+          {#- 26 Oct (owner, the retreats deck): the price is the Admin's, then "per person · nothing to pay at the end". -#}
+          <h3 class="g-three__t"><em lang="fr">La vie de château</em></h3>
+          <p class="g-three__d">Stay longer, as a guest of the house: three to seven nights of the kitchen and the château’s chefs, the markets and brocantes of the Ariège, and long candlelit dinners, with a small company sharing the château.</p>
+          {% if _wsf %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n">&euro;{{ '{:,.0f}'.format(_wsf) }}</span><span class="g-price__u">per person · nothing to pay at the end</span></p>{% else %}<p class="g-price"><span class="g-price__u">Per person · nothing to pay at the end</span></p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the dates</a>
             <a href="{{ url_for('contact_page') }}">Bring your own group</a>

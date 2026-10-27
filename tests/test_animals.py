@@ -27,7 +27,8 @@ m = _harness.m
 # stopped seeing every page that mentions the cats without naming Bruce, and
 # the pairing check below would have gone on passing because it had stopped
 # looking. Any mention of the cats or the dog counts, whatever the number.
-NAMES = re.compile(r"\bBruce\b|\bcats\b|french bulldog", re.I)
+# Alfred (27 Oct, owner) is the dog in the snow on /gallery: named, so he counts too.
+NAMES = re.compile(r"\bBruce\b|\bAlfred\b|\bcats\b|french bulldog", re.I)
 NOTE = re.compile(r"allerg", re.I)
 
 

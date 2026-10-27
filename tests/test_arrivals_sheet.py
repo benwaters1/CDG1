@@ -22,6 +22,8 @@ Two things carry this file.
   because who was given what and whether a key came back is worth having; the
   value is blanked.
 """
+import os
+import re
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -243,7 +245,8 @@ def run():
     body = oc.get("/admin/arrivals").get_data(as_text=True)
     s.check("a booking with no telephone says so", "no telephone" in body,
             detail="the questions somebody would otherwise ask at the door")
-    s.check("and one with no arrival time too", "no arrival time" in body)
+    s.check("and one with no arrival time says so in words", "Arrival time not given" in body,
+            detail="a blank reads as no arrival, and a 15:00 filled in reads as theirs")
 
     s.section("The profile answers what the booking does not")
     conn = db()
@@ -262,7 +265,7 @@ def run():
             detail="a guest who always arrives at six should not be asked "
                    "every time")
     s.check("said as their usual, not as this stay's",
-            "usually arrives 16:00" in body,
+            "Usually arrives about 16:00" in body and "from their past stays" in body,
             detail="on paper a time read as promised is a time somebody waits up for")
     s.check("what they cannot eat comes with them", "coeliac" in body)
     # THE ONE THAT MATTERS in a house with eighteenth-century stairs: the
@@ -431,7 +434,7 @@ def run():
     s.check("the calendar is on the page, in a box that scrolls",
             'class="data-table arr-cal__grid"' in page
             and page.find('class="table-wrap"') < page.find("arr-cal__grid"))
-    s.check("the arrival time in words, not a bare figure", "arriving 17:45" in text,
+    s.check("the arrival time in words, not a bare figure", "Arriving about 17:45 (they told us)" in text,
             detail="on paper '17:45' beside a room could be anything")
     s.check("the telephone to ring", "+33 6 12 34 56 78" in text)
     s.check("the extras, each with its day and what the guest wrote",
@@ -463,7 +466,7 @@ def run():
             f"{TAG} Board arranged" in text and "not arranged" not in arranged.lower(), detail=arranged)
     s.check("and one that needs no arranging is not called unarranged",
             "not arranged" not in text[text.find(f"{TAG} Picnic"):][:40].lower())
-    asked = text[text.find("Asked from their booking page"):][:300]
+    asked = text[text.find("They asked"):][:300]
     s.check("what they asked from their booking page, in their words",
             f"{TAG} a note for Jane's anniversary on arrival" in asked
             and "to do" in asked.lower(),
@@ -487,8 +490,11 @@ def run():
             and sorted(x["name"] for x in quiet_but_wanted["extras_here"])
             == ["Dinner at La Table, 2", f"{TAG} Late checkout"],
             detail=str([x["name"] for x in quiet_but_wanted["extras_here"]]))
-    s.check("and it is on the page under the guests already here",
-            "Extras for guests already here" in text and f"{TAG} Late checkout" in text)
+    s.check("and it is on the page once, on its room's line, with its note",
+            text.count(f"{TAG} Late checkout") == 1 and "till two" in text
+            and "Extras for guests already here" not in text,
+            detail="it had a table of its own as well as the line to tick: on paper "
+                   "twice is a box ticked in one place and not the other")
     s.check("an atelier's first day has its guests coming, counted with the rest",
             [a["begins"] for a in begins["ateliers"]] == [True]
             and begins["arriving_count"] == 2 and begins["beds"] == 3,
@@ -506,6 +512,181 @@ def run():
             'class="arr-code no-print"' in page and 'class="upload-hint arr-window no-print"' in page)
     s.check("and from tomorrow is one click",
             f'date={(m.house_today() + timedelta(days=1)).isoformat()}"' in page)
+
+    s.section("On paper: boxes to tick (owner, 27 October 2026)")
+    # "a spot for ticks for a checklist ... not complicated, just sheets
+    # washed, room ready, the extras". One delivered extra, to be printed ticked.
+    conn = db()
+    conn.execute(
+        """INSERT INTO booking_extras (category, booking_id, name, unit_price, quantity,
+           status, scheduled_for, created_at) VALUES ('room', ?, ?, 30, 2, 'delivered', ?, ?)""",
+        (rich["id"], f"{TAG} Flowers", (w2 + timedelta(days=2)).isoformat(), now))
+    conn.commit()
+    with m.app.test_request_context("/"):
+        on = {n: m.arrivals_sheet(conn, w2 + timedelta(days=n))["checklist"] for n in (2, 3, 4, 5, 8)}
+    conn.close()
+
+    def line(n, guest):
+        """The line a guest is on that day, coming, going or in the house."""
+        name = f"{TAG} {guest}"
+        return next((c for c in on[n]
+                     if name in [a["guest"] for a in c["arriving"]] + c["leaving"] + c["staying"]), None)
+
+    def labels(c):
+        return [t["label"] for t in (c or {}).get("ticks", [])]
+
+    arrives = line(2, "RICH")
+    s.check("the day they come: their room, to make up, with the time they come",
+            arrives and arrives["turnover"] and arrives["room"] == room["name"]
+            and arrives["arriving"] == [{"guest": f"{TAG} RICH", "time": "17:45"}], detail=str(arrives))
+    s.check("and the guest leaving it that morning is on the same line: one room, one job",
+            arrives and arrives["leaving"] == [f"{TAG} STAYER"]
+            and sum(1 for c in on[2] if c["room"] == room["name"]) == 1, detail=str(on[2]))
+    gone = line(5, "RICH")
+    s.check("a room left with nobody coming still has its sheets to wash",
+            gone and gone["turnover"] and gone["leaving"] == [f"{TAG} RICH"] and not gone["arriving"],
+            detail="the first printed run had no box at all for a room left empty")
+    s.check("with that day's extras, and those with no day",
+            arrives and {f"{TAG} Board unarranged", f"{TAG} Board arranged", f"{TAG} Picnic",
+                         f"2 × {TAG} Flowers"} <= set(labels(arrives)), detail=str(labels(arrives)))
+    s.check("but not the champagne for their second night, nor the one withdrawn",
+            arrives and f"{TAG} Champagne" not in labels(arrives)
+            and f"{TAG} Withdrawn" not in labels(arrives), detail=str(labels(arrives)))
+    s.check("one already delivered is ticked, and only that one",
+            arrives and [t["label"] for t in arrives["ticks"] if t["done"]] == [f"2 × {TAG} Flowers"],
+            detail=str(arrives and arrives["ticks"]))
+    second = line(3, "RICH")
+    s.check("the next day they are in the house, with the champagne and their dinner, and no room to make up",
+            second and not second["turnover"] and second["staying"] == [f"{TAG} RICH"]
+            and sorted(labels(second)) == sorted([f"{TAG} Champagne", "Dinner at La Table, 2"]),
+            detail=str(second))
+    bubbles = next((t for t in (second or {}).get("ticks", []) if t["label"] == f"{TAG} Champagne"), {})
+    s.check("with what the guest wrote beside it, and that it is still to confirm",
+            bubbles.get("note") == "in the room by six" and bubbles.get("state") == "to confirm",
+            detail=str(bubbles))
+    channel = line(4, "Channel")
+    s.check("a Booking.com guest's room is on the list too, with their time",
+            channel and channel["turnover"] and channel["room"] == "Room not stated"
+            and channel["arriving"] == [{"guest": f"{TAG} Channel", "time": "19:30"}], detail=str(on[4]))
+    if workshop:
+        s.check("and an atelier guest with a room, but not one with none to make up",
+                line(8, "Place WA") and line(8, "Place WB") is None, detail=str(on[8]))
+
+    page = oc.get(f"/admin/arrivals?date={w2.isoformat()}").get_data(as_text=True)
+    day2 = page[page.find(f'id="day-{(w2 + timedelta(days=2)).strftime("%Y%m%d")}"'):]
+    ready = day2[day2.find("To get ready"):day2.find("Arriving</h4>")]
+    s.check("on the page each day starts with what to get ready, before the guests",
+            "To get ready" in day2 and 0 < day2.find("To get ready") < day2.find("Arriving</h4>"))
+    s.check("a column to tick for sheets washed and one for room ready",
+            "Sheets washed" in ready and "Room ready" in ready
+            and ready.count('class="tick-box"') >= 2, detail=_harness.visible_text(ready)[:200])
+    s.check("and a box beside each extra",
+            f'aria-hidden="true"></span><span>{TAG} Picnic' in ready,
+            detail=ready[ready.find("Picnic") - 120:][:160])
+    s.check("drawn boxes for a pen, not checkboxes that save nothing",
+            'type="checkbox"' not in ready)
+    s.check("the delivered one printed ticked", 'tick-box is-done' in ready and "✓" in ready)
+    s.check("in a box that scrolls on a phone",
+            '<div class="table-wrap arr-ready-wrap">' in ready)
+
+    s.section("And it is fit for paper")
+    css = open(os.path.join(m.BASE_DIR, "static", "style.css"), encoding="utf-8").read()
+    printing = " ".join(re.findall(r"@media print\s*\{(.*?)\n\}", css, re.S))
+    s.check("a day's list is never cut in two across pages",
+            re.search(r"\.arr-ready-wrap\s*\{[^}]*break-inside:\s*avoid", printing) is not None,
+            detail="the first printed run had Friday's list half on one page and half on the next")
+    s.check("the offer of notifications is kept off the paper",
+            re.search(r"#push-prompt[^{]*\{[^}]*display:\s*none\s*!important", printing) is not None,
+            detail="a script shows it as an inline style, outside .flash-wrap, so only "
+                   "!important in the print rules keeps it off")
+    s.check("and a guest's card is set at a size for paper",
+            re.search(r"\.arr-card\s*\{[^}]*font-size", printing) is not None,
+            detail="at the screen's size each card ran half a page")
+
+    s.section("Easy to read: the time, the occasion, the requests (owner, 27 October 2026)")
+    # "some of it isn't very clear, the anniversary, the check in time etc on
+    # both the booking and the print sheet".
+    conn = db()
+    conn.execute("UPDATE bookings SET special_occasion = ? WHERE id = ?",
+                 ("Our tenth anniversary", rich["id"]))
+    conn.commit()
+    conn.close()
+    page = oc.get(f"/admin/arrivals?date={w2.isoformat()}").get_data(as_text=True)
+    at = page.find(f"{TAG} RICH</strong>")
+    card = _harness.visible_text(page[at:page.find("expense-card arr-card", at)])
+    order = [card.find(x) for x in ("Arriving about 17:45", "Celebrating Our tenth anniversary",
+                                    "Cannot eat", "They asked")]
+    s.check("on the card: the time they come, then the occasion and what they cannot eat, then the rest",
+            at > 0 and -1 not in order and order == sorted(order), detail=f"{order} {card[:300]}")
+    s.check("the time said beside the house's own, never in its place",
+            f"check-in from {m.CHECK_IN_TIME}" in card, detail=card[:200])
+    s.check("what they asked is under one heading, not two",
+            "Asked from their booking page" not in page and card.count("They asked") == 1)
+
+    bp = oc.get(f"/admin/bookings/{rich['id']}").get_data(as_text=True)
+    head = _harness.visible_text(bp[:bp.find('class="bk-tabs"')])
+    s.check("the booking: the time they come under the name, said as theirs",
+            "Arriving about 17:45 (they told us)" in head and f"check-in from {m.CHECK_IN_TIME}" in head,
+            detail=head[-400:])
+    s.check("and the occasion beside it, with how far it is prepared",
+            "Celebrating Our tenth anniversary" in head and "preparation not started" in head,
+            detail=head[-400:])
+    s.check("and what they cannot eat, with when it is deleted",
+            "Cannot eat no pork" in head and "deleted once the stay is over" in head)
+    box = _harness.visible_text(bp[bp.find("Waiting on the house"):bp.find('class="stat-tiles"')])
+    s.check("a request is said once, not twice", box.count("Jane's anniversary") == 1, detail=box)
+    s.check("with the day it is for in words", "for the day they arrive" in box, detail=box)
+    stay = _harness.visible_text(bp[bp.find("<h3>The stay</h3>"):bp.find('id="extras"')])
+    s.check("the stay says when they leave by",
+            f"check-out by {m.CHECK_OUT_TIME}" in stay, detail=stay[:300])
+    s.check("and their dinners at La Table, which it never showed",
+            "Dinner at La Table" in stay and "no pork at dinner" in stay, detail=stay[-300:])
+    s.check("and does not say the occasion or the diet a second time",
+            "Celebrating" not in stay and "Cannot eat" not in stay, detail=stay[:300])
+
+    if workshop:
+        s.section("And the atelier pages say it the same way")
+        conn = db()
+        conn.execute("UPDATE workshop_bookings SET occupancy_type = 'solo', special_occasion = ?, "
+                     "dietary_notes = ? WHERE reference_code = ?",
+                     ("Her fiftieth birthday", "no dairy", f"{TAG}-WB"))
+        conn.commit()
+        conn.close()
+        sp = _harness.visible_text(oc.get(f"/admin/workshops/sessions/{session_id}").get_data(as_text=True))
+        s.check("the sitting's page says when each comes, or that they have not said",
+                "Arriving about 15:00 (they told us)" in sp and "Arrival time not given" in sp,
+                detail="it was only ever inside the checked-in-online chip")
+        wb = sp[sp.find(f"{TAG} Place WB"):][:400]
+        s.check("a room to themselves is said as that, not as sharing",
+                "a room to themselves" in wb and "sharing" not in wb,
+                detail=f"the page tested for 'single'; the private room is 'solo': {wb}")
+        s.check("with what they are celebrating and cannot eat, in words",
+                "Celebrating: Her fiftieth birthday" in wb and "Cannot eat: no dairy" in wb, detail=wb)
+        rp = _harness.visible_text(oc.get(f"/admin/workshops/registrations?session_id={session_id}")
+                                   .get_data(as_text=True))
+        s.check("the registrations say it as the arrivals sheet does",
+                "Arriving about 15:00 (they told us)" in rp and "Celebrating Her fiftieth birthday" in rp
+                and "Cannot eat no dairy" in rp, detail=rp[:400])
+        ws = _harness.visible_text(oc.get(f"/workshops/{session_id}/sheet").get_data(as_text=True))
+        s.check("and the instructor's sheet says when they come and who is celebrating",
+                "Arriving about 15:00 (they told us)" in ws and "Celebrating" in ws
+                and "Worth knowing" not in ws, detail=ws[:400])
+
+    s.section("Where Printable sheet goes")
+    with m.app.test_request_context("/"):
+        sheet_url = m.url_for("arrivals_sheet_page")
+    home = oc.get("/").get_data(as_text=True)
+    at = home.find(">Printable sheet<")
+    s.check("the owner's home has the button", at > 0)
+    s.check("and it opens this sheet, not the Today page",
+            f'href="{sheet_url}"' in home[home.rfind("<a ", 0, at):at], detail=home[max(at - 160, 0):at])
+    s.check("and an unarranged extra says so beside its box",
+            "not arranged yet" in _harness.visible_text(ready).lower(),
+            detail="the box alone would hide the one thing worth knowing")
+    for q in ("printable sheet", "print", "checklist"):
+        res = oc.get("/api/palette", query_string={"q": q}).get_json()["results"]
+        s.check(f'"{q}" in the search box finds it', sheet_url in {x["url"] for x in res},
+                detail=str([x["label"] for x in res]))
 
     s.section("Recording what was given to get in")
     b = _booking("CODE", room_id=room["id"], arrival=tomorrow)
