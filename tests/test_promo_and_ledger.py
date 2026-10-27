@@ -237,6 +237,8 @@ def run():
         "subject": TAG + " A code for you",
         "body": "Dear {guest_name}, use {promo_code} on your next stay.",
     }, follow_redirects=True)
+    # Send queues it; the automation thread sends it, at once here.
+    _harness.send_queued_campaigns()
     held = _held(kept)
     s.check("the guest is written to", len(held) == 1, detail=str(len(held)))
     body = (held[0]["body"] or "") if held else ""
@@ -254,6 +256,7 @@ def run():
                 data={"segment": "room", "since_months": "1",
                       "subject": "", "body": "x"},
                 follow_redirects=True)
+    _harness.send_queued_campaigns()
     s.check("a blast with no subject sends nothing", len(_held(kept)) == before,
             detail=f"{len(_held(kept)) - before} sent")
     s.check("and says what is missing",
