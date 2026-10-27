@@ -507,6 +507,83 @@ def run():
     s.check("and from tomorrow is one click",
             f'date={(m.house_today() + timedelta(days=1)).isoformat()}"' in page)
 
+    s.section("On paper: boxes to tick (owner, 27 October 2026)")
+    # "a spot for ticks for a checklist ... not complicated, just sheets
+    # washed, room ready, the extras". One delivered extra, to be printed ticked.
+    conn = db()
+    conn.execute(
+        """INSERT INTO booking_extras (category, booking_id, name, unit_price, quantity,
+           status, scheduled_for, created_at) VALUES ('room', ?, ?, 30, 2, 'delivered', ?, ?)""",
+        (rich["id"], f"{TAG} Flowers", (w2 + timedelta(days=2)).isoformat(), now))
+    conn.commit()
+    with m.app.test_request_context("/"):
+        on = {n: m.arrivals_sheet(conn, w2 + timedelta(days=n))["checklist"] for n in (2, 3, 4, 8)}
+    conn.close()
+
+    def line(n, guest):
+        return next((c for c in on[n] if c["guest"] == f"{TAG} {guest}"), None)
+
+    def labels(c):
+        return [t["label"] for t in (c or {}).get("ticks", [])]
+
+    arrives = line(2, "RICH")
+    s.check("the day they come: their room, to make up",
+            arrives and arrives["arriving"] and arrives["room"] == room["name"]
+            and arrives["time"] == "17:45", detail=str(arrives))
+    s.check("with that day's extras, and those with no day",
+            arrives and {f"{TAG} Board unarranged", f"{TAG} Board arranged", f"{TAG} Picnic",
+                         f"2 × {TAG} Flowers"} <= set(labels(arrives)), detail=str(labels(arrives)))
+    s.check("but not the champagne for their second night, nor the one withdrawn",
+            arrives and f"{TAG} Champagne" not in labels(arrives)
+            and f"{TAG} Withdrawn" not in labels(arrives), detail=str(labels(arrives)))
+    s.check("one already delivered is ticked, and only that one",
+            arrives and [t["label"] for t in arrives["ticks"] if t["done"]] == [f"2 × {TAG} Flowers"],
+            detail=str(arrives and arrives["ticks"]))
+    second = line(3, "RICH")
+    s.check("the next day they are in the house, with the champagne and their dinner, and no room to make up",
+            second and not second["arriving"]
+            and sorted(labels(second)) == sorted([f"{TAG} Champagne", "Dinner at La Table, 2"]),
+            detail=str(second))
+    channel = line(4, "Channel")
+    s.check("a Booking.com guest's room is on the list too, with their time",
+            channel and channel["arriving"] and channel["room"] == "Room not stated"
+            and channel["time"] == "19:30", detail=str(on[4]))
+    if workshop:
+        s.check("and an atelier guest with a room, but not one with none to make up",
+                line(8, "Place WA") and line(8, "Place WB") is None, detail=str(on[8]))
+
+    page = oc.get(f"/admin/arrivals?date={w2.isoformat()}").get_data(as_text=True)
+    day2 = page[page.find(f'id="day-{(w2 + timedelta(days=2)).strftime("%Y%m%d")}"'):]
+    ready = day2[day2.find("To get ready"):day2.find("Arriving</h4>")]
+    s.check("on the page each day starts with what to get ready, before the guests",
+            "To get ready" in day2 and 0 < day2.find("To get ready") < day2.find("Arriving</h4>"))
+    s.check("a column to tick for sheets washed and one for room ready",
+            "Sheets washed" in ready and "Room ready" in ready
+            and ready.count('class="tick-box"') >= 2, detail=_harness.visible_text(ready)[:200])
+    s.check("and a box beside each extra",
+            f'</span>{TAG} Picnic' in ready, detail=ready[ready.find("Picnic") - 120:][:160])
+    s.check("drawn boxes for a pen, not checkboxes that save nothing",
+            'type="checkbox"' not in ready)
+    s.check("the delivered one printed ticked", 'tick-box is-done' in ready and "✓" in ready)
+    s.check("in a box that scrolls on a phone",
+            '<div class="table-wrap">' in ready[:ready.find("arr-ready")])
+
+    s.section("Where Printable sheet goes")
+    with m.app.test_request_context("/"):
+        sheet_url = m.url_for("arrivals_sheet_page")
+    home = oc.get("/").get_data(as_text=True)
+    at = home.find(">Printable sheet<")
+    s.check("the owner's home has the button", at > 0)
+    s.check("and it opens this sheet, not the Today page",
+            f'href="{sheet_url}"' in home[home.rfind("<a ", 0, at):at], detail=home[max(at - 160, 0):at])
+    s.check("and an unarranged extra says so beside its box",
+            "not arranged yet" in _harness.visible_text(ready).lower(),
+            detail="the box alone would hide the one thing worth knowing")
+    for q in ("printable sheet", "print", "checklist"):
+        res = oc.get("/api/palette", query_string={"q": q}).get_json()["results"]
+        s.check(f'"{q}" in the search box finds it', sheet_url in {x["url"] for x in res},
+                detail=str([x["label"] for x in res]))
+
     s.section("Recording what was given to get in")
     b = _booking("CODE", room_id=room["id"], arrival=tomorrow)
     oc.post(f"/admin/bookings/{b['id']}/access-code",
