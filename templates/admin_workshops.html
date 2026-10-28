@@ -65,7 +65,7 @@
       {% endif %}
     </a>
     <div class="ws-sit-main">
-      <a class="ws-sit-title" href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">{{ row.workshop['title'] }}</a>
+      <a class="ws-sit-title" href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">{{ row.workshop['title'] }}</a>{% if row.workshop['private_token'] %} <span class="mini-status status-pending">Private</span>{% endif %}
       <p class="ws-sit-when"><a href="{{ url_for('admin_workshop_session', session_id=s['id']) }}">{{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}</a>
         {%- if not off %} · {{ row.remaining }}/{{ s['capacity'] }} spots left{% endif %}
         {%- if row.nights %} · {{ row.nights }} night{{ '' if row.nights == 1 else 's' }}{% endif %}
@@ -158,6 +158,7 @@
         </span>
       </div>
       <div class="ws-prog-actions">
+        {% if w['private_token'] %}<span class="mini-status status-pending" title="Only people with its link can see and book it">Private</span>{% endif %}
         <span class="mini-status {{ 'status-active' if w['active'] else 'status-inactive' }}">{{ 'open for registration' if w['active'] else 'hidden' }}</span>
         <a href="{{ url_for('admin_workshop', workshop_id=w['id']) }}" class="btn-mini">Open</a>
       </div>

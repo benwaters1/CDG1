@@ -7200,6 +7200,16 @@ def init_db():
         # first use, so a link exists only where somebody asked for one.
         ("workshop_sessions_instructor_token",
          "ALTER TABLE workshop_sessions ADD COLUMN instructor_token TEXT"),
+        # A PRIVATE STAY (handover z30): an atelier somebody else organises,
+        # reached only by the link they are given. NULL is public, as every
+        # atelier was before this, so nothing that exists changes. The
+        # organiser is told of each registration if an address is set.
+        ("workshop_private_token", "ALTER TABLE workshops ADD COLUMN private_token TEXT"),
+        ("workshop_organiser_name", "ALTER TABLE workshops ADD COLUMN organiser_name TEXT"),
+        ("workshop_organiser_email", "ALTER TABLE workshops ADD COLUMN organiser_email TEXT"),
+        # A fixed day the balance is due, where the owner has agreed one (Retreat
+        # Guru let her say 16 March 2027). Blank keeps WORKSHOP_BALANCE_DAYS.
+        ("session_balance_due_on", "ALTER TABLE workshop_sessions ADD COLUMN balance_due_on TEXT"),
         ("guest_feedback_review_invited_at",
          "ALTER TABLE guest_feedback ADD COLUMN review_invited_at TEXT"),
         # A SECOND PERSON TO WRITE TO. Not the payer -- that is booked_by
@@ -8540,6 +8550,10 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_restaurant_waitlist_date ON restaurant_waitlist(desired_date)",
         "CREATE INDEX IF NOT EXISTS idx_workshop_sessions_workshop_id ON workshop_sessions(workshop_id)",
         "CREATE INDEX IF NOT EXISTS idx_workshop_sessions_start_date ON workshop_sessions(start_date)",
+        # One atelier per link: /p/<token> reads by this, and two sharing a
+        # token would show one guest's stay to the other's guests.
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_workshops_private_token "
+        "ON workshops(private_token) WHERE private_token IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_workshop_bookings_session_id ON workshop_bookings(session_id)",
         "CREATE INDEX IF NOT EXISTS idx_workshop_bookings_status ON workshop_bookings(status)",
         "CREATE INDEX IF NOT EXISTS idx_workshop_waitlist_session_id ON workshop_waitlist(session_id)",
@@ -9767,6 +9781,8 @@ NAV_AREAS = {
         # bot said to be a real person: both the registrations desk.
         "take_back_released_registration", "clear_registration_bot_check",
         "delete_workshop_session", "edit_workshop", "export_workshop_feedback_csv",
+        # A private stay's link made anew, from its programme page (z30).
+        "rotate_private_link",
         "export_workshop_registrations_csv", "export_workshop_waitlist_csv", "new_workshop",
         "new_workshop_session", "toggle_workshop_feedback_featured",
         "update_workshop_waitlist_status",
@@ -18402,6 +18418,27 @@ def claim_range(conn, room_id, arrival, departure, exclude_booking_id=None,
 # this rather than each query remembering to.
 SESSION_IS_LIVE = "workshop_sessions.cancelled_at IS NULL"
 
+# A private atelier (a stay somebody else organises) has a token and is reached
+# only by its link. Every page, letter, feed and draft that OFFERS an atelier
+# reads this; everything that RUNS the house (holds, rooming, breakfast,
+# balances, the channel feed) does not.
+WORKSHOP_IS_PUBLIC = "(workshops.private_token IS NULL)"
+
+# What a room turned away for an atelier says. A private stay is somebody
+# else's party, so a guest after a night is told the house is taken and not
+# by whom: the title is the organiser's business, and it would put the name of
+# a hidden stay on a public page.
+WORKSHOP_HOLD_WHY = "Those dates are held for a workshop"
+PRIVATE_STAY_WHY = "Those dates are held for a private stay."
+
+
+def held_for_an_atelier(why):
+    """Whether a house-wide refusal is an atelier's, private or not. The
+    channel feed and the "free from the day after" offer treat those apart
+    from events, and they must not lose a private stay because it is worded
+    differently."""
+    return why.startswith(WORKSHOP_HOLD_WHY) or why == PRIVATE_STAY_WHY
+
 
 def sessions_holding_the_house(conn, first=None, last=None):
     """The atelier sittings that take the whole château, soonest first.
@@ -18420,7 +18457,8 @@ def sessions_holding_the_house(conn, first=None, last=None):
     morning.
     """
     sql = f"""SELECT workshop_sessions.id, workshop_sessions.start_date,
-                     workshop_sessions.end_date, workshops.title
+                     workshop_sessions.end_date, workshops.title,
+                     NOT {WORKSHOP_IS_PUBLIC} AS is_private
                 FROM workshop_sessions
                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                WHERE {SESSION_IS_LIVE}"""
@@ -18514,12 +18552,15 @@ def _availability_picture(conn, *, fresh=False):
     # The channel feed adds a day either side for Booking.com; that buffer is
     # theirs, not this site's (generate_room_ics).
     for row in sessions_holding_the_house(conn):
-        why = f"Those dates are held for a workshop ({row['title']})."
+        if row["is_private"]:
+            why, label = PRIVATE_STAY_WHY, "Held for a private stay"
+        else:
+            why, label = f"{WORKSHOP_HOLD_WHY} ({row['title']}).", f"Held for {row['title']}"
         w_start, w_end = parse_date(row["start_date"]), parse_date(row["end_date"])
         if w_start and w_end:
             w_end = max(w_start, w_end - timedelta(days=1))
         picture["house"].append((w_start, w_end, why))
-        picture["night_label"][why] = f"Held for {row['title']}"
+        picture["night_label"][why] = label
     for row in conn.execute(
             """SELECT preferred_date, end_date, event_type FROM event_inquiries
                 WHERE status = 'confirmed' AND preferred_date IS NOT NULL"""):
@@ -18616,7 +18657,7 @@ def own_feed_spans(conn, picture):
             spans[None].add((w_start - timedelta(days=1),
                              max(w_end, w_start) + timedelta(days=1)))
     for h_start, h_end, why in picture["house"]:
-        if h_start and h_end and not why.startswith("Those dates are held for a workshop"):
+        if h_start and h_end and not held_for_an_atelier(why):
             spans[None].add((h_start, h_end + timedelta(days=1)))
     return spans
 
@@ -18799,7 +18840,7 @@ def atelier_holding_the_house(conn, arrival, departure):
     for a, b, why in picture["house"]:
         if not (a and b and arrival <= b and a < departure):
             continue
-        if not why.startswith("Those dates are held for a workshop"):
+        if not held_for_an_atelier(why):
             continue
         after = b + timedelta(days=1)
         if any(x <= after <= y for x, y in held):
@@ -32204,11 +32245,25 @@ LETTER_TRIGGERS = {
     'newsletter_welcome': ('Sent automatically when someone subscribes to the newsletter on the site.'),
     'code:send_autocharge_taken_email': ('Sent when an atelier balance is taken from the saved card: by the daily autocharge job on or after the due date, or when staff press Take from the card or Retry.'),
     'code:send_autocharge_failed_email': ('Sent on the same occasions when the card is refused. The owner is emailed as well.'),
+    'code:tell_the_organiser': ("Sent to the organiser of a private stay, if an organiser's address is set on it: when somebody registers on it, and again if their deposit arrives later. Names, dates and whether the deposit is paid; nothing else."),
 }
+
+# The note to whoever organised a private stay (tell_the_organiser). One copy
+# of the words, read by the code that sends it and by the Guest Emails page,
+# so what the owner approves is what goes. {status} is one of the two below.
+ORGANISER_NOTE = (
+    "{stay}: {names}",
+    "Hello {organiser},\n\nA registration for {stay}, {dates}: {names}.\n{status}\n\n"
+    "— Château de Gudanes")
+ORGANISER_PAID = "Deposit paid."
+ORGANISER_NOT_PAID = "Registered, not yet paid."
 
 # Letters written in the code rather than stored, to a guest, with their text
 # as the code writes it ({...} is filled in for each guest).
 CODE_LETTERS_TO_GUESTS = {
+    # Both status lines in the words approved, so changing either lapses it.
+    "code:tell_the_organiser": (ORGANISER_NOTE[0], ORGANISER_NOTE[1].replace(
+        "{status}", f"{ORGANISER_PAID} (or: {ORGANISER_NOT_PAID})")),
     "code:send_autocharge_taken_email": (
         "Balance paid — {workshop}",
         "Hi {guest_name},\n\nAs arranged, we have taken the remaining €{amount} for "
@@ -32903,7 +32958,7 @@ def generate_room_ics(conn, room):
     # is. Its spans are end-inclusive; iCal's DTEND is the morning after.
     # Workshops are left out of this pass: they went out above, with the buffer.
     for h_start, h_end, why in _availability_picture(conn)["house"]:
-        if not (h_start and h_end) or why.startswith("Those dates are held for a workshop"):
+        if not (h_start and h_end) or held_for_an_atelier(why):
             continue
         tag = hashlib.sha1(why.encode("utf-8")).hexdigest()[:8]
         closed(f"house-{h_start.isoformat()}-{h_end.isoformat()}-{tag}",
@@ -34351,6 +34406,7 @@ LETTERS_IN_CODE = {
     "pass_message": "Kitchen: a call from the pass",
     "send_autocharge_taken_email": "Workshop: a balance taken from the card",
     "send_autocharge_failed_email": "Workshop: a balance the card refused",
+    "tell_the_organiser": "Private stay: a note to its organiser",
     "apply_expense_decision": "Staff: an expense decided",
     "decide_shift_swap": "Staff: a shift swap decided",
     "apply_leave_decision": "Staff: time off decided",
@@ -40541,11 +40597,12 @@ def dashboard():
         # Dates", and its places were all cancelled, so it read as wide open.
         upcoming = [dict(r) for r in conn.execute(
             f"""SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
-                      workshops.nights_label, workshops.id AS workshop_id
+                      workshops.nights_label, workshops.id AS workshop_id,
+                      workshops.private_token
                  FROM workshop_sessions
                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                 WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
-                  AND {SESSION_IS_LIVE}
+                  AND {SESSION_IS_LIVE} AND {WORKSHOP_IS_PUBLIC}
                 ORDER BY workshop_sessions.start_date LIMIT 3""",
             (house_today_iso(),)).fetchall()]
         conn.close()
@@ -48985,7 +49042,10 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
     for line in rows:
         if line["companion_of"]:
             continue
-        line["due_date"] = (line["start"] - timedelta(days=due_days)).isoformat()
+        # A sitting with its own due date (a private stay's agreed day) keeps
+        # it: the guest was told that day, and it is the day the form gives.
+        fixed = line["session"]["balance_due_on"] if line["session"] else None
+        line["due_date"] = (fixed or (line["start"] - timedelta(days=due_days)).isoformat())
 
     # Places: what the session would hold once these are in.
     per_session = {}
@@ -55261,9 +55321,15 @@ def stay_itinerary(conn, booking):
     # after they leave is not something on during their stay. Nor is one
     # that has been called off: it would sit on their itinerary as "on at the
     # château while you are here" when it is not on at all.
-    sessions = conn.execute(
+    theirs = {row["session_id"] for row in conn.execute(
+        """SELECT session_id FROM workshop_bookings
+            WHERE LOWER(guest_email) = ? AND status IN ('pending', 'confirmed')""",
+        (email,)).fetchall()}
+    # A private stay is on it only for somebody booked on it: to anybody else
+    # it is a hidden party, and this page is offering what is on.
+    sessions = [s for s in conn.execute(
         f"""SELECT workshop_sessions.*, workshops.title AS title,
-                  workshops.active AS active
+                  workshops.active AS active, {WORKSHOP_IS_PUBLIC} AS is_public
              FROM workshop_sessions
              JOIN workshops ON workshops.id = workshop_sessions.workshop_id
             WHERE workshops.active = 1
@@ -55271,10 +55337,7 @@ def stay_itinerary(conn, booking):
               AND workshop_sessions.end_date >= ?
               AND {SESSION_IS_LIVE}
             ORDER BY workshop_sessions.start_date""", (last, first)).fetchall()
-    theirs = {row["session_id"] for row in conn.execute(
-        """SELECT session_id FROM workshop_bookings
-            WHERE LOWER(guest_email) = ? AND status IN ('pending', 'confirmed')""",
-        (email,)).fetchall()}
+        if s["is_public"] or s["id"] in theirs]
 
     days = []
     day = arrival
@@ -60760,11 +60823,12 @@ def workshop_deposit_to_show(conn):
 
     deposit_percent is a column on each workshop -- WORKSHOP_DEPOSIT_PERCENT
     unless somebody sets another -- not a house rule. The page used to state
-    it as one.
+    it as one. A private stay's percent is its organiser's arrangement, on its
+    own page, and is no part of what the public list says.
     """
     rows = conn.execute(
         "SELECT DISTINCT COALESCE(deposit_percent, ?) AS pct FROM workshops "
-        "WHERE active = 1", (WORKSHOP_DEPOSIT_PERCENT,)).fetchall()
+        f"WHERE active = 1 AND {WORKSHOP_IS_PUBLIC}", (WORKSHOP_DEPOSIT_PERCENT,)).fetchall()
     percents = {int(r["pct"]) for r in rows}
     if len(percents) != 1:
         return None
@@ -60820,24 +60884,39 @@ def apply_workshop_deposit_percent(conn):
     return moved, repriced
 
 
-def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
+def workshop_balance_due_day(start_date, balance_due_on=None):
+    """The day a sitting's balance falls due: the date the owner fixed on the
+    sitting, where there is one, else WORKSHOP_BALANCE_DAYS before it starts.
+    The registration form shows the date this gives, and the terms below
+    charge by it, so the two cannot disagree."""
+    fixed = parse_date(balance_due_on) if balance_due_on else None
+    if fixed:
+        return fixed
+    return start_date - timedelta(days=WORKSHOP_BALANCE_DAYS)
+
+
+def compute_workshop_payment_terms(total_price, deposit_percent, start_date, balance_due_on=None):
     """A workshop registration is really a whole-château retreat package, so
     it follows the same deposit/balance convention as the real thing: a
     percentage deposit at booking, the remainder due 30 days before the stay
     — unless the booking itself happens inside that 30-day window, in which
     case the full amount is due immediately (mirrors 'full payment required
     for bookings within 30 days'). Returns (deposit_amount, balance_amount,
-    balance_due_date_iso_or_None)."""
+    balance_due_date_iso_or_None).
+
+    `balance_due_on` is the sitting's own due date, where the owner fixed one
+    (a private stay's organiser agrees a day, as Retreat Guru let them). It
+    stands in for the thirty days, with the same rule: booked after it, the
+    whole price is due now."""
     if not total_price:
         return None, None, None
     today = house_today()
-    if (start_date - today).days < WORKSHOP_BALANCE_DAYS:
+    due = workshop_balance_due_day(start_date, balance_due_on)
+    if today > due:
         return round(total_price, 2), 0.0, None
     deposit_amount = round(total_price * deposit_percent / 100, 2)
     balance_amount = round(total_price - deposit_amount, 2)
-    balance_due_date = (start_date
-                        - timedelta(days=WORKSHOP_BALANCE_DAYS)).isoformat()
-    return deposit_amount, balance_amount, balance_due_date
+    return deposit_amount, balance_amount, due.isoformat()
 
 
 # What a text may be sent for. Transactional messages are about something the
@@ -62242,7 +62321,8 @@ def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email
     # code was ever involved.
     deposit_percent = resolve_deposit_percent(conn, "workshop", session_row["start_date"], party_size, workshop["deposit_percent"])
     deposit_amount, balance_amount, balance_due_date = compute_workshop_payment_terms(
-        total_price, deposit_percent, parse_date(session_row["start_date"])
+        total_price, deposit_percent, parse_date(session_row["start_date"]),
+        session_row["balance_due_on"],
     )
     conn.execute(
         """INSERT INTO workshop_bookings
@@ -62331,7 +62411,52 @@ def announce_workshop_registration(conn, booking_row_id, confirm_now=False, note
     instructor = booking_row["instructor_user_id"]
     if instructor and instructor not in notified_ids:
         send_notification(conn, instructor, "workshop_booking", notify_title, body=body, link="/admin/workshops/registrations")
+    # A place held for a deposit is announced when the deposit arrives, so by
+    # then it is paid: one note to the organiser saying so, not two.
+    tell_the_organiser(conn, booking_row_id)
     return confirmed_now
+
+
+def tell_the_organiser(conn, booking_id):
+    """Tell the organiser of a private stay that somebody has registered on it,
+    or has since paid the deposit. True if a note was written.
+
+    Who, which dates, and whether the deposit is paid. Nothing else: no
+    dietary or medical notes, no address or telephone, no amounts. The
+    organiser is a friend of the guests, not the house's to share them with.
+    Only while the stay is private and has an organiser's address; leaving
+    the address blank is how it is switched off.
+
+    Goes through send_email like any letter outside the house, so while Guest
+    emails are off it is held until the owner approves its wording.
+    """
+    row = conn.execute(
+        """SELECT wb.id, wb.guest_name, wb.deposit_paid_at, ws.start_date, ws.end_date,
+                  w.title, w.private_token, w.organiser_name, w.organiser_email
+             FROM workshop_bookings wb
+             JOIN workshop_sessions ws ON ws.id = wb.session_id
+             JOIN workshops w ON w.id = ws.workshop_id
+            WHERE wb.id = ?""", (booking_id,)).fetchone()
+    to = ((row["organiser_email"] or "").strip() if row else "")
+    if not row or not row["private_token"] or not EMAIL_RE.match(to):
+        return False
+    names = [r["guest_name"].strip() for r in conn.execute(
+        """SELECT guest_name FROM workshop_booking_guests WHERE workshop_booking_id = ?
+            ORDER BY is_lead DESC, id""", (booking_id,)).fetchall()
+             if (r["guest_name"] or "").strip()] or [row["guest_name"]]
+    words = {
+        "stay": row["title"],
+        "names": names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1],
+        "organiser": (row["organiser_name"] or "").strip() or "there",
+        "dates": format_date_range(row["start_date"], row["end_date"] or row["start_date"]),
+        "status": ORGANISER_PAID if row["deposit_paid_at"] else ORGANISER_NOT_PAID,
+    }
+    # Nothing open across the send: it may write to the outbox on its own
+    # connection.
+    conn.commit()
+    send_email(to, ORGANISER_NOTE[0].format(**words), ORGANISER_NOTE[1].format(**words),
+               area="workshops")
+    return True
 
 
 def workshop_balance_due(conn, booking_id):
@@ -65252,6 +65377,10 @@ def settle_workshop_deposit_hold(conn, booking_id, via=None):
         conn.commit()
         return "confirmed" if confirmed else "needs_you"
     if row["status"] != "cancelled" or not row["hold_released_at"]:
+        # Never held: the place was announced, and the organiser told of it,
+        # when it was made. This is its deposit arriving since.
+        if row["status"] in ("pending", "confirmed"):
+            tell_the_organiser(conn, booking_id)
         return None
 
     # A DEPOSIT FOR A PLACE ALREADY GIVEN BACK. The card page closes with the
@@ -65439,11 +65568,13 @@ def workshops_on_offer(conn, today):
       every date called off    -> not running, hide it
       never had any            -> coming soon, show without dates
 
-    One rule for every page that names a workshop or its price.
+    One rule for every page that names a workshop or its price. A private stay
+    is on none of them: it is reached by its link (private_stay).
     """
     out = []
     for w in conn.execute(
-            "SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order, title").fetchall():
+            f"""SELECT * FROM workshops WHERE active = 1 AND {WORKSHOP_IS_PUBLIC}
+                 ORDER BY sort_order, title""").fetchall():
         sessions = public_sittings(conn, w["id"], today)
         if not sessions and conn.execute(
                 "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? LIMIT 1",
@@ -65465,6 +65596,71 @@ def offered_workshops():
         return [w for w, _sittings in workshops_on_offer(conn, house_today())]
     finally:
         conn.close()
+
+
+def workshop_page_url(workshop, _external=False):
+    """Where a guest is sent to read about an atelier: its own page, or, for a
+    private stay, the link its organiser was given.
+
+    The numbered page answers 404 for a private stay, so every link to an
+    atelier goes through here rather than naming workshop_detail. Needs the
+    workshop's private_token -- a row without it is a fault to see, not a
+    public atelier to assume.
+    """
+    if workshop["private_token"]:
+        return url_for("private_stay", token=workshop["private_token"], _external=_external)
+    # A sitting's row will do as well, read by its workshop_id (the workshops
+    # table has no such column, so a workshop's own row is never misread).
+    keys = workshop.keys()
+    workshop_id = workshop["workshop_id"] if "workshop_id" in keys else workshop["id"]
+    return url_for("workshop_detail", workshop_id=workshop_id, _external=_external)
+
+
+def workshop_register_url(session_id, private_token=None, _external=False, **args):
+    """The registration form for one sitting, carrying the link's key when the
+    atelier is private (workshop_register refuses it without)."""
+    if private_token:
+        args["k"] = private_token
+    return url_for("workshop_register", session_id=session_id, _external=_external, **args)
+
+
+def private_page(body):
+    """A private stay's page as sent: never indexed, and its address -- which is
+    the key to it -- never passed on in a Referer to whatever it links to."""
+    resp = app.make_response(body)
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
+
+
+def private_key_matches(token):
+    """Whether this request carries the private stay's key. Compared in constant
+    time: the key is the only thing between a stranger and the guest list's
+    booking form."""
+    given = (request.form.get("k") if request.method == "POST" else None) or request.args.get("k") or ""
+    return hmac.compare_digest(given.encode("utf-8"), token.encode("utf-8"))
+
+
+@app.route("/p/<token>")
+def private_stay(token):
+    """A private atelier, reached only by the link its organiser was given.
+
+    The same page as a public atelier, less everything that leads to the
+    public catalogue, and never indexed. A wrong or old link is a plain 404.
+    """
+    conn = get_db()
+    workshop = conn.execute(
+        "SELECT * FROM workshops WHERE private_token = ? AND active = 1", (token,)).fetchone()
+    if not workshop:
+        conn.close()
+        abort(404)
+    sessions = public_sittings(conn, workshop["id"], house_today())
+    rows = [{"session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"])}
+            for s in sessions]
+    conn.close()
+    return private_page(render_template(
+        "workshop_detail.html", workshop=workshop, session_rows=rows,
+        private_token=workshop["private_token"]))
 
 
 @app.route("/workshops")
@@ -65510,7 +65706,11 @@ def workshops_public():
 @app.route("/workshops/<int:workshop_id>")
 def workshop_detail(workshop_id):
     conn = get_db()
-    workshop = conn.execute("SELECT * FROM workshops WHERE id = ? AND active = 1", (workshop_id,)).fetchone()
+    # A private stay is not here: a plain 404, never a redirect to its link,
+    # so counting through the numbers finds nothing.
+    workshop = conn.execute(
+        f"SELECT * FROM workshops WHERE id = ? AND active = 1 AND {WORKSHOP_IS_PUBLIC}",
+        (workshop_id,)).fetchone()
     if not workshop:
         conn.close()
         abort(404)
@@ -65549,7 +65749,10 @@ def workshop_register(session_id):
                workshops.single_supplement,
                -- What the price carries. The page asks directly, and without
                -- these it falls back to guessing from the nights label.
-               workshops.transfers_included, workshops.excursions_included
+               workshops.transfers_included, workshops.excursions_included,
+               workshops.private_token, workshops.organiser_name,
+               -- the form says the organiser is told (tell_the_organiser)
+               COALESCE(workshops.organiser_email, '') != '' AS organiser_told
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_sessions.id = ?""",
         (session_id,),
@@ -65557,6 +65760,19 @@ def workshop_register(session_id):
     if not session_row or not session_row["active"]:
         conn.close()
         abort(404)
+    # A PRIVATE STAY is booked only by somebody holding its link. Without the
+    # key this form is not here at all -- a 404 like any number that is not a
+    # sitting, asked before anything else is said about it, so a stranger
+    # counting through the numbers learns nothing, called off or otherwise.
+    private_token = session_row["private_token"]
+    if private_token and not private_key_matches(private_token):
+        conn.close()
+        abort(404)
+    # Every answer below goes through this, so a private one is never indexed
+    # and never hands its key on in a Referer -- Stripe's page included.
+    answer = private_page if private_token else (lambda body: body)
+    atelier_page = workshop_page_url(
+        {"id": session_row["workshop_id"], "private_token": private_token})
     today = house_today()
     start_date = parse_date(session_row["start_date"])
     if not start_date or start_date < today:
@@ -65570,7 +65786,7 @@ def workshop_register(session_id):
     if session_row["cancelled_at"]:
         conn.close()
         flash("That date has been called off, so it cannot be booked.", "error")
-        return redirect(url_for("workshop_detail", workshop_id=session_row["workshop_id"]))
+        return answer(redirect(atelier_page))
     custom_fields = conn.execute(
         "SELECT * FROM workshop_custom_fields WHERE workshop_id = ? ORDER BY sort_order",
         (session_row["workshop_id"],),
@@ -65600,6 +65816,10 @@ def workshop_register(session_id):
             n: resolve_deposit_percent(conn, "workshop", session_row["start_date"], n,
                                        session_row["deposit_percent"])
             for n in range(1, (session_row["capacity"] or 15) + 1)},
+        # The link's key, carried in a hidden field so the POST has it, and
+        # what tells the page to be the private stay's and nobody else's.
+        "private_token": private_token,
+        "atelier_page": atelier_page,
     }
 
     if request.method == "POST":
@@ -65607,15 +65827,15 @@ def workshop_register(session_id):
             conn.commit()
             conn.close()
             flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template(
+            return answer(render_template(
                 "workshop_register.html", **page, fully_booked=False,
-                **public_form_prefill(request.form, WORKSHOP_PREFILL))
+                **public_form_prefill(request.form, WORKSHOP_PREFILL)))
         if refused_as_bot(conn, "register_workshop", request.form):
             conn.close()
             flash(BOT_REFUSAL_MESSAGE, "error")
-            return render_template(
+            return answer(render_template(
                 "workshop_register.html", **page, fully_booked=False,
-                **public_form_prefill(request.form, WORKSHOP_PREFILL))
+                **public_form_prefill(request.form, WORKSHOP_PREFILL)))
 
         # A hold past its deadline is given back before the places are
         # counted, not up to ten minutes later when housekeeping passes, so a
@@ -65703,10 +65923,10 @@ def workshop_register(session_id):
             flash(error, "error")
             conn.commit()  # persist the rate-limit log entry even on a validation error
             conn.close()
-            return render_template(
+            return answer(render_template(
                 "workshop_register.html", **page, fully_booked=fully_booked,
                 **public_form_prefill(request.form, WORKSHOP_PREFILL),
-            )
+            ))
 
         workshop = conn.execute("SELECT * FROM workshops WHERE id = ?", (session_row["workshop_id"],)).fetchone()
         if promo_code and workshop["price_per_person"]:
@@ -65759,18 +65979,18 @@ def workshop_register(session_id):
             announce_workshop_registration(conn, booking_row_id, confirm_now=True)
         conn.close()
         if checkout_url:
-            return redirect(checkout_url, code=303)
-        return redirect(url_for("workshop_confirmation", manage_token=manage_token))
+            return answer(redirect(checkout_url, code=303))
+        return answer(redirect(url_for("workshop_confirmation", manage_token=manage_token)))
 
     conn.close()
-    return render_template(
+    return answer(render_template(
         "workshop_register.html", **page, fully_booked=False,
         **public_form_prefill(request.args, {
             **{k: k for k in WORKSHOP_PREFILL},          # blank unless linked with one
             "name": "name", "email": "email", "phone": "phone",
             "party_size": "party_size",
         }),
-    )
+    ))
 
 
 @app.route("/workshops/confirmation/<manage_token>")
@@ -65851,7 +66071,8 @@ def workshop_manage(manage_token):
     conn = get_db()
     booking = conn.execute(
         """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date,
-               workshops.title, rooms.name AS assigned_room_name FROM workshop_bookings
+               workshops.title, workshops.private_token IS NOT NULL AS is_private,
+               rooms.name AS assigned_room_name FROM workshop_bookings
            JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
@@ -65946,6 +66167,7 @@ def workshop_manage(manage_token):
             )
             deposit_amount, balance_amount, balance_due_date = compute_workshop_payment_terms(
                 booking["total_price"], new_deposit_percent, parse_date(new_session["start_date"]),
+                new_session["balance_due_on"],
             )
             conn.execute(
                 """UPDATE workshop_bookings SET session_id = ?, deposit_amount = ?, balance_amount = ?,
@@ -78337,9 +78559,10 @@ def new_workshop():
         inclusions = request.form.get("inclusions", "").strip()
         itinerary = request.form.get("itinerary", "").strip()
         supplement = parse_money(request.form.get("single_supplement", ""))
+        organiser_name, organiser_email, organiser_error = organiser_from_form()
 
-        if not title:
-            flash("Workshop title is required.", "error")
+        if not title or organiser_error:
+            flash(organiser_error or "Workshop title is required.", "error")
             return render_template("workshop_form.html", workshop=None, instructors=known_instructor_list())
 
         conn = get_db()
@@ -78354,8 +78577,9 @@ def new_workshop():
         cur = conn.execute(
             """INSERT INTO workshops (title, description, instructor_name, instructor_user_id, price_per_person,
                default_capacity, sort_order, deposit_percent, inclusions, itinerary, single_supplement,
-               transfers_included, excursions_included, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               transfers_included, excursions_included, private_token, organiser_name,
+               organiser_email, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (title, description, instructor_name or None,
              instructor_id,
              float(price_raw) if price_raw else 0,
@@ -78366,6 +78590,8 @@ def new_workshop():
              inclusions or None, itinerary or None, supplement,
              1 if request.form.get("transfers_included") else 0,
              1 if request.form.get("excursions_included") else 0,
+             new_private_token() if request.form.get("private") else None,
+             organiser_name, organiser_email,
              datetime.now(timezone.utc).isoformat()),
         )
         new_id = cur.lastrowid
@@ -78375,6 +78601,65 @@ def new_workshop():
         return redirect(url_for("admin_workshop", workshop_id=new_id))
 
     return render_template("workshop_form.html", workshop=None, instructors=known_instructor_list())
+
+
+def new_private_token():
+    """A private stay's link key: unguessable, and short enough to read out."""
+    return secrets.token_urlsafe(12)
+
+
+def organiser_from_form():
+    """(name, email, error) for a private stay's organiser, from the workshop
+    form. The address is optional; blank is how the notes to them are off."""
+    name = (request.form.get("organiser_name") or "").strip()[:200] or None
+    email = (request.form.get("organiser_email") or "").strip().lower()[:200] or None
+    if email and not EMAIL_RE.match(email):
+        return name, None, "That organiser's email address does not look right."
+    return name, email, None
+
+
+def private_stay_link(workshop):
+    """The full link the owner hands an organiser, on the site's public
+    address -- where a guest will open it, not admin., where the owner is
+    reading it. None for a public atelier."""
+    if not workshop["private_token"]:
+        return None
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL + url_for("private_stay", token=workshop["private_token"])
+    return url_for("private_stay", token=workshop["private_token"], _external=True)
+
+
+@app.route("/admin/workshops/<int:workshop_id>/new-link", methods=["POST"])
+@owner_required
+def rotate_private_link(workshop_id):
+    """A new link for a private stay, for when the old one has gone further
+    than it was meant to. The old one stops working at once. Registrations
+    already made are not touched: each has its own manage link."""
+    conn = get_db()
+    workshop = conn.execute("SELECT * FROM workshops WHERE id = ?", (workshop_id,)).fetchone()
+    if not workshop:
+        conn.close()
+        abort(404)
+    if not workshop["private_token"]:
+        conn.close()
+        flash("That atelier is public, so it has no private link to change.", "error")
+        return redirect(url_for("admin_workshop", workshop_id=workshop_id))
+    conn.execute("UPDATE workshops SET private_token = ? WHERE id = ?",
+                 (new_private_token(), workshop_id))
+    log_audit(conn, "private_link_changed", target=str(workshop_id), details=workshop["title"])
+    conn.commit()
+    conn.close()
+    flash("A new link is made, and the old one no longer works. Send the new one "
+          "to the organiser.", "success")
+    return redirect(url_for("admin_workshop", workshop_id=workshop_id))
+
+
+# Every link to an atelier or its form, on a page as in the code, goes through
+# these; a template naming workshop_detail would send a private stay's guest
+# to a 404.
+app.jinja_env.globals["workshop_page_url"] = workshop_page_url
+app.jinja_env.globals["workshop_register_url"] = workshop_register_url
+app.jinja_env.globals["private_stay_link"] = private_stay_link
 
 
 def known_instructor_list():
@@ -78405,16 +78690,22 @@ def edit_workshop(workshop_id):
         itinerary = request.form.get("itinerary", "").strip()
         active = 1 if request.form.get("active") == "on" else 0
         supplement = parse_money(request.form.get("single_supplement", ""))
+        organiser_name, organiser_email, organiser_error = organiser_from_form()
+        # Ticked keeps the link it has; ticked for the first time makes one;
+        # unticked puts it back on the public pages and the link stops working.
+        private_token = ((workshop["private_token"] or new_private_token())
+                         if request.form.get("private") else None)
 
-        if not title:
+        if not title or organiser_error:
             conn.close()
-            flash("Workshop title is required.", "error")
+            flash(organiser_error or "Workshop title is required.", "error")
             return redirect(url_for("edit_workshop", workshop_id=workshop_id))
 
         conn.execute(
             """UPDATE workshops SET title=?, description=?, instructor_name=?, instructor_user_id=?,
                price_per_person=?, default_capacity=?, deposit_percent=?, inclusions=?, itinerary=?,
                single_supplement=?, transfers_included=?, excursions_included=?,
+               private_token=?, organiser_name=?, organiser_email=?,
                active=? WHERE id=?""",
             (title, description, instructor_name or None,
              int(instructor_user_id) if instructor_user_id.isdigit() else None,
@@ -78426,11 +78717,21 @@ def edit_workshop(workshop_id):
              # Reading it any other way would make a box impossible to untick.
              1 if request.form.get("transfers_included") else 0,
              1 if request.form.get("excursions_included") else 0,
+             private_token, organiser_name, organiser_email,
              active, workshop_id),
         )
+        if bool(private_token) != bool(workshop["private_token"]):
+            log_audit(conn, "workshop_made_private" if private_token else "workshop_made_public",
+                      target=str(workshop_id), details=title)
         conn.commit()
         conn.close()
-        flash("Workshop updated.", "success")
+        if private_token and not workshop["private_token"]:
+            flash(f"{title} is private now: off every public page, and booked only by its "
+                  "link, which is on this page to copy.", "success")
+        elif workshop["private_token"] and not private_token:
+            flash(f"{title} is public again, and its private link no longer works.", "success")
+        else:
+            flash("Workshop updated.", "success")
         return redirect(url_for("admin_workshop", workshop_id=workshop_id))
 
     instructors = conn.execute("SELECT * FROM users WHERE role IN ('owner', 'employee') ORDER BY role DESC, name").fetchall()
@@ -78808,7 +79109,7 @@ def recap_wording(conn):
 def recap_session(conn, session_id):
     return conn.execute(
         """SELECT ws.*, w.title, w.instructor_name, w.price_per_person,
-                  w.active AS workshop_active
+                  w.active AS workshop_active, w.private_token
              FROM workshop_sessions ws JOIN workshops w ON w.id = ws.workshop_id
             WHERE ws.id = ?""", (session_id,)).fetchone()
 
@@ -78986,8 +79287,11 @@ def recap_photos(conn, session, participants):
 
 def recap_next_dates(conn, session, today):
     """The next dates of the same atelier a guest can still take a place on,
-    by the rule every public page uses (public_sittings), each with its link."""
-    if not session["workshop_active"]:
+    by the rule every public page uses (public_sittings), each with its link.
+
+    None for a private stay: the recap goes to the organiser's guests, and the
+    house does not sell them its next party."""
+    if not session["workshop_active"] or session["private_token"]:
         return []
     out = []
     for s in public_sittings(conn, session["workshop_id"], today):
@@ -79616,6 +79920,20 @@ def atelier_recap_notes(token):
     return response
 
 
+def balance_due_on_from_form(start):
+    """(iso date or None, error) for a sitting's own balance due date. Blank is
+    none: the balance falls due WORKSHOP_BALANCE_DAYS before, as it always has."""
+    raw = (request.form.get("balance_due_on") or "").strip()
+    if not raw:
+        return None, None
+    due = parse_date(raw)
+    if not due:
+        return None, "The balance due date is not a date."
+    if start and due > start:
+        return None, "The balance cannot fall due after the sitting has started."
+    return due.isoformat(), None
+
+
 @app.route("/admin/workshops/<int:workshop_id>/sessions/new", methods=["POST"])
 @owner_required
 def new_workshop_session(workshop_id):
@@ -79639,6 +79957,11 @@ def new_workshop_session(workshop_id):
         conn.close()
         flash("End date can't be before the start date.", "error")
         return redirect(workshop_admin_return())
+    balance_due_on, due_error = balance_due_on_from_form(start_date)
+    if due_error:
+        conn.close()
+        flash(due_error, "error")
+        return redirect(workshop_admin_return())
 
     capacity = (int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0
                 else workshop["default_capacity"])
@@ -79652,11 +79975,12 @@ def new_workshop_session(workshop_id):
 
     conn.execute(
         """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity,
-                                          min_participants, decide_by_days, notes, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                                          min_participants, decide_by_days, notes,
+                                          balance_due_on, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (workshop_id, start_date.isoformat(), end_date.isoformat(), capacity,
          minimum, decide_by_days,
-         notes or None, datetime.now(timezone.utc).isoformat()),
+         notes or None, balance_due_on, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
 
@@ -79746,12 +80070,22 @@ def edit_workshop_session(session_id):
         decide_by = int(raw_decide) if raw_decide else WORKSHOP_DECIDE_BY_DAYS
     notes = request.form.get("notes")
     notes = session_row["notes"] if notes is None else (notes.strip() or None)
+    # Absent is "leave it", like the minimum; present and blank goes back to
+    # the thirty days.
+    balance_due_on = session_row["balance_due_on"]
+    if request.form.get("balance_due_on") is not None:
+        balance_due_on, due_error = balance_due_on_from_form(start)
+        if due_error:
+            conn.close()
+            flash(due_error, "error")
+            return redirect(workshop_admin_return())
 
     conn.execute(
         """UPDATE workshop_sessions SET capacity = ?, start_date = ?, end_date = ?, notes = ?,
-                  min_participants = ?, decide_by_days = ?
+                  min_participants = ?, decide_by_days = ?, balance_due_on = ?
             WHERE id = ?""",
-        (capacity, start.isoformat(), end.isoformat(), notes, minimum, decide_by, session_id))
+        (capacity, start.isoformat(), end.isoformat(), notes, minimum, decide_by,
+         balance_due_on, session_id))
     # NEW DATES MOVE THE MONEY. A balance falls due thirty days before the
     # atelier, and this changed the atelier's date and not one balance's --
     # so the notice that they had fallen due, the reminder and the list of
@@ -79759,8 +80093,10 @@ def edit_workshop_session(session_id):
     # month late. Each live registration is repriced through the one
     # function that does it, which keeps a deposit already paid and re-arms
     # the reminder and the notice for the new date.
+    # A due date fixed or changed on the sitting moves them the same way.
     moved = 0
-    if start.isoformat() != session_row["start_date"]:
+    if (start.isoformat() != session_row["start_date"]
+            or balance_due_on != session_row["balance_due_on"]):
         for reg in conn.execute(
                 """SELECT id, total_price FROM workshop_bookings
                     WHERE session_id = ? AND status IN ('pending', 'confirmed')""",
@@ -79772,8 +80108,12 @@ def edit_workshop_session(session_id):
     # to what the house has promised, not a settings tweak.
     log_audit(conn, "workshop_session_edited", target=str(session_id),
               details=f"capacity {session_row['capacity']} -> {capacity}"
-                      + (f"; dates {session_row['start_date']} -> {start.isoformat()}, "
-                         f"{moved} balance(s) re-dated" if moved else ""))
+                      + (f"; dates {session_row['start_date']} -> {start.isoformat()}"
+                         if start.isoformat() != session_row["start_date"] else "")
+                      + (f"; balance due on {session_row['balance_due_on'] or 'the thirty days'}"
+                         f" -> {balance_due_on or 'the thirty days'}"
+                         if balance_due_on != session_row["balance_due_on"] else "")
+                      + (f", {moved} balance(s) re-dated" if moved else ""))
     conn.commit()
     # New dates are a new claim on the house: say what else is on them, by
     # name, as adding a sitting does -- warned, not blocked.
@@ -79781,9 +80121,11 @@ def edit_workshop_session(session_id):
     if (start.isoformat(), end.isoformat()) != (session_row["start_date"], session_row["end_date"]):
         clash = sitting_clash_words(conn, start, end, session_id)
     conn.close()
+    due_words = (format_date_human(balance_due_on) if balance_due_on
+                 else "thirty days before the first day")
     flash("Session updated." + (
         f" {moved} registration{'' if moved == 1 else 's'} now fall{'s' if moved == 1 else ''} due "
-        f"thirty days before the new date. They have not been told: the register's "
+        f"{due_words}. They have not been told: the register's "
         f"\"Email everyone\" is the way to." if moved else ""), "success")
     if clash:
         flash(f"Also on the new dates: {clash}.", "error")
@@ -80134,6 +80476,7 @@ def workshop_register_rows(conn, today=None):
     for r in conn.execute(
             """SELECT wb.*, ws.start_date, ws.end_date, ws.capacity AS session_capacity,
                       ws.cancelled_at AS session_called_off, w.title, w.id AS workshop_id,
+                      w.private_token IS NOT NULL AS is_private,
                       rooms.name AS assigned_room_name
                  FROM workshop_bookings wb
                  JOIN workshop_sessions ws ON ws.id = wb.session_id
@@ -81235,14 +81578,15 @@ def reprice_workshop_registration(conn, registration_id, *, total_price, start_d
     it are re-armed.
     """
     reg = conn.execute(
-        """SELECT wb.*, w.deposit_percent FROM workshop_bookings wb
+        """SELECT wb.*, w.deposit_percent, ws.balance_due_on FROM workshop_bookings wb
              JOIN workshop_sessions ws ON ws.id = wb.session_id
              JOIN workshops w ON w.id = ws.workshop_id
             WHERE wb.id = ?""", (registration_id,)).fetchone()
     deposit_percent = resolve_deposit_percent(
         conn, "workshop", start_date, reg["party_size"], reg["deposit_percent"])
+    # The sitting it is on now: every caller moves session_id before asking.
     deposit_amount, balance_amount, balance_due_date = compute_workshop_payment_terms(
-        total_price, deposit_percent, parse_date(start_date))
+        total_price, deposit_percent, parse_date(start_date), reg["balance_due_on"])
     if reg["deposit_paid_at"]:
         deposit_amount = reg["deposit_amount"]
         balance_amount = round((total_price or 0) - (deposit_amount or 0), 2)
@@ -81959,34 +82303,46 @@ def join_workshop_waitlist():
         abort(404)
     session_id = int(session_id_raw)
     conn = get_db()
-    target = conn.execute("SELECT workshop_id, cancelled_at FROM workshop_sessions WHERE id = ?",
-                          (session_id,)).fetchone()
+    target = conn.execute(
+        """SELECT workshop_sessions.workshop_id, workshop_sessions.cancelled_at,
+                  workshops.private_token
+             FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.id = ?""", (session_id,)).fetchone()
     if not target:
         conn.close()
         abort(404)
+    # A PRIVATE STAY's waiting list is for people holding its link, as its
+    # form is: refused like a sitting that does not exist to anybody else, so
+    # nobody joins a queue for a party they were not asked to, and the number
+    # says nothing about whether there is one.
+    if target["private_token"] and not private_key_matches(target["private_token"]):
+        conn.close()
+        abort(404)
+    back = workshop_register_url(session_id, target["private_token"])
     # Calling a sitting off closes its waiting list and tells everybody on it.
     # Joining one afterwards would put somebody in a queue nobody serves, told
     # "we'll reach out if a spot opens up" about a date that is not running.
     if target["cancelled_at"]:
         conn.close()
         flash("That date has been called off, so there is no waiting list for it.", "error")
-        return redirect(url_for("workshop_detail", workshop_id=target["workshop_id"]))
+        return redirect(workshop_page_url(
+            {"id": target["workshop_id"], "private_token": target["private_token"]}))
 
     if rate_limited(conn, "join_workshop_waitlist", BOOKING_RATE_LIMIT_PER_HOUR):
         conn.commit()
         conn.close()
         flash("Too many attempts from this connection — please try again in a bit.", "error")
-        return redirect(url_for("workshop_register", session_id=session_id))
+        return redirect(back)
     if not name or not email:
         conn.commit()
         conn.close()
         flash("Name and email are required.", "error")
-        return redirect(url_for("workshop_register", session_id=session_id))
+        return redirect(back)
     if not EMAIL_RE.match(email):
         conn.commit()
         conn.close()
         flash("Enter a valid email address.", "error")
-        return redirect(url_for("workshop_register", session_id=session_id))
+        return redirect(back)
 
     party_size = int(party_size_raw) if party_size_raw.isdigit() else None
     conn.execute(
@@ -82003,11 +82359,13 @@ def join_workshop_waitlist():
         )
     conn.close()
     flash("You're on the waitlist — we'll reach out if a spot opens up.", "success")
-    return redirect(url_for("workshop_register", session_id=session_id))
+    return redirect(back)
 
 
 WORKSHOP_WAITLIST_SQL = """SELECT workshop_waitlist.*, workshop_sessions.start_date,
-           workshop_sessions.end_date, workshops.title FROM workshop_waitlist
+           workshop_sessions.end_date, workshops.title,
+           -- the key a private stay's form wants, for the owner's register link
+           workshops.private_token FROM workshop_waitlist
       JOIN workshop_sessions ON workshop_sessions.id = workshop_waitlist.session_id
       JOIN workshops ON workshops.id = workshop_sessions.workshop_id
      ORDER BY workshop_waitlist.created_at DESC"""
@@ -108947,7 +109305,7 @@ def notify_workshop_waitlist_opening(conn, session_id):
     if not matches:
         return []
     session_row = conn.execute(
-        """SELECT workshop_sessions.*, workshops.title FROM workshop_sessions
+        """SELECT workshop_sessions.*, workshops.title, workshops.private_token FROM workshop_sessions
            JOIN workshops ON workshops.id = workshop_sessions.workshop_id WHERE workshop_sessions.id = ?""",
         (session_id,),
     ).fetchone()
@@ -108957,7 +109315,9 @@ def notify_workshop_waitlist_opening(conn, session_id):
     date_line = format_date_human(session_row["start_date"])
     if session_row["end_date"] != session_row["start_date"]:
         date_line += f" to {format_date_human(session_row['end_date'])}"
-    register_url = url_for("workshop_register", session_id=session_id, _external=True)
+    # A private stay's form wants its key, which everybody waiting for it was
+    # holding when they joined.
+    register_url = workshop_register_url(session_id, session_row["private_token"], _external=True)
     notified = []
     for entry in matches:
         context = {
@@ -115772,7 +116132,7 @@ def current_offerings_snapshot(conn):
         f"""SELECT workshops.title, workshops.price_per_person, workshop_sessions.start_date, workshop_sessions.end_date
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
-             AND {SESSION_IS_LIVE}
+             AND {SESSION_IS_LIVE} AND {WORKSHOP_IS_PUBLIC}
            ORDER BY workshop_sessions.start_date LIMIT 10""",
         (today,),
     ).fetchall()
@@ -115824,7 +116184,7 @@ def live_facts_for_text(conn, text, received_at_iso=None, guest_email=""):
                        workshops.title, workshops.price_per_person
                   FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                  WHERE workshops.active = 1 AND workshop_sessions.end_date >= ?
-                   AND {SESSION_IS_LIVE}
+                   AND {SESSION_IS_LIVE} AND {WORKSHOP_IS_PUBLIC}
                  ORDER BY workshop_sessions.start_date LIMIT 8""", (lo,)).fetchall():
         facts["ateliers"].append({
             "title": s["title"], "from": s["start_date"], "to": s["end_date"],
@@ -115866,7 +116226,8 @@ def house_reference(conn):
                   "includes": (w["inclusions"] or "")[:600],
                   "about": (w["description"] or "")[:600]}
                  for w in conn.execute(
-                     "SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order, title").fetchall()]
+                     f"""SELECT * FROM workshops WHERE active = 1 AND {WORKSHOP_IS_PUBLIC}
+                          ORDER BY sort_order, title""").fetchall()]
     settings = get_restaurant_settings(conn)
     restaurant = ({"open": bool(settings["enabled"]), "dinner_time": settings["dinner_time"],
                    "price_per_person": settings["price_per_person"],
@@ -121485,7 +121846,7 @@ def legacy_atelier_product(slug):
         conn = get_db()
         try:
             rows = conn.execute(
-                "SELECT id, title FROM workshops WHERE active = 1").fetchall()
+                f"SELECT id, title FROM workshops WHERE active = 1 AND {WORKSHOP_IS_PUBLIC}").fetchall()
         finally:
             conn.close()
         found = [r["id"] for r in rows if wanted <= _name_words(r["title"])]
@@ -121499,7 +121860,8 @@ def legacy_atelier_target(words):
     wanted = _name_words(words)
     conn = get_db()
     try:
-        rows = conn.execute("SELECT id, title FROM workshops WHERE active = 1").fetchall()
+        rows = conn.execute(
+            f"SELECT id, title FROM workshops WHERE active = 1 AND {WORKSHOP_IS_PUBLIC}").fetchall()
     finally:
         conn.close()
     found = [r["id"] for r in rows if wanted and wanted <= _name_words(r["title"])]
@@ -121723,7 +122085,9 @@ def only_the_house_address_is_indexed(response):
         return response
     home = house_address()
     if home is None or _request_hostname() != home[1]:
-        response.headers["X-Robots-Tag"] = "noindex"
+        # Kept where a page set its own, which is only ever stricter: a private
+        # stay's "noindex, nofollow" (private_page) is not to be relaxed here.
+        response.headers.setdefault("X-Robots-Tag", "noindex")
     return response
 
 
@@ -122008,7 +122372,7 @@ def sitemap():
             f"""SELECT DISTINCT workshops.id FROM workshops
                  JOIN workshop_sessions ON workshop_sessions.workshop_id = workshops.id
                 WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
-                  AND {SESSION_IS_LIVE}""",
+                  AND {SESSION_IS_LIVE} AND {WORKSHOP_IS_PUBLIC}""",
             (service_day_iso(),)).fetchall():
         urls.append((url_for("workshop_detail", workshop_id=w["id"], _external=True), "0.8"))
     conn.close()

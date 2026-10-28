@@ -85,6 +85,38 @@
     </label>
     {% endif %}
 
+    {#- A PRIVATE STAY (z30): a party somebody else organises, set up as an atelier
+        and booked only by its link. Everything else about it -- deposit,
+        balance, questions, rooming, reminders -- is an atelier's. -#}
+    <label class="amenity" style="display:block; margin-top:16px;">
+      <input type="checkbox" name="private" value="1" {{ 'checked' if workshop and workshop['private_token'] }}>
+      Private: only people with the link can see and book it
+    </label>
+    <p class="upload-hint">
+      Off every public page, the site map, the newsletter and every reply the house
+      drafts. It still holds the whole house on its dates and closes Booking.com, like
+      any atelier. The link to send is on the workshop's page once it is saved.
+      Untick it and it goes back on the public pages, and the link stops working.
+    </p>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="workshop_form-organiser-name">Organiser (shown as “Arranged by”)</label>
+        <input id="workshop_form-organiser-name" type="text" name="organiser_name" maxlength="200"
+               value="{{ workshop['organiser_name'] or '' if workshop else '' }}">
+      </div>
+      <div>
+        <label class="field-label" for="workshop_form-organiser-email">Organiser's email (optional)</label>
+        <input id="workshop_form-organiser-email" type="email" name="organiser_email" maxlength="200"
+               value="{{ workshop['organiser_email'] or '' if workshop else '' }}">
+      </div>
+    </div>
+    <p class="upload-hint">
+      With an address, the organiser is sent a short note each time somebody registers on
+      the private stay, and when a deposit arrives later: names, dates and whether it is
+      paid, nothing else. Leave it blank and they are sent nothing. The note waits in Held
+      Email until you approve its wording on Guest Emails.
+    </p>
+
     <button type="submit" class="btn-primary">{% if workshop %}Save changes{% else %}Add workshop{% endif %}</button>
   </form>
 </div>

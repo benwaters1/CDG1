@@ -1,9 +1,15 @@
 {% extends "public_base.html" %}
 {% from '_illus.html' import illus %}
 {% from '_ws_copy.html' import ws_copy, ws_heading, ws_days, ws_journey, ws_nights with context %}
-{% set sticky_bar = 'atelier' %}
-{% set crumbs = [('Workshops', url_for('workshops_public')), (workshop['title'], None)] %}
-{% block title %}{{ workshop['title'] }} · The Full Experience{% endblock %}
+{#- A PRIVATE STAY (z30, private_token set, reached at /p/<token>): the same page, never indexed, "Arranged by" its
+    organiser, its own title and nothing calling it a workshop, and nothing leading to the public catalogue -- no
+    other ateliers, no "see all dates", no compare, no newsletter (public_base reads private_token for its own
+    parts). Places left are shown; who else is coming is not. test_private_stays reads every one of these. -#}
+{% set _private = private_token is defined and private_token %}
+{% set sticky_bar = 'none' if _private else 'atelier' %}
+{% set crumbs = none if _private else [('Workshops', url_for('workshops_public')), (workshop['title'], None)] %}
+{% block robots %}{% if private_token is defined and private_token %}<meta name="robots" content="noindex, nofollow">{% endif %}{% endblock %}
+{% block title %}{{ workshop['title'] }}{% if not (private_token is defined and private_token) %} · The Full Experience{% endif %}{% endblock %}
 {# Every atelier shared one generic description; this one is the atelier's own, trimmed for search. #}{% block description %}{{ ((workshop['title'] ~ ': ' ~ (ws_copy(workshop)|striptags|trim))|truncate(158, False, '…')) if workshop else 'The full Gudanes experience: a workshop retreat at a French château under restoration.' }}{% endblock %}
 {#- 26 Oct (owner, the retreats deck): the same link preview on every retreat page. -#}
 {% block og_desc %}Three to seven nights of French country-house life at Château de Gudanes: the kitchen and the château’s chefs, the markets and brocantes of the Ariège, castles and caves, the restoration, and long candlelit evenings.{% endblock %}
@@ -36,8 +42,9 @@
   <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ _wh.u }}"{% if _wh.pos %} style="object-position: {{ _wh.pos }}"{% endif %} alt="{{ workshop['title'] }}">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
-    <p class="g-hero__eyebrow">A Retreat at the Château</p>
+    <p class="g-hero__eyebrow">{{ 'At the Château de Gudanes' if _private else 'A Retreat at the Château' }}</p>
     <h1 class="g-hero__title">{{ workshop['title'] }}</h1>
+    {% if _private and workshop['organiser_name'] %}<p class="g-hero__lede g-arranged">Arranged by {{ workshop['organiser_name'] }}</p>{% endif %}
     {% if workshop['price_per_person'] %}
     <p class="g-hero__lede" data-eur="{{ workshop['price_per_person']|int }}">
       {#- 26 Oct (owner): no names of the team anywhere, so not the instructor's either. -#}
@@ -111,7 +118,7 @@
   <h2 id="dates" class="g-h2">Choose Your Stay</h2>
 
   {% if not session_rows %}
-    <p class="g-p">No dates are open just yet. They are released here first, and to the newsletter before that.</p>
+    <p class="g-p">{% if _private %}There are no dates to book on this stay just now.{% else %}No dates are open just yet. They are released here first, and to the newsletter before that.{% endif %}</p>
   {% else %}
     <div class="g-sittings-grid">
       {% for row in session_rows %}
@@ -137,10 +144,12 @@
           {%- set _an = a_night(workshop, s) %}{% if _an %}
           <p class="g-pernight">{{ _an }}</p>{% endif %}
           {% endif %}
+          {% if s['balance_due_on'] and workshop['price_per_person'] %}<p class="g-pernight">Balance due by {{ s['balance_due_on']|date_human }}</p>{% endif %}
+          {#- workshop_register_url carries a private stay's key; its form is a 404 without it. -#}
           {% if row.remaining > 0 %}
-          <a href="{{ url_for('workshop_register', session_id=s['id']) }}" class="g-btn g-btn--solid">Book these dates</a>
+          <a href="{{ workshop_register_url(s['id'], private_token if _private else none) }}" class="g-btn g-btn--solid">Book these dates</a>
           {% else %}
-          <a href="{{ url_for('workshop_register', session_id=s['id']) }}" class="g-btn">Join the waitlist</a>
+          <a href="{{ workshop_register_url(s['id'], private_token if _private else none) }}" class="g-btn">Join the waitlist</a>
           {% endif %}
         </div>
       </article>
@@ -235,7 +244,10 @@
   {# The percentage came from the atelier and could be empty ("A % deposit"); the balance window was written as thirty
      while the ateliers page reads the route's figure. Either figure now comes from the route when it is passed. #}
   {%- set _bd = (windows.workshop_balance_days if windows is defined and windows else none) or (balance_days if balance_days is defined else none) or 30 %}
-  <p class="g-p" style="color:rgba(255,255,255,.88)">{% if workshop['deposit_percent'] %}A {{ workshop['deposit_percent'] }}% deposit reserves your place; {% else %}Your place is reserved at booking; {% endif %}the balance is due {{ 'thirty' if _bd == 30 else _bd }} days before the stay, or in full if you are booking within {{ 'thirty' if _bd == 30 else _bd }} days of it.</p>
+  {#- z30: a sitting can carry its own due date (compute_workshop_payment_terms charges by it). One date the
+      dates all share is said here; otherwise each date says its own, on its card above. -#}
+  {%- set _due = namespace(on=[], loose=0) %}{% for r in session_rows %}{% if not r.session['balance_due_on'] %}{% set _due.loose = _due.loose + 1 %}{% elif r.session['balance_due_on'] not in _due.on %}{% set _due.on = _due.on + [r.session['balance_due_on']] %}{% endif %}{% endfor %}
+  <p class="g-p" style="color:rgba(255,255,255,.88)">{% if workshop['deposit_percent'] %}A {{ workshop['deposit_percent'] }}% deposit reserves your place; {% else %}Your place is reserved at booking; {% endif %}{% if _due.on|length == 1 and not _due.loose %}the balance is due on {{ _due.on[0]|date_human }}, or in full if you are booking after that.{% elif _due.on %}the balance is due on the date shown with your dates, or {{ 'thirty' if _bd == 30 else _bd }} days before the stay where none is shown, and in full if you are booking after it.{% else %}the balance is due {{ 'thirty' if _bd == 30 else _bd }} days before the stay, or in full if you are booking within {{ 'thirty' if _bd == 30 else _bd }} days of it.{% endif %}</p>
   {% endif %}
   <p class="g-p" style="color:rgba(255,255,255,.88)">Your place is confirmed as you register, and held from that moment. You will receive a reference code and a link to manage your registration and payment.</p>
   {% if session_rows %}
@@ -288,7 +300,7 @@
   {# The close had no way to book: it offered Compare and Ask, and the dates were back at the top. #}
   <div class="g-close__acts">
       {% if session_rows %}<a href="#dates" class="g-btn g-btn--solid">Choose your dates</a>{% endif %}
-      <a href="{{ url_for('workshops_public') }}" class="g-btn{{ '' if session_rows else ' g-btn--solid' }}">Compare the retreats</a>
+      {% if not _private %}<a href="{{ url_for('workshops_public') }}" class="g-btn{{ '' if session_rows else ' g-btn--solid' }}">Compare the retreats</a>{% endif %}
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us first</a>
   </div>
 </div></section>

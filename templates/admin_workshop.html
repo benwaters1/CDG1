@@ -13,14 +13,48 @@
       {%- if workshop['instructor_name'] or instructor %} · taught by {{ workshop['instructor_name'] or instructor }}{% endif %}
       · places {{ workshop['default_capacity'] }} unless a sitting says otherwise
       · <span class="mini-status {{ 'status-active' if workshop['active'] else 'status-inactive' }}">{{ 'open for registration' if workshop['active'] else 'hidden' }}</span>
+      {%- if workshop['private_token'] %} · <span class="mini-status status-pending">Private</span>{% endif %}
+      {%- if workshop['organiser_name'] %} · arranged by {{ workshop['organiser_name'] }}{% endif %}
     </p>
   </div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     <a href="{{ url_for('edit_workshop', workshop_id=workshop['id']) }}" class="btn-primary" style="margin-top:0;">Change the details</a>
-    <a href="{{ url_for('workshop_detail', workshop_id=workshop['id']) }}" class="btn-ghost">Its public page</a>
+    <a href="{{ workshop_page_url(workshop) }}" class="btn-ghost">{{ 'Its private page' if workshop['private_token'] else 'Its public page' }}</a>
     <a href="{{ url_for('admin_workshops') }}" class="btn-ghost">All workshops</a>
   </div>
 </div>
+
+{% if workshop['private_token'] %}
+{#- The one way in to a private stay: this link, sent by the owner to whoever
+    organised it. -#}
+<section class="detail-card" id="private-link">
+  <h2 class="section-heading">The link to send</h2>
+  <p class="upload-hint" style="margin-top:-6px;">Only people with this link can see this stay and book a place on it. It is on no public page and in nothing the house sends out{% if workshop['organiser_email'] %}; {{ workshop['organiser_name'] or 'the organiser' }} is sent a note at {{ workshop['organiser_email'] }} each time somebody registers{% endif %}.</p>
+  <div class="field-row-2" style="align-items:center;">
+    <input type="text" readonly value="{{ private_stay_link(workshop) }}" aria-label="The private link" data-private-link style="font-family:monospace;">
+    <button type="button" class="btn-mini" data-private-copy>Copy</button>
+  </div>
+  <form method="post" action="{{ url_for('rotate_private_link', workshop_id=workshop['id']) }}" style="margin-top:10px;"
+        onsubmit="return confirm('Make a new link? The old one stops working at once, for anybody who has it.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">Make a new link</button>
+    <span class="upload-hint">For when a link has gone further than it was meant to. The old link stops working at once; everybody already registered keeps their own manage link.</span>
+  </form>
+</section>
+<script>
+(function(){
+  var btn=document.querySelector('[data-private-copy]'), f=document.querySelector('[data-private-link]');
+  if(!btn||!f) return;
+  btn.addEventListener('click', function(){
+    f.select(); f.setSelectionRange(0, 99999);
+    var done=function(){ var t=btn.textContent; btn.textContent='Copied';
+      setTimeout(function(){ btn.textContent=t; }, 1600); };
+    if(navigator.clipboard) navigator.clipboard.writeText(f.value).then(done, done);
+    else { try{ document.execCommand('copy'); done(); }catch(e){} }
+  });
+})();
+</script>
+{% endif %}
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">

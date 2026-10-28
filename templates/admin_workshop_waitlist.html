@@ -20,7 +20,7 @@
   <div class="expense-card">
     <div class="expense-head">
       <div>
-        <strong>{{ e['name'] }}</strong> — {{ e['title'] }}
+        <strong>{{ e['name'] }}</strong> — {{ e['title'] }}{% if e['private_token'] %} <span class="mini-status status-pending">Private</span>{% endif %}
         <span class="mini-status status-{{ 'onshift' if e['status'] == 'booked' else ('inactive' if e['status'] == 'closed' else ('pending' if e['status'] == 'open' else 'current')) }}" style="margin-left:8px;">{{ e['status'] }}</span>
       </div>
     </div>
@@ -35,7 +35,7 @@
     <p class="upload-hint">Joined {{ e['created_at']|house_day|date_short }}</p>
     <div class="expense-actions">
       {% if e['status'] in ('open', 'contacted') %}
-      <a href="{{ url_for('workshop_register', session_id=e['session_id'], name=e['name'], email=e['email'], phone=e['phone'], party_size=e['party_size']) }}" class="btn-mini">Check availability &amp; register</a>
+      <a href="{{ workshop_register_url(e['session_id'], e['private_token'], name=e['name'], email=e['email'], phone=e['phone'], party_size=e['party_size']) }}" class="btn-mini">Check availability &amp; register</a>
       {% endif %}
       <form method="post" action="{{ url_for('update_workshop_waitlist_status', entry_id=e['id']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
