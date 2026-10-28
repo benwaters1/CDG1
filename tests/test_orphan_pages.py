@@ -100,6 +100,7 @@ NOT_LINKED_ON_PURPOSE = {
     "notifications_unread_count": "polled by the page",
     "admin_overview_status": "polled by the overview",
     "mirrored_photo": "served in place of a hotlinked image",
+    "design_page": "the picture designs, for the owner only (image layout brief, 27 Oct): hidden on purpose",
     "outlook_addin_manifest": "loaded by Outlook",
     "outlook_addin_taskpane": "loaded by Outlook",
     "outlook_addin_compose": "loaded by Outlook",

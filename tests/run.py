@@ -595,6 +595,10 @@ SUITES = [
     "test_buttons_within_reach_on_a_phone",
     # 26 October 2026: the owner's retreats copy deck, its photographs and old pages.
     "test_retreats_deck",
+    # 27 October 2026, the image layout brief: the twelve picture components and
+    # /design, and every public page keeping its words while the photographs move.
+    "test_picture_components",
+    "test_copy_unchanged",
 ]
 
 

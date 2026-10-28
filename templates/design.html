@@ -1,0 +1,193 @@
+{% extends "public_base.html" %}
+{#- THE PICTURE COMPONENTS, ALL ON ONE PAGE (image layout brief, 27 Oct 2026).
+    For the owner to judge before any real page changes. Hidden: linked from
+    nowhere, noindex here, Disallowed in robots.txt and absent from the
+    sitemap. The words on it describe the components; none of them is copy
+    for a guest, and the photographs are samples of what goes where. -#}
+{% from '_illus.html' import illus %}
+{% from '_lightbox.html' import lightbox %}
+{% from '_beforeafter.html' import before_after_script %}
+{% from '_pictures.html' import cadre, passe_partout, album, carrousel, mosaique, avant_apres, bande, split, plein, medaillon, carnet, carte_postale, see_all, seal, divider, pictures_script %}
+{% block title %}Picture designs{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block bodyclass %} g-caps g-design{% endblock %}
+{% set crumbs = [('Picture designs', None)] %}
+{%- set R = '/static/img/retreats/' -%}
+{%- set NOEL = [
+  [R ~ 'vin-chaud.jpg', 'Vin chaud on a silver tray', 'Vin chaud'],
+  [R ~ 'marshmallows-by-the-fire.jpg', 'Marshmallows by the fire', 'By the fire'],
+  [R ~ 'dog-by-the-christmas-tree.jpg', 'The dog by the Christmas tree', 'The dog by the tree'],
+  ['/static/img/xx/iced-cake-candlelight.jpg', 'An iced cake by candlelight', 'An iced cake by candlelight'],
+  ['/static/img/xx/pastry-wreath.jpg', 'A pastry wreath on a floral plate', 'A pastry wreath on a floral plate'],
+  [R ~ 'a-christmas-table.jpg', 'A Christmas table', 'A Christmas table'],
+  ['/static/img/dining/christmas-table.jpg', 'The Christmas table', 'The Christmas table'],
+  [R ~ 'christmas-supper.jpg', 'Christmas supper in the kitchen', 'Christmas supper']] -%}
+{%- set EVENINGS = [
+  [R ~ 'candlelit-dinner-salon.jpg', 'Candlelight in the salon', ''],
+  ['/static/img/rk/long-table-candlelight.jpg', 'The long table by candlelight', ''],
+  ['/static/img/dining/terrace-long-table.jpg', 'A long table on the terrace, the mountains beyond', ''],
+  [R ~ 'party-string-lights.jpg', 'String lights over the table', ''],
+  [R ~ 'film-under-the-stars.jpg', 'A film under the stars', ''],
+  [R ~ 'fire-pit-lawn.jpg', 'The fire pit on the lawn', ''],
+  [R ~ 'dancing-bw.jpg', 'Dancing after dinner', ''],
+  [R ~ 'pink-cocktails.jpg', 'Pink cocktails', '']] -%}
+{%- set FOUND = [
+  ['/static/img/found/roof-open-to-the-sky.jpg', 'The roof open to the sky', ''],
+  ['/static/img/found/staircase-under-rubble.jpg', 'The staircase under rubble', ''],
+  ['/static/img/found/floor-fallen-through.jpg', 'A floor fallen through', ''],
+  ['/static/img/found/painted-panelling.jpg', 'Painted panelling, as found', ''],
+  ['/static/img/found/corridor-giving-way.jpg', 'A corridor giving way', ''],
+  ['/static/img/found/marble-fireplace.jpg', 'A marble fireplace, as found', ''],
+  ['/static/img/found/window-and-shutter.jpg', 'A window and its shutter', ''],
+  ['/static/img/found/wallpaper-passage.jpg', 'Wallpaper in a passage', '']] -%}
+{% block content %}
+
+<section class="g-sec g-sec--tight"><div class="g-wrap">
+  <p class="g-eyebrow">For the owner · not linked from the site</p>
+  <h1 class="g-pagehead">The picture designs</h1>
+  <p class="g-lede">Every way a photograph can now be set on a page, each with sample photographs. Nothing on the real pages has changed yet. Captions are shown here so the labels can be judged; on the site they stay hidden, as they have been since 15 October, unless you say otherwise.</p>
+</div></section>
+
+<div class="g-lb-scope">
+
+<section class="g-sec" id="cadre"><div class="g-wrap">
+  <p class="g-eyebrow">A · Le cadre</p>
+  <h2 class="g-place">The gilt frame</h2>
+  <p class="g-p">A single signature picture hung like a painting: gilt moulding, a dark line, a cream mount, a brass plaque. Three shapes: the arched top of the tall windows, the oval, and the rectangle.</p>
+  <div class="g-design__row">
+    {{ cadre([R ~ 'gingerbread-under-lights.jpg', 'The gingerbread château under the lights'], plaque='Le pain d’épices · 2025', shape='arch') }}
+    {{ cadre([R ~ 'pastry-chef.jpg', 'The pastry chef in her whites'], plaque='La pâtissière', shape='oval') }}
+    {{ cadre([R ~ 'chateau-at-night.jpg', 'The château at night'], plaque='Le château, la nuit', shape='rect') }}
+  </div>
+</div></section>
+
+<section class="g-sec g-sec--sand" id="passe-partout"><div class="g-wrap">
+  <p class="g-eyebrow">B · Le passe-partout</p>
+  <h2 class="g-place">The museum mount</h2>
+  <p class="g-p">Quieter than the frame. A wide cream mount, a hairline of gilt, and the caption set like a label in a museum. For food, objects and the finds.</p>
+  <div class="g-design__row">
+    {{ passe_partout([R ~ 'pocket-watches.jpg', 'Pocket watches on a stall', 'Pocket watches, found at the brocante']) }}
+    {{ passe_partout([R ~ 'croquembouche.jpg', 'A croquembouche', 'A croquembouche, for the last night']) }}
+    {{ passe_partout([R ~ 'apothecary-jars.jpg', 'Apothecary jars in a glass cabinet', 'Apothecary jars in a glass cabinet']) }}
+  </div>
+</div></section>
+
+<section class="g-sec" id="album"><div class="g-wrap">
+  <p class="g-eyebrow">C · L’album</p>
+  <h2 class="g-place">The scrapbook</h2>
+  <p class="g-p">Two or three photographs in white borders, tilted and overlapping, held by paper corners, with a caption in the italic hand. For guests, evenings and friends. On a phone they stack, still a little tilted.</p>
+  {{ album([[R ~ 'guests-toasting.jpg', 'Guests raising a glass', 'Raising a glass'], [R ~ 'guests-round-the-table.jpg', 'Guests round the table', 'Round the table'], [R ~ 'guests-with-finds.jpg', 'Guests with their finds', 'The day’s finds']]) }}
+</div></section>
+
+<section class="g-sec g-sec--sand" id="carrousel"><div class="g-wrap">
+  <p class="g-eyebrow">D · Le carrousel</p>
+  <h2 class="g-place">The slider</h2>
+  <p class="g-p">One photograph at a time with the next one peeking in, a counter, and thin gilt arrows. It swipes on a phone, answers the arrow keys, and never moves on its own. For the rooms, a retreat’s best moments and the table.</p>
+  {{ carrousel(NOEL, 'Noël at Gudanes') }}
+  {{ see_all(NOEL + [[R ~ 'noel-at-gudanes.jpg', 'The gingerbread château by the Christmas tree'], [R ~ 'christmas-wreath.jpg', 'The Christmas wreath on the gate']], 'See all 10 photos') }}
+</div></section>
+
+<section class="g-sec" id="mosaique"><div class="g-wrap">
+  <p class="g-eyebrow">E · La mosaïque</p>
+  <h2 class="g-place">The collage</h2>
+  <p class="g-p">One large photograph and three small, or two tall and one wide. Never more than four, where several photographs tell one story.</p>
+  {{ mosaique([['/static/img/xx/tomato-tart-above.jpg', 'A tomato tart, from above'], ['/static/img/xx/two-galettes.jpg', 'Two galettes on the board'], ['/static/img/life/asparagus-on-the-grill.jpg', 'White asparagus on the grill, in the grounds'], ['/static/img/more/fish-with-herbs.jpg', 'Fish with herbs on a floral plate']], layout='lead') }}
+  {{ mosaique([[R ~ 'vide-grenier.jpg', 'A vide-grenier on the green'], [R ~ 'brocante-accordion.jpg', 'The accordionist at the brocante'], [R ~ 'brocante-plane-trees.jpg', 'A brocante fair under the plane trees']], layout='tall') }}
+</div></section>
+
+<section class="g-sec g-sec--sand" id="avant-apres"><div class="g-wrap">
+  <p class="g-eyebrow">F · Avant / après</p>
+  <h2 class="g-place">Before and after</h2>
+  <p class="g-p">The site’s own slider, given a gilt handle: drag across, or use the arrow keys. The pairing below is only a sample; each real one is the same room, as found and as it is now.</p>
+  {{ avant_apres('design', '/static/img/found/salon-of-another-age.jpg', '/static/img/rk/gilded-salon.jpg', 'A salon', 'Sample photograph, as found.', 'Sample photograph, restored.') }}
+</div></section>
+
+<section class="g-sec" id="bande"><div class="g-wrap">
+  <p class="g-eyebrow">G · La bande</p>
+  <h2 class="g-place">The film strip</h2>
+  <p class="g-p">A strip of small photographs drifting slowly sideways. It stops under the pointer, and for anyone who has asked their device for less motion it does not move at all and scrolls by hand instead. It replaces the repeated band of four.</p>
+</div>
+  {{ bande(EVENINGS, 'The evenings') }}
+<div class="g-wrap">
+  <p class="g-p">Or a contact sheet, with the sprocket holes and frame numbers, for the photographs of the house as it was found.</p>
+</div>
+  {{ bande(FOUND, 'As it was found', mode='contact') }}
+</section>
+
+<section class="g-sec g-sec--sand" id="split"><div class="g-wrap">
+  <p class="g-eyebrow">H · Le split</p>
+  <h2 class="g-place">Words and a picture</h2>
+  {% call split([R ~ 'christmas-supper.jpg', 'Christmas supper in the kitchen'], tuck=[R ~ 'vin-chaud.jpg', 'Vin chaud on a silver tray']) %}
+    <p class="g-p">The default way to illustrate a paragraph: the words on one side, the photograph on the other, swapping sides each time it is used down a page.</p>
+    <p class="g-p">On a wide screen the photograph steps out of the column towards the edge of the page, and a second, smaller one can be tucked over a corner. On a phone the photograph follows the words.</p>
+  {% endcall %}
+  {% call split([R ~ 'mountain-walk.jpg', 'Walking in the hills'], flip=True) %}
+    <p class="g-p">The next one swaps sides, so a page never reads as a column of photographs down one edge.</p>
+  {% endcall %}
+</div></section>
+
+<section class="g-sec" id="plein"><div class="g-wrap">
+  <p class="g-eyebrow">I · Plein cadre</p>
+  <h2 class="g-place">The full-width band</h2>
+  <p class="g-p">One wide photograph across the whole page between sections, with a short line or a guest’s words over it. Where the browser can, the photograph moves a little slower than the page as you scroll.</p>
+</div>
+  {{ plein(['/static/img/rk/from-the-air-mountains.jpg', 'From the air, the mountains behind'], line='Each morning I woke up worried that it was only a dream.', by='A guest') }}
+</section>
+
+<section class="g-sec g-sec--sand" id="medaillon"><div class="g-wrap">
+  <p class="g-eyebrow">J · Le médaillon</p>
+  <h2 class="g-place">The medallion</h2>
+  <div class="g-design__prose">
+    {{ medaillon([R ~ 'alfred-in-the-snow.jpg', 'Alfred in the snow']) }}
+    <p class="g-p">A small round or oval photograph in a gilt ring, set into the column of text so the words run round it. For Bruce and Alfred, the chef, a single dish or a detail.</p>
+    <p class="g-p">It sits on either side, and on a phone it shrinks rather than taking a line of its own.</p>
+    {{ medaillon([R ~ 'pastry-kitchen-with-bruce.jpg', 'In the pastry kitchen, with Bruce'], shape='oval', side='left') }}
+    <p class="g-p">The oval suits a portrait. Both keep the photograph’s own colours and put the gilt in the ring, not over the picture.</p>
+  </div>
+</div></section>
+
+<section class="g-sec" id="carnet"><div class="g-wrap">
+  <p class="g-eyebrow">K · Le carnet</p>
+  <h2 class="g-place">The journal page</h2>
+  <p class="g-p">For the itineraries: each day gets one photograph pinned to its side like a travel journal, tilted, with a strip of paper tape. The day’s line drawing stays, faint behind it. One sample day:</p>
+  <ol class="g-journey">
+    <li class="g-journey__d">
+      <div class="g-journey__n"><span class="g-journey__r" aria-hidden="true">III</span><span class="g-journey__l">Troisième jour</span></div>
+      <div class="g-journey__card g-journey__card--pic">
+        <div class="g-journey__b">
+          <p class="g-journey__k" aria-hidden="true">III · Troisième jour</p>
+          <h3 class="g-journey__t"><em class="g-journey__fr" lang="fr">Le pain d’épices</em> <small class="g-journey__en" lang="en">The gingerbread château</small></h3>
+          <p class="g-journey__p">The crêpe cart, then the gingerbread château with the pastry chef: baking, icing and building it for the banquet table.</p>
+        </div>
+        <div class="g-journey__pic">
+          <div class="g-journey__ill" aria-hidden="true">{{ illus('cuisine') }}</div>
+          {{ carnet([R ~ 'icing-gingerbread-chateau.jpg', 'Icing the gingerbread château']) }}
+        </div>
+      </div>
+    </li>
+  </ol>
+</div></section>
+
+<section class="g-sec g-sec--sand" id="carte-postale"><div class="g-wrap">
+  <p class="g-eyebrow">L · La carte postale</p>
+  <h2 class="g-place">The postcard</h2>
+  <p class="g-p">The château’s old postcards as a design: a white border, a stamp in the corner made from the house’s own engraving, and a postmark across the edge. Sparingly: the history, the story and the restoration.</p>
+  {{ carte_postale(['/static/img/history/postcard-chateau-de-gudannes.jpg', 'An old postcard of the château']) }}
+</div></section>
+
+<section class="g-sec" id="touches"><div class="g-wrap">
+  <p class="g-eyebrow">Small touches</p>
+  <h2 class="g-place">Seal, divider, rise and zoom</h2>
+  <div class="g-design__quote">{{ seal() }}<blockquote class="g-design__q">Each morning I woke up worried that it was only a dream.</blockquote></div>
+  <p class="g-p">A wax seal beside a signature quote. Below, the section divider in the engraving’s hand. Every photograph on this page rises gently into place as it arrives, and nothing moves at all for anyone who has asked for less motion.</p>
+  {{ divider() }}
+  <p class="g-p">The retreat heroes take a very slow zoom:</p>
+  <div class="g-design__hero">{{ pic(R ~ 'lighting-gingerbread.jpg', 'Lighting the gingerbread château', sizes='(min-width: 64rem) 60rem, 100vw', cls='g-zoom') }}</div>
+</div></section>
+
+</div>
+
+{{ lightbox() }}
+{{ before_after_script() }}
+{{ pictures_script() }}
+{% endblock %}
