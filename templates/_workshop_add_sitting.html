@@ -33,6 +33,13 @@
       <input id="s-notes-{{ w['id'] }}" type="text" name="notes">
     </div>
   </div>
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="s-due-{{ w['id'] }}">Balance due on (optional)</label>
+      <input id="s-due-{{ w['id'] }}" type="date" name="balance_due_on">
+    </div>
+    <div><p class="upload-hint" style="margin-top:22px;">Blank is thirty days before the first day. Somebody booking after this date pays in full.</p></div>
+  </div>
   <p class="pay-disclaimer" style="margin-top:-4px;">Set a minimum and a session that will not reach it appears on your home page while there is still time to ring the waitlist or call it off.</p>
   <button type="submit" class="btn-mini">Add session</button>
 </form>

@@ -108,7 +108,7 @@
   <div class="expense-card">
     <div class="expense-head">
       <div>
-        <strong>{{ r['guest_name'] }}</strong> — {{ r['title'] }}
+        <strong>{{ r['guest_name'] }}</strong> — {{ r['title'] }}{% if r['is_private'] %} <span class="mini-status status-pending" style="margin-left:4px;" title="A private stay, booked only by its link">Private</span>{% endif %}
         {% if reg['holding'] %}
         {# Held while the guest is at Stripe: not confirmed, and not waiting on
            the owner. Confirmed when the deposit arrives, given back after the

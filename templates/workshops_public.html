@@ -94,7 +94,7 @@
         {%- set _an = a_night(w) %}{% if _an %}
         <p class="g-pernight">{{ _an }}</p>{% endif %}
         {% endif %}
-        <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">See this retreat</a>
+        <a href="{{ workshop_page_url(w) }}" class="g-btn">See this retreat</a>
       </div>
     </article>
     {% endfor %}
@@ -604,11 +604,11 @@
   "organizer": {"@type": "Organization", "name": "Château de Gudanes", "url": "https://chateaugudanes.com/"},
   "description": (ws_copy(w)|striptags|trim) or "A few days of French country-house life, in a château brought back from ruin.",
   "image": [WS_PIC['Cooking']],
-  "url": "https://chateaugudanes.com" ~ url_for('workshop_detail', workshop_id=w['id'])
+  "url": "https://chateaugudanes.com" ~ workshop_page_url(w)
 } -%}
 {%- if w['price_per_person'] -%}{%- set _ = _ev.update({"offers": {"@type": "Offer", "price": w['price_per_person'], "priceCurrency": "EUR",
   "availability": "https://schema.org/SoldOut" if r.remaining <= 0 else "https://schema.org/InStock",
-  "url": "https://chateaugudanes.com" ~ url_for('workshop_detail', workshop_id=w['id'])}}) -%}{%- endif -%}
+  "url": "https://chateaugudanes.com" ~ workshop_page_url(w)}}) -%}{%- endif -%}
 {%- set _ = _evs.append(_ev) -%}
 {%- endif -%}{%- endfor -%}{%- endfor -%}
 {% if _evs %}<script type="application/ld+json">{{ _evs|tojson }}</script>{% endif %}

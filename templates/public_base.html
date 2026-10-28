@@ -10,6 +10,10 @@
    reading the switch there took both dining pages down. #}
 {% set _dm = (setting(site, 'dining_mode') or 'open')|lower|trim %}
 {% set _dr = (setting(site, 'dining_reopens') or '')|trim %}
+{# A PRIVATE STAY's page (z30: /p/<token>, and its form) passes private_token. It
+   is somebody else's party, so nothing on it leads to the public catalogue: no
+   Workshops link, no newsletter sign-up. test_private_stays reads the page. #}
+{% set _private_page = private_token is defined and private_token %}
 <!DOCTYPE html>
 {# The real language, so a screen reader uses the right voice and the browser
    does not offer to translate a page that is already in the reader's tongue. #}
@@ -224,7 +228,7 @@ window.houseDay = (function () {
 {%- set NAV_HERE = NAV_OF.get(request.endpoint, request.endpoint) if request else "" -%}
 <nav class="g-nav" aria-label="{{ t('Main') }}">
       <a href="{{ url_for('book_rooms') }}"{% if NAV_HERE == 'book_rooms' %} class="is-here" aria-current="page"{% endif %}>{{ t('Stay') }}</a>
-      <a href="{{ url_for('workshops_public') }}"{% if NAV_HERE == 'workshops_public' %} class="is-here" aria-current="page"{% endif %}>{{ t('Workshops') }}</a>
+      {% if not _private_page %}<a href="{{ url_for('workshops_public') }}"{% if NAV_HERE == 'workshops_public' %} class="is-here" aria-current="page"{% endif %}>{{ t('Workshops') }}</a>{% endif %}
       {#- 15 Oct (owner): What's On in the top bar too. -#}
       <a href="{{ url_for('whats_on') }}"{% if NAV_HERE == 'whats_on' %} class="is-here" aria-current="page"{% endif %}>{{ t("What’s On") }}</a>
       {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}"{% if NAV_HERE == 'restaurant_info' %} class="is-here" aria-current="page"{% endif %}>{{ t('Dining') }}</a>{% endif %}
@@ -281,10 +285,10 @@ window.houseDay = (function () {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M4 20V10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/><path d="M4 14h16"/><path d="M9 14v6M15 14v6"/></svg>
           {{ t('Stay the Night') }}
         </a>
-        <a href="{{ url_for('workshops_public') }}" class="g-navwrap__item">
+        {% if not _private_page %}<a href="{{ url_for('workshops_public') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M12 3v6M8 5l4 4 4-4"/><path d="M6 21h12M9 21v-4a3 3 0 0 1 6 0v4"/></svg>
           {{ t('Workshops') }}
-        </a>
+        </a>{% endif %}
         {#- 15 Oct (owner): "move the what's on in ariege up on the menu" - beside the stays, not at the bottom. -#}
         <a href="/whats-on" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
@@ -345,11 +349,13 @@ window.houseDay = (function () {
            below sits on the panel's own scroll, same as theirs.
            ================================================================ -->
       <div class="g-navwrap__foot">
+        {% if not _private_page %}
         <p class="g-navwrap__foot-h">{{ t('Subscribe to our newsletter') }}</p>
         {# The one sign-up form (_newsletter.html): no topic ticks, bot guard on. #}
         {% from '_newsletter.html' import newsletter_form with context %}
         {{ newsletter_form('panel') }}
         <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
+        {% endif %}
 
         <div class="g-navwrap__social">
           <a href="https://www.instagram.com/chateaugudanes/" aria-label="Instagram" rel="noopener">
@@ -425,7 +431,7 @@ window.houseDay = (function () {
           </span>
         </a>
 
-        <a href="{{ url_for('workshops_public') }}" class="g-bookmenu__opt">
+        {% if not _private_page %}<a href="{{ url_for('workshops_public') }}" class="g-bookmenu__opt">
           <span class="g-bookmenu__ico">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M12 3v6M8 5l4 4 4-4"/><path d="M6 21h12M9 21v-4a3 3 0 0 1 6 0v4"/></svg>
           </span>
@@ -435,7 +441,7 @@ window.houseDay = (function () {
             {#- 26 Oct (owner, the retreats deck 5). -#}
             <span class="g-bookmenu__meta">{{ t('Three to seven nights of') }} <em lang="fr">la vie de château</em></span>
           </span>
-        </a>
+        </a>{% endif %}
 
         {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-bookmenu__opt g-bookmenu__opt--sm">
           {{ t('Dining only — a table at La Table') }}
@@ -517,7 +523,7 @@ window.houseDay = (function () {
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 6h16v14H4z"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
       <b>Clear at the point of booking</b>
-      <span>A room is paid in full when you book it. A workshop holds with a deposit, and the balance is taken closer to the date.</span>
+      <span>{% if _private_page %}A place on this stay holds with a deposit, and the balance is taken closer to the date.{% else %}A room is paid in full when you book it. A workshop holds with a deposit, and the balance is taken closer to the date.{% endif %}</span>
     </li>
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>
@@ -552,8 +558,10 @@ window.houseDay = (function () {
         too", so it is on every public page. The one form, from the partial;
         test_newsletter_signup goes red if a handover drops this line, and
         tools/repair_handover.py puts it back. -#}
+    {% if not _private_page %}
     {% from '_newsletter.html' import newsletter_block with context %}
     {{ newsletter_block('footer') }}
+    {% endif %}
     <div class="g-footer__grid">
       <div>
         <p class="g-footer__brand">Château de Gudanes</p>
@@ -586,7 +594,7 @@ window.houseDay = (function () {
         <h2>{{ t('Visit') }}</h2>
         <ul>
           <li><a href="{{ url_for('book_rooms') }}">{{ t('Stay the Night') }}</a></li>
-          <li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>
+          {% if not _private_page %}<li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>{% endif %}
           <li><a href="{{ url_for('whats_on') }}">{{ t("What’s On in the Ariège") }}</a></li>
           {% if _dm != 'hidden' %}<li><a href="{{ url_for('restaurant_info') }}">{{ t('Dining') }}</a></li>{% endif %}
           <li><a href="{{ url_for('facilities_page') }}">{{ t('The Estate') }}</a></li>

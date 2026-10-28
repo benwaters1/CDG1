@@ -431,7 +431,13 @@ added on the person's card, where the ledger is.</p>
         <input id="ws-notes" type="text" name="notes" value="{{ session['notes'] or '' }}">
       </div>
     </div>
-    <p class="upload-hint">Places cannot go below the number already taken. Moving the dates moves every balance to thirty days before the new first day; nobody is written to until you do it from “Write to the group”.</p>
+    <div class="field-row-3">
+      <div>
+        <label class="field-label" for="ws-due">Balance due on</label>
+        <input id="ws-due" type="date" name="balance_due_on" value="{{ session['balance_due_on'] or '' }}">
+      </div>
+    </div>
+    <p class="upload-hint">Places cannot go below the number already taken. The balance falls due on the date above, or, left blank, thirty days before the first day; somebody booking after it pays in full. Moving the dates or that day moves every balance with it; nobody is written to until you do it from “Write to the group”.</p>
     <div class="ev-form-actions"><button type="submit" class="btn-primary" style="margin-top:0;">Save</button></div>
   </form>
 

@@ -363,6 +363,12 @@ ENDPOINT_ARGS = {
     ("pay_share", "token"): ("booking_shares", "token"),
     ("supplier_invoice_submit", "token"): ("vendors", "upload_token"),
     ("workshop_feedback", "token"): ("workshop_bookings", "manage_token"),
+    # A private stay's own page, reached only by its link (z30). Its numbered
+    # page is a 404 by design, so that one reads the newest PUBLIC atelier.
+    ("private_stay", "token"): ("workshops", "private_token"),
+    ("workshop_detail", "workshop_id"): lambda conn: (conn.execute(
+        "SELECT id FROM workshops WHERE active = 1 AND private_token IS NULL "
+        "ORDER BY id DESC LIMIT 1").fetchone() or [None])[0],
     ("chat_channel", "slug"): ("chat_channels", "slug"),
     ("event_confirmation", "manage_token"): ("event_inquiries", "manage_token"),
     ("event_manage", "manage_token"): ("event_inquiries", "manage_token"),
@@ -509,6 +515,7 @@ def _clear(conn):
         "DELETE FROM users WHERE invite_token LIKE ?",
         "UPDATE workshop_sessions SET instructor_token = NULL "
         "WHERE instructor_token LIKE ?",
+        "DELETE FROM workshops WHERE private_token LIKE ?",
     ):
         try:
             conn.execute(sql, (SEEDED + "%",))
@@ -585,6 +592,12 @@ def _seed(conn):
         """INSERT INTO vendors (name, upload_token, active, created_at)
            VALUES (?, ?, 1, ?)""",
         (SEEDED + " Supplier", SEEDED + "upload", now))
+    # A private stay: the page its organiser's guests open, by its link.
+    conn.execute(
+        """INSERT INTO workshops (title, description, price_per_person, active,
+                   private_token, organiser_name, created_at)
+           VALUES (?, '', 2000, 1, ?, ?, ?)""",
+        (SEEDED + " Private Stay", SEEDED + "private", SEEDED + " Organiser", now))
     # account_claimed = 0 because onboard is the page somebody uses BEFORE
     # they have an account, and it refuses anybody who has already claimed one.
     conn.execute(
