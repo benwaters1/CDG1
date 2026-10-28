@@ -49,8 +49,9 @@
 {#- 6 Oct: each atelier's own photograph (as on its card), the three above only for one not named here -#}
 {#- 26 Oct (owner, the deck's section 6f): each retreat's lead picture, the house's own copy. 27 Oct: the gilt frame,
     the guests cooking together and the caramel choux chalkboard were taken out of the deck; the brocante stalls lead
-    Antique & French Finds, and the cooking class from above leads Cooking in the Cuisine. -#}
-{% set WS_HERO_BY_TITLE = {'Antique': '/static/img/retreats/brocante-stalls.jpg', 'Noël': '/static/img/retreats/lighting-gingerbread.jpg', 'Cooking': '/static/img/retreats/cooking-class-hands.jpg', 'Seven': '/static/img/retreats/lunch-outdoors-many.jpg'} %}
+    Antique & French Finds, and the cooking class from above leads Cooking in the Cuisine. 28 Oct (owner): Cooking
+    opens on the roast guinea fowl instead ("change the cooking hero photo from tom to a better one"). -#}
+{% set WS_HERO_BY_TITLE = {'Antique': '/static/img/retreats/brocante-stalls.jpg', 'Noël': '/static/img/retreats/lighting-gingerbread.jpg', 'Cooking': '/static/img/retreats/roast-birds.jpg', 'Seven': '/static/img/retreats/lunch-outdoors-many.jpg'} %}
 {% set WS_HERO_POS = {'Antique': 'center 55%', 'Noël': 'center 35%'} %}{% set _wh = namespace(u=WS_IMAGES[workshop['id'] % 3], pos='') %}{% for k, v in WS_HERO_BY_TITLE.items() %}{% if k in workshop['title'] %}{% set _wh.u = v %}{% set _wh.pos = WS_HERO_POS.get(k, '') %}{% endif %}{% endfor %}
 
 <section class="g-hero">

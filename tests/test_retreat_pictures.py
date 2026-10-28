@@ -81,7 +81,10 @@ def run():
         mos = re.findall(r'<div class="g-mos .*?(?=<div class="g-cadre|<figure class="g-cadre|<div class="g-seeall)', page, re.S)
         s.check("a collage is never more than four", all(len(re.findall(r"<img\b", b)) <= 4 for b in mos))
         # The house's logo is on every page twice, at the head and the close; it is not a photograph.
-        srcs = [_src(t).split("?", 1)[0] for t in _visible_imgs(page) if "Logo" not in _src(t)]
+        # By what the photograph is: the page reaches here after the house's copies are swapped in, so a
+        # Squarespace address and a house file can turn out to be one picture, at -800 or full size.
+        srcs = [re.sub(r"-(800|2400)\.jpg$", ".jpg", _src(t).split("?", 1)[0])
+                for t in _visible_imgs(page) if "Logo" not in _src(t)]
         twice = sorted({x for x in srcs if srcs.count(x) > 1})
         s.check("no photograph shown twice on the page", not twice, detail=", ".join(twice[:4]))
         s.check("the hero zooms slowly, and is asked for first",
