@@ -136,12 +136,18 @@ class _Words(HTMLParser):
             self.text.append(data)
 
 
+# A slider's arrows and a dialog's close, standing alone: controls, not words. The image layout
+# swaps one kind of slider for another, and the old one's "›" going is not a change of copy.
+GLYPHS = {"‹", "›", "×", "←", "→", "‹›"}
+
+
 def words_of(html):
     """(the words in order, the captions as a bag, any words added outside the rule)."""
     p = _Words()
     p.feed(html)
     p.close()
-    return " ".join("".join(p.text).split()), Counter(p.caps), p.stray
+    words = [w for w in "".join(p.text).split() if w not in GLYPHS]
+    return " ".join(words), Counter(p.caps), p.stray
 
 
 def _first_difference(a, b, span=70):
@@ -246,6 +252,10 @@ def run():
         text, _, _ = words_of('<p>One</p><div hidden><p>gone</p></div><dialog><button>x</button></dialog>'
                               '<dialog open><p>two</p></dialog>')
         s.check("what is not on screen is not read", text == "One two", detail=repr(text))
+        text, _, _ = words_of('<p>Room</p><button>›</button><p>One › two</p>')
+        s.check("a slider's arrow standing alone is not a word", text == "Room One two", detail=repr(text))
+        text, _, _ = words_of('<p>Dates→</p>')
+        s.check("but an arrow inside a word is kept", text == "Dates→", detail=repr(text))
         # The guard must be able to fail: one word changed is a difference.
         a, _, _ = words_of("<p>The gingerbread château</p>")
         b, _, _ = words_of("<p>The gingerbread chateau</p>")

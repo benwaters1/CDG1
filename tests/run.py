@@ -602,6 +602,7 @@ SUITES = [
     "test_copy_unchanged",
     # 28 October 2026: the retreat pages converted, one photograph a day.
     "test_retreat_pictures",
+    "test_home_pictures",
 ]
 
 

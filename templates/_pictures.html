@@ -100,25 +100,29 @@
     (_beforeafter.html: its classes, its stylesheet rules and its script),
     drawn here through pic() so both photographs carry their sizes, and
     given a gilt handle. -#}
-{% macro avant_apres(id, before, after, title, before_note, after_note) -%}
+{#- tags: the two words on the photographs, as the page already words them. caption=False leaves out the title and
+    notes underneath (a page that has its own line for that, and words it must not gain). -#}
+{% macro avant_apres(id, before, after, title, before_note='', after_note='', tags=('As found', 'Now'), caption=True, before_pos='', before_alt='', after_alt='') -%}
 <div class="g-aa g-rv">
 <figure class="g-ba" data-ba id="ba-{{ id }}">
   <div class="g-ba__f">
-    {{ pic(after, title ~ ' — as it is now. ' ~ after_note, sizes='(min-width: 64rem) 70vw, 100vw', cls='g-ba__img g-ba__img--after') }}
+    {{ pic(after, after_alt or (title ~ ' — as it is now. ' ~ after_note), sizes='(min-width: 64rem) 70vw, 100vw', cls='g-ba__img g-ba__img--after') }}
     <div class="g-ba__clip" data-ba-clip>
-      {{ pic(before, title ~ ' — as it was found. ' ~ before_note, sizes='(min-width: 64rem) 70vw, 100vw', cls='g-ba__img g-ba__img--before') }}
+      {{ pic(before, before_alt or (title ~ ' — as it was found. ' ~ before_note), sizes='(min-width: 64rem) 70vw, 100vw', cls='g-ba__img g-ba__img--before', pos=before_pos) }}
     </div>
-    <span class="g-ba__tag g-ba__tag--b">As found</span>
-    <span class="g-ba__tag g-ba__tag--a">Now</span>
+    <span class="g-ba__tag g-ba__tag--b">{{ tags[0] }}</span>
+    <span class="g-ba__tag g-ba__tag--a">{{ tags[1] }}</span>
     <input class="g-ba__range" type="range" min="0" max="100" value="50"
            data-ba-range aria-label="Reveal {{ title }} before or after restoration">
     <span class="g-ba__handle" data-ba-handle aria-hidden="true"></span>
   </div>
+  {%- if caption %}
   <figcaption class="g-ba__cap">
     <span class="g-ba__t">{{ title }}</span>
     <span class="g-ba__n"><b>Found</b> {{ before_note }}</span>
     <span class="g-ba__n"><b>Now</b> {{ after_note }}</span>
   </figcaption>
+  {%- endif %}
 </figure>
 </div>
 {%- endmacro %}
