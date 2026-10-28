@@ -4006,6 +4006,9 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .arr-ready .arr-ready__col{ width:13%; text-align:center; white-space:normal; }
 .tick-box{ display:inline-block; flex:none; width:16px; height:16px; border:1.5px solid var(--ink);
   border-radius:2px; vertical-align:-3px; font-size:12px; line-height:13px; text-align:center; }
+/* An extra already delivered prints with its tick in, in the house's done
+   green on the screen; on paper the print block below keeps it black. */
+.tick-box.is-done{ color:var(--success); border-color:var(--success); font-weight:700; }
 .arr-ready__who{ display:block; }
 .arr-ready__who .upload-hint{ display:block; }
 .arr-ready__who + .arr-ready__who{ margin-top:3px; }
@@ -4064,7 +4067,7 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .arr-card__name{ font-size:17px; letter-spacing:-0.01em; }
 .arr-card__room{ font-size:14px; font-weight:600; color:var(--gold-soft); }
 .arr-card__tags{ margin:0; display:flex; flex-wrap:wrap; gap:4px; }
-.arr-card .arr-card__when{ margin:10px 0 0; }
+.arr-card .arr-card__when, .expense-card .arr-card__when{ margin:10px 0 0; }
 .arr-facts{ margin-top:12px; }
 /* One label column for every card, so the answers line up down the page;
    sized to each card's own longest label, they started at a different
@@ -4117,7 +4120,7 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
      half on the next, which is how the first printed run came out. */
   .arr-ready-wrap{ break-inside:avoid; }
   .arr-ready tr{ break-inside:avoid; }
-  .tick-box{ border-color:#000; }
+  .tick-box, .tick-box.is-done{ border-color:#000; color:#000; }
   /* The cards at a reading size for paper. At the screen's they ran half a
      page each, so a busy day was three pages of mostly margin. */
   .arr-week__h{ font-size:19px; }

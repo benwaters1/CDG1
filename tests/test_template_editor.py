@@ -68,6 +68,11 @@ MAY_WRITE_IN_CODE = {
     "send_autocharge_failed_email": "the guest's letter and the owner's notice; "
                                     "being reworked with workshop balances",
     "send_autocharge_taken_email": "being reworked with workshop balances",
+    # to somebody outside the house who is not the guest
+    "tell_the_organiser": "a private stay's note to its organiser, fixed on purpose: names, "
+                          "dates and paid or not is all the privacy notice lets it carry, and "
+                          "an editable letter could be given a guest's notes. Its words are "
+                          "read and approved on Guest Emails (ORGANISER_NOTE)",
     # staff, not guests
     "apply_expense_decision": "to a member of staff",
     "decide_shift_swap": "to a member of staff",

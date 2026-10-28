@@ -14,7 +14,8 @@
   <summary>Tell me if a place opens</summary>
   <div class="g-wait__b">
     <p class="g-p">We hold no deposit and there is no obligation. If someone drops out you get one email, and the first to reply takes the place.</p>
-    <form method="post" action="{{ url_for('workshop_register', session_id=s['id']) if s and s['id'] else '#' }}">
+    {#- workshop_register_url carries a private stay's key, where the row has one (z30). -#}
+    <form method="post" action="{{ workshop_register_url(s['id'], s['private_token'] if s['private_token'] is defined else none) if s and s['id'] else '#' }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="waitlist">
       {% if s and s['id'] %}<input type="hidden" name="session_id" value="{{ s['id'] }}">{% endif %}
