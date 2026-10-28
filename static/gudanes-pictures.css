@@ -152,6 +152,11 @@
 .g .g-mos--tall.g-mos--4 .g-mos__i:nth-child(3){ grid-column: auto; }
 .g .g-mos--tall.g-mos--4 .g-mos__i:nth-child(4){ grid-column: 2 / -1; }
 
+/* Mounted: each tile in the museum mount, for objects and finds. */
+.g .g-mos--mounted{ gap: var(--s4); }
+.g .g-mos--mounted .g-mos__i{ padding: clamp(10px, 1.6vw, 18px); background: #F8F3E8; border: 1px solid var(--gold);
+  box-shadow: inset 0 0 0 4px #F8F3E8, inset 0 0 0 5px rgba(197,162,74,.4); }
+
 /* ==== F. Avant / après: the existing slider, its handle gilded ========= */
 .g .g-aa .g-ba{ max-width: none; width: 100%; }
 .g .g-aa .g-ba__f{ border: 1px solid var(--gold); box-shadow: var(--pc-shadow); }
@@ -177,7 +182,8 @@
 .g .g-bande.is-drifting:hover .g-bande__row,
 .g .g-bande.is-drifting:focus-within .g-bande__row,
 .g .g-bande.is-drifting:focus .g-bande__row{ animation-play-state: paused; }
-@keyframes g-bande-drift{ from{ transform: translateX(0); } to{ transform: translateX(calc(-50% - var(--s3) / 2)); } }
+/* One set's width, measured by the script, so the loop meets itself exactly. */
+@keyframes g-bande-drift{ from{ transform: translateX(0); } to{ transform: translateX(calc(-1 * var(--bande-w, 50%))); } }
 /* Without the drift (no script, or reduced motion) the strip scrolls by hand. */
 .g .g-bande:not(.is-drifting){ overflow-x: auto; scrollbar-width: thin; scroll-snap-type: x proximity; }
 .g .g-bande:not(.is-drifting) .g-bande__i{ scroll-snap-align: start; }
@@ -217,6 +223,9 @@
   .g .g-sp__main{ margin-right: calc(-1 * min(var(--s7), max(0px, (100vw - var(--wrap)) / 2))); }
   .g .g-sp--flip .g-sp__main{ margin-right: 0; margin-left: calc(-1 * min(var(--s7), max(0px, (100vw - var(--wrap)) / 2))); }
 }
+
+/* Framed: the gilt frame keeps its own size and sits in the middle of its column. */
+.g .g-sp--framed .g-sp__media .g-cadre{ margin: 0 auto; }
 
 /* ==== I. Plein cadre ==================================================== */
 .g .g-plein{
@@ -267,6 +276,9 @@
   -webkit-mask: linear-gradient(90deg, transparent 0 2px, #000 2px calc(100% - 2px), transparent 0);
 }
 
+.g .g-carnet__credit{ margin: var(--s2) 0 0; font-size: 12px; line-height: 1.4; color: var(--ink-2); text-align: center; }
+.g .g-carnet__credit a{ color: inherit; }
+
 /* ==== L. La carte postale =============================================== */
 .g .g-cp{ position: relative; max-width: 30rem; margin: var(--s7) auto; padding-top: 10px; }
 .g .g-cp__card{ padding: 14px; background: var(--pc-paper); box-shadow: var(--pc-shadow); transform: rotate(1.4deg); }
@@ -308,6 +320,7 @@
 
 /* The slow zoom on a retreat's hero. */
 .g .g-zoom{ animation: g-zoom 38s ease-in-out infinite alternate; transform-origin: 50% 40%; }
+.g .g-hero:has(.g-zoom){ overflow: hidden; }
 @keyframes g-zoom{ from{ transform: scale(1); } to{ transform: scale(1.08); } }
 
 /* The rise as a photograph comes into view: only once the script has run. */
@@ -367,6 +380,8 @@
   .g .g-journey__card--pic{ grid-template-columns: 1fr; }
   .g .g-journey__card--pic .g-journey__pic .g-journey__ill{ display: none; }
 }
+
+.g .g-ws-who::after{ content: ""; display: table; clear: both; }
 
 /* ==== /design only: the specimen page's own arrangement ================= */
 .g .g-design__row{ display: grid; gap: var(--s6); align-items: end; }

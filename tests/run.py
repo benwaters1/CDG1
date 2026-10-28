@@ -599,6 +599,8 @@ SUITES = [
     # /design, and every public page keeping its words while the photographs move.
     "test_picture_components",
     "test_copy_unchanged",
+    # 28 October 2026: the retreat pages converted, one photograph a day.
+    "test_retreat_pictures",
 ]
 
 

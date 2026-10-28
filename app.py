@@ -65536,8 +65536,13 @@ def workshop_detail(workshop_id):
                   else f"{workshop['title']} has no dates coming up — here is what is.",
                   "error")
             return redirect(url_for("workshops_public"))
+    # The rooms, for Les Chambres (28 Oct, the image layout brief): the same
+    # list and order /book offers, so a room off sale is not shown here either.
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
     conn.close()
-    return render_template("workshop_detail.html", workshop=workshop, session_rows=session_rows)
+    return render_template("workshop_detail.html", workshop=workshop,
+                           session_rows=session_rows, rooms=rooms)
 
 
 @app.route("/workshops/register/<int:session_id>", methods=["GET", "POST"])
@@ -66208,16 +66213,69 @@ _PIC_SIZE = {}
 _PIC_SIZE_LOCK = threading.Lock()
 
 
+_PIC_MIRRORED = re.compile(r"[0-9a-f]{40}\.(?:jpg|png|webp|gif|avif)")
+
+
 def _pic_file(src):
-    """The file in static/img a /static/img/... address points at, or None."""
-    prefix = "/static/img/"
-    if not src or not src.startswith(prefix):
+    """The file a /pic address names, or None.
+
+    Two kinds: a path under static/img ("retreats/vin-chaud.jpg"), and a
+    mirrored photograph on the volume ("~m/<its hashed name>").
+    """
+    if not src:
         return None
-    rel = src[len(prefix):].split("?", 1)[0]
-    if not re.fullmatch(r"[A-Za-z0-9_\-/]+\.(?:jpe?g|png)", rel) or ".." in rel:
+    rel = src[len("/static/img/"):] if src.startswith("/static/img/") else src
+    rel = rel.split("?", 1)[0]
+    if rel.startswith("~m/"):
+        name = rel[3:]
+        if not _PIC_MIRRORED.fullmatch(name):
+            return None
+        path = os.path.join(MIRROR_DIR, name)
+    elif src.startswith("/static/img/"):
+        if not re.fullmatch(r"[A-Za-z0-9_\-/]+\.(?:jpe?g|png)", rel) or ".." in rel:
+            return None
+        path = os.path.join(BASE_DIR, "static", "img", *rel.split("/"))
+    else:
         return None
-    path = os.path.join(BASE_DIR, "static", "img", *rel.split("/"))
     return path if os.path.isfile(path) else None
+
+
+def _pic_held(url):
+    """The /pic name of the file the house holds for a Squarespace address.
+
+    The house's own copy first (static/img/retreats, from SOURCES.txt), then
+    the mirror on the volume; None for a picture the owner has swapped in the
+    admin, since the page will show the swap and not this. The address on the
+    page stays exactly as written: serve_our_own_photographs still swaps it,
+    and this only finds out how big the picture is and where its smaller
+    sizes can come from.
+    """
+    if not url.startswith("https://") or "squarespace-cdn.com" not in url:
+        return None
+    base = url.split("?", 1)[0]
+    try:
+        overrides = site_override_cache_index()
+    except Exception:
+        overrides = {}
+    if url in overrides or any(k.split("?", 1)[0] == base for k in overrides):
+        return None
+    # The full-size copy: pic() makes every smaller size itself, so the 800px
+    # copy HOUSE_COPIES gives a ?format=1000w address would only cap them.
+    asset = _HOUSE_COPY_ASSET.search(url)
+    held = _HOUSE_COPY_BY_ASSET.get(asset.group(1)) if asset else None
+    copy = held[0] if held else (HOUSE_COPIES.get(url) or HOUSE_COPIES.get(base))
+    if copy and copy.startswith("/static/img/") and _pic_file(copy):
+        return copy[len("/static/img/"):]
+    try:
+        index = mirror_cache_index()
+    except Exception:
+        index = {}
+    name = index.get(url)
+    if not name:
+        name = next((v for k, v in index.items() if k.split("?", 1)[0] == base), None)
+    if name and _pic_file("~m/" + name):
+        return "~m/" + name
+    return None
 
 
 def pic_size(src):
@@ -66233,9 +66291,9 @@ def pic_size(src):
         if key in _PIC_SIZE:
             return _PIC_SIZE[key]
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps
         with Image.open(path) as im:
-            size = im.size
+            size = ImageOps.exif_transpose(im).size
     except Exception:
         size = None
     with _PIC_SIZE_LOCK:
@@ -66246,12 +66304,13 @@ def pic_size(src):
 def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None):
     """One <img>, the way every picture component draws it."""
     from markupsafe import Markup, escape
-    size = pic_size(src)
+    rel = (src[len("/static/img/"):] if src.startswith("/static/img/")
+           else _pic_held(src))
+    size = pic_size("/static/img/" + rel if rel and not rel.startswith("~m/") else rel)
     if size:
         w, h = size
     attrs = [f'src="{escape(src)}"', f'alt="{escape(alt or "")}"']
     if size:
-        rel = src[len("/static/img/"):]
         widths = [x for x in PIC_WIDTHS if x < w] + [w]
         attrs.append('srcset="' + ", ".join(
             f"/pic/{x}/{escape(rel)} {x}w" for x in widths) + '"')
@@ -66283,8 +66342,9 @@ def sized_photo(width, filename):
     number between 1 and 5000; never wider than the file itself, so one
     picture has one address per width.
     """
-    path = _pic_file("/static/img/" + filename)
-    size = pic_size("/static/img/" + filename)
+    src = filename if filename.startswith("~m/") else "/static/img/" + filename
+    path = _pic_file(src)
+    size = pic_size(src)
     if (not path or not size or width > size[0]
             or (width not in PIC_WIDTHS and width != size[0])):
         abort(404)

@@ -48,7 +48,23 @@ COPY_BASE = "ae0ee6c"
 ALLOWED = {
     "g-car__n": re.compile(r"\d+ / \d+"),
     "g-seeall__b": re.compile(r"See all( \d+)? photos"),
+    # A Wikimedia Commons photograph's licence asks for its credit to be seen.
+    "g-credit": re.compile(r"Photo .{1,60}, CC BY(-SA)? \d\.\d"),
 }
+
+# Words the owner has agreed may go, each named, and only these (28 Oct 2026:
+# "drop the '…, in Pictures' headings as the brief says"). Taken out of the
+# BEFORE text, so anything else that went is still a difference.
+REMOVED = [
+    re.compile(r"En images In pictures [^,]{1,80}, in Pictures "),
+]
+
+
+def _less_removed(text):
+    for pattern in REMOVED:
+        text = pattern.sub("", text)
+    return text
+
 
 
 class _Words(HTMLParser):
@@ -70,11 +86,15 @@ class _Words(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag in self.VOID:
             return
-        cls = (dict(attrs).get("class") or "").split()
+        found = dict(attrs)
+        cls = (found.get("class") or "").split()
+        # Not on screen: anything hidden, and a dialog nobody has opened (the
+        # lightbox's close and arrows are drawn only once it opens).
+        unseen = "hidden" in found or (tag == "dialog" and "open" not in found)
         allow = next((pat for name, pat in ALLOWED.items() if name in cls), None)
         self._add(" ")           # a tag is a word break, as on screen
-        self.stack.append([tag, allow, []])
-        if tag in self.SKIP:
+        self.stack.append([tag, allow, [], unseen])
+        if tag in self.SKIP or unseen:
             self.skip += 1
         if tag == "figcaption":
             self.cap += 1
@@ -85,8 +105,8 @@ class _Words(HTMLParser):
         if tag in self.VOID:
             return
         while self.stack:
-            t, allow, own = self.stack.pop()
-            if t in self.SKIP:
+            t, allow, own, unseen = self.stack.pop()
+            if t in self.SKIP or unseen:
                 self.skip -= 1
             if allow is not None:
                 words = " ".join("".join(own).split())
@@ -205,6 +225,7 @@ def run():
                 continue
             text_now, caps_now, stray = words_of(html_now)
             text_then, caps_then, _ = words_of(html_then)
+            text_then = _less_removed(text_then)
             s.check(f"{path}: the same words, in the same order", text_now == text_then,
                     detail=_first_difference(text_now, text_then))
             new_caps = caps_now - caps_then
@@ -222,10 +243,18 @@ def run():
         s.check("sets the counter aside", not stray, detail=str(stray))
         _, _, stray = words_of('<p>x</p><button class="g-seeall__b">Book now</button>')
         s.check("but not new words dressed as one", stray == ["Book now"], detail=str(stray))
+        text, _, _ = words_of('<p>One</p><div hidden><p>gone</p></div><dialog><button>x</button></dialog>'
+                              '<dialog open><p>two</p></dialog>')
+        s.check("what is not on screen is not read", text == "One two", detail=repr(text))
         # The guard must be able to fail: one word changed is a difference.
         a, _, _ = words_of("<p>The gingerbread château</p>")
         b, _, _ = words_of("<p>The gingerbread chateau</p>")
         s.check("one changed letter is a difference", a != b)
+        s.check("the agreed removal is taken out of the before text",
+                _less_removed("Dates En images In pictures Noël at Gudanes, in Pictures Choose")
+                == "Dates Choose")
+        s.check("and nothing else is",
+                _less_removed("Dates In pictures, Choose") == "Dates In pictures, Choose")
     finally:
         m.SITE_IS_LIVE = was_live
         shutil.rmtree(tmp, ignore_errors=True)
