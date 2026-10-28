@@ -56273,6 +56273,14 @@ def story():
     return render_template("story.html", workshops=offered_workshops())
 
 
+# The picture components on one page, for the owner to judge before any real
+# page changes (image layout brief, 27 Oct 2026). Hidden: linked from nowhere,
+# noindex in the template, Disallowed in robots.txt, absent from the sitemap.
+@app.route("/design")
+def design_page():
+    return render_template("design.html")
+
+
 @app.route("/events/weddings")
 def events_weddings():
     return render_template("events_weddings.html")
@@ -66175,6 +66183,130 @@ def mirrored_photo(filename):
     resp = send_from_directory(MIRROR_DIR, filename)
     # The filename is a hash of the source URL, so a different photograph is a
     # different name. Nothing served here is ever rewritten in place.
+    resp.headers["Cache-Control"] = "public, max-age=2592000"
+    return resp
+
+
+# ---------------------------------------------------------------------------
+# PHOTOGRAPHS AT THE SIZE THEY ARE SHOWN (image layout brief, 27 Oct 2026).
+# The site's own photographs are JPEGs of 1,600px and 800px, and a phone
+# showing one at 360px wide downloaded the 800 regardless -- three or four
+# times the bytes, and as a JPEG. /pic/<width>/<file> answers with a WebP at
+# that width, made once from the file in static/img and kept on the volume
+# beside the mirrored photographs, so nothing new goes into git and a design
+# handover that replaces a JPEG is picked up by its modification time.
+#
+# pic() is the one way the new picture components draw an image: width and
+# height always set, so nothing jumps as it loads; lazy unless told it is
+# the hero; a srcset of WebPs where the house holds the file, and the
+# address exactly as written where it does not (a Squarespace photograph
+# still goes through serve_our_own_photographs like every other one).
+# ---------------------------------------------------------------------------
+PIC_WIDTHS = (480, 800, 1200, 1600, 2400)
+PIC_DIR = os.path.join(MIRROR_DIR, "sized")
+_PIC_SIZE = {}
+_PIC_SIZE_LOCK = threading.Lock()
+
+
+def _pic_file(src):
+    """The file in static/img a /static/img/... address points at, or None."""
+    prefix = "/static/img/"
+    if not src or not src.startswith(prefix):
+        return None
+    rel = src[len(prefix):].split("?", 1)[0]
+    if not re.fullmatch(r"[A-Za-z0-9_\-/]+\.(?:jpe?g|png)", rel) or ".." in rel:
+        return None
+    path = os.path.join(BASE_DIR, "static", "img", *rel.split("/"))
+    return path if os.path.isfile(path) else None
+
+
+def pic_size(src):
+    """(width, height) of a house photograph, read once per file version."""
+    path = _pic_file(src)
+    if not path:
+        return None
+    try:
+        key = (path, os.stat(path).st_mtime_ns)
+    except OSError:
+        return None
+    with _PIC_SIZE_LOCK:
+        if key in _PIC_SIZE:
+            return _PIC_SIZE[key]
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            size = im.size
+    except Exception:
+        size = None
+    with _PIC_SIZE_LOCK:
+        _PIC_SIZE[key] = size
+    return size
+
+
+def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None):
+    """One <img>, the way every picture component draws it."""
+    from markupsafe import Markup, escape
+    size = pic_size(src)
+    if size:
+        w, h = size
+    attrs = [f'src="{escape(src)}"', f'alt="{escape(alt or "")}"']
+    if size:
+        rel = src[len("/static/img/"):]
+        widths = [x for x in PIC_WIDTHS if x < w] + [w]
+        attrs.append('srcset="' + ", ".join(
+            f"/pic/{x}/{escape(rel)} {x}w" for x in widths) + '"')
+        attrs.append(f'sizes="{escape(sizes)}"')
+    if w and h:
+        attrs.append(f'width="{int(w)}" height="{int(h)}"')
+    if hero:
+        attrs.append('fetchpriority="high"')
+    else:
+        attrs.append('loading="lazy"')
+    attrs.append('decoding="async"')
+    if cls:
+        attrs.append(f'class="{escape(cls)}"')
+    if pos:
+        attrs.append(f'style="object-position: {escape(pos)}"')
+    return Markup("<img " + " ".join(attrs) + ">")
+
+
+app.jinja_env.globals["pic"] = pic
+app.jinja_env.globals["pic_size"] = pic_size
+
+
+@app.route("/pic/<int:width>/<path:filename>")
+def sized_photo(width, filename):
+    """A house photograph as a WebP at one of the widths pic() asks for.
+
+    Public, like /mirrored-photo: these are the public pages' pictures. Only
+    the listed widths, so nobody can fill the volume by asking for every
+    number between 1 and 5000; never wider than the file itself, so one
+    picture has one address per width.
+    """
+    path = _pic_file("/static/img/" + filename)
+    size = pic_size("/static/img/" + filename)
+    if (not path or not size or width > size[0]
+            or (width not in PIC_WIDTHS and width != size[0])):
+        abort(404)
+    stamp = os.stat(path).st_mtime_ns
+    name = hashlib.sha1(f"{filename}|{stamp}|{width}".encode()).hexdigest() + ".webp"
+    out = os.path.join(PIC_DIR, name)
+    if not os.path.isfile(out):
+        from PIL import Image, ImageOps
+        os.makedirs(PIC_DIR, exist_ok=True)
+        with Image.open(path) as im:
+            im = ImageOps.exif_transpose(im)
+            if im.mode not in ("RGB", "RGBA"):
+                im = im.convert("RGB")
+            if width < im.size[0]:
+                im = im.resize((width, round(im.size[1] * width / im.size[0])),
+                               Image.LANCZOS)
+            tmp = out + f".{os.getpid()}.{threading.get_ident()}.tmp"
+            im.save(tmp, "WEBP", quality=80, method=4)
+        os.replace(tmp, out)
+    resp = send_from_directory(PIC_DIR, name, mimetype="image/webp")
+    # The name carries the file's modification time, so a new photograph is
+    # a new address and this one never changes under anybody.
     resp.headers["Cache-Control"] = "public, max-age=2592000"
     return resp
 
@@ -121827,6 +121959,8 @@ def robots():
         "Disallow: /my",
         "Disallow: /feedback",
         "Disallow: /login",
+        # The picture components' specimen page, for the owner only.
+        "Disallow: /design",
         "Disallow: /api",
         "",
         f"Sitemap: {sitemap}",

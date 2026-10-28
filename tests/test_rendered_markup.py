@@ -106,10 +106,14 @@ FIELD = re.compile(r"<(input|select|textarea)\b([^>]*)>", re.S | re.I)
 # arrival_id went the other way and was TAUGHT rather than exempted: it is an
 # id of a row in photo_inbox, which is exactly what this map is for.
 #
-# Ten now: export_report_csv, mirrored_photo, photo_at_size,
+# And sized_photo (27 Oct, the image layout brief): the WebP a picture's srcset
+# asks for, by a width and a file in static/img. No id, and no markup back;
+# test_picture_components is what proves it answers.
+#
+# Eleven now: export_report_csv, mirrored_photo, photo_at_size,
 # recover_owner_password, room_ics_feed, room_photo, set_language, site_photo,
-# social_photo_public and uploaded_file.
-NO_RULE = 10
+# sized_photo, social_photo_public and uploaded_file.
+NO_RULE = 11
 
 # What the sweep fetched and could not read.
 #
