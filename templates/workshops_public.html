@@ -30,7 +30,11 @@
     It replaces the opening, the glance panel ("three for the brocantes, five for the kitchen..."), Why a Retreat,
     Choose Your Experience, A Small Group and the atelier gloss, all of which sold the earlier idea. The photographs are
     the owner's picks, the house's own copies (_retreat_photos.html); none is shown twice on the page. -#}
-{% from '_retreat_photos.html' import rphoto, rsrc with context %}
+{% from '_retreat_photos.html' import rphoto, rsrc, rcredit with context %}
+{#- 9 Nov (the image layout brief, 4.3): the photographs through the picture components (_pictures.html, shown together
+    on /design), beside the words they show and never more than four together. Not one word changes. -#}
+{% from '_pictures.html' import mosaique, carrousel, cadre, album, bande, split, see_all, pictures_script %}
+{% from '_lightbox.html' import lightbox %}
 
 <section class="g-hero">
   <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ rsrc('guests-toasting') }}" style="object-position: center 40%" alt="Guests raising their glasses down the long table">
@@ -67,7 +71,7 @@
     {% set wp = namespace(u=None) %}
     {% for k, v in WS_CARD_IMG.items() %}{% if k in w['title'] %}{% set wp.u = v %}{% endif %}{% endfor %}
     <article class="g-wscard">
-      <img class="g-wscard__img" src="{{ wp.u or WS_CARD_IMG['Cooking'] }}" alt="{{ w['title'] }}" loading="lazy">
+      <span class="g-wscard__arch">{{ pic(wp.u or WS_CARD_IMG['Cooking'], w['title'], sizes='(min-width: 64rem) 24rem, 92vw', cls='g-wscard__img') }}</span>
       <div class="g-wscard__top">
         {% set rows = sessions_by_workshop.get(w['id'], []) %}
         {% if rows and rows[0].session['end_date'] and rows[0].session['end_date'] != rows[0].session['start_date'] %}
@@ -109,7 +113,7 @@
 <section class="g-sec g-day-sec"><div class="g-wrap">
   <p class="g-fr">Une journée à Gudanes <span class="g-fr__en">A day at Gudanes</span></p>
   <h2 class="g-place">A Day at Gudanes</h2>
-  <ol class="g-day">
+  <ol class="g-day g-day--alt">
     {%- for slug, alt, fr, en, line in [
       ('crepe-cart', 'Crêpes made at the crêpe cart, in a red beret', 'Le petit-déjeuner', 'Breakfast', 'Bread and croissants from the village <em lang="fr">boulangerie</em>, coffee on the terrace, and on some mornings the crêpe cart.'),
       ('cooking-class-hands', 'The cooking class from above, hands at work', 'La matinée', 'The morning', 'At the stove with the chefs, at the market with the producers, with a visiting artisan, or on the restorers’ scaffold.'),
@@ -118,7 +122,7 @@
       ('pink-cocktails', 'Pink cocktails on a silver tray', 'L’apéritif', 'As the light goes', 'As the mountains turn blue: a Kir Royale, a Lillet tonic, the château’s own botanical syrups.'),
       ('candlelit-dinner-salon', 'Dinner by candlelight in the salon, the long table', 'Le dîner', 'Dinner', 'Several courses by candlelight, or the barbecue on the terrace, or the last-night banquet, dressed for the occasion. Then a French film under the stars, or dancing.')] %}
     <li class="g-day__i">
-      {{ rphoto(slug, alt, sizes='(min-width: 48rem) 18rem, 100vw') }}
+      <figure class="g-day__f g-rv">{{ pic(rsrc(slug), alt, sizes='(min-width: 48rem) 22rem, 100vw') }}</figure>
       <div class="g-day__b">
         <h3 class="g-day__t"><em lang="fr">{{ fr }}</em> <small class="g-day__en">{{ en }}</small></h3>
         <p class="g-day__p">{{ line|safe }}</p>
@@ -135,20 +139,8 @@
   <h2 class="g-place">The Table</h2>
   <p class="g-p g-lede-first">In France, the table is the point of the day, and so it is here. The château’s chefs cook as a great French country house should. There is bread from the village <em lang="fr">boulangerie</em> each morning, trout from the farm right beside the château, cheeses from the Ariège, produce from the morning’s market, pastries from our own pastry kitchen, and now and then a dish from the château’s eighteenth-century cookbook.</p>
   <p class="g-p">Some meals are long and easy: platters passed down a table in the garden, the barbecue on the terrace, a kitchen supper of what you cooked that afternoon. Most evenings are an occasion. Several courses are served by candlelight, perhaps a fillet of beef, a ballotine of guinea fowl or the trout from next door, with the silver laid and flowers down the table. There is local sparkling wine as you arrive, the wines of France at every meal, an apéritif at dusk, and <i>nothing to pay at the end</i>.</p>
-  <ul class="g-befgrid g-gallery g-rgrid g-rgrid--4">
-    <li>{{ rphoto('trout-on-the-grill', 'Trout from the farm next door, on the grill', 'Trout from next door', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('plating-asparagus', 'Plating asparagus, in a château apron', 'Plating the asparagus', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('chateau-apron-plate', 'Smiling, in a château apron, with a plate', 'From the kitchen', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('red-beret-tart', 'A tricolour tart, made in a red beret', 'A tricolour tart', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('roast-birds', 'Roast birds on old platters', 'Roast birds on old platters', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('roast-on-old-china', 'A roast dish on old china', 'On old china', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('plated-starter', 'A starter with egg, the silver laid', 'The silver laid', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('plated-spring-dish', 'A spring dish, plated', 'A spring dish', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('mille-feuille', 'Mille-feuille, plated', 'Mille-feuille', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('shared-dish', 'Serving from a shared dish', 'From a shared dish', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('chef-across-the-lawn', 'The chef carrying a dish across the lawn', 'Across the lawn', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('croquembouche', 'A croquembouche, held up outdoors', 'A croquembouche', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-  </ul>
+  {{ mosaique([[rsrc('trout-on-the-grill'), 'Trout from the farm next door, on the grill', 'Trout from next door'], [rsrc('plating-asparagus'), 'Plating asparagus, in a château apron', 'Plating the asparagus'], [rsrc('chateau-apron-plate'), 'Smiling, in a château apron, with a plate', 'From the kitchen'], [rsrc('red-beret-tart'), 'A tricolour tart, made in a red beret', 'A tricolour tart']]) }}
+  {{ carrousel([[rsrc('roast-birds'), 'Roast birds on old platters', 'Roast birds on old platters'], [rsrc('roast-on-old-china'), 'A roast dish on old china', 'On old china'], [rsrc('plated-starter'), 'A starter with egg, the silver laid', 'The silver laid'], [rsrc('plated-spring-dish'), 'A spring dish, plated', 'A spring dish'], [rsrc('mille-feuille'), 'Mille-feuille, plated', 'Mille-feuille'], [rsrc('shared-dish'), 'Serving from a shared dish', 'From a shared dish'], [rsrc('chef-across-the-lawn'), 'The chef carrying a dish across the lawn', 'Across the lawn'], [rsrc('croquembouche'), 'A croquembouche, held up outdoors', 'A croquembouche']], 'The Table') }}
 </div></section>
 
 <!-- ============ CHINER ============ -->
@@ -157,19 +149,9 @@
   <p class="g-fr">Chiner <span class="g-fr__en">The art of the find</span></p>
   <h2 class="g-place">The Art of the Find</h2>
   <p class="g-p g-lede-first">The French have a word for it: <em lang="fr">chiner</em>, to hunt, unhurried, for beautiful old things. On market mornings across the Ariège the squares fill with dealers’ tables: linen sheets embroidered with forgotten monograms, copper pans, café-au-lait bowls, silver, faïence, gilt frames, the occasional portrait. We take you to the markets, the village <em lang="fr">vide-greniers</em> and the dealers we know, and help you bargain in French. Much of what furnishes the château’s own rooms was found in just this way. Whatever you find comes home with you: a piece of France for your own table.</p>
-  <ul class="g-befgrid g-gallery g-rgrid g-rgrid--4">
-    <li>{{ rphoto('vide-grenier', 'A vide-grenier on the green, people browsing', 'A vide-grenier on the green', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('brocante-stalls', 'Brocante stalls in the square', 'Stalls in the square', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('brocante-china', 'Tables of old china', 'Tables of old china', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('brocante-accordion', 'The accordionist at the brocante', 'The accordionist', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('brocante-2cv', 'A red 2CV at the brocante', 'A red 2CV', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('antique-shop', 'Inside an antique shop', 'Inside an antique shop', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('old-french-linen', 'Monogrammed French linen', 'Monogrammed linen', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('antique-sewing-kit', 'An antique sewing kit in its case', 'An antique sewing kit', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('brooches-and-portraits', 'Old brooches and portraits in a case', 'Brooches and portraits', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('pocket-watches', 'Pocket watches on a stall', 'Pocket watches', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-    <li>{{ rphoto('apothecary-jars', 'Apothecary jars in a glass cabinet', 'Apothecary jars', sizes='(min-width: 64rem) 25vw, 50vw') }}</li>
-  </ul>
+  {{ cadre([rsrc('vide-grenier'), 'A vide-grenier on the green, people browsing', 'A vide-grenier on the green'], shape='rect', sizes='(min-width: 64rem) 34rem, 92vw') }}
+  {{ album([[rsrc('old-french-linen'), 'Monogrammed French linen', 'Monogrammed linen'], [rsrc('pocket-watches'), 'Pocket watches on a stall', 'Pocket watches'], [rsrc('apothecary-jars'), 'Apothecary jars in a glass cabinet', 'Apothecary jars']]) }}
+  {{ see_all([[rsrc('vide-grenier'), 'A vide-grenier on the green, people browsing', 'A vide-grenier on the green'], [rsrc('brocante-stalls'), 'Brocante stalls in the square', 'Stalls in the square'], [rsrc('brocante-china'), 'Tables of old china', 'Tables of old china'], [rsrc('brocante-accordion'), 'The accordionist at the brocante', 'The accordionist'], [rsrc('brocante-2cv'), 'A red 2CV at the brocante', 'A red 2CV'], [rsrc('antique-shop'), 'Inside an antique shop', 'Inside an antique shop'], [rsrc('old-french-linen'), 'Monogrammed French linen', 'Monogrammed linen'], [rsrc('antique-sewing-kit'), 'An antique sewing kit in its case', 'An antique sewing kit'], [rsrc('brooches-and-portraits'), 'Old brooches and portraits in a case', 'Brooches and portraits'], [rsrc('pocket-watches'), 'Pocket watches on a stall', 'Pocket watches'], [rsrc('apothecary-jars'), 'Apothecary jars in a glass cabinet', 'Apothecary jars']], 'See all 11 photos') }}
 </div></section>
 
 <!-- ============ LA SOIRÉE ============ -->
@@ -178,26 +160,18 @@
   <p class="g-fr">La soirée <span class="g-fr__en">The evenings</span></p>
   <h2 class="g-place">The Evenings</h2>
   <p class="g-p g-lede-first">Evenings at Gudanes begin in the salons, with an apéritif, and end late. There are French films under the stars, dinners in the village at two of the valley’s finest tables, and on the last night of every retreat a banquet in the Salon de Musique for which everyone dresses. When dinner is over, the candles are set aside and there is dancing. Bring something beautiful to wear.</p>
-  <ul class="g-befgrid g-gallery g-rgrid g-rgrid--5">
-    <li>{{ rphoto('film-under-the-stars', 'A French film under the stars, projected on the château wall', 'A film under the stars', sizes='(min-width: 64rem) 20vw, 50vw') }}</li>
-    <li>{{ rphoto('fire-pit-lawn', 'Guests round the fire pit on the lawn', 'Round the fire', sizes='(min-width: 64rem) 20vw, 50vw') }}</li>
-    <li>{{ rphoto('dancing-velvet-suit', 'A toast, in a velvet suit', 'Dressed for the last night', sizes='(min-width: 64rem) 20vw, 50vw') }}</li>
-    <li>{{ rphoto('dancing-bw', 'Dancing, in black and white', 'Dancing', sizes='(min-width: 64rem) 20vw, 50vw') }}</li>
-    <li>{{ rphoto('medieval-kitchen-table', 'The candlelit table in the vaulted medieval kitchen', 'The medieval kitchen, by candlelight', sizes='(min-width: 64rem) 20vw, 50vw') }}</li>
-  </ul>
-</div></section>
+</div>
+  {{ bande([[rsrc('film-under-the-stars'), 'A French film under the stars, projected on the château wall', 'A film under the stars'], [rsrc('fire-pit-lawn'), 'Guests round the fire pit on the lawn', 'Round the fire'], [rsrc('dancing-velvet-suit'), 'A toast, in a velvet suit', 'Dressed for the last night'], [rsrc('dancing-bw'), 'Dancing, in black and white', 'Dancing'], [rsrc('medieval-kitchen-table'), 'The candlelit table in the vaulted medieval kitchen', 'The medieval kitchen, by candlelight']], 'The evenings') }}
+</section>
 
 <!-- ============ LA RESTAURATION ============ -->
 <section class="g-sec"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('restoration') }}</div>
   <p class="g-fr">La restauration <span class="g-fr__en">Be part of it</span></p>
   <h2 class="g-place">Be Part of It</h2>
+  {% call split([rsrc('restorer-painted-wall'), 'The restorer at the painted wall', 'At the painted wall'], flip=True, tuck=[rsrc('uncovering-fresco'), 'Uncovering a fresco on the wall', 'Uncovering a fresco']) %}
   <p class="g-p g-lede-first">Gudanes is a Class I Historic Monument, bought as a ruin in 2013 and brought back room by room, privately, without a single grant. Each retreat helps to bring back the next room. Each includes a tour of the rooms restored and the rooms still waiting. On the longer retreats, you spend a morning beside the restorers in the oldest part of the house, as frescoes hidden for generations return to the light. Very few people anywhere are ever invited to do this.</p>
-  <ul class="g-befgrid g-gallery g-rgrid">
-    <li>{{ rphoto('uncovering-fresco', 'Uncovering a fresco on the wall', 'Uncovering a fresco') }}</li>
-    <li>{{ rphoto('restorer-painted-wall', 'The restorer at the painted wall', 'At the painted wall') }}</li>
-    <li>{{ rphoto('guests-uncovering-fresco', 'Two people uncovering a fresco', 'Two at the fresco') }}</li>
-  </ul>
+  {% endcall %}
 </div></section>
 
 <!-- ============ LA VALLÉE ============ -->
@@ -214,14 +188,8 @@
     <li>lunch in Ax-les-Thermes among its hot springs;</li>
     <li>and in summer, the river and the mountains.</li>
   </ul>
-  <ul class="g-befgrid g-gallery g-rgrid">
-    <li>{{ rphoto('mountain-walk', 'Guests walking in the mountains, the dog leading', 'In the mountains') }}</li>
-    <li>{{ rphoto('village-street', 'Guests strolling a village street with the dog', 'A village street') }}</li>
-    <li>{{ rphoto('mirepoix', 'The half-timbered houses of Mirepoix', 'Mirepoix') }}</li>
-    <li>{{ rphoto('foix-castle', 'The castle of Foix above the old town', 'The castle of the Counts of Foix') }}</li>
-    <li>{{ rphoto('lombrives-cave-mouth', 'The mouth of the great cave at Lombrives', 'The great cave at Lombrives') }}</li>
-    <li>{{ rphoto('bassin-des-ladres', 'The hot-spring basin of the Bassin des Ladres in Ax-les-Thermes', 'The hot spring at Ax-les-Thermes') }}</li>
-  </ul>
+  {{ carrousel([[rsrc('mountain-walk'), 'Guests walking in the mountains, the dog leading', 'In the mountains'], [rsrc('village-street'), 'Guests strolling a village street with the dog', 'A village street'], [rsrc('mirepoix'), 'The half-timbered houses of Mirepoix', 'Mirepoix'], [rsrc('foix-castle'), 'The castle of Foix above the old town', 'The castle of the Counts of Foix'], [rsrc('lombrives-cave-mouth'), 'The mouth of the great cave at Lombrives', 'The great cave at Lombrives'], [rsrc('bassin-des-ladres'), 'The hot-spring basin of the Bassin des Ladres in Ax-les-Thermes', 'The hot spring at Ax-les-Thermes']], 'The Valley') }}
+  <p class="g-car__credits">{{ rcredit('lombrives-cave-mouth') }} {{ rcredit('bassin-des-ladres') }}</p>
 </div></section>
 
 <!-- ============ REVENIR ============ -->
@@ -230,10 +198,7 @@
   <p class="g-fr">Revenir <span class="g-fr__en">Why so many return</span></p>
   <h2 class="g-place">Why So Many Return</h2>
   <p class="g-p g-lede-first">A great many of our guests return, some year after year, each time for a different retreat: Christmas one year, the kitchen the next, a French summer after that. In autumn 2026, every guest at the Autumn Atelier had stayed with us before. Couples, friends and those travelling alone are equally at home. The company is small enough that by the second dinner it feels like a house party among friends.</p>
-  <ul class="g-befgrid g-gallery g-rgrid g-rgrid--2">
-    <li>{{ rphoto('guests-rose-gate', 'Guests walking up the drive past the rose gate', 'Up the drive, past the roses', sizes='(min-width: 64rem) 50vw, 100vw') }}</li>
-    <li>{{ rphoto('guests-round-the-table', 'Guests at lunch round the long table', 'Round the long table', sizes='(min-width: 64rem) 50vw, 100vw') }}</li>
-  </ul>
+  {{ album([[rsrc('guests-rose-gate'), 'Guests walking up the drive past the rose gate', 'Up the drive, past the roses'], [rsrc('guests-round-the-table'), 'Guests at lunch round the long table', 'Round the long table']]) }}
 </div></section>
 
 <!-- ============ EVERYTHING INCLUDED, SAID ONCE ============ -->
@@ -368,7 +333,8 @@
    mentioned it. Same voice as the nightly page. #}
 {# 1 Oct: "<h2 class="g-h2">À Table</h2>" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
-<div class="g-band"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/35718cba-ae0d-4d2a-adc1-cace54a9e369/Screenshot+2026-08-12+at+8.40.54+pm.png?format=1000w" alt="In the salon, flowers on the table" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w" alt="Market produce on the table" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/82882b98-6d8d-4e43-a8dd-d483ea19aec8/Screenshot+2026-07-30+at+7.57.59+pm.png?format=1000w" alt="Fresh bread in a basket" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7fabd381-88e6-481d-9380-00222dd920fa/Screenshot+2026-08-15+at+3.31.41+pm.png?format=1000w" alt="Flowers and candles on the table" loading="lazy"></div>
+{#- 9 Nov (the brief, G): the band of four as a drifting film strip. -#}
+{{ bande([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/35718cba-ae0d-4d2a-adc1-cace54a9e369/Screenshot+2026-08-12+at+8.40.54+pm.png?format=1000w', 'In the salon, flowers on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w', 'Market produce on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/82882b98-6d8d-4e43-a8dd-d483ea19aec8/Screenshot+2026-07-30+at+7.57.59+pm.png?format=1000w', 'Fresh bread in a basket', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7fabd381-88e6-481d-9380-00222dd920fa/Screenshot+2026-08-15+at+3.31.41+pm.png?format=1000w', 'Flowers and candles on the table', '']], 'At the table') }}
 
 <!-- ============ LES SALLES DE BAINS ============ -->
 {# 1 Oct: ">Les Salles de Bains<" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
@@ -390,31 +356,9 @@
   <p class="g-fr">En images <span class="g-fr__en">In pictures</span></p>
   <h2 class="g-place">A Few Days at Gudanes</h2>
   <p class="g-p g-intro">Long tables, candlelight, the kitchen and the valley, with the people who came.</p>
-  <ul class="g-befgrid g-gallery">
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w" alt="The chef in the candlelit salon" loading="lazy"><figcaption>The chef, before dinner</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0fba4375-e1f0-449b-ba58-d1a5d3a48069/Screenshot+2026-07-30+at+8.05.38+pm.png?format=1000w" alt="The table by candlelight" loading="lazy"><figcaption>Dinner by candlelight</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6d17b683-1688-4dad-8d5d-b0e75a6de675/Cre%CC%80me+Bru%CC%82le%CC%81e-7.jpg?format=1000w" alt="Crème brûlée" loading="lazy"><figcaption>Crème brûlée</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d0c360a2-3609-44fe-9775-07ccf909ea3c/Screenshot+2026-07-30+at+7.55.27+pm.png?format=1000w" alt="Produce on the kitchen table" loading="lazy"><figcaption>From the market</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1000w" alt="Lighting the candles in the salon" loading="lazy"><figcaption>Lighting the candles</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/5ab05774-1ec5-48e4-9811-e51b8fd7d720/Screenshot+2025-02-14+at+1.52.45+pm.png?format=1000w" alt="A tart and tomatoes from the market" loading="lazy"><figcaption>A tart and tomatoes</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cf0358b6-3536-4ce5-812a-a17e640d8ed4/Screenshot+2026-07-30+at+7.58.56+pm.png?format=1000w" alt="A dessert from the château kitchen" loading="lazy"><figcaption>Dessert</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/5589cd5d-9fd8-4363-a8e8-1c7db5e8e8fb/VeronicaOlson_August2022_ChateaudeGudanes__2012.jpg?format=1000w" alt="Breakfast" loading="lazy"><figcaption>Breakfast</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/dining/terrace-long-table-800.jpg') }}" srcset="{{ url_for('static', filename='img/dining/terrace-long-table-800.jpg') }} 800w, {{ url_for('static', filename='img/dining/terrace-long-table.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A long table on the terrace, the mountains beyond" loading="lazy"><figcaption>A long table on the terrace, the mountains beyond</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }}" srcset="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }} 800w, {{ url_for('static', filename='img/life/asparagus-on-the-grill.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="White asparagus on the grill, in the grounds" loading="lazy"><figcaption>White asparagus on the grill, in the grounds</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/dining/garden-sofa-mountains-800.jpg') }}" srcset="{{ url_for('static', filename='img/dining/garden-sofa-mountains-800.jpg') }} 800w, {{ url_for('static', filename='img/dining/garden-sofa-mountains.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A garden sofa facing the mountains" loading="lazy"><figcaption>A garden sofa facing the mountains</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/xx/the-kitchen-800.jpg') }}" srcset="{{ url_for('static', filename='img/xx/the-kitchen-800.jpg') }} 800w, {{ url_for('static', filename='img/xx/the-kitchen.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The kitchen, its table laid with fresh produce" loading="lazy"><figcaption>The kitchen, its table laid with fresh produce</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/xx/table-in-the-garden-800.jpg') }}" srcset="{{ url_for('static', filename='img/xx/table-in-the-garden-800.jpg') }} 800w, {{ url_for('static', filename='img/xx/table-in-the-garden.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A table laid in the garden" loading="lazy"><figcaption>A table laid in the garden</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/xx/garden-sofas-mountains-800.jpg') }}" srcset="{{ url_for('static', filename='img/xx/garden-sofas-mountains-800.jpg') }} 800w, {{ url_for('static', filename='img/xx/garden-sofas-mountains.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="Sofas on the lawn, facing the mountains" loading="lazy"><figcaption>Sofas on the lawn, facing the mountains</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/xx/salon-floral-curtains-800.jpg') }}" srcset="{{ url_for('static', filename='img/xx/salon-floral-curtains-800.jpg') }} 800w, {{ url_for('static', filename='img/xx/salon-floral-curtains.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A salon, the mountains through its windows" loading="lazy"><figcaption>A salon, the mountains through its windows</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/rk/gilded-salon-800.jpg') }}" srcset="{{ url_for('static', filename='img/rk/gilded-salon-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/gilded-salon.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The gilded salon" loading="lazy"><figcaption>The gilded salon</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/rk/long-table-candlelight-800.jpg') }}" srcset="{{ url_for('static', filename='img/rk/long-table-candlelight-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/long-table-candlelight.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The long table by candlelight" loading="lazy"><figcaption>The long table by candlelight</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/xx/sunlit-bedroom-800.jpg') }}" srcset="{{ url_for('static', filename='img/xx/sunlit-bedroom-800.jpg') }} 800w, {{ url_for('static', filename='img/xx/sunlit-bedroom.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A sunlit bedroom, the mountains through the window" loading="lazy"><figcaption>A sunlit bedroom, the mountains through the window</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/weddings/bedroom-peony-800.jpg') }}" srcset="{{ url_for('static', filename='img/weddings/bedroom-peony-800.jpg') }} 800w, {{ url_for('static', filename='img/weddings/bedroom-peony.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A bedroom made ready, with a peony" loading="lazy"><figcaption>A bedroom made ready, with a peony</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/rk/four-poster-bedroom-800.jpg') }}" srcset="{{ url_for('static', filename='img/rk/four-poster-bedroom-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/four-poster-bedroom.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The King Suite, its wooden four-poster" loading="lazy"><figcaption>The King Suite, its wooden four-poster</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/more/terrace-at-night-800.jpg') }}" srcset="{{ url_for('static', filename='img/more/terrace-at-night-800.jpg') }} 800w, {{ url_for('static', filename='img/more/terrace-at-night.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A terrace at night, strung with lights" loading="lazy"><figcaption>A terrace at night, strung with lights</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/more/the-kitchen-garden-800.jpg') }}" srcset="{{ url_for('static', filename='img/more/the-kitchen-garden-800.jpg') }} 800w, {{ url_for('static', filename='img/more/the-kitchen-garden.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The kitchen garden" loading="lazy"><figcaption>The kitchen garden</figcaption></figure></li>
-    <li><figure><img src="{{ url_for('static', filename='img/more/flowers-and-meringues-800.jpg') }}" srcset="{{ url_for('static', filename='img/more/flowers-and-meringues-800.jpg') }} 800w, {{ url_for('static', filename='img/more/flowers-and-meringues.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="Flowers and meringues" loading="lazy"><figcaption>Flowers and meringues</figcaption></figure></li>
-  </ul>
+  {#- 9 Nov (the brief, 4.3): the block of 23 is a slider of eight, and every one is behind See all. -#}
+  {{ carrousel([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w', 'The chef in the candlelit salon', 'The chef, before dinner'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6d17b683-1688-4dad-8d5d-b0e75a6de675/Cre%CC%80me+Bru%CC%82le%CC%81e-7.jpg?format=1000w', 'Crème brûlée', 'Crème brûlée'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d0c360a2-3609-44fe-9775-07ccf909ea3c/Screenshot+2026-07-30+at+7.55.27+pm.png?format=1000w', 'Produce on the kitchen table', 'From the market'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1000w', 'Lighting the candles in the salon', 'Lighting the candles'], [url_for('static', filename='img/xx/table-in-the-garden.jpg'), 'A table laid in the garden', 'A table laid in the garden'], [url_for('static', filename='img/rk/gilded-salon.jpg'), 'The gilded salon', 'The gilded salon'], [url_for('static', filename='img/dining/garden-sofa-mountains.jpg'), 'A garden sofa facing the mountains', 'A garden sofa facing the mountains']], 'A few days at Gudanes') }}
+  {{ see_all([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w', 'The chef in the candlelit salon', 'The chef, before dinner'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0fba4375-e1f0-449b-ba58-d1a5d3a48069/Screenshot+2026-07-30+at+8.05.38+pm.png?format=1000w', 'The table by candlelight', 'Dinner by candlelight'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6d17b683-1688-4dad-8d5d-b0e75a6de675/Cre%CC%80me+Bru%CC%82le%CC%81e-7.jpg?format=1000w', 'Crème brûlée', 'Crème brûlée'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d0c360a2-3609-44fe-9775-07ccf909ea3c/Screenshot+2026-07-30+at+7.55.27+pm.png?format=1000w', 'Produce on the kitchen table', 'From the market'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1000w', 'Lighting the candles in the salon', 'Lighting the candles'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/5ab05774-1ec5-48e4-9811-e51b8fd7d720/Screenshot+2025-02-14+at+1.52.45+pm.png?format=1000w', 'A tart and tomatoes from the market', 'A tart and tomatoes'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cf0358b6-3536-4ce5-812a-a17e640d8ed4/Screenshot+2026-07-30+at+7.58.56+pm.png?format=1000w', 'A dessert from the château kitchen', 'Dessert'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/5589cd5d-9fd8-4363-a8e8-1c7db5e8e8fb/VeronicaOlson_August2022_ChateaudeGudanes__2012.jpg?format=1000w', 'Breakfast', 'Breakfast'], [url_for('static', filename='img/dining/terrace-long-table.jpg'), 'A long table on the terrace, the mountains beyond', 'A long table on the terrace, the mountains beyond'], [url_for('static', filename='img/life/asparagus-on-the-grill.jpg'), 'White asparagus on the grill, in the grounds', 'White asparagus on the grill, in the grounds'], [url_for('static', filename='img/dining/garden-sofa-mountains.jpg'), 'A garden sofa facing the mountains', 'A garden sofa facing the mountains'], [url_for('static', filename='img/xx/the-kitchen.jpg'), 'The kitchen, its table laid with fresh produce', 'The kitchen, its table laid with fresh produce'], [url_for('static', filename='img/xx/table-in-the-garden.jpg'), 'A table laid in the garden', 'A table laid in the garden'], [url_for('static', filename='img/xx/garden-sofas-mountains.jpg'), 'Sofas on the lawn, facing the mountains', 'Sofas on the lawn, facing the mountains'], [url_for('static', filename='img/xx/salon-floral-curtains.jpg'), 'A salon, the mountains through its windows', 'A salon, the mountains through its windows'], [url_for('static', filename='img/rk/gilded-salon.jpg'), 'The gilded salon', 'The gilded salon'], [url_for('static', filename='img/rk/long-table-candlelight.jpg'), 'The long table by candlelight', 'The long table by candlelight'], [url_for('static', filename='img/xx/sunlit-bedroom.jpg'), 'A sunlit bedroom, the mountains through the window', 'A sunlit bedroom, the mountains through the window'], [url_for('static', filename='img/weddings/bedroom-peony.jpg'), 'A bedroom made ready, with a peony', 'A bedroom made ready, with a peony'], [url_for('static', filename='img/rk/four-poster-bedroom.jpg'), 'The King Suite, its wooden four-poster', 'The King Suite, its wooden four-poster'], [url_for('static', filename='img/more/terrace-at-night.jpg'), 'A terrace at night, strung with lights', 'A terrace at night, strung with lights'], [url_for('static', filename='img/more/the-kitchen-garden.jpg'), 'The kitchen garden', 'The kitchen garden'], [url_for('static', filename='img/more/flowers-and-meringues.jpg'), 'Flowers and meringues', 'Flowers and meringues']], 'See all 23 photos') }}
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
@@ -613,5 +557,7 @@
 {%- endif -%}{%- endfor -%}{%- endfor -%}
 {% if _evs %}<script type="application/ld+json">{{ _evs|tojson }}</script>{% endif %}
 
+{{ lightbox() }}
+{{ pictures_script() }}
 {% endblock %}
 

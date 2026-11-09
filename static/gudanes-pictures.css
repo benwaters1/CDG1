@@ -424,6 +424,28 @@
   .g .g-journal .g-wrap > .g-cp{ margin: 0; }
 }
 
+/* ==== /workshops (brief 4.3) ========================================== */
+/* The retreats' cards: each photograph under an arched top, the tall windows,
+   with a gilt hairline. */
+.g .g-wscard__arch{ display: block; padding: 6px 6px 0; margin: 0 0 var(--s4); }
+.g .g-wscard__arch .g-wscard__img{ margin: 0; border-radius: 50% 50% 0 0 / 22% 22% 0 0; aspect-ratio: 4 / 3; height: auto; width: 100%;
+  object-fit: cover; box-shadow: 0 0 0 1px var(--gold), 0 0 0 5px #F8F3E8, 0 0 0 6px rgba(197,162,74,.45); }
+
+/* A day at Gudanes: down a timeline, the photograph swapping sides each time. */
+@media (min-width: 48rem){
+  .g .g-day--alt{ position: relative; max-width: 64rem; }
+  .g .g-day--alt::before{ content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: color-mix(in srgb, var(--gold) 55%, transparent); }
+  .g .g-day--alt .g-day__i{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s8); align-items: center; position: relative; }
+  .g .g-day--alt .g-day__i::after{ content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -5px 0 0 -5px;
+    border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 4px var(--sand); }
+  .g .g-day--alt .g-day__i:nth-child(even) .g-day__f{ order: 2; }
+  .g .g-day--alt .g-day__b{ border-left: 0; padding: 0; }
+  .g .g-day--alt .g-day__f img{ aspect-ratio: 4 / 3; box-shadow: 0 16px 26px -18px rgba(20,48,95,.45); }
+}
+
+/* The credits a Commons photograph needs, under the slider it is in. */
+.g .g-car__credits{ margin: var(--s2) 0 0; display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); font-size: 12px; color: var(--ink-2); }
+
 /* ==== /design only: the specimen page's own arrangement ================= */
 .g .g-design__row{ display: grid; gap: var(--s6); align-items: end; }
 @media (min-width: 56rem){ .g .g-design__row{ grid-template-columns: repeat(3, minmax(0, 1fr)); } }

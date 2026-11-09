@@ -350,7 +350,8 @@ def run():
     s.check("and the morning keeps a visiting artisan", "with a visiting artisan, or on the restorers’ scaffold" in ws_words)
     # 27 Oct (owner): the sorbet stays the afternoon picture; the painting goes to the restoration page instead.
     s.check("the afternoon picture is still the sorbet",
-            re.search(r'<li class="g-day__i">\s*<figure><img src="/static/img/retreats/sorbet-pouring\.jpg"[^>]*></figure>'
+            # 9 Nov: the day's figure carries classes now (the image layout brief's timeline).
+            re.search(r'<li class="g-day__i">\s*<figure[^>]*><img src="/static/img/retreats/sorbet-pouring\.jpg"[^>]*></figure>'
                       r'\s*<div class="g-day__b">\s*<h3 class="g-day__t"><em lang="fr">L’après-midi</em>', ws_html) is not None
             and "guest-painting" not in ws_html)
     resto = c.get("/restoration").get_data(as_text=True)
