@@ -184,8 +184,10 @@ def run():
             detail=room_page[:200])
     s.check("the King Suite's page shows its four-poster",
             'alt="The King Suite, the four-poster and its canopy"' in suite_html)
+    # 9 Nov: by the seating, which is in the gallery whichever photograph leads. The bed was the second photograph and
+    # named itself here; its lead went dead at Booking.com, the bed now leads, and the lead carries the room's name.
     s.check("and the King Room's shows the old Queen Room, with no four-poster",
-            'alt="The bed in the King Room"' in room_html and "four-poster" not in room_html)
+            'alt="The King Room, the seating"' in room_html and "four-poster" not in room_html)
     stay = anon.get("/book").get_data(as_text=True)
 
     def card(room_id):
