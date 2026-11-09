@@ -29695,10 +29695,19 @@ def _house_copies_in_templates(urls):
 
 
 HOUSE_COPIES = _house_copies()
-# Only this host. "Download whatever the templates point at" is a fetcher
+# Only these hosts. "Download whatever the templates point at" is a fetcher
 # aimed by whoever last edited a template, which is a different and much worse
-# tool than a mirror of one CDN.
-MIRROR_HOSTS = ("images.squarespace-cdn.com",)
+# tool than a mirror of two CDNs.
+#
+# Booking.com's since 9 November 2026. The room photographs on the listing
+# were hotlinked, and three of them -- the first picture of the Twin Room, the
+# King Room and the Marquis Suite -- went 404 when the listing's photographs
+# were changed, leaving a blank card at the top of the home page. The listing
+# changes whenever the owner tidies it, so a copy is kept of every one the site
+# shows while it is still there, and one that goes is a blocker on the owner
+# home within the hour rather than a blank found by a guest.
+MIRROR_HOSTS = ("images.squarespace-cdn.com", "cf.bstatic.com")
+_MIRROR_HOSTS_BYTES = tuple(h.encode("ascii") for h in MIRROR_HOSTS)
 MIRROR_MAX_BYTES = 12 * 1024 * 1024
 MIRROR_ALLOWED_TYPES = {
     "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
@@ -29784,7 +29793,11 @@ def hotlinked_urls():
             except OSError:
                 continue
             found.update(_MIRROR_URL_RE.findall(body))
-    urls = sorted(found)
+    # One photograph, one address. Booking.com's carry "&o=" and a template
+    # that escapes it writes "&amp;o=", which is the same picture; fetched
+    # twice it would be two copies and a coverage figure counting one of them
+    # as missing. The page's own "&amp;" is matched by the swap on its path.
+    urls = sorted({u.replace("&amp;", "&") for u in found})
     if signature is not None:
         _MIRROR_SCANNED["signature"] = signature
         _MIRROR_SCANNED["urls"] = urls
@@ -58117,19 +58130,68 @@ ENQUIRY_PITCH = re.compile(
     r"|web development services|app development|social media management", re.I)
 
 
+# A MESSAGE THAT SAYS NOTHING IS NOT AN ENQUIRY EITHER. By November the house
+# was being sent a run of "Private event. Test", each from a different
+# real-looking address (a school district's, among others) and none with a
+# name, a month or a number of guests. That is a script trying the form to see
+# whether it sends -- it waits out the stamp, so the bot guard lets it in --
+# and each one was a task on the day and a letter to the events inbox that
+# nobody could answer. A person with a question writes the question; "test",
+# "hello" or a row of keys on its own is not one. The WHOLE message only:
+# "a test of our team's cooking" is somebody asking about the cookery week.
+ENQUIRY_SAYS_NOTHING = re.compile(
+    r"(?:this is )?(?:just )?(?:a )?(?:test(?:ing)?(?: message)?(?: \d+)?|tests"
+    r"|hi|hello|hey|hallo|bonjour|asdf\w*|qwerty\w*|ok|okay|x+|\d+)", re.I)
+
+
+def enquiry_says_nothing(message):
+    """True when the whole message is a throwaway word -- "Test", "hello",
+    "asdf", "123" -- or nothing at all once the punctuation is taken out."""
+    words = " ".join(re.sub(r"[^\w\s]", " ", message or "").split())
+    return not words or bool(ENQUIRY_SAYS_NOTHING.fullmatch(words))
+
+
+def enquiry_message_part(notes):
+    """The visitor's own words in an enquiry's notes, without what the form
+    put in front of them: the topic ("Private event"), the month, the nights,
+    the guests and the flexibility, each said first and joined with ". " by
+    contact_page. Notes made before the topic existed have no topic."""
+    labels = set(CONTACT_TOPICS.values())
+    lead = re.compile(r"Around [^.]+|\d+ nights?|\d+ guests?|flexible: [^.]*")
+    parts = (notes or "").split(". ")
+    while len(parts) > 1 and (parts[0] in labels or lead.fullmatch(parts[0])):
+        parts.pop(0)
+    return ". ".join(parts)
+
+
+# AN ENQUIRY WITH NO NAME WAS NOT SENT FROM THE PAGE. Since z29 the Write to
+# Us form marks the name `required`, and a browser will not send the form
+# with that box empty -- so a post without one was made by something posting
+# the fields itself, having fetched the page for its token and stamp. The
+# "Private event. Test" letters all came that way. Before z29 the name was
+# optional, so an enquiry older than this with none was a person's; the tidy
+# on boot leaves those alone.
+CONTACT_NAME_REQUIRED_SINCE = "2026-10-21"
+
+
 def enquiry_is_pitch(conn, email, name, message):
     """Why an enquiry is set aside, or "" when it is somebody asking to stay.
 
-    Either the owner has marked the sender as spam before, or it reads as a
-    pitch. Set aside, not thrown away: it is kept on the waitlist as Spam,
-    where the owner can find it and put it back, but it makes no task and no
-    letter."""
+    The owner has marked the sender as spam before, or it reads as a pitch,
+    or it says nothing at all ("Test"), or it came without the name the page
+    will not send without. Set aside, not thrown away: it is kept on the
+    waitlist as Spam, where the owner can find it and put it back, but it
+    makes no task and no letter."""
     if email and conn.execute(
             "SELECT 1 FROM waitlist_entries WHERE spam_at IS NOT NULL AND lower(email) = ? LIMIT 1",
             (email.strip().lower(),)).fetchone():
         return "a sender already marked as spam"
     if ENQUIRY_PITCH.search("%s %s" % (name or "", message or "")):
         return "it reads as a sales pitch"
+    if enquiry_says_nothing(message):
+        return "a message that says nothing (somebody trying the form)"
+    if not (name or "").strip():
+        return "no name, which the page will not send without (a script posting the form)"
     return ""
 
 
@@ -58139,8 +58201,10 @@ def tidy_contact_enquiries(conn):
     For the ones made before either existed. An enquiry's task was found only
     by its title, "Answer an enquiry from <name> (<email>)", made the same day.
     Tied where the task has no enquiry yet. Any OPEN enquiry that reads as a
-    pitch is marked spam and its open task taken off the day, because nothing
-    else would ever take it off. Returns (tied, set aside)."""
+    pitch, says nothing ("Private event. Test"), or came with no name once the
+    page required one, is marked spam and its open task taken off the day,
+    because nothing else would ever take it off.
+    Returns (tied, set aside)."""
     tied = 0
     for t in conn.execute(
             "SELECT id, title, created_at FROM tasks WHERE origin = 'enquiry' "
@@ -58173,9 +58237,12 @@ def tidy_contact_enquiries(conn):
                      "WHERE source = 'contact' AND status = 'open'")
     aside = 0
     for e in conn.execute(
-            "SELECT id, name, notes FROM waitlist_entries WHERE source = 'contact' "
+            "SELECT id, name, notes, created_at FROM waitlist_entries WHERE source = 'contact' "
             "AND status IN ('open', 'enquiry') AND spam_at IS NULL").fetchall():
-        if ENQUIRY_PITCH.search("%s %s" % (e["name"] or "", e["notes"] or "")):
+        if (ENQUIRY_PITCH.search("%s %s" % (e["name"] or "", e["notes"] or ""))
+                or enquiry_says_nothing(enquiry_message_part(e["notes"]))
+                or (not (e["name"] or "").strip()
+                    and (e["created_at"] or "") >= CONTACT_NAME_REQUIRED_SINCE)):
             close_enquiry(conn, e["id"], "spam")
             aside += 1
     conn.commit()
@@ -66542,7 +66609,7 @@ def serve_our_own_photographs(response):
     # is a memory scan where decoding 190KB to text is real work done on the
     # way to finding out there was nothing to do.
     raw = response.get_data()
-    if b"squarespace-cdn.com" not in raw:
+    if not any(host in raw for host in _MIRROR_HOSTS_BYTES):
         return response
     body = raw.decode("utf-8", "replace")
     # The house's copies in the code first, then the owner's own swaps over
@@ -66619,7 +66686,7 @@ def _pic_file(src):
 
 
 def _pic_held(url):
-    """The /pic name of the file the house holds for a Squarespace address.
+    """The /pic name of the file the house holds for a mirrored address.
 
     The house's own copy first (static/img/retreats, from SOURCES.txt), then
     the mirror on the volume; None for a picture the owner has swapped in the
@@ -66628,7 +66695,7 @@ def _pic_held(url):
     and this only finds out how big the picture is and where its smaller
     sizes can come from.
     """
-    if not url.startswith("https://") or "squarespace-cdn.com" not in url:
+    if not url.startswith("https://") or urlparse(url).netloc not in MIRROR_HOSTS:
         return None
     base = url.split("?", 1)[0]
     try:
@@ -122192,10 +122259,49 @@ def contact_page():
           else house_address_for(conn, "rooms"))
     conn.close()
     if to:
-        send_email(to, "Someone wrote to us: %s" % CONTACT_TOPICS[topic].lower(),
-                   "%s\n\nThey left this address: %s" % (notes, email))
+        send_email(to, "Someone wrote to us: %s%s" % (CONTACT_TOPICS[topic].lower(),
+                                                       " — %s" % name if name else ""),
+                   contact_enquiry_letter(entry_id, topic, name, email, month,
+                                          n, party, flex, message))
     flash(thanks, "success")
     return redirect(url_for("contact_page"))
+
+
+def contact_enquiry_letter(entry_id, topic, name, email, month, nights, party, flex, message):
+    """The letter to the house about one enquiry from the Contact page.
+
+    It used to be the notes run together and then the address -- "Private
+    event. Test / They left this address: ..." -- with no name, nothing to say
+    which of the form's questions had been left blank, and no way from the
+    letter to the enquiry. Read on a phone, it could not be told from a
+    script's, answered, or put in the spam without going to look for it. Now
+    each thing the form asks is on a line of its own, "not said" where it was
+    left empty, and the letter ends with the link that opens the enquiry."""
+    def said(value):
+        return value if value else "not said"
+    lines = [
+        "Name: %s" % said(name),
+        "Email: %s" % email,
+        "About: %s" % CONTACT_TOPICS[topic],
+        "When: %s" % said(month_words(month) if month else ""),
+    ]
+    if nights:
+        lines.append("Nights: %d" % nights)
+    lines.append("Guests: %s" % said(str(party) if party else ""))
+    if flex:
+        lines.append("Flexible: %s" % flex)
+    link = house_url_for("admin_waitlist", q=email, _anchor="entry-%d" % entry_id,
+                         _external=True)
+    return "\n".join(lines + [
+        "",
+        "Their message:",
+        message,
+        "",
+        "Answer it by writing to %s. To mark it answered, or as spam, open it here:" % email,
+        link,
+        "",
+        "Sent from the Write to Us form on the Contact page.",
+    ])
 
 
 # What the Contact page's "Write to Us" form asks it is about (z29), in the

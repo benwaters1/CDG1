@@ -91,6 +91,18 @@ def run():
     journal = page[page.find("g-journal"):]
     s.check("an old postcard beside Follow the Restoration",
             'class="g-cp ' in journal[:6000] and "postcard-valley" in journal[:6000])
+    # Two short paragraphs beside a 4:5 portrait in the wider column floated in
+    # a blank twice their height (owner, 9 November 2026: "I don't like this
+    # bit"). The photograph is landscape there now, and the rule that makes it
+    # so is read off the stylesheet, since the class alone draws nothing.
+    night = page[page.find("A Night at Gudanes"):]
+    night = night[:night.find("</section>")]
+    s.check("a night at Gudanes: its few words beside a landscape photograph, not a tall one",
+            re.search(r'class="g-sp[^"]*\bg-sp--few\b', night) is not None,
+            detail=re.findall(r'class="g-sp[^"]*"', night)[:1])
+    css = open(m.os.path.join(m.BASE_DIR, "static", "gudanes-pictures.css"), encoding="utf-8").read()
+    wide = re.search(r"@media \(min-width: 56rem\)\{\s*\.g \.g-sp--few \.g-sp__main img\{ aspect-ratio: 3 / 2; \}", css)
+    s.check("and the stylesheet sets it landscape where the two sit side by side", wide is not None)
 
     s.section("no photograph twice")
     keys = [picture_key(_src(t)) for t in _visible_imgs(page) if "Logo" not in _src(t)]

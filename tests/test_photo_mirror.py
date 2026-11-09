@@ -24,6 +24,7 @@ from _harness import Suite, clients, db, flashes
 
 import io
 import os
+import re
 import sqlite3
 
 import _harness
@@ -790,7 +791,84 @@ def run():
         conn.close()
         m.mirror_cache_clear()
 
+    _booking_com(s)
     return s
+
+
+# Three Booking.com deleted from the listing (9 November 2026): the first
+# photograph of the Twin Room, the King Room and the Marquis Suite. Every size
+# answers 404, and no copy was held anywhere.
+DELETED_FROM_BOOKING = ("921671142", "921671001", "903132433")
+WHOLE_BOOKING_ADDRESS = re.compile(
+    r"^https://cf\.bstatic\.com/xdata/images/hotel/max\d+x\d+/\d+\.jpg\?k=[0-9a-f]+&o=$")
+
+
+def _booking_com(s):
+    """The room photographs on the Booking.com listing, held like Squarespace's.
+
+    They were hotlinked, and when the listing's photographs changed three went
+    404 together: a blank card at the top of the home page, a blank King Room
+    on every page that borrowed its picture, and nothing anywhere said so,
+    because the mirror and the owner-home warning only knew Squarespace.
+    """
+    s.section("Booking.com's photographs are held too (9 November 2026)")
+    urls = m.hotlinked_urls()
+    booking = [u for u in urls if u.startswith("https://cf.bstatic.com/")]
+    s.check("the mirror takes copies from Booking.com", "cf.bstatic.com" in m.MIRROR_HOSTS)
+    s.check("the listing's room photographs are among what it reads",
+            len(booking) >= 10, detail="%d found" % len(booking))
+    # The room photographs were written as a prefix and a tail joined in
+    # Jinja. The scan reads the file, so what it would have found is the
+    # prefix -- a folder, fetched as a 404 every day and never a photograph.
+    s.check("each is a whole address, written out in the template",
+            all(WHOLE_BOOKING_ADDRESS.match(u) for u in booking),
+            detail=str([u for u in booking if not WHOLE_BOOKING_ADDRESS.match(u)][:2]))
+    s.check("no address the mirror reads stops at a folder",
+            not [u for u in urls if u.endswith("/")],
+            detail=str([u for u in urls if u.endswith("/")][:2]))
+    s.check("an escaped &amp; is the same photograph, not a second copy",
+            not [u for u in urls if "&amp;" in u])
+    asked = [u for u in urls if any("/%s.jpg" % g in u for g in DELETED_FROM_BOOKING)]
+    s.check("none of the three Booking.com deleted is asked for", not asked,
+            detail=str(asked[:2]))
+
+    body = m.app.test_client().get("/").get_data(as_text=True)
+    shown = sorted(set(re.findall(r"https://cf\.bstatic\.com/[^\s\"'<>]+", body)))
+    s.check("the home page's room cards show Booking.com photographs", bool(shown),
+            detail="none -- if the rooms all have their own now, this section can go")
+    if not shown:
+        return
+    url = shown[0].replace("&amp;", "&")
+    photo = url.split("?", 1)[0]
+    name = m.mirror_name(url) + ".jpg"
+    conn = db()
+    _write_stub(name)
+    m.record_mirror(conn, url, name, len(STUB), "image/jpeg")
+    conn.commit()
+    m.mirror_cache_clear()
+    try:
+        body = m.app.test_client().get("/").get_data(as_text=True)
+        s.check("the home page serves the house's copy of it",
+                "/mirrored-photo/" + name in body)
+        s.check("and sends nobody to Booking.com for that photograph", photo not in body,
+                detail=photo.rsplit("/", 1)[-1])
+        s.check("the ones not held yet still point where they did",
+                any(u.split("?", 1)[0] in body for u in shown[1:]) or len(shown) == 1)
+        # The guest's confirmation and feedback pages carry a Booking.com
+        # photograph and nothing from Squarespace, and the hook used to look
+        # for Squarespace's name before doing anything at all.
+        only = '<p>Thank you</p><img src="%s">' % url.replace("&", "&amp;")
+        with m.app.test_request_context("/"):
+            done = m.serve_our_own_photographs(
+                m.app.response_class(only, mimetype="text/html")).get_data(as_text=True)
+        s.check("a page whose only borrowed photograph is Booking.com's is served ours",
+                "/mirrored-photo/" + name in done and photo not in done, detail=done[:160])
+    finally:
+        _drop_stub(name)
+        conn.execute("DELETE FROM mirrored_images WHERE source_url = ?", (url,))
+        conn.commit()
+        conn.close()
+        m.mirror_cache_clear()
 
 
 if __name__ == "__main__":
