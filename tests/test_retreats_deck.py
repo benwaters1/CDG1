@@ -334,8 +334,12 @@ def run():
             # 28 Oct (owner): "change the cooking hero photo from tom to a better one" - the roast guinea fowl.
             s.check("Cooking in the Cuisine opens on the roast guinea fowl",
                     hero.endswith("img/retreats/roast-birds.jpg"), detail=hero)
+        # 9 Nov: the hero's own tag names its file at every size it is offered in (size_the_heroes), so the rest of
+        # the page is what is read: the file must appear nowhere outside that one tag.
+        hero_tag = re.search(r'<img\b[^>]*class="g-hero__img[^"]*"[^>]*>', html)
+        rest = html.replace(hero_tag.group(0), "") if hero_tag else html
         s.check(f"{w['title']}: its lead picture is not in its gallery too",
-                not hero or html.count(hero.split("/static/img/retreats/")[-1]) == 1)
+                not hero or hero.split("/static/img/retreats/")[-1] not in rest)
     gallery_src = io.open(os.path.join(_harness.ROOT, "templates", "gallery.html"), encoding="utf-8").read()
     s.check("the dog in the snow is captioned Alfred",
             re.search(r"42ac040d-dc88-4253-8d3d-7084f6e05ea4[^}]*'caption': 'Alfred'", gallery_src) is not None)

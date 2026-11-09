@@ -430,6 +430,9 @@
 <section class="g-sec" id="andorra"><div class="g-wrap">
   <p class="g-fr">L’Andorre <span class="g-fr__en">Andorra</span></p>
   <h2 class="g-place">Andorra</h2>
+  {#- 9 Nov (owner: a photograph for Andorra, freely licensed rather than off Google): the Romanesque church of Sant Joan
+      de Caselles, which the section names, from Wikimedia Commons with its credit under it; sides alternating down the page. -#}
+  {% call split([url_for('static', filename='img/retreats/sant-joan-de-caselles.jpg'), 'The Romanesque bell tower of Sant Joan de Caselles in Canillo, snow on the peaks behind', ''], flip=True) %}
   <div class="g-key">
     <div class="g-key__i">
       <p class="g-key__k">Getting there · about an hour</p>
@@ -454,6 +457,8 @@
       <p class="g-key__v g-key__links">{{ site('https://visitandorra.com/en/', 'visitandorra.com') }}</p>
     </div>
   </div>
+  {% endcall %}
+  <p class="g-car__credits">{{ rcredit('sant-joan-de-caselles', new_tab=True) }}</p>
 </div></section>
 
 <!-- ============ CLOSE BY ============ -->
