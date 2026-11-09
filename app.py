@@ -7818,6 +7818,29 @@ def init_db():
         ("ota_checkin_token", "ALTER TABLE ota_reservations ADD COLUMN checkin_token TEXT"),
         ("ota_checkin_sent", "ALTER TABLE ota_reservations ADD COLUMN checkin_sent_at TEXT"),
         ("ota_checkin_done", "ALTER TABLE ota_reservations ADD COLUMN checkin_done_at TEXT"),
+        # BOOKING.COM'S RESERVATIONS STATEMENT (9 November 2026): what its
+        # emails leave out, from the weekly upload. The price is `amount`, as
+        # before; Booking.com's commission as its statement gives it; and the
+        # party split. statement_at is when a statement last spoke for it.
+        ("ota_commission_pct", "ALTER TABLE ota_reservations ADD COLUMN commission_pct REAL"),
+        ("ota_commission_amount", "ALTER TABLE ota_reservations ADD COLUMN commission_amount REAL"),
+        ("ota_payment_status", "ALTER TABLE ota_reservations ADD COLUMN payment_status TEXT"),
+        ("ota_adults", "ALTER TABLE ota_reservations ADD COLUMN adults INTEGER"),
+        ("ota_children", "ALTER TABLE ota_reservations ADD COLUMN children INTEGER"),
+        ("ota_booked_on", "ALTER TABLE ota_reservations ADD COLUMN booked_on TEXT"),
+        ("ota_statement_at", "ALTER TABLE ota_reservations ADD COLUMN statement_at TEXT"),
+        ("booking_com_statements",
+         """CREATE TABLE IF NOT EXISTS booking_com_statements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uploaded_at TEXT NOT NULL,
+                uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                filename TEXT,
+                rows_read INTEGER NOT NULL DEFAULT 0,
+                new_stays INTEGER NOT NULL DEFAULT 0,
+                updated_stays INTEGER NOT NULL DEFAULT 0,
+                cancelled_stays INTEGER NOT NULL DEFAULT 0,
+                first_arrival TEXT,
+                last_arrival TEXT)"""),
         # Which mailbox a Booking.com message was answered from by email,
         # found in its Sent Items (booking_com_answered_by_email).
         ("ota_mail_answered_from", "ALTER TABLE ota_mail ADD COLUMN answered_from TEXT"),
@@ -27498,13 +27521,54 @@ def channel_cost(conn, start=None, end=None):
             "revenue": round(revenue, 2), "rate": rate, "cost": cost,
             "net": round(revenue - cost, 2) if cost is not None else None,
         })
+    # STAYS SOLD ON BOOKING.COM ITSELF (9 November 2026). They are not
+    # bookings of the house's own, so the page above never counted them at all
+    # -- the channel the house pays most to was missing from the page about
+    # what channels cost. Their figures are Booking.com's own, from its
+    # reservations statement: the price the guest paid there and the
+    # commission it charged on that stay, not a rate times a guess. A stay
+    # the house has entered as its own booking too (same room, same dates) is
+    # counted there and not again here. A cancelled stay counts only where
+    # Booking.com still charged for it. Stays no statement has covered yet are
+    # counted and named, and until they are the commission is "not known".
+    own = {(r["room_id"], r["arrival_date"], r["departure_date"]) for r in conn.execute(
+        """SELECT room_id, arrival_date, departure_date FROM bookings
+            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+        (start.isoformat(), end.isoformat()))}
+    sold, waiting = [], 0
+    for r in conn.execute(
+            """SELECT * FROM ota_reservations
+                WHERE channel = 'booking.com' AND arrival_date >= ? AND arrival_date < ?
+                  AND (status = 'confirmed' OR COALESCE(commission_amount, 0) > 0)""",
+            (start.isoformat(), end.isoformat())):
+        if (r["room_id"], r["arrival_date"], r["departure_date"]) in own:
+            continue
+        sold.append(r)
+        if r["status"] == "confirmed" and not r["statement_at"]:
+            waiting += 1
+    if sold:
+        revenue = round(sum(float(r["amount"] or 0) for r in sold if r["statement_at"]), 2)
+        cost = (round(sum(float(r["commission_amount"] or 0) for r in sold), 2)
+                if not waiting else None)
+        total_rev += revenue
+        if cost is not None:
+            total_cost += cost
+        out.append({
+            "source": "booking.com stays", "label": "Booking.com (sold there)",
+            "bookings": len(sold), "revenue": revenue,
+            "rate": round(cost / revenue * 100, 1) if cost is not None and revenue else None,
+            "cost": cost, "net": round(revenue - cost, 2) if cost is not None else None,
+            "from_statement": True, "waiting": waiting,
+        })
     # What the house keeps is only known once every channel that took money
     # has a rate. It was revenue less the commission that IS known, so a
     # channel with no rate counted as free in the total -- €6,140 kept above a
     # row that said "—" -- which is the claim this page exists not to make.
-    every_rate = all(r["cost"] is not None for r in out if r["revenue"])
+    every_rate = (all(r["cost"] is not None for r in out if r["revenue"])
+                  and not waiting)
     return {
         "start": start, "end": end, "rows": out,
+        "statement_waiting": waiting,
         "revenue": round(total_rev, 2), "cost": round(total_cost, 2),
         "net": round(total_rev - total_cost, 2) if every_rate else None,
         "net_priced": round(sum(r["net"] for r in out if r["net"] is not None), 2),
@@ -40747,6 +40811,10 @@ def owner_home_warnings(conn, today):
         add("blocker", double[0], double[1], 1, "channel_stays_page")
     for level, title, detail in channel_sync_problems(conn):
         add("blocker" if level == "blocker" else "warn", title, detail, 1, "admin_rooms")
+    # The weekly Booking.com statement, when the last is a week old.
+    statement = booking_com_statement_due(conn)
+    if statement:
+        add("attention", statement[0], statement[1], 1, "channel_stays_page", _anchor="statement")
 
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
     # the next pass that writes cleanly takes the line away.
@@ -90327,11 +90395,321 @@ def channel_stays_page():
     # with what it already knows filled in.
     prefill = {k: (request.args.get(k) or "").strip()[:40]
                for k in ("number", "room", "arrive", "leave")}
+    conn = get_db()
+    last_statement = conn.execute(
+        "SELECT * FROM booking_com_statements ORDER BY uploaded_at DESC, id DESC LIMIT 1").fetchone()
+    conn.close()
     return render_template("channel_stays.html", rows=lv["rows"], lv=lv,
                            summary=summary, today=today.isoformat(),
                            calendar_only=calendar_only, room_choices=room_choices,
                            prefill=prefill, sources=sources,
-                           checkin_find_url=url_for("channel_checkin_find", _external=True))
+                           checkin_find_url=url_for("channel_checkin_find", _external=True),
+                           last_statement=last_statement)
+
+
+# BOOKING.COM'S RESERVATIONS STATEMENT, uploaded once a week (owner, 9 November
+# 2026). Booking.com's emails say "you have a booking" and nothing more -- no
+# name, no price -- and the house will not pay for a channel manager to be
+# told the rest. The extranet's Reservations page downloads every stay as a
+# spreadsheet: the name, the dates, the rooms, the party, the price and the
+# commission. One upload a week brings all of it in; a self-closing task asks
+# for it when the last one is a week old.
+#
+# Read for what it says, never trusted to overrule the house quietly: a gap is
+# filled (a name, a head count, a country), the money is Booking.com's to
+# state and is always taken, a stay it lists as cancelled is cancelled here --
+# by name -- and dates that differ are reported rather than changed, because
+# the room's calendar is what pairs a stay with its nights.
+BOOKING_COM_STATEMENT_DUE_DAYS = 7
+_STATEMENT_COLUMNS = {
+    "book number": "number", "booking number": "number", "reservation number": "number",
+    "guest name(s)": "guest_name", "guest name": "guest_name", "booked by": "booked_by",
+    "check-in": "arrival", "check-out": "departure", "booked on": "booked_on",
+    "status": "status", "rooms": "rooms", "persons": "persons", "adults": "adults",
+    "children": "children", "price": "price", "commission %": "commission_pct",
+    "commission amount": "commission_amount", "payment status": "payment_status",
+    "booker country": "country", "unit type": "unit_type",
+    "cancellation date": "cancelled_on", "address": "address", "phone number": "phone",
+}
+_XLS_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def country_from_code(code):
+    """'FI' -> 'Finland', as the house's forms name it; None when unknown.
+    Read from _phone.html, the one list of countries (test_every_country),
+    rather than a second copy here that would fall out of step with it."""
+    try:
+        codes = app.jinja_env.get_template("_phone.html").module.PHONE_CODES
+    except Exception:
+        return None
+    code = (code or "").strip().upper()
+    return next((name for iso, name, _dial in codes if iso == code), None)
+
+
+def _statement_money(value):
+    """'960 EUR' -> (960.0, 'EUR'); a bare number -> (n, None); else (None, None)."""
+    if isinstance(value, (int, float)):
+        return float(value), None
+    m = re.match(r"^\s*(-?[\d.,\s ]+?)\s*([A-Za-z]{3})?\s*$", str(value or ""))
+    if not m:
+        return None, None
+    return _ota_amount(m.group(1)), ((m.group(2) or "").upper() or None)
+
+
+def _statement_int(value):
+    try:
+        return int(float(value)) if str(value).strip() != "" else None
+    except (TypeError, ValueError):
+        return None
+
+
+def read_booking_com_statement(data):
+    """The rows of Booking.com's reservations statement. ([rows], problem).
+
+    The extranet downloads it as a real .xls (an Excel 97 file, checked on the
+    house's own download, 9 November 2026), read with xlrd; a .csv with the
+    same columns is read too. Columns are found by their names, so a column
+    Booking.com adds or moves does not shift the rest. `problem` is a sentence
+    for the owner when the file cannot be used, and the rows are then []."""
+    data = data or b""
+    if data.startswith(_XLS_MAGIC):
+        try:
+            import xlrd
+        except ImportError:
+            return [], "the spreadsheet reader is not installed on this server"
+        try:
+            book = xlrd.open_workbook(file_contents=data)
+            sheet = book.sheet_by_index(0)
+        except Exception as e:        # a damaged or foreign file: say so, never crash
+            return [], f"it could not be read as a spreadsheet ({e.__class__.__name__})"
+        table = []
+        for r in range(sheet.nrows):
+            row = []
+            for c in range(sheet.ncols):
+                value = sheet.cell_value(r, c)
+                if sheet.cell_type(r, c) == xlrd.XL_CELL_DATE:
+                    value = xlrd.xldate_as_datetime(value, book.datemode).date().isoformat()
+                row.append(value)
+            table.append(row)
+    else:
+        try:
+            text = data.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = data.decode("latin-1")
+        try:
+            dialect = csv.Sniffer().sniff(text[:4000], delimiters=",;\t")
+        except csv.Error:
+            dialect = csv.excel
+        table = list(csv.reader(io.StringIO(text), dialect))
+    if not table or not any(str(x).strip() for x in table[0]):
+        return [], "it is empty"
+    head = [str(h).strip().lower() for h in table[0]]
+    cols = {i: _STATEMENT_COLUMNS[h] for i, h in enumerate(head) if h in _STATEMENT_COLUMNS}
+    if not {"number", "arrival", "departure", "status"} <= set(cols.values()):
+        return [], ("it is not Booking.com's reservations statement: it has no Book number, "
+                    "Check-in, Check-out and Status columns")
+    rows = []
+    for raw in table[1:]:
+        if not any(str(x).strip() for x in raw):
+            continue
+        got = {f: (raw[i] if i < len(raw) else "") for i, f in cols.items()}
+        number = got.get("number")
+        number = (str(int(number)) if isinstance(number, float)
+                  else re.sub(r"\D", "", str(number or "")))
+        price, currency = _statement_money(got.get("price"))
+        commission, c_cur = _statement_money(got.get("commission_amount"))
+        pct = got.get("commission_pct")
+        try:
+            pct = float(str(pct).replace("%", "").replace(",", ".")) if str(pct).strip() else None
+        except ValueError:
+            pct = None
+        day = lambda v: (parse_date(str(v)[:10]).isoformat()  # noqa: E731
+                         if v and parse_date(str(v)[:10]) else None)
+        rows.append({
+            "number": number,
+            "guest_name": " ".join(str(got.get("guest_name") or got.get("booked_by") or "").split())[:120] or None,
+            "arrival": day(got.get("arrival")), "departure": day(got.get("departure")),
+            "booked_on": str(got.get("booked_on") or "").strip()[:19] or None,
+            "status": str(got.get("status") or "").strip().lower(),
+            "rooms": _statement_int(got.get("rooms")),
+            "persons": _statement_int(got.get("persons")),
+            "adults": _statement_int(got.get("adults")),
+            "children": _statement_int(got.get("children")),
+            "price": price, "currency": currency or c_cur or ("EUR" if price is not None else None),
+            "commission_pct": pct, "commission_amount": commission,
+            "payment_status": str(got.get("payment_status") or "").strip()[:80] or None,
+            "country": str(got.get("country") or "").strip()[:60] or None,
+            "unit_type": " ".join(str(got.get("unit_type") or "").split())[:200] or None,
+            "address": " ".join(str(got.get("address") or "").split())[:200] or None,
+            "phone": " ".join(str(got.get("phone") or "").split())[:40] or None,
+        })
+    return rows, None
+
+
+def apply_booking_com_statement(conn, rows, *, user_id=None, filename=""):
+    """Bring the house's Booking.com stays into line with Booking.com's own
+    statement. A report: {"new", "updated", "cancelled", "differs", "skipped"},
+    each naming the stays, so nothing it did or did not do is a bare count."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    names = {}
+    for r in conn.execute("SELECT id, name, channel_name FROM rooms"):
+        for label in (r["channel_name"], r["name"],
+                      re.sub(r"(?i)^the\s+", "", r["name"] or "")):
+            if (label or "").strip():
+                names.setdefault(label.strip().lower(), r["id"])
+    report = {"new": [], "updated": [], "cancelled": [], "differs": [], "skipped": []}
+    # Nothing older than the house keeps a stay: an old statement uploaded
+    # again must not bring back what purge_booking_com_mail has deleted, as
+    # the privacy notice promises.
+    kept_from = (house_today() - timedelta(days=int(GUEST_MESSAGE_KEEP_MONTHS * 30.44))).isoformat()
+    for r in rows:
+        label = f"{r['guest_name'] or 'a guest'} ({r['number'] or 'no number'})"
+        if not r["number"] or not r["arrival"]:
+            report["skipped"].append((label, "it has no booking number or no check-in date"))
+            continue
+        if (r["departure"] or r["arrival"]) < kept_from:
+            report["skipped"].append((label, "it ended longer ago than the house keeps a stay"))
+            continue
+        cancelled = r["status"].startswith("cancel")
+        # A cancelled stay keeps the price it was booked at in the statement,
+        # but with no commission Booking.com charged nothing and the guest
+        # paid nothing: that price is not money. Only a cancellation it still
+        # charged for (a non-refundable one) carries its figures.
+        charged = not cancelled or (r["commission_amount"] or 0) > 0
+        money = {"amount": r["price"] if charged else None,
+                 "currency": r["currency"] if charged else None,
+                 "commission_pct": r["commission_pct"],
+                 "commission_amount": r["commission_amount"],
+                 "payment_status": r["payment_status"], "adults": r["adults"],
+                 "children": r["children"], "booked_on": r["booked_on"],
+                 "statement_at": now_iso}
+        # The statement writes the booker's country as a code ("fi", "fr");
+        # the house's forms name it in full.
+        code = (r["country"] or "").strip().upper()
+        country = (country_from_code(code) if len(code) == 2
+                   else (house_country_name(r["country"]) if r["country"] else None))
+        gaps = {"guest_name": r["guest_name"], "guests": r["persons"], "guest_country": country,
+                "guest_phone": r["phone"], "guest_address": r["address"],
+                "room_label": r["unit_type"],
+                "room_count": r["rooms"] if (r["rooms"] or 0) > 1 else None}
+        stay = conn.execute(
+            "SELECT * FROM ota_reservations WHERE channel = 'booking.com' AND reservation_number = ?",
+            (r["number"],)).fetchone()
+        if not stay:
+            room_id = (names.get((r["unit_type"] or "").lower())
+                       if (r["rooms"] or 1) <= 1 else None)
+            cols = {"channel": "booking.com", "reservation_number": r["number"],
+                    "status": "cancelled" if cancelled else "confirmed",
+                    "arrival_date": r["arrival"], "departure_date": r["departure"],
+                    "room_id": room_id, "matched_by": "mail" if room_id else None,
+                    "first_seen_at": now_iso,
+                    "last_event_at": (r["booked_on"] or now_iso), "updated_at": now_iso}
+            cols.update({k: v for k, v in money.items() if v is not None})
+            cols.update({k: v for k, v in gaps.items() if v not in (None, "")})
+            conn.execute(f"INSERT INTO ota_reservations ({', '.join(cols)}) "
+                         f"VALUES ({', '.join('?' * len(cols))})", tuple(cols.values()))
+            report["new"].append(label)
+            continue
+        sets = {k: v for k, v in money.items() if v is not None and stay[k] != v}
+        sets.pop("statement_at", None)
+        changed = bool(sets)
+        for key, value in gaps.items():
+            if value not in (None, "") and stay[key] in (None, ""):
+                sets[key] = value
+                changed = True
+        if cancelled and stay["status"] == "confirmed":
+            sets["status"] = "cancelled"
+            sets["last_event_at"] = now_iso
+            report["cancelled"].append(label)
+        elif not cancelled and stay["status"] == "cancelled":
+            report["differs"].append((label, "Booking.com lists it as booked; the house has it "
+                                             "cancelled. Check it in the extranet"))
+        if (r["arrival"] != stay["arrival_date"]
+                or (r["departure"] and stay["departure_date"]
+                    and r["departure"] != stay["departure_date"])):
+            report["differs"].append((label, "Booking.com's dates are "
+                                      + format_date_range(r["arrival"], r["departure"] or r["arrival"])
+                                      + ", the house has "
+                                      + format_date_range(stay["arrival_date"],
+                                                          stay["departure_date"] or stay["arrival_date"])))
+        if not stay["departure_date"] and r["departure"]:
+            sets["departure_date"] = r["departure"]
+            changed = True
+        sets["statement_at"] = now_iso
+        sets["updated_at"] = now_iso
+        conn.execute("UPDATE ota_reservations SET " + ", ".join(f"{k} = ?" for k in sets)
+                     + " WHERE id = ?", (*sets.values(), stay["id"]))
+        if changed and label not in report["cancelled"]:
+            report["updated"].append(label)
+    arrivals = sorted(r["arrival"] for r in rows if r["arrival"])
+    conn.execute(
+        """INSERT INTO booking_com_statements (uploaded_at, uploaded_by, filename, rows_read,
+               new_stays, updated_stays, cancelled_stays, first_arrival, last_arrival)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (now_iso, user_id, (filename or "")[:200], len(rows), len(report["new"]),
+         len(report["updated"]), len(report["cancelled"]),
+         arrivals[0] if arrivals else None, arrivals[-1] if arrivals else None))
+    conn.commit()
+    # A stay new to the house, still to come, takes its room from the calendar
+    # as an emailed one does.
+    pair_booking_com_stays(conn)
+    return report
+
+
+def booking_com_statement_due(conn, now=None):
+    """(title, detail) when the weekly statement is due, or None. Only for a
+    house that sells on Booking.com at all."""
+    if not (booking_com_ical_sources(conn) or conn.execute(
+            "SELECT 1 FROM ota_reservations LIMIT 1").fetchone()):
+        return None
+    now = now or datetime.now(timezone.utc)
+    last = conn.execute("SELECT MAX(uploaded_at) FROM booking_com_statements").fetchone()[0]
+    when = parse_datetime_iso(last) if last else None
+    if when and now - when <= timedelta(days=BOOKING_COM_STATEMENT_DUE_DAYS):
+        return None
+    return ("Upload Booking.com's reservations statement",
+            ("Last uploaded " + house_when(last) if when else "Not uploaded yet")
+            + ". It brings each Booking.com stay's guest name, party, price and commission, "
+            "which Booking.com's emails leave out. Booking.com stays page: Reservations "
+            "statement, two minutes.")
+
+
+@app.route("/admin/channel-stays/statement", methods=["POST"])
+@owner_required
+def upload_booking_com_statement():
+    """The weekly upload of Booking.com's reservations statement."""
+    f = request.files.get("statement")
+    if not f or not f.filename:
+        flash("Choose the file Booking.com downloaded.", "error")
+        return redirect(url_for("channel_stays_page"))
+    data = f.read(BOOKING_COM_UPLOAD_MAX_BYTES + 1)
+    if len(data) > BOOKING_COM_UPLOAD_MAX_BYTES:
+        flash("That file is too large to be Booking.com's reservations statement.", "error")
+        return redirect(url_for("channel_stays_page"))
+    rows, problem = read_booking_com_statement(data)
+    if problem:
+        flash(f"That file could not be used: {problem}.", "error")
+        return redirect(url_for("channel_stays_page"))
+    user = current_user()
+    conn = get_db()
+    report = apply_booking_com_statement(conn, rows, user_id=user["id"] if user else None,
+                                         filename=f.filename)
+    log_audit(conn, "booking_com_statement_uploaded", target=f.filename[:120])
+    conn.commit()
+    conn.close()
+    done = len(rows) - len(report["skipped"])
+    parts = [f"{len(report['new'])} new", f"{len(report['updated'])} brought up to date"]
+    if report["cancelled"]:
+        parts.append("cancelled here as Booking.com has them: " + ", ".join(report["cancelled"][:8]))
+    message, category = bulk_message("Read", "reservation", done, report["skipped"],
+                                     detail="; ".join(parts))
+    flash(message, category)
+    if report["differs"]:
+        flash("Not changed, for you to look at: " + "; ".join(
+            f"{label}: {why}" for label, why in report["differs"][:8])
+            + (f"; and {len(report['differs']) - 8} more" if len(report["differs"]) > 8 else "")
+            + ".", "error")
+    return redirect(url_for("channel_stays_page"))
 
 
 # What the house can know about a Booking.com guest, beyond the email's name
@@ -98163,6 +98541,9 @@ def watch_task_findings(conn, today=None):
     if double:
         found.append(("booking_com", "Move or cancel a Booking.com stay on nights already taken",
                       double[1], today.isoformat(), "high"))
+    statement = booking_com_statement_due(conn)
+    if statement:
+        found.append(("booking_com", statement[0], statement[1], today.isoformat(), "normal"))
     sync = channel_sync_problems(conn)
     if sync:
         found.append(("booking_com", "Put the Booking.com calendar sync right",
