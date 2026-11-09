@@ -10019,6 +10019,9 @@ OWNER_ONLY_AREAS = {
     "add_channel_stay": "management",
     "remove_channel_stay": "management",
     "sync_channel_stays_now": "management",
+    # One reservation, several rooms: grouping the rooms, taking one off.
+    "group_channel_stay_rooms": "management",
+    "remove_channel_stay_room": "management",
     # One stay's own page: who the guest is, from the extranet or their own
     # online check-in, and the check-in link sent from it.
     "channel_stay_page": "management",
