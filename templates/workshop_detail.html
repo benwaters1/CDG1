@@ -53,6 +53,8 @@
     opens on the roast guinea fowl instead ("change the cooking hero photo from tom to a better one"). -#}
 {% set WS_HERO_BY_TITLE = {'Antique': '/static/img/retreats/brocante-stalls.jpg', 'Noël': '/static/img/retreats/lighting-gingerbread.jpg', 'Cooking': '/static/img/retreats/roast-birds.jpg', 'Seven': '/static/img/retreats/lunch-outdoors-many.jpg'} %}
 {% set WS_HERO_POS = {'Antique': 'center 55%', 'Noël': 'center 35%'} %}{% set _wh = namespace(u=WS_IMAGES[workshop['id'] % 3], pos='') %}{% for k, v in WS_HERO_BY_TITLE.items() %}{% if k in workshop['title'] %}{% set _wh.u = v %}{% set _wh.pos = WS_HERO_POS.get(k, '') %}{% endif %}{% endfor %}
+{#- 9 Nov: a photograph uploaded for the retreat (the workshop form) leads its page, as it leads its card on /workshops. -#}
+{%- if workshop['photo_filename'] %}{% set _wh.u = url_for('room_photo', filename=workshop['photo_filename']) %}{% set _wh.pos = '' %}{% endif %}
 
 <section class="g-hero">
   <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img g-zoom" src="{{ _wh.u }}"{% if _wh.pos %} style="object-position: {{ _wh.pos }}"{% endif %} alt="{{ workshop['title'] }}">

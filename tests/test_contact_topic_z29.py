@@ -12,8 +12,9 @@ Held here:
     reservations@ as before;
   - a post without a message is refused and nothing is kept;
   - a blank guest count says nothing, and an event's 150 is kept as 150;
-  - a topic that is not one of the five, or none (a page cached before z29),
-    is "something else", never an error and never stored as typed.
+  - a topic that is not one of the five is "something else", never an error
+    and never stored as typed; NO topic is a script's since 9 November 2026
+    (the page requires one), kept as Spam like a post with no name.
 """
 from _harness import Suite, db, flashes
 import _harness
@@ -90,9 +91,10 @@ def run():
         s.check("is something else, never stored as typed",
                 entry is not None and (entry["notes"] or "").startswith("Something else.")
                 and "<script>" not in (entry["notes"] or ""), detail=str(entry and entry["notes"]))
-        r, entry, _t, _l = _post("cached")
-        s.check("and a page from before z29, with no topic, still arrives",
-                entry is not None and (entry["notes"] or "").startswith("Something else."))
+        r, entry, task, letters = _post("cached")
+        s.check("and a post with no topic at all is kept as Spam, with no task or letter",
+                entry is not None and bool(entry["spam_at"]) and task is None and not letters,
+                detail=str(entry and dict(entry)))
 
         s.section("No message")
         r, entry, task, letters = _post("blank", topic="private_event", message="  ")

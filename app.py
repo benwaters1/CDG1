@@ -7818,6 +7818,22 @@ def init_db():
         ("ota_checkin_token", "ALTER TABLE ota_reservations ADD COLUMN checkin_token TEXT"),
         ("ota_checkin_sent", "ALTER TABLE ota_reservations ADD COLUMN checkin_sent_at TEXT"),
         ("ota_checkin_done", "ALTER TABLE ota_reservations ADD COLUMN checkin_done_at TEXT"),
+        # Which mailbox a Booking.com message was answered from by email,
+        # found in its Sent Items (booking_com_answered_by_email).
+        ("ota_mail_answered_from", "ALTER TABLE ota_mail ADD COLUMN answered_from TEXT"),
+        # WHO READS EACH ROOM'S FEED, AND WHEN (9 November 2026): one row a
+        # room and a reader, so the owner home can say when Booking.com has
+        # stopped reading the house's calendar (channel_sync_problems). Not
+        # a log -- a count and the last time -- and no address of anybody's.
+        ("ics_feed_reads",
+         """CREATE TABLE IF NOT EXISTS ics_feed_reads (
+                room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                reader TEXT NOT NULL,
+                user_agent TEXT,
+                first_read_at TEXT NOT NULL,
+                last_read_at TEXT NOT NULL,
+                reads INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (room_id, reader))"""),
         # ONLINE CHECK-IN FOR THE HOUSE'S OWN GUESTS (22 October 2026): a
         # room stay or an atelier place, from the guest's own booking page.
         # When they did it; when the letter with the link went (the
@@ -12470,6 +12486,79 @@ def bookings_awaiting_answer(conn, now=None, hours=None):
                     "left": round(left, 1) if left is not None else None,
                     "paid": paid, "held": held})
     return out
+
+
+def enquiries_awaiting_answer(conn, now=None, hours=None):
+    """Enquiries nobody has answered inside the day the house gives itself.
+
+    Two kinds, because a stranger can ask the house something in two places:
+    the Contact page's Write to Us (a waitlist entry from 'contact', waiting
+    as 'enquiry' -- or 'open' on a table widen_waitlist_statuses could not
+    rebuild) and the events page's enquiry (event_inquiries, still 'new').
+    Spam is not waiting for anybody. Each one is answered by marking it so
+    -- Contacted on the Waitlist, Replied to on the event -- which is what
+    takes it off; a reply sent from Outlook alone cannot be seen from here.
+    Oldest first, as the bookings are. Each row: kind, name, about, made
+    (the stamp), waited (hours, or None when the stamp cannot be read).
+    """
+    now = now or datetime.now(timezone.utc)
+    hours = BOOKING_ANSWER_HOURS if hours is None else hours
+    cutoff = (now - timedelta(hours=hours)).isoformat()
+    rows = []
+    for e in conn.execute(
+            """SELECT * FROM waitlist_entries
+                WHERE source = 'contact' AND status IN ('enquiry', 'open')
+                  AND spam_at IS NULL AND created_at <= ?""", (cutoff,)).fetchall():
+        about = (e["notes"] or "").split(". ")[0]
+        rows.append({"kind": "contact", "id": e["id"], "name": e["name"] or e["email"],
+                     "about": about if about in CONTACT_TOPICS.values() else "",
+                     "made": e["created_at"]})
+    for e in conn.execute(
+            """SELECT * FROM event_inquiries WHERE COALESCE(status, 'new') = 'new'
+                AND created_at <= ?""", (cutoff,)).fetchall():
+        rows.append({"kind": "event", "id": e["id"], "name": e["contact_name"] or e["contact_email"],
+                     "about": (e["event_type"] or "an event").replace("_", " "),
+                     "made": e["created_at"]})
+    for r in rows:
+        made = parse_datetime_iso(r["made"])
+        if made and made.tzinfo is None:
+            made = made.replace(tzinfo=timezone.utc)
+        r["waited"] = round((now - made).total_seconds() / 3600.0, 1) if made else None
+    rows.sort(key=lambda r: r["made"] or "")
+    return rows
+
+
+def waited_words(hours):
+    """How long somebody has waited, as a person would say it."""
+    if hours is None:
+        return "a while ago"
+    if hours < 48:
+        return f"{int(hours)} hours ago"
+    return f"{int(hours // 24)} days ago"
+
+
+# The spam line on the owner home counts what was set aside since the owner
+# last opened the Spam chip on the Waitlist, so looking is what clears it.
+ENQUIRY_SPAM_SEEN_KEY = "enquiry_spam_seen_at"
+
+
+def enquiry_spam_unseen(conn, now=None):
+    """Contact enquiries set aside as Spam in the last week that the owner
+    has not looked at since: (count, the latest row or None).
+
+    A week, so a line that nobody opens still goes by itself; since the last
+    look, so a house that gets one script a day is not shown the same line
+    every morning -- furniture is the thing the panel must never become."""
+    now = now or datetime.now(timezone.utc)
+    since = (now - timedelta(days=7)).isoformat()
+    seen = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                        (ENQUIRY_SPAM_SEEN_KEY,)).fetchone()
+    if seen and (seen["value"] or "") > since:
+        since = seen["value"]
+    rows = conn.execute(
+        """SELECT * FROM waitlist_entries WHERE source = 'contact' AND spam_at IS NOT NULL
+             AND spam_at > ? ORDER BY spam_at DESC""", (since,)).fetchall()
+    return len(rows), (rows[0] if rows else None)
 
 
 def notify_bookings_awaiting_answer(conn, now=None):
@@ -19009,6 +19098,209 @@ def channel_echo_problem(conn):
             "closures coming back are recognised and left out of the five-rooms-a-night "
             "count; a date closed on Booking.com itself is not, and counts as a room let. "
             "In Booking.com: Sync calendars, Decide what to export, Booked dates only.")
+
+
+# THE SYNC WITH BOOKING.COM, BOTH WAYS, WATCHED (owner, 9 November 2026).
+# Each way failed in silence until now. The house's import of a room's
+# Booking.com calendar could stop reading -- an error, or the hourly job
+# switched off -- and the Rooms page said "sync failed" to nobody who was
+# looking. And nothing at all knew whether Booking.com was still reading the
+# house's own feed: a link removed in the extranet looked, from here, exactly
+# like one working. Either way the same night ends up sold twice.
+#
+# The import is read every hour; three missed is a fault, not a slow run.
+CHANNEL_IMPORT_LATE_HOURS = 3
+# Booking.com reads a calendar on its own clock. A day without a read is a
+# broken link, whatever its clock is.
+CHANNEL_EXPORT_LATE_HOURS = 24
+
+
+def feed_reader(user_agent):
+    """Who read a room's feed, as far as the request says: 'booking.com',
+    'airbnb', 'vrbo' or 'a calendar reader' when it does not say."""
+    ua = (user_agent or "").lower()
+    if "booking" in ua:
+        return "booking.com"
+    if "airbnb" in ua:
+        return "airbnb"
+    if any(w in ua for w in ("vrbo", "homeaway", "expedia")):
+        return "vrbo"
+    return "a calendar reader"
+
+
+FEED_READER_WORDS = {"booking.com": "Booking.com", "airbnb": "Airbnb", "vrbo": "VRBO",
+                     "a calendar reader": "A calendar reader"}
+
+
+def record_feed_read(conn, room_id, user_agent):
+    """Note that something outside the house read a room's feed. Never the
+    reason a feed fails: a write that cannot happen now is skipped."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        conn.execute(
+            """INSERT INTO ics_feed_reads (room_id, reader, user_agent, first_read_at,
+                   last_read_at, reads)
+               VALUES (?, ?, ?, ?, ?, 1)
+               ON CONFLICT(room_id, reader) DO UPDATE SET
+                   last_read_at = excluded.last_read_at,
+                   user_agent = excluded.user_agent, reads = reads + 1""",
+            (room_id, feed_reader(user_agent), (user_agent or "")[:300], now_iso, now_iso))
+        conn.commit()
+    except sqlite3.OperationalError:
+        conn.rollback()
+
+
+def feed_reads_by_room(conn):
+    """{room_id: [rows newest first]} of who has read each room's feed."""
+    out = {}
+    for r in conn.execute("SELECT * FROM ics_feed_reads ORDER BY last_read_at DESC"):
+        out.setdefault(r["room_id"], []).append(r)
+    return out
+
+
+def channel_clashes(conn, today=None):
+    """Booking.com stays on nights the house had already taken, soonest first.
+
+    [{room, start, end, why}] where `why` says what else holds those nights:
+    a booking of the house's own in that room, a closure the house made, or
+    something holding the whole house. Each is a room sold twice or sold when
+    it was shut -- the two calendars disagreed for long enough to let it
+    happen, and it does not fix itself. Past stays are not listed.
+
+    Left out, because they are not a disagreement: the house's own closures
+    coming back from Booking.com (an echo, own_feed_spans); a night the owner
+    chose to keep selling here; a channel stay the house typed in as a
+    closure ("Booking.com stay") or as a booking with the same room and dates.
+    """
+    today = today or house_today()
+    sources = [s["id"] for s in booking_com_ical_sources(conn)]
+    if not sources:
+        return []
+    picture = _availability_picture(conn)
+    own = own_feed_spans(conn, picture)
+    names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    kept_open = {(r["room_id"], r["start_date"], r["end_date"]) for r in conn.execute(
+        "SELECT room_id, start_date, end_date FROM ical_keep_open")}
+    marks = ",".join("?" * len(sources))
+    blocks = conn.execute(
+        f"""SELECT DISTINCT room_id, start_date, end_date FROM blocked_dates
+             WHERE ical_source_id IN ({marks}) AND end_date > ?
+             ORDER BY start_date""", (*sources, today.isoformat())).fetchall()
+    found = []
+    for blk in blocks:
+        rid = blk["room_id"]
+        a, b = parse_date(blk["start_date"]), parse_date(blk["end_date"])
+        if not (a and b) or (rid, blk["start_date"], blk["end_date"]) in kept_open:
+            continue
+        if (a, b) in own.get(rid, set()) or (a, b) in own.get(None, set()):
+            continue
+        why = []
+        for bk in conn.execute(
+                """SELECT reference_code, guest_name, arrival_date, departure_date FROM bookings
+                    WHERE room_id = ? AND status IN ('pending', 'confirmed')
+                      AND arrival_date < ? AND departure_date > ?""",
+                (rid, blk["end_date"], blk["start_date"])):
+            if (bk["arrival_date"], bk["departure_date"]) == (blk["start_date"], blk["end_date"]):
+                continue        # the same stay, entered here too
+            why.append(f"the house's own booking {bk['reference_code']} "
+                       f"({bk['guest_name'] or 'no name'}, "
+                       f"{format_date_range(bk['arrival_date'], bk['departure_date'])})")
+        for rb in conn.execute(
+                """SELECT start_date, end_date, reason, note FROM room_blocks
+                    WHERE room_id = ? AND start_date < ? AND end_date > ?""",
+                (rid, blk["end_date"], blk["start_date"])):
+            if closure_is_channel_stay(rb["reason"], rb["note"]):
+                continue
+            why.append(f"a closure made here ({rb['reason'] or rb['note'] or 'no reason given'}, "
+                       f"{format_date_range(rb['start_date'], rb['end_date'])})")
+        for h_start, h_end, words in picture["house"]:
+            if h_start and h_end and a <= h_end and h_start < b:
+                why.append(picture["night_label"].get(words, words).rstrip("."))
+        if why:
+            found.append({"room": names.get(rid, "A room"), "room_id": rid,
+                          "start": a, "end": b, "why": why})
+    return found
+
+
+def channel_sync_problems(conn, now=None):
+    """What is wrong with the sync with Booking.com, either way. [(level,
+    title, detail)], empty when it is well -- and it can be empty, which is
+    the point of it.
+
+    IMPORT (Booking.com to here): the hourly sync switched off, a room's
+    calendar that cannot be read, or one not read for CHANNEL_IMPORT_LATE_HOURS.
+    EXPORT (here to Booking.com): a room on Booking.com whose feed nothing
+    outside the house has read for CHANNEL_EXPORT_LATE_HOURS. A room never
+    read at all only counts once the house has been noting reads for that
+    long -- before that, silence means nothing yet."""
+    now = now or datetime.now(timezone.utc)
+    sources = booking_com_ical_sources(conn)
+    if not sources:
+        return []
+    names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    out = []
+    if get_automation_settings(conn).get("automation_ical_sync_enabled") != "1":
+        out.append(("blocker", "The Booking.com calendars are not being read",
+                    "The hourly calendar sync is switched off on the Automation page, so a "
+                    "night Booking.com sells stays for sale here."))
+    broken, late = [], []
+    for s in sources:
+        room = names.get(s["room_id"], "a room")
+        read = parse_datetime_iso(s["last_synced_at"]) if s["last_synced_at"] else None
+        if s["last_sync_error"]:
+            broken.append(f"{room}: {s['last_sync_error'][:160]}"
+                          + (f" (tried {house_when(s['last_synced_at'])})" if read else ""))
+        elif not read or now - read > timedelta(hours=CHANNEL_IMPORT_LATE_HOURS):
+            late.append(f"{room}: " + (f"last read {house_when(s['last_synced_at'])}"
+                                       if read else "never read"))
+    if broken:
+        out.append(("blocker",
+                    "Booking.com's calendar cannot be read for "
+                    + ("one room" if len(broken) == 1 else f"{len(broken)} rooms"),
+                    "; ".join(broken) + ". Until it reads, a night sold on Booking.com is "
+                    "still for sale here. Rooms page: Sync now, or check the address."))
+    if late:
+        out.append(("warn",
+                    "Booking.com's calendar has not been read lately for "
+                    + ("one room" if len(late) == 1 else f"{len(late)} rooms"),
+                    "; ".join(late) + "."))
+
+    reads = feed_reads_by_room(conn)
+    first_ever = conn.execute("SELECT MIN(first_read_at) FROM ics_feed_reads").fetchone()[0]
+    noting_since = parse_datetime_iso(first_ever) if first_ever else None
+    long_enough = bool(noting_since and now - noting_since > timedelta(hours=CHANNEL_EXPORT_LATE_HOURS))
+    unread = []
+    for rid in sorted({s["room_id"] for s in sources}, key=lambda r: names.get(r, "")):
+        rows = reads.get(rid) or []
+        last = parse_datetime_iso(rows[0]["last_read_at"]) if rows else None
+        if last and now - last <= timedelta(hours=CHANNEL_EXPORT_LATE_HOURS):
+            continue
+        if not last and not long_enough:
+            continue
+        unread.append(f"{names.get(rid, 'a room')}: "
+                      + (f"last read {house_when(rows[0]['last_read_at'])}" if last else "never read"))
+    if unread:
+        out.append(("warn",
+                    "Booking.com is not reading the house's calendar for "
+                    + ("one room" if len(unread) == 1 else f"{len(unread)} rooms"),
+                    "; ".join(unread) + ". So a night sold or closed here is still for sale "
+                    "there. In the extranet: Rates & Availability, Sync calendars."))
+    return out
+
+
+def channel_clash_problem(conn, today=None):
+    """(title, detail) for the owner home and its task, or None."""
+    clashes = channel_clashes(conn, today)
+    if not clashes:
+        return None
+    lines = [f"{c['room']}, {format_date_range(c['start'].isoformat(), c['end'].isoformat())}: "
+             + "; ".join(c["why"]) for c in clashes[:4]]
+    title = ("A Booking.com stay is on nights already taken here" if len(clashes) == 1
+             else f"{len(clashes)} Booking.com stays are on nights already taken here")
+    return (title, "Booking.com sold " + ("it" if len(clashes) == 1 else "them")
+            + " while the two calendars disagreed. " + ". ".join(lines)
+            + (f"; and {len(clashes) - 4} more" if len(clashes) > 4 else "")
+            + ". One of the two has to be moved or cancelled.")
 
 
 def atelier_holding_the_house(conn, arrival, departure):
@@ -35174,6 +35466,18 @@ ROOM_GUEST_DETAILS_REQUIRED = ("guest_address", "guest_city", "guest_postcode",
                                "guest_country", "estimated_arrival_time")
 WORKSHOP_GUEST_DETAILS_REQUIRED = ("guest_address", "guest_city", "guest_postcode", "guest_country")
 
+# WHAT THE PAGE REQUIRES, THE SITE REQUIRES. The room, atelier and dinner
+# forms draw the telephone box `required` (phone_field, "So we can reach you
+# about your arrival"), and a browser will not send them with it empty -- but
+# none of the three routes asked for it, so anything posting the fields itself
+# booked without one. The Contact page had the same gap with the name, and
+# that is how "Private event. Test" kept arriving (9 November 2026).
+# test_public_forms_required reads every public form's required fields off the
+# page and refuses the run if the route behind it lets any one of them through.
+# A number that does not normalise is still kept as typed (phone_from_form):
+# this asks only that there is one.
+PHONE_REQUIRED = "Please give a telephone number, so we can reach you."
+
 
 def read_guest_details(source, keys):
     """The guest details in `keys`, trimmed and capped, from a form or a Stripe metadata dict."""
@@ -40148,6 +40452,26 @@ def owner_home_warnings(conn, today):
             + ".",
             len(waiting), "admin_bookings")
 
+    # SOMEBODY WROTE TO THE HOUSE AND NOBODY HAS ANSWERED. The same day the
+    # booking page promises, and beside the bookings because it is the same
+    # kind of line: a person waiting. Closes itself when each is marked
+    # answered, or as spam. Links to the Contact enquiries if any are among
+    # them, since that is where most arrive; else to the events.
+    asked = enquiries_awaiting_answer(conn)
+    if asked:
+        first = asked[0]
+        n = len(asked)
+        contact = any(a["kind"] == "contact" for a in asked)
+        add("attention",
+            f"{n} enquir{'y' if n == 1 else 'ies'} nobody has answered",
+            f"{first['name']} wrote {waited_words(first['waited'])}"
+            + (f" about {first['about'].lower()}" if first["about"] else "")
+            + ". Once you have written back, mark it Contacted "
+            + ("on the Waitlist" if first["kind"] == "contact" else "on the event")
+            + " and this goes.",
+            n, "admin_waitlist" if contact else "admin_events",
+            state="Enquiry" if contact else "New")
+
     # Mail the app kept and can no longer sensibly send. About the STALE ones
     # rather than the held ones: held mail is a standing condition while no
     # provider is configured, and a line that is true every morning forever is
@@ -40476,6 +40800,13 @@ def owner_home_warnings(conn, today):
     echo = channel_echo_problem(conn)
     if echo:
         add("warn", echo[0], echo[1], 1, "channel_stays_page")
+    # The sync with Booking.com, both ways, and a stay it sold on nights
+    # already taken here. Each closes itself once it is no longer true.
+    double = channel_clash_problem(conn, today)
+    if double:
+        add("blocker", double[0], double[1], 1, "channel_stays_page")
+    for level, title, detail in channel_sync_problems(conn):
+        add("blocker" if level == "blocker" else "warn", title, detail, 1, "admin_rooms")
 
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
     # the next pass that writes cleanly takes the line away.
@@ -40540,6 +40871,22 @@ def owner_home_warnings(conn, today):
         n = len(due["arrange_now"])
         add("warn", f"{n} extra{'' if n == 1 else 's'} to arrange now",
             named(due["arrange_now"]) + ".", n, "extras_due_page", state="Arrange now")
+
+    # WHAT THE SPAM FILTER TOOK, so a real enquiry caught by it is seen
+    # rather than lost. Since 9 November a Contact post with no name, no
+    # topic, or nothing but "Test" is set aside with the sales pitches -- a
+    # rule that is right about scripts and could one day be wrong about a
+    # person. Counts only what arrived since the owner last opened the Spam
+    # chip, within a week: looking clears it, and so does a quiet week.
+    spam_n, spam_last = enquiry_spam_unseen(conn)
+    if spam_n:
+        said = enquiry_message_part(spam_last["notes"]).strip()
+        add("watch",
+            f"{spam_n} enquir{'y' if spam_n == 1 else 'ies'} set aside as spam",
+            "Kept under Spam on the Waitlist in case one is real. The latest: "
+            + (spam_last["name"] or "no name") + ", “"
+            + (said[:60] + ("…" if len(said) > 60 else "")) + "”.",
+            spam_n, "admin_waitlist", when="Spam")
 
     order = {"blocker": 0, "warn": 1}
     out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
@@ -54370,6 +54717,13 @@ def admin_waitlist():
     lv = waitlist_view(conn.execute(
         "SELECT * FROM waitlist_entries ORDER BY created_at DESC").fetchall(),
         request.args, _room_waitlist_wanted)
+    # The owner home's spam line counts what arrived since this was last
+    # looked at (enquiry_spam_unseen), so opening it is what clears that line.
+    if request.args.get("when") == "Spam":
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                     (ENQUIRY_SPAM_SEEN_KEY, datetime.now(timezone.utc).isoformat()))
+        conn.commit()
     conn.close()
     return render_template("admin_waitlist.html", entries=lv["rows"], lv=lv,
                            export_q=request.query_string.decode("utf-8", "replace"))
@@ -54977,6 +55331,8 @@ def book_room(room_id):
 
         if not error and missing_guest_details(guest_details, ROOM_GUEST_DETAILS_REQUIRED):
             error = "Please give your address, town, postcode, country and estimated arrival time."
+        if not error and not guest_phone:
+            error = PHONE_REQUIRED
 
         if error:
             flash(error, "error")
@@ -61173,6 +61529,8 @@ def restaurant_book():
         elif restaurant_remaining_capacity(conn, dinner_date.isoformat()) < party_size:
             error = "That date is fully booked — join the waitlist below, or try another date."
             fully_booked = True
+        elif not guest_phone:
+            error = PHONE_REQUIRED
 
         if error:
             flash(error, "error")
@@ -66637,6 +66995,8 @@ def workshop_register(session_id):
 
         if not error and missing_guest_details(guest_details, WORKSHOP_GUEST_DETAILS_REQUIRED):
             error = "Please give your address, town, postcode and country."
+        if not error and not guest_phone:
+            error = PHONE_REQUIRED
         if error:
             flash(error, "error")
             conn.commit()  # persist the rate-limit log entry even on a validation error
@@ -66994,6 +67354,10 @@ def room_ics_feed(token):
         conn.close()
         abort(404)
     body = generate_room_ics(conn, room)
+    # Somebody signed in opening the link from the Rooms page is not a
+    # channel reading it, and must not make a broken link look alive.
+    if not session.get("user_id"):
+        record_feed_read(conn, room["id"], request.headers.get("User-Agent"))
     conn.close()
     return app.response_class(body, mimetype="text/calendar")
 
@@ -67304,6 +67668,73 @@ def sized_photo(width, filename):
     # a new address and this one never changes under anybody.
     resp.headers["Cache-Control"] = "public, max-age=2592000"
     return resp
+
+
+# ---------------------------------------------------------------------------
+# THE PHOTOGRAPH AT THE TOP OF A PAGE, AT THE SIZE IT IS SHOWN (9 Nov 2026).
+# Measured on the live site at phone width: every photograph further down a
+# page came through pic() at its size, and the hero -- the first thing a guest
+# waits for -- came whole. Eight of them were 5.7MB between them: 2.0MB on
+# /facilities, 1.4MB on /contact, for a picture 375px wide.
+#
+# Done to the response, for the reason serve_our_own_photographs gives: the
+# heroes are written into the public templates, which arrive whole from the
+# design side, so a pic() call put into each one would last until the next
+# handover. Here every g-hero__img the house holds the file for gains the
+# srcset pic() would have given it, whatever template it came in. The src
+# stays exactly as written, for a browser that reads no srcset, and for the
+# photo swap; a hero the house does not hold -- an upload, a picture the owner
+# swapped in the admin -- is left alone.
+#
+# Registered after serve_our_own_photographs, so it runs first and usually
+# sees the Squarespace address; it reads a /mirrored-photo/ one as well, so the
+# order is not something it depends on.
+# ---------------------------------------------------------------------------
+_HERO_IMG = re.compile(r'<img\b[^>]*\bclass="[^"]*\bg-hero__img\b[^"]*"[^>]*>')
+_HERO_SRC = re.compile(r'\ssrc="([^"]*)"')
+
+
+def _hero_pic_name(src):
+    """The /pic name of the file the house holds for a hero's address, or None."""
+    src = html_unescape(src)
+    if src.startswith("/static/img/"):
+        rel = src[len("/static/img/"):].split("?", 1)[0]
+        return rel if _pic_file("/static/img/" + rel) else None
+    if src.startswith("/mirrored-photo/"):
+        name = src[len("/mirrored-photo/"):].split("?", 1)[0]
+        return "~m/" + name if _pic_file("~m/" + name) else None
+    return _pic_held(src)
+
+
+def size_hero(tag):
+    """One hero <img>, given the srcset pic() would have; as it was if it cannot be."""
+    if " srcset=" in tag:
+        return tag
+    found = _HERO_SRC.search(tag)
+    rel = _hero_pic_name(found.group(1)) if found else None
+    size = pic_size(rel if rel and rel.startswith("~m/") else "/static/img/" + rel) if rel else None
+    if not size:
+        return tag
+    widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
+    srcset = ", ".join(f"/pic/{x}/{html_escape(rel)} {x}w" for x in widths)
+    close = "/>" if tag.endswith("/>") else ">"
+    return tag[:-len(close)].rstrip() + f' srcset="{srcset}" sizes="100vw"' + close
+
+
+@app.after_request
+def size_the_heroes(response):
+    if response.direct_passthrough:
+        return response
+    if not (response.content_type or "").startswith("text/html"):
+        return response
+    raw = response.get_data()
+    if b"g-hero__img" not in raw:
+        return response
+    body = raw.decode("utf-8", "replace")
+    sized = _HERO_IMG.sub(lambda m: size_hero(m.group(0)), body)
+    if sized != body:
+        response.set_data(sized)
+    return response
 
 
 _SITE_OVERRIDE_CACHE = {"at": 0.0, "index": {}}
@@ -68285,10 +68716,12 @@ def admin_rooms():
         blocks_by_room[room["id"]] = conn.execute(
             "SELECT * FROM room_blocks WHERE room_id = ? ORDER BY start_date", (room["id"],)
         ).fetchall()
+    feed_reads = feed_reads_by_room(conn)
     conn.close()
     return render_template(
         "admin_rooms.html", rooms=rooms, sources_by_room=sources_by_room, ics_urls=ics_urls,
-        blocks_by_room=blocks_by_room, today=now.date(),
+        blocks_by_room=blocks_by_room, today=now.date(), feed_reads=feed_reads,
+        feed_reader_words=FEED_READER_WORDS,
     )
 
 
@@ -78602,6 +79035,13 @@ def join_restaurant_waitlist():
         conn.close()
         flash("Too many attempts from this connection — please try again in a bit.", "error")
         return redirect(url_for("restaurant_book"))
+    # The room waiting list was guarded and these two were not, so a script
+    # could put anybody's address on them and the house wrote to it when a
+    # table freed up.
+    if refused_as_bot(conn, "join_restaurant_waitlist", request.form):
+        conn.close()
+        flash(BOT_REFUSAL_MESSAGE, "error")
+        return redirect(url_for("restaurant_book"))
     if not name or not email:
         conn.commit()
         conn.close()
@@ -78611,6 +79051,13 @@ def join_restaurant_waitlist():
         conn.commit()
         conn.close()
         flash("Enter a valid email address.", "error")
+        return redirect(url_for("restaurant_book"))
+    # The page asks how many and requires it; a table that frees up is offered
+    # to a party that fits it, so "?" is no answer.
+    if not party_size_raw.isdigit() or int(party_size_raw) < 1:
+        conn.commit()
+        conn.close()
+        flash("Please say how many of you there are.", "error")
         return redirect(url_for("restaurant_book"))
 
     # The date was stored as whatever string was posted, never parsed — the
@@ -79323,6 +79770,53 @@ def workshop_admin_return():
     return url_for("admin_workshops")
 
 
+def save_workshop_photo(file):
+    """A retreat's own photograph, from the workshop form: (stored name, None),
+    (None, None) when no file was chosen, or (None, the reason it was refused).
+
+    Its card on /workshops and the top of its own page show it. It is kept
+    beside the room photographs and served by room_photo, like every upload a
+    public page shows, rather than in a directory of its own that would need its
+    own route and its own place in the backup. It goes through photo_master on
+    the way in, as the photo intake does: an iPhone HEIC lands as a JPEG, a
+    camera's full frame comes down to the master size, and none of its EXIF
+    comes along, so no GPS and no serial number reach a public page.
+    """
+    if not file or not file.filename:
+        return None, None
+    ok, reason = allowed_image(file.filename)
+    if not ok:
+        return None, reason
+    try:
+        data, _taken = photo_master(file.read(), file.filename)
+    except ValueError:
+        return None, ("That file could not be read as a photograph. A JPEG or PNG "
+                      "works, as does a photograph straight off an iPhone.")
+    stored = f"workshop_{secrets.token_hex(8)}.jpg"
+    os.makedirs(ROOM_PHOTO_DIR, exist_ok=True)
+    with open(os.path.join(ROOM_PHOTO_DIR, stored), "wb") as f:
+        f.write(data)
+    return stored, None
+
+
+def drop_workshop_photo_file(conn, filename):
+    """Delete a retreat's old photograph from disk once no workshop names it.
+
+    Called after the commit, as the gallery does it: a row naming a missing file
+    shows guests a broken picture, while a file nothing names only takes space.
+    Only files this form made (workshop_...), so a name set by hand to a room's
+    photograph can never take the room's picture with it.
+    """
+    if not filename or not filename.startswith("workshop_") or "/" in filename or "\\" in filename:
+        return
+    if conn.execute("SELECT 1 FROM workshops WHERE photo_filename = ?", (filename,)).fetchone():
+        return
+    try:
+        os.remove(os.path.join(ROOM_PHOTO_DIR, filename))
+    except OSError:
+        pass
+
+
 @app.route("/admin/workshops/new", methods=["GET", "POST"])
 @owner_required
 def new_workshop():
@@ -79351,13 +79845,19 @@ def new_workshop():
                   "leave it blank and type a name.", "error")
             return render_template("workshop_form.html", workshop=None,
                                    instructors=known_instructor_list())
+        photo, photo_error = save_workshop_photo(request.files.get("photo"))
+        if photo_error:
+            conn.close()
+            flash(photo_error, "error")
+            return render_template("workshop_form.html", workshop=None,
+                                   instructors=known_instructor_list())
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM workshops").fetchone()["m"]
         cur = conn.execute(
             """INSERT INTO workshops (title, description, instructor_name, instructor_user_id, price_per_person,
                default_capacity, sort_order, deposit_percent, inclusions, itinerary, single_supplement,
                transfers_included, excursions_included, private_token, organiser_name,
-               organiser_email, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               organiser_email, photo_filename, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (title, description, instructor_name or None,
              instructor_id,
              float(price_raw) if price_raw else 0,
@@ -79369,10 +79869,12 @@ def new_workshop():
              1 if request.form.get("transfers_included") else 0,
              1 if request.form.get("excursions_included") else 0,
              new_private_token() if request.form.get("private") else None,
-             organiser_name, organiser_email,
+             organiser_name, organiser_email, photo,
              datetime.now(timezone.utc).isoformat()),
         )
         new_id = cur.lastrowid
+        if photo:
+            log_audit(conn, "workshop_photo_set", target=str(new_id), details=title)
         conn.commit()
         conn.close()
         flash(f"{title} added. Add its first sitting below.", "success")
@@ -79479,11 +79981,22 @@ def edit_workshop(workshop_id):
             flash(organiser_error or "Workshop title is required.", "error")
             return redirect(url_for("edit_workshop", workshop_id=workshop_id))
 
+        # A new file replaces the photograph; the box takes it off; neither keeps it.
+        # Read and stored before the write below, so nothing holds the database while
+        # a camera-sized picture is decoded.
+        photo, photo_error = save_workshop_photo(request.files.get("photo"))
+        if photo_error:
+            conn.close()
+            flash(photo_error, "error")
+            return redirect(url_for("edit_workshop", workshop_id=workshop_id))
+        old_photo = workshop["photo_filename"]
+        new_photo = photo or (None if request.form.get("remove_photo") else old_photo)
+
         conn.execute(
             """UPDATE workshops SET title=?, description=?, instructor_name=?, instructor_user_id=?,
                price_per_person=?, default_capacity=?, deposit_percent=?, inclusions=?, itinerary=?,
                single_supplement=?, transfers_included=?, excursions_included=?,
-               private_token=?, organiser_name=?, organiser_email=?,
+               private_token=?, organiser_name=?, organiser_email=?, photo_filename=?,
                active=? WHERE id=?""",
             (title, description, instructor_name or None,
              int(instructor_user_id) if instructor_user_id.isdigit() else None,
@@ -79495,13 +80008,18 @@ def edit_workshop(workshop_id):
              # Reading it any other way would make a box impossible to untick.
              1 if request.form.get("transfers_included") else 0,
              1 if request.form.get("excursions_included") else 0,
-             private_token, organiser_name, organiser_email,
+             private_token, organiser_name, organiser_email, new_photo,
              active, workshop_id),
         )
         if bool(private_token) != bool(workshop["private_token"]):
             log_audit(conn, "workshop_made_private" if private_token else "workshop_made_public",
                       target=str(workshop_id), details=title)
+        if new_photo != old_photo:
+            log_audit(conn, "workshop_photo_set" if new_photo else "workshop_photo_removed",
+                      target=str(workshop_id), details=title)
         conn.commit()
+        if old_photo and old_photo != new_photo:
+            drop_workshop_photo_file(conn, old_photo)
         conn.close()
         if private_token and not workshop["private_token"]:
             flash(f"{title} is private now: off every public page, and booked only by its "
@@ -83111,6 +83629,10 @@ def join_workshop_waitlist():
         conn.close()
         flash("Too many attempts from this connection — please try again in a bit.", "error")
         return redirect(back)
+    if refused_as_bot(conn, "join_workshop_waitlist", request.form):
+        conn.close()
+        flash(BOT_REFUSAL_MESSAGE, "error")
+        return redirect(back)
     if not name or not email:
         conn.commit()
         conn.close()
@@ -83120,6 +83642,11 @@ def join_workshop_waitlist():
         conn.commit()
         conn.close()
         flash("Enter a valid email address.", "error")
+        return redirect(back)
+    if not party_size_raw.isdigit() or int(party_size_raw) < 1:
+        conn.commit()
+        conn.close()
+        flash("Please say how many of you there are.", "error")
         return redirect(back)
 
     party_size = int(party_size_raw) if party_size_raw.isdigit() else None
@@ -89862,7 +90389,8 @@ def channel_stays_page():
     return render_template("channel_stays.html", rows=lv["rows"], lv=lv,
                            summary=summary, today=today.isoformat(),
                            calendar_only=calendar_only, room_choices=room_choices,
-                           prefill=prefill, sources=sources)
+                           prefill=prefill, sources=sources,
+                           checkin_find_url=url_for("channel_checkin_find", _external=True))
 
 
 # What the house can know about a Booking.com guest, beyond the email's name
@@ -90152,6 +90680,60 @@ def send_channel_checkin_link(reservation_id):
     flash(("Sent." + (f" It is {why}." if why else "")) if ok else f"Not sent: {why}.",
           "success" if ok else "error")
     return redirect(url_for("channel_stay_page", reservation_id=reservation_id))
+
+
+@app.route("/booking-com/checkin", methods=["GET", "POST"])
+def channel_checkin_find():
+    """One address for every Booking.com guest's check-in (9 November 2026).
+
+    The check-in link was the stay's own, so it could only be sent where the
+    house had an address for the guest -- and Booking.com's booking email
+    carries none: only a guest who had written, or one whose page the owner
+    had pasted in, was ever sent it. Booking.com's own online check-in does
+    not help: it is only for properties on a channel manager, and only for
+    one room. So this page is the same for everybody, and Booking.com's own
+    scheduled message carries it to every guest before they arrive; the guest
+    gives the confirmation number and the day they arrive, and is taken to
+    their own check-in.
+
+    Both, never the number alone: ten digits are a reference, not a secret.
+    The day is the second thing, as the surname is on /book/manage, and the
+    route is rate-limited per connection all the same. A stay already over,
+    or cancelled, is not found."""
+    number = re.sub(r"\D", "", request.values.get("number", ""))[:12]
+    arrival = (request.form.get("arrival") or "").strip()[:10]
+    if request.method == "POST":
+        conn = get_db()
+        if rate_limited(conn, "find_channel_checkin", BOOKING_RATE_LIMIT_PER_HOUR):
+            conn.commit()
+            conn.close()
+            flash("Too many attempts from this connection. Please try again in a while, "
+                  "or write to us through Booking.com.", "error")
+            return render_template("channel_checkin_find.html", number=number, arrival=arrival)
+        conn.commit()
+        day = parse_date(arrival)
+        stay = None
+        if number and day:
+            stay = conn.execute(
+                """SELECT id FROM ota_reservations
+                    WHERE channel = 'booking.com' AND reservation_number = ?
+                      AND arrival_date = ? AND status = 'confirmed'
+                      AND COALESCE(departure_date, arrival_date) >= ?""",
+                (number, day.isoformat(), house_today_iso())).fetchone()
+        if stay:
+            token = ota_checkin_token(conn, stay["id"])
+            conn.commit()
+            conn.close()
+            return redirect(url_for("channel_checkin", token=token))
+        conn.close()
+        if not number or not day:
+            flash("Please give your Booking.com confirmation number and the day you arrive.",
+                  "error")
+        else:
+            flash("We could not find a stay with that number arriving that day. The number "
+                  "is in Booking.com's confirmation; if it is right, write to us through "
+                  "Booking.com and we will send you the link.", "error")
+    return render_template("channel_checkin_find.html", number=number, arrival=arrival)
 
 
 @app.route("/checkin/stay/<token>", methods=["GET", "POST"])
@@ -97633,6 +98215,19 @@ def watch_task_findings(conn, today=None):
             # Due the day the longest-waiting guest wrote: a message is owed an
             # answer that day, and one still open next morning reads as late.
             house_date_iso(written[0]["received_at"]), "high"))
+
+    # Booking.com and the house disagreeing about a night, or the calendars
+    # between them no longer read either way. One task each while true.
+    double = channel_clash_problem(conn, today)
+    if double:
+        found.append(("booking_com", "Move or cancel a Booking.com stay on nights already taken",
+                      double[1], today.isoformat(), "high"))
+    sync = channel_sync_problems(conn)
+    if sync:
+        found.append(("booking_com", "Put the Booking.com calendar sync right",
+                      "\n\n".join(f"{title}. {detail}" for _lvl, title, detail in sync),
+                      today.isoformat(),
+                      "high" if any(lvl == "blocker" for lvl, _t, _d in sync) else "normal"))
 
     # The front door, when guests cannot open it from their phone or its
     # batteries are going. One task while that is true; it closes itself once
@@ -111681,7 +112276,61 @@ def settle_booking_com_stays(conn, room_ids=None, sync=True):
     if sync:
         sync_booking_com_calendars(conn, room_ids)
     pair_booking_com_stays(conn)
+    name_booking_com_stays_from_messages(conn)
     return tell_house_of_booking_com(conn)
+
+
+def name_booking_com_stays_from_messages(conn):
+    """Give a Booking.com stay the name its guest's own messages carry.
+
+    Booking.com's "New booking!" email says nothing but the number and the day
+    (October 2026), so every stay arrived nameless, and the arrivals, the
+    calendar and the turnover list called it "Booking.com - The King Room".
+    But a guest's message does say who they are, twice: "We received this
+    message from Nicolas Regnault", and a "Reservation details" block with
+    "Guest name:", "Booking number:" and "Total guests:" (checked on the live
+    mailbox, 9 November 2026). Those emails were kept and never read for the
+    stay, because only booking emails update one.
+
+    Only a GAP is filled: a name or a head count somebody typed, or a later
+    booking email gave, is never replaced by a message's. Only Booking.com's
+    own mail counts (from_booking_com) -- anybody can send an email with a
+    number in it. The messages are tied to their stay too, so the stay's page
+    lists them. Safe to run as often as anything likes; the ids it named."""
+    conn.execute(
+        """UPDATE ota_mail SET ota_reservation_id = (
+               SELECT r.id FROM ota_reservations r
+                WHERE r.channel = 'booking.com'
+                  AND r.reservation_number = ota_mail.reservation_number)
+            WHERE ota_reservation_id IS NULL AND kind IN ('message', 'request')
+              AND COALESCE(reservation_number, '') != '' AND from_booking_com = 1""")
+    named = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for stay in conn.execute(
+            """SELECT * FROM ota_reservations
+                WHERE channel = 'booking.com'
+                  AND (COALESCE(guest_name, '') = '' OR guests IS NULL)""").fetchall():
+        said = conn.execute(
+            """SELECT guest_name, guests FROM ota_mail
+                WHERE ota_reservation_id = ? AND kind IN ('message', 'request')
+                  AND from_booking_com = 1
+                  AND (COALESCE(guest_name, '') != '' OR guests IS NOT NULL)
+                ORDER BY received_at DESC, id DESC""", (stay["id"],)).fetchall()
+        name = next((r["guest_name"] for r in said if (r["guest_name"] or "").strip()), None)
+        guests = next((r["guests"] for r in said if r["guests"]), None)
+        sets = {}
+        if name and not (stay["guest_name"] or "").strip():
+            sets["guest_name"] = name.strip()[:120]
+        if guests and stay["guests"] is None:
+            sets["guests"] = guests
+        if sets:
+            sets["updated_at"] = now_iso
+            conn.execute("UPDATE ota_reservations SET " + ", ".join(f"{k} = ?" for k in sets)
+                         + " WHERE id = ?", (*sets.values(), stay["id"]))
+            if "guest_name" in sets:
+                named.append(stay["id"])
+    conn.commit()
+    return named
 
 
 def _ota_notify(conn, mail_id, got, received_at):
@@ -111831,10 +112480,13 @@ def run_booking_com_mail_job(conn):
             new[kind] = new.get(kind, 0) + 1
             fresh_ids.append(_id)
     told = after_booking_com_mail(conn, fresh_ids)
+    answered = booking_com_answered_by_email(conn, token)
+    said = (f"; told the house of {told}" if told else "") + (
+        f"; {len(answered)} answered by email" if answered else "")
     if not new:
-        return f"nothing new in {mailbox}" + (f"; told the house of {told}" if told else "")
+        return f"nothing new in {mailbox}" + said
     return ("kept " + ", ".join(f"{n} × {OTA_KINDS[k].lower()}" for k, n in sorted(new.items()))
-            + (f"; told the house of {told}" if told else ""))
+            + said)
 
 
 def after_booking_com_mail(conn, mail_ids):
@@ -111865,6 +112517,63 @@ def after_booking_com_mail(conn, mail_ids):
             else:
                 every_room = True       # not said, or it may have moved room
     return settle_booking_com_stays(conn, None if every_room else rooms, sync=any_booking)
+
+
+def booking_com_answered_by_email(conn, token, *, now=None):
+    """Take off the waiting list the guest messages already answered by email.
+
+    A Booking.com message can be answered three ways: from the house's page
+    (replied_at), in the extranet (the owner says so: "Answered in
+    Booking.com"), or by replying to the email in Outlook, which Booking.com
+    passes on to the guest. The third left the message on the list and its
+    task open until somebody also ticked it here, so the list said a guest was
+    waiting who had had an answer -- and a list that is wrong that way is
+    soon not read (9 November 2026).
+
+    So the Sent Items of every mailbox the house reads are looked at for mail
+    to the address the message came from (the guest's @guest.booking.com
+    address), sent after it arrived. Only while somebody is waiting: no
+    waiting message, no call to Microsoft. The ids it closed."""
+    waiting = booking_com_waiting(conn, now=now)
+    by_address = {}
+    for r in waiting:
+        for a in (r["reply_to"], r["from_address"]):
+            a = (a or "").strip().lower()
+            if a.endswith("@guest.booking.com"):
+                by_address.setdefault(a, []).append(r)
+                break
+    if not by_address or not token:
+        return []
+    since = min(parse_datetime_iso(r["received_at"]) for r in waiting)
+    mailboxes = list(dict.fromkeys(
+        [booking_com_mailbox(conn)] + [mb.lower() for mb in MS_GRAPH_MAILBOXES]))
+    closed, now_iso = [], datetime.now(timezone.utc).isoformat()
+    for mb in [m for m in mailboxes if m]:
+        page = graph_get(
+            f"/users/{mb}/mailFolders/sentitems/messages", token,
+            params={"$select": "toRecipients,ccRecipients,bccRecipients,sentDateTime",
+                    "$filter": f"sentDateTime ge {since.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                    "$top": "200"})
+        if page is None:
+            continue
+        for msg in page.get("value", []):
+            sent = parse_datetime_iso(msg.get("sentDateTime"))
+            to = {((x.get("emailAddress") or {}).get("address") or "").strip().lower()
+                  for key in ("toRecipients", "ccRecipients", "bccRecipients")
+                  for x in (msg.get(key) or [])}
+            for address in to & by_address.keys():
+                for r in by_address[address]:
+                    got = parse_datetime_iso(r["received_at"])
+                    if r["id"] in closed or not (sent and got and sent >= got):
+                        continue
+                    conn.execute(
+                        """UPDATE ota_mail SET handled_at = ?, answered_from = ?
+                            WHERE id = ? AND handled_at IS NULL AND replied_at IS NULL""",
+                        (now_iso, mb, r["id"]))
+                    closed.append(r["id"])
+    if closed:
+        conn.commit()
+    return closed
 
 
 def booking_com_waiting(conn, *, now=None):
@@ -122666,10 +123375,13 @@ def contact_page():
     flex = (request.form.get("flexibility") or "").strip()
     message = (request.form.get("message") or "").strip()[:2000]
     # What it is about (z29): one of CONTACT_TOPICS, said first in the notes.
-    # A post without one -- a page cached before z29 -- is "something else".
-    topic = (request.form.get("topic") or "").strip()
-    if topic not in CONTACT_TOPICS:
-        topic = "other"
+    # A value that is not one of them is "something else", never stored as
+    # typed. NO topic at all was once a page cached before z29; a page that
+    # old can no longer post (its token and stamp lapse within the hour), and
+    # the page requires one, so a post without it is a script's -- set aside
+    # below with the nameless ones.
+    topic_raw = (request.form.get("topic") or "").strip()
+    topic = topic_raw if topic_raw in CONTACT_TOPICS else "other"
 
     if not EMAIL_RE.match(email):
         flash("That email address does not look right — we would have no way "
@@ -122762,7 +123474,8 @@ def contact_page():
     # nights, and notify_room_waitlist_opening writes to them -- "a room has
     # come free, first to book has it" -- when a night in their range frees up.
     # Somebody who said "around May" asked a question; a person answers it.
-    aside = enquiry_is_pitch(conn, email, name, message)
+    aside = enquiry_is_pitch(conn, email, name, message) or (
+        "" if topic_raw else "no topic, which the page will not send without (a script posting the form)")
     now_iso = datetime.now(timezone.utc).isoformat()
     entry_id = conn.execute(
         """INSERT INTO waitlist_entries (name, email, phone, desired_arrival,

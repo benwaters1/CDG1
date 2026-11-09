@@ -60,6 +60,13 @@
 
     <p class="field-label" style="margin-top:10px;">Its calendar link, for the channels</p>
     <p class="share-link-box">{{ ics_urls[room['id']] }}</p>
+    {#- Who has read it, so a link the channel has stopped reading shows here
+        and not only when a night is sold twice (9 November 2026). -#}
+    {% set reads = feed_reads.get(room['id']) or [] %}
+    <p class="upload-hint" style="margin-top:4px;">
+      {%- if reads %}Last read by {% for r in reads[:3] %}{{ feed_reader_words.get(r['reader'], r['reader']) }}, {{ r['last_read_at']|house_when }}{{ '; ' if not loop.last }}{% endfor %}.
+      {%- else %}No channel has read it since the house began noting reads.{% endif %}
+    </p>
 
     {# Side by side where there is room for it: what the channels have sold,
        and what the house keeps off sale. #}

@@ -11982,3 +11982,40 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 @media (max-width: 34rem){
   .g .g-crest--foot{ padding-left: var(--s4); padding-right: var(--s4); }
 }
+
+/* THE GUESTS' OWN PAGES, the ones reached by a booking's link and in no
+   sitemap, measured the same way (9 Nov, later). */
+
+/* The statement ended flush on the Monument Historique band, its last line
+   under 10px above it, at every width: its wrapper pads the sides and
+   nothing under. On screen only: at the foot of a printed statement it
+   could push a blank page out. */
+@media screen{ .g main > .statement{ padding-bottom: var(--s7); } }
+
+/* The manage pages (a stay, an atelier, the guest's own page) set their own
+   edge, clamp(20px, 4vw, 40px), so on a phone and a tablet the page stood
+   4-7px in from the site's gutter and from the header above it. The desk
+   keeps its 40px around the centred reading column. */
+@media screen and (max-width: 61.99rem){
+  .g main:has(> .g-mb-card){ padding-left: var(--s5); padding-right: var(--s5); }
+}
+@media screen and (max-width: 34rem){
+  .g main:has(> .g-mb-card){ padding-left: var(--s4); padding-right: var(--s4); }
+  /* And the cards kept their desk padding, 32px, where every other panel
+     drops to 24px at the sides; framed inside one another (the reference on
+     an event's or a dinner's page) the words stood 81px in on a 390px screen.
+     The sides come in; the top and bottom keep 32px, because the drawn
+     corners are 34px from each edge and a short card's first and last lines
+     would otherwise sit on them. */
+  .g .g-mb-card{ padding: var(--s6) var(--s5); }
+}
+
+/* Panels were meant to come in to 24px at the sides from a tablet down
+   ("on a tablet the padding is what starves the text"), and a phone rule
+   said so as well; a later rule giving every panel 32px sides overrode both,
+   on every page, at every width. Said again here, after it. Screen only,
+   like the rest of this block's later rules: an A4 page is narrower than a
+   tablet, and print has its own rules for these. */
+@media screen and (max-width: 60rem){
+  .g .g-panel{ padding-left: var(--s5); padding-right: var(--s5); }
+}
