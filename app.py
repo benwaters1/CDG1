@@ -12412,6 +12412,79 @@ def bookings_awaiting_answer(conn, now=None, hours=None):
     return out
 
 
+def enquiries_awaiting_answer(conn, now=None, hours=None):
+    """Enquiries nobody has answered inside the day the house gives itself.
+
+    Two kinds, because a stranger can ask the house something in two places:
+    the Contact page's Write to Us (a waitlist entry from 'contact', waiting
+    as 'enquiry' -- or 'open' on a table widen_waitlist_statuses could not
+    rebuild) and the events page's enquiry (event_inquiries, still 'new').
+    Spam is not waiting for anybody. Each one is answered by marking it so
+    -- Contacted on the Waitlist, Replied to on the event -- which is what
+    takes it off; a reply sent from Outlook alone cannot be seen from here.
+    Oldest first, as the bookings are. Each row: kind, name, about, made
+    (the stamp), waited (hours, or None when the stamp cannot be read).
+    """
+    now = now or datetime.now(timezone.utc)
+    hours = BOOKING_ANSWER_HOURS if hours is None else hours
+    cutoff = (now - timedelta(hours=hours)).isoformat()
+    rows = []
+    for e in conn.execute(
+            """SELECT * FROM waitlist_entries
+                WHERE source = 'contact' AND status IN ('enquiry', 'open')
+                  AND spam_at IS NULL AND created_at <= ?""", (cutoff,)).fetchall():
+        about = (e["notes"] or "").split(". ")[0]
+        rows.append({"kind": "contact", "id": e["id"], "name": e["name"] or e["email"],
+                     "about": about if about in CONTACT_TOPICS.values() else "",
+                     "made": e["created_at"]})
+    for e in conn.execute(
+            """SELECT * FROM event_inquiries WHERE COALESCE(status, 'new') = 'new'
+                AND created_at <= ?""", (cutoff,)).fetchall():
+        rows.append({"kind": "event", "id": e["id"], "name": e["contact_name"] or e["contact_email"],
+                     "about": (e["event_type"] or "an event").replace("_", " "),
+                     "made": e["created_at"]})
+    for r in rows:
+        made = parse_datetime_iso(r["made"])
+        if made and made.tzinfo is None:
+            made = made.replace(tzinfo=timezone.utc)
+        r["waited"] = round((now - made).total_seconds() / 3600.0, 1) if made else None
+    rows.sort(key=lambda r: r["made"] or "")
+    return rows
+
+
+def waited_words(hours):
+    """How long somebody has waited, as a person would say it."""
+    if hours is None:
+        return "a while ago"
+    if hours < 48:
+        return f"{int(hours)} hours ago"
+    return f"{int(hours // 24)} days ago"
+
+
+# The spam line on the owner home counts what was set aside since the owner
+# last opened the Spam chip on the Waitlist, so looking is what clears it.
+ENQUIRY_SPAM_SEEN_KEY = "enquiry_spam_seen_at"
+
+
+def enquiry_spam_unseen(conn, now=None):
+    """Contact enquiries set aside as Spam in the last week that the owner
+    has not looked at since: (count, the latest row or None).
+
+    A week, so a line that nobody opens still goes by itself; since the last
+    look, so a house that gets one script a day is not shown the same line
+    every morning -- furniture is the thing the panel must never become."""
+    now = now or datetime.now(timezone.utc)
+    since = (now - timedelta(days=7)).isoformat()
+    seen = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                        (ENQUIRY_SPAM_SEEN_KEY,)).fetchone()
+    if seen and (seen["value"] or "") > since:
+        since = seen["value"]
+    rows = conn.execute(
+        """SELECT * FROM waitlist_entries WHERE source = 'contact' AND spam_at IS NOT NULL
+             AND spam_at > ? ORDER BY spam_at DESC""", (since,)).fetchall()
+    return len(rows), (rows[0] if rows else None)
+
+
 def notify_bookings_awaiting_answer(conn, now=None):
     """Tell somebody a guest is waiting, once per request.
 
@@ -40100,6 +40173,26 @@ def owner_home_warnings(conn, today):
             + ".",
             len(waiting), "admin_bookings")
 
+    # SOMEBODY WROTE TO THE HOUSE AND NOBODY HAS ANSWERED. The same day the
+    # booking page promises, and beside the bookings because it is the same
+    # kind of line: a person waiting. Closes itself when each is marked
+    # answered, or as spam. Links to the Contact enquiries if any are among
+    # them, since that is where most arrive; else to the events.
+    asked = enquiries_awaiting_answer(conn)
+    if asked:
+        first = asked[0]
+        n = len(asked)
+        contact = any(a["kind"] == "contact" for a in asked)
+        add("attention",
+            f"{n} enquir{'y' if n == 1 else 'ies'} nobody has answered",
+            f"{first['name']} wrote {waited_words(first['waited'])}"
+            + (f" about {first['about'].lower()}" if first["about"] else "")
+            + ". Once you have written back, mark it Contacted "
+            + ("on the Waitlist" if first["kind"] == "contact" else "on the event")
+            + " and this goes.",
+            n, "admin_waitlist" if contact else "admin_events",
+            state="Enquiry" if contact else "New")
+
     # Mail the app kept and can no longer sensibly send. About the STALE ones
     # rather than the held ones: held mail is a standing condition while no
     # provider is configured, and a line that is true every morning forever is
@@ -40492,6 +40585,22 @@ def owner_home_warnings(conn, today):
         n = len(due["arrange_now"])
         add("warn", f"{n} extra{'' if n == 1 else 's'} to arrange now",
             named(due["arrange_now"]) + ".", n, "extras_due_page", state="Arrange now")
+
+    # WHAT THE SPAM FILTER TOOK, so a real enquiry caught by it is seen
+    # rather than lost. Since 9 November a Contact post with no name, no
+    # topic, or nothing but "Test" is set aside with the sales pitches -- a
+    # rule that is right about scripts and could one day be wrong about a
+    # person. Counts only what arrived since the owner last opened the Spam
+    # chip, within a week: looking clears it, and so does a quiet week.
+    spam_n, spam_last = enquiry_spam_unseen(conn)
+    if spam_n:
+        said = enquiry_message_part(spam_last["notes"]).strip()
+        add("watch",
+            f"{spam_n} enquir{'y' if spam_n == 1 else 'ies'} set aside as spam",
+            "Kept under Spam on the Waitlist in case one is real. The latest: "
+            + (spam_last["name"] or "no name") + ", “"
+            + (said[:60] + ("…" if len(said) > 60 else "")) + "”.",
+            spam_n, "admin_waitlist", when="Spam")
 
     order = {"blocker": 0, "warn": 1}
     out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
@@ -53891,6 +54000,13 @@ def admin_waitlist():
     lv = waitlist_view(conn.execute(
         "SELECT * FROM waitlist_entries ORDER BY created_at DESC").fetchall(),
         request.args, _room_waitlist_wanted)
+    # The owner home's spam line counts what arrived since this was last
+    # looked at (enquiry_spam_unseen), so opening it is what clears that line.
+    if request.args.get("when") == "Spam":
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                     (ENQUIRY_SPAM_SEEN_KEY, datetime.now(timezone.utc).isoformat()))
+        conn.commit()
     conn.close()
     return render_template("admin_waitlist.html", entries=lv["rows"], lv=lv,
                            export_q=request.query_string.decode("utf-8", "replace"))

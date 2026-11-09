@@ -446,6 +446,7 @@ SUITES = [
     "test_contact_enquiry_spam",
     "test_contact_enquiry_letter",
     "test_public_forms_required",
+    "test_enquiries_on_home",
     "test_contact_form_guard",
     "test_workshops_fifteen",
     "test_google_setup_z30",
