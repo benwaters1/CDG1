@@ -1,0 +1,32 @@
+{#- ==========================================================================
+    WHERE THE HOUSE IS, AS A LINK (9 Nov 2026, owner: "the address here isnt
+    clickable it should be"). One macro for every place the public site prints
+    the address -- the footer, the menu, and the line under the home page's
+    hero -- so the three cannot disagree and a fix to one is a fix to all.
+
+        {% from '_house_address.html' import house_address with context %}
+        {{ house_address() }}                one line
+        {{ house_address(lines=true) }}      the street, then the town
+
+    The words are house_place, which app.py builds from the same parts as the
+    address on the foot of every letter (HOUSE_POSTAL); nothing here types them.
+    The link is house_maps.google: the pin at the gates, never a search by name
+    or by address (house_map_links says why -- a search answered from Tokyo).
+    No pin set, no link: the words stay, as plain text.
+
+    Import it WITH CONTEXT. house_place and house_maps come from a context
+    processor, and a macro imported without context sees neither -- which is
+    how the arrival card went for weeks without ever drawing its map link.
+    ========================================================================== -#}
+{% macro house_address(cls='', lines=false) -%}
+{%- set _cls = ('g-addr ' ~ cls)|trim -%}
+{%- set _words -%}
+{%- if lines %}{{ house_place.street }}<br>
+{{ house_place.town }}{% else %}{{ house_place.street }}, <span class="g-addr__town">{{ house_place.town }}</span>{% endif -%}
+{%- endset -%}
+{%- if house_maps and house_maps.google -%}
+<a class="{{ _cls }}" href="{{ house_maps.google }}" rel="noopener">{{ _words }}</a>
+{%- else -%}
+<span class="{{ _cls }}">{{ _words }}</span>
+{%- endif -%}
+{%- endmacro %}

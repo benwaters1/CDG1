@@ -369,7 +369,9 @@ window.houseDay = (function () {
         {# 5 Oct (design review): the quick-link grid only repeated Contact, Press and Manage booking from the panel, and "Groups" led to the workshops page - removed. #}
 
         <p class="g-navwrap__group" style="margin-top:var(--s6)">Château de Gudanes</p>
-        <p class="g-navwrap__addr">2 Route de Beille, Château-Verdun, Ariège 09310, France</p>
+        {#- 9 Nov (owner): the address opens the map, here as in the footer. -#}
+        {% from '_house_address.html' import house_address with context %}
+        <p class="g-navwrap__addr">{{ house_address() }}</p>
         <p><a href="tel:+33628069776">+33 6 28 06 97 76</a></p>
         <p><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
 
@@ -566,8 +568,10 @@ window.houseDay = (function () {
       <div>
         <p class="g-footer__brand">Château de Gudanes</p>
         <p class="g-footer__contact" style="line-height:2.1; margin:0;">
-          2 Route de Beille<br>
-          Château-Verdun, Ariège 09310, France<br>
+          {#- 9 Nov (owner): "the address here isnt clickable it should be". It opens the
+              pin at the gates; test_house_address holds the link and where it goes. -#}
+          {% from '_house_address.html' import house_address with context %}
+          {{ house_address(lines=true) }}<br>
           <a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
           {# Two bare addresses gave a guest no way to tell which to write to. The
              contact page splits them; the footer now says so too. #}
