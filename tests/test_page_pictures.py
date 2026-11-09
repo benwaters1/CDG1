@@ -107,7 +107,10 @@ PAGES = {
         ("and an album", r'class="g-album g-album--3 ', 1),
     ],
     "/whats-on": [
-        ("each place section with a photograph beside it", r'class="g-sp[^"]*">\s*<div class="g-sp__text">', 3),
+        ("each place section with a photograph beside it", r'class="g-sp[^"]*">\s*<div class="g-sp__text">', 4),
+        # 9 Nov (owner): Andorra had none the house held; Sant Joan de Caselles, from Commons, credited under it.
+        ("Andorra: Sant Joan de Caselles beside it, its photographer credited",
+         r'id="andorra".*?retreats/sant-joan-de-caselles\.jpg.*?<p class="g-car__credits"><small class="g-credit">Photo <a [^>]*>Pierre Bona</a>, <a [^>]*>CC BY-SA 3\.0</a>.*?id="close-by"', 1),
         ("Skiing Nearby: a slider", r'aria-label="Skiing nearby"', 1),
         ("its Commons credits where they can be seen", r'<p class="g-car__credits"><span class="g-credit">', 1),
         ("the hot springs and the cave credited", r'Jeunamateur.*Traumrune', 1),

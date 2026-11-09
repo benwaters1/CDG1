@@ -110,7 +110,9 @@
     <div class="g-key__i"><p class="g-key__k">The menu</p><p class="g-key__v">It changes with the season</p></div>
     <div class="g-key__i"><p class="g-key__k">Allergies</p><p class="g-key__v">Tell us when you reserve</p></div>
     <div class="g-key__i"><p class="g-key__k">Birthdays and anniversaries</p><p class="g-key__v">Tell us when you book</p></div>
-    <div class="g-key__i"><p class="g-key__k">Address</p><p class="g-key__v">2 Route de Beille, Château-Verdun, Ariège 09310</p></div>
+    {#- 9 Nov (owner): the address opens the pin at the gates, as in the footer. -#}
+    {% from '_house_address.html' import house_address with context %}
+    <div class="g-key__i"><p class="g-key__k">Address</p><p class="g-key__v">{{ house_address(country=false) }}</p></div>
   </div>
   {% if _dm == 'open' %}{{ hours_card() }}{% endif %}
 </div></section>

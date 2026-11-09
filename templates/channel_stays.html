@@ -48,6 +48,36 @@ So that your room is ready, and for the register French law asks us to keep, ple
 You will need your Booking.com confirmation number and the day you arrive.</p>
 </details>
 
+{#- The weekly statement (9 Nov 2026): what Booking.com's emails leave out --
+    the guest's name, the party, the price and the commission. -#}
+<details class="refund-box" id="statement" style="margin:10px 0;" {{ 'open' if not last_statement }}>
+  <summary>Reservations statement, once a week{% if last_statement %} · last uploaded {{ last_statement['uploaded_at']|house_when }}{% else %} · not uploaded yet{% endif %}</summary>
+  <p class="upload-hint" style="margin:8px 0;">
+    Booking.com's emails say a booking came and little else. Its reservations statement has the
+    guest's name, the party, the price and its commission for every stay. Upload it each week and the
+    stays here, the arrivals and <a href="{{ url_for('management_channels') }}">what a booking costs</a>
+    are filled in from it. A stay it lists as cancelled is cancelled here; dates that differ are shown
+    to you, not changed.
+  </p>
+  <p class="upload-hint" style="margin:8px 0;">In the extranet: <strong>Reservations</strong>; Date of
+    <strong>Check-in</strong>, from a month ago to a year ahead; <strong>Show</strong>;
+    <strong>Download</strong>, <strong>Download reservations statement</strong>; when it says
+    <strong>Download now</strong>, click it. Then choose that file here.</p>
+  <form method="post" action="{{ url_for('upload_booking_com_statement') }}" enctype="multipart/form-data"
+        style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="statement" accept=".xls,.csv,application/vnd.ms-excel,text/csv" required>
+    <button type="submit" class="btn-mini">Upload the statement</button>
+  </form>
+  {% if last_statement %}
+  <p class="upload-hint" style="margin:8px 0 0;">Last one: {{ last_statement['rows_read'] }} reservation{{ '' if last_statement['rows_read'] == 1 else 's' }}
+    {%- if last_statement['first_arrival'] %}, arriving {{ last_statement['first_arrival']|date_short }} to {{ last_statement['last_arrival']|date_short }}{% endif %};
+    {{ last_statement['new_stays'] }} new, {{ last_statement['updated_stays'] }} brought up to date, {{ last_statement['cancelled_stays'] }} cancelled.
+    The statement's commission is Booking.com's commission on the stay; the charge it adds for taking the
+    guest's payment is not in it.</p>
+  {% endif %}
+</details>
+
 {% include "_list_toolbar.html" %}
 
 {% if not rows %}
@@ -130,6 +160,7 @@ You will need your Booking.com confirmation number and the day you arrive.</p>
         </td>
         <td class="num">
           {%- if r['amount'] %}{{ r['currency'] or '€' }}{{ '%.2f'|format(r['amount']) }}
+          {%- if r['commission_amount'] is not none %}<br><span class="upload-hint">commission {{ '%.2f'|format(r['commission_amount']) }}</span>{% endif %}
           {%- else %}—{% endif %}
         </td>
         <td><span class="upload-hint">{{ r['reservation_number'] }}</span>
