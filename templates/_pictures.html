@@ -138,12 +138,13 @@
 {#- G. LA BANDE. 'drift': a full-width strip that drifts slowly sideways,
     pauses under the pointer or the keyboard, and does not move at all for
     reduced motion (it scrolls by hand instead). 'contact': a contact sheet
-    with sprocket edges, which scrolls by hand. -#}
+    with sprocket edges and frame numbers, which scrolls by hand. The numbers
+    are drawn by the stylesheet, like the sprocket holes: film, not words. -#}
 {% macro bande(photos, label, mode='drift', cls='') -%}
 <section class="g-bande g-bande--{{ mode }} {{ cls }}" aria-label="{{ label }}"{% if mode == 'drift' %} data-bande{% endif %} tabindex="0">
   <div class="g-bande__row" data-bande-row>
     {%- for p in photos %}
-    <figure class="g-bande__i">{{ pic(p[0], p[1], sizes='22rem') }}{% if mode == 'contact' %}<span class="g-bande__no" aria-hidden="true">{{ loop.index }}A</span>{% endif %}</figure>
+    <figure class="g-bande__i">{{ pic(p[0], p[1], sizes='22rem') }}</figure>
     {%- endfor %}
   </div>
 </section>

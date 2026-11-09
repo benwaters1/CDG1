@@ -69,6 +69,29 @@ PAGES = {
         ("a room as found among them", r'mountains-through-the-roof', 1),
         ("and all thirteen behind See all", r'See all 13 photos', 1),
     ],
+    "/restoration": [
+        ("As We Found It: the fifteen as a contact sheet", r'class="g-bande g-bande--contact', 1),
+        ("Restoring the Chateau: the long list in two halves, each beside a photograph", r'class="g-sp[^"]*">\s*<div class="g-sp__text">\s*<ul class="g-how">', 2),
+        ("The Work, Room by Room: a slider", r'aria-label="The work, room by room"', 1),
+        ("The Wallpaper: framed, and in a museum mount", r'<div class="g-pair"><figure class="g-cadre g-cadre--rect.*?<figure class="g-pp ', 1),
+        ("Then and Now keeps its three sliders", r'data-slider', 3),
+    ],
+    "/history": [
+        ("the early postcard, as a postcard", r'class="g-cp g-rv g-hist__fig"', 1),
+        ("the early photograph, framed", r'class="g-cadre g-cadre--rect g-rv g-hist__fig"', 1),
+        ("Revolution and the Ironmasters: a photograph beside the long section", r'class="g-sp g-sp--flip', 1),
+        ("the chateau today across the page", r'class="g-plein "', 1),
+    ],
+    "/story": [
+        ("The People Who Keep It: three in an album", r'class="g-album g-album--3 ', 1),
+        ("and the rest in a slider", r'aria-label="The people who keep it"', 1),
+    ],
+    "/facilities": [
+        ("The Grounds: a collage of four", r'class="g-mos g-mos--lead g-mos--4 ', 1),
+        ("and the rest in a slider", r'aria-label="The grounds"', 1),
+        ("Winter at Gudanes: the chateau in snow across the page", r'class="g-plein "', 1),
+        ("and an album", r'class="g-album g-album--3 ', 1),
+    ],
 }
 
 

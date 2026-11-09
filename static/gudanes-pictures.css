@@ -207,7 +207,10 @@
 .g .g-bande--contact::after{ bottom: 8px; }
 .g .g-bande--contact .g-bande__row{ gap: 6px; }
 .g .g-bande--contact .g-bande__i{ position: relative; border: 3px solid #1E1A15; }
-.g .g-bande__no{ position: absolute; left: 4px; bottom: -22px; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: #E0B85A; }
+.g .g-bande--contact .g-bande__row{ counter-reset: g-frame; }
+.g .g-bande--contact .g-bande__i{ counter-increment: g-frame; }
+.g .g-bande--contact .g-bande__i::after{ content: counter(g-frame) "A"; position: absolute; left: 4px; bottom: -22px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: #E0B85A; }
 .g .g-bande--contact{ position: relative; }
 
 /* ==== H. Le split ======================================================= */
