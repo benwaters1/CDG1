@@ -58,8 +58,10 @@
   <p class="g-eyebrow" style="margin-top:var(--s8)">Coming Up</p>
   {# 26 Oct (owner's brief): the year's dates, not only markets, so "this season" became the year. Ski dates are provisional. #}
   <h2 class="g-h2">Through the year</h2>
+  {#- 9 Nov, evening (owner's second review, 1): the next eight, and the rest of the year folded under them;
+      every date is still on the page, a tap away, and the page is held to 12,000px. -#}
   <div class="g-agenda">
-    {% for e in upcoming %}
+    {% for e in upcoming[:8] %}
     <article class="g-agenda__row">
       <div class="g-agenda__when">
         <span class="g-agenda__day">{{ e.date_label }}</span>
@@ -72,6 +74,24 @@
     </article>
     {% endfor %}
   </div>
+  {% if upcoming|length > 8 %}
+  <details class="g-agenda__more"><summary>The rest of the year</summary>
+  <div class="g-agenda">
+    {% for e in upcoming[8:] %}
+    <article class="g-agenda__row">
+      <div class="g-agenda__when">
+        <span class="g-agenda__day">{{ e.date_label }}</span>
+        {% if e.time_label %}<span class="g-agenda__time">{{ e.time_label }}</span>{% endif %}
+      </div>
+      <div class="g-agenda__what">
+        <h3 class="g-agenda__title">{{ e.title }}</h3>
+        {% if e.location %}<p class="g-agenda__loc">{{ e.location }}{% if e.distance %} · {{ e.distance }}{%- endif %}</p>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  </details>
+  {% endif %}
   {% endif %}
 
   {% if all_year %}
@@ -236,7 +256,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Thermes d’Ussat-les-Bains · about 20 minutes</p>
-      <p class="g-key__v">A small spa in a park near Tarascon, newly renovated, with single treatments and massages. Telephone before you go, as opening dates vary.</p>
+      <p class="g-key__v">A small spa in a park near Tarascon, newly refurbished, with single treatments and massages. Telephone before you go, as opening dates vary.</p>
       <p class="g-key__v g-key__links">{{ site('https://www.thermes-ussat.fr/', 'thermes-ussat.fr') }}</p>
     </div>
     <div class="g-key__i">
@@ -390,7 +410,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">In summer</p>
-      <p class="g-key__v">Walk the Madriu-Perafita-Claror valley, a UNESCO World Heritage landscape with no roads, or visit the small Romanesque churches of Sant Joan de Caselles and Santa Coloma and the old stone parliament house, Casa de la Vall.</p>
+      <p class="g-key__v">Walk the Madriu-Perafita-Claror valley, a UNESCO World Heritage landscape with no roads, or visit the small Romanesque churches of Sant Joan de Caselles and Santa Coloma and the old stone parliament, Casa de la Vall.</p>
       <p class="g-key__v g-key__links">{{ site('https://visitandorra.com/en/', 'visitandorra.com') }}</p>
     </div>
   </div>
@@ -422,18 +442,18 @@
   <p class="g-fr">Dîner à côté <span class="g-fr__en">Dinner nearby</span></p>
   <h2 class="g-place">Dinner Nearby</h2>
   <p class="g-p">A night&rsquo;s stay includes breakfast at the château. For dinner, Les Cabannes lies just down the hill, about 500 metres away, with a table for every kind of evening.</p>
-  <ul class="g-eat">
-    {%- for kind, name, where, text in [
-      ('candelabra', 'Maison Beaucoup', 'Les Cabannes · 73 rue Principale, beside the church', 'The finer table. Franck, who ran Beaucoup in Toulouse for eighteen years, and his partner Luc have turned a nineteenth-century presbytery into three intimate dining rooms, where the menu follows the seasons and changes every week.'),
-      ('bbq', 'La Maison Lacube', 'Les Cabannes · 3 place des Platanes', 'Much loved, and known for its grills. A farming family cooks their own Gascon black beef and pork in their home on the square, with the produce of some forty Ariège farms. Recommended by the Routard, the Petit Futé and Gault & Millau.'),
-      ('cuisine', 'Le Petit En Cas', 'Les Cabannes · 12 place des Platanes', 'A small, family-run pizzeria on the village square, for an easy evening.'),
-      ('wine', 'The local bar', 'Les Cabannes', 'A glass before dinner, among the people of the valley.')] %}
-    <li class="g-eat__i">
-      <div class="g-eat__ill" aria-hidden="true">{{ illus(kind) }}</div>
-      <div><h3 class="g-eat__t">{{ name }}</h3><p class="g-eat__where">{{ where }}</p><p class="g-eat__d">{{ text }}</p></div>
-    </li>
+  <div class="g-key">
+    {%- for name, where, text in [
+      ('Maison Beaucoup', 'Les Cabannes · 73 rue Principale, beside the church', 'The finer table. Franck, who ran Beaucoup in Toulouse for eighteen years, and his partner Luc have turned a nineteenth-century presbytery into three intimate dining rooms, where the menu follows the seasons and changes every week.'),
+      ('La Maison Lacube', 'Les Cabannes · 3 place des Platanes', 'Much loved, and known for its grills. A farming family cooks their own Gascon black beef and pork in their home on the square, with the produce of some forty Ariège farms. Recommended by the Routard, the Petit Futé and Gault & Millau.'),
+      ('Le Petit En Cas', 'Les Cabannes · 12 place des Platanes', 'A small, family-run pizzeria on the village square, for an easy evening.'),
+      ('The local bar', 'Les Cabannes', 'A glass before dinner, among the people of the valley.')] %}
+    <div class="g-key__i">
+      <p class="g-key__k">{{ name }} · {{ where }}</p>
+      <p class="g-key__v">{{ text }}</p>
+    </div>
     {%- endfor %}
-  </ul>
+  </div>
   <p class="g-p g-eat__also">The village also has a small supermarket and a tabac, for anything forgotten.</p>
 </div></section>
 {% endif %}

@@ -237,9 +237,9 @@ window.houseDay = (function () {
         <ul class="g-subnav">
           {# Each link falls back to the events page until its route exists,
              so a missing endpoint cannot break the header site-wide. #}
-          <li><a href="{{ url_for('events_weddings') }}"{% if NAV_HERE == 'events_weddings' %} class="is-here" aria-current="page"{% endif %}>{{ t('Weddings') }}</a></li>
-          <li><a href="{{ url_for('events_private') }}"{% if NAV_HERE == 'events_private' %} class="is-here" aria-current="page"{% endif %}>{{ t('Private') }}</a></li>
-          <li><a href="{{ url_for('events_photoshoots') }}"{% if NAV_HERE == 'events_photoshoots' %} class="is-here" aria-current="page"{% endif %}>{{ t('Photoshoots') }}</a></li>
+          <li><a href="{{ url_for('events_weddings') }}"{% if request.endpoint == 'events_weddings' %} class="is-here" aria-current="page"{% endif %}>{{ t('Weddings') }}</a></li>
+          <li><a href="{{ url_for('events_private') }}"{% if request.endpoint == 'events_private' %} class="is-here" aria-current="page"{% endif %}>{{ t('Private') }}</a></li>
+          <li><a href="{{ url_for('events_photoshoots') }}"{% if request.endpoint == 'events_photoshoots' %} class="is-here" aria-current="page"{% endif %}>{{ t('Photoshoots') }}</a></li>
         </ul>
       </div>
       <a href="{{ url_for('facilities_page') }}"{% if NAV_HERE == 'facilities_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('The Estate') }}</a>
@@ -584,7 +584,8 @@ window.houseDay = (function () {
           <a href="{{ url_for('restaurant_info') }}">La Table</a> <span class="g-footer__k">{{ _fw }}</span>{% endif %}{% endif %}
         </p>
         {#- 15 Oct (owner): say, with elegance, that the château is only open to guests for now. -#}
-        <p class="g-footer__contact" style="margin:var(--s3) 0 0; font-style:italic;">{{ t('For now, the château is open only to its guests.') }}</p>
+        {%- if request.endpoint != 'contact_page' %}{#- 9 Nov, evening: /contact says it once, in Before You Write. -#}
+        <p class="g-footer__contact" style="margin:var(--s3) 0 0; font-style:italic;">{{ t('For now, the château is open only to its guests.') }}</p>{% endif %}
         <p class="g-footer__contact g-footer__cred"><span class="g-footer__credk">Monument Historique · Classé</span> A Class I Historic Monument, restored under French heritage law since 2013.</p>
         {% if not _pays_here %}<p class="g-footer__contact g-footer__assure">Secure payment by Stripe · A link to manage every booking · Every request answered by a person</p>{% endif %}
         <p class="g-footer__contact g-footer__social" style="margin:var(--s3) 0 0;">
@@ -644,6 +645,22 @@ window.houseDay = (function () {
     </div>
 </div>
 </footer>
+<script>
+/* 9 Nov 2026, evening (owner's second review, 3.1): sizes="auto" for a browser that does not know it yet. The
+   house's photographs say "auto, <a guess>"; where auto is not understood the guess is used, and the guesses ran
+   low, so the browser fetched a file narrower than the space it filled. This gives it the width it is drawn at. */
+(function(){
+  /* No reliable test for auto exists (sizes is a plain string), and the drawn width is what auto would use. */
+  function fit(){
+    document.querySelectorAll('img[srcset][sizes^="auto"]').forEach(function(i){
+      var w = Math.ceil(i.getBoundingClientRect().width);
+      if (w > 0) i.sizes = 'auto, ' + w + 'px';
+    });
+  }
+  fit(); window.addEventListener('load', fit);
+  var t; window.addEventListener('resize', function(){ clearTimeout(t); t = setTimeout(fit, 200); });
+})();
+</script>
 <script>document.querySelectorAll('[data-year]').forEach(function(e){ e.textContent=new Date().getFullYear(); });</script>
 
 {# The bar follows the page. A guest reading about weddings should be offered
@@ -675,6 +692,21 @@ window.houseDay = (function () {
 
 
 
+<script>
+/* 9 Nov 2026, evening (owner's second review, 6): where the page opens on a date widget of its own -- the home
+   page's hero -- the bar waits until that widget has scrolled off, and comes back out of the way if it returns. */
+(function(){
+  var bar = document.querySelector('.g-stickybar'), own = document.querySelector('.g-herosearch');
+  if (!bar || !own || !('IntersectionObserver' in window)) return;
+  bar.classList.add('is-waiting');
+  new IntersectionObserver(function(seen){
+    seen.forEach(function(e){
+      var past = !e.isIntersecting && e.boundingClientRect.bottom < 0;
+      bar.classList.toggle('is-waiting', !past);
+    });
+  }).observe(own);
+})();
+</script>
 <script>
 /* Currency display. Rates fetched once and cached for the day; everything is
    still charged in Euros, which is stated wherever a converted figure shows. */
@@ -1030,30 +1062,28 @@ window.houseDay = (function () {
 </script>
 
 <script>
-/* Currency control beside the prices. The one in the menu panel is where it
-   has always been and still works; this places a second, linked control next
-   to the first convertible price on the page, because a guest reading a rate
-   should not have to open a menu to understand it. */
+/* Currency control in the header strip, once. 9 Nov 2026, evening (owner's
+   second review, 2.3): it was placed beside the first price on the page, which
+   put "SHOW PRICES IN [EUR]" between a retreat's title and its price and under
+   the section headings of /book and /workshops -- a control in the middle of
+   the copy. It sits right of Book now, small, on every page that has rates;
+   the menu panel's control is the master and the two stay in step. Every price
+   marked data-eur follows either. */
 (function(){
   var master = document.getElementById('g-currency');
-  var firstPrice = document.querySelector('[data-eur]');
-  if (!master || !firstPrice) return;
-  var host = firstPrice.closest('section, .g-wrap');
-  if (!host) return;
+  var book = document.querySelector('.g-top .g-booksel');
+  if (!master || !book) return;
 
-  var bar = document.createElement('p');
-  bar.className = 'g-curbar';
-  var label = document.createElement('span');
-  label.className = 'g-curbar__l';
-  label.textContent = 'Show prices in';
+  var bar = document.createElement('span');
+  bar.className = 'g-curtop';
   var sel = document.createElement('select');
-  sel.className = 'g-curbar__s';
-  sel.setAttribute('aria-label', 'Display currency');
+  sel.className = 'g-curtop__s';
+  sel.setAttribute('aria-label', 'Show prices in');
   master.querySelectorAll('option').forEach(function(o){
     sel.appendChild(o.cloneNode(true));
   });
   sel.value = master.value;
-  bar.appendChild(label); bar.appendChild(sel);
+  bar.appendChild(sel);
 
   /* Keep the two controls in step, whichever the guest uses. */
   sel.addEventListener('change', function(){
@@ -1062,11 +1092,7 @@ window.houseDay = (function () {
   });
   master.addEventListener('change', function(){ sel.value = master.value; });
 
-  /* After the section's heading. It anchored on '.g-eyebrow, h2', and the eyebrow comes first,
-     so the control landed between every eyebrow and its heading on the pages that show prices. */
-  var anchor = host.querySelector('h1, h2') || host.querySelector('.g-eyebrow') || host.firstElementChild;
-  if (anchor && anchor.parentElement) anchor.parentElement.insertBefore(bar, anchor.nextSibling);
-  else host.insertBefore(bar, host.firstChild);
+  book.parentElement.insertBefore(bar, book.nextSibling);
 })();
 </script>
 

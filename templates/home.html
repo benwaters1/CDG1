@@ -32,7 +32,8 @@
   <video class="g-hero__video" muted loop playsinline
          disablepictureinpicture disableremoteplayback
          poster="{{ url_for('static', filename='video/chateau_hero_poster.jpg') }}"
-         data-src="{{ url_for('static', filename='video/chateau_hero_loop.mp4') }}"></video>
+         data-src="{{ url_for('static', filename='video/chateau_hero_loop.mp4') }}"
+         data-phone-still="{{ url_for('static', filename='img/rk/from-the-air-pool-garden.jpg') }}"></video>
   <script>
   /* The loop is 2 MB and was fetched by every visitor. Anyone who has asked their device for
      less motion, or whose connection is saving data or on 2G/3G, now gets the poster - the
@@ -43,7 +44,11 @@
     var c = navigator.connection || {};
     var slow = c.saveData || /(^|-)(2g|3g)$/.test(c.effectiveType || "");
     var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (slow || calm) { v.setAttribute("data-still", "1"); return; }
+    /* 9 Nov 2026, evening (owner's second review, 3.5): under 600px the loop showed a slice of wall, its first
+       frame a white blur the white logo vanished into. A phone gets the estate from the air, still, instead. */
+    var narrow = window.matchMedia && window.matchMedia("(max-width: 599px)").matches;
+    if (narrow) v.setAttribute("poster", v.getAttribute("data-phone-still"));
+    if (slow || calm || narrow) { v.setAttribute("data-still", "1"); return; }
     var s = document.createElement("source"); s.src = v.getAttribute("data-src"); s.type = "video/mp4";
     v.appendChild(s); v.muted = true; v.autoplay = true; v.load();
     var p = v.play(); if (p && p.catch) p.catch(function(){});
@@ -108,7 +113,7 @@
     {#- 26 Oct (owner, the retreats deck 1b): in place of "Experience the Château in Full". -#}
     <p class="g-full__fr" lang="fr">L’art de vivre <span class="g-full__fren" lang="en">The art of living</span></p>
     <h2 class="g-full__h" id="full-h">La Vie de Château</h2>
-    <p class="g-full__p">For two centuries Gudanes was a house of guests. Then, for decades, it fell silent. Now, for a few weeks each year, its doors open again to a small company who come to live France as the French have always lived it.</p>
+    <p class="g-full__p">For two centuries Gudanes was a château of guests. Then, for decades, it fell silent. Now, for a few weeks each year, its doors open again to a small company who come to live France as the French have always lived it.</p>
     <p class="g-full__p">Mornings begin with bread from the village <em lang="fr">boulangerie</em> and crêpes on the terrace. The days belong to the kitchen and the château’s chefs, to the markets and brocantes of the Ariège, to the castle at Foix, or to the restorers’ scaffold as a fresco returns to the light. Afternoons are for the pool, a glass of the region’s wine and a book from the library. Every evening ends <em lang="fr">à table</em>: the apéritif as the mountains turn blue, dinner of several courses by candlelight, and on the last night a banquet in the Salon de Musique, then dancing.</p>
     <p class="g-full__p">Guests arrive as strangers and leave as friends, and so many of them return.</p>
     <p class="g-full__btns">

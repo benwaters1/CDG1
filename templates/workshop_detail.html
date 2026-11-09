@@ -143,7 +143,9 @@
         {% elif row.remaining <= 4 %}
           <span class="g-sit__flag g-sit__flag--few">{{ row.remaining }} place{{ '' if row.remaining == 1 else 's' }} left</span>
         {% endif %}
-        {%- set _sit = ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c2998346-182b-476a-83cc-fefc2cad0bba/P1260363.jpeg?format=1000w', 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/Screenshot+2026-08-12+at+3.13.20+pm.png?format=1000w', 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aa7e337d-6a3c-437b-9b9f-a128c57f849e/Screenshot+2026-07-31+at+2.08.26+pm.png?format=1000w'] -%}
+        {#- 9 Nov, evening (owner's second review, 3.4): the date cards showed one fixed set of three, the snowy peaks
+            among them, on the summer retreats too. Each retreat's cards show its own photographs now. -#}
+        {%- set _sit = (RLP['after_photos']|map(attribute=0)|list)[:3] or [RLP['open'][0]] %}
         <img class="g-sit__img" src="{{ _sit[loop.index0 % 3] }}" alt="{{ workshop['title'] }}" loading="lazy">
         <div class="g-sit__b">
           <p class="g-sit__name">{{ workshop['title'] }}</p>

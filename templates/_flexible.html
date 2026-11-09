@@ -18,7 +18,7 @@
 <section class="g-flex"><div class="g-wrap">
   <p class="g-eyebrow">Write to Us</p>
   <h2 class="g-place">Private Events, and Anything Else</h2>
-  <p class="g-p g-lede-first">Rooms and retreats book online, at the price you see, so there is no need to write for those. For a private event, a wedding, a photoshoot, taking the whole château, or a question the pages don’t answer, tell us here.</p>
+  <p class="g-p g-lede-first">Rooms and retreats book online, at the price you see, so there is no need to write for those. For a private event, a wedding, a photoshoot, taking the whole château, or a question the pages do not answer, tell us here.</p>
 
   <form method="post" action="{{ url_for('contact_page') }}" class="g-flex__f">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -67,7 +67,7 @@
     </p>
 
     <button type="submit" class="g-btn g-btn--solid">Send</button>
-    <p class="g-hint">Rates are the same online as here, so we can’t offer lower ones by email. Every message is read at the château.</p>
+    <p class="g-hint">Rates are the same by email as online. Every message is read at the château.</p>
   </form>
 </div></section>
 {% endmacro %}

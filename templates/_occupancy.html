@@ -15,7 +15,10 @@ For up to {{ a }} adult{{ '' if a == 1 else 's' }}; no children in this room.
 {%- elif a + c <= g -%}
 For up to {{ a }} adult{{ '' if a == 1 else 's' }} and {{ c }} child{{ '' if c == 1 else 'ren' }}.
 {%- else -%}
-Up to {{ g }} guests, with no more than {{ a }} adult{{ '' if a == 1 else 's' }} and no more than {{ c }} child{{ '' if c == 1 else 'ren' }}.
+{#- 9 Nov, evening (owner's second review, 5): "Up to 2 guests, with no more than 2 adults and no more than 1 child" read
+    as a machine's sentence and added up to three. The limits still hold in the fields and on the server; the hint after
+    this line says children are welcome from eight. -#}
+Up to {{ ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][g] if g <= 10 else g }} guests.
 {%- endif -%}
 {%- endmacro -%}
 

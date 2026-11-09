@@ -12109,3 +12109,11 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-tn--three .g-tn__frame{ aspect-ratio: 3 / 2; }
 .g .g-tn--three .g-tn__pair img{ aspect-ratio: 3 / 2; }
 .g .g-tn__more{ text-align: center; margin: var(--s6) 0 0; font-style: italic; }
+
+/* 4  Room pages, What Happens Next: three columns. Two left the payment,
+   cancellation, breakfast, luggage and animals column twice the height of the
+   other, with Bruce's photograph floating in the gap. */
+@media (min-width: 64rem){
+  .g .g-plate .g-plate__l{ grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s5) var(--s6); align-items: start; }
+  .g .g-plate .g-plate__l > div{ grid-template-columns: 1fr; }
+}

@@ -123,8 +123,8 @@
     Booked here, and confirmed the moment you pay.
     <a class="g-inline-link" href="{{ url_for('find_booking') }}">Manage an existing booking</a>
   </p>
-  {#- 9 Nov, evening: the "Typical in November" weather box went (owner: winter and the cold are not to be
-      prominent), and the film strip under the bar with it (owner's second review, 1). -#}
+  {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#s_arrival', '#s_departure') }}
+  {#- 9 Nov, evening (owner's second review, 1): the film strip under the bar went. -#}
   {#- 9 Nov, evening (owner's second review, 2.5): what is open next, under the dates it answers. One sentence when
       every room opens on the same night; the table only when they differ. -#}
   {% from '_availability_strip.html' import next_free as next_free_strip %}

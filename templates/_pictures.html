@@ -63,14 +63,14 @@
     a desktop; never moves on its own. A slide may be a dict with href and
     title (a room card) instead of a plain photograph. -#}
 {#- thumbs=True adds a strip of small photographs under the slider, each a button to its slide: a room's own gallery. -#}
-{% macro carrousel(slides, label, cls='', thumbs=False) -%}
+{% macro carrousel(slides, label, cls='', thumbs=False, upto=None) -%}
 <section class="g-car {{ cls }}" data-car aria-roledescription="carousel" aria-label="{{ label }}">
   <div class="g-car__track" data-car-track tabindex="0">
     {%- for s in slides %}
     {%- set p = [s.src, s.alt, s.cap] if s is mapping else s %}
     <figure class="g-car__s" aria-roledescription="slide" aria-label="{{ loop.index }} / {{ slides|length }}">
       {%- if s is mapping and s.href %}<a class="g-car__a" href="{{ s.href }}" aria-label="{{ s.label or p[1] }}">{% endif %}
-      <div class="g-car__f">{{ pic(p[0], p[1], sizes='(min-width: 64rem) 46vw, 84vw') }}</div>
+      <div class="g-car__f">{{ pic(p[0], p[1], sizes='(min-width: 64rem) 46vw, 84vw', upto=upto) }}</div>
       {%- if s is mapping and s.title %}<p class="g-car__t">{{ s.title }}</p>{% endif %}
       {%- if s is mapping and s.href %}</a>{% endif %}
       {{- _cap(p, 'g-car__cap') }}
@@ -85,7 +85,7 @@
   {%- if thumbs %}
   <div class="g-car__thumbs" data-car-thumbs>
     {%- for s in slides %}{%- set p = [s.src, s.alt] if s is mapping else s %}
-    <button type="button" class="g-car__thumb" data-car-go="{{ loop.index0 }}" aria-label="Photograph {{ loop.index }} of {{ slides|length }}"{% if loop.first %} aria-current="true"{% endif %}>{{ pic(p[0], '', sizes='7rem') }}</button>
+    <button type="button" class="g-car__thumb" data-car-go="{{ loop.index0 }}" aria-label="Photograph {{ loop.index }} of {{ slides|length }}"{% if loop.first %} aria-current="true"{% endif %}>{{ pic(p[0], p[1], sizes='7rem') }}</button>
     {%- endfor %}
   </div>
   {%- endif %}
@@ -141,7 +141,9 @@
     with sprocket edges and frame numbers, which scrolls by hand. The numbers
     are drawn by the stylesheet, like the sprocket holes: film, not words. -#}
 {% macro bande(photos, label, mode='drift', cls='') -%}
-<section class="g-bande g-bande--{{ mode }} {{ cls }}" aria-label="{{ label }}"{% if mode == 'drift' %} data-bande{% endif %} tabindex="0">
+{#- 9 Nov, evening (owner's second review, 2.7): no strip drifts any more. Without data-bande the script below adds
+    no copies, so a strip is a plain row of its photographs, each once. -#}
+<section class="g-bande g-bande--{{ mode }} {{ cls }}" aria-label="{{ label }}" tabindex="0">
   <div class="g-bande__row" data-bande-row>
     {%- for p in photos %}
     <figure class="g-bande__i">{{ pic(p[0], p[1], sizes='22rem') }}</figure>
