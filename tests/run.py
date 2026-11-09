@@ -64,6 +64,7 @@ SUITES = [
     "test_website_analytics",
     "test_workshop_rooms",
     "test_workshop_included",
+    "test_workshop_photo",
     "test_workshop_lifecycle",
     "test_workshop_minimum",
     "test_workshop_sheet",

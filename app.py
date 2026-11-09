@@ -79263,6 +79263,53 @@ def workshop_admin_return():
     return url_for("admin_workshops")
 
 
+def save_workshop_photo(file):
+    """A retreat's own photograph, from the workshop form: (stored name, None),
+    (None, None) when no file was chosen, or (None, the reason it was refused).
+
+    Its card on /workshops and the top of its own page show it. It is kept
+    beside the room photographs and served by room_photo, like every upload a
+    public page shows, rather than in a directory of its own that would need its
+    own route and its own place in the backup. It goes through photo_master on
+    the way in, as the photo intake does: an iPhone HEIC lands as a JPEG, a
+    camera's full frame comes down to the master size, and none of its EXIF
+    comes along, so no GPS and no serial number reach a public page.
+    """
+    if not file or not file.filename:
+        return None, None
+    ok, reason = allowed_image(file.filename)
+    if not ok:
+        return None, reason
+    try:
+        data, _taken = photo_master(file.read(), file.filename)
+    except ValueError:
+        return None, ("That file could not be read as a photograph. A JPEG or PNG "
+                      "works, as does a photograph straight off an iPhone.")
+    stored = f"workshop_{secrets.token_hex(8)}.jpg"
+    os.makedirs(ROOM_PHOTO_DIR, exist_ok=True)
+    with open(os.path.join(ROOM_PHOTO_DIR, stored), "wb") as f:
+        f.write(data)
+    return stored, None
+
+
+def drop_workshop_photo_file(conn, filename):
+    """Delete a retreat's old photograph from disk once no workshop names it.
+
+    Called after the commit, as the gallery does it: a row naming a missing file
+    shows guests a broken picture, while a file nothing names only takes space.
+    Only files this form made (workshop_...), so a name set by hand to a room's
+    photograph can never take the room's picture with it.
+    """
+    if not filename or not filename.startswith("workshop_") or "/" in filename or "\\" in filename:
+        return
+    if conn.execute("SELECT 1 FROM workshops WHERE photo_filename = ?", (filename,)).fetchone():
+        return
+    try:
+        os.remove(os.path.join(ROOM_PHOTO_DIR, filename))
+    except OSError:
+        pass
+
+
 @app.route("/admin/workshops/new", methods=["GET", "POST"])
 @owner_required
 def new_workshop():
@@ -79291,13 +79338,19 @@ def new_workshop():
                   "leave it blank and type a name.", "error")
             return render_template("workshop_form.html", workshop=None,
                                    instructors=known_instructor_list())
+        photo, photo_error = save_workshop_photo(request.files.get("photo"))
+        if photo_error:
+            conn.close()
+            flash(photo_error, "error")
+            return render_template("workshop_form.html", workshop=None,
+                                   instructors=known_instructor_list())
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM workshops").fetchone()["m"]
         cur = conn.execute(
             """INSERT INTO workshops (title, description, instructor_name, instructor_user_id, price_per_person,
                default_capacity, sort_order, deposit_percent, inclusions, itinerary, single_supplement,
                transfers_included, excursions_included, private_token, organiser_name,
-               organiser_email, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               organiser_email, photo_filename, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (title, description, instructor_name or None,
              instructor_id,
              float(price_raw) if price_raw else 0,
@@ -79309,10 +79362,12 @@ def new_workshop():
              1 if request.form.get("transfers_included") else 0,
              1 if request.form.get("excursions_included") else 0,
              new_private_token() if request.form.get("private") else None,
-             organiser_name, organiser_email,
+             organiser_name, organiser_email, photo,
              datetime.now(timezone.utc).isoformat()),
         )
         new_id = cur.lastrowid
+        if photo:
+            log_audit(conn, "workshop_photo_set", target=str(new_id), details=title)
         conn.commit()
         conn.close()
         flash(f"{title} added. Add its first sitting below.", "success")
@@ -79419,11 +79474,22 @@ def edit_workshop(workshop_id):
             flash(organiser_error or "Workshop title is required.", "error")
             return redirect(url_for("edit_workshop", workshop_id=workshop_id))
 
+        # A new file replaces the photograph; the box takes it off; neither keeps it.
+        # Read and stored before the write below, so nothing holds the database while
+        # a camera-sized picture is decoded.
+        photo, photo_error = save_workshop_photo(request.files.get("photo"))
+        if photo_error:
+            conn.close()
+            flash(photo_error, "error")
+            return redirect(url_for("edit_workshop", workshop_id=workshop_id))
+        old_photo = workshop["photo_filename"]
+        new_photo = photo or (None if request.form.get("remove_photo") else old_photo)
+
         conn.execute(
             """UPDATE workshops SET title=?, description=?, instructor_name=?, instructor_user_id=?,
                price_per_person=?, default_capacity=?, deposit_percent=?, inclusions=?, itinerary=?,
                single_supplement=?, transfers_included=?, excursions_included=?,
-               private_token=?, organiser_name=?, organiser_email=?,
+               private_token=?, organiser_name=?, organiser_email=?, photo_filename=?,
                active=? WHERE id=?""",
             (title, description, instructor_name or None,
              int(instructor_user_id) if instructor_user_id.isdigit() else None,
@@ -79435,13 +79501,18 @@ def edit_workshop(workshop_id):
              # Reading it any other way would make a box impossible to untick.
              1 if request.form.get("transfers_included") else 0,
              1 if request.form.get("excursions_included") else 0,
-             private_token, organiser_name, organiser_email,
+             private_token, organiser_name, organiser_email, new_photo,
              active, workshop_id),
         )
         if bool(private_token) != bool(workshop["private_token"]):
             log_audit(conn, "workshop_made_private" if private_token else "workshop_made_public",
                       target=str(workshop_id), details=title)
+        if new_photo != old_photo:
+            log_audit(conn, "workshop_photo_set" if new_photo else "workshop_photo_removed",
+                      target=str(workshop_id), details=title)
         conn.commit()
+        if old_photo and old_photo != new_photo:
+            drop_workshop_photo_file(conn, old_photo)
         conn.close()
         if private_token and not workshop["private_token"]:
             flash(f"{title} is private now: off every public page, and booked only by its "
