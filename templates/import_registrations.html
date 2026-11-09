@@ -19,7 +19,10 @@
   agreed and exactly what they paid. Each comes across confirmed, with its payments and the
   Stripe payment behind each one, its balance and when it is due, and with emails switched
   off: <strong>nobody is written to, asked to pay, or reminded</strong> until you switch it
-  on for them. Bringing the same files across twice changes nothing the second time.
+  on for them. Bringing the same files across twice changes nothing the second time. A
+  registration already here is held up against the new export, figure by figure: money paid in
+  RetreatGuru since is found in Stripe and offered to add, and anything else that differs is
+  shown for you to settle. A guest already booked here on the same retreat is never booked twice.
 </p>
 
 <div class="detail-card">
@@ -65,6 +68,20 @@
     <span class="mini-role">{{ blocked|length }}</span></div>
   <div class="mini-row"><span class="mini-name">Registrations with something for you to read</span>
     <span class="mini-role">{{ noted|length }}</span></div>
+  {% if plan.second.same or plan.second.more_paid or plan.second.differs %}
+  <div class="mini-row"><span class="mini-name">Already here, and the same as RetreatGuru to the cent</span>
+    <span class="mini-role">{{ plan.second.same }}</span></div>
+  <div class="mini-row"><span class="mini-name">Already here, and paid more in RetreatGuru since: found in Stripe, added only if you tick it</span>
+    <span class="mini-role">{{ plan.second.more_paid }}</span></div>
+  <div class="mini-row"><span class="mini-name">Already here, and different in a way to settle by hand</span>
+    <span class="mini-role">{% if plan.second.differs %}<span class="mini-status status-declined">{{ plan.second.differs }}</span>{% else %}0{% endif %}</span></div>
+  {% endif %}
+  <div class="mini-row"><span class="mini-name">Guests already booked here on the same retreat: skipped unless attached</span>
+    <span class="mini-role">{{ plan.second.on_site }}</span></div>
+  {% if plan.held %}
+  <div class="mini-row"><span class="mini-name">Stripe payments this app already holds, never matched again</span>
+    <span class="mini-role">{{ plan.held|length }}</span></div>
+  {% endif %}
   <div class="mini-row"><span class="mini-name">Emails sent or queued by bringing them across</span>
     <span class="mini-role">none</span></div>
 </div>
@@ -109,12 +126,41 @@
         <td>{{ l.owing|money }}</td>
         <td>{{ l.due_date|date_short if l.due_date }}</td>
       </tr>
-      {% if l.blocking or l.notes or l.credit_options %}
+      {% if l.blocking or l.notes or l.credit_options or l.topup or l.on_site_why %}
       <tr>
         <td></td>
         <td colspan="7">
           {% for b in l.blocking %}<p class="flash flash-error" style="margin:2px 0;">{{ b }}</p>{% endfor %}
           {% for n in l.notes %}<p class="upload-hint" style="margin:2px 0;">{{ n }}</p>{% endfor %}
+          {% if l.topup and not l.blocking %}
+          {# Paid in RetreatGuru after it came across, found in Stripe among the
+             payments nobody here holds. Each its own line, added only if ticked;
+             nothing already on the registration is touched. #}
+          {% for c in l.topup %}
+          <label class="checkbox-row" style="margin:4px 0;">
+            <input type="checkbox" name="topup" value="{{ l.key }}|{{ c.ref }}">
+            <span>Add {{ c.net|money }} paid in RetreatGuru{% if c.on %} on {{ c.on|date_short }}{% endif %}
+              ({{ c.ref }}) to {{ l.done['reference_code'] }} as a payment of its own.</span>
+          </label>
+          {% endfor %}
+          <p class="upload-hint" style="margin:2px 0;">With every one ticked, {{ l.done['reference_code'] }} says what
+            RetreatGuru says: {{ l.agreed|money }} agreed, {{ l.paid|money }} paid, {{ l.owing|money }} owing.</p>
+          {% endif %}
+          {% if l.on_site_why %}
+            {% if l.attach_ok %}
+            {% set target = l.on_site[0] %}
+            <label class="checkbox-row" style="margin:4px 0;">
+              <input type="checkbox" name="attach" value="{{ l.key }}|{{ target['id'] }}">
+              <span>Attach RetreatGuru's payments to {{ target['reference_code'] }} instead:
+                {% for c in l.attach_charges %}{{ c.net|money }}{% if c.on %} on {{ c.on|date_short }}{% endif %} ({{ c.ref }}){{ ', ' if not loop.last }}{% endfor %},
+                each a payment of its own. {{ target['reference_code'] }} would then have {{ l.attach_after|money }} owing.
+                Left unticked, this registration is skipped.</span>
+            </label>
+            {% else %}
+            <p class="upload-hint" style="margin:2px 0;">Skipped. Its payments cannot be attached to the booking here
+              on this check{% if l.attach_why %}: {{ l.attach_why }}{% else %}.{% endif %}</p>
+            {% endif %}
+          {% endif %}
           {% for c in l.credit_options %}
           {# RetreatGuru sometimes took money paid some other way off the price
              instead of calling it paid. Ticked, it comes across as paid against
@@ -147,6 +193,10 @@
   <p class="upload-hint">In the Stripe export and not matched to any of these registrations ({{ plan.leftover|length }}):
     {% for c in plan.leftover %}{{ c.email or 'no email' }} {{ c.net|money }} ({{ c.ref }}){{ '; ' if not loop.last else '.' }}{% endfor %}
     Payments for retreats already over are expected here.</p>
+  {% endif %}
+  {% if plan.held %}
+  <p class="upload-hint">In the Stripe export and already held here, so never put towards anything by this ({{ plan.held|length }}):
+    {% for c in plan.held %}{{ c.email or 'no email' }} {{ c.net|money }} ({{ c.ref }}, {{ c.held }}){{ '; ' if not loop.last else '.' }}{% endfor %}</p>
   {% endif %}
 
   <label class="checkbox-row" style="margin-top:12px;">

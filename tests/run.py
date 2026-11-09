@@ -39,6 +39,7 @@ SUITES = [
     "test_balances_to_collect",
     "test_moved_from_retreatguru",
     "test_retreatguru_import",
+    "test_rg_second_run",
     "test_workshop_register",
     "test_lists_open_on_now",
     "test_owed_everywhere",
