@@ -35114,6 +35114,18 @@ ROOM_GUEST_DETAILS_REQUIRED = ("guest_address", "guest_city", "guest_postcode",
                                "guest_country", "estimated_arrival_time")
 WORKSHOP_GUEST_DETAILS_REQUIRED = ("guest_address", "guest_city", "guest_postcode", "guest_country")
 
+# WHAT THE PAGE REQUIRES, THE SITE REQUIRES. The room, atelier and dinner
+# forms draw the telephone box `required` (phone_field, "So we can reach you
+# about your arrival"), and a browser will not send them with it empty -- but
+# none of the three routes asked for it, so anything posting the fields itself
+# booked without one. The Contact page had the same gap with the name, and
+# that is how "Private event. Test" kept arriving (9 November 2026).
+# test_public_forms_required reads every public form's required fields off the
+# page and refuses the run if the route behind it lets any one of them through.
+# A number that does not normalise is still kept as typed (phone_from_form):
+# this asks only that there is one.
+PHONE_REQUIRED = "Please give a telephone number, so we can reach you."
+
 
 def read_guest_details(source, keys):
     """The guest details in `keys`, trimmed and capped, from a form or a Stripe metadata dict."""
@@ -54486,6 +54498,8 @@ def book_room(room_id):
 
         if not error and missing_guest_details(guest_details, ROOM_GUEST_DETAILS_REQUIRED):
             error = "Please give your address, town, postcode, country and estimated arrival time."
+        if not error and not guest_phone:
+            error = PHONE_REQUIRED
 
         if error:
             flash(error, "error")
@@ -60682,6 +60696,8 @@ def restaurant_book():
         elif restaurant_remaining_capacity(conn, dinner_date.isoformat()) < party_size:
             error = "That date is fully booked — join the waitlist below, or try another date."
             fully_booked = True
+        elif not guest_phone:
+            error = PHONE_REQUIRED
 
         if error:
             flash(error, "error")
@@ -66147,6 +66163,8 @@ def workshop_register(session_id):
 
         if not error and missing_guest_details(guest_details, WORKSHOP_GUEST_DETAILS_REQUIRED):
             error = "Please give your address, town, postcode and country."
+        if not error and not guest_phone:
+            error = PHONE_REQUIRED
         if error:
             flash(error, "error")
             conn.commit()  # persist the rate-limit log entry even on a validation error
@@ -78112,6 +78130,13 @@ def join_restaurant_waitlist():
         conn.close()
         flash("Too many attempts from this connection — please try again in a bit.", "error")
         return redirect(url_for("restaurant_book"))
+    # The room waiting list was guarded and these two were not, so a script
+    # could put anybody's address on them and the house wrote to it when a
+    # table freed up.
+    if refused_as_bot(conn, "join_restaurant_waitlist", request.form):
+        conn.close()
+        flash(BOT_REFUSAL_MESSAGE, "error")
+        return redirect(url_for("restaurant_book"))
     if not name or not email:
         conn.commit()
         conn.close()
@@ -78121,6 +78146,13 @@ def join_restaurant_waitlist():
         conn.commit()
         conn.close()
         flash("Enter a valid email address.", "error")
+        return redirect(url_for("restaurant_book"))
+    # The page asks how many and requires it; a table that frees up is offered
+    # to a party that fits it, so "?" is no answer.
+    if not party_size_raw.isdigit() or int(party_size_raw) < 1:
+        conn.commit()
+        conn.close()
+        flash("Please say how many of you there are.", "error")
         return redirect(url_for("restaurant_book"))
 
     # The date was stored as whatever string was posted, never parsed — the
@@ -82621,6 +82653,10 @@ def join_workshop_waitlist():
         conn.close()
         flash("Too many attempts from this connection — please try again in a bit.", "error")
         return redirect(back)
+    if refused_as_bot(conn, "join_workshop_waitlist", request.form):
+        conn.close()
+        flash(BOT_REFUSAL_MESSAGE, "error")
+        return redirect(back)
     if not name or not email:
         conn.commit()
         conn.close()
@@ -82630,6 +82666,11 @@ def join_workshop_waitlist():
         conn.commit()
         conn.close()
         flash("Enter a valid email address.", "error")
+        return redirect(back)
+    if not party_size_raw.isdigit() or int(party_size_raw) < 1:
+        conn.commit()
+        conn.close()
+        flash("Please say how many of you there are.", "error")
         return redirect(back)
 
     party_size = int(party_size_raw) if party_size_raw.isdigit() else None
@@ -122128,10 +122169,13 @@ def contact_page():
     flex = (request.form.get("flexibility") or "").strip()
     message = (request.form.get("message") or "").strip()[:2000]
     # What it is about (z29): one of CONTACT_TOPICS, said first in the notes.
-    # A post without one -- a page cached before z29 -- is "something else".
-    topic = (request.form.get("topic") or "").strip()
-    if topic not in CONTACT_TOPICS:
-        topic = "other"
+    # A value that is not one of them is "something else", never stored as
+    # typed. NO topic at all was once a page cached before z29; a page that
+    # old can no longer post (its token and stamp lapse within the hour), and
+    # the page requires one, so a post without it is a script's -- set aside
+    # below with the nameless ones.
+    topic_raw = (request.form.get("topic") or "").strip()
+    topic = topic_raw if topic_raw in CONTACT_TOPICS else "other"
 
     if not EMAIL_RE.match(email):
         flash("That email address does not look right — we would have no way "
@@ -122224,7 +122268,8 @@ def contact_page():
     # nights, and notify_room_waitlist_opening writes to them -- "a room has
     # come free, first to book has it" -- when a night in their range frees up.
     # Somebody who said "around May" asked a question; a person answers it.
-    aside = enquiry_is_pitch(conn, email, name, message)
+    aside = enquiry_is_pitch(conn, email, name, message) or (
+        "" if topic_raw else "no topic, which the page will not send without (a script posting the form)")
     now_iso = datetime.now(timezone.utc).isoformat()
     entry_id = conn.execute(
         """INSERT INTO waitlist_entries (name, email, phone, desired_arrival,

@@ -445,6 +445,7 @@ SUITES = [
     "test_family_suite_beds",
     "test_contact_enquiry_spam",
     "test_contact_enquiry_letter",
+    "test_public_forms_required",
     "test_contact_form_guard",
     "test_workshops_fifteen",
     "test_google_setup_z30",
