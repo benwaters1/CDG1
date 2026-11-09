@@ -63,6 +63,7 @@ NOT_HERE = {
     "restaurant_find.html": "looks a table up; keeps nothing",
     "workshop_find.html": "looks an atelier booking up; keeps nothing",
     "voucher_check.html": "looks a voucher up; keeps nothing",
+    "channel_checkin_find.html": "looks a Booking.com stay up and sends the guest to its check-in; keeps nothing",
     "recover.html": "the owner's recovery, which writes only to the owner",
     "guest_account_request.html": "sends a link only to an address already on a booking",
     "_waitlist.html": "a macro no page draws",
