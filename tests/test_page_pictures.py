@@ -92,6 +92,22 @@ PAGES = {
         ("Winter at Gudanes: the chateau in snow across the page", r'class="g-plein "', 1),
         ("and an album", r'class="g-album g-album--3 ', 1),
     ],
+    "/whats-on": [
+        ("each place section with a photograph beside it", r'class="g-sp[^"]*">\s*<div class="g-sp__text">', 3),
+        ("Skiing Nearby: a slider", r'aria-label="Skiing nearby"', 1),
+        ("its Commons credits where they can be seen", r'<p class="g-car__credits"><span class="g-credit">', 1),
+        ("the hot springs and the cave credited", r'Jeunamateur.*Traumrune', 1),
+    ],
+    "/press": [
+        ("The Pages Themselves: a fanned album", r'class="g-album g-album--3 g-rv g-album--fan"', 1),
+        ("and all six behind See all", r'See all 6 photos', 1),
+    ],
+    "/contact": [
+        ("the band of four: one photograph across the page, down the drive", r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*down-the-drive', 1),
+    ],
+    "/gallery": [
+        ("the gallery as a masonry of mixed heights", r'g-gal--masonry', 1),
+    ],
 }
 
 

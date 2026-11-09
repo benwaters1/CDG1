@@ -494,6 +494,20 @@
 .g .g-way__cadre .g-cadre__frame{ padding: 7px; }
 .g .g-way__cadre .g-cadre__mount{ padding: 10px; }
 
+/* ==== What's on, press, contact, gallery (brief 4.7) ==================== */
+/* The press pages, fanned out like magazines on a table. */
+.g .g-album--fan .g-album__p:nth-child(1){ transform: rotate(-6deg); }
+.g .g-album--fan .g-album__p:nth-child(2){ transform: rotate(1deg); margin-top: var(--s4); }
+.g .g-album--fan .g-album__p:nth-child(3){ transform: rotate(7deg); }
+.g .g-album--fan .g-album__f img{ aspect-ratio: 3 / 4; }
+.g .g-album--fan .g-album__f::before, .g .g-album--fan .g-album__f::after{ display: none; }
+
+/* The gallery: a masonry of mixed heights, each photograph its own shape. The
+   inline height on each photograph is the old grid's, overruled here. */
+.g .g-gal--masonry{ display: block; columns: 3 17rem; column-gap: var(--s4); }
+.g .g-gal--masonry > figure{ break-inside: avoid; margin: 0 0 var(--s4) !important; display: block; }
+.g .g-gal--masonry > figure img{ height: auto !important; }
+
 /* ==== /design only: the specimen page's own arrangement ================= */
 .g .g-design__row{ display: grid; gap: var(--s6); align-items: end; }
 @media (min-width: 56rem){ .g .g-design__row{ grid-template-columns: repeat(3, minmax(0, 1fr)); } }
