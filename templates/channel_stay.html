@@ -14,7 +14,7 @@
     <h1>{{ stay['guest_name'] or 'Booking.com guest' }}</h1>
     <p class="upload-hint" style="margin:4px 0 0;">
       Booking.com {{ stay['reservation_number'] }} ·
-      {{ stay['room_name'] or stay['room_label'] or 'room not matched' }} ·
+      {{ rooms_label or stay['room_label'] or 'room not matched' }} ·
       {% if stay['arrival_date'] %}{{ date_range(stay['arrival_date'], stay['departure_date']) if stay['departure_date'] else stay['arrival_date']|date_short }} · {{ nights }} night{{ '' if nights == 1 else 's' }}{% else %}no dates{% endif %}
       {%- if stay['guests'] %} · {{ stay['guests'] }} guest{{ '' if stay['guests'] == 1 else 's' }}{% endif %}
       · <span class="mini-status status-{{ 'confirmed' if stay['status'] == 'confirmed' else 'cancelled' }}">{{ stay['status'] }}</span>
@@ -60,6 +60,78 @@
     {% if mail_count %}<p class="upload-hint">{{ mail_count }} email{{ '' if mail_count == 1 else 's' }} from Booking.com about this stay: <a href="{{ url_for('management_booking_com', q=stay['reservation_number']) }}">read them</a>.</p>{% endif %}
   </section>
 </div>
+
+{# ------------------------------------------------ its rooms #}
+{# One reservation can be for more than one room (Chiodi, 6348479172: the
+   King Suite and the Twin Room (Ground Floor)). Each is on the calendar, the
+   room board and the night's count; the guest, the fiche and the door link
+   are the reservation's, once. #}
+<section class="detail-card">
+  <h2 class="section-heading">{{ 'Rooms' if held|length != 1 else 'Room' }}</h2>
+  {% if held %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th scope="col">Room</th><th scope="col">Nights</th><th scope="col"></th></tr></thead>
+      <tbody>
+        {% for h in held %}
+        <tr>
+          <th scope="row">{{ h['name'] }}{% if h['first'] and held|length > 1 %} <span class="upload-hint">· the party is counted here</span>{% endif %}</th>
+          <td>{% if h['arrival_date'] and h['departure_date'] %}{{ date_range(h['arrival_date'], h['departure_date']) }}{% else %}—{% endif %}</td>
+          <td>
+            <form method="post" action="{{ url_for('remove_channel_stay_room', reservation_id=stay['id'], room_id=h['room_id']) }}"
+                  onsubmit="return confirm('Take {{ h['name']|e }} off this reservation? Its other rooms stay.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-mini">Take this room off</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="upload-hint">{{ stay['match_note'] or 'No room matched yet.' }}</p>
+  {% endif %}
+  {% if candidates %}
+  <form method="post" action="{{ url_for('group_channel_stay_rooms', reservation_id=stay['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="upload-hint">These rooms' Booking.com calendars have a stay starting {{ stay['arrival_date']|date_short }} that no other reservation holds:</p>
+    {% for c in candidates %}
+    <label style="display:block;"><input type="checkbox" name="room_id" value="{{ c['room_id'] }}" checked> {{ c['name'] }} <span class="upload-hint">to {{ c['departure_date']|date_short }}</span></label>
+    {% endfor %}
+    <button type="submit" class="btn-mini">{{ 'These rooms are' if candidates|length > 1 else 'This room is' }} {{ 'also ' if held }}this reservation</button>
+  </form>
+  {% endif %}
+  {% if stay['status'] == 'confirmed' and room_choices %}
+  <details style="margin-top:8px;">
+    <summary>Give it another room by hand</summary>
+    <form method="post" action="{{ url_for('add_channel_stay') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="reservation_number" value="{{ stay['reservation_number'] }}">
+      <input type="hidden" name="back" value="stay">
+      <div class="field-row-3">
+        <div>
+          <label class="field-label" for="cs-more-room">Room</label>
+          <select id="cs-more-room" name="room_id" required>
+            <option value="">Choose…</option>
+            {% for room in room_choices %}<option value="{{ room['id'] }}">{{ room['name'] }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="field-label" for="cs-more-arrive">Arrives</label>
+          <input type="date" id="cs-more-arrive" name="arrival_date" required value="{{ stay['arrival_date'] or '' }}">
+        </div>
+        <div>
+          <label class="field-label" for="cs-more-leave">Leaves</label>
+          <input type="date" id="cs-more-leave" name="departure_date" required value="{{ stay['departure_date'] or '' }}">
+        </div>
+      </div>
+      <p class="upload-hint">Added to the rooms it has; none of them is replaced.</p>
+      <button type="submit" class="btn-mini">Add the room</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
 
 {# ------------------------------------------------ the guest #}
 <section class="detail-card">
