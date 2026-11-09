@@ -171,10 +171,17 @@ def run():
         days, section = journey(html)
         s.section(f"{title}")
         s.check(f"{title}: the page answers", r.status_code == 200, detail=str(r.status_code))
+        starts = {date.fromisoformat(str(x["start_date"])) for x in sittings}
+        # Every plan but Noël's is a summer plan, for dates May to September (this file's own reading of it). A retreat
+        # on offer with dates outside them -- another suite's January Long Weekender, in a full run -- has the outline.
+        if not re.search(r"No[eë]l|Christmas", title) and not all(5 <= d.month <= 9 for d in starts):
+            cold = [p for p in NOT_IN_WINTER if re.search(p, section, re.I)]
+            s.check(f"{title}: dates outside the summer, so the outline and no summer days", days == [] and not cold,
+                    detail=f"{len(days)} days, {cold}")
+            continue
         s.check(f"{title}: a day-by-day plan", len(days) >= 4, detail=f"{len(days)} days")
         if not days:
             continue
-        starts = {date.fromisoformat(str(x["start_date"])) for x in sittings}
         start = min(starts)
         same_weekday = len({d.weekday() for d in starts}) == 1
         s.check(f"{title}: its dates start on one weekday, so the days can be named", same_weekday,

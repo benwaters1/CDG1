@@ -47,7 +47,11 @@ m = _harness.m
 # a second read-aloud pass), which also changed
 # the Noël card line and three opening paragraphs. Every difference it listed
 # was one of those five pages: /workshops and the four retreat pages.
-COPY_BASE = "bfbea12"
+# 9 Nov, later: moved again to the merge with main (e9b2f1a), which brought the footer
+# address in full ("2 Route de Beille, Château-Verdun, Ariège 09310, France",
+# 22ea0c9, the owner's address work). Checked against main itself first: the
+# only pages that differ from main are the five retreat pages above.
+COPY_BASE = "e9b2f1a"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
