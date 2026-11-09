@@ -433,7 +433,7 @@ def run():
         with _Mail() as mail:
             r = guest.post("/restaurant/book", data={
                 "guest_name": TAG + " Free", "guest_email": _email("Free"),
-                "guest_phone": "", "dinner_date": D, "party_size": "2",
+                "guest_phone": "+33 6 12 34 56 78", "dinner_date": D, "party_size": "2",
                 "dietary_notes": "", "promo_code": ""}, follow_redirects=True)
         row = conn.execute("SELECT * FROM restaurant_bookings WHERE guest_email = ?",
                            (_email("Free"),)).fetchone()
@@ -447,7 +447,7 @@ def run():
         with _Mail() as mail:
             r = guest.post("/restaurant/book", data={
                 "guest_name": TAG + " Seven", "guest_email": _email("Seven2"),
-                "guest_phone": "", "dinner_date": D, "party_size": "7",
+                "guest_phone": "+33 6 12 34 56 78", "dinner_date": D, "party_size": "7",
                 "dietary_notes": "", "promo_code": ""}, follow_redirects=True)
         row = conn.execute("SELECT * FROM restaurant_bookings WHERE guest_email = ?",
                            (_email("Seven2"),)).fetchone()

@@ -432,7 +432,7 @@ def run():
          "party_size": "1"}
     s.check("joining without the key is a 404",
             anon.post("/workshops/waitlist/join", data=w).status_code == 404)
-    r = anon.post("/workshops/waitlist/join", data={**w, "k": token})
+    r = anon.post("/workshops/waitlist/join", data={"party_size": "2", **w, "k": token})
     conn = db()
     joined = conn.execute("SELECT COUNT(*) AS n FROM workshop_waitlist WHERE email = ?",
                           (w["email"],)).fetchone()["n"]
