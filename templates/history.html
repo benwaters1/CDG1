@@ -21,6 +21,9 @@
 {% block og_image %}{{ url_for('static', filename='img/history/postcard-chateau-de-gudannes.jpg', _external=True) }}{% endblock %}
 {% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
+{#- 9 Nov (the image layout brief, 4.6): the photographs through the picture components (_pictures.html, shown together
+    on /design). Not one word changes. -#}
+{% from '_pictures.html' import carte_postale, cadre, split, plein, pictures_script %}
 {% from '_marks.html' import monogram %}
 {% from '_illus.html' import illus %}
 
@@ -57,7 +60,8 @@
       <p class="g-p">The commune of Château-Verdun takes its name from a medieval fort on this site. It is first recorded in 1213, when Raymond-Roger, Count of Foix, counted it among the fortifications of his county in a report to the Counts of Toulouse, and early in the fourteenth century Pierre Arnaud de Château-Verdun was seneschal of the County of Foix. The fort later passed to the de Sales, a branch of the de Lordat family, long powerful in Toulouse.</p>
       <p class="g-p">In the Wars of Religion the barony of Gudanes belonged to Fantillon de Sales, a prominent Huguenot. In 1567 Huguenots fleeing Pamiers were massacred at Les Cabannes, just below the château, and the next year Fantillon led a reprisal on Tarascon. In 1580 the Catholic people of Gudanes rose against him and ransacked the castle; Fantillon fled, and was later killed. His Catholic brother, Jean-Paul, inherited the barony, and the family were made Marquis de Gudanes, with vast forests across the Pyrénées. By 1671 the old castle was recorded as a ruin.</p>
     </div>
-    <figure class="g-hist__fig"><img src="{{ url_for('static', filename='img/history/postcard-valley.jpg') }}" alt="The château in its valley below the mountain, on an early postcard" loading="lazy"><figcaption>The valley the fort once guarded, on an early postcard</figcaption></figure>
+    {#- 9 Nov (the brief, 4.6): the early postcard, as a postcard. -#}
+    {{ carte_postale([url_for('static', filename='img/history/postcard-valley.jpg'), 'The château in its valley below the mountain, on an early postcard', 'The valley the fort once guarded, on an early postcard'], cls='g-hist__fig') }}
   </div>
 </div></section>
 
@@ -144,8 +148,11 @@
   <p class="g-hist__num">III · 1789 – 1830</p>
   <p class="g-fr">La Révolution <span class="g-fr__en">The Revolution</span></p>
   <h2 class="g-place">Revolution and the Ironmasters</h2>
+  {#- 9 Nov (the brief, 4.6): a salon of another age, as it was found, beside the long section. -#}
+  {% call split([url_for('static', filename='img/found/salon-of-another-age.jpg'), 'A salon of another age, as it was found', ''], flip=True) %}
   <p class="g-p">With no son to follow him, Louis-Gaspard left everything to his son-in-law, Louis-Guillaume de Mengaud, Baron de la Hage, a <em lang="fr">président à mortier</em> of the Parlement de Toulouse, on condition that one of his children take the de Sales name and arms. Then came the Revolution. The Parlement was abolished, de Mengaud was among the first to be arrested, and he died before he could be tried; his property was confiscated all the same. Barely fifty years after it was built, the château had left the de Sales family.</p>
   <p class="g-p">It passed to the Astrié family of Ax, ironmasters of the new bourgeoisie, who were ennobled in 1824 as d&rsquo;Astrié de Gudanes. In the summer of 1830 the château was pillaged twice, on the 7th and the 10th of August, in the War of the Demoiselles: local men, masked and sometimes dressed as women, rising against the landowners who had taken away their right to the forests.</p>
+  {% endcall %}
 </div></section>
 
 {#- IV · the de Limairac -#}
@@ -160,7 +167,8 @@
       <p class="g-p">In 1857 the civil court at Foix divided the old barony&rsquo;s land between the family and the villages, giving the communes a quarter of the high mountains and nine-tenths of the land in the valley.</p>
       <p class="g-p">Renovations are recorded between 1870 and 1875, and Charlotte&rsquo;s descendants lived at Gudanes into the twentieth century.</p>
     </div>
-    <figure class="g-hist__fig"><img src="{{ url_for('static', filename='img/history/old-photograph-terraces.jpg') }}" alt="The château above its terraced gardens, in an early photograph" loading="lazy"><figcaption>The château above its terraced gardens, in an early photograph</figcaption></figure>
+    {#- 9 Nov (the brief, 4.6): the early photograph, framed. -#}
+    {{ cadre([url_for('static', filename='img/history/old-photograph-terraces.jpg'), 'The château above its terraced gardens, in an early photograph', 'The château above its terraced gardens, in an early photograph'], shape='rect', cls='g-hist__fig') }}
   </div>
 </div></section>
 
@@ -194,6 +202,8 @@
 </div></section>
 
 {#- VI · 2013, and what it gave up -#}
+{#- 9 Nov (the brief, 4.6): the chateau today, across the page. -#}
+{{ plein([url_for('static', filename='img/xx/garden-chateau-mountains.jpg'), 'The chateau today, over its garden, the mountains beyond', '']) }}
 <section class="g-sec g-hist" id="since-2013"><div class="g-wrap">
   <div class="g-hist__grid">
     <div class="g-hist__text">
@@ -212,4 +222,5 @@
   </div>
 </div></section>
 <div class="g-mono__wrap">{{ monogram() }}</div>
+{{ pictures_script() }}
 {% endblock %}

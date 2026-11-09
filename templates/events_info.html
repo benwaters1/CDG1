@@ -28,6 +28,9 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
+{#- 9 Nov (the image layout brief, 4.5): the photographs through the picture components (_pictures.html, shown together
+    on /design). Not one word changes. -#}
+{% from '_pictures.html' import cadre, plein, pictures_script %}
 {% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 {# CONTRACT: POST url_for('submit_event_inquiry') — csrf_token, event_type,
@@ -71,18 +74,21 @@
   <p class="g-p">A wedding, a celebration, or a shoot. Whichever it is, the whole château is yours for it.</p>
     <div class="g-grid g-grid--3">
       <div class="g-panel g-way">
+        {{ cadre([url_for('static', filename='img/weddings/bride-on-the-staircase.jpg'), 'A bride on the château staircase'], shape='arch', sizes='(min-width: 64rem) 22rem, 90vw', cls='g-way__cadre') }}
         <span class="g-way__ill" aria-hidden="true">{{ illus('rings') }}</span>
         <h3 class="g-h3" id="weddings">Weddings</h3>
         <p class="g-p" >Up to forty guests inside the château and more under a marquee in the grounds, with fifteen staying the night. We look after the flowers, the meals and the drinks.</p>
         <a class="g-way__cta" href="{{ url_for('events_weddings') }}">Marry in a Monument <span aria-hidden="true">&rarr;</span></a>
       </div>
       <div class="g-panel g-way">
+        {{ cadre([url_for('static', filename='img/rk/long-table-candlelight.jpg'), 'The long table by candlelight, laid for a celebration'], shape='arch', sizes='(min-width: 64rem) 22rem, 90vw', cls='g-way__cadre') }}
         <span class="g-way__ill" aria-hidden="true">{{ illus('wine') }}</span>
         <h3 class="g-h3" id="celebrations">Celebrations</h3>
         <p class="g-p" >Birthdays, anniversaries, family gatherings and milestone dinners, with up to fifteen guests staying. We look after the meals, the drinks and the flowers.</p>
         <a class="g-way__cta" href="{{ url_for('events_private') }}">A celebration of your own <span aria-hidden="true">&rarr;</span></a>
       </div>
       <div class="g-panel g-way">
+        {{ cadre([url_for('static', filename='img/shoots/furniture-shoot-salon.jpg'), 'A furniture shoot in one of the salons'], shape='arch', sizes='(min-width: 64rem) 22rem, 90vw', cls='g-way__cadre') }}
         <span class="g-way__ill" aria-hidden="true">{{ illus('camera') }}</span>
         <h3 class="g-h3" id="photography">Photoshoots &amp; film</h3>
         <p class="g-p" >About fifty-five rooms, in every state between ruin and restored, and the crew can stay on site, or close by.</p>
@@ -182,12 +188,8 @@
 </section>
 
 
-<div class="g-band">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1000w" alt="The gates in spring" loading="lazy">
-  <img src="{{ url_for('static', filename='img/rk/long-table-by-day.jpg') }}" alt="The long table, laid for dinner" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24dd7adf-2d85-46bd-8399-4a3fc96ce444/Gardens+-+Formal+Gardens+2.jpg?format=1000w" alt="The formal gardens in flower" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1000w" alt="The château lit at night, under the stars" loading="lazy">
-</div>
+{#- 9 Nov (the brief, 4.5): the band of four as one photograph across the page: the château lit at night. -#}
+{{ plein(['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1000w', 'The château lit at night, under the stars', '']) }}
 
 {# 1 Oct: "Rooms in every state between ruin" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
@@ -270,4 +272,5 @@
 
 
 {# 1 Oct: the planner script is gone with its section #}
+{{ pictures_script() }}
 {% endblock %}
