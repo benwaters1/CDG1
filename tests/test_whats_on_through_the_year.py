@@ -120,8 +120,9 @@ def _run(s, oc, anon, conn, today):
     sections = _block(html, 'id="hot-springs"', "THE JOURNAL")
     outward = re.findall(r'<a href="(https?://[^"]+)"([^>]*)>', sections)
     s.check("there are links out", len(outward) >= 25, detail=str(len(outward)))
+    # noopener as a word in rel, not the whole of it: a photograph's licence link is rel="noopener license" (9 Nov).
     bare = [h for h, attrs in outward
-            if 'target="_blank"' not in attrs or 'rel="noopener"' not in attrs]
+            if 'target="_blank"' not in attrs or not re.search(r'\brel="[^"]*\bnoopener\b', attrs)]
     s.check("each one opens a new tab with rel=noopener", not bare, detail=str(bare[:3]))
     s.check("the tourist office's old address is not used",
             "vallees-ax.com" not in sections)

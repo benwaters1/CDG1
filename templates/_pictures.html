@@ -62,7 +62,8 @@
     gilt arrows and a counter. Swipes on a phone; arrows and the keyboard on
     a desktop; never moves on its own. A slide may be a dict with href and
     title (a room card) instead of a plain photograph. -#}
-{% macro carrousel(slides, label, cls='') -%}
+{#- thumbs=True adds a strip of small photographs under the slider, each a button to its slide: a room's own gallery. -#}
+{% macro carrousel(slides, label, cls='', thumbs=False) -%}
 <section class="g-car {{ cls }}" data-car aria-roledescription="carousel" aria-label="{{ label }}">
   <div class="g-car__track" data-car-track tabindex="0">
     {%- for s in slides %}
@@ -81,6 +82,13 @@
     <span class="g-car__n" data-car-n aria-live="polite">1 / {{ slides|length }}</span>
     <button type="button" class="g-car__btn" data-car-next aria-label="Next photograph"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 4 8 8-8 8"/></svg></button>
   </div>
+  {%- if thumbs %}
+  <div class="g-car__thumbs" data-car-thumbs>
+    {%- for s in slides %}{%- set p = [s.src, s.alt] if s is mapping else s %}
+    <button type="button" class="g-car__thumb" data-car-go="{{ loop.index0 }}" aria-label="Photograph {{ loop.index }} of {{ slides|length }}"{% if loop.first %} aria-current="true"{% endif %}>{{ pic(p[0], '', sizes='7rem') }}</button>
+    {%- endfor %}
+  </div>
+  {%- endif %}
 </section>
 {%- endmacro %}
 
@@ -130,12 +138,13 @@
 {#- G. LA BANDE. 'drift': a full-width strip that drifts slowly sideways,
     pauses under the pointer or the keyboard, and does not move at all for
     reduced motion (it scrolls by hand instead). 'contact': a contact sheet
-    with sprocket edges, which scrolls by hand. -#}
+    with sprocket edges and frame numbers, which scrolls by hand. The numbers
+    are drawn by the stylesheet, like the sprocket holes: film, not words. -#}
 {% macro bande(photos, label, mode='drift', cls='') -%}
 <section class="g-bande g-bande--{{ mode }} {{ cls }}" aria-label="{{ label }}"{% if mode == 'drift' %} data-bande{% endif %} tabindex="0">
   <div class="g-bande__row" data-bande-row>
     {%- for p in photos %}
-    <figure class="g-bande__i">{{ pic(p[0], p[1], sizes='22rem') }}{% if mode == 'contact' %}<span class="g-bande__no" aria-hidden="true">{{ loop.index }}A</span>{% endif %}</figure>
+    <figure class="g-bande__i">{{ pic(p[0], p[1], sizes='22rem') }}</figure>
     {%- endfor %}
   </div>
 </section>
@@ -242,7 +251,13 @@
       i = Math.max(0, Math.min(slides.length - 1, i));
       track.scrollTo({left: slides[i].offsetLeft - track.offsetLeft, behavior: still ? 'auto' : 'smooth'});
     }
-    function paint(){ if(n) n.textContent = (at() + 1) + ' / ' + slides.length; }
+    var thumbs = [].slice.call(car.querySelectorAll('[data-car-go]'));
+    function paint(){
+      var i = at();
+      if(n) n.textContent = (i + 1) + ' / ' + slides.length;
+      thumbs.forEach(function(b, k){ if(k === i) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); });
+    }
+    thumbs.forEach(function(b){ b.addEventListener('click', function(){ go(+b.getAttribute('data-car-go')); }); });
     car.querySelector('[data-car-prev]').addEventListener('click', function(){ go(at() - 1); });
     car.querySelector('[data-car-next]').addEventListener('click', function(){ go(at() + 1); });
     track.addEventListener('keydown', function(e){

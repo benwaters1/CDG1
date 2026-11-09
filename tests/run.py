@@ -39,6 +39,7 @@ SUITES = [
     "test_balances_to_collect",
     "test_moved_from_retreatguru",
     "test_retreatguru_import",
+    "test_rg_second_run",
     "test_workshop_register",
     "test_lists_open_on_now",
     "test_owed_everywhere",
@@ -607,6 +608,8 @@ SUITES = [
     # 28 October 2026: the retreat pages converted, one photograph a day.
     "test_retreat_pictures",
     "test_home_pictures",
+    # 9 November 2026: the rest of the public pages, brief sections 4.3 to 4.7.
+    "test_page_pictures",
     # 9 November 2026: the address opens the map and sits under the home page's
     # hero, and every public page measured for its margins at three widths.
     "test_house_address",
