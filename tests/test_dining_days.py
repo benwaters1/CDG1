@@ -91,7 +91,7 @@ def _book(guest, conn, who, day):
     conn.execute("DELETE FROM submission_log WHERE ip_address = ?", (GUEST_IP,))
     conn.commit()
     r = guest.post("/restaurant/book", data={
-        "guest_name": TAG + " " + who, "guest_email": _email(who), "guest_phone": "",
+        "guest_name": TAG + " " + who, "guest_email": _email(who), "guest_phone": "+33 6 12 34 56 78",
         "dinner_date": day.isoformat(), "party_size": "2", "dietary_notes": "",
         "promo_code": ""}, follow_redirects=True)
     row = conn.execute("SELECT * FROM restaurant_bookings WHERE guest_email = ?",

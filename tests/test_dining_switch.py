@@ -92,7 +92,7 @@ def run():
             s.section(f"While {mode}, nothing can be booked")
             _mode(conn, mode)
             before = _dinners(conn, EMAIL)
-            r = anon.post("/restaurant/book", data={
+            r = anon.post("/restaurant/book", data={"guest_phone": "+33 6 12 34 56 78", 
                 "guest_name": TAG + " Diner", "guest_email": EMAIL,
                 "dinner_date": (m.house_today() + timedelta(days=40)).isoformat(),
                 "party_size": "2", "agree_terms": "on"}, follow_redirects=True)

@@ -79,7 +79,7 @@ def run():
         conn.commit()
     conn.close()
     try:
-        pub.post("/restaurant/book", data={
+        pub.post("/restaurant/book", data={"guest_phone": "+33 6 12 34 56 78", 
             "guest_name": f"{TAG} Diner", "guest_email": f"{TAG.lower()}d@example.invalid",
             "dinner_date": SOON, "party_size": "2",
         }, follow_redirects=True)
