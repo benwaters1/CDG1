@@ -46,6 +46,29 @@ PAGES = {
         ("the park: one drone photograph across the page", r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*from-the-air-pool-garden', 1),
         ("and the rest of it in a slider", r'aria-label="A château park to explore"', 1),
     ],
+    "/events": [
+        ("three ways to take the château, each with an arched framed photograph", r'class="g-cadre g-cadre--arch[^"]*g-way__cadre"', 3),
+        # (the château at night has a house copy, so its address on the page is the copy's, not IMG_4368)
+        ("the band of four: one photograph across the page, the château at night",
+         r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*" alt="The château lit at night', 1),
+    ],
+    "/events/weddings": [
+        ("the Marquis Suite: its words beside its photographs", r'<div class="g-sp g-sp--tuck', 1),
+        ("the church: its words beside the ceremony", r'<div class="g-sp g-sp--flip g-sp--tuck', 1),
+        ("Weddings at Gudanes: a collage of four", r'class="g-mos g-mos--lead g-mos--4 ', 1),
+        ("a slider of ten", r'aria-label="Weddings at Gudanes"', 1),
+        ("and all forty-five behind See all", r'See all 45 photos', 1),
+    ],
+    "/events/private": [
+        ("A Gathering of Your Own: a collage, a slider, and the whole set behind See all",
+         r'class="g-mos g-mos--lead g-mos--4 .*aria-label="A gathering of your own".*See all 18 photos', 1),
+    ],
+    "/events/photoshoots": [
+        ("an uneven collage", r'class="g-mos g-mos--tall ', 1),
+        ("two rooms across the page, one restored and one as it was found", r'class="g-plein "', 2),
+        ("a room as found among them", r'mountains-through-the-roof', 1),
+        ("and all thirteen behind See all", r'See all 13 photos', 1),
+    ],
 }
 
 
@@ -86,6 +109,8 @@ def run():
             s.check(words, len(re.findall(pattern, page, re.S)) >= least, detail=pattern)
         grids = re.findall(r'<ul class="g-befgrid g-gallery[^"]*">(.*?)</ul>', shown, re.S)
         s.check("no grid of photographs left", not grids, detail=f"{len(grids)} left")
+        s.check("no band of four left (a film strip or one photograph across the page instead)",
+                'class="g-band"' not in shown)
         mos = re.findall(r'<div class="g-mos .*?</div>\s*(?=<(?!figure))', shown, re.S)
         s.check("no collage of more than four", all(b.count("<img") <= 4 for b in mos))
         found = (re.search(r'\ssrc="([^"]*)"', t) for t in re.findall(r"<img\b[^>]*>", shown))

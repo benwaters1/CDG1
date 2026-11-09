@@ -485,6 +485,12 @@
 .g .g-med--sm{ width: clamp(4.5rem, 7vw, 5.5rem); margin: 0 0 var(--s2) var(--s4); }
 .g .g-glance .g-med--sm, .g .g-plate .g-med--sm{ float: right; }
 
+/* ==== The events pages (brief 4.5) ===================================== */
+/* Three ways to take the château: each card's photograph in an arched gilt frame. */
+.g .g-way__cadre{ max-width: 15rem; margin: 0 auto var(--s5); }
+.g .g-way__cadre .g-cadre__frame{ padding: 7px; }
+.g .g-way__cadre .g-cadre__mount{ padding: 10px; }
+
 /* ==== /design only: the specimen page's own arrangement ================= */
 .g .g-design__row{ display: grid; gap: var(--s6); align-items: end; }
 @media (min-width: 56rem){ .g .g-design__row{ grid-template-columns: repeat(3, minmax(0, 1fr)); } }
