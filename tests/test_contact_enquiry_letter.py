@@ -19,7 +19,10 @@ Held here:
   - a message that is only "Test", "hello" or a row of keys is kept as Spam,
     with no task and no letter, and the visitor is thanked the same;
   - a message that merely contains the word ("a test of our cooking") is not;
-  - the ones already received are set aside by tidy_contact_enquiries, and a
+  - an enquiry with no name is kept as Spam too: the page requires the name,
+    so only a script posting the fields itself sends one without;
+  - the ones already received are set aside by tidy_contact_enquiries -- the
+    nameless ones only from when the page began requiring a name -- and a
     real one beside them is left alone.
 """
 from urllib.parse import urlsplit
@@ -46,7 +49,8 @@ def _post(who, **fields):
     real = m.send_email
     m.send_email = lambda to, subject, body, *a, **kw: sent.append((to, subject, body)) or True
     data = {"action": "flexible", "email": f"{TAG}.{who}@example.invalid",
-            "name": "", "rough_month": "", "rough_guests": "", "topic": "private_event",
+            "name": f"Zzcel {who}", "rough_month": "", "rough_guests": "",
+            "topic": "private_event",
             "message": "Test"}
     data.update(_harness.contact_form_fields())
     data.update(fields)
@@ -102,15 +106,26 @@ def run():
                 entry is not None and f'id="entry-{entry["id"]}"' in page, detail=link)
         s.check("and the old run-together line is gone", "They left this address" not in body)
 
-        s.section("A real enquiry with the questions left blank")
+        s.section("A real enquiry with the optional questions left blank")
         r, entry, task, letters = _post("blank", message="Is the house free for a wedding next spring?")
         body = letters[0][2] if letters else ""
         lines = body.split("\n")
-        for want in ("Name: not said", "When: not said", "Guests: not said"):
+        for want in ("Name: Zzcel blank", "When: not said", "Guests: not said"):
             s.check(f"says so: {want}", want in lines, detail=body)
-        s.check("and the subject names nobody",
-                bool(letters) and letters[0][1] == "Someone wrote to us: private event",
-                detail=letters and letters[0][1])
+
+        s.section("An enquiry with no name, which the page will not send")
+        for who, name in (("noname", ""), ("spaces", "   ")):
+            r, entry, task, letters = _post(
+                who, name=name, message="We would like to hold a dinner for forty in June.")
+            s.check(f"name {name!r}: kept as Spam", entry is not None and bool(entry["spam_at"]),
+                    detail=str(entry and dict(entry)))
+            s.check(f"name {name!r}: no task and no letter", task is None and not letters,
+                    detail=f"task={task is not None} letters={len(letters)}")
+            s.check(f"name {name!r}: thanked like anybody", flashes(r) == thanks,
+                    detail=str(flashes(r)))
+        page = m.app.test_client().get("/contact").get_data(as_text=True)
+        s.check("because the page itself requires the name",
+                'id="fx_name" name="name" required' in page)
 
         s.section("A message that says nothing")
         for who, message in (("test", "Test"), ("testing", "testing."), ("hello", "Hello!"),
@@ -130,13 +145,18 @@ def run():
         conn = db()
         now = _harness.datetime_now()
         ids = {}
-        for who, notes in (("oldtest", "Private event. Test"),
-                           ("oldwed", "Wedding. Around June 2027. 80 guests. Test"),
-                           ("oldreal", "Private event. 40 guests. Hello, a birthday dinner for forty?")):
+        before_z29 = "2026-10-15T09:00:00+00:00"
+        dinner = "Private event. 40 guests. Hello, a birthday dinner for forty?"
+        for who, name, notes, made in (
+                ("oldtest", "Zzcel A", "Private event. Test", now),
+                ("oldwed", "Zzcel B", "Wedding. Around June 2027. 80 guests. Test", now),
+                ("oldreal", "Zzcel C", dinner, now),
+                ("oldnoname", "", dinner, now),
+                ("prez29", "", dinner, before_z29)):
             ids[who] = conn.execute(
                 """INSERT INTO waitlist_entries (name, email, phone, party_size, notes, status,
-                     created_at, source) VALUES ('', ?, '', NULL, ?, 'enquiry', ?, 'contact')""",
-                (f"{TAG}.{who}@example.invalid", notes, now)).lastrowid
+                     created_at, source) VALUES (?, ?, '', NULL, ?, 'enquiry', ?, 'contact')""",
+                (name, f"{TAG}.{who}@example.invalid", notes, made)).lastrowid
             conn.execute(
                 """INSERT INTO tasks (title, notes, priority, due_date, status, origin,
                      created_at, waitlist_entry_id)
@@ -156,6 +176,10 @@ def run():
                 bool(rows["oldwed"]) and tasks["oldwed"] == 0, detail=f"{rows} {tasks}")
         s.check("a real one beside them is left alone, task and all",
                 not rows["oldreal"] and tasks["oldreal"] == 1, detail=f"{rows} {tasks}")
+        s.check("one with no name since the page required one is set aside",
+                bool(rows["oldnoname"]) and tasks["oldnoname"] == 0, detail=f"{rows} {tasks}")
+        s.check("but one with no name from before then, when the name was optional, is not",
+                not rows["prez29"] and tasks["prez29"] == 1, detail=f"{rows} {tasks}")
     finally:
         _cleanup()
     return s

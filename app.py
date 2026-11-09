@@ -58013,13 +58013,24 @@ def enquiry_message_part(notes):
     return ". ".join(parts)
 
 
+# AN ENQUIRY WITH NO NAME WAS NOT SENT FROM THE PAGE. Since z29 the Write to
+# Us form marks the name `required`, and a browser will not send the form
+# with that box empty -- so a post without one was made by something posting
+# the fields itself, having fetched the page for its token and stamp. The
+# "Private event. Test" letters all came that way. Before z29 the name was
+# optional, so an enquiry older than this with none was a person's; the tidy
+# on boot leaves those alone.
+CONTACT_NAME_REQUIRED_SINCE = "2026-10-21"
+
+
 def enquiry_is_pitch(conn, email, name, message):
     """Why an enquiry is set aside, or "" when it is somebody asking to stay.
 
     The owner has marked the sender as spam before, or it reads as a pitch,
-    or it says nothing at all ("Test"). Set aside, not thrown away: it is
-    kept on the waitlist as Spam, where the owner can find it and put it
-    back, but it makes no task and no letter."""
+    or it says nothing at all ("Test"), or it came without the name the page
+    will not send without. Set aside, not thrown away: it is kept on the
+    waitlist as Spam, where the owner can find it and put it back, but it
+    makes no task and no letter."""
     if email and conn.execute(
             "SELECT 1 FROM waitlist_entries WHERE spam_at IS NOT NULL AND lower(email) = ? LIMIT 1",
             (email.strip().lower(),)).fetchone():
@@ -58028,6 +58039,8 @@ def enquiry_is_pitch(conn, email, name, message):
         return "it reads as a sales pitch"
     if enquiry_says_nothing(message):
         return "a message that says nothing (somebody trying the form)"
+    if not (name or "").strip():
+        return "no name, which the page will not send without (a script posting the form)"
     return ""
 
 
@@ -58037,8 +58050,9 @@ def tidy_contact_enquiries(conn):
     For the ones made before either existed. An enquiry's task was found only
     by its title, "Answer an enquiry from <name> (<email>)", made the same day.
     Tied where the task has no enquiry yet. Any OPEN enquiry that reads as a
-    pitch, or says nothing ("Private event. Test"), is marked spam and its open
-    task taken off the day, because nothing else would ever take it off.
+    pitch, says nothing ("Private event. Test"), or came with no name once the
+    page required one, is marked spam and its open task taken off the day,
+    because nothing else would ever take it off.
     Returns (tied, set aside)."""
     tied = 0
     for t in conn.execute(
@@ -58072,10 +58086,12 @@ def tidy_contact_enquiries(conn):
                      "WHERE source = 'contact' AND status = 'open'")
     aside = 0
     for e in conn.execute(
-            "SELECT id, name, notes FROM waitlist_entries WHERE source = 'contact' "
+            "SELECT id, name, notes, created_at FROM waitlist_entries WHERE source = 'contact' "
             "AND status IN ('open', 'enquiry') AND spam_at IS NULL").fetchall():
         if (ENQUIRY_PITCH.search("%s %s" % (e["name"] or "", e["notes"] or ""))
-                or enquiry_says_nothing(enquiry_message_part(e["notes"]))):
+                or enquiry_says_nothing(enquiry_message_part(e["notes"]))
+                or (not (e["name"] or "").strip()
+                    and (e["created_at"] or "") >= CONTACT_NAME_REQUIRED_SINCE)):
             close_enquiry(conn, e["id"], "spam")
             aside += 1
     conn.commit()
