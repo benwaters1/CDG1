@@ -192,7 +192,9 @@ def run():
     # job is to say WHICH picture was replaced was showing the replacement's
     # path instead. It names the picture by its own filename now, which the
     # rewrite does not touch and is the readable half anyway.
-    label = target.rsplit("/", 1)[-1]
+    # As the page prints it: a Booking.com photograph's name carries "&o=",
+    # which HTML writes "&amp;o=".
+    label = target.rsplit("/", 1)[-1].replace("&", "&amp;")
     s.check("the swaps are listed, and say which picture",
             page.status_code == 200 and label in page.get_data(as_text=True),
             detail=f"HTTP {page.status_code} — looking for {label!r}")
