@@ -48918,28 +48918,43 @@ def _stripe_labelled_here(c):
                           c.get("description") or ""))
 
 
-def _stripe_session_only_payments(conn):
-    """Card payments held here by their Checkout Session alone: (email, amount, at).
+def _stripe_card_payments_held(conn):
+    """Card payments held here, each with the ids it is kept by, who paid and
+    how much: [{refs, email, amount, at}].
 
-    The export knows a payment by its PaymentIntent and charge, never by its
-    session, so a payment kept only by session cannot be recognised by id. One
-    made before payments were labelled (15 October 2026) cannot be recognised
-    by label either.
+    For recognising one in an export that does not show it by any of those
+    ids. A registration's payment on the site is kept by its Checkout Session,
+    which no export shows; a stay's by its PaymentIntent, which the export the
+    house took on 15 October 2026 did not have a column for. One made before
+    payments were labelled (that same day) cannot be recognised by label
+    either.
     """
     out = []
     for sql in (
-            """SELECT LOWER(TRIM(wb.guest_email)) AS email, t.amount, t.created_at AS at
+            """SELECT t.stripe_ref AS a, NULL AS b, NULL AS c, t.amount, t.created_at AS at,
+                      wb.guest_email AS email
                  FROM workshop_transactions t
                  JOIN workshop_bookings wb ON wb.id = t.workshop_booking_id
-                WHERE t.kind = 'payment' AND substr(t.stripe_ref, 1, 3) = 'cs_'""",
-            """SELECT LOWER(TRIM(b.guest_email)) AS email, bp.amount, bp.created_at AS at
-                 FROM booking_payments bp JOIN bookings b ON b.id = bp.booking_id
-                WHERE substr(bp.stripe_session_id, 1, 3) = 'cs_'
-                  AND COALESCE(bp.stripe_payment_intent_id, '') = ''"""):
+                WHERE t.kind = 'payment' AND t.stripe_ref IS NOT NULL""",
+            """SELECT bp.stripe_payment_intent_id AS a, bp.stripe_session_id AS b,
+                      bp.reference AS c, bp.amount, bp.created_at AS at, b.guest_email AS email
+                 FROM booking_payments bp JOIN bookings b ON b.id = bp.booking_id""",
+            """SELECT ep.stripe_payment_intent_id AS a, ep.reference AS b, NULL AS c,
+                      ep.amount, ep.created_at AS at, e.contact_email AS email
+                 FROM event_payments ep JOIN event_inquiries e ON e.id = ep.event_id""",
+            """SELECT stripe_payment_intent_id AS a, stripe_session_id AS b, NULL AS c,
+                      deposit_amount AS amount, created_at AS at, guest_email AS email
+                 FROM restaurant_bookings"""):
         try:
-            out += [dict(r) for r in conn.execute(sql).fetchall()]
+            rows = conn.execute(sql).fetchall()
         except sqlite3.OperationalError:
             continue             # a column not there yet
+        for r in rows:
+            refs = {str(v).strip() for v in (r["a"], r["b"], r["c"])
+                    if v and str(v).strip().startswith(STRIPE_PAYMENT_ID_PREFIXES)}
+            if refs and r["amount"]:
+                out.append({"refs": refs, "email": (r["email"] or "").strip().lower(),
+                            "amount": r["amount"], "at": r["at"]})
     return out
 
 
@@ -48949,8 +48964,8 @@ def rg_charges_not_retreatgurus(conn, charges):
 
     Three reasons, any one enough: its id is already on something here; it
     carries this app's own label; or it is the same amount, from the same
-    address, within two days, as a payment held here by its Checkout Session
-    alone. The last is a likeness, not a proof, and errs the safe way: a
+    address, within two days, as a payment held here by ids this export does
+    not show. The last is a likeness, not a proof, and errs the safe way: a
     payment wrongly set aside leaves a registration to settle by hand, while
     one wrongly used is money credited twice.
     """
@@ -48973,7 +48988,10 @@ def rg_charges_not_retreatgurus(conn, charges):
             return abs((mine - theirs).total_seconds())
         except (TypeError, ValueError):
             return float("inf")
-    for p in _stripe_session_only_payments(conn):
+    shown = {i for c in charges for i in (c["id"], c["intent"]) if i}
+    for p in _stripe_card_payments_held(conn):
+        if p["refs"] & shown:
+            continue             # in the export by its own id, and set aside above
         alike = [c for c in charges if not c.get("held") and c["email"] == p["email"]
                  and round(c["net"] * 100) == round((p["amount"] or 0) * 100)
                  and apart(c, p["at"]) <= 2 * 86400]

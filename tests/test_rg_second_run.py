@@ -20,7 +20,10 @@ unsafe, and this holds the import to the brief that closed them
      instead.
 
 And through both: a Stripe payment the app already holds -- on a room, on a
-registration, by its id or by its own label -- is never matched again.
+registration, by its id or by its own label, or, where the export cannot show
+it by id at all, by its amount, address and day -- is never matched again.
+The export the house took in October had no PaymentIntent column, so on live
+that last one is not a corner case.
 
 Everything runs through the owner's own page, on made-up exports shaped like
 the real ones. Nothing here reaches Stripe or sends a letter.
@@ -40,7 +43,7 @@ REG_HEADER = ("first_name,last_name,submitted,cancelled,booking_window,reg_form_
               "balance_after_scheduled,registration_amount")
 STRIPE_HEADER = ("id,PaymentIntent ID,Created date (UTC),Amount,Amount Refunded,Currency,Status,"
                  "Customer Email,Description,kind (metadata),reference (metadata)")
-PEOPLE = ("Heidi", "Ivan", "Jude", "Kai", "Lea", "Mia", "Ned", "Ola")
+PEOPLE = ("Heidi", "Ivan", "Jude", "Kai", "Lea", "Mia", "Ned", "Ola", "Pia")
 
 
 class Recorder:
@@ -63,6 +66,8 @@ def _cleanup():
     for table in ("workshop_transactions", "workshop_booking_guests", "workshop_messages"):
         conn.execute(f"DELETE FROM {table} WHERE workshop_booking_id IN {ids}", (like,))
     conn.execute("DELETE FROM workshop_bookings WHERE guest_email LIKE ?", (like,))
+    conn.execute("DELETE FROM booking_payments WHERE booking_id IN (SELECT id FROM bookings "
+                 "WHERE guest_email LIKE ?)", (like,))
     conn.execute("DELETE FROM bookings WHERE guest_email LIKE ?", (like,))
     conn.execute("DELETE FROM workshop_sessions WHERE notes LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM workshops WHERE title LIKE ?", (TAG + "%",))
@@ -252,6 +257,20 @@ def _suite(s, oc, mail):
         (room, f"GUD-{TAG}", f"{TAG}-room-token", f"Ola {TAG}Ola", _email("Ola"),
          house_today().isoformat(), (house_today() + timedelta(days=1)).isoformat(),
          site_moment))
+    # Pia's room, paid on the site before payments were labelled, and kept by
+    # its PaymentIntent -- which the export the house took in October did not
+    # have a column for, so the export shows her charge alone.
+    pia_moment = f"{(house_today() - timedelta(days=12)).isoformat()}T10:00:00+00:00"
+    pia = conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name, guest_email,
+             arrival_date, departure_date, status, total_price, created_at, payment_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'cancelled', 250, ?, 'paid')""",
+        (room, f"GUD-{TAG}P", f"{TAG}-pia-token", f"Pia {TAG}Pia", _email("Pia"),
+         house_today().isoformat(), (house_today() + timedelta(days=1)).isoformat(),
+         pia_moment)).lastrowid
+    conn.execute("INSERT INTO booking_payments (booking_id, amount, method, "
+                 "stripe_payment_intent_id, created_at) VALUES (?, 250, 'stripe', "
+                 "'pi_pia_room', ?)", (pia, pia_moment))
     conn.commit()
     conn.close()
 
@@ -259,19 +278,23 @@ def _suite(s, oc, mail):
     # new price for Kai; more by Lea that Stripe cannot account for; and three
     # new rows for people the site already knows.
     nov = (house_today() - timedelta(days=9)).isoformat()
+    day_after = (start - timedelta(days=59)).isoformat()
     regs2 = "\n".join([REG_HEADER,
                        _reg("Heidi", start, agreed=2000, paid=904, minute=1),
-                       _reg("Ivan", start, agreed=2000, paid=900, minute=2),
+                       _reg("Ivan", start, agreed=2000, paid=1200, minute=2),
                        _reg("Jude", start, agreed=2000, paid=400, minute=3),
                        _reg("Kai", start, agreed=1800, paid=0, minute=4),
                        _reg("Lea", start, agreed=2000, paid=800, minute=5),
                        _reg("Mia", start, agreed=2000, paid=600, minute=6),
                        _reg("Ned", start, agreed=2000, paid=400, minute=7),
-                       _reg("Ola", start, agreed=2000, paid=300, minute=8)]) + "\n"
+                       _reg("Ola", start, agreed=2000, paid=300, minute=8),
+                       _reg("Pia", start, agreed=2000, paid=250, minute=9)]) + "\n"
     stripe2 = _stripe(first + [
         ("ch_heidi_1", "pi_heidi_1", f"{nov} 09:00:00", "500,00", "Heidi", "RetreatGuru", "", ""),
         ("ch_heidi_2", "pi_heidi_2", f"{nov} 15:00:00", "404,00", "Heidi", "RetreatGuru", "", ""),
-        ("ch_ivan_2", "pi_ivan_2", f"{nov} 09:00:00", "300,00", "Ivan", "RetreatGuru", "", ""),
+        # Ivan's second instalment: the same amount as his first, a day later.
+        ("ch_ivan_2", "pi_ivan_2", f"{day_after} 09:00:00", "600,00", "Ivan", "RetreatGuru",
+         "", ""),
         ("ch_lea_2", "pi_lea_2", f"{nov} 09:00:00", "250,00", "Lea", "RetreatGuru", "", ""),
         # Mia's deposit on the site, labelled as the app labels every payment
         # -- earlier than her RetreatGuru one and the same amount, so a matcher
@@ -287,6 +310,8 @@ def _suite(s, oc, mail):
          ""),
         # Ola's room, already on a stay here by its PaymentIntent.
         ("ch_ola_room", "pi_ola_room", f"{nov} 09:00:00", "300,00", "Ola", "Reservation", "", ""),
+        # Pia's room: the charge alone, no PaymentIntent, no label.
+        ("ch_pia_room", "", f"{pia_moment[:10]} 10:05:00", "250,00", "Pia", "", "", ""),
     ])
 
     s.section("The check: every registration already here, held up against the export")
@@ -304,7 +329,7 @@ def _suite(s, oc, mail):
     s.check("Heidi's two November payments are offered, each on its own",
             sorted(t.rsplit("|", 1)[1] for t in topups if ":heidi|" in t)
             == ["pi_heidi_1", "pi_heidi_2"], detail=str(topups))
-    s.check("and Ivan's EUR 300, by its PaymentIntent",
+    s.check("and Ivan's second EUR 600, though it is the twin of one already here",
             [t.rsplit("|", 1)[1] for t in topups if ":ivan|" in t] == ["pi_ivan_2"],
             detail=str(topups))
     s.check("shown line by line: paid in RetreatGuru now, and here",
@@ -340,6 +365,12 @@ def _suite(s, oc, mail):
     s.check("Ola's EUR 300 is already on a stay here, so it is never matched again",
             "Stripe has €0.00 from" in ola[:2500]
             and not [k for k in _ticked(page, "bring") if ":ola|" in k], detail=ola[:900])
+    pia_part = text[text.find(f"Pia {TAG}Pia"):]
+    s.check("Pia's EUR 250 is her room on the site, though the export shows it by charge alone",
+            "Stripe has €0.00 from" in pia_part[:2500]
+            and "ch_pia_room, the same amount from the same address as a payment taken "
+                "through this site" in text
+            and not [k for k in _ticked(page, "bring") if ":pia|" in k], detail=pia_part[:900])
     s.check("and the payments set aside say why",
             "pi_ola_room, already a payment line here" in text
             and "pi_mia_site, taken through this site" in text, detail=text[:0])
@@ -373,16 +404,16 @@ def _suite(s, oc, mail):
             and after["workshop_bookings"] == before["workshop_bookings"],
             detail=f"{before} -> {after} / {said}")
     s.check("the summary names what was added, and the payment not added",
-            "Heidi ZZRG2Heidi €500.00" in said and "Ivan ZZRG2Ivan €300.00" in said
+            "Heidi ZZRG2Heidi €500.00" in said and "Ivan ZZRG2Ivan €600.00" in said
             and "(pi_heidi_2) was not added: not ticked" in said, detail=said)
     s.check("Ivan: what RetreatGuru says, to the cent",
-            m.workshop_balance_due(conn, ivan["id"]) == (1100.0, 2000.0, 900.0),
+            m.workshop_balance_due(conn, ivan["id"]) == (800.0, 2000.0, 1200.0),
             detail=str(m.workshop_balance_due(conn, ivan["id"])))
     s.check("his first-run line untouched, the new one beside it with its own Stripe id",
             _lines(conn, ivan["id"])[:len(kept_ivan)] == kept_ivan
             and [(l["amount"], l["method"], l["stripe_ref"])
                  for l in _lines(conn, ivan["id"])[len(kept_ivan):]]
-            == [(300.0, "stripe", "pi_ivan_2")], detail=str(_lines(conn, ivan["id"])))
+            == [(600.0, "stripe", "pi_ivan_2")], detail=str(_lines(conn, ivan["id"])))
     s.check("Heidi: EUR 500 of the 904 now", m.workshop_balance_due(conn, heidi["id"])
             == (1500.0, 2000.0, 500.0), detail=str(m.workshop_balance_due(conn, heidi["id"])))
     s.check("and, paid nothing when she came across, that money is now her deposit -- so her "
@@ -419,9 +450,9 @@ def _suite(s, oc, mail):
             == [(600.0, "cs_test_zzrg2_mia"), (600.0, "pi_mia_rg")]
             and m.workshop_balance_due(conn, mia_id) == (800.0, 2000.0, 1200.0),
             detail=str(_lines(conn, mia_id)))
-    s.check("Ned, Ola, Jude, Kai and Lea: nothing written for any of them",
+    s.check("Ned, Ola, Pia, Jude, Kai and Lea: nothing written for any of them",
             len(_booking(conn, "Ned")) == 1 and len(_lines(conn, ned_id)) == 1
-            and not _booking(conn, "Ola") and all(
+            and not _booking(conn, "Ola") and not _booking(conn, "Pia") and all(
                 len(_lines(conn, _booking(conn, f)[0]["id"])) == n
                 for f, n in (("Jude", 1), ("Kai", 0), ("Lea", 1))))
     s.check("two lines in all (Heidi's 404, Mia's 600), and no booking",
@@ -437,7 +468,8 @@ def _suite(s, oc, mail):
     s.check("every Stripe payment is on one line in the whole app, once",
             len(every) == len(set(every))
             and {"pi_heidi_1", "pi_heidi_2", "pi_ivan_2", "pi_mia_rg", "pi_ola_room"} <= held
-            and not {"pi_mia_site", "pi_ned_site", "pi_lea_2"} & held, detail=str(sorted(held)))
+            and not {"pi_mia_site", "pi_ned_site", "pi_lea_2", "ch_pia_room"} & held,
+            detail=str(sorted(held)))
     conn.close()
 
     s.section("A third run adds nothing")
