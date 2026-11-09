@@ -67246,6 +67246,73 @@ def sized_photo(width, filename):
     return resp
 
 
+# ---------------------------------------------------------------------------
+# THE PHOTOGRAPH AT THE TOP OF A PAGE, AT THE SIZE IT IS SHOWN (9 Nov 2026).
+# Measured on the live site at phone width: every photograph further down a
+# page came through pic() at its size, and the hero -- the first thing a guest
+# waits for -- came whole. Eight of them were 5.7MB between them: 2.0MB on
+# /facilities, 1.4MB on /contact, for a picture 375px wide.
+#
+# Done to the response, for the reason serve_our_own_photographs gives: the
+# heroes are written into the public templates, which arrive whole from the
+# design side, so a pic() call put into each one would last until the next
+# handover. Here every g-hero__img the house holds the file for gains the
+# srcset pic() would have given it, whatever template it came in. The src
+# stays exactly as written, for a browser that reads no srcset, and for the
+# photo swap; a hero the house does not hold -- an upload, a picture the owner
+# swapped in the admin -- is left alone.
+#
+# Registered after serve_our_own_photographs, so it runs first and usually
+# sees the Squarespace address; it reads a /mirrored-photo/ one as well, so the
+# order is not something it depends on.
+# ---------------------------------------------------------------------------
+_HERO_IMG = re.compile(r'<img\b[^>]*\bclass="[^"]*\bg-hero__img\b[^"]*"[^>]*>')
+_HERO_SRC = re.compile(r'\ssrc="([^"]*)"')
+
+
+def _hero_pic_name(src):
+    """The /pic name of the file the house holds for a hero's address, or None."""
+    src = html_unescape(src)
+    if src.startswith("/static/img/"):
+        rel = src[len("/static/img/"):].split("?", 1)[0]
+        return rel if _pic_file("/static/img/" + rel) else None
+    if src.startswith("/mirrored-photo/"):
+        name = src[len("/mirrored-photo/"):].split("?", 1)[0]
+        return "~m/" + name if _pic_file("~m/" + name) else None
+    return _pic_held(src)
+
+
+def size_hero(tag):
+    """One hero <img>, given the srcset pic() would have; as it was if it cannot be."""
+    if " srcset=" in tag:
+        return tag
+    found = _HERO_SRC.search(tag)
+    rel = _hero_pic_name(found.group(1)) if found else None
+    size = pic_size(rel if rel and rel.startswith("~m/") else "/static/img/" + rel) if rel else None
+    if not size:
+        return tag
+    widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
+    srcset = ", ".join(f"/pic/{x}/{html_escape(rel)} {x}w" for x in widths)
+    close = "/>" if tag.endswith("/>") else ">"
+    return tag[:-len(close)].rstrip() + f' srcset="{srcset}" sizes="100vw"' + close
+
+
+@app.after_request
+def size_the_heroes(response):
+    if response.direct_passthrough:
+        return response
+    if not (response.content_type or "").startswith("text/html"):
+        return response
+    raw = response.get_data()
+    if b"g-hero__img" not in raw:
+        return response
+    body = raw.decode("utf-8", "replace")
+    sized = _HERO_IMG.sub(lambda m: size_hero(m.group(0)), body)
+    if sized != body:
+        response.set_data(sized)
+    return response
+
+
 _SITE_OVERRIDE_CACHE = {"at": 0.0, "index": {}}
 _SITE_OVERRIDE_LOCK = threading.Lock()
 
