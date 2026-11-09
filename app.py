@@ -29563,10 +29563,19 @@ def _house_copies_in_templates(urls):
 
 
 HOUSE_COPIES = _house_copies()
-# Only this host. "Download whatever the templates point at" is a fetcher
+# Only these hosts. "Download whatever the templates point at" is a fetcher
 # aimed by whoever last edited a template, which is a different and much worse
-# tool than a mirror of one CDN.
-MIRROR_HOSTS = ("images.squarespace-cdn.com",)
+# tool than a mirror of two CDNs.
+#
+# Booking.com's since 9 November 2026. The room photographs on the listing
+# were hotlinked, and three of them -- the first picture of the Twin Room, the
+# King Room and the Marquis Suite -- went 404 when the listing's photographs
+# were changed, leaving a blank card at the top of the home page. The listing
+# changes whenever the owner tidies it, so a copy is kept of every one the site
+# shows while it is still there, and one that goes is a blocker on the owner
+# home within the hour rather than a blank found by a guest.
+MIRROR_HOSTS = ("images.squarespace-cdn.com", "cf.bstatic.com")
+_MIRROR_HOSTS_BYTES = tuple(h.encode("ascii") for h in MIRROR_HOSTS)
 MIRROR_MAX_BYTES = 12 * 1024 * 1024
 MIRROR_ALLOWED_TYPES = {
     "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
@@ -29652,7 +29661,11 @@ def hotlinked_urls():
             except OSError:
                 continue
             found.update(_MIRROR_URL_RE.findall(body))
-    urls = sorted(found)
+    # One photograph, one address. Booking.com's carry "&o=" and a template
+    # that escapes it writes "&amp;o=", which is the same picture; fetched
+    # twice it would be two copies and a coverage figure counting one of them
+    # as missing. The page's own "&amp;" is matched by the swap on its path.
+    urls = sorted({u.replace("&amp;", "&") for u in found})
     if signature is not None:
         _MIRROR_SCANNED["signature"] = signature
         _MIRROR_SCANNED["urls"] = urls
@@ -66386,7 +66399,7 @@ def serve_our_own_photographs(response):
     # is a memory scan where decoding 190KB to text is real work done on the
     # way to finding out there was nothing to do.
     raw = response.get_data()
-    if b"squarespace-cdn.com" not in raw:
+    if not any(host in raw for host in _MIRROR_HOSTS_BYTES):
         return response
     body = raw.decode("utf-8", "replace")
     # The house's copies in the code first, then the owner's own swaps over
@@ -66463,7 +66476,7 @@ def _pic_file(src):
 
 
 def _pic_held(url):
-    """The /pic name of the file the house holds for a Squarespace address.
+    """The /pic name of the file the house holds for a mirrored address.
 
     The house's own copy first (static/img/retreats, from SOURCES.txt), then
     the mirror on the volume; None for a picture the owner has swapped in the
@@ -66472,7 +66485,7 @@ def _pic_held(url):
     and this only finds out how big the picture is and where its smaller
     sizes can come from.
     """
-    if not url.startswith("https://") or "squarespace-cdn.com" not in url:
+    if not url.startswith("https://") or urlparse(url).netloc not in MIRROR_HOSTS:
         return None
     base = url.split("?", 1)[0]
     try:
