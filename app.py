@@ -110928,7 +110928,13 @@ def reread_undated_booking_com_stays(conn):
     return filled
 
 
-def pair_booking_com_stays(conn):
+# How long a booking alone on its day waits before it is given every room
+# whose Booking.com calendar starts that day (pair_booking_com_stays): long
+# enough for a second booking's email to arrive, short of a night's sleep.
+BOOKING_COM_LONE_WAIT = timedelta(hours=1)
+
+
+def pair_booking_com_stays(conn, now=None):
     """Give each Booking.com stay its room and departure from the calendars.
 
     Booking.com's booking email says the reservation number and the day they
@@ -110952,10 +110958,21 @@ def pair_booking_com_stays(conn):
     reservation is for (room_count) and exactly that many blocks start on
     its day, with no other stay still waiting for a room that day, they are
     all its rooms: the first is room_id, the rest ota_reservation_rooms.
-    Where it did not say, several blocks are still not guessed at -- the
-    owner says "these are all this reservation" on the stays page, in one
-    step (group_channel_stay_rooms).
+    Where it did not say, the owner can say "these are all this reservation"
+    on the stays page, in one step (group_channel_stay_rooms).
+
+    THE LONE BOOKING (owner, 9 November 2026: "make it automatic"). Where it
+    did not say and nobody has clicked, a booking still gets every room
+    whose block starts on its day when ALL of these hold: no other
+    Booking.com booking arrives that day, confirmed or cancelled (a
+    cancelled one's block can linger on the calendar); the blocks all have
+    the same nights; none lies over the house's own booking or closure in
+    that room; and BOOKING_COM_LONE_WAIT has passed since its email was read
+    with no second booking's email for that day. Two bookings on one day are
+    still never guessed between. The letter to the house says what was done
+    and how to undo it.
     """
+    now = now or datetime.now(timezone.utc)
     reread_undated_booking_com_stays(conn)
     blocks = booking_com_blocks(conn)
     rooms = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
@@ -110974,7 +110991,19 @@ def pair_booking_com_stays(conn):
     for s in stays:
         if not s["room_id"] and s["matched_by"] != "hand":
             waiting.setdefault(s["arrival_date"], set()).add(s["id"])
-    gained, now_iso = [], datetime.now(timezone.utc).isoformat()
+    # Every booking's day, cancelled ones too, for the lone booking's test.
+    bookings_on = {}
+    for r in conn.execute("SELECT id, arrival_date FROM ota_reservations "
+                          "WHERE COALESCE(arrival_date, '') != ''"):
+        bookings_on.setdefault(r["arrival_date"], set()).add(r["id"])
+    house = {}
+    for r in conn.execute(
+            """SELECT room_id, arrival_date AS a, departure_date AS d FROM bookings
+                WHERE status IN ('pending', 'confirmed')
+               UNION ALL
+               SELECT room_id, start_date AS a, end_date AS d FROM room_blocks"""):
+        house.setdefault(r["room_id"], []).append((r["a"], r["d"]))
+    gained, now_iso = [], now.isoformat()
     for s in stays:
         how = s["matched_by"]
         if how == "hand":
@@ -110986,11 +111015,20 @@ def pair_booking_com_stays(conn):
                     and claimed.get((b[0], b[1]), s["id"]) == s["id"]]
         want = s["room_count"] or 1
         alone = not (waiting.get(day, set()) - {s["id"]})
+        lone = (want == 1 and how != "mail" and not s["room_id"] and len(starting) > 1
+                and not (bookings_on.get(day, set()) - {s["id"]})
+                and len({b[2] for b in starting}) == 1
+                and not any(a and d and a < b[2] and d > b[1]
+                            for b in starting for a, d in house.get(b[0], ())))
+        seen = parse_datetime_iso(s["first_seen_at"])
+        lone_at = (seen + BOOKING_COM_LONE_WAIT) if seen else now
+        if lone and now >= lone_at:
+            want = len(starting)
         if want > 1 and how != "mail" and len(starting) == want and (alone or s["room_id"]):
             ordered = sorted(starting, key=lambda b: (order.get(b[0], 999), b[0]))
             room_id, _start, end = ordered[0]
             sets = {"room_id": room_id, "match_note": None, "matched_by": "ical",
-                    "departure_date": end}
+                    "departure_date": end, "room_count": want}
             conn.execute("DELETE FROM ota_reservation_rooms WHERE ota_reservation_id = ? "
                          "AND matched_by = 'ical'", (s["id"],))
             for other, _start, other_end in ordered[1:]:
@@ -111031,12 +111069,16 @@ def pair_booking_com_stays(conn):
                 said = (f" Booking.com says it is for {want} rooms." if want > 1 else "")
                 conn.execute("DELETE FROM ota_reservation_rooms WHERE ota_reservation_id = ? "
                              "AND matched_by = 'ical'", (s["id"],))
-                sets = {"room_id": None, "matched_by": None,
-                        "match_note": (f"Not matched: a Booking.com stay starts on "
-                                       f"{format_date_short(day)} in {len(starting)} rooms "
-                                       f"({names}).{said} Choose the room by hand"
-                                       + (", or say they are all this one reservation."
-                                          if alone else "."))}
+                note = (f"Not matched: a Booking.com stay starts on "
+                        f"{format_date_short(day)} in {len(starting)} rooms "
+                        f"({names}).{said} Choose the room by hand"
+                        + (", or say they are all this one reservation." if alone else "."))
+                if lone:
+                    local = lone_at.astimezone(LOCAL_TZ)
+                    note += (f" No other Booking.com booking arrives that day, so if none "
+                             f"comes in by {local:%H:%M} on {local.day} {local:%B} they "
+                             f"are all given to this one.")
+                sets = {"room_id": None, "matched_by": None, "match_note": note}
         elif not s["room_id"]:
             sets = {"match_note": (f"Not matched yet: no room's Booking.com calendar shows a "
                                    f"stay starting {format_date_short(day)}. It is matched "
@@ -111116,6 +111158,12 @@ def tell_house_of_booking_com(conn, *, now=None):
             if r["departure_date"] else None,
             f"Guests: {r['guests']}" if r["guests"] else None,
             f"Reservation: {r['reservation_number']}",
+            # Rooms the calendars gave it, not an email or the owner: said, with
+            # the way back, so a wrong pairing is caught at the first letter.
+            (f"One reservation, {room.count(' + ') + 1} rooms: every room whose "
+             f"Booking.com calendar has a stay starting that day, no other booking "
+             f"arriving then. If that is wrong, take a room off on the stay's page."
+             if not cancelled and r["matched_by"] == "ical" and " + " in room else None),
             "",
             ("Booking.com has cancelled this stay. The room is free again once the "
              "calendar sync agrees." if cancelled else
