@@ -327,9 +327,13 @@ def _run(s, letters):
     foot = base[base.find("<footer"):base.find("</footer>")]
     s.check("public_base's footer draws the sign-up -- the line a handover drops",
             "newsletter_block('footer')" in foot)
-    s.check("the menu panel draws it too", "newsletter_form('panel')" in base)
-    s.check("the Contact page draws its own", "newsletter_block('contact')"
-            in _read("templates/contact.html"))
+    # 9 Nov 2026, evening (owner's second review, 2.4): one form a page, the
+    # footer's. The menu panel links down to it; Contact's own went.
+    s.check("the menu panel links down to the footer's rather than drawing a second",
+            "newsletter_form('panel')" not in base and 'href="#g-newsletter"' in base
+            and 'id="g-newsletter"' in foot)
+    s.check("and Contact no longer draws its own", "newsletter_block('contact')"
+            not in _read("templates/contact.html"))
     s.check("the footer's rules are in the stylesheet",
             ".g-news--footer{" in _read("static/gudanes.css"))
 
@@ -365,10 +369,10 @@ def _run(s, letters):
     s.check("every rendered sign-up carries both guard fields", not unguarded_r,
             detail=str(unguarded_r))
     contact = pub.get(urls[1]).get_data(as_text=True)
-    s.check("Contact shows its own sign-up as well as the footer's",
-            'data-newsletter="contact"' in contact and 'data-newsletter="footer"' in contact)
+    s.check("Contact shows the footer's sign-up and no other",
+            'data-newsletter="contact"' not in contact and 'data-newsletter="footer"' in contact)
     home = pub.get("/").get_data(as_text=True)
-    s.check("and the menu panel's is still there", 'data-newsletter="panel"' in home)
+    s.check("and the menu panel has none of its own", 'data-newsletter="panel"' not in home)
 
     s.section("A handover that brings the old form back is repaired")
     _repair_check(s)
@@ -416,10 +420,8 @@ def _repair_check(s):
                 f.write(fn(text))
 
         edit("templates/public_base.html", lambda t: re.sub(
-            r"[^\n]*import newsletter_block with context %\}\n\s*\{\{ newsletter_block\('footer'\) \}\}\n", "", t))
-        edit("templates/contact.html", lambda t: re.sub(
-            r"\{% from '_newsletter.html' import newsletter_block with context %\}\n"
-            r"<section[^\n]*\n\s*\{\{ newsletter_block\('contact'\) \}\}\n</div></section>\n", "", t))
+            r"[^\n]*import newsletter_block with context %\}\n\s*<div id=\"g-newsletter\">"
+            r"\{\{ newsletter_block\('footer'\) \}\}</div>\n", "", t))
         old_form = (
             '<form class="g-journal__form" method="post" action="{{ url_for(\'newsletter_subscribe\') }}">\n'
             '  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">\n'
@@ -455,8 +457,10 @@ def _repair_check(s):
         foot = base[base.find("<footer"):base.find("</footer>")]
         s.check("the footer sign-up is put back inside the footer",
                 "newsletter_block('footer')" in foot, detail=f"{n} repairs")
-        s.check("the Contact page's is put back",
-                "newsletter_block('contact')" in _read_at(tmp, "templates/contact.html"))
+        s.check("in the box the menu panel links down to",
+                '<div id="g-newsletter">{{ newsletter_block(\'footer\') }}</div>' in foot)
+        s.check("and Contact is not given a second form back",
+                "newsletter_block('contact')" not in _read_at(tmp, "templates/contact.html"))
         home = _read_at(tmp, "templates/home.html")
         s.check("the ticks are taken out", "g-interests" not in home and "interests" not in home,
                 detail=home)

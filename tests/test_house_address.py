@@ -7,13 +7,16 @@ the address elsewhere further up".
 
 WHAT IS HELD HERE.
 
-  - The footer, the menu and a line under the home page's hero all print the
-    address, and in each it is a link. So do Contact (twice), the Stay page's
-    key facts and La Table's, each in the layout it always had (the same
-    evening) -- and a sweep of every page in the sitemap fails on the address
-    printed as plain words anywhere else, so a page that comes back from a
-    design handover with the old line is caught. Three pages are allowed it,
-    named below: they state who the house is, in law, rather than where.
+  - The footer and the menu print the address, and in each it is a link. So
+    do Contact (twice), the Stay page's key facts and La Table's, each in the
+    layout it always had (the same evening) -- and a sweep of every page in
+    the sitemap fails on the address printed as plain words anywhere else, so
+    a page that comes back from a design handover with the old line is
+    caught. Three pages are allowed it, named below: they state who the house
+    is, in law, rather than where. A line under the home page's hero printed
+    it too, until the owner's second review of the site (9 Nov 2026, evening)
+    took it out: the home page is eight sections now, so the footer's is two
+    scrolls away, not seventeen screens.
   - The link goes to the PIN, the same one every other "open in maps" on the
     site uses (house_map_links), and never to a search. A search by name once
     answered from Tokyo, and one by address puts a guest in the village square
@@ -188,19 +191,10 @@ def run():
                 menu is not None and menu[0] == "a" and menu[1] == google
                 and menu[2] == line, detail=str(menu))
 
-        where = _addr(_where(page))
-        s.check("and the home page prints it again, as a link to the same pin",
-                where is not None and where[0] == "a" and where[1] == google
-                and where[2] == line, detail=str(where))
-
-        hero = page.find('<section class="g-hero')
-        hero_end = page.find("</section>", hero) if hero >= 0 else -1
-        at = page.find('<p class="g-where">')
-        next_section = page.find("<section", hero_end) if hero_end >= 0 else -1
-        s.check("straight after the hero, before any section of the page",
-                0 <= hero < hero_end < at < next_section,
-                detail="hero %d, its end %d, the address %d, the next section %d"
-                       % (hero, hero_end, at, next_section))
+        # The owner's second review (9 Nov, evening, section 1): the line under
+        # the hero went; the footer's is the address, two scrolls away now.
+        s.check("the home page no longer prints it under the hero",
+                '<p class="g-where">' not in page, detail=str(_where(page))[:200])
 
         other = anon.get("/legal").get_data(as_text=True)
         s.check("every public page's footer links it, not only the home page's",
@@ -256,15 +250,14 @@ def run():
         _pin(None, None)
         page = anon.get("/").get_data(as_text=True)
         footer = _addr(_contact_block(page))
-        where = _addr(_where(page))
         menu = _addr(_menu(page))
         s.check("the footer still gives the street and the town",
                 footer is not None and footer[2] == "%s | %s" % (place["street"], town),
                 detail=str(footer))
-        s.check("but none of the three is a link",
+        s.check("but neither is a link",
                 all(x is not None and x[0] == "span" and x[1] is None
-                    for x in (footer, menu, where)),
-                detail=str((footer, menu, where)))
+                    for x in (footer, menu)),
+                detail=str((footer, menu)))
         s.check("and nothing in the footer searches a map for the words instead",
                 "google.com/maps" not in _footer(page) and "maps.apple.com" not in _footer(page),
                 detail="a pin or nothing: a search is a guess, weighted by "

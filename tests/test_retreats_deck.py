@@ -16,8 +16,10 @@ rules a handover or a hurried edit breaks without anything erroring:
   26 October. Each card and each date shows the Admin's figure, then "per
   person · nothing to pay at the end".
 
-  THE DAYS. A retreat's first day opens with local sparkling wine and its last
-  night is a banquet in the Salon de Musique, dressed for, then dancing;
+  THE DAYS. A retreat's first day opens with a welcome glass -- since the
+  owner's second review of the site (9 Nov 2026) no dish or drink is named in
+  a day -- and its last night is a banquet in the Salon de Musique, dressed
+  for, then dancing;
   "fresh flowers in every room" is said once on its page; never why the walls
   are left as they are; and the three nights do not go to Mirepoix.
 
@@ -152,18 +154,19 @@ def run():
 
     s.section("The home page")
     home = words(pages["/"].get_data(as_text=True))
-    for line in ["Or stay longer, as a guest of the house: three to seven nights of la vie de château.",
-                 "For two centuries Gudanes was a house of guests.",
+    # 9 Nov 2026, evening (owner's second review, 1 and 5): "château", never "house"; no
+    # renovation; the eight moments went (A Day at Gudanes on /workshops is the same idea).
+    for line in ["Or stay longer, for a retreat: three to seven nights of la vie de château.",
+                 "For two centuries Gudanes was a château of guests.",
                  "Guests arrive as strangers and leave as friends, and so many of them return.",
                  "Many of our guests return, some year after year, each time for a different retreat.",
                  "A Retreat La vie de château",
                  "Three to seven nights. Nothing to pay at the end.",
                  "On a retreat the kitchen never rests",
-                 "A restoration, not a renovation. New floors, new bathrooms and good French beds"]:
+                 "New floors, new bathrooms and good French beds"]:
         s.check(f"says '{line[:60]}'", line in home)
-    for fr in ["À table", "En cuisine", "Chiner", "Le marché", "La restauration", "La fête",
-               "Le farniente", "La vallée"]:
-        s.check(f"the moment '{fr}'", fr in home)
+    s.check("the eight moments went from the home page", "Les moments" not in home
+            and "France at Its Most French" not in home)
     s.check("and 'La Vie de Château' heads the retreats, once", home.count("La Vie de Château") == 1,
             detail=f"{home.count('La Vie de Château')} times")
     for row in upcoming:
@@ -176,19 +179,17 @@ def run():
     s.section("/workshops")
     ws = words(pages["/workshops"].get_data(as_text=True))
     for line in ["Les retraites", "La Vie de Château",
-                 "A few days of French country-house life, in a château brought back from ruin.",
+                 "A few days of French château life, in rooms brought back from ruin.",
                  "This is not a hotel stay, and it is not a course.",
                  "Une journée à Gudanes", "Le petit-déjeuner", "Le dîner",
                  "In France, the table is the point of the day",
-                 "The French have a word for it: chiner",
-                 "Bring something beautiful to wear.",
-                 "Very few people anywhere are ever invited to do this.",
-                 "the great cave at Lombrives",
-                 "by the second dinner it feels like a house party among friends",
-                 "One price for all of it",
-                 "Nothing is required of you. Do everything, or nothing at all."]:
+                 "the great cave at Lombrives"]:
         s.check(f"says '{line[:60]}'", line in ws)
-    s.check("what is included is said once", ws.count("There is nothing to pay at the end.") == 1,
+    # 9 Nov 2026, evening (owner's second review, 1): The Art of the Find, The Evenings, Be Part of
+    # It, The Valley, Why So Many Return and Everything Included went from /workshops.
+    for gone in ("The Art of the Find", "Be Part of It", "Why So Many Return", "One price for all of it"):
+        s.check(f"'{gone}' went", gone not in ws)
+    s.check("what is included is said no more than once", ws.count("There is nothing to pay at the end.") <= 1,
             detail=f"{ws.count('There is nothing to pay at the end.')} times")
     for w, _sittings in offer:
         card = words(macro("ws_lead", w))
@@ -215,21 +216,21 @@ def run():
         days, journey = journey_days(html)
         s.check(f"{w['title']}: a day-by-day plan", len(days) >= 4, detail=f"{len(days)} days")
         if len(days) >= 4:
-            s.check(f"{w['title']}: day one opens with local sparkling wine",
-                    "local sparkling wine" in days[0], detail=days[0][:120])
+            s.check(f"{w['title']}: day one opens with a welcome glass, the drink unnamed",
+                    "a welcome glass" in days[0] and "sparkling" not in days[0], detail=days[0][:120])
             s.check(f"{w['title']}: the last night is the banquet in the Salon de Musique, then dancing",
                     "Salon de Musique" in days[-2] and "dressed for the occasion" in days[-2]
                     and "dancing" in days[-2], detail=days[-2][:200])
             s.check(f"{w['title']}: every morning, the village boulangerie", "boulangerie" in journey)
-            s.check(f"{w['title']}: l'apéritif with its drinks named",
-                    "Kir Royale" in journey and "Lillet tonic" in journey)
+            s.check(f"{w['title']}: l'apéritif, with no drink named",
+                    "L’apéritif" in journey and "Kir Royale" not in journey and "Lillet" not in journey)
             s.check(f"{w['title']}: the crêpe cart, on one morning at least", "crêpe cart" in journey)
             s.check(f"{w['title']}: the restoration without a century or the walls",
                     "eighteenth-century frescoes" not in journey and "walls are left" not in journey)
         if kind == "finds":
             s.check("the three nights do not go to Mirepoix", "Mirepoix" not in journey)
-        if kind in ("cooking", "starry"):
-            s.check(f"{w['title']}: a visiting artisan, kept", "visiting artisan" in seen)
+        # 9 Nov 2026, evening (owner's second review, 5): no artisans on the site.
+        s.check(f"{w['title']}: no visiting artisan", "artisan" not in seen.lower())
         if kind == "noel":
             # 27 Oct (owner): no embroidery or candle-pouring, no outings; day 3 is the gingerbread château
             made = re.findall(r"embroider\w*|candles? (?:poured|made)|pour(?:ing)? candles|candle-pouring"
@@ -244,15 +245,18 @@ def run():
                         detail=days[1][:160])
                 s.check("Noël: day three is the gingerbread château",
                         "Le pain d’épices" in days[2] and "gingerbread château" in days[2]
-                        and "Carols and vin chaud by the fire" in days[2], detail=days[2][:160])
+                        and "Carols by the fire" in days[2] and "vin chaud" not in days[2].lower(),
+                        detail=days[2][:160])
                 s.check("Noël: the last day opens slowly, with watercolours, and cocktails in Le Bar",
                         "watercolours at the long table" in days[3] and "Cocktails in Le Bar" in days[3],
                         detail=days[3][:160])
             s.check("Noël: no outings", not re.search(r"\bFoix\b|Lombrives|Ax-les-Thermes|Mirepoix|transfer from Toulouse",
                                                        journey), detail=journey[:120])
-            s.check("Noël: the tasting and cocktail hour in Le Bar are on the programme",
-                    "La dégustation A wine tasting in Le Bar" in seen
-                    and "L’heure du cocktail Cocktail hour in Le Bar" in seen)
+            # 9 Nov 2026, evening (owner's second review, 1 and 5): the Entertainments grid went -- the day-by-day
+            # again as a list, where the cocktails crept back in -- and no drink is named on a day: the carols
+            # stay by the fire, the vin chaud goes.
+            s.check("Noël: the Entertainments grid went", "Les divertissements" not in seen
+                    and "The Château’s Own Entertainments" not in seen)
 
     s.section("No price typed into the words")
     comment = re.compile(r"\{#.*?#\}|<!--.*?-->", re.S)
@@ -294,10 +298,14 @@ def run():
     ws_html = pages["/workshops"].get_data(as_text=True)
     # Foix and Mirepoix are the chateau's own photographs since the deck's second section 6;
     # Lombrives and Ax are still from Commons.
-    for credit in ("Traumrune", "Jeunamateur"):
+    for credit, slug in (("Traumrune", "lombrives-cave-mouth"), ("Jeunamateur", "bassin-des-ladres")):
         at = ws_html.find(credit)
         inside = at != -1 and ws_html.rfind("<figcaption", 0, at) > ws_html.rfind("</figcaption>", 0, at)
-        s.check(f"/workshops credits {credit}, outside the hidden captions", at != -1 and not inside)
+        if slug in ws_html:
+            s.check(f"/workshops credits {credit}, outside the hidden captions", at != -1 and not inside)
+        else:
+            # The Valley's slider went (9 Nov, owner's second review): no photograph, no credit.
+            s.check(f"/workshops shows no {slug}, and so no credit for it", at == -1)
     home_html = pages["/"].get_data(as_text=True)
     s.check("the home page and /workshops open on the guests toasting",
             "img/retreats/guests-toasting" in home_html and "img/retreats/guests-toasting" in ws_html)
@@ -317,16 +325,8 @@ def run():
         s.check(f"{slug} is out of the folder and the list",
                 not os.path.exists(os.path.join(RETREATS, slug + ".jpg"))
                 and not any(line.startswith(slug + ".jpg") for line in sources))
-    moments = home_html[home_html.find('class="g-moments'):]
-    moments = moments[:moments.find("</ul>")]
-    for slug, fr in (("red-beret-tart", "En cuisine"), ("vide-grenier", "Chiner")):
-        s.check(f"the home page: {fr} is the {slug}",
-                # 28 Oct: the photograph sits in its mount (the image layout brief), so a </span> may come first.
-                re.search(r"%s(-800)?\.jpg[^>]*>(\s*</span>)?\s*<p[^>]*>%s<" % (slug, fr), moments) is not None)
-    chiner = img_srcs(ws_html[ws_html.find("============ CHINER"):])
-    s.check("/workshops: the vide-grenier leads Chiner",
-            bool(chiner) and chiner[0].split("?")[0].endswith("img/retreats/vide-grenier.jpg"),
-            detail=chiner[0] if chiner else "no photographs")
+    # The home page's moments and /workshops' Chiner, which held the red beret and the vide-grenier, went
+    # with the owner's second review (9 Nov 2026).
     for w, _sittings in offer:
         html = shown["/workshops/%d" % w["id"]]
         hero = re.search(r'class="g-hero__img[^"]*" src="([^"]+)"', html)
@@ -355,7 +355,9 @@ def run():
     ws_words = words(ws_html)
     s.check("the afternoon has an easel and a box of watercolours",
             "the library, or an easel and a box of watercolours. Or a brocante" in ws_words)
-    s.check("and the morning keeps a visiting artisan", "with a visiting artisan, or on the restorers’ scaffold" in ws_words)
+    # 9 Nov 2026, evening (owner's second review, 5): no artisans on the site.
+    s.check("and the morning has no visiting artisan",
+            "at the market with the producers, or on the restorers’ scaffold" in ws_words and "artisan" not in ws_words)
     # 27 Oct (owner): the sorbet stays the afternoon picture; the painting goes to the restoration page instead.
     s.check("the afternoon picture is still the sorbet",
             # 9 Nov: the day's figure carries classes now (the image layout brief's timeline).
@@ -369,10 +371,11 @@ def run():
             and "guest" not in re.search(r'alt="([^"]*)"[^>]*>\s*<figcaption>Painting a beam', resto).group(1).lower()
             if "guest-painting" in resto else False)
     # The Autumn Atelier is over (owner, 27 Oct): "this autumn" goes stale in December, the year does not.
-    for path in ("/", "/workshops"):
-        page = words(shown[path]) if path in shown else words(c.get(path).get_data(as_text=True))
-        s.check(f"{path}: the Autumn Atelier line carries its year",
-                "In autumn 2026, every guest at the Autumn Atelier" in page and "This autumn, every guest" not in page)
+    # /workshops said it in Why So Many Return, which went on 9 Nov; the home page keeps the line.
+    page = words(shown["/"])
+    s.check("/: the Autumn Atelier line carries its year",
+            "In autumn 2026, every guest at the Autumn Atelier" in page and "This autumn, every guest" not in page)
+    s.check("/workshops: and nowhere says 'this autumn'", "This autumn, every guest" not in words(shown["/workshops"]))
 
     # 27 Oct (owner): "no card, no page, no date". Switched off once at start-up, not deleted:
     # its bookings and its money stay on the books.

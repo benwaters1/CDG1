@@ -124,7 +124,9 @@ def run():
     got = [int(x) for x in re.findall(r"/pic/(\d+)/retreats/vin-chaud\.jpg \1w", tag)]
     s.check("a WebP srcset at every width below the file's own, and the file's own",
             got == want, detail=f"{got} != {want}")
-    s.check("the sizes it was given", 'sizes="50vw"' in tag, detail=tag)
+    # 9 Nov 2026 (owner's second review, 3.1): "auto" first on a lazy photograph,
+    # so the browser reads the width it is drawn at; the guess is the fallback.
+    s.check("the sizes it was given, after auto", 'sizes="auto, 50vw"' in tag, detail=tag)
     s.check("the JPEG kept as src, for anything that cannot take the srcset",
             f'src="{SAMPLE}"' in tag, detail=tag)
     hero = str(m.pic(SAMPLE, "x", hero=True))

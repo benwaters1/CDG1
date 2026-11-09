@@ -98,9 +98,12 @@ def run():
         if kind == "Cooking":
             s.check("the cave at Lombrives carries its licence credit",
                     "lombrives-cave-mouth" in page and "Traumrune" in page and "CC BY-SA 3.0" in page)
-        if kind == "Seven":
-            s.check("Seven Starry Nights has the mountains from the air across the page",
-                    'class="g-plein ' in page and "from-the-air-mountains" in page)
+        # 9 Nov 2026, evening (owner's second review, 1): the strip after Is It for You?
+        # went with the section -- on Seven Starry Nights that was the mountains from
+        # the air -- and no retreat page has a film strip or a gold frame now.
+        s.check("no film strip, no gold frame, no band between the sections",
+                'class="g-bande' not in page and 'class="g-cadre' not in page
+                and 'class="g-plein ' not in page)
 
     s.section("a change of nights cannot pin a photograph to the wrong day")
     row = next((r for r in rows if "Antique" in r["title"]), None)

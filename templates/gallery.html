@@ -38,7 +38,6 @@
   {'url': 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2b9c1192-bf9a-40a9-8913-4bc98c8a43c7/Screenshot+2026-07-20+at+3.41.43+pm.png?format=1500w', 'caption': 'The kitchen before the work, the floor gone'},
   {'url': 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a/Screenshot+2026-07-20+at+2.33.25+pm.png?format=1500w', 'caption': 'The kitchen now'},
   {'url': 'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583425897142-1GIQ7UVNLLEXM34LO9PY/4ab2ef22-6c3b-46db-a617-0af2a7760c7f+2.JPG?format=1500w', 'caption': 'The room that became the bathrooms, as the 1970s holiday camp left it'},
-  {'url': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w', 'caption': 'One of the ground-floor bathrooms now'},
   {'url': 'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583425754468-1J36HQT5KRQFZCNPSE4S/77C59AF2-6CC2-4CF4-9233-807904326AF8.jpg?format=1500w', 'caption': "A window of the bathrooms' room before the work"},
   {'url': 'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503973363-BORNI4RB6JAHAQXXA46X/IMG_1144.JPG?format=1500w', 'caption': 'A bathroom window now, open onto the mountains, wildflowers on the walnut sill'},
   {'url': 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/97532472-ef1c-439c-bc1e-da09f3d43046/Before+The+Work+-+Windows.jpg?format=1500w', 'caption': 'The windows before the work, the panes broken'},
@@ -324,7 +323,7 @@
       {% if gal['blurb'] %}<p class="g-p" style="margin-bottom:var(--s5);">{{ gal['blurb'] }}</p>{% endif %}
       {% set shown = gal['images'] or FALLBACK.get(gal['slug'], []) %}
       {#- 9 Nov, evening (owner's second review, 1): the before-and-afters /restoration no longer shows live here. -#}
-      {% if gal['slug'] == 'restoration' %}{% set shown = shown + RESTO_PAIRS %}{% endif %}
+      {% if gal['slug'] == 'restoration' %}{% set _have = shown|map(attribute='url')|map('replace', '?format=1000w', '')|map('replace', '?format=1500w', '')|list %}{% set _more = [] %}{% for _p in RESTO_PAIRS %}{% if (_p['url'].split('?')[0]) not in _have %}{% set _ = _more.append(_p) %}{% endif %}{% endfor %}{% set shown = shown + _more %}{% endif %}
       {% if shown %}
       {#- 9 Nov, evening (owner's second review, 1): 244 photographs in one 27,000px block, every one lazy but every one
           in the document. Each section shows six -- two rows of three, so no row ends on one photograph -- and keeps

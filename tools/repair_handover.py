@@ -1884,13 +1884,10 @@ def repair_retired_addresses():
 # brings back what that replaced: the three topic ticks nothing ever read, an
 # inline form with no bot guard, and public_base.html and contact.html without
 # the sign-up the owner asked for. test_newsletter_signup goes red on each.
+# The footer's form sits in #g-newsletter, which the menu panel links down to
+# (9 Nov 2026: the panel's own form went, one form a page).
 NEWSLETTER_FOOTER_CALL = ("{% from '_newsletter.html' import newsletter_block with context %}\n"
-                          "    {{ newsletter_block('footer') }}\n    ")
-NEWSLETTER_CONTACT_CALL = (
-    "{% from '_newsletter.html' import newsletter_block with context %}\n"
-    "<section class=\"g-sec g-sec--sand g-journal\" id=\"newsletter\"><div class=\"g-wrap\">\n"
-    "  {{ newsletter_block('contact') }}\n"
-    "</div></section>\n\n")
+                          "    <div id=\"g-newsletter\">{{ newsletter_block('footer') }}</div>\n    ")
 NEWSLETTER_TICKS = re.compile(r"[ \t]*<fieldset class=\"g-interests\">.*?</fieldset>[ \t]*\r?\n?", re.S)
 SIGNUP_FORM = re.compile(
     r"(<form\b[^>]*action=\"\{\{ url_for\('(?:newsletter_subscribe|join_waitlist)'\) \}\}\"[^>]*>)"
@@ -1899,7 +1896,13 @@ CSRF_LINE = re.compile(r"(<input type=\"hidden\" name=\"csrf_token\" value=\"\{\
 
 
 def repair_newsletter_signup():
-    """The newsletter's one form: footer, Contact page, no ticks, bot guard on."""
+    """The newsletter's one form: the footer's, no ticks, bot guard on.
+
+    9 Nov 2026, evening (the owner's second review, 2.4): one form a page, the
+    footer's. Contact's own block, which this used to put back, went with the
+    seven other mid-page forms; a handover that brings one back is caught by
+    test_site_review_2, which counts the forms on every public page.
+    """
     n = 0
     rel = "templates/public_base.html"
     src = _read(rel)
@@ -1911,23 +1914,6 @@ def repair_newsletter_signup():
             n += 1
         else:
             print("  ! public_base.html: no .g-footer__grid to put the newsletter above")
-    rel = "templates/contact.html"
-    try:
-        src = _read(rel)
-    except FileNotFoundError:
-        src = None
-    if src is not None and "newsletter_block('contact')" not in src:
-        for anchor in ('<div class="g-band">', '<section class="g-sec g-close">',
-                       '{% endblock %}'):
-            # The last {% endblock %} is the content block's close.
-            at = src.rfind(anchor) if anchor == '{% endblock %}' else src.find(anchor)
-            if at != -1:
-                _write(rel, src[:at] + NEWSLETTER_CONTACT_CALL + src[at:])
-                n += 1
-                break
-        else:
-            print("  ! contact.html: nowhere to put the newsletter")
-
     for name in sorted(os.listdir(TEMPLATE_DIR)):
         if not name.endswith(".html"):
             continue

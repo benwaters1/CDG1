@@ -642,3 +642,5 @@
   .g .g-sittings-grid, .g .g-wscards, .g .g-addon{ margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
 }
 @media (max-width: 22rem){ .g .g-crest__row{ flex-wrap: wrap; row-gap: var(--s2); } }
+/* 4  Home, La Vie de Château: both columns from the top, so the words' last line ends the block. */
+.g .g-full__in{ align-items: start; }

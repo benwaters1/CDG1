@@ -139,7 +139,10 @@ def run():
                        "notice for a guest who opened a different one"
                        % r.status_code)
     s.check("drawn above the page rather than buried in it",
-            body.index(TAG + " Serious") < body.index("g-cred"),
+            # Before the page's first section. It was measured against the Monument
+            # line at the foot of main, which went into the footer on 9 Nov 2026 --
+            # and "before the last line of the page" was never the claim anyway.
+            body.index(TAG + " Serious") < body.index("<section", body.index("<main")),
             detail="somebody reading the directions on the morning they set "
                    "off does not scroll")
 

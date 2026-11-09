@@ -84,27 +84,34 @@ def _run(s, oc, anon, conn, today):
     s.check("the page opens to anybody", r.status_code == 200, r)
 
     s.section("The six new sections, in the owner's words")
-    for heading in ("The Hot Springs", "Outdoors and Adventure", "Winter", "The Caves",
+    # 9 Nov 2026, evening (owner's second review, 1 and 3.4): Winter and the Skiing
+    # Nearby gallery are one entry inside Outdoors and Adventure; winter is not
+    # prominent. The other five sections stand.
+    for heading in ("The Hot Springs", "Outdoors and Adventure", "The Caves",
                     "Andorra", "Close By"):
         s.check(f"{heading} is there", f">{heading}</h2>" in html)
     for words in ("Ax-les-Thermes has some sixty hot springs",
                   "It is the only via ferrata in the Ariège",
-                  "Our own snow: a high plateau at 1,800 metres",
+                  "the Plateau de Beille, up the château’s road, has cross-country trails",
                   "the original prehistoric paintings, not copies",
                   "Bring a passport or ID card: Andorra is outside the EU",
                   "An eleventh-century fortress and Cathar refuge"):
         s.check(f"“{words[:40]}…”", words in text)
     s.check("the existing places list is kept above them",
             0 < html.find("Towns and Places Nearby") < html.find("The Hot Springs"))
-    s.check("and they come before the Journal and the close",
-            html.find("Close By</h2>") < html.find("Follow the Restoration"))
+    s.check("winter is one entry inside Outdoors, keeping the address /book links to",
+            0 < html.find('id="outdoors"') < html.find('id="skiing"') < html.find('id="caves"')
+            and "Winter</h2>" not in html and "Skiing Nearby</h2>" not in html)
+    s.check("and they all come before the footer, with no journal block between",
+            0 < html.find("Close By</h2>") < html.find('<footer class="g-footer">')
+            and "Follow the Restoration" not in html)
 
     s.section("The owner's answers to the four disagreements (26 October 2026)")
     s.check("Beille is about 25 minutes, everywhere",
             "about 35 minutes" not in text and "20–35 minutes" not in text
-            and "Plateau de Beille · up the château’s road, about 25 minutes" in text)
+            and "Ax and Beille, 20–25 minutes" in text)
     s.check("Ax 3 Domaines gives both: the gondola and the drive up",
-            text.count("half an hour to drive up") >= 3
+            text.count("half an hour to drive up") >= 2
             and "about half an hour away" not in text, detail=str(text.count("half an hour to drive up")))
     s.check("Adret's hot-water canyon is where it is, not at Ax",
             "Thuès-entre-Valls" in text and "hot-water canyon at Ax" not in text)
@@ -117,9 +124,9 @@ def _run(s, oc, anon, conn, today):
             not re.search(r"€\s?\d", _block(html, 'id="hot-springs"', 'id="close-by"')))
 
     s.section("Every link out opens in a new tab, safely")
-    sections = _block(html, 'id="hot-springs"', "THE JOURNAL")
+    sections = _block(html, 'id="hot-springs"', '<footer class="g-footer">')
     outward = re.findall(r'<a href="(https?://[^"]+)"([^>]*)>', sections)
-    s.check("there are links out", len(outward) >= 25, detail=str(len(outward)))
+    s.check("there are links out", len(outward) >= 20, detail=str(len(outward)))
     # noopener as a word in rel, not the whole of it: a photograph's licence link is rel="noopener license" (9 Nov).
     bare = [h for h, attrs in outward
             if 'target="_blank"' not in attrs or not re.search(r'\brel="[^"]*\bnoopener\b', attrs)]

@@ -273,8 +273,14 @@ def _run(s, anon):
     s.check("no more than forty photographs reach the page", 0 < page_imgs(gal) <= 40,
             detail=f"{page_imgs(gal)} images")
     s.check("and the rest wait behind See all", "<template data-lb-more>" in gal and "See all" in gal)
-    s.check("the restoration's before-and-afters are among them",
-            "The kitchen before the work, the floor gone" in gal and 'id="restoration"' in gal)
+    # The pairs /restoration no longer shows, by their files: the kitchen, the bathrooms' room, its window,
+    # the windows, and the second horse. Where the gallery already had one under its own caption it is not
+    # drawn twice, so the address is what is looked for, in the page or behind See all.
+    moved = ["horse-dining-room-b.jpg", "2b9c1192-bf9a-40a9-8913-4bc98c8a43c7", "92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a",
+             "1583425897142-1GIQ7UVNLLEXM34LO9PY", "1583425754468-1J36HQT5KRQFZCNPSE4S", "1583503973363-BORNI4RB6JAHAQXXA46X",
+             "97532472-ef1c-439c-bc1e-da09f3d43046", "f42741a3-9246-4608-8c8d-fd0408104b5c"]
+    s.check("every before-and-after /restoration let go is on the gallery, under The Restoration",
+            'id="restoration"' in gal and all(k in gal for k in moved), detail=str([k for k in moved if k not in gal]))
 
     s.section("What Is Open Next")
     with m.app.test_request_context("/book"):

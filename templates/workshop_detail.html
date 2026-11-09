@@ -85,7 +85,7 @@
   <h2 class="g-h2 g-h2--lead">{{ ws_heading(workshop) }}</h2>
   {#- 9 Nov, evening (owner's second review, 1 and 5): Is It for You? went, and its sentence -- "châteaux", not
       "houses" -- is the invitation's last line. -#}
-  {% call split(RLP['open'], frame=RLP['open_shape']) %}<p class="g-p">{{ ws_copy(workshop) }}</p>
+  {% call split(RLP['open']) %}{#- 9 Nov, evening (owner's second review, 1 and 2.7): no gold frame, a plain photograph. -#}<p class="g-p">{{ ws_copy(workshop) }}</p>
   <p class="g-p">If you love old châteaux, good food and the French way of taking time over things, yes.</p>{% endcall %}
 </div></section>
 {% endif %}
@@ -143,9 +143,11 @@
         {% elif row.remaining <= 4 %}
           <span class="g-sit__flag g-sit__flag--few">{{ row.remaining }} place{{ '' if row.remaining == 1 else 's' }} left</span>
         {% endif %}
-        {#- 9 Nov, evening (owner's second review, 3.4): the date cards showed one fixed set of three, the snowy peaks
-            among them, on the summer retreats too. Each retreat's cards show its own photographs now. -#}
-        {%- set _sit = (RLP['after_photos']|map(attribute=0)|list)[:3] or [RLP['open'][0]] %}
+        {#- 9 Nov, evening (owner's second review, 3.4): the first of the three was the chateau below snowy peaks, on the
+            summer retreats' dates too. Noël keeps it; every other retreat has the garden in summer in its place. None
+            of the three is shown anywhere else on a retreat's page. -#}
+        {%- set _first = 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c2998346-182b-476a-83cc-fefc2cad0bba/P1260363.jpeg?format=1000w' if 'Noël' in workshop['title'] or 'Noel' in workshop['title'] else url_for('static', filename='img/rk/from-the-garden.jpg') %}
+        {%- set _sit = [_first, 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/Screenshot+2026-08-12+at+3.13.20+pm.png?format=1000w', 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aa7e337d-6a3c-437b-9b9f-a128c57f849e/Screenshot+2026-07-31+at+2.08.26+pm.png?format=1000w'] %}
         <img class="g-sit__img" src="{{ _sit[loop.index0 % 3] }}" alt="{{ workshop['title'] }}" loading="lazy">
         <div class="g-sit__b">
           <p class="g-sit__name">{{ workshop['title'] }}</p>
