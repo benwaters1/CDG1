@@ -78,6 +78,8 @@
   {% endif %}
   <div class="mini-row"><span class="mini-name">Guests already booked here on the same retreat: skipped unless attached</span>
     <span class="mini-role">{{ plan.second.on_site }}</span></div>
+  <div class="mini-row"><span class="mini-name">Cancelled in RetreatGuru, and still booked here</span>
+    <span class="mini-role">{% if plan.cancelled_here %}<span class="mini-status status-declined">{{ plan.cancelled_here|length }}</span>{% else %}0{% endif %}</span></div>
   {% if plan.held %}
   <div class="mini-row"><span class="mini-name">Stripe payments this app already holds, never matched again</span>
     <span class="mini-role">{{ plan.held|length }}</span></div>
@@ -85,6 +87,14 @@
   <div class="mini-row"><span class="mini-name">Emails sent or queued by bringing them across</span>
     <span class="mini-role">none</span></div>
 </div>
+
+{% if plan.cancelled_here %}
+<h3 class="section-heading">Cancelled in RetreatGuru, still booked here</h3>
+{# Brought across before RetreatGuru cancelled them, so the place is still
+   held and the balance still chased. Shown on every check until settled;
+   nothing here changes them. #}
+{% for g in plan.cancelled_here %}<p class="flash flash-error" style="margin:2px 0;">{{ g.why }}</p>{% endfor %}
+{% endif %}
 
 {% if plan.capacity %}
 <h3 class="section-heading">Places</h3>
