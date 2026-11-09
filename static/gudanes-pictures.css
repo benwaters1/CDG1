@@ -494,6 +494,14 @@
 .g .g-way__cadre .g-cadre__frame{ padding: 7px; }
 .g .g-way__cadre .g-cadre__mount{ padding: 10px; }
 
+/* Restoring the Chateau: beside a photograph the list reads in one column,
+   and the photograph stays in view while it is read. */
+.g .g-sp__text .g-how{ grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 56rem){
+  .g .g-sp:has(.g-how){ align-items: start; }
+  .g .g-sp:has(.g-how) .g-sp__media{ position: sticky; top: 6rem; }
+}
+
 /* ==== What's on, press, contact, gallery (brief 4.7) ==================== */
 /* The press pages, fanned out like magazines on a table. */
 .g .g-album--fan .g-album__p:nth-child(1){ transform: rotate(-6deg); }
