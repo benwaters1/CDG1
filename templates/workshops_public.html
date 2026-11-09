@@ -59,19 +59,48 @@
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
   <span class="g-hill" aria-hidden="true">{{ illus('atelier') }}</span>
   <h2 class="g-place">The Retreats</h2>
-  {% if workshops %}
-  <div class="g-wscards">
-    {% for w in workshops %}
-    {% set WS_CARD_IMG = {
+  {#- 9 Nov: the two photographs each retreat shows, settled here once: [0] on its card, [1] on its dates below, and
+      both in the page's event data. First, a photo uploaded for the retreat (workshops.photo_filename), served by
+      room_photo like every other upload a public page shows. Then the photographs of the retreat its title names.
+      Then, for a retreat named for none of the four, a pair from WS_SPARE: photographs shown nowhere else on this
+      page, a different pair for each such retreat while there are pairs left. Until now these fell back to Cooking's
+      two, so a fifth retreat showed Cooking's photographs a second time and its own upload was never seen.
+      test_page_pictures holds all three. -#}
+  {%- set WS_CARD_IMG = {
       'Antique': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fa0ac24f-4a8c-4140-8a2f-41dc5beb9b99/AB23770B-DF11-4893-95A0-C89825994C9A.jpg?format=1000w",
       'Noël':    url_for('static', filename='img/retreats/noel-at-gudanes-800.jpg'),
       'Cooking': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/27199697-d1e3-4a6d-b875-e8c325e1b231/Screenshot+2026-08-12+at+8.39.43+pm.png?format=1000w",
       'Seven':   "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1000w"
-    } %}
-    {% set wp = namespace(u=None) %}
-    {% for k, v in WS_CARD_IMG.items() %}{% if k in w['title'] %}{% set wp.u = v %}{% endif %}{% endfor %}
+  } %}
+  {#- The dates' photograph per atelier. This map had bedrooms for the
+      Cooking, Artisans and Seven-night ateliers (Chambre Bleue, bedroom 3, Chambre du Parc). -#}
+  {%- set WS_PIC = {
+    'Antique': "/static/img/xx/shelves-of-china.jpg",
+    'Noël':    "/static/img/dining/garland-staircase.jpg",
+    'Cooking': "/static/img/xx/tomato-tart-above.jpg",
+    'Seven':   "/static/img/dining/long-table-tall-candles.jpg"
+  } %}{#- 15 Oct (owner: "some pictures are duplicated"): a different photograph from each retreat's own set, not its card's -#}
+  {#- (card, dates): the wider one for the arched card, which crops to 4:3. -#}
+  {%- set WS_SPARE = [
+    ('/static/img/retreats/lawn-afternoon.jpg', '/static/img/retreats/guests-with-baskets.jpg'),
+    ('/static/img/retreats/garden-in-bloom.jpg', '/static/img/retreats/long-lunch-outdoors.jpg'),
+    ('/static/img/retreats/candlelit-dinner-party.jpg', '/static/img/retreats/garden-conversation.jpg'),
+    ('/static/img/retreats/sparkling-tray.jpg', '/static/img/retreats/chateau-framed-by-roses.jpg')
+  ] %}
+  {%- set ws_photo = {} %}{% set _spare = namespace(n=0) %}
+  {%- for w in workshops %}
+    {%- set _p = namespace(card=None, dates=None) %}
+    {%- if w['photo_filename'] %}{% set _p.card = url_for('room_photo', filename=w['photo_filename']) %}{% set _p.dates = _p.card %}
+    {%- else %}{% for k in WS_CARD_IMG %}{% if k in w['title'] %}{% set _p.card = WS_CARD_IMG[k] %}{% set _p.dates = WS_PIC[k] %}{% endif %}{% endfor %}
+    {%- endif %}
+    {%- if not _p.card %}{% set _i = _spare.n % (WS_SPARE|length) %}{% set _p.card = WS_SPARE[_i][0] %}{% set _p.dates = WS_SPARE[_i][1] %}{% set _spare.n = _spare.n + 1 %}{% endif %}
+    {%- set _ = ws_photo.update({w['id']: (_p.card, _p.dates)}) %}
+  {%- endfor %}
+  {% if workshops %}
+  <div class="g-wscards">
+    {% for w in workshops %}
     <article class="g-wscard">
-      <span class="g-wscard__arch">{{ pic(wp.u or WS_CARD_IMG['Cooking'], w['title'], sizes='(min-width: 64rem) 24rem, 92vw', cls='g-wscard__img') }}</span>
+      <span class="g-wscard__arch">{{ pic(ws_photo[w['id']][0], w['title'], sizes='(min-width: 64rem) 24rem, 92vw', cls='g-wscard__img') }}</span>
       <div class="g-wscard__top">
         {% set rows = sessions_by_workshop.get(w['id'], []) %}
         {% if rows and rows[0].session['end_date'] and rows[0].session['end_date'] != rows[0].session['start_date'] %}
@@ -234,14 +263,7 @@
     {% endfor %}
   </div>
 
-  {# The same photograph per atelier as the cards above. This map had bedrooms for the
-     Cooking, Artisans and Seven-night ateliers (Chambre Bleue, bedroom 3, Chambre du Parc). #}
-  {% set WS_PIC = {
-    'Antique': "/static/img/xx/shelves-of-china.jpg",
-    'Noël':    "/static/img/dining/garland-staircase.jpg",
-    'Cooking': "/static/img/xx/tomato-tart-above.jpg",
-    'Seven':   "/static/img/dining/long-table-tall-candles.jpg"
-  } %}{#- 15 Oct (owner: "some pictures are duplicated"): a different photograph from each retreat's own set, not its card's -#}
+  {#- Each retreat's photograph here is ws_photo's, settled above The Retreats' cards. -#}
 
   <p class="g-p" style="margin-top:calc(var(--s2)*-1)">Every date across the year, in one place. Choose a retreat above to narrow it.</p>
   {# The overbooking promise, moved here from The Year's Programme (removed: it listed these same dates a second time).
@@ -250,15 +272,13 @@
 <div class="g-sittings-grid">
     {% for item in ns.rows|sort(attribute='r.session.start_date') %}
     {% set w = item.w %}{% set r = item.r %}
-    {% set pic = namespace(u=None) %}
-    {% for k, v in WS_PIC.items() %}{% if k in w['title'] %}{% set pic.u = v %}{% endif %}{% endfor %}
     <article class="g-sit{% if r.remaining <= 0 %} g-sit--full{% endif %}" data-ws="{{ w['id'] }}">
       {% if r.remaining <= 0 %}
         <span class="g-sit__flag">Fully booked</span>
       {% elif r.remaining <= 4 %}
         <span class="g-sit__flag g-sit__flag--few">{{ r.remaining }} place{{ '' if r.remaining == 1 else 's' }} left</span>
       {% endif %}
-      {%- set _su = pic.u or WS_PIC['Cooking'] %}
+      {%- set _su = ws_photo[w['id']][1] %}
       <img class="g-sit__img" src="{{ _su ~ ('' if '?' in _su else '?format=1000w') }}" alt="{{ w['title'] }}" loading="lazy">
       <div class="g-sit__b">
         <p class="g-sit__name">{{ w['title'] }}</p>
@@ -547,7 +567,7 @@
                "address": {"@type": "PostalAddress", "streetAddress": "2 Route de Beille", "addressLocality": "Château-Verdun", "postalCode": "09310", "addressRegion": "Ariège", "addressCountry": "FR"}},
   "organizer": {"@type": "Organization", "name": "Château de Gudanes", "url": "https://chateaugudanes.com/"},
   "description": (ws_copy(w)|striptags|trim) or "A few days of French country-house life, in a château brought back from ruin.",
-  "image": [WS_PIC['Cooking']],
+  "image": ws_photo[w['id']]|unique|list,
   "url": "https://chateaugudanes.com" ~ workshop_page_url(w)
 } -%}
 {%- if w['price_per_person'] -%}{%- set _ = _ev.update({"offers": {"@type": "Offer", "price": w['price_per_person'], "priceCurrency": "EUR",

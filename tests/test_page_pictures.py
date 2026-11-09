@@ -12,13 +12,27 @@ every other page the brief converts, with the same three rules for each:
 and, page by page, what the brief asked of it. The words are
 test_copy_unchanged's.
 """
+import html
+import json
+import os
 import re
+import shutil
+from datetime import timedelta
 
 from _harness import Suite
 import _harness
 from test_home_pictures import picture_key
 
 m = _harness.m
+
+# The retreats /workshops knows by a word in their titles (WS_CARD_IMG and WS_PIC in workshops_public.html).
+NAMED = ("Antique", "Noël", "Cooking", "Seven")
+TAG = "ZZPP"
+# Named for none of the four. The first has a photo uploaded for it and two dates; the rest have neither, and are
+# as many as the page has spare pairs, so each should have a pair of its own.
+UNNAMED = [TAG + " Painting Week", TAG + " Garden Week", TAG + " Music Week", TAG + " Walking Week",
+           TAG + " Linen Week"]
+OWN_PHOTO = "zpp_own_photo.jpg"
 
 # For each page: (what to look for, how many at least), in the brief's words.
 PAGES = {
@@ -129,6 +143,152 @@ def _visible(page):
     return page
 
 
+def _src(block, cls):
+    tag = re.search(r'<img\b[^>]*\bclass="%s"[^>]*>' % cls, block)
+    hit = tag and re.search(r'\ssrc="([^"]*)"', tag.group(0))
+    return html.unescape(hit.group(1)) if hit else ""
+
+
+def _unnamed_retreats(s, client):
+    """A fifth retreat, named for none of the four: its own photograph, or one shown nowhere else on the page.
+
+    Each card and each row of dates picked its photograph by a word in the retreat's title, and anything else fell
+    back to Cooking's two, so a retreat the owner adds showed Cooking's photographs a second time, and a photo
+    uploaded for it (workshops.photo_filename) was never shown. The check above cannot see that: within a list a
+    photograph counts once, so a second retreat on Cooking's photograph folded into Cooking's.
+    """
+    s.section("/workshops: a retreat named for none of the four")
+    conn = _harness.db()
+    real_dir = m.ROOM_PHOTO_DIR
+    scratch = os.path.join(m.UPLOAD_DIR, "zpp_room_photos")
+    hidden = []
+    try:
+        # The upload, where room_photo will look for it, never in the real room photographs.
+        os.makedirs(scratch, exist_ok=True)
+        m.ROOM_PHOTO_DIR = scratch
+        from PIL import Image
+        Image.new("RGB", (40, 30), (120, 90, 60)).save(os.path.join(scratch, OWN_PHOTO), "JPEG")
+        with open(os.path.join(scratch, OWN_PHOTO), "rb") as f:
+            own_bytes = f.read()
+
+        # Any other retreat named for none of the four is the run's, not this check's (a whole run leaves some),
+        # and would take spare pairs before these do. Off the page while this looks, back after.
+        for row in conn.execute(f"SELECT id, title FROM workshops WHERE active = 1 AND {m.WORKSHOP_IS_PUBLIC}"):
+            if not any(k in row["title"] for k in NAMED):
+                hidden.append(row["id"])
+        if hidden:
+            conn.execute(f"UPDATE workshops SET active = 0 WHERE id IN ({','.join('?' * len(hidden))})", hidden)
+
+        today = m.house_today()
+        ids = []
+        for i, title in enumerate(UNNAMED):
+            wid = conn.execute(
+                "INSERT INTO workshops (title, description, price_per_person, active, sort_order, photo_filename, "
+                "created_at) VALUES (?, 'x', 1000, 1, ?, ?, ?)",
+                (title, 9000 + i, OWN_PHOTO if i == 0 else None, _harness.datetime_now())).lastrowid
+            ids.append(wid)
+            for start in ([today + timedelta(days=90), today + timedelta(days=120)] if i == 0
+                          else [today + timedelta(days=100 + i)]):
+                conn.execute(
+                    "INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity, notes, created_at) "
+                    "VALUES (?, ?, ?, 15, ?, ?)",
+                    (wid, start.isoformat(), (start + timedelta(days=3)).isoformat(), TAG, _harness.datetime_now()))
+        conn.commit()
+
+        r = client.get("/workshops")
+        if not s.check("/workshops loads with them", r.status_code == 200, detail=str(r.status_code)):
+            return
+        page = r.get_data(as_text=True)
+        shown = _visible(page)
+        with m.app.test_request_context():
+            own_src = m.url_for("room_photo", filename=OWN_PHOTO)
+
+        cards = {}
+        for block in re.findall(r'<article class="g-wscard">(.*?)</article>', shown, re.S):
+            name = re.search(r'<h3 class="g-wscard__name">(.*?)</h3>', block, re.S)
+            cards[html.unescape(name.group(1).strip()) if name else ""] = _src(block, "g-wscard__img")
+        dates = {}
+        for wid, block in re.findall(r'<article class="g-sit[^"]*" data-ws="(\d+)">(.*?)</article>', shown, re.S):
+            dates.setdefault(int(wid), []).append(_src(block, "g-sit__img"))
+        mine = dict(zip(UNNAMED, ids))
+
+        own, rest = UNNAMED[0], UNNAMED[1:]
+        s.check("its card shows the photo uploaded for it", cards.get(own) == own_src,
+                detail=f"{cards.get(own)!r}, wanted {own_src!r}")
+        s.check("and so does each of its dates", len(dates.get(mine[own], [])) == 2
+                and all(d.split("?", 1)[0] == own_src for d in dates[mine[own]]), detail=repr(dates.get(mine[own])))
+        served = client.get(own_src)
+        s.check("which is the photo uploaded, at the address room photographs are served from",
+                served.status_code == 200 and served.data == own_bytes, detail=str(served.status_code))
+
+        spare = [(cards.get(t, ""), (dates.get(mine[t]) or [""])[0]) for t in rest]
+        s.check("each one with no photo of its own shows a photograph on its card and on its dates",
+                all(c and d for c, d in spare), detail=repr(spare))
+        s.check("each a file the house holds, since a broken photograph shows nothing and says nothing",
+                all(m._pic_file(x.split("?", 1)[0]) for pair in spare for x in pair if x),
+                detail=", ".join(x for pair in spare for x in pair if x and not m._pic_file(x.split("?", 1)[0])))
+        spare_keys = [picture_key(x) for pair in spare for x in pair]
+        s.check(f"all {len(spare_keys)} of theirs different: a pair of its own for each, while there are pairs",
+                len(set(spare_keys)) == len(spare_keys), detail=", ".join(sorted(spare_keys)))
+        # Cooking's were the fallback; any of the four's would be the same fault.
+        named = {picture_key(src) for t, src in cards.items() if any(k in t for k in NAMED)}
+        for row in conn.execute("SELECT id, title FROM workshops WHERE active = 1"):
+            if any(k in row["title"] for k in NAMED):
+                named |= {picture_key(d) for d in dates.get(row["id"], [])}
+        s.check("and none of them a named retreat's, Cooking's least of all", named and not named & set(spare_keys),
+                detail=", ".join(sorted(named & set(spare_keys))) or "no named retreat on the page to compare")
+
+        # The whole page. A retreat's dates rows are one photograph however many dates it has, and its uploaded photo
+        # is one photograph on its card and its dates: that is the retreat, shown where it is listed. Anything else
+        # counts every time: one retreat's photograph on another's card, a card's on the dates, either in the page.
+        seen = set()
+        for title, src in cards.items():
+            key = picture_key(src)
+            seen.add((("own", mine[own]) if src == own_src and title == own else ("card", title), key))
+        for wid, srcs in dates.items():
+            for src in srcs:
+                key = picture_key(src)
+                seen.add((("own", wid) if src.split("?", 1)[0] == own_src and wid == mine[own] else ("dates", wid), key))
+        elsewhere = re.sub(r'<article class="g-(?:wscard|sit)\b.*?</article>', "", shown, flags=re.S)
+        n = 0
+        for tag in re.findall(r"<img\b[^>]*>", elsewhere):
+            hit = re.search(r'\ssrc="([^"]*)"', tag)
+            if not hit or not hit.group(1) or "Logo" in hit.group(1):
+                continue
+            n += 1
+            seen.add((("page", n), picture_key(html.unescape(hit.group(1)))))
+        keys = [k for _, k in seen]
+        twice = sorted({k for k in keys if keys.count(k) > 1})
+        s.check("no photograph twice between the cards, the dates and the rest of the page", not twice,
+                detail=", ".join(twice[:4]))
+
+        events = []
+        for blob in re.findall(r'<script type="application/ld\+json">(.*?)</script>', page, re.S):
+            try:
+                data = json.loads(blob)
+            except ValueError:
+                continue
+            events += [e for e in (data if isinstance(data, list) else [data]) if isinstance(e, dict)]
+        wrong = []
+        for title, wid in mine.items():
+            want = list(dict.fromkeys([cards.get(title, ""), (dates.get(wid) or [""])[0].split("?", 1)[0]]))
+            for e in events:
+                if e.get("url", "").endswith("/workshops/%d" % wid) and e.get("image") != want:
+                    wrong.append(f"{title}: {e.get('image')}")
+        s.check("the page's event data names each retreat's own photographs", not wrong
+                and any(e.get("url", "").endswith("/workshops/%d" % ids[0]) for e in events),
+                detail="; ".join(wrong[:2]) or "no event for the retreat with its own photo")
+    finally:
+        m.ROOM_PHOTO_DIR = real_dir
+        conn.execute("DELETE FROM workshop_sessions WHERE notes = ?", (TAG,))
+        conn.execute("DELETE FROM workshops WHERE title LIKE ?", (TAG + " %",))
+        if hidden:
+            conn.execute(f"UPDATE workshops SET active = 1 WHERE id IN ({','.join('?' * len(hidden))})", hidden)
+        conn.commit()
+        conn.close()
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
 def run():
     s = Suite("Pages in pictures")
     client = m.app.test_client()
@@ -170,6 +330,7 @@ def run():
             keys.append(key)
         twice = sorted({k for k in keys if keys.count(k) > 1})
         s.check("no photograph twice, by what it is", not twice, detail=", ".join(twice[:4]))
+    _unnamed_retreats(s, client)
     return s
 
 
