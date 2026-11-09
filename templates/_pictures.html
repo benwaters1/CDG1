@@ -68,7 +68,7 @@
     {%- for s in slides %}
     {%- set p = [s.src, s.alt, s.cap] if s is mapping else s %}
     <figure class="g-car__s" aria-roledescription="slide" aria-label="{{ loop.index }} / {{ slides|length }}">
-      {%- if s is mapping and s.href %}<a class="g-car__a" href="{{ s.href }}">{% endif %}
+      {%- if s is mapping and s.href %}<a class="g-car__a" href="{{ s.href }}" aria-label="{{ s.label or p[1] }}">{% endif %}
       <div class="g-car__f">{{ pic(p[0], p[1], sizes='(min-width: 64rem) 46vw, 84vw') }}</div>
       {%- if s is mapping and s.title %}<p class="g-car__t">{{ s.title }}</p>{% endif %}
       {%- if s is mapping and s.href %}</a>{% endif %}
@@ -85,10 +85,11 @@
 {%- endmacro %}
 
 {#- E. LA MOSAÏQUE. One large photograph and two or three small ('lead'),
-    or two tall and one wide ('tall'). Never more than four. -#}
-{% macro mosaique(photos, layout='lead', cls='') -%}
+    or two tall and one wide ('tall'). Never more than four. mounted=True
+    sets each in the museum mount, for objects and finds. -#}
+{% macro mosaique(photos, layout='lead', cls='', mounted=False) -%}
 {%- set ps = photos[:4] -%}
-<div class="g-mos g-mos--{{ layout }} g-mos--{{ ps|length }} g-rv {{ cls }}">
+<div class="g-mos g-mos--{{ layout }} g-mos--{{ ps|length }}{% if mounted %} g-mos--mounted{% endif %} g-rv {{ cls }}">
   {%- for p in ps %}
   <figure class="g-mos__i">{{ pic(p[0], p[1], sizes=('(min-width: 64rem) 50vw, 100vw' if loop.first else '(min-width: 64rem) 25vw, 50vw')) }}{{ _cap(p) }}</figure>
   {%- endfor %}
@@ -99,25 +100,29 @@
     (_beforeafter.html: its classes, its stylesheet rules and its script),
     drawn here through pic() so both photographs carry their sizes, and
     given a gilt handle. -#}
-{% macro avant_apres(id, before, after, title, before_note, after_note) -%}
+{#- tags: the two words on the photographs, as the page already words them. caption=False leaves out the title and
+    notes underneath (a page that has its own line for that, and words it must not gain). -#}
+{% macro avant_apres(id, before, after, title, before_note='', after_note='', tags=('As found', 'Now'), caption=True, before_pos='', before_alt='', after_alt='') -%}
 <div class="g-aa g-rv">
 <figure class="g-ba" data-ba id="ba-{{ id }}">
   <div class="g-ba__f">
-    {{ pic(after, title ~ ' — as it is now. ' ~ after_note, sizes='(min-width: 64rem) 70vw, 100vw', cls='g-ba__img g-ba__img--after') }}
+    {{ pic(after, after_alt or (title ~ ' — as it is now. ' ~ after_note), sizes='(min-width: 64rem) 70vw, 100vw', cls='g-ba__img g-ba__img--after') }}
     <div class="g-ba__clip" data-ba-clip>
-      {{ pic(before, title ~ ' — as it was found. ' ~ before_note, sizes='(min-width: 64rem) 70vw, 100vw', cls='g-ba__img g-ba__img--before') }}
+      {{ pic(before, before_alt or (title ~ ' — as it was found. ' ~ before_note), sizes='(min-width: 64rem) 70vw, 100vw', cls='g-ba__img g-ba__img--before', pos=before_pos) }}
     </div>
-    <span class="g-ba__tag g-ba__tag--b">As found</span>
-    <span class="g-ba__tag g-ba__tag--a">Now</span>
+    <span class="g-ba__tag g-ba__tag--b">{{ tags[0] }}</span>
+    <span class="g-ba__tag g-ba__tag--a">{{ tags[1] }}</span>
     <input class="g-ba__range" type="range" min="0" max="100" value="50"
            data-ba-range aria-label="Reveal {{ title }} before or after restoration">
     <span class="g-ba__handle" data-ba-handle aria-hidden="true"></span>
   </div>
+  {%- if caption %}
   <figcaption class="g-ba__cap">
     <span class="g-ba__t">{{ title }}</span>
     <span class="g-ba__n"><b>Found</b> {{ before_note }}</span>
     <span class="g-ba__n"><b>Now</b> {{ after_note }}</span>
   </figcaption>
+  {%- endif %}
 </figure>
 </div>
 {%- endmacro %}
@@ -138,13 +143,17 @@
 
 {#- H. LE SPLIT. Words on one side, a photograph on the other, swapping
     sides each time (flip). A second, smaller photograph may be tucked over
-    one corner. The default way to illustrate a paragraph.
+    one corner. The default way to illustrate a paragraph. frame='arch' (or
+    'oval', 'rect') hangs the photograph in the gilt frame instead.
         {% call split(photo, flip=True, tuck=other) %} ...the words... {% endcall %} -#}
-{% macro split(p, flip=False, tuck=None, cls='') -%}
-<div class="g-sp{% if flip %} g-sp--flip{% endif %}{% if tuck %} g-sp--tuck{% endif %} {{ cls }}">
+{% macro split(p, flip=False, tuck=None, cls='', frame='') -%}
+<div class="g-sp{% if flip %} g-sp--flip{% endif %}{% if tuck %} g-sp--tuck{% endif %}{% if frame %} g-sp--framed{% endif %} {{ cls }}">
   <div class="g-sp__text">{{ caller() }}</div>
   <div class="g-sp__media g-rv">
+    {%- if frame %}{{ cadre(p, shape=frame, sizes='(min-width: 64rem) 30vw, 90vw') }}
+    {%- else %}
     <figure class="g-sp__main">{{ pic(p[0], p[1], sizes='(min-width: 64rem) 45vw, 100vw') }}{{ _cap(p) }}</figure>
+    {%- endif %}
     {%- if tuck %}<figure class="g-sp__tuck">{{ pic(tuck[0], tuck[1], sizes='(min-width: 64rem) 16vw, 40vw') }}</figure>{% endif %}
   </div>
 </div>
@@ -170,12 +179,14 @@
 
 {#- K. LE CARNET. A photograph pinned to the side of an itinerary day like a
     travel journal: tilted, with a strip of paper tape. side is where it
-    sits, opposite the day's line drawing. -#}
-{% macro carnet(p, side='right', cls='') -%}
+    sits, opposite the day's line drawing. credit: a Commons photograph's
+    licence line (rcredit, _retreat_photos.html), which the licence needs seen. -#}
+{% macro carnet(p, side='right', cls='', credit='') -%}
 <figure class="g-carnet g-carnet--{{ side }} g-rv {{ cls }}">
   <span class="g-carnet__tape" aria-hidden="true"></span>
   {{ pic(p[0], p[1], sizes='(min-width: 64rem) 18rem, 70vw') }}
 </figure>
+{%- if credit %}<p class="g-carnet__credit">{{ credit }}</p>{% endif %}
 {%- endmacro %}
 
 {#- L. LA CARTE POSTALE. A photograph with a white postcard border, a stamp
@@ -242,25 +253,43 @@
     paint();
   });
 
-  /* The drifting strip. A copy of the photographs follows the originals so
-     the loop has no seam; the copy is painted, not <img>, so the lightbox
-     and a screen reader see each photograph once. */
+  /* The drifting strip. Copies of the photographs follow the originals, as
+     many as it takes to cover the screen twice, so the loop has no seam even
+     with four photographs on a wide screen. The copies are painted, not
+     <img>, so the lightbox and a screen reader see each photograph once. */
   if(!still){
     document.querySelectorAll('[data-bande]').forEach(function(b){
-      var row = b.querySelector('[data-bande-row]');
-      [].slice.call(row.children).forEach(function(f){
+      var row = b.querySelector('[data-bande-row]'), originals = [].slice.call(row.children);
+      function ghostOf(f){
         var i = f.querySelector('img'), ghost = document.createElement('span');
         ghost.className = 'g-bande__i g-bande__ghost';
         ghost.setAttribute('aria-hidden', 'true');
-        function paintGhost(){
+        function paint(){
           ghost.style.backgroundImage = 'url("' + (i.currentSrc || i.src) + '")';
-          if(i.width && i.height) ghost.style.aspectRatio = i.getAttribute('width') + ' / ' + i.getAttribute('height');
+          var w = i.naturalWidth || +i.getAttribute('width'), h = i.naturalHeight || +i.getAttribute('height');
+          if(w && h) ghost.style.aspectRatio = w + ' / ' + h;
         }
-        if(i.complete) paintGhost(); else i.addEventListener('load', paintGhost);
-        paintGhost();
-        row.appendChild(ghost);
-      });
-      b.classList.add('is-drifting');
+        if(i.complete) paint(); else i.addEventListener('load', paint);
+        paint();
+        return ghost;
+      }
+      function start(){
+        /* One set's width, measured once the photographs know their size. */
+        var gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+        var set = originals.reduce(function(t, f){ return t + f.getBoundingClientRect().width + gap; }, 0);
+        if(!set) return;
+        var copies = Math.max(1, Math.ceil(b.clientWidth / set));
+        for(var k = 0; k < copies; k++) originals.forEach(function(f){ row.appendChild(ghostOf(f)); });
+        row.style.setProperty('--bande-w', set + 'px');
+        row.style.setProperty('--bande-s', Math.round(set / 18) + 's');
+        b.classList.add('is-drifting');
+      }
+      var imgs = originals.map(function(f){ return f.querySelector('img'); });
+      var waiting = imgs.filter(function(i){ return !i.complete; });
+      /* The strip's photographs are lazy; ask for them now, they are about to move into view. */
+      imgs.forEach(function(i){ i.loading = 'eager'; });
+      if(!waiting.length) start();
+      else Promise.all(waiting.map(function(i){ return new Promise(function(r){ i.addEventListener('load', r); i.addEventListener('error', r); }); })).then(start);
     });
   }
 

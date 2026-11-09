@@ -40,8 +40,10 @@ COMPONENTS = {
     "see all": "g-seeall", "wax seal": "g-seal", "divider": "g-div",
 }
 SAMPLE = "/static/img/retreats/vin-chaud.jpg"
+# A Squarespace address the house holds no copy of, here or on the volume. (One it does hold is
+# test_retreat_pictures's business: pic() sizes it from the copy.)
 SQUARESPACE = ("https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/"
-               "a92dff93-ba4c-438a-8a7f-88a1f47fa97e/Screenshot+2026-08-14+at+11.53.43+pm.png?format=1000w")
+               "ffffffff-0000-4000-8000-000000000000/Not+held+anywhere.png?format=1000w")
 
 
 def _imgs(html):

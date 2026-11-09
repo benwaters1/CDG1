@@ -281,7 +281,10 @@ def run():
         hot = [u for u in srcs if any(u.split("?")[0] == b or u.split("?")[0] == b.replace("/content/v1/", "/content/")
                                       for b in deck_bases)]
         s.check(f"{path}: none of the deck's photographs from Squarespace", not hot, detail=", ".join(hot[:2]))
-        ours = [re.sub(r"-(800|2400)\.jpg$", ".jpg", u.split("?")[0]) for u in srcs if "/static/img/retreats/" in u]
+        # Shown photographs only. "See all photos" (28 Oct, the image layout brief) keeps the whole set in the page,
+        # hidden, for the lightbox; a photograph on the page and in that set is shown once.
+        shown_srcs = img_srcs(re.sub(r"<div hidden>.*?</div>", "", html, flags=re.S))
+        ours = [re.sub(r"-(800|2400)\.jpg$", ".jpg", u.split("?")[0]) for u in shown_srcs if "/static/img/retreats/" in u]
         twice = sorted({u for u in ours if ours.count(u) > 1})
         s.check(f"{path}: none of them twice", not twice, detail=", ".join(twice))
     ws_html = pages["/workshops"].get_data(as_text=True)
@@ -310,25 +313,27 @@ def run():
         s.check(f"{slug} is out of the folder and the list",
                 not os.path.exists(os.path.join(RETREATS, slug + ".jpg"))
                 and not any(line.startswith(slug + ".jpg") for line in sources))
-    moments = home_html[home_html.find('class="g-moments"'):]
+    moments = home_html[home_html.find('class="g-moments'):]
     moments = moments[:moments.find("</ul>")]
     for slug, fr in (("red-beret-tart", "En cuisine"), ("vide-grenier", "Chiner")):
         s.check(f"the home page: {fr} is the {slug}",
-                re.search(r"%s-800\.jpg[^>]*>\s*<p[^>]*>%s<" % (slug, fr), moments) is not None)
+                # 28 Oct: the photograph sits in its mount (the image layout brief), so a </span> may come first.
+                re.search(r"%s(-800)?\.jpg[^>]*>(\s*</span>)?\s*<p[^>]*>%s<" % (slug, fr), moments) is not None)
     chiner = img_srcs(ws_html[ws_html.find("============ CHINER"):])
     s.check("/workshops: the vide-grenier leads Chiner",
             bool(chiner) and chiner[0].split("?")[0].endswith("img/retreats/vide-grenier.jpg"),
             detail=chiner[0] if chiner else "no photographs")
     for w, _sittings in offer:
         html = shown["/workshops/%d" % w["id"]]
-        hero = re.search(r'class="g-hero__img" src="([^"]+)"', html)
+        hero = re.search(r'class="g-hero__img[^"]*" src="([^"]+)"', html)
         hero = hero.group(1) if hero else ""
         if kind_of(w["title"]) == "finds":
             s.check("Antique & French Finds opens on the brocante stalls",
                     hero.endswith("img/retreats/brocante-stalls.jpg"), detail=hero)
         if kind_of(w["title"]) == "cooking":
-            s.check("Cooking in the Cuisine opens on the cooking class from above",
-                    hero.endswith("img/retreats/cooking-class-hands.jpg"), detail=hero)
+            # 28 Oct (owner): "change the cooking hero photo from tom to a better one" - the roast guinea fowl.
+            s.check("Cooking in the Cuisine opens on the roast guinea fowl",
+                    hero.endswith("img/retreats/roast-birds.jpg"), detail=hero)
         s.check(f"{w['title']}: its lead picture is not in its gallery too",
                 not hero or html.count(hero.split("/static/img/retreats/")[-1]) == 1)
     gallery_src = io.open(os.path.join(_harness.ROOT, "templates", "gallery.html"), encoding="utf-8").read()
