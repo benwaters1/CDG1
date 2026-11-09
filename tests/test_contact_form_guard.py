@@ -75,7 +75,7 @@ def _post(anon, data):
 
 
 def _rough(who, guard=None, **over):
-    data = {"action": "flexible", "email": _addr(who), "name": f"Guest {TAG} {who}",
+    data = {"action": "flexible", "topic": "other", "email": _addr(who), "name": f"Guest {TAG} {who}",
             "rough_month": "", "rough_nights": "3", "rough_guests": "2",
             "flexibility": "week", "message": "Two of us, a quiet week."}
     data.update(_harness.contact_form_fields() if guard is None else guard)

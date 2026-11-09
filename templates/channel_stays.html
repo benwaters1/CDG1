@@ -29,6 +29,25 @@
     calendar is read again each hour.</span>
 </div>
 
+{#- Every Booking.com guest's check-in, without an address for them (9 Nov
+    2026): one link for all, carried by Booking.com's own scheduled message. -#}
+<details class="refund-box" style="margin:10px 0;">
+  <summary>Every guest's online check-in, sent by Booking.com itself</summary>
+  <p class="upload-hint" style="margin:8px 0;">
+    Booking.com's booking email gives no address for the guest, so the house can only send
+    the check-in link to guests who have written. Set this up once and Booking.com sends it
+    to every guest a week before they arrive. They give their confirmation number and the
+    day they arrive, and fill in the police fiche online.
+  </p>
+  <p class="upload-hint" style="margin:8px 0;">In the extranet: <strong>Inbox</strong> (or
+    Guest messages), <strong>Message templates</strong>, <strong>Create template</strong>;
+    schedule it <strong>7 days before check-in</strong>, for every booking. Paste this:</p>
+  <p class="share-link-box" style="white-space:pre-line;">Hello, we look forward to welcoming you to Château de Gudanes.
+So that your room is ready, and for the register French law asks us to keep, please check in online before you travel. It takes two minutes:
+{{ checkin_find_url }}
+You will need your Booking.com confirmation number and the day you arrive.</p>
+</details>
+
 {% include "_list_toolbar.html" %}
 
 {% if not rows %}

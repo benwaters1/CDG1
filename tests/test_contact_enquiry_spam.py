@@ -44,7 +44,7 @@ def _send(anon, who, message, name=None):
     m.send_email = lambda to, subject, body, *a, **kw: sent.append((to, subject, body)) or True
     try:
         r = anon.post("/contact", data={
-            "action": "flexible", "email": f"{TAG.lower()}.{who}@example.invalid",
+            "action": "flexible", "topic": "other", "email": f"{TAG.lower()}.{who}@example.invalid",
             "name": name or f"{TAG} {who}", "rough_month": "", "rough_nights": "0",
             "rough_guests": "2", "flexibility": "any", "message": message,
             **_harness.contact_form_fields()},

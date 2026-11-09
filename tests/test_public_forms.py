@@ -157,7 +157,7 @@ def run():
             TAG + " Wanted" in found, detail=str(found[:4]))
 
     # No date at all is fine — they are on the list for whenever.
-    anon.post("/restaurant/waitlist/join", data={
+    anon.post("/restaurant/waitlist/join", data={"party_size": "2", 
         "name": TAG + " Anytime", "email": "anytime@example.invalid",
     }, follow_redirects=True)
     s.check("leaving the date blank is still allowed", _waitlist("Anytime") is not None,
@@ -212,11 +212,11 @@ def run():
     # for being a number AND for existing, so nothing unusable reaches the row.
     s.check("a session that is not a number is a 404",
             anon.post("/workshops/waitlist/join",
-                      data={"session_id": "tuesday", "name": TAG + " X",
+                      data={"party_size": "2", "session_id": "tuesday", "name": TAG + " X",
                             "email": "x@example.invalid"}).status_code == 404)
     s.check("and one that does not exist is too",
             anon.post("/workshops/waitlist/join",
-                      data={"session_id": "99999999", "name": TAG + " Y",
+                      data={"party_size": "2", "session_id": "99999999", "name": TAG + " Y",
                             "email": "y@example.invalid"}).status_code == 404)
     conn = db()
     ghosts = conn.execute(
@@ -231,7 +231,7 @@ def run():
     _clear_limit("join_restaurant_waitlist")
     limit = m.BOOKING_RATE_LIMIT_PER_HOUR
     for i in range(limit + 2):
-        anon.post("/restaurant/waitlist/join", data={
+        anon.post("/restaurant/waitlist/join", data={"party_size": "2", 
             "name": f"{TAG} Flood{i}", "email": f"flood{i}@example.invalid",
         }, follow_redirects=True)
     conn = db()

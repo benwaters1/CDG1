@@ -133,7 +133,8 @@ def run():
         "arrival_date": later.isoformat(),
         "departure_date": (later + timedelta(days=2)).isoformat(),
         "agree_terms": "on",
-     **BOOKING_DETAILS}, follow_redirects=True)
+     # After the shared details, which carry a readable number of their own.
+     **BOOKING_DETAILS, "guest_phone": "ask my wife"}, follow_redirects=True)
     conn = db()
     odd = conn.execute(
         "SELECT * FROM bookings WHERE guest_email = 'bernard@example.invalid' "
@@ -161,7 +162,7 @@ def run():
     conn.execute("DELETE FROM submission_log WHERE action = 'join_restaurant_waitlist'")
     conn.commit()
     conn.close()
-    anon.post("/restaurant/waitlist/join", data={
+    anon.post("/restaurant/waitlist/join", data={"party_size": "2", 
         "name": TAG + " Claire", "email": "claire@example.invalid",
         "phone": "+33 (0)6 98 76 54 32",
     }, follow_redirects=True)

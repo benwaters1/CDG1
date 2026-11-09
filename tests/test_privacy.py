@@ -189,7 +189,7 @@ def run():
     conn.commit()
 
     before = conn.execute("SELECT COUNT(*) AS c FROM notifications").fetchone()["c"]
-    pub.post("/restaurant/book", data={
+    pub.post("/restaurant/book", data={"guest_phone": "+33 6 12 34 56 78", 
         "guest_name": TAG + "Allergic", "guest_email": TAG + "a@example.invalid",
         "dinner_date": soon, "party_size": "2",
         "dietary_notes": "anaphylactic to peanuts",
