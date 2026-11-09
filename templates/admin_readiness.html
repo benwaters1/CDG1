@@ -4,7 +4,10 @@
 
 <div class="page-head">
   <h1>Go-live checklist</h1>
-  <a href="{{ url_for('download_backup') }}" class="btn-mini">Download a backup</a>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('download_backup') }}" class="btn-mini">Download a backup</a>
+    <a href="{{ url_for('download_photographs_backup') }}" class="btn-mini">Download the photographs</a>
+  </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
   Checked live against how the app is actually configured right now, not a list someone wrote once.
