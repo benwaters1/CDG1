@@ -47,6 +47,11 @@ NUM3 = "9742200003"         # says two rooms, but another stay waits that day
 NUM4 = "9742200004"         # the one waiting beside it
 NUM5 = "9742200005"         # typed by hand, room by room, leaving today
 NUM6 = "9742200006"         # typed by hand, room by room, arriving today
+NUM7 = "9742200007"         # alone on its day: all its rooms, after the hour
+NUM8 = "9742200008"         # alone, but its rooms' nights differ
+NUM9 = "9742200009"         # alone but for a cancelled booking that day
+NUM10 = "9742200010"        # alone, but the house has closed one of the rooms
+NUM11 = "9742200011"        # the cancelled one beside NUM9
 FEED = "https://ical.booking.com/v1/export?t=" + TAG
 
 
@@ -65,6 +70,7 @@ def _cleanup(conn):
     conn.execute("DELETE FROM ical_sync_log WHERE ical_source_id IN "
                  "(SELECT id FROM ical_sources WHERE url LIKE ?)", (f"%{TAG}%",))
     conn.execute("DELETE FROM ical_sources WHERE url LIKE ?", (f"%{TAG}%",))
+    conn.execute("DELETE FROM room_blocks WHERE reason = ?", (TAG,))
     conn.commit()
 
 
@@ -326,6 +332,71 @@ def _run(s, oc, ec, conn):
             _stay(conn, NUM3)["room_id"] is None and _held(conn, NUM3) == [],
             detail=str(dict(_stay(conn, NUM3))))
     s.check("nor is the other given either", _stay(conn, NUM4)["room_id"] is None)
+
+    # ------------------------------------------------------------------
+    s.section("Alone on its day: every room, an hour after its email (owner, 9 November)")
+    hour = m.BOOKING_COM_LONE_WAIT + timedelta(minutes=1)
+    d = base + timedelta(days=40)
+    for room in (one, two):
+        feeds[sources[room["id"]]].append((d, d + timedelta(days=5)))
+    sent.clear()
+    with _StandIns(feeds, sent):
+        mail_id = _mail(conn, 7, _subject("New booking", NUM7, d))
+        with m.app.test_request_context("/"):
+            m.after_booking_com_mail(conn, [mail_id])
+    stay = _stay(conn, NUM7)
+    s.check("within the hour it waits, in case a second booking's email is coming",
+            stay["room_id"] is None and _held(conn, NUM7) == [], detail=str(dict(stay)))
+    s.check("and the page says when it will be given them",
+            "they are all given to this one" in (stay["match_note"] or ""),
+            detail=stay["match_note"])
+    with _StandIns(feeds, sent):
+        m.pair_booking_com_stays(conn, now=_now() + hour)
+        with m.app.test_request_context("/"):
+            m.tell_house_of_booking_com(conn)
+    stay = _stay(conn, NUM7)
+    s.check("after the hour it holds every room whose calendar starts that day",
+            sorted(_held(conn, NUM7)) == sorted([one["id"], two["id"]])
+            and stay["matched_by"] == "ical" and stay["room_count"] == 2
+            and stay["departure_date"] == (d + timedelta(days=5)).isoformat(),
+            detail=str(dict(stay)))
+    told = [x for x in sent if NUM7 in x["subject"]]
+    s.check("and the letter to the house says so, and how to undo it",
+            len(told) == 1 and "One reservation, 2 rooms" in told[0]["body"]
+            and "take a room off" in told[0]["body"], detail=str(told))
+    with _StandIns(feeds, sent):
+        m.pair_booking_com_stays(conn, now=_now() + hour)
+    s.check("and the next run leaves it as it is",
+            sorted(_held(conn, NUM7)) == sorted([one["id"], two["id"]]))
+
+    e = base + timedelta(days=46)
+    feeds[sources[one["id"]]].append((e, e + timedelta(days=2)))
+    feeds[sources[two["id"]]].append((e, e + timedelta(days=3)))
+    f = base + timedelta(days=51)
+    feeds[sources[one["id"]]].append((f, f + timedelta(days=2)))
+    feeds[sources[two["id"]]].append((f, f + timedelta(days=2)))
+    g = base + timedelta(days=55)
+    feeds[sources[one["id"]]].append((g, g + timedelta(days=2)))
+    feeds[sources[two["id"]]].append((g, g + timedelta(days=2)))
+    conn.execute("INSERT INTO room_blocks (room_id, start_date, end_date, reason, created_at) "
+                 "VALUES (?, ?, ?, ?, ?)", (two["id"], g.isoformat(),
+                                            (g + timedelta(days=2)).isoformat(), TAG,
+                                            _now().isoformat()))
+    conn.commit()
+    with _StandIns(feeds, sent):
+        _mail(conn, 8, _subject("New booking", NUM8, e))
+        _mail(conn, 11, _subject("New booking", NUM11, f))
+        _mail(conn, 12, _subject("Cancelled booking", NUM11, f))
+        _mail(conn, 9, _subject("New booking", NUM9, f))
+        _mail(conn, 10, _subject("New booking", NUM10, g))
+        m.sync_booking_com_calendars(conn)
+        m.pair_booking_com_stays(conn, now=_now() + hour)
+    for number, why in ((NUM8, "its rooms' nights differ"),
+                        (NUM9, "a cancelled booking arrives the same day, whose block may linger"),
+                        (NUM10, "the house has closed one of the rooms those nights")):
+        s.check(f"not given them when {why}",
+                _stay(conn, number)["room_id"] is None and _held(conn, number) == [],
+                detail=str(dict(_stay(conn, number))))
 
     # ------------------------------------------------------------------
     s.section("By hand: the same number adds a room, never replaces one")
