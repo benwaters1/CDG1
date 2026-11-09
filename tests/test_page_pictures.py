@@ -152,9 +152,22 @@ def run():
                 'class="g-band"' not in shown)
         mos = re.findall(r'<div class="g-mos .*?</div>\s*(?=<(?!figure))', shown, re.S)
         s.check("no collage of more than four", all(b.count("<img") <= 4 for b in mos))
-        found = (re.search(r'\ssrc="([^"]*)"', t) for t in re.findall(r"<img\b[^>]*>", shown))
-        srcs = [hit.group(1) for hit in found if hit]
-        keys = [picture_key(u) for u in srcs if u and "Logo" not in u]
+        keys, listed = [], set()
+        for tag in re.findall(r"<img\b[^>]*>", shown):
+            hit = re.search(r'\ssrc="([^"]*)"', tag)
+            if not hit or not hit.group(1) or "Logo" in hit.group(1):
+                continue
+            key = picture_key(hit.group(1))
+            # /workshops' retreat cards and its list of dates are one entry a retreat and one a date, so a retreat
+            # with three dates shows its photograph three times by design, and how many retreats there are is the
+            # database's (a run of the whole suite leaves more). Within each list a photograph counts once;
+            # between a list and the rest of the page it still counts.
+            in_list = re.search(r'class="[^"]*\b(g-wscard__img|g-sit__img)\b', tag)
+            if in_list:
+                if (in_list.group(1), key) in listed:
+                    continue
+                listed.add((in_list.group(1), key))
+            keys.append(key)
         twice = sorted({k for k in keys if keys.count(k) > 1})
         s.check("no photograph twice, by what it is", not twice, detail=", ".join(twice[:4]))
     return s
