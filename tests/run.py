@@ -64,6 +64,7 @@ SUITES = [
     "test_website_analytics",
     "test_workshop_rooms",
     "test_workshop_included",
+    "test_workshop_photo",
     "test_workshop_lifecycle",
     "test_workshop_minimum",
     "test_workshop_sheet",
@@ -611,6 +612,8 @@ SUITES = [
     "test_home_pictures",
     # 9 November 2026: the rest of the public pages, brief sections 4.3 to 4.7.
     "test_page_pictures",
+    # 9 November 2026: the photograph at the top of a page at the size it is shown.
+    "test_hero_sizes",
     # 9 November 2026: the address opens the map and sits under the home page's
     # hero, and every public page measured for its margins at three widths.
     "test_house_address",
