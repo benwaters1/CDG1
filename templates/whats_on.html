@@ -104,8 +104,6 @@
 {# 1 Oct: ">Markets in the valley<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 
-{#- 9 Nov (the brief, G): the band of four as a drifting film strip. -#}
-{{ bande([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/501aab26-c7a6-4348-9204-84cfdfdd8e8b/Screenshot+2026-08-15+at+3.09.59+pm.png?format=1500w', 'The valley from a balcony', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/878fd78d-f725-46cf-9253-ed39d25e95c7/53.jpg?format=1000w', 'A village street nearby', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ade15820-1100-46e0-b369-548cf364c28b/Screenshot+2026-08-15+at+12.44.08+am.png?format=1500w', 'A ruined castle above the rooftops', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/096e3877-6b97-4d5c-85c9-0daa1740052a/Screenshot+2026-08-15+at+2.33.18+pm.png?format=1000w', 'Walking in the hills', '']], 'The valley') }}
 
 {# Three sections were removed here, each superseded by one kept below and each
    saying so in its own markup: THE VALLEY THROUGH THE YEAR (four seasons) by
@@ -123,26 +121,10 @@
 {# 1 Oct: "This house was abandoned in 1850 and stood empty" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 
-<div class="g-wrap"><svg class="g-ridge" viewBox="0 0 480 34" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M0 32 L58 18 L96 24 L150 6 L196 20 L236 11 L286 25 L330 14 L378 27 L424 19 L480 30"/>
-  <path d="M0 33.5h480" opacity=".5"/>
-</svg></div>
-
-
-
 <!-- ============ WITHIN AN HOUR ============ -->
 {# Distances and figures from Ariège Pyrénées Tourisme and the Cathar castle
    record. The Niaux paintings and the Montségur siege are matters of history. #}
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('hike') }}</div>
-  <p class="g-fr">Le pays <span class="g-fr__en">The country</span></p>
-  <p class="g-eyebrow">Ariège</p>
-  <h2 class="g-place">L’Ariège</h2>
-  <p class="g-p g-lede-first">The Ariège is one of the quietest corners of France: the Pyrénées, Cathar castles on their peaks, caves painted in prehistory, spa towns and market squares, and brocantes through the summer.</p>
-  <p class="g-p">The château is a base for all of it, and a place to come back to at the end of the day. Most of the workshops, the full experience, take you out to the fairs.</p>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the full experience</a></p>
-</div></section>
-
+{#- 9 Nov, evening (owner's second review, 1): L'Ariège went; the page opens on the week and the places. -#}
 <section class="g-sec"><div class="g-wrap">
   <span class="g-hill" aria-hidden="true">{{ illus('mountains') }}</span>
   <p class="g-eyebrow">Places</p>
@@ -219,30 +201,7 @@
     </div>
   </div>
 </div></section>
-<section class="g-sec g-sec--sand g-gallery-sec" id="skiing"><div class="g-wrap">
-  <span class="g-hill" aria-hidden="true">{{ illus('ski') }}</span>
-  <p class="g-fr">Le ski <span class="g-fr__en">Skiing</span></p>
-  <h2 class="g-place">Skiing Nearby</h2>
-  <p class="g-p g-intro">Ax 3 Domaines, above Ax-les-Thermes, is about twenty minutes from the château to the gondola in the town, or half an hour to drive up to the slopes; the Plateau de Beille, at the top of the château&rsquo;s road, is the first Nordic area in the Pyrénées, for cross-country skiing, snowshoes and sled dogs, about twenty-five minutes; there is snowshoeing too at the Chioula, above Ax; and Andorra is about an hour.</p>
-  {#- 9 Nov (the brief, 4.7): a slider. Each photograph and its caption exactly as they were; the Commons credits also
-      under the slider, where they can be seen (the captions they sit in are hidden, owner 15 Oct). -#}
-  <section class="g-car" data-car aria-roledescription="carousel" aria-label="Skiing nearby">
-  <div class="g-car__track" data-car-track tabindex="0">
-    <figure class="g-car__s" aria-roledescription="slide" aria-label="1 / 6"><div class="g-car__f"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Bonascre_Saquet_East.JPG/1280px-Bonascre_Saquet_East.JPG" alt="Snow on the peaks above Ax 3 Domaines" loading="lazy"></div><figcaption>Ax 3 Domaines<span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Bonascre_Saquet_East.JPG" rel="noopener">Sébastien D&#x27;Arco</a>, <a href="https://creativecommons.org/licenses/by-sa/2.5/" rel="noopener license">CC BY-SA 2.5</a></span></figcaption></figure>
-    <figure class="g-car__s" aria-roledescription="slide" aria-label="2 / 6"><div class="g-car__f"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Saquet_01.jpg/1280px-Saquet_01.jpg" alt="The mountain above the Saquet, Ax 3 Domaines" loading="lazy"></div><figcaption>Ax 3 Domaines, the Saquet<span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Saquet_01.jpg" rel="noopener">Antoine Blondin</a>, <a href="https://creativecommons.org/licenses/by-sa/3.0/" rel="noopener license">CC BY-SA 3.0</a></span></figcaption></figure>
-    <figure class="g-car__s" aria-roledescription="slide" aria-label="3 / 6"><div class="g-car__f"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Vue_de_la_station_Ax-Bonascre_depuis_la_piste_Bonascre.jpg/1280px-Vue_de_la_station_Ax-Bonascre_depuis_la_piste_Bonascre.jpg" alt="The Bonascre station from the piste, Ax 3 Domaines" loading="lazy"></div><figcaption>Bonascre, the foot of the slopes<span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Vue_de_la_station_Ax-Bonascre_depuis_la_piste_Bonascre.jpg" rel="noopener">Maxime Lorant</a>, <a href="https://creativecommons.org/licenses/by-sa/4.0/" rel="noopener license">CC BY-SA 4.0</a></span></figcaption></figure>
-    <figure class="g-car__s" aria-roledescription="slide" aria-label="4 / 6"><div class="g-car__f"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/27/Plateau_de_Beille_-_Cross-countring_skiing_-_5727.jpg/1280px-Plateau_de_Beille_-_Cross-countring_skiing_-_5727.jpg" alt="Cross-country skiing on the Plateau de Beille" loading="lazy"></div><figcaption>The Plateau de Beille<span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Plateau_de_Beille_-_Cross-countring_skiing_-_5727.jpg" rel="noopener">Pierre-Selim Huard</a>, <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener license">CC BY 4.0</a></span></figcaption></figure>
-    <figure class="g-car__s" aria-roledescription="slide" aria-label="5 / 6"><div class="g-car__f"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Ax-les-Thermes%2C_France_%284%29_%2831034019532%29.jpg/1280px-Ax-les-Thermes%2C_France_%284%29_%2831034019532%29.jpg" alt="The hot-spring basin in Ax-les-Thermes" loading="lazy"></div><figcaption>Ax-les-Thermes, the hot springs<span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Ax-les-Thermes%2C_France_%284%29_%2831034019532%29.jpg" rel="noopener">Richard Mortel</a>, <a href="https://creativecommons.org/licenses/by/2.0/" rel="noopener license">CC BY 2.0</a></span></figcaption></figure>
-    <figure class="g-car__s" aria-roledescription="slide" aria-label="6 / 6"><div class="g-car__f"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c6/Ax-les-Thermes%2C_France_%2811%29_%2830369734143%29.jpg/1280px-Ax-les-Thermes%2C_France_%2811%29_%2830369734143%29.jpg" alt="The church tower of Ax-les-Thermes, mist on the mountains" loading="lazy"></div><figcaption>Ax-les-Thermes<span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Ax-les-Thermes%2C_France_%2811%29_%2830369734143%29.jpg" rel="noopener">Richard Mortel</a>, <a href="https://creativecommons.org/licenses/by/2.0/" rel="noopener license">CC BY 2.0</a></span></figcaption></figure>
-  </div>
-  <div class="g-car__bar">
-    <button type="button" class="g-car__btn" data-car-prev aria-label="Previous photograph"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4 7 12l8 8"/></svg></button>
-    <span class="g-car__n" data-car-n aria-live="polite">1 / 6</span>
-    <button type="button" class="g-car__btn" data-car-next aria-label="Next photograph"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 4 8 8-8 8"/></svg></button>
-  </div>
-  </section>
-  <p class="g-car__credits"><span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Bonascre_Saquet_East.JPG" rel="noopener">Sébastien D&#x27;Arco</a>, <a href="https://creativecommons.org/licenses/by-sa/2.5/" rel="noopener license">CC BY-SA 2.5</a></span> <span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Saquet_01.jpg" rel="noopener">Antoine Blondin</a>, <a href="https://creativecommons.org/licenses/by-sa/3.0/" rel="noopener license">CC BY-SA 3.0</a></span> <span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Vue_de_la_station_Ax-Bonascre_depuis_la_piste_Bonascre.jpg" rel="noopener">Maxime Lorant</a>, <a href="https://creativecommons.org/licenses/by-sa/4.0/" rel="noopener license">CC BY-SA 4.0</a></span> <span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Plateau_de_Beille_-_Cross-countring_skiing_-_5727.jpg" rel="noopener">Pierre-Selim Huard</a>, <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener license">CC BY 4.0</a></span> <span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Ax-les-Thermes%2C_France_%284%29_%2831034019532%29.jpg" rel="noopener">Richard Mortel</a>, <a href="https://creativecommons.org/licenses/by/2.0/" rel="noopener license">CC BY 2.0</a></span> <span class="g-credit">Photo <a href="https://commons.wikimedia.org/wiki/File:Ax-les-Thermes%2C_France_%2811%29_%2830369734143%29.jpg" rel="noopener">Richard Mortel</a>, <a href="https://creativecommons.org/licenses/by/2.0/" rel="noopener license">CC BY 2.0</a></span></p>
-</div></section>
+{#- 9 Nov, evening (owner's second review, 1 and 3.4): winter is not prominent. The Skiing Nearby gallery and the Winter section are one entry inside Outdoors and Adventure, which keeps the #skiing address /book links to. -#}
 
 
 {#- ============ 26 Oct (owner's brief, gudanes-whats-on-new-sections.md) ============
@@ -343,37 +302,15 @@
       <p class="g-key__k">Walks to the high lakes · from 10 minutes</p>
       <p class="g-key__v">The mountains around the château are full of lakes. The Étangs de Fontargente, up the Aston valley, are a half-day loop to lakes at 2,145 metres. From Mérens, the walks to the Étang de Comte and the Étang des Bésines are easy family outings. The GR10 crosses the Plateau de Beille. Roughly June to October, depending on the snow.</p>
     </div>
+    <div class="g-key__i" id="skiing">
+      <p class="g-key__k">Skiing · December to March</p>
+      <p class="g-key__v">Ax 3 Domaines, about twenty minutes to the gondola in Ax-les-Thermes, has 80 kilometres of runs; the Plateau de Beille, up the château’s road, has cross-country trails, snowshoes and dog sleds.</p>
+      <p class="g-key__v g-key__links">{{ site('https://www.ax.ski/', 'ax.ski') }} · {{ site('https://www.beille.fr/', 'beille.fr') }}</p>
+    </div>
     <div class="g-key__i">
       <p class="g-key__k">Fishing</p>
       <p class="g-key__v">Rivers, mountain streams and high lakes. A permit is needed; buy one at {{ site('https://www.cartedepeche.fr/', 'cartedepeche.fr') }} or at the tourist office in Ax or Tarascon.</p>
       <p class="g-key__v g-key__links">{{ site('https://www.peche-ariege.com/', 'peche-ariege.com') }}</p>
-    </div>
-  </div>
-</div></section>
-
-<!-- ============ WINTER ============ -->
-<section class="g-sec" id="winter"><div class="g-wrap">
-  <p class="g-fr">L’hiver <span class="g-fr__en">Winter</span></p>
-  <h2 class="g-place">Winter</h2>
-  <div class="g-key">
-    <div class="g-key__i">
-      <p class="g-key__k">Ax 3 Domaines · about 20 minutes to the gondola, half an hour to drive up</p>
-      <p class="g-key__v">The valley’s main ski resort: 80 kilometres of runs between 1,400 and 2,400 metres. The gondola leaves from the centre of Ax-les-Thermes, so you can leave the car in town. Ski schools, a snowpark, sledging and snow-tubing. Early December to late March.</p>
-      <p class="g-key__v g-key__links">{{ site('https://www.ax.ski/', 'ax.ski') }}</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Plateau de Beille · up the château’s road, about 25 minutes</p>
-      <p class="g-key__v">Our own snow: a high plateau at 1,800 metres with forty kilometres of cross-country trails, snowshoe routes and sledging. The Angaka village there runs dog-sled and sleigh rides and night snowshoe walks. Mid-December to late March.</p>
-      <p class="g-key__v g-key__links">{{ site('https://www.beille.fr/', 'beille.fr') }} · {{ site('https://www.angaka.com/', 'angaka.com') }}</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Smaller resorts</p>
-      <p class="g-key__v">Ascou-Pailhères (about 45 minutes), a friendly forest resort above Ax · Le Chioula (about 40 minutes), quiet Nordic trails and dog sledding · Goulier (about 45 minutes), one of the smallest resorts in the Pyrenees, with no queues.</p>
-      <p class="g-key__v g-key__links">{{ site('https://www.ascou.ski/fr/', 'ascou.ski') }} · {{ site('https://www.chioula.fr/hiver', 'chioula.fr') }} · {{ site('https://www.goulier-neige.fr/', 'goulier-neige.fr') }}</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">After skiing</p>
-      <p class="g-key__v">Wood-fired Nordic hot tubs and a sauna at the Bains de Bonascre, on the slopes at Ax (ski season, booking needed), or the thermal baths in Ax itself (see <a href="#hot-springs">the hot springs</a>).</p>
     </div>
   </div>
 </div></section>
@@ -477,6 +414,30 @@
   </div>
 </div></section>
 
+{#- 9 Nov, evening (owner's second review, 1): moved from /book, where the brief says it belongs here. 10 Oct (owner): when
+    the château's dining is not open, a night's guest is pointed to Les Cabannes, about 500 metres away; the owner's picks
+    (Ariège tourism office listings and the business registry; ratings left off, they change). -#}
+{% if _dm != 'open' %}
+<section class="g-sec" id="dinner-nearby"><div class="g-wrap">
+  <p class="g-fr">Dîner à côté <span class="g-fr__en">Dinner nearby</span></p>
+  <h2 class="g-place">Dinner Nearby</h2>
+  <p class="g-p">A night&rsquo;s stay includes breakfast at the château. For dinner, Les Cabannes lies just down the hill, about 500 metres away, with a table for every kind of evening.</p>
+  <ul class="g-eat">
+    {%- for kind, name, where, text in [
+      ('candelabra', 'Maison Beaucoup', 'Les Cabannes · 73 rue Principale, beside the church', 'The finer table. Franck, who ran Beaucoup in Toulouse for eighteen years, and his partner Luc have turned a nineteenth-century presbytery into three intimate dining rooms, where the menu follows the seasons and changes every week.'),
+      ('bbq', 'La Maison Lacube', 'Les Cabannes · 3 place des Platanes', 'Much loved, and known for its grills. A farming family cooks their own Gascon black beef and pork in their home on the square, with the produce of some forty Ariège farms. Recommended by the Routard, the Petit Futé and Gault & Millau.'),
+      ('cuisine', 'Le Petit En Cas', 'Les Cabannes · 12 place des Platanes', 'A small, family-run pizzeria on the village square, for an easy evening.'),
+      ('wine', 'The local bar', 'Les Cabannes', 'A glass before dinner, among the people of the valley.')] %}
+    <li class="g-eat__i">
+      <div class="g-eat__ill" aria-hidden="true">{{ illus(kind) }}</div>
+      <div><h3 class="g-eat__t">{{ name }}</h3><p class="g-eat__where">{{ where }}</p><p class="g-eat__d">{{ text }}</p></div>
+    </li>
+    {%- endfor %}
+  </ul>
+  <p class="g-p g-eat__also">The village also has a small supermarket and a tabac, for anything forgotten.</p>
+</div></section>
+{% endif %}
+
 <!-- ============ A DAY OUT ============ -->
 {# Researched from the tourist boards and the operators: the Yellow Train leaves from the end of the
    line that runs through Les Cabannes; the Mas-d'Azil road runs through the cave itself. #}
@@ -489,40 +450,7 @@
 <!-- ============ MONTH BY MONTH ============ -->
 {# 1 Oct: ">The Valley, Month by Month<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
-<!-- ============ THE JOURNAL ============ -->
-{# The newsletter form was only in the menu panel. This is the same route,
-   placed where a reader who has just finished the page will see it. #}
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
-    {# The one sign-up form (_newsletter.html): no topic ticks, bot guard on. #}
-    {% from '_newsletter.html' import newsletter_form with context %}
-    {{ newsletter_form('journal') }}
-        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
-  </div>
-</div></section>
-
-<div class="g-wrap"></div>
-
-<div class="g-wrap g-mark__wrap">{{ mark('mountains') }}</div>
-
-
-<!-- ============ THE CLOSER ============ -->
-<section class="g-sec g-sec--dark g-closer"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('letter') }}</div>
-  <p class="g-fr">Dites-nous quand <span class="g-fr__en">Tell us when</span></p>
-  <p class="g-eyebrow">Pick a Month</p>
-  <h2 class="g-place">We Will Tell You What Falls In It</h2>
-  <p class="g-p g-intro"> Send us the dates you are considering and we will tell you honestly what you would get.</p>
-  <p class="g-p">
-    <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check dates</a>
-    <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the full experience</a>
-    <a href="{{ url_for('contact_page') }}">Ask about a month</a>
-  </p>
-</div></section>
+{#- 9 Nov, evening (owner's second review, 1 and 2.4): the journal block (one newsletter form, the footer's), the ornament and the closing block went; the page ends on Dinner Nearby. -#}
 
 <script>
 /* Twelve months rather than four seasons — someone choosing a week needs to

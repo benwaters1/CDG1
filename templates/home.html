@@ -51,12 +51,16 @@
   </script>
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
-    <p class="g-hero__eyebrow">A French Château Experience<span class="g-hero__eyeplace"><span aria-hidden="true"> · </span>Ariège · Pyrénées</span></p>
+    {#- 9 Nov (owner's second review, 5): "the word 'experience' is the one thing a château should not have to say". -#}
+    <p class="g-hero__eyebrow">Château-Verdun<span class="g-hero__eyeplace"><span aria-hidden="true"> · </span>Ariège</span></p>
     <h1 class="g-hero__title">Château de Gudanes</h1>
     {#- 15 Oct (owner): the tagline - the fort first recorded, the château begun, the restoration; it links to the history. -#}
     <p class="g-hist-tag g-hist-tag--home"><a href="/history" aria-label="The history: 1213, 1741, 2013">1213 <span aria-hidden="true">·</span> 1741 <span aria-hidden="true">·</span> 2013</a></p>
-    <p class="g-hero__motto">Where History Comes Back to Life</p>
-    <p class="g-hero__lede">A restoration followed the world over. Now you can stay inside it.</p>
+    {#- 9 Nov (owner): the line that was chosen, put back. It has been lost before; test_site_review_2 holds it. -#}
+    <p class="g-hero__motto">Where History Becomes Home</p>
+    <p class="g-hero__lede">A restoration followed the world over, and an invitation extended quietly.</p>
+    {#- 9 Nov (owner's second review, 1): Bienvenue's plate went, and its one sentence came up here. -#}
+    <p class="g-hero__fact">An eighteenth-century château in the French Pyrénées, under restoration since 2013.</p>
   
     <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
       {# The two native date fields remain, as the values the form posts and as
@@ -87,18 +91,16 @@
     {#- 10 Oct (Code, for the owner): "Or come for THE FULL EXPERIENCE" did not read - said plainly now. One line on a phone:
         the full sentence from 640px up, a shorter one below (measured: fits a 360px phone). -#}
     {#- 26 Oct (owner, the retreats deck 1a). The short form is for a phone, from 360px up. -#}
-    <p class="g-hero__alt"><span class="g-hero__alttext"><span class="g-hero__altlong">Or stay longer, as a guest of the house: three to seven nights of <em lang="fr">la vie de château</em>.</span><span class="g-hero__altshort">Or three to seven nights of <em lang="fr">la vie de château</em>.</span></span> <a class="g-hero__altbtn" href="{{ url_for('workshops_public') }}">See the retreats</a></p>
+    <p class="g-hero__alt"><span class="g-hero__alttext"><span class="g-hero__altlong">Or stay longer, for a retreat: three to seven nights of <em lang="fr">la vie de château</em>.</span><span class="g-hero__altshort">Or three to seven nights of <em lang="fr">la vie de château</em>.</span></span> <a class="g-hero__altbtn" href="{{ url_for('workshops_public') }}">See the retreats</a></p>
 </div>
   <button type="button" class="g-hero__pause" id="g-hero-pause" aria-label="Pause video">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
   </button>
 </section>
 
-{#- 9 Nov (owner): "its also alot of scrolling on the home page to get to [the address], we should have
-    the address elsewhere further up". The first thing under the hero: the same words as the footer, opening
-    the same pin at the gates (_house_address.html). test_house_address holds it here. -#}
-{% from '_house_address.html' import house_address with context %}
-<p class="g-where"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" focusable="false"><path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.3"/></svg>{{ house_address() }}</p>
+{#- 9 Nov, evening (owner's second review, 1): the stand-alone address line under the hero went. The page is eight
+    sections now rather than nineteen, so the footer's address -- which opens the same pin -- is two scrolls away, not
+    seventeen screens. -#}
 
 <!-- ============ LA PLEINE EXPÉRIENCE - the château in full, under the calendar (2 Oct) ============ -->
 <section class="g-full" aria-labelledby="full-h"><div class="g-wrap g-full__in">
@@ -146,38 +148,13 @@
   </div>
 </div></section>
 
-{#- 26 Oct (owner, the retreats deck 1c): eight moments of a retreat, each a photograph, a French title and two lines,
-    every one a way into /workshops. The deck put the guests toasting on "À table" and beside the retreats just above;
-    a photograph is never shown twice on a page, so "À table" has the deck's second picture, the long table by
-    candlelight. -#}
-<section class="g-sec g-moments-sec" aria-labelledby="moments-h"><div class="g-wrap">
-  <p class="g-fr">Les moments <span class="g-fr__en">A retreat, in eight moments</span></p>
-  <h2 class="g-place" id="moments-h">France at Its Most French</h2>
-  <ul class="g-moments g-moments--stagger">
-    {%- for slug, alt, fr, line in [
-      ('guests-round-the-table', 'Guests at the long table by candlelight, beneath an iron chandelier', 'À table', 'Several courses by candlelight, the silver laid and the conversation long: trout from the farm beside the château, a fillet of beef, a ballotine of guinea fowl, and the wines of the south of France.'),
-      ('red-beret-tart', 'Cooking in a red beret: a tricolour tart', 'En cuisine', 'Cook beside the château’s chefs and pastry chef, from the morning market to the evening’s dessert.'),
-      ('vide-grenier', 'A vide-grenier on the green, people browsing', 'Chiner', 'The French art of the brocante: old linen, copper, silver and faïence, found in the markets of the valley and carried home.'),
-      ('market-charcuterie', 'The charcuterie stall at the market', 'Le marché', 'Mirepoix on a Monday morning, beneath its medieval arcades: cheeses, charcuterie, and the people who make them.'),
-      ('restoration-scaffold', 'Guests on the scaffold among the frescoes', 'La restauration', 'Stand beside the restorers as a fresco hidden for generations returns to the light.'),
-      ('dancing-in-pink', 'A guest dancing, dressed in pink', 'La fête', 'On the last night, everyone dresses for dinner. Later, the candles are set aside for dancing.'),
-      ('garden-conversation', 'Guests talking in the garden, a dog on a lap', 'Le farniente', 'The pool, a glass of rosé, homemade ice cream, a corner of the library, and nowhere you need to be.'),
-      ('foix-castle', 'The castle of Foix above the old town', 'La vallée', 'The castle at Foix, the great cave at Lombrives, and lunch in Ax-les-Thermes, the mountain spa town.')] %}
-    <li class="g-moment"><a class="g-moment__a" href="{{ url_for('workshops_public') }}">
-      <span class="g-moment__mount">{{ pic(url_for('static', filename='img/retreats/' ~ slug ~ '.jpg'), alt, sizes='(min-width: 64rem) 22vw, 70vw', cls='g-moment__img') }}</span>
-      <p class="g-moment__t" lang="fr">{{ fr }}</p>
-      <p class="g-moment__p">{{ line }}</p>
-    </a>{{ rcredit(slug) }}</li>
-    {%- endfor %}
-  </ul>
-</div></section>
-
-{# 1 Oct: the crest band (the Marquis de Sales, 1850) and What It Took (tonnes, years, counts) are off the homepage - fewer, safer statements. #}
-
-{% from '_care.html' import looked_after %}
-
-
-<div class="g-wrap">{{ proof(settings) }}</div>
+{#- 9 Nov, evening (owner's second review, 1): the home page keeps eight sections, in this order -- the hero, La Vie
+    de Château, the rooms, the two ways to stay, the restoration's before and after, Ways to Spend the Days, What
+    Guests Say, Come and see it. Everything else that was here has a page of its own: the eight moments are A Day at
+    Gudanes on /workshops, Bienvenue's sentence is under the hero, A Night at Gudanes is what the rooms say, the
+    estate from above is the rooms' first slide, the brocante paragraph is the before-and-after's caption, the
+    wedding is a line in Come and see it, and the one newsletter form is the footer's. test_site_review_2 holds the
+    order and the height. -#}
 
 <script>
 (function(){
@@ -192,31 +169,6 @@
 })();
 </script>
 
-<section class="g-sec g-sec--plate"><div class="g-wrap">
-<h2 class="g-h2 g-h2--lead">Bienvenue</h2>
-<p class="g-p g-lede-first">An eighteenth-century château in the French Pyrénées, under restoration since 2013. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco. Come for a night, or for a retreat.</p>
-</div></section>
-
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('pool') }}</div>
-  {#- 26 Oct: "L'art de vivre / La Vie de Château" is the retreats' heading now (the deck, 1b), so a night here is
-      called what it is rather than having the same heading twice on one page. -#}
-  <p class="g-fr">Une nuit au château <span class="g-fr__en">A night at the château</span></p>
-  <p class="g-eyebrow">Stay the Night</p>
-  <h2 class="g-place">A Night at Gudanes</h2>
-  {#- the library, not breakfast: Ways to Spend the Days below already shows breakfast.
-      9 Nov (owner, "I don't like this bit"): two short paragraphs beside a tall 4:5 portrait floated in the middle of a
-      blank twice their height. g-sp--few sets the photograph landscape beside them. -#}
-  {% call split([url_for('static', filename='img/retreats/the-library.jpg'), 'The library, a fire laid and armchairs drawn up'], cls='g-sp--few') %}
-  <p class="g-p g-lede-first">There is a particular pleasure in waking in a château like this: light across old stone, the valley below, and breakfast waiting. The days are slow here by design, with the pool, the grounds and the mountains on every side.</p>
-  <p class="g-p">Nothing is staged. The château is lived in while it is brought back. A night here is your room, breakfast in the morning and the lounge to come back to.</p>
-  {% endcall %}
-</div></section>
-
-
-
-
-
 <!-- ============ THE ROOMS THEMSELVES ============ -->
 {# A front page should show what is actually for sale, not a tile that links
    to it. Both lists are optional — the section simply does not render if the
@@ -225,24 +177,6 @@
    here is gone. A fallback would advertise rates the owner cannot edit
    and rooms that may not be bookable — worse than showing nothing. #}
 {% set shown_rooms = rooms %}
-{#- 14 Oct (owner: "make sure the drone photos of the pool/garden/house are on the homepage"): Paulina Bruni's aerials
-    (Rebecca & Ken, no credits). -#}
-<section class="g-sec g-aerial g-aerial--band"><div class="g-wrap">
-  <span class="g-hill" aria-hidden="true">{{ illus('chateau') }}</span>
-</div>
-  {#- 28 Oct (the brief, 4.2): one drone photograph across the page with the words over it, in place of three tiles. -#}
-  <div class="g-plein g-plein--words">
-    <div class="g-plein__f">{{ pic(url_for('static', filename='img/rk/from-the-air-pool-garden.jpg'), 'The château from the air, with the formal garden and the pool', sizes='100vw', cls='g-plein__img') }}</div>
-    <div class="g-plein__over g-plein__over--words"><div class="g-wrap">
-  <p class="g-fr">Vu d’en haut <span class="g-fr__en">From above</span></p>
-  <h2 class="g-place">The Estate from Above</h2>
-  <p class="g-p g-intro">The château above its terraces, the formal garden and the pool below, and the mountains all around.</p>
-    </div></div>
-  </div>
-<div class="g-wrap">
-  <p class="g-aerial__more"><a href="{{ url_for('facilities_page') }}">Explore the Estate <span aria-hidden="true">&rarr;</span></a></p>
-</div></section>
-
 {% if shown_rooms %}
 
 <section class="g-sec"><div class="g-wrap">
@@ -262,10 +196,16 @@
 
   {#- 28 Oct (the brief, 4.2): the rooms as a slider of their cards, one photograph each (the rest are on each room's
       own page), the next card peeking in. The cards' words are as they were. -#}
+  {%- set _slides = shown_rooms|length + 1 %}
   <section class="g-car g-car--cards" data-car aria-roledescription="carousel" aria-label="The rooms">
   <div class="g-car__track g-homerooms--car" data-car-track tabindex="0">
+    {#- 9 Nov, evening (owner's second review, 1): the estate from the air opens the rooms, in place of its own band,
+        its strip of cream and its one lonely link. 14 Oct: Paulina Bruni's aerial (Rebecca & Ken, no credits). -#}
+    <figure class="g-homeroom g-homeroom--aerial g-car__s" aria-roledescription="slide" aria-label="1 / {{ _slides }}">
+      {{ pic(url_for('static', filename='img/rk/from-the-air-pool-garden.jpg'), 'The château from the air, with the formal garden and the pool', sizes='(min-width: 64rem) 30rem, 84vw', cls='g-homeroom__img') }}
+    </figure>
     {% for r in shown_rooms %}
-    <article class="g-homeroom g-car__s" aria-roledescription="slide" aria-label="{{ loop.index }} / {{ shown_rooms|length }}">
+    <article class="g-homeroom g-car__s" aria-roledescription="slide" aria-label="{{ loop.index + 1 }} / {{ _slides }}">
       {# Fallback photos rotated by position, so a room with no photo yet could be
          shown with ANOTHER room's picture (the pool included the Émeraude). The Stay
          page fixed this with a per-room map; the same map here. The real photo takes
@@ -314,7 +254,7 @@
   </div>
   <div class="g-car__bar">
     <button type="button" class="g-car__btn" data-car-prev aria-label="Previous room"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4 7 12l8 8"/></svg></button>
-    <span class="g-car__n" data-car-n aria-live="polite">1 / {{ shown_rooms|length }}</span>
+    <span class="g-car__n" data-car-n aria-live="polite">1 / {{ _slides }}</span>
     <button type="button" class="g-car__btn" data-car-next aria-label="Next room"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 4 8 8-8 8"/></svg></button>
   </div>
   </section>
@@ -322,67 +262,27 @@
 </div></section>
 {% endif %}
 
-<!-- ============ THE NEXT WORKSHOP DATES ============ -->
-{% if upcoming %}
-{# 2 Oct: "The Next Dates" cut - the band under the hero lists the next dates and sells the workshops (CUT_SECTIONS.txt keeps it) #}
-{% endif %}
+{# A night, or the full experience - the shared comparison (owner, 28 Sept). Fourth on the page since 9 Nov. #}
+{% from '_stay_or_workshop.html' import stay_or_workshop %}
+{{ stay_or_workshop(rooms_from=(shown_rooms|selectattr('price_per_night')|map(attribute='price_per_night')|min) if shown_rooms else None, ws_from=(workshops|selectattr('price_per_person')|map(attribute='price_per_person')|min) if workshops else None, dm=_dm) }}
 
-{#- 28 Oct (the brief, 4.2 and G): the band of five as a drifting film strip. -#}
-{{ bande([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/54da3cc9-ec56-4445-8d66-b8c80fc8ffc1/Screenshot+2026-08-15+at+6.56.27+pm.png?format=1500w', 'The château in autumn'], ['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1500w', 'The restoration of a fresco, close up'], ['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w', 'The gates in spring'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9ee310fe-0248-4c96-8116-8797e5efb084/Screenshot+2026-08-12+at+3.39.10+pm.png?format=1000w', 'A guest walking up to the château through the meadow'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1500w', 'The château lit at night, under the stars']], 'The château through the year') }}
-
-<section class="g-sec--flush"><div class="g-half">
-  <img class="g-half__img" src="{{ url_for('static', filename='img/rk/china-dresser.jpg') }}" alt="Dressers of old china" loading="lazy">
-  <div class="g-half__text">
-    {# This block follows the room cards directly; its heading repeated their
-       eyebrow and its first line was word for word their lede. It keeps the
-       paragraph that matters - the walls and what is new within them. #}
-    <h2 class="g-place">Brocante Antiques and New Comforts</h2>
-    {#- 26 Oct (owner, the retreats deck 1h): the walls are not to be the highlight. -#}
-    <p class="g-p">A restoration, not a renovation. New floors, new bathrooms and good French beds, among antiques found at the brocantes of the valley and fresh flowers in every room. The château feels lived in, never furnished.</p>
-    <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--line">See the rooms</a></p>
-  </div>
-</div></section>
 {#- 10 Oct (owner: "I really want the restoration to be a highlight") - a before/now of the dining room (the owner's
-    horse photograph), a line, and the way in. Facts: classified as a ruin when bought, 2013 (Karina's Captain's Log);
-    privately funded, no grants (owner). -#}
+    horse photograph), a line, and the way in. Facts: classified as a ruin when bought, 2013 (Karina's Captain's Log).
+    9 Nov, evening (owner's second review, 1 and 5): no funding language; the brocante block's paragraph is the
+    caption under the slider now, its first sentence ("a restoration, not a renovation") left behind with the word
+    the site does not use. -#}
 <section class="g-sec g-sec--dark g-homeresto"><div class="g-wrap">
   <p class="g-fr">La restauration <span class="g-fr__en">The restoration</span></p>
   <h2 class="g-place">From Ruin, Room by Room</h2>
   {#- 28 Oct (the brief, 4.2 and F): the before and the now as one slider, dragged across, with the page's own two words. -#}
   {{ avant_apres('home-dining', url_for('static', filename='img/history/horse-dining-room-a.jpg'), 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=1500w', 'The dining room', tags=('Before', 'Now'), caption=False, before_pos='97% center', before_alt='A horse in an empty room of the château, before the work', after_alt='The dining room now, laid for dinner under the chandeliers') }}
   <p class="g-homeresto__cap">The dining room: once empty enough for a horse.</p>
-  <p class="g-p g-homeresto__p">Bought as a ruin in 2013, the château has been brought back room by room, privately funded, with no grants.</p>
+  <p class="g-homeresto__cap">New floors, new bathrooms and good French beds, among antiques found at the brocantes of the valley and fresh flowers in every room. The château feels lived in, never furnished.</p>
+  <p class="g-p g-homeresto__p">Bought as a ruin in 2013, the château has been brought back room by room, and the work goes on around you.</p>
   <p class="g-homeresto__cta"><a href="{{ url_for('restoration_page') }}" class="g-btn g-btn--solid">See how it came back</a></p>
 </div></section>
-{# A night, or the full experience - the shared comparison (owner, 28 Sept). #}
-{% from '_stay_or_workshop.html' import stay_or_workshop %}
-{{ stay_or_workshop(rooms_from=(shown_rooms|selectattr('price_per_night')|map(attribute='price_per_night')|min) if shown_rooms else None, ws_from=(workshops|selectattr('price_per_person')|map(attribute='price_per_person')|min) if workshops else None, dm=_dm) }}
-{# 2 Oct: "Workshops & Retreats" cut - the band under the hero lists the next dates and sells the workshops (CUT_SECTIONS.txt keeps it) #}
-{% if _dm != 'hidden' %}<section class="g-sec--flush"><div class="g-half">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24c85ec2-72d4-45e6-9755-68ff10cce381/Screenshot+2026-08-14+at+11.53.22+pm.png?format=1500w" alt="The dining room" loading="lazy">
-  <div class="g-half__text">
-    <h2 class="g-place">Dine at La Table</h2>
-    <p class="g-p"><em>{% set _w = when_text()|trim %}Dinner at the château, {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.</em></p>
-    
-    {% if _dm == 'open' %}<p style="margin-top:var(--s6)"><a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--line">Reserve a table</a></p>
-    {% else %}<p class="g-hint" style="margin-top:var(--s5)">La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.</p>{% endif %}
-  </div>
-</div></section>{% endif %}
+
 {% include '_plaisirs.html' %}
-<section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
-  <img class="g-half__img" src="{{ url_for('static', filename='img/rk/long-table-candlelight.jpg') }}" alt="The long table by candlelight, laid for a celebration" loading="lazy">
-  <div class="g-half__text">
-    {#- 13 Oct (owner: weddings work "anywhere it is on the homepage"): the owner's facts - 40 inside, a marquee, 15 to stay;
-        flowers, meals and drinks by us (nothing more). -#}
-    <span class="g-hill" aria-hidden="true">{{ illus('rings') }}</span>
-    <p class="g-fr">Mariages et fêtes <span class="g-fr__en">Weddings and celebrations</span></p>
-    <h2 class="g-place">One Wedding at a Time</h2>
-    <p class="g-p"><em>The whole château, for a wedding or a gathering of your own.</em></p>
-    <p class="g-p">Up to forty guests inside, more under a marquee in the grounds, and fifteen to stay the night. We look after the flowers, the meals and the drinks.</p>
-    <p class="g-homewed__cta"><a href="{{ url_for('events_weddings') }}" class="g-btn g-btn--line">Marry in a Monument</a> <a class="g-homewed__alt" href="{{ url_for('events_private') }}">Or a celebration of your own <span aria-hidden="true">&rarr;</span></a></p>
-  </div>
-</div></section>
-{# 1 Oct: the figures block (Gabriel, Versailles, 500 tonnes) cut - fewer, safer statements #}
 
 <!-- ============ WHAT GUESTS SAY ============ -->
 {# Verbatim from the château's own Booking.com listing, which scores 10/10
@@ -410,11 +310,17 @@
       <blockquote class="g-say__q">Spacious rooms with private, well-equipped bathrooms</blockquote>
       <figcaption class="g-say__by">A guest from the Netherlands<span class="g-say__src">Booking.com</span></figcaption>
     </figure>
+    {#- 9 Nov, evening (owner's second review, 5): the quote ending "and not spooky at all" went -- it introduced the
+        word. The third is the first review the owner has featured for /book, by the same consent rule /book reads
+        (featured_room_reviews), so nothing is quoted here that is not quoted there. -#}
+    {% set _br = (featured_reviews or [])|first %}
+    {% if _br %}
     <figure class="g-say">
       <div class="g-say__pic">{{ medaillon([url_for('static', filename='img/rk/down-the-drive.jpg'), 'Down the drive to the château'], side='left') }}{{ seal() }}</div>
-      <blockquote class="g-say__q">After years of careful restoration, the owners brought it back from a ruin. The atmosphere is warm and not spooky at all.</blockquote>
-      <figcaption class="g-say__by">A guest<span class="g-say__src">Google</span></figcaption>
+      <blockquote class="g-say__q">{{ _br['comment'] }}</blockquote>
+      <figcaption class="g-say__by">{{ (_br['guest_name'] or 'A guest').split(' ')[0] }}<span class="g-say__src">{% if _br['room_name'] %}{{ room_name(_br['room_name']) }}{% else %}A stay at the château{% endif %}</span></figcaption>
     </figure>
+    {% endif %}
   </div>
 
   {# Six hardcoded 10s attributed to Booking.com. The Stay page already reads
@@ -431,47 +337,16 @@
 </div></section>
 
 
-<!-- ============ AT A GLANCE ============ -->
-{# Every figure from the public record: the classification and reference from
-   Monuments Historiques, the architect and room count from Wikipedia, the
-   four-of-94 and 1850 figures from published interviews. #}
-<!-- ============ THE JOURNAL ============ -->
-{# The newsletter form was only in the menu panel. This is the same route,
-   placed where a reader who has just finished the page will see it. #}
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
-    {# The one sign-up form (_newsletter.html): no topic ticks, bot guard on. #}
-    {% from '_newsletter.html' import newsletter_form with context %}
-    {{ newsletter_form('journal') }}
-        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
-  </div>
-  {#- 28 Oct (the brief, 4.2 and L): an old postcard of the valley beside Follow the Restoration. -#}
-  {{ carte_postale([url_for('static', filename='img/history/postcard-valley.jpg'), 'An old postcard of the valley']) }}
-</div></section>
-
-<div class="g-wrap g-mark__wrap">{{ mark('facade') }}</div>
-
-
-<div class="g-wrap">
-  <p class="g-devise">
-    <span class="g-devise__fr">« Le château renaît. Chaque nuit passée ici lui rend un peu de sa vie. »</span>
-    <span class="g-devise__en">The château is coming back to life. Every night spent here gives it back a little more.</span>
-  </p>
-</div>
-
-<div class="g-mono__wrap">{{ monogram() }}</div>
-
 <!-- ============ THE CLOSE ============ -->
-{# The page ended with nothing to do. Written for this page rather than
-   generic, and set on navy so it reads as a full stop. #}
+{# The page ended with nothing to do. Written for this page rather than generic. 9 Nov, evening (owner's second
+   review, 2.8): on the cream, not navy, so the footer is the only navy at the end of the page. The journal block,
+   the ornament, the gold strip and the monogram that sat above it went (1): the footer has the one newsletter form. #}
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Come and see it</h2>
   <p class="g-close__p">The rooms are few. If a date suits, take it, for a night or for a retreat.</p>
+  {#- 9 Nov, evening (owner's second review, 1): One Wedding at a Time is this one line now. -#}
+  <p class="g-close__p g-close__wed"><a href="{{ url_for('events_weddings') }}">For a wedding or a gathering, the whole château is yours</a></p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
       <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Discover the retreats</a>

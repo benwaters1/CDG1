@@ -186,9 +186,7 @@
 {# 19 Oct (owner): the newsletter on the Contact page. The one form, from the
    partial; test_newsletter_signup goes red if a handover drops it. #}
 {% from '_newsletter.html' import newsletter_block with context %}
-<section class="g-sec g-sec--sand g-journal" id="newsletter"><div class="g-wrap">
-  {{ newsletter_block('contact') }}
-</div></section>
+{#- 9 Nov, evening (owner's second review, 2.4): one newsletter form on a page, the footer's. This page's Follow the Restoration block went. -#}
 
 {#- 9 Nov (the brief, 4.7): the band of four as one photograph across the page: down the drive. -#}
 {{ plein([url_for('static', filename='img/rk/down-the-drive.jpg'), 'Down the drive to the château', '']) }}

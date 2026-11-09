@@ -12031,3 +12031,81 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 @media screen and (max-width: 60rem){
   .g .g-panel{ padding-left: var(--s5); padding-right: var(--s5); }
 }
+
+
+/* ==========================================================================
+   9 NOVEMBER 2026, EVENING -- THE OWNER'S SECOND REVIEW OF THE SITE
+   (BRIEF-site-review-2-9-nov.md). Last in the file on purpose: each rule here
+   settles a question earlier rules answered several ways, and
+   test_site_review_2 reads the page to hold them.
+   ========================================================================== */
+
+/* 2.2  Facts as words, not pills. Every chip ("Sleeps 2", "Private bathroom,
+   on the ground floor") was Inter on a grey pill beside Cormorant headings --
+   the one thing on the page that looked like a booking engine. Plain text in
+   the body serif, separated by a centred dot. The icons go with the pills. */
+.g .g-tags, .g .g-tags--icons, .g .g-tags--sm, .g .g-tags--lg{
+  display: block; gap: 0; margin: var(--s3) 0 var(--s4); padding: 0; list-style: none;
+}
+.g .g-tags li, .g .g-tags--icons li, .g .g-tags--sm li, .g .g-tags--lg li, .g .g-tags--short li{
+  display: inline; margin: 0; padding: 0; background: none; border: 0; border-radius: 0;
+  font-family: var(--serif); font-size: 15px; line-height: 1.6; letter-spacing: 0;
+  text-transform: none; color: var(--ink); white-space: normal;
+}
+.g .g-tags li + li::before{ content: " \00B7 "; color: var(--gilt-deep, #73562d); }
+.g .g-tags .g-ci{ display: none; }
+
+/* 2.11  The room cards on /book: one layout, the photograph on the left and
+   the words on the right, the photograph filling the card to its full height.
+   They swapped sides card by card, and the photograph column was shorter than
+   the words, so every card had an empty beige corner under its picture. */
+@media (min-width: 56rem){
+  /* main in the selector: gudanes-pictures.css loads after this file and its
+     swap rule has the same weight. */
+  .g main .g-cards--split > .g-card--room:nth-child(even) .g-card__media{ order: 0; }
+  .g .g-cards--split .g-card__media{ position: relative; min-height: 20rem; }
+  .g .g-cards--split .g-card__media > .g-car,
+  .g .g-cards--split .g-card__media > picture,
+  .g .g-cards--split .g-card__media > img{ position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; }
+  .g .g-cards--split .g-card__media .g-car__track{ height: 100%; }
+  .g .g-cards--split .g-card__media .g-car__s,
+  .g .g-cards--split .g-card__media .g-car__f,
+  .g .g-cards--split .g-card__media .g-car__f picture{ height: 100%; margin: 0; }
+  .g .g-cards--split .g-card__media img{ width: 100%; height: 100%; aspect-ratio: auto; object-fit: cover; }
+}
+/* The home carousel: the price row at the foot of every card, whatever the
+   length of the room's description above it. */
+.g .g-car--cards .g-homeroom__b{ display: flex; flex-direction: column; flex: 1; }
+.g .g-car--cards .g-homeroom__b > .g-price{ margin-top: auto; }
+.g .g-homeroom--aerial{ margin: 0; }
+.g .g-homeroom--aerial .g-homeroom__img{ height: 100%; aspect-ratio: auto; }
+
+/* 2.8  The closing block is on the cream, so the footer is the only navy at
+   the end of a page. Navy, a cream sliver, then navy again was the pattern. */
+.g .g-close, .g .g-sec--dark.g-closer{ background: var(--sand); color: var(--ink); }
+.g .g-close__h, .g .g-closer .g-place, .g .g-closer h2{ color: var(--blue-deep); }
+.g .g-close__p, .g .g-closer .g-p{ color: var(--ink); }
+.g .g-close__mark{ filter: brightness(0); opacity: .55; }
+.g .g-close__acts .g-btn{ border-color: var(--blue-deep); color: var(--blue-deep); background: transparent; }
+.g .g-close__acts .g-btn--solid{ background: var(--blue-deep); color: #fff; border-color: var(--blue-deep); }
+.g .g-close__acts .g-btn:hover{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
+.g .g-close a:not(.g-btn), .g .g-closer a:not(.g-btn){ color: var(--blue-deep); }
+.g .g-close a:not(.g-btn):hover, .g .g-closer a:not(.g-btn):hover{ color: var(--gilt-deep, #73562d); }
+.g .g-close__wed{ margin-top: calc(-1 * var(--s4)); font-style: italic; }
+
+/* The hero's one fact, under the motto (1: Bienvenue's sentence). */
+.g .g-hero__fact{ margin: var(--s2) auto 0; max-width: 38rem; font-size: 15px; line-height: 1.5;
+  color: rgba(255,255,255,.82); }
+
+/* 2.5  What is open next: one sentence when every room opens on the same night. */
+.g .g-nextf-wrap{ margin-top: var(--s5); }
+.g .g-nextf__one{ margin: 0; font-family: var(--serif); font-size: 17px; }
+.g .g-nextf__h{ margin: 0 0 var(--s3); font-family: var(--serif); font-size: 17px; font-style: italic; }
+
+/* 1 and 4  /restoration, Then and Now: three before-and-afters, one width. It
+   was 6,113px at three widths -- full, half and centred, full again. */
+.g .g-tn--three .g-tn__pair, .g .g-tn--three .g-tn__pair--slide .g-tn__frame,
+.g .g-tn--three .g-tn__pair--slide .g-tn__cap{ max-width: 56rem; margin-inline: auto; width: 100%; }
+.g .g-tn--three .g-tn__frame{ aspect-ratio: 3 / 2; }
+.g .g-tn--three .g-tn__pair img{ aspect-ratio: 3 / 2; }
+.g .g-tn__more{ text-align: center; margin: var(--s6) 0 0; font-style: italic; }

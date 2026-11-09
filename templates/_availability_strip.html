@@ -9,17 +9,30 @@
    `open_dates` is a list of {date, nights, room_name, price} the route
    already has the data for. Renders nothing when empty, so it is safe to
    include before the query exists.
+
+   9 Nov 2026, evening (owner's second review, 2.5): it was six rows that all
+   said "12 November · Up to 10 nights available". When every room opens on
+   the same night that is one sentence -- "All six rooms are open from 12
+   November." -- and the rows are drawn only when the rooms differ. It sits
+   under the dates on /book, in the booking bar, rather than as a section of
+   its own. test_site_review_2 holds both shapes.
    ========================================================================== #}
 {% macro next_free(dates) %}
 {% if dates %}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-fr">Prochaines dates libres <span class="g-fr__en">The next dates available</span></p>
-  <p class="g-eyebrow">Without Guessing</p>
-  <h2 class="g-place">What Is Open Next</h2>
-  <p class="g-p">The next dates with a room available, and how many nights in a row you could stay.</p>
-
+{%- set _shown = dates[:6] %}
+{%- set _days = _shown|map(attribute='date')|unique|list %}
+{%- set _rooms = _shown|map(attribute='room_name')|unique|list %}
+{%- set _count = house_rooms.count if house_rooms and house_rooms.count else 0 %}
+{%- set _all = house_rooms.count_word if house_rooms and house_rooms.count_word else (_rooms|length) %}
+<div class="g-nextf-wrap">
+{#- "All" only when it is all of them: next_free_nights gives one run per room, so a room with nothing free in the
+    horizon is simply missing, and one date across the rest would otherwise read as every room. -#}
+{% if _days|length == 1 and _rooms|length == _count %}
+  <p class="g-nextf__one">All {{ _all }} rooms are open from <a href="{{ url_for('book_rooms') }}?arrival={{ _shown[0]['date_iso'] }}#book">{{ _days[0] }}</a>.</p>
+{% else %}
+  <p class="g-nextf__h">What is open next</p>
   <ul class="g-nextf">
-    {% for d in dates[:6] %}
+    {% for d in _shown %}
     <li class="g-nextf__i">
       <span class="g-nextf__d">{{ d['date'] }}</span>
       <span class="g-nextf__r">{{ d['room_name'] }}</span>
@@ -29,6 +42,7 @@
     </li>
     {% endfor %}
   </ul>
-</div></section>
+{% endif %}
+</div>
 {% endif %}
 {% endmacro %}

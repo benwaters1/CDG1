@@ -41188,6 +41188,28 @@ def owner_home_next_up(conn, today, day_rows):
             "tomorrow": arriving == today + timedelta(days=1)}
 
 
+def featured_room_reviews(conn, limit=6):
+    """The room reviews the owner has featured AND the guest agreed to publish.
+
+    One query for every public page that quotes a guest -- /book, and since
+    9 Nov 2026 the home page, whose third quotation is the first of these.
+    """
+    return conn.execute(
+        """SELECT guest_feedback.*, rooms.name AS room_name FROM guest_feedback
+           LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
+           LEFT JOIN rooms ON rooms.id = bookings.room_id
+           -- Consent as well as the flag, and HERE rather than on the
+           -- admin page. A page can be got round and the next person to
+           -- add a review carousel would write this query again; wiring it
+           -- into the query that builds the public page is what makes
+           -- "nothing is published without asking you first" true even when
+           -- somebody ticks the wrong row.
+           WHERE guest_feedback.featured = 1 AND guest_feedback.rating IS NOT NULL
+             AND guest_feedback.publish_consent = 1
+           ORDER BY guest_feedback.rating DESC, guest_feedback.submitted_at DESC LIMIT ?""",
+        (limit,)).fetchall()
+
+
 @app.route("/")
 def dashboard():
     """What needs attention today, for whoever is looking."""
@@ -41231,9 +41253,11 @@ def dashboard():
                   AND {SESSION_IS_LIVE} AND {WORKSHOP_IS_PUBLIC}
                 ORDER BY workshop_sessions.start_date LIMIT 3""",
             (house_today_iso(),)).fetchall()]
+        reviews = [r for r in featured_room_reviews(conn) if r["comment"]]
         conn.close()
         # Both are optional in the template, so an empty house still renders.
-        return render_template("home.html", rooms=rooms, upcoming=upcoming)
+        return render_template("home.html", rooms=rooms, upcoming=upcoming,
+                               featured_reviews=reviews)
     return staff_dashboard()
 
 
@@ -54612,20 +54636,7 @@ def book_rooms():
                         if nothing_available else None)
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
-    featured_reviews = conn.execute(
-        """SELECT guest_feedback.*, rooms.name AS room_name FROM guest_feedback
-           LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
-           LEFT JOIN rooms ON rooms.id = bookings.room_id
-           -- Consent as well as the flag, and HERE rather than on the
-           -- admin page. A page can be got round and the next person to
-           -- add a review carousel would write this query again; wiring it
-           -- into the query that builds the public page is what makes
-           -- "nothing is published without asking you first" true even when
-           -- somebody ticks the wrong row.
-           WHERE guest_feedback.featured = 1 AND guest_feedback.rating IS NOT NULL
-             AND guest_feedback.publish_consent = 1
-           ORDER BY guest_feedback.rating DESC, guest_feedback.submitted_at DESC LIMIT 6"""
-    ).fetchall()
+    featured_reviews = featured_room_reviews(conn)
     # Computed before the connection closes. Only when nobody has searched:
     # somebody who has just been told their dates are taken does not want a
     # second list of dates that are not theirs, they want to change one of

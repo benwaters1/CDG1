@@ -55,16 +55,5 @@
   <p class="g-limit"><span class="g-limit__k">Worth knowing</span> New workshop dates go to journal subscribers first.</p>
 </div></section>
 
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
-    {# The one sign-up form (_newsletter.html): no topic ticks, bot guard on. #}
-    {% from '_newsletter.html' import newsletter_form with context %}
-    {{ newsletter_form('journal') }}
-        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
-  </div>
-</div></section>
+{#- 9 Nov, evening (owner's second review, 2.4): one newsletter form on a page, the footer's. This page's Follow the Restoration block went. -#}
 {% endblock %}

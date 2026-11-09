@@ -83,7 +83,10 @@
   <p class="g-fr">L’invitation <span class="g-fr__en">The invitation</span></p>
   {#- 26 Oct (owner, the retreats deck): each retreat's heading line and opening paragraph, in place of "A Retreat With a Purpose". -#}
   <h2 class="g-h2 g-h2--lead">{{ ws_heading(workshop) }}</h2>
-  {% call split(RLP['open'], frame=RLP['open_shape']) %}<p class="g-p">{{ ws_copy(workshop) }}</p>{% endcall %}
+  {#- 9 Nov, evening (owner's second review, 1 and 5): Is It for You? went, and its sentence -- "châteaux", not
+      "houses" -- is the invitation's last line. -#}
+  {% call split(RLP['open'], frame=RLP['open_shape']) %}<p class="g-p">{{ ws_copy(workshop) }}</p>
+  <p class="g-p">If you love old châteaux, good food and the French way of taking time over things, yes.</p>{% endcall %}
 </div></section>
 {% endif %}
 
@@ -175,40 +178,17 @@
 
 {#- After the itinerary: the retreat's best remaining photographs, none repeating a day's, then the whole set. -#}
 <section class="g-sec g-sec--tight g-ws-after"><div class="g-wrap">
-  {%- if RLP['after'] == 'car' %}
+  {#- 9 Nov, evening (owner's second review, 1): ONE gallery, a slider; never the film strip or the gold frame. -#}
+  {%- if RLP['after'] in ('car', 'bande') %}
   {{ carrousel(RLP['after_photos'], workshop['title']) }}
   {%- elif RLP['after'] == 'mos' %}
   {{ mosaique(RLP['after_photos'], mounted=RLP.get('after_mounted', false)) }}
-  {%- if RLP.get('after_framed') %}{{ cadre(RLP['after_framed'], shape='rect') }}{% endif %}
   {%- endif %}
-  {%- if RLP['after'] != 'bande' %}
   {{ see_all(_wg.items, 'See all ' ~ (_wg.items|length) ~ ' photos') }}
-  {%- endif %}
 </div>
-  {%- if RLP['after'] == 'bande' %}
-  {{ bande(RLP['after_photos'] + WS_BAND, 'The evenings') }}
-  <div class="g-wrap">{{ see_all(_wg.items, 'See all ' ~ (_wg.items|length) ~ ' photos') }}</div>
-  {%- endif %}
 </section>
 
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('wine') }}</div>
-  <p class="g-fr">Pour qui ? <span class="g-fr__en">Who for?</span></p>
-  <p class="g-eyebrow">Who Comes</p>
-  <h2 class="g-place">Is It for You?</h2>
-  {#- One block for the words and their medallion: this section's wrap is a grid (the words, and the drawing beside
-      them), and a float does nothing inside a grid. -#}
-  <div class="g-ws-who">
-  {% if RLP['who'] == 'medaillon' %}{{ medaillon(RLP['who_photos'][0], shape='oval', side='right') }}{% endif %}
-  <p class="g-p g-lede-first">If you love old houses, good food and the French way of taking time over things, yes. Nobody needs to know how; the experience is made for curiosity, not expertise.</p>
-  <p class="g-p">Couples, friends travelling together and those who come alone are all equally at home. The group is small, the days are unhurried, and no other guests share the château.</p>
-  </div>
-  {% if RLP['who'] == 'album' %}{{ album(RLP['who_photos']) }}{% endif %}
-</div></section>
-
-{#- The band of four became a film strip (the brief, G). Seven Starry Nights already has a strip of its evenings after
-    the itinerary, which these four join, and its place here goes to the mountains from the air instead. -#}
-{% if RLP.get('plein') %}{{ plein(RLP['plein']) }}{% else %}{{ bande(WS_BAND, 'Evenings at the château') }}{% endif %}
+{#- 9 Nov, evening (owner's second review, 1): Is It for You? (its sentence is the invitation's last line now) and the strip of evenings after it went. -#}
 
 <!-- ============ INCLUDED ============ -->
 {# On the live data this field holds the price basis ("Per person, sharing a room."), which the page split at
@@ -333,7 +313,6 @@
 </div></section>
 {% endif %}
 
-<div class="g-wrap g-mark__wrap">{{ mark('candle') }}</div>
 
 <!-- ============ THE CLOSE ============ -->
 <section class="g-sec g-close"><div class="g-wrap">
