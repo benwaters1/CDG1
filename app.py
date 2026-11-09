@@ -8910,6 +8910,9 @@ def init_db():
     # And the Family Suite's beds as the owner gave them on 18 October, once,
     # by its 16 October name.
     apply_family_beds_2026_10_18(conn)
+    # The stock descriptions' bathrooms on the ground floor, not the first,
+    # once (owner, 9 November). By the words, so names do not matter.
+    apply_room_bathroom_floor_2026_11_09(conn)
     # Every atelier takes fifteen (owner, 18 October), once.
     apply_workshops_fifteen_2026_10_18(conn)
     # The waitlist learns the status 'enquiry', once, before the tidy below
@@ -58480,8 +58483,10 @@ DINING_MODES = {
 
 
 # THE ROOM LINE-UP OF 24 SEPTEMBER 2026 -- the owner's, through the design
-# side. Every room has a private bathroom, on the first floor below the
-# bedrooms (none is ensuite); the two that shared, no longer do.
+# side. Every room has a private bathroom, on the ground floor below the
+# bedrooms (none is ensuite); the two that shared, no longer do. (These words
+# said "first floor" until 9 Nov 2026; the owner: ground floor, as every room
+# page says. apply_room_bathroom_floor_2026_11_09 corrects stored copies.)
 #
 # RENAMED, NOT RECREATED, so photographs, bookings, reviews and the channel
 # mapping follow the row. And keyed on the OLD name, which is what makes it
@@ -58513,25 +58518,25 @@ ROOM_LINEUP = [
 # with one neighbouring room" for two rooms that no longer share, and a
 # fallback is exactly where an untrue sentence waits to be shown.
 ROOM_LINEUP_WORDS = {
-    "The Twin Room": "Two double beds and a private bathroom on the first floor. "
+    "The Twin Room": "Two double beds and a private bathroom on the ground floor. "
                      "The most straightforward room in the house.",
     "The Queen Room": "A quiet room with a king bed, floral papers and a marble "
-                      "chimneypiece, and a private bathroom on the first floor. "
+                      "chimneypiece, and a private bathroom on the ground floor. "
                       "Brass fittings and hexagonal terracotta underfoot, among "
                       "the most recently restored work in the building.",
     "The King Room": "A king bed set against hand-painted panelling, with the "
                      "mountains filling the window from first light. A bath and "
                      "a basin stand in the room itself, and the bathroom on the "
-                     "first floor is yours alone.",
+                     "ground floor is yours alone.",
     "The Gold Suite": "The largest room in the house, on the top floor with the "
                       "others, with two windows onto the valley and the peaks "
                       "behind it. An emperor bed, a dressing room of your own, "
-                      "and a cast-iron bath on the first floor that is yours "
+                      "and a cast-iron bath on the ground floor that is yours "
                       "alone. The walls are as the eighteenth century left them; "
                       "everything you sleep in and wash in is new.",
     "The Family Suite": "Two bedrooms opening into one another, sleeping five, "
                         "with the valley on both sides. Children of eight and over "
-                        "are welcome. A private bathroom on the first floor.",
+                        "are welcome. A private bathroom on the ground floor.",
     # _room_copy.html's words (z28). Not in ROOM_LINEUP, so no rename uses it;
     # it is here so this table has every room. DEFAULT_ROOMS carries the same
     # sentence, because it is defined above this and seeds the room by it;
@@ -58628,6 +58633,36 @@ def apply_room_facts_2026_10_15(conn):
     conn.commit()
     if changed:
         print(f"[rooms] the 15 October facts: {changed} room(s) corrected")
+    return changed
+
+
+# The 24 September words put every private bathroom on the first floor. They
+# are on the ground floor (owner, 9 Nov 2026), as every room page has always
+# said, and the stored description is what the room form shows the owner. Each
+# stored description that is still a stock sentence word for word is given the
+# corrected one; anything the owner has written in the form is not a stock
+# sentence and is left alone.
+ROOM_BATH_FLOOR_2026_11_09 = {
+    ROOM_LINEUP_WORDS[name].replace("ground floor", "first floor"): ROOM_LINEUP_WORDS[name]
+    for name in ("The Twin Room", "The Queen Room", "The King Room", "The Gold Suite", "The Family Suite")
+}
+
+
+def apply_room_bathroom_floor_2026_11_09(conn):
+    """Once: the stock descriptions' first-floor bathrooms put on the ground floor."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_bathroom_floor_2026_11_09'").fetchone():
+        return 0
+    changed = 0
+    for room in conn.execute("SELECT id, description FROM rooms").fetchall():
+        corrected = ROOM_BATH_FLOOR_2026_11_09.get(room["description"] or "")
+        if corrected:
+            conn.execute("UPDATE rooms SET description = ? WHERE id = ?", (corrected, room["id"]))
+            changed += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('room_bathroom_floor_2026_11_09', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[rooms] the bathrooms' floor: {changed} room description(s) corrected")
     return changed
 
 
