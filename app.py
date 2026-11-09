@@ -63103,9 +63103,8 @@ HOUSE_POSTAL = f"{HOUSE_STREET} · {HOUSE_POSTCODE} {HOUSE_TOWN} · {HOUSE_REGIO
 HOUSE_PLACE = {
     "street": HOUSE_STREET,
     "town": f"{HOUSE_TOWN}, {HOUSE_REGION} {HOUSE_POSTCODE}, {HOUSE_COUNTRY}",
-    "line": f"{HOUSE_STREET}, {HOUSE_TOWN}, {HOUSE_REGION} {HOUSE_POSTCODE}, {HOUSE_COUNTRY}",
 }
-HOUSE_SOCIAL =(("Instagram", "https://www.instagram.com/chateaugudanes/"),
+HOUSE_SOCIAL = (("Instagram","https://www.instagram.com/chateaugudanes/"),
                 ("Facebook", "https://www.facebook.com/chateaudegudanes/"))
 
 # Bumped when a picture in static/email changes, so a mail app's cache of the
