@@ -234,7 +234,7 @@ OLD_FAULTS = """<style>
 </style>"""
 
 
-def _localise(page, workdir):
+def _localise(page):
     """The page with its stylesheets read from the folder, and nothing from the network."""
     def link(match):
         tag = match.group(0)
@@ -248,7 +248,7 @@ def _localise(page, workdir):
     return re.sub(r"<link\b[^>]*>", link, page)
 
 
-def _render(anon, paths, workdir):
+def _render(anon, paths):
     pages = []
     for path in paths:
         r = anon.get(path)
@@ -257,7 +257,7 @@ def _render(anon, paths, workdir):
         body = r.get_data(as_text=True)
         if '<footer class="g-footer">' not in body:
             continue              # not a page drawn by public_base
-        pages.append((path, _localise(body, workdir)))
+        pages.append((path, _localise(body)))
     return pages
 
 
@@ -344,14 +344,14 @@ def run():
     conn.close()
     was_live = m.SITE_IS_LIVE
     try:
-        for css in ("gudanes.css", "gudanes-pictures.css", "style.css"):
+        for css in ("gudanes.css", "gudanes-pictures.css"):
             src = os.path.join(ROOT, "static", css)
             if os.path.exists(src):
                 shutil.copy(src, os.path.join(workdir, css))
 
         m.SITE_IS_LIVE = True     # the sitemap as the public is given it
         paths = public_paths(anon)
-        pages = _render(anon, paths, workdir)
+        pages = _render(anon, paths)
         # La Table's page for while it takes no bookings, which nothing links
         # to from the sitemap. It is what /restaurant/book answers while the
         # dining room is switched off.
@@ -359,7 +359,7 @@ def run():
         conn.execute("UPDATE restaurant_settings SET enabled = 0 WHERE id = 1")
         conn.commit()
         conn.close()
-        closed = _render(anon, ["/restaurant/book"], workdir)
+        closed = _render(anon, ["/restaurant/book"])
         s.check("La Table's closed page is among those measured",
                 bool(closed) and "Not Taking Reservations" in closed[0][1],
                 detail="it is the page the owner's margins brief found with no gutter")

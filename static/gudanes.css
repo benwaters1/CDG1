@@ -11902,22 +11902,21 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
    the gates. The footer's contact links are inline-flex for a 44px target,
    which would set the street and the town side by side on one line; this
    one is two lines, and tall enough as it is. */
-.g .g-footer a.g-addr{ display: inline-block; min-height: 0; }
+.g .g-footer a.g-addr{ display: inline-block; }
 /* On one line it may wrap after the street, never inside "Château-Verdun". */
 .g .g-addr__town{ white-space: nowrap; }
-.g .g-navwrap__addr a.g-addr{ display: inline; min-height: 0; color: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+/* The menu's links are inline-flex for the same reason, which would set the
+   street and the town side by side; the address wraps as words. */
+.g .g-navwrap__addr a.g-addr{ display: inline; }
 
 /* The same address under the home page's hero, so nobody has to reach the
    footer to find where the house is. On the navy of the section below it,
-   in the footer's type. The pin runs in the line rather than standing apart,
-   and on a phone the two lines are balanced so the postcode is not left on
-   its own. */
+   in the footer's type, the pin running in the line rather than apart. */
 .g .g-where{
-  margin: 0; max-width: none; display: block;
+  margin: 0; max-width: none;
   padding: var(--s4);
   background: var(--blue-deep); color: #C9D4DF;
   font-family: var(--serif); font-size: 16px; line-height: 1.45; text-align: center;
-  text-wrap: balance;
 }
 .g .g-where svg{ display: inline-block; width: 18px; height: 18px; margin-right: var(--s2); vertical-align: -3px; color: var(--gilt-leaf); }
 .g .g-where a{ color: #fff; text-decoration: underline; text-decoration-color: var(--gilt-leaf); text-decoration-thickness: 1px; text-underline-offset: 4px; }

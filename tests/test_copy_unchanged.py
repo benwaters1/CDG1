@@ -52,7 +52,7 @@ ALLOWED = {
     "g-credit": re.compile(r"Photo .{1,60}, CC BY(-SA)? \d\.\d"),
     # 9 Nov 2026 (owner): the house's address under the home page's hero, the
     # footer's own words, linked to the gates. test_house_address holds it.
-    "g-where": re.compile(re.escape(m.HOUSE_PLACE["line"])),
+    "g-where": re.compile(re.escape("%(street)s, %(town)s" % m.HOUSE_PLACE)),
 }
 
 # Words the owner has agreed may go, each named, and only these (28 Oct 2026:

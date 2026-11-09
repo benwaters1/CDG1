@@ -100,12 +100,11 @@ def run():
     anon = m.app.test_client()
     was = (_setting("house_lat"), _setting("house_lng"))
     place = m.HOUSE_PLACE
+    line = "%s, %s" % (place["street"], place["town"])     # the one-line form
     try:
         s.section("The words, from one place")
         s.check("the public pages print the address as they always have",
-                place["line"] == "2 Route de Beille, Château-Verdun, Ariège 09310, France"
-                and place["street"] == "2 Route de Beille"
-                and place["town"] == "Château-Verdun, Ariège 09310, France",
+                line == "2 Route de Beille, Château-Verdun, Ariège 09310, France",
                 detail=str(place))
         s.check("and the letters' line is the one they always had",
                 m.HOUSE_POSTAL == "2 Route de Beille · 09310 Château-Verdun · Ariège, France",
@@ -136,12 +135,12 @@ def run():
         menu = _addr(_menu(page))
         s.check("so is the menu's",
                 menu is not None and menu[0] == "a" and menu[1] == google
-                and menu[2] == place["line"], detail=str(menu))
+                and menu[2] == line, detail=str(menu))
 
         where = _addr(_where(page))
         s.check("and the home page prints it again, as a link to the same pin",
                 where is not None and where[0] == "a" and where[1] == google
-                and where[2] == place["line"], detail=str(where))
+                and where[2] == line, detail=str(where))
 
         hero = page.find('<section class="g-hero')
         hero_end = page.find("</section>", hero) if hero >= 0 else -1
