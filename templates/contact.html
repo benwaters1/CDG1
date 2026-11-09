@@ -69,7 +69,9 @@
 
     <p class="g-eyebrow">Finding Us</p>
     <h2 class="g-h2">Château-Verdun, Ariège</h2>
-    <p class="g-p">2 Route de Beille, Château-Verdun, Ariège 09310, France</p>
+    {#- 9 Nov (owner): the address opens the pin at the gates, here as in the footer. -#}
+    {% from '_house_address.html' import house_address with context %}
+    <p class="g-p">{{ house_address() }}</p>
     <p class="g-p" style="font-style:italic">For now, the château is open only to its guests.</p>
     
   </div>
@@ -103,7 +105,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Address</p>
-      <p class="g-key__v">2 Route de Beille<br>Château-Verdun, Ariège 09310<br>France</p>
+      <p class="g-key__v">{{ house_address(lines=3) }}</p>
     </div>
   </div>
 </div></section>

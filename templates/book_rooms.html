@@ -678,7 +678,9 @@
   <div class="g-key">
     <div class="g-key__i">
       <p class="g-key__k">Address</p>
-      <p class="g-key__v">2 Route de Beille<br>Château-Verdun, Ariège 09310<br>France</p>
+      {#- 9 Nov (owner): the address opens the pin at the gates, as in the footer. -#}
+      {% from '_house_address.html' import house_address with context %}
+      <p class="g-key__v">{{ house_address(lines=3) }}</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Getting here</p>
