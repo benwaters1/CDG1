@@ -11,6 +11,8 @@
     now shows it. -#}
 {#- 6 Oct (owner): the King Room is the four-poster bed that is not gold - the château's own photographs (none on
     Booking.com). -#}
+{#- 9 Nov: three of Booking.com's photographs went (404): the Twin Room's two beds, the King Room's lead and the Marquis
+    Suite's bed and fireside chairs. Out of the lists, so each room is led by its next photograph rather than a broken one. -#}
 {%- set ROOM_PHOTOS = {
   'The King Suite': [
     (url_for('static', filename='img/retreats/king-suite-four-poster.jpg'), 'The King Suite, the four-poster'),
@@ -18,17 +20,14 @@
     ('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/b2a8b7f3-150f-42cf-b311-ea8901270793/Screenshot+2023-08-23+at+2.28.50+pm.png?format=1500w', 'The King Suite, the four-poster and its canopy'),
   ],
   'The Twin Room': [
-    (_BK ~ '921671142.jpg?k=0463664adc5e7567227c32258c08ab5670be8c953791d63ad7c98e8f075ae85e&o=', 'The two beds in the Twin Room'),
     (_BK ~ '921670896.jpg?k=a988f75d70a0bf03bc5a97dd99b3ebc692d77eabc0820f88a3245d44e7a49f28&o=', 'The Twin Room'),
     (_BK ~ '921671149.jpg?k=a99b3aa66a3c823dbdc953387c2af1ed5b2f4a7c3e959db84f6a126bc8b19141&o=', 'The Twin Room, by the window'),
   ],
   'The King Room': [
-    (_BK ~ '921671001.jpg?k=81d3277437f8a0c9290ba074cc8fe547c7d49e2e27ebf78b25d319923482ce9f&o=', 'The King Room'),
     (_BK ~ '798764955.jpg?k=d8653db73b32b57205f0af9b550ee5ee521deae7ec1638ed4dafcc67057d01c9&o=', 'The bed in the King Room'),
     (_BK ~ '798764951.jpg?k=dd03eaa0759e0ec0da87d5272a0091623d54e13e073ace8580be58a478a5c56c&o=', 'The King Room, the seating'),
   ],
   'The Marquis Suite': [
-    (_BK ~ '903132433.jpg?k=fc8c9e1901ebe5a7e4fd9946bb22ace693da1ff02dfae59801351b2ed1e31753&o=', 'The Marquis Suite, the bed and the fireside chairs'),
     (_BK ~ '903132506.jpg?k=811b8839a6591fedad373a4fdadbe663f017a838829239048e179d2c57106ff8&o=', 'The mirror above the fireplace in the Marquis Suite'),
     (_BK ~ '903132525.jpg?k=b560290a40931fdc0c28b32329c5485e9a48ecbe4450795bb3fa2ec0ecdbd9a1&o=', 'The Marquis Suite, the bed and a table'),
   ],
