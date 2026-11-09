@@ -1,0 +1,113 @@
+{#- WHERE EACH RETREAT'S PHOTOGRAPHS GO (image layout brief, section 4.1; owner's go-ahead 28 Oct 2026).
+    The "…, in Pictures" block of twenty to thirty photographs is gone. Its pictures now sit beside the words they
+    show: one on each day of the itinerary, a few after it, and the whole set behind "See all photos" in the lightbox.
+
+    Keyed by a word in the retreat's title, as WS_GALLERY is in workshop_detail.html. A photograph is
+    [src, alt, caption] and a day's may carry a fourth item, the licence credit a Commons photograph needs seen.
+    The Squarespace addresses are written exactly as the templates already had them, so the photo mirror swaps them.
+
+      open    the opening paragraph's framed photograph (a cadre), and its shape
+      glance  the medallion in "At a Glance"
+      days    one per day of the itinerary, in order; ignored unless there is one for every day. Cooking's second day
+              is the kitchen rather than the brief's cooking class from above, which shows Tom; the owner
+              wanted Tom off the Cooking page's lead (28 Oct), so the kitchen stays.
+      after   what follows the itinerary: 'car' a slider, 'mos' a collage then a framed piece, 'bande' a film strip
+      who     "Is It for You?": an album of guests, or a medallion
+    No captions: they are hidden on the site (owner, 15 Oct), and a caption written here would be new words on the
+    page all the same, which test_copy_unchanged refuses.
+      plein   a full-width band, where the brief gives one -#}
+{%- from '_retreat_photos.html' import rcredit -%}
+{%- set R = '/static/img/retreats/' -%}
+{%- set SQ = 'https://images.squarespace-cdn.com/content/' -%}
+{%- set CHEF_SALON = [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w', 'The chef in the candlelit salon', ''] -%}
+{%- set FOIX = [R ~ 'foix-castle.jpg', 'The castle of Foix above the old town', ''] -%}
+{%- set STALLS = [R ~ 'brocante-stalls.jpg', 'Brocante stalls in the square', ''] -%}
+{%- set WALKING = [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/a92dff93-ba4c-438a-8a7f-88a1f47fa97e/Screenshot+2026-08-14+at+11.53.43+pm.png?format=1000w', 'Guests walking through the grounds', ''] -%}
+{%- set DISH = [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/355ed207-f7a3-4e62-b7ec-13d8dfaf09a8/Screenshot+2026-08-15+at+12.37.15+am.png?format=1000w', 'A dish at the château table', ''] -%}
+{%- set RL = {
+  'Noël': {
+    'open': [R ~ 'gingerbread-under-lights.jpg', 'The gingerbread château under the lights', ''], 'open_shape': 'arch',
+    'glance': ['/static/img/dining/wine-on-the-mantel.jpg', 'A glass of wine on the marble mantel'],
+    'days': [
+      [R ~ 'christmas-wreath.jpg', 'The Christmas wreath on the gate', ''],
+      ['/static/img/dining/garland-staircase.jpg', 'The staircase, dressed with a garland and candles', ''],
+      [R ~ 'icing-gingerbread-chateau.jpg', 'Icing the gingerbread château', ''],
+      [R ~ 'christmas-supper.jpg', 'Christmas supper in the kitchen', ''],
+      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/Chateau+de+Gudanes+-+Winter.jpeg?format=1000w', 'The château in snow', '']],
+    'after': 'car', 'after_photos': [
+      [R ~ 'vin-chaud.jpg', 'Vin chaud on a silver tray', ''],
+      [R ~ 'marshmallows-by-the-fire.jpg', 'Marshmallows by the fire', ''],
+      [R ~ 'dog-by-the-christmas-tree.jpg', 'The dog by the Christmas tree', ''],
+      CHEF_SALON,
+      ['/static/img/xx/iced-cake-candlelight.jpg', 'An iced cake by candlelight', ''],
+      ['/static/img/xx/pastry-wreath.jpg', 'A pastry wreath on a floral plate', ''],
+      [SQ ~ '53c3b576e4b02bad423517b8/1587391482764-LP808R4VDQSVC1R1CL0Q/Blog+post+christmas+gifts.jpg?format=1000w', 'Christmas trees and gifts', ''],
+      ['/static/img/dining/christmas-table.jpg', 'The Christmas table', '']],
+    'who': 'album', 'who_photos': [
+      [R ~ 'guests-toasting.jpg', 'Guests raising a glass', ''],
+      [R ~ 'guests-round-the-table.jpg', 'Guests round the table', '']]},
+  'Cooking': {
+    'open': [R ~ 'chef-from-the-garden.jpg', 'The chef bringing a tray from the garden', ''], 'open_shape': 'arch',
+    'glance': ['/static/img/xx/cheese-and-salad.jpg', 'Cheese and salad on the table'],
+    'days': [
+      [R ~ 'sparkling-tray.jpg', 'Sparkling wine on a silver tray', ''],
+      ['/static/img/xx/the-kitchen.jpg', 'The kitchen, its table laid with fresh produce', ''],
+      FOIX,
+      STALLS,
+      [R ~ 'lombrives-cave-mouth.jpg', 'The mouth of the great cave at Lombrives', '', rcredit('lombrives-cave-mouth')],
+      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/82882b98-6d8d-4e43-a8dd-d483ea19aec8/Screenshot+2026-07-30+at+7.57.59+pm.png?format=1000w', 'Fresh bread in a basket', '']],
+    'after': 'mos', 'after_photos': [
+      ['/static/img/xx/tomato-tart-above.jpg', 'A tomato tart, from above', ''],
+      ['/static/img/xx/two-galettes.jpg', 'Two galettes on the board', ''],
+      ['/static/img/life/asparagus-on-the-grill.jpg', 'White asparagus on the grill, in the grounds', ''],
+      ['/static/img/more/fish-with-herbs.jpg', 'Fish with herbs on a floral plate', '']],
+    'after_framed': ['/static/img/xx/croquembouche-garden.jpg', 'A croquembouche in the garden', ''],
+    'who': 'medaillon', 'who_photos': [[R ~ 'pastry-chef.jpg', 'The pastry chef in her whites', '']]},
+  'Antique': {
+    'open': [R ~ 'antique-shop.jpg', 'Inside an antique shop', ''], 'open_shape': 'arch',
+    'glance': [R ~ 'brocante-2cv.jpg', 'A red 2CV at the brocante'],
+    'days': [
+      WALKING,
+      [R ~ 'vide-grenier.jpg', 'A vide-grenier on the green, people browsing', ''],
+      FOIX,
+      [R ~ 'old-french-linen.jpg', 'Old French linen, monogrammed in red', '']],
+    'after': 'mos', 'after_mounted': true, 'after_photos': [
+      [R ~ 'pocket-watches.jpg', 'Pocket watches on a stall', ''],
+      [R ~ 'brooches-and-portraits.jpg', 'Old brooches and portraits in a case', ''],
+      [R ~ 'apothecary-jars.jpg', 'Apothecary jars in a glass cabinet', ''],
+      [R ~ 'antique-sewing-kit.jpg', 'An antique sewing kit in its case', '']],
+    'after_framed': [R ~ 'brocante-accordion.jpg', 'The accordionist at the brocante', ''],
+    'who': 'album', 'who_photos': [
+      [R ~ 'guests-with-finds.jpg', 'Guests with their finds', ''],
+      [R ~ 'group-of-guests.jpg', 'A group of guests together at the château', '']]},
+  'Seven': {
+    'open': [R ~ 'chateau-at-night.jpg', 'The château at night, under the stars', ''], 'open_shape': 'arch',
+    'glance': ['/static/img/dining/garden-sofa-mountains.jpg', 'A garden sofa facing the mountains'],
+    'days': [
+      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/9ee310fe-0248-4c96-8116-8797e5efb084/Screenshot+2026-08-12+at+3.39.10+pm.png?format=1000w', 'A guest walking up to the château through the meadow', ''],
+      ['/static/img/dining/chateau-above-roses.jpg', 'The château above the roses', ''],
+      STALLS,
+      [R ~ 'restoration-scaffold.jpg', 'Guests on the scaffold among the frescoes', ''],
+      [R ~ 'mountain-walk.jpg', 'Walking in the hills', ''],
+      DISH,
+      FOIX,
+      ['/static/img/rk/park-to-the-mountains.jpg', 'The park, running to the mountains in the mist', '']],
+    'after': 'bande', 'after_photos': [
+      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/50681186-1638-4a0b-a9e2-553437fdb677/Screenshot+2026-08-15+at+12.42.20+am.png?format=1000w', 'Candlelight in the salon', ''],
+      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/0fba4375-e1f0-449b-ba58-d1a5d3a48069/Screenshot+2026-07-30+at+8.05.38+pm.png?format=1000w', 'The table by candlelight', ''],
+      ['/static/img/dining/terrace-long-table.jpg', 'A long table on the terrace, the mountains beyond', ''],
+      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1000w', 'Lighting the candles in the salon', '']],
+    'plein': ['/static/img/rk/from-the-air-mountains.jpg', 'From the air, the mountains behind'],
+    'who': 'album', 'who_photos': [
+      [R ~ 'guests-rose-gate.jpg', 'Guests at the rose gate', ''],
+      [R ~ 'garden-conversation.jpg', 'A conversation in the garden', ''],
+      [R ~ 'guests-toasting.jpg', 'Guests raising a glass', '']]},
+  '_': {
+    'open': WALKING, 'open_shape': 'arch',
+    'glance': ['/static/img/dining/strawberries-tart-flowers.jpg', 'Strawberries, a tart and edible flowers'],
+    'days': [],
+    'after': 'car', 'after_photos': [DISH, CHEF_SALON, ['/static/img/dining/terrace-long-table.jpg', 'A long table on the terrace, the mountains beyond', ''], ['/static/img/rk/park-to-the-mountains.jpg', 'The park, running to the mountains in the mist', '']],
+    'who': 'album', 'who_photos': [
+      [R ~ 'guests-toasting.jpg', 'Guests raising a glass', ''],
+      [R ~ 'guests-round-the-table.jpg', 'Guests round the table', '']]}
+} -%}

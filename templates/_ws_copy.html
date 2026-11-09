@@ -1,4 +1,5 @@
 {% from '_illus.html' import illus, micon %}
+{% from '_pictures.html' import carnet %}
 {# =============================================================================
    1 Oct - the site writes each workshop's words itself, from its length, so no
    admin description or itinerary can say more than the house can stand behind.
@@ -112,7 +113,10 @@
    oldest part of the house", with no century, and never why the walls are left
    as they are.
    ============================================================================= #}
-{% macro ws_journey(w, at_house=None) -%}
+{#- day_photos (27 Oct, the image layout brief): one photograph a day, [src, alt, caption, credit], pinned to the day's
+    card as a journal page with its line drawing faint behind it. Only when there is one for every day of the plan, so a
+    change in the number of nights can never put a photograph against the wrong day. -#}
+{% macro ws_journey(w, at_house=None, day_photos=None) -%}
 {%- set _n = ws_nights(w)|trim -%}
 {%- set _h = _house(w, at_house)|trim -%}
 {%- set _k = ws_kind(w)|trim -%}
@@ -177,10 +181,12 @@
     <li class="g-everyday__i"><div class="g-everyday__ill" aria-hidden="true">{{ illus('cocktail') }}</div><div class="g-everyday__b"><p class="g-everyday__fr" lang="fr">L’apéritif</p><p class="g-everyday__en">As the light goes</p><p class="g-everyday__p">A Kir Royale, a Lillet tonic, or the château’s own botanical syrups.</p></div></li>
   </ul>
   <ol class="g-journey">
+    {%- set _dp = day_photos if (day_photos and day_photos|length == PLAN|length) else none %}
     {% for fr, en, p, moments, ill in PLAN %}
+    {%- set _ph = _dp[loop.index0] if _dp else none %}
     <li class="g-journey__d">
       <div class="g-journey__n"><span class="g-journey__r" aria-hidden="true">{{ ROM[loop.index0] }}</span><span class="g-journey__l">{{ ORD[loop.index0] }}</span></div>
-      <div class="g-journey__card">
+      <div class="g-journey__card{% if _ph %} g-journey__card--pic{% endif %}">
         <div class="g-journey__b">
           <p class="g-journey__k" aria-hidden="true">{{ ROM[loop.index0] }} · {{ ORD[loop.index0] }}</p>
           <h3 class="g-journey__t"><span class="g-vh">Day {{ loop.index }}: </span><em class="g-journey__fr" lang="fr">{{ fr }}</em> <small class="g-journey__en" lang="en">{{ en }}</small></h3>
@@ -188,7 +194,8 @@
           {#- the words in one element: on a phone each line is a two-column grid, and a bare <em> in it became a cell of its own -#}
           <ul class="g-journey__m">{% for k, v in moments %}<li><b lang="fr">{{ micon(MI.get(k, 'soir')) }}{{ k }}</b> <span class="g-journey__mt">{{ v|safe }}</span></li>{% endfor %}</ul>
         </div>
-        <div class="g-journey__ill" aria-hidden="true">{{ illus(ill) }}</div>
+        {% if _ph %}<div class="g-journey__pic"><div class="g-journey__ill" aria-hidden="true">{{ illus(ill) }}</div>{{ carnet(_ph, side=('left' if loop.index is odd else 'right'), credit=(_ph[3] if _ph|length > 3 else '')) }}</div>
+        {% else %}<div class="g-journey__ill" aria-hidden="true">{{ illus(ill) }}</div>{% endif %}
       </div>
     </li>
     {% endfor %}
