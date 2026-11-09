@@ -606,6 +606,10 @@ SUITES = [
     # 28 October 2026: the retreat pages converted, one photograph a day.
     "test_retreat_pictures",
     "test_home_pictures",
+    # 9 November 2026: the address opens the map and sits under the home page's
+    # hero, and every public page measured for its margins at three widths.
+    "test_house_address",
+    "test_public_margins",
 ]
 
 

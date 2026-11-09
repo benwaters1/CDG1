@@ -37035,7 +37035,10 @@ def inject_house_pin():
     failure of forgetting is that Google keeps the old figure.
     """
     pin = house_pin()
-    return {"house_pin": pin, "house_maps": house_map_links() if pin else {}}
+    # The address in words goes with it: every public page prints it in the
+    # footer, and _house_address.html links those words to this pin.
+    return {"house_pin": pin, "house_maps": house_map_links() if pin else {},
+            "house_place": HOUSE_PLACE}
 
 
 @app.context_processor
@@ -63219,8 +63222,24 @@ def _letter_label_for_link(href):
 # one PAYMENT_SAFETY_LINE gives, so a guest who checks one against the other
 # finds the same number.
 HOUSE_TELEPHONE = "+33 6 28 06 97 76"
-HOUSE_POSTAL = "2 Route de Beille · 09310 Château-Verdun · Ariège, France"
-HOUSE_SOCIAL = (("Instagram", "https://www.instagram.com/chateaugudanes/"),
+# Where the house is, in its pieces. The letters print it in French postal
+# order and the public site in the order it has always used, and both are
+# built from these, so neither can drift from the other.
+HOUSE_STREET = "2 Route de Beille"
+HOUSE_POSTCODE = "09310"
+HOUSE_TOWN = "Château-Verdun"
+HOUSE_REGION = "Ariège"
+HOUSE_COUNTRY = "France"
+HOUSE_POSTAL = f"{HOUSE_STREET} · {HOUSE_POSTCODE} {HOUSE_TOWN} · {HOUSE_REGION}, {HOUSE_COUNTRY}"
+# The same address as the public pages print it: the footer, the menu and the
+# line under the home page's hero, through templates/_house_address.html,
+# which links it to the pin at the gates (house_map_links), never a search.
+HOUSE_PLACE = {
+    "street": HOUSE_STREET,
+    "town": f"{HOUSE_TOWN}, {HOUSE_REGION} {HOUSE_POSTCODE}, {HOUSE_COUNTRY}",
+    "line": f"{HOUSE_STREET}, {HOUSE_TOWN}, {HOUSE_REGION} {HOUSE_POSTCODE}, {HOUSE_COUNTRY}",
+}
+HOUSE_SOCIAL =(("Instagram", "https://www.instagram.com/chateaugudanes/"),
                 ("Facebook", "https://www.facebook.com/chateaudegudanes/"))
 
 # Bumped when a picture in static/email changes, so a mail app's cache of the
