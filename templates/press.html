@@ -5,6 +5,10 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=1200w{% endblock %}
 {% set crumbs = [('Press', None)] %}
 {% block content %}
+{#- 9 Nov (the image layout brief, 4.7): the photographs through the picture components (_pictures.html, shown together
+    on /design). Not one word changes. -#}
+{% from '_pictures.html' import album, see_all, pictures_script %}
+{% from '_lightbox.html' import lightbox %}
 {% from '_proof.html' import credential, proof %}
 {% from '_stay_panel.html' import stay_panel with context %}
 {% from '_marks.html' import mark, monogram %}
@@ -42,14 +46,9 @@
 <section class="g-sec g-sec--sand g-gallery-sec"><div class="g-wrap">
   <p class="g-fr">Dans la presse <span class="g-fr__en">In print</span></p>
   <h2 class="g-place">The Pages Themselves</h2>
-  <ul class="g-befgrid g-gallery">
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/96d22cad-f1d0-4161-9d52-35e05531bd37/Screenshot+2026-08-13+at+12.02.00+am.png?format=1000w" alt="Harper's Bazaar" loading="lazy"><figcaption>Harper&rsquo;s Bazaar</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/06f79bbe-6e4a-45d2-824b-e2d4013f0879/Screenshot+2026-08-13+at+12.02.27+am.png?format=1000w" alt="The Australian Financial Review" loading="lazy"><figcaption>The Australian Financial Review</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/654430d3-3cd9-47fb-a754-48bcda80cede/Screen%2BShot%2B2023-03-13%2Bat%2B11.24.14%2Bam.webp?format=1000w" alt="Vogue Netherlands" loading="lazy"><figcaption>Vogue Netherlands</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/99f9e48d-7ce9-4d3e-8cc4-878df9f72b20/Screenshot+2026-08-13+at+12.13.46+am.png?format=1000w" alt="Moments Magazine" loading="lazy"><figcaption>Moments Magazine</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0c3b9d82-1222-4d40-ac6a-6c749ad0dec6/HB0914_Chateau_Page_5.webp?format=1000w" alt="Harper's Bazaar, a page from the feature" loading="lazy"><figcaption>Harper&rsquo;s Bazaar, from the feature</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/258842ba-9d16-4b83-914a-be0738ba5f27/HB0914_Chateau_Page_3.webp?format=1000w" alt="Harper's Bazaar, a page from the feature" loading="lazy"><figcaption>Harper&rsquo;s Bazaar, from the feature</figcaption></figure></li>
-  </ul>
+  {#- 9 Nov (the brief, 4.7): the pages laid out as a fanned album, all six behind See all. -#}
+  {{ album([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/96d22cad-f1d0-4161-9d52-35e05531bd37/Screenshot+2026-08-13+at+12.02.00+am.png?format=1000w', 'Harper\'s Bazaar', 'Harper’s Bazaar'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/06f79bbe-6e4a-45d2-824b-e2d4013f0879/Screenshot+2026-08-13+at+12.02.27+am.png?format=1000w', 'The Australian Financial Review', 'The Australian Financial Review'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/654430d3-3cd9-47fb-a754-48bcda80cede/Screen%2BShot%2B2023-03-13%2Bat%2B11.24.14%2Bam.webp?format=1000w', 'Vogue Netherlands', 'Vogue Netherlands']], cls='g-album--fan') }}
+  {{ see_all([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/96d22cad-f1d0-4161-9d52-35e05531bd37/Screenshot+2026-08-13+at+12.02.00+am.png?format=1000w', 'Harper\'s Bazaar', 'Harper’s Bazaar'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/06f79bbe-6e4a-45d2-824b-e2d4013f0879/Screenshot+2026-08-13+at+12.02.27+am.png?format=1000w', 'The Australian Financial Review', 'The Australian Financial Review'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/654430d3-3cd9-47fb-a754-48bcda80cede/Screen%2BShot%2B2023-03-13%2Bat%2B11.24.14%2Bam.webp?format=1000w', 'Vogue Netherlands', 'Vogue Netherlands'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/99f9e48d-7ce9-4d3e-8cc4-878df9f72b20/Screenshot+2026-08-13+at+12.13.46+am.png?format=1000w', 'Moments Magazine', 'Moments Magazine'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0c3b9d82-1222-4d40-ac6a-6c749ad0dec6/HB0914_Chateau_Page_5.webp?format=1000w', 'Harper\'s Bazaar, a page from the feature', 'Harper’s Bazaar, from the feature'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/258842ba-9d16-4b83-914a-be0738ba5f27/HB0914_Chateau_Page_3.webp?format=1000w', 'Harper\'s Bazaar, a page from the feature', 'Harper’s Bazaar, from the feature']], 'See all 6 photos') }}
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
@@ -119,4 +118,6 @@
 
 <div class="g-wrap">{{ proof(settings) }}</div>
 
+{{ lightbox() }}
+{{ pictures_script() }}
 {% endblock %}

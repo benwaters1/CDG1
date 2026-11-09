@@ -48977,6 +48977,11 @@ def _stripe_export_rows(text):
                             "created_utc"),
             "amount": amount, "refunded": refunded, "net": round(amount - refunded, 2),
             "description": html_unescape(pick(row, "description")).strip(),
+            # What this app writes on every payment it takes
+            # (stripe_payment_label), as the export puts metadata: a column
+            # of its own, "<key> (metadata)".
+            "label_kind": pick(row, "kind (metadata)"),
+            "label_reference": pick(row, "reference (metadata)"),
         })
     return [p for p in out if p["id"] or p["intent"]]
 
@@ -48992,6 +48997,161 @@ def parse_stripe_refunds(text):
     in full. RetreatGuru is not told about a refund made in Stripe, so its
     export can still call that money paid."""
     return [p for p in _stripe_export_rows(text) if p["refunded"] > 0.005]
+
+
+# The ids a payment is known by, as the Stripe export and this app write them:
+# a PaymentIntent, a charge, a payment made without a card, a Checkout Session.
+STRIPE_PAYMENT_ID_PREFIXES = ("pi_", "ch_", "py_", "cs_")
+
+# How the import words money RetreatGuru took off a price instead of calling it
+# paid. Written on the line when it comes across, and read back by _rg_ledger,
+# so the two must not drift apart.
+RG_CREDIT_WORDS = "Paid through another booking"
+
+
+def stripe_ids_held(conn):
+    """Every Stripe payment id this app holds, in any table, against anything.
+
+    Read off the schema rather than a kept list: every column whose name says
+    it holds a Stripe id or a reference is read, and anything in it shaped like
+    a payment's id counts. A list goes stale the first time another table
+    learns to take a card, and a payment the matcher does not know is held is
+    one it can credit a second time.
+    """
+    held = set()
+    named = re.compile(r"stripe|intent|(^|_)ref(erence)?(_|$)")
+    tables = [r["name"] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite%'")]
+    for table in tables:
+        for col in conn.execute(f'PRAGMA table_info("{table}")').fetchall():
+            if not named.search(col["name"].lower()):
+                continue
+            for r in conn.execute(
+                    f'SELECT DISTINCT "{col["name"]}" AS v FROM "{table}" '
+                    f'WHERE substr("{col["name"]}", 1, 3) IN (?, ?, ?, ?)',
+                    STRIPE_PAYMENT_ID_PREFIXES):
+                held.add(str(r["v"]).strip())
+    return held
+
+
+def _stripe_labelled_here(c):
+    """Whether a payment in a Stripe export says this app took it.
+
+    Every payment taken here carries stripe_payment_label: a `kind` and the
+    reference the guest quotes, as metadata and in the description. RetreatGuru
+    writes neither. A registration's payment on the site is kept by its Checkout
+    Session, which the export does not show -- so without this, the site's own
+    deposit would look like money nobody holds, and could be put towards the
+    same guest's RetreatGuru registration as well.
+    """
+    if c.get("label_kind"):
+        return True
+    prefixes = tuple(REFERENCE_PREFIXES.values())
+    if (c.get("label_reference") or "").upper().startswith(prefixes):
+        return True
+    return bool(re.search(r"\bRef (" + "|".join(re.escape(p) for p in prefixes) + ")",
+                          c.get("description") or ""))
+
+
+def _stripe_card_payments_held(conn):
+    """Card payments held here, each with the ids it is kept by, who paid and
+    how much: [{refs, email, amount, at}].
+
+    For recognising one in an export that does not show it by any of those
+    ids. A registration's payment on the site is kept by its Checkout Session,
+    which no export shows; a stay's by its PaymentIntent, which the export the
+    house took on 15 October 2026 did not have a column for. One made before
+    payments were labelled (that same day) cannot be recognised by label
+    either.
+    """
+    out = []
+    for sql in (
+            """SELECT t.stripe_ref AS a, NULL AS b, NULL AS c, t.amount, t.created_at AS at,
+                      wb.guest_email AS email
+                 FROM workshop_transactions t
+                 JOIN workshop_bookings wb ON wb.id = t.workshop_booking_id
+                WHERE t.kind = 'payment' AND t.stripe_ref IS NOT NULL""",
+            """SELECT bp.stripe_payment_intent_id AS a, bp.stripe_session_id AS b,
+                      bp.reference AS c, bp.amount, bp.created_at AS at, b.guest_email AS email
+                 FROM booking_payments bp JOIN bookings b ON b.id = bp.booking_id""",
+            """SELECT ep.stripe_payment_intent_id AS a, ep.reference AS b, NULL AS c,
+                      ep.amount, ep.created_at AS at, e.contact_email AS email
+                 FROM event_payments ep JOIN event_inquiries e ON e.id = ep.event_id""",
+            """SELECT stripe_payment_intent_id AS a, stripe_session_id AS b, NULL AS c,
+                      deposit_amount AS amount, created_at AS at, guest_email AS email
+                 FROM restaurant_bookings"""):
+        try:
+            rows = conn.execute(sql).fetchall()
+        except sqlite3.OperationalError:
+            continue             # a column not there yet
+        for r in rows:
+            refs = {str(v).strip() for v in (r["a"], r["b"], r["c"])
+                    if v and str(v).strip().startswith(STRIPE_PAYMENT_ID_PREFIXES)}
+            if refs and r["amount"]:
+                out.append({"refs": refs, "email": (r["email"] or "").strip().lower(),
+                            "amount": r["amount"], "at": r["at"]})
+    return out
+
+
+def rg_charges_not_retreatgurus(conn, charges):
+    """Mark the payments in a Stripe export that are not RetreatGuru's to bring
+    across, each with why (`held`), and return them. The rest are untouched.
+
+    Three reasons, any one enough: its id is already on something here; it
+    carries this app's own label; or it is the same amount, from the same
+    address, within two days, as a payment held here by ids this export does
+    not show. The last is a likeness, not a proof, and errs the safe way: a
+    payment wrongly set aside leaves a registration to settle by hand, while
+    one wrongly used is money credited twice.
+    """
+    held = stripe_ids_held(conn)
+    out = []
+    for c in charges:
+        if {c["id"], c["intent"], c["ref"]} & held:
+            c["held"] = "already a payment line here"
+        elif _stripe_labelled_here(c):
+            c["held"] = "taken through this site"
+        if c.get("held"):
+            out.append(c)
+
+    def apart(c, at):
+        try:
+            mine = datetime.fromisoformat(_rg_moment(c["created"]) or "")
+            theirs = datetime.fromisoformat(at or "")
+            if theirs.tzinfo is None:
+                theirs = theirs.replace(tzinfo=timezone.utc)
+            return abs((mine - theirs).total_seconds())
+        except (TypeError, ValueError):
+            return float("inf")
+    shown = {i for c in charges for i in (c["id"], c["intent"]) if i}
+    for p in _stripe_card_payments_held(conn):
+        if p["refs"] & shown:
+            continue             # in the export by its own id, and set aside above
+        alike = [c for c in charges if not c.get("held") and c["email"] == p["email"]
+                 and round(c["net"] * 100) == round((p["amount"] or 0) * 100)
+                 and apart(c, p["at"]) <= 2 * 86400]
+        if alike:
+            c = min(alike, key=lambda c: apart(c, p["at"]))
+            c["held"] = ("the same amount from the same address as a payment taken through "
+                         "this site, so most likely that one")
+            out.append(c)
+    return out
+
+
+def _rg_ledger(conn, booking_id):
+    """A brought-across registration's ledger as RetreatGuru counts it.
+
+    Money RetreatGuru took off the price rather than call it paid was put back
+    on both sides when it came across (run_rg_import's `credits`), so it is
+    taken off both again here. What is owing is the same either way.
+    """
+    owed, charged, paid = workshop_balance_due(conn, booking_id)
+    credited = round(conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS t FROM workshop_transactions "
+        "WHERE workshop_booking_id = ? AND kind = 'payment' AND description LIKE ?",
+        (booking_id, RG_CREDIT_WORDS + "%")).fetchone()["t"] or 0, 2)
+    return {"agreed": round(charged - credited, 2), "paid": round(paid - credited, 2),
+            "owing": owed, "credited": credited}
 
 
 def _rg_stripe_match(charges, paid):
@@ -49117,6 +49277,84 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
                     f"{implied} place{'' if implied == 1 else 's'} at {money(unit)}; "
                     f"{line['party']} {'is' if line['party'] == 1 else 'are'} named.")
 
+    # ALREADY BROUGHT ACROSS. RetreatGuru went on taking money after the first
+    # run, so a registration already here is held up against the export, figure
+    # by figure. More paid, and nothing else changed, is new money to find in
+    # Stripe and offer (below). Anything else -- less paid, another price, a
+    # refund, a cancellation here -- is shown and left for a person to settle.
+    for line in rows:
+        line["compare"], line["more_paid"] = [], 0.0
+        if line["companion_of"] or not line.get("done"):
+            continue
+        b = line["done"]
+        here = _rg_ledger(conn, b["id"])
+        line["here"] = here
+        for field in ("agreed", "paid", "owing"):
+            if abs(here[field] - line[field]) >= 0.005:
+                line["compare"].append(
+                    f"{field.capitalize()}: {money(line[field])} in RetreatGuru now, "
+                    f"{money(here[field])} here.")
+        odd = []
+        if b["status"] != "confirmed":
+            odd.append(f"It is {b['status']} here, and RetreatGuru still has it.")
+        if b["party_size"] != line["party"]:
+            odd.append(f"RetreatGuru has {line['party']} on it; here it has {b['party_size']}.")
+        new = round(line["paid"] - here["paid"], 2)
+        clean = (not odd and abs(here["agreed"] - line["agreed"]) < 0.005
+                 and abs(round(here["owing"] - line["owing"], 2) - new) < 0.005)
+        if not line["compare"] and not odd:
+            continue
+        if clean and new > 0.005:
+            line["more_paid"] = new
+            line["notes"].extend(line["compare"])
+        else:
+            line["blocking"].append(
+                "Already here, and RetreatGuru now differs from it in a way this cannot "
+                "settle. " + " ".join(odd + line["compare"])
+                + " Nothing is changed; settle it by hand on the registration.")
+
+    # THE SAME GUEST ALREADY BOOKED HERE. Somebody who paid part in RetreatGuru
+    # and part on the site, or booked again on the site, would otherwise be a
+    # second booking, with the place and the money counted twice. Any booking
+    # on the session with their address, whichever way it was made.
+    for line in rows:
+        line["on_site"] = []
+        if line["companion_of"] or not line["email"] or not line["session"]:
+            continue
+        mine = line["done"]["id"] if line.get("done") else None
+        theirs = [b for b in conn.execute(
+            "SELECT * FROM workshop_bookings WHERE session_id = ? "
+            "AND LOWER(TRIM(guest_email)) = ? ORDER BY id",
+            (line["session"]["id"], line["email"])).fetchall() if b["id"] != mine]
+        for b in theirs:
+            if b["status"] not in ("pending", "confirmed"):
+                line["notes"].append(f"Had a booking here on this retreat, now {b['status']}: "
+                                     f"{b['reference_code']}.")
+        live = [b for b in theirs if b["status"] in ("pending", "confirmed")]
+        if not live:
+            continue
+        line["on_site"] = live
+        said = []
+        for b in live:
+            owed, charged, paid = workshop_balance_due(conn, b["id"])
+            said.append(f"{b['reference_code']} ({'brought across from RetreatGuru' if b['import_key'] else 'booked on this site'}, "
+                        f"{b['status']}, {b['party_size']} "
+                        f"{'person' if b['party_size'] == 1 else 'people'}, {money(charged)} "
+                        f"charged, {money(paid)} paid, {money(owed)} owing)")
+        if mine:
+            line["blocking"].append(
+                "Already here, and booked on this retreat a second time as well: "
+                + "; ".join(said) + ". Settle it by hand.")
+        else:
+            line["on_site_why"] = (
+                "Already booked here on this retreat: " + "; ".join(said) + ". Bringing it "
+                "across would make a second booking and count the place and the money twice, "
+                "so it is skipped unless you attach its payments to that booking.")
+            line["blocking"].append(line["on_site_why"])
+            if line["party"] != live[0]["party_size"]:
+                line["notes"].append(f"RetreatGuru has {line['party']} on this registration; "
+                                     f"{live[0]['reference_code']} has {live[0]['party_size']}.")
+
     # THE SAME PERSON TWICE ON ONE RETREAT. Each row is its own registration
     # with its own money -- the export is believed -- but it is shown, because
     # an abandoned first attempt brought across is a debt nobody owes.
@@ -49136,29 +49374,69 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
                 g["duplicate"] = True
 
     # STRIPE. Each payment RetreatGuru says was made is matched to the card
-    # payments Stripe holds for that address, to the cent, each used once.
+    # payments Stripe holds for that address, to the cent, each used once --
+    # and never one this app already holds, anywhere, so no payment is ever
+    # credited twice.
+    held = rg_charges_not_retreatgurus(conn, charges) if stripe_given else []
+    for c in charges:
+        c["on"] = house_date_iso(_rg_moment(c["created"])) if c["created"] else ""
     by_email = {}
     for c in charges if stripe_given else []:
-        by_email.setdefault(c["email"], []).append(c)
+        if not c.get("held"):
+            by_email.setdefault(c["email"], []).append(c)
+
+    def unmatched(amount, email, pool, lead=None):
+        lead = lead or f"RetreatGuru says {money(amount)} was paid"
+        if not stripe_given:
+            return (f"{lead}, and no Stripe export was given to find the card payments "
+                    "behind it.")
+        have = round(sum(c["net"] for c in pool), 2)
+        return (f"{lead}; Stripe has {money(have)} from {email} not already matched or held "
+                "here" + (", in amounts that do not add up to it." if pool else "."))
     for line in rows:
         line["paid_other"] = 0.0
-        if line["companion_of"] or line["paid"] <= 0.005 or not line["email"]:
+        line["topup"], line["attach_charges"] = [], []
+        if line["companion_of"] or not line["email"]:
             continue
         pool = by_email.get(line["email"], [])
+        if line.get("done"):
+            # Only the money paid since it came across, and only as card
+            # payments nobody here has: offered, never assumed.
+            if line["more_paid"] <= 0.005 or line["blocking"]:
+                continue
+            match = _rg_stripe_match(pool, line["more_paid"]) if stripe_given else None
+            if match is None:
+                line["blocking"].append(
+                    unmatched(line["more_paid"], line["email"], pool,
+                              lead=f"Already here, and RetreatGuru now says "
+                                   f"{money(line['more_paid'])} more was paid than here")
+                    + " Settle it by hand on the registration.")
+                continue
+            line["topup"] = match
+            for c in match:
+                pool.remove(c)
+            continue
+        if line["paid"] <= 0.005:
+            continue
+        if line["on_site"]:
+            # Kept aside for "attach to that booking", if the owner says so.
+            if len(line["on_site"]) > 1:
+                continue
+            match = _rg_stripe_match(pool, line["paid"]) if stripe_given else None
+            if match is None:
+                line["attach_why"] = unmatched(line["paid"], line["email"], pool)
+                continue
+            line["attach_charges"] = match
+            for c in match:
+                pool.remove(c)
+            continue
         match = _rg_stripe_match(pool, line["paid"]) if stripe_given else None
         if match is not None:
             line["charges"] = match
             for c in match:
                 pool.remove(c)
             continue
-        if stripe_given:
-            have = round(sum(c["net"] for c in pool), 2)
-            why = (f"RetreatGuru says {money(line['paid'])} was paid; Stripe has "
-                   f"{money(have)} from {line['email']} not already matched"
-                   + (", in amounts that do not add up to it." if pool else "."))
-        else:
-            why = (f"RetreatGuru says {money(line['paid'])} was paid, and no Stripe export "
-                   "was given to find the card payments behind it.")
+        why = unmatched(line["paid"], line["email"], pool)
         # Money Stripe gave back to this address. A refund made in Stripe is
         # never reported to RetreatGuru, so its export goes on calling the
         # money paid -- and bringing that across "paid, not by card" would
@@ -49178,8 +49456,6 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
         else:
             line["blocking"].append(why)
     leftover = [c for pool in by_email.values() for c in pool]
-    for c in leftover:
-        c["on"] = house_date_iso(_rg_moment(c["created"])) if c["created"] else ""
     # A payment Stripe holds from this address that matched nothing. RetreatGuru
     # has been known to take money paid some other way -- a room booked by
     # mistake, say -- off the PRICE rather than call it paid, so the guest's
@@ -49188,7 +49464,36 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
     for line in rows:
         line["credit_options"] = [c for c in leftover if line["email"]
                                   and c["email"] == line["email"]
-                                  and not line["companion_of"]]
+                                  and not line["companion_of"] and not line.get("done")
+                                  and not line["on_site"]]
+
+    # ATTACHING to the booking already here, instead of making a second: only
+    # when that is the one thing wrong with the row, the money is found in
+    # Stripe, and the booking can take it -- its deposit paid, so the guest's
+    # page will not ask for that again, and not left paid beyond its price.
+    for line in rows:
+        line["attach_ok"] = False
+        if not line.get("on_site_why") or line["blocking"] != [line["on_site_why"]]:
+            continue
+        if len(line["on_site"]) > 1:
+            line["attach_why"] = "There is more than one booking to choose from."
+            continue
+        if not line["attach_charges"]:
+            line.setdefault("attach_why", "RetreatGuru says nothing was paid, so there is "
+                                          "nothing to attach.")
+            continue
+        target = line["on_site"][0]
+        owed, _charged, _paid = workshop_balance_due(conn, target["id"])
+        adding = round(sum(c["net"] for c in line["attach_charges"]), 2)
+        if not target["deposit_paid_at"]:
+            line["attach_why"] = (f"{target['reference_code']} has no deposit paid here, so "
+                                  "its page would still ask the guest for one.")
+        elif adding > owed + 0.005:
+            line["attach_why"] = (f"{money(adding)} would leave {target['reference_code']} "
+                                  f"paid {money(adding - owed)} beyond its price.")
+        else:
+            line["attach_ok"] = True
+            line["attach_after"] = round(owed - adding, 2)
 
     for line in rows:
         if line["companion_of"]:
@@ -49201,7 +49506,8 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
     # Places: what the session would hold once these are in.
     per_session = {}
     for line in rows:
-        if line["session"] and not line["companion_of"] and not line.get("done"):
+        if line["session"] and not line["companion_of"] and not line.get("done") \
+                and not line["on_site"]:
             per_session.setdefault(line["session"]["id"], []).append(line)
     capacity = []
     for sid, lines in per_session.items():
@@ -49217,11 +49523,19 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
     def total(selected, field):
         return round(sum(l[field] for l in selected), 2)
     payers = [l for l in rows if not l["companion_of"]]
+    done = [l for l in payers if l.get("done")]
     return {
         "rows": rows, "payers": payers, "leftover": leftover, "capacity": capacity,
         "due_days": due_days, "stripe_given": stripe_given, "unmatched_ok": unmatched_ok,
         "export": {f: total(rows, f) for f in ("agreed", "paid", "owing")},
         "count": len(payers), "people": sum(l["party"] for l in payers),
+        "held": held,
+        "second": {
+            "same": sum(1 for l in done if not l["blocking"] and not l["topup"]),
+            "more_paid": sum(1 for l in done if l["topup"] and not l["blocking"]),
+            "differs": sum(1 for l in done if l["blocking"]),
+            "on_site": sum(1 for l in payers if l.get("on_site_why")),
+        },
     }
 
 
@@ -49231,7 +49545,7 @@ def rg_plan_totals(plan, selected):
     return {f: round(sum(l[f] for l in chosen), 2) for f in ("agreed", "paid", "owing")}
 
 
-def run_rg_import(conn, plan, selected, people, *, user_id, credits=()):
+def run_rg_import(conn, plan, selected, people, *, user_id, credits=(), topups=(), attach=()):
     """Write the chosen registrations, exactly as planned, in one transaction.
 
     Returns (made, kept, problems). Nothing is written unless every chosen
@@ -49244,20 +49558,56 @@ def run_rg_import(conn, plan, selected, people, *, user_id, credits=()):
     other way that RetreatGuru took off the price. It comes across as paid,
     against its own Stripe id, with the price put back up by the same amount,
     so what is owed is exactly what RetreatGuru says.
+
+    `topups` are "key|stripe ref" pairs: a payment made in RetreatGuru after
+    the registration was brought across, added to it as a line of its own.
+    `attach` are "key|booking id" pairs: a registration whose guest was already
+    booked here on that retreat, whose RetreatGuru payments go on that booking
+    instead of a second one being made. Neither re-writes a line already there.
+    What each did is left in plan["topped_up"] and plan["attached"].
     """
     chosen = [l for l in plan["payers"] if l["key"] in selected]
     problems = [(l["name"], "; ".join(l["blocking"])) for l in chosen if l["blocking"]]
+    by_key = {l["key"]: l for l in plan["payers"]}
+    adding = {}
+    for tick in topups:
+        key, _, ref = tick.rpartition("|")
+        l = by_key.get(key)
+        c = next((c for c in (l or {}).get("topup", []) if c["ref"] == ref), None)
+        if not l or not c or l["blocking"]:
+            problems.append(((l or {}).get("name", key), f"{ref} was not offered on this "
+                             "check to add to it; check again"))
+            continue
+        adding.setdefault(key, {"line": l, "booking": l["done"], "how": "topup",
+                                "charges": []})["charges"].append(c)
+    for tick in attach:
+        key, _, bid = tick.rpartition("|")
+        l = by_key.get(key)
+        if not l or not l.get("attach_ok") or str(l["on_site"][0]["id"]) != bid:
+            problems.append(((l or {}).get("name", key), "attaching its payments to a booking "
+                             "here was not offered on this check; check again"))
+            continue
+        adding[key] = {"line": l, "booking": l["on_site"][0], "how": "attach",
+                       "charges": list(l["attach_charges"])}
     if problems:
         return [], [], problems
     ticked = set(credits)
     credited_to = {l["key"]: [c for c in l.get("credit_options", [])
                               if f"{l['key']}|{c['ref']}" in ticked]
                    for l in chosen if not l.get("done")}
-    refs = [c["ref"] for picked in credited_to.values() for c in picked]
+    refs = ([c["ref"] for picked in credited_to.values() for c in picked]
+            + [c["ref"] for l in chosen if not l.get("done") for c in l["charges"]]
+            + [c["ref"] for a in adding.values() for c in a["charges"]])
     twice = sorted({r for r in refs if refs.count(r) > 1})
     if twice:
         return [], [], [("the import", "one Stripe payment was put towards two "
                                        "registrations: " + ", ".join(twice))]
+    # Each Stripe payment once across the whole app, asked of the database
+    # itself at the moment of writing rather than of the check.
+    already = sorted(set(refs) & stripe_ids_held(conn))
+    if already:
+        return [], [], [("the import", "a Stripe payment is already recorded here: "
+                                       + ", ".join(already) + ". Nothing was kept.")]
 
     now = datetime.now(timezone.utc).isoformat()
     on = format_date_human(house_today_iso())
@@ -49330,7 +49680,7 @@ def run_rg_import(conn, plan, selected, people, *, user_id, credits=()):
                 """INSERT INTO workshop_transactions (workshop_booking_id, kind, description,
                      amount, method, created_by_user_id, created_at, stripe_ref)
                    VALUES (?, 'payment', ?, ?, 'stripe', ?, ?, ?)""",
-                (bid, "Paid through another booking"
+                (bid, RG_CREDIT_WORDS
                       + (f" ({c['description']})" if c["description"] else "")
                       + " and put towards this retreat", c["net"], user_id,
                  _rg_moment(c["created"]) or now, c["ref"]))
@@ -49358,6 +49708,65 @@ def run_rg_import(conn, plan, selected, people, *, user_id, credits=()):
                              if credited else ""))
         made.append(l["name"])
         plan["credited"] = round(plan.get("credited", 0.0) + credited, 2)
+
+    # MONEY FOR BOOKINGS ALREADY HERE: each Stripe payment a line of its own,
+    # added beside what is there, and the ledger read back to the cent.
+    plan["topped_up"], plan["attached"] = [], []
+    for a in adding.values():
+        l, b, charges = a["line"], a["booking"], a["charges"]
+        bid = b["id"]
+        added = round(sum(c["net"] for c in charges), 2)
+        before = (_rg_ledger(conn, bid) if a["how"] == "topup" else
+                  dict(zip(("owing", "agreed", "paid"), workshop_balance_due(conn, bid))))
+        words = ("Paid through RetreatGuru, after it was brought across" if a["how"] == "topup"
+                 else f"Paid through RetreatGuru (registered there "
+                      f"{format_date_human(l['submitted_on'].isoformat())}) and put towards "
+                      "this booking")
+        for c in sorted(charges, key=lambda c: (c["created"], c["ref"])):
+            conn.execute(
+                """INSERT INTO workshop_transactions (workshop_booking_id, kind, description,
+                     amount, method, created_by_user_id, created_at, stripe_ref)
+                   VALUES (?, 'payment', ?, ?, 'stripe', ?, ?, ?)""",
+                (bid, words, c["net"], user_id, _rg_moment(c["created"]) or now, c["ref"]))
+        # One brought across with nothing paid has its whole price as the
+        # deposit still to pay, and the guest's page would ask for all of it.
+        # With money paid, the import's own rule: what was paid was the deposit.
+        if a["how"] == "topup" and not b["deposit_paid_at"]:
+            first = min(c["created"] for c in charges)
+            paid_now = round(before["paid"] + before["credited"] + added, 2)
+            conn.execute(
+                "UPDATE workshop_bookings SET deposit_amount = ?, deposit_paid_at = ?, "
+                "balance_amount = ? WHERE id = ? AND deposit_paid_at IS NULL",
+                (paid_now, _rg_moment(first) or now, round(before["owing"] - added, 2), bid))
+        restamp_workshop_balance(conn, bid)
+        after = (_rg_ledger(conn, bid) if a["how"] == "topup" else
+                 dict(zip(("owing", "agreed", "paid"), workshop_balance_due(conn, bid))))
+        want = {"agreed": before["agreed"], "paid": round(before["paid"] + added, 2),
+                "owing": round(before["owing"] - added, 2)}
+        if a["how"] == "topup" and {c["ref"] for c in charges} == {c["ref"] for c in l["topup"]}:
+            want = {f: round(l[f], 2) for f in ("agreed", "paid", "owing")}
+        if any(abs(after[f] - want[f]) >= 0.005 for f in want):
+            conn.rollback()
+            return [], [], [(l["name"], f"after adding, {b['reference_code']} says "
+                                        f"{money(after['agreed'])} charged, "
+                                        f"{money(after['paid'])} paid, {money(after['owing'])} "
+                                        f"owed; it should say {money(want['agreed'])}, "
+                                        f"{money(want['paid'])}, {money(want['owing'])}. "
+                                        "Nothing was kept.")]
+        refs_added = ", ".join(c["ref"] for c in charges)
+        if a["how"] == "topup":
+            log_audit(conn, "workshop_registration_topped_up", target=l["name"],
+                      details=f"{b['reference_code']}: {money(added)} paid in RetreatGuru since "
+                              f"it was brought across ({refs_added}); now {money(after['paid'])} "
+                              f"paid, {money(after['owing'])} owing, as RetreatGuru says")
+            plan["topped_up"].append((l["name"], added))
+        else:
+            log_audit(conn, "workshop_registration_attached", target=l["name"],
+                      details=f"RetreatGuru registration ({l['submitted']}) not brought across: "
+                              f"its {money(added)} ({refs_added}) put towards "
+                              f"{b['reference_code']}, already booked here; now "
+                              f"{money(after['paid'])} paid, {money(after['owing'])} owing")
+            plan["attached"].append((l["name"], b["reference_code"], added))
     return made, kept, []
 
 
@@ -49459,11 +49868,16 @@ def import_registrations():
     payload = json.loads(draft["payload"])
     plan, people = _rg_plan_from_draft(conn, payload, today)
     selected = set(request.form.getlist("bring"))
-    if not selected:
+    topups = set(request.form.getlist("topup"))
+    attach = set(request.form.getlist("attach"))
+    if not selected and not topups and not attach:
         conn.close()
         flash("Nothing was ticked, so nothing was brought across.", "error")
         return redirect(url_for("import_registrations"))
-    flagged = [l for l in plan["payers"] if l["key"] in selected and (l["notes"] or l.get("duplicate"))]
+    # Adding money to a booking already here is always something to have read.
+    touched = selected | {t.rpartition("|")[0] for t in topups | attach}
+    flagged = [l for l in plan["payers"] if l["key"] in touched
+               and (l["notes"] or l.get("duplicate") or l["key"] not in selected)]
     if flagged and request.form.get("checked_flags") != "on":
         conn.close()
         flash("Some of the ticked registrations have something to look at. Read them, then "
@@ -49472,7 +49886,7 @@ def import_registrations():
     credits = set(request.form.getlist("credit"))
     try:
         made, kept, problems = run_rg_import(conn, plan, selected, people, user_id=user["id"],
-                                             credits=credits)
+                                             credits=credits, topups=topups, attach=attach)
     except sqlite3.IntegrityError as e:
         conn.rollback()
         made, kept, problems = [], [], [("the import", f"stopped with nothing kept ({e})")]
@@ -49488,6 +49902,16 @@ def import_registrations():
     credited = plan.get("credited", 0.0)
     also = (f" Plus {money(credited)} paid through another booking, which RetreatGuru "
             "took off the price, now shown as paid." if credited else "")
+    topped = {name: amount for name, amount in plan.get("topped_up", [])}
+    attached = {name: (ref, amount) for name, ref, amount in plan.get("attached", [])}
+    if topped:
+        also += (" Paid in RetreatGuru since they came across, now added: " + "; ".join(
+            f"{name} {money(amount)}" for name, amount in topped.items()) + ".")
+    if attached:
+        also += (" Put towards the booking already here instead of making a second: "
+                 + "; ".join(f"{name} {money(amount)} to {ref}"
+                             for name, (ref, amount) in attached.items()) + ".")
+    unchanged = [n for n in kept if n not in topped]
     log_audit(conn, "registrations_imported", target="RetreatGuru",
               details=f"{len(made)} brought across, {len(kept)} already here; "
                       f"{money(totals['agreed'])} agreed, {money(totals['paid'])} paid, "
@@ -49497,10 +49921,17 @@ def import_registrations():
     conn.close()
     left_out = [(l["name"], ("could not come across: " + l["blocking"][0]) if l["blocking"]
                  else "not ticked")
-                for l in plan["payers"] if l["key"] not in selected]
+                for l in plan["payers"] if l["key"] not in selected
+                and l["key"] not in {t.rpartition("|")[0] for t in attach}]
+    # Money offered for a registration already here and not ticked is money
+    # still missing from it, and is said so rather than counted as done.
+    left_out += [(l["name"], f"{money(c['net'])} paid in RetreatGuru since it came across "
+                             f"({c['ref']}) was not added: not ticked")
+                 for l in plan["payers"] if not l["blocking"]
+                 for c in l.get("topup", []) if f"{l['key']}|{c['ref']}" not in topups]
     message, category = bulk_message(
         "Brought across", "registration", len(made), left_out,
-        detail=(f"{len(kept)} already here, unchanged. " if kept else "")
+        detail=(f"{len(unchanged)} already here, unchanged. " if unchanged else "")
                + f"{money(totals['agreed'])} agreed, {money(totals['paid'])} paid, "
                  f"{money(totals['owing'])} owing, as RetreatGuru says.{also} "
                  "Nobody has been written to.")
@@ -110928,7 +111359,13 @@ def reread_undated_booking_com_stays(conn):
     return filled
 
 
-def pair_booking_com_stays(conn):
+# How long a booking alone on its day waits before it is given every room
+# whose Booking.com calendar starts that day (pair_booking_com_stays): long
+# enough for a second booking's email to arrive, short of a night's sleep.
+BOOKING_COM_LONE_WAIT = timedelta(hours=1)
+
+
+def pair_booking_com_stays(conn, now=None):
     """Give each Booking.com stay its room and departure from the calendars.
 
     Booking.com's booking email says the reservation number and the day they
@@ -110952,10 +111389,21 @@ def pair_booking_com_stays(conn):
     reservation is for (room_count) and exactly that many blocks start on
     its day, with no other stay still waiting for a room that day, they are
     all its rooms: the first is room_id, the rest ota_reservation_rooms.
-    Where it did not say, several blocks are still not guessed at -- the
-    owner says "these are all this reservation" on the stays page, in one
-    step (group_channel_stay_rooms).
+    Where it did not say, the owner can say "these are all this reservation"
+    on the stays page, in one step (group_channel_stay_rooms).
+
+    THE LONE BOOKING (owner, 9 November 2026: "make it automatic"). Where it
+    did not say and nobody has clicked, a booking still gets every room
+    whose block starts on its day when ALL of these hold: no other
+    Booking.com booking arrives that day, confirmed or cancelled (a
+    cancelled one's block can linger on the calendar); the blocks all have
+    the same nights; none lies over the house's own booking or closure in
+    that room; and BOOKING_COM_LONE_WAIT has passed since its email was read
+    with no second booking's email for that day. Two bookings on one day are
+    still never guessed between. The letter to the house says what was done
+    and how to undo it.
     """
+    now = now or datetime.now(timezone.utc)
     reread_undated_booking_com_stays(conn)
     blocks = booking_com_blocks(conn)
     rooms = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
@@ -110974,7 +111422,19 @@ def pair_booking_com_stays(conn):
     for s in stays:
         if not s["room_id"] and s["matched_by"] != "hand":
             waiting.setdefault(s["arrival_date"], set()).add(s["id"])
-    gained, now_iso = [], datetime.now(timezone.utc).isoformat()
+    # Every booking's day, cancelled ones too, for the lone booking's test.
+    bookings_on = {}
+    for r in conn.execute("SELECT id, arrival_date FROM ota_reservations "
+                          "WHERE COALESCE(arrival_date, '') != ''"):
+        bookings_on.setdefault(r["arrival_date"], set()).add(r["id"])
+    house = {}
+    for r in conn.execute(
+            """SELECT room_id, arrival_date AS a, departure_date AS d FROM bookings
+                WHERE status IN ('pending', 'confirmed')
+               UNION ALL
+               SELECT room_id, start_date AS a, end_date AS d FROM room_blocks"""):
+        house.setdefault(r["room_id"], []).append((r["a"], r["d"]))
+    gained, now_iso = [], now.isoformat()
     for s in stays:
         how = s["matched_by"]
         if how == "hand":
@@ -110986,11 +111446,20 @@ def pair_booking_com_stays(conn):
                     and claimed.get((b[0], b[1]), s["id"]) == s["id"]]
         want = s["room_count"] or 1
         alone = not (waiting.get(day, set()) - {s["id"]})
+        lone = (want == 1 and how != "mail" and not s["room_id"] and len(starting) > 1
+                and not (bookings_on.get(day, set()) - {s["id"]})
+                and len({b[2] for b in starting}) == 1
+                and not any(a and d and a < b[2] and d > b[1]
+                            for b in starting for a, d in house.get(b[0], ())))
+        seen = parse_datetime_iso(s["first_seen_at"])
+        lone_at = (seen + BOOKING_COM_LONE_WAIT) if seen else now
+        if lone and now >= lone_at:
+            want = len(starting)
         if want > 1 and how != "mail" and len(starting) == want and (alone or s["room_id"]):
             ordered = sorted(starting, key=lambda b: (order.get(b[0], 999), b[0]))
             room_id, _start, end = ordered[0]
             sets = {"room_id": room_id, "match_note": None, "matched_by": "ical",
-                    "departure_date": end}
+                    "departure_date": end, "room_count": want}
             conn.execute("DELETE FROM ota_reservation_rooms WHERE ota_reservation_id = ? "
                          "AND matched_by = 'ical'", (s["id"],))
             for other, _start, other_end in ordered[1:]:
@@ -111031,12 +111500,16 @@ def pair_booking_com_stays(conn):
                 said = (f" Booking.com says it is for {want} rooms." if want > 1 else "")
                 conn.execute("DELETE FROM ota_reservation_rooms WHERE ota_reservation_id = ? "
                              "AND matched_by = 'ical'", (s["id"],))
-                sets = {"room_id": None, "matched_by": None,
-                        "match_note": (f"Not matched: a Booking.com stay starts on "
-                                       f"{format_date_short(day)} in {len(starting)} rooms "
-                                       f"({names}).{said} Choose the room by hand"
-                                       + (", or say they are all this one reservation."
-                                          if alone else "."))}
+                note = (f"Not matched: a Booking.com stay starts on "
+                        f"{format_date_short(day)} in {len(starting)} rooms "
+                        f"({names}).{said} Choose the room by hand"
+                        + (", or say they are all this one reservation." if alone else "."))
+                if lone:
+                    local = lone_at.astimezone(LOCAL_TZ)
+                    note += (f" No other Booking.com booking arrives that day, so if none "
+                             f"comes in by {local:%H:%M} on {local.day} {local:%B} they "
+                             f"are all given to this one.")
+                sets = {"room_id": None, "matched_by": None, "match_note": note}
         elif not s["room_id"]:
             sets = {"match_note": (f"Not matched yet: no room's Booking.com calendar shows a "
                                    f"stay starting {format_date_short(day)}. It is matched "
@@ -111116,6 +111589,12 @@ def tell_house_of_booking_com(conn, *, now=None):
             if r["departure_date"] else None,
             f"Guests: {r['guests']}" if r["guests"] else None,
             f"Reservation: {r['reservation_number']}",
+            # Rooms the calendars gave it, not an email or the owner: said, with
+            # the way back, so a wrong pairing is caught at the first letter.
+            (f"One reservation, {room.count(' + ') + 1} rooms: every room whose "
+             f"Booking.com calendar has a stay starting that day, no other booking "
+             f"arriving then. If that is wrong, take a room off on the stay's page."
+             if not cancelled and r["matched_by"] == "ical" and " + " in room else None),
             "",
             ("Booking.com has cancelled this stay. The room is free again once the "
              "calendar sync agrees." if cancelled else
