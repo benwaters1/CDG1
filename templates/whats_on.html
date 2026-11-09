@@ -58,10 +58,10 @@
   <p class="g-eyebrow" style="margin-top:var(--s8)">Coming Up</p>
   {# 26 Oct (owner's brief): the year's dates, not only markets, so "this season" became the year. Ski dates are provisional. #}
   <h2 class="g-h2">Through the year</h2>
-  {#- 9 Nov, evening (owner's second review, 1): the next eight, and the rest of the year folded under them;
+  {#- 9 Nov, evening (owner's second review, 1): the next four, and the rest of the year folded under them;
       every date is still on the page, a tap away, and the page is held to 12,000px. -#}
   <div class="g-agenda">
-    {% for e in upcoming[:8] %}
+    {% for e in upcoming[:4] %}
     <article class="g-agenda__row">
       <div class="g-agenda__when">
         <span class="g-agenda__day">{{ e.date_label }}</span>
@@ -74,10 +74,10 @@
     </article>
     {% endfor %}
   </div>
-  {% if upcoming|length > 8 %}
+  {% if upcoming|length > 4 %}
   <details class="g-agenda__more"><summary>The rest of the year</summary>
   <div class="g-agenda">
-    {% for e in upcoming[8:] %}
+    {% for e in upcoming[4:] %}
     <article class="g-agenda__row">
       <div class="g-agenda__when">
         <span class="g-agenda__day">{{ e.date_label }}</span>

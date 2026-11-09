@@ -307,8 +307,10 @@ def run():
             # The Valley's slider went (9 Nov, owner's second review): no photograph, no credit.
             s.check(f"/workshops shows no {slug}, and so no credit for it", at == -1)
     home_html = pages["/"].get_data(as_text=True)
-    s.check("the home page and /workshops open on the guests toasting",
-            "img/retreats/guests-toasting" in home_html and "img/retreats/guests-toasting" in ws_html)
+    # 9 Nov 2026, evening (owner's second review, 3.3): one home per hero photograph. The guests
+    # toasting is /workshops' hero, and went from beside the home page's dates.
+    s.check("/workshops opens on the guests toasting, and the home page leaves it to /workshops",
+            "img/retreats/guests-toasting" in ws_html and "img/retreats/guests-toasting" not in home_html)
     s.check("and no Commons credit is left for a photograph no longer shown",
             "Patrick Castay" not in home_html + ws_html and "Babsy" not in ws_html)
 

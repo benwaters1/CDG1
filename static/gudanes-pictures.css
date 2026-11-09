@@ -629,7 +629,7 @@
   .g .g-car--room .g-car__btn{ width: 44px; height: 44px; }
   .g .g-footer li a, .g .g-crumbs a{ display: inline-block; min-width: 44px; min-height: 44px; }
 }
-/* /whats-on: the rest of the year, folded under the next eight dates. */
+/* /whats-on: the rest of the year, folded under the next four dates. */
 .g .g-agenda__more{ margin-top: var(--s4); }
 .g .g-agenda__more > summary{ cursor: pointer; font-family: var(--serif); font-size: 16px; font-style: italic;
   color: var(--blue-deep); min-height: 44px; display: flex; align-items: center; }
