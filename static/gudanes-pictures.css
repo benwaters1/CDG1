@@ -137,6 +137,15 @@
 .g .g-car__btn:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 3px; }
 .g .g-car__n{ min-width: 4.5em; text-align: center; font-family: var(--serif); font-size: 15px; letter-spacing: .12em; color: var(--gilt); font-variant-numeric: lining-nums; }
 
+/* The thumbnail strip: a room's gallery, every photograph a step away. */
+.g .g-car__thumbs{ display: flex; gap: var(--s2); margin-top: var(--s3); overflow-x: auto; scrollbar-width: none; padding: 3px; }
+.g .g-car__thumbs::-webkit-scrollbar{ display: none; }
+.g .g-car__thumb{ flex: none; width: 5.5rem; padding: 0; border: 0; background: none; cursor: pointer; opacity: .62; transition: opacity .2s; }
+.g .g-car__thumb img{ display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.g .g-car__thumb[aria-current="true"]{ opacity: 1; outline: 1px solid var(--gold); outline-offset: 2px; }
+.g .g-car__thumb:hover{ opacity: .9; }
+.g .g-car__thumb:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; opacity: 1; }
+
 /* ==== E. La mosaïque ==================================================== */
 .g .g-mos{ display: grid; gap: var(--s3); margin: var(--s6) 0; }
 .g .g-mos__i{ margin: 0; min-width: 0; overflow: hidden; }
@@ -445,6 +454,36 @@
 
 /* The credits a Commons photograph needs, under the slider it is in. */
 .g .g-car__credits{ margin: var(--s2) 0 0; display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); font-size: 12px; color: var(--ink-2); }
+
+/* ==== /book (brief 4.4) =============================================== */
+/* The rooms: each card its words beside its photographs, swapping sides room by
+   room, a slider of up to five in each. */
+.g .g-card__media .g-car{ margin: 0; }
+.g .g-car--room .g-car__track{ grid-auto-columns: 100%; gap: 0; }
+.g .g-car--room .g-car__f img{ aspect-ratio: 4 / 3; }
+.g .g-car--room .g-car__bar{ position: absolute; right: var(--s3); bottom: var(--s3); margin: 0; gap: var(--s2);
+  background: rgba(251,247,239,.92); padding: 2px 6px; border-radius: 999px; }
+.g .g-car--room{ position: relative; }
+.g .g-car--room .g-car__btn{ width: 34px; height: 34px; }
+@media (min-width: 56rem){
+  .g .g-cards--split{ grid-template-columns: minmax(0, 1fr); gap: var(--s7); max-width: 64rem; margin-left: auto; margin-right: auto; }
+  .g .g-cards--split > .g-card--room{ display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: stretch; }
+  .g .g-cards--split > .g-card--room:nth-child(even) .g-card__media{ order: 2; }
+  .g .g-cards--split .g-card__media{ min-width: 0; }
+}
+/* On a phone the room cards are a row to swipe (2 Oct); inside a card the
+   photographs turn with the arrows, so the two swipes never fight. */
+@media (max-width: 40rem){
+  .g .g-cards--split .g-car--room .g-car__track{ overflow-x: hidden; touch-action: pan-y; }
+}
+
+/* The room pages: one large photograph at a time and the strip of small ones;
+   a small medallion by the bathroom line and by Bruce. */
+.g .g-roomgal-car{ margin: var(--s6) 0 0; }
+.g .g-roomgal-car .g-car__track{ grid-auto-columns: 100%; gap: 0; }
+.g .g-roomgal-car .g-car__f img{ aspect-ratio: 3 / 2; }
+.g .g-med--sm{ width: clamp(4.5rem, 7vw, 5.5rem); margin: 0 0 var(--s2) var(--s4); }
+.g .g-glance .g-med--sm, .g .g-plate .g-med--sm{ float: right; }
 
 /* ==== /design only: the specimen page's own arrangement ================= */
 .g .g-design__row{ display: grid; gap: var(--s6); align-items: end; }

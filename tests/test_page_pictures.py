@@ -37,11 +37,32 @@ PAGES = {
         ("the band of four: a film strip", r'aria-label="At the table"', 1),
         ("A Few Days at Gudanes: a slider, and the whole set behind See all", r'See all 23 photos', 1),
     ],
+    "/book": [
+        ("the rooms: each card its words beside its photographs, sides alternating", r'class="g-cards g-cards--split"', 1),
+        ("each room's photographs in a slider of five at most", r'class="g-car g-car--room"', 1),
+        ("the band at the top: a film strip", r'aria-label="The house"', 1),
+        ("Your Room, Breakfast and the Lounge: a collage of four", r'class="g-mos g-mos--lead g-mos--4 ', 1),
+        ("and all nine behind See all", r'See all 9 photos', 1),
+        ("the park: one drone photograph across the page", r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*from-the-air-pool-garden', 1),
+        ("and the rest of it in a slider", r'aria-label="A château park to explore"', 1),
+    ],
 }
+
+
+# Every room's own page, besides the pages above (added in run(), one per room on sale).
+ROOM_PAGE = [
+    ("one large photograph at a time, arrows and a count", r'class="g-roomgal-car"><section class="g-car', 1),
+    ("and a strip of small ones under it, one for each", r'class="g-car__thumb"', 2),
+    ("a bathroom photograph by the bathroom line", r'<dt>Your bathroom</dt><dd><figure class="g-med', 1),
+    ("Bruce by his line", r'<dt>Animals</dt><dd><figure class="g-med', 1),
+    ("This Room Was a Ruin: the bedroom before, in a museum mount", r'class="g-pp g-rv g-ruin__fig"', 1),
+]
 
 
 def _visible(page):
     page = re.sub(r"<div hidden>.*?</div>", "", page, flags=re.S)
+    # A gallery's strip of small photographs is the way round it, not more photographs.
+    page = re.sub(r'<div class="g-car__thumbs".*?</div>', "", page, flags=re.S)
     page = re.sub(r'<dialog class="g-lb".*?</dialog>', "", page, flags=re.S)
     return page
 
@@ -49,7 +70,12 @@ def _visible(page):
 def run():
     s = Suite("Pages in pictures")
     client = m.app.test_client()
-    for path, wants in PAGES.items():
+    pages = dict(PAGES)
+    conn = _harness.db()
+    for row in conn.execute("SELECT id FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall():
+        pages["/book/%d" % row["id"]] = ROOM_PAGE
+    conn.close()
+    for path, wants in pages.items():
         s.section(path)
         r = client.get(path)
         if not s.check(f"{path} loads", r.status_code == 200, detail=str(r.status_code)):
