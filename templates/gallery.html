@@ -8,6 +8,9 @@
 {% block og_desc %}Château de Gudanes photographed through its restoration.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1200w{% endblock %}
 {% block content %}
+{#- 9 Nov (the image layout brief, 4.7): the photographs through the picture components (_pictures.html, shown together
+    on /design). Not one word changes. -#}
+{% from '_pictures.html' import bande, pictures_script %}
 {% from '_stay_panel.html' import stay_panel with context %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_beforeafter.html' import before_after, before_after_script %}
@@ -308,7 +311,8 @@
       {% if gal['blurb'] %}<p class="g-p" style="margin-bottom:var(--s5);">{{ gal['blurb'] }}</p>{% endif %}
       {% set shown = gal['images'] or FALLBACK.get(gal['slug'], []) %}
       {% if shown %}
-      <div class="g-grid g-grid--3 g-grid--gal g-lb-scope" style="margin-bottom:var(--s7);">
+      {#- 9 Nov (the brief, 4.7): a masonry of mixed heights (gudanes-pictures.css), every photograph its own shape. -#}
+      <div class="g-grid g-grid--3 g-grid--gal g-gal--masonry g-lb-scope" style="margin-bottom:var(--s7);">
         {% for img in shown %}
         <figure style="margin:0;">
           <img src="{{ img['url'] }}" alt="{{ img['caption'] or gal['title'] }}" loading="lazy"
@@ -356,12 +360,8 @@
    what turns a set of photographs into a record. #}
 {# 1 Oct: ">Who Has Photographed Her<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
-<div class="g-band">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w" alt="The restoration of a fresco, close up" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7fabd381-88e6-481d-9380-00222dd920fa/Screenshot+2026-08-15+at+3.31.41+pm.png?format=1000w" alt="Flowers and candles on the table" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24c85ec2-72d4-45e6-9755-68ff10cce381/Screenshot+2026-08-14+at+11.53.22+pm.png?format=1000w" alt="The dining room" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/11875582-fd74-4541-b375-177df3985b05/Concert+By+Candelight+Image.png?format=1000w" alt="The château lit at dusk" loading="lazy">
-</div>
+{#- 9 Nov (the brief, G): the band of four as a drifting film strip. -#}
+{{ bande([['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w', 'The restoration of a fresco, close up', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7fabd381-88e6-481d-9380-00222dd920fa/Screenshot+2026-08-15+at+3.31.41+pm.png?format=1000w', 'Flowers and candles on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24c85ec2-72d4-45e6-9755-68ff10cce381/Screenshot+2026-08-14+at+11.53.22+pm.png?format=1000w', 'The dining room', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/11875582-fd74-4541-b375-177df3985b05/Concert+By+Candelight+Image.png?format=1000w', 'The château lit at dusk', '']], 'Evenings at the château') }}
 
 
 
@@ -466,5 +466,6 @@
 <div class="g-wrap g-mark__wrap">{{ mark('vine') }}</div>
 
 
+{{ pictures_script() }}
 {% endblock %}
 

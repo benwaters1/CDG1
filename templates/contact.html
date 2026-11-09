@@ -23,6 +23,9 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
+{#- 9 Nov (the image layout brief, 4.7): the photographs through the picture components (_pictures.html, shown together
+    on /design). Not one word changes. -#}
+{% from '_pictures.html' import plein, pictures_script %}
 {# approach_map() was also called here, first in the content block with settings as its argument, so the drive diagram rendered ABOVE the hero. Its place is the On the Map section below. #}
 
 {% from '_flexible.html' import flexible %}
@@ -185,12 +188,8 @@
   {{ newsletter_block('contact') }}
 </div></section>
 
-<div class="g-band">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fad6453b-f801-43fb-b3bc-6ed223ec09e0/Rebecca%26Ken_Preview_paulinaweddings.com-1_websize.jpg?format=1000w" alt="The château, the gardens and the pool from above" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aabd8580-5420-43e7-92c9-779b82294ee3/home-7.jpg?format=1000w" alt="The château in its meadow, mist on the hills" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w" alt="The gates in autumn" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/Chateau+de+Gudanes+-+Winter.jpeg?format=1000w" alt="The château in snow" loading="lazy">
-</div>
+{#- 9 Nov (the brief, 4.7): the band of four as one photograph across the page: down the drive. -#}
+{{ plein([url_for('static', filename='img/rk/down-the-drive.jpg'), 'Down the drive to the château', '']) }}
 
 
 {# 5 Oct (design review): a one-sentence section left over from earlier cuts, repeating the Estate and Restoration line #}
@@ -229,4 +228,5 @@
 </div></section>
 
 
+{{ pictures_script() }}
 {% endblock %}

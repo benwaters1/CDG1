@@ -7818,6 +7818,22 @@ def init_db():
         ("ota_checkin_token", "ALTER TABLE ota_reservations ADD COLUMN checkin_token TEXT"),
         ("ota_checkin_sent", "ALTER TABLE ota_reservations ADD COLUMN checkin_sent_at TEXT"),
         ("ota_checkin_done", "ALTER TABLE ota_reservations ADD COLUMN checkin_done_at TEXT"),
+        # Which mailbox a Booking.com message was answered from by email,
+        # found in its Sent Items (booking_com_answered_by_email).
+        ("ota_mail_answered_from", "ALTER TABLE ota_mail ADD COLUMN answered_from TEXT"),
+        # WHO READS EACH ROOM'S FEED, AND WHEN (9 November 2026): one row a
+        # room and a reader, so the owner home can say when Booking.com has
+        # stopped reading the house's calendar (channel_sync_problems). Not
+        # a log -- a count and the last time -- and no address of anybody's.
+        ("ics_feed_reads",
+         """CREATE TABLE IF NOT EXISTS ics_feed_reads (
+                room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                reader TEXT NOT NULL,
+                user_agent TEXT,
+                first_read_at TEXT NOT NULL,
+                last_read_at TEXT NOT NULL,
+                reads INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (room_id, reader))"""),
         # ONLINE CHECK-IN FOR THE HOUSE'S OWN GUESTS (22 October 2026): a
         # room stay or an atelier place, from the guest's own booking page.
         # When they did it; when the letter with the link went (the
@@ -19022,6 +19038,209 @@ def channel_echo_problem(conn):
             "closures coming back are recognised and left out of the five-rooms-a-night "
             "count; a date closed on Booking.com itself is not, and counts as a room let. "
             "In Booking.com: Sync calendars, Decide what to export, Booked dates only.")
+
+
+# THE SYNC WITH BOOKING.COM, BOTH WAYS, WATCHED (owner, 9 November 2026).
+# Each way failed in silence until now. The house's import of a room's
+# Booking.com calendar could stop reading -- an error, or the hourly job
+# switched off -- and the Rooms page said "sync failed" to nobody who was
+# looking. And nothing at all knew whether Booking.com was still reading the
+# house's own feed: a link removed in the extranet looked, from here, exactly
+# like one working. Either way the same night ends up sold twice.
+#
+# The import is read every hour; three missed is a fault, not a slow run.
+CHANNEL_IMPORT_LATE_HOURS = 3
+# Booking.com reads a calendar on its own clock. A day without a read is a
+# broken link, whatever its clock is.
+CHANNEL_EXPORT_LATE_HOURS = 24
+
+
+def feed_reader(user_agent):
+    """Who read a room's feed, as far as the request says: 'booking.com',
+    'airbnb', 'vrbo' or 'a calendar reader' when it does not say."""
+    ua = (user_agent or "").lower()
+    if "booking" in ua:
+        return "booking.com"
+    if "airbnb" in ua:
+        return "airbnb"
+    if any(w in ua for w in ("vrbo", "homeaway", "expedia")):
+        return "vrbo"
+    return "a calendar reader"
+
+
+FEED_READER_WORDS = {"booking.com": "Booking.com", "airbnb": "Airbnb", "vrbo": "VRBO",
+                     "a calendar reader": "A calendar reader"}
+
+
+def record_feed_read(conn, room_id, user_agent):
+    """Note that something outside the house read a room's feed. Never the
+    reason a feed fails: a write that cannot happen now is skipped."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        conn.execute(
+            """INSERT INTO ics_feed_reads (room_id, reader, user_agent, first_read_at,
+                   last_read_at, reads)
+               VALUES (?, ?, ?, ?, ?, 1)
+               ON CONFLICT(room_id, reader) DO UPDATE SET
+                   last_read_at = excluded.last_read_at,
+                   user_agent = excluded.user_agent, reads = reads + 1""",
+            (room_id, feed_reader(user_agent), (user_agent or "")[:300], now_iso, now_iso))
+        conn.commit()
+    except sqlite3.OperationalError:
+        conn.rollback()
+
+
+def feed_reads_by_room(conn):
+    """{room_id: [rows newest first]} of who has read each room's feed."""
+    out = {}
+    for r in conn.execute("SELECT * FROM ics_feed_reads ORDER BY last_read_at DESC"):
+        out.setdefault(r["room_id"], []).append(r)
+    return out
+
+
+def channel_clashes(conn, today=None):
+    """Booking.com stays on nights the house had already taken, soonest first.
+
+    [{room, start, end, why}] where `why` says what else holds those nights:
+    a booking of the house's own in that room, a closure the house made, or
+    something holding the whole house. Each is a room sold twice or sold when
+    it was shut -- the two calendars disagreed for long enough to let it
+    happen, and it does not fix itself. Past stays are not listed.
+
+    Left out, because they are not a disagreement: the house's own closures
+    coming back from Booking.com (an echo, own_feed_spans); a night the owner
+    chose to keep selling here; a channel stay the house typed in as a
+    closure ("Booking.com stay") or as a booking with the same room and dates.
+    """
+    today = today or house_today()
+    sources = [s["id"] for s in booking_com_ical_sources(conn)]
+    if not sources:
+        return []
+    picture = _availability_picture(conn)
+    own = own_feed_spans(conn, picture)
+    names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    kept_open = {(r["room_id"], r["start_date"], r["end_date"]) for r in conn.execute(
+        "SELECT room_id, start_date, end_date FROM ical_keep_open")}
+    marks = ",".join("?" * len(sources))
+    blocks = conn.execute(
+        f"""SELECT DISTINCT room_id, start_date, end_date FROM blocked_dates
+             WHERE ical_source_id IN ({marks}) AND end_date > ?
+             ORDER BY start_date""", (*sources, today.isoformat())).fetchall()
+    found = []
+    for blk in blocks:
+        rid = blk["room_id"]
+        a, b = parse_date(blk["start_date"]), parse_date(blk["end_date"])
+        if not (a and b) or (rid, blk["start_date"], blk["end_date"]) in kept_open:
+            continue
+        if (a, b) in own.get(rid, set()) or (a, b) in own.get(None, set()):
+            continue
+        why = []
+        for bk in conn.execute(
+                """SELECT reference_code, guest_name, arrival_date, departure_date FROM bookings
+                    WHERE room_id = ? AND status IN ('pending', 'confirmed')
+                      AND arrival_date < ? AND departure_date > ?""",
+                (rid, blk["end_date"], blk["start_date"])):
+            if (bk["arrival_date"], bk["departure_date"]) == (blk["start_date"], blk["end_date"]):
+                continue        # the same stay, entered here too
+            why.append(f"the house's own booking {bk['reference_code']} "
+                       f"({bk['guest_name'] or 'no name'}, "
+                       f"{format_date_range(bk['arrival_date'], bk['departure_date'])})")
+        for rb in conn.execute(
+                """SELECT start_date, end_date, reason, note FROM room_blocks
+                    WHERE room_id = ? AND start_date < ? AND end_date > ?""",
+                (rid, blk["end_date"], blk["start_date"])):
+            if closure_is_channel_stay(rb["reason"], rb["note"]):
+                continue
+            why.append(f"a closure made here ({rb['reason'] or rb['note'] or 'no reason given'}, "
+                       f"{format_date_range(rb['start_date'], rb['end_date'])})")
+        for h_start, h_end, words in picture["house"]:
+            if h_start and h_end and a <= h_end and h_start < b:
+                why.append(picture["night_label"].get(words, words).rstrip("."))
+        if why:
+            found.append({"room": names.get(rid, "A room"), "room_id": rid,
+                          "start": a, "end": b, "why": why})
+    return found
+
+
+def channel_sync_problems(conn, now=None):
+    """What is wrong with the sync with Booking.com, either way. [(level,
+    title, detail)], empty when it is well -- and it can be empty, which is
+    the point of it.
+
+    IMPORT (Booking.com to here): the hourly sync switched off, a room's
+    calendar that cannot be read, or one not read for CHANNEL_IMPORT_LATE_HOURS.
+    EXPORT (here to Booking.com): a room on Booking.com whose feed nothing
+    outside the house has read for CHANNEL_EXPORT_LATE_HOURS. A room never
+    read at all only counts once the house has been noting reads for that
+    long -- before that, silence means nothing yet."""
+    now = now or datetime.now(timezone.utc)
+    sources = booking_com_ical_sources(conn)
+    if not sources:
+        return []
+    names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    out = []
+    if get_automation_settings(conn).get("automation_ical_sync_enabled") != "1":
+        out.append(("blocker", "The Booking.com calendars are not being read",
+                    "The hourly calendar sync is switched off on the Automation page, so a "
+                    "night Booking.com sells stays for sale here."))
+    broken, late = [], []
+    for s in sources:
+        room = names.get(s["room_id"], "a room")
+        read = parse_datetime_iso(s["last_synced_at"]) if s["last_synced_at"] else None
+        if s["last_sync_error"]:
+            broken.append(f"{room}: {s['last_sync_error'][:160]}"
+                          + (f" (tried {house_when(s['last_synced_at'])})" if read else ""))
+        elif not read or now - read > timedelta(hours=CHANNEL_IMPORT_LATE_HOURS):
+            late.append(f"{room}: " + (f"last read {house_when(s['last_synced_at'])}"
+                                       if read else "never read"))
+    if broken:
+        out.append(("blocker",
+                    "Booking.com's calendar cannot be read for "
+                    + ("one room" if len(broken) == 1 else f"{len(broken)} rooms"),
+                    "; ".join(broken) + ". Until it reads, a night sold on Booking.com is "
+                    "still for sale here. Rooms page: Sync now, or check the address."))
+    if late:
+        out.append(("warn",
+                    "Booking.com's calendar has not been read lately for "
+                    + ("one room" if len(late) == 1 else f"{len(late)} rooms"),
+                    "; ".join(late) + "."))
+
+    reads = feed_reads_by_room(conn)
+    first_ever = conn.execute("SELECT MIN(first_read_at) FROM ics_feed_reads").fetchone()[0]
+    noting_since = parse_datetime_iso(first_ever) if first_ever else None
+    long_enough = bool(noting_since and now - noting_since > timedelta(hours=CHANNEL_EXPORT_LATE_HOURS))
+    unread = []
+    for rid in sorted({s["room_id"] for s in sources}, key=lambda r: names.get(r, "")):
+        rows = reads.get(rid) or []
+        last = parse_datetime_iso(rows[0]["last_read_at"]) if rows else None
+        if last and now - last <= timedelta(hours=CHANNEL_EXPORT_LATE_HOURS):
+            continue
+        if not last and not long_enough:
+            continue
+        unread.append(f"{names.get(rid, 'a room')}: "
+                      + (f"last read {house_when(rows[0]['last_read_at'])}" if last else "never read"))
+    if unread:
+        out.append(("warn",
+                    "Booking.com is not reading the house's calendar for "
+                    + ("one room" if len(unread) == 1 else f"{len(unread)} rooms"),
+                    "; ".join(unread) + ". So a night sold or closed here is still for sale "
+                    "there. In the extranet: Rates & Availability, Sync calendars."))
+    return out
+
+
+def channel_clash_problem(conn, today=None):
+    """(title, detail) for the owner home and its task, or None."""
+    clashes = channel_clashes(conn, today)
+    if not clashes:
+        return None
+    lines = [f"{c['room']}, {format_date_range(c['start'].isoformat(), c['end'].isoformat())}: "
+             + "; ".join(c["why"]) for c in clashes[:4]]
+    title = ("A Booking.com stay is on nights already taken here" if len(clashes) == 1
+             else f"{len(clashes)} Booking.com stays are on nights already taken here")
+    return (title, "Booking.com sold " + ("it" if len(clashes) == 1 else "them")
+            + " while the two calendars disagreed. " + ". ".join(lines)
+            + (f"; and {len(clashes) - 4} more" if len(clashes) > 4 else "")
+            + ". One of the two has to be moved or cancelled.")
 
 
 def atelier_holding_the_house(conn, arrival, departure):
@@ -40521,6 +40740,13 @@ def owner_home_warnings(conn, today):
     echo = channel_echo_problem(conn)
     if echo:
         add("warn", echo[0], echo[1], 1, "channel_stays_page")
+    # The sync with Booking.com, both ways, and a stay it sold on nights
+    # already taken here. Each closes itself once it is no longer true.
+    double = channel_clash_problem(conn, today)
+    if double:
+        add("blocker", double[0], double[1], 1, "channel_stays_page")
+    for level, title, detail in channel_sync_problems(conn):
+        add("blocker" if level == "blocker" else "warn", title, detail, 1, "admin_rooms")
 
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
     # the next pass that writes cleanly takes the line away.
@@ -49098,6 +49324,11 @@ def _stripe_export_rows(text):
                             "created_utc"),
             "amount": amount, "refunded": refunded, "net": round(amount - refunded, 2),
             "description": html_unescape(pick(row, "description")).strip(),
+            # What this app writes on every payment it takes
+            # (stripe_payment_label), as the export puts metadata: a column
+            # of its own, "<key> (metadata)".
+            "label_kind": pick(row, "kind (metadata)"),
+            "label_reference": pick(row, "reference (metadata)"),
         })
     return [p for p in out if p["id"] or p["intent"]]
 
@@ -49113,6 +49344,161 @@ def parse_stripe_refunds(text):
     in full. RetreatGuru is not told about a refund made in Stripe, so its
     export can still call that money paid."""
     return [p for p in _stripe_export_rows(text) if p["refunded"] > 0.005]
+
+
+# The ids a payment is known by, as the Stripe export and this app write them:
+# a PaymentIntent, a charge, a payment made without a card, a Checkout Session.
+STRIPE_PAYMENT_ID_PREFIXES = ("pi_", "ch_", "py_", "cs_")
+
+# How the import words money RetreatGuru took off a price instead of calling it
+# paid. Written on the line when it comes across, and read back by _rg_ledger,
+# so the two must not drift apart.
+RG_CREDIT_WORDS = "Paid through another booking"
+
+
+def stripe_ids_held(conn):
+    """Every Stripe payment id this app holds, in any table, against anything.
+
+    Read off the schema rather than a kept list: every column whose name says
+    it holds a Stripe id or a reference is read, and anything in it shaped like
+    a payment's id counts. A list goes stale the first time another table
+    learns to take a card, and a payment the matcher does not know is held is
+    one it can credit a second time.
+    """
+    held = set()
+    named = re.compile(r"stripe|intent|(^|_)ref(erence)?(_|$)")
+    tables = [r["name"] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite%'")]
+    for table in tables:
+        for col in conn.execute(f'PRAGMA table_info("{table}")').fetchall():
+            if not named.search(col["name"].lower()):
+                continue
+            for r in conn.execute(
+                    f'SELECT DISTINCT "{col["name"]}" AS v FROM "{table}" '
+                    f'WHERE substr("{col["name"]}", 1, 3) IN (?, ?, ?, ?)',
+                    STRIPE_PAYMENT_ID_PREFIXES):
+                held.add(str(r["v"]).strip())
+    return held
+
+
+def _stripe_labelled_here(c):
+    """Whether a payment in a Stripe export says this app took it.
+
+    Every payment taken here carries stripe_payment_label: a `kind` and the
+    reference the guest quotes, as metadata and in the description. RetreatGuru
+    writes neither. A registration's payment on the site is kept by its Checkout
+    Session, which the export does not show -- so without this, the site's own
+    deposit would look like money nobody holds, and could be put towards the
+    same guest's RetreatGuru registration as well.
+    """
+    if c.get("label_kind"):
+        return True
+    prefixes = tuple(REFERENCE_PREFIXES.values())
+    if (c.get("label_reference") or "").upper().startswith(prefixes):
+        return True
+    return bool(re.search(r"\bRef (" + "|".join(re.escape(p) for p in prefixes) + ")",
+                          c.get("description") or ""))
+
+
+def _stripe_card_payments_held(conn):
+    """Card payments held here, each with the ids it is kept by, who paid and
+    how much: [{refs, email, amount, at}].
+
+    For recognising one in an export that does not show it by any of those
+    ids. A registration's payment on the site is kept by its Checkout Session,
+    which no export shows; a stay's by its PaymentIntent, which the export the
+    house took on 15 October 2026 did not have a column for. One made before
+    payments were labelled (that same day) cannot be recognised by label
+    either.
+    """
+    out = []
+    for sql in (
+            """SELECT t.stripe_ref AS a, NULL AS b, NULL AS c, t.amount, t.created_at AS at,
+                      wb.guest_email AS email
+                 FROM workshop_transactions t
+                 JOIN workshop_bookings wb ON wb.id = t.workshop_booking_id
+                WHERE t.kind = 'payment' AND t.stripe_ref IS NOT NULL""",
+            """SELECT bp.stripe_payment_intent_id AS a, bp.stripe_session_id AS b,
+                      bp.reference AS c, bp.amount, bp.created_at AS at, b.guest_email AS email
+                 FROM booking_payments bp JOIN bookings b ON b.id = bp.booking_id""",
+            """SELECT ep.stripe_payment_intent_id AS a, ep.reference AS b, NULL AS c,
+                      ep.amount, ep.created_at AS at, e.contact_email AS email
+                 FROM event_payments ep JOIN event_inquiries e ON e.id = ep.event_id""",
+            """SELECT stripe_payment_intent_id AS a, stripe_session_id AS b, NULL AS c,
+                      deposit_amount AS amount, created_at AS at, guest_email AS email
+                 FROM restaurant_bookings"""):
+        try:
+            rows = conn.execute(sql).fetchall()
+        except sqlite3.OperationalError:
+            continue             # a column not there yet
+        for r in rows:
+            refs = {str(v).strip() for v in (r["a"], r["b"], r["c"])
+                    if v and str(v).strip().startswith(STRIPE_PAYMENT_ID_PREFIXES)}
+            if refs and r["amount"]:
+                out.append({"refs": refs, "email": (r["email"] or "").strip().lower(),
+                            "amount": r["amount"], "at": r["at"]})
+    return out
+
+
+def rg_charges_not_retreatgurus(conn, charges):
+    """Mark the payments in a Stripe export that are not RetreatGuru's to bring
+    across, each with why (`held`), and return them. The rest are untouched.
+
+    Three reasons, any one enough: its id is already on something here; it
+    carries this app's own label; or it is the same amount, from the same
+    address, within two days, as a payment held here by ids this export does
+    not show. The last is a likeness, not a proof, and errs the safe way: a
+    payment wrongly set aside leaves a registration to settle by hand, while
+    one wrongly used is money credited twice.
+    """
+    held = stripe_ids_held(conn)
+    out = []
+    for c in charges:
+        if {c["id"], c["intent"], c["ref"]} & held:
+            c["held"] = "already a payment line here"
+        elif _stripe_labelled_here(c):
+            c["held"] = "taken through this site"
+        if c.get("held"):
+            out.append(c)
+
+    def apart(c, at):
+        try:
+            mine = datetime.fromisoformat(_rg_moment(c["created"]) or "")
+            theirs = datetime.fromisoformat(at or "")
+            if theirs.tzinfo is None:
+                theirs = theirs.replace(tzinfo=timezone.utc)
+            return abs((mine - theirs).total_seconds())
+        except (TypeError, ValueError):
+            return float("inf")
+    shown = {i for c in charges for i in (c["id"], c["intent"]) if i}
+    for p in _stripe_card_payments_held(conn):
+        if p["refs"] & shown:
+            continue             # in the export by its own id, and set aside above
+        alike = [c for c in charges if not c.get("held") and c["email"] == p["email"]
+                 and round(c["net"] * 100) == round((p["amount"] or 0) * 100)
+                 and apart(c, p["at"]) <= 2 * 86400]
+        if alike:
+            c = min(alike, key=lambda c: apart(c, p["at"]))
+            c["held"] = ("the same amount from the same address as a payment taken through "
+                         "this site, so most likely that one")
+            out.append(c)
+    return out
+
+
+def _rg_ledger(conn, booking_id):
+    """A brought-across registration's ledger as RetreatGuru counts it.
+
+    Money RetreatGuru took off the price rather than call it paid was put back
+    on both sides when it came across (run_rg_import's `credits`), so it is
+    taken off both again here. What is owing is the same either way.
+    """
+    owed, charged, paid = workshop_balance_due(conn, booking_id)
+    credited = round(conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS t FROM workshop_transactions "
+        "WHERE workshop_booking_id = ? AND kind = 'payment' AND description LIKE ?",
+        (booking_id, RG_CREDIT_WORDS + "%")).fetchone()["t"] or 0, 2)
+    return {"agreed": round(charged - credited, 2), "paid": round(paid - credited, 2),
+            "owing": owed, "credited": credited}
 
 
 def _rg_stripe_match(charges, paid):
@@ -49238,6 +49624,84 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
                     f"{implied} place{'' if implied == 1 else 's'} at {money(unit)}; "
                     f"{line['party']} {'is' if line['party'] == 1 else 'are'} named.")
 
+    # ALREADY BROUGHT ACROSS. RetreatGuru went on taking money after the first
+    # run, so a registration already here is held up against the export, figure
+    # by figure. More paid, and nothing else changed, is new money to find in
+    # Stripe and offer (below). Anything else -- less paid, another price, a
+    # refund, a cancellation here -- is shown and left for a person to settle.
+    for line in rows:
+        line["compare"], line["more_paid"] = [], 0.0
+        if line["companion_of"] or not line.get("done"):
+            continue
+        b = line["done"]
+        here = _rg_ledger(conn, b["id"])
+        line["here"] = here
+        for field in ("agreed", "paid", "owing"):
+            if abs(here[field] - line[field]) >= 0.005:
+                line["compare"].append(
+                    f"{field.capitalize()}: {money(line[field])} in RetreatGuru now, "
+                    f"{money(here[field])} here.")
+        odd = []
+        if b["status"] != "confirmed":
+            odd.append(f"It is {b['status']} here, and RetreatGuru still has it.")
+        if b["party_size"] != line["party"]:
+            odd.append(f"RetreatGuru has {line['party']} on it; here it has {b['party_size']}.")
+        new = round(line["paid"] - here["paid"], 2)
+        clean = (not odd and abs(here["agreed"] - line["agreed"]) < 0.005
+                 and abs(round(here["owing"] - line["owing"], 2) - new) < 0.005)
+        if not line["compare"] and not odd:
+            continue
+        if clean and new > 0.005:
+            line["more_paid"] = new
+            line["notes"].extend(line["compare"])
+        else:
+            line["blocking"].append(
+                "Already here, and RetreatGuru now differs from it in a way this cannot "
+                "settle. " + " ".join(odd + line["compare"])
+                + " Nothing is changed; settle it by hand on the registration.")
+
+    # THE SAME GUEST ALREADY BOOKED HERE. Somebody who paid part in RetreatGuru
+    # and part on the site, or booked again on the site, would otherwise be a
+    # second booking, with the place and the money counted twice. Any booking
+    # on the session with their address, whichever way it was made.
+    for line in rows:
+        line["on_site"] = []
+        if line["companion_of"] or not line["email"] or not line["session"]:
+            continue
+        mine = line["done"]["id"] if line.get("done") else None
+        theirs = [b for b in conn.execute(
+            "SELECT * FROM workshop_bookings WHERE session_id = ? "
+            "AND LOWER(TRIM(guest_email)) = ? ORDER BY id",
+            (line["session"]["id"], line["email"])).fetchall() if b["id"] != mine]
+        for b in theirs:
+            if b["status"] not in ("pending", "confirmed"):
+                line["notes"].append(f"Had a booking here on this retreat, now {b['status']}: "
+                                     f"{b['reference_code']}.")
+        live = [b for b in theirs if b["status"] in ("pending", "confirmed")]
+        if not live:
+            continue
+        line["on_site"] = live
+        said = []
+        for b in live:
+            owed, charged, paid = workshop_balance_due(conn, b["id"])
+            said.append(f"{b['reference_code']} ({'brought across from RetreatGuru' if b['import_key'] else 'booked on this site'}, "
+                        f"{b['status']}, {b['party_size']} "
+                        f"{'person' if b['party_size'] == 1 else 'people'}, {money(charged)} "
+                        f"charged, {money(paid)} paid, {money(owed)} owing)")
+        if mine:
+            line["blocking"].append(
+                "Already here, and booked on this retreat a second time as well: "
+                + "; ".join(said) + ". Settle it by hand.")
+        else:
+            line["on_site_why"] = (
+                "Already booked here on this retreat: " + "; ".join(said) + ". Bringing it "
+                "across would make a second booking and count the place and the money twice, "
+                "so it is skipped unless you attach its payments to that booking.")
+            line["blocking"].append(line["on_site_why"])
+            if line["party"] != live[0]["party_size"]:
+                line["notes"].append(f"RetreatGuru has {line['party']} on this registration; "
+                                     f"{live[0]['reference_code']} has {live[0]['party_size']}.")
+
     # THE SAME PERSON TWICE ON ONE RETREAT. Each row is its own registration
     # with its own money -- the export is believed -- but it is shown, because
     # an abandoned first attempt brought across is a debt nobody owes.
@@ -49257,29 +49721,69 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
                 g["duplicate"] = True
 
     # STRIPE. Each payment RetreatGuru says was made is matched to the card
-    # payments Stripe holds for that address, to the cent, each used once.
+    # payments Stripe holds for that address, to the cent, each used once --
+    # and never one this app already holds, anywhere, so no payment is ever
+    # credited twice.
+    held = rg_charges_not_retreatgurus(conn, charges) if stripe_given else []
+    for c in charges:
+        c["on"] = house_date_iso(_rg_moment(c["created"])) if c["created"] else ""
     by_email = {}
     for c in charges if stripe_given else []:
-        by_email.setdefault(c["email"], []).append(c)
+        if not c.get("held"):
+            by_email.setdefault(c["email"], []).append(c)
+
+    def unmatched(amount, email, pool, lead=None):
+        lead = lead or f"RetreatGuru says {money(amount)} was paid"
+        if not stripe_given:
+            return (f"{lead}, and no Stripe export was given to find the card payments "
+                    "behind it.")
+        have = round(sum(c["net"] for c in pool), 2)
+        return (f"{lead}; Stripe has {money(have)} from {email} not already matched or held "
+                "here" + (", in amounts that do not add up to it." if pool else "."))
     for line in rows:
         line["paid_other"] = 0.0
-        if line["companion_of"] or line["paid"] <= 0.005 or not line["email"]:
+        line["topup"], line["attach_charges"] = [], []
+        if line["companion_of"] or not line["email"]:
             continue
         pool = by_email.get(line["email"], [])
+        if line.get("done"):
+            # Only the money paid since it came across, and only as card
+            # payments nobody here has: offered, never assumed.
+            if line["more_paid"] <= 0.005 or line["blocking"]:
+                continue
+            match = _rg_stripe_match(pool, line["more_paid"]) if stripe_given else None
+            if match is None:
+                line["blocking"].append(
+                    unmatched(line["more_paid"], line["email"], pool,
+                              lead=f"Already here, and RetreatGuru now says "
+                                   f"{money(line['more_paid'])} more was paid than here")
+                    + " Settle it by hand on the registration.")
+                continue
+            line["topup"] = match
+            for c in match:
+                pool.remove(c)
+            continue
+        if line["paid"] <= 0.005:
+            continue
+        if line["on_site"]:
+            # Kept aside for "attach to that booking", if the owner says so.
+            if len(line["on_site"]) > 1:
+                continue
+            match = _rg_stripe_match(pool, line["paid"]) if stripe_given else None
+            if match is None:
+                line["attach_why"] = unmatched(line["paid"], line["email"], pool)
+                continue
+            line["attach_charges"] = match
+            for c in match:
+                pool.remove(c)
+            continue
         match = _rg_stripe_match(pool, line["paid"]) if stripe_given else None
         if match is not None:
             line["charges"] = match
             for c in match:
                 pool.remove(c)
             continue
-        if stripe_given:
-            have = round(sum(c["net"] for c in pool), 2)
-            why = (f"RetreatGuru says {money(line['paid'])} was paid; Stripe has "
-                   f"{money(have)} from {line['email']} not already matched"
-                   + (", in amounts that do not add up to it." if pool else "."))
-        else:
-            why = (f"RetreatGuru says {money(line['paid'])} was paid, and no Stripe export "
-                   "was given to find the card payments behind it.")
+        why = unmatched(line["paid"], line["email"], pool)
         # Money Stripe gave back to this address. A refund made in Stripe is
         # never reported to RetreatGuru, so its export goes on calling the
         # money paid -- and bringing that across "paid, not by card" would
@@ -49299,8 +49803,6 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
         else:
             line["blocking"].append(why)
     leftover = [c for pool in by_email.values() for c in pool]
-    for c in leftover:
-        c["on"] = house_date_iso(_rg_moment(c["created"])) if c["created"] else ""
     # A payment Stripe holds from this address that matched nothing. RetreatGuru
     # has been known to take money paid some other way -- a room booked by
     # mistake, say -- off the PRICE rather than call it paid, so the guest's
@@ -49309,7 +49811,36 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
     for line in rows:
         line["credit_options"] = [c for c in leftover if line["email"]
                                   and c["email"] == line["email"]
-                                  and not line["companion_of"]]
+                                  and not line["companion_of"] and not line.get("done")
+                                  and not line["on_site"]]
+
+    # ATTACHING to the booking already here, instead of making a second: only
+    # when that is the one thing wrong with the row, the money is found in
+    # Stripe, and the booking can take it -- its deposit paid, so the guest's
+    # page will not ask for that again, and not left paid beyond its price.
+    for line in rows:
+        line["attach_ok"] = False
+        if not line.get("on_site_why") or line["blocking"] != [line["on_site_why"]]:
+            continue
+        if len(line["on_site"]) > 1:
+            line["attach_why"] = "There is more than one booking to choose from."
+            continue
+        if not line["attach_charges"]:
+            line.setdefault("attach_why", "RetreatGuru says nothing was paid, so there is "
+                                          "nothing to attach.")
+            continue
+        target = line["on_site"][0]
+        owed, _charged, _paid = workshop_balance_due(conn, target["id"])
+        adding = round(sum(c["net"] for c in line["attach_charges"]), 2)
+        if not target["deposit_paid_at"]:
+            line["attach_why"] = (f"{target['reference_code']} has no deposit paid here, so "
+                                  "its page would still ask the guest for one.")
+        elif adding > owed + 0.005:
+            line["attach_why"] = (f"{money(adding)} would leave {target['reference_code']} "
+                                  f"paid {money(adding - owed)} beyond its price.")
+        else:
+            line["attach_ok"] = True
+            line["attach_after"] = round(owed - adding, 2)
 
     for line in rows:
         if line["companion_of"]:
@@ -49322,7 +49853,8 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
     # Places: what the session would hold once these are in.
     per_session = {}
     for line in rows:
-        if line["session"] and not line["companion_of"] and not line.get("done"):
+        if line["session"] and not line["companion_of"] and not line.get("done") \
+                and not line["on_site"]:
             per_session.setdefault(line["session"]["id"], []).append(line)
     capacity = []
     for sid, lines in per_session.items():
@@ -49338,11 +49870,19 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
     def total(selected, field):
         return round(sum(l[field] for l in selected), 2)
     payers = [l for l in rows if not l["companion_of"]]
+    done = [l for l in payers if l.get("done")]
     return {
         "rows": rows, "payers": payers, "leftover": leftover, "capacity": capacity,
         "due_days": due_days, "stripe_given": stripe_given, "unmatched_ok": unmatched_ok,
         "export": {f: total(rows, f) for f in ("agreed", "paid", "owing")},
         "count": len(payers), "people": sum(l["party"] for l in payers),
+        "held": held,
+        "second": {
+            "same": sum(1 for l in done if not l["blocking"] and not l["topup"]),
+            "more_paid": sum(1 for l in done if l["topup"] and not l["blocking"]),
+            "differs": sum(1 for l in done if l["blocking"]),
+            "on_site": sum(1 for l in payers if l.get("on_site_why")),
+        },
     }
 
 
@@ -49352,7 +49892,7 @@ def rg_plan_totals(plan, selected):
     return {f: round(sum(l[f] for l in chosen), 2) for f in ("agreed", "paid", "owing")}
 
 
-def run_rg_import(conn, plan, selected, people, *, user_id, credits=()):
+def run_rg_import(conn, plan, selected, people, *, user_id, credits=(), topups=(), attach=()):
     """Write the chosen registrations, exactly as planned, in one transaction.
 
     Returns (made, kept, problems). Nothing is written unless every chosen
@@ -49365,20 +49905,56 @@ def run_rg_import(conn, plan, selected, people, *, user_id, credits=()):
     other way that RetreatGuru took off the price. It comes across as paid,
     against its own Stripe id, with the price put back up by the same amount,
     so what is owed is exactly what RetreatGuru says.
+
+    `topups` are "key|stripe ref" pairs: a payment made in RetreatGuru after
+    the registration was brought across, added to it as a line of its own.
+    `attach` are "key|booking id" pairs: a registration whose guest was already
+    booked here on that retreat, whose RetreatGuru payments go on that booking
+    instead of a second one being made. Neither re-writes a line already there.
+    What each did is left in plan["topped_up"] and plan["attached"].
     """
     chosen = [l for l in plan["payers"] if l["key"] in selected]
     problems = [(l["name"], "; ".join(l["blocking"])) for l in chosen if l["blocking"]]
+    by_key = {l["key"]: l for l in plan["payers"]}
+    adding = {}
+    for tick in topups:
+        key, _, ref = tick.rpartition("|")
+        l = by_key.get(key)
+        c = next((c for c in (l or {}).get("topup", []) if c["ref"] == ref), None)
+        if not l or not c or l["blocking"]:
+            problems.append(((l or {}).get("name", key), f"{ref} was not offered on this "
+                             "check to add to it; check again"))
+            continue
+        adding.setdefault(key, {"line": l, "booking": l["done"], "how": "topup",
+                                "charges": []})["charges"].append(c)
+    for tick in attach:
+        key, _, bid = tick.rpartition("|")
+        l = by_key.get(key)
+        if not l or not l.get("attach_ok") or str(l["on_site"][0]["id"]) != bid:
+            problems.append(((l or {}).get("name", key), "attaching its payments to a booking "
+                             "here was not offered on this check; check again"))
+            continue
+        adding[key] = {"line": l, "booking": l["on_site"][0], "how": "attach",
+                       "charges": list(l["attach_charges"])}
     if problems:
         return [], [], problems
     ticked = set(credits)
     credited_to = {l["key"]: [c for c in l.get("credit_options", [])
                               if f"{l['key']}|{c['ref']}" in ticked]
                    for l in chosen if not l.get("done")}
-    refs = [c["ref"] for picked in credited_to.values() for c in picked]
+    refs = ([c["ref"] for picked in credited_to.values() for c in picked]
+            + [c["ref"] for l in chosen if not l.get("done") for c in l["charges"]]
+            + [c["ref"] for a in adding.values() for c in a["charges"]])
     twice = sorted({r for r in refs if refs.count(r) > 1})
     if twice:
         return [], [], [("the import", "one Stripe payment was put towards two "
                                        "registrations: " + ", ".join(twice))]
+    # Each Stripe payment once across the whole app, asked of the database
+    # itself at the moment of writing rather than of the check.
+    already = sorted(set(refs) & stripe_ids_held(conn))
+    if already:
+        return [], [], [("the import", "a Stripe payment is already recorded here: "
+                                       + ", ".join(already) + ". Nothing was kept.")]
 
     now = datetime.now(timezone.utc).isoformat()
     on = format_date_human(house_today_iso())
@@ -49451,7 +50027,7 @@ def run_rg_import(conn, plan, selected, people, *, user_id, credits=()):
                 """INSERT INTO workshop_transactions (workshop_booking_id, kind, description,
                      amount, method, created_by_user_id, created_at, stripe_ref)
                    VALUES (?, 'payment', ?, ?, 'stripe', ?, ?, ?)""",
-                (bid, "Paid through another booking"
+                (bid, RG_CREDIT_WORDS
                       + (f" ({c['description']})" if c["description"] else "")
                       + " and put towards this retreat", c["net"], user_id,
                  _rg_moment(c["created"]) or now, c["ref"]))
@@ -49479,6 +50055,65 @@ def run_rg_import(conn, plan, selected, people, *, user_id, credits=()):
                              if credited else ""))
         made.append(l["name"])
         plan["credited"] = round(plan.get("credited", 0.0) + credited, 2)
+
+    # MONEY FOR BOOKINGS ALREADY HERE: each Stripe payment a line of its own,
+    # added beside what is there, and the ledger read back to the cent.
+    plan["topped_up"], plan["attached"] = [], []
+    for a in adding.values():
+        l, b, charges = a["line"], a["booking"], a["charges"]
+        bid = b["id"]
+        added = round(sum(c["net"] for c in charges), 2)
+        before = (_rg_ledger(conn, bid) if a["how"] == "topup" else
+                  dict(zip(("owing", "agreed", "paid"), workshop_balance_due(conn, bid))))
+        words = ("Paid through RetreatGuru, after it was brought across" if a["how"] == "topup"
+                 else f"Paid through RetreatGuru (registered there "
+                      f"{format_date_human(l['submitted_on'].isoformat())}) and put towards "
+                      "this booking")
+        for c in sorted(charges, key=lambda c: (c["created"], c["ref"])):
+            conn.execute(
+                """INSERT INTO workshop_transactions (workshop_booking_id, kind, description,
+                     amount, method, created_by_user_id, created_at, stripe_ref)
+                   VALUES (?, 'payment', ?, ?, 'stripe', ?, ?, ?)""",
+                (bid, words, c["net"], user_id, _rg_moment(c["created"]) or now, c["ref"]))
+        # One brought across with nothing paid has its whole price as the
+        # deposit still to pay, and the guest's page would ask for all of it.
+        # With money paid, the import's own rule: what was paid was the deposit.
+        if a["how"] == "topup" and not b["deposit_paid_at"]:
+            first = min(c["created"] for c in charges)
+            paid_now = round(before["paid"] + before["credited"] + added, 2)
+            conn.execute(
+                "UPDATE workshop_bookings SET deposit_amount = ?, deposit_paid_at = ?, "
+                "balance_amount = ? WHERE id = ? AND deposit_paid_at IS NULL",
+                (paid_now, _rg_moment(first) or now, round(before["owing"] - added, 2), bid))
+        restamp_workshop_balance(conn, bid)
+        after = (_rg_ledger(conn, bid) if a["how"] == "topup" else
+                 dict(zip(("owing", "agreed", "paid"), workshop_balance_due(conn, bid))))
+        want = {"agreed": before["agreed"], "paid": round(before["paid"] + added, 2),
+                "owing": round(before["owing"] - added, 2)}
+        if a["how"] == "topup" and {c["ref"] for c in charges} == {c["ref"] for c in l["topup"]}:
+            want = {f: round(l[f], 2) for f in ("agreed", "paid", "owing")}
+        if any(abs(after[f] - want[f]) >= 0.005 for f in want):
+            conn.rollback()
+            return [], [], [(l["name"], f"after adding, {b['reference_code']} says "
+                                        f"{money(after['agreed'])} charged, "
+                                        f"{money(after['paid'])} paid, {money(after['owing'])} "
+                                        f"owed; it should say {money(want['agreed'])}, "
+                                        f"{money(want['paid'])}, {money(want['owing'])}. "
+                                        "Nothing was kept.")]
+        refs_added = ", ".join(c["ref"] for c in charges)
+        if a["how"] == "topup":
+            log_audit(conn, "workshop_registration_topped_up", target=l["name"],
+                      details=f"{b['reference_code']}: {money(added)} paid in RetreatGuru since "
+                              f"it was brought across ({refs_added}); now {money(after['paid'])} "
+                              f"paid, {money(after['owing'])} owing, as RetreatGuru says")
+            plan["topped_up"].append((l["name"], added))
+        else:
+            log_audit(conn, "workshop_registration_attached", target=l["name"],
+                      details=f"RetreatGuru registration ({l['submitted']}) not brought across: "
+                              f"its {money(added)} ({refs_added}) put towards "
+                              f"{b['reference_code']}, already booked here; now "
+                              f"{money(after['paid'])} paid, {money(after['owing'])} owing")
+            plan["attached"].append((l["name"], b["reference_code"], added))
     return made, kept, []
 
 
@@ -49580,11 +50215,16 @@ def import_registrations():
     payload = json.loads(draft["payload"])
     plan, people = _rg_plan_from_draft(conn, payload, today)
     selected = set(request.form.getlist("bring"))
-    if not selected:
+    topups = set(request.form.getlist("topup"))
+    attach = set(request.form.getlist("attach"))
+    if not selected and not topups and not attach:
         conn.close()
         flash("Nothing was ticked, so nothing was brought across.", "error")
         return redirect(url_for("import_registrations"))
-    flagged = [l for l in plan["payers"] if l["key"] in selected and (l["notes"] or l.get("duplicate"))]
+    # Adding money to a booking already here is always something to have read.
+    touched = selected | {t.rpartition("|")[0] for t in topups | attach}
+    flagged = [l for l in plan["payers"] if l["key"] in touched
+               and (l["notes"] or l.get("duplicate") or l["key"] not in selected)]
     if flagged and request.form.get("checked_flags") != "on":
         conn.close()
         flash("Some of the ticked registrations have something to look at. Read them, then "
@@ -49593,7 +50233,7 @@ def import_registrations():
     credits = set(request.form.getlist("credit"))
     try:
         made, kept, problems = run_rg_import(conn, plan, selected, people, user_id=user["id"],
-                                             credits=credits)
+                                             credits=credits, topups=topups, attach=attach)
     except sqlite3.IntegrityError as e:
         conn.rollback()
         made, kept, problems = [], [], [("the import", f"stopped with nothing kept ({e})")]
@@ -49609,6 +50249,16 @@ def import_registrations():
     credited = plan.get("credited", 0.0)
     also = (f" Plus {money(credited)} paid through another booking, which RetreatGuru "
             "took off the price, now shown as paid." if credited else "")
+    topped = {name: amount for name, amount in plan.get("topped_up", [])}
+    attached = {name: (ref, amount) for name, ref, amount in plan.get("attached", [])}
+    if topped:
+        also += (" Paid in RetreatGuru since they came across, now added: " + "; ".join(
+            f"{name} {money(amount)}" for name, amount in topped.items()) + ".")
+    if attached:
+        also += (" Put towards the booking already here instead of making a second: "
+                 + "; ".join(f"{name} {money(amount)} to {ref}"
+                             for name, (ref, amount) in attached.items()) + ".")
+    unchanged = [n for n in kept if n not in topped]
     log_audit(conn, "registrations_imported", target="RetreatGuru",
               details=f"{len(made)} brought across, {len(kept)} already here; "
                       f"{money(totals['agreed'])} agreed, {money(totals['paid'])} paid, "
@@ -49618,10 +50268,17 @@ def import_registrations():
     conn.close()
     left_out = [(l["name"], ("could not come across: " + l["blocking"][0]) if l["blocking"]
                  else "not ticked")
-                for l in plan["payers"] if l["key"] not in selected]
+                for l in plan["payers"] if l["key"] not in selected
+                and l["key"] not in {t.rpartition("|")[0] for t in attach}]
+    # Money offered for a registration already here and not ticked is money
+    # still missing from it, and is said so rather than counted as done.
+    left_out += [(l["name"], f"{money(c['net'])} paid in RetreatGuru since it came across "
+                             f"({c['ref']}) was not added: not ticked")
+                 for l in plan["payers"] if not l["blocking"]
+                 for c in l.get("topup", []) if f"{l['key']}|{c['ref']}" not in topups]
     message, category = bulk_message(
         "Brought across", "registration", len(made), left_out,
-        detail=(f"{len(kept)} already here, unchanged. " if kept else "")
+        detail=(f"{len(unchanged)} already here, unchanged. " if unchanged else "")
                + f"{money(totals['agreed'])} agreed, {money(totals['paid'])} paid, "
                  f"{money(totals['owing'])} owing, as RetreatGuru says.{also} "
                  "Nobody has been written to.")
@@ -66637,6 +67294,10 @@ def room_ics_feed(token):
         conn.close()
         abort(404)
     body = generate_room_ics(conn, room)
+    # Somebody signed in opening the link from the Rooms page is not a
+    # channel reading it, and must not make a broken link look alive.
+    if not session.get("user_id"):
+        record_feed_read(conn, room["id"], request.headers.get("User-Agent"))
     conn.close()
     return app.response_class(body, mimetype="text/calendar")
 
@@ -66947,6 +67608,73 @@ def sized_photo(width, filename):
     # a new address and this one never changes under anybody.
     resp.headers["Cache-Control"] = "public, max-age=2592000"
     return resp
+
+
+# ---------------------------------------------------------------------------
+# THE PHOTOGRAPH AT THE TOP OF A PAGE, AT THE SIZE IT IS SHOWN (9 Nov 2026).
+# Measured on the live site at phone width: every photograph further down a
+# page came through pic() at its size, and the hero -- the first thing a guest
+# waits for -- came whole. Eight of them were 5.7MB between them: 2.0MB on
+# /facilities, 1.4MB on /contact, for a picture 375px wide.
+#
+# Done to the response, for the reason serve_our_own_photographs gives: the
+# heroes are written into the public templates, which arrive whole from the
+# design side, so a pic() call put into each one would last until the next
+# handover. Here every g-hero__img the house holds the file for gains the
+# srcset pic() would have given it, whatever template it came in. The src
+# stays exactly as written, for a browser that reads no srcset, and for the
+# photo swap; a hero the house does not hold -- an upload, a picture the owner
+# swapped in the admin -- is left alone.
+#
+# Registered after serve_our_own_photographs, so it runs first and usually
+# sees the Squarespace address; it reads a /mirrored-photo/ one as well, so the
+# order is not something it depends on.
+# ---------------------------------------------------------------------------
+_HERO_IMG = re.compile(r'<img\b[^>]*\bclass="[^"]*\bg-hero__img\b[^"]*"[^>]*>')
+_HERO_SRC = re.compile(r'\ssrc="([^"]*)"')
+
+
+def _hero_pic_name(src):
+    """The /pic name of the file the house holds for a hero's address, or None."""
+    src = html_unescape(src)
+    if src.startswith("/static/img/"):
+        rel = src[len("/static/img/"):].split("?", 1)[0]
+        return rel if _pic_file("/static/img/" + rel) else None
+    if src.startswith("/mirrored-photo/"):
+        name = src[len("/mirrored-photo/"):].split("?", 1)[0]
+        return "~m/" + name if _pic_file("~m/" + name) else None
+    return _pic_held(src)
+
+
+def size_hero(tag):
+    """One hero <img>, given the srcset pic() would have; as it was if it cannot be."""
+    if " srcset=" in tag:
+        return tag
+    found = _HERO_SRC.search(tag)
+    rel = _hero_pic_name(found.group(1)) if found else None
+    size = pic_size(rel if rel and rel.startswith("~m/") else "/static/img/" + rel) if rel else None
+    if not size:
+        return tag
+    widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
+    srcset = ", ".join(f"/pic/{x}/{html_escape(rel)} {x}w" for x in widths)
+    close = "/>" if tag.endswith("/>") else ">"
+    return tag[:-len(close)].rstrip() + f' srcset="{srcset}" sizes="100vw"' + close
+
+
+@app.after_request
+def size_the_heroes(response):
+    if response.direct_passthrough:
+        return response
+    if not (response.content_type or "").startswith("text/html"):
+        return response
+    raw = response.get_data()
+    if b"g-hero__img" not in raw:
+        return response
+    body = raw.decode("utf-8", "replace")
+    sized = _HERO_IMG.sub(lambda m: size_hero(m.group(0)), body)
+    if sized != body:
+        response.set_data(sized)
+    return response
 
 
 _SITE_OVERRIDE_CACHE = {"at": 0.0, "index": {}}
@@ -67928,10 +68656,12 @@ def admin_rooms():
         blocks_by_room[room["id"]] = conn.execute(
             "SELECT * FROM room_blocks WHERE room_id = ? ORDER BY start_date", (room["id"],)
         ).fetchall()
+    feed_reads = feed_reads_by_room(conn)
     conn.close()
     return render_template(
         "admin_rooms.html", rooms=rooms, sources_by_room=sources_by_room, ics_urls=ics_urls,
-        blocks_by_room=blocks_by_room, today=now.date(),
+        blocks_by_room=blocks_by_room, today=now.date(), feed_reads=feed_reads,
+        feed_reader_words=FEED_READER_WORDS,
     )
 
 
@@ -78980,6 +79710,53 @@ def workshop_admin_return():
     return url_for("admin_workshops")
 
 
+def save_workshop_photo(file):
+    """A retreat's own photograph, from the workshop form: (stored name, None),
+    (None, None) when no file was chosen, or (None, the reason it was refused).
+
+    Its card on /workshops and the top of its own page show it. It is kept
+    beside the room photographs and served by room_photo, like every upload a
+    public page shows, rather than in a directory of its own that would need its
+    own route and its own place in the backup. It goes through photo_master on
+    the way in, as the photo intake does: an iPhone HEIC lands as a JPEG, a
+    camera's full frame comes down to the master size, and none of its EXIF
+    comes along, so no GPS and no serial number reach a public page.
+    """
+    if not file or not file.filename:
+        return None, None
+    ok, reason = allowed_image(file.filename)
+    if not ok:
+        return None, reason
+    try:
+        data, _taken = photo_master(file.read(), file.filename)
+    except ValueError:
+        return None, ("That file could not be read as a photograph. A JPEG or PNG "
+                      "works, as does a photograph straight off an iPhone.")
+    stored = f"workshop_{secrets.token_hex(8)}.jpg"
+    os.makedirs(ROOM_PHOTO_DIR, exist_ok=True)
+    with open(os.path.join(ROOM_PHOTO_DIR, stored), "wb") as f:
+        f.write(data)
+    return stored, None
+
+
+def drop_workshop_photo_file(conn, filename):
+    """Delete a retreat's old photograph from disk once no workshop names it.
+
+    Called after the commit, as the gallery does it: a row naming a missing file
+    shows guests a broken picture, while a file nothing names only takes space.
+    Only files this form made (workshop_...), so a name set by hand to a room's
+    photograph can never take the room's picture with it.
+    """
+    if not filename or not filename.startswith("workshop_") or "/" in filename or "\\" in filename:
+        return
+    if conn.execute("SELECT 1 FROM workshops WHERE photo_filename = ?", (filename,)).fetchone():
+        return
+    try:
+        os.remove(os.path.join(ROOM_PHOTO_DIR, filename))
+    except OSError:
+        pass
+
+
 @app.route("/admin/workshops/new", methods=["GET", "POST"])
 @owner_required
 def new_workshop():
@@ -79008,13 +79785,19 @@ def new_workshop():
                   "leave it blank and type a name.", "error")
             return render_template("workshop_form.html", workshop=None,
                                    instructors=known_instructor_list())
+        photo, photo_error = save_workshop_photo(request.files.get("photo"))
+        if photo_error:
+            conn.close()
+            flash(photo_error, "error")
+            return render_template("workshop_form.html", workshop=None,
+                                   instructors=known_instructor_list())
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM workshops").fetchone()["m"]
         cur = conn.execute(
             """INSERT INTO workshops (title, description, instructor_name, instructor_user_id, price_per_person,
                default_capacity, sort_order, deposit_percent, inclusions, itinerary, single_supplement,
                transfers_included, excursions_included, private_token, organiser_name,
-               organiser_email, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               organiser_email, photo_filename, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (title, description, instructor_name or None,
              instructor_id,
              float(price_raw) if price_raw else 0,
@@ -79026,10 +79809,12 @@ def new_workshop():
              1 if request.form.get("transfers_included") else 0,
              1 if request.form.get("excursions_included") else 0,
              new_private_token() if request.form.get("private") else None,
-             organiser_name, organiser_email,
+             organiser_name, organiser_email, photo,
              datetime.now(timezone.utc).isoformat()),
         )
         new_id = cur.lastrowid
+        if photo:
+            log_audit(conn, "workshop_photo_set", target=str(new_id), details=title)
         conn.commit()
         conn.close()
         flash(f"{title} added. Add its first sitting below.", "success")
@@ -79136,11 +79921,22 @@ def edit_workshop(workshop_id):
             flash(organiser_error or "Workshop title is required.", "error")
             return redirect(url_for("edit_workshop", workshop_id=workshop_id))
 
+        # A new file replaces the photograph; the box takes it off; neither keeps it.
+        # Read and stored before the write below, so nothing holds the database while
+        # a camera-sized picture is decoded.
+        photo, photo_error = save_workshop_photo(request.files.get("photo"))
+        if photo_error:
+            conn.close()
+            flash(photo_error, "error")
+            return redirect(url_for("edit_workshop", workshop_id=workshop_id))
+        old_photo = workshop["photo_filename"]
+        new_photo = photo or (None if request.form.get("remove_photo") else old_photo)
+
         conn.execute(
             """UPDATE workshops SET title=?, description=?, instructor_name=?, instructor_user_id=?,
                price_per_person=?, default_capacity=?, deposit_percent=?, inclusions=?, itinerary=?,
                single_supplement=?, transfers_included=?, excursions_included=?,
-               private_token=?, organiser_name=?, organiser_email=?,
+               private_token=?, organiser_name=?, organiser_email=?, photo_filename=?,
                active=? WHERE id=?""",
             (title, description, instructor_name or None,
              int(instructor_user_id) if instructor_user_id.isdigit() else None,
@@ -79152,13 +79948,18 @@ def edit_workshop(workshop_id):
              # Reading it any other way would make a box impossible to untick.
              1 if request.form.get("transfers_included") else 0,
              1 if request.form.get("excursions_included") else 0,
-             private_token, organiser_name, organiser_email,
+             private_token, organiser_name, organiser_email, new_photo,
              active, workshop_id),
         )
         if bool(private_token) != bool(workshop["private_token"]):
             log_audit(conn, "workshop_made_private" if private_token else "workshop_made_public",
                       target=str(workshop_id), details=title)
+        if new_photo != old_photo:
+            log_audit(conn, "workshop_photo_set" if new_photo else "workshop_photo_removed",
+                      target=str(workshop_id), details=title)
         conn.commit()
+        if old_photo and old_photo != new_photo:
+            drop_workshop_photo_file(conn, old_photo)
         conn.close()
         if private_token and not workshop["private_token"]:
             flash(f"{title} is private now: off every public page, and booked only by its "
@@ -89528,7 +90329,8 @@ def channel_stays_page():
     return render_template("channel_stays.html", rows=lv["rows"], lv=lv,
                            summary=summary, today=today.isoformat(),
                            calendar_only=calendar_only, room_choices=room_choices,
-                           prefill=prefill, sources=sources)
+                           prefill=prefill, sources=sources,
+                           checkin_find_url=url_for("channel_checkin_find", _external=True))
 
 
 # What the house can know about a Booking.com guest, beyond the email's name
@@ -89818,6 +90620,60 @@ def send_channel_checkin_link(reservation_id):
     flash(("Sent." + (f" It is {why}." if why else "")) if ok else f"Not sent: {why}.",
           "success" if ok else "error")
     return redirect(url_for("channel_stay_page", reservation_id=reservation_id))
+
+
+@app.route("/booking-com/checkin", methods=["GET", "POST"])
+def channel_checkin_find():
+    """One address for every Booking.com guest's check-in (9 November 2026).
+
+    The check-in link was the stay's own, so it could only be sent where the
+    house had an address for the guest -- and Booking.com's booking email
+    carries none: only a guest who had written, or one whose page the owner
+    had pasted in, was ever sent it. Booking.com's own online check-in does
+    not help: it is only for properties on a channel manager, and only for
+    one room. So this page is the same for everybody, and Booking.com's own
+    scheduled message carries it to every guest before they arrive; the guest
+    gives the confirmation number and the day they arrive, and is taken to
+    their own check-in.
+
+    Both, never the number alone: ten digits are a reference, not a secret.
+    The day is the second thing, as the surname is on /book/manage, and the
+    route is rate-limited per connection all the same. A stay already over,
+    or cancelled, is not found."""
+    number = re.sub(r"\D", "", request.values.get("number", ""))[:12]
+    arrival = (request.form.get("arrival") or "").strip()[:10]
+    if request.method == "POST":
+        conn = get_db()
+        if rate_limited(conn, "find_channel_checkin", BOOKING_RATE_LIMIT_PER_HOUR):
+            conn.commit()
+            conn.close()
+            flash("Too many attempts from this connection. Please try again in a while, "
+                  "or write to us through Booking.com.", "error")
+            return render_template("channel_checkin_find.html", number=number, arrival=arrival)
+        conn.commit()
+        day = parse_date(arrival)
+        stay = None
+        if number and day:
+            stay = conn.execute(
+                """SELECT id FROM ota_reservations
+                    WHERE channel = 'booking.com' AND reservation_number = ?
+                      AND arrival_date = ? AND status = 'confirmed'
+                      AND COALESCE(departure_date, arrival_date) >= ?""",
+                (number, day.isoformat(), house_today_iso())).fetchone()
+        if stay:
+            token = ota_checkin_token(conn, stay["id"])
+            conn.commit()
+            conn.close()
+            return redirect(url_for("channel_checkin", token=token))
+        conn.close()
+        if not number or not day:
+            flash("Please give your Booking.com confirmation number and the day you arrive.",
+                  "error")
+        else:
+            flash("We could not find a stay with that number arriving that day. The number "
+                  "is in Booking.com's confirmation; if it is right, write to us through "
+                  "Booking.com and we will send you the link.", "error")
+    return render_template("channel_checkin_find.html", number=number, arrival=arrival)
 
 
 @app.route("/checkin/stay/<token>", methods=["GET", "POST"])
@@ -97299,6 +98155,19 @@ def watch_task_findings(conn, today=None):
             # Due the day the longest-waiting guest wrote: a message is owed an
             # answer that day, and one still open next morning reads as late.
             house_date_iso(written[0]["received_at"]), "high"))
+
+    # Booking.com and the house disagreeing about a night, or the calendars
+    # between them no longer read either way. One task each while true.
+    double = channel_clash_problem(conn, today)
+    if double:
+        found.append(("booking_com", "Move or cancel a Booking.com stay on nights already taken",
+                      double[1], today.isoformat(), "high"))
+    sync = channel_sync_problems(conn)
+    if sync:
+        found.append(("booking_com", "Put the Booking.com calendar sync right",
+                      "\n\n".join(f"{title}. {detail}" for _lvl, title, detail in sync),
+                      today.isoformat(),
+                      "high" if any(lvl == "blocker" for lvl, _t, _d in sync) else "normal"))
 
     # The front door, when guests cannot open it from their phone or its
     # batteries are going. One task while that is true; it closes itself once
@@ -111085,7 +111954,13 @@ def reread_undated_booking_com_stays(conn):
     return filled
 
 
-def pair_booking_com_stays(conn):
+# How long a booking alone on its day waits before it is given every room
+# whose Booking.com calendar starts that day (pair_booking_com_stays): long
+# enough for a second booking's email to arrive, short of a night's sleep.
+BOOKING_COM_LONE_WAIT = timedelta(hours=1)
+
+
+def pair_booking_com_stays(conn, now=None):
     """Give each Booking.com stay its room and departure from the calendars.
 
     Booking.com's booking email says the reservation number and the day they
@@ -111109,10 +111984,21 @@ def pair_booking_com_stays(conn):
     reservation is for (room_count) and exactly that many blocks start on
     its day, with no other stay still waiting for a room that day, they are
     all its rooms: the first is room_id, the rest ota_reservation_rooms.
-    Where it did not say, several blocks are still not guessed at -- the
-    owner says "these are all this reservation" on the stays page, in one
-    step (group_channel_stay_rooms).
+    Where it did not say, the owner can say "these are all this reservation"
+    on the stays page, in one step (group_channel_stay_rooms).
+
+    THE LONE BOOKING (owner, 9 November 2026: "make it automatic"). Where it
+    did not say and nobody has clicked, a booking still gets every room
+    whose block starts on its day when ALL of these hold: no other
+    Booking.com booking arrives that day, confirmed or cancelled (a
+    cancelled one's block can linger on the calendar); the blocks all have
+    the same nights; none lies over the house's own booking or closure in
+    that room; and BOOKING_COM_LONE_WAIT has passed since its email was read
+    with no second booking's email for that day. Two bookings on one day are
+    still never guessed between. The letter to the house says what was done
+    and how to undo it.
     """
+    now = now or datetime.now(timezone.utc)
     reread_undated_booking_com_stays(conn)
     blocks = booking_com_blocks(conn)
     rooms = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
@@ -111131,7 +112017,19 @@ def pair_booking_com_stays(conn):
     for s in stays:
         if not s["room_id"] and s["matched_by"] != "hand":
             waiting.setdefault(s["arrival_date"], set()).add(s["id"])
-    gained, now_iso = [], datetime.now(timezone.utc).isoformat()
+    # Every booking's day, cancelled ones too, for the lone booking's test.
+    bookings_on = {}
+    for r in conn.execute("SELECT id, arrival_date FROM ota_reservations "
+                          "WHERE COALESCE(arrival_date, '') != ''"):
+        bookings_on.setdefault(r["arrival_date"], set()).add(r["id"])
+    house = {}
+    for r in conn.execute(
+            """SELECT room_id, arrival_date AS a, departure_date AS d FROM bookings
+                WHERE status IN ('pending', 'confirmed')
+               UNION ALL
+               SELECT room_id, start_date AS a, end_date AS d FROM room_blocks"""):
+        house.setdefault(r["room_id"], []).append((r["a"], r["d"]))
+    gained, now_iso = [], now.isoformat()
     for s in stays:
         how = s["matched_by"]
         if how == "hand":
@@ -111143,11 +112041,20 @@ def pair_booking_com_stays(conn):
                     and claimed.get((b[0], b[1]), s["id"]) == s["id"]]
         want = s["room_count"] or 1
         alone = not (waiting.get(day, set()) - {s["id"]})
+        lone = (want == 1 and how != "mail" and not s["room_id"] and len(starting) > 1
+                and not (bookings_on.get(day, set()) - {s["id"]})
+                and len({b[2] for b in starting}) == 1
+                and not any(a and d and a < b[2] and d > b[1]
+                            for b in starting for a, d in house.get(b[0], ())))
+        seen = parse_datetime_iso(s["first_seen_at"])
+        lone_at = (seen + BOOKING_COM_LONE_WAIT) if seen else now
+        if lone and now >= lone_at:
+            want = len(starting)
         if want > 1 and how != "mail" and len(starting) == want and (alone or s["room_id"]):
             ordered = sorted(starting, key=lambda b: (order.get(b[0], 999), b[0]))
             room_id, _start, end = ordered[0]
             sets = {"room_id": room_id, "match_note": None, "matched_by": "ical",
-                    "departure_date": end}
+                    "departure_date": end, "room_count": want}
             conn.execute("DELETE FROM ota_reservation_rooms WHERE ota_reservation_id = ? "
                          "AND matched_by = 'ical'", (s["id"],))
             for other, _start, other_end in ordered[1:]:
@@ -111188,12 +112095,16 @@ def pair_booking_com_stays(conn):
                 said = (f" Booking.com says it is for {want} rooms." if want > 1 else "")
                 conn.execute("DELETE FROM ota_reservation_rooms WHERE ota_reservation_id = ? "
                              "AND matched_by = 'ical'", (s["id"],))
-                sets = {"room_id": None, "matched_by": None,
-                        "match_note": (f"Not matched: a Booking.com stay starts on "
-                                       f"{format_date_short(day)} in {len(starting)} rooms "
-                                       f"({names}).{said} Choose the room by hand"
-                                       + (", or say they are all this one reservation."
-                                          if alone else "."))}
+                note = (f"Not matched: a Booking.com stay starts on "
+                        f"{format_date_short(day)} in {len(starting)} rooms "
+                        f"({names}).{said} Choose the room by hand"
+                        + (", or say they are all this one reservation." if alone else "."))
+                if lone:
+                    local = lone_at.astimezone(LOCAL_TZ)
+                    note += (f" No other Booking.com booking arrives that day, so if none "
+                             f"comes in by {local:%H:%M} on {local.day} {local:%B} they "
+                             f"are all given to this one.")
+                sets = {"room_id": None, "matched_by": None, "match_note": note}
         elif not s["room_id"]:
             sets = {"match_note": (f"Not matched yet: no room's Booking.com calendar shows a "
                                    f"stay starting {format_date_short(day)}. It is matched "
@@ -111273,6 +112184,12 @@ def tell_house_of_booking_com(conn, *, now=None):
             if r["departure_date"] else None,
             f"Guests: {r['guests']}" if r["guests"] else None,
             f"Reservation: {r['reservation_number']}",
+            # Rooms the calendars gave it, not an email or the owner: said, with
+            # the way back, so a wrong pairing is caught at the first letter.
+            (f"One reservation, {room.count(' + ') + 1} rooms: every room whose "
+             f"Booking.com calendar has a stay starting that day, no other booking "
+             f"arriving then. If that is wrong, take a room off on the stay's page."
+             if not cancelled and r["matched_by"] == "ical" and " + " in room else None),
             "",
             ("Booking.com has cancelled this stay. The room is free again once the "
              "calendar sync agrees." if cancelled else
@@ -111299,7 +112216,61 @@ def settle_booking_com_stays(conn, room_ids=None, sync=True):
     if sync:
         sync_booking_com_calendars(conn, room_ids)
     pair_booking_com_stays(conn)
+    name_booking_com_stays_from_messages(conn)
     return tell_house_of_booking_com(conn)
+
+
+def name_booking_com_stays_from_messages(conn):
+    """Give a Booking.com stay the name its guest's own messages carry.
+
+    Booking.com's "New booking!" email says nothing but the number and the day
+    (October 2026), so every stay arrived nameless, and the arrivals, the
+    calendar and the turnover list called it "Booking.com - The King Room".
+    But a guest's message does say who they are, twice: "We received this
+    message from Nicolas Regnault", and a "Reservation details" block with
+    "Guest name:", "Booking number:" and "Total guests:" (checked on the live
+    mailbox, 9 November 2026). Those emails were kept and never read for the
+    stay, because only booking emails update one.
+
+    Only a GAP is filled: a name or a head count somebody typed, or a later
+    booking email gave, is never replaced by a message's. Only Booking.com's
+    own mail counts (from_booking_com) -- anybody can send an email with a
+    number in it. The messages are tied to their stay too, so the stay's page
+    lists them. Safe to run as often as anything likes; the ids it named."""
+    conn.execute(
+        """UPDATE ota_mail SET ota_reservation_id = (
+               SELECT r.id FROM ota_reservations r
+                WHERE r.channel = 'booking.com'
+                  AND r.reservation_number = ota_mail.reservation_number)
+            WHERE ota_reservation_id IS NULL AND kind IN ('message', 'request')
+              AND COALESCE(reservation_number, '') != '' AND from_booking_com = 1""")
+    named = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for stay in conn.execute(
+            """SELECT * FROM ota_reservations
+                WHERE channel = 'booking.com'
+                  AND (COALESCE(guest_name, '') = '' OR guests IS NULL)""").fetchall():
+        said = conn.execute(
+            """SELECT guest_name, guests FROM ota_mail
+                WHERE ota_reservation_id = ? AND kind IN ('message', 'request')
+                  AND from_booking_com = 1
+                  AND (COALESCE(guest_name, '') != '' OR guests IS NOT NULL)
+                ORDER BY received_at DESC, id DESC""", (stay["id"],)).fetchall()
+        name = next((r["guest_name"] for r in said if (r["guest_name"] or "").strip()), None)
+        guests = next((r["guests"] for r in said if r["guests"]), None)
+        sets = {}
+        if name and not (stay["guest_name"] or "").strip():
+            sets["guest_name"] = name.strip()[:120]
+        if guests and stay["guests"] is None:
+            sets["guests"] = guests
+        if sets:
+            sets["updated_at"] = now_iso
+            conn.execute("UPDATE ota_reservations SET " + ", ".join(f"{k} = ?" for k in sets)
+                         + " WHERE id = ?", (*sets.values(), stay["id"]))
+            if "guest_name" in sets:
+                named.append(stay["id"])
+    conn.commit()
+    return named
 
 
 def _ota_notify(conn, mail_id, got, received_at):
@@ -111449,10 +112420,13 @@ def run_booking_com_mail_job(conn):
             new[kind] = new.get(kind, 0) + 1
             fresh_ids.append(_id)
     told = after_booking_com_mail(conn, fresh_ids)
+    answered = booking_com_answered_by_email(conn, token)
+    said = (f"; told the house of {told}" if told else "") + (
+        f"; {len(answered)} answered by email" if answered else "")
     if not new:
-        return f"nothing new in {mailbox}" + (f"; told the house of {told}" if told else "")
+        return f"nothing new in {mailbox}" + said
     return ("kept " + ", ".join(f"{n} × {OTA_KINDS[k].lower()}" for k, n in sorted(new.items()))
-            + (f"; told the house of {told}" if told else ""))
+            + said)
 
 
 def after_booking_com_mail(conn, mail_ids):
@@ -111483,6 +112457,63 @@ def after_booking_com_mail(conn, mail_ids):
             else:
                 every_room = True       # not said, or it may have moved room
     return settle_booking_com_stays(conn, None if every_room else rooms, sync=any_booking)
+
+
+def booking_com_answered_by_email(conn, token, *, now=None):
+    """Take off the waiting list the guest messages already answered by email.
+
+    A Booking.com message can be answered three ways: from the house's page
+    (replied_at), in the extranet (the owner says so: "Answered in
+    Booking.com"), or by replying to the email in Outlook, which Booking.com
+    passes on to the guest. The third left the message on the list and its
+    task open until somebody also ticked it here, so the list said a guest was
+    waiting who had had an answer -- and a list that is wrong that way is
+    soon not read (9 November 2026).
+
+    So the Sent Items of every mailbox the house reads are looked at for mail
+    to the address the message came from (the guest's @guest.booking.com
+    address), sent after it arrived. Only while somebody is waiting: no
+    waiting message, no call to Microsoft. The ids it closed."""
+    waiting = booking_com_waiting(conn, now=now)
+    by_address = {}
+    for r in waiting:
+        for a in (r["reply_to"], r["from_address"]):
+            a = (a or "").strip().lower()
+            if a.endswith("@guest.booking.com"):
+                by_address.setdefault(a, []).append(r)
+                break
+    if not by_address or not token:
+        return []
+    since = min(parse_datetime_iso(r["received_at"]) for r in waiting)
+    mailboxes = list(dict.fromkeys(
+        [booking_com_mailbox(conn)] + [mb.lower() for mb in MS_GRAPH_MAILBOXES]))
+    closed, now_iso = [], datetime.now(timezone.utc).isoformat()
+    for mb in [m for m in mailboxes if m]:
+        page = graph_get(
+            f"/users/{mb}/mailFolders/sentitems/messages", token,
+            params={"$select": "toRecipients,ccRecipients,bccRecipients,sentDateTime",
+                    "$filter": f"sentDateTime ge {since.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                    "$top": "200"})
+        if page is None:
+            continue
+        for msg in page.get("value", []):
+            sent = parse_datetime_iso(msg.get("sentDateTime"))
+            to = {((x.get("emailAddress") or {}).get("address") or "").strip().lower()
+                  for key in ("toRecipients", "ccRecipients", "bccRecipients")
+                  for x in (msg.get(key) or [])}
+            for address in to & by_address.keys():
+                for r in by_address[address]:
+                    got = parse_datetime_iso(r["received_at"])
+                    if r["id"] in closed or not (sent and got and sent >= got):
+                        continue
+                    conn.execute(
+                        """UPDATE ota_mail SET handled_at = ?, answered_from = ?
+                            WHERE id = ? AND handled_at IS NULL AND replied_at IS NULL""",
+                        (now_iso, mb, r["id"]))
+                    closed.append(r["id"])
+    if closed:
+        conn.commit()
+    return closed
 
 
 def booking_com_waiting(conn, *, now=None):

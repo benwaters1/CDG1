@@ -1,0 +1,26 @@
+{#- A ROOM'S PHOTOGRAPHS AS A SLIDER (the image layout brief, 4.4; 9 Nov 2026).
+    The same photographs room_slides (_roomslides.html) gathers, in the same order and with the same rule for one the page
+    already shows, drawn through the picture components' slider instead: arrows, a count, the keyboard, and at most
+    `most` photographs, since never more than four or five sit together. The rest are on the room's own page.
+
+        {% from '_room_pictures.html' import room_carrousel with context %}
+        {{ room_carrousel(name, first_src, alt, skip='img/more/blue-bedroom') }} -#}
+{% from '_room_photos.html' import ROOM_PHOTOS, ROOM_EXTRA %}
+{% from '_pictures.html' import carrousel %}
+
+{% macro room_carrousel(name, first_src, alt, skip='', most=5, cls='g-card__img') -%}
+{%- set _ph = [[first_src, alt, '']] -%}
+{%- set _key = first_src.split('?')[0].split('/')[-1] -%}
+{%- for src, a in (ROOM_PHOTOS.get(name, []) + ROOM_EXTRA.get(name, [])) -%}
+  {%- set _s = src -%}
+  {%- if 'squarespace-cdn.com' in _s and 'format=' not in _s -%}{%- set _s = _s.split('?')[0] ~ '?format=1000w' -%}{%- endif -%}
+  {%- if _s.split('?')[0].split('/')[-1] != _key and not (skip and skip in _s) -%}{%- set _ = _ph.append([_s, a, '']) -%}{%- endif -%}
+{%- endfor -%}
+{#- The one the page already shows goes even when it is the room's lead, as long as another is left to lead instead. -#}
+{%- if skip and skip in first_src and _ph|length > 1 -%}{%- set _ph = _ph[1:] -%}{%- endif -%}
+{%- if _ph|length == 1 -%}
+{{ pic(first_src, alt, sizes='(min-width: 56rem) 40vw, 92vw', cls=cls) }}
+{%- else -%}
+{{ carrousel(_ph[:most], name, cls='g-car--room') }}
+{%- endif -%}
+{%- endmacro %}

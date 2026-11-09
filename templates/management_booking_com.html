@@ -160,6 +160,8 @@
     {% if r['reply_text'] %}
     <p class="upload-hint" style="margin-top:8px;"><strong>Answered from here {{ r['replied_at']|house_when }}:</strong></p>
     <blockquote class="bc-message bc-reply">{{ r['reply_text'] }}</blockquote>
+    {% elif r['answered_from'] %}
+    <p class="upload-hint" style="margin-top:8px;"><strong>Answered by email from {{ r['answered_from'] }}</strong>, found in its sent mail {{ r['handled_at']|house_when }}.</p>
     {% endif %}
 
     {% set links = links_of(r) %}

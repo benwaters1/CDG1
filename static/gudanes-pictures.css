@@ -137,6 +137,15 @@
 .g .g-car__btn:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 3px; }
 .g .g-car__n{ min-width: 4.5em; text-align: center; font-family: var(--serif); font-size: 15px; letter-spacing: .12em; color: var(--gilt); font-variant-numeric: lining-nums; }
 
+/* The thumbnail strip: a room's gallery, every photograph a step away. */
+.g .g-car__thumbs{ display: flex; gap: var(--s2); margin-top: var(--s3); overflow-x: auto; scrollbar-width: none; padding: 3px; }
+.g .g-car__thumbs::-webkit-scrollbar{ display: none; }
+.g .g-car__thumb{ flex: none; width: 5.5rem; padding: 0; border: 0; background: none; cursor: pointer; opacity: .62; transition: opacity .2s; }
+.g .g-car__thumb img{ display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.g .g-car__thumb[aria-current="true"]{ opacity: 1; outline: 1px solid var(--gold); outline-offset: 2px; }
+.g .g-car__thumb:hover{ opacity: .9; }
+.g .g-car__thumb:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; opacity: 1; }
+
 /* ==== E. La mosaïque ==================================================== */
 .g .g-mos{ display: grid; gap: var(--s3); margin: var(--s6) 0; }
 .g .g-mos__i{ margin: 0; min-width: 0; overflow: hidden; }
@@ -198,7 +207,10 @@
 .g .g-bande--contact::after{ bottom: 8px; }
 .g .g-bande--contact .g-bande__row{ gap: 6px; }
 .g .g-bande--contact .g-bande__i{ position: relative; border: 3px solid #1E1A15; }
-.g .g-bande__no{ position: absolute; left: 4px; bottom: -22px; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: #E0B85A; }
+.g .g-bande--contact .g-bande__row{ counter-reset: g-frame; }
+.g .g-bande--contact .g-bande__i{ counter-increment: g-frame; }
+.g .g-bande--contact .g-bande__i::after{ content: counter(g-frame) "A"; position: absolute; left: 4px; bottom: -22px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: #E0B85A; }
 .g .g-bande--contact{ position: relative; }
 
 /* ==== H. Le split ======================================================= */
@@ -432,6 +444,86 @@
   .g .g-journal .g-wrap:has(> .g-cp){ display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 26rem); gap: var(--s8); align-items: center; }
   .g .g-journal .g-wrap > .g-cp{ margin: 0; }
 }
+
+/* ==== /workshops (brief 4.3) ========================================== */
+/* The retreats' cards: each photograph under an arched top, the tall windows,
+   with a gilt hairline. */
+.g .g-wscard__arch{ display: block; padding: 6px 6px 0; margin: 0 0 var(--s4); }
+.g .g-wscard__arch .g-wscard__img{ margin: 0; border-radius: 50% 50% 0 0 / 22% 22% 0 0; aspect-ratio: 4 / 3; height: auto; width: 100%;
+  object-fit: cover; box-shadow: 0 0 0 1px var(--gold), 0 0 0 5px #F8F3E8, 0 0 0 6px rgba(197,162,74,.45); }
+
+/* A day at Gudanes: down a timeline, the photograph swapping sides each time. */
+@media (min-width: 48rem){
+  .g .g-day--alt{ position: relative; max-width: 64rem; }
+  .g .g-day--alt::before{ content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: color-mix(in srgb, var(--gold) 55%, transparent); }
+  .g .g-day--alt .g-day__i{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s8); align-items: center; position: relative; }
+  .g .g-day--alt .g-day__i::after{ content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -5px 0 0 -5px;
+    border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 4px var(--sand); }
+  .g .g-day--alt .g-day__i:nth-child(even) .g-day__f{ order: 2; }
+  .g .g-day--alt .g-day__b{ border-left: 0; padding: 0; }
+  .g .g-day--alt .g-day__f img{ aspect-ratio: 4 / 3; box-shadow: 0 16px 26px -18px rgba(20,48,95,.45); }
+}
+
+/* The credits a Commons photograph needs, under the slider it is in. */
+.g .g-car__credits{ margin: var(--s2) 0 0; display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); font-size: 12px; color: var(--ink-2); }
+
+/* ==== /book (brief 4.4) =============================================== */
+/* The rooms: each card its words beside its photographs, swapping sides room by
+   room, a slider of up to five in each. */
+.g .g-card__media .g-car{ margin: 0; }
+.g .g-car--room .g-car__track{ grid-auto-columns: 100%; gap: 0; }
+.g .g-car--room .g-car__f img{ aspect-ratio: 4 / 3; }
+.g .g-car--room .g-car__bar{ position: absolute; right: var(--s3); bottom: var(--s3); margin: 0; gap: var(--s2);
+  background: rgba(251,247,239,.92); padding: 2px 6px; border-radius: 999px; }
+.g .g-car--room{ position: relative; }
+.g .g-car--room .g-car__btn{ width: 34px; height: 34px; }
+@media (min-width: 56rem){
+  .g .g-cards--split{ grid-template-columns: minmax(0, 1fr); gap: var(--s7); max-width: 64rem; margin-left: auto; margin-right: auto; }
+  .g .g-cards--split > .g-card--room{ display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: stretch; }
+  .g .g-cards--split > .g-card--room:nth-child(even) .g-card__media{ order: 2; }
+  .g .g-cards--split .g-card__media{ min-width: 0; }
+}
+/* On a phone the room cards are a row to swipe (2 Oct); inside a card the
+   photographs turn with the arrows, so the two swipes never fight. */
+@media (max-width: 40rem){
+  .g .g-cards--split .g-car--room .g-car__track{ overflow-x: hidden; touch-action: pan-y; }
+}
+
+/* The room pages: one large photograph at a time and the strip of small ones;
+   a small medallion by the bathroom line and by Bruce. */
+.g .g-roomgal-car{ margin: var(--s6) 0 0; }
+.g .g-roomgal-car .g-car__track{ grid-auto-columns: 100%; gap: 0; }
+.g .g-roomgal-car .g-car__f img{ aspect-ratio: 3 / 2; }
+.g .g-med--sm{ width: clamp(4.5rem, 7vw, 5.5rem); margin: 0 0 var(--s2) var(--s4); }
+.g .g-glance .g-med--sm, .g .g-plate .g-med--sm{ float: right; }
+
+/* ==== The events pages (brief 4.5) ===================================== */
+/* Three ways to take the château: each card's photograph in an arched gilt frame. */
+.g .g-way__cadre{ max-width: 15rem; margin: 0 auto var(--s5); }
+.g .g-way__cadre .g-cadre__frame{ padding: 7px; }
+.g .g-way__cadre .g-cadre__mount{ padding: 10px; }
+
+/* Restoring the Chateau: beside a photograph the list reads in one column,
+   and the photograph stays in view while it is read. */
+.g .g-sp__text .g-how{ grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 56rem){
+  .g .g-sp:has(.g-how){ align-items: start; }
+  .g .g-sp:has(.g-how) .g-sp__media{ position: sticky; top: 6rem; }
+}
+
+/* ==== What's on, press, contact, gallery (brief 4.7) ==================== */
+/* The press pages, fanned out like magazines on a table. */
+.g .g-album--fan .g-album__p:nth-child(1){ transform: rotate(-6deg); }
+.g .g-album--fan .g-album__p:nth-child(2){ transform: rotate(1deg); margin-top: var(--s4); }
+.g .g-album--fan .g-album__p:nth-child(3){ transform: rotate(7deg); }
+.g .g-album--fan .g-album__f img{ aspect-ratio: 3 / 4; }
+.g .g-album--fan .g-album__f::before, .g .g-album--fan .g-album__f::after{ display: none; }
+
+/* The gallery: a masonry of mixed heights, each photograph its own shape. The
+   inline height on each photograph is the old grid's, overruled here. */
+.g .g-gal--masonry{ display: block; columns: 3 17rem; column-gap: var(--s4); }
+.g .g-gal--masonry > figure{ break-inside: avoid; margin: 0 0 var(--s4) !important; display: block; }
+.g .g-gal--masonry > figure img{ height: auto !important; }
 
 /* ==== /design only: the specimen page's own arrangement ================= */
 .g .g-design__row{ display: grid; gap: var(--s6); align-items: end; }
