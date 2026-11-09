@@ -12025,6 +12025,9 @@ RETREAT_DAY_NAMES = (("Monday", "Lundi"), ("Tuesday", "Mardi"), ("Wednesday", "M
                  ("Sunday", "Dimanche"))
 
 
+SUMMER_MONTHS = (5, 9)   # May to September, inclusive
+
+
 def retreat_week(workshop, sittings=()):
     """The shape of a retreat's week, from the sittings on its page.
 
@@ -12057,7 +12060,12 @@ def retreat_week(workshop, sittings=()):
     if nights and len(starts) == 1:
         first = starts.pop()
         days = [RETREAT_DAY_NAMES[(first + n) % 7] for n in range(nights + 1)]
-    return {"nights": nights, "days": days}
+    # The summer plans have the pool, the terrace, the river and films under the
+    # stars, so they are for sittings that start May to September. A retreat
+    # set in winter with one of them would promise all of that in December; it
+    # gets the plain outline instead. No sittings: nothing to go on, so summer.
+    summer = all(SUMMER_MONTHS[0] <= start.month <= SUMMER_MONTHS[1] for start, _end in spans)
+    return {"nights": nights, "days": days, "summer": summer}
 
 
 app.jinja_env.globals["retreat_week"] = retreat_week

@@ -116,6 +116,9 @@ def run():
     wk = m.retreat_week({"nights_label": ""}, [{"session": {"start_date": "2027-06-18", "end_date": "2027-06-22"}}])
     s.check("no label: the nights come from the sitting", wk["nights"] == 4 and len(wk["days"]) == 5, detail=str(wk))
     s.check("no sittings: nothing named", m.retreat_week({"nights_label": "3 nights"}, [])["days"] == [])
+    s.check("June dates are summer", m.retreat_week({"nights_label": "5 nights"}, friday)["summer"] is True)
+    s.check("January dates are not", m.retreat_week({"nights_label": "3 nights"}, [
+        {"session": {"start_date": "2027-01-09", "end_date": "2027-01-12"}}])["summer"] is False)
 
     s.section("The guard can fail")
     s.check("a dish in a copper mould is caught",
@@ -137,6 +140,13 @@ def run():
         (f"{TAG} Four Starry French Summer Nights", now, "zzrdprivatekey"))
     conn.execute("INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity, created_at) "
                  "VALUES (?, '2027-06-18', '2027-06-22', 10, ?)", (cur.lastrowid, now))
+    # A three-night retreat set in January: every plan but Noël's is a summer plan, so this one must not get one.
+    # Found 9 Nov: another suite's January sitting of The Long Weekender drew the pool, the terrace and yoga.
+    cur = conn.execute("INSERT INTO workshops (title, description, price_per_person, active, created_at, nights_label) "
+                       "VALUES (?, '', 2000, 1, ?, '3 nights / 4 days')", (f"{TAG} Antique Finds in January", now))
+    winter_id = cur.lastrowid
+    conn.execute("INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity, created_at) "
+                 "VALUES (?, '2027-01-09', '2027-01-12', 10, ?)", (winter_id, now))
     # One retreat with two sittings that start on different weekdays.
     cur = conn.execute("INSERT INTO workshops (title, description, price_per_person, active, created_at, nights_label) "
                        "VALUES (?, '', 2000, 1, ?, '3 nights / 4 days')", (f"{TAG} Two Weekdays", now))
@@ -201,6 +211,9 @@ def run():
         s.check(f"{title}: the last night ends at the disco", "disco" in day_words(days[-2]),
                 detail=days[-2]["para"][-120:])
         if any(d.month in WINTER_MONTHS for d in starts):
+            cold = [p for p in NOT_IN_WINTER if re.search(p, section, re.I)]
+            s.check(f"{title}: winter dates, and nothing in its days that needs summer", not cold, detail=str(cold))
+        if any(d.month in WINTER_MONTHS for d in starts) and re.search(r"No[eë]l|Christmas", title):
             winter_seen += 1
             ticks = re.search(r'<ul class="g-ticks">(.*?)</ul>', html, re.S)
             read = section + " " + (_say(ticks.group(1)) if ticks else "")
@@ -213,6 +226,16 @@ def run():
     s.check("a Mirepoix day was there to check", mirepoix_seen >= 2, detail=f"{mirepoix_seen}")
     s.check("a winter retreat was there to check", winter_seen >= 1,
             detail="Noël was not on offer, so the winter rules proved nothing")
+
+    s.section("A retreat set in winter that is not Noël")
+    r = c.get("/workshops/%d" % winter_id)
+    html = r.get_data(as_text=True)
+    days, section = journey(html)
+    s.check("the page answers", r.status_code == 200, detail=str(r.status_code))
+    s.check("no summer day-by-day for January", days == [], detail=f"{len(days)} days")
+    cold = [p for p in NOT_IN_WINTER if re.search(p, section, re.I)]
+    s.check("and its outline promises nothing that needs summer", not cold and "Afternoons" in section,
+            detail=f"{cold}: {section[:160]}")
 
     s.section("Dates on two weekdays")
     r = c.get("/workshops/%d" % two_id)
