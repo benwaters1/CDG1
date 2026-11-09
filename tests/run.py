@@ -444,6 +444,7 @@ SUITES = [
     "test_paid_letter_balance",
     "test_family_suite_beds",
     "test_contact_enquiry_spam",
+    "test_contact_enquiry_letter",
     "test_contact_form_guard",
     "test_workshops_fifteen",
     "test_google_setup_z30",
@@ -572,6 +573,9 @@ SUITES = [
     # calendar; every Booking.com block drawn; one atelier chip a day
     # (handover z27, 17 October 2026).
     "test_booking_com_subject_stays",
+    # One Booking.com reservation for several rooms -- Chiodi, 6348479172,
+    # the King Suite and the Twin Room (Ground Floor) (9 November 2026).
+    "test_booking_com_multi_room",
     # Five rooms let a night, never six: the sixth room, z28 item 1.
     "test_rooms_let_a_night",
     # Brief of 17 October 2026: forms that post without a token, and the

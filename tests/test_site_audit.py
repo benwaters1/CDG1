@@ -102,7 +102,8 @@ def run():
     r = anon.post("/contact", data={
         "action": "flexible", "rough_month": "2028-04", "rough_nights": "4",
         "rough_guests": "2", "flexibility": "a few days either way",
-        "email": "zzaudit@example.invalid", "message": "ZZAUDIT roughly April",
+        "email": "zzaudit@example.invalid", "name": "Zzaudit Guest",
+        "message": "ZZAUDIT roughly April",
         **_harness.contact_form_fields()},
         follow_redirects=True)
     s.check("it is accepted rather than refused", r.status_code == 200,

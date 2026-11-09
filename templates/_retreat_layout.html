@@ -18,12 +18,13 @@
       plein   a full-width band, where the brief gives one -#}
 {%- from '_retreat_photos.html' import rcredit -%}
 {%- set R = '/static/img/retreats/' -%}
-{%- set SQ = 'https://images.squarespace-cdn.com/content/' -%}
-{%- set CHEF_SALON = [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w', 'The chef in the candlelit salon', ''] -%}
+{#- The Squarespace addresses are written out whole (9 Nov): the photo mirror finds the photographs it must keep by
+    reading this file, and an address built from a prefix and a tail is one it cannot see. -#}
+{%- set CHEF_SALON = ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w', 'The chef in the candlelit salon', ''] -%}
 {%- set FOIX = [R ~ 'foix-castle.jpg', 'The castle of Foix above the old town', ''] -%}
 {%- set STALLS = [R ~ 'brocante-stalls.jpg', 'Brocante stalls in the square', ''] -%}
-{%- set WALKING = [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/a92dff93-ba4c-438a-8a7f-88a1f47fa97e/Screenshot+2026-08-14+at+11.53.43+pm.png?format=1000w', 'Guests walking through the grounds', ''] -%}
-{%- set DISH = [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/355ed207-f7a3-4e62-b7ec-13d8dfaf09a8/Screenshot+2026-08-15+at+12.37.15+am.png?format=1000w', 'A dish at the château table', ''] -%}
+{%- set WALKING = ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/a92dff93-ba4c-438a-8a7f-88a1f47fa97e/Screenshot+2026-08-14+at+11.53.43+pm.png?format=1000w', 'Guests walking through the grounds', ''] -%}
+{%- set DISH = ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/355ed207-f7a3-4e62-b7ec-13d8dfaf09a8/Screenshot+2026-08-15+at+12.37.15+am.png?format=1000w', 'A dish at the château table', ''] -%}
 {%- set RL = {
   'Noël': {
     'open': [R ~ 'gingerbread-under-lights.jpg', 'The gingerbread château under the lights', ''], 'open_shape': 'arch',
@@ -33,7 +34,7 @@
       ['/static/img/dining/garland-staircase.jpg', 'The staircase, dressed with a garland and candles', ''],
       [R ~ 'icing-gingerbread-chateau.jpg', 'Icing the gingerbread château', ''],
       [R ~ 'christmas-supper.jpg', 'Christmas supper in the kitchen', ''],
-      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/Chateau+de+Gudanes+-+Winter.jpeg?format=1000w', 'The château in snow', '']],
+      ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/Chateau+de+Gudanes+-+Winter.jpeg?format=1000w', 'The château in snow', '']],
     'after': 'car', 'after_photos': [
       [R ~ 'vin-chaud.jpg', 'Vin chaud on a silver tray', ''],
       [R ~ 'marshmallows-by-the-fire.jpg', 'Marshmallows by the fire', ''],
@@ -41,7 +42,7 @@
       CHEF_SALON,
       ['/static/img/xx/iced-cake-candlelight.jpg', 'An iced cake by candlelight', ''],
       ['/static/img/xx/pastry-wreath.jpg', 'A pastry wreath on a floral plate', ''],
-      [SQ ~ '53c3b576e4b02bad423517b8/1587391482764-LP808R4VDQSVC1R1CL0Q/Blog+post+christmas+gifts.jpg?format=1000w', 'Christmas trees and gifts', ''],
+      ['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587391482764-LP808R4VDQSVC1R1CL0Q/Blog+post+christmas+gifts.jpg?format=1000w', 'Christmas trees and gifts', ''],
       ['/static/img/dining/christmas-table.jpg', 'The Christmas table', '']],
     'who': 'album', 'who_photos': [
       [R ~ 'guests-toasting.jpg', 'Guests raising a glass', ''],
@@ -55,7 +56,7 @@
       FOIX,
       STALLS,
       [R ~ 'lombrives-cave-mouth.jpg', 'The mouth of the great cave at Lombrives', '', rcredit('lombrives-cave-mouth')],
-      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/82882b98-6d8d-4e43-a8dd-d483ea19aec8/Screenshot+2026-07-30+at+7.57.59+pm.png?format=1000w', 'Fresh bread in a basket', '']],
+      ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/82882b98-6d8d-4e43-a8dd-d483ea19aec8/Screenshot+2026-07-30+at+7.57.59+pm.png?format=1000w', 'Fresh bread in a basket', '']],
     'after': 'mos', 'after_photos': [
       ['/static/img/xx/tomato-tart-above.jpg', 'A tomato tart, from above', ''],
       ['/static/img/xx/two-galettes.jpg', 'Two galettes on the board', ''],
@@ -84,7 +85,7 @@
     'open': [R ~ 'chateau-at-night.jpg', 'The château at night, under the stars', ''], 'open_shape': 'arch',
     'glance': ['/static/img/dining/garden-sofa-mountains.jpg', 'A garden sofa facing the mountains'],
     'days': [
-      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/9ee310fe-0248-4c96-8116-8797e5efb084/Screenshot+2026-08-12+at+3.39.10+pm.png?format=1000w', 'A guest walking up to the château through the meadow', ''],
+      ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9ee310fe-0248-4c96-8116-8797e5efb084/Screenshot+2026-08-12+at+3.39.10+pm.png?format=1000w', 'A guest walking up to the château through the meadow', ''],
       ['/static/img/dining/chateau-above-roses.jpg', 'The château above the roses', ''],
       STALLS,
       [R ~ 'restoration-scaffold.jpg', 'Guests on the scaffold among the frescoes', ''],
@@ -93,10 +94,10 @@
       FOIX,
       ['/static/img/rk/park-to-the-mountains.jpg', 'The park, running to the mountains in the mist', '']],
     'after': 'bande', 'after_photos': [
-      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/50681186-1638-4a0b-a9e2-553437fdb677/Screenshot+2026-08-15+at+12.42.20+am.png?format=1000w', 'Candlelight in the salon', ''],
-      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/0fba4375-e1f0-449b-ba58-d1a5d3a48069/Screenshot+2026-07-30+at+8.05.38+pm.png?format=1000w', 'The table by candlelight', ''],
+      ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/50681186-1638-4a0b-a9e2-553437fdb677/Screenshot+2026-08-15+at+12.42.20+am.png?format=1000w', 'Candlelight in the salon', ''],
+      ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0fba4375-e1f0-449b-ba58-d1a5d3a48069/Screenshot+2026-07-30+at+8.05.38+pm.png?format=1000w', 'The table by candlelight', ''],
       ['/static/img/dining/terrace-long-table.jpg', 'A long table on the terrace, the mountains beyond', ''],
-      [SQ ~ 'v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1000w', 'Lighting the candles in the salon', '']],
+      ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1000w', 'Lighting the candles in the salon', '']],
     'plein': ['/static/img/rk/from-the-air-mountains.jpg', 'From the air, the mountains behind'],
     'who': 'album', 'who_photos': [
       [R ~ 'guests-rose-gate.jpg', 'Guests at the rose gate', ''],
