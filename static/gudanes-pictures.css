@@ -239,6 +239,15 @@
 /* Framed: the gilt frame keeps its own size and sits in the middle of its column. */
 .g .g-sp--framed .g-sp__media .g-cadre{ margin: 0 auto; }
 
+/* Few words: a split whose words are a short paragraph or two. Side by side,
+   a 4:5 portrait in the wider column stood twice their height, and the words
+   floated in the middle of a blank above and below them (the home page's
+   night at Gudanes, owner, 9 November 2026). Landscape there, so the two read
+   as a pair; stacked on a phone the portrait is fine and stays. */
+@media (min-width: 56rem){
+  .g .g-sp--few .g-sp__main img{ aspect-ratio: 3 / 2; }
+}
+
 /* ==== I. Plein cadre ==================================================== */
 .g .g-plein{
   position: relative; overflow: hidden; margin: var(--s8) 0;

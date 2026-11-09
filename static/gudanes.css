@@ -11888,3 +11888,98 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-everyday__fr{ display: block; margin: 0; font-family: var(--display); font-style: italic; font-size: 22px; line-height: 1.2; color: var(--blue-deep); }
 .g .g-everyday__en{ display: block; margin: .2rem 0 var(--s2); font-weight: 400; font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
 .g .g-everyday__p{ display: block; margin: 0; font-family: var(--serif); font-size: var(--t-small); line-height: 1.6; color: var(--ink); }
+
+/* ==========================================================================
+   9 NOV 2026 - THE ADDRESS, AND THE MARGINS ACROSS THE SITE. Owner: "the
+   address here isnt clickable it should be, its also alot of scrolling on the
+   home page to get to it ... and also double check spacing site wide for
+   margins". Every public page was measured at 390, 768 and 1440 for its side
+   gutters, the gap between sections, and words at the edge of the screen;
+   below is what that found. test_public_margins holds each one.
+   ========================================================================== */
+
+/* The address, wherever _house_address.html draws it: a link to the pin at
+   the gates. The footer's contact links are inline-flex for a 44px target,
+   which would set the street and the town side by side on one line; this
+   one is two lines, and tall enough as it is. */
+.g .g-footer a.g-addr{ display: inline-block; min-height: 0; }
+/* On one line it may wrap after the street, never inside "Château-Verdun". */
+.g .g-addr__town{ white-space: nowrap; }
+.g .g-navwrap__addr a.g-addr{ display: inline; min-height: 0; color: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+
+/* The same address under the home page's hero, so nobody has to reach the
+   footer to find where the house is. On the navy of the section below it,
+   in the footer's type. The pin runs in the line rather than standing apart,
+   and on a phone the two lines are balanced so the postcode is not left on
+   its own. */
+.g .g-where{
+  margin: 0; max-width: none; display: block;
+  padding: var(--s4);
+  background: var(--blue-deep); color: #C9D4DF;
+  font-family: var(--serif); font-size: 16px; line-height: 1.45; text-align: center;
+  text-wrap: balance;
+}
+.g .g-where svg{ display: inline-block; width: 18px; height: 18px; margin-right: var(--s2); vertical-align: -3px; color: var(--gilt-leaf); }
+.g .g-where a{ color: #fff; text-decoration: underline; text-decoration-color: var(--gilt-leaf); text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.g .g-where a:hover{ color: var(--gold-lit); }
+
+/* THE BOOKING BAR IS CLEARED ONCE, BY THE FOOTER, AND ONLY WHERE THERE IS A
+   BAR. main still padded its foot by 84-88px for it, from when main was the
+   last thing on the page; the reassurance band and the footer have come after
+   it since, so that padding was an empty strip between the Monument
+   Historique band and the reassurance band on every page on a phone or a
+   tablet. Meanwhile the footer's own allowance for the bar was overridden at
+   phone width, so the bar sat over the copyright line and the card marks,
+   and on pages with no bar at all a tablet got 120px of empty navy. */
+@media (max-width: 61.99rem){
+  .g main{ padding-bottom: 0; }
+  .g .g-footer{ padding-bottom: var(--s6); }
+  .g:has(.g-bookbar) .g-footer{ padding-bottom: calc(var(--s6) + 72px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-width: 60rem){
+  .g:has(.g-stickybar) .g-footer{ padding-bottom: calc(var(--s6) + 72px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* The reassurance band runs straight into the footer. A phone-width rule from
+   before that band existed kept a 48px margin over the footer, which showed
+   as a strip of the page's cream between the two. */
+.g .g-footer{ margin-top: 0; }
+
+/* A ROW YOU SWIPE STARTS AT ITS FIRST CARD. The dates on /workshops are
+   centred on a wide screen, and the centring followed them onto a phone,
+   where they are a sideways row: centring a row wider than its box pushes
+   half the overflow off the LEFT edge, where nothing can scroll, so the
+   first dates of the year could not be reached at all. The room cards had
+   the same fault and were fixed alone (test_design); this is every row the
+   phone rule above turns into a swipe. */
+@media (max-width: 40rem){
+  .g .g-homerooms, .g .g-cards, .g .g-wscards, .g .g-choose, .g .g-sittings-grid, .g .g-addon{ justify-content: flex-start; }
+}
+
+/* The date cards on /workshops drop their photograph (2 Oct), but on a phone
+   a date card is laid out as a photograph column and a words column, so each
+   card kept an empty 6.5rem column down its left side and squeezed the dates
+   into what was left. Without the photograph, the words take the card, with
+   the padding they have on every wider screen, which keeps them clear of the
+   card's drawn corners. */
+@media (max-width: 34rem){
+  .g #dates .g-sit{ grid-template-columns: minmax(0, 1fr); }
+  .g #dates .g-sit__flag, .g #dates .g-sit__b{ grid-column: 1; }
+  .g #dates .g-sit__b{ padding: var(--s5); }
+}
+
+/* .g-two used as the page container, outside a .g-wrap (Write to us, on
+   Contact), kept its 24px gutter on a phone where .g-wrap drops to 16px, so
+   that one block sat 8px in from every other line on the page. */
+@media (max-width: 34rem){
+  .g .g-two{ padding-inline: var(--s4); }
+}
+
+/* The dates at the foot of every page, 1213 · 1741 · 2013, ran the whole
+   width of a phone: a later rule set the crest's padding to "28px 0 4px",
+   and the 0 took its sides away, so "The fortress" and "The restoration"
+   sat 11-20px from the edges of the screen. The page's gutter, as above. */
+.g .g-crest--foot{ padding-left: var(--s5); padding-right: var(--s5); }
+@media (max-width: 34rem){
+  .g .g-crest--foot{ padding-left: var(--s4); padding-right: var(--s4); }
+}

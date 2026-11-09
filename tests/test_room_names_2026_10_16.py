@@ -184,10 +184,13 @@ def run():
             detail=room_page[:200])
     s.check("the King Suite's page shows its four-poster",
             'alt="The King Suite, the four-poster and its canopy"' in suite_html)
-    # 9 Nov: by the seating, which is in the gallery whichever photograph leads. The bed was the second photograph and
-    # named itself here; its lead went dead at Booking.com, the bed now leads, and the lead carries the room's name.
+    # By the photograph, not its caption. The bed leads the King Room since
+    # Booking.com deleted the picture before it (9 November 2026), and the
+    # first slide is captioned with the room's own name. In an <img>: the
+    # page's share picture names the same photograph in a <meta>.
     s.check("and the King Room's shows the old Queen Room, with no four-poster",
-            'alt="The King Room, the seating"' in room_html and "four-poster" not in room_html)
+            re.search(r'<img\b[^>]*\ssrc="[^"]*/798764955\.jpg', room_html) is not None
+            and "four-poster" not in room_html)
     stay = anon.get("/book").get_data(as_text=True)
 
     def card(room_id):

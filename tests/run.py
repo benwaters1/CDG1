@@ -444,6 +444,7 @@ SUITES = [
     "test_paid_letter_balance",
     "test_family_suite_beds",
     "test_contact_enquiry_spam",
+    "test_contact_enquiry_letter",
     "test_contact_form_guard",
     "test_workshops_fifteen",
     "test_google_setup_z30",
@@ -605,6 +606,10 @@ SUITES = [
     "test_home_pictures",
     # 9 November 2026: the rest of the public pages, brief sections 4.3 to 4.7.
     "test_page_pictures",
+    # 9 November 2026: the address opens the map and sits under the home page's
+    # hero, and every public page measured for its margins at three widths.
+    "test_house_address",
+    "test_public_margins",
 ]
 
 

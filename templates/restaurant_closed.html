@@ -9,8 +9,11 @@
    switched off in settings. It used to be a 404, which tells somebody the
    website is broken rather than that the table is not open yet — and the site
    links here from the bar on every restaurant page, so it was not an address
-   anybody had to guess at. #}
-<div class="g-wrap" style="padding:clamp(2rem,8vw,5rem) 0;">
+   anybody had to guess at.
+   A section like every other page's, rather than an inline padding: that one
+   was written "clamp(...) 0", and the 0 took away the wrap's side gutters, so
+   every word on the page touched the edge of a phone (9 Nov). #}
+<section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">La Table</p>
   <h1 class="g-place">Not Taking Reservations Just Yet</h1>
   <p class="g-p g-lede-first">
@@ -26,5 +29,5 @@
     <a href="{{ url_for('restaurant_info') }}" class="g-btn">About La Table</a>
     <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a>
   </p>
-</div>
+</div></section>
 {% endblock %}

@@ -1158,4 +1158,27 @@ def run():
             detail="`safe center` falls back to start the moment the row "
                    "would overflow; plain `center` does not")
 
+    # 9 November 2026: the room cards were fixed alone, and the dates on
+    # /workshops had the same fault -- centred on a desk, and the centring
+    # followed them into the row a phone swipes, so the first dates of the
+    # year sat off the left edge (and so did the retreat cards above them).
+    # So every row the phone rule turns into a swipe is held, not one: the
+    # LAST phone-width rule naming it must start it at its first card.
+    # test_public_margins measures the rows themselves; this holds the source
+    # where no browser is to hand.
+    swipe = ("g-homerooms", "g-cards", "g-wscards", "g-choose", "g-sittings-grid", "g-addon")
+    last_says = {}
+    for block in re.finditer(
+            r"@media\s*\(max-width:\s*(?:34|40)rem\)\s*\{(.*?)\}\s*\}", public, re.S):
+        # No closing brace asked for: the block pattern has taken the last one.
+        for rule in re.finditer(r"([^{}]+)\{[^{}]*?justify-content:\s*([a-z -]+?)\s*;",
+                                block.group(1)):
+            for name in swipe:
+                if re.search(r"\.%s(?![\w-])" % re.escape(name), rule.group(1)):
+                    last_says[name] = rule.group(2).strip()
+    centred = {n: last_says.get(n) for n in swipe
+               if last_says.get(n) not in ("start", "flex-start")}
+    s.check("and so does every other row a phone swipes", not centred,
+            detail="the last phone-width rule for each says: %s" % centred)
+
     return s

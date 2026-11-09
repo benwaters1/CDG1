@@ -94,6 +94,12 @@
   </button>
 </section>
 
+{#- 9 Nov (owner): "its also alot of scrolling on the home page to get to [the address], we should have
+    the address elsewhere further up". The first thing under the hero: the same words as the footer, opening
+    the same pin at the gates (_house_address.html). test_house_address holds it here. -#}
+{% from '_house_address.html' import house_address with context %}
+<p class="g-where"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" focusable="false"><path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.3"/></svg>{{ house_address() }}</p>
+
 <!-- ============ LA PLEINE EXPÉRIENCE - the château in full, under the calendar (2 Oct) ============ -->
 <section class="g-full" aria-labelledby="full-h"><div class="g-wrap g-full__in">
   <div class="g-full__copy">
@@ -198,8 +204,10 @@
   <p class="g-fr">Une nuit au château <span class="g-fr__en">A night at the château</span></p>
   <p class="g-eyebrow">Stay the Night</p>
   <h2 class="g-place">A Night at Gudanes</h2>
-  {#- the library, not breakfast: Ways to Spend the Days below already shows breakfast. -#}
-  {% call split([url_for('static', filename='img/retreats/the-library.jpg'), 'The library, a fire laid and armchairs drawn up']) %}
+  {#- the library, not breakfast: Ways to Spend the Days below already shows breakfast.
+      9 Nov (owner, "I don't like this bit"): two short paragraphs beside a tall 4:5 portrait floated in the middle of a
+      blank twice their height. g-sp--few sets the photograph landscape beside them. -#}
+  {% call split([url_for('static', filename='img/retreats/the-library.jpg'), 'The library, a fire laid and armchairs drawn up'], cls='g-sp--few') %}
   <p class="g-p g-lede-first">There is a particular pleasure in waking in a château like this: light across old stone, the valley below, and breakfast waiting. The days are slow here by design, with the pool, the grounds and the mountains on every side.</p>
   <p class="g-p">Nothing is staged. The château is lived in while it is brought back. A night here is your room, breakfast in the morning and the lounge to come back to.</p>
   {% endcall %}
