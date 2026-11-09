@@ -64163,7 +64163,8 @@ HOUSE_POSTAL = f"{HOUSE_STREET} · {HOUSE_POSTCODE} {HOUSE_TOWN} · {HOUSE_REGIO
 # which links it to the pin at the gates (house_map_links), never a search.
 HOUSE_PLACE = {
     "street": HOUSE_STREET,
-    "town": f"{HOUSE_TOWN}, {HOUSE_REGION} {HOUSE_POSTCODE}, {HOUSE_COUNTRY}",
+    "locality": f"{HOUSE_TOWN}, {HOUSE_REGION} {HOUSE_POSTCODE}",
+    "country": HOUSE_COUNTRY,
 }
 HOUSE_SOCIAL = (("Instagram","https://www.instagram.com/chateaugudanes/"),
                 ("Facebook", "https://www.facebook.com/chateaudegudanes/"))
