@@ -79,11 +79,25 @@
         </th>
         <td>
           {% if r['matched'] %}{{ r['room_name'] }}
+            {% if r['room_total'] > 1 %}<br><span class="upload-hint">one reservation, {{ r['room_total'] }} rooms</span>{% endif %}
+            {% if r['room_count'] and r['room_count'] > r['room_total'] %}<br><span class="mini-status status-pending">Booking.com says {{ r['room_count'] }} rooms</span>{% endif %}
           {% else %}
             <span class="mini-status status-pending">Not matched</span>
             {% if r['room_label'] %}<br><span class="upload-hint">{{ r['room_label'] }}</span>{% endif %}
             {% if r['match_note'] %}<br><span class="upload-hint">{{ r['match_note'] }}</span>{% endif %}
             {% if r['status'] == 'confirmed' %}<br><a class="small-link" href="{{ url_for('channel_stays_page', number=r['reservation_number'], arrive=r['arrival_date'] or '', leave=r['departure_date'] or '') }}#add-stay">Fill in by hand</a>{% endif %}
+          {% endif %}
+          {% if r['candidates']|length > 1 or (r['matched'] and r['candidates']) %}
+          {# One reservation for several rooms looks, from here, like several
+             rooms' calendars starting the same day. Not guessed: the owner
+             ticks them, once (group_channel_stay_rooms). #}
+          <form method="post" action="{{ url_for('group_channel_stay_rooms', reservation_id=r['id']) }}" style="margin-top:6px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% for c in r['candidates'] %}
+            <label style="display:block;"><input type="checkbox" name="room_id" value="{{ c['room_id'] }}" checked> {{ c['name'] }}</label>
+            {% endfor %}
+            <button type="submit" class="btn-mini">{{ 'These are' if r['candidates']|length > 1 else 'This is' }} {{ 'also ' if r['matched'] }}this reservation</button>
+          </form>
           {% endif %}
         </td>
         <td>{{ r['nights'] or '—' }}</td>
@@ -141,7 +155,8 @@
 <h2 class="section-heading" id="add-stay">Add a Booking.com stay by hand</h2>
 <p class="upload-hint">For a booking that came before the mailbox was read, or one that
   could not be matched to its room. The reservation number, the room and the dates are
-  on the extranet. The same number fills in the stay already here.</p>
+  on the extranet. The same number fills in the stay already here; a room it does not
+  have yet is added to it, so a reservation for two rooms is typed twice, once per room.</p>
 <form method="post" action="{{ url_for('add_channel_stay') }}" style="max-width:640px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <section class="form-section">
