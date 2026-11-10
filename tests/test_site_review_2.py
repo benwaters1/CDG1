@@ -119,8 +119,10 @@ DISH = re.compile(
     r"\b(kir|lillet|vin chaud|chees\w*|fromages?|b(?:oe|œ)uf|beef|foie|cassoulet|champagne|"
     r"wines?|crémant|cremant|rosé|spritz|prosecco|sparkling|cocktails? \w+ (?:royale|tonic)|"
     r"hot chocolate|charcuterie)\b", re.I)
-# Activities, which the owner keeps: a tasting is something you do that day.
-ACTIVITY = re.compile(r"(?i)a tasting of french wines|a wine tasting|wine tasting")
+# Activities, which the owner keeps: a tasting is something you do that day. And one line the owner
+# approved by name for Noël after this brief was written (9 Nov, the retreat days read aloud,
+# test_retreat_days): carols and vin chaud by the fire. Nothing else of the kind.
+ACTIVITY = re.compile(r"(?i)a tasting of french wines|a wine tasting|wine tasting|carols and vin chaud by the fire")
 JOURNEY = re.compile(r'(?is)<ol class="g-journey">(.*?)</ol>\s*(?:<div class="g-journey__|</div></section>)')
 
 

@@ -245,7 +245,7 @@ def run():
                         detail=days[1][:160])
                 s.check("Noël: day three is the gingerbread château",
                         "Le pain d’épices" in days[2] and "gingerbread château" in days[2]
-                        and "Carols by the fire" in days[2] and "vin chaud" not in days[2].lower(),
+                        and "Carols and vin chaud by the fire" in days[2],
                         detail=days[2][:160])
                 s.check("Noël: the last day opens slowly, with watercolours, and cocktails in Le Bar",
                         "watercolours at the long table" in days[3] and "Cocktails in Le Bar" in days[3],
@@ -253,8 +253,7 @@ def run():
             s.check("Noël: no outings", not re.search(r"\bFoix\b|Lombrives|Ax-les-Thermes|Mirepoix|transfer from Toulouse",
                                                        journey), detail=journey[:120])
             # 9 Nov 2026, evening (owner's second review, 1 and 5): the Entertainments grid went -- the day-by-day
-            # again as a list, where the cocktails crept back in -- and no drink is named on a day: the carols
-            # stay by the fire, the vin chaud goes.
+            # again as a list, where the cocktails crept back in.
             s.check("Noël: the Entertainments grid went", "Les divertissements" not in seen
                     and "The Château’s Own Entertainments" not in seen)
 
