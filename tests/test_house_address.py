@@ -8,7 +8,12 @@ the address elsewhere further up".
 WHAT IS HELD HERE.
 
   - The footer, the menu and a line under the home page's hero all print the
-    address, and in each it is a link.
+    address, and in each it is a link. So do Contact (twice), the Stay page's
+    key facts and La Table's, each in the layout it always had (the same
+    evening) -- and a sweep of every page in the sitemap fails on the address
+    printed as plain words anywhere else, so a page that comes back from a
+    design handover with the old line is caught. Three pages are allowed it,
+    named below: they state who the house is, in law, rather than where.
   - The link goes to the PIN, the same one every other "open in maps" on the
     site uses (house_map_links), and never to a search. A search by name once
     answered from Tokyo, and one by address puts a guest in the village square
@@ -30,9 +35,11 @@ and every public page goes down -- which these renders would catch too.
 """
 import html as htmllib
 import re
+from html.parser import HTMLParser
 
 from _harness import Suite, db
 import _harness
+from test_copy_unchanged import public_paths
 
 m = _harness.m
 
@@ -67,12 +74,55 @@ def _words(fragment):
 
 def _addr(fragment):
     """(tag, href or None, words) for the one g-addr in a piece of markup, or None."""
-    hit = re.search(r'<(a|span) class="g-addr[^"]*"(?: href="([^"]*)")?[^>]*>(.*?)</\1>',
-                    fragment or "", re.S)
-    if not hit:
-        return None
-    href = htmllib.unescape(hit.group(2)) if hit.group(2) else None
-    return hit.group(1), href, _words(hit.group(3))
+    found = _addrs(fragment)
+    return found[0] if found else None
+
+
+# The class exactly, so the town's own span (g-addr__town) is never taken for
+# the address.
+ADDR = re.compile(r'<(a|span) class="g-addr(?: [^"]*)?"(?: href="([^"]*)")?[^>]*>(.*?)</\1>', re.S)
+
+
+def _addrs(fragment):
+    """Every g-addr in a piece of markup, as (tag, href or None, words)."""
+    return [(hit.group(1), htmllib.unescape(hit.group(2)) if hit.group(2) else None,
+             _words(hit.group(3))) for hit in ADDR.finditer(fragment or "")]
+
+
+def _main(page):
+    hit = re.search(r"<main\b[^>]*>(.*?)</main>", page, re.S)
+    return hit.group(1) if hit else ""
+
+
+# Pages that name the house in law -- the data controller, the publisher, the
+# party to the contract -- in a sentence, rather than telling anybody where to
+# drive. A link there would be noise.
+STATED_IN_LAW = ("/privacy", "/legal", "/terms")
+
+
+class _PlainAddress(HTMLParser):
+    """How many times the street is printed as words outside a g-addr."""
+    SKIP = {"script", "style", "template", "head", "title", "noscript"}
+    VOID = {"br", "img", "input", "meta", "link", "hr", "source", "wbr", "area", "col", "embed"}
+
+    def __init__(self, street):
+        super().__init__(convert_charrefs=True)
+        self.street, self.stack, self.found = street, [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.VOID:
+            return
+        cls = (dict(attrs).get("class") or "").split()
+        self.stack.append((tag, "g-addr" in cls or tag in self.SKIP))
+
+    def handle_endtag(self, tag):
+        while self.stack:
+            if self.stack.pop()[0] == tag:
+                break
+
+    def handle_data(self, data):
+        if self.street in data and not any(hidden for _, hidden in self.stack):
+            self.found += data.count(self.street)
 
 
 def _footer(page):
@@ -100,7 +150,8 @@ def run():
     anon = m.app.test_client()
     was = (_setting("house_lat"), _setting("house_lng"))
     place = m.HOUSE_PLACE
-    line = "%s, %s" % (place["street"], place["town"])     # the one-line form
+    town = "%s, %s" % (place["locality"], place["country"])
+    line = "%s, %s" % (place["street"], town)     # the one-line form
     try:
         s.section("The words, from one place")
         s.check("the public pages print the address as they always have",
@@ -129,7 +180,7 @@ def run():
         s.check("to the pin at the gates",
                 footer is not None and footer[1] == google, detail=str(footer))
         s.check("on the street and the town, the two lines it has always had",
-                footer is not None and footer[2] == "%s | %s" % (place["street"], place["town"]),
+                footer is not None and footer[2] == "%s | %s" % (place["street"], town),
                 detail=str(footer))
 
         menu = _addr(_menu(page))
@@ -156,6 +207,38 @@ def run():
                 (_addr(_contact_block(other)) or ("", "", ""))[1] == google,
                 detail=str(_addr(_contact_block(other))))
 
+        s.section("And on every page that tells somebody where the house is")
+        three = "%s | %s | %s" % (place["street"], place["locality"], place["country"])
+        for path, label, expected in (
+                ("/contact", "Contact's Finding Us and its key facts", [line, three]),
+                ("/book", "the Stay page's key facts", [three]),
+                ("/restaurant", "La Table's key facts",
+                 ["%s, %s" % (place["street"], place["locality"])])):
+            body = anon.get(path).get_data(as_text=True)
+            found = _addrs(_main(body))
+            s.check("%s: the address is a link to the pin, in the words it always had" % label,
+                    [w for _, _, w in found] == expected
+                    and all(t == "a" and h == google for t, h, _ in found),
+                    detail=str(found))
+
+        m.SITE_IS_LIVE, was_live = True, m.SITE_IS_LIVE
+        try:
+            paths = [p for p in public_paths(anon) if p not in STATED_IN_LAW]
+            plain = []
+            for path in paths:
+                r = anon.get(path)
+                if r.status_code != 200:
+                    continue
+                parser = _PlainAddress(place["street"])
+                parser.feed(r.get_data(as_text=True))
+                if parser.found:
+                    plain.append("%s (%d)" % (path, parser.found))
+        finally:
+            m.SITE_IS_LIVE = was_live
+        s.check("no page in the sitemap prints the address as words that open nothing",
+                len(paths) >= 15 and not plain,
+                detail="%d pages swept; plain: %s" % (len(paths), plain))
+
         s.section("Beside it, the telephone and the addresses are links too")
         block = _contact_block(page)
         shown = re.sub(r"<[^>]+>", " ", block)
@@ -176,7 +259,7 @@ def run():
         where = _addr(_where(page))
         menu = _addr(_menu(page))
         s.check("the footer still gives the street and the town",
-                footer is not None and footer[2] == "%s | %s" % (place["street"], place["town"]),
+                footer is not None and footer[2] == "%s | %s" % (place["street"], town),
                 detail=str(footer))
         s.check("but none of the three is a link",
                 all(x is not None and x[0] == "span" and x[1] is None

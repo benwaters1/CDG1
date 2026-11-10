@@ -11903,8 +11903,20 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
    which would set the street and the town side by side on one line; this
    one is two lines, and tall enough as it is. */
 .g .g-footer a.g-addr{ display: inline-block; }
-/* On one line it may wrap after the street, never inside "Château-Verdun". */
-.g .g-addr__town{ white-space: nowrap; }
+/* On one line it may wrap after the street, never inside "Château-Verdun".
+   And it stays the size of the words around it: a rule sets every span in
+   main to the small size, with eleven exceptions chained on to it, which no
+   plain class can outrank -- on Contact the town came out smaller than the
+   street before it. */
+.g .g-addr__town{ white-space: nowrap; font-size: inherit !important; }
+/* In the body of a page the address is the only link in its paragraph, and a
+   phone rule makes such links inline-flex for a 44px target
+   (.g main p > a:only-child), which set the street and the town side by side
+   as two boxes. Inline-block keeps the 44px and lets the words wrap. At the
+   same widths as that rule: on a desk the link is words in a line. */
+@media (max-width: 48rem){
+  .g main p > a.g-addr:only-child{ display: inline-block; }
+}
 /* The menu's links are inline-flex for the same reason, which would set the
    street and the town side by side; the address wraps as words. */
 .g .g-navwrap__addr a.g-addr{ display: inline; }

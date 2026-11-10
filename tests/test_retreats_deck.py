@@ -236,19 +236,23 @@ def run():
                               r"|a last morning of making", seen, re.I)
             s.check("Noël: no embroidery or candle-pouring on the page", not made, detail=", ".join(made))
             s.check("Noël: and none on its card", not re.search(r"embroider|candle", words(macro("ws_lead", w)), re.I))
+            # 9 Nov (owner): broader, no champagne jellies in copper moulds, the tree and wreaths on day two, carols
+            # by the fire, the tasting and cocktails in Le Bar. test_retreat_days holds the rest of what was asked.
             if len(days) == 5:
+                s.check("Noël: day two is the tree and the wreaths",
+                        "Le sapin" in days[1] and "Christmas tree" in days[1] and "wreaths" in days[1],
+                        detail=days[1][:160])
                 s.check("Noël: day three is the gingerbread château",
                         "Le pain d’épices" in days[2] and "gingerbread château" in days[2]
-                        and "champagne jellies" in days[2] and "French wines by the fire" in days[2],
-                        detail=days[2][:160])
-                s.check("Noël: the last day opens slowly, with watercolours and the tree",
-                        "watercolours at the long table" in days[3] and "dress the tree" in days[3]
-                        and "Cocktail hour in the Château Bar" in days[3], detail=days[3][:160])
+                        and "Carols and vin chaud by the fire" in days[2], detail=days[2][:160])
+                s.check("Noël: the last day opens slowly, with watercolours, and cocktails in Le Bar",
+                        "watercolours at the long table" in days[3] and "Cocktails in Le Bar" in days[3],
+                        detail=days[3][:160])
             s.check("Noël: no outings", not re.search(r"\bFoix\b|Lombrives|Ax-les-Thermes|Mirepoix|transfer from Toulouse",
                                                        journey), detail=journey[:120])
-            s.check("Noël: the tasting by the fire and cocktail hour are on the programme",
-                    "La dégustation French wines by the fire" in seen
-                    and "L’heure du cocktail Cocktail hour in the Château Bar" in seen)
+            s.check("Noël: the tasting and cocktail hour in Le Bar are on the programme",
+                    "La dégustation A wine tasting in Le Bar" in seen
+                    and "L’heure du cocktail Cocktail hour in Le Bar" in seen)
 
     s.section("No price typed into the words")
     comment = re.compile(r"\{#.*?#\}|<!--.*?-->", re.S)
