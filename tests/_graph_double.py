@@ -28,6 +28,9 @@ class FakeGraph:
         self.calendar_mailbox = calendar_mailbox
         self.calls = []
         self.messages = {}          # mailbox -> [message dict as Graph returns it]
+        # The inbox folder, for the unanswered-email scan: mailbox -> [message].
+        # Kept apart from `messages`, which the add-in's search reads.
+        self.inbox = {}
         self.bodies = {}            # message id -> text
         self.sent = {}              # mailbox -> [sent message dicts]
         self.refuse_mailboxes = {}  # mailbox -> status code to answer with
@@ -41,6 +44,10 @@ class FakeGraph:
             self.default_calendar: [{"id": "orgperm", "role": "freeBusyRead",
                                      "emailAddress": {"name": "My Organization"}}]}
         self.refuse_subjects = set()   # substrings of a subject whose writes are refused
+        # As Microsoft does: an event that ends before it begins, or an all-day
+        # one that ends on the day it begins, is refused with "at least one
+        # property failed validation". Off unless a suite asks for it.
+        self.check_times = False
         self.refuse_categories = False
         self._next = 0
         self._lock = threading.Lock()
@@ -88,6 +95,13 @@ class FakeGraph:
             return {"value": out[: int(params.get("$top", "50"))]}
         hit = re.match(r"^messages/([^/]+)$", rest)
         if hit:
+            # One message's headers, as the scan asks for an older flag's.
+            if "internetMessageHeaders" in params.get("$select", ""):
+                for msg in self.inbox.get(mailbox, []):
+                    if msg["id"] == hit.group(1):
+                        return {"id": msg["id"], "internetMessageId": msg.get("internetMessageId"),
+                                "internetMessageHeaders": msg.get("internetMessageHeaders") or []}
+                return self._fail(404)
             text = self.bodies.get(hit.group(1))
             if text is None:
                 return self._fail(404)
@@ -95,6 +109,8 @@ class FakeGraph:
                     "body": {"contentType": "text", "content": text}}
         if rest == "mailFolders/sentitems/messages":
             return {"value": list(self.sent.get(mailbox, []))}
+        if rest == "mailFolders/inbox/messages":
+            return {"value": list(self.inbox.get(mailbox, []))}
         if rest == "calendars":
             return {"value": [{"id": cid, "name": c["name"]} for cid, c in self.calendars.items()]}
         if rest == "calendar":
@@ -137,6 +153,12 @@ class FakeGraph:
         subject = (body or {}).get("subject") or ""
         if any(bad in subject for bad in self.refuse_subjects):
             return 400, None, "Microsoft answered 400 (ErrorInvalidRequest: refused by the double)"
+        if self.check_times and body and "start" in body and "end" in body:
+            begins = (body["start"] or {}).get("dateTime") or ""
+            ends = (body["end"] or {}).get("dateTime") or ""
+            if ends < begins or (body.get("isAllDay") and ends[:10] <= begins[:10]):
+                return 400, None, ("Microsoft answered 400 (ErrorPropertyValidationFailure: "
+                                   "At least one property failed validation.)")
         if method == "POST" and rest == "calendars":
             cid = self._id("cal")
             self.calendars[cid] = {"name": body["name"], "events": {}}
@@ -200,8 +222,9 @@ class FakeGraph:
 
 
 def message(mid, *, frm, to, subject, when, preview="", conversation="conv-1",
-            internet_id=None, draft=False):
-    """One message as Graph's list call returns it."""
+            internet_id=None, draft=False, headers=None):
+    """One message as Graph's list call returns it. `headers` is {name: value}
+    for internetMessageHeaders -- List-Unsubscribe, Precedence and the like."""
     return {
         "id": mid, "internetMessageId": internet_id or f"<{mid}@example.invalid>",
         "conversationId": conversation, "subject": subject,
@@ -210,4 +233,5 @@ def message(mid, *, frm, to, subject, when, preview="", conversation="conv-1",
         "ccRecipients": [], "receivedDateTime": when, "sentDateTime": when,
         "bodyPreview": preview or subject, "webLink": f"https://outlook.office.com/mail/{mid}",
         "isDraft": draft,
+        "internetMessageHeaders": [{"name": k, "value": v} for k, v in (headers or {}).items()],
     }

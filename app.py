@@ -151,6 +151,7 @@ import contextlib
 import shutil        # which(): whether ffmpeg is on this box
 import subprocess    # one frame out of a clip, and nothing else
 from email.message import EmailMessage
+from email.utils import parseaddr
 from datetime import datetime, timezone, timedelta, date, time as dtime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
@@ -5952,6 +5953,16 @@ def init_db():
         ("mailbox_routing_on_shift", "ALTER TABLE mailbox_routing ADD COLUMN route_to_on_shift INTEGER NOT NULL DEFAULT 0"),
         ("email_flags_escalated_at", "ALTER TABLE email_flags ADD COLUMN escalated_at TEXT"),
         ("mailbox_routing_escalate_hours", "ALTER TABLE mailbox_routing ADD COLUMN escalate_hours REAL NOT NULL DEFAULT 48"),
+        # ONE EMAIL, ONE FLAG. The same message delivered to reservations@ and
+        # experience@ was two flags; internet_message_id is the message's own
+        # Message-ID, the same in every inbox it reached, and `mailboxes` lists
+        # them all. closed_by_app says why the app closed one nobody ticked off
+        # (answered, a newsletter, a duplicate), and rules_checked_at that an
+        # older flag has been read again by the rules of 10 Nov 2026.
+        ("email_flags_internet_message_id", "ALTER TABLE email_flags ADD COLUMN internet_message_id TEXT"),
+        ("email_flags_mailboxes", "ALTER TABLE email_flags ADD COLUMN mailboxes TEXT"),
+        ("email_flags_closed_by_app", "ALTER TABLE email_flags ADD COLUMN closed_by_app TEXT"),
+        ("email_flags_rules_checked_at", "ALTER TABLE email_flags ADD COLUMN rules_checked_at TEXT"),
         # `guests` became a per-person profile rather than a per-stay register
         # (see the drop-column migration below for why).
         ("guests_email", "ALTER TABLE guests ADD COLUMN email TEXT"),
@@ -7976,6 +7987,17 @@ def init_db():
               failed_at TEXT,
               attempts INTEGER NOT NULL DEFAULT 0
             )"""),
+        # What Microsoft last refused, so the same body is not sent every
+        # thirty seconds for ever: one event was refused 64,668 times before
+        # anybody saw it (10 Nov 2026). refused_hash is the body refused,
+        # first_failed_at when refusals of that body began, refused_body what
+        # was in it, in words, for the page.
+        ("house_calendar_events_refused_hash",
+         "ALTER TABLE house_calendar_events ADD COLUMN refused_hash TEXT"),
+        ("house_calendar_events_first_failed_at",
+         "ALTER TABLE house_calendar_events ADD COLUMN first_failed_at TEXT"),
+        ("house_calendar_events_refused_body",
+         "ALTER TABLE house_calendar_events ADD COLUMN refused_body TEXT"),
         # THE CHECK ON SEND, one row per email it looked at and one per email it
         # could not. How long the server took and how long the person had
         # already waited, so "is it fast" is a figure rather than a feeling, and
@@ -8944,6 +8966,7 @@ def init_db():
     # The Contact page's enquiries and their tasks, tied together and the
     # sales pitches set aside: on every boot, and only where nothing is set.
     tidy_contact_enquiries(conn)
+    tidy_inbox_flags_once(conn)
     # Who fits each room, as Booking.com has it -- by the names of 16 October,
     # so after them.
     apply_room_occupancy_2026_10_18(conn)
@@ -9740,6 +9763,8 @@ NAV_AREAS = {
         "dismiss_email_flag", "edit_gallery_photo", "edit_gallery_section", "edit_social_post",
         "mark_social_post_posted", "new_social_post", "record_texting_consent", "resolve_email_flag",
         "update_mailbox_routing",
+        # The senders Inbox Flags never waits on a reply from.
+        "save_inbox_never_flag",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         
@@ -19377,10 +19402,17 @@ def for_a_guest(reason):
     return reason
 
 
-def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=None, include_pending=True):
+def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=None, include_pending=True,
+                       ignore_spans=()):
     """arrival/departure are date objects; departure is the checkout day
     (exclusive), so a checkout and another guest's check-in on the same day
     do not count as an overlap — standard hotel convention.
+
+    ignore_spans is a set of (start, end) date pairs that close nothing for
+    this question: the channel block or the house-wide hold of the very stay
+    being asked about. An email that names its own Booking.com reservation or
+    its own event was checked against the nights that reservation itself
+    holds, and told they were taken (10 Nov 2026).
 
     include_pending controls whether other still-pending requests count as
     blockers. It should stay True for the public booking flow (don't let a
@@ -19403,6 +19435,8 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
             return False, DATES_OVERLAP_BOOKING
 
     for b_start, b_end in picture["blocked"].get(room_id, ()):
+        if (b_start, b_end) in ignore_spans:
+            continue
         if b_start and b_end and arrival < b_end and b_start < departure:
             return False, DATES_BLOCKED_CHANNEL
 
@@ -19417,6 +19451,8 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
     # picture builds it: an event on the 5th holds the 5th, and a workshop
     # ending on the 5th holds to the 4th, so its guests can stay on.
     for h_start, h_end, why in picture["house"]:
+        if (h_start, h_end) in ignore_spans:
+            continue
         if h_start and h_end and arrival <= h_end and h_start < departure:
             return False, why
 
@@ -58421,6 +58457,19 @@ def new_event_inquiry():
     if contact_email and not EMAIL_RE.match(contact_email):
         flash("That email address doesn't look right.", "error")
         return redirect(url_for("admin_events"))
+    # The same refusals as changing an event's dates. This form took a last
+    # day before the first: a photoshoot "22 November to 26 October 2026" was
+    # filed under History as already over, and Microsoft refused it for the
+    # house calendar 64,668 times (10 Nov 2026).
+    if any(v and not parse_date(v) for v in (preferred_date, end_date, alternate_date)):
+        flash("One of those dates isn't a date.", "error")
+        return redirect(url_for("admin_events"))
+    if end_date and not preferred_date:
+        flash("Give the first day as well as the last.", "error")
+        return redirect(url_for("admin_events"))
+    if preferred_date and end_date and end_date < preferred_date:
+        flash("The last day is before the first.", "error")
+        return redirect(url_for("admin_events"))
     if status not in ("new", "contacted", "quoted", "confirmed", "declined", "cancelled"):
         status = "new"
 
@@ -95395,6 +95444,7 @@ WATCH_TASK_KINDS = {
     "rooms_let": "A night with more rooms let than the house has bathrooms for",
     "inbox": "One of the house's own inboxes is not getting its mail",
     "deploy": "The live site is behind main",
+    "house_calendar": "An event Microsoft will not put on the house calendar",
     "recap": "An atelier's recap drafted and waiting for you to send it",
     "whats_on": "What's On: events found to look at, or dates nothing has confirmed",
 }
@@ -98801,6 +98851,18 @@ def watch_task_findings(conn, today=None):
     for fault in house_inbox_delivery_faults(conn):
         found.append(("inbox", f"Mail to {fault['address']} is not arriving",
                       house_inbox_fault_sentence(fault), today.isoformat(), "high"))
+
+    # An event Microsoft has refused for the house calendar for more than a
+    # day. One task per event, titled by the event and its day and nothing that
+    # moves, so it closes itself on the first run after the event lands -- or
+    # after it is changed, which is a fresh body and a fresh day of tries.
+    for e in house_calendar_stuck(conn):
+        found.append(("house_calendar",
+                      f"Put {e['subject']} ({format_date_human(e['day'])}) on the house calendar",
+                      f"Microsoft has refused it since {format_date_human(house_date_iso(e['since']))}: "
+                      f"{e['last_error']}. What was sent is on Management → House calendar, under "
+                      "Not on the calendar. Correct the event in the app and it is tried again at once.",
+                      today.isoformat(), "normal"))
 
     # The live site an hour or more behind main. One task while it is; titled
     # by nothing that moves, so the count and the hours are rewritten in the
@@ -109055,15 +109117,35 @@ def fetch_graph_messages(token, folder, since_iso, top=100, mailbox=None):
     if not mailbox:
         return []
     date_field = "sentDateTime" if folder == "sentitems" else "receivedDateTime"
-    body = graph_get(
-        f"/users/{mailbox}/mailFolders/{folder}/messages", token,
-        params={
-            "$select": "id,conversationId,receivedDateTime,sentDateTime,from,subject,bodyPreview,webLink",
-            "$filter": f"{date_field} ge {since_iso}",
-            "$orderby": f"{date_field} desc",
-            "$top": str(top),
-        },
-    )
+    # The inbox also brings each message's own Message-ID, the same in every
+    # inbox it reached, and its headers: List-Unsubscribe, Precedence and
+    # Auto-Submitted are how a mailing or a machine says what it is.
+    fields = "id,conversationId,receivedDateTime,sentDateTime,from,subject,bodyPreview,webLink"
+    _GRAPH_ANSWER.without_headers = None
+
+    def listing(select):
+        return graph_get(
+            f"/users/{mailbox}/mailFolders/{folder}/messages", token,
+            params={
+                "$select": select,
+                "$filter": f"{date_field} ge {since_iso}",
+                "$orderby": f"{date_field} desc",
+                "$top": str(top),
+            },
+        )
+    if folder == "sentitems":
+        body = listing(fields)
+        return body.get("value", []) if body else []
+    body = listing(fields + ",internetMessageId,internetMessageHeaders")
+    if body is None:
+        # Every message's headers make the listing several times the size. If
+        # Microsoft will not send that, the inbox is still read without them,
+        # judged by who sent each message, and the scan says so -- rather than
+        # the inbox going unread and nothing being flagged at all.
+        why = graph_last_error()
+        body = listing(fields + ",internetMessageId")
+        if body is not None:
+            _GRAPH_ANSWER.without_headers = why or "no answer"
     return body.get("value", []) if body else []
 
 
@@ -109209,6 +109291,248 @@ def escalate_stale_flags(conn):
     return escalated
 
 
+# WHAT INBOX FLAGS NEVER WAITS ON. On 10 Nov 2026 the page held 700 open flags,
+# 621 of them "unanswered": Nespresso, Basic-Fit, Cdiscount, La Poste, iCloud,
+# Stripe payouts, RetreatGuru's own receipts and the app's own "Booked —"
+# alerts, with the four real people that day buried under them. A panel that
+# can never be empty is read by nobody. A mailing, a
+# machine, the app itself and the house writing to itself are none of them
+# waiting for an answer, and the senders below never are either. The list is
+# the owner's: it is kept on the page and can be changed there.
+INBOX_NEVER_FLAG_KEY = "inbox_flags_never_flag"
+INBOX_NEVER_FLAG_DEFAULT = "\n".join((
+    "# One a line. A name ending in @ is that name at any address (noreply@);",
+    "# an address is that address; anything else is a domain and everything",
+    "# under it (stripe.com is also mail.stripe.com). A line starting # is a note.",
+    "no-reply@", "noreply@", "no_reply@", "donotreply@", "do-not-reply@",
+    "notifications@", "notification@", "news@", "newsletter@", "mailer-daemon@",
+    "postmaster@",
+    "stripe.com", "retreat.guru", "retreatguru.com", "apple.com",
+    "insideicloud.icloud.com", "wise.com", "transferwise.com",
+    "# Booking.com's own page reads its mail.",
+    "booking.com",
+)) + "\n"
+# The app's own letters come from here (RESEND_FROM's domain is added to it).
+APP_MAIL_DOMAINS = ("send.chateaugudanes.com",)
+# Why the app closed a flag nobody ticked off: (after a number, on the flag).
+INBOX_CLOSE_REASONS = {
+    "mailing": ("from a mailing list or newsletter", "a mailing list or newsletter"),
+    "machine": ("sent automatically", "sent automatically, not by a person"),
+    "own": ("of the app's own mail", "the app's own mail"),
+    "internal": ("between the house's own inboxes", "mail between the house's own inboxes"),
+    "listed": ("from a sender on the never-flag list", "a sender on the never-flag list"),
+    "mentions": ("that only mentioned a price", "it only mentioned a price, with nothing to check"),
+    "duplicate": ("already flagged in another inbox", "the same email, flagged in another inbox"),
+    "answered": ("answered since", "answered"),
+    "cleared": ("with nothing left to flag", "nothing about it is flagged any more"),
+}
+
+
+def inbox_never_flag_text(conn):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (INBOX_NEVER_FLAG_KEY,)).fetchone()
+    return row["value"] if row and row["value"] is not None else INBOX_NEVER_FLAG_DEFAULT
+
+
+def inbox_never_flag_entries(conn):
+    """The never-flag list as entries, lower case, notes left out."""
+    return [line.strip().lower() for line in inbox_never_flag_text(conn).splitlines()
+            if line.strip() and not line.strip().startswith("#")]
+
+
+def _under(domain, domains):
+    return any(d and (domain == d or domain.endswith("." + d)) for d in domains)
+
+
+def sender_on_list(address, entries):
+    """The entry on the never-flag list an address matches, or None."""
+    address = (address or "").strip().lower()
+    if "@" not in address:
+        return None
+    local, domain = address.rsplit("@", 1)
+    for e in entries:
+        if e.endswith("@") and "@" not in e[:-1]:
+            if local == e[:-1]:
+                return e
+        elif "@" in e.lstrip("@"):
+            if address == e:
+                return e
+        elif _under(domain, [e.lstrip("@").lstrip(".")]):
+            return e
+    return None
+
+
+def inbox_house_senders():
+    """(the house's own addresses, the domains all of whose addresses are the
+    house's, the domains the app sends its own mail from)."""
+    own = set(APP_MAIL_DOMAINS)
+    sender = parseaddr(RESEND_FROM or "")[1].lower()
+    if "@" in sender:
+        own.add(sender.rsplit("@", 1)[1])
+    return house_addresses(), set(addin_house_domains()), own
+
+
+def sender_not_waiting(address, never, house):
+    """Why mail from this address is never waiting on a reply, as a key of
+    INBOX_CLOSE_REASONS, or None for a person who may be."""
+    address = (address or "").strip().lower()
+    if "@" not in address:
+        return None
+    addresses, house_domains_, own_domains = house
+    domain = address.rsplit("@", 1)[1]
+    if _under(domain, own_domains):
+        return "own"
+    if address in addresses or _under(domain, house_domains_):
+        return "internal"
+    if sender_on_list(address, never):
+        return "listed"
+    return None
+
+
+def _message_header(msg, name):
+    for h in (msg or {}).get("internetMessageHeaders") or []:
+        if (h.get("name") or "").strip().lower() == name:
+            return h.get("value") or ""
+    return None
+
+
+def not_waiting_for_a_reply(msg, from_address, never, house):
+    """Why a message is not one anybody owes an answer to, as a key of
+    INBOX_CLOSE_REASONS, or None. The headers first -- a mailing says so in
+    List-Unsubscribe or Precedence, a machine in Auto-Submitted -- then who
+    sent it."""
+    if _message_header(msg, "list-unsubscribe") is not None:
+        return "mailing"
+    if (_message_header(msg, "precedence") or "").strip().lower() in ("bulk", "list", "junk"):
+        return "mailing"
+    auto = (_message_header(msg, "auto-submitted") or "").strip().lower()
+    if auto and auto != "no":
+        return "machine"
+    return sender_not_waiting(from_address, never, house)
+
+
+def inbox_list(*parts):
+    """Inboxes, in the order first met, each once. A part may be one address,
+    several joined with commas, or None."""
+    out = []
+    for part in parts:
+        for mb in (part or "").split(","):
+            mb = mb.strip().lower()
+            if mb and mb not in out:
+                out.append(mb)
+    return out
+
+
+def close_flag_by_app(conn, flag_id, reason, now_iso):
+    """Close a flag the rules no longer raise: resolved if it was answered,
+    otherwise dismissed, and in both cases by nobody, with the reason on it.
+    One the app closed may open again when it is true again; one a person
+    closed never does."""
+    conn.execute(
+        """UPDATE email_flags SET status = ?, closed_by_app = ?, resolved_at = ?,
+               resolved_by_user_id = NULL, updated_at = ?
+            WHERE id = ? AND status = 'open'""",
+        ("resolved" if reason == "answered" else "dismissed", reason, now_iso, now_iso, flag_id))
+
+
+def inbox_closed_words(closed):
+    """What the app closed, by kind and count, in bulk_message's words."""
+    order = list(INBOX_CLOSE_REASONS)
+    detail = ", ".join(f"{n} {INBOX_CLOSE_REASONS[k][0]}"
+                       for k, n in sorted(closed.items(), key=lambda kv: (-kv[1], order.index(kv[0])))
+                       if n)
+    words, _category = bulk_message("Closed", "flag", sum(closed.values()), [], detail=detail)
+    return words
+
+
+def close_flags_the_rules_would_not_raise(conn, now_iso=None):
+    """Close every open flag the rules of 10 Nov 2026 would not have raised,
+    from what each flag holds: who sent it, what it said, and whether the
+    same email is flagged in another inbox. Returns (closed by reason, the
+    words). The headers a flag does not hold are read by the scan, a few
+    older flags at a time (recheck_older_flags)."""
+    now_iso = now_iso or datetime.now(timezone.utc).isoformat()
+    never = inbox_never_flag_entries(conn)
+    house = inbox_house_senders()
+    closed = {}
+
+    def close(flag_id, reason):
+        close_flag_by_app(conn, flag_id, reason, now_iso)
+        closed[reason] = closed.get(reason, 0) + 1
+
+    rows = conn.execute("SELECT * FROM email_flags WHERE status = 'open' ORDER BY id").fetchall()
+    kept = []
+    for row in rows:
+        reason = sender_not_waiting(row["from_address"], never, house)
+        if reason:
+            close(row["id"], reason)
+            continue
+        kept.append(row)
+    # A conflict worked out again with today's checks: a booking's own
+    # confirmation no longer clashes with itself, and €1,400 is not €1.40.
+    still = []
+    for row in kept:
+        price, available = row["price_conflict"], row["availability_conflict"]
+        if price or available:
+            again = guess_email_conflict(conn, row["from_address"], row["subject"], row["preview"],
+                                         row["received_at"])
+            price = bool(again and again["price_conflict"])
+            available = bool(again and again["availability_conflict"])
+            if not (price or available):
+                conn.execute(
+                    """UPDATE email_flags SET price_conflict = 0, availability_conflict = 0,
+                           detail_note = NULL, updated_at = ? WHERE id = ?""", (now_iso, row["id"]))
+        if not (row["unanswered"] or price or available or row["reply_price_conflict"]
+                or row["reply_availability_conflict"]):
+            close(row["id"], "answered" if row["first_reply_at"] else
+                  ("mentions" if row["extracted_price"] is not None else "cleared"))
+            continue
+        still.append(row)
+    # One email delivered to several inboxes was one flag in each. The first
+    # stays, listing every inbox; the others go.
+    first_of = {}
+    for row in still:
+        same = ((row["from_address"] or "").lower(), row["subject"] or "", row["received_at"] or "")
+        if same not in first_of:
+            first_of[same] = row
+            continue
+        keep = first_of[same]
+        conn.execute("UPDATE email_flags SET mailboxes = ? WHERE id = ?",
+                     (",".join(inbox_list(keep["mailboxes"], keep["mailbox"], row["mailboxes"],
+                                          row["mailbox"])), keep["id"]))
+        keep = conn.execute("SELECT * FROM email_flags WHERE id = ?", (keep["id"],)).fetchone()
+        first_of[same] = keep
+        close(row["id"], "duplicate")
+    return closed, (inbox_closed_words(closed) if closed else "Nothing to close.")
+
+
+INBOX_TIDY_DONE_KEY = "inbox_flags_tidy_20261110"
+
+
+def tidy_inbox_flags_once(conn):
+    """On the deploy of 10 Nov 2026, once: close every open flag the new rules
+    would not have raised, and keep the words for the Inbox Flags page.
+    Claimed before it starts, so two workers starting together do it once;
+    and never allowed to stop the app starting."""
+    try:
+        claimed = conn.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
+                               (INBOX_TIDY_DONE_KEY, datetime.now(timezone.utc).isoformat()))
+        if not claimed.rowcount:
+            conn.rollback()
+            return None
+        closed, words = close_flags_the_rules_would_not_raise(conn)
+        if closed:
+            conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                         ("inbox_flags_tidy_note", words))
+            print(f"[inbox flags] {words}")
+        conn.commit()
+        return words
+    except Exception as e:
+        conn.rollback()
+        print(f"[inbox flags] the one-off tidy did not run: {type(e).__name__}: {e}")
+        return None
+
+
 def cross_inbox_duplicates(conn):
     """Senders who have open flags in more than one inbox.
 
@@ -109230,7 +109554,11 @@ def cross_inbox_duplicates(conn):
            HAVING inbox_count > 1
            ORDER BY inbox_count DESC, flag_count DESC"""
     ).fetchall()
-    return [dict(r, inboxes=(r["inboxes"] or "").split(",")) for r in rows]
+    # Never the house itself, the app's own mail or a sender on the
+    # never-flag list: none of them is a guest being answered twice.
+    never, house = inbox_never_flag_entries(conn), inbox_house_senders()
+    return [dict(r, inboxes=(r["inboxes"] or "").split(",")) for r in rows
+            if not sender_not_waiting(r["sender"], never, house)]
 
 
 def inbox_response_stats(conn, since_days=INBOX_RESPONSE_DAYS):
@@ -109298,7 +109626,13 @@ def monitored_mailboxes(conn):
 # without them ("1998.00", "1998"). It accepted only the first: "€1998.00"
 # was read as €199, so a reply quoting a stay's price correctly was stopped on
 # Send as a wrong one -- the check meant to catch a mistake making one.
-_MONEY_NUMBER = r"(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
+#
+# And a space is a thousands separator too: French writes "1 400 €", with an
+# ordinary space, a no-break space or the narrow one typography puts there.
+# Read without it, "1 400 €" was €400.
+_MONEY_THOUSANDS = "[.,    ]"
+_MONEY_NUMBER = (r"(\d{1,3}(?:" + _MONEY_THOUSANDS + r"\d{3})+(?:[.,]\d{1,2})?"
+                 r"|\d+(?:[.,]\d{1,2})?)")
 _MONEY_RE = re.compile(
     r"(?:€|EUR)\s?" + _MONEY_NUMBER + r"(?!\d)"
     r"|" + _MONEY_NUMBER + r"\s?(?:€|EUR\b|euros?\b)",
@@ -109362,12 +109696,36 @@ def extract_money_amounts(text):
     number ('room 12', 'the 5th') is not treated as a price."""
     amounts = []
     for m in _MONEY_RE.finditer(text or ""):
-        raw = m.group(1) or m.group(2)
-        try:
-            amounts.append(float(raw.replace(".", "").replace(",", ".") if "," in raw and raw.rfind(",") > raw.rfind(".") else raw.replace(",", "")))
-        except ValueError:
-            continue
+        value = money_figure(m.group(1) or m.group(2))
+        if value is not None:
+            amounts.append(value)
     return amounts
+
+
+def money_figure(raw):
+    """A figure as somebody wrote it, as a number, or None.
+
+    A separator followed by exactly three digits groups thousands; one or two
+    digits after it are cents. Where a figure has both a comma and a full
+    stop, the last of them is the decimal point. So "1,400", "1.400" and
+    "1 400" are all fourteen hundred, and "1,40" is one euro forty. The comma
+    used to be read as a decimal point whenever it was the only separator:
+    "the revised invoice for €1,400" came out as €1.40 (10 Nov 2026), and the
+    full stop the other way, so "1.400 €" was €1.40 too.
+    """
+    s = re.sub("[    ]", "", raw or "")
+    comma, stop = s.rfind(","), s.rfind(".")
+    if comma >= 0 and stop >= 0:
+        point = "," if comma > stop else "."
+        s = s.replace("." if point == "," else ",", "").replace(point, ".")
+    elif comma >= 0 or stop >= 0:
+        mark = "," if comma >= 0 else "."
+        parts = s.split(mark)
+        s = s.replace(mark, "") if len(parts) > 2 or len(parts[-1]) == 3 else s.replace(mark, ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
 
 
 def extract_dates(text, received_at_iso):
@@ -109574,6 +109932,99 @@ def _nights(n):
     return f"{n} night{'' if n == 1 else 's'}"
 
 
+# THE BOOKING AN EMAIL IS ABOUT, when it says so. A booking's own confirmation
+# ("Booked — The Twin Room (Ground Floor) (GUD-…)") and the Stripe
+# receipt for it were flagged as clashing with an existing booking -- which was
+# that booking (9 Nov 2026). An email that names its reference, its Stripe
+# payment or its Booking.com reservation number is checked against that stay,
+# and that stay is not counted against itself.
+_HOUSE_REFERENCE_RE = re.compile(
+    r"(?<![A-Za-z0-9])(" + "|".join(re.escape(p) for p in REFERENCE_PREFIXES.values())
+    + r")([A-Za-z0-9]{6})(?![A-Za-z0-9])", re.IGNORECASE)
+_STRIPE_INTENT_RE = re.compile(r"(?<![A-Za-z0-9_])(pi_[A-Za-z0-9]{8,})(?![A-Za-z0-9])")
+# Booking.com's numbers are ten digits; only one the app holds counts, so a
+# telephone number written in the same email is never taken for one.
+_CHANNEL_NUMBER_RE = re.compile(r"(?<!\d)(\d{8,12})(?!\d)")
+
+
+def stays_named_in(conn, text):
+    """What an email names of the house's own, by reference.
+
+    {"bookings": room bookings, by reference, Stripe payment or through an
+     atelier booking; "events": event enquiries; "channel": Booking.com
+     reservations; "spans": the (start, end) date pairs those hold that the
+     availability check should not count against them}.
+    Only what the app actually holds: a code nothing matches names nothing.
+    """
+    text = text or ""
+    found = {"bookings": [], "events": [], "channel": [], "spans": set()}
+    codes = {(m.group(1) + m.group(2)).upper() for m in _HOUSE_REFERENCE_RE.finditer(text)}
+    intents = {m.group(1) for m in _STRIPE_INTENT_RE.finditer(text)}
+    numbers = {m.group(1) for m in _CHANNEL_NUMBER_RE.finditer(text)}
+    seen = set()
+
+    def take_booking(row):
+        if row and row["id"] not in seen:
+            seen.add(row["id"])
+            found["bookings"].append(row)
+
+    def marks(n):
+        return ",".join("?" * n)
+
+    if codes:
+        args = sorted(codes)
+        for row in conn.execute(f"SELECT * FROM bookings WHERE UPPER(reference_code) IN ({marks(len(args))})",
+                                args):
+            take_booking(row)
+        for row in conn.execute(
+                f"""SELECT * FROM event_inquiries WHERE UPPER(reference_code) IN ({marks(len(args))})""",
+                args):
+            found["events"].append(row)
+            start = parse_date(row["preferred_date"])
+            end = parse_date(row["end_date"]) or start
+            if start:
+                # As the availability picture holds it: an end before the
+                # start is the start.
+                found["spans"].add((start, max(start, end or start)))
+        for row in conn.execute(
+                f"""SELECT workshop_bookings.booking_id, workshop_sessions.start_date,
+                           workshop_sessions.end_date
+                      FROM workshop_bookings
+                      LEFT JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                     WHERE UPPER(workshop_bookings.reference_code) IN ({marks(len(args))})""", args):
+            start, end = parse_date(row["start_date"]), parse_date(row["end_date"])
+            if start and end:
+                # The sitting's hold, as the picture builds it: to the night
+                # before it ends.
+                found["spans"].add((start, max(start, end - timedelta(days=1))))
+            if row["booking_id"]:
+                take_booking(conn.execute("SELECT * FROM bookings WHERE id = ?",
+                                          (row["booking_id"],)).fetchone())
+    if intents:
+        args = sorted(intents)
+        for row in conn.execute(
+                f"SELECT * FROM bookings WHERE stripe_payment_intent_id IN ({marks(len(args))})", args):
+            take_booking(row)
+    if numbers:
+        args = sorted(numbers)
+        for row in conn.execute(
+                f"SELECT * FROM ota_reservations WHERE reservation_number IN ({marks(len(args))})", args):
+            found["channel"].append(row)
+            start, end = parse_date(row["arrival_date"]), parse_date(row["departure_date"])
+            if start and end:
+                found["spans"].add((start, end))
+    return found
+
+
+def booking_figures(booking):
+    """Every sum a guest could rightly be told about one booking: what it
+    costs, what was paid, the deposit and the balance."""
+    keys = booking.keys()
+    return [float(booking[k]) for k in ("total_price", "amount_paid", "deposit_amount",
+                                          "balance_amount", "room_total_quoted")
+            if k in keys and booking[k]]
+
+
 def guess_email_conflict(conn, from_address, subject, body_text, received_at_iso):
     """Best-effort cross-reference of a price/date mentioned in an email
     against this app's real pricing and availability data. Only returns a
@@ -109609,8 +110060,18 @@ def guess_email_conflict(conn, from_address, subject, body_text, received_at_iso
     # begins, and whether that figure is per person).
     priced_as = None
 
-    named = rooms_named_in(conn.execute(
-        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, id").fetchall(), text)
+    # The stays the email names by reference, and the sums those make right.
+    own = stays_named_in(conn, text)
+    own_by_room = {}
+    for b in own["bookings"]:
+        own_by_room.setdefault(b["room_id"], b)
+    accepted = []
+
+    rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, id").fetchall()
+    named = rooms_named_in(rooms, text)
+    if not named and own_by_room:
+        # The booking says which room, when the email does not.
+        named = [r for r in rooms if r["id"] in own_by_room]
     if named:
         room = named[0]
         category = f"Room: {room['name']}"
@@ -109623,22 +110084,50 @@ def guess_email_conflict(conn, from_address, subject, body_text, received_at_iso
         if len(ahead) >= 2 and ahead[-1] > ahead[0]:
             arrival, departure = ahead[0], ahead[-1]
 
-            def priced_right(price):
-                return extracted_price is None or abs(price - extracted_price) <= max(1.0, price * 0.02)
+            def own_stay(r):
+                """The booking the email names, when these are its room and nights."""
+                b = own_by_room.get(r["id"])
+                if b and parse_date(b["arrival_date"]) == arrival                         and parse_date(b["departure_date"]) == departure:
+                    return b
+                return None
+
+            def price_for(r):
+                # Its own stay is the price it was booked at, not today's rate.
+                b = own_stay(r)
+                if b and b["total_price"]:
+                    return float(b["total_price"])
+                return compute_room_total(conn, r, arrival, departure)
+
+            def figures_for(r, price):
+                b = own_stay(r)
+                return [price] + (booking_figures(b) if b else [])
+
+            def priced_right(r, price):
+                return extracted_price is None or any(
+                    abs(f - extracted_price) <= max(1.0, f * 0.02) for f in figures_for(r, price))
+
+            def free(r):
+                # Never counted against itself: its own booking, and the
+                # channel block or house hold of anything else it names.
+                b = own_by_room.get(r["id"])
+                return is_range_available(conn, r["id"], arrival, departure,
+                                          exclude_booking_id=b["id"] if b else None,
+                                          ignore_spans=own["spans"])
 
             # An email naming two rooms ("the Twin Room is taken, but the
             # ground-floor one is free") is offering one of them, so it is
             # stopped only when none of them fits what it says; and then it
             # is told about the most specific one it named.
             for r in named:
-                price = compute_room_total(conn, r, arrival, departure)
-                available, why = is_range_available(conn, r["id"], arrival, departure)
-                if available and priced_right(price):
+                price = price_for(r)
+                available, why = free(r)
+                if available and priced_right(r, price):
                     room, computed_price = r, price
                     break
             else:
-                computed_price = compute_room_total(conn, room, arrival, departure)
-                available, why = is_range_available(conn, room["id"], arrival, departure)
+                computed_price = price_for(room)
+                available, why = free(room)
+            accepted = figures_for(room, computed_price)
             category = f"Room: {room['name']}"
             stay = (f"{room['name']}, "
                     f"{format_date_range(arrival.isoformat(), departure.isoformat())} "
@@ -109683,10 +110172,14 @@ def guess_email_conflict(conn, from_address, subject, body_text, received_at_iso
                 computed_price = settings["price_per_person"]
                 priced_as = ("for dinner", "Dinner is", True)
 
-    if not category and any(k in lowered for k in EVENT_INQUIRY_KEYWORDS):
+    if not category and (own["events"] or any(k in lowered for k in EVENT_INQUIRY_KEYWORDS)):
         category = "Event"
-        inquiry = None
-        if addresses:
+        # The event it names by reference, before any the sender has asked about.
+        inquiry = next((e for e in own["events"] if e["quoted_price"] is not None), None)
+        if inquiry:
+            accepted = [float(inquiry[k]) for k in ("quoted_price", "amount_paid", "deposit_amount")
+                        if inquiry[k]]
+        elif addresses:
             inquiry = conn.execute(
                 "SELECT quoted_price FROM event_inquiries "
                 "WHERE LOWER(contact_email) IN (%s) AND quoted_price IS NOT NULL "
@@ -109700,7 +110193,8 @@ def guess_email_conflict(conn, from_address, subject, body_text, received_at_iso
     price_conflict = False
     price_note = None
     if computed_price is not None and extracted_price is not None:
-        if abs(computed_price - extracted_price) > max(1.0, computed_price * 0.02):
+        if abs(computed_price - extracted_price) > max(1.0, computed_price * 0.02) and not any(
+                abs(f - extracted_price) <= max(1.0, f * 0.02) for f in accepted):
             price_conflict = True
             what, right, each = priced_as or ("", "The booking system's price is", False)
             price_note = (f"This email quotes {money(extracted_price)}"
@@ -111527,12 +112021,26 @@ def notify_workshop_waitlist_opening(conn, session_id):
 
 
 def run_email_inbox_scan_job(conn):
-    """Scans MS_GRAPH_MAILBOX's inbox for messages that either haven't
-    been replied to within the configured window, mention a price/date
-    that conflicts with real pricing/availability data, or whose actual
-    sent reply does — upserts each into email_flags for the Inbox Flags
-    admin page. Not an error when Graph isn't configured, but not a run
-    either: it says it could not run."""
+    """Scans every watched inbox for messages that either haven't been
+    replied to within the configured window, quote a price or dates that
+    conflict with real pricing/availability, or whose actual sent reply does
+    -- upserting each into email_flags for the Inbox Flags admin page. Not an
+    error when Graph isn't configured, but not a run either: it says it could
+    not run.
+
+    WHAT IT NEVER FLAGS (10 Nov 2026, when the page held 700 open flags and
+    four real people under Nespresso, La Poste and the app's own alerts): a
+    mailing (List-Unsubscribe, Precedence: bulk or list), anything a machine
+    sent (Auto-Submitted), the app's own mail, the house writing to itself,
+    and the senders on the never-flag list the owner keeps on the page. And an
+    email that only mentions a price is not a flag: there is nothing to check.
+
+    ONE EMAIL IS ONE FLAG, however many of the house's inboxes it reached. The
+    inboxes are still read one at a time, saving each before the next is
+    asked for (the database must never be held through a Graph read), and
+    what each copy says is combined: answered in any inbox is answered. An
+    open flag the rules no longer raise is closed by the app, saying why, and
+    the report counts them by kind."""
     if not graph_enabled():
         raise JobNotSetUp("Microsoft Graph not configured")
     token = get_graph_token()
@@ -111557,14 +112065,28 @@ def run_email_inbox_scan_job(conn):
     if not mailboxes:
         return "no mailboxes configured"
     owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
-    seen = flagged = 0
+    seen = 0
+    never = inbox_never_flag_entries(conn)
+    house = inbox_house_senders()
+    # What every copy of each email has said this scan, keyed by the email's
+    # own Message-ID (or, without one, Microsoft's id for it).
+    verdicts = {}
+    closed = {}
+    raised_new = []
 
-    # One inbox per business area, so scan each in turn. Everything below is
-    # per-mailbox: a conversation in restaurant@ is unrelated to one in
-    # bookings@, so the sent-items reply map must not be shared between them
-    # or a reply in one inbox would silently mark another's email answered.
+    def close(flag_id, reason):
+        close_flag_by_app(conn, flag_id, reason, now_iso)
+        closed[reason] = closed.get(reason, 0) + 1
+
+    def flag_row(where, args):
+        return conn.execute(f"SELECT * FROM email_flags WHERE {where}", args).fetchone()
+
+    # One inbox per business area, so scan each in turn. The sent-items reply
+    # map is per mailbox: a reply from one inbox is matched against that
+    # inbox's copy of the conversation.
     booking_com_box = booking_com_mailbox(conn)
     unread, read_boxes, left_to_booking_com = [], 0, False
+    no_headers = []
     for mb in mailboxes:
         mailbox = mb["mailbox"]
         # Booking.com's mailbox is read by its own job, into its own page:
@@ -111603,24 +112125,57 @@ def run_email_inbox_scan_job(conn):
             if conv_id and sent_at and (conv_id not in reply_map or sent_at > reply_map[conv_id]):
                 reply_map[conv_id] = sent_at
                 reply_by_conversation[conv_id] = sent
+        _GRAPH_ANSWER.without_headers = None
         inbox_messages = fetch_graph_messages(token, "inbox", since_iso, top=200, mailbox=mailbox)
         if graph_last_error():
             unread.append(f"{mailbox} ({graph_last_error()})")
             continue
         read_boxes += 1
+        if getattr(_GRAPH_ANSWER, "without_headers", None):
+            no_headers.append(f"{mailbox} ({_GRAPH_ANSWER.without_headers})")
         for msg in inbox_messages:
             message_id = msg.get("id")
             received_at = msg.get("receivedDateTime")
             if not message_id or not received_at:
                 continue
             seen += 1
+            internet_id = (msg.get("internetMessageId") or "").strip() or None
+            ident = internet_id or f"graph:{message_id}"
+            earlier = verdicts.get(ident)
 
-            existing = conn.execute(
-                "SELECT id, status, last_reply_checked_id, reply_price_conflict, reply_availability_conflict, "
-                "reply_detail_note, first_reply_at FROM email_flags WHERE graph_message_id = ?", (message_id,)
-            ).fetchone()
-            if existing and existing["status"] != "open":
+            # This copy's own flag, and the one flag the email already has if
+            # another inbox's copy was flagged first. Two of them is the old
+            # way, one per inbox: the later goes, into the first.
+            existing = flag_row("graph_message_id = ?", (message_id,))
+            first = None
+            if earlier and earlier["flag_id"]:
+                first = flag_row("id = ?", (earlier["flag_id"],))
+            elif internet_id:
+                first = flag_row("internet_message_id = ? AND graph_message_id != ? "
+                                 "ORDER BY id LIMIT 1", (internet_id, message_id))
+            if existing and first and existing["id"] != first["id"]:
+                # The older stays: it holds who has it and when it was chased.
+                existing, later = sorted((existing, first), key=lambda r: r["id"])
+                if later["status"] == "open":
+                    close(later["id"], "duplicate")
+            elif first and not existing:
+                existing = first
+            if existing and existing["status"] != "open" and not existing["closed_by_app"]:
                 continue  # a human already resolved/dismissed this one — don't resurrect it
+
+            from_info = (msg.get("from") or {}).get("emailAddress") or {}
+            from_address = from_info.get("address", "")
+            from_name = from_info.get("name", "")
+            subject = msg.get("subject") or ""
+            preview = msg.get("bodyPreview") or ""
+
+            reason = not_waiting_for_a_reply(msg, from_address, never, house)
+            if reason:
+                if existing and existing["status"] == "open":
+                    close(existing["id"], reason)
+                verdicts[ident] = dict(earlier or {}, flag_id=existing["id"] if existing else None,
+                                       raise_it=False, never=reason)
+                continue
 
             conv_id = msg.get("conversationId")
             last_reply = reply_map.get(conv_id)
@@ -111633,12 +112188,9 @@ def run_email_inbox_scan_job(conn):
             received_dt = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
             unanswered = bool((not last_reply or last_reply < received_at) and (now - received_dt) > timedelta(hours=unanswered_hours))
 
-            from_info = (msg.get("from") or {}).get("emailAddress") or {}
-            from_address = from_info.get("address", "")
-            from_name = from_info.get("name", "")
-            subject = msg.get("subject") or ""
-            preview = msg.get("bodyPreview") or ""
-            conflict = guess_email_conflict(conn, from_address, subject, preview, received_at)
+            found = guess_email_conflict(conn, from_address, subject, preview, received_at)
+            # A price mentioned with nothing wrong about it is not a flag.
+            conflict = found if found and (found["price_conflict"] or found["availability_conflict"]) else None
 
             # Only re-run the conflict check when a genuinely new reply has gone
             # out since the last tick (tracked by the reply's own Graph id) —
@@ -111666,18 +112218,29 @@ def run_email_inbox_scan_job(conn):
                 reply_note_val = None
             checked_reply_id = reply["id"] if reply else already_checked_reply_id
 
-            if not unanswered and not conflict and not reply_price_conflict_val and not reply_availability_conflict_val:
-                if existing:
-                    # a real reply went out (or a conflict resolved itself) since the last
-                    # scan — clear the flag automatically rather than leaving it stale.
-                    conn.execute(
-                        "UPDATE email_flags SET unanswered=0, price_conflict=0, availability_conflict=0, "
-                        "reply_price_conflict=0, reply_availability_conflict=0, last_reply_checked_id=?, "
-                        "first_reply_at=COALESCE(first_reply_at, ?), updated_at=? WHERE id=?",
-                        (checked_reply_id, first_reply_at, now_iso, existing["id"]),
-                    )
+            # What the other inboxes' copies said: answered in any of them is
+            # answered, and a reply from any of them that gets it wrong counts.
+            if earlier and not earlier.get("never"):
+                unanswered = unanswered and earlier["unanswered"]
+                first_reply_at = min((t for t in (first_reply_at, earlier["first_reply_at"]) if t),
+                                     default=None)
+                reply_price_conflict_val = reply_price_conflict_val or earlier["reply_price"]
+                reply_availability_conflict_val = reply_availability_conflict_val or earlier["reply_availability"]
+                reply_note_val = reply_note_val or earlier["reply_note"]
+            reached = inbox_list(existing["mailboxes"] if existing else None,
+                                 existing["mailbox"] if existing else None,
+                                 *((earlier or {}).get("reached") or []), mailbox)
+            raise_it = bool(unanswered or conflict or reply_price_conflict_val
+                            or reply_availability_conflict_val)
+            verdict = {"flag_id": existing["id"] if existing else None, "raise_it": raise_it,
+                       "unanswered": unanswered, "first_reply_at": first_reply_at,
+                       "reply_price": reply_price_conflict_val,
+                       "reply_availability": reply_availability_conflict_val,
+                       "reply_note": reply_note_val, "reached": reached,
+                       "mentions": bool(found and found["extracted_price"] is not None)}
+            verdicts[ident] = verdict
+            if not existing and not raise_it:
                 continue
-            flagged += 1
 
             common = (
                 conv_id, from_name, from_address, subject, preview[:500], msg.get("webLink"), received_at,
@@ -111693,44 +112256,84 @@ def run_email_inbox_scan_job(conn):
                 int(reply_availability_conflict_val),
                 reply_note_val,
                 checked_reply_id,
-                mailbox,
                 first_reply_at,
+                internet_id,
+                ",".join(reached),
+                now_iso,
             )
             if existing:
+                # The flag keeps the inbox it was first raised in (who it is
+                # routed to and when it is chased) and lists every one reached.
                 conn.execute(
                     """UPDATE email_flags SET conversation_id=?, from_name=?, from_address=?, subject=?, preview=?,
                        web_link=?, received_at=?, unanswered=?, price_conflict=?, availability_conflict=?,
                        conflict_category=?, extracted_price=?, computed_price=?, extracted_dates=?, detail_note=?,
                        reply_price_conflict=?, reply_availability_conflict=?, reply_detail_note=?, last_reply_checked_id=?,
-                       mailbox=?, first_reply_at=?, updated_at=? WHERE id=?""",
+                       first_reply_at=?, internet_message_id=COALESCE(?, internet_message_id), mailboxes=?,
+                       rules_checked_at=?, updated_at=? WHERE id=?""",
                     common + (now_iso, existing["id"]),
                 )
+                if raise_it and existing["status"] != "open":
+                    # Closed by the app, and true again: a sender taken off
+                    # the never-flag list, or a conflict back. Open again.
+                    conn.execute("UPDATE email_flags SET status = 'open', closed_by_app = NULL, "
+                                 "resolved_at = NULL WHERE id = ?", (existing["id"],))
             else:
-                conn.execute(
+                cur = conn.execute(
                     """INSERT INTO email_flags (graph_message_id, conversation_id, from_name, from_address, subject,
                        preview, web_link, received_at, unanswered, price_conflict, availability_conflict,
                        conflict_category, extracted_price, computed_price, extracted_dates, detail_note,
                        reply_price_conflict, reply_availability_conflict, reply_detail_note, last_reply_checked_id,
-                       mailbox, first_reply_at, assigned_to_user_id, status, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
-                    (message_id,) + common + (default_user_id, now_iso, now_iso),
+                       first_reply_at, internet_message_id, mailboxes, rules_checked_at,
+                       mailbox, assigned_to_user_id, status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                               'open', ?, ?)""",
+                    (message_id,) + common + (mailbox, default_user_id, now_iso, now_iso),
                 )
-                # A brand-new flag, not just an update to one already on the board —
-                # this is the "pops up on your screen" half of the triage board,
-                # reusing the same notification/web-push path task assignments use.
-                # Route it to whoever owns that inbox; fall back to the owner
-                # when an inbox has nobody assigned to it yet.
-                notify_user_id = default_user_id or (owner_row["id"] if owner_row else None)
-                if notify_user_id:
-                    what = "reply" if (reply_price_conflict_val or reply_availability_conflict_val) else ("email" if conflict else "unanswered email")
-                    send_notification(
-                        conn, notify_user_id, "inbox_flag_new",
-                        f"[{mb['label'] or mailbox}] Flagged {what}: {subject or '(no subject)'}",
-                        body=f"From {from_name or from_address or 'unknown sender'}", link="/admin/inbox-flags",
-                    )
+                verdict["flag_id"] = cur.lastrowid
+                what = ("reply" if (reply_price_conflict_val or reply_availability_conflict_val)
+                        else ("email" if conflict else "unanswered email"))
+                raised_new.append((cur.lastrowid, default_user_id, mb["label"] or mailbox, what,
+                                   subject, from_name or from_address))
+
+    # Every copy read: what the rules no longer raise is closed, saying why.
+    for v in verdicts.values():
+        if not v.get("flag_id") or v["raise_it"] or v.get("never"):
+            continue
+        row = flag_row("id = ?", (v["flag_id"],))
+        if row and row["status"] == "open":
+            close(row["id"], "answered" if v["first_reply_at"] else
+                  ("mentions" if v["mentions"] else "cleared"))
+    # A brand-new flag, not just an update to one already on the board —
+    # this is the "pops up on your screen" half of the triage board,
+    # reusing the same notification/web-push path task assignments use.
+    # Sent once every inbox has been read, so a flag another inbox's reply
+    # answered in the same scan never pops up at all. Routed to whoever owns
+    # the inbox it was raised in; the owner when nobody does.
+    for flag_id, user_id, label, what, subject, sender in raised_new:
+        row = flag_row("id = ?", (flag_id,))
+        notify_user_id = user_id or (owner_row["id"] if owner_row else None)
+        if row and row["status"] == "open" and notify_user_id:
+            send_notification(
+                conn, notify_user_id, "inbox_flag_new",
+                f"[{label}] Flagged {what}: {subject or '(no subject)'}",
+                body=f"From {sender or 'unknown sender'}", link="/admin/inbox-flags",
+            )
     conn.commit()
+    # Open flags from before these rules, and older than the window, read
+    # again a few at a time.
+    rechecked = recheck_older_flags(conn, token, never, house, closed, now_iso)
     escalated = escalate_stale_flags(conn)
+    flagged = sum(1 for v in verdicts.values() if v.get("raise_it"))
     tail = f", {escalated} escalated" if escalated else ""
+    if closed:
+        tail += "; " + inbox_closed_words(closed)
+    if rechecked["unread"]:
+        tail += (f"; {rechecked['unread']} older flag(s) could not be read again "
+                 "and wait for the next scan")
+    if no_headers:
+        tail += ("; read without the headers that mark a mailing, so judged by sender only: "
+                 + "; ".join(no_headers))
     # Counted from the mailboxes actually read. It counted every configured
     # one, so "scanned 0 messages across 1 mailbox" on 12 October was a
     # mailbox it had skipped (Booking.com's has its own job) and never opened.
@@ -111739,6 +112342,56 @@ def run_email_inbox_scan_job(conn):
     if unread:
         tail += " — could not read " + "; ".join(unread)
     return f"scanned {seen} message(s) across {read_boxes} mailbox(es), {flagged} flagged{tail}"
+
+
+# How many open flags from before the rules of 10 Nov 2026 are read again per
+# scan, for the headers that say a message is a mailing. A few at a time, so
+# the backlog goes in a handful of scans and no scan is slow.
+INBOX_RECHECK_PER_SCAN = 100
+
+
+def recheck_older_flags(conn, token, never, house, closed, now_iso):
+    """The open flags no inbox read this scan has looked at under the new
+    rules: the sender first, from what the flag holds, then the headers,
+    asked of Microsoft for that one message. Every Graph read is made with
+    nothing written and unsaved, and the answers are written after."""
+    out = {"closed": 0, "unread": 0}
+    rows = conn.execute(
+        """SELECT * FROM email_flags WHERE status = 'open' AND rules_checked_at IS NULL
+            ORDER BY received_at LIMIT ?""", (INBOX_RECHECK_PER_SCAN,)).fetchall()
+    if not rows:
+        return out
+    to_read = []
+    for row in rows:
+        reason = sender_not_waiting(row["from_address"], never, house)
+        if reason:
+            close_flag_by_app(conn, row["id"], reason, now_iso)
+            closed[reason] = closed.get(reason, 0) + 1
+            out["closed"] += 1
+        elif row["mailbox"] and row["graph_message_id"]:
+            to_read.append(row)
+    conn.commit()
+    answers = []
+    for row in to_read:
+        got = graph_get(f"/users/{row['mailbox']}/messages/{row['graph_message_id']}", token,
+                        params={"$select": "id,internetMessageId,internetMessageHeaders"})
+        answers.append((row, got))
+    _GRAPH_ANSWER.error = None
+    for row, got in answers:
+        if got is None:
+            out["unread"] += 1
+            continue
+        reason = not_waiting_for_a_reply(got, row["from_address"], never, house)
+        if reason:
+            close_flag_by_app(conn, row["id"], reason, now_iso)
+            closed[reason] = closed.get(reason, 0) + 1
+            out["closed"] += 1
+        else:
+            conn.execute("UPDATE email_flags SET rules_checked_at = ?, "
+                         "internet_message_id = COALESCE(internet_message_id, ?) WHERE id = ?",
+                         (now_iso, (got.get("internetMessageId") or "").strip() or None, row["id"]))
+    conn.commit()
+    return out
 
 
 def run_stale_shift_cleanup_job(conn, hours_threshold):
@@ -115202,6 +115855,17 @@ def house_calendar_items(conn, start, end, areas=None):
                       "start": f"{s['start']}T00:00:00",
                       "end": f"{day_after(s['end'] or s['start'])}T00:00:00",
                       "location": "", "body": "", "link": s["link"]}
+    # NOTHING ENDS BEFORE IT BEGINS. Microsoft refuses such an event, every
+    # time: a photoshoot saved for 22 November "to 26 October" was refused
+    # 64,668 times, every thirty seconds (10 Nov 2026). The app's own calendar
+    # and the availability check already read an end before the start as the
+    # start, so this calendar does too: an all-day thing on its first day, a
+    # timed one over at the moment it starts.
+    for i in items.values():
+        if i["all_day"] and i["end"][:10] <= i["start"][:10]:
+            i["end"] = f"{(parse_date(i['start'][:10]) + timedelta(days=1)).isoformat()}T00:00:00"
+        elif not i["all_day"] and i["end"] < i["start"]:
+            i["end"] = i["start"]
     # The day each begins and ends, in the house's own time already, so a
     # page can show it without cutting a timestamp to ten characters.
     for i in items.values():
@@ -115244,6 +115908,76 @@ def graph_event_body(item):
 def graph_event_hash(body):
     return hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False)
                           .encode("utf-8")).hexdigest()
+
+
+def graph_event_summary(body):
+    """What an event sent to Microsoft held, in words: the subject, the times,
+    the categories, the location, how long the body was and the app's key.
+    Never the body's text, which can name a guest's extras. Microsoft's answer
+    to a bad event is "at least one property failed validation" and no more,
+    so this is how the property is found."""
+    start, end = body.get("start") or {}, body.get("end") or {}
+    key = next((p.get("value") for p in body.get("singleValueExtendedProperties") or []), "")
+    zone = start.get("timeZone") or ""
+    return (f"subject {body.get('subject', '')!r} ({len(body.get('subject') or '')} characters); "
+            f"{'all day' if body.get('isAllDay') else 'timed'}, "
+            f"from {start.get('dateTime', '')} to {end.get('dateTime', '')}"
+            + (f" ({zone})" if zone else "") + "; "
+            f"categories {', '.join(body.get('categories') or []) or 'none'}; "
+            f"location {((body.get('location') or {}).get('displayName') or '')!r}; "
+            f"body {len((body.get('body') or {}).get('content') or '')} characters; key {key}")
+
+
+def graph_event_doubts(body):
+    """Anything in an event Microsoft is known to refuse, in words, or []."""
+    start = (body.get("start") or {}).get("dateTime") or ""
+    end = (body.get("end") or {}).get("dateTime") or ""
+    doubts = []
+    if end < start:
+        doubts.append("it ends before it begins")
+    elif body.get("isAllDay"):
+        if end[:10] <= start[:10]:
+            doubts.append("an all-day event that ends on the day it begins")
+        if start[11:] not in ("", "00:00:00") or end[11:] not in ("", "00:00:00"):
+            doubts.append("an all-day event that does not begin and end at midnight")
+    if len(body.get("subject") or "") > 255:
+        doubts.append("a subject over 255 characters")
+    return doubts
+
+
+# A REFUSED EVENT BACKS OFF. Five tries at the pass's own pace, in case it was
+# Microsoft having a bad minute; then hourly for the rest of the first day;
+# then once a night, with the full check. A changed event is a new body and
+# starts again from the first try, and Sync now on the page tries everything.
+HOUSE_CALENDAR_QUICK_TRIES = 5
+HOUSE_CALENDAR_HOURLY = timedelta(hours=1)
+HOUSE_CALENDAR_HOURLY_FOR = timedelta(hours=24)
+# How long an event may be refused before the owner home and a task say so.
+HOUSE_CALENDAR_REFUSED_WARN_AFTER = timedelta(days=1)
+
+
+def house_calendar_try_now(row, digest, now, *, full=False):
+    """Whether this pass sends an event Microsoft has refused before."""
+    if not row or not row["last_error"] or row["refused_hash"] != digest:
+        return True
+    if full or (row["attempts"] or 0) < HOUSE_CALENDAR_QUICK_TRIES:
+        return True
+    first = parse_datetime_iso(row["first_failed_at"])
+    if first and now - first >= HOUSE_CALENDAR_HOURLY_FOR:
+        return False
+    last = parse_datetime_iso(row["failed_at"])
+    return not last or now - last >= HOUSE_CALENDAR_HOURLY
+
+
+def house_calendar_next_try(row, now=None):
+    """When a refused event is next sent, in words, for the page."""
+    now = now or datetime.now(timezone.utc)
+    if (row["attempts"] or 0) < HOUSE_CALENDAR_QUICK_TRIES:
+        return "on the next pass"
+    first = parse_datetime_iso(row["first_failed_at"])
+    if first and now - first >= HOUSE_CALENDAR_HOURLY_FOR:
+        return "tonight, with the check against Microsoft's copy"
+    return "within the hour"
 
 
 _calendar_token_cache = {"token": None, "expires_at": 0.0, "error": ""}
@@ -115440,32 +116174,42 @@ def house_calendar_remote(token, cal_id):
     raise HouseCalendarError(graph_last_error() or "the calendar's events could not be listed")
 
 
-def _hc_record(conn, key, item, *, graph_id=None, content_hash=None, error=None, attempts=None):
+def _hc_record(conn, key, item, *, graph_id=None, content_hash=None, error=None, attempts=None,
+               refused_hash=None, first_failed_at=None, refused_body=None):
+    """What became of one event. A refusal keeps the body refused (its hash and,
+    in words, what was in it) and when refusals of it began; a write that
+    worked clears all three."""
     now_iso = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO house_calendar_events (key, graph_id, content_hash, area, subject, starts,
-                                              ends, synced_at, last_error, failed_at, attempts)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                              ends, synced_at, last_error, failed_at, attempts,
+                                              refused_hash, first_failed_at, refused_body)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(key) DO UPDATE SET
              graph_id = COALESCE(excluded.graph_id, house_calendar_events.graph_id),
              content_hash = excluded.content_hash, area = excluded.area,
              subject = excluded.subject, starts = excluded.starts, ends = excluded.ends,
              synced_at = COALESCE(excluded.synced_at, house_calendar_events.synced_at),
              last_error = excluded.last_error, failed_at = excluded.failed_at,
-             attempts = excluded.attempts""",
+             attempts = excluded.attempts, refused_hash = excluded.refused_hash,
+             first_failed_at = excluded.first_failed_at, refused_body = excluded.refused_body""",
         (key, graph_id, content_hash if not error else None, item["area"], item["subject"],
          item["start"], item["end"], None if error else now_iso, error,
-         now_iso if error else None, attempts or 0))
+         now_iso if error else None, attempts or 0,
+         refused_hash if error else None, (first_failed_at or now_iso) if error else None,
+         refused_body if error else None))
 
 
-def sync_house_calendar(conn, *, full=False):
+def sync_house_calendar(conn, *, full=False, retry_held=False):
     """Bring the Microsoft 365 house calendar into line with the app.
 
     Returns counts: created, updated, removed, unchanged, failed, waiting (left
-    for the next pass by the per-pass cap). Raises JobNotSetUp while it is not
-    configured and HouseCalendarError when Microsoft refuses the calendar
-    itself; a refusal of one event is counted, recorded on its row, and the
-    rest carry on.
+    for the next pass by the per-pass cap), held (refused before and not due
+    to be tried again yet). Raises JobNotSetUp while it is not configured and
+    HouseCalendarError when Microsoft refuses the calendar itself; a refusal
+    of one event is counted, recorded on its row with what was sent, and the
+    rest carry on. `full` (the nightly check) and `retry_held` (Sync now)
+    try every refused event again.
     """
     import uuid
     if not house_calendar_configured():
@@ -115481,7 +116225,28 @@ def sync_house_calendar(conn, *, full=False):
                                                         house_calendar_areas(conn))}
     stored = {r["key"]: r for r in conn.execute("SELECT * FROM house_calendar_events").fetchall()}
     counts = {"created": 0, "updated": 0, "removed": 0, "unchanged": 0, "failed": 0,
-              "waiting": 0, "strays": 0, "restored": 0, "in_range": len(desired)}
+              "waiting": 0, "strays": 0, "restored": 0, "held": 0, "in_range": len(desired)}
+    now = datetime.now(timezone.utc)
+
+    def refused(key, item, row, body, digest, err, attempts):
+        # The same body as last time carries its count and its first refusal;
+        # anything else is a fresh start. What was sent goes to the log and
+        # onto the row, because Microsoft's own words name no property.
+        same = bool(row and row["last_error"] and row["refused_hash"] == digest)
+        summary = graph_event_summary(body)
+        doubts = graph_event_doubts(body)
+        line = (f"[calendar] Microsoft refused {key}: {err}. Sent: {summary}"
+                + (f". Looks wrong: {'; '.join(doubts)}" if doubts else ""))
+        try:
+            print(line)
+        except UnicodeEncodeError:
+            # A console that cannot print the subject's mark must not stop
+            # the pass: the line goes out escaped instead.
+            print(line.encode("ascii", "backslashreplace").decode("ascii"))
+        _hc_record(conn, key, item, error=err, attempts=attempts, refused_hash=digest,
+                   first_failed_at=row["first_failed_at"] if same else None,
+                   refused_body=summary + (f". Looks wrong: {'; '.join(doubts)}." if doubts else ""))
+        counts["failed"] += 1
     force = set()
     if full:
         remote = house_calendar_remote(token, cal_id)
@@ -115518,11 +116283,16 @@ def sync_house_calendar(conn, *, full=False):
         if row and row["graph_id"] and row["content_hash"] == digest and key not in force:
             counts["unchanged"] += 1
             continue
+        if not (retry_held or house_calendar_try_now(row, digest, now, full=full)):
+            counts["held"] += 1
+            continue
         if writes >= HOUSE_CALENDAR_MAX_WRITES:
             counts["waiting"] += 1
             continue
         writes += 1
-        attempts = ((row["attempts"] if row else 0) or 0) + 1
+        # Refusals of THIS body: a changed event starts again from one.
+        attempts = (((row["attempts"] or 0) + 1)
+                    if row and row["last_error"] and row["refused_hash"] == digest else 1)
         if row and row["graph_id"]:
             status, _resp, err = graph_send("PATCH", f"/users/{mb}/events/{row['graph_id']}",
                                             token, body)
@@ -115532,9 +116302,7 @@ def sync_house_calendar(conn, *, full=False):
                 counts["updated"] += 1
                 continue
             if status != 404:
-                _hc_record(conn, key, item, error=err or f"update refused ({status})",
-                           attempts=attempts)
-                counts["failed"] += 1
+                refused(key, item, row, body, digest, err or f"update refused ({status})", attempts)
                 continue
             conn.execute("UPDATE house_calendar_events SET graph_id = NULL WHERE key = ?", (key,))
         # A retried create with the same content is recognised by Microsoft as
@@ -115547,9 +116315,7 @@ def sync_house_calendar(conn, *, full=False):
             _hc_record(conn, key, item, graph_id=resp["id"], content_hash=digest, attempts=0)
             counts["created"] += 1
         else:
-            _hc_record(conn, key, item, error=err or f"create refused ({status})",
-                       attempts=attempts)
-            counts["failed"] += 1
+            refused(key, item, row, body, digest, err or f"create refused ({status})", attempts)
     window_start = start.isoformat()
     for key, row in stored.items():
         if key in desired:
@@ -115583,9 +116349,10 @@ def sync_house_calendar(conn, *, full=False):
     if (counts["created"] or counts["updated"] or counts["removed"] or counts["strays"]
             or counts["moved_out"]):
         _hc_set(conn, "last_change", now_iso)
-    if not counts["failed"]:
-        _hc_set(conn, "last_ok", now_iso)
-        _hc_set(conn, "last_error", "")
+    # The calendar answered and the pass finished, so it is updating: an event
+    # Microsoft refused is on its own row, not the calendar's error.
+    _hc_set(conn, "last_ok", now_iso)
+    _hc_set(conn, "last_error", "")
     if full:
         _hc_set(conn, "last_reconcile", now_iso)
     conn.commit()
@@ -115597,6 +116364,7 @@ def house_calendar_counts_words(counts):
         ("created", "added"), ("updated", "updated"), ("removed", "removed"),
         ("strays", "strays cleared"), ("restored", "put back"),
         ("moved_out", "taken out of the old calendar"), ("failed", "refused"),
+        ("held", "refused before and waiting for their next try"),
         ("waiting", "waiting for the next pass")) if counts.get(k)]
     if said:
         return ", ".join(said)
@@ -115640,9 +116408,10 @@ def house_calendar_tick():
                 house_calendar_note_failure(conn, words)
                 record_job_run(conn, "house_calendar_sync", False, words)
                 return None
-            if counts["failed"]:
-                house_calendar_note_failure(
-                    conn, f"{counts['failed']} event(s) were refused; the page lists them")
+            # A refused event is on its own row, with Microsoft's words and
+            # what was sent; it is not the calendar failing, and saying it was
+            # put "The house calendar is not updating" on the owner home while
+            # eighty events were.
             if any(counts[k] for k in ("created", "updated", "removed", "moved_out", "failed")):
                 record_job_run(conn, "house_calendar_sync", not counts["failed"],
                                house_calendar_counts_words(counts))
@@ -115831,8 +116600,11 @@ def house_calendar_status(conn):
     for r in rows:
         if r["graph_id"]:
             by_area[r["area"]] = by_area.get(r["area"], 0) + 1
-    failures = [{"subject": r["subject"], "day": (r["starts"] or "")[:10],
-                 "last_error": r["last_error"], "attempts": r["attempts"]}
+    now = datetime.now(timezone.utc)
+    failures = [{"key": r["key"], "subject": r["subject"], "day": (r["starts"] or "")[:10],
+                 "last_error": r["last_error"], "attempts": r["attempts"],
+                 "refused_body": r["refused_body"], "since": r["first_failed_at"],
+                 "next_try": house_calendar_next_try(r, now)}
                 for r in rows if r["last_error"]]
     return {
         "configured": house_calendar_configured(), "missing": house_calendar_missing(),
@@ -115849,6 +116621,21 @@ def house_calendar_status(conn):
     }
 
 
+def house_calendar_stuck(conn, now=None):
+    """Events Microsoft has refused for longer than a day, the longest first:
+    [{key, subject, day, since, last_error}]. What the owner home and the
+    watch task name; each goes the pass its event lands."""
+    now = now or datetime.now(timezone.utc)
+    before = (now - HOUSE_CALENDAR_REFUSED_WARN_AFTER).isoformat()
+    return [{"key": r["key"], "subject": r["subject"] or r["key"], "day": (r["starts"] or "")[:10],
+             "since": r["first_failed_at"], "last_error": r["last_error"]}
+            for r in conn.execute(
+                """SELECT * FROM house_calendar_events
+                    WHERE last_error IS NOT NULL AND last_error != ''
+                      AND first_failed_at IS NOT NULL AND first_failed_at <= ?
+                    ORDER BY first_failed_at, key""", (before,)).fetchall()]
+
+
 def house_calendar_problem(conn):
     """The one sentence the owner home shows, or None. Only for a calendar
     that is set up and switched on: an optional feature nobody has turned on
@@ -115859,9 +116646,17 @@ def house_calendar_problem(conn):
     now = datetime.now(timezone.utc)
     if st["last_error"] and (st["last_error_at"] or "") >= (st["last_ok"] or ""):
         return ("blocker", "The house calendar is not updating", st["last_error"])
-    if st["failure_count"]:
-        return ("watch", f"{st['failure_count']} event(s) are not on the house calendar",
-                "Microsoft refused them; the house calendar page lists each with the reason.")
+    # One event refused is not the calendar failing: everything else is being
+    # written. It reaches the owner home once it has been refused for a day,
+    # named, and goes the pass it lands.
+    stuck = house_calendar_stuck(conn)
+    if stuck:
+        first = stuck[0]
+        return ("watch", f"{len(stuck)} event(s) are not on the house calendar",
+                f"{first['subject']} ({format_date_short(first['day'])}) has been refused since "
+                f"{format_date_short(house_date_iso(first['since']))}: {first['last_error']}"
+                + (f", and {len(stuck) - 1} more" if len(stuck) > 1 else "")
+                + ". The house calendar page shows what was sent.")
     if st["last_check"] and st["last_check"] < (now - timedelta(minutes=15)).isoformat():
         return ("watch", "The house calendar has not checked in for a while",
                 f"Last checked {house_date_iso(st['last_check'])}; it should every thirty "
@@ -115910,7 +116705,8 @@ def admin_house_calendar_sync():
     conn = get_db()
     full = request.form.get("full") == "1"
     try:
-        counts = sync_house_calendar(conn, full=full)
+        # Pressed by a person, so everything refused is tried again now.
+        counts = sync_house_calendar(conn, full=full, retry_held=True)
     except JobNotSetUp as e:
         conn.close()
         flash(f"Not set up yet: {e}.", "error")
@@ -116965,19 +117761,35 @@ def run_automation_job_now(job_name):
     return redirect(url_for("admin_automation"))
 
 
+# "Mentions a price, nothing to check" was a third kind, and 69 of the 700 open
+# on 10 Nov 2026: an email quoting a figure nothing disagreed with. That is not
+# a flag. A flag is raised for a conflict or for a wait, and nothing else.
 INBOX_FLAG_KINDS = {
     "conflict": "A price or date that does not match",
     "unanswered": "Unanswered",
-    "mentions": "Mentions a price, nothing to check",
 }
 
 
 def inbox_flag_kind(flag):
-    """Why a message was flagged, one reason each."""
+    """Why a message was flagged, one reason each. A flag closed since, with
+    nothing left on it, was flagged for the wait."""
     if (flag["price_conflict"] or flag["availability_conflict"]
             or flag["reply_price_conflict"] or flag["reply_availability_conflict"]):
         return "conflict"
-    return "unanswered" if flag["unanswered"] else "mentions"
+    return "unanswered"
+
+
+def inbox_flags_tidy_note(conn):
+    """What the one-off tidy of 10 Nov 2026 closed, for a month after it."""
+    done = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                        (INBOX_TIDY_DONE_KEY,)).fetchone()
+    note = conn.execute("SELECT value FROM app_settings WHERE key = 'inbox_flags_tidy_note'").fetchone()
+    when = parse_datetime_iso(done["value"]) if done else None
+    if not (note and note["value"] and when):
+        return None
+    if datetime.now(timezone.utc) - when > timedelta(days=30):
+        return None
+    return {"at": done["value"], "words": note["value"]}
 
 
 def inbox_flags_back():
@@ -117053,13 +117865,19 @@ def admin_inbox_flags():
     duplicates = cross_inbox_duplicates(conn)
     response_stats = inbox_response_stats(conn)
     guest_context = guest_context_for_emails(conn, [f["from_address"] for f in flags])
+    never_flag = inbox_never_flag_text(conn)
+    tidy = inbox_flags_tidy_note(conn)
+    labels = {mb["mailbox"].lower(): mb["label"] or mb["mailbox"] for mb in mailboxes}
     conn.close()
     return render_template(
         "admin_inbox_flags.html", flags=flags, lv=lv,
         counts=counts, graph_enabled=graph_enabled(), employees=employees,
         mailboxes=mailboxes,
         duplicates=duplicates, response_stats=response_stats, guest_context=guest_context,
-        mailbox=MS_GRAPH_MAILBOX,
+        mailbox=MS_GRAPH_MAILBOX, never_flag=never_flag, tidy=tidy,
+        inbox_labels=labels, inbox_list=inbox_list,
+        closed_says={k: v[1] for k, v in INBOX_CLOSE_REASONS.items()},
+        never_flag_default=never_flag.strip() == INBOX_NEVER_FLAG_DEFAULT.strip(),
     )
 
 
@@ -117082,6 +117900,56 @@ def update_mailbox_routing():
     conn.commit()
     conn.close()
     flash("Inbox routing updated.", "success")
+    return redirect(url_for("admin_inbox_flags"))
+
+
+@app.route("/admin/inbox-flags/never-flag", methods=["POST"])
+@owner_required
+def save_inbox_never_flag():
+    """The senders Inbox Flags never waits on a reply from. Saved as typed; a
+    line that is neither a name ending in @, an address nor a domain is
+    refused and named, rather than kept and silently matching nothing. Open
+    flags from a sender just added are closed now, by kind and count; one
+    taken off opens again on the next scan if it is still waiting."""
+    conn = get_db()
+    if request.form.get("restore") == "1":
+        text = INBOX_NEVER_FLAG_DEFAULT
+    else:
+        text = (request.form.get("never_flag") or "").replace("\r\n", "\n")[:8000]
+    bad = []
+    for line in text.splitlines():
+        entry = line.strip().lower()
+        if not entry or entry.startswith("#"):
+            continue
+        if entry.endswith("@"):
+            good = bool(re.fullmatch(r"[a-z0-9._%+-]+@", entry))
+        elif "@" in entry.lstrip("@"):
+            good = bool(EMAIL_RE.match(entry))
+        else:
+            good = bool(re.fullmatch(r"@?[a-z0-9-]+(\.[a-z0-9-]+)+", entry))
+        if not good:
+            bad.append(line.strip())
+    if bad:
+        conn.close()
+        message, category = bulk_message("Saved", "line", 0, [(b, "not a name ending in @, an address or a domain") for b in bad])
+        flash(message, category)
+        return redirect(url_for("admin_inbox_flags"))
+    conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                 (INBOX_NEVER_FLAG_KEY, text if text.endswith("\n") or not text else text + "\n"))
+    never, house = inbox_never_flag_entries(conn), inbox_house_senders()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    closed = {}
+    for row in conn.execute("SELECT id, from_address FROM email_flags WHERE status = 'open'").fetchall():
+        reason = sender_not_waiting(row["from_address"], never, house)
+        if reason:
+            close_flag_by_app(conn, row["id"], reason, now_iso)
+            closed[reason] = closed.get(reason, 0) + 1
+    log_audit(conn, "inbox_never_flag_saved",
+              details=f"{len(never)} sender(s) on the list; closed {sum(closed.values())}")
+    conn.commit()
+    conn.close()
+    flash("The never-flag list is saved." + (" " + inbox_closed_words(closed) if closed else ""),
+          "success")
     return redirect(url_for("admin_inbox_flags"))
 
 
