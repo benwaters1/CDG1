@@ -36,6 +36,7 @@ What is held:
   - The terms no longer sell La Table, and the two extras the owner reworded
     say what she wrote -- in a database that already had the old words.
 """
+import html as htmllib
 import re
 from datetime import date
 
@@ -247,10 +248,24 @@ def _run(s, anon):
     found = dishes_in_days(doctored)
     s.check("the reader finds the Kir and the cheeses, and lets the tasting be",
             found == ["day 2: 'Kir'", "day 2: 'cheeses'"], detail=str(found))
+    # A retreat has a written day-by-day when its title names one of the four plans (ws_kind in
+    # _ws_copy.html); an atelier with any other title has none, and is not a failure of this rule.
+    # So every planned retreat must show its days, and all four plans must be among those read --
+    # which keeps the check from passing on pages that carry no days at all.
+    kinds = {"noel": r"No[eë]l|Christmas", "cooking": r"Cooking|Cuisine",
+             "finds": r"Antique|Finds|Brocante", "starry": r"Starry"}
+    seen_kinds = set()
     for path in retreats:
+        title = re.search(r"(?is)<title>(.*?)</title>", pages[path])
+        title = htmllib.unescape(title.group(1)) if title else ""
+        kind = next((k for k, pat in kinds.items() if re.search(pat, title)), None)
         found = dishes_in_days(pages[path])
-        s.check(f"{path}: the day-by-day is there to read", found is not None)
+        if kind:
+            seen_kinds.add(kind)
+            s.check(f"{path}: the day-by-day is there to read", found is not None, detail=title)
         s.check(f"{path}: and names no dish or drink", not found, detail=str(found))
+    s.check("all four written plans are among the retreats read", seen_kinds == set(kinds),
+            detail=f"read {sorted(seen_kinds)} of {sorted(kinds)}")
     # 10 Nov 2026 (owner): "there won't be pool, it'll be too cold" -- Cooking in the Cuisine, anywhere
     # in its days, its afternoons line or its opening paragraph.
     cooking = [p for p in retreats if "Cooking in the Cuisine" in pages[p]]
