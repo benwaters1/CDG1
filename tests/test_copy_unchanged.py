@@ -76,7 +76,12 @@ m = _harness.m
 # 10 Nov, again: a8b7c05, the retreats' "every meal, and drinks included" (owner); it listed /, /book
 # and /workshops, and nothing else. Then c6b0dda, the merge of the two: against a8b7c05 it listed
 # /workshops/3 only, Noël's market above.
-COPY_BASE = "e912ba8"
+# 10 Nov, night: moved to 7df0813, the merge of the second review with all of the above.
+# Against e912ba8 it listed /, /book, /workshops, the five room pages, /workshops/3, /4
+# and /6, and nothing else: room and breakfast with the restaurants nearby, the village
+# Christmas market, and the days split into day and evening. Each was read; the review's
+# welcome glass, no artisan, no pool on Cooking and "on site" for "in the house" kept.
+COPY_BASE = "7df0813"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
