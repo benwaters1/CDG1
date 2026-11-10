@@ -7,6 +7,7 @@
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     <a href="{{ url_for('admin_images') }}" class="btn-ghost">Change a picture</a>
     <a href="{{ url_for('admin_readiness') }}" class="btn-ghost">Go-live checklist</a>
+    <a href="{{ url_for('download_photographs_backup') }}" class="btn-ghost">Download a copy of them all</a>
   </div>
 </div>
 
@@ -23,6 +24,12 @@
   <a href="{{ url_for('admin_images') }}">Change a picture</a>, where each place on the site is
   named and you upload what should be there. This page is about not losing the ones nobody has
   changed.
+</p>
+
+<p class="pay-disclaimer">
+  The nightly backup and <em>Download a backup</em> carry the database, documents and room
+  photographs, not these: they are too large to email. Download a copy of them all after a
+  handover adds photographs, and keep it somewhere that is not this server.
 </p>
 
 <div class="stat-tiles">

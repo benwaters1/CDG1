@@ -10128,6 +10128,7 @@ OWNER_ONLY_AREAS = {
     # checks role == owner as well, as profile() does.
     "export_pay_history_csv": "team",
     "download_backup": "management",
+    "download_photographs_backup": "management",
     "new_check_in_note": "team",
     "pos_archive": "till",
     "pos_close_day": "till",
@@ -47154,6 +47155,8 @@ PALETTE_PAGES = [
     ("House guide", "house_guide_admin",
      "wifi wi-fi code password network breakfast times house rules parking "
      "who to call information for guests staying"),
+    ("Download the photographs", "download_photographs_backup",
+     "backup photos pictures mirror website images squarespace copy keep safe"),
     ("Transfers", "all_transfers", "airport pickup driving"),
     ("Asset register", "admin_assets", "furniture art antiques insurance valuation"),
     ("Keys & access", "admin_access", "codes alarm fobs"),
@@ -105452,6 +105455,100 @@ def download_backup():
     )
 
 
+# THE SITE'S PHOTOGRAPHS ARE ON THE VOLUME AND NOWHERE ELSE, and until 9
+# November 2026 no backup carried them. build_backup_zip takes the database,
+# uploads and room photos; MIRROR_DIR -- the house's own copy of every picture
+# on the public pages, kept because the Squarespace account they came from
+# will lapse -- was in neither the download nor the nightly email. The day the
+# account goes, those copies are the only ones, and a lost volume would have
+# taken the site's pictures with it while every backup said it was complete.
+#
+# A download of its own rather than a third folder in build_backup_zip: they
+# run to hundreds of megabytes, which would push every nightly email over its
+# limit and down to database-only, losing the uploads from it to save
+# photographs that change once a handover. Written to a temporary file rather
+# than built in memory for the same reason, and stored rather than deflated:
+# a JPEG does not compress.
+#
+# sized/ is left out: every file in it is made from one in here on demand.
+# originals/ is kept: those are the lossless PNGs the JPEGs were made from.
+def build_photographs_zip(path):
+    """Write the house's copies of the site's photographs to a zip at `path`.
+
+    Returns (number of photographs, list of files that could not be read).
+    A file that vanishes mid-walk is noted in FILES_SKIPPED.txt, as in
+    build_backup_zip, rather than abandoning the whole copy."""
+    count, skipped = 0, []
+    sized = os.path.abspath(PIC_DIR)
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED, allowZip64=True) as zf:
+        for root, dirs, files in os.walk(MIRROR_DIR):
+            dirs[:] = [d for d in dirs if os.path.abspath(os.path.join(root, d)) != sized]
+            for fname in sorted(files):
+                full = os.path.join(root, fname)
+                rel = os.path.relpath(full, MIRROR_DIR).replace(os.sep, "/")
+                try:
+                    zf.write(full, "mirrored/" + rel)
+                    count += 1
+                except (OSError, ValueError) as exc:
+                    skipped.append(f"{rel}: {exc}")
+        zf.writestr(
+            "README.txt",
+            "The Chateau de Gudanes website's own copies of its photographs.\n"
+            "To restore: put the mirrored/ folder back beside the database on the\n"
+            "server's volume (the GUDANES_MIRROR_DIR folder). The resized copies\n"
+            "are not included; the site makes them again by itself.\n")
+        if skipped:
+            zf.writestr(
+                "FILES_SKIPPED.txt",
+                "These photographs were listed on disk but could not be read, so "
+                "they are NOT in this copy.\n\n" + "\n".join(skipped) + "\n")
+    return count, skipped
+
+
+@app.route("/admin/backup/photographs")
+@owner_required
+def download_photographs_backup():
+    """The photographs the main backup cannot carry, as a download of their own."""
+    import tempfile
+    fd, tmp = tempfile.mkstemp(prefix="gudanes-photographs-", suffix=".zip")
+    os.close(fd)
+    try:
+        count, skipped = build_photographs_zip(tmp)
+    except Exception:
+        os.remove(tmp)
+        raise
+    conn = get_db()
+    log_audit(conn, "photographs_backup_downloaded", details=f"{count} photographs")
+    if skipped:
+        log_audit(conn, "backup_files_skipped",
+                  details=f"{len(skipped)}: " + "; ".join(skipped[:20]))
+    conn.commit()
+    conn.close()
+    size = os.path.getsize(tmp)
+
+    # Streamed from the file, and the file removed once it has been sent: the
+    # generator is closed when the response is, and its own handle is shut by
+    # then. Removing it from call_on_close instead left it behind on Windows,
+    # where an open file cannot be deleted.
+    def _send_then_remove():
+        try:
+            with open(tmp, "rb") as fh:
+                while True:
+                    chunk = fh.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass             # under the system temp folder either way
+    filename = f"gudanes-photographs-{house_today_iso()}.zip"
+    return Response(_send_then_remove(), mimetype="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Length": str(size)})
+
+
 # A backup email lands in a real inbox outside Railway entirely, which is the
 # point — the volume and the mailbox fail independently. Most providers cap
 # an incoming message around 25MB; this stays well under that even after
@@ -114577,7 +114674,30 @@ def house_guide_booking(conn, kind, token):
     Live means confirmed and not past the day they leave. A cancelled stay, a
     request nobody has confirmed and a stay that is over all get nothing: the
     page is for somebody who is coming, and it carries the Wi-Fi code.
+
+    'channel' is a Booking.com stay, on the check-in link the house sends or
+    pastes into Booking.com's messages -- the only link that guest has. Those
+    guests sleep in the same rooms and need the same Wi-Fi code, and before
+    this the guide simply had no door for them.
     """
+    if kind == "channel":
+        if not token:
+            return None
+        row = conn.execute(
+            """SELECT ota_reservations.*, rooms.name AS room_name FROM ota_reservations
+                 LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
+                WHERE ota_reservations.checkin_token = ?""", (token,)).fetchone()
+        if not row or row["status"] != "confirmed":
+            return None
+        leave = parse_date(row["departure_date"])
+        if not leave or leave < house_today():
+            return None
+        stay = dict(row)
+        stay["room_name"] = row["room_name"] or row["room_label"] or ""
+        # house_wifi_window reads checked_out_at. A Booking.com stay is never
+        # checked out here, so its code goes at checkout time on the last day.
+        stay["checked_out_at"] = None
+        return stay
     column = {"manage": "manage_token", "share": "share_token"}.get(kind)
     if not column or not token:
         return None
@@ -114609,6 +114729,8 @@ def house_guide_card():
         kind, key, endpoint = "manage", "manage_token", "house_guide_page"
     elif request.endpoint == "shared_stay":
         kind, key, endpoint = "share", "share_token", "shared_house_guide"
+    elif request.endpoint == "channel_checkin":
+        kind, key, endpoint = "channel", "token", "channel_house_guide"
     else:
         return None
     token = args.get(key)
@@ -114675,6 +114797,21 @@ def shared_house_guide(share_token):
     return _render_house_guide(
         conn, booking, back_label=t("Back to your stay"),
         back_url=url_for("shared_stay", share_token=share_token))
+
+
+@app.route("/checkin/stay/<token>/house")
+def channel_house_guide(token):
+    """The same page for a guest who booked through Booking.com, on their
+    check-in link. That link is the credential, as the manage link is for a
+    direct booking; it carries nothing about money either way."""
+    conn = get_db()
+    booking = house_guide_booking(conn, "channel", token)
+    if booking is None:
+        conn.close()
+        abort(404)
+    return _render_house_guide(
+        conn, booking, back_label=t("Back to your stay"),
+        back_url=url_for("channel_checkin", token=token))
 
 
 def _house_guide_status(row, facts):
