@@ -55,7 +55,7 @@ m = _harness.m
 # "Retreats" in the menu, "château" for "house", the hero's chosen line, and no dish,
 # drink or artisan on a retreat's day. Every difference against e9b2f1a was read and
 # is that brief's, on top of the retreat days above.
-COPY_BASE = "bbc8ea0"
+COPY_BASE = "2bbe116"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
