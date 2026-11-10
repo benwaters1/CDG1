@@ -278,6 +278,89 @@ def _run(s, oc, conn):
     conn.execute("DELETE FROM ical_sources WHERE id = ?", (cur.lastrowid,))
     conn.commit()
 
+    s.section("On the calendar ahead, and at once for a new booking")
+    # Every stay the statement has not covered counts as covered for now, so
+    # only what this section adds is "new" -- on a copy of a live house there
+    # are real ones. Put back at the end.
+    uncovered = [r["id"] for r in conn.execute(
+        "SELECT id FROM ota_reservations WHERE statement_at IS NULL")]
+    conn.execute("UPDATE ota_reservations SET statement_at = ? WHERE statement_at IS NULL",
+                 (_now().isoformat(),))
+    cur = conn.execute("INSERT INTO ical_sources (room_id, label, url, last_synced_at) "
+                       "VALUES (?, 'Booking.com', ?, ?)",
+                       (room["id"], f"https://ical.booking.com/v1/export?t={TAG}2", _now().isoformat()))
+    six_days = _now() - timedelta(days=6)
+    conn.execute("UPDATE booking_com_statements SET uploaded_at = ?", (six_days.isoformat(),))
+    conn.execute("DELETE FROM tasks WHERE origin = ? AND title = ?",
+                 (m.WATCH_TASK_ORIGIN, m.BOOKING_COM_STATEMENT_TASK))
+    conn.commit()
+    due = m.booking_com_statement_due(conn)
+    week_up = m.house_date(six_days + timedelta(days=7)).isoformat()
+    s.check("two days before the week is up, it is raised, dated the day it is due",
+            due and due[2] == week_up and due[3] == "normal", detail=str(due))
+    with m.app.test_request_context("/"):
+        home = m.owner_home_warnings(conn, today)
+    s.check("not yet on the owner home, which is for what is due now",
+            not any(w["title"] == m.BOOKING_COM_STATEMENT_TASK for w in home))
+    m.generate_watch_tasks(conn, today)
+    task = conn.execute("SELECT * FROM tasks WHERE origin = ? AND status != 'done' AND title = ?",
+                        (m.WATCH_TASK_ORIGIN, m.BOOKING_COM_STATEMENT_TASK)).fetchone()
+    s.check("its task is due that day", task and task["due_date"] == week_up,
+            detail=str(task and dict(task)))
+    week_page = visible_text(oc.get(f"/calendar?view=week&date={week_up}").get_data(as_text=True))
+    s.check("and is on the calendar", m.BOOKING_COM_STATEMENT_TASK in week_page)
+    conn.execute("UPDATE booking_com_statements SET uploaded_at = ?",
+                 ((_now() - timedelta(days=2)).isoformat(),))
+    conn.commit()
+    s.check("two days after an upload, nothing is asked", m.booking_com_statement_due(conn) is None)
+
+    soon = today + timedelta(days=2)
+    m.ingest_booking_com_email(
+        conn, source="graph", source_id=f"<{TAG}6@booking.com>", received_at=_now().isoformat(),
+        from_address="noreply@booking.com", from_name="Booking.com",
+        subject=f"Booking.com - New booking! (9744400040, {soon.strftime('%A, %d %B %Y')})",
+        notify=False)
+    conn.commit()
+    s.check("the mail job raises it as a booking comes in, not at the next daily pass",
+            "refresh_booking_com_statement_task(conn)" in
+            "\n".join(l.split("#")[0] for l in
+                      __import__("inspect").getsource(m.after_booking_com_mail).splitlines()))
+    m.refresh_booking_com_statement_task(conn)
+    task = conn.execute("SELECT * FROM tasks WHERE origin = ? AND status != 'done' AND title = ?",
+                        (m.WATCH_TASK_ORIGIN, m.BOOKING_COM_STATEMENT_TASK)).fetchone()
+    s.check("a booking since the last upload makes it due today, naming the booking",
+            task and task["due_date"] == today.isoformat() and "9744400040" in (task["notes"] or ""),
+            detail=str(task and dict(task)))
+    s.check("and high priority when the guest arrives within three days",
+            task and task["priority"] == "high", detail=str(task and task["priority"]))
+    with m.app.test_request_context("/"):
+        home = m.owner_home_warnings(conn, today)
+    s.check("and it is on the owner home now",
+            any(w["title"] == m.BOOKING_COM_STATEMENT_TASK for w in home))
+    conn.execute("UPDATE ota_reservations SET arrival_date = ?, departure_date = ? "
+                 "WHERE reservation_number = '9744400040'",
+                 ((today + timedelta(days=40)).isoformat(), (today + timedelta(days=42)).isoformat()))
+    conn.commit()
+    m.refresh_booking_com_statement_task(conn)
+    task = conn.execute("SELECT * FROM tasks WHERE origin = ? AND status != 'done' AND title = ?",
+                        (m.WATCH_TASK_ORIGIN, m.BOOKING_COM_STATEMENT_TASK)).fetchone()
+    s.check("one arriving in weeks is due today, at normal priority",
+            task and task["due_date"] == today.isoformat() and task["priority"] == "normal",
+            detail=str(task and dict(task)))
+    covering = _csv([_row("9744400040", "Soon Guest", (today + timedelta(days=40)).isoformat(),
+                          (today + timedelta(days=42)).isoformat())])
+    oc.post("/admin/channel-stays/statement",
+            data={"statement": (io.BytesIO(covering), "this-week.csv")},
+            content_type="multipart/form-data")
+    closed = conn.execute("SELECT status FROM tasks WHERE id = ?", (task["id"],)).fetchone() if task else None
+    s.check("the upload closes it there and then",
+            closed and closed["status"] == "done", detail=str(closed and dict(closed)))
+    if uncovered:
+        conn.execute(f"UPDATE ota_reservations SET statement_at = NULL WHERE id IN "
+                     f"({','.join('?' * len(uncovered))})", uncovered)
+    conn.execute("DELETE FROM ical_sources WHERE id = ?", (cur.lastrowid,))
+    conn.commit()
+
     s.section("The privacy notice says it")
     notice = visible_text(m.app.test_client().get("/privacy").get_data(as_text=True))
     s.check("that the house takes Booking.com's list of stays, and what it keeps from it",

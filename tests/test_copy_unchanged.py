@@ -53,7 +53,9 @@ m = _harness.m
 # 10 Nov: moved to 36fd627, the owner's answers of that day (the Christmas market on
 # Noël, Cooking's opening without dishes); it listed /workshops, /workshops/3
 # and /workshops/4, and nothing else.
-COPY_BASE = "36fd627"
+# 10 Nov, later: moved to c7fb234, the owner's bed-and-breakfast wording in the comparisons ("make it clear
+# that one is a b&b"); it listed /, /book, /workshops and the five room pages, and nothing else.
+COPY_BASE = "c7fb234"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
