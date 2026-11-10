@@ -30,7 +30,8 @@
     dinner included. Then, the same day: "change the comparisons back to room and breakfast so its succinct / but have
     something where it says lunch and dinner unavailable and point it to the restaurants nearby". So a night is a room and
     breakfast, its lunch and dinner unavailable, with the restaurants nearby linked (eat_nearby), whatever the dining
-    switch says (dm is still passed in, and no longer offers a stay dinner); a retreat keeps its gourmet chefs.
+    switch says (dm is still passed in, and no longer offers a stay dinner); a retreat keeps its gourmet chefs, and
+    (owner, the same day) "every meal, and drinks included".
     test_bnb_comparisons holds all three. -#}
 {#- The restaurants nearby: a map search for restaurants centred on the pin at the gates (house_map_links), the words
     alone where no pin is set. -#}
@@ -62,7 +63,7 @@
       <h3 class="g-sow__t"><em lang="fr">La vie de château</em></h3>
       <ul class="g-sow__list">
         <li>Your room in the château, and a small company to share the house</li>
-        <li>The château’s gourmet chefs, with lunch and dinner included, and wine, cocktails and local sparkling wine</li>
+        <li>The château’s gourmet chefs: every meal, and drinks included, from wine and cocktails to local sparkling wine</li>
         <li>The kitchen, the markets and brocantes, Foix and the caves, the restoration</li>
         <li>Long lunches, candlelit dinners, a night to dress for, and dancing</li>
       </ul>
@@ -82,7 +83,7 @@
 <section class="g-sec g-sow g-vs-sec" id="compare" aria-labelledby="g-vs-h"><div class="g-wrap">
   <p class="g-eyebrow">Side by side</p>
   <h2 class="g-place" id="g-vs-h">A Night, or <em lang="fr">la Vie de Château</em></h2>
-  <p class="g-p">A night's stay is a room and breakfast. A retreat gives you the château: its gourmet chefs, with lunch and dinner included, the brocantes, the restoration and the valley.</p>
+  <p class="g-p">A night's stay is a room and breakfast. A retreat gives you the château: its gourmet chefs, every meal, and drinks included, the brocantes, the restoration and the valley.</p>
   <div class="g-vs__wrap">
   <table class="g-vs">
     <caption class="g-vh">What a night's stay and a retreat each include</caption>
@@ -94,7 +95,7 @@
     <tbody>
       <tr><th scope="row">Your room in the château</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">Breakfast</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
-      <tr><th scope="row">Lunch and dinner</th><td>Unavailable: {{ eat_nearby() }}</td><td class="g-vs__full">{{ Y|safe }} Every meal, included</td></tr>
+      <tr><th scope="row">Lunch and dinner</th><td>Unavailable: {{ eat_nearby() }}</td><td class="g-vs__full">{{ Y|safe }} Every meal, and drinks included</td></tr>
       <tr><th scope="row">Gourmet chefs in the house</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">Drinks, alcoholic and non-alcoholic</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">A tour of the château and its restoration</th><td>An extra, &euro;50 per booking</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
