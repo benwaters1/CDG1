@@ -617,6 +617,8 @@ SUITES = [
     "test_page_pictures",
     # 9 November 2026: the photograph at the top of a page at the size it is shown.
     "test_hero_sizes",
+    # 9 November 2026: each room's own words on its page, and its bathroom on the ground floor.
+    "test_room_words",
     # 9 November 2026: the address opens the map and sits under the home page's
     # hero, and every public page measured for its margins at three widths.
     "test_house_address",
