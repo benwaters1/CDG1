@@ -31361,6 +31361,9 @@ CAMPAIGN_SEGMENTS = {
     "restaurant": "Past dinner guests",
     "workshop": "Past workshop guests",
     "profiles": "All guest profiles",
+    # Everybody with a stay or an atelier still to come: the audience for a
+    # letter quoting their own booking ({{reference}}, {{guest_page}}).
+    "booked": "Booked to come",
     # A different KIND of list, and the reason it is worth naming as such is
     # written out beside GUEST_BLAST_SEGMENTS. It belongs here because the
     # public workshops page promises dates reach it, and until now the
@@ -31495,6 +31498,15 @@ def edit_campaign_template(template_id):
     ).fetchone()
     ctx = campaign_context_for(sample["n"] if sample else "Isabelle Fontaine",
                                sample["e"] if sample else "guest@example.com")
+    if campaign_uses_booking(template["subject"], template["body"]):
+        # A letter quoting a booking is previewed on somebody who has one.
+        coming = booked_to_come(conn)
+        if coming:
+            ctx = campaign_context_for(coming[0]["name"], coming[0]["email"])
+            ctx.update(campaign_booking_context(conn, coming[0]["email"]))
+        else:
+            ctx.update({"reference": "WRK-EXAMPLE",
+                        "guest_page": url_for("dashboard", _external=True)})
     preview_subject, preview_body = render_campaign(template["subject"], template["body"], ctx)
 
     # The fixed segments, plus one per workshop that has anybody who has
@@ -31507,6 +31519,13 @@ def edit_campaign_template(template_id):
     segments = dict(CAMPAIGN_SEGMENTS)
     for w in workshops_with_alumni(conn):
         segments[f"workshop:{w['id']}"] = f"Did {w['title']}"
+    # And one per tag on the guest list, so a group put together there -- the
+    # old system's waitlist -- can be written to as itself.
+    for r in conn.execute(
+            """SELECT DISTINCT t.tag FROM guest_tags t
+                 JOIN guests g ON g.id = t.guest_id
+                WHERE g.merged_into_id IS NULL ORDER BY t.tag""").fetchall():
+        segments[f"tag:{r['tag']}"] = f"Tagged “{r['tag']}”"
 
     audience_counts = {
         key: len(campaign_audience(conn, [key])) for key in segments
@@ -49111,7 +49130,7 @@ GUEST_IMPORT_ALIASES = {
     "phone": ("phone", "telephone", "mobile", "phone_number"),
     "person_id": ("person_id", "id", "personid"),
     "num_programs": ("num_programs", "programs", "programmes"),
-    "date_added": ("date_added", "created", "created_at", "date_created"),
+    "date_added": ("date_added", "date added", "created", "created_at", "date_created"),
     "balance": ("overall_balance", "balance", "outstanding"),
     "credit": ("personal_credit", "credit"),
 }
@@ -49183,6 +49202,11 @@ def parse_guest_import(text):
         return [], [("the file", "there is no email column, so nobody in it "
                                  "can be matched to a guest")]
 
+    # THE OLD SYSTEM'S WAITLIST. The same names and addresses, one row per
+    # retreat somebody asked to hear about. What they waited for is the reason
+    # they are worth writing to, so it comes across on their profile.
+    waitlist = all(c in normalised[0] for c in ("position", "program"))
+
     by_email = {}
     order = []
     for i, row in enumerate(normalised, start=2):   # 2 = first row after header
@@ -49205,6 +49229,10 @@ def parse_guest_import(text):
             value = (row.get(column) or "").strip()
             if value:
                 notes.append(f"{heading}: {value}")
+        if waitlist and (row.get("program") or "").strip():
+            dates = (row.get("program dates") or "").strip()
+            notes.append(f"On the waitlist for {row['program'].strip()}"
+                         + (f" ({dates})" if dates else ""))
 
         entry = by_email.get(email)
         if entry is None:
@@ -49214,10 +49242,13 @@ def parse_guest_import(text):
                 "phone": _guest_import_pick(row, "phone"),
                 "notes": notes,
                 "created_at": _guest_import_pick(row, "date_added"),
-                "programs": _guest_import_pick(row, "num_programs"),
+                # A waitlist row's own number is its place in a queue, not a
+                # person, so it is not read as one.
+                "programs": "" if waitlist else _guest_import_pick(row, "num_programs"),
                 "person_ids": [],
                 "balance": _guest_import_money(_guest_import_pick(row, "balance")),
                 "rows": 1,
+                "source": "waitlist" if waitlist else "people",
             }
             by_email[email] = entry
             order.append(email)
@@ -49241,14 +49272,14 @@ def parse_guest_import(text):
             if more is not None:
                 entry["balance"] = round((entry["balance"] or 0.0) + more, 2)
             entry["rows"] += 1
-        person_id = _guest_import_pick(row, "person_id")
+        person_id = "" if waitlist else _guest_import_pick(row, "person_id")
         if person_id and person_id not in entry["person_ids"]:
             entry["person_ids"].append(person_id)
 
     return [by_email[e] for e in order], problems
 
 
-def import_guest_rows(conn, people, dry_run=True):
+def import_guest_rows(conn, people, dry_run=True, tag=None, user_id=None):
     """Put the people in, and say exactly what happened to each.
 
     Matching is on the email address, lower-cased — the same key
@@ -49259,9 +49290,14 @@ def import_guest_rows(conn, people, dry_run=True):
     note written in this house are left exactly as they are; the import can add
     what is missing and nothing else. That is what makes running it twice safe,
     and it is also the honest order of trust: somebody here typed that.
+
+    `tag` goes on everybody in the file -- new, filled in, or already complete
+    -- so the file can be found again as a group in the guest list and written
+    to as one (a campaign's "Tagged" audience). `tagged` lists who gained it.
     """
-    added, filled, untouched, skipped = [], [], [], []
+    added, filled, untouched, skipped, tagged = [], [], [], [], []
     now = datetime.now(timezone.utc).isoformat()
+    tag = normalise_tag(tag) if tag else None
 
     for person in people:
         existing = conn.execute(
@@ -49271,12 +49307,15 @@ def import_guest_rows(conn, people, dry_run=True):
         note_block = "\n".join(person["notes"])
         # Where they came from, so somebody looking at an odd note a year from
         # now can tell it was imported rather than typed by a colleague.
-        provenance = "From the old workshop booking system"
+        provenance = ("From the old workshop booking system's waitlist"
+                      if person.get("source") == "waitlist"
+                      else "From the old workshop booking system")
         if person["programs"] and person["programs"] not in ("0", ""):
             provenance += f" — {person['programs']} programme(s) before this one"
         full_note = "\n".join(x for x in (note_block, provenance) if x)
 
         if existing:
+            gid = existing["id"]
             updates = {}
             if not (existing["phone"] or "").strip() and person["phone"]:
                 updates["phone"] = person["phone"]
@@ -49287,25 +49326,35 @@ def import_guest_rows(conn, people, dry_run=True):
                     x for x in ((existing["notes"] or "").strip(), full_note) if x)
             if not updates:
                 untouched.append(person["name"])
-                continue
+            else:
+                if not dry_run:
+                    conn.execute(
+                        "UPDATE guests SET %s WHERE id = ?"
+                        % ", ".join(f"{k} = ?" for k in updates),
+                        list(updates.values()) + [gid])
+                filled.append(person["name"])
+        else:
+            gid = None
             if not dry_run:
-                conn.execute(
-                    "UPDATE guests SET %s WHERE id = ?"
-                    % ", ".join(f"{k} = ?" for k in updates),
-                    list(updates.values()) + [existing["id"]])
-            filled.append(person["name"])
-            continue
+                gid = conn.execute(
+                    """INSERT INTO guests (name, email, phone, notes, created_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (person["name"], person["email"], person["phone"] or None,
+                     full_note or None, person["created_at"] or now)).lastrowid
+            added.append(person["name"])
 
-        if not dry_run:
-            conn.execute(
-                """INSERT INTO guests (name, email, phone, notes, created_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (person["name"], person["email"], person["phone"] or None,
-                 full_note or None, person["created_at"] or now))
-        added.append(person["name"])
+        if tag:
+            if dry_run:
+                has = gid and conn.execute(
+                    "SELECT 1 FROM guest_tags WHERE guest_id = ? AND tag = ?",
+                    (gid, tag)).fetchone()
+                if not has:
+                    tagged.append(person["name"])
+            elif add_guest_tag(conn, gid, tag, user_id):
+                tagged.append(person["name"])
 
     return {"added": added, "filled": filled, "untouched": untouched,
-            "skipped": skipped}
+            "skipped": skipped, "tagged": tagged, "tag": tag}
 
 
 @app.route("/management/import-guests", methods=["GET", "POST"])
@@ -49368,23 +49417,34 @@ def import_guests():
     } if owing else None
 
     dry_run = request.form.get("dry_run") == "on"
-    result = import_guest_rows(conn, people, dry_run=dry_run)
+    result = import_guest_rows(conn, people, dry_run=dry_run,
+                               tag=request.form.get("tag"), user_id=user["id"])
     result["dry_run"] = dry_run
     result["read"] = len(people)
     result["duplicates"] = sum(1 for p in people if p["rows"] > 1)
+    result["waitlist"] = any(p.get("source") == "waitlist" for p in people)
+    tagging = (f", {len(result['tagged'])} tagged “{result['tag']}”"
+               if result["tag"] else "")
     if not dry_run:
         log_audit(conn, "guests_imported",
                   target=upload.filename,
                   details=f"{len(result['added'])} added, "
-                          f"{len(result['filled'])} filled in")
+                          f"{len(result['filled'])} filled in" + tagging)
         conn.commit()
     conn.close()
 
-    message, category = bulk_message(
-        "would import" if dry_run else "imported", "guest",
-        len(result["added"]) + len(result["filled"]), problems,
-        detail=f"{len(result['added'])} new, {len(result['filled'])} filled in, "
-               f"{len(result['untouched'])} already complete")
+    if not result["added"] and not result["filled"] and not problems:
+        # Everybody already here and complete -- a second run, say. The bulk
+        # reporter reads nothing done and nothing skipped as nothing chosen,
+        # which is not what happened: the whole file was read and checked.
+        message, category = (f"Nobody new and nothing to fill in: all {len(people)} "
+                             f"already here and complete{tagging}.", "success")
+    else:
+        message, category = bulk_message(
+            "would import" if dry_run else "imported", "guest",
+            len(result["added"]) + len(result["filled"]), problems,
+            detail=f"{len(result['added'])} new, {len(result['filled'])} filled in, "
+                   f"{len(result['untouched'])} already complete" + tagging)
     flash(message, category)
     return render_template("import_guests.html", guest_count=guest_count,
                            result=result, money=money)
@@ -65303,6 +65363,76 @@ def campaign_context_for(name, email):
     }
 
 
+# The two merge tags that belong to one guest's own booking rather than to the
+# guest: the reference they quote and the page that is theirs. A letter using
+# either goes only to somebody with a booking to come, and is never sent with
+# the tag left showing.
+CAMPAIGN_BOOKING_FIELDS = {
+    "reference": "Their booking reference (to anyone booked to come)",
+    "guest_page": "The link to their own booking page (to anyone booked to come)",
+}
+CAMPAIGN_MERGE_FIELDS.update(CAMPAIGN_BOOKING_FIELDS)
+
+
+def campaign_uses_booking(subject, body):
+    """Whether a campaign quotes somebody's own booking."""
+    return bool(re.search(r"\{\{\s*(" + "|".join(CAMPAIGN_BOOKING_FIELDS) + r")\s*\}\}",
+                          f"{subject or ''}\n{body or ''}"))
+
+
+def booked_to_come(conn, email=None):
+    """Every booking somebody is still to come for: confirmed, stay or atelier,
+    not yet over -- as [{start, reference, endpoint, token, email, name}],
+    soonest first. One address, or everybody.
+
+    The "Booked to come" audience and the {{reference}} tag both read this, so
+    the list a letter is sent to and the booking it quotes cannot disagree. An
+    atelier whose emails are switched off is not here: the house said it would
+    not write to them about it until somebody switches them back on.
+    """
+    today = house_today_iso()
+    one = (email or "").strip().lower() or None
+    out = []
+    for r in conn.execute(
+            """SELECT reference_code, manage_token, arrival_date AS start, guest_email,
+                      guest_name FROM bookings
+                WHERE status = 'confirmed' AND departure_date >= ?
+                  AND (? IS NULL OR LOWER(TRIM(guest_email)) = ?)""",
+            (today, one, one)).fetchall():
+        out.append({"start": r["start"], "reference": r["reference_code"],
+                    "endpoint": "manage_booking", "token": r["manage_token"],
+                    "email": (r["guest_email"] or "").strip().lower(), "name": r["guest_name"]})
+    for r in conn.execute(
+            """SELECT wb.reference_code, wb.manage_token, ws.start_date AS start,
+                      wb.guest_email, wb.guest_name
+                 FROM workshop_bookings wb
+                 JOIN workshop_sessions ws ON ws.id = wb.session_id
+                WHERE wb.status = 'confirmed' AND wb.do_not_email = 0
+                  AND COALESCE(ws.end_date, ws.start_date) >= ?
+                  AND (? IS NULL OR LOWER(TRIM(wb.guest_email)) = ?)""",
+            (today, one, one)).fetchall():
+        out.append({"start": r["start"], "reference": r["reference_code"],
+                    "endpoint": "workshop_manage", "token": r["manage_token"],
+                    "email": (r["guest_email"] or "").strip().lower(), "name": r["guest_name"]})
+    return sorted((b for b in out if b["email"]), key=lambda b: (b["start"] or "", b["reference"]))
+
+
+def campaign_booking_context(conn, email):
+    """{reference, guest_page} for somebody booked to come, or None.
+
+    All their references are quoted -- somebody with a room and a retreat has
+    two -- and the page is the one for whichever comes first.
+    """
+    found = booked_to_come(conn, email)
+    if not found:
+        return None
+    refs = [b["reference"] for b in found]
+    first = found[0]
+    return {"reference": refs[0] if len(refs) == 1 else ", ".join(refs[:-1]) + " and " + refs[-1],
+            "guest_page": url_for(first["endpoint"], manage_token=first["token"],
+                                  _external=True)}
+
+
 def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False):
     """Who a campaign would go to: {email: name}, de-duplicated.
 
@@ -65316,6 +65446,10 @@ def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False
             "SELECT email, name FROM guests WHERE email IS NOT NULL AND TRIM(email) != ''"
         ).fetchall():
             recipients.setdefault(row["email"], row["name"])
+    if "booked" in segments:
+        # Still to come, so no "visited within" filter: nobody has visited yet.
+        for b in booked_to_come(conn):
+            recipients.setdefault(b["email"], b["name"])
 
     recipients = {(e or "").strip().lower(): n for e, n in recipients.items() if e and e.strip()}
     if not include_optouts:
@@ -65442,6 +65576,24 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
     context = campaign_context_for(name, email)
     if letter.get("extra_context"):
         context.update(letter["extra_context"])
+    if campaign_uses_booking(letter["subject"], letter["body"]):
+        booked = campaign_booking_context(conn, address)
+        if booked is None and as_test:
+            # The owner's own test: shown what the tags become, with a
+            # booking that is plainly not anybody's.
+            booked = {"reference": "WRK-EXAMPLE",
+                      "guest_page": url_for("dashboard", _external=True)}
+        if booked is None:
+            why = "has no booking to come, so there is no reference to quote"
+            conn.execute(
+                """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
+                   recipient_name, subject, status, detail, sent_by_user_id, created_at,
+                   outcome, send_id) VALUES (?, ?, ?, ?, ?, 'skipped', ?, ?, ?, 'skipped', ?)""",
+                (letter["template_id"], letter["template_name"], email, name,
+                 letter["subject"], why, letter["user_id"], now_iso, letter["send_id"]))
+            conn.commit()
+            return "skipped", why
+        context.update(booked)
     subject, body = render_campaign(letter["subject"], letter["body"], context)
     # Every marketing message carries its own unsubscribe key, and the row that
     # holds it is written and COMMITTED BEFORE the send: the link in the email
@@ -79048,11 +79200,14 @@ def valid_segments(raw):
     """
     out = []
     for seg in raw or ():
-        if seg in GUEST_BLAST_SEGMENTS or seg == "profiles":
+        if seg in GUEST_BLAST_SEGMENTS or seg in ("profiles", "booked"):
             out.append(seg)
         elif isinstance(seg, str) and seg.count(":") == 1:
             head, tail = seg.split(":", 1)
             if head in ("workshop", "notsession") and tail.isdigit():
+                out.append(seg)
+            # A tag exactly as it is kept, and nothing that only resembles one.
+            elif head == "tag" and tail and normalise_tag(tail) == tail:
                 out.append(seg)
     return out
 
@@ -79185,6 +79340,18 @@ def promo_blast_recipients(conn, segments, since_date_iso=None):
         for row in workshop_alumni(conn, alumni_of, exclude_session_id=exclude,
                                    since_date_iso=since_date_iso):
             recipients.setdefault(row["guest_email"], row["guest_name"])
+
+    # A tag on the guest list: the people somebody put together on purpose --
+    # RetreatGuru's waitlist, say. No visit date to filter on, so none is.
+    for seg in segments:
+        if isinstance(seg, str) and seg.startswith("tag:"):
+            for row in conn.execute(
+                    """SELECT g.email, g.name FROM guests g
+                         JOIN guest_tags t ON t.guest_id = g.id
+                        WHERE t.tag = ? AND g.merged_into_id IS NULL
+                          AND g.email IS NOT NULL AND TRIM(g.email) != ''""",
+                    (seg.split(":", 1)[1],)).fetchall():
+                recipients.setdefault(row["email"], row["name"])
 
     if "newsletter" in segments:
         # Through newsletter_recipients, not a fourth query. That function is
