@@ -50,7 +50,10 @@ m = _harness.m
 # 9 Nov, later: moved to the merge with main at 0630e3d (e9b2f1a), so the base
 # holds main's own words as well as the retreat text. Checked against main
 # itself first: the only pages that differ from main are the five above.
-COPY_BASE = "e9b2f1a"
+# 10 Nov: moved to 36fd627, the owner's answers of that day (the Christmas market on
+# Noël, Cooking's opening without dishes); it listed /workshops, /workshops/3
+# and /workshops/4, and nothing else.
+COPY_BASE = "36fd627"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
