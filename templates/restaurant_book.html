@@ -145,6 +145,7 @@
     <p class="g-p" >Leave your details and we shall write to you should a place open.</p>
     <form method="post" action="{{ url_for('join_restaurant_waitlist') }}" style="margin-top:var(--s4)">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {{ bot_guard() }}{# a field only scripts fill, and when the form was drawn: bot_guard_refusal #}
       <input type="hidden" name="desired_date" value="{{ prefill_date }}">
       <p class="g-field"><label for="rw_name">Name</label><input type="text" id="rw_name" name="name" value="{{ prefill_name }}" required></p>
       <p class="g-field"><label for="rw_email">Email</label><input type="email" inputmode="email" id="rw_email" name="email" value="{{ prefill_email }}" required autocomplete="email"></p>

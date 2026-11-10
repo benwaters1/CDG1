@@ -41,8 +41,19 @@ import _harness
 
 m = _harness.m
 
-# The last commit before the image layout work touched a public page.
-COPY_BASE = "ae0ee6c"
+# The words as they last stood on purpose. Was ae0ee6c, the last commit before
+# the image layout work touched a public page; moved 9 Nov 2026 to the commit
+# that rewrote the retreat days at the owner's request (approved 9 Nov, after
+# a second read-aloud pass), which also changed
+# the Noël card line and three opening paragraphs. Every difference it listed
+# was one of those five pages: /workshops and the four retreat pages.
+# 9 Nov, later: moved to the merge with main at 0630e3d (e9b2f1a), so the base
+# holds main's own words as well as the retreat text. Checked against main
+# itself first: the only pages that differ from main are the five above.
+# 10 Nov: moved to 36fd627, the owner's answers of that day (the Christmas market on
+# Noël, Cooking's opening without dishes); it listed /workshops, /workshops/3
+# and /workshops/4, and nothing else.
+COPY_BASE = "36fd627"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
@@ -52,8 +63,21 @@ ALLOWED = {
     "g-credit": re.compile(r"Photo .{1,60}, CC BY(-SA)? \d\.\d"),
     # 9 Nov 2026 (owner): the house's address under the home page's hero, the
     # footer's own words, linked to the gates. test_house_address holds it.
-    "g-where": re.compile(re.escape("%(street)s, %(town)s" % m.HOUSE_PLACE)),
+    "g-where": re.compile(re.escape("%(street)s, %(locality)s, %(country)s" % m.HOUSE_PLACE)),
 }
+
+
+def _room_words():
+    """Each room's own lines (owner, 9 Nov 2026: "room words is important"), exactly as
+    _room_words.html writes them: the room page's g-room__words may hold one of these and nothing else."""
+    path = os.path.join(ROOT, "templates", "_room_words.html")
+    names = re.findall(r"^\s*'([^']+)': '", io.open(path, encoding="utf-8").read(), re.M)
+    with m.app.app_context():
+        module = m.app.jinja_env.get_template("_room_words.html").module
+        return [" ".join(str(module.room_words(n)).split()) for n in names]
+
+
+ALLOWED["g-room__words"] = re.compile("|".join(re.escape(w) for w in _room_words() if w))
 
 # Words the owner has agreed may go, each named, and only these (28 Oct 2026:
 # "drop the '…, in Pictures' headings as the brief says"). Taken out of the

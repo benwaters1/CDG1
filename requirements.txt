@@ -16,3 +16,6 @@ anthropic==0.122.0
 Pillow==12.3.0
 # iPhone photographs (HEIC), converted to JPEG on the way in by photo_master.
 pillow-heif==1.8.0
+# Booking.com's reservations statement downloads as an Excel 97 .xls file
+# (read_booking_com_statement); the standard library cannot read one.
+xlrd==2.0.2

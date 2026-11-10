@@ -358,6 +358,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
   <form method="post" action="{{ url_for('join_workshop_waitlist') }}" class="g-form-full" style="margin-top:var(--s6)">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ bot_guard() }}{# a field only scripts fill, and when the form was drawn: bot_guard_refusal #}
     <input type="hidden" name="session_id" value="{{ session['id'] }}">
     {% if _private %}<input type="hidden" name="k" value="{{ private_token }}">{% endif %}
 

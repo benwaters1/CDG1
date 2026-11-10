@@ -897,6 +897,8 @@ BOOKING_DETAILS = {
     "guest_postcode": "09310",
     "guest_country": "France",
     "estimated_arrival_time": "16:00",
+    # Required since 9 November 2026, as the page always said (PHONE_REQUIRED).
+    "guest_phone": "+33 6 12 34 56 78",
 }
 
 # The registration asks for the address but not the arrival time.

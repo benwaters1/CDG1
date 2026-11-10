@@ -85,7 +85,7 @@ def run():
     # them matches on `desired_date = ?` and never will.
     junk = TAG + "vague@example.invalid"
     _unthrottle(conn)
-    r = anon.post("/restaurant/waitlist/join", data={
+    r = anon.post("/restaurant/waitlist/join", data={"party_size": "2", 
         "name": "Vague", "email": junk, "desired_date": "next Friday please"},
         follow_redirects=True)
     s.check("a date nobody can parse is refused", _count(conn, "restaurant_waitlist", junk) == 0,
@@ -95,14 +95,14 @@ def run():
 
     bad = TAG + "notanemail"
     _unthrottle(conn)
-    anon.post("/restaurant/waitlist/join", data={"name": "Typo", "email": bad},
+    anon.post("/restaurant/waitlist/join", data={"party_size": "2", "name": "Typo", "email": bad},
               follow_redirects=True)
     s.check("an address that is not one is refused",
             _count(conn, "restaurant_waitlist", bad) == 0)
 
     _unthrottle(conn)
     nameless = TAG + "nameless@example.invalid"
-    anon.post("/restaurant/waitlist/join", data={"name": "", "email": nameless},
+    anon.post("/restaurant/waitlist/join", data={"party_size": "2", "name": "", "email": nameless},
               follow_redirects=True)
     s.check("and so is a request with no name",
             _count(conn, "restaurant_waitlist", nameless) == 0)
@@ -112,7 +112,7 @@ def run():
     _unthrottle(conn)
     flood = TAG + "flood@example.invalid"
     for _ in range(9):
-        anon.post("/restaurant/waitlist/join", data={
+        anon.post("/restaurant/waitlist/join", data={"party_size": "2", 
             "name": "Flood", "email": flood}, follow_redirects=True)
     got = _count(conn, "restaurant_waitlist", flood)
     s.check("the limiter stops it well short of nine", got < 9, detail=f"{got} rows written")
@@ -141,19 +141,19 @@ def run():
     # A session id is a number in a URL-shaped form field, so it is the first
     # thing anybody pokes at.
     _unthrottle(conn)
-    r = anon.post("/workshops/waitlist/join", data={
+    r = anon.post("/workshops/waitlist/join", data={"party_size": "2", 
         "session_id": "999999", "name": "Nobody", "email": TAG + "no@example.invalid"})
     s.check("a session that does not exist is a 404", r.status_code == 404,
             detail=f"HTTP {r.status_code}")
     _unthrottle(conn)
-    r = anon.post("/workshops/waitlist/join", data={
+    r = anon.post("/workshops/waitlist/join", data={"party_size": "2", 
         "session_id": "' OR 1=1 --", "name": "Nobody", "email": TAG + "no@example.invalid"})
     s.check("and so is a session id that is not a number", r.status_code == 404,
             detail=f"HTTP {r.status_code}")
 
     _unthrottle(conn)
     wbad = TAG + "alsonotanemail"
-    anon.post("/workshops/waitlist/join", data={
+    anon.post("/workshops/waitlist/join", data={"party_size": "2", 
         "session_id": str(sid), "name": "Typo", "email": wbad}, follow_redirects=True)
     s.check("an address that is not one is refused here too",
             _count(conn, "workshop_waitlist", wbad) == 0)

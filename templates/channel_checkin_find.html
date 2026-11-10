@@ -1,0 +1,31 @@
+{% extends "public_base.html" %}
+{% set sticky_bar = 'none' %}
+{% block title %}Check in online — Château de Gudanes{% endblock %}
+{# Every Booking.com guest's way in to their online check-in (9 November 2026):
+   the same address for all of them, carried by Booking.com's own scheduled
+   message, and the guest's number and arrival day find their stay. A form
+   with nobody's details on it, but a door to one guest's, so not indexed. #}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+<div class="g-short"><div class="g-wrap" style="padding-top:var(--s5); padding-bottom:var(--s6);">
+  <h1 class="g-place" style="margin:0;">Check in online</h1>
+  <p class="g-hint" style="margin:var(--s1) 0 var(--s4);">For a stay booked through Booking.com.</p>
+  <p>So that your room is ready, and for the register French law asks a guest house to keep,
+     please check in before you travel. It takes two minutes.</p>
+
+  <form method="post" class="g-form" style="max-width:28rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="g-field">
+      <label for="cf_number">Booking.com confirmation number<span class="g-req" aria-hidden="true">*</span></label>
+      <input type="text" id="cf_number" name="number" value="{{ number }}" inputmode="numeric"
+             autocomplete="off" required placeholder="e.g. 5567206616">
+      <span class="g-hint">Ten digits, in Booking.com's confirmation email and in the app.</span>
+    </p>
+    <p class="g-field">
+      <label for="cf_arrival">The day you arrive<span class="g-req" aria-hidden="true">*</span></label>
+      <input type="date" id="cf_arrival" name="arrival" value="{{ arrival }}" required>
+    </p>
+    <p><button type="submit" class="g-btn g-btn--solid">Continue</button></p>
+  </form>
+</div></div>
+{% endblock %}

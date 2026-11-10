@@ -64,6 +64,7 @@ SUITES = [
     "test_website_analytics",
     "test_workshop_rooms",
     "test_workshop_included",
+    "test_workshop_photo",
     "test_workshop_lifecycle",
     "test_workshop_minimum",
     "test_workshop_sheet",
@@ -446,6 +447,8 @@ SUITES = [
     "test_family_suite_beds",
     "test_contact_enquiry_spam",
     "test_contact_enquiry_letter",
+    "test_public_forms_required",
+    "test_enquiries_on_home",
     "test_contact_form_guard",
     "test_workshops_fifteen",
     "test_google_setup_z30",
@@ -577,6 +580,8 @@ SUITES = [
     # One Booking.com reservation for several rooms -- Chiodi, 6348479172,
     # the King Suite and the Twin Room (Ground Floor) (9 November 2026).
     "test_booking_com_multi_room",
+    "test_booking_com_watch",
+    "test_booking_com_statement",
     # Five rooms let a night, never six: the sixth room, z28 item 1.
     "test_rooms_let_a_night",
     # Brief of 17 October 2026: forms that post without a token, and the
@@ -608,10 +613,19 @@ SUITES = [
     # 28 October 2026: the retreat pages converted, one photograph a day.
     "test_retreat_pictures",
     "test_home_pictures",
+    # 9 November 2026: the rest of the public pages, brief sections 4.3 to 4.7.
+    "test_page_pictures",
+    # 9 November 2026: the photograph at the top of a page at the size it is shown.
+    "test_hero_sizes",
+    # 9 November 2026: each room's own words on its page, and its bathroom on the ground floor.
+    "test_room_words",
     # 9 November 2026: the address opens the map and sits under the home page's
     # hero, and every public page measured for its margins at three widths.
     "test_house_address",
     "test_public_margins",
+    # 9 November 2026: every retreat's days rewritten broader, headed "Day 1 ·
+    # Friday · Vendredi" from its dates, and made to make sense on those days.
+    "test_retreat_days",
 ]
 
 

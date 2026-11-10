@@ -6,6 +6,10 @@
 {% from '_phone.html' import phone_field %}
 {% from '_occupancy.html' import party_fields with context %}
 {% from '_room_copy.html' import room_copy, room_name, room_note, room_bath_where, room_stairs %}
+{% from '_room_words.html' import room_words %}
+{#- 9 Nov (the image layout brief, 4.4): the room's photographs as one large photograph and a strip of small ones, a
+    bathroom by the bathroom, Bruce by his line. Through the picture components (_pictures.html); not one word changes. -#}
+{% from '_pictures.html' import carrousel, medaillon, passe_partout, pictures_script %}
 {% set crumbs = [('Stay', url_for('book_rooms')), (room_name(room['name']), None)] %}
 {% block title %}Book {{ room_name(room['name']) }}{% endblock %}
 {# Named, and priced, per room. One template serves five bedrooms, so a
@@ -80,6 +84,10 @@
        calendar with 2 selected"). The tags, a second nights-and-total calculator that ignored the form's dates, and
        three bathroom sentences became one table; the form and its summary card are the only price. #}
     {%- set _private = (room['bathroom'] or 'private')|lower == 'private' %}
+    {#- 9 Nov (owner: "room words is important"): the room's own lines, romantic and true (_room_words.html), before the
+        facts it leaves to the table. -#}
+    {%- set _words = room_words(room_name(room['name'])|trim)|trim %}
+    {% if _words %}<p class="g-p g-intro g-room__words">{{ _words }}</p>{% endif %}
     <dl class="g-glance">
       <div><dt>Sleeps</dt><dd>{% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}{{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}{{ room['max_adults'] or room['max_occupancy'] }}{% endif %}</dd></div>
       {% if _bl %}<div><dt>The bed</dt><dd>{{ _bl }}</dd></div>{% endif %}
@@ -87,7 +95,7 @@
       {#- 17 Oct: where the bathroom is comes from _room_copy (next door for The Twin Room (Ground Floor)); the upstairs
           powder room is only worth saying to a room upstairs. -#}
       {%- set _bw = room_bath_where(_rn)|trim %}
-      <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ 'Private, and yours alone, ' if _private else '' }}{{ _bw }}{% if _bw != 'next door' %}<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span>{% endif %}</dd></div>
+      <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ medaillon([BATH_PHOTOS[1][0], BATH_PHOTOS[1][1]], side='right', cls='g-med--sm') }}{{ 'Private, and yours alone, ' if _private else '' }}{{ _bw }}{% if _bw != 'next door' %}<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span>{% endif %}</dd></div>
       <div><dt>Check-in / out</dt><dd>From {{ check_in_at }} &middot; by {{ check_out_at }}<span class="g-glance__sub">Early check-in on request</span></dd></div>
       <div><dt>Breakfast</dt><dd>Included</dd></div>
       <div><dt>Stairs</dt><dd>{{ room_stairs(_rn) }}</dd></div>
@@ -107,23 +115,12 @@
   {%- set _need = (3 - (_rg0|length % 3)) if (_rg0|length % 3) else 3 -%}
   {%- set _rg = (_rg0 + BATH_PHOTOS[:_need]) if _rg0 else _rg0 -%}
   {%- set _rgn = (gallery_photos|length) if gallery_photos else (_rg|length if _rg else 4) -%}
-  <div class="g-strip g-roomgal g-roomgal--c{{ 3 if _rgn % 3 == 0 else (2 if _rgn % 2 == 0 else 3) }}">
-    {% if gallery_photos %}
-      {% for p in gallery_photos %}
-      <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room_name(room['name']) }}" loading="lazy">
-      {% endfor %}
-    {% elif ROOM_PHOTOS.get(room_name(room['name'])) %}
-      {#- 5 Oct: this room's own photographs (Booking.com), then one of the bathrooms downstairs. -#}
-      {% for _u, _a in _rg %}<img src="{{ _u }}" alt="{{ _a }}" loading="lazy">{% endfor %}
-    {% else %}
-      {# Until room photography is uploaded, show the château: the bathrooms
-         guests actually use, the dining room, the gardens. #}
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w" alt="One of the ground-floor bathrooms" loading="lazy">
-      <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/501a4947-d365-4a11-a83e-8affbc374e48/Screenshot+2026-08-12+at+3.38.55+pm.png?format=1000w" alt="Walking up to the château at dusk" loading="lazy">
-      <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w" alt="Market produce on the table" loading="lazy">
-      <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w" alt="The gardens, the mountains beyond" loading="lazy">
-    {% endif %}
-  </div>
+  {#- 9 Nov: the room's own photographs (an uploaded set first, else its Booking.com ones and the château's own of it),
+      without the bathrooms that used to pad the grid out to a row of three: one of those sits by the bathroom now. -#}
+  {%- if gallery_photos %}{% set _gal = [] %}{% for p in gallery_photos %}{% set _ = _gal.append([url_for('room_photo', filename=p['filename']), room_name(room['name'])|trim, '']) %}{% endfor %}
+  {%- elif _rg0 %}{% set _gal = [] %}{% for _u, _a in _rg0 %}{% set _ = _gal.append([_u, _a, '']) %}{% endfor %}
+  {%- else %}{% set _gal = [['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w', 'One of the ground-floor bathrooms', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/501a4947-d365-4a11-a83e-8affbc374e48/Screenshot+2026-08-12+at+3.38.55+pm.png?format=1000w', 'Walking up to the château at dusk', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w', 'Market produce on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w', 'The gardens, the mountains beyond', '']] %}{% endif %}
+  <div class="g-roomgal-car">{{ carrousel(_gal, room_name(room['name'])|trim ~ ': photographs', thumbs=True) }}</div>
   </div>{#- /g-room--family wrapper (15 Oct: taller Family Suite photographs) -#}
 
   {# Gated on the database description, so the written copy - meant to replace that field - never showed when it was empty. #}
@@ -851,7 +848,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
             card payment as its own line, so a guest who read this expected to
             pay it twice. The rate is the one the checkout charges. -#}
         <div><dt>Tourist tax</dt><dd>{% if settings and settings['tourist_tax'] %}€{{ '{:,.2f}'.format(settings['tourist_tax']|float) }} per adult per night, set by the commune. {% endif %}Added to the total when you pay</dd></div>
-        <div><dt>Animals</dt><dd>Bruce, a French bulldog, and four cats live here. Tell us of any allergy when you book</dd></div>
+        <div><dt>Animals</dt><dd>{{ medaillon(['https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1587390168314-TLFRCWMU63WVKBM27KSV/Blog%252Bpost%252BBruce.jpg?format=500w', 'Bruce, the château’s French bulldog, looking up'], side='right', cls='g-med--sm') }}Bruce, a French bulldog, and four cats live here. Tell us of any allergy when you book</dd></div>
       </dl>
     </div>
   </div>
@@ -873,7 +870,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
    Every figure here is already stated on the homepage and the restoration
    page. Nothing new is claimed. #}
 <section class="g-sec g-ruin-sec"><div class="g-wrap g-ruin">
-  <figure class="g-ruin__fig"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1000w" alt="A bedroom before the work" loading="lazy"><figcaption>A bedroom, before the work</figcaption></figure>
+  {#- 9 Nov (the brief, 4.4): in a museum mount. The before photograph is another bedroom, so it is not set against this
+      room as a before-and-after: that would show two rooms as one. -#}
+  {{ passe_partout(['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1000w', 'A bedroom before the work', 'A bedroom, before the work'], cls='g-ruin__fig') }}
   <div class="g-ruin__t">
     <span class="g-hill" aria-hidden="true">{{ illus('restoration') }}</span>
     <p class="g-eyebrow">Before This</p>
@@ -1024,4 +1023,5 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   f.addEventListener('submit', join, true);
 })();
 </script>
+{{ pictures_script() }}
 {% endblock %}

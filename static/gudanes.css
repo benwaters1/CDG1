@@ -11903,8 +11903,20 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
    which would set the street and the town side by side on one line; this
    one is two lines, and tall enough as it is. */
 .g .g-footer a.g-addr{ display: inline-block; }
-/* On one line it may wrap after the street, never inside "Château-Verdun". */
-.g .g-addr__town{ white-space: nowrap; }
+/* On one line it may wrap after the street, never inside "Château-Verdun".
+   And it stays the size of the words around it: a rule sets every span in
+   main to the small size, with eleven exceptions chained on to it, which no
+   plain class can outrank -- on Contact the town came out smaller than the
+   street before it. */
+.g .g-addr__town{ white-space: nowrap; font-size: inherit !important; }
+/* In the body of a page the address is the only link in its paragraph, and a
+   phone rule makes such links inline-flex for a 44px target
+   (.g main p > a:only-child), which set the street and the town side by side
+   as two boxes. Inline-block keeps the 44px and lets the words wrap. At the
+   same widths as that rule: on a desk the link is words in a line. */
+@media (max-width: 48rem){
+  .g main p > a.g-addr:only-child{ display: inline-block; }
+}
 /* The menu's links are inline-flex for the same reason, which would set the
    street and the town side by side; the address wraps as words. */
 .g .g-navwrap__addr a.g-addr{ display: inline; }
@@ -11982,3 +11994,65 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 @media (max-width: 34rem){
   .g .g-crest--foot{ padding-left: var(--s4); padding-right: var(--s4); }
 }
+
+/* THE GUESTS' OWN PAGES, the ones reached by a booking's link and in no
+   sitemap, measured the same way (9 Nov, later). */
+
+/* The statement ended flush on the Monument Historique band, its last line
+   under 10px above it, at every width: its wrapper pads the sides and
+   nothing under. On screen only: at the foot of a printed statement it
+   could push a blank page out. */
+@media screen{ .g main > .statement{ padding-bottom: var(--s7); } }
+
+/* The manage pages (a stay, an atelier, the guest's own page) set their own
+   edge, clamp(20px, 4vw, 40px), so on a phone and a tablet the page stood
+   4-7px in from the site's gutter and from the header above it. The desk
+   keeps its 40px around the centred reading column. */
+@media screen and (max-width: 61.99rem){
+  .g main:has(> .g-mb-card){ padding-left: var(--s5); padding-right: var(--s5); }
+}
+@media screen and (max-width: 34rem){
+  .g main:has(> .g-mb-card){ padding-left: var(--s4); padding-right: var(--s4); }
+  /* And the cards kept their desk padding, 32px, where every other panel
+     drops to 24px at the sides; framed inside one another (the reference on
+     an event's or a dinner's page) the words stood 81px in on a 390px screen.
+     The sides come in; the top and bottom keep 32px, because the drawn
+     corners are 34px from each edge and a short card's first and last lines
+     would otherwise sit on them. */
+  .g .g-mb-card{ padding: var(--s6) var(--s5); }
+}
+
+/* Panels were meant to come in to 24px at the sides from a tablet down
+   ("on a tablet the padding is what starves the text"), and a phone rule
+   said so as well; a later rule giving every panel 32px sides overrode both,
+   on every page, at every width. Said again here, after it. Screen only,
+   like the rest of this block's later rules: an A4 page is narrower than a
+   tablet, and print has its own rules for these. */
+@media screen and (max-width: 60rem){
+  .g .g-panel{ padding-left: var(--s5); padding-right: var(--s5); }
+}
+
+/* THE HOME PAGE, SHORTER ON A PHONE (9 Nov, later). The owner: "not as long
+   on phone". It ran to about 20 screens at 390px. Nothing is taken out; it
+   is set tighter. The footer and the reassurance band are on every page, so
+   every page is shorter for them too. */
+@media screen and (max-width: 34rem){
+  /* Visit and Help side by side under the address, not one long column. */
+  .g .g-footer__grid{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--s5); }
+  .g .g-footer__grid > :first-child{ grid-column: 1 / -1; }
+  /* The four reassurances two by two. */
+  .g .g-assure__grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5) var(--s4); }
+  .g .g-assure__grid span{ font-size: 14px; }
+  /* The photographs of the half-and-half sections, lower. */
+  .g .g-half__img{ aspect-ratio: 2 / 1; }
+  /* La Vie de Château: its first paragraph, and the rest one tap away.
+     home.html adds the button; with no script everything shows. */
+  .g .g-full__copy.is-folded .g-full__p ~ .g-full__p{ display: none; }
+}
+.g .g-full__more{
+  display: inline-flex; align-items: center; min-height: 44px; margin: var(--s2) 0 0; padding: 0;
+  background: none; border: 0; cursor: pointer;
+  font-family: var(--ui); font-size: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--gold-lit); text-decoration: underline; text-underline-offset: 4px;
+}
+.g .g-full__more:hover, .g .g-full__more:focus-visible{ color: #fff; }

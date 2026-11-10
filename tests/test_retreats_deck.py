@@ -236,19 +236,24 @@ def run():
                               r"|a last morning of making", seen, re.I)
             s.check("Noël: no embroidery or candle-pouring on the page", not made, detail=", ".join(made))
             s.check("Noël: and none on its card", not re.search(r"embroider|candle", words(macro("ws_lead", w)), re.I))
+            # 9 Nov (owner): broader, no champagne jellies in copper moulds, the tree and wreaths on day two, carols
+            # by the fire, the tasting and cocktails in Le Bar. test_retreat_days holds the rest of what was asked.
             if len(days) == 5:
+                # 10 Nov (owner): "just call it a Christmas market" -- one, unnamed, on the morning of day 2.
+                s.check("Noël: day two is a Christmas market, then the tree and the wreaths",
+                        "Le marché de Noël" in days[1] and "A morning at a Christmas market" in days[1]
+                        and "Christmas tree" in days[1] and "wreaths" in days[1], detail=days[1][:160])
                 s.check("Noël: day three is the gingerbread château",
                         "Le pain d’épices" in days[2] and "gingerbread château" in days[2]
-                        and "champagne jellies" in days[2] and "French wines by the fire" in days[2],
-                        detail=days[2][:160])
-                s.check("Noël: the last day opens slowly, with watercolours and the tree",
-                        "watercolours at the long table" in days[3] and "dress the tree" in days[3]
-                        and "Cocktail hour in the Château Bar" in days[3], detail=days[3][:160])
+                        and "Carols and vin chaud by the fire" in days[2], detail=days[2][:160])
+                s.check("Noël: the last day opens slowly, with watercolours, and cocktails in Le Bar",
+                        "watercolours at the long table" in days[3] and "Cocktails in Le Bar" in days[3],
+                        detail=days[3][:160])
             s.check("Noël: no outings", not re.search(r"\bFoix\b|Lombrives|Ax-les-Thermes|Mirepoix|transfer from Toulouse",
                                                        journey), detail=journey[:120])
-            s.check("Noël: the tasting by the fire and cocktail hour are on the programme",
-                    "La dégustation French wines by the fire" in seen
-                    and "L’heure du cocktail Cocktail hour in the Château Bar" in seen)
+            s.check("Noël: the tasting and cocktail hour in Le Bar are on the programme",
+                    "La dégustation A wine tasting in Le Bar" in seen
+                    and "L’heure du cocktail Cocktail hour in Le Bar" in seen)
 
     s.section("No price typed into the words")
     comment = re.compile(r"\{#.*?#\}|<!--.*?-->", re.S)
@@ -334,8 +339,12 @@ def run():
             # 28 Oct (owner): "change the cooking hero photo from tom to a better one" - the roast guinea fowl.
             s.check("Cooking in the Cuisine opens on the roast guinea fowl",
                     hero.endswith("img/retreats/roast-birds.jpg"), detail=hero)
+        # 9 Nov: the hero's own tag names its file at every size it is offered in (size_the_heroes), so the rest of
+        # the page is what is read: the file must appear nowhere outside that one tag.
+        hero_tag = re.search(r'<img\b[^>]*class="g-hero__img[^"]*"[^>]*>', html)
+        rest = html.replace(hero_tag.group(0), "") if hero_tag else html
         s.check(f"{w['title']}: its lead picture is not in its gallery too",
-                not hero or html.count(hero.split("/static/img/retreats/")[-1]) == 1)
+                not hero or hero.split("/static/img/retreats/")[-1] not in rest)
     gallery_src = io.open(os.path.join(_harness.ROOT, "templates", "gallery.html"), encoding="utf-8").read()
     s.check("the dog in the snow is captioned Alfred",
             re.search(r"42ac040d-dc88-4253-8d3d-7084f6e05ea4[^}]*'caption': 'Alfred'", gallery_src) is not None)
@@ -350,7 +359,8 @@ def run():
     s.check("and the morning keeps a visiting artisan", "with a visiting artisan, or on the restorers’ scaffold" in ws_words)
     # 27 Oct (owner): the sorbet stays the afternoon picture; the painting goes to the restoration page instead.
     s.check("the afternoon picture is still the sorbet",
-            re.search(r'<li class="g-day__i">\s*<figure><img src="/static/img/retreats/sorbet-pouring\.jpg"[^>]*></figure>'
+            # 9 Nov: the day's figure carries classes now (the image layout brief's timeline).
+            re.search(r'<li class="g-day__i">\s*<figure[^>]*><img src="/static/img/retreats/sorbet-pouring\.jpg"[^>]*></figure>'
                       r'\s*<div class="g-day__b">\s*<h3 class="g-day__t"><em lang="fr">L’après-midi</em>', ws_html) is not None
             and "guest-painting" not in ws_html)
     resto = c.get("/restoration").get_data(as_text=True)

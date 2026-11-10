@@ -5,13 +5,31 @@
 <div class="narrow-card">
   {% if workshop %}<p style="margin:0 0 6px;"><a class="small-link" href="{{ url_for('admin_workshop', workshop_id=workshop['id']) }}">&larr; Back to {{ workshop['title'] }}</a></p>{% endif %}
   <h1>{% if workshop %}Edit {{ workshop['title'] }}{% else %}Add Workshop{% endif %}</h1>
-  <form method="post">
+  <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label" for="workshop_form-title">Title</label>
     <input id="workshop_form-title" type="text" name="title" required value="{{ workshop['title'] if workshop else '' }}">
 
     <label class="field-label" for="workshop_form-description">Description (shown to guests)</label>
     <textarea id="workshop_form-description" name="description" placeholder="What this workshop covers, what to bring, who it's for">{{ workshop['description'] if workshop else '' }}</textarea>
+
+    {#- 9 Nov: the retreat's own photograph. workshops.photo_filename had no way in until now. -#}
+    <label class="field-label" style="margin-top:16px;" for="workshop_form-photo">Photograph (shown to guests)</label>
+    {% if workshop and workshop['photo_filename'] %}
+    <img src="{{ url_for('room_photo', filename=workshop['photo_filename']) }}" alt="{{ workshop['title'] }}"
+         style="max-width:220px; border-radius:9px; margin:4px 0 10px; display:block;">
+    <label class="amenity" style="display:block;">
+      <input type="checkbox" name="remove_photo" value="1">
+      Take this photograph off
+    </label>
+    {% endif %}
+    <input id="workshop_form-photo" type="file" name="photo" accept="image/*">
+    <p class="upload-hint">
+      Shown on this retreat's card on the Retreats page and across the top of its own page,
+      in place of the house's photographs for it. Landscape works best: the card crops to 4:3.
+      {% if workshop and workshop['photo_filename'] %}A new file replaces the one above.{% endif %}
+      Location and camera details are taken out before it goes up.
+    </p>
 
     <div class="field-row-2">
       <div>

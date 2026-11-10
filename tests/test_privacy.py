@@ -189,7 +189,7 @@ def run():
     conn.commit()
 
     before = conn.execute("SELECT COUNT(*) AS c FROM notifications").fetchone()["c"]
-    pub.post("/restaurant/book", data={
+    pub.post("/restaurant/book", data={"guest_phone": "+33 6 12 34 56 78", 
         "guest_name": TAG + "Allergic", "guest_email": TAG + "a@example.invalid",
         "dinner_date": soon, "party_size": "2",
         "dietary_notes": "anaphylactic to peanuts",
@@ -285,11 +285,11 @@ def run():
     # The row on this page most worth knowing is true: a name and a home
     # address, held for every guest who is not a French national, under a
     # legal obligation with a stated end.
-    booking = conn.execute(
-        "SELECT id FROM bookings ORDER BY id DESC LIMIT 1").fetchone()
-    room = conn.execute(
-        "SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
-    if booking and room:
+    # The stays below are its own. It used to wait for some booking to exist
+    # first, and a fresh seed (any worktree run) has none, so it went red
+    # without ever reaching the purge (9 Nov 2026).
+    room = _harness.ensure_room()
+    if room:
         def _stay(ref, departed_days_ago, nights=3):
             left = m.house_today() - timedelta(days=departed_days_ago)
             conn.execute(
@@ -358,7 +358,7 @@ def run():
                 detail="written and never called, the notice is a statement "
                        "about code that does not run")
     else:
-        s.check("a room and a booking exist to attach a fiche to", False,
+        s.check("a room exists to attach a fiche to", False,
                 detail="reported rather than skipped: every check above would "
                        "pass on nothing")
 

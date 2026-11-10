@@ -223,6 +223,19 @@ def _run(s, oc, conn, now, today):
     conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
                  (m.ADDIN_CONFIRMED_VERSION_SETTING, m.OUTLOOK_ADDIN_VERSION))
     conn.commit()
+    # Booking.com, settled: this week's statement in, and every room's
+    # Booking.com calendar read just now (on a copy of a live house they are
+    # as old as the copy). Both are put back below.
+    # Restored column by column, not with keep_rows: deleting an iCal source
+    # takes its imported nights with it.
+    sources_before = [(r["last_synced_at"], r["last_sync_error"], r["id"]) for r in
+                      conn.execute("SELECT id, last_synced_at, last_sync_error FROM ical_sources")]
+    conn.execute("UPDATE ical_sources SET last_synced_at = ?, last_sync_error = NULL",
+                 (datetime.now(timezone.utc).isoformat(),))
+    statement_id = conn.execute(
+        "INSERT INTO booking_com_statements (uploaded_at, filename, rows_read) VALUES (?, 'test', 0)",
+        (datetime.now(timezone.utc).isoformat(),)).lastrowid
+    conn.commit()
     real_checks = m.readiness_checks
     # **kwargs: the caller passes include_slow=False now, and a stand-in
     # that cannot take it turns this into a crash rather than a check.
@@ -234,6 +247,10 @@ def _run(s, oc, conn, now, today):
         put_back_letters()
         put_back_terms()
         put_back_addin()
+        conn.executemany("UPDATE ical_sources SET last_synced_at = ?, last_sync_error = ? WHERE id = ?",
+                         sources_before)
+        conn.execute("DELETE FROM booking_com_statements WHERE id = ?", (statement_id,))
+        conn.commit()
     for row in held_before:
         conn.execute("UPDATE email_outbox SET created_at = ? WHERE id = ?",
                      (row["created_at"], row["id"]))

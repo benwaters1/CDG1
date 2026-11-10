@@ -53,6 +53,8 @@
     opens on the roast guinea fowl instead ("change the cooking hero photo from tom to a better one"). -#}
 {% set WS_HERO_BY_TITLE = {'Antique': '/static/img/retreats/brocante-stalls.jpg', 'Noël': '/static/img/retreats/lighting-gingerbread.jpg', 'Cooking': '/static/img/retreats/roast-birds.jpg', 'Seven': '/static/img/retreats/lunch-outdoors-many.jpg'} %}
 {% set WS_HERO_POS = {'Antique': 'center 55%', 'Noël': 'center 35%'} %}{% set _wh = namespace(u=WS_IMAGES[workshop['id'] % 3], pos='') %}{% for k, v in WS_HERO_BY_TITLE.items() %}{% if k in workshop['title'] %}{% set _wh.u = v %}{% set _wh.pos = WS_HERO_POS.get(k, '') %}{% endif %}{% endfor %}
+{#- 9 Nov: a photograph uploaded for the retreat (the workshop form) leads its page, as it leads its card on /workshops. -#}
+{%- if workshop['photo_filename'] %}{% set _wh.u = url_for('room_photo', filename=workshop['photo_filename']) %}{% set _wh.pos = '' %}{% endif %}
 
 <section class="g-hero">
   <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img g-zoom" src="{{ _wh.u }}"{% if _wh.pos %} style="object-position: {{ _wh.pos }}"{% endif %} alt="{{ workshop['title'] }}">
@@ -105,7 +107,8 @@
     <div><dt>Evenings</dt><dd><em lang="fr">L’apéritif</em>, dinner by candlelight, and on the last night a banquet in the Salon de Musique, dressed for the occasion, then dancing</dd></div>
     <div><dt>Laundry</dt><dd>Laundry and ironing facilities for guests</dd></div>
     <div><dt>Transfers</dt><dd>{% if _tx %}From Toulouse on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
-    {% if not _ex %}<div><dt>The days</dt><dd>Spent at the château itself, with no outings to plan around: the making, the meals and the rooms</dd></div>{% endif %}
+    {#- 10 Nov (owner): Noël has a morning at a Christmas market, so it no longer says "no outings". -#}
+    {% if not _ex %}<div><dt>The days</dt><dd>{% if 'Noël' in workshop['title'] or 'Noel' in workshop['title'] or 'Christmas' in workshop['title'] %}Spent at the château, but for a morning at a Christmas market: the making, the meals and the rooms{% else %}Spent at the château itself, with no outings to plan around: the making, the meals and the rooms{% endif %}</dd></div>{% endif %}
     <div><dt>To hold a place</dt><dd>A deposit. The balance is taken closer to the date</dd></div>
     <div><dt>Not included</dt><dd>{% if _ex %}Flights, and anything you buy at the brocantes{% else %}Flights, and the journey to the château{% endif %}</dd></div>
   </dl>
@@ -168,7 +171,8 @@
 </div></section>
 
 <!-- ============ WHAT AWAITS ============ -->
-{% if workshop %}{{ ws_journey(workshop, day_photos=RLP['days']) }}{% endif %}
+{#- sittings (9 Nov, owner): the days are headed "Day 1 · Friday · Vendredi" from the dates on offer. -#}
+{% if workshop %}{{ ws_journey(workshop, day_photos=RLP['days'], sittings=session_rows) }}{% endif %}
 
 {#- After the itinerary: the retreat's best remaining photographs, none repeating a day's, then the whole set. -#}
 <section class="g-sec g-sec--tight g-ws-after"><div class="g-wrap">
@@ -232,14 +236,15 @@
     <li>A private selection of wines, sparkling wines, apéritifs and spirits with every meal, soft drinks, and the château’s own botanical syrups</li>
     <li>Your room in the château, with three bathrooms on the ground floor shared between the group</li>
     {% if _ex %}<li>The classes and the outings: the kitchen, the brocantes, morning yoga, the river or the mountains, and a barbecue on the terrace, all optional</li>
-    <li>Everything on the itinerary, materials included</li>{% else %}<li>The classes: the retreat's own sessions at the château, the kitchen and morning yoga, all optional</li>
+    <li>Everything on the itinerary, materials included</li>{% else %}{#- 9 Nov (owner): no yoga at Noël, it is too cold. -#}{% if 'Noël' in workshop['title'] or 'Noel' in workshop['title'] or 'Christmas' in workshop['title'] %}<li>The classes: the gingerbread château, Christmas baking and the kitchen, all optional</li>{% else %}<li>The classes: the retreat's own sessions at the château, the kitchen and morning yoga, all optional</li>{% endif %}
     <li>Everything on the itinerary, materials included</li>{% endif %}
     <li>On the last night, a banquet in the Salon de Musique, dressed for the occasion, then dancing</li>
     {#- 26 Oct: the three-night plan dines at the château every night; five and seven go out to both. -#}
     {% set _wn = ws_nights(workshop)|trim %}{% if _wn in ['5','7'] %}<li>Dinners at Maison Beaucoup and at La Maison Lacube, in Les Cabannes</li>{% endif %}
     <li>A tour of the château and its restoration</li>
     {% if _tx %}<li>The transfers from central Toulouse, there and back</li>{% endif %}
-    <li>Free time with {% if not ('Noël' in workshop['title'] or 'Noel' in workshop['title'] or 'Christmas' in workshop['title']) %}the pool, {% endif %}the tennis court, the gardens, table tennis, the lounge and the terraces</li>
+    {#- 9 Nov (owner, think about the weather): in December, no pool, no tennis court and no terraces. -#}
+    <li>Free time with {% if not ('Noël' in workshop['title'] or 'Noel' in workshop['title'] or 'Christmas' in workshop['title']) %}the pool, the tennis court, the gardens, table tennis, the lounge and the terraces{% else %}the gardens, table tennis, the lounge and la Bibliothèque{% endif %}</li>
     {% endif %}
   </ul>
   {% if _basis %}<p class="g-hint">Prices are {{ _basis[:1]|lower }}{{ _basis[1:] }}</p>{% endif %}

@@ -13,17 +13,20 @@
   'foix-castle-lespinet': ('Patrick Castay', 'CC BY 3.0', 'https://commons.wikimedia.org/wiki/File:Ch%C3%A2teau_de_Foix_Lespinet.JPG', 'https://creativecommons.org/licenses/by/3.0/'),
   'mirepoix-arcades': ('Babsy', 'CC BY 3.0', 'https://commons.wikimedia.org/wiki/File:Mirepoix,_place_des_Couverts.JPG', 'https://creativecommons.org/licenses/by/3.0/'),
   'lombrives-cave-mouth': ('Traumrune', 'CC BY-SA 3.0', 'https://commons.wikimedia.org/wiki/File:Ussat-les-Bains_14.JPG', 'https://creativecommons.org/licenses/by-sa/3.0/'),
-  'bassin-des-ladres': ('Jeunamateur', 'CC BY-SA 3.0', 'https://commons.wikimedia.org/wiki/File:Bassin_des_ladres.jpg', 'https://creativecommons.org/licenses/by-sa/3.0/')
+  'bassin-des-ladres': ('Jeunamateur', 'CC BY-SA 3.0', 'https://commons.wikimedia.org/wiki/File:Bassin_des_ladres.jpg', 'https://creativecommons.org/licenses/by-sa/3.0/'),
+  'sant-joan-de-caselles': ('Pierre Bona', 'CC BY-SA 3.0', 'https://commons.wikimedia.org/wiki/File:Canillo_%C3%A9glise_Sant_Joan_de_Caselles.jpg', 'https://creativecommons.org/licenses/by-sa/3.0/')
 } -%}
 
 {% macro rsrc(slug) -%}
 {{- url_for('static', filename='img/retreats/' ~ slug ~ '.jpg') -}}
 {%- endmacro %}
 
-{% macro rcredit(slug) -%}
+{% macro rcredit(slug, new_tab=False) -%}
 {%- set c = RCREDIT.get(slug) -%}
-{#- small, not span: the stylesheet holds every span in main at 15px, which made the credit louder than its caption. -#}
-{%- if c %}<small class="g-credit">Photo <a href="{{ c[2] }}" rel="noopener">{{ c[0] }}</a>, <a href="{{ c[3] }}" rel="noopener license">{{ c[1] }}</a></small>{% endif -%}
+{#- small, not span: the stylesheet holds every span in main at 15px, which made the credit louder than its caption.
+    new_tab: 9 Nov, for /whats-on, where every link out opens in a new tab (test_whats_on_through_the_year). -#}
+{%- set t = ' target="_blank"' if new_tab else '' -%}
+{%- if c %}<small class="g-credit">Photo <a href="{{ c[2] }}"{{ t|safe }} rel="noopener">{{ c[0] }}</a>, <a href="{{ c[3] }}"{{ t|safe }} rel="noopener license">{{ c[1] }}</a></small>{% endif -%}
 {%- endmacro %}
 
 {% macro rphoto(slug, alt, cap='', sizes='(min-width: 64rem) 33vw, 50vw', pos='') -%}

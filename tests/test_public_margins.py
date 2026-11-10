@@ -31,6 +31,21 @@ every page. What was not, and what each check below now holds:
     keep an empty column down its left side on a phone, where the photograph
     it no longer shows used to go.
 
+Later the same day the guests' own pages were measured too -- a stay's
+confirmation and manage page, the statement, an atelier's, an event's and a
+dinner's pages, the account and the guest's own page, the check-ins and the
+pages a booking is found from. They are in no sitemap, so rows are made here
+for them and removed after. They added three more:
+
+  - THE STATEMENT ENDED ON THE MONUMENT BAND, its last line 3-10px above it
+    at every width: the page's wrapper padded its sides and nothing under.
+  - THE MANAGE PAGES SET THEIR OWN EDGE, 20px on a phone and 31px on a
+    tablet, out of line with the site's gutter and the header above them;
+    and their framed cards kept 32px of padding on a phone, so a reference
+    framed inside a card stood 81px in on a 390px screen.
+  - EVERY PANEL KEPT 32PX SIDES AT EVERY WIDTH. Two rules said 24px from a
+    tablet down; a later one overrode both, on public pages as well.
+
 None of these errored, and every page rendered. A gutter is a sum of rules
 and a gap is a sum of boxes, which no reading of the stylesheet can add up --
 so, like test_staff_header_on_a_phone, the real pages are rendered through the
@@ -47,8 +62,12 @@ What every frame is asked:
     sets its own type over a photograph, and outside rows that scroll);
   - every page container holding words -- .g-wrap, or .g-two standing in for
     one -- has the site's gutter on both sides: 16px on a phone, 24px above;
+  - a page that pads main itself keeps the same gutter while main runs the
+    width of the screen;
   - the last thing in main ends where main ends, and the reassurance band
     meets the footer: no strips;
+  - the last words above the Monument band stand at least 24px clear of it;
+  - on a phone, framed cards and panels are padded 24px at the sides;
   - where a booking bar is drawn, the footer's last line ends above it when
     the page is scrolled to the bottom;
   - every row that scrolls sideways starts at its first card;
@@ -71,6 +90,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, db
 import _harness
@@ -146,21 +166,71 @@ PROBE = r"""
       var cs = getComputedStyle(el);
       gutters.push([name(el) + ' in ' + name(el.parentElement), parseFloat(cs.paddingLeft), parseFloat(cs.paddingRight)]);
     });
-    out.gutters = gutters;
-
     var main = document.querySelector('main'), assure = document.querySelector('.g-assure'),
         foot = document.querySelector('footer.g-footer');
+    // A page that pads main itself (the manage pages) is its own container
+    // while main runs the width of the screen.
+    if (main) {
+      var mcs = getComputedStyle(main);
+      if ((parseFloat(mcs.paddingLeft) || parseFloat(mcs.paddingRight))
+          && main.getBoundingClientRect().width >= vw - 1)
+        gutters.push(['main', parseFloat(mcs.paddingLeft), parseFloat(mcs.paddingRight)]);
+    }
+    out.gutters = gutters;
+
+    // The cards and panels a phone drops to 24px of padding.
+    out.panels = [];
+    [].forEach.call(document.querySelectorAll('main .g-mb-card, main .g-panel'), function (el) {
+      if (!shown(el) || el.closest(SKIP)) return;
+      var cs = getComputedStyle(el);
+      if (parseFloat(cs.borderLeftWidth) || cs.backgroundColor !== 'rgba(0, 0, 0, 0)')
+        out.panels.push([name(el) + ' "' + words(el) + '"', parseFloat(cs.paddingLeft)]);
+    });
+
     var last = null;
     [].forEach.call(main ? main.children : [], function (c) { if (shown(c)) last = c; });
     function y(v) { return v + window.scrollY; }
+    // How far the last line of words above the Monument band stands from it.
+    var cred = main ? main.querySelector(':scope > .g-cred') : null, credGap = null;
+    if (cred && shown(cred)) {
+      var prev = cred.previousElementSibling;
+      while (prev && !shown(prev)) prev = prev.previousElementSibling;
+      var low = null;
+      [prev].concat(prev ? [].slice.call(prev.querySelectorAll('*')) : []).forEach(function (el) {
+        if (!el || !shown(el) || el.closest('[aria-hidden="true"]')) return;
+        [].forEach.call(el.childNodes, function (n) {
+          if (n.nodeType !== 3 || !n.textContent.trim()) return;
+          var range = document.createRange();
+          range.selectNodeContents(n);
+          [].forEach.call(range.getClientRects(), function (x) {
+            if (x.height > 4 && (low === null || x.bottom > low)) low = x.bottom;
+          });
+        });
+      });
+      if (low !== null) credGap = cred.getBoundingClientRect().top - low;
+    }
     out.run = {
       last: last ? name(last) : null,
       lastB: last ? y(last.getBoundingClientRect().bottom) : null,
       mainB: main ? y(main.getBoundingClientRect().bottom) : null,
       assureT: assure ? y(assure.getBoundingClientRect().top) : null,
       assureB: assure ? y(assure.getBoundingClientRect().bottom) : null,
-      footT: foot ? y(foot.getBoundingClientRect().top) : null
+      footT: foot ? y(foot.getBoundingClientRect().top) : null,
+      credGap: credGap
     };
+
+    // The home page made shorter on a phone (9 Nov): Visit beside Help in the
+    // footer, the reassurances two to a row, and La Vie de Château folded.
+    var cols = document.querySelectorAll('.g-footer__grid > div');
+    out.footCols = cols.length >= 3
+      ? [cols[1].getBoundingClientRect().top, cols[2].getBoundingClientRect().top] : null;
+    var lis = document.querySelectorAll('.g-assure__grid > li');
+    out.assureRow = lis.length >= 2
+      ? [lis[0].getBoundingClientRect().top, lis[1].getBoundingClientRect().top] : null;
+    var fullPs = document.querySelectorAll('.g-full__copy .g-full__p');
+    out.fold = fullPs.length ? {more: !!document.querySelector('.g-full__more'), all: fullPs.length,
+                                shown: [].filter.call(fullPs, shown).length} : null;
+    out.H = de.scrollHeight;
 
     var where = document.querySelector('.g-where');
     out.where = where ? {top: y(where.getBoundingClientRect().top), vh: window.innerHeight,
@@ -231,7 +301,97 @@ OLD_FAULTS = """<style>
 .g main > .g-sec > .g-wrap{ padding-left: 0 !important; padding-right: 0 !important; }
 @media (max-width: 61.99rem){ .g main{ padding-bottom: 88px !important; } .g .g-footer{ padding-bottom: 24px !important; } }
 .g .g-footer{ margin-top: 48px !important; }
+.g main > .g-close{ padding-bottom: 0 !important; }
 </style>"""
+
+BAND_CLEAR = 24   # px: the last words above the Monument band stand at least this far off it
+PANEL_PAD = 24    # px: what a card or panel is padded on a phone
+
+# The guests' own pages: reached by the link in a booking's letter, in no
+# sitemap, and so measured from rows made here (and removed after).
+GUEST = "zmargin-"
+GUEST_NAME = "Marie-Christine de La Rochefoucauld"   # long, so it wraps where it can
+
+
+def _seed_guests(conn):
+    """One of each private page's rows; the paths to measure."""
+    _unseed_guests(conn)
+    now = datetime.now(timezone.utc).isoformat()
+    today = m.house_today()
+    later = lambda days: (today + timedelta(days=days)).isoformat()
+    room = _harness.ensure_room()
+    email = GUEST + "guest@example.invalid"
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, share_token,
+               guest_name, guest_email, guest_phone, arrival_date, departure_date,
+               party_size, status, total_price, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, '+33 6 00 00 00 00', ?, ?, 2, 'confirmed', 960, ?)""",
+        (room["id"], GUEST + "R1", GUEST + "room", GUEST + "share", GUEST_NAME, email,
+         later(40), later(43), now))
+    # A room the house is holding for a guest to finish booking.
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+               guest_email, arrival_date, departure_date, party_size, status,
+               total_price, reserved_until, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'pending', 960, ?, ?)""",
+        (room["id"], GUEST + "R2", GUEST + "held", GUEST_NAME, email, later(50), later(52),
+         (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(), now))
+    conn.execute(
+        """INSERT INTO event_inquiries (reference_code, manage_token, event_type,
+               contact_name, contact_email, created_at) VALUES (?, ?, 'wedding', ?, ?, ?)""",
+        (GUEST + "E1", GUEST + "event", GUEST_NAME, email, now))
+    conn.execute(
+        """INSERT INTO restaurant_bookings (reference_code, manage_token, guest_name,
+               guest_email, party_size, dinner_date, status, total_price, created_at)
+           VALUES (?, ?, ?, ?, 2, ?, 'confirmed', 130, ?)""",
+        (GUEST + "D1", GUEST + "rest", GUEST_NAME, email, later(40), now))
+    conn.execute(
+        "INSERT INTO guest_sessions (email, token, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        (email, GUEST + "acct", now, (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()))
+    conn.execute(
+        "INSERT INTO guests (name, email, portal_token, created_at) VALUES (?, ?, ?, ?)",
+        (GUEST_NAME, email, GUEST + "portal", now))
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(ota_reservations)")}
+    ota = {"reservation_number": GUEST + "OTA1", "status": "confirmed", "first_seen_at": now,
+           "updated_at": now, "checkin_token": GUEST + "ota", "room_id": room["id"],
+           "arrival_date": later(40), "departure_date": later(43), "guest_name": GUEST_NAME,
+           "guest_email": GUEST + "ota@example.invalid"}
+    ota = {k: v for k, v in ota.items() if k in cols}
+    conn.execute("INSERT INTO ota_reservations (%s) VALUES (%s)"
+                 % (", ".join(ota), ", ".join("?" * len(ota))), list(ota.values()))
+    paths = ["/book/confirmation/%sroom", "/book/manage/%sroom", "/booking/%sroom/statement",
+             "/booking/%sheld/finish", "/feedback/%sroom", "/stay/%sshare", "/checkin/stay/%sota",
+             "/events/confirmation/%sevent", "/events/manage/%sevent",
+             "/restaurant/confirmation/%srest", "/restaurant/manage/%srest",
+             "/my-account/%sacct", "/my/%sportal"]
+    paths = [p % GUEST for p in paths]
+    session = conn.execute(
+        """SELECT workshop_sessions.id FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
+            ORDER BY workshop_sessions.start_date LIMIT 1""", (today.isoformat(),)).fetchone()
+    if session:
+        conn.execute(
+            """INSERT INTO workshop_bookings (session_id, reference_code, manage_token,
+                   guest_name, guest_email, party_size, status, created_at)
+               VALUES (?, ?, ?, ?, ?, 2, 'confirmed', ?)""",
+            (session["id"], GUEST + "W1", GUEST + "ws", GUEST_NAME, email, now))
+        paths += ["/workshops/confirmation/%sws" % GUEST, "/workshops/manage/%sws" % GUEST,
+                  "/workshops/register/%d" % session["id"]]
+    conn.commit()
+    # And the pages a guest finds a booking from, which need no row at all.
+    return paths + ["/book/manage", "/events/find", "/restaurant/find", "/workshops/find",
+                    "/my-account"]
+
+
+def _unseed_guests(conn):
+    like = GUEST + "%"
+    for table, col in (("bookings", "reference_code"), ("workshop_bookings", "reference_code"),
+                       ("event_inquiries", "reference_code"), ("restaurant_bookings", "reference_code"),
+                       ("guest_sessions", "token"), ("guests", "portal_token"),
+                       ("ota_reservations", "reservation_number")):
+        conn.execute("DELETE FROM %s WHERE %s LIKE ?" % (table, col), (like,))
+    conn.commit()
 
 
 def _localise(page):
@@ -324,6 +484,12 @@ def _faults(d):
         out.append("; ".join(lost))
     if d.get("cards"):
         out.append("an empty column beside the words: " + "; ".join(d["cards"][:3]))
+    if run.get("credGap") is not None and run["credGap"] < BAND_CLEAR:
+        out.append("words %dpx above the Monument band" % run["credGap"])
+    if w <= PHONE_GUTTER_UNTIL:
+        fat = ["%s %gpx" % (n, pad) for n, pad in d.get("panels", []) if pad > PANEL_PAD]
+        if fat:
+            out.append("a panel padded past %dpx on a phone: %s" % (PANEL_PAD, "; ".join(fat[:3])))
     return out
 
 
@@ -367,6 +533,15 @@ def run():
         s.check("the sitemap gives a full set of public pages to measure",
                 len(pages) >= 15, detail="%d pages: %s" % (len(pages), [p for p, _ in pages]))
 
+        conn = db()
+        guest_paths = _seed_guests(conn)
+        conn.close()
+        guests = _render(anon, guest_paths)
+        s.check("and every guest's own page renders to be measured too",
+                len(guests) == len(guest_paths) and len(guest_paths) >= 20,
+                detail="rendered %s of %s" % ([p for p, _ in guests], guest_paths))
+        pages += guests
+
         # The home page for the control: it draws the booking bar, so the bar
         # fault can be put back and seen as well as the others.
         control = [p for p in pages if p[0] == "/"] or pages[:1]
@@ -393,13 +568,15 @@ def run():
                 "empty under" in said and "at the foot of main" in said, detail=said)
         s.check("for the strip over the footer",
                 "between the reassurance band and the footer" in said, detail=said)
-        s.check("and for the booking bar over the footer's last line",
+        s.check("for the booking bar over the footer's last line",
                 "covers the footer's last line" in said, detail=said)
+        s.check("and for words pressed against the Monument band",
+                "above the Monument band" in said, detail=said)
 
         real = [d for d in frames if not d["page"].startswith("control:")]
         for width, label in ((PHONE, "on a phone (390px)"), (TABLET, "on a tablet (768px)"),
                              (DESK, "on a desk (1440px)")):
-            s.section("Every public page " + label)
+            s.section("Every public page, and every guest's own, " + label)
             these = [d for d in real if d["asked"] == width]
             s.check("all %d pages measured" % len(pages), len(these) == len(pages),
                     detail="%d frames" % len(these))
@@ -422,6 +599,13 @@ def run():
             s.check("no booking bar over the footer's last line", not bad, detail=" | ".join(bad[:4]))
             bad = each(lambda f: "left of its row" in f)
             s.check("every row you swipe starts at its first card", not bad, detail=" | ".join(bad[:4]))
+            bad = each(lambda f: "above the Monument band" in f)
+            s.check("the last words stand at least %dpx clear of the Monument band" % BAND_CLEAR,
+                    not bad, detail=" | ".join(bad[:4]))
+            if width <= PHONE_GUTTER_UNTIL:
+                bad = each(lambda f: "a panel padded past" in f)
+                s.check("cards and panels drop to %dpx of padding" % PANEL_PAD,
+                        not bad, detail=" | ".join(bad[:4]))
             bad = each(lambda f: "an empty column" in f)
             s.check("a card showing no photograph gives its words the whole card",
                     not bad, detail=" | ".join(bad[:4]))
@@ -435,11 +619,36 @@ def run():
                     where["top"] <= where["vh"] * 1.25,
                     detail="at %dpx on a %dpx screen; the footer starts at %dpx"
                            % (where["top"], where["vh"], where["footT"] or 0))
+        s.section("The home page, shorter on a phone")
+        desk_home = [d for d in real if d["page"] == "/" and d["asked"] == DESK]
+        fold = home[0].get("fold") if home else None
+        s.check("La Vie de Château shows its first paragraph, and Read more for the rest",
+                bool(fold) and fold["more"] and fold["shown"] == 1 and fold["all"] > 1,
+                detail=str(fold))
+        dfold = desk_home[0].get("fold") if desk_home else None
+        s.check("and on a desk all of it, with nothing to press",
+                bool(dfold) and not dfold["more"] and dfold["shown"] == dfold["all"],
+                detail=str(dfold))
+        phones = [d for d in real if d["asked"] == PHONE]
+        apart = ["%s (%s)" % (d["page"], d["footCols"]) for d in phones
+                 if d.get("footCols") and abs(d["footCols"][0] - d["footCols"][1]) > 1]
+        s.check("the footer's Visit and Help sit side by side on every page",
+                not apart and any(d.get("footCols") for d in phones), detail=" | ".join(apart[:4]))
+        stacked = ["%s (%s)" % (d["page"], d["assureRow"]) for d in phones
+                   if d.get("assureRow") and abs(d["assureRow"][0] - d["assureRow"][1]) > 1]
+        s.check("and the four reassurances two to a row",
+                not stacked and any(d.get("assureRow") for d in phones), detail=" | ".join(stacked[:4]))
+        if home:
+            print("    ....  the home page on a phone: %dpx, %.1f screens" % (home[0]["H"], home[0]["H"] / 844.0))
+
         bars = [d for d in real if d.get("bar")]
         s.check("and the bar check met a bar at all", bool(bars),
                 detail="if no page drew one, 'no bar over the footer' is not a finding")
     finally:
         m.SITE_IS_LIVE = was_live
+        conn = db()
+        _unseed_guests(conn)
+        conn.close()
         if was_enabled is not None:
             conn = db()
             conn.execute("UPDATE restaurant_settings SET enabled = ? WHERE id = 1",

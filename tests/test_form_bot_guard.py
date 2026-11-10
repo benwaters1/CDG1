@@ -50,6 +50,8 @@ def _cleanup():
     conn.execute("DELETE FROM bookings WHERE guest_email LIKE ?", (TAG.lower() + "%",))
     conn.execute("DELETE FROM event_inquiries WHERE contact_email LIKE ?", (TAG.lower() + "%",))
     conn.execute("DELETE FROM waitlist_entries WHERE email LIKE ?", (TAG.lower() + "%",))
+    conn.execute("DELETE FROM restaurant_waitlist WHERE email LIKE ?", (TAG.lower() + "%",))
+    conn.execute("DELETE FROM workshop_waitlist WHERE email LIKE ?", (TAG.lower() + "%",))
     conn.execute("DELETE FROM tasks WHERE title LIKE ? OR notes LIKE ?",
                  (f"%{TAG.lower()}%", f"%{TAG.lower()}%"))
     conn.execute("DELETE FROM email_outbox WHERE to_address LIKE ?", (TAG.lower() + "%",))
@@ -222,7 +224,7 @@ def _run(s):
                    (enquiry["contact_email"],)) == 1)
 
     s.section("The Contact page's enquiries refuse a script quietly")
-    rough = {"action": "flexible", "email": f"{TAG.lower()}.rough@example.invalid",
+    rough = {"action": "flexible", "topic": "other", "email": f"{TAG.lower()}.rough@example.invalid",
              "name": f"{TAG} Rough", "rough_month": "", "rough_nights": "0",
              "rough_guests": "2", "flexibility": "any", "message": "SEO for your site"}
     c, env = _client()
@@ -251,5 +253,37 @@ def _run(s):
     s.check("every refusal was noted by form",
             all(_bot_notes(a) >= 1 for a in ("book_room", "event_inquiry", "contact_enquiry")),
             detail=str({a: _bot_notes(a) for a in ("book_room", "event_inquiry", "contact_enquiry")}))
+
+    # 9 November 2026: the room waiting list was guarded and these two were
+    # not, so a script could put any address on them and the house would
+    # write to it when a place freed up. Both forms appear only when the date
+    # is full, so their source is read as well as their routes tried.
+    s.section("The dinner and atelier waiting lists refuse a script quietly")
+    import os
+    here = os.path.join(os.path.dirname(os.path.abspath(m.__file__)), "templates")
+    for name, endpoint in (("restaurant_book.html", "join_restaurant_waitlist"),
+                           ("workshop_register.html", "join_workshop_waitlist")):
+        with open(os.path.join(here, name), encoding="utf-8") as f:
+            src = f.read()
+        at = src.find(f"url_for('{endpoint}')")
+        body = src[at:src.find("</form>", at)] if at >= 0 else ""
+        s.check(f"{name}'s waiting list carries the fields", "{{ bot_guard() }}" in body)
+    for label, url, data, table, action in (
+            ("dinner", "/restaurant/waitlist/join",
+             {"name": f"{TAG} Dinner", "email": f"{TAG.lower()}.dinner@example.invalid",
+              "party_size": "2", "desired_date": ""}, "restaurant_waitlist", "join_restaurant_waitlist"),
+            ("atelier", "/workshops/waitlist/join",
+             {"session_id": str(sid), "name": f"{TAG} Atelier", "party_size": "2",
+              "email": f"{TAG.lower()}.atelier@example.invalid"}, "workshop_waitlist",
+             "join_workshop_waitlist")):
+        c, env = _client()
+        c.post(url, environ_base=env, data={**data, hp: "https://spam.example", st: _stamp(60)})
+        s.check(f"the {label} waiting list, hidden field filled, writes nothing",
+                _count(f"SELECT COUNT(*) FROM {table} WHERE email = ?", (data["email"],)) == 0)
+        s.check(f"and the refusal is noted as the {label} list's", _bot_notes(action) >= 1)
+        c, env = _client()
+        c.post(url, environ_base=env, data={**data, hp: "", st: _stamp(30)})
+        s.check(f"a person on the {label} waiting list is taken",
+                _count(f"SELECT COUNT(*) FROM {table} WHERE email = ?", (data["email"],)) == 1)
 
     return s

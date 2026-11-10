@@ -665,7 +665,9 @@ def _run(s, oc, ec, owner, emp, conn, room):
             detail=str(ours) + f" vs {len(waiting_now)} waiting")
     s.check("linking to the page that answers them",
             bool(ours) and ours[0]["href"].endswith("/management/booking-com"))
-    task = [f for f in found if f[0] == "booking_com"]
+    # Its own task: the weekly statement and the sync have Booking.com tasks
+    # of their own (test_booking_com_statement, test_booking_com_watch).
+    task = [f for f in found if f[0] == "booking_com" and f[1].startswith("Answer the guests")]
     s.check("and it is a task", len(task) == 1
             and task[0][1] == "Answer the guests who wrote through Booking.com", detail=str(task))
     s.check("due the day the longest-waiting guest wrote",

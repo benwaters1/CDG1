@@ -100,7 +100,7 @@ def run():
     s.section("The enquiry from somebody without dates")
 
     r = anon.post("/contact", data={
-        "action": "flexible", "rough_month": "2028-04", "rough_nights": "4",
+        "action": "flexible", "topic": "other", "rough_month": "2028-04", "rough_nights": "4",
         "rough_guests": "2", "flexibility": "a few days either way",
         "email": "zzaudit@example.invalid", "name": "Zzaudit Guest",
         "message": "ZZAUDIT roughly April",
