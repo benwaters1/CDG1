@@ -40876,7 +40876,7 @@ def owner_home_warnings(conn, today):
         add("blocker" if level == "blocker" else "warn", title, detail, 1, "admin_rooms")
     # The weekly Booking.com statement, when the last is a week old.
     statement = booking_com_statement_due(conn)
-    if statement:
+    if statement and statement[2] <= today.isoformat():
         add("attention", statement[0], statement[1], 1, "channel_stays_page", _anchor="statement")
 
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
@@ -90822,22 +90822,88 @@ def apply_booking_com_statement(conn, rows, *, user_id=None, filename=""):
     return report
 
 
+# Raised this long before the week is up, so it is on the calendar ahead of
+# the day it is due rather than appearing on it (owner: "add it to the
+# calendar", 10 November 2026).
+BOOKING_COM_STATEMENT_NOTICE_DAYS = 2
+BOOKING_COM_STATEMENT_TASK = "Upload Booking.com's reservations statement"
+# A booking that arrives this soon cannot wait for the week: the guest could
+# come and go with no name on the arrivals list (owner, 10 November 2026).
+BOOKING_COM_STATEMENT_URGENT_DAYS = 3
+
+
 def booking_com_statement_due(conn, now=None):
-    """(title, detail) when the weekly statement is due, or None. Only for a
-    house that sells on Booking.com at all."""
+    """(title, detail, due day, priority) when the statement should be
+    uploaded, or None.
+
+    Due a week after the last one, and on the calendar from two days before.
+    And due AT ONCE when a Booking.com booking has come in since that the
+    statement has not covered (owner, 10 November 2026: "maybe add it for when
+    there's a new booking"): its email gave a number and a day, and the name,
+    the party and the price are in the statement. A gap between uploads is
+    long enough for a guest to book, arrive and leave, so one arriving within
+    BOOKING_COM_STATEMENT_URGENT_DAYS makes it high priority. Only for a house
+    that sells on Booking.com at all."""
     if not (booking_com_ical_sources(conn) or conn.execute(
             "SELECT 1 FROM ota_reservations LIMIT 1").fetchone()):
         return None
     now = now or datetime.now(timezone.utc)
+    today = house_today()
     last = conn.execute("SELECT MAX(uploaded_at) FROM booking_com_statements").fetchone()[0]
     when = parse_datetime_iso(last) if last else None
-    if when and now - when <= timedelta(days=BOOKING_COM_STATEMENT_DUE_DAYS):
+    new = conn.execute(
+        """SELECT reservation_number, guest_name, arrival_date FROM ota_reservations
+            WHERE channel = 'booking.com' AND status = 'confirmed' AND statement_at IS NULL
+              AND COALESCE(departure_date, arrival_date) >= ? AND first_seen_at > ?
+            ORDER BY first_seen_at""",
+        (today.isoformat(), last or "")).fetchall()
+    week_up = house_date(when + timedelta(days=BOOKING_COM_STATEMENT_DUE_DAYS)) if when else today
+    if new:
+        due = today
+    elif when and (week_up - today).days > BOOKING_COM_STATEMENT_NOTICE_DAYS:
         return None
-    return ("Upload Booking.com's reservations statement",
-            ("Last uploaded " + house_when(last) if when else "Not uploaded yet")
-            + ". It brings each Booking.com stay's guest name, party, price and commission, "
-            "which Booking.com's emails leave out. Booking.com stays page: Reservations "
-            "statement, two minutes.")
+    else:
+        due = week_up
+    said = ("Last uploaded " + house_when(last) if when else "Not uploaded yet") + "."
+    if new:
+        named = "; ".join(f"{r['guest_name'] or 'a guest'} ({r['reservation_number']}, "
+                          f"arriving {format_date_short(r['arrival_date'])})" for r in new[:6])
+        said = (f"{len(new)} Booking.com booking{'' if len(new) == 1 else 's'} since then "
+                f"without a name or a price yet: {named}"
+                + (f"; and {len(new) - 6} more" if len(new) > 6 else "") + ". " + said)
+    return (BOOKING_COM_STATEMENT_TASK,
+            said + " The statement brings each Booking.com stay's guest name, party, price "
+            "and commission, which Booking.com's emails leave out. Booking.com stays page: "
+            "Reservations statement, two minutes.",
+            due.isoformat(),
+            "high" if any(r["arrival_date"] and (date.fromisoformat(r["arrival_date"]) - today).days
+                          <= BOOKING_COM_STATEMENT_URGENT_DAYS for r in new) else "normal")
+
+
+def refresh_booking_com_statement_task(conn):
+    """The statement's task, put up or brought up to date now rather than at
+    the next daily pass -- for a booking that has just come in. Closing it is
+    the daily pass's job, and the upload's. Commits."""
+    due = booking_com_statement_due(conn)
+    if not due:
+        return False
+    title, note, due_day, priority = due
+    who = watch_task_assignees(conn).get("booking_com")
+    row = conn.execute("SELECT id FROM tasks WHERE origin = ? AND title = ? AND status != 'done'",
+                       (WATCH_TASK_ORIGIN, title)).fetchone()
+    if row:
+        conn.execute("UPDATE tasks SET notes = ?, due_date = ?, priority = ?, "
+                     "assigned_to_user_id = ? WHERE id = ?",
+                     (note, due_day, priority, who, row["id"]))
+    else:
+        conn.execute(
+            """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                 status, origin, created_at)
+               VALUES (?, ?, ?, ?, ?, 'open', ?, ?)""",
+            (who, title, note, priority, due_day, WATCH_TASK_ORIGIN,
+             datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return True
 
 
 @app.route("/admin/channel-stays/statement", methods=["POST"])
@@ -90861,6 +90927,12 @@ def upload_booking_com_statement():
     report = apply_booking_com_statement(conn, rows, user_id=user["id"] if user else None,
                                          filename=f.filename)
     log_audit(conn, "booking_com_statement_uploaded", target=f.filename[:120])
+    # Its task is done the moment the statement is in, not tomorrow morning.
+    if not booking_com_statement_due(conn):
+        conn.execute("""UPDATE tasks SET status = 'done', completed_at = ?
+                         WHERE origin = ? AND title = ? AND status != 'done'""",
+                     (datetime.now(timezone.utc).isoformat(), WATCH_TASK_ORIGIN,
+                      BOOKING_COM_STATEMENT_TASK))
     conn.commit()
     conn.close()
     done = len(rows) - len(report["skipped"])
@@ -98709,7 +98781,7 @@ def watch_task_findings(conn, today=None):
                       double[1], today.isoformat(), "high"))
     statement = booking_com_statement_due(conn)
     if statement:
-        found.append(("booking_com", statement[0], statement[1], today.isoformat(), "normal"))
+        found.append(("booking_com", statement[0], statement[1], statement[2], statement[3]))
     sync = channel_sync_problems(conn)
     if sync:
         found.append(("booking_com", "Put the Booking.com calendar sync right",
@@ -113004,7 +113076,12 @@ def after_booking_com_mail(conn, mail_ids):
                 rooms.update(ota_room_ids(conn, r["stay_id"]))   # every room of it
             else:
                 every_room = True       # not said, or it may have moved room
-    return settle_booking_com_stays(conn, None if every_room else rooms, sync=any_booking)
+    told = settle_booking_com_stays(conn, None if every_room else rooms, sync=any_booking)
+    # A booking just in: the statement with its name and price is due now,
+    # not at the next daily pass (booking_com_statement_due).
+    if any_booking:
+        refresh_booking_com_statement_task(conn)
+    return told
 
 
 def booking_com_answered_by_email(conn, token, *, now=None):

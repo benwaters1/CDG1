@@ -227,12 +227,33 @@ def run():
             cold = [p for p in NOT_IN_WINTER if re.search(p, read, re.I)]
             s.check(f"{title}: in winter, nothing that needs summer", not cold, detail=str(cold))
             s.check(f"{title}: and no yoga anywhere on the page", not re.search(r"\byoga\b", _say(html), re.I))
-            for thing in ("Christmas tree", "wreaths", "Carols", "vin chaud", "gingerbread château"):
+            for thing in ("Christmas market", "Christmas tree", "wreaths", "Carols", "vin chaud", "gingerbread château"):
                 s.check(f"{title}: {thing}", thing in every, detail=every[:100])
 
     s.check("a Mirepoix day was there to check", mirepoix_seen >= 2, detail=f"{mirepoix_seen}")
     s.check("a winter retreat was there to check", winter_seen >= 1,
             detail="Noël was not on offer, so the winter rules proved nothing")
+
+    s.section("The opening paragraphs, as broad as the days (owner, 10 Nov)")
+    # "fix it, it can be generic": no dish in any opening paragraph; and "could be 2 nights to a week": only a week
+    # says "a week". The private stay is four nights, and its page opened "A week of long, golden days".
+    # Not "copper": copper pans are among the finds on Antique & French Finds, which is what a brocante sells, not a
+    # dish. Noël's old "champagne jellies in antique copper moulds" is still caught three ways.
+    dishes = [r"fillet", r"ballotine", r"guinea fowl", r"trout", r"beef", r"moulds?",
+              r"jell(?:y|ies)", r"champagne"]
+    for t, nights in (("Noël at Gudanes", "4 nights / 5 days"), ("Cooking in the Cuisine", "5 nights / 6 days"),
+                      ("Antique & French Finds", "3 nights / 4 days"), ("Seven Starry Nights", "7 nights / 8 days"),
+                      ("Four Starry French Summer Nights", "")):
+        with m.app.test_request_context("/"):
+            para = _say(m.app.jinja_env.from_string(
+                "{% from '_ws_copy.html' import ws_copy %}{{ ws_copy(w) }}").render(w={"title": t, "nights_label": nights}))
+        named = [d for d in dishes if re.search(d, para, re.I)]
+        s.check(f"{t}: its opening paragraph names no dish", not named, detail=f"{named}: {para[:100]}")
+        week = para.lower().startswith("a week")
+        s.check(f"{t}: it says 'a week' only if it is one", week == (nights.startswith("7")), detail=para[:60])
+    private_page = _say(c.get("/p/zzrdprivatekey").get_data(as_text=True))
+    s.check("the private stay's own page does not call four nights a week", "A week of" not in private_page,
+            detail=private_page[private_page.find("A week"):][:80])
 
     s.section("A retreat set in winter that is not Noël")
     r = c.get("/workshops/%d" % winter_id)
