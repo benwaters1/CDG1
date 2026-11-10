@@ -25,12 +25,20 @@
   <p class="upload-hint">
     A CSV with, at minimum, a column of email addresses and the names beside
     them. Arrival, Toulouse and departure notes come across too if they are in
-    the file.
+    the file. RetreatGuru's waitlist export works as well: each person comes
+    across once, with the retreats they waited for written on their profile.
   </p>
   <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="file" name="people" accept=".csv,text/csv" required
            aria-label="Guest export file">
+    {# A tag on everybody in the file, so they can be found in the guest list
+       and written to as one group: each tag in use is an audience a campaign
+       can be sent to. #}
+    <p class="manual-body wraps" style="margin-top:12px;">
+      <label class="field-label" for="import-tag">Tag everyone in this file (optional)</label>
+      <input id="import-tag" type="text" name="tag" maxlength="40" placeholder="waitlist"
+             value="{{ result.tag if result and result.tag else '' }}"></p>
     <label class="checkbox-row" style="margin-top:12px;">
       {# Ticked on purpose. The first press of the button should never be the
          one that writes three hundred rows. #}
@@ -73,6 +81,18 @@
   <div class="mini-row">
     <span class="mini-name">Listed twice in the file, folded into one</span>
     <span class="mini-role">{{ result.duplicates }}</span>
+  </div>
+  {% endif %}
+  {% if result.waitlist %}
+  <div class="mini-row">
+    <span class="mini-name">Read as RetreatGuru's waitlist</span>
+    <span class="mini-role">the retreats each waited for go on their profile</span>
+  </div>
+  {% endif %}
+  {% if result.tag %}
+  <div class="mini-row">
+    <span class="mini-name">{{ 'Would be tagged' if result.dry_run else 'Tagged' }} “{{ result.tag }}”</span>
+    <span class="mini-role">{{ result.tagged|length }}{% if result.tagged|length < result.read %} ({{ result.read - result.tagged|length }} had it already){% endif %}</span>
   </div>
   {% endif %}
 </div>
