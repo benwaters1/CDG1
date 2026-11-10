@@ -184,7 +184,9 @@ def _run():
     s.section("On the page")
     anon = m.app.test_client()
     body = anon.get("/book").get_data(as_text=True)
-    s.check("the strip is on the booking page", "What Is Open Next" in body)
+    # Under the dates since the owner's second review (9 Nov): one sentence when every room opens the
+    # same night, the rows when they differ -- as here.
+    s.check("the strip is on the booking page", "What is open next" in body or "rooms are open from" in body)
     s.check("with a room on it", TAG + " Easy" in body)
     s.check("and a link that carries the date",
             f'arrival={runs[TAG + " Easy"]["date_iso"]}' in body,

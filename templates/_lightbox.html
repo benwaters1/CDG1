@@ -15,7 +15,7 @@
 <dialog class="g-lb" data-lb aria-label="Photograph">
   <button type="button" class="g-lb__x" data-lb-close aria-label="Close">&times;</button>
   <button type="button" class="g-lb__nav g-lb__nav--p" data-lb-prev aria-label="Previous">&#8249;</button>
-  <img class="g-lb__img" data-lb-img alt="">
+  <img class="g-lb__img" data-lb-img alt="The photograph, enlarged">
   <button type="button" class="g-lb__nav g-lb__nav--n" data-lb-next aria-label="Next">&#8250;</button>
   <p class="g-lb__cap" data-lb-cap></p>
 </dialog>
@@ -30,6 +30,13 @@
   var group=null;
   function collect(g){
     group=g||null;
+    /* 9 Nov 2026 (owner's second review, 1): a set may keep the rest of its photographs in a <template data-lb-more>,
+       out of the document until somebody asks for them -- /gallery drew 244 images into one page, every one in the
+       document even though each was lazy. Unpacked here, on the first click, into the group's own set. */
+    if(group) group.querySelectorAll('template[data-lb-more]').forEach(function(t){
+      var box=document.createElement('div'); box.hidden=true;
+      box.appendChild(document.importNode(t.content, true)); t.replaceWith(box);
+    });
     shots=[...(group ? group.querySelectorAll('img') : document.querySelectorAll('.g-lb-scope img:not([data-lb-group] img)'))]
       .filter(function(i){ return i.currentSrc || i.src; });
     shots.forEach(function(i,n){

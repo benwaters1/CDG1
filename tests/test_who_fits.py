@@ -139,7 +139,11 @@ def _checks(s, conn):
     page = anon.get(f"/book/{twin['id']}").get_data(as_text=True)
     s.check("it carries the three limits for the script",
             'data-max-guests="3" data-max-adults="2" data-max-children="2"' in page)
-    s.check("and says them", "Up to 3 guests, with no more than 2 adults and no more than 2 children" in page)
+    # 9 Nov 2026 (owner's second review, 5): "Up to 2 guests, with no more than 2 adults and no more
+    # than 1 child" read as a machine's sentence. The page says the total in words; the fields hold the
+    # three limits (above) and the server checks them again.
+    s.check("and says them as a guest would", "Up to three guests." in page
+            and "Children are welcome from eight." in page and "no more than" not in page)
     page = anon.get(f"/book/{none['id']}").get_data(as_text=True)
     s.check("a room that takes no children asks only for adults",
             'name="guests_under_18" value="0" data-party-children' in page

@@ -24,8 +24,8 @@
 {%- set _wsf = ((workshops|selectattr('price_per_person')|map(attribute='price_per_person')|min) if (workshops is defined and workshops) else none) -%}
 <section class="g-three{% if compact %} g-three--compact{% endif %}">
   <div class="g-wrap">
-    <p class="g-eyebrow">{{ 'Three Ways In' if _pdm == 'open' else 'Two Ways In' }}</p>
-    <h2 class="g-place">What You Can Do Here</h2>
+    <p class="g-eyebrow">{{ 'Three ways to stay' if _pdm == 'open' else 'Two ways to stay' }}</p>
+    <h2 class="g-place">A Night, or <em lang="fr">la Vie de Château</em></h2>
 
     <ol class="g-three__l">
       <li class="g-three__i">
@@ -48,7 +48,7 @@
           <span class="g-three__ill" aria-hidden="true">{{ illus('candelabra') }}</span>
           {#- 26 Oct (owner, the retreats deck): the price is the Admin's, then "per person · nothing to pay at the end". -#}
           <h3 class="g-three__t"><em lang="fr">La vie de château</em></h3>
-          <p class="g-three__d">Stay longer, as a guest of the house: three to seven nights of the kitchen and the château’s chefs, the markets and brocantes of the Ariège, and long candlelit dinners, with a small company sharing the château.</p>
+          <p class="g-three__d">Stay longer, for a retreat: three to seven nights of the kitchen and the château’s chefs, the markets and brocantes of the Ariège, and long candlelit dinners, with a small company sharing the château.</p>
           {% if _wsf %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n">&euro;{{ '{:,.0f}'.format(_wsf) }}</span><span class="g-price__u">per person · nothing to pay at the end</span></p>{% else %}<p class="g-price"><span class="g-price__u">Per person · nothing to pay at the end</span></p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the dates</a>

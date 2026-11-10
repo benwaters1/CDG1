@@ -67,9 +67,13 @@ def run():
     conn.commit()
 
     s.section("The public page shows only what the house may show")
-    public = oc.get("/book").get_data(as_text=True)
+    # The home page's What Guests Say quotes the first review the owner has featured and the guest
+    # agreed to (owner's second review, 9 Nov 2026: /book's section went). Asked as a guest: a signed-in
+    # owner is shown the staff side at /.
+    guest = m.app.test_client()
+    public = guest.get("/").get_data(as_text=True)
     if "What Guests Say" not in public:
-        s.check("the booking page has a reviews section to check",
+        s.check("the home page has a reviews section to check",
                 False,
                 detail="without it these checks prove nothing, so this is "
                        "reported rather than skipped quietly")
@@ -91,8 +95,10 @@ def run():
     # adding a second carousel: the SQL that builds the public page carries
     # the condition itself.
     import inspect
-    for fn_name, what in (("book_rooms", "the booking page"),
-                          ("workshops_public", "the workshops page")):
+    s.check("the home page's reviews come from the one query that asks for consent",
+            "publish_consent = 1" in inspect.getsource(m.featured_room_reviews)
+            and "featured_room_reviews(conn)" in inspect.getsource(m.dashboard))
+    for fn_name, what in (("workshops_public", "the workshops page"),):
         fn = m.app.view_functions.get(fn_name)
         if not fn:
             s.check(f"{fn_name} exists to check", False)
@@ -155,15 +161,20 @@ def run():
             detail=str(row["publish_consent_how"]) + " — 'she said yes on the "
                    "telephone' is a real answer, and it is worth nothing "
                    "without a name against it")
-    s.check("and it now appears on the public page",
-            f"{TAG} words from Colette" in oc.get("/book").get_data(as_text=True))
+    # The home page quotes the first review the house may show (owner's second review, 9 Nov: one,
+    # beside two of its own); Agnes, who said yes first, is still that one. So what changed is that the
+    # public query now offers Colette's, and she is on the page the moment Agnes's is withdrawn, below.
+    s.check("and the public page's query now offers it",
+            any(f"{TAG} words from Colette" in (r["comment"] or "") for r in m.featured_room_reviews(conn)))
 
     s.section("And that somebody said no")
     oc.post(f"/admin/feedback/stay/{said_yes}/permission",
             data={"answer": "no", "how": "email"}, follow_redirects=True)
+    public = m.app.test_client().get("/").get_data(as_text=True)
     s.check("it comes straight off the public page",
-            f"{TAG} words from Agnes" not in oc.get("/book").get_data(as_text=True),
+            f"{TAG} words from Agnes" not in public,
             detail="withdrawing has to work, or the consent was never real")
+    s.check("and the one the house may now show takes its place", f"{TAG} words from Colette" in public)
 
     s.section("Putting a wrong row back to not-asked")
     oc.post(f"/admin/feedback/stay/{said_yes}/permission",
@@ -177,7 +188,7 @@ def run():
             and back["publish_consent_how"] is None,
             detail="a date left behind still says somebody was asked")
     s.check("and it is still off the public page",
-            f"{TAG} words from Agnes" not in oc.get("/book").get_data(as_text=True))
+            f"{TAG} words from Agnes" not in m.app.test_client().get("/").get_data(as_text=True))
 
     s.section("Rubbish is refused")
     r = oc.post(f"/admin/feedback/stay/{said_no}/permission",

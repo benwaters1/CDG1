@@ -46,8 +46,16 @@
   ] %}
   {%- set _is_family = room_name(room['name']) == 'The Family Suite' %}
   <div class="{{ 'g-room--family' if _is_family }}">
-  <img loading="eager" fetchpriority="high" decoding="async" class="g-roomhero"{% if room_name(room['name']) == 'The King Suite' %} style="object-position: 22% 70%"{% endif %}
-       src="{% set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% elif _rp %}{{ _rp[0][0] }}{% else %}{{ ROOM_FALLBACKS[room['id'] % 3] }}{% endif %}"
+  {#- 9 Nov, evening (owner's second review, 3.1): the band across the top is wide and short, and a portrait cropped to
+      it is a smear of fabric (the King Suite's four-poster, 901 by 1600, drawn 1168 by 371). The room's first
+      landscape photograph takes the band; the gallery below leaves out whichever one it took. -#}
+  {%- set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}
+  {%- set _hero = namespace(src='') %}
+  {%- if room['photo_filename'] %}{% set _hero.src = url_for('room_photo', filename=room['photo_filename']) %}
+  {%- elif _rp %}{% for _s, _a in _rp %}{% if not _hero.src %}{% set _sz = pic_size(_s) %}{% if not _sz or _sz[0] > _sz[1] %}{% set _hero.src = _s %}{% endif %}{% endif %}{% endfor %}{% if not _hero.src %}{% set _hero.src = _rp[0][0] %}{% endif %}
+  {%- else %}{% set _hero.src = ROOM_FALLBACKS[room['id'] % 3] %}{% endif %}
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-roomhero"
+       src="{{ _hero.src }}"
        alt="{{ room_name(room['name']) }}">
 
   <div style="padding:clamp(1.25rem,4vw,2rem) 0 0;">
@@ -108,7 +116,7 @@
       three - its Booking.com ones, the château's own of the same room, one of the ground-floor bathrooms - in a grid
       sized to the count (three across when it divides by three, two when it divides by two) so none sits alone. -#}
   {%- set _rn = room_name(room['name']) -%}
-  {%- set _rg0 = (ROOM_PHOTOS.get(_rn, [])[1:] + ROOM_EXTRA.get(_rn, [])) if ROOM_PHOTOS.get(_rn) else [] -%}
+  {%- set _rg0 = ((ROOM_PHOTOS.get(_rn, [])|rejectattr(0, 'equalto', _hero.src)|list) + ROOM_EXTRA.get(_rn, [])) if ROOM_PHOTOS.get(_rn) else [] -%}
   {#- the bathroom photograph joins unless it would leave one photograph alone on its row -#}
   {#- 12 Oct: the bathrooms are part of every room (each on the ground floor), so one to three of their photographs always join the
       room's own, filling the grid to a multiple of three. -#}
@@ -120,7 +128,7 @@
   {%- if gallery_photos %}{% set _gal = [] %}{% for p in gallery_photos %}{% set _ = _gal.append([url_for('room_photo', filename=p['filename']), room_name(room['name'])|trim, '']) %}{% endfor %}
   {%- elif _rg0 %}{% set _gal = [] %}{% for _u, _a in _rg0 %}{% set _ = _gal.append([_u, _a, '']) %}{% endfor %}
   {%- else %}{% set _gal = [['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w', 'One of the ground-floor bathrooms', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/501a4947-d365-4a11-a83e-8affbc374e48/Screenshot+2026-08-12+at+3.38.55+pm.png?format=1000w', 'Walking up to the château at dusk', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w', 'Market produce on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w', 'The gardens, the mountains beyond', '']] %}{% endif %}
-  <div class="g-roomgal-car">{{ carrousel(_gal, room_name(room['name'])|trim ~ ': photographs', thumbs=True) }}</div>
+  <div class="g-roomgal-car">{{ carrousel(_gal, room_name(room['name'])|trim ~ ': photographs', thumbs=True, upto=1.25) }}</div>
   </div>{#- /g-room--family wrapper (15 Oct: taller Family Suite photographs) -#}
 
   {# Gated on the database description, so the written copy - meant to replace that field - never showed when it was empty. #}
@@ -826,8 +834,8 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
    Imported WITH CONTEXT because the macro calls t(), which a context
    processor supplies -- an imported macro sees none of the caller's context
    otherwise, and the page would 500 on the first translated word. #}
-{% from '_expected_weather.html' import expected_weather with context %}
-{{ expected_weather(arrival, departure, house_weather) }}
+{#- 9 Nov, evening (owner's second review, 5): the live weather and the month card went from the room pages ("Cold
+    evenings in the house" beside 16 degrees and overcast). Winter and the cold are not to be prominent. -#}
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <span class="g-hill" aria-hidden="true">{{ illus('letter') }}</span>
@@ -891,7 +899,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Not this room?</h2>
-  <p class="g-close__p">There are {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }}, and they are not alike. The comparison table is the quickest way to see which suits.</p>
+  <p class="g-close__p">There are {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }}, and they are not alike. The <a href="{{ url_for('workshops_public') }}#compare">comparison table</a> is the quickest way to see which suits.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See every room</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us</a>

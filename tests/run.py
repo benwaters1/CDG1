@@ -617,6 +617,10 @@ SUITES = [
     "test_home_pictures",
     # 9 November 2026: the rest of the public pages, brief sections 4.3 to 4.7.
     "test_page_pictures",
+    # 9 November 2026, evening: the owner's second review of the site -- the pages a third
+    # of their length, one newsletter form, the words and the photographs.
+    "test_site_review_2",
+    "test_public_pages_measured",
     # 9 November 2026: the photograph at the top of a page at the size it is shown.
     "test_hero_sizes",
     # 9 November 2026: each room's own words on its page, and its bathroom on the ground floor.
@@ -630,6 +634,12 @@ SUITES = [
     # 9 November 2026: every retreat's days rewritten broader, headed "Day 1 ·
     # Friday · Vendredi" from its dates, and made to make sense on those days.
     "test_retreat_days",
+    # Brief of 10 November 2026, the Microsoft 365 pieces: Inbox Flags that can
+    # be empty, an email about its own booking, and a calendar event Microsoft
+    # refused 64,668 times.
+    "test_inbox_flags_quiet",
+    "test_email_own_booking",
+    "test_house_calendar_refused",
 ]
 
 

@@ -43,7 +43,7 @@
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Weddings · Celebrations · Film</p>
     <h1 class="g-hero__title">For the Days That Matter</h1>
-    <p>The whole château, the valley, and rooms most people will never enter.</p>
+    <p>The whole château, the valley, and rooms your guests will not forget.</p>
     <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Tell us your plans</a></p>
   </div>
 </section>
@@ -168,19 +168,11 @@
           <label for="message">Tell us about your event</label>
           <textarea id="message" name="message" rows="4" placeholder="Vision, timeline, anything that helps us plan">{{ prefill_message | default('') }}</textarea>
         </p>
-        {# Captured, not validated. There is no price on an enquiry yet
-           to take a discount off, and refusing an enquiry because a
-           code was mistyped would lose a wedding over a typo. The
-           house sees what was claimed and applies it when it quotes. #}
-        <p class="g-field">
-          <label for="promo_code">Promo code <span class="g-opt">optional</span></label>
-          <input type="text" id="promo_code" name="promo_code"
-                 autocomplete="off"
-                 value="{{ prefill_promo_code | default('') }}" spellcheck="false" autocapitalize="characters">
-          <span class="g-hint">If you have been given one, we will
-          apply it to your quote.</span>
-        </p>
+        {#- 9 Nov, evening (owner's second review, 5): no promo code on an enquiry -- nothing is priced yet to take a
+            code off. submit_event_inquiry still reads one if a link carries it. -#}
         <button type="submit" class="g-btn g-submit">Send enquiry</button>
+        {#- 9 Nov, evening (owner's second review, 4 and 5): What It Costs was a 355px section for one sentence; it is this line. -#}
+        <p class="g-p g-ev-cost">Every event is priced on request. Tell us what you have in mind, and we will tell you what is possible.</p>
         <p class="g-foot-note">This is an enquiry, not a booking — we will follow up to discuss availability, pricing and details. You will get a reference code and a link to check its status.</p>
       </form>
     </div>
@@ -202,14 +194,6 @@
 
 
 
-<!-- ============ WHAT IT COSTS ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('wine') }}</div>
-  <p class="g-eyebrow">Prices</p>
-  <h2 class="g-place">What It Costs</h2>
-  <p class="g-p g-lede-first">Every event is priced on request. Tell us what you have in mind, and we will tell you what is possible.</p>
-</div></section>
-
 <!-- ============ THE ROOMS ============ -->
 {# Room list and capacities from the château's own venue listing. #}
 {# 1 Oct: ">Which Room, For What<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
@@ -226,18 +210,7 @@
 <!-- ============ THE JOURNAL ============ -->
 {# The newsletter form was only in the menu panel. This is the same route,
    placed where a reader who has just finished the page will see it. #}
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
-    {# The one sign-up form (_newsletter.html): no topic ticks, bot guard on. #}
-    {% from '_newsletter.html' import newsletter_form with context %}
-    {{ newsletter_form('journal', prefill=prefill_email | default('')) }}
-        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
-  </div>
-</div></section>
+{#- 9 Nov, evening (owner's second review, 2.4): one newsletter form on a page, the footer's. This page's Follow the Restoration block went. -#}
 
 
 

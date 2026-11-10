@@ -62,7 +62,7 @@
       <p class="g-sow__k">A Retreat</p>
       <h3 class="g-sow__t"><em lang="fr">La vie de château</em></h3>
       <ul class="g-sow__list">
-        <li>Your room in the château, and a small company to share the house</li>
+        <li>Your room in the château, and a small company to share it</li>
         <li>The château’s gourmet chefs: every meal, and drinks included, from wine and cocktails to local sparkling wine</li>
         <li>The kitchen, the markets and brocantes, Foix and the caves, the restoration</li>
         <li>Long lunches, candlelit dinners, a night to dress for, and dancing</li>
@@ -81,7 +81,7 @@
 {%- set Y = '<span class="g-vs__y" aria-hidden="true"></span><span class="g-vh">Included</span>' -%}
 {%- set N = '<span class="g-vs__n" aria-hidden="true">&mdash;</span><span class="g-vh">Not included</span>' -%}
 <section class="g-sec g-sow g-vs-sec" id="compare" aria-labelledby="g-vs-h"><div class="g-wrap">
-  <p class="g-eyebrow">Side by side</p>
+  <p class="g-eyebrow">Two ways to stay</p>
   <h2 class="g-place" id="g-vs-h">A Night, or <em lang="fr">la Vie de Château</em></h2>
   <p class="g-p">A night's stay is a room and breakfast. A retreat gives you the château: its gourmet chefs, every meal, and drinks included, the brocantes, the restoration and the valley.</p>
   <div class="g-vs__wrap">
@@ -96,7 +96,7 @@
       <tr><th scope="row">Your room in the château</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">Breakfast</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">Lunch and dinner</th><td>Unavailable: {{ eat_nearby() }}</td><td class="g-vs__full">{{ Y|safe }} Every meal, and drinks included</td></tr>
-      <tr><th scope="row">Gourmet chefs in the house</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">Gourmet chefs on site</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">Drinks, alcoholic and non-alcoholic</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">A tour of the château and its restoration</th><td>An extra, &euro;50 per booking</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">The classes and the outings: the kitchen, the brocantes, yoga, the river, the mountains, a barbecue</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }} All optional</td></tr>
@@ -136,7 +136,7 @@
 <aside class="g-night g-night--next" aria-label="The retreats">
   <p class="g-night__k">Next time</p>
   <p class="g-night__t"><em lang="fr">La vie de château</em></p>
-  <p class="g-night__p">Stay longer, as a guest of the house: three to seven nights of the kitchen, the markets and brocantes, and long candlelit dinners, with nothing to pay at the end.</p>
+  <p class="g-night__p">Stay longer, for a retreat: three to seven nights of the kitchen, the markets and brocantes, and long candlelit dinners, with nothing to pay at the end.</p>
   <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the retreats</a></p>
 </aside>
 {% endmacro %}

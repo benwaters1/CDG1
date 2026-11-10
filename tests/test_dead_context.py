@@ -123,8 +123,8 @@ def run():
     # Without this the check above passes on everything the moment the
     # template reader breaks, which is the failure it exists to prevent.
     s.check("a variable a template uses is seen",
-            _uses(templates, "book_rooms.html", "featured_reviews"),
-            detail="featured_reviews is rendered on the booking page; if this "
+            _uses(templates, "home.html", "featured_reviews"),
+            detail="featured_reviews is rendered on the home page; if this "
                    "reads as unused the sweep is blind and passes everything")
     s.check("and one nothing uses is not",
             not _uses(templates, "book_rooms.html", "zz_not_a_real_variable"),

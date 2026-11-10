@@ -280,11 +280,24 @@ def run():
         s.check("with Microsoft's own words on it",
                 row and "refused by the double" in (row["last_error"] or ""),
                 detail=row and row["last_error"])
+        # One event refused is not the calendar failing, and the next passes
+        # may land it: the owner home hears of it once it has been refused for
+        # a day (brief of 10 November 2026), not on the first refusal.
+        with m.app.test_request_context("/"):
+            warned = m.owner_home_warnings(conn, today)
+        s.check("a refusal of one event is not on the owner home at once",
+                not [w for w in warned if "house calendar" in w["title"]],
+                detail=str([w["title"] for w in warned])[:200])
+        conn.execute("UPDATE house_calendar_events SET first_failed_at = ? WHERE key = ?",
+                     ((m.datetime.now(m.timezone.utc) - timedelta(days=2)).isoformat(),
+                      f"task:{task_open}"))
+        conn.commit()
         with m.app.test_request_context("/"):
             warned = m.owner_home_warnings(conn, today)
         line = [w for w in warned if "house calendar" in w["title"]]
-        s.check("the owner home says so",
-                line and "not on the house calendar" in line[0]["title"], detail=str(line)[:200])
+        s.check("the owner home says so once it has been refused for a day",
+                line and "not on the house calendar" in line[0]["title"]
+                and "REFUSEME" in line[0].get("detail", ""), detail=str(line)[:300])
         page = oc.get("/admin/house-calendar").get_data(as_text=True)
         s.check("and the calendar page lists it, with the reason",
                 "REFUSEME" in page and "refused by the double" in page)

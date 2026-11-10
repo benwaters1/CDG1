@@ -264,7 +264,7 @@ def run():
 
     gid = _one("SELECT id FROM guest_feedback WHERE booking_id = ?", (good["id"],))["id"]
     oc.post(f"/admin/feedback/{gid}/toggle-featured", follow_redirects=True)
-    body = anon.get("/book").get_data(as_text=True)
+    body = anon.get("/").get_data(as_text=True)
     # Featuring is now half the answer. The form the guest filled in says
     # nothing is published without asking them first, so the public query
     # wants consent as well -- and the interesting half of that rule is this
@@ -282,13 +282,13 @@ def run():
                  (m.datetime.now(m.timezone.utc).isoformat(), gid))
     conn.commit()
     conn.close()
-    body = anon.get("/book").get_data(as_text=True)
+    body = anon.get("/").get_data(as_text=True)
     s.check("featured AND agreed to puts them on it",
             "Wonderful, thank you." in body,
             detail="the flag changing is not the same as anything happening")
 
     oc.post(f"/admin/feedback/{gid}/toggle-featured", follow_redirects=True)
-    body = anon.get("/book").get_data(as_text=True)
+    body = anon.get("/").get_data(as_text=True)
     s.check("and unfeaturing takes them off again",
             "Wonderful, thank you." not in body,
             detail="a review that can be put up and not taken down is one the "
@@ -303,7 +303,7 @@ def run():
                  (m.datetime.now(m.timezone.utc).isoformat(), row["id"]))
     conn.commit()
     conn.close()
-    body = anon.get("/book").get_data(as_text=True)
+    body = anon.get("/").get_data(as_text=True)
     s.check("the review is there", "room was cold" in body)
     s.check("and the reply with it", "boiler" in body,
             detail="a complaint answered well reads better to the next guest "
