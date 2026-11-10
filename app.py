@@ -9141,24 +9141,17 @@ def init_db():
                 (workshop[field], workshop["title"]))
     conn.commit()
 
-    # 3. Dates the earlier seed did not carry. Added only when that exact
-    #    start date is missing, so a session the owner has since edited or
-    #    cancelled is not quietly recreated underneath them.
-    for workshop in DEFAULT_WORKSHOPS:
-        row = conn.execute("SELECT id FROM workshops WHERE title = ?",
-                           (workshop["title"],)).fetchone()
-        if not row:
-            continue
-        for start, end in workshop.get("sessions", []):
-            if conn.execute(
-                    "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? AND start_date = ?",
-                    (row["id"], start)).fetchone():
-                continue
-            conn.execute(
-                """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
-                   capacity, notes, created_at) VALUES (?, ?, ?, 10, NULL, ?)""",
-                (row["id"], start, end, datetime.now(timezone.utc).isoformat()))
-    conn.commit()
+    # 3. REMOVED 10 November 2026: "dates the earlier seed did not carry".
+    #    It added any seeded start date it could not find, on EVERY deploy --
+    #    so a date the owner deleted came back with the next push, several
+    #    times a day. Its comment promised the opposite, and test_ateliers
+    #    called the resurrection "documented behaviour". The owner hit it
+    #    taking Antique & French Finds off the calendar. Its one job was to
+    #    catch up a database seeded before those dates were in the list; the
+    #    live one caught up in September. A fresh database gets its dates from
+    #    the seed above, and an atelier new to the list from the top-up, both
+    #    of which add sittings for an atelier they create and never otherwise.
+    #    Dates are content now: added and removed in the admin, and kept so.
 
     for slug, name, order in DEFAULT_CHAT_CHANNELS:
         if not conn.execute("SELECT 1 FROM chat_channels WHERE slug = ?", (slug,)).fetchone():
@@ -12099,12 +12092,21 @@ def retreat_week(workshop, sittings=()):
     if nights and len(starts) == 1:
         first = starts.pop()
         days = [RETREAT_DAY_NAMES[(first + n) % 7] for n in range(nights + 1)]
+    # The calendar date of each day ("07-14"), for the evenings that fall on a
+    # French occasion (owner, 10 Nov: Bastille Day, the Fête de la Musique).
+    # Only when every sitting starts on the same date: a plan shared by two
+    # sittings cannot hold one sitting's 14 July.
+    first_days = {start for start, _end in spans}
+    dates = []
+    if nights and len(first_days) == 1:
+        first_day = first_days.pop()
+        dates = [(first_day + timedelta(days=n)).strftime("%m-%d") for n in range(nights + 1)]
     # The summer plans have the pool, the terrace, the river and films under the
     # stars, so they are for sittings that start May to September. A retreat
     # set in winter with one of them would promise all of that in December; it
     # gets the plain outline instead. No sittings: nothing to go on, so summer.
     summer = all(SUMMER_MONTHS[0] <= start.month <= SUMMER_MONTHS[1] for start, _end in spans)
-    return {"nights": nights, "days": days, "summer": summer}
+    return {"nights": nights, "days": days, "summer": summer, "dates": dates}
 
 
 app.jinja_env.globals["retreat_week"] = retreat_week
@@ -60736,8 +60738,18 @@ def house_map_links():
         "dir": f"https://www.google.com/maps/dir/?api=1&destination={at}&travelmode=driving",
         "apple": (f"https://maps.apple.com/?ll={at}"
                   "&q=Ch%C3%A2teau%20de%20Gudanes"),
+        # Restaurants around the gates (owner, 10 Nov 2026: a night has no lunch
+        # or dinner, so point guests to the restaurants nearby). The word is the
+        # kind of place, and the map is centred on the pin, so the answer is the
+        # valley's whoever asks -- not a search by name answered from Tokyo.
+        "eat": f"https://www.google.com/maps/search/restaurants/@{at},13z",
         "at": at,
     }
+
+
+# For the comparisons in _stay_or_workshop.html, which are imported without the
+# page's context and so cannot see house_maps.
+app.jinja_env.globals["house_map_links"] = house_map_links
 
 
 def room_payment_setting(conn, key, cast=float):

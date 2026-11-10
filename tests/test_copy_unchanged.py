@@ -65,7 +65,18 @@ m = _harness.m
 # pages, /workshops/3 and /workshops/4, and nothing else: the bed-and-breakfast wording
 # (with the owner's "on site" for "in the house"), Cooking's opening without dishes,
 # and Noël's Christmas market. Each was read.
-COPY_BASE = "be0b84c"
+# 10 Nov, later: 96264b8 put Bastille Day and the Fête de la Musique on the retreat days
+# (/workshops/4 and /workshops/6); merged with b6b4ad8 below, the base moves to the merge.
+# 10 Nov, later still: moved to b6b4ad8, the same comparisons made succinct again (room and breakfast, lunch and
+# dinner unavailable, the restaurants nearby); it listed the same eight pages, and nothing else.
+# and then to aa34fe9, the merge of the two: against b6b4ad8 it listed /workshops/4
+# and /workshops/6 only, the retreat evenings above.
+# 10 Nov: then ecacf9b, Noël's market the village's own, a walk away; it listed
+# /workshops/3 (the Noël page) only.
+# 10 Nov, again: a8b7c05, the retreats' "every meal, and drinks included" (owner); it listed /, /book
+# and /workshops, and nothing else. Then c6b0dda, the merge of the two: against a8b7c05 it listed
+# /workshops/3 only, Noël's market above.
+COPY_BASE = "e912ba8"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

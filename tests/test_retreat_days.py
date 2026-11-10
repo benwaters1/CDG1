@@ -29,7 +29,7 @@ erroring:
   at the disco.
 """
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from _harness import Suite, db, visible_text
 import _harness
@@ -117,6 +117,12 @@ def run():
     s.check("no label: the nights come from the sitting", wk["nights"] == 4 and len(wk["days"]) == 5, detail=str(wk))
     s.check("no sittings: nothing named", m.retreat_week({"nights_label": "3 nights"}, [])["days"] == [])
     s.check("June dates are summer", m.retreat_week({"nights_label": "5 nights"}, friday)["summer"] is True)
+    s.check("one start date: each day's date, for the evenings that fall on an occasion",
+            m.retreat_week({"nights_label": "5 nights"}, friday)["dates"]
+            == ["06-25", "06-26", "06-27", "06-28", "06-29", "06-30"])
+    s.check("two start dates: no dates, since one plan cannot hold one sitting's 14 July",
+            m.retreat_week({"nights_label": "5 nights"}, friday + [
+                {"session": {"start_date": "2027-07-02", "end_date": "2027-07-07"}}])["dates"] == [])
     s.check("January dates are not", m.retreat_week({"nights_label": "3 nights"}, [
         {"session": {"start_date": "2027-01-09", "end_date": "2027-01-12"}}])["summer"] is False)
 
@@ -164,7 +170,7 @@ def run():
     conn.close()
     s.check("there are retreats on offer to read", len(offer) >= 3, detail=f"{len(offer)} on offer")
 
-    mirepoix_seen = winter_seen = 0
+    mirepoix_seen = winter_seen = occasions_seen = 0
     for title, path, sittings in pages:
         r = c.get(path)
         html = r.get_data(as_text=True)
@@ -211,6 +217,29 @@ def run():
                 mirepoix_seen += 1
                 wd = EN[(start.weekday() + n - 1) % 7]
                 s.check(f"{title}, day {n}: Mirepoix on market day, a Monday", wd == "Monday", detail=wd)
+        # 10 Nov (owner): "Bastille Day dinner & party", "Fête de la Musique - dinner in Salon de Musique". The dates come
+        # from this file's own arithmetic on the sitting, not the app's.
+        if len(starts) == 1:
+            for n, d in enumerate(days[:-1], 1):
+                md = (start + timedelta(days=n - 1)).strftime("%m-%d")
+                words = day_words(d)
+                if md == "07-14":
+                    occasions_seen += 1
+                    s.check(f"{title}, day {n} is 14 July: the Bastille Day dinner and party",
+                            "le 14 juillet" in words and "Bastille Day" in words
+                            and ("party" in words or "disco" in words), detail=words[-160:])
+                elif md == "06-21":
+                    occasions_seen += 1
+                    s.check(f"{title}, day {n} is 21 June: the Fête de la Musique, dinner in the Salon de Musique",
+                            "Fête de la Musique" in words and "Salon de Musique" in words, detail=words[-160:])
+                else:
+                    s.check(f"{title}, day {n}: no occasion on an ordinary day",
+                            "Bastille" not in words and "Fête de la Musique" not in words, detail=md)
+        s.check(f"{title}: no evening marker left on the page", not any("|" in day_words(d) for d in days))
+        if len(days) - 1 in (5, 7):
+            # the page promises dinners at the two Les Cabannes restaurants, so two evenings go out, whatever 14 July took
+            outs = sum("dinner out in Les Cabannes" in d["para"] for d in days)
+            s.check(f"{title}: two dinners out in Les Cabannes, as its page promises", outs == 2, detail=f"{outs}")
         every = " ".join(day_words(d) for d in days)
         if "tasting" in every:
             s.check(f"{title}: the wine tasting is in Le Bar", "tasting in Le Bar" in every,
@@ -231,6 +260,7 @@ def run():
                 s.check(f"{title}: {thing}", thing in every, detail=every[:100])
 
     s.check("a Mirepoix day was there to check", mirepoix_seen >= 2, detail=f"{mirepoix_seen}")
+    s.check("a 14 July and a 21 June were there to check", occasions_seen >= 2, detail=f"{occasions_seen}")
     s.check("a winter retreat was there to check", winter_seen >= 1,
             detail="Noël was not on offer, so the winter rules proved nothing")
 
