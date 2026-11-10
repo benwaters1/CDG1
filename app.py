@@ -12102,12 +12102,21 @@ def retreat_week(workshop, sittings=()):
     if nights and len(starts) == 1:
         first = starts.pop()
         days = [RETREAT_DAY_NAMES[(first + n) % 7] for n in range(nights + 1)]
+    # The calendar date of each day ("07-14"), for the evenings that fall on a
+    # French occasion (owner, 10 Nov: Bastille Day, the Fête de la Musique).
+    # Only when every sitting starts on the same date: a plan shared by two
+    # sittings cannot hold one sitting's 14 July.
+    first_days = {start for start, _end in spans}
+    dates = []
+    if nights and len(first_days) == 1:
+        first_day = first_days.pop()
+        dates = [(first_day + timedelta(days=n)).strftime("%m-%d") for n in range(nights + 1)]
     # The summer plans have the pool, the terrace, the river and films under the
     # stars, so they are for sittings that start May to September. A retreat
     # set in winter with one of them would promise all of that in December; it
     # gets the plain outline instead. No sittings: nothing to go on, so summer.
     summer = all(SUMMER_MONTHS[0] <= start.month <= SUMMER_MONTHS[1] for start, _end in spans)
-    return {"nights": nights, "days": days, "summer": summer}
+    return {"nights": nights, "days": days, "summer": summer, "dates": dates}
 
 
 app.jinja_env.globals["retreat_week"] = retreat_week
