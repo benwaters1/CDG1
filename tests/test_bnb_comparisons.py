@@ -12,7 +12,7 @@ _stay_or_workshop.html:
 Each calls the night a room and breakfast, says its lunch and dinner are
 unavailable and links the restaurants nearby -- a map search for restaurants
 centred on the pin at the gates, never a search by name -- and gives the
-retreat its gourmet chefs with lunch and dinner included. The night never
+retreat its gourmet chefs, every meal, and drinks included. The night never
 offers a dinner, whatever the dining switch says, since there is no chef.
 """
 import re
@@ -74,16 +74,18 @@ def run():
                 s.check(f"{path}: its lunch and dinner unavailable, the restaurants nearby linked",
                         "Lunch and dinner unavailable: restaurants nearby" in stay and _linked(stay_html), detail=stay[:200])
                 s.check(f"{path}: and no dinner offered to it", not STAY_OFFERS_DINNER.search(stay), detail=stay[:240])
-                s.check(f"{path}: the retreat has the gourmet chefs, lunch and dinner included",
-                        "gourmet chefs" in retreat and "lunch and dinner included" in retreat, detail=retreat[:200])
+                s.check(f"{path}: the retreat has the gourmet chefs, every meal, and drinks included",
+                        "gourmet chefs" in retreat and "every meal, and drinks included" in retreat, detail=retreat[:200])
 
             table = _block(pages["/workshops"], 'id="compare"', "</section>")
+            s.check("/workshops: above the table, the retreat's every meal, and drinks included",
+                    "every meal, and drinks included" in visible_text(table))
             s.check("/workshops: the table calls the night a room and breakfast",
                     '<span class="g-vs__t">Room and breakfast</span>' in table and "a room and breakfast." in visible_text(table))
             meals = re.search(r'<th scope="row">Lunch and dinner</th><td>(.*?)</td><td class="g-vs__full">(.*?)</td>', table, re.S)
-            s.check("/workshops: lunch and dinner unavailable with a night, the restaurants nearby linked; every meal with a retreat",
+            s.check("/workshops: lunch and dinner unavailable with a night, the restaurants nearby linked; every meal and drinks with a retreat",
                     bool(meals) and visible_text(meals.group(1)).strip() == "Unavailable: restaurants nearby"
-                    and _linked(meals.group(1)) and "Every meal, included" in meals.group(2),
+                    and _linked(meals.group(1)) and "Every meal, and drinks included" in meals.group(2),
                     detail=meals.group(0)[:240] if meals else "no row")
             chefs = re.search(r'<th scope="row">Gourmet chefs in the house</th><td>(.*?)</td><td class="g-vs__full">(.*?)</td>', table, re.S)
             s.check("/workshops: gourmet chefs in the house, not with a night; with a retreat",
