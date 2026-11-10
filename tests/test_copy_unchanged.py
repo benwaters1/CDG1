@@ -59,7 +59,9 @@ m = _harness.m
 # (/workshops/4 and /workshops/6); merged with b6b4ad8 below, the base moves to the merge.
 # 10 Nov, later still: moved to b6b4ad8, the same comparisons made succinct again (room and breakfast, lunch and
 # dinner unavailable, the restaurants nearby); it listed the same eight pages, and nothing else.
-COPY_BASE = "b6b4ad8"
+# and then to aa34fe9, the merge of the two: against b6b4ad8 it listed /workshops/4
+# and /workshops/6 only, the retreat evenings above.
+COPY_BASE = "aa34fe9"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
