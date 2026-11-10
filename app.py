@@ -9145,24 +9145,17 @@ def init_db():
                 (workshop[field], workshop["title"]))
     conn.commit()
 
-    # 3. Dates the earlier seed did not carry. Added only when that exact
-    #    start date is missing, so a session the owner has since edited or
-    #    cancelled is not quietly recreated underneath them.
-    for workshop in DEFAULT_WORKSHOPS:
-        row = conn.execute("SELECT id FROM workshops WHERE title = ?",
-                           (workshop["title"],)).fetchone()
-        if not row:
-            continue
-        for start, end in workshop.get("sessions", []):
-            if conn.execute(
-                    "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? AND start_date = ?",
-                    (row["id"], start)).fetchone():
-                continue
-            conn.execute(
-                """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
-                   capacity, notes, created_at) VALUES (?, ?, ?, 10, NULL, ?)""",
-                (row["id"], start, end, datetime.now(timezone.utc).isoformat()))
-    conn.commit()
+    # 3. REMOVED 10 November 2026: "dates the earlier seed did not carry".
+    #    It added any seeded start date it could not find, on EVERY deploy --
+    #    so a date the owner deleted came back with the next push, several
+    #    times a day. Its comment promised the opposite, and test_ateliers
+    #    called the resurrection "documented behaviour". The owner hit it
+    #    taking Antique & French Finds off the calendar. Its one job was to
+    #    catch up a database seeded before those dates were in the list; the
+    #    live one caught up in September. A fresh database gets its dates from
+    #    the seed above, and an atelier new to the list from the top-up, both
+    #    of which add sittings for an atelier they create and never otherwise.
+    #    Dates are content now: added and removed in the admin, and kept so.
 
     for slug, name, order in DEFAULT_CHAT_CHANNELS:
         if not conn.execute("SELECT 1 FROM chat_channels WHERE slug = ?", (slug,)).fetchone():
