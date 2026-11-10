@@ -54713,7 +54713,6 @@ def book_rooms():
                         if nothing_available else None)
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
-    featured_reviews = featured_room_reviews(conn)
     # Computed before the connection closes. Only when nobody has searched:
     # somebody who has just been told their dates are taken does not want a
     # second list of dates that are not theirs, they want to change one of
@@ -54751,7 +54750,6 @@ def book_rooms():
         weather=weather,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
-        featured_reviews=featured_reviews,
         **grid,
     )
 

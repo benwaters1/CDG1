@@ -644,3 +644,5 @@
 @media (max-width: 22rem){ .g .g-crest__row{ flex-wrap: wrap; row-gap: var(--s2); } }
 /* 4  Home, La Vie de Château: both columns from the top, so the words' last line ends the block. */
 .g .g-full__in{ align-items: start; }
+/* 2.4  The menu panel's way down to the footer's newsletter form, in place of a second form. */
+.g .g-navwrap__newslink{ color: inherit; text-decoration: underline; text-underline-offset: 3px; }

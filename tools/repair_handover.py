@@ -965,54 +965,6 @@ REVERTED_PAGES = (
 )
 
 
-def repair_event_promo_field():
-    """The promo code box on the event enquiry form.
-
-    submit_event_inquiry reads request.form["promo_code"] and stores it so the
-    owner can honour a code when they quote. Without the field the route reads a
-    parameter no form sends -- the read-and-never-written shape one level up --
-    and it fails silently, because an enquiry with no code is a perfectly
-    ordinary enquiry.
-
-    The suite did not catch it either when a handover dropped it: the test posts
-    to the route rather than checking the page carries the field. That check
-    exists now, and so does this.
-    """
-    rel = "templates/events_info.html"
-    src = _read(rel)
-    if 'name="promo_code"' in src:
-        return 0
-    marker = '<textarea id="message" name="message"'
-    at = src.find(marker)
-    if at == -1:
-        return 0
-    # The end of the paragraph the textarea sits in, which is where the new
-    # field goes. Found rather than reconstructed: the surrounding markup is the
-    # designer's and changes shape between handovers.
-    close = src.find("</p>", at)
-    if close == -1:
-        return 0
-    close += len("</p>")
-    nl = "\r\n" if "\r\n" in src else "\n"
-    block = nl.join([
-        "",
-        "        {# Captured, not validated. There is no price on an enquiry yet",
-        "           to take a discount off, and refusing an enquiry because a",
-        "           code was mistyped would lose a wedding over a typo. The",
-        "           house sees what was claimed and applies it when it quotes. #}",
-        '        <p class="g-field">',
-        '          <label for="promo_code">Promo code (optional)</label>',
-        '          <input type="text" id="promo_code" name="promo_code"',
-        '                 autocomplete="off"',
-        "                 value=\"{{ prefill_promo_code | default('') }}\">",
-        '          <span class="g-hint">If you have been given one, we will',
-        "          apply it to your quote.</span>",
-        "        </p>",
-    ])
-    _write(rel, src[:close] + block + src[close:])
-    return 1
-
-
 def repair_admin_images_page():
     """The two things the image manager arrives with, both rounds so far.
 
@@ -2034,7 +1986,8 @@ def main():
         ("the house's own reviews", repair_featured_reviews),
         ("why a room is unavailable", repair_unavailable_reason),
         ("the under-18 count the return reads", repair_under_18_field),
-        ("the promo code box on the event enquiry", repair_event_promo_field),
+        # 9 Nov 2026, evening (owner's second review, 5): no promo code on an enquiry. The repair that
+        # put the box back after a handover is retired; test_event_promo holds that it stays off.
         ("the image manager posting to a hardcoded path", repair_admin_images_page),
         ("the url_map guard that never fires", repair_url_map_guards),
         ("column names the database does not have", repair_invented_columns),

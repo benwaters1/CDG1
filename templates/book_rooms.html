@@ -129,6 +129,8 @@
       every room opens on the same night; the table only when they differ. -#}
   {% from '_availability_strip.html' import next_free as next_free_strip %}
   {{ next_free_strip(next_free) }}
+  {#- What it is doing at the château now, from the house's hourly reading (the owner asked for it on Stay). -#}
+  {% from '_weather_live.html' import weather_now %}{{ weather_now(weather) }}
 </div></section>
 
 <!-- ============ WHY THE WALLS STAY ============ -->
@@ -483,7 +485,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">The stairs</p>
-      <p class="g-key__v">No lift: every bedroom is reached by stairs{% if _gf.on %}, the one on the ground floor included{% endif %}. Pack lightly</p>
+      <p class="g-key__v">No lift: the bedrooms are up the original staircase{% if _gf.on %}, and the one on the ground floor is reached by stairs too{% endif %}. Pack lightly</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Children</p>

@@ -175,6 +175,8 @@
 })();
 </script>
 
+{# 1 Oct: the crest band (the Marquis de Sales, 1850) and What It Took (tonnes, years, counts) are off the homepage - fewer, safer statements. #}
+
 <!-- ============ THE ROOMS THEMSELVES ============ -->
 {# A front page should show what is actually for sale, not a tile that links
    to it. Both lists are optional — the section simply does not render if the
@@ -325,9 +327,14 @@
       <div class="g-say__pic">{{ medaillon([url_for('static', filename='img/rk/down-the-drive.jpg'), 'Down the drive to the château'], side='left') }}{{ seal() }}</div>
       <blockquote class="g-say__q">{{ _br['comment'] }}</blockquote>
       <figcaption class="g-say__by">{{ (_br['guest_name'] or 'A guest').split(' ')[0] }}<span class="g-say__src">{% if _br['room_name'] %}{{ room_name(_br['room_name']) }}{% else %}A stay at the château{% endif %}</span></figcaption>
+      {#- What the house said back goes with it, as it did on /book: a complaint answered well reads better
+          to the next guest than no complaint at all. -#}
+      {% if _br['reply'] %}<p class="g-say__reply"><span class="g-say__reply-by">Château de Gudanes</span> {{ _br['reply'] }}</p>{% endif %}
     </figure>
     {% endif %}
   </div>
+  {#- The figures the owner supplies (Management, proof figures): nothing is drawn until there is one. -#}
+  <div class="g-wrap">{{ proof(settings) }}</div>
 
   {# Six hardcoded 10s attributed to Booking.com. The Stay page already reads
      these from settings ("six 10s read as invented"); the homepage never did.

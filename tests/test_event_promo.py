@@ -133,19 +133,19 @@ def run():
                 detail=f"{claimed['discount_amount']} against a quote of "
                        f"{claimed['quoted_price']}")
 
-    s.section("And the form actually asks for it")
+    s.section("The form does not ask for one (owner, 9 Nov 2026)")
     # The gap that let a design handover drop this field without a single check
     # going red: everything above posts to the ROUTE, which reads promo_code
     # whether or not any form sends it. A parameter the route reads and no page
     # supplies is the read-and-never-written shape one level up, and it fails
     # silently — an enquiry with no code is an ordinary enquiry.
+    # The owner's second review of the site, 5: an enquiry is priced on request, so there is nothing
+    # yet to take a code off. The route above still keeps a code that arrives -- a link can carry one --
+    # but the form does not ask, and the handover repair that put the box back is retired.
     page = anon.get("/events").get_data(as_text=True)
-    s.check("the enquiry form carries the field",
-            'name="promo_code"' in page,
-            detail="the route reads a parameter nothing sends")
-    s.check("and says what it is for",
-            "promo" in page.lower() and "quote" in page.lower(),
-            detail="an unlabelled box on a wedding enquiry gets left empty")
+    s.check("the enquiry form asks for no code", 'name="promo_code"' not in page)
+    s.check("and the page says how an event is priced instead",
+            "Every event is priced on request." in page)
 
     s.section("An unknown code does not lose the enquiry")
     # Refusing a wedding enquiry over a typo is a worse outcome than an
