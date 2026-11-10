@@ -47146,6 +47146,8 @@ PALETTE_PAGES = [
     ("House guide", "house_guide_admin",
      "wifi wi-fi code password network breakfast times house rules parking "
      "who to call information for guests staying"),
+    ("Download the photographs", "download_photographs_backup",
+     "backup photos pictures mirror website images squarespace copy keep safe"),
     ("Transfers", "all_transfers", "airport pickup driving"),
     ("Asset register", "admin_assets", "furniture art antiques insurance valuation"),
     ("Keys & access", "admin_access", "codes alarm fobs"),
