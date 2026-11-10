@@ -7,7 +7,11 @@
   <h1>Inbox Flags</h1>
   <a href="{{ url_for('admin_automation') }}" class="btn-mini">Automation settings</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">{% if mailboxes %}Scans {{ mailboxes|length }} inbox{{ '' if mailboxes|length == 1 else 'es' }}{% else %}No inbox is being watched yet. Once one is, this scans it{% endif %} for messages that haven't had a reply within the configured window, or that mention a price or date that doesn't match what's actually on file. This is a nudge to go look, not a guaranteed read of every email — always check the actual message before acting on a conflict shown here.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">{% if mailboxes %}Scans {{ mailboxes|length }} inbox{{ '' if mailboxes|length == 1 else 'es' }}{% else %}No inbox is being watched yet. Once one is, this scans it{% endif %} for messages that haven't had a reply within the configured window, or that quote a price or dates that don't match what's actually on file. Never flagged: newsletters and mailing lists, anything sent automatically, the app's own mail, mail between the house's own inboxes, and the senders on the never-flag list below. One email that reached several inboxes is one flag. This is a nudge to go look, not a guaranteed read of every email — always check the actual message before acting on a conflict shown here.</p>
+
+{% if tidy %}
+<p class="upload-hint">On {{ local_datetime_str(tidy.at) }}, when these rules came in: {{ tidy.words }}</p>
+{% endif %}
 
 {% if not graph_enabled %}
 <div class="detail-card" style="max-width:680px; border-left:3px solid var(--gold);">
@@ -83,6 +87,20 @@
 </details>
 {% endif %}
 
+<details class="refund-box" style="margin-bottom:18px;">
+  <summary>Never flag these senders</summary>
+  <form method="post" action="{{ url_for('save_inbox_never_flag') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="upload-hint">Mail from anybody here is never waiting on a reply, so it is never flagged. One a line: a name ending in @ is that name at any address (<code>noreply@</code>); an address is that address; anything else is a domain and everything under it (<code>stripe.com</code> is also <code>mail.stripe.com</code>). Newsletters, anything sent automatically, the app's own mail and the house's own inboxes are never flagged whatever this says. Saving closes any open flag from a sender just added.</p>
+    <label for="never-flag" class="upload-hint">The list{% if never_flag_default %} (as the app came with it){% endif %}</label>
+    <textarea id="never-flag" name="never_flag" rows="12" style="width:100%; font-family:monospace; font-size:12px;">{{ never_flag }}</textarea>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+      <button type="submit" class="btn-mini">Save the list</button>
+      {% if not never_flag_default %}<button type="submit" name="restore" value="1" class="btn-mini">Put back the list the app came with</button>{% endif %}
+    </div>
+  </form>
+</details>
+
 {% if duplicates %}
 <div class="flash flash-error" style="margin-bottom:14px;">
   <strong>Same sender in more than one inbox.</strong>
@@ -133,7 +151,9 @@
         <strong>{{ f['from_name'] or f['from_address'] or 'Unknown sender' }}</strong>
         {% if f['from_name'] and f['from_address'] %}<span class="upload-hint">{{ f['from_address'] }}</span>{% endif %}
         <span class="mini-status status-{{ 'declined' if f['status'] == 'dismissed' else ('approved' if f['status'] == 'resolved' else 'pending') }}" style="margin-left:8px;">{{ f['status'] }}</span>
-        {% if f['mailbox'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">{{ f['mailbox_label'] or f['mailbox'] }}</span>{% endif %}
+        {% set reached = inbox_list(f['mailbox'], f['mailboxes']) %}
+        {% for mb in reached %}<span class="mini-status status-upcoming" style="margin-left:4px;">{{ inbox_labels.get(mb, mb) }}</span>{% endfor %}
+        {% if reached|length > 1 %}<span class="upload-hint" style="margin-left:4px;">one email, {{ reached|length }} inboxes</span>{% endif %}
         {% if f['assigned_to_name'] %}<span class="mini-status status-active" style="margin-left:4px;">Assigned: {{ f['assigned_to_name'] }}</span>{% endif %}
         {% if f['escalated_at'] %}<span class="mini-status status-pending" style="margin-left:4px;">escalated</span>{% endif %}
         {% set g = guest_context.get((f['from_address'] or '')|lower) %}
@@ -163,7 +183,7 @@
       {% if f['availability_conflict'] %}<span class="mini-status status-declined">Availability conflict</span>{% endif %}
       {% if f['reply_price_conflict'] %}<span class="mini-status status-declined">Reply pricing conflict</span>{% endif %}
       {% if f['reply_availability_conflict'] %}<span class="mini-status status-declined">Reply availability conflict</span>{% endif %}
-      {% if not f['unanswered'] and not f['price_conflict'] and not f['availability_conflict'] and not f['reply_price_conflict'] and not f['reply_availability_conflict'] %}<span class="mini-status status-pending">Mentions pricing — no automatic match</span>{% endif %}
+      {% if f['closed_by_app'] %}<span class="mini-status status-approved">Closed by the app: {{ closed_says.get(f['closed_by_app'], f['closed_by_app']) }}</span>{% endif %}
     </div>
 
     {% if f['conflict_category'] %}<p class="upload-hint">Matched: {{ f['conflict_category'] }}</p>{% endif %}

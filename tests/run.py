@@ -632,6 +632,12 @@ SUITES = [
     # 9 November 2026: every retreat's days rewritten broader, headed "Day 1 ·
     # Friday · Vendredi" from its dates, and made to make sense on those days.
     "test_retreat_days",
+    # Brief of 10 November 2026, the Microsoft 365 pieces: Inbox Flags that can
+    # be empty, an email about its own booking, and a calendar event Microsoft
+    # refused 64,668 times.
+    "test_inbox_flags_quiet",
+    "test_email_own_booking",
+    "test_house_calendar_refused",
 ]
 
 

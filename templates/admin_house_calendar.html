@@ -57,17 +57,18 @@
 
 {% if st.failures %}
 <h2 class="section-heading">Not on the calendar ({{ st.failure_count }})</h2>
-<p class="upload-hint" style="margin-top:-6px;">Microsoft refused these. Each is tried again on the next pass; the reason is Microsoft's own.</p>
+<p class="upload-hint" style="margin-top:-6px;">Microsoft refused these. Each is tried five more times at once, then hourly for a day, then each night with the check against Microsoft's copy; Sync now tries them all again, and any change to one tries it afresh. The reason is Microsoft's own, and under it is what was sent.</p>
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>What</th><th>When</th><th>Microsoft said</th><th class="num">Tries</th></tr></thead>
+  <thead><tr><th>What</th><th>When</th><th>Microsoft said</th><th class="num">Tries</th><th>Next try</th></tr></thead>
   <tbody>
     {% for f in st.failures %}
     <tr>
       <th scope="row">{{ f.subject }}</th>
       <td>{{ f.day|date_short }}</td>
-      <td>{{ f.last_error }}</td>
+      <td>{{ f.last_error }}{% if f.refused_body %}<br><span class="upload-hint">Sent: {{ f.refused_body }}</span>{% endif %}{% if f.since %}<br><span class="upload-hint">Refused since {{ local_datetime_str(f.since) }}</span>{% endif %}</td>
       <td class="num">{{ f.attempts }}</td>
+      <td>{{ f.next_try }}</td>
     </tr>
     {% endfor %}
   </tbody>
