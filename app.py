@@ -31253,6 +31253,9 @@ CAMPAIGN_SEGMENTS = {
     "restaurant": "Past dinner guests",
     "workshop": "Past workshop guests",
     "profiles": "All guest profiles",
+    # Everybody with a stay or an atelier still to come: the audience for a
+    # letter quoting their own booking ({{reference}}, {{guest_page}}).
+    "booked": "Booked to come",
     # A different KIND of list, and the reason it is worth naming as such is
     # written out beside GUEST_BLAST_SEGMENTS. It belongs here because the
     # public workshops page promises dates reach it, and until now the
@@ -31387,6 +31390,15 @@ def edit_campaign_template(template_id):
     ).fetchone()
     ctx = campaign_context_for(sample["n"] if sample else "Isabelle Fontaine",
                                sample["e"] if sample else "guest@example.com")
+    if campaign_uses_booking(template["subject"], template["body"]):
+        # A letter quoting a booking is previewed on somebody who has one.
+        coming = booked_to_come(conn)
+        if coming:
+            ctx = campaign_context_for(coming[0]["name"], coming[0]["email"])
+            ctx.update(campaign_booking_context(conn, coming[0]["email"]))
+        else:
+            ctx.update({"reference": "WRK-EXAMPLE",
+                        "guest_page": url_for("dashboard", _external=True)})
     preview_subject, preview_body = render_campaign(template["subject"], template["body"], ctx)
 
     # The fixed segments, plus one per workshop that has anybody who has
@@ -65221,6 +65233,76 @@ def campaign_context_for(name, email):
     }
 
 
+# The two merge tags that belong to one guest's own booking rather than to the
+# guest: the reference they quote and the page that is theirs. A letter using
+# either goes only to somebody with a booking to come, and is never sent with
+# the tag left showing.
+CAMPAIGN_BOOKING_FIELDS = {
+    "reference": "Their booking reference (to anyone booked to come)",
+    "guest_page": "The link to their own booking page (to anyone booked to come)",
+}
+CAMPAIGN_MERGE_FIELDS.update(CAMPAIGN_BOOKING_FIELDS)
+
+
+def campaign_uses_booking(subject, body):
+    """Whether a campaign quotes somebody's own booking."""
+    return bool(re.search(r"\{\{\s*(" + "|".join(CAMPAIGN_BOOKING_FIELDS) + r")\s*\}\}",
+                          f"{subject or ''}\n{body or ''}"))
+
+
+def booked_to_come(conn, email=None):
+    """Every booking somebody is still to come for: confirmed, stay or atelier,
+    not yet over -- as [{start, reference, endpoint, token, email, name}],
+    soonest first. One address, or everybody.
+
+    The "Booked to come" audience and the {{reference}} tag both read this, so
+    the list a letter is sent to and the booking it quotes cannot disagree. An
+    atelier whose emails are switched off is not here: the house said it would
+    not write to them about it until somebody switches them back on.
+    """
+    today = house_today_iso()
+    one = (email or "").strip().lower() or None
+    out = []
+    for r in conn.execute(
+            """SELECT reference_code, manage_token, arrival_date AS start, guest_email,
+                      guest_name FROM bookings
+                WHERE status = 'confirmed' AND departure_date >= ?
+                  AND (? IS NULL OR LOWER(TRIM(guest_email)) = ?)""",
+            (today, one, one)).fetchall():
+        out.append({"start": r["start"], "reference": r["reference_code"],
+                    "endpoint": "manage_booking", "token": r["manage_token"],
+                    "email": (r["guest_email"] or "").strip().lower(), "name": r["guest_name"]})
+    for r in conn.execute(
+            """SELECT wb.reference_code, wb.manage_token, ws.start_date AS start,
+                      wb.guest_email, wb.guest_name
+                 FROM workshop_bookings wb
+                 JOIN workshop_sessions ws ON ws.id = wb.session_id
+                WHERE wb.status = 'confirmed' AND wb.do_not_email = 0
+                  AND COALESCE(ws.end_date, ws.start_date) >= ?
+                  AND (? IS NULL OR LOWER(TRIM(wb.guest_email)) = ?)""",
+            (today, one, one)).fetchall():
+        out.append({"start": r["start"], "reference": r["reference_code"],
+                    "endpoint": "workshop_manage", "token": r["manage_token"],
+                    "email": (r["guest_email"] or "").strip().lower(), "name": r["guest_name"]})
+    return sorted((b for b in out if b["email"]), key=lambda b: (b["start"] or "", b["reference"]))
+
+
+def campaign_booking_context(conn, email):
+    """{reference, guest_page} for somebody booked to come, or None.
+
+    All their references are quoted -- somebody with a room and a retreat has
+    two -- and the page is the one for whichever comes first.
+    """
+    found = booked_to_come(conn, email)
+    if not found:
+        return None
+    refs = [b["reference"] for b in found]
+    first = found[0]
+    return {"reference": refs[0] if len(refs) == 1 else ", ".join(refs[:-1]) + " and " + refs[-1],
+            "guest_page": url_for(first["endpoint"], manage_token=first["token"],
+                                  _external=True)}
+
+
 def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False):
     """Who a campaign would go to: {email: name}, de-duplicated.
 
@@ -65234,6 +65316,10 @@ def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False
             "SELECT email, name FROM guests WHERE email IS NOT NULL AND TRIM(email) != ''"
         ).fetchall():
             recipients.setdefault(row["email"], row["name"])
+    if "booked" in segments:
+        # Still to come, so no "visited within" filter: nobody has visited yet.
+        for b in booked_to_come(conn):
+            recipients.setdefault(b["email"], b["name"])
 
     recipients = {(e or "").strip().lower(): n for e, n in recipients.items() if e and e.strip()}
     if not include_optouts:
@@ -65360,6 +65446,24 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
     context = campaign_context_for(name, email)
     if letter.get("extra_context"):
         context.update(letter["extra_context"])
+    if campaign_uses_booking(letter["subject"], letter["body"]):
+        booked = campaign_booking_context(conn, address)
+        if booked is None and as_test:
+            # The owner's own test: shown what the tags become, with a
+            # booking that is plainly not anybody's.
+            booked = {"reference": "WRK-EXAMPLE",
+                      "guest_page": url_for("dashboard", _external=True)}
+        if booked is None:
+            why = "has no booking to come, so there is no reference to quote"
+            conn.execute(
+                """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
+                   recipient_name, subject, status, detail, sent_by_user_id, created_at,
+                   outcome, send_id) VALUES (?, ?, ?, ?, ?, 'skipped', ?, ?, ?, 'skipped', ?)""",
+                (letter["template_id"], letter["template_name"], email, name,
+                 letter["subject"], why, letter["user_id"], now_iso, letter["send_id"]))
+            conn.commit()
+            return "skipped", why
+        context.update(booked)
     subject, body = render_campaign(letter["subject"], letter["body"], context)
     # Every marketing message carries its own unsubscribe key, and the row that
     # holds it is written and COMMITTED BEFORE the send: the link in the email
@@ -78949,7 +79053,7 @@ def valid_segments(raw):
     """
     out = []
     for seg in raw or ():
-        if seg in GUEST_BLAST_SEGMENTS or seg == "profiles":
+        if seg in GUEST_BLAST_SEGMENTS or seg in ("profiles", "booked"):
             out.append(seg)
         elif isinstance(seg, str) and seg.count(":") == 1:
             head, tail = seg.split(":", 1)
