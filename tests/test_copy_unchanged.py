@@ -41,8 +41,16 @@ import _harness
 
 m = _harness.m
 
-# The last commit before the image layout work touched a public page.
-COPY_BASE = "ae0ee6c"
+# The words as they last stood on purpose. Was ae0ee6c, the last commit before
+# the image layout work touched a public page; moved 9 Nov 2026 to the commit
+# that rewrote the retreat days at the owner's request (approved 9 Nov, after
+# a second read-aloud pass), which also changed
+# the Noël card line and three opening paragraphs. Every difference it listed
+# was one of those five pages: /workshops and the four retreat pages.
+# 9 Nov, later: moved to the merge with main at 0630e3d (e9b2f1a), so the base
+# holds main's own words as well as the retreat text. Checked against main
+# itself first: the only pages that differ from main are the five above.
+COPY_BASE = "e9b2f1a"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

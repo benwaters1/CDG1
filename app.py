@@ -12050,6 +12050,66 @@ app.jinja_env.globals["a_night"] = lambda workshop, session=None: about_a_night(
     _row_value(workshop, "price_per_person"), workshop_nights(workshop, session))
 
 
+# A retreat's days, named for the week they fall in (owner, 9 Nov 2026): "Day 1
+# · Friday · Vendredi". The day-by-day plan is one per retreat, and a weekday
+# belongs to a sitting, so the days are named only when every sitting on the
+# page starts on the same weekday. The house starts each retreat on the same
+# day of the week, so that is the usual case; when it is not, the plan says
+# "Day 1" and nothing more, because a plan headed Monday over a Saturday start
+# sends a guest to market day at Mirepoix when there is no market.
+# Its own name: WEEKDAY_NAMES further down is the staff rota's English list, and
+# took this one's place at import the first time round.
+RETREAT_DAY_NAMES = (("Monday", "Lundi"), ("Tuesday", "Mardi"), ("Wednesday", "Mercredi"),
+                 ("Thursday", "Jeudi"), ("Friday", "Vendredi"), ("Saturday", "Samedi"),
+                 ("Sunday", "Dimanche"))
+
+
+SUMMER_MONTHS = (5, 9)   # May to September, inclusive
+
+
+def retreat_week(workshop, sittings=()):
+    """The shape of a retreat's week, from the sittings on its page.
+
+    {"nights": n, "days": [(English weekday, French weekday), ...]}.
+
+    nights is the workshop's own "4 nights / 5 days" first, as the plan has
+    always read it, and the sittings' length when the label says nothing and
+    every sitting agrees -- a private stay set up without a label had no
+    day-by-day plan at all. None when neither says.
+
+    days has one entry per day of the plan (nights + 1), and is empty when
+    there is no sitting, or the sittings start on different weekdays.
+    `sittings` is the page's session_rows ({"session": row, ...}) or the
+    session rows themselves.
+    """
+    spans = []
+    for row in sittings or ():
+        session = row.get("session") if isinstance(row, dict) and "session" in row else row
+        try:
+            start = date.fromisoformat(str(_row_value(session, "start_date")))
+            end = date.fromisoformat(str(_row_value(session, "end_date")))
+        except (TypeError, ValueError):
+            continue
+        if end > start:
+            spans.append((start, end))
+    lengths = {(end - start).days for start, end in spans}
+    nights = workshop_nights(workshop) or (min(lengths) if len(lengths) == 1 else None)
+    starts = {start.weekday() for start, _end in spans}
+    days = []
+    if nights and len(starts) == 1:
+        first = starts.pop()
+        days = [RETREAT_DAY_NAMES[(first + n) % 7] for n in range(nights + 1)]
+    # The summer plans have the pool, the terrace, the river and films under the
+    # stars, so they are for sittings that start May to September. A retreat
+    # set in winter with one of them would promise all of that in December; it
+    # gets the plain outline instead. No sittings: nothing to go on, so summer.
+    summer = all(SUMMER_MONTHS[0] <= start.month <= SUMMER_MONTHS[1] for start, _end in spans)
+    return {"nights": nights, "days": days, "summer": summer}
+
+
+app.jinja_env.globals["retreat_week"] = retreat_week
+
+
 # Who did it, when that is not whoever happens to be signed in. A job run on
 # somebody's page load is not that person's decision: the stale-request expiry
 # runs on the dashboard, so every request it declined was written down as

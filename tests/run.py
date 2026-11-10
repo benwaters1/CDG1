@@ -621,6 +621,9 @@ SUITES = [
     # hero, and every public page measured for its margins at three widths.
     "test_house_address",
     "test_public_margins",
+    # 9 November 2026: every retreat's days rewritten broader, headed "Day 1 ·
+    # Friday · Vendredi" from its dates, and made to make sense on those days.
+    "test_retreat_days",
 ]
 
 
