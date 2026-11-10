@@ -12032,6 +12032,32 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-panel{ padding-left: var(--s5); padding-right: var(--s5); }
 }
 
+/* THE HOME PAGE, SHORTER ON A PHONE (9 Nov, later). The owner: "not as long
+   on phone". It ran to about 20 screens at 390px. Nothing is taken out; it
+   is set tighter. The footer and the reassurance band are on every page, so
+   every page is shorter for them too. */
+@media screen and (max-width: 34rem){
+  /* Visit and Help side by side under the address, not one long column. */
+  .g .g-footer__grid{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--s5); }
+  .g .g-footer__grid > :first-child{ grid-column: 1 / -1; }
+  /* The four reassurances two by two. */
+  .g .g-assure__grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5) var(--s4); }
+  .g .g-assure__grid span{ font-size: 14px; }
+  /* The photographs of the half-and-half sections, lower. */
+  .g .g-half__img{ aspect-ratio: 2 / 1; }
+  /* La Vie de Château: its first paragraph, and the rest one tap away.
+     home.html adds the button; with no script everything shows. */
+  .g .g-full__copy.is-folded .g-full__p ~ .g-full__p{ display: none; }
+}
+.g .g-full__more{
+  display: inline-flex; align-items: center; min-height: 44px; margin: var(--s2) 0 0; padding: 0;
+  background: none; border: 0; cursor: pointer;
+  font-family: var(--ui); font-size: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--gold-lit); text-decoration: underline; text-underline-offset: 4px;
+}
+.g .g-full__more:hover, .g .g-full__more:focus-visible{ color: #fff; }
+
+/* ==========================================================================
    9 NOVEMBER 2026, EVENING -- THE OWNER'S SECOND REVIEW OF THE SITE
    (BRIEF-site-review-2-9-nov.md). Last in the file on purpose: each rule here
    settles a question earlier rules answered several ways, and
@@ -12115,30 +12141,3 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-plate .g-plate__l{ grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s5) var(--s6); align-items: start; }
   .g .g-plate .g-plate__l > div{ grid-template-columns: 1fr; }
 }
-=======
-/* THE HOME PAGE, SHORTER ON A PHONE (9 Nov, later). The owner: "not as long
-   on phone". It ran to about 20 screens at 390px. Nothing is taken out; it
-   is set tighter. The footer and the reassurance band are on every page, so
-   every page is shorter for them too. */
-@media screen and (max-width: 34rem){
-  /* Visit and Help side by side under the address, not one long column. */
-  .g .g-footer__grid{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--s5); }
-  .g .g-footer__grid > :first-child{ grid-column: 1 / -1; }
-  /* The four reassurances two by two. */
-  .g .g-assure__grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5) var(--s4); }
-  .g .g-assure__grid span{ font-size: 14px; }
-  /* The photographs of the half-and-half sections, lower. */
-  .g .g-half__img{ aspect-ratio: 2 / 1; }
-  /* La Vie de Château: its first paragraph, and the rest one tap away.
-     home.html adds the button; with no script everything shows. */
-  .g .g-full__copy.is-folded .g-full__p ~ .g-full__p{ display: none; }
-}
-.g .g-full__more{
-  display: inline-flex; align-items: center; min-height: 44px; margin: var(--s2) 0 0; padding: 0;
-  background: none; border: 0; cursor: pointer;
-  font-family: var(--ui); font-size: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--gold-lit); text-decoration: underline; text-underline-offset: 4px;
-}
-.g .g-full__more:hover, .g .g-full__more:focus-visible{ color: #fff; }
-
-/* ===================================================================
