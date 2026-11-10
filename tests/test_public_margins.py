@@ -607,13 +607,17 @@ def run():
             s.check("a card showing no photograph gives its words the whole card",
                     not bad, detail=" | ".join(bad[:4]))
 
-        # The line under the hero went with the owner's second review (9 Nov 2026,
-        # evening): the home page is eight sections, and the footer's address is two
-        # scrolls away rather than seventeen screens. test_house_address holds it.
-        s.section("The home page, eight sections long")
+        # The second review's brief took this line out; the owner kept it (10 Nov: "i wated
+        # another address further up").
+        s.section("The address, high on the home page")
         home = [d for d in real if d["page"] == "/" and d["asked"] == PHONE]
-        s.check("draws no second address line under the hero",
-                bool(home) and not home[0]["where"], detail=str(home[:1])[:200])
+        where = home[0]["where"] if home else None
+        s.check("the home page draws the address line", bool(where), detail=str(home[:1]))
+        if where:
+            s.check("within one screen of the top on a phone",
+                    where["top"] <= where["vh"] * 1.25,
+                    detail="at %dpx on a %dpx screen; the footer starts at %dpx"
+                           % (where["top"], where["vh"], where["footT"] or 0))
         s.section("The home page, shorter on a phone")
         desk_home = [d for d in real if d["page"] == "/" and d["asked"] == DESK]
         fold = home[0].get("fold") if home else None

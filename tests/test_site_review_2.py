@@ -145,7 +145,9 @@ HOME_ORDER = ["La Vie de Ch√¢teau", r"The \w+ Rooms", "A Night, or la Vie de Ch√
               "Come and see it"]
 HOME_GONE = ["France at Its Most French", "Bienvenue", "The Estate from Above", "A Night at Gudanes",
              "Brocante Antiques and New Comforts", "One Wedding at a Time", "Follow the Restoration",
-             "Dine at La Table", 'class="g-where"', 'class="g-bande', 'class="g-cred"']
+             "Dine at La Table", 'class="g-bande', 'class="g-cred"']
+# Not the address line under the hero (g-where): the brief took it out, and the owner kept it
+# (10 Nov: "i wated another address further up"). test_house_address holds it there.
 
 
 def home_headings(html):

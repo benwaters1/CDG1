@@ -103,9 +103,13 @@
   </button>
 </section>
 
-{#- 9 Nov, evening (owner's second review, 1): the stand-alone address line under the hero went. The page is eight
-    sections now rather than nineteen, so the footer's address -- which opens the same pin -- is two scrolls away, not
-    seventeen screens. -#}
+{#- 9 Nov (owner): "its also alot of scrolling on the home page to get to [the address], we should have
+    the address elsewhere further up". The first thing under the hero: the same words as the footer, opening
+    the same pin at the gates (_house_address.html). test_house_address holds it here.
+    10 Nov (owner): the second review's brief took this line out; the owner wants it kept -- "i wated another
+    address further up". Everything else the brief did to this page stands. -#}
+{% from '_house_address.html' import house_address with context %}
+<p class="g-where"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" focusable="false"><path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.3"/></svg>{{ house_address() }}</p>
 
 <!-- ============ LA PLEINE EXPÉRIENCE - the château in full, under the calendar (2 Oct) ============ -->
 <section class="g-full" aria-labelledby="full-h"><div class="g-wrap g-full__in">
