@@ -80,6 +80,15 @@
     </span>
     {% endif %}
 
+    {#- 10 Nov (owner): mark a room ready in one tap until the checklists are fully in use. It ticks off exactly the
+        items listed above, as one tap each would (room_mark_ready). -#}
+    {% if r.outstanding %}
+    <form method="post" action="{{ url_for('room_mark_ready', room_id=r.room['id']) }}" style="margin:6px 0 0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini">{{ t('Mark ready') }}</button>
+    </form>
+    {% endif %}
+
     {% if r.urgent %}
     <span class="guest-card-meta"><strong>{{ t('Somebody arrives today and this room is not done.') }}</strong></span>
     {% endif %}

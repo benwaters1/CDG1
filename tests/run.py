@@ -621,6 +621,8 @@ SUITES = [
     "test_room_words",
     # 10 November 2026: a night is a bed and breakfast, the retreats have the gourmet chefs.
     "test_bnb_comparisons",
+    # 10 November 2026: a room marked ready in one tap from the Today page.
+    "test_room_mark_ready",
     # 9 November 2026: the address opens the map and sits under the home page's
     # hero, and every public page measured for its margins at three widths.
     "test_house_address",

@@ -97833,6 +97833,34 @@ def _has_checked_out(stay):
         return True
 
 
+def room_open_work(conn, room, iso):
+    """The checklist work that keeps a room from being ready on day `iso`.
+
+    One definition, shared by the board and by "Mark ready" (room_mark_ready),
+    so the button ticks off exactly what made the room read as not ready.
+
+    The checklist belongs to a booking of the house's own or to a Booking.com
+    stay (prep_channel_departures); either way, to this room. Work that is due
+    by today. The arrival prep is made two days ahead, and a room whose next
+    guest comes on Thursday can still be walked into on Tuesday.
+    """
+    return conn.execute(
+        """SELECT tasks.* FROM tasks
+             LEFT JOIN bookings ON bookings.id = tasks.booking_id
+             LEFT JOIN ota_reservations ON ota_reservations.id = tasks.ota_reservation_id
+            WHERE tasks.origin = 'checklist' AND tasks.status != 'done'
+              AND (bookings.room_id = ?
+                   OR (tasks.ota_reservation_id IS NOT NULL
+                       AND SUBSTR(tasks.title, 1, LENGTH(?) + 2) = ? || ': '
+                       AND (ota_reservations.room_id = ? OR EXISTS (
+                            SELECT 1 FROM ota_reservation_rooms x
+                             WHERE x.ota_reservation_id = tasks.ota_reservation_id
+                               AND x.room_id = ?))))
+              AND (tasks.due_date IS NULL OR tasks.due_date <= ?)
+            ORDER BY tasks.id""",
+        (room["id"], room["name"], room["name"], room["id"], room["id"], iso)).fetchall()
+
+
 def room_board(conn, today=None):
     """Every room, and whether a guest can walk into it.
 
@@ -97877,26 +97905,7 @@ def room_board(conn, today=None):
             """SELECT * FROM bookings
                 WHERE room_id = ? AND status = 'confirmed' AND arrival_date = ?""",
             (room["id"], iso)).fetchone()
-        # The checklist belongs to a booking of the house's own or to a
-        # Booking.com stay (prep_channel_departures); either way, to this room.
-        # Work that is due by today. The arrival prep is made two days ahead,
-        # and a room whose next guest comes on Thursday can still be walked
-        # into on Tuesday.
-        open_work = conn.execute(
-            """SELECT tasks.* FROM tasks
-                 LEFT JOIN bookings ON bookings.id = tasks.booking_id
-                 LEFT JOIN ota_reservations ON ota_reservations.id = tasks.ota_reservation_id
-                WHERE tasks.origin = 'checklist' AND tasks.status != 'done'
-                  AND (bookings.room_id = ?
-                       OR (tasks.ota_reservation_id IS NOT NULL
-                           AND SUBSTR(tasks.title, 1, LENGTH(?) + 2) = ? || ': '
-                           AND (ota_reservations.room_id = ? OR EXISTS (
-                                SELECT 1 FROM ota_reservation_rooms x
-                                 WHERE x.ota_reservation_id = tasks.ota_reservation_id
-                                   AND x.room_id = ?))))
-                  AND (tasks.due_date IS NULL OR tasks.due_date <= ?)
-                ORDER BY tasks.id""",
-            (room["id"], room["name"], room["name"], room["id"], room["id"], iso)).fetchall()
+        open_work = room_open_work(conn, room, iso)
         for st in by_room.get(room["id"], []):
             if not here and st["arrival_date"] < iso < st["departure_date"]:
                 here = st
@@ -106944,6 +106953,42 @@ def complete_task(task_id):
     conn.commit()
     conn.close()
     return jsonify(status="done" if done else "open")
+
+
+@app.route("/rooms/<int:room_id>/ready", methods=["POST"])
+@login_required
+def room_mark_ready(room_id):
+    """Every open checklist item on a room ticked off at once (owner, 10 Nov 2026:
+    "i want to easily be able to mark these myself as done, until we fully
+    implement the system").
+
+    The same tick, done many times: the work is the board's own (room_open_work),
+    each item goes through mark_task_done, and the permission is complete_task's
+    -- the owner, or whoever the item is assigned to. What it could not tick it
+    names, through bulk_message, so a room that still reads "Needs turning over"
+    afterwards says why.
+    """
+    user = current_user()
+    conn = get_db()
+    room = conn.execute("SELECT * FROM rooms WHERE id = ?", (room_id,)).fetchone()
+    if not room:
+        conn.close()
+        abort(404)
+    done, skipped = 0, []
+    for task in room_open_work(conn, room, house_today_iso()):
+        if user["role"] != "owner" and task["assigned_to_user_id"] != user["id"]:
+            skipped.append((task["title"].split(": ")[-1], "it is somebody else's to tick"))
+            continue
+        mark_task_done(conn, task)
+        done += 1
+    conn.commit()
+    conn.close()
+    if done or skipped:
+        message, category = bulk_message("Ticked off", "item", done, skipped)
+        flash(f"{room['name']}: {message}", category)
+    else:
+        flash(f"{room['name']}: nothing was left to do.", "success")
+    return redirect(url_for("staff_today"))
 
 
 @app.route("/tasks/<int:task_id>/toggle", methods=["POST"])
