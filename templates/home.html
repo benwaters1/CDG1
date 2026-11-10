@@ -145,6 +145,29 @@
     {% endif %}
   </div>
 </div></section>
+{#- 9 Nov (owner): "not as long on phone". On a phone La Vie de Château shows its first paragraph and puts the
+    rest behind "Read more" (gudanes.css, .g-full__copy.is-folded). The words stay in the page; with no script they
+    all show. test_public_margins holds the fold. -#}
+<script>
+(function () {
+  var copy = document.querySelector('.g-full__copy');
+  if (!copy || !window.matchMedia('(max-width: 34rem)').matches) return;
+  var paras = copy.querySelectorAll('.g-full__p');
+  if (paras.length < 2) return;
+  var more = document.createElement('button');
+  more.type = 'button';
+  more.className = 'g-full__more';
+  more.textContent = 'Read more';
+  paras[0].insertAdjacentElement('afterend', more);
+  copy.classList.add('is-folded');
+  more.addEventListener('click', function () {
+    copy.classList.remove('is-folded');
+    more.remove();
+    paras[1].setAttribute('tabindex', '-1');
+    paras[1].focus();
+  });
+})();
+</script>
 
 {#- 26 Oct (owner, the retreats deck 1c): eight moments of a retreat, each a photograph, a French title and two lines,
     every one a way into /workshops. The deck put the guests toasting on "À table" and beside the retreats just above;
