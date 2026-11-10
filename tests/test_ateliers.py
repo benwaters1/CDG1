@@ -153,11 +153,12 @@ def run():
     back = conn.execute(
         "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? AND start_date = ?",
         (row["id"], "2026-08-01")).fetchone()
-    # It IS recreated — the seed adds any start date it cannot find. Worth
-    # stating plainly rather than discovering it: to retire a sitting, mark the
-    # atelier inactive or change the date, do not delete the row.
-    s.check("deleting a seeded sitting brings it back on the next deploy",
-            bool(back), detail="documented behaviour, not a silent surprise")
+    # It used to be recreated: the seed added any start date it could not
+    # find, on every deploy, and this check asserted it as "documented
+    # behaviour". The owner deleted Antique & French Finds' date on 10
+    # November 2026 and the next push would have put it straight back.
+    s.check("a seeded sitting the owner deleted stays deleted after a deploy",
+            not back, detail="the deploy put it back on the calendar")
 
     s.section("The public pages render them")
     # One sitting a year ahead, so the page always has an atelier to name.

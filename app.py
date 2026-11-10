@@ -9168,24 +9168,17 @@ def init_db():
                 (workshop[field], workshop["title"]))
     conn.commit()
 
-    # 3. Dates the earlier seed did not carry. Added only when that exact
-    #    start date is missing, so a session the owner has since edited or
-    #    cancelled is not quietly recreated underneath them.
-    for workshop in DEFAULT_WORKSHOPS:
-        row = conn.execute("SELECT id FROM workshops WHERE title = ?",
-                           (workshop["title"],)).fetchone()
-        if not row:
-            continue
-        for start, end in workshop.get("sessions", []):
-            if conn.execute(
-                    "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? AND start_date = ?",
-                    (row["id"], start)).fetchone():
-                continue
-            conn.execute(
-                """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
-                   capacity, notes, created_at) VALUES (?, ?, ?, 10, NULL, ?)""",
-                (row["id"], start, end, datetime.now(timezone.utc).isoformat()))
-    conn.commit()
+    # 3. REMOVED 10 November 2026: "dates the earlier seed did not carry".
+    #    It added any seeded start date it could not find, on EVERY deploy --
+    #    so a date the owner deleted came back with the next push, several
+    #    times a day. Its comment promised the opposite, and test_ateliers
+    #    called the resurrection "documented behaviour". The owner hit it
+    #    taking Antique & French Finds off the calendar. Its one job was to
+    #    catch up a database seeded before those dates were in the list; the
+    #    live one caught up in September. A fresh database gets its dates from
+    #    the seed above, and an atelier new to the list from the top-up, both
+    #    of which add sittings for an atelier they create and never otherwise.
+    #    Dates are content now: added and removed in the admin, and kept so.
 
     for slug, name, order in DEFAULT_CHAT_CHANNELS:
         if not conn.execute("SELECT 1 FROM chat_channels WHERE slug = ?", (slug,)).fetchone():
@@ -10153,6 +10146,7 @@ OWNER_ONLY_AREAS = {
     # checks role == owner as well, as profile() does.
     "export_pay_history_csv": "team",
     "download_backup": "management",
+    "download_photographs_backup": "management",
     "new_check_in_note": "team",
     "pos_archive": "till",
     "pos_close_day": "till",
@@ -12127,12 +12121,21 @@ def retreat_week(workshop, sittings=()):
     if nights and len(starts) == 1:
         first = starts.pop()
         days = [RETREAT_DAY_NAMES[(first + n) % 7] for n in range(nights + 1)]
+    # The calendar date of each day ("07-14"), for the evenings that fall on a
+    # French occasion (owner, 10 Nov: Bastille Day, the Fête de la Musique).
+    # Only when every sitting starts on the same date: a plan shared by two
+    # sittings cannot hold one sitting's 14 July.
+    first_days = {start for start, _end in spans}
+    dates = []
+    if nights and len(first_days) == 1:
+        first_day = first_days.pop()
+        dates = [(first_day + timedelta(days=n)).strftime("%m-%d") for n in range(nights + 1)]
     # The summer plans have the pool, the terrace, the river and films under the
     # stars, so they are for sittings that start May to September. A retreat
     # set in winter with one of them would promise all of that in December; it
     # gets the plain outline instead. No sittings: nothing to go on, so summer.
     summer = all(SUMMER_MONTHS[0] <= start.month <= SUMMER_MONTHS[1] for start, _end in spans)
-    return {"nights": nights, "days": days, "summer": summer}
+    return {"nights": nights, "days": days, "summer": summer, "dates": dates}
 
 
 app.jinja_env.globals["retreat_week"] = retreat_week
@@ -47181,6 +47184,8 @@ PALETTE_PAGES = [
     ("House guide", "house_guide_admin",
      "wifi wi-fi code password network breakfast times house rules parking "
      "who to call information for guests staying"),
+    ("Download the photographs", "download_photographs_backup",
+     "backup photos pictures mirror website images squarespace copy keep safe"),
     ("Transfers", "all_transfers", "airport pickup driving"),
     ("Asset register", "admin_assets", "furniture art antiques insurance valuation"),
     ("Keys & access", "admin_access", "codes alarm fobs"),
@@ -60696,8 +60701,18 @@ def house_map_links():
         "dir": f"https://www.google.com/maps/dir/?api=1&destination={at}&travelmode=driving",
         "apple": (f"https://maps.apple.com/?ll={at}"
                   "&q=Ch%C3%A2teau%20de%20Gudanes"),
+        # Restaurants around the gates (owner, 10 Nov 2026: a night has no lunch
+        # or dinner, so point guests to the restaurants nearby). The word is the
+        # kind of place, and the map is centred on the pin, so the answer is the
+        # valley's whoever asks -- not a search by name answered from Tokyo.
+        "eat": f"https://www.google.com/maps/search/restaurants/@{at},13z",
         "at": at,
     }
+
+
+# For the comparisons in _stay_or_workshop.html, which are imported without the
+# page's context and so cannot see house_maps.
+app.jinja_env.globals["house_map_links"] = house_map_links
 
 
 def room_payment_setting(conn, key, cast=float):
@@ -105505,6 +105520,100 @@ def download_backup():
     )
 
 
+# THE SITE'S PHOTOGRAPHS ARE ON THE VOLUME AND NOWHERE ELSE, and until 9
+# November 2026 no backup carried them. build_backup_zip takes the database,
+# uploads and room photos; MIRROR_DIR -- the house's own copy of every picture
+# on the public pages, kept because the Squarespace account they came from
+# will lapse -- was in neither the download nor the nightly email. The day the
+# account goes, those copies are the only ones, and a lost volume would have
+# taken the site's pictures with it while every backup said it was complete.
+#
+# A download of its own rather than a third folder in build_backup_zip: they
+# run to hundreds of megabytes, which would push every nightly email over its
+# limit and down to database-only, losing the uploads from it to save
+# photographs that change once a handover. Written to a temporary file rather
+# than built in memory for the same reason, and stored rather than deflated:
+# a JPEG does not compress.
+#
+# sized/ is left out: every file in it is made from one in here on demand.
+# originals/ is kept: those are the lossless PNGs the JPEGs were made from.
+def build_photographs_zip(path):
+    """Write the house's copies of the site's photographs to a zip at `path`.
+
+    Returns (number of photographs, list of files that could not be read).
+    A file that vanishes mid-walk is noted in FILES_SKIPPED.txt, as in
+    build_backup_zip, rather than abandoning the whole copy."""
+    count, skipped = 0, []
+    sized = os.path.abspath(PIC_DIR)
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED, allowZip64=True) as zf:
+        for root, dirs, files in os.walk(MIRROR_DIR):
+            dirs[:] = [d for d in dirs if os.path.abspath(os.path.join(root, d)) != sized]
+            for fname in sorted(files):
+                full = os.path.join(root, fname)
+                rel = os.path.relpath(full, MIRROR_DIR).replace(os.sep, "/")
+                try:
+                    zf.write(full, "mirrored/" + rel)
+                    count += 1
+                except (OSError, ValueError) as exc:
+                    skipped.append(f"{rel}: {exc}")
+        zf.writestr(
+            "README.txt",
+            "The Chateau de Gudanes website's own copies of its photographs.\n"
+            "To restore: put the mirrored/ folder back beside the database on the\n"
+            "server's volume (the GUDANES_MIRROR_DIR folder). The resized copies\n"
+            "are not included; the site makes them again by itself.\n")
+        if skipped:
+            zf.writestr(
+                "FILES_SKIPPED.txt",
+                "These photographs were listed on disk but could not be read, so "
+                "they are NOT in this copy.\n\n" + "\n".join(skipped) + "\n")
+    return count, skipped
+
+
+@app.route("/admin/backup/photographs")
+@owner_required
+def download_photographs_backup():
+    """The photographs the main backup cannot carry, as a download of their own."""
+    import tempfile
+    fd, tmp = tempfile.mkstemp(prefix="gudanes-photographs-", suffix=".zip")
+    os.close(fd)
+    try:
+        count, skipped = build_photographs_zip(tmp)
+    except Exception:
+        os.remove(tmp)
+        raise
+    conn = get_db()
+    log_audit(conn, "photographs_backup_downloaded", details=f"{count} photographs")
+    if skipped:
+        log_audit(conn, "backup_files_skipped",
+                  details=f"{len(skipped)}: " + "; ".join(skipped[:20]))
+    conn.commit()
+    conn.close()
+    size = os.path.getsize(tmp)
+
+    # Streamed from the file, and the file removed once it has been sent: the
+    # generator is closed when the response is, and its own handle is shut by
+    # then. Removing it from call_on_close instead left it behind on Windows,
+    # where an open file cannot be deleted.
+    def _send_then_remove():
+        try:
+            with open(tmp, "rb") as fh:
+                while True:
+                    chunk = fh.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass             # under the system temp folder either way
+    filename = f"gudanes-photographs-{house_today_iso()}.zip"
+    return Response(_send_then_remove(), mimetype="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Length": str(size)})
+
+
 # A backup email lands in a real inbox outside Railway entirely, which is the
 # point — the volume and the mailbox fail independently. Most providers cap
 # an incoming message around 25MB; this stays well under that even after
@@ -115221,7 +115330,30 @@ def house_guide_booking(conn, kind, token):
     Live means confirmed and not past the day they leave. A cancelled stay, a
     request nobody has confirmed and a stay that is over all get nothing: the
     page is for somebody who is coming, and it carries the Wi-Fi code.
+
+    'channel' is a Booking.com stay, on the check-in link the house sends or
+    pastes into Booking.com's messages -- the only link that guest has. Those
+    guests sleep in the same rooms and need the same Wi-Fi code, and before
+    this the guide simply had no door for them.
     """
+    if kind == "channel":
+        if not token:
+            return None
+        row = conn.execute(
+            """SELECT ota_reservations.*, rooms.name AS room_name FROM ota_reservations
+                 LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
+                WHERE ota_reservations.checkin_token = ?""", (token,)).fetchone()
+        if not row or row["status"] != "confirmed":
+            return None
+        leave = parse_date(row["departure_date"])
+        if not leave or leave < house_today():
+            return None
+        stay = dict(row)
+        stay["room_name"] = row["room_name"] or row["room_label"] or ""
+        # house_wifi_window reads checked_out_at. A Booking.com stay is never
+        # checked out here, so its code goes at checkout time on the last day.
+        stay["checked_out_at"] = None
+        return stay
     column = {"manage": "manage_token", "share": "share_token"}.get(kind)
     if not column or not token:
         return None
@@ -115253,6 +115385,8 @@ def house_guide_card():
         kind, key, endpoint = "manage", "manage_token", "house_guide_page"
     elif request.endpoint == "shared_stay":
         kind, key, endpoint = "share", "share_token", "shared_house_guide"
+    elif request.endpoint == "channel_checkin":
+        kind, key, endpoint = "channel", "token", "channel_house_guide"
     else:
         return None
     token = args.get(key)
@@ -115319,6 +115453,21 @@ def shared_house_guide(share_token):
     return _render_house_guide(
         conn, booking, back_label=t("Back to your stay"),
         back_url=url_for("shared_stay", share_token=share_token))
+
+
+@app.route("/checkin/stay/<token>/house")
+def channel_house_guide(token):
+    """The same page for a guest who booked through Booking.com, on their
+    check-in link. That link is the credential, as the manage link is for a
+    direct booking; it carries nothing about money either way."""
+    conn = get_db()
+    booking = house_guide_booking(conn, "channel", token)
+    if booking is None:
+        conn.close()
+        abort(404)
+    return _render_house_guide(
+        conn, booking, back_label=t("Back to your stay"),
+        back_url=url_for("channel_checkin", token=token))
 
 
 def _house_guide_status(row, facts):
