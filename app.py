@@ -49312,6 +49312,36 @@ def _rg_first_name(first, last):
     return first
 
 
+def _rg_key(first, last, submitted):
+    """What a registration is kept by here: the name and the moment it was
+    submitted, which is unique (there is no registration id in the export)."""
+    return "retreatguru:" + "|".join((" ".join((first or "").lower().split()),
+                                      " ".join((last or "").lower().split()),
+                                      (submitted or "").strip()))
+
+
+def parse_rg_cancellations(text):
+    """The registrations RetreatGuru now calls cancelled: {key: what it says}.
+
+    Nothing to bring across, so parse_rg_registrations counts them and moves
+    on. But one brought across before it was cancelled is still a booking
+    here, its place held and its balance chased, and RetreatGuru will not say
+    so twice: the check has to. Emma Greaves cancelled Seven Starry Nights in
+    RetreatGuru on 6 November 2026 and the second run, a few days later, never
+    mentioned her.
+    """
+    out = {}
+    for row in _rg_rows(text):
+        if not row.get("cancelled"):
+            continue
+        first = _rg_first_name(row.get("first_name"), row.get("last_name"))
+        last = (row.get("last_name") or "").strip()
+        out[_rg_key(first, last, row.get("submitted"))] = {
+            "name": f"{first} {last}".strip(), "cancelled": row["cancelled"].strip(),
+            "paid": _guest_import_money(row.get("payments_refunds_total")) or 0.0}
+    return out
+
+
 def parse_rg_registrations(text, today):
     """The registrations export: the ones still to come and not cancelled.
 
@@ -49344,8 +49374,7 @@ def parse_rg_registrations(text, today):
         paid = _guest_import_money(row.get("payments_refunds_total")) or 0.0
         owing = _guest_import_money(row.get("balance_due")) or 0.0
         out.append({
-            "key": "retreatguru:" + "|".join((" ".join(first.lower().split()),
-                                              " ".join(last.lower().split()), submitted.strip())),
+            "key": _rg_key(first, last, submitted),
             "first": first, "last": last, "name": f"{first} {last}".strip(),
             "submitted": submitted.strip(), "submitted_on": submitted_on, "start": start,
             "phone": row.get("phone", ""), "roommate": row.get("roommate", ""),
@@ -49647,7 +49676,7 @@ def _rg_stripe_match(charges, paid):
 
 
 def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days, today,
-                   stripe_given, unmatched_ok=False, refunds=()):
+                   stripe_given, unmatched_ok=False, refunds=(), cancellations=None):
     """What bringing these registrations across would do, line by line, and
     everything wrong with it. The check shows this; the run writes it.
 
@@ -49657,6 +49686,10 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
     unmatched_ok: a payment RetreatGuru records and Stripe does not hold -- a
     bank transfer, say -- is brought across as paid, but not by card, so any
     refund of it is made by hand. Without it, such a payment stops the run.
+
+    cancellations: parse_rg_cancellations of the same export, so that one
+    brought across and since cancelled in RetreatGuru is shown, not lost
+    among the cancelled.
     """
     sessions_by_day = {}
     for s in conn.execute(
@@ -49665,6 +49698,39 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
         sessions_by_day.setdefault(s["start_date"], []).append(s)
     already = {r["import_key"]: r for r in conn.execute(
         "SELECT * FROM workshop_bookings WHERE import_key IS NOT NULL")}
+
+    # CANCELLED IN RETREATGURU, STILL BOOKED HERE. The place is still held and
+    # the balance still chased, so it is shown with what each side says and
+    # what Stripe has given back. Nothing is changed: whether to cancel it here,
+    # and whether anything is owed back, is the owner's.
+    cancelled_here = []
+    for key, said in (cancellations or {}).items():
+        b = already.get(key)
+        if not b or b["status"] not in ("pending", "confirmed"):
+            continue
+        s = conn.execute(
+            """SELECT ws.start_date, ws.end_date, w.title FROM workshop_sessions ws
+                 JOIN workshops w ON w.id = ws.workshop_id WHERE ws.id = ?""",
+            (b["session_id"],)).fetchone()
+        if not s or (s["end_date"] or s["start_date"]) < today.isoformat():
+            continue                     # over and done with
+        owed, charged, paid = workshop_balance_due(conn, b["id"])
+        email = (b["guest_email"] or "").strip().lower()
+        back = [r for r in refunds if r["email"] == email]
+        stripe_says = ("" if not stripe_given else
+                       f" Stripe shows {money(sum(r['refunded'] for r in back))} refunded to "
+                       f"this address ({', '.join(r['ref'] for r in back)})." if back else
+                       " Stripe shows nothing refunded to this address.")
+        moment = _rg_moment(said["cancelled"])
+        on = format_date_human(house_date_iso(moment)) if moment else said["cancelled"][:10]
+        cancelled_here.append({
+            "key": key, "name": b["guest_name"], "reference": b["reference_code"], "on": on,
+            "why": (f"{b['guest_name']} ({b['reference_code']}, {s['title']}, "
+                    f"{format_date_human(s['start_date'])}) was cancelled in RetreatGuru on "
+                    f"{on}, which now has {money(said['paid'])} paid. Here it is still "
+                    f"{b['status']}: {money(charged)} charged, {money(paid)} paid, "
+                    f"{money(owed)} owing.{stripe_says} Nothing is changed here: cancel it on "
+                    "the registration, and refund by hand if anything is owed back.")})
 
     rows = []
     for reg in sorted(registrations, key=lambda r: (r["start"], r["submitted"])):
@@ -50007,7 +50073,7 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
         "due_days": due_days, "stripe_given": stripe_given, "unmatched_ok": unmatched_ok,
         "export": {f: total(rows, f) for f in ("agreed", "paid", "owing")},
         "count": len(payers), "people": sum(l["party"] for l in payers),
-        "held": held,
+        "held": held, "cancelled_here": cancelled_here,
         "second": {
             "same": sum(1 for l in done if not l["blocking"] and not l["topup"]),
             "more_paid": sum(1 for l in done if l["topup"] and not l["blocking"]),
@@ -50272,6 +50338,7 @@ def _rg_plan_from_draft(conn, payload, today):
     charges = parse_stripe_payments(payload.get("stripe", ""))
     plan = plan_rg_import(conn, regs, programmes, names, charges,
                           refunds=parse_stripe_refunds(payload.get("stripe", "")),
+                          cancellations=parse_rg_cancellations(payload["registrations"]),
                           due_days=int(payload.get("due_days") or WORKSHOP_BALANCE_DAYS),
                           today=today, stripe_given=bool(payload.get("stripe")),
                           unmatched_ok=bool(payload.get("unmatched_ok")))
@@ -50407,6 +50474,10 @@ def import_registrations():
                              f"({c['ref']}) was not added: not ticked")
                  for l in plan["payers"] if not l["blocking"]
                  for c in l.get("topup", []) if f"{l['key']}|{c['ref']}" not in topups]
+    # Not part of this run, and still to settle: said every time until it is.
+    left_out += [(g["name"], f"cancelled in RetreatGuru on {g['on']} and still booked here as "
+                             f"{g['reference']}: left for you to settle")
+                 for g in plan.get("cancelled_here", [])]
     message, category = bulk_message(
         "Brought across", "registration", len(made), left_out,
         detail=(f"{len(unchanged)} already here, unchanged. " if unchanged else "")
