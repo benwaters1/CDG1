@@ -66,6 +66,19 @@ ALLOWED = {
     "g-where": re.compile(re.escape("%(street)s, %(locality)s, %(country)s" % m.HOUSE_PLACE)),
 }
 
+
+def _room_words():
+    """Each room's own lines (owner, 9 Nov 2026: "room words is important"), exactly as
+    _room_words.html writes them: the room page's g-room__words may hold one of these and nothing else."""
+    path = os.path.join(ROOT, "templates", "_room_words.html")
+    names = re.findall(r"^\s*'([^']+)': '", io.open(path, encoding="utf-8").read(), re.M)
+    with m.app.app_context():
+        module = m.app.jinja_env.get_template("_room_words.html").module
+        return [" ".join(str(module.room_words(n)).split()) for n in names]
+
+
+ALLOWED["g-room__words"] = re.compile("|".join(re.escape(w) for w in _room_words() if w))
+
 # Words the owner has agreed may go, each named, and only these (28 Oct 2026:
 # "drop the '…, in Pictures' headings as the brief says"). Taken out of the
 # BEFORE text, so anything else that went is still a difference.

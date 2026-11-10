@@ -6,6 +6,7 @@
 {% from '_phone.html' import phone_field %}
 {% from '_occupancy.html' import party_fields with context %}
 {% from '_room_copy.html' import room_copy, room_name, room_note, room_bath_where, room_stairs %}
+{% from '_room_words.html' import room_words %}
 {#- 9 Nov (the image layout brief, 4.4): the room's photographs as one large photograph and a strip of small ones, a
     bathroom by the bathroom, Bruce by his line. Through the picture components (_pictures.html); not one word changes. -#}
 {% from '_pictures.html' import carrousel, medaillon, passe_partout, pictures_script %}
@@ -83,6 +84,10 @@
        calendar with 2 selected"). The tags, a second nights-and-total calculator that ignored the form's dates, and
        three bathroom sentences became one table; the form and its summary card are the only price. #}
     {%- set _private = (room['bathroom'] or 'private')|lower == 'private' %}
+    {#- 9 Nov (owner: "room words is important"): the room's own lines, romantic and true (_room_words.html), before the
+        facts it leaves to the table. -#}
+    {%- set _words = room_words(room_name(room['name'])|trim)|trim %}
+    {% if _words %}<p class="g-p g-intro g-room__words">{{ _words }}</p>{% endif %}
     <dl class="g-glance">
       <div><dt>Sleeps</dt><dd>{% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}{{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}{{ room['max_adults'] or room['max_occupancy'] }}{% endif %}</dd></div>
       {% if _bl %}<div><dt>The bed</dt><dd>{{ _bl }}</dd></div>{% endif %}

@@ -640,6 +640,10 @@ window.houseDay = (function () {
 </div>
 </footer>
 <script>document.querySelectorAll('[data-year]').forEach(function(e){ e.textContent=new Date().getFullYear(); });</script>
+{#- 9 Nov (owner): "google and apple maps". A link to the pin opens Apple Maps on an iPhone, an iPad (which calls
+    itself a Macintosh) or a Mac, and Google Maps everywhere else: the same pin either way, from house_map_links.
+    test_house_address runs this as an iPhone and as a PC. -#}
+<script>if (/iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent)) document.querySelectorAll('a[data-apple]').forEach(function (a) { a.href = a.getAttribute('data-apple'); });</script>
 
 {# The bar follows the page. A guest reading about weddings should be offered
    an enquiry, not a bedroom — and a guest already holding a booking should not
