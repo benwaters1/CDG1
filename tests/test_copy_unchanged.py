@@ -60,7 +60,12 @@ m = _harness.m
 # and /workshops/4, and nothing else.
 # 10 Nov, later: moved to c7fb234, the owner's bed-and-breakfast wording in the comparisons ("make it clear
 # that one is a b&b"); it listed /, /book, /workshops and the five room pages, and nothing else.
-COPY_BASE = "2bbe116"
+# 10 Nov, evening: moved to be0b84c, the merge of the second review with main's two
+# commits of that day. Against 2bbe116 it listed /, /book, /workshops, the five room
+# pages, /workshops/3 and /workshops/4, and nothing else: the bed-and-breakfast wording
+# (with the owner's "on site" for "in the house"), Cooking's opening without dishes,
+# and Noël's Christmas market. Each was read.
+COPY_BASE = "be0b84c"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
