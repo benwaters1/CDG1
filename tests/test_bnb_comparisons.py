@@ -3,7 +3,7 @@
 "in the comparisons make it clear that one is a b&b - there is no lunch or
 dinner or chefs on site; workshops there is gourmet chefs with lunch and
 dinner included". The three comparisons in _stay_or_workshop.html:
-  - the two columns on the home page and Stay
+  - the two columns on the home page (Stay lost them in the second review)
   - the side-by-side table on /workshops
   - the notice before a night is booked, on Stay and each room's page
 Each says the night is a bed and breakfast with no lunch, no dinner and no
@@ -48,8 +48,12 @@ def run():
             s.section(f"With the dining switch {mode}")
             pages = {p: client.get(p).get_data(as_text=True) for p in ("/", "/book", "/workshops", f"/book/{room['id']}")}
 
-            for path in ("/", "/book"):
+            # The two columns are on the home page only: the owner's second review (9 Nov) took
+            # "A Night, or la Vie de Château" off /book ("on /workshops and the home page already").
+            # /book keeps the notice before a night is booked, read below.
+            for path in ("/",):
                 panel = _block(pages[path], 'class="g-sec g-sow"', "</section>")
+                s.check(f"{path}: the two columns are there to read", 'g-sow__col--full' in panel)
                 stay = visible_text(_block(panel, 'class="g-sow__col', 'g-sow__col--full'))
                 retreat = visible_text(_block(panel, 'g-sow__col--full', "</article>"))
                 s.check(f"{path}: the night is a bed and breakfast", "Bed and breakfast" in stay, detail=stay[:160])
