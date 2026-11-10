@@ -375,7 +375,62 @@ def run():
         cleanup.commit()
         cleanup.close()
 
+    _photographs(s, oc, _ec)
     return s
+
+
+def _photographs(s, oc, ec):
+    """The house's copies of the public pages' photographs (MIRROR_DIR) were
+    in no backup at all until 9 November 2026: not the download, not the
+    nightly email. Once the Squarespace account lapses they are the only copy,
+    so a lost volume would have taken every picture on the site with it."""
+    import glob
+    import tempfile
+    s.section("The site's photographs have a backup of their own")
+    tag = "zzdrill" + m.secrets.token_hex(4)
+    os.makedirs(os.path.join(m.MIRROR_DIR, m.MIRROR_ORIGINALS), exist_ok=True)
+    os.makedirs(m.PIC_DIR, exist_ok=True)
+    planted = {f"{tag}.jpg": os.path.join(m.MIRROR_DIR, f"{tag}.jpg"),
+               f"originals/{tag}.png": os.path.join(m.MIRROR_DIR, m.MIRROR_ORIGINALS, f"{tag}.png")}
+    resized = os.path.join(m.PIC_DIR, f"{tag}-400.jpg")
+    leftovers = lambda: set(glob.glob(os.path.join(tempfile.gettempdir(), "gudanes-photographs-*.zip")))
+    before = leftovers()
+    try:
+        for path in list(planted.values()) + [resized]:
+            with open(path, "wb") as fh:
+                fh.write(b"\xff\xd8 a photograph " + tag.encode())
+        r = oc.get("/admin/backup/photographs")
+        data = r.get_data()
+        r.close()
+        s.check("the owner can download them", r.status_code == 200 and
+                r.mimetype == "application/zip", response=r, detail=f"HTTP {r.status_code}")
+        names = set(zipfile.ZipFile(io.BytesIO(data)).namelist()) if r.status_code == 200 else set()
+        s.check("the photograph is in it", f"mirrored/{tag}.jpg" in names)
+        s.check("and the original it was made from", f"mirrored/originals/{tag}.png" in names)
+        s.check("but not the resized copies, which the site makes again",
+                not any(f"{tag}-400" in n for n in names))
+        on_disk = set()
+        sized = os.path.abspath(m.PIC_DIR)
+        for root, dirs, files in os.walk(m.MIRROR_DIR):
+            dirs[:] = [d for d in dirs if os.path.abspath(os.path.join(root, d)) != sized]
+            on_disk |= {"mirrored/" + os.path.relpath(os.path.join(root, f), m.MIRROR_DIR)
+                        .replace(os.sep, "/") for f in files}
+        absent = sorted(on_disk - names)
+        s.check("nothing else on disk is left out", not absent,
+                detail=f"{len(absent)} missing, e.g. {absent[:3]}")
+        s.check("and it says how to put them back", "README.txt" in names)
+        s.check("the copy made for the download does not stay behind",
+                not (leftovers() - before), detail=str(leftovers() - before))
+        page = oc.get("/admin/photo-mirror").get_data(as_text=True)
+        s.check("the photographs page offers it", "/admin/backup/photographs" in page)
+        s.check("and says the main backup does not carry them",
+                "not these" in page)
+        s.check("a member of staff is refused it",
+                ec.get("/admin/backup/photographs").status_code in (302, 403))
+    finally:
+        for path in list(planted.values()) + [resized]:
+            if os.path.exists(path):
+                os.remove(path)
 
 
 if __name__ == "__main__":

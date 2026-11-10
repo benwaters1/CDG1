@@ -21,8 +21,9 @@ and a guest reads on their own stay's link. Five things carry this file.
   one, or after they are checked out -- and never in an address, an audit line
   or the page-translation table, which sends what it collects to a model.
 
-  IT IS THEIRS. A live booking's manage link or share link and nothing else,
-  noindex, and not kept in a browser's cache.
+  IT IS THEIRS. A live booking's manage link or share link, or a live
+  Booking.com stay's check-in link, and nothing else; noindex, and not kept in
+  a browser's cache.
 
   A HANDOVER CANNOT LOSE THE WAY IN. manage_booking.html and shared_stay.html
   arrive from the design side whole; the card is one include line in each, and
@@ -46,6 +47,7 @@ def _cleanup(conn):
     conn.execute("DELETE FROM house_guide_sections")
     conn.execute("DELETE FROM page_translations WHERE source_text LIKE ?", (f"%{TAG}%",))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM ota_reservations WHERE reservation_number LIKE ?", (TAG + "%",))
     conn.commit()
 
 
@@ -308,6 +310,46 @@ def _run(s, oc, ec, conn, room, today):
     conn.commit()
     s.check("taking the share link away takes this page with it",
             pub.get(f"/stay/{share}/house").status_code == 404)
+
+    # A Booking.com guest has one link from the house: their online check-in.
+    # Same rooms, same Wi-Fi, same window -- and before 9 November 2026 no way
+    # in at all.
+    def ota(key, status, arrival, departure):
+        token = f"ci{TAG}{key}".lower()
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO ota_reservations (channel, reservation_number, status, guest_name,
+               arrival_date, departure_date, room_id, first_seen_at, updated_at, checkin_token)
+               VALUES ('booking.com', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (f"{TAG}{key}", status, f"{TAG} Channel {key}", arrival.isoformat(),
+             departure.isoformat(), room["id"], now, now, token))
+        conn.commit()
+        return token
+    bdc = ota("soon", "confirmed", today + timedelta(days=1), today + timedelta(days=3))
+    bdc_later = ota("later", "confirmed", today + timedelta(days=10), today + timedelta(days=12))
+    bdc_off = ota("off", "cancelled", today + timedelta(days=1), today + timedelta(days=3))
+    bdc_past = ota("past", "confirmed", today - timedelta(days=4), today - timedelta(days=1))
+    r = pub.get(f"/checkin/stay/{bdc}/house?lang=en")
+    text = r.get_data(as_text=True)
+    s.check("a Booking.com guest's check-in link opens it", r.status_code == 200 and
+            words_en in text, detail=f"HTTP {r.status_code}")
+    s.check("with the Wi-Fi code inside their window", CODE in text)
+    s.check("and not kept in a browser's cache",
+            "no-store" in (r.headers.get("Cache-Control") or ""))
+    s.check("back to their check-in, not to anything of anybody else's",
+            f"/checkin/stay/{bdc}" in text and "/book/manage/" not in text)
+    text = pub.get(f"/checkin/stay/{bdc_later}/house?lang=en").get_data(as_text=True)
+    s.check("ten days out, a Booking.com guest gets no code either",
+            CODE not in text and NETWORK in text)
+    checkin = pub.get(f"/checkin/stay/{bdc}?lang=en").get_data(as_text=True)
+    s.check("their check-in page leads to it", f"/checkin/stay/{bdc}/house" in checkin,
+            detail="the card is missing from channel_checkin.html")
+    for label, token in (("a cancelled Booking.com stay", bdc_off),
+                         ("a Booking.com stay that is over", bdc_past),
+                         ("a made-up check-in link", f"ci{TAG}nobody".lower())):
+        r = pub.get(f"/checkin/stay/{token}/house")
+        s.check(f"{label} gets no page", r.status_code == 404
+                and CODE not in r.get_data(as_text=True), detail=f"HTTP {r.status_code}")
     # As if the site were live: while it is staging every page is noindex,
     # which would let this pass with the page's own tag gone.
     was_live = m.SITE_IS_LIVE
@@ -404,7 +446,7 @@ def _run(s, oc, ec, conn, room, today):
 
     # --------------------------------------------- the way in survives a handover
     s.section("The card is one include line in each page a handover replaces")
-    for name in ("manage_booking.html", "shared_stay.html"):
+    for name in ("manage_booking.html", "shared_stay.html", "channel_checkin.html"):
         tpl = io.open(os.path.join(_harness.ROOT, "templates", name), encoding="utf-8").read()
         s.check(f"{name} still includes the card", '{% include "_house_card.html" %}' in tpl,
                 detail="a new version of this page arrived without the line; put it back")
