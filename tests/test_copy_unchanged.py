@@ -61,8 +61,10 @@ m = _harness.m
 # dinner unavailable, the restaurants nearby); it listed the same eight pages, and nothing else.
 # and then to aa34fe9, the merge of the two: against b6b4ad8 it listed /workshops/4
 # and /workshops/6 only, the retreat evenings above.
-# 10 Nov, again: moved to a8b7c05, the retreats' "every meal, and drinks included" (owner); it listed /, /book
-# and /workshops, and nothing else.
+# 10 Nov: then ecacf9b, Noël's market the village's own, a walk away; it listed
+# /workshops/3 (the Noël page) only.
+# 10 Nov, again: a8b7c05, the retreats' "every meal, and drinks included" (owner); it listed /, /book
+# and /workshops, and nothing else. Both meet in the merge after them, which the base moves to next.
 COPY_BASE = "a8b7c05"
 
 # Words the brief adds, each only inside its own element.

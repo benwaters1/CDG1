@@ -239,9 +239,9 @@ def run():
             # 9 Nov (owner): broader, no champagne jellies in copper moulds, the tree and wreaths on day two, carols
             # by the fire, the tasting and cocktails in Le Bar. test_retreat_days holds the rest of what was asked.
             if len(days) == 5:
-                # 10 Nov (owner): "just call it a Christmas market" -- one, unnamed, on the morning of day 2.
+                # 10 Nov (owner): the village's own Christmas market, a walk away, on the morning of day 2.
                 s.check("Noël: day two is a Christmas market, then the tree and the wreaths",
-                        "Le marché de Noël" in days[1] and "A morning at a Christmas market" in days[1]
+                        "Le marché de Noël" in days[1] and "the village Christmas market, a short walk away" in days[1]
                         and "Christmas tree" in days[1] and "wreaths" in days[1], detail=days[1][:160])
                 s.check("Noël: day three is the gingerbread château",
                         "Le pain d’épices" in days[2] and "gingerbread château" in days[2]
