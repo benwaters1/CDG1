@@ -1,0 +1,32 @@
+{#- 9 Nov 2026 (owner: "room words is important make sure its french chateau romantic style but accurate"). The few lines
+    each room's own page opens with, under its name and above the facts. Romantic in the telling, never in the facts: every
+    claim here is one the owner has already confirmed, and the bed, the bathroom and breakfast are left to the table below,
+    where they are kept right (the old one-line description was taken off this page for repeating them).
+
+    Where each fact comes from:
+      - the owner's card paragraphs of 22 Oct (_room_copy.html): the names Jeanne d'Arc, Olympe de Gouges, Chambre Bleue
+        and Chambre des Fleurs; the gilded beds and the tapestry; the room divided in 2021 and its old floorboards; the
+        hallway that caved in, the floor and ceiling that survived, the slate floor lifted and kept safe; the King Suite's
+        canopy, its bath and basin in the room; the Marquis Suite as the grandest bedroom, its gilded four-poster, emperor
+        bed, armchairs by the fireplace and 70 m2; the Family Suite's 140 m2, its beds, children from eight, and the
+        wallpaper printed anew by the company that first made it, from its original templates
+      - the owner, 14 Oct: the only four-posters are the King Suite's (wooden) and the Marquis Suite's (gold); the Twin,
+        King, King Suite and Family Suite have the mountain view, and the Marquis Suite faces the front of the chateau
+      - the Marquis Suite's photographs: the mirror above the fireplace
+      - the Twin Room (Ground Floor), 17 Oct: a queen and a double, on the ground floor but still reached by stairs, its
+        private bathroom next door, the mountains outside the window
+      - history, not the house: Jeanne d'Arc, the Maid of Orleans; Olympe de Gouges, who in 1791 wrote the Declaration of
+        the Rights of Woman
+    Never: "ensuite" for any bathroom, the Marquis Suite's walls, a mountain view from the Marquis Suite, or a four-poster
+    in any room but those two. test_room_words holds all of it. -#}
+{% macro room_words(name) -%}
+{%- set WORDS = {
+  'The Twin Room': 'Two gilded beds lie beneath an old tapestry in the Chambre Jeanne d’Arc, named for the Maid of Orléans, and the window looks out to the mountains. It was once half of a far larger room; when it was divided in 2021 it was laid with old wooden floorboards, and it has the hush of a room that was always meant to be. A gentle place to wake, with the peaks already at the glass.',
+  'The King Room': 'The Chambre Olympe de Gouges carries the name of the writer who, in 1791, claimed the rights of woman, and it is one of the few rooms in the château whose floor and ceiling survived. Before the restoration its hallway had fallen in and the room could not be reached at all. Its original slate floor was lifted and kept safe while the room was brought back to life; now there is a king bed, and the mountains at the window.',
+  'The King Suite': 'A king bed beneath the canopy of a wooden four-poster, and beyond the windows, the mountains. A bath and a basin stand in the room itself, so a slow morning need never leave it.',
+  'The Marquis Suite': 'The château’s grandest bedroom, with 70 m² entirely your own. A gilded four-poster holds an emperor bed, and armchairs are drawn up to the fireplace beneath its mirror. Its windows keep watch over the front of the château.',
+  'The Family Suite': 'Two bedrooms for a family, the Chambre Bleue and the Chambre des Fleurs, across 140 m², with the mountains at the windows. In one of them the original wallpaper has come home, printed anew by the very company that first made it, from its original templates. Two double beds in one room and three in the other: room for everyone, and children of eight and over are welcome.',
+  'The Twin Room (Ground Floor)': 'A queen bed and a double bed in a quiet room on the ground floor, though, like every bedroom in the château, it is still reached by stairs. Its private bathroom is right next door, and the mountains are outside the window.'
+} -%}
+{{- WORDS.get(name, '') -}}
+{%- endmacro %}

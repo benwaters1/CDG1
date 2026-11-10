@@ -37,12 +37,19 @@ in each place. Without the context it cannot see house_place or house_maps,
 and every public page goes down -- which these renders would catch too.
 """
 import html as htmllib
+import os
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 from html.parser import HTMLParser
 
 from _harness import Suite, db
 import _harness
 from test_copy_unchanged import public_paths
+from test_staff_header_on_a_phone import find_browser
+from test_where_the_gates_are import _arrival_card
 
 m = _harness.m
 
@@ -126,6 +133,37 @@ class _PlainAddress(HTMLParser):
     def handle_data(self, data):
         if self.street in data and not any(hidden for _, hidden in self.stack):
             self.found += data.count(self.street)
+
+
+IPHONE = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+          "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1")
+PC = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+      "Chrome/130.0.0.0 Safari/537.36")
+
+
+def _hrefs_as(browser, page, agent):
+    """Where each address link points once the page's own scripts have run, in
+    headless Chrome calling itself `agent`. No stylesheets and no network: only
+    the page's inline scripts matter here."""
+    work = tempfile.mkdtemp(prefix="gudanes_maps_")
+    try:
+        path = os.path.join(work, "page.html")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(re.sub(r"<link\b[^>]*>", "", page))
+        cmd = [browser, "--headless=new", "--disable-gpu", "--no-first-run",
+               "--no-default-browser-check", "--disable-extensions",
+               "--user-data-dir=" + os.path.join(work, "profile"),
+               "--host-resolver-rules=MAP * ~NOTFOUND", "--virtual-time-budget=5000",
+               "--user-agent=" + agent, "--dump-dom",
+               "file:///" + path.replace("\\", "/").lstrip("/")]
+        if sys.platform.startswith("linux"):
+            cmd.insert(1, "--no-sandbox")
+        out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=120).stdout
+        return [htmllib.unescape(h) for h in
+                re.findall(r'<a class="g-addr(?: [^"]*)?" href="([^"]*)"', out)]
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def _footer(page):
@@ -232,6 +270,30 @@ def run():
         s.check("no page in the sitemap prints the address as words that open nothing",
                 len(paths) >= 15 and not plain,
                 detail="%d pages swept; plain: %s" % (len(paths), plain))
+
+        s.section("Apple Maps on an Apple device, Google's everywhere else")
+        with m.app.test_request_context("/"):
+            apple = m.house_map_links()["apple"]
+        s.check("the Apple link is the same pin",
+                apple.startswith("https://maps.apple.com/?ll=%s,%s" % (LAT, LNG)), detail=apple)
+        tags = re.findall(r'<a class="g-addr[^"]*"[^>]*>', page)
+        s.check("every address link on the page carries it",
+                bool(tags) and all('data-apple="%s"' % htmllib.escape(apple) in t for t in tags),
+                detail=str(tags[:2]))
+        card = _arrival_card()
+        s.check("and so does the arrival card's Open in maps",
+                'class="g-arrive__map"' in card and 'data-apple="%s"' % htmllib.escape(apple) in card,
+                detail=card[card.find("g-arrive__map") - 20:][:300])
+        browser = find_browser()
+        s.check("a browser to try it in", bool(browser),
+                detail="set GUDANES_CHROME; a check that quietly does not run reads as cover")
+        if browser:
+            as_iphone = _hrefs_as(browser, page, IPHONE)
+            as_pc = _hrefs_as(browser, page, PC)
+            s.check("as an iPhone, every address opens Apple Maps",
+                    bool(as_iphone) and all(h == apple for h in as_iphone), detail=str(as_iphone))
+            s.check("as a PC, every address opens Google Maps",
+                    bool(as_pc) and all(h == google for h in as_pc), detail=str(as_pc))
 
         s.section("Beside it, the telephone and the addresses are links too")
         block = _contact_block(page)

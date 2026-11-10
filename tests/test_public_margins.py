@@ -222,6 +222,19 @@ PROBE = r"""
       credGap: credGap
     };
 
+    // The home page made shorter on a phone (9 Nov): Visit beside Help in the
+    // footer, the reassurances two to a row, and La Vie de Château folded.
+    var cols = document.querySelectorAll('.g-footer__grid > div');
+    out.footCols = cols.length >= 3
+      ? [cols[1].getBoundingClientRect().top, cols[2].getBoundingClientRect().top] : null;
+    var lis = document.querySelectorAll('.g-assure__grid > li');
+    out.assureRow = lis.length >= 2
+      ? [lis[0].getBoundingClientRect().top, lis[1].getBoundingClientRect().top] : null;
+    var fullPs = document.querySelectorAll('.g-full__copy .g-full__p');
+    out.fold = fullPs.length ? {more: !!document.querySelector('.g-full__more'), all: fullPs.length,
+                                shown: [].filter.call(fullPs, shown).length} : null;
+    out.H = de.scrollHeight;
+
     var where = document.querySelector('.g-where');
     out.where = where ? {top: y(where.getBoundingClientRect().top), vh: window.innerHeight,
                          footT: out.run.footT} : null;
@@ -601,6 +614,28 @@ def run():
         home = [d for d in real if d["page"] == "/" and d["asked"] == PHONE]
         s.check("draws no second address line under the hero",
                 bool(home) and not home[0]["where"], detail=str(home[:1])[:200])
+        s.section("The home page, shorter on a phone")
+        desk_home = [d for d in real if d["page"] == "/" and d["asked"] == DESK]
+        fold = home[0].get("fold") if home else None
+        s.check("La Vie de Château shows its first paragraph, and Read more for the rest",
+                bool(fold) and fold["more"] and fold["shown"] == 1 and fold["all"] > 1,
+                detail=str(fold))
+        dfold = desk_home[0].get("fold") if desk_home else None
+        s.check("and on a desk all of it, with nothing to press",
+                bool(dfold) and not dfold["more"] and dfold["shown"] == dfold["all"],
+                detail=str(dfold))
+        phones = [d for d in real if d["asked"] == PHONE]
+        apart = ["%s (%s)" % (d["page"], d["footCols"]) for d in phones
+                 if d.get("footCols") and abs(d["footCols"][0] - d["footCols"][1]) > 1]
+        s.check("the footer's Visit and Help sit side by side on every page",
+                not apart and any(d.get("footCols") for d in phones), detail=" | ".join(apart[:4]))
+        stacked = ["%s (%s)" % (d["page"], d["assureRow"]) for d in phones
+                   if d.get("assureRow") and abs(d["assureRow"][0] - d["assureRow"][1]) > 1]
+        s.check("and the four reassurances two to a row",
+                not stacked and any(d.get("assureRow") for d in phones), detail=" | ".join(stacked[:4]))
+        if home:
+            print("    ....  the home page on a phone: %dpx, %.1f screens" % (home[0]["H"], home[0]["H"] / 844.0))
+
         bars = [d for d in real if d.get("bar")]
         s.check("and the bar check met a bar at all", bool(bars),
                 detail="if no page drew one, 'no bar over the footer' is not a finding")
