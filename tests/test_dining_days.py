@@ -198,8 +198,10 @@ def run():
                 "Opening Hours" in info and "Monday Closed" in info
                 and "Thursday Dinner from 19:45" in info)
         home = visible_text(guest.get("/").get_data(as_text=True))
-        s.check("and the homepage words dinner by them",
-                "Dinner at the château, Thursday to Sunday, from 19:45." in home)
+        # Dine at La Table left the home page (owner's second review, 9 Nov); the footer, on every page,
+        # words the evenings by the same days.
+        s.check("and the home page's footer words dinner by them",
+                "La Table Thursday to Sunday, from 19:45" in home)
         oc.post("/admin/restaurant/settings", data=dict(form, dinner_time="20:00",
                                                         dining_days=["3", "4", "5", "6"]))
         info = visible_text(guest.get("/restaurant").get_data(as_text=True))

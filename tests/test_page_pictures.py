@@ -35,30 +35,21 @@ UNNAMED = [TAG + " Painting Week", TAG + " Garden Week", TAG + " Music Week", TA
 OWN_PHOTO = "zpp_own_photo.jpg"
 
 # For each page: (what to look for, how many at least), in the brief's words.
+# 9 Nov 2026, evening (the owner's second review of the site, 1 and 2.7): the sections that went -- /workshops'
+# Art of the Find, Evenings, Be Part of It, Valley, Why So Many Return and A Few Days, /book's two galleries and
+# its strips, /facilities' winter, /whats-on's skiing gallery -- went with what was held of them here. A film
+# strip, a gold frame or a polaroid is a plain photograph now (gudanes-pictures.css); test_site_review_2 and
+# test_public_pages_measured hold what replaced them.
 PAGES = {
     "/workshops": [
         ("each retreat's photograph under an arched top", r'class="g-wscard__arch"', 1),
         ("a day at Gudanes, down a timeline, swapping sides", r'class="g-day g-day--alt"', 1),
         ("The Table: a collage of four", r'class="g-mos g-mos--lead g-mos--4 ', 1),
         ("and a slider of the rest", r'aria-label="The Table"', 1),
-        ("The Art of the Find: the vide-grenier framed", r'class="g-cadre g-cadre--rect[^"]*">\s*<div class="g-cadre__frame"><div class="g-cadre__mount"><img src="[^"]*vide-grenier', 1),
-        ("and three finds in an album", r'class="g-album g-album--3 ', 1),
-        ("The Evenings: a film strip", r'aria-label="The evenings"', 1),
-        ("Be Part of It: the words beside the restorer", r'class="g-sp g-sp--flip g-sp--tuck', 1),
-        ("The Valley: a slider", r'aria-label="The Valley"', 1),
-        ("its Commons photographs credited", r'Traumrune.*Jeunamateur', 1),
-        ("Why So Many Return: an album", r'class="g-album g-album--2 ', 1),
-        ("the band of four: a film strip", r'aria-label="At the table"', 1),
-        ("A Few Days at Gudanes: a slider, and the whole set behind See all", r'See all 23 photos', 1),
     ],
     "/book": [
         ("the rooms: each card its words beside its photographs, sides alternating", r'class="g-cards g-cards--split"', 1),
         ("each room's photographs in a slider of five at most", r'class="g-car g-car--room"', 1),
-        ("the band at the top: a film strip", r'aria-label="The house"', 1),
-        ("Your Room, Breakfast and the Lounge: a collage of four", r'class="g-mos g-mos--lead g-mos--4 ', 1),
-        ("and all nine behind See all", r'See all 9 photos', 1),
-        ("the park: one drone photograph across the page", r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*from-the-air-pool-garden', 1),
-        ("and the rest of it in a slider", r'aria-label="A château park to explore"', 1),
     ],
     "/events": [
         ("three ways to take the château, each with an arched framed photograph", r'class="g-cadre g-cadre--arch[^"]*g-way__cadre"', 3),
@@ -79,7 +70,7 @@ PAGES = {
     ],
     "/events/photoshoots": [
         ("an uneven collage", r'class="g-mos g-mos--tall ', 1),
-        ("two rooms across the page, one restored and one as it was found", r'class="g-plein "', 2),
+        ("a room as it was found across the page", r'class="g-plein "', 1),
         ("a room as found among them", r'mountains-through-the-roof', 1),
         ("and all thirteen behind See all", r'See all 13 photos', 1),
     ],
@@ -103,16 +94,12 @@ PAGES = {
     "/facilities": [
         ("The Grounds: a collage of four", r'class="g-mos g-mos--lead g-mos--4 ', 1),
         ("and the rest in a slider", r'aria-label="The grounds"', 1),
-        ("Winter at Gudanes: the chateau in snow across the page", r'class="g-plein "', 1),
-        ("and an album", r'class="g-album g-album--3 ', 1),
     ],
     "/whats-on": [
         ("each place section with a photograph beside it", r'class="g-sp[^"]*">\s*<div class="g-sp__text">', 4),
         # 9 Nov (owner): Andorra had none the house held; Sant Joan de Caselles, from Commons, credited under it.
         ("Andorra: Sant Joan de Caselles beside it, its photographer credited",
          r'id="andorra".*?retreats/sant-joan-de-caselles\.jpg.*?<p class="g-car__credits"><small class="g-credit">Photo <a [^>]*>Pierre Bona</a>, <a [^>]*>CC BY-SA 3\.0</a>.*?id="close-by"', 1),
-        ("Skiing Nearby: a slider", r'aria-label="Skiing nearby"', 1),
-        ("its Commons credits where they can be seen", r'<p class="g-car__credits"><span class="g-credit">', 1),
         ("the hot springs and the cave credited", r'Jeunamateur.*Traumrune', 1),
     ],
     "/press": [

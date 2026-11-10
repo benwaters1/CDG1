@@ -188,7 +188,10 @@ PROBE = r"""
     });
 
     var last = null;
-    [].forEach.call(main ? main.children : [], function (c) { if (shown(c)) last = c; });
+    // Not a bar fixed to the screen: a room page's booking bar is main's last child since the
+    // Monument line went into the footer (9 Nov 2026), and its box is the window's, not the page's.
+    [].forEach.call(main ? main.children : [], function (c) {
+      if (shown(c) && getComputedStyle(c).position !== 'fixed') last = c; });
     function y(v) { return v + window.scrollY; }
     // How far the last line of words above the Monument band stands from it.
     var cred = main ? main.querySelector(':scope > .g-cred') : null, credGap = null;
@@ -304,7 +307,6 @@ OLD_FAULTS = """<style>
 .g main > .g-close{ padding-bottom: 0 !important; }
 </style>"""
 
-BAND_CLEAR = 24   # px: the last words above the Monument band stand at least this far off it
 PANEL_PAD = 24    # px: what a card or panel is padded on a phone
 
 # The guests' own pages: reached by the link in a booking's letter, in no
@@ -484,8 +486,6 @@ def _faults(d):
         out.append("; ".join(lost))
     if d.get("cards"):
         out.append("an empty column beside the words: " + "; ".join(d["cards"][:3]))
-    if run.get("credGap") is not None and run["credGap"] < BAND_CLEAR:
-        out.append("words %dpx above the Monument band" % run["credGap"])
     if w <= PHONE_GUTTER_UNTIL:
         fat = ["%s %gpx" % (n, pad) for n, pad in d.get("panels", []) if pad > PANEL_PAD]
         if fat:
@@ -542,9 +542,11 @@ def run():
                 detail="rendered %s of %s" % ([p for p, _ in guests], guest_paths))
         pages += guests
 
-        # The home page for the control: it draws the booking bar, so the bar
-        # fault can be put back and seen as well as the others.
-        control = [p for p in pages if p[0] == "/"] or pages[:1]
+        # A retreat's page for the control: it draws the booking bar and the
+        # reassurance band, so both faults can be put back and seen. (The home
+        # page was the control until 9 Nov 2026, when the owner's second review
+        # kept the reassurance band for the pages a guest pays from.)
+        control = [p for p in pages if re.fullmatch(r"/workshops/\d+", p[0])][:1] or pages[:1]
         doctored = [("control:" + control[0][0],
                      control[0][1].replace("</head>", OLD_FAULTS + "</head>", 1))]
 
@@ -568,10 +570,8 @@ def run():
                 "empty under" in said and "at the foot of main" in said, detail=said)
         s.check("for the strip over the footer",
                 "between the reassurance band and the footer" in said, detail=said)
-        s.check("for the booking bar over the footer's last line",
+        s.check("and for the booking bar over the footer's last line",
                 "covers the footer's last line" in said, detail=said)
-        s.check("and for words pressed against the Monument band",
-                "above the Monument band" in said, detail=said)
 
         real = [d for d in frames if not d["page"].startswith("control:")]
         for width, label in ((PHONE, "on a phone (390px)"), (TABLET, "on a tablet (768px)"),
@@ -599,9 +599,6 @@ def run():
             s.check("no booking bar over the footer's last line", not bad, detail=" | ".join(bad[:4]))
             bad = each(lambda f: "left of its row" in f)
             s.check("every row you swipe starts at its first card", not bad, detail=" | ".join(bad[:4]))
-            bad = each(lambda f: "above the Monument band" in f)
-            s.check("the last words stand at least %dpx clear of the Monument band" % BAND_CLEAR,
-                    not bad, detail=" | ".join(bad[:4]))
             if width <= PHONE_GUTTER_UNTIL:
                 bad = each(lambda f: "a panel padded past" in f)
                 s.check("cards and panels drop to %dpx of padding" % PANEL_PAD,
@@ -610,6 +607,8 @@ def run():
             s.check("a card showing no photograph gives its words the whole card",
                     not bad, detail=" | ".join(bad[:4]))
 
+        # The second review's brief took this line out; the owner kept it (10 Nov: "i wated
+        # another address further up").
         s.section("The address, high on the home page")
         home = [d for d in real if d["page"] == "/" and d["asked"] == PHONE]
         where = home[0]["where"] if home else None

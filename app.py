@@ -1110,9 +1110,7 @@ booked: a room as soon as your payment goes through, a workshop place as
 you register. You will receive a confirmation by email with your reference
 code, which is also how you find and manage your booking at any time.
 
-A table at La Table is a request: the château reviews it and confirms by
-email. If it is declined, anything you have paid for it is refunded
-automatically.
+La Table is not taking bookings at present.
 
 Bookings made through another website, such as Booking.com, are confirmed
 by that website, on its own terms.
@@ -1147,16 +1145,12 @@ paid us.
   individually, and we can sometimes move your dates instead. Any refund we
   do make is at our discretion: a gesture of goodwill rather than an
   entitlement, and not a precedent for any other booking.
-- If we cancel a confirmed booking, or decline a table you have requested,
-  anything already paid is refunded in full.
+- If we cancel a confirmed booking, anything already paid is refunded in full.
 - Where you booked through Booking.com or another travel website, that
   website's cancellation terms apply instead of these, and any refund is
   arranged through it rather than with us.
 
 5. Dining and workshops
-- A table is held for the time booked. If you have not arrived and have not
-  contacted us, we may release it. Repeated no-shows may mean we decline
-  future reservations.
 - If we cancel a workshop for any reason, you are refunded in full or
   offered a place on another date, as you prefer.
 - What each workshop includes is set out on its page and in your
@@ -8782,6 +8776,8 @@ def init_db():
 
     # Extras added to the catalogue since, once each. See ADDED_EXTRAS.
     seed_added_extras(conn)
+    correct_extra_wording(conn)
+    correct_terms_la_table(conn)
     conn.commit()
 
     # The list a room is walked against, so the first person to open the page
@@ -16030,7 +16026,8 @@ def correct_whats_on(conn):
 
 
 DEFAULT_EXTRAS = [
-    {"name": "Airport Transfer (Toulouse, up to 3 guests)", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1},
+    {"name": "Airport Transfer (Toulouse, up to 3 guests)", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1,
+     "description": "Met at Toulouse-Blagnac and driven to the gates, up to three of you. The same on the way back, if you ask."},
 ]
 
 # Extras put into the catalogue AFTER a house has started, which DEFAULT_EXTRAS
@@ -16056,13 +16053,93 @@ ADDED_EXTRAS = [
     # what the house owes and on the calendar.
     ("added_extra_chateau_tour", {
         "name": "A tour of the château",
-        "description": ("A guided tour of the house and its restoration, on a "
+        "description": ("A guided tour of the château and its restoration, on a "
                         "day of your stay you choose. One price for the "
                         "booking, however many of you there are."),
         "price": 50.0, "category": "activity", "sort_order": 0,
         "guest_bookable": 1, "max_qty": 1, "ask_when": 1,
     }),
 ]
+
+
+# The owner's second review of the site (9 Nov 2026, section 5) rewrote two
+# extras' lines. Both are rows, seeded once into a database that has had them
+# for weeks, so changing ADDED_EXTRAS alone would reach a fresh install and not
+# the house. Done once, recorded in app_settings like the seeds, and only where
+# the row still says what the seed wrote -- a line the owner has since edited
+# in the admin is hers, and stays.
+EXTRA_WORDING_9NOV = "extras_wording_9nov"
+TOUR_OLD = "A guided tour of the house and its restoration"
+TOUR_NEW = "A guided tour of the château and its restoration"
+TRANSFER_LINE = ("Met at Toulouse-Blagnac and driven to the gates, up to three of "
+                 "you. The same on the way back, if you ask.")
+
+
+def correct_extra_wording(conn):
+    """Put the owner's 9 November wording on the tour and the transfer, once."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (EXTRA_WORDING_9NOV,)).fetchone():
+        return 0
+    changed = 0
+    for row in conn.execute(
+            "SELECT id, description FROM extras WHERE description LIKE ?",
+            (TOUR_OLD + "%",)).fetchall():
+        bare = (row["description"] or "").strip().rstrip(".")
+        new = (TOUR_NEW + ", on a day of your stay you choose." if bare == TOUR_OLD
+               else row["description"].replace(TOUR_OLD, TOUR_NEW, 1))
+        conn.execute("UPDATE extras SET description = ? WHERE id = ?", (new, row["id"]))
+        changed += 1
+    changed += conn.execute(
+        """UPDATE extras SET description = ?
+            WHERE (name LIKE 'Airport Transfer%' OR name LIKE 'An airport transfer%')
+              AND COALESCE(TRIM(description), '') = ''""", (TRANSFER_LINE,)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO NOTHING",
+                 (EXTRA_WORDING_9NOV, datetime.now(timezone.utc).isoformat()))
+    return changed
+
+
+# The owner's second review (9 Nov 2026, section 5): the terms still sold La
+# Table, which is not taking bookings -- a table "is a request", the refund when
+# one is declined, and the no-show rule. The terms are the owner's words, kept
+# in app_settings and edited on the Terms page, so they are changed here once,
+# and only where they still read exactly as DEFAULT_TERMS wrote them; a
+# paragraph the owner has rewritten is hers and is left as it is.
+TERMS_LA_TABLE_9NOV = "terms_la_table_9nov"
+TERMS_LA_TABLE_EDITS = (
+    ("A table at La Table is a request: the château reviews it and confirms by\n"
+     "email. If it is declined, anything you have paid for it is refunded\n"
+     "automatically.\n",
+     "La Table is not taking bookings at present.\n"),
+    ("- If we cancel a confirmed booking, or decline a table you have requested,\n"
+     "  anything already paid is refunded in full.\n",
+     "- If we cancel a confirmed booking, anything already paid is refunded in full.\n"),
+    ("- A table is held for the time booked. If you have not arrived and have not\n"
+     "  contacted us, we may release it. Repeated no-shows may mean we decline\n"
+     "  future reservations.\n",
+     ""),
+)
+
+
+def correct_terms_la_table(conn):
+    """Take La Table's booking clauses out of the stored terms, once."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (TERMS_LA_TABLE_9NOV,)).fetchone():
+        return 0
+    row = conn.execute("SELECT value FROM app_settings WHERE key = 'terms_and_conditions'").fetchone()
+    changed = 0
+    if row and row["value"]:
+        text = row["value"].replace("\r\n", "\n")
+        for old, new in TERMS_LA_TABLE_EDITS:
+            if old in text:
+                text = text.replace(old, new, 1)
+                changed += 1
+        if changed:
+            conn.execute("UPDATE app_settings SET value = ? WHERE key = 'terms_and_conditions'", (text,))
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO NOTHING",
+                 (TERMS_LA_TABLE_9NOV, datetime.now(timezone.utc).isoformat()))
+    return changed
 
 
 def seed_added_extras(conn):
@@ -41230,6 +41307,28 @@ def owner_home_next_up(conn, today, day_rows):
             "tomorrow": arriving == today + timedelta(days=1)}
 
 
+def featured_room_reviews(conn, limit=6):
+    """The room reviews the owner has featured AND the guest agreed to publish.
+
+    One query for every public page that quotes a guest -- /book, and since
+    9 Nov 2026 the home page, whose third quotation is the first of these.
+    """
+    return conn.execute(
+        """SELECT guest_feedback.*, rooms.name AS room_name FROM guest_feedback
+           LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
+           LEFT JOIN rooms ON rooms.id = bookings.room_id
+           -- Consent as well as the flag, and HERE rather than on the
+           -- admin page. A page can be got round and the next person to
+           -- add a review carousel would write this query again; wiring it
+           -- into the query that builds the public page is what makes
+           -- "nothing is published without asking you first" true even when
+           -- somebody ticks the wrong row.
+           WHERE guest_feedback.featured = 1 AND guest_feedback.rating IS NOT NULL
+             AND guest_feedback.publish_consent = 1
+           ORDER BY guest_feedback.rating DESC, guest_feedback.submitted_at DESC LIMIT ?""",
+        (limit,)).fetchall()
+
+
 @app.route("/")
 def dashboard():
     """What needs attention today, for whoever is looking."""
@@ -41273,9 +41372,11 @@ def dashboard():
                   AND {SESSION_IS_LIVE} AND {WORKSHOP_IS_PUBLIC}
                 ORDER BY workshop_sessions.start_date LIMIT 3""",
             (house_today_iso(),)).fetchall()]
+        reviews = [r for r in featured_room_reviews(conn) if r["comment"]]
         conn.close()
         # Both are optional in the template, so an empty house still renders.
-        return render_template("home.html", rooms=rooms, upcoming=upcoming)
+        return render_template("home.html", rooms=rooms, upcoming=upcoming,
+                               featured_reviews=reviews)
     return staff_dashboard()
 
 
@@ -54727,20 +54828,6 @@ def book_rooms():
                         if nothing_available else None)
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
-    featured_reviews = conn.execute(
-        """SELECT guest_feedback.*, rooms.name AS room_name FROM guest_feedback
-           LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
-           LEFT JOIN rooms ON rooms.id = bookings.room_id
-           -- Consent as well as the flag, and HERE rather than on the
-           -- admin page. A page can be got round and the next person to
-           -- add a review carousel would write this query again; wiring it
-           -- into the query that builds the public page is what makes
-           -- "nothing is published without asking you first" true even when
-           -- somebody ticks the wrong row.
-           WHERE guest_feedback.featured = 1 AND guest_feedback.rating IS NOT NULL
-             AND guest_feedback.publish_consent = 1
-           ORDER BY guest_feedback.rating DESC, guest_feedback.submitted_at DESC LIMIT 6"""
-    ).fetchall()
     # Computed before the connection closes. Only when nobody has searched:
     # somebody who has just been told their dates are taken does not want a
     # second list of dates that are not theirs, they want to change one of
@@ -54778,7 +54865,6 @@ def book_rooms():
         weather=weather,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
-        featured_reviews=featured_reviews,
         **grid,
     )
 
@@ -67839,8 +67925,14 @@ def pic_size(src):
     return size
 
 
-def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None):
-    """One <img>, the way every picture component draws it."""
+def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upto=None):
+    """One <img>, the way every picture component draws it.
+
+    upto: never drawn wider than this many times the file's own width
+    (9 Nov 2026, the owner's second review, 3.1). A room's gallery is 1168px
+    wide and some of its photographs are 531px files: drawn at full width they
+    are soft, so they are drawn at the most their file will stand, centred.
+    """
     from markupsafe import Markup, escape
     rel = (src[len("/static/img/"):] if src.startswith("/static/img/")
            else _pic_held(src))
@@ -67852,7 +67944,13 @@ def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None):
         widths = [x for x in PIC_WIDTHS if x < w] + [w]
         attrs.append('srcset="' + ", ".join(
             f"/pic/{x}/{escape(rel)} {x}w" for x in widths) + '"')
-        attrs.append(f'sizes="{escape(sizes)}"')
+        # 9 Nov 2026, evening (owner's second review, 3.1): "auto" first, for a lazy photograph.
+        # Each component guessed its own width in `sizes`, and many guessed low -- a
+        # retreat photograph said 389px and was drawn at 686, so the browser took the
+        # 800px file as a high-density one and drew it soft. With auto the browser
+        # reads the width the photograph is actually drawn at; the guess stays as the
+        # fallback, and public_base sets the drawn width for a browser without auto.
+        attrs.append(f'sizes="{"" if hero else "auto, "}{escape(sizes)}"')
     if w and h:
         attrs.append(f'width="{int(w)}" height="{int(h)}"')
     if hero:
@@ -67862,8 +67960,13 @@ def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None):
     attrs.append('decoding="async"')
     if cls:
         attrs.append(f'class="{escape(cls)}"')
+    style = []
     if pos:
-        attrs.append(f'style="object-position: {escape(pos)}"')
+        style.append(f"object-position: {escape(pos)}")
+    if upto and size:
+        style.append(f"max-width: {int(w * upto)}px; margin-inline: auto")
+    if style:
+        attrs.append('style="' + '; '.join(style) + '"')
     return Markup("<img " + " ".join(attrs) + ">")
 
 

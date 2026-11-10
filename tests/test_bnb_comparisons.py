@@ -6,7 +6,7 @@ dinner included". Then, the same day: "change the comparisons back to room and
 breakfast so its succinct / but have something where it says lunch and dinner
 unavailable and point it to the restaurants nearby". The three comparisons in
 _stay_or_workshop.html:
-  - the two columns on the home page and Stay
+  - the two columns on the home page (Stay lost them in the owner's second review, 9 Nov)
   - the side-by-side table on /workshops
   - the notice before a night is booked, on Stay and each room's page
 Each calls the night a room and breakfast, says its lunch and dinner are
@@ -14,6 +14,8 @@ unavailable and links the restaurants nearby -- a map search for restaurants
 centred on the pin at the gates, never a search by name -- and gives the
 retreat its gourmet chefs, every meal, and drinks included. The night never
 offers a dinner, whatever the dining switch says, since there is no chef.
+"Gourmet chefs on site" is the owner's own phrase: the site's rule is the
+château, never the house (second review, 9 Nov).
 """
 import re
 
@@ -66,8 +68,12 @@ def run():
             s.section(f"With the dining switch {mode}")
             pages = {p: client.get(p).get_data(as_text=True) for p in ("/", "/book", "/workshops", f"/book/{room['id']}")}
 
-            for path in ("/", "/book"):
+            # The two columns are on the home page only: the owner's second review (9 Nov) took
+            # "A Night, or la Vie de Château" off /book ("on /workshops and the home page already").
+            # /book keeps the notice before a night is booked, read below.
+            for path in ("/",):
                 panel = _block(pages[path], 'class="g-sec g-sow"', "</section>")
+                s.check(f"{path}: the two columns are there to read", 'g-sow__col--full' in panel)
                 stay_html = _block(panel, 'class="g-sow__col', 'g-sow__col--full')
                 stay, retreat = visible_text(stay_html), visible_text(_block(panel, 'g-sow__col--full', "</article>"))
                 s.check(f"{path}: the night is a room and breakfast", "Room and breakfast" in stay, detail=stay[:160])
@@ -87,8 +93,8 @@ def run():
                     bool(meals) and visible_text(meals.group(1)).strip() == "Unavailable: restaurants nearby"
                     and _linked(meals.group(1)) and "Every meal, and drinks included" in meals.group(2),
                     detail=meals.group(0)[:240] if meals else "no row")
-            chefs = re.search(r'<th scope="row">Gourmet chefs in the house</th><td>(.*?)</td><td class="g-vs__full">(.*?)</td>', table, re.S)
-            s.check("/workshops: gourmet chefs in the house, not with a night; with a retreat",
+            chefs = re.search(r'<th scope="row">Gourmet chefs on site</th><td>(.*?)</td><td class="g-vs__full">(.*?)</td>', table, re.S)
+            s.check("/workshops: gourmet chefs on site, not with a night; with a retreat",
                     bool(chefs) and "Not included" in chefs.group(1) and "Included" in chefs.group(2),
                     detail=chefs.group(0)[:200] if chefs else "no row")
             s.check("/workshops: the night offers no dinner", not STAY_OFFERS_DINNER.search(visible_text(table)))

@@ -92,19 +92,11 @@
    open one at a time..." - directly over a lede that opens "Five bedrooms inside a
    restoration". It said nothing about availability. The lede carries it. #}
 
+{#- 9 Nov, evening (owner's second review, 1): one paragraph of introduction, then the dates. A Night at Gudanes,
+    which said the same in more words, went; so did the second paragraph, with "renovation" in it. -#}
+{% set _gf = namespace(on=false) %}{% for _r in rooms %}{% if ((_r['floor'] or '')|lower).startswith('ground') or 'Ground Floor' in _r['name'] %}{% set _gf.on = true %}{% endif %}{% endfor -%}
 <section class="g-sec"><div class="g-wrap">
   <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room, breakfast and the lounge, with the pool, tennis and the grounds outside.</p>
-  <p class="g-p">It is a restoration, not a renovation. The walls stay as they are, by law, while the beds and the bathrooms are new: the comforts on which nothing has been compromised. Every stay helps bring the château back to life.</p>
-</div></section>
-
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('chateau') }}</div>
-  <p class="g-fr">Une nuit au château <span class="g-fr__en">A night at the château</span></p>
-  <p class="g-eyebrow">Your Stay</p>
-  <h2 class="g-place">A Night at Gudanes</h2>
-  <p class="g-p g-lede-first">You come through the gates and up the drive, and the château rises at the end of it. {% set _gf = namespace(on=false) %}{% for _r in rooms %}{% if ((_r['floor'] or '')|lower).startswith('ground') or 'Ground Floor' in _r['name'] %}{% set _gf.on = true %}{% endif %}{% endfor -%}
-  Your room is up the original staircase{% if _gf.on %}, or on the ground floor (still reached by stairs){% endif %}: antiques from the brocantes beside new pieces, walls the centuries left as they are, and a bathroom of your own on the ground floor.</p>
-  <p class="g-p">The morning begins with breakfast. The day is yours: the pool, the tennis court, the grounds, or the valley below, and the lounge to come back to. In the evening the château goes quiet.</p>
 </div></section>
 
 
@@ -132,10 +124,14 @@
     <a class="g-inline-link" href="{{ url_for('find_booking') }}">Manage an existing booking</a>
   </p>
   {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#s_arrival', '#s_departure') }}
+  {#- 9 Nov, evening (owner's second review, 1): the film strip under the bar went. -#}
+  {#- 9 Nov, evening (owner's second review, 2.5): what is open next, under the dates it answers. One sentence when
+      every room opens on the same night; the table only when they differ. -#}
+  {% from '_availability_strip.html' import next_free as next_free_strip %}
+  {{ next_free_strip(next_free) }}
+  {#- What it is doing at the château now, from the house's hourly reading (the owner asked for it on Stay). -#}
+  {% from '_weather_live.html' import weather_now %}{{ weather_now(weather) }}
 </div></section>
-
-{#- 9 Nov (the brief, G): the band as a drifting film strip. -#}
-{{ bande([['/static/img/rk/china-dresser.jpg', 'Dressers of old china', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f8a75998-9665-4bdf-bda4-9c252e7c8acb/P1088759+2.png?format=1000w', 'A salon brought back', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/4bb7604e-6c78-44c5-a89a-a146d1da4fa9/Screenshot+2026-08-15+at+12.02.30+am.png?format=1000w', 'A salon in the morning light', ''], ['/static/img/xx/flowers-silver-tray.jpg', 'Flowers on a silver tray by the window', ''], ['https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w', 'A fireplace and old wallpaper in one of the rooms', '']], 'The house') }}
 
 <!-- ============ WHY THE WALLS STAY ============ -->
 {# 1 Oct: ">Why the Walls Stay As They Are<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
@@ -364,96 +360,7 @@
 {{ room_pick(rooms) }}
 
 
-{# 6 Oct (owner): "yes to bedrooms and breakfast on stay" - photographs from the original site #}
-<section class="g-sec g-gallery-sec"><div class="g-wrap">
-  <p class="g-fr">Une nuit ici <span class="g-fr__en">A night here</span></p>
-  <h2 class="g-place">Your Room, Breakfast and the Lounge</h2>
-  <p class="g-p g-intro">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms, breakfast in the morning, and the lounge to come back to.</p>
-  {#- 9 Nov (the brief, 4.4): a collage of four, the room, the bath, breakfast and the lounge; all nine behind See all. -#}
-  {{ mosaique([['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w', 'The Marquis Suite, the four-poster bed', 'The Marquis Suite'], ['https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583504973197-GYZ22GF1PB0L7P92T7RV/Screen+Shot+2020-03-06+at+10.23.55+pm.png?format=1000w', 'A bathroom papered in blue, the claw-foot bath on the old terracotta', 'The claw-foot bath'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/5589cd5d-9fd8-4363-a8e8-1c7db5e8e8fb/VeronicaOlson_August2022_ChateaudeGudanes__2012.jpg?format=1000w', 'Breakfast', 'Breakfast'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f1de700e-0871-4811-9769-4a3c5c5a3a51/Screenshot+2026-08-15+at+12.04.53+am.png?format=1000w', 'The lounge', 'The lounge']]) }}
-  {{ see_all([['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w', 'The Marquis Suite, the four-poster bed', 'The Marquis Suite'], [url_for('static', filename='img/views/chair-flowers-window.jpg'), 'A chair by the window, the mountains beyond', 'A chair by the window, the mountains beyond'], ['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w', 'One of the ground-floor bathrooms', 'A bathroom of your own'], ['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dedda173-4be1-4989-a43b-79662a5deb95/Bathrooms+-+After+Work+Dressing+Room+2.jpg?format=1000w', 'A bathroom dressing room, roses by the window', 'Its dressing room'], ['https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583504973197-GYZ22GF1PB0L7P92T7RV/Screen+Shot+2020-03-06+at+10.23.55+pm.png?format=1000w', 'A bathroom papered in blue, the claw-foot bath on the old terracotta', 'The claw-foot bath'], ['https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503062603-2KFI7H38VBDWSPTOMLIB/IMG_0977.jpg?format=1000w', 'A hand-painted basin on the reclaimed terracotta', 'A hand-painted basin'], ['https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583218370419-WVVB8F7NVYWJC718Y18L/Grand+Vestibule+-+Detail.jpg?format=1000w', 'Candles and flowers in the grand vestibule', 'The grand vestibule, as you arrive'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/5589cd5d-9fd8-4363-a8e8-1c7db5e8e8fb/VeronicaOlson_August2022_ChateaudeGudanes__2012.jpg?format=1000w', 'Breakfast', 'Breakfast'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f1de700e-0871-4811-9769-4a3c5c5a3a51/Screenshot+2026-08-15+at+12.04.53+am.png?format=1000w', 'The lounge', 'The lounge']], 'See all 9 photos') }}
-</div></section>
-
-{#- 14 Oct (owner: "more photos on the nightly page"): the grounds a night's stay includes - the pool, the gardens, the
-    lawns and the views (the Estate: "The pool, the tennis court, the terraces and the gardens"). Nightly shows only the five
-    guest rooms; no salons or other bedrooms here. -#}
-<section class="g-sec g-sec--sand g-gallery-sec"><div class="g-wrap">
-  <p class="g-fr">Le domaine <span class="g-fr__en">The grounds</span></p>
-  <h2 class="g-place">A Château Park to Explore</h2>
-  <p class="g-p g-intro">A night here comes with the château&rsquo;s park to explore: the pool, the formal garden and the lawns, and the mountains all around.</p>
-</div>
-  {#- 9 Nov (the brief, 4.4): one drone photograph across the page, the rest of the park in a slider. -#}
-  {{ plein([url_for('static', filename='img/rk/from-the-air-pool-garden.jpg'), 'The château, the formal garden and the pool', 'The château, the formal garden and the pool']) }}
-<div class="g-wrap">
-  {{ carrousel([[url_for('static', filename='img/xx/garden-chateau-mountains.jpg'), 'The château over its garden, the mountains beyond', 'The château over its garden, the mountains beyond'], [url_for('static', filename='img/grounds/late-summer-flowers-urn.jpg'), 'Late-summer flowers around an old urn', 'Late-summer flowers around an old urn'], [url_for('static', filename='img/xx/garden-sofas-mountains.jpg'), 'Sofas on the lawn, facing the mountains', 'Sofas on the lawn, facing the mountains'], [url_for('static', filename='img/rk/from-the-garden.jpg'), 'The château from the garden', 'The château from the garden'], [url_for('static', filename='img/dining/chateau-above-roses.jpg'), 'The château above the roses', 'The château above the roses'], [url_for('static', filename='img/rk/down-the-drive.jpg'), 'Down the drive to the château', 'Down the drive to the château'], [url_for('static', filename='img/rk/across-the-far-lawn.jpg'), 'Across the far lawn', 'Across the far lawn'], [url_for('static', filename='img/rk/park-to-the-mountains.jpg'), 'The park, running to the mountains in the mist', 'The park, running to the mountains in the mist']], 'A château park to explore') }}
-  <p style="margin-top:var(--s5)"><a href="{{ url_for('facilities_page') }}" class="g-btn g-btn">Walk the grounds</a></p>
-</div></section>
-
-
-{% if _dm != 'hidden' %}<!-- ============ LA CUISINE ============ -->
-{# Matches the workshops page — same voice, same claims, adjusted for a
-   nightly guest who books dinner rather than cooks it. #}
-{# 1 Oct: "<h2 class="g-place">À Table</h2>" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
-
-{{ bande([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24cd2655-f437-4e21-bdb9-000794168915/Screenshot+2025-02-14+at+1.54.18+pm.png?format=1000w', 'The kitchen', ''], ['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w', 'Copper pans', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24c85ec2-72d4-45e6-9755-68ff10cce381/Screenshot+2026-08-14+at+11.53.22+pm.png?format=1000w', 'The dining room', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d0c360a2-3609-44fe-9775-07ccf909ea3c/Screenshot+2026-07-30+at+7.55.27+pm.png?format=1000w', 'Produce on the kitchen table', '']], 'The kitchen and the dining room') }}
-
-{# 1 Oct: "<h2 class="g-place">Les Salles de Bains</h2>" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
-
-{# 1 Oct: ">Le Domaine<" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
-
-
-
-{# 1 Oct: "What the Rooms Are Made Of" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
-
-{% endif %}
-{#- 10 Oct (owner): when the château's dining is not open, a night's guest is pointed to Les Cabannes, "just down the hill"
-    (490 m in a straight line from the château, 42.783835/1.680329, to La Maison Lacube, 42.784641/1.686207 - "about 500 metres"; Karina's Captain's Log, 2014: "a two minute walk
-    from the front gate"). The owner's picks. Facts: Ariège tourism office listings (Maison Beaucoup, 73 rue Principale; La
-    Maison Lacube, 3 place des Platanes) and the business registry (Le Petit En Cas 09, 12 place des Platanes, pizza, lunch
-    and dinner). Ratings the owner gave (Beaucoup 4.8 from 245, Lacube 4.7 from 3.2k, Petit En Cas 4.8) are left off the
-    page - they change. "The local bar" (owner: no name needed). Supermarket and tabac: the owner (a supermarket also
-    in gites.fr's Les Cabannes listing). Le Petit En Cas: family-run pizzeria on the square (gites.fr, TripAdvisor). Add a
-    place: one more tuple. -#}
-{% if _dm != 'open' %}
-<section class="g-sec" id="dinner-nearby"><div class="g-wrap">
-  <p class="g-fr">Dîner à côté <span class="g-fr__en">Dinner nearby</span></p>
-  <h2 class="g-place">Dinner Nearby</h2>
-  <p class="g-p">A night&rsquo;s stay includes breakfast at the château. For dinner, Les Cabannes lies just down the hill, about 500 metres away, with a table for every kind of evening.</p>
-  <ul class="g-eat">
-    {%- for kind, name, where, text in [
-      ('candelabra', 'Maison Beaucoup', 'Les Cabannes · 73 rue Principale, beside the church', 'The finer table. Franck, who ran Beaucoup in Toulouse for eighteen years, and his partner Luc have turned a nineteenth-century presbytery into three intimate dining rooms, where the menu follows the seasons and changes every week.'),
-      ('bbq', 'La Maison Lacube', 'Les Cabannes · 3 place des Platanes', 'Much loved, and known for its grills. A farming family cooks their own Gascon black beef and pork in their home on the square, with the produce of some forty Ariège farms. Recommended by the Routard, the Petit Futé and Gault & Millau.'),
-      ('cuisine', 'Le Petit En Cas', 'Les Cabannes · 12 place des Platanes', 'A small, family-run pizzeria on the village square, for an easy evening.'),
-      ('wine', 'The local bar', 'Les Cabannes', 'A glass before dinner, among the people of the valley.')] %}
-    <li class="g-eat__i">
-      <div class="g-eat__ill" aria-hidden="true">{{ illus(kind) }}</div>
-      <div><h3 class="g-eat__t">{{ name }}</h3><p class="g-eat__where">{{ where }}</p><p class="g-eat__d">{{ text }}</p></div>
-    </li>
-    {%- endfor %}
-  </ul>
-  <p class="g-p g-eat__also">The village also has a small supermarket and a tabac, for anything forgotten.</p>
-</div></section>
-{% endif %}
-{#- 15 Oct (owner): "days out is good" - the five best, each with its drive and its season; more on What's On. -#}
-<section class="g-sec g-sec--sand" id="days-out"><div class="g-wrap">
-  <p class="g-fr">Sorties <span class="g-fr__en">Days out</span></p>
-  <h2 class="g-place">Days Out</h2>
-  <p class="g-p">The valley around the château is one of the quietest corners of France, with a great deal within half an hour.</p>
-  <ul class="g-eat">
-    {%- for kind, name, where, text in [
-      ('bath', 'The thermal baths', 'Ax-les-Thermes · about twenty minutes · all year', 'Les Bains du Couloubret: Roman-style baths fed by the hottest springs in the Pyrénées, with pools inside and out, hammam, sauna and massages.'),
-      ('kayak', 'On the river', 'Sinsat · about ten minutes · May to October', 'Canoe, kayak or paddle-board down the Ariège with Waterploof, guided or on your own, with a minibus back.'),
-      ('mountains', 'Painted caves', 'Niaux and Tarascon · about twenty minutes', 'The prehistoric paintings of Niaux, among the few originals still open to visitors, and the Parc de la Préhistoire.'),
-      ('brocante', 'Market day at Mirepoix', 'Mirepoix · just under an hour · Monday mornings', 'One of the finest markets in the region, under the timbered arcades of a medieval square, with brocantes all around.'),
-      ('ski', 'Snow', 'Plateau de Beille and Ax 3 Domaines · December to March', 'Cross-country skiing, snowshoes and sled dogs on the Plateau de Beille, at the top of the château&rsquo;s road, and downhill skiing at Ax 3 Domaines.')] %}
-    <li class="g-eat__i">
-      <div class="g-eat__ill" aria-hidden="true">{{ illus(kind) }}</div>
-      <div><h3 class="g-eat__t">{{ name }}</h3><p class="g-eat__where">{{ where }}</p><p class="g-eat__d">{{ text|safe }}</p></div>
-    </li>
-    {%- endfor %}
-  </ul>
-  <p class="g-p g-eat__also"><a href="{{ url_for('whats_on') }}">More in What&rsquo;s On in the Ariège</a></p>
-</div></section>
+{#- 9 Nov, evening (owner's second review, 1): the two galleries (the rooms, breakfast and the lounge; the park, which is /facilities), the kitchen strip, Dinner Nearby and Days Out went. Dinner and days out are a line each under Key Information, with a link to What's On. -#}
 <!-- ============ COMPARE THE ROOMS ============ -->
 {# Driven by the same `rooms` the cards above use, so it can never disagree
    with them. Scrolls sideways on a phone rather than shrinking to nothing. #}
@@ -468,9 +375,7 @@
    number covers. Both columns, stated before anyone reaches a payment page.
    Every line below is checked against what the app actually does. #}
 {{ facilities(_dm) }}
-{# A night, or the full experience - the shared comparison (owner, 28 Sept). #}
-{% from '_stay_or_workshop.html' import stay_or_workshop %}
-{{ stay_or_workshop(rooms_from=(rooms|selectattr('price_per_night')|map(attribute='price_per_night')|min) if rooms else None, dm=_dm, here='stay') }}
+{#- 9 Nov, evening (owner's second review, 1): A Night, or la Vie de Château is on the home page and /workshops; not here. -#}
 
 <section class="g-sec" id="extras"><div class="g-wrap">
   {# 2 Oct: the extras as cards. They come from admin (extras: active, guest-bookable) when the route passes `extras`;
@@ -507,111 +412,18 @@
       <a class="g-addon__a" href="{{ url_for('restaurant_info') }}">Reserve a table <span aria-hidden="true">→</span></a>
     </li>
     {%- endif %}
-    <li class="g-addon__i">
-      <div class="g-addon__ill" aria-hidden="true">{{ illus('hike') }}</div>
-      <h3 class="g-addon__t">What’s On in the Ariège</h3>
-      <p class="g-addon__d">Walks, riding, skiing, kayaking and the brocantes, a short drive away.</p>
-      <a class="g-addon__a" href="{{ url_for('whats_on') }}">Go exploring <span aria-hidden="true">→</span></a>
-    </li>
+    {#- 9 Nov, evening (owner's second review, 2.12): the What's On card went from this row -- it is not an extra. -#}
   </ul>
 </div></section>
 
 
-<!-- ============ WHAT GUESTS SAY ============ -->
-{# Verbatim from the château's own Booking.com listing, which scores 10/10
-   across all six categories. Short quotes, attributed, nothing invented. #}
-{# The next nights actually free, so nobody has to guess two dates and be
-   told they were wrong. The route computes next_free either way, so dropping
-   the include does not save the work -- it throws the answer away. #}
-{% from '_availability_strip.html' import next_free as next_free_strip %}
-{{ next_free_strip(next_free) }}
-{# 5 Oct (design review): the house calendar "What Is Free" cut here - What Is Open Next just above gives each room's next free nights, and every room page has its own calendar. To restore: { { avail_cal(booked_dates, 2, dinner_dates=(dinner_dates if _dm == 'open' else none)) } } #}
-
-{# What it is doing at the chateau. Read from a cache the house refreshes
-   hourly -- NOT fetched by the guest's own browser, which would hand their
-   address to Open-Meteo on a page that promises otherwise. #}
-{% from '_weather_live.html' import weather_now %}
-{{ weather_now(weather) }}
-
-<section class="g-sec g-says"><div class="g-wrap">
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M0 13h38"/><path d="M82 13h38"/>
-  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-  <circle cx="60" cy="13" r="1.4"/>
-</svg>
-  <h2 class="g-place">What Guests Say</h2>
-
-  {# A review with a rating but no comment was printed as "A very good stay." in
-     quotation marks under the guest's name - words nobody wrote. Only reviews
-     with a comment are quoted. #}
-  {% set _fr = (featured_reviews or [])|selectattr('comment')|list %}
-  {% if _fr %}
-  <div class="g-says__grid">
-    {% for r in _fr %}
-    <figure class="g-say">
-      <blockquote class="g-say__q">{{ r['comment'] }}</blockquote>
-      <figcaption class="g-say__by">
-        {{ (r['guest_name'] or 'A guest').split(' ')[0] }}
-        <span class="g-say__src">
-          {{ '\u2605' * r['rating'] }}{{ '\u2606' * (5 - r['rating']) }}
-          {%- if r['room_name'] %} \u00b7 {{ r['room_name'] }}{% endif %}
-        </span>
-      </figcaption>
-      {% if r['reply'] %}
-      <p class="g-say__reply">
-        <span class="g-say__reply-by">Ch\u00e2teau de Gudanes</span>
-        {{ r['reply'] }}
-      </p>
-      {% endif %}
-    </figure>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  <div class="g-says__grid">
-    <figure class="g-say">
-      <blockquote class="g-say__q">Each morning I woke up worried that it was only a dream.</blockquote>
-      <figcaption class="g-say__by">A guest<span class="g-say__src">Google</span></figcaption>
-    </figure>
-    <figure class="g-say">
-      {#- 10 Oct (owner, via Code): every room has its own private bathroom, so this quote is true of all five - back in
-          place. Cynthia's breakfast quote stays on the Dining page. -#}
-      <blockquote class="g-say__q">Spacious rooms with private, well-equipped bathrooms</blockquote>
-      <figcaption class="g-say__by">A guest from the Netherlands<span class="g-say__src">Booking.com</span></figcaption>
-    </figure>
-    <figure class="g-say">
-      <blockquote class="g-say__q">After years of careful restoration, the owners brought it back from a ruin. The atmosphere is warm and not spooky at all.</blockquote>
-      <figcaption class="g-say__by">A guest<span class="g-say__src">Google</span></figcaption>
-    </figure>
-  </div>
-
-  {# Six hardcoded 10s. A perfect score on every category is the least
-     believable thing you can put in front of a guest — a 9.6 with one 8.9
-     reads as real, six 10s read as invented, and nobody can update these
-     without editing a template. From settings, and only what is supplied. #}
-  {%- set SC = [('Location','score_location'), ('Cleanliness','score_cleanliness'),
-                ('Comfort','score_comfort'), ('Staff','score_staff'),
-                ('Facilities','score_facilities')] -%}{# Value left out: the site does not argue price. #}
-  {%- set shown = SC | selectattr('1') | list -%}
-  {% if settings and (settings['score_location'] or settings['score_overall']) %}
-  <div class="g-scores">
-    {% for label, key in SC %}{% if settings[key] %}
-    <div class="g-score"><b>{{ settings[key] }}</b><span>{{ label }}</span></div>
-    {% endif %}{% endfor %}
-  </div>
-  <p class="g-hint" style="margin-top:var(--s5)">
-    {% if settings['score_overall'] %}{{ settings['score_overall'] }} overall on Booking.com{% else %}Guest ratings on Booking.com{% endif %}{% if settings['review_count'] %}, from {{ '{:,}'.format(settings['review_count']|int) }} reviews{% endif %}.
-  </p>
-  {% endif %}
-</div></section>
-
+{#- 9 Nov, evening (owner's second review, 1): What Guests Say is the home page's; the live weather went with the cold (owner: winter is not prominent). What Is Open Next sits under the dates now. -#}
 {# 5 Oct: the Bruce section repeated Key Information's Animals line - cut here (kept on the confirmation) #}
 
 
 {# 2 Oct: "If One Night Is Not Enough" cut - the stay-or-workshop comparison above does it (CUT_SECTIONS.txt keeps it) #}
 
-{{ honest() }}
+{#- 9 Nov, evening: Worth Knowing went -- Key Information and the questions below say it once each. -#}
 
 {% from '_faq.html' import faq %}
 {{ faq([
@@ -637,22 +449,7 @@
    'The taxe de séjour is added to the bill.')
 ], 'Before You Book', 'The Questions That Come Up') }}
 
-<!-- ============ THE JOURNAL ============ -->
-{# The newsletter form was only in the menu panel. This is the same route,
-   placed where a reader who has just finished the page will see it. #}
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
-    {# The one sign-up form (_newsletter.html): no topic ticks, bot guard on. #}
-    {% from '_newsletter.html' import newsletter_form with context %}
-    {{ newsletter_form('journal') }}
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
-  </div>
-</div></section>
-
-<div class="g-wrap g-mark__wrap">{{ mark('key') }}</div>
+{#- 9 Nov, evening (owner's second review, 2.4): one newsletter form, the footer's. -#}
 
 <!-- ============ WHERE THIS IS ============ -->
 {# The map lives on Contact. These pages need the geography stated, because
@@ -688,7 +485,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">The stairs</p>
-      <p class="g-key__v">No lift: every bedroom is reached by stairs{% if _gf.on %}, the one on the ground floor included{% endif %}. Pack lightly</p>
+      <p class="g-key__v">No lift: the bedrooms are up the original staircase{% if _gf.on %}, and the one on the ground floor is reached by stairs too{% endif %}. Pack lightly</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Children</p>
@@ -706,6 +503,15 @@
       <p class="g-key__k">Tourist tax</p>
       <p class="g-key__v">The taxe de séjour is added to the bill</p>
     </div>
+    {#- 9 Nov, evening (owner's second review, 1): Dinner Nearby and Days Out, a line each. -#}
+    <div class="g-key__i">
+      <p class="g-key__k">Dinner</p>
+      <p class="g-key__v">Les Cabannes is just down the hill, about 500 metres away. <a href="{{ url_for('whats_on') }}#dinner-nearby">Where to eat</a></p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Days out</p>
+      <p class="g-key__v">The thermal baths, the river, the painted caves and the markets, most within half an hour. <a href="{{ url_for('whats_on') }}">What&rsquo;s On in the Ariège</a></p>
+    </div>
   </div>
 </div></section>
 
@@ -716,7 +522,6 @@
    charming half. #}
 <div class="g-wrap">{{ bruce_card() }}</div>
 
-<div class="g-mono__wrap">{{ monogram() }}</div>
 
 
 <!-- ============ THE CLOSE ============ -->

@@ -43,17 +43,16 @@
     {# No count of retreats anywhere (owner, 28 Sept: the programme is not fixed; they are added as she pleases). #}
     <p class="g-hero__eyebrow" lang="fr">Les retraites</p>
     <h1 class="g-hero__title">La Vie de Château</h1>
-    <p class="g-hero__lede">A few days of French country-house life, in a château brought back from ruin.</p>
+    <p class="g-hero__lede">A few days of French château life, in rooms brought back from ruin.</p>
     <p class="g-hero__cta"><a href="#dates" class="g-btn g-btn--solid">See every date</a> <a href="#compare" class="g-btn">Compare with a stay</a></p>
   </div>
 </section>
 
 <section class="g-sec"><div class="g-wrap">
   <p class="g-p g-lede-first">This is not a hotel stay, and it is not a course. It is the life of a French château as it was meant to be lived: unhurried mornings, long lunches, the market and the brocante, the kitchen, the apéritif, and dinner that lasts the evening.</p>
-  <p class="g-p">You stay within the château itself, with a small company of guests and no one else. Each retreat has its theme: the kitchen, Christmas, the brocantes, the old crafts, or simply a French summer. Around it, the house does what it was built to do. Take part in everything, or nothing at all.</p>
+  <p class="g-p">You stay within the château itself, with a small company of guests and no one else. Each retreat has its theme: the kitchen, Christmas, the brocantes, the old crafts, or simply a French summer. Around it, the château does what it was built to do. Take part in everything, or nothing at all.</p>
 </div></section>
 
-<div class="g-wrap g-mark__wrap">{{ mark('lime') }}</div>
 
 <!-- ============ THE RETREATS, side by side ============ -->
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
@@ -145,7 +144,7 @@
   <ol class="g-day g-day--alt">
     {%- for slug, alt, fr, en, line in [
       ('crepe-cart', 'Crêpes made at the crêpe cart, in a red beret', 'Le petit-déjeuner', 'Breakfast', 'Bread and croissants from the village <em lang="fr">boulangerie</em>, coffee on the terrace, and on some mornings the crêpe cart.'),
-      ('cooking-class-hands', 'The cooking class from above, hands at work', 'La matinée', 'The morning', 'At the stove with the chefs, at the market with the producers, with a visiting artisan, or on the restorers’ scaffold.'),
+      ('cooking-class-hands', 'The cooking class from above, hands at work', 'La matinée', 'The morning', 'At the stove with the chefs, at the market with the producers, or on the restorers’ scaffold.'),
       ('lunch-outdoors-many', 'The long lunch on the lawn, many guests', 'Le déjeuner', 'Lunch', 'A long table in the garden, or lunch out in the valley: Foix beneath its castle, or Ax-les-Thermes among the hot springs.'),
       ('sorbet-pouring', 'Wine poured over sorbet in a crystal coupe', 'L’après-midi', 'The afternoon', 'The pool and a glass of rosé, pétanque on the lawn, homemade ice cream, the library, or an easel and a box of watercolours. Or a brocante, or the great cave at Lombrives.'),
       ('pink-cocktails', 'Pink cocktails on a silver tray', 'L’apéritif', 'As the light goes', 'As the mountains turn blue: a Kir Royale, a Lillet tonic, the château’s own botanical syrups.'),
@@ -166,83 +165,13 @@
   <div class="g-vignette" aria-hidden="true">{{ illus('candelabra') }}</div>
   <p class="g-fr">À table <span class="g-fr__en">The table</span></p>
   <h2 class="g-place">The Table</h2>
-  <p class="g-p g-lede-first">In France, the table is the point of the day, and so it is here. The château’s chefs cook as a great French country house should. There is bread from the village <em lang="fr">boulangerie</em> each morning, trout from the farm right beside the château, cheeses from the Ariège, produce from the morning’s market, pastries from our own pastry kitchen, and now and then a dish from the château’s eighteenth-century cookbook.</p>
+  <p class="g-p g-lede-first">In France, the table is the point of the day, and so it is here. The château’s chefs cook the classics of the French table. There is bread from the village <em lang="fr">boulangerie</em> each morning, trout from the farm right beside the château, cheeses from the Ariège, produce from the morning’s market, pastries from our own pastry kitchen, and now and then a dish from the château’s eighteenth-century cookbook.</p>
   <p class="g-p">Some meals are long and easy: platters passed down a table in the garden, the barbecue on the terrace, a kitchen supper of what you cooked that afternoon. Most evenings are an occasion. Several courses are served by candlelight, perhaps a fillet of beef, a ballotine of guinea fowl or the trout from next door, with the silver laid and flowers down the table. There is local sparkling wine as you arrive, the wines of France at every meal, an apéritif at dusk, and <i>nothing to pay at the end</i>.</p>
   {{ mosaique([[rsrc('trout-on-the-grill'), 'Trout from the farm next door, on the grill', 'Trout from next door'], [rsrc('plating-asparagus'), 'Plating asparagus, in a château apron', 'Plating the asparagus'], [rsrc('chateau-apron-plate'), 'Smiling, in a château apron, with a plate', 'From the kitchen'], [rsrc('red-beret-tart'), 'A tricolour tart, made in a red beret', 'A tricolour tart']]) }}
   {{ carrousel([[rsrc('roast-birds'), 'Roast birds on old platters', 'Roast birds on old platters'], [rsrc('roast-on-old-china'), 'A roast dish on old china', 'On old china'], [rsrc('plated-starter'), 'A starter with egg, the silver laid', 'The silver laid'], [rsrc('plated-spring-dish'), 'A spring dish, plated', 'A spring dish'], [rsrc('mille-feuille'), 'Mille-feuille, plated', 'Mille-feuille'], [rsrc('shared-dish'), 'Serving from a shared dish', 'From a shared dish'], [rsrc('chef-across-the-lawn'), 'The chef carrying a dish across the lawn', 'Across the lawn'], [rsrc('croquembouche'), 'A croquembouche, held up outdoors', 'A croquembouche']], 'The Table') }}
 </div></section>
 
-<!-- ============ CHINER ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('brocante') }}</div>
-  <p class="g-fr">Chiner <span class="g-fr__en">The art of the find</span></p>
-  <h2 class="g-place">The Art of the Find</h2>
-  <p class="g-p g-lede-first">The French have a word for it: <em lang="fr">chiner</em>, to hunt, unhurried, for beautiful old things. On market mornings across the Ariège the squares fill with dealers’ tables: linen sheets embroidered with forgotten monograms, copper pans, café-au-lait bowls, silver, faïence, gilt frames, the occasional portrait. We take you to the markets, the village <em lang="fr">vide-greniers</em> and the dealers we know, and help you bargain in French. Much of what furnishes the château’s own rooms was found in just this way. Whatever you find comes home with you: a piece of France for your own table.</p>
-  {{ cadre([rsrc('vide-grenier'), 'A vide-grenier on the green, people browsing', 'A vide-grenier on the green'], shape='rect', sizes='(min-width: 64rem) 34rem, 92vw') }}
-  {{ album([[rsrc('old-french-linen'), 'Monogrammed French linen', 'Monogrammed linen'], [rsrc('pocket-watches'), 'Pocket watches on a stall', 'Pocket watches'], [rsrc('apothecary-jars'), 'Apothecary jars in a glass cabinet', 'Apothecary jars']]) }}
-  {{ see_all([[rsrc('vide-grenier'), 'A vide-grenier on the green, people browsing', 'A vide-grenier on the green'], [rsrc('brocante-stalls'), 'Brocante stalls in the square', 'Stalls in the square'], [rsrc('brocante-china'), 'Tables of old china', 'Tables of old china'], [rsrc('brocante-accordion'), 'The accordionist at the brocante', 'The accordionist'], [rsrc('brocante-2cv'), 'A red 2CV at the brocante', 'A red 2CV'], [rsrc('antique-shop'), 'Inside an antique shop', 'Inside an antique shop'], [rsrc('old-french-linen'), 'Monogrammed French linen', 'Monogrammed linen'], [rsrc('antique-sewing-kit'), 'An antique sewing kit in its case', 'An antique sewing kit'], [rsrc('brooches-and-portraits'), 'Old brooches and portraits in a case', 'Brooches and portraits'], [rsrc('pocket-watches'), 'Pocket watches on a stall', 'Pocket watches'], [rsrc('apothecary-jars'), 'Apothecary jars in a glass cabinet', 'Apothecary jars']], 'See all 11 photos') }}
-</div></section>
-
-<!-- ============ LA SOIRÉE ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('wine') }}</div>
-  <p class="g-fr">La soirée <span class="g-fr__en">The evenings</span></p>
-  <h2 class="g-place">The Evenings</h2>
-  <p class="g-p g-lede-first">Evenings at Gudanes begin in the salons, with an apéritif, and end late. There are French films under the stars, dinners in the village at two of the valley’s finest tables, and on the last night of every retreat a banquet in the Salon de Musique for which everyone dresses. When dinner is over, the candles are set aside and there is dancing. Bring something beautiful to wear.</p>
-</div>
-  {{ bande([[rsrc('film-under-the-stars'), 'A French film under the stars, projected on the château wall', 'A film under the stars'], [rsrc('fire-pit-lawn'), 'Guests round the fire pit on the lawn', 'Round the fire'], [rsrc('dancing-velvet-suit'), 'A toast, in a velvet suit', 'Dressed for the last night'], [rsrc('dancing-bw'), 'Dancing, in black and white', 'Dancing'], [rsrc('medieval-kitchen-table'), 'The candlelit table in the vaulted medieval kitchen', 'The medieval kitchen, by candlelight']], 'The evenings') }}
-</section>
-
-<!-- ============ LA RESTAURATION ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('restoration') }}</div>
-  <p class="g-fr">La restauration <span class="g-fr__en">Be part of it</span></p>
-  <h2 class="g-place">Be Part of It</h2>
-  {% call split([rsrc('restorer-painted-wall'), 'The restorer at the painted wall', 'At the painted wall'], flip=True, tuck=[rsrc('uncovering-fresco'), 'Uncovering a fresco on the wall', 'Uncovering a fresco']) %}
-  <p class="g-p g-lede-first">Gudanes is a Class I Historic Monument, bought as a ruin in 2013 and brought back room by room, privately, without a single grant. Each retreat helps to bring back the next room. Each includes a tour of the rooms restored and the rooms still waiting. On the longer retreats, you spend a morning beside the restorers in the oldest part of the house, as frescoes hidden for generations return to the light. Very few people anywhere are ever invited to do this.</p>
-  {% endcall %}
-</div></section>
-
-<!-- ============ LA VALLÉE ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('mountains') }}</div>
-  <p class="g-fr">La vallée <span class="g-fr__en">The valley</span></p>
-  <h2 class="g-place">The Valley</h2>
-  <p class="g-p g-lede-first">The Ariège is one of the quietest and most beautiful corners of France, and the retreats take you into it:</p>
-  <ul class="g-vallee">
-    <li>Mirepoix on market day, beneath its medieval arcades;</li>
-    <li>the brocantes and <em lang="fr">vide-greniers</em> of the valleys;</li>
-    <li>Foix and the castle of its Counts;</li>
-    <li>the great cave at Lombrives;</li>
-    <li>lunch in Ax-les-Thermes among its hot springs;</li>
-    <li>and in summer, the river and the mountains.</li>
-  </ul>
-  {{ carrousel([[rsrc('mountain-walk'), 'Guests walking in the mountains, the dog leading', 'In the mountains'], [rsrc('village-street'), 'Guests strolling a village street with the dog', 'A village street'], [rsrc('mirepoix'), 'The half-timbered houses of Mirepoix', 'Mirepoix'], [rsrc('foix-castle'), 'The castle of Foix above the old town', 'The castle of the Counts of Foix'], [rsrc('lombrives-cave-mouth'), 'The mouth of the great cave at Lombrives', 'The great cave at Lombrives'], [rsrc('bassin-des-ladres'), 'The hot-spring basin of the Bassin des Ladres in Ax-les-Thermes', 'The hot spring at Ax-les-Thermes']], 'The Valley') }}
-  <p class="g-car__credits">{{ rcredit('lombrives-cave-mouth') }} {{ rcredit('bassin-des-ladres') }}</p>
-</div></section>
-
-<!-- ============ REVENIR ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('key') }}</div>
-  <p class="g-fr">Revenir <span class="g-fr__en">Why so many return</span></p>
-  <h2 class="g-place">Why So Many Return</h2>
-  <p class="g-p g-lede-first">A great many of our guests return, some year after year, each time for a different retreat: Christmas one year, the kitchen the next, a French summer after that. In autumn 2026, every guest at the Autumn Atelier had stayed with us before. Couples, friends and those travelling alone are equally at home. The company is small enough that by the second dinner it feels like a house party among friends.</p>
-  {{ album([[rsrc('guests-rose-gate'), 'Guests walking up the drive past the rose gate', 'Up the drive, past the roses'], [rsrc('guests-round-the-table'), 'Guests at lunch round the long table', 'Round the long table']]) }}
-</div></section>
-
-<!-- ============ EVERYTHING INCLUDED, SAID ONCE ============ -->
-<section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
-  <img class="g-half__img" src="{{ rsrc('the-library') }}" alt="The library, its shelves under the old roof beams" loading="lazy">
-  <div class="g-half__text">
-    <p class="g-fr">Tout compris <span class="g-fr__en">Everything included</span></p>
-    <p class="g-p">One price for all of it: your room in the château, every meal and every glass, the classes, the outings and, on most retreats, the journey from Toulouse. There is nothing to pay at the end.</p>
-    <p class="g-p g-permission"><i>Nothing is required of you. Do everything, or nothing at all.</i></p>
-  </div>
-</div></section>
-
-
-
-
+{#- 9 Nov, evening (owner's second review, 1): /workshops keeps the hero, the introduction, the retreats, A Day at Gudanes, The Table, When You Can Come, the comparison, Key Information, the questions and the close. The Art of the Find and its gold frame, The Evenings' polaroids and film strip, Be Part of It, The Valley, Why So Many Return and Everything Included went: the retreat pages carry the photographs. -#}
 <section class="g-sec" id="dates"><div class="g-wrap">
   <h2 class="g-place">When You Can Come</h2>
 
@@ -317,7 +246,6 @@
 
 {# 1 Oct: You Have the Whole House cut - fewer statements #}
 
-<div class="g-wrap">{{ proof(settings) }}</div>
 
 <script>
 /* Filter the date table by workshop. Plain show/hide — the rows are already
@@ -353,13 +281,10 @@
    mentioned it. Same voice as the nightly page. #}
 {# 1 Oct: "<h2 class="g-h2">À Table</h2>" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
-{#- 9 Nov (the brief, G): the band of four as a drifting film strip. -#}
-{{ bande([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/35718cba-ae0d-4d2a-adc1-cace54a9e369/Screenshot+2026-08-12+at+8.40.54+pm.png?format=1000w', 'In the salon, flowers on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w', 'Market produce on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/82882b98-6d8d-4e43-a8dd-d483ea19aec8/Screenshot+2026-07-30+at+7.57.59+pm.png?format=1000w', 'Fresh bread in a basket', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7fabd381-88e6-481d-9380-00222dd920fa/Screenshot+2026-08-15+at+3.31.41+pm.png?format=1000w', 'Flowers and candles on the table', '']], 'At the table') }}
 
 <!-- ============ LES SALLES DE BAINS ============ -->
 {# 1 Oct: ">Les Salles de Bains<" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
-<div class="g-wrap g-mark__wrap">{{ mark('market') }}</div>
 
 <!-- ============ CHÂTEAU ESTATE ============ -->
 {# 1 Oct: ">Le Domaine<" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
@@ -371,16 +296,6 @@
 {# 1 Oct: "The Market Comes First" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 <!-- ============ KEY INFORMATION ============ -->
-{# 6 Oct (owner): "yes to guests and food on workshops" - photographs from the original site #}
-<section class="g-sec g-sec--sand g-gallery-sec"><div class="g-wrap">
-  <p class="g-fr">En images <span class="g-fr__en">In pictures</span></p>
-  <h2 class="g-place">A Few Days at Gudanes</h2>
-  <p class="g-p g-intro">Long tables, candlelight, the kitchen and the valley, with the people who came.</p>
-  {#- 9 Nov (the brief, 4.3): the block of 23 is a slider of eight, and every one is behind See all. -#}
-  {{ carrousel([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w', 'The chef in the candlelit salon', 'The chef, before dinner'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6d17b683-1688-4dad-8d5d-b0e75a6de675/Cre%CC%80me+Bru%CC%82le%CC%81e-7.jpg?format=1000w', 'Crème brûlée', 'Crème brûlée'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d0c360a2-3609-44fe-9775-07ccf909ea3c/Screenshot+2026-07-30+at+7.55.27+pm.png?format=1000w', 'Produce on the kitchen table', 'From the market'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1000w', 'Lighting the candles in the salon', 'Lighting the candles'], [url_for('static', filename='img/xx/table-in-the-garden.jpg'), 'A table laid in the garden', 'A table laid in the garden'], [url_for('static', filename='img/rk/gilded-salon.jpg'), 'The gilded salon', 'The gilded salon'], [url_for('static', filename='img/dining/garden-sofa-mountains.jpg'), 'A garden sofa facing the mountains', 'A garden sofa facing the mountains']], 'A few days at Gudanes') }}
-  {{ see_all([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w', 'The chef in the candlelit salon', 'The chef, before dinner'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0fba4375-e1f0-449b-ba58-d1a5d3a48069/Screenshot+2026-07-30+at+8.05.38+pm.png?format=1000w', 'The table by candlelight', 'Dinner by candlelight'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6d17b683-1688-4dad-8d5d-b0e75a6de675/Cre%CC%80me+Bru%CC%82le%CC%81e-7.jpg?format=1000w', 'Crème brûlée', 'Crème brûlée'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d0c360a2-3609-44fe-9775-07ccf909ea3c/Screenshot+2026-07-30+at+7.55.27+pm.png?format=1000w', 'Produce on the kitchen table', 'From the market'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1000w', 'Lighting the candles in the salon', 'Lighting the candles'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/5ab05774-1ec5-48e4-9811-e51b8fd7d720/Screenshot+2025-02-14+at+1.52.45+pm.png?format=1000w', 'A tart and tomatoes from the market', 'A tart and tomatoes'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cf0358b6-3536-4ce5-812a-a17e640d8ed4/Screenshot+2026-07-30+at+7.58.56+pm.png?format=1000w', 'A dessert from the château kitchen', 'Dessert'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/5589cd5d-9fd8-4363-a8e8-1c7db5e8e8fb/VeronicaOlson_August2022_ChateaudeGudanes__2012.jpg?format=1000w', 'Breakfast', 'Breakfast'], [url_for('static', filename='img/dining/terrace-long-table.jpg'), 'A long table on the terrace, the mountains beyond', 'A long table on the terrace, the mountains beyond'], [url_for('static', filename='img/life/asparagus-on-the-grill.jpg'), 'White asparagus on the grill, in the grounds', 'White asparagus on the grill, in the grounds'], [url_for('static', filename='img/dining/garden-sofa-mountains.jpg'), 'A garden sofa facing the mountains', 'A garden sofa facing the mountains'], [url_for('static', filename='img/xx/the-kitchen.jpg'), 'The kitchen, its table laid with fresh produce', 'The kitchen, its table laid with fresh produce'], [url_for('static', filename='img/xx/table-in-the-garden.jpg'), 'A table laid in the garden', 'A table laid in the garden'], [url_for('static', filename='img/xx/garden-sofas-mountains.jpg'), 'Sofas on the lawn, facing the mountains', 'Sofas on the lawn, facing the mountains'], [url_for('static', filename='img/xx/salon-floral-curtains.jpg'), 'A salon, the mountains through its windows', 'A salon, the mountains through its windows'], [url_for('static', filename='img/rk/gilded-salon.jpg'), 'The gilded salon', 'The gilded salon'], [url_for('static', filename='img/rk/long-table-candlelight.jpg'), 'The long table by candlelight', 'The long table by candlelight'], [url_for('static', filename='img/xx/sunlit-bedroom.jpg'), 'A sunlit bedroom, the mountains through the window', 'A sunlit bedroom, the mountains through the window'], [url_for('static', filename='img/weddings/bedroom-peony.jpg'), 'A bedroom made ready, with a peony', 'A bedroom made ready, with a peony'], [url_for('static', filename='img/rk/four-poster-bedroom.jpg'), 'The King Suite, its wooden four-poster', 'The King Suite, its wooden four-poster'], [url_for('static', filename='img/more/terrace-at-night.jpg'), 'A terrace at night, strung with lights', 'A terrace at night, strung with lights'], [url_for('static', filename='img/more/the-kitchen-garden.jpg'), 'The kitchen garden', 'The kitchen garden'], [url_for('static', filename='img/more/flowers-and-meringues.jpg'), 'Flowers and meringues', 'Flowers and meringues']], 'See all 23 photos') }}
-</div></section>
-
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">Practical</p>
   <h2 class="g-place">Key Information</h2>
@@ -430,7 +345,6 @@
 
 
 
-<div class="g-wrap g-mark__wrap">{{ mark('fresco') }}</div>
 
 <!-- ============ WHAT YOU NEED ============ -->
 {# 1 Oct: "What to Bring, and What Not To" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
@@ -456,7 +370,6 @@
    published accounts. These are real people who have worked here. #}
 {# 1 Oct: "Who Else Is Here" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
-<div class="g-wrap g-mark__wrap">{{ mark('brushgild') }}</div>
 
 
 
@@ -516,26 +429,7 @@
 {# The Year's Programme stood here: the same dates as When You Can Come, a second time (every row numbered "01").
    Its overbooking promise and its leader line now sit with the dates; its "tell us what you would want to learn" with their empty state. #}
 
-<!-- ============ THE JOURNAL ============ -->
-{# The newsletter form was only in the menu panel. This is the same route,
-   placed where a reader who has just finished the page will see it. #}
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the retreat dates are released. Sent when there is something worth sending.</p>
-    {# The one sign-up form (_newsletter.html): no topic ticks, bot guard on. #}
-    {% from '_newsletter.html' import newsletter_form with context %}
-    {{ newsletter_form('journal') }}
-        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
-  </div>
-</div></section>
-
-
-
-
-
+{#- 9 Nov, evening (owner's second review, 2.4): one newsletter form, the footer's. -#}
 
 <!-- ============ THE CLOSE ============ -->
 

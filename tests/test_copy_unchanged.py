@@ -50,11 +50,21 @@ m = _harness.m
 # 9 Nov, later: moved to the merge with main at 0630e3d (e9b2f1a), so the base
 # holds main's own words as well as the retreat text. Checked against main
 # itself first: the only pages that differ from main are the five above.
+# 9 Nov, evening: moved again, to the commit that finished the owner's second review
+# of the site (BRIEF-site-review-2-9-nov.md): the pages a third of their length,
+# "Retreats" in the menu, "château" for "house", the hero's chosen line, and no dish,
+# drink or artisan on a retreat's day. Every difference against e9b2f1a was read and
+# is that brief's, on top of the retreat days above.
 # 10 Nov: moved to 36fd627, the owner's answers of that day (the Christmas market on
 # Noël, Cooking's opening without dishes); it listed /workshops, /workshops/3
 # and /workshops/4, and nothing else.
 # 10 Nov, later: moved to c7fb234, the owner's bed-and-breakfast wording in the comparisons ("make it clear
 # that one is a b&b"); it listed /, /book, /workshops and the five room pages, and nothing else.
+# 10 Nov, evening: moved to be0b84c, the merge of the second review with main's two
+# commits of that day. Against 2bbe116 it listed /, /book, /workshops, the five room
+# pages, /workshops/3 and /workshops/4, and nothing else: the bed-and-breakfast wording
+# (with the owner's "on site" for "in the house"), Cooking's opening without dishes,
+# and Noël's Christmas market. Each was read.
 # 10 Nov, later: 96264b8 put Bastille Day and the Fête de la Musique on the retreat days
 # (/workshops/4 and /workshops/6); merged with b6b4ad8 below, the base moves to the merge.
 # 10 Nov, later still: moved to b6b4ad8, the same comparisons made succinct again (room and breakfast, lunch and
@@ -66,7 +76,12 @@ m = _harness.m
 # 10 Nov, again: a8b7c05, the retreats' "every meal, and drinks included" (owner); it listed /, /book
 # and /workshops, and nothing else. Then c6b0dda, the merge of the two: against a8b7c05 it listed
 # /workshops/3 only, Noël's market above.
-COPY_BASE = "c6b0dda"
+# 10 Nov, night: moved to 7df0813, the merge of the second review with all of the above.
+# Against e912ba8 it listed /, /book, /workshops, the five room pages, /workshops/3, /4
+# and /6, and nothing else: room and breakfast with the restaurants nearby, the village
+# Christmas market, and the days split into day and evening. Each was read; the review's
+# welcome glass, no artisan, no pool on Cooking and "on site" for "in the house" kept.
+COPY_BASE = "7df0813"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

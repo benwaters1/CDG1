@@ -23,7 +23,7 @@
 {% block description_fr %}Une restauration menée depuis 2013 sur un Monument Historique classé, suivie par Vogue et AD Italia.{% endblock %}
 {% block title %}The Restoration{% endblock %}
 {% block description %}A Class I Historic Monument since 1994, under restoration since 2013: why the walls stay as they are, what you will see, and the 2016 Medal of Honour.{% endblock %}
-{% block og_desc %}Under restoration since 2013, every intervention approved. A restoration, not a renovation.{% endblock %}
+{% block og_desc %}Under restoration since 2013, every intervention approved. Restored, never made new.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
@@ -91,10 +91,10 @@
 </div></section>
 <section class="g-sec"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('chateau') }}</div>
-  <p class="g-fr">Restaurer, pas rénover <span class="g-fr__en">Restore, not renovate</span></p>
+  <p class="g-fr">Restaurer <span class="g-fr__en">To restore</span></p>
   <p class="g-eyebrow">The Principle</p>
   <h2 class="g-place">Why the Walls Stay</h2>
-  <p class="g-p g-lede-first">A renovation makes a building new. A restoration lets it return. At Gudanes the law and the family want the same thing: the walls are kept as the centuries left them, the plaster and stone read and recorded rather than replaced, and everything new is placed within them, never over them.</p>
+  <p class="g-p g-lede-first">A restoration does not make a building new; it lets it return. At Gudanes the law and the family want the same thing: the walls are kept as the centuries left them, the plaster and stone read and recorded rather than replaced, and everything new is placed within them, never over them.</p>
   <p class="g-p">So the bare walls are not unfinished work, and they are not an apology. They are the château itself, and the reason it is worth coming to. Within them, the rooms brought back have floors relaid by hand, antique French beds and new bathrooms.</p>
   {#- 27 Oct (owner: the sorbet stays the /workshops afternoon picture; the painting goes here). Captioned for what it shows
       and no more: nothing on the page says what the beams are for, so neither does the caption. -#}
@@ -130,9 +130,9 @@
 <section class="g-sec g-sec--sand" id="how"><div class="g-wrap">
   <p class="g-fr">La restauration, pas à pas <span class="g-fr__en">The restoration, step by step</span></p>
   <h2 class="g-place">Restoring the Château</h2>
-  <p class="g-p g-how__lead">The restoration has been privately funded, with no grants.</p>
+  <p class="g-p g-how__lead">The restoration is the family's own, room by room.</p>
   {%- set HOW = [
-      ('chateau', 'Saving the Structure', 'When it was bought the château was classified as a ruin, with small trees growing from the 300-year-old slate. The first work, in 2014, was consolidation: the floors, walls and ceilings were secured before anything else, and the château was given a new roof and new windows.'),
+      ('chateau', 'Saving the Structure', 'When it was bought the château was classified as a ruin, with small trees growing from the slate. The first work, in 2014, was consolidation: the floors, walls and ceilings were secured before anything else, and the château was given a new roof and new windows.'),
       ('cuisine', 'Floors That Had Fallen', 'In the kitchen the whole floor had fallen through, its old ovens lying on the level below. In the dining room the stone floor was close to going, and an eighteenth-century marble mantel, its marble quarried in the neighbouring Aude, hung by a thread; beneath the stone lay chestnut beams, split logs and talc to keep out the damp. Both rooms now stand on steel and concrete, as the Historic Monuments required, hidden in the dining room by a traditional French beamed ceiling.'),
       ('power', 'Power and Water, from the Road', 'All the electricity and plumbing is new: brought up from the road through a large trench, then run throughout the château, with water and waste connected to the village supply. Until it reached them, many rooms were lit by candle.'),
       ('bed', 'That First Winter', 'In the winter of 2014 there was still no electricity, heating or water. The first nights in the château were spent in a tent, pitched inside one of the rooms against the cold.'),
@@ -172,46 +172,27 @@
   <p class="g-fr">Avant, après <span class="g-fr__en">Before and now</span></p>
   <h2 class="g-place">Then and Now</h2>
   <p class="g-p g-intro">When the family came in 2013, the château had stood empty for years. Floors, walls and ceilings came first, then the slow work of bringing each room back.</p>
-<div class="g-tn">
-  {#- 9 Oct (owner): "these are now both the dining rooms next to each other" - the two horse photographs (the owner's), the
-      dining rooms as they are now. -#}
-  <div class="g-tn__trio">
+{#- 9 Nov, evening (owner's second review, 1 and 4): Then and Now was 6,113px of before-and-after, at three widths. Three
+    stay -- the dining room, a bedroom and the staircase -- as sliders of one width; the kitchen, the bathrooms, the
+    windows and the second horse are on /gallery, under The Restoration. -#}
+<div class="g-tn g-tn--three">
+  <div class="g-tn__pair" data-slider>
     <figure><img src="{{ url_for('static', filename='img/history/horse-dining-room-a.jpg') }}" alt="A horse in an empty room of the château, before the work" loading="lazy" style="object-position: 97% center"><span class="g-tn__tag">Before</span></figure>
-    <figure><img src="{{ url_for('static', filename='img/history/horse-dining-room-b.jpg') }}" alt="A horse before a painted panel and a marble fireplace, before the work" loading="lazy"><span class="g-tn__tag">Before</span></figure>
-    <figure class="g-tn__now"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=2500w" alt="The dining room now, laid for dinner under the chandeliers" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
-    <p class="g-tn__cap">The dining rooms, side by side: once empty enough for a horse, now laid for dinner.</p>
+    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=2500w" alt="The dining room now, laid for dinner under the chandeliers" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
+    <p class="g-tn__cap">The dining room: once empty enough for a horse, now laid for dinner.</p>
   </div>
   <div class="g-tn__pair" data-slider>
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2b9c1192-bf9a-40a9-8913-4bc98c8a43c7/Screenshot+2026-07-20+at+3.41.43+pm.png?format=1500w" alt="The kitchen before the work, the floor gone" loading="lazy"><span class="g-tn__tag">Before</span></figure>
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a/Screenshot+2026-07-20+at+2.33.25+pm.png?format=1500w" alt="The kitchen now" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
-    <p class="g-tn__cap">The kitchen</p>
-  </div>
-  <div class="g-tn__pair" data-slider>
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/598861b7-9f24-4244-8420-468734c135e5/Before+The+Work+-+Vestibule+Ceiling.JPG?format=1500w" alt="The vestibule ceiling before the work" loading="lazy"><span class="g-tn__tag">Before</span></figure>
-    <figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582048556502-Y4CQSLCRE46OVEXBQUES/Grand+Vestibule+-+Wider+Angle.jpg?format=1500w" alt="The grand vestibule now, the staircase and the arches" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
-    <p class="g-tn__cap">The vestibule</p>
-  </div>
-  <div class="g-tn__pair">
     <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1500w" alt="A bedroom before the work" loading="lazy"><span class="g-tn__tag">Before</span></figure>
     <figure><img src="https://cf.bstatic.com/xdata/images/hotel/max2048x2048/798764955.jpg?k=d8653db73b32b57205f0af9b550ee5ee521deae7ec1638ed4dafcc67057d01c9&o=" alt="The King Room now" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
     <p class="g-tn__cap">The bedrooms</p>
   </div>
-  <div class="g-tn__pair g-tn__pair--tall" data-slider>
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583425897142-1GIQ7UVNLLEXM34LO9PY/4ab2ef22-6c3b-46db-a617-0af2a7760c7f+2.JPG?format=1500w" alt="The room that became the bathrooms, as the 1970s holiday camp left it" loading="lazy"><span class="g-tn__tag">Before</span></figure>
-    <figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="One of the ground-floor bathrooms now" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
-    <p class="g-tn__cap">The bathrooms</p>
-  </div>
-  <div class="g-tn__pair g-tn__pair--tall">
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583425754468-1J36HQT5KRQFZCNPSE4S/77C59AF2-6CC2-4CF4-9233-807904326AF8.jpg?format=1500w" alt="A window of the bathrooms' room before the work" loading="lazy"><span class="g-tn__tag">Before</span></figure>
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503973363-BORNI4RB6JAHAQXXA46X/IMG_1144.JPG?format=1500w" alt="A bathroom window now, open onto the mountains, wildflowers on the walnut sill" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
-    <p class="g-tn__cap">A bathroom window</p>
-  </div>
-  <div class="g-tn__pair g-tn__pair--tall">
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/97532472-ef1c-439c-bc1e-da09f3d43046/Before+The+Work+-+Windows.jpg?format=1500w" alt="The windows before the work, the panes broken" loading="lazy"><span class="g-tn__tag">Before</span></figure>
-    <figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/f42741a3-9246-4608-8c8d-fd0408104b5c/Kitchen+2.JPG?format=1500w" alt="A kitchen window now, blossom on the sill" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
-    <p class="g-tn__cap">The windows</p>
+  <div class="g-tn__pair" data-slider>
+    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/598861b7-9f24-4244-8420-468734c135e5/Before+The+Work+-+Vestibule+Ceiling.JPG?format=1500w" alt="The vestibule ceiling before the work" loading="lazy"><span class="g-tn__tag">Before</span></figure>
+    <figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582048556502-Y4CQSLCRE46OVEXBQUES/Grand+Vestibule+-+Wider+Angle.jpg?format=1500w" alt="The grand vestibule now, the staircase and the arches" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
+    <p class="g-tn__cap">The vestibule and the staircase</p>
   </div>
 </div>
+<p class="g-tn__more"><a href="{{ url_for('gallery_page') }}#restoration">More of the rooms before and now, in the gallery <span aria-hidden="true">&rarr;</span></a></p>
 {#- 12 Oct (owner: "yes" to a before-and-after slider). 13 Oct (owner: "not all of them, just a few"): only the pairs marked data-slider -
     the kitchen, the vestibule and the bathrooms - become one frame: the "now" photograph over the "before",
     revealed by dragging a handle - a real range input, so a phone swipes it, the arrow keys move it and a screen reader
@@ -271,7 +252,7 @@
     {%- for kind, fr, en, line in [
       ('chateau', 'Classé', 'Class I', 'The highest protection French law gives a building'),
       ('restoration', 'Autorisé', 'Approved first', "Every intervention authorised in advance by the State's heritage services"),
-      ('atelier', 'Les artisans', 'By artisans', 'Specialists in the old trades: plaster, joinery, gilding, paint and paper'),
+      ('atelier', 'Les métiers', 'The old trades', 'Plaster, joinery, gilding, paint and paper, done as they were done'),
       ('key', 'Conservé', 'Kept, not replaced', 'Original stone, timber and paper repaired wherever they can be')] %}
     <li class="g-extras__i">
       <div class="g-extras__ill" aria-hidden="true">{{ illus(kind) }}</div>
@@ -282,21 +263,7 @@
     {%- endfor %}
   </ul>
 </div></section>
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('restoration') }}</div>
-  <p class="g-fr">À l’intérieur <span class="g-fr__en">Inside</span></p>
-  <p class="g-eyebrow">Inside</p>
-  <h2 class="g-place">What You Will See</h2>
-  <p class="g-p g-lede-first">Rooms in every state: some brought back and lived in, some opened up and left as they were found, some still waiting behind closed doors. Old plaster, painted surfaces coming back to the light, and the work itself, slow and deliberate.</p>
-  <p class="g-p">A night here is your room, breakfast and the lounge. The rest of the château, the rooms brought back and the rooms still waiting, is opened to the workshops.</p>
-</div></section>
-{#- 9 Oct (owner: "some parts seem duplicated"): the press list is the Press page's - a line and a link here. -#}
-<section class="g-sec g-sec--sand" id="press"><div class="g-wrap">
-  <p class="g-eyebrow">Press &amp; Campaigns</p>
-  <h2 class="g-place">Written About, Filmed In</h2>
-  <p class="g-p g-lede-first">The restoration has been followed closely for over a decade, in Vogue, AD Italia, the Australian Financial Review and Home Beautiful among others, and the château has been chosen as a setting for campaigns by Zimmermann and Mango Home.</p>
-  <p style="margin-top:var(--s5)"><a href="{{ url_for('press') }}" class="g-btn">Read what’s been written</a></p>
-</div></section>
+{#- 9 Nov, evening (owner's second review, 1): What You Will See (a stay pitch on a restoration page) and Written About, Filmed In (that is /press) went. -#}
 {#- 9 Oct (owner): one closing section. Never "the rest still to come" or "the next ones": five bedrooms is what the house
     offers, and nothing says why. -#}
 <section class="g-sec g-sec--dark g-closer"><div class="g-wrap">

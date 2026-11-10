@@ -71,7 +71,8 @@ def run():
     s.check("switching is accepted", r.status_code == 200, detail=f"HTTP {r.status_code}")
     page = pub.get("/").get_data(as_text=True)
     s.check("the page is now French", 'lang="fr"' in page)
-    s.check("and the navigation with it", "Ateliers" in page,
+    # 9 Nov 2026 (owner's second review, 5): the retreats are Retreats in the menu -- Retraites.
+    s.check("and the navigation with it", "Retraites" in page,
             detail="the French nav wording is missing")
     # Asked for by endpoint rather than typed: a guessed URL 404s, and a 404
     # has no <html lang> at all, so the check would fail for the wrong reason.
@@ -83,7 +84,7 @@ def run():
 
     r = pub.get("/language/es", follow_redirects=True)
     page = pub.get("/").get_data(as_text=True)
-    s.check("Spanish works too", 'lang="es"' in page and "Talleres" in page)
+    s.check("Spanish works too", 'lang="es"' in page and "Retiros" in page)
 
     pub.get("/language/en", follow_redirects=True)
     s.check("and English can be chosen back",

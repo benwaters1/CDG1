@@ -224,11 +224,11 @@ window.houseDay = (function () {
     </a>
 
 
-    {%- set NAV_OF = {"book_rooms": "book_rooms", "workshops_public": "workshops_public", "restaurant_info": "restaurant_info", "events_info": "events_info", "facilities_page": "facilities_page", "restoration_page": "restoration_page", "gallery_page": "gallery_page", "contact_page": "contact_page", "events_weddings": "events_info", "events_private": "events_info", "events_photoshoots": "events_info", "book_room": "book_rooms", "workshop_detail": "workshops_public", "workshop_register": "workshops_public", "restaurant_book": "restaurant_info", "whats_on": "facilities_page"} -%}
+    {%- set NAV_OF = {"book_rooms": "book_rooms", "workshops_public": "workshops_public", "restaurant_info": "restaurant_info", "events_info": "events_info", "facilities_page": "facilities_page", "restoration_page": "restoration_page", "gallery_page": "gallery_page", "contact_page": "contact_page", "events_weddings": "events_info", "events_private": "events_info", "events_photoshoots": "events_info", "book_room": "book_rooms", "workshop_detail": "workshops_public", "workshop_register": "workshops_public", "restaurant_book": "restaurant_info"} -%}
 {%- set NAV_HERE = NAV_OF.get(request.endpoint, request.endpoint) if request else "" -%}
 <nav class="g-nav" aria-label="{{ t('Main') }}">
       <a href="{{ url_for('book_rooms') }}"{% if NAV_HERE == 'book_rooms' %} class="is-here" aria-current="page"{% endif %}>{{ t('Stay') }}</a>
-      {% if not _private_page %}<a href="{{ url_for('workshops_public') }}"{% if NAV_HERE == 'workshops_public' %} class="is-here" aria-current="page"{% endif %}>{{ t('Workshops') }}</a>{% endif %}
+      {% if not _private_page %}<a href="{{ url_for('workshops_public') }}"{% if NAV_HERE == 'workshops_public' %} class="is-here" aria-current="page"{% endif %}>{{ t('Retreats') }}</a>{% endif %}
       {#- 15 Oct (owner): What's On in the top bar too. -#}
       <a href="{{ url_for('whats_on') }}"{% if NAV_HERE == 'whats_on' %} class="is-here" aria-current="page"{% endif %}>{{ t("What’s On") }}</a>
       {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}"{% if NAV_HERE == 'restaurant_info' %} class="is-here" aria-current="page"{% endif %}>{{ t('Dining') }}</a>{% endif %}
@@ -237,9 +237,9 @@ window.houseDay = (function () {
         <ul class="g-subnav">
           {# Each link falls back to the events page until its route exists,
              so a missing endpoint cannot break the header site-wide. #}
-          <li><a href="{{ url_for('events_weddings') }}"{% if NAV_HERE == 'events_weddings' %} class="is-here" aria-current="page"{% endif %}>{{ t('Weddings') }}</a></li>
-          <li><a href="{{ url_for('events_private') }}"{% if NAV_HERE == 'events_private' %} class="is-here" aria-current="page"{% endif %}>{{ t('Private') }}</a></li>
-          <li><a href="{{ url_for('events_photoshoots') }}"{% if NAV_HERE == 'events_photoshoots' %} class="is-here" aria-current="page"{% endif %}>{{ t('Photoshoots') }}</a></li>
+          <li><a href="{{ url_for('events_weddings') }}"{% if request.endpoint == 'events_weddings' %} class="is-here" aria-current="page"{% endif %}>{{ t('Weddings') }}</a></li>
+          <li><a href="{{ url_for('events_private') }}"{% if request.endpoint == 'events_private' %} class="is-here" aria-current="page"{% endif %}>{{ t('Private') }}</a></li>
+          <li><a href="{{ url_for('events_photoshoots') }}"{% if request.endpoint == 'events_photoshoots' %} class="is-here" aria-current="page"{% endif %}>{{ t('Photoshoots') }}</a></li>
         </ul>
       </div>
       <a href="{{ url_for('facilities_page') }}"{% if NAV_HERE == 'facilities_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('The Estate') }}</a>
@@ -287,7 +287,7 @@ window.houseDay = (function () {
         </a>
         {% if not _private_page %}<a href="{{ url_for('workshops_public') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M12 3v6M8 5l4 4 4-4"/><path d="M6 21h12M9 21v-4a3 3 0 0 1 6 0v4"/></svg>
-          {{ t('Workshops') }}
+          {{ t('Retreats') }}
         </a>{% endif %}
         {#- 15 Oct (owner): "move the what's on in ariege up on the menu" - beside the stays, not at the bottom. -#}
         <a href="/whats-on" class="g-navwrap__item">
@@ -350,10 +350,9 @@ window.houseDay = (function () {
            ================================================================ -->
       <div class="g-navwrap__foot">
         {% if not _private_page %}
-        <p class="g-navwrap__foot-h">{{ t('Subscribe to our newsletter') }}</p>
-        {# The one sign-up form (_newsletter.html): no topic ticks, bot guard on. #}
-        {% from '_newsletter.html' import newsletter_form with context %}
-        {{ newsletter_form('panel') }}
+        {#- 9 Nov, evening (owner's second review, 2.4): one newsletter form on a page, the footer's. The menu panel
+            carried a second; it is a way down to the footer's now. -#}
+        <p class="g-navwrap__foot-h"><a class="g-navwrap__newslink" href="#g-newsletter">{{ t('Subscribe to our newsletter') }}</a></p>
         <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
         {% endif %}
 
@@ -438,7 +437,7 @@ window.houseDay = (function () {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M12 3v6M8 5l4 4 4-4"/><path d="M6 21h12M9 21v-4a3 3 0 0 1 6 0v4"/></svg>
           </span>
           <span class="g-bookmenu__txt">
-            <b>{{ t('Workshops') }}</b>
+            <b>{{ t('Retreats') }}</b>
             <em>{{ t('Cooking, the brocantes and the restoration') }}</em>
             {#- 26 Oct (owner, the retreats deck 5). -#}
             <span class="g-bookmenu__meta">{{ t('Three to seven nights of') }} <em lang="fr">la vie de château</em></span>
@@ -503,10 +502,8 @@ window.houseDay = (function () {
 
 {% block content %}{% endblock %}
 
-<p class="g-cred">
-  <span class="g-cred__m">Monument Historique · Classé</span>
-  A Class I Historic Monument, restored under French heritage law since 2013
-</p>
+{#- 9 Nov, evening (owner's second review, 4): the Monument Historique line was a 38px navy strip on every page
+    between the closing section and the reassurance band. Its sentence is in the footer now. -#}
 
 </main>
 
@@ -515,6 +512,11 @@ window.houseDay = (function () {
 {# Sits immediately above the footer on every page. Four claims, each one
    verified against what the app actually does — Stripe card payments in EUR,
    a manage link issued with every booking, and human confirmation. #}
+{#- 9 Nov, evening (owner's second review, 2.6): "Secure payment" under an enquiry-only page, the legal notice and
+    a restaurant taking no bookings. The band is for the pages a guest pays from; every other page has its one line
+    in the footer. -#}
+{%- set _pays_here = request.endpoint in ('book_rooms', 'book_room', 'workshop_detail', 'workshop_register', 'private_stay') if request else false %}
+{% if _pays_here %}
 <section class="g-assure"><div class="g-wrap">
   <ul class="g-assure__grid">
     <li>
@@ -539,6 +541,7 @@ window.houseDay = (function () {
     </li>
   </ul>
 </div></section>
+{% endif %}
 
 <footer class="g-footer">
   <div class="g-crest g-crest--foot">
@@ -562,7 +565,7 @@ window.houseDay = (function () {
         tools/repair_handover.py puts it back. -#}
     {% if not _private_page %}
     {% from '_newsletter.html' import newsletter_block with context %}
-    {{ newsletter_block('footer') }}
+    <div id="g-newsletter">{{ newsletter_block('footer') }}</div>
     {% endif %}
     <div class="g-footer__grid">
       <div>
@@ -581,7 +584,10 @@ window.houseDay = (function () {
           <a href="{{ url_for('restaurant_info') }}">La Table</a> <span class="g-footer__k">{{ _fw }}</span>{% endif %}{% endif %}
         </p>
         {#- 15 Oct (owner): say, with elegance, that the château is only open to guests for now. -#}
-        <p class="g-footer__contact" style="margin:var(--s3) 0 0; font-style:italic;">{{ t('For now, the château is open only to its guests.') }}</p>
+        {%- if request.endpoint != 'contact_page' %}{#- 9 Nov, evening: /contact says it once, in Before You Write. -#}
+        <p class="g-footer__contact" style="margin:var(--s3) 0 0; font-style:italic;">{{ t('For now, the château is open only to its guests.') }}</p>{% endif %}
+        <p class="g-footer__contact g-footer__cred"><span class="g-footer__credk">Monument Historique · Classé</span> A Class I Historic Monument, restored under French heritage law since 2013.</p>
+        {% if not _pays_here %}<p class="g-footer__contact g-footer__assure">Secure payment by Stripe · A link to manage every booking · Every request answered by a person</p>{% endif %}
         <p class="g-footer__contact g-footer__social" style="margin:var(--s3) 0 0;">
           <a href="{{ url_for('social_page') }}">{{ t('Photographs') }}</a> ·
           <a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a> ·
@@ -598,7 +604,7 @@ window.houseDay = (function () {
         <h2>{{ t('Visit') }}</h2>
         <ul>
           <li><a href="{{ url_for('book_rooms') }}">{{ t('Stay the Night') }}</a></li>
-          {% if not _private_page %}<li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>{% endif %}
+          {% if not _private_page %}<li><a href="{{ url_for('workshops_public') }}">{{ t('Retreats') }}</a></li>{% endif %}
           <li><a href="{{ url_for('whats_on') }}">{{ t("What’s On in the Ariège") }}</a></li>
           {% if _dm != 'hidden' %}<li><a href="{{ url_for('restaurant_info') }}">{{ t('Dining') }}</a></li>{% endif %}
           <li><a href="{{ url_for('facilities_page') }}">{{ t('The Estate') }}</a></li>
@@ -639,6 +645,22 @@ window.houseDay = (function () {
     </div>
 </div>
 </footer>
+<script>
+/* 9 Nov 2026, evening (owner's second review, 3.1): sizes="auto" for a browser that does not know it yet. The
+   house's photographs say "auto, <a guess>"; where auto is not understood the guess is used, and the guesses ran
+   low, so the browser fetched a file narrower than the space it filled. This gives it the width it is drawn at. */
+(function(){
+  /* No reliable test for auto exists (sizes is a plain string), and the drawn width is what auto would use. */
+  function fit(){
+    document.querySelectorAll('img[srcset][sizes^="auto"]').forEach(function(i){
+      var w = Math.ceil(i.getBoundingClientRect().width);
+      if (w > 0) i.sizes = 'auto, ' + w + 'px';
+    });
+  }
+  fit(); window.addEventListener('load', fit);
+  var t; window.addEventListener('resize', function(){ clearTimeout(t); t = setTimeout(fit, 200); });
+})();
+</script>
 <script>document.querySelectorAll('[data-year]').forEach(function(e){ e.textContent=new Date().getFullYear(); });</script>
 {#- 9 Nov (owner): "google and apple maps". A link to the pin opens Apple Maps on an iPhone, an iPad (which calls
     itself a Macintosh) or a Mac, and Google Maps everywhere else: the same pin either way, from house_map_links.
@@ -654,7 +676,7 @@ window.houseDay = (function () {
   <span class="g-stickybar__t">
     <b>{% if _sb == 'dining' %}{{ t('Dine at La Table') }}
        {%- elif _sb == 'events' %}{{ t('Weddings & Celebrations') }}
-       {%- elif _sb == 'atelier' %}{{ t('Workshops & Retreats') }}
+       {%- elif _sb == 'atelier' %}{{ t('Retreats') }}
        {%- else %}{{ t('Stay the Night') }}{% endif %}</b>
     <span>Château de Gudanes</span>
   </span>
@@ -674,6 +696,21 @@ window.houseDay = (function () {
 
 
 
+<script>
+/* 9 Nov 2026, evening (owner's second review, 6): where the page opens on a date widget of its own -- the home
+   page's hero -- the bar waits until that widget has scrolled off, and comes back out of the way if it returns. */
+(function(){
+  var bar = document.querySelector('.g-stickybar'), own = document.querySelector('.g-herosearch');
+  if (!bar || !own || !('IntersectionObserver' in window)) return;
+  bar.classList.add('is-waiting');
+  new IntersectionObserver(function(seen){
+    seen.forEach(function(e){
+      var past = !e.isIntersecting && e.boundingClientRect.bottom < 0;
+      bar.classList.toggle('is-waiting', !past);
+    });
+  }).observe(own);
+})();
+</script>
 <script>
 /* Currency display. Rates fetched once and cached for the day; everything is
    still charged in Euros, which is stated wherever a converted figure shows. */
@@ -1029,30 +1066,28 @@ window.houseDay = (function () {
 </script>
 
 <script>
-/* Currency control beside the prices. The one in the menu panel is where it
-   has always been and still works; this places a second, linked control next
-   to the first convertible price on the page, because a guest reading a rate
-   should not have to open a menu to understand it. */
+/* Currency control in the header strip, once. 9 Nov 2026, evening (owner's
+   second review, 2.3): it was placed beside the first price on the page, which
+   put "SHOW PRICES IN [EUR]" between a retreat's title and its price and under
+   the section headings of /book and /workshops -- a control in the middle of
+   the copy. It sits right of Book now, small, on every page that has rates;
+   the menu panel's control is the master and the two stay in step. Every price
+   marked data-eur follows either. */
 (function(){
   var master = document.getElementById('g-currency');
-  var firstPrice = document.querySelector('[data-eur]');
-  if (!master || !firstPrice) return;
-  var host = firstPrice.closest('section, .g-wrap');
-  if (!host) return;
+  var book = document.querySelector('.g-top .g-booksel');
+  if (!master || !book) return;
 
-  var bar = document.createElement('p');
-  bar.className = 'g-curbar';
-  var label = document.createElement('span');
-  label.className = 'g-curbar__l';
-  label.textContent = 'Show prices in';
+  var bar = document.createElement('span');
+  bar.className = 'g-curtop';
   var sel = document.createElement('select');
-  sel.className = 'g-curbar__s';
-  sel.setAttribute('aria-label', 'Display currency');
+  sel.className = 'g-curtop__s';
+  sel.setAttribute('aria-label', 'Show prices in');
   master.querySelectorAll('option').forEach(function(o){
     sel.appendChild(o.cloneNode(true));
   });
   sel.value = master.value;
-  bar.appendChild(label); bar.appendChild(sel);
+  bar.appendChild(sel);
 
   /* Keep the two controls in step, whichever the guest uses. */
   sel.addEventListener('change', function(){
@@ -1061,11 +1096,7 @@ window.houseDay = (function () {
   });
   master.addEventListener('change', function(){ sel.value = master.value; });
 
-  /* After the section's heading. It anchored on '.g-eyebrow, h2', and the eyebrow comes first,
-     so the control landed between every eyebrow and its heading on the pages that show prices. */
-  var anchor = host.querySelector('h1, h2') || host.querySelector('.g-eyebrow') || host.firstElementChild;
-  if (anchor && anchor.parentElement) anchor.parentElement.insertBefore(bar, anchor.nextSibling);
-  else host.insertBefore(bar, host.firstChild);
+  book.parentElement.insertBefore(bar, book.nextSibling);
 })();
 </script>
 

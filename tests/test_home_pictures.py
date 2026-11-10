@@ -1,14 +1,15 @@
-"""The home page, laid out by the image layout brief, section 4.2 (28 Oct 2026).
+"""The home page in pictures: the image layout brief, section 4.2 (28 Oct 2026),
+as the owner's second review of the site cut it (9 Nov 2026, evening).
 
-What the brief asked of it and what would go quietly if it went:
+The second review took the page from nineteen sections to eight. The eight
+moments, the estate band, the film strip, the postcard beside the journal and
+A Night at Gudanes went; test_site_review_2 holds the eight and their order.
+What is left of the first brief, and would go quietly if it went:
 
-  - the eight moments as a staggered row in slim mounts (a slider on a phone)
-  - the estate from above as one drone photograph across the page, the words on it
-  - the rooms as a slider of their cards, one photograph each
-  - the band of five as a film strip
+  - the rooms as a slider of their cards, one photograph each, the estate from
+    the air as its first slide (in place of the band it had)
   - the dining room's before and now as one slider, with the page's own two words
   - a medallion of the house and a wax seal by each guest's quote
-  - an old postcard beside Follow the Restoration
   - and no photograph twice. Checked by the file the house holds, not by the
     address: the same breakfast photograph is a Squarespace address in Ways to
     Spend the Days and a house copy elsewhere, and two addresses for one picture
@@ -53,17 +54,10 @@ def run():
     if not s.check("the home page loads", r.status_code == 200, detail=str(r.status_code)):
         return s
 
-    s.section("the brief's components, where it put them")
-    moments = page[page.find('class="g-moments g-moments--stagger"'):]
-    moments = moments[:moments.find("</ul>")]
-    s.check("the eight moments, staggered, each in its mount",
-            moments.count('class="g-moment__mount"') == 8, detail=str(moments.count("g-moment__mount")))
-    band = page[page.find('class="g-plein g-plein--words"'):]
-    s.check("the estate from above is one photograph across the page",
-            'class="g-plein g-plein--words"' in page and band.find("from-the-air-pool-garden") >= 0)
-    s.check("with the heading and its words on the photograph",
-            0 < band.find("The Estate from Above") < band.find("</section>"))
-    s.check("and the other two aerial tiles are gone from here", "from-the-air-parterre" not in page)
+    s.section("the brief's components, where they still are")
+    s.check("the eight moments, the estate band, the film strip and the postcard went (owner, 9 Nov)",
+            "g-moments" not in page and 'class="g-plein g-plein--words"' not in page
+            and 'class="g-bande' not in page and "postcard-valley" not in page)
     conn = db()
     rooms = conn.execute("SELECT id FROM rooms WHERE active = 1").fetchall()
     conn.close()
@@ -72,11 +66,13 @@ def run():
     cards = cars.count('<article class="g-homeroom g-car__s"')
     s.check("the rooms are a slider of their cards, every room", cards == len(rooms) and cards > 0,
             detail=f"{cards} cards, {len(rooms)} rooms")
+    s.check("the estate from the air is its first slide",
+            cars.find('g-homeroom--aerial') > 0 and cars.find("from-the-air-pool-garden") > 0
+            and cars.find('g-homeroom--aerial') < cars.find('<article class="g-homeroom g-car__s"'))
     s.check("one photograph a card, not a slideshow in each",
-            len(re.findall(r"<img\b", cars)) == cards and "g-slides" not in cars)
-    s.check("the slider has its arrows and its count", 'data-car-prev' in cars and f"1 / {cards}" in cars)
-    s.check("the band of five is a film strip", re.search(r'class="g-bande g-bande--drift', page) is not None
-            and 'class="g-band"' not in page)
+            len(re.findall(r"<img\b", cars)) == cards + 1 and "g-slides" not in cars)
+    s.check("the slider has its arrows and its count, the estate included",
+            'data-car-prev' in cars and f"1 / {cards + 1}" in cars)
     resto = page[page.find("g-homeresto"):]
     s.check("the dining room's before and now is one slider",
             'class="g-aa ' in resto[:4000] and "horse-dining-room-a" in resto[:4000])
@@ -88,22 +84,6 @@ def run():
     s.check("every guest's quote has a medallion of the house and a seal",
             quotes and says.count('class="g-med ') == quotes and len(re.findall(r'class="g-seal[ "]', says)) == quotes,
             detail=f"{quotes} quotes")
-    journal = page[page.find("g-journal"):]
-    s.check("an old postcard beside Follow the Restoration",
-            'class="g-cp ' in journal[:6000] and "postcard-valley" in journal[:6000])
-    # Two short paragraphs beside a 4:5 portrait in the wider column floated in
-    # a blank twice their height (owner, 9 November 2026: "I don't like this
-    # bit"). The photograph is landscape there now, and the rule that makes it
-    # so is read off the stylesheet, since the class alone draws nothing.
-    night = page[page.find("A Night at Gudanes"):]
-    night = night[:night.find("</section>")]
-    s.check("a night at Gudanes: its few words beside a landscape photograph, not a tall one",
-            re.search(r'class="g-sp[^"]*\bg-sp--few\b', night) is not None,
-            detail=re.findall(r'class="g-sp[^"]*"', night)[:1])
-    css = open(m.os.path.join(m.BASE_DIR, "static", "gudanes-pictures.css"), encoding="utf-8").read()
-    wide = re.search(r"@media \(min-width: 56rem\)\{\s*\.g \.g-sp--few \.g-sp__main img\{ aspect-ratio: 3 / 2; \}", css)
-    s.check("and the stylesheet sets it landscape where the two sit side by side", wide is not None)
-
     s.section("no photograph twice")
     keys = [picture_key(_src(t)) for t in _visible_imgs(page) if "Logo" not in _src(t)]
     twice = sorted({k for k in keys if keys.count(k) > 1})

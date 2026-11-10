@@ -535,3 +535,114 @@
 .g .g-design__q{ margin: 0; font-family: var(--display); font-style: italic; font-size: var(--t-h3); color: var(--blue-deep); }
 .g .g-design__hero{ overflow: hidden; height: clamp(14rem, 40vw, 26rem); }
 .g .g-design__hero img{ width: 100%; height: 100%; object-fit: cover; }
+
+
+/* ==== 9 Nov 2026, evening: the owner's second review, 2.7 ================
+   Polaroids with tape, a gold picture frame, a perforated film strip, a fanned
+   stack, drifting bands, postcards and arched masks: seven framings of the same
+   photographs read as a scrapbook. Every one is a plain photograph with a 1px
+   rule now; the arched mask stays on the three /events cards only. Last in
+   the file, so each rule here is the last word on its component, and
+   test_site_review_2 measures the result in a browser. */
+.g .g-cadre__frame, .g .g-cadre__mount,
+.g .g-pp__mount, .g .g-cp__card, .g .g-carnet, .g .g-album__p, .g .g-moment__mount{
+  padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; transform: none;
+}
+.g .g-cadre__img, .g .g-pp__mount img, .g .g-cp__card img, .g .g-carnet img, .g .g-album__f img,
+.g .g-sp__main img, .g .g-bande__i img, .g .g-moment__mount img{
+  border-radius: 0; box-shadow: 0 0 0 1px var(--line, rgba(43,33,23,.16)); filter: none;
+}
+.g .g-cadre--oval .g-cadre__frame, .g .g-cadre--oval .g-cadre__mount, .g .g-cadre--oval .g-cadre__img,
+.g .g-cadre--arch .g-cadre__frame, .g .g-cadre--arch .g-cadre__mount, .g .g-cadre--arch .g-cadre__img{ border-radius: 0; }
+.g .g-way .g-cadre--arch .g-cadre__img{ border-radius: 50% 50% 0 0 / 32% 32% 0 0; box-shadow: none; }
+.g .g-carnet__tape, .g .g-cp__stamp, .g .g-cp__mark, .g .g-album__f::before, .g .g-album__f::after{ display: none; }
+.g .g-carnet{ width: min(20rem, 100%); }
+.g .g-album{ grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); padding: 0; }
+.g .g-album--2{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g .g-album .g-album__p{ grid-column: auto; grid-row: auto; margin-top: 0; z-index: auto; }
+/* The film strips: no perforations, no frame numbers, no drift. A plain row. */
+.g .g-bande--contact{ background: none; padding: 0; }
+.g .g-bande--contact::before, .g .g-bande--contact::after, .g .g-bande--contact .g-bande__i::after{ display: none; }
+.g .g-bande--contact .g-bande__i{ border: 0; }
+.g .g-bande.is-drifting .g-bande__row{ animation: none; }
+.g .g-bande{ overflow-x: auto; }
+
+
+/* ==== 9 Nov 2026, evening: the owner's second review, 2.1 ================
+   Eight button styles on the home page alone -- Arial, Inter, Inter in
+   capitals, EB Garamond at three sizes, Cormorant. Two now, in one face: the
+   navy filled button and the outlined one, EB Garamond 15. The !important is
+   for the face only: forty earlier rules set a button's font, each for its
+   own page, and this is the one that has to win on all of them. Icon buttons
+   (the slider arrows, the video's pause) are not text buttons and keep theirs. */
+.g .g-btn, .g a.g-btn, .g button.g-btn, .g .g-herosearch__go, .g .g-search__go, .g .g-full__cta,
+.g .g-hero__altbtn, .g .g-seeall__b, .g .g-reserve, .g .g-stickybar__cta, .g .g-qbook__go,
+.g .g-submit, .g .g-news__one button.g-btn, .g .g-navbtn, .g .g-navbtn__label, .g .g-rp__btn, .g .g-rp__val{
+  font-family: var(--serif) !important; font-size: 15px !important; font-weight: 500 !important;
+  letter-spacing: .02em !important; text-transform: none !important; border-radius: 0 !important;
+}
+/* Filled: navy. */
+.g .g-btn--solid, .g .g-herosearch__go, .g .g-search__go, .g .g-reserve, .g .g-qbook__go,
+.g .g-submit{
+  background: var(--blue-deep); color: #fff; border: 1px solid var(--blue-deep);
+}
+/* Outlined: the same face, a navy rule. On navy the rule and the words are cream. */
+.g .g-hero__altbtn, .g .g-seeall__b{ background: transparent; color: var(--blue-deep); border: 1px solid var(--blue-deep); }
+.g .g-full__cta, .g .g-hero .g-hero__altbtn, .g .g-sec--dark .g-btn:not(.g-btn--solid){
+  background: transparent; color: var(--sand); border: 1px solid var(--sand);
+}
+.g .g-full__cta:hover, .g .g-hero .g-hero__altbtn:hover{ background: var(--sand); color: var(--blue-deep); }
+/* The date widget and the booking forms: their labels in the body serif too. */
+.g .g-herosearch label, .g .g-search__f label, .g .g-qbook__f label, .g .g-rp__val, .g .g-rp__nights,
+.g .g-herosearch input, .g .g-search__f input{ font-family: var(--serif); letter-spacing: .02em; }
+.g .g-herosearch label, .g .g-search__f label, .g .g-qbook__f label{ font-size: 13px; text-transform: none; }
+/* 2.2  The FAQ answers in the body serif, like every other paragraph. */
+.g .g-faq-sec details p, .g .g-faq-sec dd, .g .g-faq__a{ font-family: var(--serif); }
+
+/* 2.3  The currency control: in the header strip, right of Book, small. */
+.g .g-curtop{ display: inline-flex; align-items: center; margin-left: var(--s2); }
+.g .g-curtop__s{ font-family: var(--serif); font-size: 13px; padding: 2px 4px; border: 1px solid currentColor;
+  background: transparent; color: inherit; border-radius: 0; }
+.g .g-curtop__s option{ color: var(--ink); }
+.g .g-curbar{ display: none; }
+@media (max-width: 40rem){ .g .g-curtop{ display: none; } }
+
+/* 6  The phone's booking bar waits for the hero's own date widget to scroll off:
+   on the home page the two booking buttons sat an inch apart. Slid away, not
+   removed, so the page keeps its shape and the bar is ready the moment the
+   widget leaves. */
+.g .g-stickybar{ transition: transform .25s ease; }
+.g .g-stickybar.is-waiting{ transform: translateY(110%); pointer-events: none; }
+@media (prefers-reduced-motion: reduce){ .g .g-stickybar{ transition: none; } }
+
+/* 6  Nothing under 12px on a phone. The footer's crest dates were 10.5px. */
+.g .g-crest__date em{ font-size: 12px; letter-spacing: .08em; }
+
+/* 3.1  A room's gallery draws a small file no wider than it will stand (pic's
+   upto), centred on the sand rather than stretched soft across the page. */
+.g .g-roomgal-car .g-car__f{ background: var(--sand-2, #EFE7D8); }
+.g .g-roomgal-car .g-car__f img{ display: block; }
+/* 6  Every tap target 44px on a touch screen: the room cards' photograph
+   arrows were 34px, and a short word in the footer or the crumbs -- "Press",
+   "Stay" -- was a link narrower than a finger. */
+@media (pointer: coarse){
+  .g .g-car--room .g-car__btn{ width: 44px; height: 44px; }
+  .g .g-footer li a, .g .g-crumbs a{ display: inline-block; min-width: 44px; min-height: 44px; }
+}
+/* /whats-on: the rest of the year, folded under the next four dates. */
+.g .g-agenda__more{ margin-top: var(--s4); }
+.g .g-agenda__more > summary{ cursor: pointer; font-family: var(--serif); font-size: 16px; font-style: italic;
+  color: var(--blue-deep); min-height: 44px; display: flex; align-items: center; }
+
+/* 6  The rows you swipe on a phone bleed to the screen's edge by the gutter's
+   width -- 16px there, not the 24px of a tablet -- or they hang 8px past both
+   edges, where the page's clip cuts the last card. Measured at 320-390px by
+   test_public_pages_measured. */
+@media (max-width: 34rem){
+  .g .g-sittings-grid, .g .g-wscards, .g .g-addon{ margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
+}
+@media (max-width: 22rem){ .g .g-crest__row{ flex-wrap: wrap; row-gap: var(--s2); } }
+/* 4  Home, La Vie de Château: both columns from the top, so the words' last line ends the block. */
+.g .g-full__in{ align-items: start; }
+/* 2.4  The menu panel's way down to the footer's newsletter form, in place of a second form. */
+.g .g-navwrap__newslink{ color: inherit; text-decoration: underline; text-underline-offset: 3px; }

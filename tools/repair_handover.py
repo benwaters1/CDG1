@@ -965,54 +965,6 @@ REVERTED_PAGES = (
 )
 
 
-def repair_event_promo_field():
-    """The promo code box on the event enquiry form.
-
-    submit_event_inquiry reads request.form["promo_code"] and stores it so the
-    owner can honour a code when they quote. Without the field the route reads a
-    parameter no form sends -- the read-and-never-written shape one level up --
-    and it fails silently, because an enquiry with no code is a perfectly
-    ordinary enquiry.
-
-    The suite did not catch it either when a handover dropped it: the test posts
-    to the route rather than checking the page carries the field. That check
-    exists now, and so does this.
-    """
-    rel = "templates/events_info.html"
-    src = _read(rel)
-    if 'name="promo_code"' in src:
-        return 0
-    marker = '<textarea id="message" name="message"'
-    at = src.find(marker)
-    if at == -1:
-        return 0
-    # The end of the paragraph the textarea sits in, which is where the new
-    # field goes. Found rather than reconstructed: the surrounding markup is the
-    # designer's and changes shape between handovers.
-    close = src.find("</p>", at)
-    if close == -1:
-        return 0
-    close += len("</p>")
-    nl = "\r\n" if "\r\n" in src else "\n"
-    block = nl.join([
-        "",
-        "        {# Captured, not validated. There is no price on an enquiry yet",
-        "           to take a discount off, and refusing an enquiry because a",
-        "           code was mistyped would lose a wedding over a typo. The",
-        "           house sees what was claimed and applies it when it quotes. #}",
-        '        <p class="g-field">',
-        '          <label for="promo_code">Promo code (optional)</label>',
-        '          <input type="text" id="promo_code" name="promo_code"',
-        '                 autocomplete="off"',
-        "                 value=\"{{ prefill_promo_code | default('') }}\">",
-        '          <span class="g-hint">If you have been given one, we will',
-        "          apply it to your quote.</span>",
-        "        </p>",
-    ])
-    _write(rel, src[:close] + block + src[close:])
-    return 1
-
-
 def repair_admin_images_page():
     """The two things the image manager arrives with, both rounds so far.
 
@@ -1884,13 +1836,10 @@ def repair_retired_addresses():
 # brings back what that replaced: the three topic ticks nothing ever read, an
 # inline form with no bot guard, and public_base.html and contact.html without
 # the sign-up the owner asked for. test_newsletter_signup goes red on each.
+# The footer's form sits in #g-newsletter, which the menu panel links down to
+# (9 Nov 2026: the panel's own form went, one form a page).
 NEWSLETTER_FOOTER_CALL = ("{% from '_newsletter.html' import newsletter_block with context %}\n"
-                          "    {{ newsletter_block('footer') }}\n    ")
-NEWSLETTER_CONTACT_CALL = (
-    "{% from '_newsletter.html' import newsletter_block with context %}\n"
-    "<section class=\"g-sec g-sec--sand g-journal\" id=\"newsletter\"><div class=\"g-wrap\">\n"
-    "  {{ newsletter_block('contact') }}\n"
-    "</div></section>\n\n")
+                          "    <div id=\"g-newsletter\">{{ newsletter_block('footer') }}</div>\n    ")
 NEWSLETTER_TICKS = re.compile(r"[ \t]*<fieldset class=\"g-interests\">.*?</fieldset>[ \t]*\r?\n?", re.S)
 SIGNUP_FORM = re.compile(
     r"(<form\b[^>]*action=\"\{\{ url_for\('(?:newsletter_subscribe|join_waitlist)'\) \}\}\"[^>]*>)"
@@ -1899,7 +1848,13 @@ CSRF_LINE = re.compile(r"(<input type=\"hidden\" name=\"csrf_token\" value=\"\{\
 
 
 def repair_newsletter_signup():
-    """The newsletter's one form: footer, Contact page, no ticks, bot guard on."""
+    """The newsletter's one form: the footer's, no ticks, bot guard on.
+
+    9 Nov 2026, evening (the owner's second review, 2.4): one form a page, the
+    footer's. Contact's own block, which this used to put back, went with the
+    seven other mid-page forms; a handover that brings one back is caught by
+    test_site_review_2, which counts the forms on every public page.
+    """
     n = 0
     rel = "templates/public_base.html"
     src = _read(rel)
@@ -1911,23 +1866,6 @@ def repair_newsletter_signup():
             n += 1
         else:
             print("  ! public_base.html: no .g-footer__grid to put the newsletter above")
-    rel = "templates/contact.html"
-    try:
-        src = _read(rel)
-    except FileNotFoundError:
-        src = None
-    if src is not None and "newsletter_block('contact')" not in src:
-        for anchor in ('<div class="g-band">', '<section class="g-sec g-close">',
-                       '{% endblock %}'):
-            # The last {% endblock %} is the content block's close.
-            at = src.rfind(anchor) if anchor == '{% endblock %}' else src.find(anchor)
-            if at != -1:
-                _write(rel, src[:at] + NEWSLETTER_CONTACT_CALL + src[at:])
-                n += 1
-                break
-        else:
-            print("  ! contact.html: nowhere to put the newsletter")
-
     for name in sorted(os.listdir(TEMPLATE_DIR)):
         if not name.endswith(".html"):
             continue
@@ -2048,7 +1986,8 @@ def main():
         ("the house's own reviews", repair_featured_reviews),
         ("why a room is unavailable", repair_unavailable_reason),
         ("the under-18 count the return reads", repair_under_18_field),
-        ("the promo code box on the event enquiry", repair_event_promo_field),
+        # 9 Nov 2026, evening (owner's second review, 5): no promo code on an enquiry. The repair that
+        # put the box back after a handover is retired; test_event_promo holds that it stays off.
         ("the image manager posting to a hardcoded path", repair_admin_images_page),
         ("the url_map guard that never fires", repair_url_map_guards),
         ("column names the database does not have", repair_invented_columns),
