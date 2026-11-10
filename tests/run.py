@@ -547,6 +547,7 @@ SUITES = [
     "test_outlook_addin",
     "test_send_check",
     "test_send_check_french_reply",
+    "test_addin_signature",
     # Shared inboxes and a pinned Guest pane, 19 October 2026.
     "test_addin_shared_inboxes",
     # 22 October 2026: a new add-in version reaches the owner as a task.

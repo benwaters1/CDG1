@@ -229,6 +229,10 @@
               <LaunchEvents>
                 <LaunchEvent Type="OnNewMessageCompose" FunctionName="onNewMessageComposeHandler"/>
                 <LaunchEvent Type="OnMessageRecipientsChanged" FunctionName="onMessageRecipientsChangedHandler"/>
+                <!-- The signature is redone when the From changes (Mailbox 1.13):
+                     Jasmine moving a reply from experience@ to her own address.
+                     An Outlook without the event simply keeps the first one. -->
+                <LaunchEvent Type="OnMessageFromChanged" FunctionName="onMessageFromChangedHandler"/>
                 <LaunchEvent Type="OnMessageSend" FunctionName="onMessageSendHandler" SendMode="PromptUser"/>
               </LaunchEvents>
               <SourceLocation resid="WebViewRuntime.Url"/>

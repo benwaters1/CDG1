@@ -9950,6 +9950,8 @@ NAV_AREAS = {
         "admin_outlook_addin_people", "admin_outlook_addin_revoke",
         "admin_outlook_addin_revoke_check",
         "admin_outlook_addin_mailboxes", "admin_outlook_addin_settings",
+        # The house's email signatures: they go out on every email the add-in signs.
+        "admin_outlook_addin_signatures",
         # Saying Microsoft 365 has fetched the new add-in: it closes the
         # owner's warning and task, so it is the owner's to say.
         "admin_outlook_addin_updated",
@@ -118325,7 +118327,10 @@ OUTLOOK_ADDIN_GUID = "31db9023-97b7-4519-8829-c0b1e3bed58e"
 # offered on an email read in a shared inbox (experience@ had no add-ins at
 # all), and SupportsPinning on the Guest pane, so it stays open and follows
 # the email chosen.
-OUTLOOK_ADDIN_VERSION = "2.2.0.0"
+#
+# 2.3.0.0, 10 November 2026: OnMessageFromChanged, so the signature the add-in
+# now puts in (see ADDIN_SIGNATURES) is redone when the email's From changes.
+OUTLOOK_ADDIN_VERSION = "2.3.0.0"
 # Microsoft's sign-in library: the only file the panels take from a CDN, so
 # pinned to one release and fingerprinted, and the browser refuses any other
 # bytes under that name.
@@ -124319,6 +124324,132 @@ def addin_house_domains():
     return sorted(d for d in house_domains() if d not in PUBLIC_MAIL_DOMAINS)
 
 
+# ---------------------------------------------------------------------------
+# THE SIGNATURE, PUT IN BY THE ADD-IN (10 November 2026).
+#
+# Five Exchange transport rules (Ben, Accounts, the Chateau Team, Jasmine,
+# Karina; set up 15-19 October) used to add the signature, and the owner saw
+# two faults on 20 October: it landed at the very bottom of the whole thread,
+# under the quoted guest email, because a transport rule can only append to
+# the end of a message; and its logo showed as a broken picture, because
+# Outlook blocks a remotely hosted image until the reader asks for it. A
+# server-added signature is also never in the sender's own Sent Items.
+#
+# So the add-in puts it in while the email is being written
+# (setSignatureAsync, Mailbox 1.10): above the quoted text on a reply, under
+# the body on a new email, with the logo carried inside the email as an
+# inline attachment that nothing blocks. Chosen by the address the email is
+# FROM, which in a shared inbox is the inbox, not the person.
+#
+# THE ADDRESS LINE IS THE DOUBLING GUARD. The transport rules stay, as the
+# fallback for mail sent without the add-in (a phone without it, another
+# app), and they skip any email already containing "2 Route de Beille". A
+# signature saved without those words would be signed twice, so it is not
+# saved. The rules themselves are not touched from here.
+#
+# Data the owner edits on /admin/outlook-addin, seeded from the v5 HTML that
+# was live in the transport rules on 20 October (signatures-v5/). Nothing is
+# written to the database until the owner saves one: until then the add-in
+# serves these.
+# ---------------------------------------------------------------------------
+ADDIN_SIGNATURE_GUARD = "2 Route de Beille"
+# setSignatureAsync refuses anything longer.
+ADDIN_SIGNATURE_MAX = 30000
+ADDIN_SIGNATURE_SETTING = "addin_signature_{}"
+ADDIN_SIGNATURE_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                         "static", "email", "gudanes-logo-email.png")
+# The name the logo is attached under, and what the signature points at as
+# cid:<this> once it is attached.
+ADDIN_SIGNATURE_LOGO_NAME = "gudanes-logo.png"
+ADDIN_SIGNATURES = [
+    {"key": "team", "label": "The Château Team",
+     "mailboxes": ("reservations", "house", "chateauteam"),
+     "default": '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:16px"><tr><td style="padding:0 14px 0 0;vertical-align:middle;border-right:1px solid #C5A24A"><a href="https://chateaugudanes.com" style="text-decoration:none"><img src="https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png" width="104" alt="Château de Gudanes" style="display:block;border:0;width:104px;height:auto"></a></td><td style="padding:0 0 0 14px;vertical-align:middle"><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:16px;line-height:1.25;color:#14305F">The Château Team</div><div style="font-family:Arial,Helvetica,sans-serif;font-size:9px;letter-spacing:1.5px;line-height:1.4;color:#9A7B2E;padding-top:3px">CHÂTEAU DE GUDANES</div></td></tr></table><table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:10px"><tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#4A6076"><a href="tel:+33628069776" style="color:#4A6076;text-decoration:none;white-space:nowrap">+33 6 28 06 97 76</a><br><a href="https://chateaugudanes.com" style="color:#14305F;text-decoration:none;white-space:nowrap">chateaugudanes.com</a> <span style="color:#C5A24A">·</span> <a href="https://www.instagram.com/chateaugudanes" style="color:#14305F;text-decoration:none;white-space:nowrap">@chateaugudanes</a><br><a href="https://www.google.com/maps/place/Ch%C3%A2teau+de+Gudanes,+2+Route+de+Beille,+09310+Ch%C3%A2teau-Verdun,+France" style="color:#4A6076;text-decoration:none">2 Route de Beille, 09310 Château-Verdun, France</a></td></tr></table>'},
+    {"key": "experience", "label": "Jasmine (Experiences)", "mailboxes": ("experience",),
+     "default": '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:16px"><tr><td style="padding:0 14px 0 0;vertical-align:middle;border-right:1px solid #C5A24A"><a href="https://chateaugudanes.com" style="text-decoration:none"><img src="https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png" width="104" alt="Château de Gudanes" style="display:block;border:0;width:104px;height:auto"></a></td><td style="padding:0 0 0 14px;vertical-align:middle"><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:16px;line-height:1.25;color:#14305F">Château de Gudanes</div><div style="font-family:Arial,Helvetica,sans-serif;font-size:9px;letter-spacing:1.5px;line-height:1.4;color:#9A7B2E;padding-top:3px">EXPERIENCES</div></td></tr></table><table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:10px"><tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#4A6076"><a href="tel:+33628069776" style="color:#4A6076;text-decoration:none;white-space:nowrap">+33 6 28 06 97 76</a><br><a href="https://chateaugudanes.com" style="color:#14305F;text-decoration:none;white-space:nowrap">chateaugudanes.com</a> <span style="color:#C5A24A">·</span> <a href="https://www.instagram.com/chateaugudanes" style="color:#14305F;text-decoration:none;white-space:nowrap">@chateaugudanes</a><br><a href="https://www.google.com/maps/place/Ch%C3%A2teau+de+Gudanes,+2+Route+de+Beille,+09310+Ch%C3%A2teau-Verdun,+France" style="color:#4A6076;text-decoration:none">2 Route de Beille, 09310 Château-Verdun, France</a></td></tr></table>'},
+    {"key": "ariege", "label": "Karina", "mailboxes": ("ariege",),
+     "default": '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:16px"><tr><td style="padding:0 14px 0 0;vertical-align:middle;border-right:1px solid #C5A24A"><a href="https://chateaugudanes.com" style="text-decoration:none"><img src="https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png" width="104" alt="Château de Gudanes" style="display:block;border:0;width:104px;height:auto"></a></td><td style="padding:0 0 0 14px;vertical-align:middle"><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:16px;line-height:1.25;color:#14305F">Château de Gudanes</div></td></tr></table><table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:10px"><tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#4A6076"><a href="tel:+33628069776" style="color:#4A6076;text-decoration:none;white-space:nowrap">+33 6 28 06 97 76</a><br><a href="https://chateaugudanes.com" style="color:#14305F;text-decoration:none;white-space:nowrap">chateaugudanes.com</a> <span style="color:#C5A24A">·</span> <a href="https://www.instagram.com/chateaugudanes" style="color:#14305F;text-decoration:none;white-space:nowrap">@chateaugudanes</a><br><a href="https://www.google.com/maps/place/Ch%C3%A2teau+de+Gudanes,+2+Route+de+Beille,+09310+Ch%C3%A2teau-Verdun,+France" style="color:#4A6076;text-decoration:none">2 Route de Beille, 09310 Château-Verdun, France</a></td></tr></table>'},
+    {"key": "accounts", "label": "Accounts", "mailboxes": ("accounts",),
+     "default": '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:16px"><tr><td style="padding:0 14px 0 0;vertical-align:middle;border-right:1px solid #C5A24A"><a href="https://chateaugudanes.com" style="text-decoration:none"><img src="https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png" width="104" alt="Château de Gudanes" style="display:block;border:0;width:104px;height:auto"></a></td><td style="padding:0 0 0 14px;vertical-align:middle"><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:16px;line-height:1.25;color:#14305F">Accounts</div><div style="font-family:Arial,Helvetica,sans-serif;font-size:9px;letter-spacing:1.5px;line-height:1.4;color:#9A7B2E;padding-top:3px">CHÂTEAU DE GUDANES</div></td></tr></table><table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:10px"><tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#4A6076"><a href="tel:+33631374426" style="color:#4A6076;text-decoration:none;white-space:nowrap">+33 6 31 37 44 26</a><br><a href="https://chateaugudanes.com" style="color:#14305F;text-decoration:none;white-space:nowrap">chateaugudanes.com</a><br><a href="https://www.google.com/maps/place/Ch%C3%A2teau+de+Gudanes,+2+Route+de+Beille,+09310+Ch%C3%A2teau-Verdun,+France" style="color:#4A6076;text-decoration:none">2 Route de Beille, 09310 Château-Verdun, France</a></td></tr></table>'},
+    {"key": "benw", "label": "Ben Waters", "mailboxes": ("benw",),
+     "default": '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:16px"><tr><td style="padding:0 14px 0 0;vertical-align:middle;border-right:1px solid #C5A24A"><a href="https://chateaugudanes.com" style="text-decoration:none"><img src="https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png" width="104" alt="Château de Gudanes" style="display:block;border:0;width:104px;height:auto"></a></td><td style="padding:0 0 0 14px;vertical-align:middle"><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:16px;line-height:1.25;color:#14305F">Ben Waters</div><div style="font-family:Arial,Helvetica,sans-serif;font-size:9px;letter-spacing:1.5px;line-height:1.4;color:#9A7B2E;padding-top:3px">CHÂTEAU DE GUDANES</div></td></tr></table><table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:10px"><tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#4A6076"><a href="tel:+33631374426" style="color:#4A6076;text-decoration:none;white-space:nowrap">+33 6 31 37 44 26</a> <span style="color:#C5A24A">·</span> <a href="tel:+61405073432" style="color:#4A6076;text-decoration:none;white-space:nowrap">+61 405 073 432</a><br><a href="https://chateaugudanes.com" style="color:#14305F;text-decoration:none;white-space:nowrap">chateaugudanes.com</a> <span style="color:#C5A24A">·</span> <a href="https://www.instagram.com/chateaugudanes" style="color:#14305F;text-decoration:none;white-space:nowrap">@chateaugudanes</a><br><a href="https://www.google.com/maps/place/Ch%C3%A2teau+de+Gudanes,+2+Route+de+Beille,+09310+Ch%C3%A2teau-Verdun,+France" style="color:#4A6076;text-decoration:none">2 Route de Beille, 09310 Château-Verdun, France</a></td></tr></table>'},
+]
+ADDIN_SIGNATURE_KEYS = tuple(s["key"] for s in ADDIN_SIGNATURES)
+# The hosted copy of the logo the stored HTML points at. On a client that
+# cannot attach the logo, that is what is used.
+ADDIN_SIGNATURE_LOGO_URL = "https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png"
+
+
+def addin_signature_problem(html):
+    """Why this HTML cannot be a signature, or None."""
+    text = html or ""
+    if not text.strip():
+        return "it is empty"
+    if ADDIN_SIGNATURE_GUARD not in text:
+        return (f'it does not say "{ADDIN_SIGNATURE_GUARD}" -- the server rules look for '
+                "those words to know the add-in has signed it, and would sign it a second time")
+    if re.search(r"data:", text, re.I):
+        return ("it carries a picture inside it (data:) -- Outlook strips those, and the "
+                "logo is attached by the add-in instead")
+    if re.search(r"<\s*script|javascript:|\son\w+\s*=", text, re.I):
+        return "it has script in it, which no email may carry"
+    if len(text) > ADDIN_SIGNATURE_MAX:
+        return f"it is longer than Outlook takes ({ADDIN_SIGNATURE_MAX:,} characters)"
+    return None
+
+
+def addin_signature_html(conn, key):
+    """(html, saved) for one signature: the owner's, or the v5 one it started from."""
+    spec = next(s for s in ADDIN_SIGNATURES if s["key"] == key)
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (ADDIN_SIGNATURE_SETTING.format(key),)).fetchone()
+    saved = (row["value"] if row else "") or ""
+    if saved.strip() and addin_signature_problem(saved) is None:
+        return saved, True
+    return spec["default"], False
+
+
+def addin_signature_text(html):
+    """The same signature as plain text, for an email written in plain text."""
+    text = re.sub(r"(?i)<br\s*/?>", "\n", html or "")
+    text = re.sub(r"(?i)</(?:div|tr|table|p)>", "\n", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    lines = [" ".join(html_unescape(line).split()) for line in text.splitlines()]
+    return "\n".join(line for line in lines if line)
+
+
+_ADDIN_LOGO_B64 = []
+
+
+def addin_signature_logo_base64():
+    """The logo as base64, for the add-in to attach inline. "" if it is missing,
+    which the add-in reads as "use the hosted copy"."""
+    if not _ADDIN_LOGO_B64:
+        try:
+            with open(ADDIN_SIGNATURE_LOGO_PATH, "rb") as fh:
+                _ADDIN_LOGO_B64.append(base64.b64encode(fh.read()).decode("ascii"))
+        except OSError:
+            _ADDIN_LOGO_B64.append("")
+    return _ADDIN_LOGO_B64[0]
+
+
+def addin_signature_script_data(conn):
+    """What the event script is given: which inbox gets which signature, each
+    signature as HTML and as text, and the logo. In the script itself rather
+    than asked for, so signing an email needs no sign-in and no network."""
+    html, text, by_mailbox = {}, {}, {}
+    for spec in ADDIN_SIGNATURES:
+        body, _saved = addin_signature_html(conn, spec["key"])
+        html[spec["key"]] = body
+        text[spec["key"]] = addin_signature_text(body)
+        for local in spec["mailboxes"]:
+            by_mailbox[local] = spec["key"]
+    return {"by_mailbox": by_mailbox, "html": html, "text": text,
+            "guard": ADDIN_SIGNATURE_GUARD, "logo_url": ADDIN_SIGNATURE_LOGO_URL,
+            "logo_name": ADDIN_SIGNATURE_LOGO_NAME,
+            "logo_base64": addin_signature_logo_base64()}
+
+
 def addin_page_config():
     """What every add-in page and script is told: where to ask, and how to sign in."""
     return {
@@ -124451,8 +124582,13 @@ def addin_msal_source_js():
 
 def addin_event_script():
     """The event handlers as served, and a fingerprint of exactly those bytes."""
+    conn = get_db()
+    try:
+        signatures = addin_signature_script_data(conn)
+    finally:
+        conn.close()
     js = render_template("outlook_addin_launchevent.js", config=addin_page_config(),
-                         msal_source=addin_msal_source_js())
+                         msal_source=addin_msal_source_js(), signatures=signatures)
     return js, hashlib.sha256(js.encode("utf-8")).hexdigest()[:20]
 
 
@@ -124511,6 +124647,11 @@ ADDIN_SUPPORT = [
     {"feature": "A note about the guest when they are put in To",
      "desktop": "yes", "web": "yes", "phone": "yes",
      "fallback": "Outlook on a phone needs version 4.2425 or later."},
+    {"feature": "The house signature, under the reply, with its logo",
+     "desktop": "yes", "web": "yes", "phone": "yes",
+     "fallback": "Where Outlook cannot attach the logo (a phone), the signature uses the hosted "
+                 "logo, which the reader may have to download. Mail sent without the add-in "
+                 "is still signed by the server, at the bottom of the thread."},
     {"feature": "Microsoft 365 sign-in, no key to paste",
      "desktop": "yes", "web": "yes", "phone": "yes",
      "fallback": "An older Outlook that cannot sign in this way asks for the shared key, if "
@@ -124594,7 +124735,68 @@ def _admin_addin_context(conn):
                 WHERE addin_send_checks.outcome = 'conflict' AND addin_send_checks.at >= ?
                 ORDER BY addin_send_checks.at DESC LIMIT 12""",
             ((datetime.now(timezone.utc) - timedelta(days=14)).isoformat(),)).fetchall(),
+        "signatures": [
+            dict(spec, html=html, saved=saved, guard=ADDIN_SIGNATURE_GUARD,
+                 addresses=", ".join(f"{local}@" for local in spec["mailboxes"]))
+            for spec in ADDIN_SIGNATURES
+            for html, saved in (addin_signature_html(conn, spec["key"]),)],
     }
+
+
+@app.route("/admin/outlook-addin/signatures", methods=["POST"])
+@owner_required
+def admin_outlook_addin_signatures():
+    """The five signatures the add-in puts in. One that would let the server
+    sign the email a second time, or that carries what no email should, is
+    refused by name and the rest are still saved; "Put back" returns one to
+    the v5 HTML it started from."""
+    conn = get_db()
+    saved, restored, refused = [], [], []
+    put_back = request.form.get("put_back") or ""
+    for spec in ADDIN_SIGNATURES:
+        key = spec["key"]
+        setting = ADDIN_SIGNATURE_SETTING.format(key)
+        if put_back == key:
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (setting,))
+            restored.append(spec["label"])
+            continue
+        field = f"signature_{key}"
+        if field not in request.form:
+            continue
+        html = (request.form.get(field) or "").strip()
+        current, _was_saved = addin_signature_html(conn, key)
+        if html == current.strip():
+            continue
+        problem = addin_signature_problem(html)
+        if problem:
+            refused.append(f"{spec['label']}: {problem}")
+            continue
+        if html == spec["default"].strip():
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (setting,))
+        else:
+            conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                         (setting, html))
+        saved.append(spec["label"])
+    if saved or restored:
+        log_audit(conn, "addin_signatures",
+                  details="; ".join(filter(None, [
+                      ("saved " + ", ".join(saved)) if saved else "",
+                      ("put back " + ", ".join(restored)) if restored else ""])))
+    conn.commit()
+    conn.close()
+    done = []
+    if saved:
+        done.append("Saved: " + ", ".join(saved) + ".")
+    if restored:
+        done.append("Put back to the original: " + ", ".join(restored) + ".")
+    if refused:
+        flash("Not saved -- " + "; ".join(refused) + ". " + " ".join(done), "error")
+    elif done:
+        flash(" ".join(done) + " The add-in uses it on the next email anybody starts.",
+              "success")
+    else:
+        flash("Nothing had changed.", "success")
+    return redirect(url_for("admin_outlook_addin") + "#signatures")
 
 
 @app.route("/admin/outlook-addin")

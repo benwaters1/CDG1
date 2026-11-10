@@ -271,6 +271,75 @@
 </form>
 {% endif %}
 
+<h2 class="section-heading" id="signatures">Email signatures</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  The add-in puts these in as an email is written: under the reply, above the quoted email, with
+  the logo carried inside the email so it shows without "download pictures". Chosen by the
+  address the email is <em>from</em>, so a reply from reservations@ is signed by the Château
+  Team whoever writes it. Mail sent without the add-in is still signed by the server, at the
+  bottom.
+</p>
+<p class="pay-disclaimer">
+  Every signature must keep the words <strong>{{ signatures[0].guard }}</strong>. The server
+  looks for them to know the add-in has signed an email, and signs it again if they are missing,
+  so a signature without them is not saved.
+</p>
+<form method="post" action="{{ url_for('admin_outlook_addin_signatures') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% for sig in signatures %}
+  <div class="detail-card" style="margin-bottom:14px;">
+    <h3 style="margin:0 0 4px;">{{ sig.label }}</h3>
+    <p class="field-hint" style="margin:0 0 8px;">
+      Emails from {{ sig.addresses }}
+      · {{ 'your own wording' if sig.saved else 'as it was set up in October' }}
+    </p>
+    <div class="sig-pair">
+      <p style="margin:0;">
+        <label class="field-label" for="sig-{{ sig.key }}">The HTML</label>
+        <textarea id="sig-{{ sig.key }}" name="signature_{{ sig.key }}" rows="9" spellcheck="false"
+                  data-preview="sig-preview-{{ sig.key }}"
+                  style="font-family:ui-monospace,Consolas,monospace; font-size:12px;">{{ sig.html }}</textarea>
+      </p>
+      <div>
+        <span class="field-label">How it looks</span>
+        <iframe id="sig-preview-{{ sig.key }}" title="Preview of the {{ sig.label }} signature"
+                sandbox="" srcdoc="{{ sig.html }}"
+                style="width:100%; height:170px; border:1px solid var(--line, #ddd); background:#fff; border-radius:6px;"></iframe>
+        <p class="field-hint sig-guard" data-for="sig-{{ sig.key }}" hidden>
+          Missing "{{ sig.guard }}": this one would not be saved.
+        </p>
+      </div>
+    </div>
+    {% if sig.saved %}
+    <button type="submit" name="put_back" value="{{ sig.key }}" class="btn-ghost" style="margin-top:8px;">Put back the original</button>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <button type="submit" class="btn-mini">Save the signatures</button>
+</form>
+<style>
+  .sig-pair{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width: 760px){ .sig-pair{ grid-template-columns:1fr; } }
+</style>
+<script>
+(function () {
+  var guard = {{ signatures[0].guard|tojson }};
+  var boxes = document.querySelectorAll('textarea[data-preview]');
+  for (var i = 0; i < boxes.length; i++) {
+    (function (box) {
+      var frame = document.getElementById(box.getAttribute('data-preview'));
+      var warn = document.querySelector('.sig-guard[data-for="' + box.id + '"]');
+      function draw() {
+        frame.srcdoc = box.value;
+        if (warn) { warn.hidden = box.value.indexOf(guard) !== -1; }
+      }
+      box.addEventListener('input', draw);
+      draw();
+    })(boxes[i]);
+  }
+})();
+</script>
+
 <h2 class="section-heading" id="settings">Settings</h2>
 <form method="post" action="{{ url_for('admin_outlook_addin_settings') }}" class="detail-card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
