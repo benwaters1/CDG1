@@ -60659,8 +60659,18 @@ def house_map_links():
         "dir": f"https://www.google.com/maps/dir/?api=1&destination={at}&travelmode=driving",
         "apple": (f"https://maps.apple.com/?ll={at}"
                   "&q=Ch%C3%A2teau%20de%20Gudanes"),
+        # Restaurants around the gates (owner, 10 Nov 2026: a night has no lunch
+        # or dinner, so point guests to the restaurants nearby). The word is the
+        # kind of place, and the map is centred on the pin, so the answer is the
+        # valley's whoever asks -- not a search by name answered from Tokyo.
+        "eat": f"https://www.google.com/maps/search/restaurants/@{at},13z",
         "at": at,
     }
+
+
+# For the comparisons in _stay_or_workshop.html, which are imported without the
+# page's context and so cannot see house_maps.
+app.jinja_env.globals["house_map_links"] = house_map_links
 
 
 def room_payment_setting(conn, key, cast=float):

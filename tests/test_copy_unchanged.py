@@ -55,9 +55,11 @@ m = _harness.m
 # and /workshops/4, and nothing else.
 # 10 Nov, later: moved to c7fb234, the owner's bed-and-breakfast wording in the comparisons ("make it clear
 # that one is a b&b"); it listed /, /book, /workshops and the five room pages, and nothing else.
-# 10 Nov, later: moved to 96264b8, Bastille Day and the Fête de la Musique on the retreat
-# days; it listed /workshops/4 and /workshops/6, and nothing else.
-COPY_BASE = "96264b8"
+# 10 Nov, later: 96264b8 put Bastille Day and the Fête de la Musique on the retreat days
+# (/workshops/4 and /workshops/6); merged with b6b4ad8 below, the base moves to the merge.
+# 10 Nov, later still: moved to b6b4ad8, the same comparisons made succinct again (room and breakfast, lunch and
+# dinner unavailable, the restaurants nearby); it listed the same eight pages, and nothing else.
+COPY_BASE = "b6b4ad8"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
