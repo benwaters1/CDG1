@@ -63,7 +63,10 @@ m = _harness.m
 # and /workshops/6 only, the retreat evenings above.
 # 10 Nov: then ecacf9b, Noël's market the village's own, a walk away; it listed
 # /workshops/3 (the Noël page) only.
-COPY_BASE = "ecacf9b"
+# 10 Nov, again: a8b7c05, the retreats' "every meal, and drinks included" (owner); it listed /, /book
+# and /workshops, and nothing else. Then c6b0dda, the merge of the two: against a8b7c05 it listed
+# /workshops/3 only, Noël's market above.
+COPY_BASE = "c6b0dda"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
