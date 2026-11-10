@@ -251,6 +251,15 @@ def _run(s, anon):
         found = dishes_in_days(pages[path])
         s.check(f"{path}: the day-by-day is there to read", found is not None)
         s.check(f"{path}: and names no dish or drink", not found, detail=str(found))
+    # 10 Nov 2026 (owner): "there won't be pool, it'll be too cold" -- Cooking in the Cuisine, anywhere
+    # in its days, its afternoons line or its opening paragraph.
+    cooking = [p for p in retreats if "Cooking in the Cuisine" in pages[p]]
+    s.check("Cooking in the Cuisine is among the retreats read", bool(cooking))
+    for path in cooking:
+        seen = visible_text(pages[path])
+        s.check(f"{path}: Cooking in the Cuisine offers no pool", not re.search(r"(?i)\bpool\b", seen),
+                detail=", ".join(seen[max(0, mo.start() - 40):mo.end() + 20]
+                                 for mo in re.finditer(r"(?i)\bpool\b", seen)))
 
     s.section("The home page is the owner's eight sections")
     s.check("the reader catches a section out of its place",

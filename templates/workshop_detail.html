@@ -227,7 +227,7 @@
     <li>A tour of the château and its restoration</li>
     {% if _tx %}<li>The transfers from central Toulouse, there and back</li>{% endif %}
     {#- 9 Nov (owner, think about the weather): in December, no pool, no tennis court and no terraces. -#}
-    <li>Free time with {% if not ('Noël' in workshop['title'] or 'Noel' in workshop['title'] or 'Christmas' in workshop['title']) %}the pool, the tennis court, the gardens, table tennis, the lounge and the terraces{% else %}the gardens, table tennis, the lounge and la Bibliothèque{% endif %}</li>
+    <li>Free time with {% if 'Noël' in workshop['title'] or 'Noel' in workshop['title'] or 'Christmas' in workshop['title'] %}the gardens, table tennis, the lounge and la Bibliothèque{% elif 'Cooking' in workshop['title'] %}{#- 10 Nov (owner): no pool on Cooking, too cold -#}the tennis court, the gardens, table tennis, the lounge and the terraces{% else %}the pool, the tennis court, the gardens, table tennis, the lounge and the terraces{% endif %}</li>
     {% endif %}
   </ul>
   {% if _basis %}<p class="g-hint">Prices are {{ _basis[:1]|lower }}{{ _basis[1:] }}</p>{% endif %}
