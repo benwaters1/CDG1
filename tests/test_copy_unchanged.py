@@ -50,7 +50,12 @@ m = _harness.m
 # 9 Nov, later: moved to the merge with main at 0630e3d (e9b2f1a), so the base
 # holds main's own words as well as the retreat text. Checked against main
 # itself first: the only pages that differ from main are the five above.
-COPY_BASE = "e9b2f1a"
+# 9 Nov, evening: moved again, to the commit that finished the owner's second review
+# of the site (BRIEF-site-review-2-9-nov.md): the pages a third of their length,
+# "Retreats" in the menu, "château" for "house", the hero's chosen line, and no dish,
+# drink or artisan on a retreat's day. Every difference against e9b2f1a was read and
+# is that brief's, on top of the retreat days above.
+COPY_BASE = "bbc8ea0"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
