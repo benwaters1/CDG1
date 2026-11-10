@@ -40953,7 +40953,7 @@ def owner_home_warnings(conn, today):
         add("blocker" if level == "blocker" else "warn", title, detail, 1, "admin_rooms")
     # The weekly Booking.com statement, when the last is a week old.
     statement = booking_com_statement_due(conn)
-    if statement:
+    if statement and statement[2] <= today.isoformat():
         add("attention", statement[0], statement[1], 1, "channel_stays_page", _anchor="statement")
 
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
@@ -49413,6 +49413,36 @@ def _rg_first_name(first, last):
     return first
 
 
+def _rg_key(first, last, submitted):
+    """What a registration is kept by here: the name and the moment it was
+    submitted, which is unique (there is no registration id in the export)."""
+    return "retreatguru:" + "|".join((" ".join((first or "").lower().split()),
+                                      " ".join((last or "").lower().split()),
+                                      (submitted or "").strip()))
+
+
+def parse_rg_cancellations(text):
+    """The registrations RetreatGuru now calls cancelled: {key: what it says}.
+
+    Nothing to bring across, so parse_rg_registrations counts them and moves
+    on. But one brought across before it was cancelled is still a booking
+    here, its place held and its balance chased, and RetreatGuru will not say
+    so twice: the check has to. Emma Greaves cancelled Seven Starry Nights in
+    RetreatGuru on 6 November 2026 and the second run, a few days later, never
+    mentioned her.
+    """
+    out = {}
+    for row in _rg_rows(text):
+        if not row.get("cancelled"):
+            continue
+        first = _rg_first_name(row.get("first_name"), row.get("last_name"))
+        last = (row.get("last_name") or "").strip()
+        out[_rg_key(first, last, row.get("submitted"))] = {
+            "name": f"{first} {last}".strip(), "cancelled": row["cancelled"].strip(),
+            "paid": _guest_import_money(row.get("payments_refunds_total")) or 0.0}
+    return out
+
+
 def parse_rg_registrations(text, today):
     """The registrations export: the ones still to come and not cancelled.
 
@@ -49445,8 +49475,7 @@ def parse_rg_registrations(text, today):
         paid = _guest_import_money(row.get("payments_refunds_total")) or 0.0
         owing = _guest_import_money(row.get("balance_due")) or 0.0
         out.append({
-            "key": "retreatguru:" + "|".join((" ".join(first.lower().split()),
-                                              " ".join(last.lower().split()), submitted.strip())),
+            "key": _rg_key(first, last, submitted),
             "first": first, "last": last, "name": f"{first} {last}".strip(),
             "submitted": submitted.strip(), "submitted_on": submitted_on, "start": start,
             "phone": row.get("phone", ""), "roommate": row.get("roommate", ""),
@@ -49748,7 +49777,7 @@ def _rg_stripe_match(charges, paid):
 
 
 def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days, today,
-                   stripe_given, unmatched_ok=False, refunds=()):
+                   stripe_given, unmatched_ok=False, refunds=(), cancellations=None):
     """What bringing these registrations across would do, line by line, and
     everything wrong with it. The check shows this; the run writes it.
 
@@ -49758,6 +49787,10 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
     unmatched_ok: a payment RetreatGuru records and Stripe does not hold -- a
     bank transfer, say -- is brought across as paid, but not by card, so any
     refund of it is made by hand. Without it, such a payment stops the run.
+
+    cancellations: parse_rg_cancellations of the same export, so that one
+    brought across and since cancelled in RetreatGuru is shown, not lost
+    among the cancelled.
     """
     sessions_by_day = {}
     for s in conn.execute(
@@ -49766,6 +49799,39 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
         sessions_by_day.setdefault(s["start_date"], []).append(s)
     already = {r["import_key"]: r for r in conn.execute(
         "SELECT * FROM workshop_bookings WHERE import_key IS NOT NULL")}
+
+    # CANCELLED IN RETREATGURU, STILL BOOKED HERE. The place is still held and
+    # the balance still chased, so it is shown with what each side says and
+    # what Stripe has given back. Nothing is changed: whether to cancel it here,
+    # and whether anything is owed back, is the owner's.
+    cancelled_here = []
+    for key, said in (cancellations or {}).items():
+        b = already.get(key)
+        if not b or b["status"] not in ("pending", "confirmed"):
+            continue
+        s = conn.execute(
+            """SELECT ws.start_date, ws.end_date, w.title FROM workshop_sessions ws
+                 JOIN workshops w ON w.id = ws.workshop_id WHERE ws.id = ?""",
+            (b["session_id"],)).fetchone()
+        if not s or (s["end_date"] or s["start_date"]) < today.isoformat():
+            continue                     # over and done with
+        owed, charged, paid = workshop_balance_due(conn, b["id"])
+        email = (b["guest_email"] or "").strip().lower()
+        back = [r for r in refunds if r["email"] == email]
+        stripe_says = ("" if not stripe_given else
+                       f" Stripe shows {money(sum(r['refunded'] for r in back))} refunded to "
+                       f"this address ({', '.join(r['ref'] for r in back)})." if back else
+                       " Stripe shows nothing refunded to this address.")
+        moment = _rg_moment(said["cancelled"])
+        on = format_date_human(house_date_iso(moment)) if moment else said["cancelled"][:10]
+        cancelled_here.append({
+            "key": key, "name": b["guest_name"], "reference": b["reference_code"], "on": on,
+            "why": (f"{b['guest_name']} ({b['reference_code']}, {s['title']}, "
+                    f"{format_date_human(s['start_date'])}) was cancelled in RetreatGuru on "
+                    f"{on}, which now has {money(said['paid'])} paid. Here it is still "
+                    f"{b['status']}: {money(charged)} charged, {money(paid)} paid, "
+                    f"{money(owed)} owing.{stripe_says} Nothing is changed here: cancel it on "
+                    "the registration, and refund by hand if anything is owed back.")})
 
     rows = []
     for reg in sorted(registrations, key=lambda r: (r["start"], r["submitted"])):
@@ -50108,7 +50174,7 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
         "due_days": due_days, "stripe_given": stripe_given, "unmatched_ok": unmatched_ok,
         "export": {f: total(rows, f) for f in ("agreed", "paid", "owing")},
         "count": len(payers), "people": sum(l["party"] for l in payers),
-        "held": held,
+        "held": held, "cancelled_here": cancelled_here,
         "second": {
             "same": sum(1 for l in done if not l["blocking"] and not l["topup"]),
             "more_paid": sum(1 for l in done if l["topup"] and not l["blocking"]),
@@ -50373,6 +50439,7 @@ def _rg_plan_from_draft(conn, payload, today):
     charges = parse_stripe_payments(payload.get("stripe", ""))
     plan = plan_rg_import(conn, regs, programmes, names, charges,
                           refunds=parse_stripe_refunds(payload.get("stripe", "")),
+                          cancellations=parse_rg_cancellations(payload["registrations"]),
                           due_days=int(payload.get("due_days") or WORKSHOP_BALANCE_DAYS),
                           today=today, stripe_given=bool(payload.get("stripe")),
                           unmatched_ok=bool(payload.get("unmatched_ok")))
@@ -50508,6 +50575,10 @@ def import_registrations():
                              f"({c['ref']}) was not added: not ticked")
                  for l in plan["payers"] if not l["blocking"]
                  for c in l.get("topup", []) if f"{l['key']}|{c['ref']}" not in topups]
+    # Not part of this run, and still to settle: said every time until it is.
+    left_out += [(g["name"], f"cancelled in RetreatGuru on {g['on']} and still booked here as "
+                             f"{g['reference']}: left for you to settle")
+                 for g in plan.get("cancelled_here", [])]
     message, category = bulk_message(
         "Brought across", "registration", len(made), left_out,
         detail=(f"{len(unchanged)} already here, unchanged. " if unchanged else "")
@@ -90854,22 +90925,88 @@ def apply_booking_com_statement(conn, rows, *, user_id=None, filename=""):
     return report
 
 
+# Raised this long before the week is up, so it is on the calendar ahead of
+# the day it is due rather than appearing on it (owner: "add it to the
+# calendar", 10 November 2026).
+BOOKING_COM_STATEMENT_NOTICE_DAYS = 2
+BOOKING_COM_STATEMENT_TASK = "Upload Booking.com's reservations statement"
+# A booking that arrives this soon cannot wait for the week: the guest could
+# come and go with no name on the arrivals list (owner, 10 November 2026).
+BOOKING_COM_STATEMENT_URGENT_DAYS = 3
+
+
 def booking_com_statement_due(conn, now=None):
-    """(title, detail) when the weekly statement is due, or None. Only for a
-    house that sells on Booking.com at all."""
+    """(title, detail, due day, priority) when the statement should be
+    uploaded, or None.
+
+    Due a week after the last one, and on the calendar from two days before.
+    And due AT ONCE when a Booking.com booking has come in since that the
+    statement has not covered (owner, 10 November 2026: "maybe add it for when
+    there's a new booking"): its email gave a number and a day, and the name,
+    the party and the price are in the statement. A gap between uploads is
+    long enough for a guest to book, arrive and leave, so one arriving within
+    BOOKING_COM_STATEMENT_URGENT_DAYS makes it high priority. Only for a house
+    that sells on Booking.com at all."""
     if not (booking_com_ical_sources(conn) or conn.execute(
             "SELECT 1 FROM ota_reservations LIMIT 1").fetchone()):
         return None
     now = now or datetime.now(timezone.utc)
+    today = house_today()
     last = conn.execute("SELECT MAX(uploaded_at) FROM booking_com_statements").fetchone()[0]
     when = parse_datetime_iso(last) if last else None
-    if when and now - when <= timedelta(days=BOOKING_COM_STATEMENT_DUE_DAYS):
+    new = conn.execute(
+        """SELECT reservation_number, guest_name, arrival_date FROM ota_reservations
+            WHERE channel = 'booking.com' AND status = 'confirmed' AND statement_at IS NULL
+              AND COALESCE(departure_date, arrival_date) >= ? AND first_seen_at > ?
+            ORDER BY first_seen_at""",
+        (today.isoformat(), last or "")).fetchall()
+    week_up = house_date(when + timedelta(days=BOOKING_COM_STATEMENT_DUE_DAYS)) if when else today
+    if new:
+        due = today
+    elif when and (week_up - today).days > BOOKING_COM_STATEMENT_NOTICE_DAYS:
         return None
-    return ("Upload Booking.com's reservations statement",
-            ("Last uploaded " + house_when(last) if when else "Not uploaded yet")
-            + ". It brings each Booking.com stay's guest name, party, price and commission, "
-            "which Booking.com's emails leave out. Booking.com stays page: Reservations "
-            "statement, two minutes.")
+    else:
+        due = week_up
+    said = ("Last uploaded " + house_when(last) if when else "Not uploaded yet") + "."
+    if new:
+        named = "; ".join(f"{r['guest_name'] or 'a guest'} ({r['reservation_number']}, "
+                          f"arriving {format_date_short(r['arrival_date'])})" for r in new[:6])
+        said = (f"{len(new)} Booking.com booking{'' if len(new) == 1 else 's'} since then "
+                f"without a name or a price yet: {named}"
+                + (f"; and {len(new) - 6} more" if len(new) > 6 else "") + ". " + said)
+    return (BOOKING_COM_STATEMENT_TASK,
+            said + " The statement brings each Booking.com stay's guest name, party, price "
+            "and commission, which Booking.com's emails leave out. Booking.com stays page: "
+            "Reservations statement, two minutes.",
+            due.isoformat(),
+            "high" if any(r["arrival_date"] and (date.fromisoformat(r["arrival_date"]) - today).days
+                          <= BOOKING_COM_STATEMENT_URGENT_DAYS for r in new) else "normal")
+
+
+def refresh_booking_com_statement_task(conn):
+    """The statement's task, put up or brought up to date now rather than at
+    the next daily pass -- for a booking that has just come in. Closing it is
+    the daily pass's job, and the upload's. Commits."""
+    due = booking_com_statement_due(conn)
+    if not due:
+        return False
+    title, note, due_day, priority = due
+    who = watch_task_assignees(conn).get("booking_com")
+    row = conn.execute("SELECT id FROM tasks WHERE origin = ? AND title = ? AND status != 'done'",
+                       (WATCH_TASK_ORIGIN, title)).fetchone()
+    if row:
+        conn.execute("UPDATE tasks SET notes = ?, due_date = ?, priority = ?, "
+                     "assigned_to_user_id = ? WHERE id = ?",
+                     (note, due_day, priority, who, row["id"]))
+    else:
+        conn.execute(
+            """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                 status, origin, created_at)
+               VALUES (?, ?, ?, ?, ?, 'open', ?, ?)""",
+            (who, title, note, priority, due_day, WATCH_TASK_ORIGIN,
+             datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return True
 
 
 @app.route("/admin/channel-stays/statement", methods=["POST"])
@@ -90893,6 +91030,12 @@ def upload_booking_com_statement():
     report = apply_booking_com_statement(conn, rows, user_id=user["id"] if user else None,
                                          filename=f.filename)
     log_audit(conn, "booking_com_statement_uploaded", target=f.filename[:120])
+    # Its task is done the moment the statement is in, not tomorrow morning.
+    if not booking_com_statement_due(conn):
+        conn.execute("""UPDATE tasks SET status = 'done', completed_at = ?
+                         WHERE origin = ? AND title = ? AND status != 'done'""",
+                     (datetime.now(timezone.utc).isoformat(), WATCH_TASK_ORIGIN,
+                      BOOKING_COM_STATEMENT_TASK))
     conn.commit()
     conn.close()
     done = len(rows) - len(report["skipped"])
@@ -98741,7 +98884,7 @@ def watch_task_findings(conn, today=None):
                       double[1], today.isoformat(), "high"))
     statement = booking_com_statement_due(conn)
     if statement:
-        found.append(("booking_com", statement[0], statement[1], today.isoformat(), "normal"))
+        found.append(("booking_com", statement[0], statement[1], statement[2], statement[3]))
     sync = channel_sync_problems(conn)
     if sync:
         found.append(("booking_com", "Put the Booking.com calendar sync right",
@@ -113036,7 +113179,12 @@ def after_booking_com_mail(conn, mail_ids):
                 rooms.update(ota_room_ids(conn, r["stay_id"]))   # every room of it
             else:
                 every_room = True       # not said, or it may have moved room
-    return settle_booking_com_stays(conn, None if every_room else rooms, sync=any_booking)
+    told = settle_booking_com_stays(conn, None if every_room else rooms, sync=any_booking)
+    # A booking just in: the statement with its name and price is due now,
+    # not at the next daily pass (booking_com_statement_due).
+    if any_booking:
+        refresh_booking_com_statement_task(conn)
+    return told
 
 
 def booking_com_answered_by_email(conn, token, *, now=None):

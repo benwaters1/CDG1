@@ -55,6 +55,11 @@ m = _harness.m
 # "Retreats" in the menu, "château" for "house", the hero's chosen line, and no dish,
 # drink or artisan on a retreat's day. Every difference against e9b2f1a was read and
 # is that brief's, on top of the retreat days above.
+# 10 Nov: moved to 36fd627, the owner's answers of that day (the Christmas market on
+# Noël, Cooking's opening without dishes); it listed /workshops, /workshops/3
+# and /workshops/4, and nothing else.
+# 10 Nov, later: moved to c7fb234, the owner's bed-and-breakfast wording in the comparisons ("make it clear
+# that one is a b&b"); it listed /, /book, /workshops and the five room pages, and nothing else.
 COPY_BASE = "2bbe116"
 
 # Words the brief adds, each only inside its own element.

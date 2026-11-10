@@ -110,7 +110,8 @@
     <div><dt>Evenings</dt><dd><em lang="fr">L’apéritif</em>, dinner by candlelight, and on the last night a banquet in the Salon de Musique, dressed for the occasion, then dancing</dd></div>
     <div><dt>Laundry</dt><dd>Laundry and ironing facilities for guests</dd></div>
     <div><dt>Transfers</dt><dd>{% if _tx %}From Toulouse on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
-    {% if not _ex %}<div><dt>The days</dt><dd>Spent at the château itself, with no outings to plan around: the making, the meals and the rooms</dd></div>{% endif %}
+    {#- 10 Nov (owner): Noël has a morning at a Christmas market, so it no longer says "no outings". -#}
+    {% if not _ex %}<div><dt>The days</dt><dd>{% if 'Noël' in workshop['title'] or 'Noel' in workshop['title'] or 'Christmas' in workshop['title'] %}Spent at the château, but for a morning at a Christmas market: the making, the meals and the rooms{% else %}Spent at the château itself, with no outings to plan around: the making, the meals and the rooms{% endif %}</dd></div>{% endif %}
     <div><dt>To hold a place</dt><dd>A deposit. The balance is taken closer to the date</dd></div>
     <div><dt>Not included</dt><dd>{% if _ex %}Flights, and anything you buy at the brocantes{% else %}Flights, and the journey to the château{% endif %}</dd></div>
   </dl>

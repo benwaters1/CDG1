@@ -31,7 +31,7 @@ the real ones. Nothing here reaches Stripe or sends a letter.
 import sqlite3
 from datetime import timedelta
 
-from _harness import Suite, clients, db, flashes, house_today
+from _harness import Suite, clients, db, flashes, house_today, visible_text
 import _harness
 
 m = _harness.m
@@ -43,7 +43,7 @@ REG_HEADER = ("first_name,last_name,submitted,cancelled,booking_window,reg_form_
               "balance_after_scheduled,registration_amount")
 STRIPE_HEADER = ("id,PaymentIntent ID,Created date (UTC),Amount,Amount Refunded,Currency,Status,"
                  "Customer Email,Description,kind (metadata),reference (metadata)")
-PEOPLE = ("Heidi", "Ivan", "Jude", "Kai", "Lea", "Mia", "Ned", "Ola", "Pia")
+PEOPLE = ("Heidi", "Ivan", "Jude", "Kai", "Lea", "Mia", "Ned", "Ola", "Pia", "Rae")
 
 
 class Recorder:
@@ -103,11 +103,12 @@ def _session():
     return sid, start
 
 
-def _reg(first, start, *, agreed, paid, minute):
+def _reg(first, start, *, agreed, paid, minute, cancelled=""):
     """One row of the registrations export, booked 60 days before `start`."""
     submitted = f"{(start - timedelta(days=60)).isoformat()} 10:{minute:02d}:00"
     owing = round(agreed - paid, 2)
-    return ",".join([first, f"{TAG}{first}", submitted, "", "60", "x", "", "", "", "", "", "",
+    return ",".join([first, f"{TAG}{first}", submitted, cancelled, "60", "x", "", "", "", "", "",
+                     "",
                      f"{agreed:.2f}", f"{paid:.2f}", f"{owing:.2f}", "0", f"{owing:.2f}",
                      f"{agreed:.2f}"])
 
@@ -222,12 +223,14 @@ def _suite(s, oc, mail):
                        _reg("Ivan", start, agreed=2000, paid=600, minute=2),
                        _reg("Jude", start, agreed=2000, paid=500, minute=3),
                        _reg("Kai", start, agreed=2000, paid=0, minute=4),
-                       _reg("Lea", start, agreed=2000, paid=500, minute=5)]) + "\n"
+                       _reg("Lea", start, agreed=2000, paid=500, minute=5),
+                       _reg("Rae", start, agreed=2000, paid=500, minute=10)]) + "\n"
     first = [
         ("ch_ivan_1", "", f"{long_ago} 09:00:00", "600,00", "Ivan", "RetreatGuru", "", ""),
         ("ch_jude_1", "pi_jude_1", f"{long_ago} 09:00:00", "500,00", "Jude", "RetreatGuru",
          "", ""),
         ("ch_lea_1", "pi_lea_1", f"{long_ago} 09:00:00", "500,00", "Lea", "RetreatGuru", "", ""),
+        ("ch_rae_1", "pi_rae_1", f"{long_ago} 09:00:00", "500,00", "Rae", "RetreatGuru", "", ""),
     ]
     page = _check(oc, regs1, _stripe(first)).get_data(as_text=True)
     r = _run(oc, page)
@@ -235,9 +238,10 @@ def _suite(s, oc, mail):
     here = {f: _booking(conn, f) for f in PEOPLE}
     conn.close()
     s.section("The first run, as it was")
-    s.check("five registrations came across, one each",
-            [len(here[f]) for f in ("Heidi", "Ivan", "Jude", "Kai", "Lea")] == [1] * 5,
+    s.check("six registrations came across, one each",
+            [len(here[f]) for f in ("Heidi", "Ivan", "Jude", "Kai", "Lea", "Rae")] == [1] * 6,
             detail=" ".join(flashes(r)))
+    rae = here["Rae"][0] if here["Rae"] else None
 
     # THE SITE, since: Mia and Ned booked the same retreat here and paid a
     # deposit by card; Ola paid for a room. Each payment kept as the app keeps it.
@@ -285,6 +289,11 @@ def _suite(s, oc, mail):
                        _reg("Jude", start, agreed=2000, paid=400, minute=3),
                        _reg("Kai", start, agreed=1800, paid=0, minute=4),
                        _reg("Lea", start, agreed=2000, paid=800, minute=5),
+                       # Cancelled in RetreatGuru after she came across, with
+                       # nothing refunded in Stripe: Emma Greaves, 6 November.
+                       _reg("Rae", start, agreed=2000, paid=0, minute=10,
+                            cancelled=f"{(house_today() - timedelta(days=3)).isoformat()} "
+                                      "05:09:55"),
                        _reg("Mia", start, agreed=2000, paid=600, minute=6),
                        _reg("Ned", start, agreed=2000, paid=400, minute=7),
                        _reg("Ola", start, agreed=2000, paid=300, minute=8),
@@ -374,6 +383,15 @@ def _suite(s, oc, mail):
     s.check("and the payments set aside say why",
             "pi_ola_room, already a payment line here" in text
             and "pi_mia_site, taken through this site" in text, detail=text[:0])
+    cancelled_on = m.format_date_human((house_today() - timedelta(days=3)).isoformat())
+    s.check("Rae, cancelled in RetreatGuru since she came across, is shown with both sides "
+            "and what Stripe gave back",
+            rae and f"{rae['reference_code']}, {TAG} Atelier," in text
+            and f"was cancelled in RetreatGuru on {cancelled_on}, which now has €0.00 paid. "
+                "Here it is still confirmed: €2,000.00 charged, €500.00 paid, €1,500.00 "
+                "owing. Stripe shows nothing refunded to this address." in text
+            and "Cancelled in RetreatGuru, and still booked here 1" in visible_text(page),
+            detail=text[text.find("Cancelled in RetreatGuru"):][:900])
 
     s.section("Ticking one of Heidi's two adds one, and says the other was not")
     conn = db()
@@ -406,6 +424,13 @@ def _suite(s, oc, mail):
     s.check("the summary names what was added, and the payment not added",
             "Heidi ZZRG2Heidi €500.00" in said and "Ivan ZZRG2Ivan €600.00" in said
             and "(pi_heidi_2) was not added: not ticked" in said, detail=said)
+    s.check("and Rae, still to settle: named, not passed over",
+            rae and f"cancelled in RetreatGuru on {cancelled_on} and still booked here as "
+                    f"{rae['reference_code']}: left for you to settle" in said, detail=said)
+    s.check("whose booking is left exactly as it was",
+            rae and m.workshop_balance_due(conn, rae["id"]) == (1500.0, 2000.0, 500.0)
+            and conn.execute("SELECT status FROM workshop_bookings WHERE id = ?",
+                             (rae["id"],)).fetchone()["status"] == "confirmed")
     s.check("Ivan: what RetreatGuru says, to the cent",
             m.workshop_balance_due(conn, ivan["id"]) == (800.0, 2000.0, 1200.0),
             detail=str(m.workshop_balance_due(conn, ivan["id"])))
@@ -518,6 +543,19 @@ def _suite(s, oc, mail):
                 any("already recorded here: pi_heidi_1" in p[1] for p in problems)
                 and _counts(conn) == before, detail=str(problems))
         conn.close()
+
+    s.section("Settled here, it leaves the list")
+    s.check("Rae is still shown on every check until then",
+            rae and f"still booked here" in text and rae["reference_code"] in text)
+    conn = db()
+    conn.execute("UPDATE workshop_bookings SET status = 'cancelled' WHERE id = ?", (rae["id"],))
+    conn.commit()
+    conn.close()
+    text = visible_text(_check(oc, regs2, stripe2).get_data(as_text=True))
+    s.check("cancelled here too, she is not listed, and the count can be nought",
+            rae["reference_code"] not in text
+            and "Cancelled in RetreatGuru, and still booked here 0" in text,
+            detail=text[text.find("Cancelled in RetreatGuru"):][:300])
 
     s.section("Nothing was sent")
     s.check("no email of any kind", not mail.calls, detail=str(mail.calls))
