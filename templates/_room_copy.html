@@ -72,6 +72,14 @@
 {%- elif bathroom -%}{{ bathroom|capitalize }} bathroom{%- endif -%}
 {%- endmacro %}
 
+{#- 11 Nov (owner's bathrooms brief): on /book a private bathroom is a feature, not a location, so its card line says
+    "Your own private bathroom" (", next door" for the room whose bathroom is) and opens the Bathrooms section above the
+    rooms. The home page's cards keep room_bath. -#}
+{% macro room_bath_link(db_name, bathroom) -%}
+{%- if (bathroom or '')|lower == 'private' -%}<a class="g-tags__bath" href="#bathrooms">Your own private bathroom{{ ', next door' if room_bath_where(db_name)|trim == 'next door' else '' }}</a>
+{%- else -%}{{ room_bath(db_name, bathroom) }}{%- endif -%}
+{%- endmacro %}
+
 {# How the room is reached. Every bedroom is reached by stairs, the ground-floor one included. #}
 {% macro room_stairs(db_name) -%}
 {{- 'No lift; on the ground floor, but still reached by stairs' if db_name in ['The Twin Room (Ground Floor)'] else 'No lift; the bedrooms are on the top floor' -}}

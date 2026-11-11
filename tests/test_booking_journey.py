@@ -517,7 +517,9 @@ def run():
     said_shared = sum(1 for words in lines if words == "Shared bathroom")
     # Since z17 (owner, 15 October) a private one says where it is: "Private
     # bathroom, on the ground floor", so the line STARTS with the words.
-    said_private = sum(1 for words in lines if words.startswith("Private bathroom"))
+    # Since 11 Nov (owner's site-copy brief) /book calls it a feature: "Your own
+    # private bathroom", linked to the Bathrooms section; still a line a room.
+    said_private = sum(1 for words in lines if words.startswith("Your own private bathroom"))
     s.check("the page says shared for the room that shares, and only for it",
             said_shared == 1,
             detail="page says shared %d time(s) with one room sharing" % said_shared)

@@ -10139,6 +10139,13 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 .g .g-journey__m{ list-style: none; padding: var(--s4) 0 0; margin: var(--s4) 0 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--s3) var(--s5); max-width: var(--m-wide); }
 .g .g-journey__m li{ font-family: var(--serif); font-size: var(--t-small); line-height: 1.5; color: var(--ink-2); }
 .g .g-journey__m b{ display: block; font-family: var(--ui); font-weight: 600; font-size: var(--t-xs); letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); margin-bottom: .2rem; }
+/* 11 Nov 2026 (owner's site-copy brief): each retreat day is its heading and two to four plain bullets -- no paragraph,
+   no Matin / Apres-midi / Soir labels. A small gilt lozenge for the bullet, the site's serif at reading size. */
+.g .g-journey__list{ list-style: none; margin: var(--s3) 0 0; padding: 0; max-width: var(--m-read); }
+.g .g-journey__list li{ position: relative; margin: 0; padding: 4px 0 4px 1.15rem; font-family: var(--serif);
+  font-size: var(--t-base); line-height: 1.55; color: var(--ink); }
+.g .g-journey__list li::before{ content: ""; position: absolute; left: 0; top: calc(4px + .72em); width: 5px; height: 5px;
+  transform: rotate(45deg); background: var(--gilt, #73562D); }
 .g .g-journey__note{ margin: var(--s7) 0 0; padding-left: calc(6.5rem + var(--s5)); font-family: var(--serif); font-style: italic; font-size: var(--t-small); color: var(--stone); max-width: 54rem; }
 @media (max-width: 40rem){
   .g .g-journey::before{ left: 1.6rem; }
@@ -11009,13 +11016,15 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-how__lead{ margin-top: var(--s4); font-style: italic; color: var(--ink-2); }
 
 /* 10 Oct - HOMEPAGE: the restoration band (a before/now of the dining room, on navy), aligned like every other section */
-.g .g-homeresto__pair{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); margin-top: var(--s6); }
-.g .g-homeresto__pair figure{ margin: 0; position: relative; overflow: hidden; }
-.g .g-homeresto__pair img{ width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+/* 11 Nov 2026 (owner's brief, part 3): the before and the now side by side, the same size, each whole, across the
+   full width; stacked on a phone. The box is the before's own shape (1230 x 738), so the horse is never cropped. */
+.g .g-homeresto__pair{ display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s3); margin-top: var(--s6); }
+.g .g-homeresto__pair figure{ margin: 0; position: relative; overflow: hidden; min-width: 0; }
+.g .g-homeresto__pair img{ width: 100%; height: auto; aspect-ratio: 1230 / 738; object-fit: cover; display: block; }
+@media (min-width: 40rem){ .g .g-homeresto__pair{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); } }
 .g .g-homeresto__cap{ margin: var(--s3) 0 0; font-family: var(--serif); font-style: italic; font-size: 17px; opacity: .85; }
 .g .g-homeresto__p{ max-width: 40rem; margin-top: var(--s5); }
 .g .g-homeresto__cta{ margin-top: var(--s5); }
-@media (max-width: 600px){ .g .g-homeresto__pair{ gap: 6px; } }
 
 /* 10 Oct - BOOKING PAGE, ADD TO YOUR STAY: a gilt drawing beside each extra; rows with no quantity get proper columns */
 .g .g-mb-extra{ position: relative; padding-left: 84px; }
@@ -12192,29 +12201,86 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 }
 
 /* 11 Nov 2026 (owner): the bathrooms, a section of their own on /book ("they are a real feature, they are
-   incredible"), then "make it beyyer". A feature, not a slider: the section on the cards' cream, all four
-   photographs side by side and tall; under them the reason they are on the ground floor beside
-   what they are made of, as pairs. */
+   incredible"). Evening brief: a feature, not a disclaimer, and moved up to sit straight under the availability box.
+   One large photograph (the long bathroom) with the heading and words beside it, above it on a phone; the other three
+   in a row beneath; then the six points in a 3 x 2 grid, each with its drawing. Same cream band as before. */
 .g .g-baths-sec{ background: #FBF7EF; border-top: 1px solid rgba(115,86,45,.16); border-bottom: 1px solid rgba(115,86,45,.16); }
-.g .g-baths__head{ max-width: 46rem; }
-.g .g-baths__lede{ font-family: var(--display, var(--serif)); font-size: clamp(1.35rem, 1.1vw + 1.05rem, 1.75rem);
+.g .g-baths__top{ display: grid; gap: var(--s5); align-items: center; }
+.g .g-baths__head{ max-width: 34rem; }
+.g .g-baths__lede{ font-family: var(--display, var(--serif)); font-style: italic; font-size: clamp(1.35rem, 1.1vw + 1.05rem, 1.75rem);
   line-height: 1.3; color: var(--blue-deep, #14305f); margin: var(--s4) 0 0; }
-.g .g-baths__row{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); margin: var(--s6) 0 var(--s5); }
-.g .g-baths__f{ margin: 0; min-width: 0; }
-.g .g-baths__f picture, .g .g-baths__f .g-baths__img{ display: block; width: 100%; }
-.g .g-baths__img{ aspect-ratio: 3 / 4; height: auto; object-fit: cover; }
-.g .g-baths__body{ display: grid; gap: var(--s5); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.18); }
-.g .g-baths__why .g-p{ margin: 0 0 var(--s3); max-width: 34rem; }
-.g .g-baths__feat{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; margin: 0; }
-.g .g-baths__feat > div{ display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: var(--s3);
-  padding: 10px 0; border-bottom: 1px solid rgba(115,86,45,.14); }
-.g .g-baths__feat dt{ font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
-  color: var(--gilt, #73562D); padding-top: 3px; }
-.g .g-baths__feat dd{ margin: 0; font-family: var(--serif); font-size: 16px; line-height: 1.45; color: var(--ink); }
-@media (max-width: 40rem){
-  .g .g-baths__feat > div{ grid-template-columns: 6.5rem minmax(0, 1fr); }
+.g .g-baths__p{ margin: var(--s4) 0 0; }
+.g .g-baths__lead, .g .g-baths__f{ margin: 0; min-width: 0; }
+.g .g-baths__lead picture, .g .g-baths__f picture, .g .g-baths__img{ display: block; width: 100%; }
+.g .g-baths__img{ aspect-ratio: 4 / 5; height: auto; object-fit: cover; }
+.g .g-baths__img--lead{ aspect-ratio: 3 / 2; }
+.g .g-baths__row{ display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s3); margin: var(--s4) 0 var(--s6); }
+.g .g-baths__feat{ list-style: none; margin: 0; padding: var(--s5) 0 0; border-top: 1px solid rgba(115,86,45,.18);
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5) var(--s4); }
+.g .g-baths__pt{ margin: 0; padding: 0; text-align: center; display: flex; flex-direction: column; align-items: center; }
+.g .g-baths__ill{ display: block; width: 56px; height: 56px; color: var(--gilt, #73562D); margin-bottom: var(--s2); }
+.g .g-baths__ill .g-illus{ width: 100%; height: 100%; display: block; }
+.g .g-baths__k{ display: block; font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--gilt, #73562D); }
+.g .g-baths__t{ display: block; margin-top: 4px; font-family: var(--serif); font-size: 16px; line-height: 1.45; color: var(--ink); max-width: 16rem; }
+/* The room cards' "Your own private bathroom" opens the section; the room page's "See the bathrooms" goes to it. */
+.g .g-tags__bath{ color: inherit; text-decoration: underline; text-decoration-color: rgba(115,86,45,.45);
+  text-underline-offset: 3px; }
+.g .g-tags__bath:hover, .g .g-tags__bath:focus-visible{ text-decoration-color: currentColor; }
+.g .g-glance__more{ display: block; margin-top: 2px; font-size: var(--t-small); color: var(--gilt-deep, #73562d);
+  text-decoration: underline; text-underline-offset: 3px; }
+@media (min-width: 40rem){
+  .g .g-baths__row{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .g .g-baths__feat{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (min-width: 56rem){
-  .g .g-baths__row{ grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s4); }
-  .g .g-baths__body{ grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--s7, 4rem); }
+  .g .g-baths__top{ grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: var(--s7, 4rem); }
+  .g .g-baths__row{ gap: var(--s4); }
+}
+/* 11 Nov 2026 (owner's site-copy brief, part 4): "What Guests Say" as Louis XV / Marie Antoinette -- a gold treillage on
+   the sand, a gilded shell over the heading, each quote a gilded cartouche, each photograph a portrait oval in a beaded
+   ring hung from a ribbon bow. The brief's rules, scoped to .rc-says so nothing else changes, with ".g " in front so
+   they outrank the section's own (.g .g-sec sets padding at the same weight the brief's selectors had). The quote mark
+   is a p here, not a span: main's reading floor sets every unclassed span at 15px. */
+.g section.rc-says{position:relative;padding:96px 0 104px;color:#14305f;
+  background:#EFE6D3 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'%3E%3Cpath d='M22 0L44 22L22 44L0 22Z' fill='none' stroke='%23B08D57' stroke-width='.6' opacity='.22'/%3E%3Ccircle cx='22' cy='22' r='1.3' fill='%23B08D57' opacity='.25'/%3E%3C/svg%3E")}
+.g section.rc-says .rc-head{text-align:center;margin-bottom:56px;color:#B08D57}
+.g section.rc-says .rc-crest{width:300px;max-width:100%;height:60px;display:block;margin:0 auto 14px}
+.g section.rc-says .rc-head .rc-eyebrow{display:block;text-align:center;max-width:none;margin:0 auto 6px;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:21px;color:#9A7B2E}
+.g section.rc-says .rc-head h2{font-family:"Cormorant Garamond",Georgia,serif;font-weight:500;font-size:52px;letter-spacing:.02em;color:#14305f;margin:0;text-align:center}
+.g section.rc-says .rc-rule{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:18px}
+.g section.rc-says .rc-rule span{height:1px;width:90px;background:linear-gradient(90deg,transparent,#C5A24A)}
+.g section.rc-says .rc-rule span:last-child{background:linear-gradient(90deg,#C5A24A,transparent)}
+.g section.rc-says .rc-rule i{width:7px;height:7px;transform:rotate(45deg);background:#C5A24A;display:block}
+.g section.rc-says .rc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:48px;max-width:1000px;margin:0 auto}
+.g section.rc-says .rc-card{position:relative;background:#FBF8F1;padding:96px 48px 44px;text-align:center;margin:70px 0 0;
+  border:1px solid #C5A24A;outline:1px solid #C5A24A;outline-offset:-9px;box-shadow:0 18px 40px -22px rgba(20,48,95,.35)}
+.g section.rc-says .rc-corner{position:absolute;width:66px;height:66px;color:#C5A24A}
+.g section.rc-says .rc-corner.tl{top:-1px;left:-1px}
+.g section.rc-says .rc-corner.tr{top:-1px;right:-1px;transform:scaleX(-1)}
+.g section.rc-says .rc-corner.bl{bottom:-1px;left:-1px;transform:scaleY(-1)}
+.g section.rc-says .rc-corner.br{bottom:-1px;right:-1px;transform:scale(-1)}
+.g section.rc-says .rc-med{position:absolute;left:50%;top:0;transform:translate(-50%,-62%);width:124px;height:156px}
+.g section.rc-says .rc-oval{position:absolute;inset:0;border-radius:50%;overflow:hidden;border:3px solid #C5A24A;
+  box-shadow:0 0 0 5px #FBF8F1,0 0 0 6.5px #9A7B2E,0 10px 24px -10px rgba(20,48,95,.5)}
+.g section.rc-says .rc-oval img{width:100%;height:100%;object-fit:cover;display:block}
+.g section.rc-says .rc-med::after{content:"";position:absolute;inset:-14px;border-radius:50%;border:2.5px dotted #C5A24A;pointer-events:none}
+.g section.rc-says .rc-bow{position:absolute;width:70px;height:38px;left:50%;top:-34px;transform:translateX(-50%);color:#C5A24A;filter:drop-shadow(0 2px 2px rgba(120,90,30,.25));z-index:1}
+.g section.rc-says .rc-mark{display:block;max-width:none;font-family:"Cormorant Garamond",Georgia,serif;font-size:88px;line-height:1;height:44px;margin:-6px 0 4px;color:#C5A24A;text-align:center}
+.g section.rc-says blockquote.rc-q{border:0;padding:0;margin:0 auto;max-width:22ch;text-align:center;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:29px;line-height:1.35;color:#14305f;background:none}
+.g section.rc-says blockquote.rc-q::before, .g section.rc-says blockquote.rc-q::after{content:none}
+.g section.rc-says figcaption.rc-sig{display:flex;align-items:center;justify-content:center;gap:12px;margin:30px 0 0;padding:0;border:0;white-space:nowrap;max-width:none;
+  font-family:"Cormorant Garamond",Georgia,serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#9A7B2E}
+/* The signature is not a photograph's description, so the 15 Oct rule that hides every figcaption in main (with
+   !important) lets it through, as it does the wedding section's labels. */
+.g main section.rc-says figcaption.rc-sig{display:flex !important}
+.g section.rc-says .rc-sig .rc-sig__l{font-size:inherit;color:inherit}
+.g section.rc-says .rc-sig .g-seal{width:34px;height:34px;flex:none}
+.g section.rc-says .rc-reply{margin:22px auto 0;max-width:32ch;text-align:center}
+@media (max-width:640px){
+  .g section.rc-says .rc-head h2{font-size:38px}
+  .g section.rc-says .rc-crest{width:240px;height:48px}
+  .g section.rc-says .rc-card{padding:88px 26px 36px}
+  .g section.rc-says blockquote.rc-q{font-size:24px}
+  .g section.rc-says figcaption.rc-sig{white-space:normal}
 }

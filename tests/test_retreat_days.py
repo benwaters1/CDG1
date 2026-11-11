@@ -22,11 +22,15 @@ erroring:
 
   BROAD. No dish, pan, mould or drink on a day; no restaurant by name (Maison
   Beaucoup's restaurant was listed as shut Monday to Thursday, and a plan cannot
-  know which table is open); a day's words short enough to read as a shape.
+  know which table is open).
+
+  SHORT (the owner's site-copy brief, 11 Nov): each day is its heading and two
+  to four plain bullets, a line each -- no paragraph under the heading and no
+  Matin / Après-midi / Soir labels. The last night is the banquet in the Salon
+  de Musique, then dancing.
 
   THE ROOMS. Le Bar and la Bibliothèque, never the Château Bar, the library or a
-  tasting "beside the cellar"; the wine tasting is in Le Bar; the last night ends
-  at the disco.
+  tasting "beside the cellar".
 """
 import re
 from datetime import date, datetime, timedelta, timezone
@@ -71,7 +75,9 @@ def journey(html):
             "label": grab(r'<span class="g-journey__l"[^>]*>(.*?)</span></div>'),
             "title": grab(r'<h3 class="g-journey__t">(.*?)</h3>'),
             "para": grab(r'<p class="g-journey__p">(.*?)</p>'),
-            "moments": [_say(v) for v in re.findall(r'<span class="g-journey__mt">(.*?)</span></li>', d, re.S)],
+            "moments": [_say(v) for b in re.findall(r'<ul class="g-journey__list">(.*?)</ul>', d, re.S)
+                        for v in re.findall(r"<li>(.*?)</li>", b, re.S)],
+            "labels": re.findall(r'<b lang="fr">', d),
         })
     return days, _say(sec)
 
@@ -215,12 +221,14 @@ def run():
             fine = too_fine(day_words(d))
             s.check(f"{title}, day {n}: broad, with no dish, drink, restaurant or old room name", not fine,
                     detail=f"{fine}: {day_words(d)[:120]}")
-            words = len(d["para"].split())
-            s.check(f"{title}, day {n}: short enough to read as the shape of a day", words <= PARA_WORDS,
-                    detail=f"{words} words")
+            s.check(f"{title}, day {n}: its heading and bullets, no paragraph under it", d["para"] == "",
+                    detail=d["para"][:80])
+            s.check(f"{title}, day {n}: plain bullets, no Matin / Après-midi / Soir", not d["labels"])
+            want_n = (1, 2) if n == len(days) else (2, 3, 4)
+            s.check(f"{title}, day {n}: {'one or two' if n == len(days) else 'two to four'} bullets",
+                    len(d["moments"]) in want_n, detail=str(d["moments"]))
             long_m = [x for x in d["moments"] if len(x.split()) > MOMENT_WORDS]
-            s.check(f"{title}, day {n}: morning, afternoon and evening in a line each", not long_m,
-                    detail=str(long_m[:1]))
+            s.check(f"{title}, day {n}: each bullet a line", not long_m, detail=str(long_m[:1]))
             if "Mirepoix" in day_words(d):
                 mirepoix_seen += 1
                 wd = EN[(start.weekday() + n - 1) % 7]
@@ -234,8 +242,8 @@ def run():
                 if md == "07-14":
                     occasions_seen += 1
                     s.check(f"{title}, day {n} is 14 July: the Bastille Day dinner and party",
-                            "le 14 juillet" in words and "Bastille Day" in words
-                            and ("party" in words or "disco" in words), detail=words[-160:])
+                            "Bastille Day" in d["moments"][-1] and ("party" in words or "dancing" in words)
+                            and (n == len(days) - 1 or "Bastille Day" in d["title"]), detail=words[-160:])
                 elif md == "06-21":
                     occasions_seen += 1
                     s.check(f"{title}, day {n} is 21 June: the Fête de la Musique, dinner in the Salon de Musique",
@@ -246,14 +254,14 @@ def run():
         s.check(f"{title}: no evening marker left on the page", not any("|" in day_words(d) for d in days))
         if len(days) - 1 in (5, 7):
             # the page promises dinners at the two Les Cabannes restaurants, so two evenings go out, whatever 14 July took
-            outs = sum("dinner out in Les Cabannes" in d["para"] for d in days)
+            outs = sum("dinner out in les cabannes" in day_words(d).lower() for d in days)
             s.check(f"{title}: two dinners out in Les Cabannes, as its page promises", outs == 2, detail=f"{outs}")
         every = " ".join(day_words(d) for d in days)
-        if "tasting" in every:
-            s.check(f"{title}: the wine tasting is in Le Bar", "tasting in Le Bar" in every,
-                    detail=every[every.find("tasting") - 40:every.find("tasting") + 40])
-        s.check(f"{title}: the last night ends at the disco", "disco" in day_words(days[-2]),
-                detail=days[-2]["para"][-120:])
+        # 11 Nov (the owner's site-copy brief): "A wine tasting, then dinner out", with no room named; a room that is
+        # named is still the right one (OLD_ROOMS above catches "beside the cellar").
+        last = day_words(days[-2])
+        s.check(f"{title}: the last night is the banquet in the Salon de Musique, then dancing",
+                "Salon de Musique" in last and "dancing" in last, detail=last[-120:])
         if any(d.month in WINTER_MONTHS for d in starts):
             cold = [p for p in NOT_IN_WINTER if re.search(p, section, re.I)]
             s.check(f"{title}: winter dates, and nothing in its days that needs summer", not cold, detail=str(cold))
@@ -264,8 +272,11 @@ def run():
             cold = [p for p in NOT_IN_WINTER if re.search(p, read, re.I)]
             s.check(f"{title}: in winter, nothing that needs summer", not cold, detail=str(cold))
             s.check(f"{title}: and no yoga anywhere on the page", not re.search(r"\byoga\b", _say(html), re.I))
-            for thing in ("Christmas market", "Christmas tree", "wreaths", "Carols", "vin chaud", "gingerbread château"):
+            # 11 Nov (the owner's site-copy brief): the days as the brief gives them, and no drink named on one.
+            for thing in ("a welcome glass by the fire", "Christmas baking", "gingerbread château", "Christmas film",
+                          "dress the tree", "Christmas banquet"):
                 s.check(f"{title}: {thing}", thing in every, detail=every[:100])
+            s.check(f"{title}: and no vin chaud on a day", "vin chaud" not in every)
 
     s.check("a Mirepoix day was there to check", mirepoix_seen >= 2, detail=f"{mirepoix_seen}")
     s.check("a 14 July and a 21 June were there to check", occasions_seen >= 2, detail=f"{occasions_seen}")

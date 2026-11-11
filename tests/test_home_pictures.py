@@ -8,8 +8,11 @@ What is left of the first brief, and would go quietly if it went:
 
   - the rooms as a slider of their cards, one photograph each, the estate from
     the air as its first slide (in place of the band it had)
-  - the dining room's before and now as one slider, with the page's own two words
-  - a medallion of the house and a wax seal by each guest's quote
+  - the dining room's before and now side by side, each whole, with the page's own two words
+    (owner's site-copy brief, 11 Nov 2026: the slider hid the horse and jumbled two photographs
+    taken facing different ways)
+  - each guest's quote a gilded cartouche: its photograph in an oval hung from a bow, and the wax
+    seal by "A guest of the château" (the same brief, part 4)
   - and no photograph twice. Checked by the file the house holds, not by the
     address: the same breakfast photograph is a Squarespace address in Ways to
     Spend the Days and a house copy elsewhere, and two addresses for one picture
@@ -74,16 +77,24 @@ def run():
     s.check("the slider has its arrows and its count, the estate included",
             'data-car-prev' in cars and f"1 / {cards + 1}" in cars)
     resto = page[page.find("g-homeresto"):]
-    s.check("the dining room's before and now is one slider",
-            'class="g-aa ' in resto[:4000] and "horse-dining-room-a" in resto[:4000])
-    s.check("with the page's own two words on it, Before and Now",
-            re.search(r'g-ba__tag--b">Before<', resto) is not None and re.search(r'g-ba__tag--a">Now<', resto) is not None)
-    says = page[page.find('class="g-sec g-says"'):]
+    pair = resto[:resto.find("</section>")]
+    figs = re.findall(r'<figure class="g-homeresto__f">(.*?)</figure>', pair, re.S)
+    s.check("the dining room's before and now side by side, not a slider",
+            len(figs) == 2 and "data-ba" not in pair and 'class="g-aa ' not in pair, detail=f"{len(figs)} photographs")
+    s.check("before on the left, the horse's photograph, and nothing pushing it sideways",
+            bool(figs) and "horse-dining-room-a" in figs[0] and "object-position" not in figs[0])
+    s.check("with the page's own two words on them, Before and Now",
+            len(figs) == 2 and ">Before<" in figs[0] and ">Now<" in figs[1])
+    says = page[page.find('class="g-sec g-says rc-says"'):]
     says = says[:says.find("</section>")]
-    quotes = says.count('<blockquote class="g-say__q">')
-    s.check("every guest's quote has a medallion of the house and a seal",
-            quotes and says.count('class="g-med ') == quotes and len(re.findall(r'class="g-seal[ "]', says)) == quotes,
+    quotes = says.count('<blockquote class="rc-q">')
+    s.check("every guest's quote a cartouche: an oval photograph on a bow, and a seal",
+            quotes >= 2 and says.count('class="rc-oval"') == quotes and says.count('class="rc-bow"') == quotes
+            and len(re.findall(r'class="g-seal[ "]', says)) == quotes,
             detail=f"{quotes} quotes")
+    s.check("signed as a guest of the château, with no name or stars made up",
+            says.count("A guest of the château") >= 2 and "★" not in says and "&#9733;" not in says)
+    s.check("and the two navy rules that sat over the cards are gone", 'class="g-fleur"' not in says)
     s.section("no photograph twice")
     keys = [picture_key(_src(t)) for t in _visible_imgs(page) if "Logo" not in _src(t)]
     twice = sorted({k for k in keys if keys.count(k) > 1})

@@ -103,7 +103,7 @@
       {#- 17 Oct: where the bathroom is comes from _room_copy (next door for The Twin Room (Ground Floor)); the upstairs
           powder room is only worth saying to a room upstairs. -#}
       {%- set _bw = room_bath_where(_rn)|trim %}
-      <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ medaillon([BATH_PHOTOS[1][0], BATH_PHOTOS[1][1]], side='right', cls='g-med--sm') }}{{ 'Private, and yours alone, ' if _private else '' }}{{ _bw }}{% if _bw != 'next door' %}<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span>{% endif %}</dd></div>
+      <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ medaillon([BATH_PHOTOS[3][0], BATH_PHOTOS[3][1]], side='right', cls='g-med--sm') }}{{ 'Private, and yours alone, ' if _private else '' }}{{ _bw }}<a class="g-glance__more" href="{{ url_for('book_rooms') }}#bathrooms">See the bathrooms</a>{% if _bw != 'next door' %}<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span>{% endif %}</dd></div>
       <div><dt>Check-in / out</dt><dd>From {{ check_in_at }} &middot; by {{ check_out_at }}<span class="g-glance__sub">Early check-in on request</span></dd></div>
       <div><dt>Breakfast</dt><dd>Included</dd></div>
       <div><dt>Stairs</dt><dd>{{ room_stairs(_rn) }}</dd></div>
@@ -127,7 +127,11 @@
       without the bathrooms that used to pad the grid out to a row of three: one of those sits by the bathroom now. -#}
   {%- if gallery_photos %}{% set _gal = [] %}{% for p in gallery_photos %}{% set _ = _gal.append([url_for('room_photo', filename=p['filename']), room_name(room['name'])|trim, '']) %}{% endfor %}
   {%- elif _rg0 %}{% set _gal = [] %}{% for _u, _a in _rg0 %}{% set _ = _gal.append([_u, _a, '']) %}{% endfor %}
-  {%- else %}{% set _gal = [['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w', 'One of the ground-floor bathrooms', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/501a4947-d365-4a11-a83e-8affbc374e48/Screenshot+2026-08-12+at+3.38.55+pm.png?format=1000w', 'Walking up to the château at dusk', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w', 'Market produce on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w', 'The gardens, the mountains beyond', '']] %}{% endif %}
+  {%- else %}{% set _gal = [['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/501a4947-d365-4a11-a83e-8affbc374e48/Screenshot+2026-08-12+at+3.38.55+pm.png?format=1000w', 'Walking up to the château at dusk', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w', 'Market produce on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w', 'The gardens, the mountains beyond', '']] %}{% endif %}
+  {#- 11 Nov (owner's bathrooms brief): two of the bathrooms in the strip, not one -- the long bathroom under its
+      chandelier, and the claw-foot bath. Every room's bathroom is one of these, so every room page shows them; the
+      medallion beside "Your bathroom" is the painted basin, so no photograph is on the page twice. -#}
+  {%- set _gal = _gal + [[BATH_PHOTOS[0][0], BATH_PHOTOS[0][1], ''], [BATH_PHOTOS[1][0], BATH_PHOTOS[1][1], '']] %}
   <div class="g-roomgal-car">{{ carrousel(_gal, room_name(room['name'])|trim ~ ': photographs', thumbs=True, upto=1.25) }}</div>
   </div>{#- /g-room--family wrapper (15 Oct: taller Family Suite photographs) -#}
 

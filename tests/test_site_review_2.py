@@ -434,20 +434,36 @@ def _book_cards(s, anon):
     s.check("and every one of them shows it on its card", not lost, detail=str(lost))
     # The bathrooms have a section of their own (owner, 11 Nov: "they are a real feature, they are incredible"),
     # with every photograph of them and the owner's facts, so the cards no longer carry one each.
+    # 11 Nov, evening (the owner's site-copy brief, part 1): a feature, not a disclaimer. Straight after the
+    # availability box, before the rooms; one large photograph (the long bathroom) and three beneath; six points.
     page = anon.get("/book").get_data(as_text=True)
-    # Up to the section's own close: the slider inside it has a closing tag of its own.
     at = page.find('<section class="g-sec g-baths-sec"')
     sec = page[at:page.find("</div></section>", at)] if at != -1 else ""
     s.check("/book has a section on the bathrooms", bool(sec))
-    shown = set(re.findall(r'<img\b[^>]*\balt="([^"]*)"', sec))
+    bar_at, rooms_at = page.find('class="g-book-bar"'), page.find('id="rooms"')
+    s.check("straight after the availability box and before the rooms, as #bathrooms",
+            'id="bathrooms"' in sec and bar_at < at < rooms_at, detail=f"bar {bar_at}, bathrooms {at}, rooms {rooms_at}")
+    shown = re.findall(r'<img\b[^>]*\balt="([^"]*)"', sec)
+    lead = re.search(r'<figure class="g-baths__lead">.*?\balt="([^"]*)"', sec, re.S)
+    s.check("one large photograph, the long bathroom", bool(lead) and lead.group(1) == "One of the ground-floor bathrooms",
+            detail=str(lead and lead.group(1)))
     # Four of the five: the fifth is the same bath from almost the same place as another.
-    s.check("showing the photographs of them, four side by side", len(baths & shown) >= 4,
-            detail=str(baths - shown))
+    s.check("and three beneath it: four of them in all, each once", len(baths & set(shown)) >= 4 and len(shown) == 4,
+            detail=str(shown))
+    points = re.findall(r'<li class="g-baths__pt">.*?<svg', sec, re.S)
+    s.check("six points, each with its drawing", len(points) == 6, detail=f"{len(points)}")
     words = visible_text(sec)
-    for fact in ("2019", "historic monument", "ground floor", "Antoinette Poisson", "terracotta",
-                 "the château’s logo", "Mountain views", "Heaters", "Luxury linen", "shampoo, conditioner and bath gel",
-                 "The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath"):
+    for fact in ("Installed in 2019", "terracotta", "printed by hand", "claw-foot bath", "the château’s crest",
+                 "shampoo, conditioner and bath gel", "Windows onto the mountains",
+                 "Each room has a bathroom of its own, on the ground floor"):
         s.check(f"and says: {fact}", fact in words)
+    # The brief: no reason or explanation for where the bathrooms are, and none of the lines it took out.
+    for gone in ("historic monument", "cannot be built", "Antoinette Poisson", "made by hand in Paris",
+                 "Luxury fittings", "Luxury linen", "Heaters", "larger bathroom"):
+        s.check(f"and no longer says: {gone}", gone not in words)
+    cards = re.findall(r'<a class="g-tags__bath" href="#bathrooms">([^<]*)</a>', page)
+    s.check("every room card's bathroom says it is your own, and opens the section",
+            bool(cards) and all(c.startswith("Your own private bathroom") for c in cards), detail=str(cards))
 
 
 if __name__ == "__main__":

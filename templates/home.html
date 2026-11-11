@@ -309,8 +309,15 @@
 <section class="g-sec g-sec--dark g-homeresto"><div class="g-wrap">
   <p class="g-fr">La restauration <span class="g-fr__en">The restoration</span></p>
   <h2 class="g-place">From Ruin, Room by Room</h2>
-  {#- 28 Oct (the brief, 4.2 and F): the before and the now as one slider, dragged across, with the page's own two words. -#}
-  {{ avant_apres('home-dining', url_for('static', filename='img/history/horse-dining-room-a.jpg'), 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=1500w', 'The dining room', tags=('Before', 'Now'), caption=False, before_pos='97% center', before_alt='A horse in an empty room of the château, before the work', after_alt='The dining room now, laid for dinner under the chandeliers') }}
+  {#- 11 Nov 2026 (owner's site-copy brief, part 3): no slider for this pair. The two photographs face different ways
+      (the before to the doorway and the fireplace, the now to the windows), so a wipe only jumbled them, and starting
+      at the middle hid the horse, who stands at the right of the before. Side by side now, the same size, each whole:
+      Before on the left, Now on the right, across the full width; stacked on a phone. The box is the before's own
+      shape, so the horse is never cropped; the now loses a sliver top and bottom. -#}
+  <div class="g-homeresto__pair">
+    <figure class="g-homeresto__f">{{ pic(url_for('static', filename='img/history/horse-dining-room-a.jpg'), 'A horse in an empty room of the château, before the work', sizes='(min-width: 40rem) 50vw, 100vw', cls='g-homeresto__img') }}<span class="g-ba__tag g-ba__tag--b">Before</span></figure>
+    <figure class="g-homeresto__f">{{ pic('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=1500w', 'The dining room now, laid for dinner under the chandeliers', sizes='(min-width: 40rem) 50vw, 100vw', cls='g-homeresto__img') }}<span class="g-ba__tag g-ba__tag--b">Now</span></figure>
+  </div>
   <p class="g-homeresto__cap">The dining room: once empty enough for a horse.</p>
   <p class="g-homeresto__cap">New floors, new bathrooms and good French beds, among antiques found at the brocantes of the valley and fresh flowers in every room. The château feels lived in, never furnished.</p>
   <p class="g-p g-homeresto__p">Bought as a ruin in 2013, the château has been brought back room by room, and the work goes on around you.</p>
@@ -322,43 +329,47 @@
 <!-- ============ WHAT GUESTS SAY ============ -->
 {# Verbatim from the château's own Booking.com listing, which scores 10/10
    across all six categories. Short quotes, attributed, nothing invented. #}
-<section class="g-sec g-says"><div class="g-wrap">
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M0 13h38"/><path d="M82 13h38"/>
-  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-  <circle cx="60" cy="13" r="1.4"/>
-</svg>
-  <h2 class="g-place">What Guests Say</h2>
-  {#- 28 Oct (the brief, 4.2): each quote beside a medallion of the house, with a wax seal. -#}
-
-  <div class="g-says__grid">
-    <figure class="g-say">
-      <div class="g-say__pic">{{ medaillon([url_for('static', filename='img/retreats/chateau-framed-by-roses.jpg'), 'The château framed by roses'], side='left') }}{{ seal() }}</div>
-      <blockquote class="g-say__q">Each morning I woke up worried that it was only a dream.</blockquote>
-      <figcaption class="g-say__by">A guest<span class="g-say__src">Google</span></figcaption>
+<section class="g-sec g-says rc-says"><div class="g-wrap">
+  {#- 11 Nov 2026 (owner's site-copy brief, part 4): "more illustrations and gold bits ... more château-y, like Marie
+      Antoinette and Louis XV". This section only: a gold treillage on the sand, a gilded shell and C-scrolls over the
+      heading, each quote a gilded cartouche with rococo corners, each photograph a portrait oval in a beaded gold ring
+      hung from a ribbon bow, and the wax seal beside "A guest of the château". The quotes and their photographs are
+      the same; no name or star rating is invented. The third card is the first review the owner has featured for
+      /book, with the guest's own first name, as before. -#}
+  <header class="rc-head">
+    <svg class="rc-crest" viewBox="0 0 240 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M0 30H70M170 30H240" stroke-width=".8"/><path d="M70 30C82 30 88 22 98 22C106 22 106 32 99 32C95 32 95 27 98 27"/><path d="M170 30C158 30 152 22 142 22C134 22 134 32 141 32C145 32 145 27 142 27"/><path d="M120 34L120 8M120 34L109 11M120 34L131 11M120 34L101 18M120 34L139 18" stroke-width=".7"/><path d="M99 26Q99 17 101 18Q102 9 109 11Q111 4 120 8Q129 4 131 11Q138 9 139 18Q141 17 141 26"/><path d="M106 36C112 40 128 40 134 36"/></g><circle cx="120" cy="36" r="2.4" fill="currentColor"/><circle cx="76" cy="30" r="1.4" fill="currentColor"/><circle cx="164" cy="30" r="1.4" fill="currentColor"/></svg>
+    <p class="rc-eyebrow" lang="fr">Ce que disent nos hôtes</p>
+    <h2>What Guests Say</h2>
+    <div class="rc-rule" aria-hidden="true"><span></span><i></i><span></span></div>
+  </header>
+  {%- set says = [
+    {'img': url_for('static', filename='img/retreats/chateau-framed-by-roses.jpg'), 'alt': 'The château framed by roses',
+     'quote': 'Each morning I woke up worried that it was only a dream.'},
+    {'img': url_for('static', filename='img/retreats/chateau-snowy-peaks.jpg'), 'alt': 'The château below the snowy peaks',
+     'quote': 'Spacious rooms with private, well-equipped bathrooms'}] %}
+  {#- 9 Nov, evening (owner's second review, 5): the quote ending "and not spooky at all" went. The third is the first
+      review the owner has featured for /book (featured_room_reviews), so nothing is quoted here that is not quoted there. -#}
+  {%- set _br = (featured_reviews or [])|first %}
+  {%- if _br %}{% set says = says + [{'img': url_for('static', filename='img/rk/down-the-drive.jpg'), 'alt': 'Down the drive to the château',
+     'quote': _br['comment'], 'by': ((_br['guest_name'] or '').split(' ')[0]), 'reply': _br['reply']}] %}{% endif %}
+  {%- set CORNER = '<svg class="rc-corner %s" viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10L34 10M10 10L32.2 19.2M10 10L27 27M10 10L19.2 32.2M10 10L10 34" stroke-width=".7"/><path d="M34 10Q38.4 15.7 32.2 19.2Q34.1 26.1 27 27Q26.1 34.1 19.2 32.2Q15.7 38.4 10 34"/><path d="M34 10C46 6 57 12 53 19C50 23 45 19 48 16"/><path d="M10 34C6 46 12 57 19 53C23 50 19 45 16 48"/><path d="M53 19C56 22 60 22 63 20" stroke-width=".7"/><path d="M19 53C22 56 22 60 20 63" stroke-width=".7"/></g><circle cx="10" cy="10" r="2.2" fill="currentColor"/></svg>' %}
+  <div class="rc-grid">
+    {%- for q in says %}
+    <figure class="rc-card">
+      {%- for _c in ('tl', 'tr', 'bl', 'br') %}{{ (CORNER % _c)|safe }}{% endfor %}
+      <div class="rc-med">
+        <svg class="rc-bow" viewBox="0 0 64 34" aria-hidden="true"><g fill="currentColor"><path d="M32 14C24 2 9 2 11 12C12 19 23 18 32 14Z"/><path d="M32 14C40 2 55 2 53 12C52 19 41 18 32 14Z"/><path d="M30 16L22 32L27 29.5L29.5 33L32 17Z"/><path d="M34 16L42 32L37 29.5L34.5 33L32 17Z"/></g><g fill="none" stroke="#F6F2E8" stroke-width=".8" opacity=".7"><path d="M30 13C25 7 16 6 15 11"/><path d="M34 13C39 7 48 6 49 11"/></g><circle cx="32" cy="14.5" r="3.6" fill="currentColor" stroke="#F6F2E8" stroke-width=".8"/></svg>
+        <div class="rc-oval">{{ pic(q['img'], q['alt'], sizes='8rem') }}</div>
+      </div>
+      {#- a p, not the brief's span: the stylesheet holds every unclassed span in main at 15px, and this is 88px -#}
+      <p class="rc-mark" aria-hidden="true">“</p>
+      <blockquote class="rc-q">{{ q['quote'] }}</blockquote>
+      {#- __l in the class: the reading floor leaves a label's span its own size (12px small caps here) -#}
+      <figcaption class="rc-sig">{{ seal() }}<span class="rc-sig__l">{{ q['by'] or 'A guest of the château' }}</span></figcaption>
+      {#- What the house said back goes with a featured review, as it does on /book. -#}
+      {%- if q['reply'] %}<p class="g-say__reply rc-reply"><span class="g-say__reply-by">Château de Gudanes</span> {{ q['reply'] }}</p>{% endif %}
     </figure>
-    <figure class="g-say">
-      {#- 10 Oct (owner, via Code): every room has its own private bathroom, so this quote is true of all five - back in
-          place. Cynthia's breakfast quote stays on the Dining page. -#}
-      <div class="g-say__pic">{{ medaillon([url_for('static', filename='img/retreats/chateau-snowy-peaks.jpg'), 'The château below the snowy peaks'], side='left') }}{{ seal() }}</div>
-      <blockquote class="g-say__q">Spacious rooms with private, well-equipped bathrooms</blockquote>
-      <figcaption class="g-say__by">A guest from the Netherlands<span class="g-say__src">Booking.com</span></figcaption>
-    </figure>
-    {#- 9 Nov, evening (owner's second review, 5): the quote ending "and not spooky at all" went -- it introduced the
-        word. The third is the first review the owner has featured for /book, by the same consent rule /book reads
-        (featured_room_reviews), so nothing is quoted here that is not quoted there. -#}
-    {% set _br = (featured_reviews or [])|first %}
-    {% if _br %}
-    <figure class="g-say">
-      <div class="g-say__pic">{{ medaillon([url_for('static', filename='img/rk/down-the-drive.jpg'), 'Down the drive to the château'], side='left') }}{{ seal() }}</div>
-      <blockquote class="g-say__q">{{ _br['comment'] }}</blockquote>
-      <figcaption class="g-say__by">{{ (_br['guest_name'] or 'A guest').split(' ')[0] }}<span class="g-say__src">{% if _br['room_name'] %}{{ room_name(_br['room_name']) }}{% else %}A stay at the château{% endif %}</span></figcaption>
-      {#- What the house said back goes with it, as it did on /book: a complaint answered well reads better
-          to the next guest than no complaint at all. -#}
-      {% if _br['reply'] %}<p class="g-say__reply"><span class="g-say__reply-by">Château de Gudanes</span> {{ _br['reply'] }}</p>{% endif %}
-    </figure>
-    {% endif %}
+    {%- endfor %}
   </div>
   {#- The figures the owner supplies (Management, proof figures): nothing is drawn until there is one. -#}
   <div class="g-wrap">{{ proof(settings) }}</div>
