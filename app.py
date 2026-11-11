@@ -31578,11 +31578,12 @@ def edit_campaign_template(template_id):
         segments[f"workshop:{w['id']}"] = f"Did {w['title']}"
     # And one per tag on the guest list, so a group put together there -- the
     # old system's waitlist -- can be written to as itself.
-    for r in conn.execute(
+    tags = [r["tag"] for r in conn.execute(
             """SELECT DISTINCT t.tag FROM guest_tags t
                  JOIN guests g ON g.id = t.guest_id
-                WHERE g.merged_into_id IS NULL ORDER BY t.tag""").fetchall():
-        segments[f"tag:{r['tag']}"] = f"Tagged “{r['tag']}”"
+                WHERE g.merged_into_id IS NULL ORDER BY t.tag""").fetchall()]
+    for tag in tags:
+        segments[f"tag:{tag}"] = f"Tagged “{tag}”"
 
     audience_counts = {
         key: len(campaign_audience(conn, [key])) for key in segments
@@ -31598,7 +31599,7 @@ def edit_campaign_template(template_id):
         (template_id,)).fetchall()
     conn.close()
     return render_template(
-        "admin_email_edit.html", template=template, areas=CAMPAIGN_AREAS,
+        "admin_email_edit.html", template=template, areas=CAMPAIGN_AREAS, tags=tags,
         segments=segments, audience_counts=audience_counts,
         merge_fields=CAMPAIGN_MERGE_FIELDS, preview_subject=preview_subject,
         preview_body=preview_body, sends=sends,
@@ -31657,7 +31658,8 @@ def send_campaign_template(template_id):
         flash("Choose at least one audience.", "error")
         return redirect(url_for("edit_campaign_template", template_id=template_id))
 
-    audience = campaign_audience(conn, segments, since_iso)
+    exclude = [t for t in request.form.getlist("exclude") if t and normalise_tag(t) == t]
+    audience = campaign_audience(conn, segments, since_iso, exclude_tags=exclude)
     typed = request.form.get("confirm_count", "").strip()
     if typed != str(len(audience)):
         conn.close()
@@ -65520,12 +65522,17 @@ def campaign_booking_context(conn, email):
                                   _external=True)}
 
 
-def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False):
+def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False,
+                      exclude_tags=()):
     """Who a campaign would go to: {email: name}, de-duplicated.
 
     Builds on the existing segment logic, then removes anyone who has opted
     out or asked us to stop using their details. A guest with a stay AND a
     dinner is emailed once, not twice.
+
+    `exclude_tags`: anybody whose profile carries one of these is taken out,
+    whichever list brought them in -- so the past guests' letter can leave out
+    the waitlist, who have a letter of their own.
     """
     recipients = dict(promo_blast_recipients(conn, segments, since_date_iso))
     if "profiles" in segments:
@@ -65539,6 +65546,12 @@ def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False
             recipients.setdefault(b["email"], b["name"])
 
     recipients = {(e or "").strip().lower(): n for e, n in recipients.items() if e and e.strip()}
+    for tag in exclude_tags or ():
+        for row in conn.execute(
+                """SELECT LOWER(TRIM(g.email)) AS email FROM guests g
+                     JOIN guest_tags t ON t.guest_id = g.id
+                    WHERE t.tag = ? AND g.email IS NOT NULL""", (tag,)).fetchall():
+            recipients.pop(row["email"], None)
     if not include_optouts:
         opted_out = {r["email"] for r in conn.execute("SELECT email FROM email_optouts").fetchall()}
         # The segments leave them out already; a profile is added here
@@ -98192,6 +98205,34 @@ def _has_checked_out(stay):
         return True
 
 
+def room_open_work(conn, room, iso):
+    """The checklist work that keeps a room from being ready on day `iso`.
+
+    One definition, shared by the board and by "Mark ready" (room_mark_ready),
+    so the button ticks off exactly what made the room read as not ready.
+
+    The checklist belongs to a booking of the house's own or to a Booking.com
+    stay (prep_channel_departures); either way, to this room. Work that is due
+    by today. The arrival prep is made two days ahead, and a room whose next
+    guest comes on Thursday can still be walked into on Tuesday.
+    """
+    return conn.execute(
+        """SELECT tasks.* FROM tasks
+             LEFT JOIN bookings ON bookings.id = tasks.booking_id
+             LEFT JOIN ota_reservations ON ota_reservations.id = tasks.ota_reservation_id
+            WHERE tasks.origin = 'checklist' AND tasks.status != 'done'
+              AND (bookings.room_id = ?
+                   OR (tasks.ota_reservation_id IS NOT NULL
+                       AND SUBSTR(tasks.title, 1, LENGTH(?) + 2) = ? || ': '
+                       AND (ota_reservations.room_id = ? OR EXISTS (
+                            SELECT 1 FROM ota_reservation_rooms x
+                             WHERE x.ota_reservation_id = tasks.ota_reservation_id
+                               AND x.room_id = ?))))
+              AND (tasks.due_date IS NULL OR tasks.due_date <= ?)
+            ORDER BY tasks.id""",
+        (room["id"], room["name"], room["name"], room["id"], room["id"], iso)).fetchall()
+
+
 def room_board(conn, today=None):
     """Every room, and whether a guest can walk into it.
 
@@ -98236,26 +98277,7 @@ def room_board(conn, today=None):
             """SELECT * FROM bookings
                 WHERE room_id = ? AND status = 'confirmed' AND arrival_date = ?""",
             (room["id"], iso)).fetchone()
-        # The checklist belongs to a booking of the house's own or to a
-        # Booking.com stay (prep_channel_departures); either way, to this room.
-        # Work that is due by today. The arrival prep is made two days ahead,
-        # and a room whose next guest comes on Thursday can still be walked
-        # into on Tuesday.
-        open_work = conn.execute(
-            """SELECT tasks.* FROM tasks
-                 LEFT JOIN bookings ON bookings.id = tasks.booking_id
-                 LEFT JOIN ota_reservations ON ota_reservations.id = tasks.ota_reservation_id
-                WHERE tasks.origin = 'checklist' AND tasks.status != 'done'
-                  AND (bookings.room_id = ?
-                       OR (tasks.ota_reservation_id IS NOT NULL
-                           AND SUBSTR(tasks.title, 1, LENGTH(?) + 2) = ? || ': '
-                           AND (ota_reservations.room_id = ? OR EXISTS (
-                                SELECT 1 FROM ota_reservation_rooms x
-                                 WHERE x.ota_reservation_id = tasks.ota_reservation_id
-                                   AND x.room_id = ?))))
-                  AND (tasks.due_date IS NULL OR tasks.due_date <= ?)
-                ORDER BY tasks.id""",
-            (room["id"], room["name"], room["name"], room["id"], room["id"], iso)).fetchall()
+        open_work = room_open_work(conn, room, iso)
         for st in by_room.get(room["id"], []):
             if not here and st["arrival_date"] < iso < st["departure_date"]:
                 here = st
@@ -107303,6 +107325,42 @@ def complete_task(task_id):
     conn.commit()
     conn.close()
     return jsonify(status="done" if done else "open")
+
+
+@app.route("/rooms/<int:room_id>/ready", methods=["POST"])
+@login_required
+def room_mark_ready(room_id):
+    """Every open checklist item on a room ticked off at once (owner, 10 Nov 2026:
+    "i want to easily be able to mark these myself as done, until we fully
+    implement the system").
+
+    The same tick, done many times: the work is the board's own (room_open_work),
+    each item goes through mark_task_done, and the permission is complete_task's
+    -- the owner, or whoever the item is assigned to. What it could not tick it
+    names, through bulk_message, so a room that still reads "Needs turning over"
+    afterwards says why.
+    """
+    user = current_user()
+    conn = get_db()
+    room = conn.execute("SELECT * FROM rooms WHERE id = ?", (room_id,)).fetchone()
+    if not room:
+        conn.close()
+        abort(404)
+    done, skipped = 0, []
+    for task in room_open_work(conn, room, house_today_iso()):
+        if user["role"] != "owner" and task["assigned_to_user_id"] != user["id"]:
+            skipped.append((task["title"].split(": ")[-1], "it is somebody else's to tick"))
+            continue
+        mark_task_done(conn, task)
+        done += 1
+    conn.commit()
+    conn.close()
+    if done or skipped:
+        message, category = bulk_message("Ticked off", "item", done, skipped)
+        flash(f"{room['name']}: {message}", category)
+    else:
+        flash(f"{room['name']}: nothing was left to do.", "success")
+    return redirect(url_for("staff_today"))
 
 
 @app.route("/tasks/<int:task_id>/toggle", methods=["POST"])
