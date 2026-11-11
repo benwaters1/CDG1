@@ -358,6 +358,9 @@ def run():
                 detail=str(pinged))
         s.check("the scan says it read headers one at a time",
                 "headers read one message at a time" in report, detail=report)
+        s.check("and says how many came with the listing, and how many were mailings",
+                "headers came with 0 of 30 listed, 7 with List-Unsubscribe" in report,
+                detail=report)
         s.check("and asked only the messages that would otherwise wait: not the never-flag "
                 "senders, the house, the answered or the new",
                 0 < len(asked) <= 14, detail=str([c[1].rsplit("/", 1)[-1] for c in asked]))

@@ -112617,6 +112617,10 @@ def run_email_inbox_scan_job(conn):
     unread, read_boxes, left_to_booking_com = [], 0, False
     no_headers = []
     headers_asked = headers_left = 0
+    # What Microsoft actually sent, counted for the report: on 11 Nov 2026 the
+    # newsletters stayed open and nothing said why. Header names only, never
+    # their values.
+    heard = {"listed": 0, "listed_with": 0, "mailing": 0, "asked_failed": None}
     for mb in mailboxes:
         mailbox = mb["mailbox"]
         # Booking.com's mailbox is read by its own job, into its own page:
@@ -112673,6 +112677,10 @@ def run_email_inbox_scan_job(conn):
         # in this inbox is written, so no Graph read holds the database.
         asked_here = 0
         for msg in inbox_messages:
+            heard["listed"] += 1
+            if msg.get("internetMessageHeaders"):
+                heard["listed_with"] += 1
+        for msg in inbox_messages:
             mid, got_at = msg.get("id"), msg.get("receivedDateTime")
             if not mid or not got_at or msg.get("internetMessageHeaders"):
                 continue
@@ -112693,6 +112701,8 @@ def run_email_inbox_scan_job(conn):
             got = graph_get(f"/users/{mailbox}/messages/{mid}", token,
                             params={"$select": "id,internetMessageHeaders"})
             asked_here += 1
+            if got is None and not heard["asked_failed"]:
+                heard["asked_failed"] = graph_last_error() or "no answer"
             if got is not None:
                 msg["internetMessageHeaders"] = got.get("internetMessageHeaders") or []
                 msg["_headers_read"] = True
@@ -112735,6 +112745,8 @@ def run_email_inbox_scan_job(conn):
             preview = msg.get("bodyPreview") or ""
 
             have_headers = bool(msg.get("internetMessageHeaders")) or bool(msg.get("_headers_read"))
+            if _message_header(msg, "list-unsubscribe") is not None:
+                heard["mailing"] += 1
             reason = not_waiting_for_a_reply(msg, from_address, never, house)
             if not reason and not have_headers and existing \
                     and existing["header_verdict"] in ("mailing", "machine"):
@@ -112924,6 +112936,11 @@ def run_email_inbox_scan_job(conn):
         tail += f"; headers read one message at a time for {headers_asked}"
     if headers_left:
         tail += f" ({headers_left} more wait for the next scan)"
+    tail += (f"; headers came with {heard['listed_with']} of {heard['listed']} listed, "
+             f"{heard['mailing']} with List-Unsubscribe")
+    why_not = heard["asked_failed"] or rechecked.get("failed")
+    if why_not:
+        tail += f"; a message asked on its own: {why_not}"
     # Counted from the mailboxes actually read. It counted every configured
     # one, so "scanned 0 messages across 1 mailbox" on 12 October was a
     # mailbox it had skipped (Booking.com's has its own job) and never opened.
@@ -112968,6 +112985,8 @@ def recheck_older_flags(conn, token, never, house, closed, now_iso):
     for row in to_read:
         got = graph_get(f"/users/{row['mailbox']}/messages/{row['graph_message_id']}", token,
                         params={"$select": "id,internetMessageId,internetMessageHeaders"})
+        if got is None and not out.get("failed"):
+            out["failed"] = graph_last_error() or "no answer"
         answers.append((row, got))
     _GRAPH_ANSWER.error = None
     for row, got in answers:
