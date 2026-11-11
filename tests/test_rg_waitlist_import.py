@@ -213,6 +213,24 @@ def _suite(s, oc, mail):
             any("Type " in f and "into the confirm box" in f for f in flashes(r))
             and not mail.calls, detail=f"{flashes(r)} {mail.calls}")
 
+    s.section("A send can leave a tag out")
+    conn = db()
+    with m.app.test_request_context():
+        everyone = m.campaign_audience(conn, ["profiles"])
+        without = m.campaign_audience(conn, ["profiles"], exclude_tags=["waitlist"])
+    conn.close()
+    s.check("every guest profile but the waitlist, who have a letter of their own",
+            set(everyone) - set(without) == {a, b, c}, detail=str(sorted(set(everyone) - set(without))))
+    page = oc.get(f"/admin/emails/{tid}").get_data(as_text=True)
+    s.check("the send form offers it", 'name="exclude" value="waitlist"' in page)
+    r = oc.post(f"/admin/emails/{tid}/send", data={"segments": ["profiles"],
+                                                   "exclude": ["waitlist"],
+                                                   "confirm_count": "999"},
+                follow_redirects=True)
+    s.check("and the count the owner types back is the count with them left out",
+            any(f"Type {len(without)} into the confirm box" in f for f in flashes(r))
+            and not mail.calls, detail=f"{len(without)} {flashes(r)}")
+
     s.section("A second run changes nothing")
     conn = db()
     before = {e: (g["notes"], _tags(conn, g["id"])) for e, g in _mine(conn).items()}
