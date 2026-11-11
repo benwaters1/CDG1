@@ -261,8 +261,15 @@ def run():
     s.section("No price typed into the words")
     comment = re.compile(r"\{#.*?#\}|<!--.*?-->", re.S)
     typed = []
+    # 11 Nov (owner): the one figure typed on purpose -- the private retreat's "from" price in the Groups line,
+    # a quote for the whole château rather than a session's price. Taken out by its exact words, so any other
+    # typed figure, or this one changed, is still caught.
+    owners_own = "from €45,000 for four nights"
     for name in ("_ws_copy.html", "workshops_public.html", "home.html", "workshop_detail.html"):
         text = comment.sub("", io.open(os.path.join(_harness.ROOT, "templates", name), encoding="utf-8").read())
+        if name == "workshops_public.html":
+            s.check("the Groups line carries the owner's private-retreat price, once", text.count(owners_own) == 1)
+            text = text.replace(owners_own, "")
         for hit in re.finditer(r"(?:€|&euro;)\s*\d", text):
             typed.append(f"{name}: {text[max(0, hit.start() - 30):hit.end() + 10]!r}")
     s.check("every figure comes from the Admin", not typed, detail="; ".join(typed[:3]))
