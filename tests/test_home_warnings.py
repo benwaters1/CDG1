@@ -235,6 +235,15 @@ def _run(s, oc, conn, now, today):
     statement_id = conn.execute(
         "INSERT INTO booking_com_statements (uploaded_at, filename, rows_read) VALUES (?, 'test', 0)",
         (datetime.now(timezone.utc).isoformat(),)).lastrowid
+    # And every Booking.com stay that statement would have covered. The clock
+    # is pinned to PINNED_DAY, so a stay the copy's house first saw after that
+    # morning reads as "booked since the upload" however fresh the upload is
+    # -- which the real clock can never produce. test_booking_com_statement
+    # proves the line comes for a booking that is new.
+    waiting_ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM ota_reservations WHERE statement_at IS NULL")]
+    conn.execute("UPDATE ota_reservations SET statement_at = ? WHERE statement_at IS NULL",
+                 (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     real_checks = m.readiness_checks
     # **kwargs: the caller passes include_slow=False now, and a stand-in
@@ -250,6 +259,8 @@ def _run(s, oc, conn, now, today):
         conn.executemany("UPDATE ical_sources SET last_synced_at = ?, last_sync_error = ? WHERE id = ?",
                          sources_before)
         conn.execute("DELETE FROM booking_com_statements WHERE id = ?", (statement_id,))
+        conn.executemany("UPDATE ota_reservations SET statement_at = NULL WHERE id = ?",
+                         [(i,) for i in waiting_ids])
         conn.commit()
     for row in held_before:
         conn.execute("UPDATE email_outbox SET created_at = ? WHERE id = ?",
