@@ -124968,18 +124968,31 @@ def addin_event_script():
     return js, hashlib.sha256(js.encode("utf-8")).hexdigest()[:20]
 
 
+# WHAT OUTLOOK MAY KEEP THROUGH A REDEPLOY. Both were "no-cache", so Outlook
+# asked this site afresh for every email anybody started -- and a redeploy
+# takes the site off for a minute or two, as Railway stops the old copy before
+# the new one starts (the database is on a volume). An email begun in that
+# minute was not signed by the add-in; the Exchange rule signed it instead,
+# with the hosted logo Outlook blocks behind a grey bar. It came and went all
+# day on 11 Nov 2026, once for every deploy. Now Outlook uses the copy it has
+# at once and fetches a fresh one behind it: a change reaches it one email
+# later, and an outage reaches it not at all.
+ADDIN_KEEP_THROUGH_A_DEPLOY = "stale-while-revalidate=604800, stale-if-error=604800"
+
+
 @app.route("/outlook-addin/launchevent.html")
 def outlook_addin_launchevent_html():
     """The page Outlook on the web, new Outlook and the Mac run the handlers
-    in. Never cached, and it names the script by its fingerprint: so the
-    script can be cached for a day, and a deploy still reaches everybody on
-    the next email they open."""
+    in. It names the script by its fingerprint, so the script can be kept for
+    a day. The page itself is used from Outlook's copy while a fresh one is
+    fetched behind it, so a deploy reaches everybody one email later and a
+    redeploy's minute offline reaches nobody."""
     _js, tag = addin_event_script()
     resp = app.response_class(render_template(
         "outlook_addin_launchevent.html",
         launchevent_js_url=url_for("outlook_addin_launchevent_js", v=tag, _external=True),
     ), mimetype="text/html")
-    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["Cache-Control"] = "public, max-age=0, " + ADDIN_KEEP_THROUGH_A_DEPLOY
     return resp
 
 
@@ -124993,9 +125006,9 @@ def outlook_addin_launchevent_js():
     resp = app.response_class(js, mimetype="application/javascript")
     resp.set_etag(tag)
     if request.args.get("v") == tag:
-        resp.headers["Cache-Control"] = "public, max-age=86400"
+        resp.headers["Cache-Control"] = "public, max-age=86400, " + ADDIN_KEEP_THROUGH_A_DEPLOY
     else:
-        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Cache-Control"] = "public, max-age=0, " + ADDIN_KEEP_THROUGH_A_DEPLOY
     return resp.make_conditional(request)
 
 
