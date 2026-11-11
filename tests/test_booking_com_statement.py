@@ -241,6 +241,19 @@ def _run(s, oc, conn):
             "without Booking.com's figures yet" in page and "Booking.com (sold there)" in page)
 
     s.section("The weekly upload, and its reminder")
+    # The copy's own Booking.com stays that no statement has covered count as
+    # covered here, as they do in the next section, and are put back with
+    # them. The clock is pinned to the morning of PINNED_DAY, so a stay the
+    # house first saw after that day is "new since the upload" whatever is
+    # uploaded: the fixture does not list it, and the upload is stamped
+    # before it was seen. With the real clock the house cannot have seen a
+    # stay after now, so this is the pin's doing, not the reminder's.
+    real_waiting = [r["id"] for r in conn.execute(
+        "SELECT id FROM ota_reservations WHERE statement_at IS NULL "
+        "AND reservation_number NOT LIKE '9744%'")]
+    if real_waiting:
+        conn.execute(f"UPDATE ota_reservations SET statement_at = ? WHERE id IN "
+                     f"({','.join('?' * len(real_waiting))})", [_now().isoformat()] + real_waiting)
     cur = conn.execute("INSERT INTO ical_sources (room_id, label, url, last_synced_at) "
                        "VALUES (?, 'Booking.com', ?, ?)",
                        (room["id"], f"https://ical.booking.com/v1/export?t={TAG}", _now().isoformat()))
@@ -355,6 +368,7 @@ def _run(s, oc, conn):
     closed = conn.execute("SELECT status FROM tasks WHERE id = ?", (task["id"],)).fetchone() if task else None
     s.check("the upload closes it there and then",
             closed and closed["status"] == "done", detail=str(closed and dict(closed)))
+    uncovered += real_waiting
     if uncovered:
         conn.execute(f"UPDATE ota_reservations SET statement_at = NULL WHERE id IN "
                      f"({','.join('?' * len(uncovered))})", uncovered)
