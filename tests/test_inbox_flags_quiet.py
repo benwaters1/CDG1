@@ -259,6 +259,24 @@ def run():
         b_flag = conn.execute("SELECT * FROM email_flags WHERE id = ?", (b_flag["id"],)).fetchone()
         s.check("taken off the list, a guest still waiting is flagged again",
                 b_flag["status"] == "open" and not b_flag["closed_by_app"], detail=dict(b_flag))
+        page = oc.get("/admin/inbox-flags").get_data(as_text=True)
+        s.check("each open flag has a Never flag this sender button",
+                f"/admin/inbox-flags/{b_flag['id']}/never-flag" in page)
+        c_flag = conn.execute("SELECT * FROM email_flags WHERE from_address = 'zzif.guestc@guest.example'").fetchone()
+        r = oc.post(f"/admin/inbox-flags/{c_flag['id']}/never-flag", follow_redirects=True)
+        c_flag = conn.execute("SELECT * FROM email_flags WHERE id = ?", (c_flag["id"],)).fetchone()
+        s.check("one press puts the sender on the list",
+                "zzif.guestc@guest.example" in m.inbox_never_flag_entries(conn), response=r)
+        s.check("and closes their open flag, saying so",
+                c_flag["status"] == "dismissed" and c_flag["closed_by_app"] == "listed"
+                and any("never flagged now" in f and "Closed 1 flag" in f for f in flashes(r)),
+                response=r, detail=dict(c_flag))
+        s.check("pressed twice, the address is on the list once",
+                oc.post(f"/admin/inbox-flags/{c_flag['id']}/never-flag").status_code == 302
+                and m.inbox_never_flag_entries(conn).count("zzif.guestc@guest.example") == 1)
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (m.INBOX_NEVER_FLAG_KEY,))
+        conn.execute("UPDATE email_flags SET status = 'open', closed_by_app = NULL WHERE id = ?", (c_flag["id"],))
+        conn.commit()
         oc.post(f"/admin/inbox-flags/{b_flag['id']}/dismiss")
         _scan(conn, fake)
         b_flag = conn.execute("SELECT * FROM email_flags WHERE id = ?", (b_flag["id"],)).fetchone()

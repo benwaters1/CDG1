@@ -9807,7 +9807,7 @@ NAV_AREAS = {
         "mark_social_post_posted", "new_social_post", "record_texting_consent", "resolve_email_flag",
         "update_mailbox_routing",
         # The senders Inbox Flags never waits on a reply from.
-        "save_inbox_never_flag",
+        "save_inbox_never_flag", "never_flag_sender",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         
@@ -118666,6 +118666,51 @@ def resolve_email_flag(flag_id):
     conn.commit()
     conn.close()
     flash("Marked resolved.", "success")
+    return redirect(inbox_flags_back())
+
+
+@app.route("/admin/inbox-flags/<int:flag_id>/never-flag", methods=["POST"])
+@owner_required
+def never_flag_sender(flag_id):
+    """Never flag this sender again: their address goes on the never-flag
+    list, and every open flag from them closes now, counted.
+
+    For the senders no header gives away. A bill from Free Mobile, a payment
+    notice from Weglot, an invitation service's "your order is ready": none
+    carries List-Unsubscribe, so none can be told from a person by the rules,
+    and on 11 Nov 2026 they were most of the 123 still open. Typing each into
+    the list by hand is how a list never gets kept."""
+    conn = get_db()
+    flag = conn.execute("SELECT * FROM email_flags WHERE id = ?", (flag_id,)).fetchone()
+    if not flag:
+        conn.close()
+        abort(404)
+    address = (flag["from_address"] or "").strip().lower()
+    if not EMAIL_RE.match(address):
+        conn.close()
+        flash("That flag has no sender address to put on the list.", "error")
+        return redirect(inbox_flags_back())
+    text = inbox_never_flag_text(conn)
+    if address not in inbox_never_flag_entries(conn):
+        if text and not text.endswith(chr(10)):
+            text += chr(10)
+        text += address + chr(10)
+        conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                     (INBOX_NEVER_FLAG_KEY, text))
+    never, house = inbox_never_flag_entries(conn), inbox_house_senders()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    closed = {}
+    for row in conn.execute("SELECT id, from_address FROM email_flags WHERE status = 'open'").fetchall():
+        reason = sender_not_waiting(row["from_address"], never, house)
+        if reason:
+            close_flag_by_app(conn, row["id"], reason, now_iso)
+            closed[reason] = closed.get(reason, 0) + 1
+    log_audit(conn, "inbox_never_flag_sender", target=address,
+              details=f"closed {sum(closed.values())}")
+    conn.commit()
+    conn.close()
+    flash(f"{address} is never flagged now." + (" " + inbox_closed_words(closed) if closed else ""),
+          "success")
     return redirect(inbox_flags_back())
 
 
