@@ -81,7 +81,9 @@ m = _harness.m
 # and /6, and nothing else: room and breakfast with the restaurants nearby, the village
 # Christmas market, and the days split into day and evening. Each was read; the review's
 # welcome glass, no artisan, no pool on Cooking and "on site" for "in the house" kept.
-COPY_BASE = "7df0813"
+# 11 Nov: moved to dc5309b, Cooking in the Cuisine's "five spring days" (owner: "change to
+# spring"); it listed /workshops and /workshops/4, and nothing else.
+COPY_BASE = "dc5309b"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
