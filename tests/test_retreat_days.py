@@ -269,7 +269,7 @@ def run():
     # says "a week". The private stay is four nights, and its page opened "A week of long, golden days".
     # Not "copper": copper pans are among the finds on Antique & French Finds, which is what a brocante sells, not a
     # dish. Noël's old "champagne jellies in antique copper moulds" is still caught three ways.
-    dishes = [r"fillet", r"ballotine", r"guinea fowl", r"trout", r"beef", r"moulds?",
+    dishes = [r"fillet", r"ballotine", r"guinea fowl", r"\btrout\b", r"\bbeef\b", r"\bmoulds?\b",
               r"jell(?:y|ies)", r"champagne"]
     for t, nights in (("Noël at Gudanes", "4 nights / 5 days"), ("Cooking in the Cuisine", "5 nights / 6 days"),
                       ("Antique & French Finds", "3 nights / 4 days"), ("Seven Starry Nights", "7 nights / 8 days"),
