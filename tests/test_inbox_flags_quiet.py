@@ -403,6 +403,8 @@ def run():
     conn.execute("DELETE FROM email_flags WHERE subject LIKE ?", (f"%{TAG}%",))
     old_flag("letter", "hello@a-shop.example", "Our winter catalogue", unanswered=1)
     old_flag("person", "zzif.person@guest.example", "A real question", unanswered=1)
+    # Filed or deleted in Outlook since: Microsoft no longer has it.
+    old_flag("filed", "zzif.filed@guest.example", "Dealt with and filed", unanswered=1)
     conn.commit()
     with FakeGraph(mailboxes=[RES]) as fake:
         fake.inbox = {RES: [
@@ -429,6 +431,10 @@ def run():
     person = conn.execute("SELECT * FROM email_flags WHERE graph_message_id = ?", (f"{TAG}-old-person",)).fetchone()
     s.check("an older flag that turns out to be a mailing is closed",
             letter["status"] == "dismissed" and letter["closed_by_app"] == "mailing", detail=f"{dict(letter)}; {report}")
+    filed = conn.execute("SELECT * FROM email_flags WHERE graph_message_id = ?", (f"{TAG}-old-filed",)).fetchone()
+    s.check("one whose email is no longer in the inbox is closed: it was dealt with there",
+            filed["status"] == "dismissed" and filed["closed_by_app"] == "gone"
+            and "no longer in the inbox" in report, detail=f"{dict(filed)}; {report}")
     s.check("a person's stays open, and is not read again",
             person["status"] == "open" and person["rules_checked_at"], detail=dict(person))
 

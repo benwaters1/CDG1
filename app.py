@@ -109853,6 +109853,7 @@ INBOX_CLOSE_REASONS = {
     "duplicate": ("already flagged in another inbox", "the same email, flagged in another inbox"),
     "answered": ("answered since", "answered"),
     "cleared": ("with nothing left to flag", "nothing about it is flagged any more"),
+    "gone": ("no longer in the inbox", "moved out of the inbox or deleted there, so dealt with"),
 }
 
 
@@ -112982,13 +112983,26 @@ def recheck_older_flags(conn, token, never, house, closed, now_iso):
             to_read.append(row)
     conn.commit()
     answers = []
+    gone = []
     for row in to_read:
         got = graph_get(f"/users/{row['mailbox']}/messages/{row['graph_message_id']}", token,
                         params={"$select": "id,internetMessageId,internetMessageHeaders"})
+        said = graph_last_error() or ""
+        # NOT FOUND is an answer, not a failure: the email has been deleted,
+        # archived or filed, and the scan, which reads the inbox, would never
+        # meet it again. 224 flags sat open on 11 Nov 2026 for emails nobody
+        # could see any more. Any other refusal is tried again next scan.
+        if got is None and "answered 404" in said and "ErrorItemNotFound" in said:
+            gone.append(row)
+            continue
         if got is None and not out.get("failed"):
-            out["failed"] = graph_last_error() or "no answer"
+            out["failed"] = said or "no answer"
         answers.append((row, got))
     _GRAPH_ANSWER.error = None
+    for row in gone:
+        close_flag_by_app(conn, row["id"], "gone", now_iso)
+        closed["gone"] = closed.get("gone", 0) + 1
+        out["closed"] += 1
     for row, got in answers:
         if got is None:
             out["unread"] += 1
