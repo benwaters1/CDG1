@@ -367,27 +367,34 @@
     historic monument; the bathrooms together on the ground floor; the larger bathroom with a bath for the King, Marquis and
     Family Suites; and the list. Each room's own bathroom is private, as its card says. -#}
 <section class="g-sec g-baths-sec" aria-labelledby="baths-h"><div class="g-wrap">
-  <p class="g-eyebrow">Les salles de bains</p>
-  <h2 id="baths-h" class="g-place">The Bathrooms</h2>
-  <div class="g-baths">
-    <div class="g-baths__media">
-      {%- set _bs = [] -%}{%- for _s, _a in BATH_PHOTOS %}{% set _ = _bs.append([_s, _a, '']) %}{% endfor -%}
-      {{ carrousel(_bs, 'The bathrooms', cls='g-car--room') }}
+  <header class="g-baths__head">
+    <p class="g-eyebrow">Les salles de bains</p>
+    <h2 id="baths-h" class="g-place">The Bathrooms</h2>
+    <p class="g-baths__lede">Installed in 2019, and among the finest rooms in the château.</p>
+  </header>
+  {#- Four photographs side by side, tall. Not the fifth in BATH_PHOTOS: it is the same bath
+      from almost the same place as the second. -#}
+  <div class="g-baths__row">
+    {#- No captions: the owner took them off every photograph on 15 Oct; the alt says what each shows. -#}
+    {%- for _i in (0, 1, 3, 4) %}
+    <figure class="g-baths__f">{{ pic(BATH_PHOTOS[_i][0], BATH_PHOTOS[_i][1], sizes='(min-width: 56rem) 25vw, 50vw', cls='g-baths__img') }}</figure>
+    {%- endfor %}
+  </div>
+  <div class="g-baths__body">
+    <div class="g-baths__why">
+      <p class="g-p">Because the château is a historic monument, bathrooms cannot be built into its bedrooms. Instead each room has its own private bathroom, and the bathrooms are together on the ground floor.</p>
+      <p class="g-p">The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath.</p>
     </div>
-    <div class="g-baths__b">
-      <p class="g-baths__lede">New in 2019, and among the finest rooms in the château.</p>
-      <p class="g-p">Because the château is a historic monument, bathrooms cannot be built into its bedrooms. Instead each room has its own private bathroom, and the bathrooms are together on the ground floor. The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath.</p>
-      <ul class="g-tags g-baths__list">
-        <li>Bespoke Antoinette Poisson wallpaper, made by hand in Paris</li>
-        <li>Eighteenth-century terracotta tiles</li>
-        <li>Basins painted with custom artwork and the château’s logo</li>
-        <li>Luxury fittings</li>
-        <li>Mountain views</li>
-        <li>Heaters</li>
-        <li>Luxury linen</li>
-        <li>Luxury shampoo, conditioner and bath gel</li>
-      </ul>
-    </div>
+    <dl class="g-baths__feat">
+      <div><dt>The wallpaper</dt><dd>Bespoke, by Antoinette Poisson, made by hand in Paris</dd></div>
+      <div><dt>The floors</dt><dd>Eighteenth-century terracotta tiles</dd></div>
+      <div><dt>The basins</dt><dd>Painted with custom artwork and the château’s logo</dd></div>
+      <div><dt>The fittings</dt><dd>Luxury fittings throughout</dd></div>
+      <div><dt>The linen</dt><dd>Luxury linen</dd></div>
+      <div><dt>For you</dt><dd>Luxury shampoo, conditioner and bath gel</dd></div>
+      <div><dt>Warmth</dt><dd>Heaters</dd></div>
+      <div><dt>The view</dt><dd>Mountain views</dd></div>
+    </dl>
   </div>
 </div></section>
 

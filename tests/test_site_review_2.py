@@ -440,7 +440,9 @@ def _book_cards(s, anon):
     sec = page[at:page.find("</div></section>", at)] if at != -1 else ""
     s.check("/book has a section on the bathrooms", bool(sec))
     shown = set(re.findall(r'<img\b[^>]*\balt="([^"]*)"', sec))
-    s.check("showing every photograph of them", baths <= shown, detail=str(baths - shown))
+    # Four of the five: the fifth is the same bath from almost the same place as another.
+    s.check("showing the photographs of them, four side by side", len(baths & shown) >= 4,
+            detail=str(baths - shown))
     words = visible_text(sec)
     for fact in ("2019", "historic monument", "ground floor", "Antoinette Poisson", "terracotta",
                  "the château’s logo", "Mountain views", "Heaters", "Luxury linen", "shampoo, conditioner and bath gel",

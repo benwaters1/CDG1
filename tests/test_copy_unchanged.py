@@ -85,7 +85,9 @@ m = _harness.m
 # spring"); it listed /workshops and /workshops/4, and nothing else.
 # 11 Nov: moved to 06ba88c, the bathrooms' section on /book (owner: "they are a real feature");
 # it listed /book only.
-COPY_BASE = "06ba88c"
+# 11 Nov, later: moved to d1749d8, the bathrooms made a feature (owner: "make it beyyer"); it listed
+# /book only.
+COPY_BASE = "d1749d8"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
