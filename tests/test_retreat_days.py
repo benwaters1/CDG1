@@ -164,14 +164,17 @@ def run():
     today = m.house_today()
     offer = [(w, sittings) for w, sittings in m.workshops_on_offer(conn, today)
              if not w["title"].startswith(TAG)]
-    pages = [(w["title"], "/workshops/%d" % w["id"], sittings) for w, sittings in offer]
+    pages = [(w["title"], "/workshops/%d" % w["id"], sittings, m.retreat_week(w, sittings)["nights"])
+             for w, sittings in offer]
     private = conn.execute("SELECT * FROM workshops WHERE title LIKE ?", (f"{TAG} Four%",)).fetchone()
-    pages.append((private["title"], "/p/zzrdprivatekey", m.public_sittings(conn, private["id"], today)))
+    private_sittings = m.public_sittings(conn, private["id"], today)
+    pages.append((private["title"], "/p/zzrdprivatekey", private_sittings,
+                  m.retreat_week(private, private_sittings)["nights"]))
     conn.close()
     s.check("there are retreats on offer to read", len(offer) >= 3, detail=f"{len(offer)} on offer")
 
     mirepoix_seen = winter_seen = occasions_seen = 0
-    for title, path, sittings in pages:
+    for title, path, sittings, nights in pages:
         r = c.get(path)
         html = r.get_data(as_text=True)
         days, section = journey(html)
@@ -184,6 +187,11 @@ def run():
             cold = [p for p in NOT_IN_WINTER if re.search(p, section, re.I)]
             s.check(f"{title}: dates outside the summer, so the outline and no summer days", days == [] and not cold,
                     detail=f"{len(days)} days, {cold}")
+            continue
+        # A plan is written for three, four, five and seven nights. An atelier with no length and no dates -- the
+        # "Session Change Test" rows another suite once left in the local database -- has the outline, rightly.
+        if nights not in (3, 4, 5, 7):
+            s.check(f"{title}: no length to plan by, so the outline", days == [], detail=f"{nights} nights, {len(days)} days")
             continue
         s.check(f"{title}: a day-by-day plan", len(days) >= 4, detail=f"{len(days)} days")
         if not days:
@@ -269,7 +277,7 @@ def run():
     # says "a week". The private stay is four nights, and its page opened "A week of long, golden days".
     # Not "copper": copper pans are among the finds on Antique & French Finds, which is what a brocante sells, not a
     # dish. Noël's old "champagne jellies in antique copper moulds" is still caught three ways.
-    dishes = [r"fillet", r"ballotine", r"guinea fowl", r"trout", r"beef", r"moulds?",
+    dishes = [r"fillet", r"ballotine", r"guinea fowl", r"\btrout\b", r"\bbeef\b", r"\bmoulds?\b",
               r"jell(?:y|ies)", r"champagne"]
     for t, nights in (("Noël at Gudanes", "4 nights / 5 days"), ("Cooking in the Cuisine", "5 nights / 6 days"),
                       ("Antique & French Finds", "3 nights / 4 days"), ("Seven Starry Nights", "7 nights / 8 days"),
