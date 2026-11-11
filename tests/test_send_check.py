@@ -425,12 +425,21 @@ def _server_side(s, anon, oc, conn):
     ours_at = html.find(f"/outlook-addin/launchevent.js?v={tag}")
     s.check("office.js from Microsoft first, then the script by its fingerprint",
             0 <= office_at < ours_at and tag, detail=html[-300:])
-    s.check("the page is never kept stale", page.headers.get("Cache-Control") == "no-cache")
+    # Asked afresh for every email, a redeploy's minute offline left emails
+    # unsigned by the add-in (11 Nov 2026). Outlook's own copy is used at
+    # once and a fresh one fetched behind it.
+    page_cc = page.headers.get("Cache-Control") or ""
+    s.check("the page is used from Outlook's copy while a fresh one is fetched",
+            "max-age=0" in page_cc and "stale-while-revalidate=" in page_cc
+            and "stale-if-error=" in page_cc and "no-cache" not in page_cc, detail=page_cc)
     by_tag = anon.get(f"/outlook-addin/launchevent.js?v={tag}")
-    s.check("the script asked for by fingerprint is kept for a day",
-            "max-age=86400" in (by_tag.headers.get("Cache-Control") or ""))
-    s.check("asked for plainly it is checked each time",
-            served.headers.get("Cache-Control") == "no-cache")
+    s.check("the script asked for by fingerprint is kept for a day, and through an outage",
+            "max-age=86400" in (by_tag.headers.get("Cache-Control") or "")
+            and "stale-if-error=" in (by_tag.headers.get("Cache-Control") or ""))
+    plain_cc = served.headers.get("Cache-Control") or ""
+    s.check("asked for plainly it is checked each time, but never left missing by an outage",
+            "max-age=0" in plain_cc and "stale-while-revalidate=" in plain_cc
+            and "no-cache" not in plain_cc, detail=plain_cc)
     s.check("and an unchanged one is a 304, not a third of a megabyte",
             anon.get("/outlook-addin/launchevent.js",
                      headers={"If-None-Match": served.headers.get("ETag")}).status_code == 304)
