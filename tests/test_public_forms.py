@@ -43,6 +43,11 @@ def _cleanup():
                     (SELECT id FROM workshop_bookings WHERE reference_code LIKE ?)""",
                  (TAG + "%",))
     conn.execute("DELETE FROM workshop_bookings WHERE reference_code LIKE ?", (TAG + "%",))
+    # The sittings _workshop_booking adds, which this used to leave behind. One
+    # is dated a fortnight ahead, on whichever retreat comes first -- on a
+    # fresh database The Long Weekender, which is over -- so every suite after
+    # this one saw a fifth retreat on /workshops that a run of it alone did not.
+    conn.execute("DELETE FROM workshop_sessions WHERE notes = ?", (TAG,))
     conn.execute("DELETE FROM email_outbox WHERE subject LIKE ?", ("%waitlist%",))
     for action in ("join_restaurant_waitlist", "join_workshop_waitlist"):
         conn.execute("DELETE FROM submission_log WHERE action = ?", (action,))
@@ -78,17 +83,20 @@ def _session_id():
 
 
 def _workshop_booking(ref, ended_days_ago=5):
-    """A confirmed workshop booking whose session has already finished."""
+    """A confirmed workshop booking whose session has already finished.
+
+    The sitting carries the suite's tag in its notes, which is what _cleanup
+    takes it back out by.
+    """
     conn = db()
     end = house_today() - timedelta(days=ended_days_ago)
     ws = conn.execute("SELECT id FROM workshops LIMIT 1").fetchone()["id"]
-    conn.execute(
+    sid = conn.execute(
         """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
-           capacity, created_at) VALUES (?, ?, ?, 8, ?)""",
-        (ws, (end - timedelta(days=2)).isoformat(), end.isoformat(),
-         datetime.now(timezone.utc).isoformat()))
+           capacity, notes, created_at) VALUES (?, ?, ?, 8, ?, ?)""",
+        (ws, (end - timedelta(days=2)).isoformat(), end.isoformat(), TAG,
+         datetime.now(timezone.utc).isoformat())).lastrowid
     conn.commit()
-    sid = conn.execute("SELECT id FROM workshop_sessions ORDER BY id DESC LIMIT 1").fetchone()["id"]
     conn.execute(
         """INSERT INTO workshop_bookings (session_id, reference_code, manage_token,
            guest_name, guest_email, party_size, status, total_price, created_at)
@@ -104,6 +112,38 @@ def _workshop_booking(ref, ended_days_ago=5):
 def run():
     s = Suite("Forms a stranger can post to")
     _cleanup()
+    # Taken back out whatever happens below. The tidy-up used to be the last
+    # line, so a check that raised left the rows and the restaurant switch as
+    # they were for every suite after it.
+    conn = db()
+    put_back_restaurant = _harness.keep_rows(conn, "restaurant_settings", "id = 1")
+    found = _what_the_house_offers(conn)
+    try:
+        _checks(s)
+    finally:
+        _cleanup()
+        put_back_restaurant()
+    left = _what_the_house_offers(conn)
+    conn.close()
+
+    s.section("And leaves the retreats as it found them")
+    s.check("no sitting this suite made is still there", left[0] == found[0],
+            detail=f"{sorted(left[0] - found[0])} added, "
+                   f"{sorted(found[0] - left[0])} gone")
+    s.check("and /workshops offers what it offered before", left[1] == found[1],
+            detail=f"before {found[1]}, after {left[1]}")
+    return s
+
+
+def _what_the_house_offers(conn):
+    """Every sitting by id, and the retreats /workshops would show."""
+    sittings = {r["id"] for r in conn.execute("SELECT id FROM workshop_sessions")}
+    offered = [(w["id"], w["title"], len(dates))
+               for w, dates in m.workshops_on_offer(conn, house_today())]
+    return sittings, offered
+
+
+def _checks(s):
     oc, _ec, _owner, _emp = clients()
     anon = m.app.test_client()
     soon = (house_today() + timedelta(days=21)).isoformat()
@@ -304,9 +344,6 @@ def run():
     conn.close()
     s.check("nothing is recorded before the session has happened", early == 0,
             detail=str(early))
-
-    _cleanup()
-    return s
 
 
 if __name__ == "__main__":

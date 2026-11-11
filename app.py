@@ -10131,6 +10131,9 @@ OWNER_ONLY_AREAS = {
     "add_channel_stay": "management",
     "remove_channel_stay": "management",
     "sync_channel_stays_now": "management",
+    # Booking.com's monthly statement, uploaded on the same page: commission
+    # and payouts, the owner's money like the page it sits on.
+    "upload_booking_com_statement": "management",
     # One reservation, several rooms: grouping the rooms, taking one off.
     "group_channel_stay_rooms": "management",
     "remove_channel_stay_room": "management",
@@ -37516,6 +37519,11 @@ def page_draws_a_calendar(endpoint):
     return not (endpoint in NAV_AREA_OF or endpoint in OWNER_ONLY_ENDPOINTS)
 
 
+# The Booking.com check-in message: how many days before arrival the owner is
+# advised to schedule it in the extranet ("a week before they arrive").
+BOOKING_COM_CHECKIN_TEMPLATE_DAYS = 7
+
+
 def house_windows():
     """Every window a page states in words, so it can state the real one.
 
@@ -37543,6 +37551,10 @@ def house_windows():
         "workshop_deposit_percent": WORKSHOP_DEPOSIT_PERCENT,
         "refunds_recent_days": REFUNDS_RECENT_DAYS,
         "email_usage_days": EMAIL_USAGE_DAYS,
+        # What the Booking.com Stays page tells the owner to schedule in the
+        # extranet for the check-in message. Booking.com sends it, not the app;
+        # the number lives here so the advice is one figure, said once.
+        "booking_com_checkin_days": BOOKING_COM_CHECKIN_TEMPLATE_DAYS,
     }
 
 

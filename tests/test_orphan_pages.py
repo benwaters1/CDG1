@@ -79,6 +79,12 @@ NOT_LINKED_ON_PURPOSE = {
     # nothing else did either. This entry is what let a page nobody could
     # reach pass as one reached by email, until the owner was locked out on
     # 10 October. The asking page links to it now.
+    # A Booking.com guest's online check-in: reached from the message
+    # Booking.com sends a week before arrival, whose words the Booking.com
+    # Stays page prints for the owner to paste into the extranet. Not cover
+    # in the way reset_password once was: run() checks that page still
+    # prints the address, so the day it stops, this entry goes red.
+    "channel_checkin_find": "link in Booking.com's own message",
     "room_ics_feed": "subscribed to in a calendar app",
     # Fetched by software, not clicked by anybody.
     "robots": "fetched by crawlers", "sitemap": "fetched by crawlers",
@@ -202,6 +208,15 @@ def run():
                    "only by leaving the site")
     s.check("and an event enquiry can be looked up the way a booking can",
             "/events/find" in footer and "/book/manage" in footer)
+
+    # The Booking.com check-in is listed as reached from Booking.com's
+    # message; that holds only while the Stays page prints the address for
+    # the owner to paste. Read as the owner.
+    stays = oc.get("/admin/channel-stays").get_data(as_text=True)
+    with m.app.test_request_context("/"):
+        find = m.url_for("channel_checkin_find", _external=True)
+    s.check("the Booking.com check-in's address is printed for the owner to paste",
+            find in stays, detail="%s not on /admin/channel-stays" % find)
 
     # And the allow-list is checked in the other direction too, so a page
     # that gains a link is taken off it rather than left as cover.
