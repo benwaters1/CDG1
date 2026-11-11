@@ -632,6 +632,56 @@ REVIEW_INVITE_DAYS_AFTER = 2
 EMPLOYER_LEGAL_NAME = "Château de Gudanes"
 
 
+def log_line(*parts, sep=" ", end="\n", file=None, flush=False):
+    """print(), for a line that must never stop the code that wrote it.
+
+    Every line this app writes to its log goes through here, never through a
+    bare print(). The lines carry guest names, task subjects, email subjects
+    and Microsoft's or Stripe's own words, and the console they land on is not
+    always UTF-8: the owner's PC and the test harness run Windows on cp1252.
+    On 10 November 2026 a task subject carrying a tick mark made print() raise
+    UnicodeEncodeError inside the house calendar pass, and the whole pass
+    stopped there -- nothing else synced, and the only trace was the error the
+    log could not print. The automation loop and the calendar thread run in the
+    same process, so any print in a job or a request could do the same.
+
+    So: a character the console cannot show goes out escaped (\\u2714), and
+    anything else that goes wrong writing the line -- no console at all under
+    pythonw, a closed pipe, an object whose str() raises -- loses the line and
+    nothing more. Same arguments as print(); stdout is looked up at the call,
+    so a redirected stream is honoured. Guarded by test_log_line, which fails
+    on a bare print( anywhere in app.py.
+    """
+    try:
+        text = sep.join(str(p) for p in parts) + end
+    except Exception:
+        try:
+            text = sep.join(repr(p) for p in parts) + end
+        except Exception:
+            return
+    stream = file if file is not None else sys.stdout
+    if stream is None:
+        return
+    try:
+        stream.write(text)
+    except UnicodeEncodeError:
+        enc = getattr(stream, "encoding", None) or "ascii"
+        try:
+            stream.write(text.encode(enc, "backslashreplace").decode(enc))
+        except Exception:
+            try:
+                stream.write(text.encode("ascii", "backslashreplace").decode("ascii"))
+            except Exception:
+                return
+    except Exception:
+        return
+    if flush:
+        try:
+            stream.flush()
+        except Exception:
+            pass
+
+
 _PLACEHOLDER_MARKERS = (
     "paste", "your_", "your-", "yourkey", "changeme", "change_me", "replace",
     "todo", "xxx", "placeholder", "_here", "example.com", "sk_test_xxx",
@@ -693,11 +743,11 @@ def _load_dotenv():
         if skipped:
             # Named, not silent: "why is Stripe off when I filled in the .env"
             # is a miserable thing to debug from no output at all.
-            print(f"[config] ignoring placeholder value(s) in .env: {', '.join(skipped)}")
+            log_line(f"[config] ignoring placeholder value(s) in .env: {', '.join(skipped)}")
     except FileNotFoundError:
         pass
     except OSError as e:
-        print(f"[config] could not read .env: {e}")
+        log_line(f"[config] could not read .env: {e}")
 
 
 _load_dotenv()
@@ -2109,7 +2159,7 @@ def write_page_view(view):
         finally:
             conn.close()
     except Exception as e:                      # pragma: no cover - last resort
-        print(f"[page view not counted] {e}")
+        log_line(f"[page view not counted] {e}")
 
 
 @app.after_request
@@ -2988,7 +3038,7 @@ def apply_letter_words_2026_10_16(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[letters] five guest rooms, no new beds: {changed} stored letter(s) corrected")
+        log_line(f"[letters] five guest rooms, no new beds: {changed} stored letter(s) corrected")
     return changed
 
 
@@ -5957,6 +6007,10 @@ def init_db():
         ("email_flags_mailboxes", "ALTER TABLE email_flags ADD COLUMN mailboxes TEXT"),
         ("email_flags_closed_by_app", "ALTER TABLE email_flags ADD COLUMN closed_by_app TEXT"),
         ("email_flags_rules_checked_at", "ALTER TABLE email_flags ADD COLUMN rules_checked_at TEXT"),
+        # What the message's own headers said, once read: 'mailing', 'machine',
+        # or '' for neither. NULL is "not read yet". Kept so no message is
+        # asked for its headers twice (11 Nov 2026).
+        ("email_flags_header_verdict", "ALTER TABLE email_flags ADD COLUMN header_verdict TEXT"),
         # `guests` became a per-person profile rather than a per-stay register
         # (see the drop-column migration below for why).
         ("guests_email", "ALTER TABLE guests ADD COLUMN email TEXT"),
@@ -8200,7 +8254,7 @@ def init_db():
             "ON event_payments(reference) WHERE substr(reference, 1, 3) = 'cs_'")
         conn.commit()
     except (sqlite3.OperationalError, sqlite3.IntegrityError) as e:
-        print(f"[init] event_payments: checkout-once index not built ({e})")
+        log_line(f"[init] event_payments: checkout-once index not built ({e})")
 
     # Each charge taken on the card reader on the books once. The till's poll
     # recorded the same PaymentIntent again on every reload while the tab stayed
@@ -8215,7 +8269,7 @@ def init_db():
             "AND reference IS NOT NULL")
         conn.commit()
     except (sqlite3.OperationalError, sqlite3.IntegrityError) as e:
-        print(f"[init] pos_payments: reader-charge-once index not built ({e})")
+        log_line(f"[init] pos_payments: reader-charge-once index not built ({e})")
 
     hold_legacy_balance_stamps(conn)
     link_held_letters(conn)
@@ -8320,7 +8374,7 @@ def init_db():
         )
         conn.commit()
     except sqlite3.Error as e:
-        print(f"[init_db] could not create unique guest-email index: {e}")
+        log_line(f"[init_db] could not create unique guest-email index: {e}")
 
     # One paid Stripe Checkout session must never produce two bookings.
     #
@@ -8353,7 +8407,7 @@ def init_db():
         except sqlite3.Error as e:
             # Pre-existing duplicates would block this — surface it rather than
             # failing startup, since the app is still usable without it.
-            print(f"[init_db] could not create unique index {table}.{column}: {e}")
+            log_line(f"[init_db] could not create unique index {table}.{column}: {e}")
 
     # tasks.assigned_to_user_id used to be NOT NULL; SQLite can't relax a
     # column constraint in place, so databases from before priority/room_note
@@ -8772,7 +8826,7 @@ def init_db():
                 f"INSERT INTO extras ({', '.join(fields)}) "
                 f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
         conn.commit()
-        print(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
+        log_line(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
 
     # Extras added to the catalogue since, once each. See ADDED_EXTRAS.
     seed_added_extras(conn)
@@ -8786,7 +8840,7 @@ def init_db():
     seeded_standards = seed_room_standards(conn)
     if seeded_standards:
         conn.commit()
-        print(f"Seeded {seeded_standards} room standards — edit them under "
+        log_line(f"Seeded {seeded_standards} room standards — edit them under "
               "Estate, Room Checks.")
 
     # The order the rooms appear in on the front page, set once.
@@ -8973,7 +9027,7 @@ def init_db():
         link_stays_to_profiles(conn)
     except sqlite3.Error as exc:
         conn.rollback()
-        print(f"[guests] could not link every stay to a profile: {exc}")
+        log_line(f"[guests] could not link every stay to a profile: {exc}")
 
     # WHERE THE GATES ARE.
     #
@@ -9045,7 +9099,7 @@ def init_db():
                        capacity, notes, created_at) VALUES (?, ?, ?, 10, NULL, ?)""",
                     (new_id, start, end, datetime.now(timezone.utc).isoformat()))
         conn.commit()
-        print(f"Seeded {len(DEFAULT_WORKSHOPS)} ateliers with their published "
+        log_line(f"Seeded {len(DEFAULT_WORKSHOPS)} ateliers with their published "
               f"prices and dates.")
 
 
@@ -9104,7 +9158,7 @@ def init_db():
                      (datetime.now(timezone.utc).isoformat(),))
         conn.commit()
         if added:
-            print(f"Added {len(added)} atelier(s) missing from this database: "
+            log_line(f"Added {len(added)} atelier(s) missing from this database: "
                   f"{', '.join(added)}")
 
     # 27 Oct 2026 (owner): the Immersive Artisan Workshops come off the site
@@ -9119,14 +9173,14 @@ def init_db():
                      (datetime.now(timezone.utc).isoformat(),))
         conn.commit()
         if off:
-            print(f"{RETIRED_WORKSHOP_TITLE} taken off the site")
+            log_line(f"{RETIRED_WORKSHOP_TITLE} taken off the site")
 
     moved, repriced = apply_workshop_deposit_percent(conn)
     if moved or repriced:
-        print(f"Workshop deposit set to {WORKSHOP_DEPOSIT_PERCENT}%: {moved} atelier(s), "
+        log_line(f"Workshop deposit set to {WORKSHOP_DEPOSIT_PERCENT}%: {moved} atelier(s), "
               f"{repriced} unpaid deposit(s) repriced")
     if switch_guest_texts_off_once(conn):
-        print("Guest texts switched off, and any copy of the old made-up "
+        log_line("Guest texts switched off, and any copy of the old made-up "
               "wording removed")
 
     # 2a. Rewritten copy. Applied only where the description is still one of
@@ -9281,13 +9335,13 @@ def init_db():
         )
         conn.commit()
 
-        print("=" * 70)
-        print("FIRST RUN — owner account created.")
-        print(f"  Email:    {owner_email}")
-        print(f"  Password: {generated_password}")
-        print("  (change this after your first login — there is no email")
-        print("   recovery configured yet, so store this somewhere safe)")
-        print("=" * 70)
+        log_line("=" * 70)
+        log_line("FIRST RUN — owner account created.")
+        log_line(f"  Email:    {owner_email}")
+        log_line(f"  Password: {generated_password}")
+        log_line("  (change this after your first login — there is no email")
+        log_line("   recovery configured yet, so store this somewhere safe)")
+        log_line("=" * 70)
 
     # A PASSWORD SET FROM THE DEPLOYMENT, when there is no other way in.
     #
@@ -9320,17 +9374,17 @@ def init_db():
             # recovery path was being defeated by the lockout it had caused.
             conn.execute("DELETE FROM login_throttle")
             conn.commit()
-            print("=" * 70)
-            print("OWNER_TEMP_PASSWORD is set, so the owner password has been")
-            print(f"  changed to it. SIGN IN AS: {who['email']}")
-            print("  (that is the account it was set on — not necessarily")
-            print("   the address you normally use)")
-            print("  NOW REMOVE OWNER_TEMP_PASSWORD from the deployment —")
-            print("  while it is set, it is reapplied on every restart and it")
-            print("  is sitting in plain text in your variables.")
-            print("=" * 70)
+            log_line("=" * 70)
+            log_line("OWNER_TEMP_PASSWORD is set, so the owner password has been")
+            log_line(f"  changed to it. SIGN IN AS: {who['email']}")
+            log_line("  (that is the account it was set on — not necessarily")
+            log_line("   the address you normally use)")
+            log_line("  NOW REMOVE OWNER_TEMP_PASSWORD from the deployment —")
+            log_line("  while it is set, it is reapplied on every restart and it")
+            log_line("  is sitting in plain text in your variables.")
+            log_line("=" * 70)
         else:
-            print("OWNER_TEMP_PASSWORD is set but there is no owner account.")
+            log_line("OWNER_TEMP_PASSWORD is set but there is no owner account.")
 
     # The built-in revenue categories, carrying across whatever was already
     # mapped. Called here rather than inline above because it reads app_settings
@@ -10077,6 +10131,9 @@ OWNER_ONLY_AREAS = {
     "add_channel_stay": "management",
     "remove_channel_stay": "management",
     "sync_channel_stays_now": "management",
+    # Booking.com's monthly statement, uploaded on the same page: commission
+    # and payouts, the owner's money like the page it sits on.
+    "upload_booking_com_statement": "management",
     # One reservation, several rooms: grouping the rooms, taking one off.
     "group_channel_stay_rooms": "management",
     "remove_channel_stay_room": "management",
@@ -12477,7 +12534,7 @@ def note_bot_refusal(conn, action, reason):
                   datetime.now(timezone.utc).isoformat()))
     if not already_open:
         conn.commit()
-    print(f"[bot guard] {action} refused: {reason}")
+    log_line(f"[bot guard] {action} refused: {reason}")
 
 
 BOT_REFUSAL_MESSAGE = ("That did not go through. Please check your details and send the form "
@@ -18612,7 +18669,7 @@ def sync_ical_source(conn, source):
                 try:
                     notify_room_waitlist_opening(conn, start_iso, end_iso)
                 except Exception as e:      # the sync has done its job either way
-                    print(f"[ical] waiting list not told about {start_iso}: {e}")
+                    log_line(f"[ical] waiting list not told about {start_iso}: {e}")
     return True
 
 
@@ -20543,12 +20600,12 @@ def incident_times_to_utc(conn):
         changed += 1
     if changed:
         conn.commit()
-        print(f"[init] incidents: {changed} time(s) typed on the house's clock "
+        log_line(f"[init] incidents: {changed} time(s) typed on the house's clock "
               "now stored in UTC")
     if unreadable:
         # Named rather than guessed at: a time nobody can read is shown as "?"
         # and drops off the insurer's clock, and that wants a person.
-        print(f"[init] incidents: the time on {', '.join(unreadable)} cannot be "
+        log_line(f"[init] incidents: the time on {', '.join(unreadable)} cannot be "
               "read, so it was left as it was")
     return changed
 
@@ -34361,7 +34418,7 @@ def send_email_via_resend(to_address, subject, body, ics_content=None,
         return True, None
     except Exception as e:
         why = resend_refusal(e)
-        print(f"[resend email failed] To: {to_address} | Subject: {subject} | {why}")
+        log_line(f"[resend email failed] To: {to_address} | Subject: {subject} | {why}")
         return False, why
 
 
@@ -34702,7 +34759,7 @@ def file_held_letters(letters):
     except Exception as e:                     # pragma: no cover - last resort
         for letter in letters:
             letter.id = None
-            print(f"[outbox write failed] To: {letter.values[0]} | "
+            log_line(f"[outbox write failed] To: {letter.values[0]} | "
                   f"Subject: {letter.values[1]} | Error: {e}")
 
 
@@ -35049,7 +35106,7 @@ def write_guest_messages(rows):
         finally:
             conn.close()
     except Exception as e:                     # pragma: no cover - last resort
-        print(f"[correspondence not filed] {e}")
+        log_line(f"[correspondence not filed] {e}")
     return written
 
 
@@ -35248,7 +35305,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # A test deployment sends everything to its own inbox, which is not this.
     stopped = None if MAIL_REDIRECT_TO else address_suppressed(to_address)
     if stopped:
-        print(f"[email not sent — {stopped}] To: {to_address} | Subject: {subject}")
+        log_line(f"[email not sent — {stopped}] To: {to_address} | Subject: {subject}")
         if report is not None:
             report["why"] = f"Not sent: {stopped}."
             report["stopped"] = True
@@ -35283,7 +35340,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             held_why = guest_letter_held_why(template_key)
     if held_why:
         why = held_why
-        print(f"[email held — {why}] To: {to_address} | Subject: {subject}")
+        log_line(f"[email held — {why}] To: {to_address} | Subject: {subject}")
         if report is not None:
             report["why"] = ("Writing to guests is switched off until the house "
                              "goes live." if not guest_mail_live() else
@@ -35332,7 +35389,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                                failure=why or "the provider refused it", **filed)
         return False
     if not email_enabled():
-        print(f"[email held — no email provider configured] To: {to_address} | Subject: {subject}")
+        log_line(f"[email held — no email provider configured] To: {to_address} | Subject: {subject}")
         if report is not None:
             report["why"] = "No email provider is configured."
         if keep:
@@ -35386,7 +35443,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                                **filed)
         return True
     except Exception as e:
-        print(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
+        log_line(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
         if report is not None:
             report["why"] = "The mail server refused it: %s" % (e,)
         if keep:
@@ -35533,9 +35590,9 @@ def send_notification(conn, user_id, kind, title, body=None, link=None, related_
                 # permission revoked) — stop trying it on future notifications.
                 dead_ids.append(sub["id"])
             else:
-                print(f"[push failed] user={user_id} status={status} error={e}")
+                log_line(f"[push failed] user={user_id} status={status} error={e}")
         except Exception as e:
-            print(f"[push failed] user={user_id} error={e}")
+            log_line(f"[push failed] user={user_id} error={e}")
     if dead_ids:
         conn.executemany("DELETE FROM push_subscriptions WHERE id = ?", [(i,) for i in dead_ids])
         conn.commit()
@@ -36016,12 +36073,12 @@ def create_booking_from_stripe_session(conn, session):
     # page they land on after paying. Returning None gives them the honest
     # "we could not create it automatically, contact us" instead.
     if not (meta.get("room_id") or "").strip().isdigit():
-        print(f"[stripe] session {session['id']} carries no room_id "
+        log_line(f"[stripe] session {session['id']} carries no room_id "
               f"(kind={meta.get('kind')!r}) — not a new booking, not creating one")
         return None
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (int(meta["room_id"]),)).fetchone()
     if not room:
-        print(f"[stripe] room {meta.get('room_id')} missing for paid session {session['id']} — not creating booking")
+        log_line(f"[stripe] room {meta.get('room_id')} missing for paid session {session['id']} — not creating booking")
         return None
     extra_ids = {int(i) for i in meta.get("extra_ids", "").split(",") if i}
     chosen_extras = []
@@ -36340,7 +36397,7 @@ def card_from_stripe(ref):
         return {"brand": sval(card, "brand"), "last4": last4 if last4.isdigit() else None,
                 "wallet": sval(sval(card, "wallet") or {}, "type")}
     except Exception as e:
-        print(f"[card details] could not read {ref}: {e}")
+        log_line(f"[card details] could not read {ref}: {e}")
         return None
 
 
@@ -37464,6 +37521,11 @@ def page_draws_a_calendar(endpoint):
     return not (endpoint in NAV_AREA_OF or endpoint in OWNER_ONLY_ENDPOINTS)
 
 
+# The Booking.com check-in message: how many days before arrival the owner is
+# advised to schedule it in the extranet ("a week before they arrive").
+BOOKING_COM_CHECKIN_TEMPLATE_DAYS = 7
+
+
 def house_windows():
     """Every window a page states in words, so it can state the real one.
 
@@ -37491,6 +37553,10 @@ def house_windows():
         "workshop_deposit_percent": WORKSHOP_DEPOSIT_PERCENT,
         "refunds_recent_days": REFUNDS_RECENT_DAYS,
         "email_usage_days": EMAIL_USAGE_DAYS,
+        # What the Booking.com Stays page tells the owner to schedule in the
+        # extranet for the check-in message. Booking.com sends it, not the app;
+        # the number lives here so the advice is one figure, said once.
+        "booking_com_checkin_days": BOOKING_COM_CHECKIN_TEMPLATE_DAYS,
     }
 
 
@@ -41020,6 +41086,27 @@ def owner_home_warnings(conn, today):
 
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
     # the next pass that writes cleanly takes the line away.
+    # AN EVENT THAT ENDS BEFORE IT BEGINS. The + Add event form took one until
+    # 10 Nov 2026: a photoshoot "22 November to 26 October" was filed under
+    # History as already over, and Microsoft refused it for the house calendar
+    # 64,668 times. The forms refuse one now; this finds any already saved.
+    # It closes itself: correct the last day and the line goes.
+    backwards = conn.execute(
+        """SELECT id, reference_code, contact_name, event_type, preferred_date, end_date
+             FROM event_inquiries
+            WHERE end_date IS NOT NULL AND end_date != '' AND preferred_date IS NOT NULL
+              AND end_date < preferred_date AND status NOT IN ('declined', 'cancelled')
+            ORDER BY preferred_date""").fetchall()
+    if backwards:
+        e = backwards[0]
+        add("warn", f"{len(backwards)} event(s) end before they begin",
+            f"{e['contact_name'] or e['reference_code']}"
+            f" ({(e['event_type'] or 'event').replace('_', ' ')}, {e['reference_code']}) runs from "
+            f"{format_date_human(e['preferred_date'])} to {format_date_human(e['end_date'])}"
+            + (f", and {len(backwards) - 1} more" if len(backwards) > 1 else "")
+            + ". Give it the right last day.", len(backwards),
+            "admin_event", event_id=e["id"])
+
     problem = house_calendar_problem(conn)
     if problem:
         level, title, detail = problem
@@ -51423,7 +51510,7 @@ def whats_on_classify(rows):
                                        "english_title": {"type": "string"},
                                        "why": {"type": "string"}}}}}})
     except Exception as e:      # an unreachable assistant leaves them to the owner
-        print(f"[whats on] could not ask the assistant: {e}")
+        log_line(f"[whats on] could not ask the assistant: {e}")
         return {}
     if not data:
         return {}
@@ -51511,7 +51598,7 @@ def run_whats_on_reader_job(conn, fetch=None, today=None, classify=None,
         try:
             pages = lister(read)
         except Exception as e:
-            print(f"[whats on] {source}: the listing could not be read ({e})")
+            log_line(f"[whats on] {source}: the listing could not be read ({e})")
             continue
         read_ok = 0
         for url in pages:
@@ -56132,7 +56219,7 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
         except Exception as e:
             # The payment above is saved. The reader is the till's to sort
             # out, and the owner home lists any tab it is left asking for.
-            print(f"[pos] couldn't stop the reader for tab {order_id}: {e}")
+            log_line(f"[pos] couldn't stop the reader for tab {order_id}: {e}")
     return True
 
 
@@ -56207,7 +56294,7 @@ def stripe_webhook():
             # made the next write fail with "database is locked". Re-raise so
             # Stripe sees a 500 and retries, which is the correct behaviour
             # for a payment we may not have recorded.
-            print(f"[stripe webhook] {event['type']} failed: {e}")
+            log_line(f"[stripe webhook] {event['type']} failed: {e}")
             raise
         finally:
             conn.close()
@@ -56230,7 +56317,7 @@ def stripe_webhook():
             else:
                 record_refund_from_stripe(conn, obj)
         except Exception as e:
-            print(f"[stripe webhook] {event['type']} failed: {e}")
+            log_line(f"[stripe webhook] {event['type']} failed: {e}")
             raise
         finally:
             conn.close()
@@ -56245,7 +56332,7 @@ def stripe_webhook():
         try:
             note = pos_reader_charge_from_webhook(conn, intent)
             if note not in ("not a reader charge", "not the till's charge"):
-                print(f"[stripe webhook] reader charge {sval(intent, 'id')}: {note}")
+                log_line(f"[stripe webhook] reader charge {sval(intent, 'id')}: {note}")
         except sqlite3.IntegrityError:
             # Another path wrote it first. The claim should make that
             # impossible; the unique index on the reader's payments is the
@@ -56253,7 +56340,7 @@ def stripe_webhook():
             # books once, which is what Stripe needs to hear.
             conn.rollback()
         except Exception as e:
-            print(f"[stripe webhook] {event['type']} failed: {e}")
+            log_line(f"[stripe webhook] {event['type']} failed: {e}")
             raise
         finally:
             conn.close()
@@ -56264,7 +56351,7 @@ def stripe_webhook():
         try:
             record_dispute(conn, obj)
         except Exception as e:
-            print(f"[stripe webhook] {event['type']} failed: {e}")
+            log_line(f"[stripe webhook] {event['type']} failed: {e}")
             raise
         finally:
             conn.close()
@@ -56296,7 +56383,7 @@ def stripe_webhook():
                  service_day_iso(), datetime.now(timezone.utc).isoformat()))
             conn.commit()
         except Exception as e:
-            print(f"[stripe webhook] async_payment_failed handling failed: {e}")
+            log_line(f"[stripe webhook] async_payment_failed handling failed: {e}")
             raise
         finally:
             conn.close()
@@ -58977,7 +59064,7 @@ def apply_room_lineup(conn):
         changed += 1
     if changed:
         conn.commit()
-        print(f"[rooms] the 24 September line-up: {changed} room(s) renamed and repriced")
+        log_line(f"[rooms] the 24 September line-up: {changed} room(s) renamed and repriced")
     return changed
 
 
@@ -59035,7 +59122,7 @@ def apply_room_facts_2026_10_15(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[rooms] the 15 October facts: {changed} room(s) corrected")
+        log_line(f"[rooms] the 15 October facts: {changed} room(s) corrected")
     return changed
 
 
@@ -59065,7 +59152,7 @@ def apply_room_bathroom_floor_2026_11_09(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[rooms] the bathrooms' floor: {changed} room description(s) corrected")
+        log_line(f"[rooms] the bathrooms' floor: {changed} room description(s) corrected")
     return changed
 
 
@@ -59106,7 +59193,7 @@ def apply_extras_transfers_2026_10_18(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[extras] {changed} transfer(s) filed under Transfers at {TRANSFER_VAT_RATE:g}% VAT")
+        log_line(f"[extras] {changed} transfer(s) filed under Transfers at {TRANSFER_VAT_RATE:g}% VAT")
     return changed
 
 
@@ -59129,7 +59216,7 @@ def apply_extras_sunday_2026_10_19(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[extras] {changed} charcuterie extra(s) no longer arranged on a Sunday")
+        log_line(f"[extras] {changed} charcuterie extra(s) no longer arranged on a Sunday")
     return changed
 
 
@@ -59162,7 +59249,7 @@ def apply_room_occupancy_2026_10_18(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[rooms] who fits, as on Booking.com: {changed} room(s) set")
+        log_line(f"[rooms] who fits, as on Booking.com: {changed} room(s) set")
     return changed
 
 
@@ -59205,7 +59292,7 @@ def apply_stray_channel_stay_2026_10_18(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if done:
-        print("[rooms] the Booking.com stay of 30 October put on The Twin Room")
+        log_line("[rooms] the Booking.com stay of 30 October put on The Twin Room")
     return done
 
 
@@ -59222,7 +59309,7 @@ def apply_room_views_2026_10_16(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[rooms] the view put back on {changed} room(s)")
+        log_line(f"[rooms] the view put back on {changed} room(s)")
     return changed
 
 
@@ -59272,7 +59359,7 @@ def apply_room_names_2026_10_16(conn):
         found = ids.get(_room_key(old), [])
         if len(found) != 1 or ids.get(_room_key(new)):
             if len(found) > 1:
-                print(f"[rooms] {len(found)} rooms are called {old!r}; none renamed {new!r}")
+                log_line(f"[rooms] {len(found)} rooms are called {old!r}; none renamed {new!r}")
             continue
         conn.execute(
             """UPDATE rooms SET name = ?,
@@ -59285,7 +59372,7 @@ def apply_room_names_2026_10_16(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[rooms] the 16 October names: {changed} room(s) renamed")
+        log_line(f"[rooms] the 16 October names: {changed} room(s) renamed")
     return changed
 
 
@@ -59308,7 +59395,7 @@ def apply_family_beds_2026_10_18(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print("[rooms] the Family Suite's beds, as the owner gave them on 18 October")
+        log_line("[rooms] the Family Suite's beds, as the owner gave them on 18 October")
     return changed
 
 
@@ -59337,7 +59424,7 @@ def apply_workshops_fifteen_2026_10_18(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if sessions or workshops:
-        print(f"[workshops] fifteen guests: {sessions} session(s), {workshops} workshop(s)")
+        log_line(f"[workshops] fifteen guests: {sessions} session(s), {workshops} workshop(s)")
     return sessions, workshops
 
 
@@ -59472,7 +59559,7 @@ def tidy_contact_enquiries(conn):
             aside += 1
     conn.commit()
     if tied or aside:
-        print(f"[enquiries] {tied} task(s) tied to their enquiry, {aside} pitch(es) set aside")
+        log_line(f"[enquiries] {tied} task(s) tied to their enquiry, {aside} pitch(es) set aside")
     return tied, aside
 
 
@@ -59518,7 +59605,7 @@ def widen_waitlist_statuses(conn):
         r"CHECK\s*\(\s*status\s+IN\s*\(\s*'open'\s*,",
         "CHECK(status IN ('open','enquiry',", row[0], count=1)
     if not found:
-        print("[init_db] waitlist_entries: the status CHECK is not in the shape "
+        log_line("[init_db] waitlist_entries: the status CHECK is not in the shape "
               "expected, so 'enquiry' was not added; Contact enquiries stay open")
         return False
     cols = ", ".join(r[1] for r in conn.execute("PRAGMA table_info(waitlist_entries)"))
@@ -59544,7 +59631,7 @@ def widen_waitlist_statuses(conn):
         conn.commit()
     except sqlite3.Error as e:
         conn.rollback()
-        print(f"[init_db] waitlist_entries: could not add 'enquiry' ({e}); "
+        log_line(f"[init_db] waitlist_entries: could not add 'enquiry' ({e}); "
               "Contact enquiries stay open")
         return False
     return True
@@ -64905,7 +64992,7 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
                 pay_url=pay_url, workshops=workshops or [], extras=extras or [],
                 foot=foot, photos=photos or [])
     except Exception as e:      # pragma: no cover - the text still goes
-        print(f"[email html failed] {subject}: {e}")
+        log_line(f"[email html failed] {subject}: {e}")
         return ""
 
 
@@ -64987,7 +65074,7 @@ def confirmation_letter_html(subject, body_src, context, *, conn=None, card=None
                 foot={"email": letter_contact("room_confirmed")},
                 settings=settings)
     except Exception as e:      # pragma: no cover - the plain letter still goes
-        print(f"[email html failed] {subject}: {e}")
+        log_line(f"[email html failed] {subject}: {e}")
         return ""
 
 
@@ -66070,11 +66157,11 @@ def _drain_campaigns_in_background():
             try:
                 if get_automation_settings(conn).get(
                         "automation_campaign_queue_enabled") == "1":
-                    print(f"[campaign] {drain_campaign_queue(conn)}")
+                    log_line(f"[campaign] {drain_campaign_queue(conn)}")
             finally:
                 conn.close()
     except Exception as e:
-        print(f"[campaign] could not start on the send: {type(e).__name__}: {e}")
+        log_line(f"[campaign] could not start on the send: {type(e).__name__}: {e}")
 
 
 def start_campaign_drain():
@@ -66744,7 +66831,7 @@ def workshop_stripe_customer(conn, booking):
             idempotency_key=f"wscus-{booking['id']}",
         )
     except Exception as e:
-        print(f"[workshop card] no customer for {booking['reference_code']}: {e}")
+        log_line(f"[workshop card] no customer for {booking['reference_code']}: {e}")
         return None
     customer_id = sval(customer, "id")
     if customer_id:
@@ -66771,7 +66858,7 @@ def remember_workshop_card(conn, booking_id, session):
         customer_id = sval(intent, "customer")
         method_id = sval(intent, "payment_method")
     except Exception as e:
-        print(f"[workshop card] could not read {intent_id}: {e}")
+        log_line(f"[workshop card] could not read {intent_id}: {e}")
         return
     if not customer_id or not method_id:
         return
@@ -68511,7 +68598,7 @@ def _queue_in_background():
     try:
         queue_every_page()
     except Exception as e:                      # pragma: no cover - last resort
-        print("[queue every page failed] %s" % e)
+        log_line("[queue every page failed] %s" % e)
     finally:
         _LANGUAGE_QUEUE_LOCK.release()
 
@@ -73189,7 +73276,7 @@ def note_wanted_translations(rows):
         finally:
             conn.close()
     except Exception as e:                      # pragma: no cover - last resort
-        print("[translations not noted] %s" % e)
+        log_line("[translations not noted] %s" % e)
         return 0
     return len(rows)
 
@@ -73728,10 +73815,10 @@ def link_stays_to_profiles(conn):
                          (profile_for_stay(conn, b), b["id"]))
             done += 1
         except sqlite3.IntegrityError as exc:
-            print(f"[guests] stay {b['reference_code']} left without a profile: {exc}")
+            log_line(f"[guests] stay {b['reference_code']} left without a profile: {exc}")
     if done:
         conn.commit()
-        print(f"[guests] {done} confirmed stay(s) given their guest profile")
+        log_line(f"[guests] {done} confirmed stay(s) given their guest profile")
     return done
 
 
@@ -94473,10 +94560,10 @@ def read_receipt(image_bytes, media_type="image/jpeg"):
             ]}],
         )
     except Exception as e:
-        print(f"[claude] receipt reading failed: {e}")
+        log_line(f"[claude] receipt reading failed: {e}")
         return None
     if why:
-        print(f"[claude] receipt reading failed: {why}")
+        log_line(f"[claude] receipt reading failed: {why}")
         return None
     if parsed.get("unreadable"):
         return None
@@ -94507,10 +94594,10 @@ def suggest_photo_caption(image_bytes):
             ]}],
         )
     except Exception as e:
-        print(f"[claude] caption suggestion failed: {e}")
+        log_line(f"[claude] caption suggestion failed: {e}")
         return None
     if why:
-        print(f"[claude] caption suggestion failed: {why}")
+        log_line(f"[claude] caption suggestion failed: {why}")
         return None
     if not parsed.get("captions"):
         return None
@@ -97727,7 +97814,7 @@ def booking_confirmation_html(conn, booking, room_name, portal_url=""):
             merge_email_text(subject_src, context).strip(), body_src, context,
             conn=conn, card=card)
     except Exception as e:      # pragma: no cover - the plain letter still goes
-        print(f"[email html failed] {booking['reference_code']}: {e}")
+        log_line(f"[email html failed] {booking['reference_code']}: {e}")
         return ""
 
 
@@ -104428,10 +104515,10 @@ def assess_media_with_claude(image_bytes, media_type="image/jpeg"):
             ]}],
         )
     except Exception as e:
-        print(f"[claude] media check failed: {e}")
+        log_line(f"[claude] media check failed: {e}")
         return None
     if why:
-        print(f"[claude] media check failed: {why}")
+        log_line(f"[claude] media check failed: {why}")
         return None
     return parsed
 
@@ -104952,10 +105039,10 @@ def meeting_minutes_with_claude(meeting, notes, attendee_names):
                 f"Notes taken during the meeting:\n{notes}")}],
         )
     except Exception as e:                     # pragma: no cover - network
-        print(f"[claude] minutes failed: {e}")
+        log_line(f"[claude] minutes failed: {e}")
         return None
     if why:
-        print(f"[claude] minutes failed: {why}")
+        log_line(f"[claude] minutes failed: {why}")
         return None
     if "summary" not in parsed:
         return None
@@ -109440,7 +109527,7 @@ def get_graph_token():
         _graph_token_cache["expires_at"] = now + max(60, int(payload.get("expires_in", 3600)) - 120)
         return token
     except Exception as e:
-        print(f"[graph] token request failed: {e}")
+        log_line(f"[graph] token request failed: {e}")
         return None
 
 
@@ -109461,7 +109548,7 @@ def graph_get(path, token, params=None, headers=None):
         return body
     except Exception as e:
         _GRAPH_ANSWER.error = graph_failure_words(e)
-        print(f"[graph] GET {path} failed: {_GRAPH_ANSWER.error}")
+        log_line(f"[graph] GET {path} failed: {_GRAPH_ANSWER.error}")
         return None
 
 
@@ -109695,10 +109782,12 @@ def escalate_stale_flags(conn):
 # the owner's: it is kept on the page and can be changed there.
 INBOX_NEVER_FLAG_KEY = "inbox_flags_never_flag"
 INBOX_NEVER_FLAG_DEFAULT = "\n".join((
-    "# One a line. A name ending in @ is that name at any address (noreply@);",
-    "# an address is that address; anything else is a domain and everything",
-    "# under it (stripe.com is also mail.stripe.com). A line starting # is a note.",
-    "no-reply@", "noreply@", "no_reply@", "donotreply@", "do-not-reply@",
+    "# One a line. A name ending in @ is that name at any address (news@), and",
+    "# with a * before the @ any name starting so (no-reply*@ is also",
+    "# no-reply-support@); an address is that address; anything else is a domain",
+    "# and everything under it (stripe.com is also mail.stripe.com). A line",
+    "# starting # is a note.",
+    "no-reply*@", "noreply*@", "no_reply*@", "donotreply*@", "do-not-reply*@",
     "notifications@", "notification@", "news@", "newsletter@", "mailer-daemon@",
     "postmaster@",
     "stripe.com", "retreat.guru", "retreatguru.com", "apple.com",
@@ -109746,7 +109835,8 @@ def sender_on_list(address, entries):
     local, domain = address.rsplit("@", 1)
     for e in entries:
         if e.endswith("@") and "@" not in e[:-1]:
-            if local == e[:-1]:
+            name = e[:-1]
+            if (local.startswith(name[:-1]) if name.endswith("*") else local == name):
                 return e
         elif "@" in e.lstrip("@"):
             if address == e:
@@ -109918,12 +110008,12 @@ def tidy_inbox_flags_once(conn):
         if closed:
             conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
                          ("inbox_flags_tidy_note", words))
-            print(f"[inbox flags] {words}")
+            log_line(f"[inbox flags] {words}")
         conn.commit()
         return words
     except Exception as e:
         conn.rollback()
-        print(f"[inbox flags] the one-off tidy did not run: {type(e).__name__}: {e}")
+        log_line(f"[inbox flags] the one-off tidy did not run: {type(e).__name__}: {e}")
         return None
 
 
@@ -110772,7 +110862,7 @@ def translate_batch_with_claude(lines, lang):
         # ever is worse than one that fails loudly once: the pages stay
         # English, the queue keeps growing, and the only sign is a
         # percentage that never moves.
-        print("[translation call failed] %s" % e)
+        log_line("[translation call failed] %s" % e)
         return {}, {}, "%s: %s" % (type(e).__name__, e)
     if why:
         return {}, {}, why
@@ -112481,6 +112571,7 @@ def run_email_inbox_scan_job(conn):
     booking_com_box = booking_com_mailbox(conn)
     unread, read_boxes, left_to_booking_com = [], 0, False
     no_headers = []
+    headers_asked = headers_left = 0
     for mb in mailboxes:
         mailbox = mb["mailbox"]
         # Booking.com's mailbox is read by its own job, into its own page:
@@ -112527,6 +112618,41 @@ def run_email_inbox_scan_job(conn):
         read_boxes += 1
         if getattr(_GRAPH_ANSWER, "without_headers", None):
             no_headers.append(f"{mailbox} ({_GRAPH_ANSWER.without_headers})")
+        # THE HEADERS, ONE MESSAGE AT A TIME. Asked for in the listing, they
+        # did not come: on 11 Nov 2026, a day after these rules, Netflix,
+        # Flying Blue and Zoomalia were still flagged as waiting on a reply,
+        # and the scan had said nothing. Microsoft's documented way is to ask
+        # one message for its own. So a message the listing brought without
+        # them is asked -- only one that would otherwise be flagged as waiting,
+        # and only once: the answer is kept on its flag. Asked before anything
+        # in this inbox is written, so no Graph read holds the database.
+        asked_here = 0
+        for msg in inbox_messages:
+            mid, got_at = msg.get("id"), msg.get("receivedDateTime")
+            if not mid or not got_at or msg.get("internetMessageHeaders"):
+                continue
+            frm = ((msg.get("from") or {}).get("emailAddress") or {}).get("address", "")
+            last = reply_map.get(msg.get("conversationId"))
+            waited = now - datetime.fromisoformat(got_at.replace("Z", "+00:00"))
+            if (sender_not_waiting(frm, never, house) or (last and last > got_at)
+                    or waited <= timedelta(hours=unanswered_hours)):
+                continue
+            # Kept on its flag -- by this copy's id, or by the email's own
+            # Message-ID when another inbox's copy holds the flag.
+            if flag_row("(graph_message_id = ? OR internet_message_id = ?) AND header_verdict IS NOT NULL",
+                        (mid, (msg.get("internetMessageId") or "").strip() or "-")):
+                continue
+            if asked_here >= INBOX_HEADERS_PER_INBOX:
+                headers_left += 1
+                continue
+            got = graph_get(f"/users/{mailbox}/messages/{mid}", token,
+                            params={"$select": "id,internetMessageHeaders"})
+            asked_here += 1
+            if got is not None:
+                msg["internetMessageHeaders"] = got.get("internetMessageHeaders") or []
+                msg["_headers_read"] = True
+        _GRAPH_ANSWER.error = None
+        headers_asked += asked_here
         for msg in inbox_messages:
             message_id = msg.get("id")
             received_at = msg.get("receivedDateTime")
@@ -112563,10 +112689,30 @@ def run_email_inbox_scan_job(conn):
             subject = msg.get("subject") or ""
             preview = msg.get("bodyPreview") or ""
 
+            have_headers = bool(msg.get("internetMessageHeaders")) or bool(msg.get("_headers_read"))
             reason = not_waiting_for_a_reply(msg, from_address, never, house)
+            if not reason and not have_headers and existing \
+                    and existing["header_verdict"] in ("mailing", "machine"):
+                reason = existing["header_verdict"]
+            header_verdict = ((reason if reason in ("mailing", "machine") else "") if have_headers
+                              else (existing["header_verdict"] if existing else None))
             if reason:
                 if existing and existing["status"] == "open":
                     close(existing["id"], reason)
+                if existing:
+                    conn.execute("UPDATE email_flags SET header_verdict = COALESCE(?, header_verdict) "
+                                 "WHERE id = ?", (header_verdict, existing["id"]))
+                elif msg.get("_headers_read") and header_verdict:
+                    # Read one at a time and found to be a mailing: kept, closed,
+                    # so it is never asked for again.
+                    conn.execute(
+                        """INSERT INTO email_flags (graph_message_id, internet_message_id, from_name,
+                               from_address, subject, received_at, mailbox, mailboxes, status,
+                               closed_by_app, header_verdict, resolved_at, rules_checked_at,
+                               created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'dismissed', ?, ?, ?, ?, ?, ?)""",
+                        (message_id, internet_id, from_name, from_address, subject, received_at,
+                         mailbox, mailbox, reason, header_verdict, now_iso, now_iso, now_iso, now_iso))
                 verdicts[ident] = dict(earlier or {}, flag_id=existing["id"] if existing else None,
                                        raise_it=False, never=reason)
                 continue
@@ -112664,8 +112810,9 @@ def run_email_inbox_scan_job(conn):
                        conflict_category=?, extracted_price=?, computed_price=?, extracted_dates=?, detail_note=?,
                        reply_price_conflict=?, reply_availability_conflict=?, reply_detail_note=?, last_reply_checked_id=?,
                        first_reply_at=?, internet_message_id=COALESCE(?, internet_message_id), mailboxes=?,
-                       rules_checked_at=?, updated_at=? WHERE id=?""",
-                    common + (now_iso, existing["id"]),
+                       rules_checked_at=?, header_verdict=COALESCE(?, header_verdict), updated_at=?
+                       WHERE id=?""",
+                    common + (header_verdict, now_iso, existing["id"]),
                 )
                 if raise_it and existing["status"] != "open":
                     # Closed by the app, and true again: a sender taken off
@@ -112679,10 +112826,10 @@ def run_email_inbox_scan_job(conn):
                        conflict_category, extracted_price, computed_price, extracted_dates, detail_note,
                        reply_price_conflict, reply_availability_conflict, reply_detail_note, last_reply_checked_id,
                        first_reply_at, internet_message_id, mailboxes, rules_checked_at,
-                       mailbox, assigned_to_user_id, status, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       mailbox, assigned_to_user_id, header_verdict, status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                'open', ?, ?)""",
-                    (message_id,) + common + (mailbox, default_user_id, now_iso, now_iso),
+                    (message_id,) + common + (mailbox, default_user_id, header_verdict, now_iso, now_iso),
                 )
                 verdict["flag_id"] = cur.lastrowid
                 what = ("reply" if (reply_price_conflict_val or reply_availability_conflict_val)
@@ -112728,6 +112875,10 @@ def run_email_inbox_scan_job(conn):
     if no_headers:
         tail += ("; read without the headers that mark a mailing, so judged by sender only: "
                  + "; ".join(no_headers))
+    if headers_asked:
+        tail += f"; headers read one message at a time for {headers_asked}"
+    if headers_left:
+        tail += f" ({headers_left} more wait for the next scan)"
     # Counted from the mailboxes actually read. It counted every configured
     # one, so "scanned 0 messages across 1 mailbox" on 12 October was a
     # mailbox it had skipped (Booking.com's has its own job) and never opened.
@@ -112742,6 +112893,9 @@ def run_email_inbox_scan_job(conn):
 # scan, for the headers that say a message is a mailing. A few at a time, so
 # the backlog goes in a handful of scans and no scan is slow.
 INBOX_RECHECK_PER_SCAN = 100
+# And per inbox, for the messages in the scan's own window whose listing came
+# without their headers. Each is asked once; any left wait for the next scan.
+INBOX_HEADERS_PER_INBOX = 80
 
 
 def recheck_older_flags(conn, token, never, house, closed, now_iso):
@@ -112751,7 +112905,7 @@ def recheck_older_flags(conn, token, never, house, closed, now_iso):
     nothing written and unsaved, and the answers are written after."""
     out = {"closed": 0, "unread": 0}
     rows = conn.execute(
-        """SELECT * FROM email_flags WHERE status = 'open' AND rules_checked_at IS NULL
+        """SELECT * FROM email_flags WHERE status = 'open' AND header_verdict IS NULL
             ORDER BY received_at LIMIT ?""", (INBOX_RECHECK_PER_SCAN,)).fetchall()
     if not rows:
         return out
@@ -112780,10 +112934,10 @@ def recheck_older_flags(conn, token, never, house, closed, now_iso):
             close_flag_by_app(conn, row["id"], reason, now_iso)
             closed[reason] = closed.get(reason, 0) + 1
             out["closed"] += 1
-        else:
-            conn.execute("UPDATE email_flags SET rules_checked_at = ?, "
-                         "internet_message_id = COALESCE(internet_message_id, ?) WHERE id = ?",
-                         (now_iso, (got.get("internetMessageId") or "").strip() or None, row["id"]))
+        conn.execute("UPDATE email_flags SET rules_checked_at = ?, header_verdict = ?, "
+                     "internet_message_id = COALESCE(internet_message_id, ?) WHERE id = ?",
+                     (now_iso, reason if reason in ("mailing", "machine") else "",
+                      (got.get("internetMessageId") or "").strip() or None, row["id"]))
     conn.commit()
     return out
 
@@ -116444,7 +116598,7 @@ def get_calendar_graph_token():
         return token
     except Exception as e:
         _calendar_token_cache["error"] = graph_failure_words(e)
-        print(f"[calendar] token request failed: {_calendar_token_cache['error']}")
+        log_line(f"[calendar] token request failed: {_calendar_token_cache['error']}")
         return None
 
 
@@ -116671,12 +116825,9 @@ def sync_house_calendar(conn, *, full=False, retry_held=False):
         doubts = graph_event_doubts(body)
         line = (f"[calendar] Microsoft refused {key}: {err}. Sent: {summary}"
                 + (f". Looks wrong: {'; '.join(doubts)}" if doubts else ""))
-        try:
-            print(line)
-        except UnicodeEncodeError:
-            # A console that cannot print the subject's mark must not stop
-            # the pass: the line goes out escaped instead.
-            print(line.encode("ascii", "backslashreplace").decode("ascii"))
+        # A console that cannot print the subject's mark must not stop the
+        # pass: log_line sends it out escaped instead.
+        log_line(line)
         _hc_record(conn, key, item, error=err, attempts=attempts, refused_hash=digest,
                    first_failed_at=row["first_failed_at"] if same else None,
                    refused_body=summary + (f". Looks wrong: {'; '.join(doubts)}." if doubts else ""))
@@ -116859,7 +117010,7 @@ def house_calendar_loop():
         try:
             house_calendar_tick()
         except Exception as e:
-            print(f"[calendar] tick failed: {e}")
+            log_line(f"[calendar] tick failed: {e}")
         time.sleep(HOUSE_CALENDAR_POLL_SECONDS)
 
 
@@ -117568,16 +117719,16 @@ def automation_tick():
             try:
                 result = job_fn(conn)
                 record_job_run(conn, job_name, True, str(result))
-                print(f"[automation] {job_name}: {result}")
+                log_line(f"[automation] {job_name}: {result}")
             except JobNotSetUp as e:
                 record_job_run(conn, job_name, False, str(e), idle=True)
-                print(f"[automation] {job_name} could not run: {e}")
+                log_line(f"[automation] {job_name} could not run: {e}")
             except Exception as e:
                 # Recorded, not just printed. A Railway log line scrolls away;
                 # this is the same fact somewhere the owner can still read it
                 # next Tuesday.
                 record_job_run(conn, job_name, False, f"{type(e).__name__}: {e}")
-                print(f"[automation] {job_name} failed: {e}")
+                log_line(f"[automation] {job_name} failed: {e}")
 
         if settings["automation_room_balance_reminder_enabled"] == "1":
             try:
@@ -117588,10 +117739,10 @@ def automation_tick():
                 try:
                     result = run_room_balance_reminder_job(conn, days_before)
                     record_job_run(conn, "room_balance_reminder", True, result)
-                    print(f"[automation] room_balance_reminder: {result}")
+                    log_line(f"[automation] room_balance_reminder: {result}")
                 except Exception as e:
                     record_job_run(conn, "room_balance_reminder", False, f"{type(e).__name__}: {e}")
-                    print(f"[automation] room_balance_reminder failed: {e}")
+                    log_line(f"[automation] room_balance_reminder failed: {e}")
 
         if settings["automation_workshop_balance_reminder_enabled"] == "1":
             if claim_job_run(conn, "workshop_balance_reminder", 24 * 3600):
@@ -117601,11 +117752,11 @@ def automation_tick():
                 try:
                     result = run_balance_reminder(conn, settings, "workshop_balance_reminder")
                     record_job_run(conn, "workshop_balance_reminder", True, result)
-                    print(f"[automation] workshop_balance_reminder: {result}")
+                    log_line(f"[automation] workshop_balance_reminder: {result}")
                 except Exception as e:
                     record_job_run(conn, "workshop_balance_reminder", False,
                                    f"{type(e).__name__}: {e}")
-                    print(f"[automation] workshop_balance_reminder failed: {e}")
+                    log_line(f"[automation] workshop_balance_reminder failed: {e}")
 
         if settings["automation_event_balance_reminder_enabled"] == "1":
             try:
@@ -117616,11 +117767,11 @@ def automation_tick():
                 try:
                     result = run_event_balance_reminder_job(conn, days_before)
                     record_job_run(conn, "event_balance_reminder", True, result)
-                    print(f"[automation] event_balance_reminder: {result}")
+                    log_line(f"[automation] event_balance_reminder: {result}")
                 except Exception as e:
                     record_job_run(conn, "event_balance_reminder", False,
                                    f"{type(e).__name__}: {e}")
-                    print(f"[automation] event_balance_reminder failed: {e}")
+                    log_line(f"[automation] event_balance_reminder failed: {e}")
 
         if settings["automation_stale_shift_enabled"] == "1":
             try:
@@ -117630,9 +117781,9 @@ def automation_tick():
             if claim_job_run(conn, "stale_shift_cleanup", 3600):
                 try:
                     result = run_stale_shift_cleanup_job(conn, stale_hours)
-                    print(f"[automation] stale_shift_cleanup: {result}")
+                    log_line(f"[automation] stale_shift_cleanup: {result}")
                 except Exception as e:
-                    print(f"[automation] stale_shift_cleanup failed: {e}")
+                    log_line(f"[automation] stale_shift_cleanup failed: {e}")
         conn.close()
 
 
@@ -117641,7 +117792,7 @@ def automation_loop():
         try:
             automation_tick()
         except Exception as e:
-            print(f"[automation] tick failed: {e}")
+            log_line(f"[automation] tick failed: {e}")
         time.sleep(AUTOMATION_TICK_SECONDS)
 
 
@@ -118356,7 +118507,7 @@ def save_inbox_never_flag():
         if not entry or entry.startswith("#"):
             continue
         if entry.endswith("@"):
-            good = bool(re.fullmatch(r"[a-z0-9._%+-]+@", entry))
+            good = bool(re.fullmatch(r"[a-z0-9._%+-]+\*?@", entry))
         elif "@" in entry.lstrip("@"):
             good = bool(EMAIL_RE.match(entry))
         else:
@@ -120232,7 +120383,7 @@ def draft_reply_with_claude(context, compose_text):
             messages=[{"role": "user", "content": user_content}],
         )
     except Exception as e:
-        print(f"[claude] draft_reply request failed: {type(e).__name__}: {e}")
+        log_line(f"[claude] draft_reply request failed: {type(e).__name__}: {e}")
         return None
     if getattr(response, "stop_reason", None) in ("refusal", "max_tokens"):
         return None
@@ -120276,7 +120427,7 @@ def summarise_history_with_claude(history):
                     "factual English. Never guess at anything not in the lines."),
             messages=[{"role": "user", "content": "\n".join(lines)}])
     except Exception as e:
-        print(f"[claude] history summary failed: {type(e).__name__}: {e}")
+        log_line(f"[claude] history summary failed: {type(e).__name__}: {e}")
         return None
     return data
 
@@ -122586,7 +122737,7 @@ def ensure_pdf(data, mimetype, title="Document"):
         img.save(buf, format="PDF", resolution=200.0)
         return buf.getvalue(), "pdf"
     except Exception as e:
-        print(f"[scan] couldn't convert to PDF ({e}) — keeping the original")
+        log_line(f"[scan] couldn't convert to PDF ({e}) — keeping the original")
         return data, (mimetype or "image/jpeg").split("/")[-1]
 
 
@@ -122747,10 +122898,10 @@ def read_invoice_with_claude(pdf_bytes, filename, stock_items):
             ]}],
         )
     except Exception as e:
-        print(f"[claude] invoice read failed: {e}")
+        log_line(f"[claude] invoice read failed: {e}")
         return None
     if why:
-        print(f"[claude] invoice read failed: {why}")
+        log_line(f"[claude] invoice read failed: {why}")
         return None
     if not parsed.get("lines"):
         return None
@@ -122857,10 +123008,10 @@ def read_menu_card(*, pdf_bytes=None, filename=None, text=None):
             messages=[{"role": "user", "content": content}],
         )
     except Exception as e:
-        print(f"[claude] menu read failed: {e}")
+        log_line(f"[claude] menu read failed: {e}")
         return None
     if why:
-        print(f"[claude] menu read failed: {why}")
+        log_line(f"[claude] menu read failed: {why}")
         return None
     if not parsed.get("dishes"):
         return None
@@ -123734,7 +123885,7 @@ def assistant_turn(conn, user, said):
                 system=ASSISTANT_SYSTEM, tools=ASSISTANT_TOOLS,
                 messages=history)
         except Exception as e:      # pragma: no cover - network/credit/limits
-            print(f"[assistant failed] {e}")
+            log_line(f"[assistant failed] {e}")
             return False, "The assistant could not be reached just now."
 
         text_parts, tool_calls = [], []
@@ -123999,7 +124150,7 @@ def addin_after_answer(response, write):
             finally:
                 conn.close()
         except Exception as e:                  # pragma: no cover - last resort
-            print(f"[send check] not recorded: {type(e).__name__}: {e}")
+            log_line(f"[send check] not recorded: {type(e).__name__}: {e}")
     response.call_on_close(run)
     return response
 
@@ -124209,14 +124360,14 @@ def api_check_send_conflict():
             # next form is learned from the first one met.
             shape = unrecognised_quote_header(body_text)
             if shape:
-                print(f"[send check] a line starts {shape!r} but no quoted thread was found")
+                log_line(f"[send check] a line starts {shape!r} but no quoted thread was found")
             conflict, internal = guess_email_conflict(
                 conn, outside, subject, own_words(body_text),
                 datetime.now(timezone.utc).isoformat()), False
     except Exception as e:
         conn.close()
         write, _ms = owed("could_not_check", "server_error", type(e).__name__)
-        print(f"[send check] failed: {type(e).__name__}: {e}")
+        log_line(f"[send check] failed: {type(e).__name__}: {e}")
         return addin_after_answer(jsonify(error="The check failed on the server.",
                                           recorded=True), write), 500
     conn.close()
@@ -125265,7 +125416,7 @@ def turnstile_siteverify(token, ip):
                      timeout=8) as resp:
             return bool(json.loads(resp.read().decode("utf-8")).get("success"))
     except (URLError, HTTPError, OSError, ValueError) as e:
-        print(f"[enquiries] Turnstile could not be asked: {e}")
+        log_line(f"[enquiries] Turnstile could not be asked: {e}")
         return None
 
 
@@ -125555,7 +125706,7 @@ def contact_page():
     if aside:
         conn.commit()
         conn.close()
-        print(f"[enquiries] set aside as spam: {email} ({aside})")
+        log_line(f"[enquiries] set aside as spam: {email} ({aside})")
         flash(thanks, "success")
         return redirect(url_for("contact_page"))
     # A task, because anything that becomes a task reaches the calendar by

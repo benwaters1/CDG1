@@ -641,6 +641,10 @@ SUITES = [
     "test_inbox_flags_quiet",
     "test_email_own_booking",
     "test_house_calendar_refused",
+    # 11 November 2026: a tick in a task subject stopped the calendar pass
+    # on a cp1252 console. Every log line goes through log_line, which never
+    # raises, and app.py holds no print().
+    "test_log_line",
 ]
 
 

@@ -255,6 +255,19 @@ def run():
                 not conn.execute("SELECT 1 FROM tasks WHERE origin = ? AND title LIKE ? AND status != 'done'",
                                  (m.WATCH_TASK_ORIGIN, "%REFUSEME%on the house calendar%")).fetchone())
 
+    s.section("An event already saved ending before it begins is on the owner home")
+    with m.app.test_request_context("/"):
+        warned = m.owner_home_warnings(conn, today)
+    line = [w for w in warned if "end before they begin" in w["title"]]
+    s.check("the photoshoot as it was saved is named there",
+            line and f"{TAG} Photoshoot Client" in line[0]["detail"], detail=str([w["title"] for w in warned])[:300])
+    conn.execute("UPDATE event_inquiries SET end_date = NULL WHERE id = ?", (shoot,))
+    conn.commit()
+    with m.app.test_request_context("/"):
+        warned = m.owner_home_warnings(conn, today)
+    s.check("and the line goes once its last day is put right",
+            not [w for w in warned if "end before they begin" in w["title"]])
+
     s.section("The form that let it in")
     before = conn.execute("SELECT COUNT(*) FROM event_inquiries").fetchone()[0]
     r = oc.post("/admin/events/new", data={

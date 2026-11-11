@@ -437,8 +437,12 @@ def _in_a_browser(s, conn):
         {"name": "switched_to_own", "handler": changed, "from": "jasmine" + at,
          "session": {"gudanesSignature": "experience"}},
         {"name": "switched_inbox", "handler": changed, "from": "reservations" + at,
-         "session": {"gudanesSignature": "experience"},
-         "attachments": [{"name": m.ADDIN_SIGNATURE_LOGO_NAME, "isInline": True}]},
+         "session": {"gudanesSignature": "experience", "gudanesLogoId": "att-0"},
+         "attachments": [{"id": "att-0", "name": m.ADDIN_SIGNATURE_LOGO_NAME, "isInline": True}]},
+        # A reply to an email the house signed: the quoted thread carries that
+        # email's logo under the same name. It is not this email's (11 Nov 2026).
+        {"name": "reply_to_signed", "handler": compose, "from": "experience" + at,
+         "attachments": [{"id": "quoted-1", "name": m.ADDIN_SIGNATURE_LOGO_NAME, "isInline": True}]},
         {"name": "no_inline", "handler": compose, "from": "reservations" + at, "no_inline": True},
         {"name": "plain_text", "handler": compose, "from": "accounts" + at, "plain_text": True},
         {"name": "old_outlook", "handler": compose, "from": "reservations" + at,
@@ -515,6 +519,14 @@ def _in_a_browser(s, conn):
     s.check("without attaching the logo a second time", r.get("attached") == [],
             detail=str(r.get("attached")))
     s.check("and Outlook told it is done", r.get("completed") == 1, detail=str(r.get("why")))
+
+    s.section("A reply to an email the house signed")
+    r = res.get("reply_to_signed") or {}
+    s.check("the quoted email's logo is not taken for this one's: the logo is attached",
+            len(r.get("attached") or []) == 1, detail=str(r.get("attached")))
+    s.check("and kept by the id Outlook gave it",
+            (r.get("session") or {}).get("gudanesLogoId") == "att-1", detail=str(r.get("session")))
+    s.check("with the signature pointing at it", signed("reply_to_signed") == as_sent("experience"))
 
     s.section("An Outlook that cannot do all of it")
     s.check("no inline attachments (a phone): the hosted logo is used",

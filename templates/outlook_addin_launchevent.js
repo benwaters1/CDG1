@@ -690,6 +690,15 @@ function rememberSignature(item, key) {
 
 // The logo, inside the email. done(true) once it is attached (or already
 // was), done(false) where this Outlook cannot, and the hosted copy is used.
+//
+// "Already was" means THIS add-in attached it to THIS email, known by the id
+// Outlook gave it and kept in the email's own session data -- never by its
+// name. A reply to an email the house signed carries that email's logo in the
+// quoted thread, under the same name, and Outlook does not give the reply a
+// copy the cid: can reach: taking that one for ours left the new signature
+// pointing at nothing, an empty box where the logo goes (owner, 11 Nov 2026).
+var LOGO_DATA_KEY = "gudanesLogoId";
+
 function attachLogo(item, done) {
   var name = SIGNATURES.logo_name;
   if (!SIGNATURES.logo_base64 || !item.addFileAttachmentFromBase64Async) { done(false); return; }
@@ -697,24 +706,50 @@ function attachLogo(item, done) {
     try {
       item.addFileAttachmentFromBase64Async(SIGNATURES.logo_base64, name, { isInline: true },
         function (result) {
-          done(!!(result && result.status === Office.AsyncResultStatus.Succeeded));
+          var ok = !!(result && result.status === Office.AsyncResultStatus.Succeeded);
+          if (ok && result.value) { remember(LOGO_DATA_KEY, String(result.value)); }
+          done(ok);
         });
     } catch (e) { done(false); }
   }
   // Not twice: the From can change more than once while an email is written.
-  try {
-    if (item.getAttachmentsAsync) {
+  recall(LOGO_DATA_KEY, function (ours) {
+    if (!ours || !item.getAttachmentsAsync) { add(); return; }
+    try {
       item.getAttachmentsAsync(function (result) {
         var list = (result && result.status === Office.AsyncResultStatus.Succeeded && result.value) || [];
         for (var i = 0; i < list.length; i++) {
-          if (list[i] && list[i].name === name && list[i].isInline) { done(true); return; }
+          if (list[i] && list[i].id === ours && list[i].isInline) { done(true); return; }
         }
         add();
       });
+    } catch (e) { add(); }
+  });
+}
+
+// The email's own session data, where Outlook has it.
+function recall(key, then) {
+  var item = Office.context.mailbox.item;
+  try {
+    if (item && item.sessionData && item.sessionData.getAsync) {
+      item.sessionData.getAsync(key, function (result) {
+        var value = "";
+        if (result && result.status === Office.AsyncResultStatus.Succeeded) { value = result.value || ""; }
+        then(value);
+      });
       return;
     }
-  } catch (e) { /* ask to add it and see */ }
-  add();
+  } catch (e) { /* not on this Outlook */ }
+  then("");
+}
+
+function remember(key, value) {
+  var item = Office.context.mailbox.item;
+  try {
+    if (item && item.sessionData && item.sessionData.setAsync) {
+      item.sessionData.setAsync(key, value, function () { /* nothing waits on it */ });
+    }
+  } catch (e) { /* not on this Outlook */ }
 }
 
 function setSignature(item, html, text, done) {
