@@ -12191,20 +12191,30 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g main .g-night__cta{ margin-top: var(--s4); }
 }
 
-/* 11 Nov 2026 (owner): the bathrooms, a section of their own on /book ("they are incredible"). The photographs and
-   the words side by side like a room card, on the same column as everything else. */
-.g .g-baths{ display: grid; gap: var(--s5); margin-top: var(--s5); background: #FBF7EF;
-  border: 1px solid rgba(115,86,45,.18); border-top: 2px solid var(--gilt-leaf, #B08D57); }
-.g .g-baths__media{ min-width: 0; position: relative; }
-.g .g-baths__media img{ width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
-.g .g-baths__b{ padding: var(--s5); }
-.g .g-baths__lede{ font-family: var(--display, var(--serif)); font-size: clamp(1.3rem, 1.2vw + 1rem, 1.6rem);
-  line-height: 1.3; color: var(--blue-deep, #14305f); margin: 0 0 var(--s4); }
-.g .g-baths__list{ margin-bottom: 0; }
+/* 11 Nov 2026 (owner): the bathrooms, a section of their own on /book ("they are a real feature, they are
+   incredible"), then "make it beyyer". A feature, not a slider: the section on the cards' cream, all four
+   photographs side by side and tall; under them the reason they are on the ground floor beside
+   what they are made of, as pairs. */
+.g .g-baths-sec{ background: #FBF7EF; border-top: 1px solid rgba(115,86,45,.16); border-bottom: 1px solid rgba(115,86,45,.16); }
+.g .g-baths__head{ max-width: 46rem; }
+.g .g-baths__lede{ font-family: var(--display, var(--serif)); font-size: clamp(1.35rem, 1.1vw + 1.05rem, 1.75rem);
+  line-height: 1.3; color: var(--blue-deep, #14305f); margin: var(--s4) 0 0; }
+.g .g-baths__row{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); margin: var(--s6) 0 var(--s5); }
+.g .g-baths__f{ margin: 0; min-width: 0; }
+.g .g-baths__f picture, .g .g-baths__f .g-baths__img{ display: block; width: 100%; }
+.g .g-baths__img{ aspect-ratio: 3 / 4; height: auto; object-fit: cover; }
+.g .g-baths__body{ display: grid; gap: var(--s5); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.18); }
+.g .g-baths__why .g-p{ margin: 0 0 var(--s3); max-width: 34rem; }
+.g .g-baths__feat{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; margin: 0; }
+.g .g-baths__feat > div{ display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: var(--s3);
+  padding: 10px 0; border-bottom: 1px solid rgba(115,86,45,.14); }
+.g .g-baths__feat dt{ font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--gilt, #73562D); padding-top: 3px; }
+.g .g-baths__feat dd{ margin: 0; font-family: var(--serif); font-size: 16px; line-height: 1.45; color: var(--ink); }
+@media (max-width: 40rem){
+  .g .g-baths__feat > div{ grid-template-columns: 6.5rem minmax(0, 1fr); }
+}
 @media (min-width: 56rem){
-  .g .g-baths{ grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0; align-items: stretch; }
-  .g .g-baths__media .g-car, .g .g-baths__media .g-car__track, .g .g-baths__media .g-car__s,
-  .g .g-baths__media .g-car__f, .g .g-baths__media .g-car__f picture{ height: 100%; margin: 0; }
-  .g .g-baths__media img{ height: 100%; aspect-ratio: auto; }
-  .g .g-baths__b{ padding: var(--s6); align-self: center; }
+  .g .g-baths__row{ grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s4); }
+  .g .g-baths__body{ grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--s7, 4rem); }
 }
