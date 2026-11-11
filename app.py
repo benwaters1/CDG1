@@ -5957,6 +5957,10 @@ def init_db():
         ("email_flags_mailboxes", "ALTER TABLE email_flags ADD COLUMN mailboxes TEXT"),
         ("email_flags_closed_by_app", "ALTER TABLE email_flags ADD COLUMN closed_by_app TEXT"),
         ("email_flags_rules_checked_at", "ALTER TABLE email_flags ADD COLUMN rules_checked_at TEXT"),
+        # What the message's own headers said, once read: 'mailing', 'machine',
+        # or '' for neither. NULL is "not read yet". Kept so no message is
+        # asked for its headers twice (11 Nov 2026).
+        ("email_flags_header_verdict", "ALTER TABLE email_flags ADD COLUMN header_verdict TEXT"),
         # `guests` became a per-person profile rather than a per-stay register
         # (see the drop-column migration below for why).
         ("guests_email", "ALTER TABLE guests ADD COLUMN email TEXT"),
@@ -41018,6 +41022,27 @@ def owner_home_warnings(conn, today):
 
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
     # the next pass that writes cleanly takes the line away.
+    # AN EVENT THAT ENDS BEFORE IT BEGINS. The + Add event form took one until
+    # 10 Nov 2026: a photoshoot "22 November to 26 October" was filed under
+    # History as already over, and Microsoft refused it for the house calendar
+    # 64,668 times. The forms refuse one now; this finds any already saved.
+    # It closes itself: correct the last day and the line goes.
+    backwards = conn.execute(
+        """SELECT id, reference_code, contact_name, event_type, preferred_date, end_date
+             FROM event_inquiries
+            WHERE end_date IS NOT NULL AND end_date != '' AND preferred_date IS NOT NULL
+              AND end_date < preferred_date AND status NOT IN ('declined', 'cancelled')
+            ORDER BY preferred_date""").fetchall()
+    if backwards:
+        e = backwards[0]
+        add("warn", f"{len(backwards)} event(s) end before they begin",
+            f"{e['contact_name'] or e['reference_code']}"
+            f" ({(e['event_type'] or 'event').replace('_', ' ')}, {e['reference_code']}) runs from "
+            f"{format_date_human(e['preferred_date'])} to {format_date_human(e['end_date'])}"
+            + (f", and {len(backwards) - 1} more" if len(backwards) > 1 else "")
+            + ". Give it the right last day.", len(backwards),
+            "admin_event", event_id=e["id"])
+
     problem = house_calendar_problem(conn)
     if problem:
         level, title, detail = problem
@@ -109682,10 +109707,12 @@ def escalate_stale_flags(conn):
 # the owner's: it is kept on the page and can be changed there.
 INBOX_NEVER_FLAG_KEY = "inbox_flags_never_flag"
 INBOX_NEVER_FLAG_DEFAULT = "\n".join((
-    "# One a line. A name ending in @ is that name at any address (noreply@);",
-    "# an address is that address; anything else is a domain and everything",
-    "# under it (stripe.com is also mail.stripe.com). A line starting # is a note.",
-    "no-reply@", "noreply@", "no_reply@", "donotreply@", "do-not-reply@",
+    "# One a line. A name ending in @ is that name at any address (news@), and",
+    "# with a * before the @ any name starting so (no-reply*@ is also",
+    "# no-reply-support@); an address is that address; anything else is a domain",
+    "# and everything under it (stripe.com is also mail.stripe.com). A line",
+    "# starting # is a note.",
+    "no-reply*@", "noreply*@", "no_reply*@", "donotreply*@", "do-not-reply*@",
     "notifications@", "notification@", "news@", "newsletter@", "mailer-daemon@",
     "postmaster@",
     "stripe.com", "retreat.guru", "retreatguru.com", "apple.com",
@@ -109733,7 +109760,8 @@ def sender_on_list(address, entries):
     local, domain = address.rsplit("@", 1)
     for e in entries:
         if e.endswith("@") and "@" not in e[:-1]:
-            if local == e[:-1]:
+            name = e[:-1]
+            if (local.startswith(name[:-1]) if name.endswith("*") else local == name):
                 return e
         elif "@" in e.lstrip("@"):
             if address == e:
@@ -112468,6 +112496,7 @@ def run_email_inbox_scan_job(conn):
     booking_com_box = booking_com_mailbox(conn)
     unread, read_boxes, left_to_booking_com = [], 0, False
     no_headers = []
+    headers_asked = headers_left = 0
     for mb in mailboxes:
         mailbox = mb["mailbox"]
         # Booking.com's mailbox is read by its own job, into its own page:
@@ -112514,6 +112543,41 @@ def run_email_inbox_scan_job(conn):
         read_boxes += 1
         if getattr(_GRAPH_ANSWER, "without_headers", None):
             no_headers.append(f"{mailbox} ({_GRAPH_ANSWER.without_headers})")
+        # THE HEADERS, ONE MESSAGE AT A TIME. Asked for in the listing, they
+        # did not come: on 11 Nov 2026, a day after these rules, Netflix,
+        # Flying Blue and Zoomalia were still flagged as waiting on a reply,
+        # and the scan had said nothing. Microsoft's documented way is to ask
+        # one message for its own. So a message the listing brought without
+        # them is asked -- only one that would otherwise be flagged as waiting,
+        # and only once: the answer is kept on its flag. Asked before anything
+        # in this inbox is written, so no Graph read holds the database.
+        asked_here = 0
+        for msg in inbox_messages:
+            mid, got_at = msg.get("id"), msg.get("receivedDateTime")
+            if not mid or not got_at or msg.get("internetMessageHeaders"):
+                continue
+            frm = ((msg.get("from") or {}).get("emailAddress") or {}).get("address", "")
+            last = reply_map.get(msg.get("conversationId"))
+            waited = now - datetime.fromisoformat(got_at.replace("Z", "+00:00"))
+            if (sender_not_waiting(frm, never, house) or (last and last > got_at)
+                    or waited <= timedelta(hours=unanswered_hours)):
+                continue
+            # Kept on its flag -- by this copy's id, or by the email's own
+            # Message-ID when another inbox's copy holds the flag.
+            if flag_row("(graph_message_id = ? OR internet_message_id = ?) AND header_verdict IS NOT NULL",
+                        (mid, (msg.get("internetMessageId") or "").strip() or "-")):
+                continue
+            if asked_here >= INBOX_HEADERS_PER_INBOX:
+                headers_left += 1
+                continue
+            got = graph_get(f"/users/{mailbox}/messages/{mid}", token,
+                            params={"$select": "id,internetMessageHeaders"})
+            asked_here += 1
+            if got is not None:
+                msg["internetMessageHeaders"] = got.get("internetMessageHeaders") or []
+                msg["_headers_read"] = True
+        _GRAPH_ANSWER.error = None
+        headers_asked += asked_here
         for msg in inbox_messages:
             message_id = msg.get("id")
             received_at = msg.get("receivedDateTime")
@@ -112550,10 +112614,30 @@ def run_email_inbox_scan_job(conn):
             subject = msg.get("subject") or ""
             preview = msg.get("bodyPreview") or ""
 
+            have_headers = bool(msg.get("internetMessageHeaders")) or bool(msg.get("_headers_read"))
             reason = not_waiting_for_a_reply(msg, from_address, never, house)
+            if not reason and not have_headers and existing \
+                    and existing["header_verdict"] in ("mailing", "machine"):
+                reason = existing["header_verdict"]
+            header_verdict = ((reason if reason in ("mailing", "machine") else "") if have_headers
+                              else (existing["header_verdict"] if existing else None))
             if reason:
                 if existing and existing["status"] == "open":
                     close(existing["id"], reason)
+                if existing:
+                    conn.execute("UPDATE email_flags SET header_verdict = COALESCE(?, header_verdict) "
+                                 "WHERE id = ?", (header_verdict, existing["id"]))
+                elif msg.get("_headers_read") and header_verdict:
+                    # Read one at a time and found to be a mailing: kept, closed,
+                    # so it is never asked for again.
+                    conn.execute(
+                        """INSERT INTO email_flags (graph_message_id, internet_message_id, from_name,
+                               from_address, subject, received_at, mailbox, mailboxes, status,
+                               closed_by_app, header_verdict, resolved_at, rules_checked_at,
+                               created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'dismissed', ?, ?, ?, ?, ?, ?)""",
+                        (message_id, internet_id, from_name, from_address, subject, received_at,
+                         mailbox, mailbox, reason, header_verdict, now_iso, now_iso, now_iso, now_iso))
                 verdicts[ident] = dict(earlier or {}, flag_id=existing["id"] if existing else None,
                                        raise_it=False, never=reason)
                 continue
@@ -112651,8 +112735,9 @@ def run_email_inbox_scan_job(conn):
                        conflict_category=?, extracted_price=?, computed_price=?, extracted_dates=?, detail_note=?,
                        reply_price_conflict=?, reply_availability_conflict=?, reply_detail_note=?, last_reply_checked_id=?,
                        first_reply_at=?, internet_message_id=COALESCE(?, internet_message_id), mailboxes=?,
-                       rules_checked_at=?, updated_at=? WHERE id=?""",
-                    common + (now_iso, existing["id"]),
+                       rules_checked_at=?, header_verdict=COALESCE(?, header_verdict), updated_at=?
+                       WHERE id=?""",
+                    common + (header_verdict, now_iso, existing["id"]),
                 )
                 if raise_it and existing["status"] != "open":
                     # Closed by the app, and true again: a sender taken off
@@ -112666,10 +112751,10 @@ def run_email_inbox_scan_job(conn):
                        conflict_category, extracted_price, computed_price, extracted_dates, detail_note,
                        reply_price_conflict, reply_availability_conflict, reply_detail_note, last_reply_checked_id,
                        first_reply_at, internet_message_id, mailboxes, rules_checked_at,
-                       mailbox, assigned_to_user_id, status, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       mailbox, assigned_to_user_id, header_verdict, status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                'open', ?, ?)""",
-                    (message_id,) + common + (mailbox, default_user_id, now_iso, now_iso),
+                    (message_id,) + common + (mailbox, default_user_id, header_verdict, now_iso, now_iso),
                 )
                 verdict["flag_id"] = cur.lastrowid
                 what = ("reply" if (reply_price_conflict_val or reply_availability_conflict_val)
@@ -112715,6 +112800,10 @@ def run_email_inbox_scan_job(conn):
     if no_headers:
         tail += ("; read without the headers that mark a mailing, so judged by sender only: "
                  + "; ".join(no_headers))
+    if headers_asked:
+        tail += f"; headers read one message at a time for {headers_asked}"
+    if headers_left:
+        tail += f" ({headers_left} more wait for the next scan)"
     # Counted from the mailboxes actually read. It counted every configured
     # one, so "scanned 0 messages across 1 mailbox" on 12 October was a
     # mailbox it had skipped (Booking.com's has its own job) and never opened.
@@ -112729,6 +112818,9 @@ def run_email_inbox_scan_job(conn):
 # scan, for the headers that say a message is a mailing. A few at a time, so
 # the backlog goes in a handful of scans and no scan is slow.
 INBOX_RECHECK_PER_SCAN = 100
+# And per inbox, for the messages in the scan's own window whose listing came
+# without their headers. Each is asked once; any left wait for the next scan.
+INBOX_HEADERS_PER_INBOX = 80
 
 
 def recheck_older_flags(conn, token, never, house, closed, now_iso):
@@ -112738,7 +112830,7 @@ def recheck_older_flags(conn, token, never, house, closed, now_iso):
     nothing written and unsaved, and the answers are written after."""
     out = {"closed": 0, "unread": 0}
     rows = conn.execute(
-        """SELECT * FROM email_flags WHERE status = 'open' AND rules_checked_at IS NULL
+        """SELECT * FROM email_flags WHERE status = 'open' AND header_verdict IS NULL
             ORDER BY received_at LIMIT ?""", (INBOX_RECHECK_PER_SCAN,)).fetchall()
     if not rows:
         return out
@@ -112767,10 +112859,10 @@ def recheck_older_flags(conn, token, never, house, closed, now_iso):
             close_flag_by_app(conn, row["id"], reason, now_iso)
             closed[reason] = closed.get(reason, 0) + 1
             out["closed"] += 1
-        else:
-            conn.execute("UPDATE email_flags SET rules_checked_at = ?, "
-                         "internet_message_id = COALESCE(internet_message_id, ?) WHERE id = ?",
-                         (now_iso, (got.get("internetMessageId") or "").strip() or None, row["id"]))
+        conn.execute("UPDATE email_flags SET rules_checked_at = ?, header_verdict = ?, "
+                     "internet_message_id = COALESCE(internet_message_id, ?) WHERE id = ?",
+                     (now_iso, reason if reason in ("mailing", "machine") else "",
+                      (got.get("internetMessageId") or "").strip() or None, row["id"]))
     conn.commit()
     return out
 
@@ -118343,7 +118435,7 @@ def save_inbox_never_flag():
         if not entry or entry.startswith("#"):
             continue
         if entry.endswith("@"):
-            good = bool(re.fullmatch(r"[a-z0-9._%+-]+@", entry))
+            good = bool(re.fullmatch(r"[a-z0-9._%+-]+\*?@", entry))
         elif "@" in entry.lstrip("@"):
             good = bool(EMAIL_RE.match(entry))
         else:

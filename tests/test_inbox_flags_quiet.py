@@ -338,6 +338,39 @@ def run():
     s.check("and the page says what it closed", "when these rules came in" in page and "Closed 1 flag" in page)
     house.__exit__(None, None, None)
 
+    s.section("When the listing comes without headers, each message is asked once")
+    conn.execute("DELETE FROM email_flags WHERE subject LIKE ?", (f"%{TAG}%",))
+    conn.commit()
+    res, exp, sent = _fixture()
+    with FakeGraph(mailboxes=[RES, EXP]) as fake:
+        fake.inbox = {RES: res, EXP: exp}
+        fake.sent = {RES: sent}
+        fake.list_headers = False
+        report = _scan(conn, fake)
+        asked = [c for c in fake.calls if c[0] == "GET" and "/messages/" in c[1]]
+        senders = sorted(f["from_address"] for f in _open(conn))
+        s.check("still exactly the three real guests",
+                senders == ["zzif.guesta@guest.example", "zzif.guestb@guest.example",
+                            "zzif.guestc@guest.example"], detail=f"{senders}; {report}")
+        pinged = conn.execute("SELECT COUNT(*) FROM notifications WHERE title LIKE ? AND title LIKE ?",
+                              (f"%{TAG}%", "%capsules d'hiver%")).fetchone()[0]
+        s.check("a newsletter is never raised, so nobody is notified of it first", pinged == 0,
+                detail=str(pinged))
+        s.check("the scan says it read headers one at a time",
+                "headers read one message at a time" in report, detail=report)
+        s.check("and asked only the messages that would otherwise wait: not the never-flag "
+                "senders, the house, the answered or the new",
+                0 < len(asked) <= 14, detail=str([c[1].rsplit("/", 1)[-1] for c in asked]))
+        fake.calls.clear()
+        report = _scan(conn, fake)
+        asked = [c for c in fake.calls if c[0] == "GET" and "/messages/" in c[1]]
+        s.check("the next scan asks none of them again", not asked and len(_open(conn)) == 3,
+                detail=f"{len(asked)} asked; {report}")
+    s.check("a name with a * before the @ takes any name starting so (no-reply-support@)",
+            m.sender_on_list("no-reply-support@notifications.pennylane.com",
+                             m.inbox_never_flag_entries(conn)) == "no-reply*@")
+    s.check("and only those", m.sender_on_list("noreen@guest.example", ["no-reply*@"]) is None)
+
     s.section("If Microsoft will not send the headers, the inboxes are still read")
     conn.execute("DELETE FROM email_flags WHERE subject LIKE ?", (f"%{TAG}%",))
     conn.commit()
