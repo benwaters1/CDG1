@@ -5,7 +5,7 @@
 {% from '_room_pictures.html' import room_carrousel with context %}
 {% from '_pictures.html' import mosaique, carrousel, bande, plein, see_all, pictures_script %}
 {% from '_chipicons.html' import ci %}
-{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO, ROOM_STANDIN %}
+{% from '_room_photos.html' import ROOM_PHOTOS, ROOM_EXTRA, BATH_PHOTO, BATH_PHOTOS, ROOM_STANDIN %}
 {% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {% from '_facilities.html' import facilities with context %}
 {% from '_illus.html' import illus %}
@@ -207,7 +207,12 @@
 {# Written descriptions per room, used when the database field is thin.
    Anything entered in the admin overrides these. #}
       {%- set _first %}{% set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% elif _rp %}{{ _rp[0][0] }}{% elif RM_FOR.get(room['name']) %}{{ RM_FOR.get(room['name']).split('?')[0] }}?format=1000w{% else %}{{ ROOM_STANDIN[0] }}{% endif %}{% endset %}
-      <div class="g-card__media">{{ room_carrousel(room_name(room['name'])|trim, _first|trim, room_name(room['name'])|trim, skip='799432953.jpg') }}</div>{#- 9 Nov: skip the photograph the header shows (the Family Suite's two beds since 18 Oct; this still named the blue bedroom, so the same picture was on the page twice) -#}
+      {#- 11 Nov (owner): "whys there none of the views" - each card ends with the room's own view. -#}
+      {%- set _nm = room_name(room['name'])|trim -%}{%- set _ri = loop.index0 -%}{%- set _tail = [] -%}
+      {%- for _s, _a in ROOM_PHOTOS.get(_nm, []) + ROOM_EXTRA.get(_nm, []) %}{% if _a == 'The view from your window' %}{% set _ = _tail.append((_s, _a)) %}{% endif %}{% endfor -%}
+      {#- The bathrooms have their own section below the rooms, with every photograph of them; a photograph appears once
+          on a page (test_page_pictures), so the cards end with the room's view. -#}
+      <div class="g-card__media">{{ room_carrousel(room_name(room['name'])|trim, _first|trim, room_name(room['name'])|trim, skip='799432953.jpg', tail=_tail) }}</div>{#- 9 Nov: skip the photograph the header shows (the Family Suite's two beds since 18 Oct; this still named the blue bedroom, so the same picture was on the page twice) -#}
       <div class="g-card__b">
         {{ emblem(room['name']) }}
         <h3 class="g-card__name">{{ room_name(room['name']) }}</h3>
@@ -355,6 +360,35 @@
     </div>
 {% endif %}
   {% from '_stay_or_workshop.html' import night_notice %}{{ night_notice(dm=_dm) }}
+</div></section>
+
+{#- 11 Nov 2026 (owner): "why isnt there a section on the bathrooms ... the bathrooms are a real feature, they are incredible."
+    Every fact here is the owner's, from that message: new in 2019; no bathroom in a bedroom because the château is a
+    historic monument; the bathrooms together on the ground floor; the larger bathroom with a bath for the King, Marquis and
+    Family Suites; and the list. Each room's own bathroom is private, as its card says. -#}
+<section class="g-sec g-baths-sec" aria-labelledby="baths-h"><div class="g-wrap">
+  <p class="g-eyebrow">Les salles de bains</p>
+  <h2 id="baths-h" class="g-place">The Bathrooms</h2>
+  <div class="g-baths">
+    <div class="g-baths__media">
+      {%- set _bs = [] -%}{%- for _s, _a in BATH_PHOTOS %}{% set _ = _bs.append([_s, _a, '']) %}{% endfor -%}
+      {{ carrousel(_bs, 'The bathrooms', cls='g-car--room') }}
+    </div>
+    <div class="g-baths__b">
+      <p class="g-baths__lede">New in 2019, and among the finest rooms in the château.</p>
+      <p class="g-p">Because the château is a historic monument, bathrooms cannot be built into its bedrooms. Instead each room has its own private bathroom, and the bathrooms are together on the ground floor. The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath.</p>
+      <ul class="g-tags g-baths__list">
+        <li>Bespoke Antoinette Poisson wallpaper, made by hand in Paris</li>
+        <li>Eighteenth-century terracotta tiles</li>
+        <li>Basins painted with custom artwork and the château’s logo</li>
+        <li>Luxury fittings</li>
+        <li>Mountain views</li>
+        <li>Heaters</li>
+        <li>Luxury linen</li>
+        <li>Luxury shampoo, conditioner and bath gel</li>
+      </ul>
+    </div>
+  </div>
 </div></section>
 
 {{ room_pick(rooms) }}

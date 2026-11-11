@@ -12141,3 +12141,70 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-plate .g-plate__l{ grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s5) var(--s6); align-items: start; }
   .g .g-plate .g-plate__l > div{ grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   11 NOVEMBER 2026 -- /book, THE OWNER: "VERY POORLY DESIGNED", "BAD DESIGN"
+   Three edges on one page: the headings at the column's edge, the room cards
+   centred at 1024px inside it, and the notice a 704px white box on the left.
+   Now the cards and the notice share the headings' column, and the facts are
+   a list rather than a paragraph strung on dots.
+   ========================================================================== */
+
+/* The facts: one to a line, a small gilt diamond before each, two columns
+   where there is room. Strung together with dots they wrapped mid-phrase
+   and the dot lost its space ("·Two double beds"). */
+.g .g-tags, .g .g-tags--icons, .g .g-tags--sm, .g .g-tags--lg{
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 6px var(--s5); margin: var(--s3) 0 var(--s5); padding: 0; list-style: none;
+}
+.g .g-tags li, .g .g-tags--icons li, .g .g-tags--sm li, .g .g-tags--lg li, .g .g-tags--short li{
+  display: flex; align-items: baseline; gap: 10px; line-height: 1.45;
+}
+.g .g-tags li::before, .g .g-tags li + li::before{
+  content: ""; flex: none; width: 5px; height: 5px; background: var(--gilt-leaf, #B08D57);
+  transform: translateY(-3px) rotate(45deg);
+}
+
+@media (min-width: 56rem){
+  /* The room cards fill the column the headings stand in. */
+  .g main .g-cards--split{ max-width: none; margin-left: 0; margin-right: 0; }
+  /* One card to a row, so the rule that centres an odd last card at half width does not apply. */
+  .g main .g-cards--split > .g-card--room,
+  .g main .g-cards.g-cards--split:has(> .g-card:last-child:nth-child(2n+1)) > .g-card.g-card--room:last-child{
+    max-width: none; justify-self: stretch; margin-left: 0; margin-right: 0; }
+}
+
+/* The notice before a night is booked: the column's full width, on the
+   cards' own cream with a gilt rule above, the words on the left and the
+   way to the retreats on the right -- a band, not a box beside nothing. */
+.g main .g-night{
+  max-width: none; background: #FBF7EF; border: 0;
+  border-top: 2px solid var(--gilt-leaf, #B08D57); border-bottom: 1px solid rgba(115,86,45,.18);
+  padding: var(--s5) var(--s6); margin: var(--s6) 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--s6); align-items: center;
+}
+.g main .g-night > *{ grid-column: 1; }
+.g main .g-night__cta{ grid-column: 2; grid-row: 1 / span 4; align-self: center; margin: 0; }
+.g main .g-night__p{ max-width: 46rem; margin-bottom: 0; }
+@media (max-width: 40rem){
+  .g main .g-night{ display: block; padding: var(--s5); }
+  .g main .g-night__cta{ margin-top: var(--s4); }
+}
+
+/* 11 Nov 2026 (owner): the bathrooms, a section of their own on /book ("they are incredible"). The photographs and
+   the words side by side like a room card, on the same column as everything else. */
+.g .g-baths{ display: grid; gap: var(--s5); margin-top: var(--s5); background: #FBF7EF;
+  border: 1px solid rgba(115,86,45,.18); border-top: 2px solid var(--gilt-leaf, #B08D57); }
+.g .g-baths__media{ min-width: 0; position: relative; }
+.g .g-baths__media img{ width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.g .g-baths__b{ padding: var(--s5); }
+.g .g-baths__lede{ font-family: var(--display, var(--serif)); font-size: clamp(1.3rem, 1.2vw + 1rem, 1.6rem);
+  line-height: 1.3; color: var(--blue-deep, #14305f); margin: 0 0 var(--s4); }
+.g .g-baths__list{ margin-bottom: 0; }
+@media (min-width: 56rem){
+  .g .g-baths{ grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0; align-items: stretch; }
+  .g .g-baths__media .g-car, .g .g-baths__media .g-car__track, .g .g-baths__media .g-car__s,
+  .g .g-baths__media .g-car__f, .g .g-baths__media .g-car__f picture{ height: 100%; margin: 0; }
+  .g .g-baths__media img{ height: 100%; aspect-ratio: auto; }
+  .g .g-baths__b{ padding: var(--s6); align-self: center; }
+}

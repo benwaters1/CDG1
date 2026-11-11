@@ -67,7 +67,8 @@ SMALLEST = 12
 KNOWN_LONG = {
     "/restoration": 15100,
     "/events/weddings": 12700,
-    "/book": 12500,
+    # 11 Nov: +600 for the bathrooms' own section, which the owner asked for ("they are a real feature").
+    "/book": 13100,
     "/workshops": 11600,
     "/workshops/<id>": 11900,
     "/history": 9900,

@@ -16,6 +16,8 @@
     was held. Each room now leads with its next photograph, checked by eye to be that room. -#}
 {#- 6 Oct (owner): the King Room is the four-poster bed that is not gold - the château's own photographs (none on
     Booking.com). -#}
+{#- 11 Nov (owner): "make this the primary photo", twice: the Marquis Suite leads with the gold four-poster by the
+    fireplace (landscape), and the Family Suite with the two chairs at the open windows, the mountains beyond. -#}
 {%- set ROOM_PHOTOS = {
   'The King Suite': [
     (url_for('static', filename='img/retreats/king-suite-four-poster.jpg'), 'The King Suite, the four-poster'),
@@ -31,16 +33,17 @@
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/798764951.jpg?k=dd03eaa0759e0ec0da87d5272a0091623d54e13e073ace8580be58a478a5c56c&o=', 'The King Room, the seating'),
   ],
   'The Marquis Suite': [
+    ('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1500w', 'The Marquis Suite, the gold four-poster by the fireplace'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/903132525.jpg?k=b560290a40931fdc0c28b32329c5485e9a48ecbe4450795bb3fa2ec0ecdbd9a1&o=', 'The Marquis Suite, the gold bed and the pink chairs'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/903132506.jpg?k=811b8839a6591fedad373a4fdadbe663f017a838829239048e179d2c57106ff8&o=', 'The mirror above the fireplace in the Marquis Suite'),
   ],
   'The Family Suite': [
+    ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799483474.jpg?k=6048ecc7cc013b2674bb20fa1d9d081920cd74c9a993ca30522fd4be5416eb00&o=', 'Chairs and a table by the windows, Family Suite'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432953.jpg?k=bfe46237a062c76163feac464aa8a8aa65e4f2d55d0bebc5842f0b5f785c5fa6&o=', 'The second bedroom, Family Suite'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432918.jpg?k=92504ccbbb71665f6edb7454ec16d877018713a9f9e603dcb62aa3bb166f0a91&o=', 'The Family Suite'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432864.jpg?k=ebda5e5045693aab2c11f0a9b643d8bc01db6f0247640660e15f2125e1b1f41d&o=', 'The large bed in the Family Suite'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/921671186.jpg?k=a5670a5a51ac1bf53f853d25ff405ae439028dc711265e0afa7b4bf116e3c9f6&o=', 'A bedroom of the Family Suite'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/790004185.jpg?k=c368a1bd82adf70e3d26e3629c4646c5781ef052ced007424000f7c7cd375c9f&o=', 'A bed against the floral wallpaper, Family Suite'),
-    ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799483474.jpg?k=6048ecc7cc013b2674bb20fa1d9d081920cd74c9a993ca30522fd4be5416eb00&o=', 'Chairs and a table by the windows, Family Suite'),
   ],
 } -%}
 {#- 6 Oct: the château's own photographs of the same rooms, matched by eye to the Booking.com ones (the valet stand and
@@ -57,7 +60,6 @@
   'The Twin Room': [('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1691467283089-Z9QX59G01KY8N8VFBTZG/Chambre+Jeanne+d%27Arc.PNG?format=1500w', 'The Twin Room, the tapestry above the beds'), ('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f48b527d-f987-44e5-b612-bd5cedb2ea5b/Screenshot+2026-07-31+at+2.15.48+pm.png?format=1500w', 'The Twin Room by candlelight'), (url_for('static', filename='img/views/mountain-spring-sky-800.jpg'), 'The view from your window')],
   'The King Room': [(url_for('static', filename='img/views/mist-on-the-mountain-800.jpg'), 'The view from your window')],
   'The King Suite': [(url_for('static', filename='img/rk/four-poster-bedroom.jpg'), 'The King Suite, its wooden four-poster'), (url_for('static', filename='img/more/king-room-canopy.jpg'), 'The King Suite, its canopied four-poster'), (url_for('static', filename='img/views/mountains-open-window-800.jpg'), 'The view from your window')],
-  'The Marquis Suite': [('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1500w', 'The Marquis Suite, the four-poster bed')],
   'The Family Suite': [(url_for('static', filename='img/more/blue-bedroom.jpg'), 'The Family Suite, the blue bedroom'), ('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c9165a78-1300-47a7-b1c0-b46f4172bf44/Screenshot+2026-07-30+at+8.03.10+pm.png?format=1500w', 'The Family Suite, the blue bedroom'), ('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9d1b8c99-13c5-4bc9-9a69-9a32a4c1eb8c/Screenshot+2026-07-20+at+2.31.12+pm.png?format=1500w', 'The Family Suite, the floral bedroom'), ('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c90f49a0-5f8f-489f-8d51-2f3ea727c57a/Screenshot+2026-07-30+at+7.54.08+pm.png?format=1500w', 'The floral bedroom of the Family Suite, from the window'), (url_for('static', filename='img/views/clouds-over-the-peaks-800.jpg'), 'The view from your window')]
 } -%}
 {#- 19 Oct (owner): removed the King Room's own 'Chambre Olympe de Gouges 2' photograph - a soft, low-resolution copy of

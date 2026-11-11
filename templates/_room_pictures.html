@@ -8,19 +8,25 @@
 {% from '_room_photos.html' import ROOM_PHOTOS, ROOM_EXTRA %}
 {% from '_pictures.html' import carrousel %}
 
-{% macro room_carrousel(name, first_src, alt, skip='', most=5, cls='g-card__img') -%}
+{#- 11 Nov (owner): "whys there none of the views", "wheres the bathroom photos". `tail` comes after the room's own
+    photographs whatever their number: its view and two bathrooms, so a room with many photographs no longer pushes
+    its view off the end. A photograph in the tail is not shown twice among the room's own. -#}
+{% macro room_carrousel(name, first_src, alt, skip='', most=5, cls='g-card__img', tail=[]) -%}
 {%- set _ph = [[first_src, alt, '']] -%}
 {%- set _key = first_src.split('?')[0].split('/')[-1] -%}
+{%- set _tk = [] -%}{%- for t in tail -%}{%- set _ = _tk.append(t[0].split('?')[0].split('/')[-1]) -%}{%- endfor -%}
 {%- for src, a in (ROOM_PHOTOS.get(name, []) + ROOM_EXTRA.get(name, [])) -%}
   {%- set _s = src -%}
   {%- if 'squarespace-cdn.com' in _s and 'format=' not in _s -%}{%- set _s = _s.split('?')[0] ~ '?format=1000w' -%}{%- endif -%}
-  {%- if _s.split('?')[0].split('/')[-1] != _key and not (skip and skip in _s) -%}{%- set _ = _ph.append([_s, a, '']) -%}{%- endif -%}
+  {%- if _s.split('?')[0].split('/')[-1] != _key and _s.split('?')[0].split('/')[-1] not in _tk and not (skip and skip in _s) -%}{%- set _ = _ph.append([_s, a, '']) -%}{%- endif -%}
 {%- endfor -%}
 {#- The one the page already shows goes even when it is the room's lead, as long as another is left to lead instead. -#}
 {%- if skip and skip in first_src and _ph|length > 1 -%}{%- set _ph = _ph[1:] -%}{%- endif -%}
+{%- set _ph = _ph[:most] -%}
+{%- for t in tail -%}{%- if t[0].split('?')[0].split('/')[-1] != _key -%}{%- set _ = _ph.append([t[0], t[1], '']) -%}{%- endif -%}{%- endfor -%}
 {%- if _ph|length == 1 -%}
 {{ pic(first_src, alt, sizes='(min-width: 56rem) 40vw, 92vw', cls=cls) }}
 {%- else -%}
-{{ carrousel(_ph[:most], name, cls='g-car--room') }}
+{{ carrousel(_ph, name, cls='g-car--room') }}
 {%- endif -%}
 {%- endmacro %}
