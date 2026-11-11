@@ -31578,11 +31578,12 @@ def edit_campaign_template(template_id):
         segments[f"workshop:{w['id']}"] = f"Did {w['title']}"
     # And one per tag on the guest list, so a group put together there -- the
     # old system's waitlist -- can be written to as itself.
-    for r in conn.execute(
+    tags = [r["tag"] for r in conn.execute(
             """SELECT DISTINCT t.tag FROM guest_tags t
                  JOIN guests g ON g.id = t.guest_id
-                WHERE g.merged_into_id IS NULL ORDER BY t.tag""").fetchall():
-        segments[f"tag:{r['tag']}"] = f"Tagged “{r['tag']}”"
+                WHERE g.merged_into_id IS NULL ORDER BY t.tag""").fetchall()]
+    for tag in tags:
+        segments[f"tag:{tag}"] = f"Tagged “{tag}”"
 
     audience_counts = {
         key: len(campaign_audience(conn, [key])) for key in segments
@@ -31598,7 +31599,7 @@ def edit_campaign_template(template_id):
         (template_id,)).fetchall()
     conn.close()
     return render_template(
-        "admin_email_edit.html", template=template, areas=CAMPAIGN_AREAS,
+        "admin_email_edit.html", template=template, areas=CAMPAIGN_AREAS, tags=tags,
         segments=segments, audience_counts=audience_counts,
         merge_fields=CAMPAIGN_MERGE_FIELDS, preview_subject=preview_subject,
         preview_body=preview_body, sends=sends,
@@ -31657,7 +31658,8 @@ def send_campaign_template(template_id):
         flash("Choose at least one audience.", "error")
         return redirect(url_for("edit_campaign_template", template_id=template_id))
 
-    audience = campaign_audience(conn, segments, since_iso)
+    exclude = [t for t in request.form.getlist("exclude") if t and normalise_tag(t) == t]
+    audience = campaign_audience(conn, segments, since_iso, exclude_tags=exclude)
     typed = request.form.get("confirm_count", "").strip()
     if typed != str(len(audience)):
         conn.close()
@@ -65520,12 +65522,17 @@ def campaign_booking_context(conn, email):
                                   _external=True)}
 
 
-def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False):
+def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False,
+                      exclude_tags=()):
     """Who a campaign would go to: {email: name}, de-duplicated.
 
     Builds on the existing segment logic, then removes anyone who has opted
     out or asked us to stop using their details. A guest with a stay AND a
     dinner is emailed once, not twice.
+
+    `exclude_tags`: anybody whose profile carries one of these is taken out,
+    whichever list brought them in -- so the past guests' letter can leave out
+    the waitlist, who have a letter of their own.
     """
     recipients = dict(promo_blast_recipients(conn, segments, since_date_iso))
     if "profiles" in segments:
@@ -65539,6 +65546,12 @@ def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False
             recipients.setdefault(b["email"], b["name"])
 
     recipients = {(e or "").strip().lower(): n for e, n in recipients.items() if e and e.strip()}
+    for tag in exclude_tags or ():
+        for row in conn.execute(
+                """SELECT LOWER(TRIM(g.email)) AS email FROM guests g
+                     JOIN guest_tags t ON t.guest_id = g.id
+                    WHERE t.tag = ? AND g.email IS NOT NULL""", (tag,)).fetchall():
+            recipients.pop(row["email"], None)
     if not include_optouts:
         opted_out = {r["email"] for r in conn.execute("SELECT email FROM email_optouts").fetchall()}
         # The segments leave them out already; a profile is added here

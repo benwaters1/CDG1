@@ -89,6 +89,21 @@
     {% endfor %}
   </div>
 
+  {% if tags %}
+  {# Somebody on two lists gets two letters if each list is sent its own: the
+     waitlist are guest profiles too. Ticked here, a tag's people are taken
+     out of this send, whichever list brought them in. #}
+  <label class="field-label">Leave out anyone tagged</label>
+  <div style="display:flex; flex-wrap:wrap; gap:14px; margin-bottom:12px;">
+    {% for tag in tags %}
+    <label class="checkbox-row">
+      <input type="checkbox" name="exclude" value="{{ tag }}">
+      <span>“{{ tag }}”</span>
+    </label>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <div class="refund-fields">
     <div>
       <label class="field-label">Only those who visited within</label>
