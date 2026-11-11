@@ -26,10 +26,16 @@ def run():
     # of their own, at whatever capacity they are testing, after it.
     ran = (conn.execute("SELECT value FROM app_settings WHERE key = ?", (FLAG,)).fetchone()
            or {"value": ""})["value"]
+    # And only those still to come on the day it ran, which is what it moves.
+    # On a copy of the house it ran on the real day it was deployed, and the
+    # suite's clock is pinned earlier: an atelier that was already over then
+    # (Immersive Artisan Workshops, 23-27 October, left at ten) reads as
+    # still to come on the pinned day, though nothing was ever going to raise it.
+    ran_day = m.house_date_iso(ran) or today
     low = conn.execute(
         "SELECT COUNT(*) AS n FROM workshop_sessions WHERE capacity < ? "
         "AND COALESCE(end_date, start_date) >= ? AND created_at < ?",
-        (m.WORKSHOP_GUESTS, today, ran)).fetchone()["n"]
+        (m.WORKSHOP_GUESTS, max(today, ran_day), ran)).fetchone()["n"]
     s.check("no atelier still to come takes fewer than fifteen", low == 0, detail=f"{low} session(s)")
     s.check("no workshop starts a new session at fewer",
             not conn.execute("SELECT 1 FROM workshops WHERE COALESCE(default_capacity, 0) < ?",

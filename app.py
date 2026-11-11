@@ -632,6 +632,56 @@ REVIEW_INVITE_DAYS_AFTER = 2
 EMPLOYER_LEGAL_NAME = "Château de Gudanes"
 
 
+def log_line(*parts, sep=" ", end="\n", file=None, flush=False):
+    """print(), for a line that must never stop the code that wrote it.
+
+    Every line this app writes to its log goes through here, never through a
+    bare print(). The lines carry guest names, task subjects, email subjects
+    and Microsoft's or Stripe's own words, and the console they land on is not
+    always UTF-8: the owner's PC and the test harness run Windows on cp1252.
+    On 10 November 2026 a task subject carrying a tick mark made print() raise
+    UnicodeEncodeError inside the house calendar pass, and the whole pass
+    stopped there -- nothing else synced, and the only trace was the error the
+    log could not print. The automation loop and the calendar thread run in the
+    same process, so any print in a job or a request could do the same.
+
+    So: a character the console cannot show goes out escaped (\\u2714), and
+    anything else that goes wrong writing the line -- no console at all under
+    pythonw, a closed pipe, an object whose str() raises -- loses the line and
+    nothing more. Same arguments as print(); stdout is looked up at the call,
+    so a redirected stream is honoured. Guarded by test_log_line, which fails
+    on a bare print( anywhere in app.py.
+    """
+    try:
+        text = sep.join(str(p) for p in parts) + end
+    except Exception:
+        try:
+            text = sep.join(repr(p) for p in parts) + end
+        except Exception:
+            return
+    stream = file if file is not None else sys.stdout
+    if stream is None:
+        return
+    try:
+        stream.write(text)
+    except UnicodeEncodeError:
+        enc = getattr(stream, "encoding", None) or "ascii"
+        try:
+            stream.write(text.encode(enc, "backslashreplace").decode(enc))
+        except Exception:
+            try:
+                stream.write(text.encode("ascii", "backslashreplace").decode("ascii"))
+            except Exception:
+                return
+    except Exception:
+        return
+    if flush:
+        try:
+            stream.flush()
+        except Exception:
+            pass
+
+
 _PLACEHOLDER_MARKERS = (
     "paste", "your_", "your-", "yourkey", "changeme", "change_me", "replace",
     "todo", "xxx", "placeholder", "_here", "example.com", "sk_test_xxx",
@@ -693,11 +743,11 @@ def _load_dotenv():
         if skipped:
             # Named, not silent: "why is Stripe off when I filled in the .env"
             # is a miserable thing to debug from no output at all.
-            print(f"[config] ignoring placeholder value(s) in .env: {', '.join(skipped)}")
+            log_line(f"[config] ignoring placeholder value(s) in .env: {', '.join(skipped)}")
     except FileNotFoundError:
         pass
     except OSError as e:
-        print(f"[config] could not read .env: {e}")
+        log_line(f"[config] could not read .env: {e}")
 
 
 _load_dotenv()
@@ -2109,7 +2159,7 @@ def write_page_view(view):
         finally:
             conn.close()
     except Exception as e:                      # pragma: no cover - last resort
-        print(f"[page view not counted] {e}")
+        log_line(f"[page view not counted] {e}")
 
 
 @app.after_request
@@ -2988,7 +3038,7 @@ def apply_letter_words_2026_10_16(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[letters] five guest rooms, no new beds: {changed} stored letter(s) corrected")
+        log_line(f"[letters] five guest rooms, no new beds: {changed} stored letter(s) corrected")
     return changed
 
 
@@ -5957,6 +6007,10 @@ def init_db():
         ("email_flags_mailboxes", "ALTER TABLE email_flags ADD COLUMN mailboxes TEXT"),
         ("email_flags_closed_by_app", "ALTER TABLE email_flags ADD COLUMN closed_by_app TEXT"),
         ("email_flags_rules_checked_at", "ALTER TABLE email_flags ADD COLUMN rules_checked_at TEXT"),
+        # What the message's own headers said, once read: 'mailing', 'machine',
+        # or '' for neither. NULL is "not read yet". Kept so no message is
+        # asked for its headers twice (11 Nov 2026).
+        ("email_flags_header_verdict", "ALTER TABLE email_flags ADD COLUMN header_verdict TEXT"),
         # `guests` became a per-person profile rather than a per-stay register
         # (see the drop-column migration below for why).
         ("guests_email", "ALTER TABLE guests ADD COLUMN email TEXT"),
@@ -8200,7 +8254,7 @@ def init_db():
             "ON event_payments(reference) WHERE substr(reference, 1, 3) = 'cs_'")
         conn.commit()
     except (sqlite3.OperationalError, sqlite3.IntegrityError) as e:
-        print(f"[init] event_payments: checkout-once index not built ({e})")
+        log_line(f"[init] event_payments: checkout-once index not built ({e})")
 
     # Each charge taken on the card reader on the books once. The till's poll
     # recorded the same PaymentIntent again on every reload while the tab stayed
@@ -8215,7 +8269,7 @@ def init_db():
             "AND reference IS NOT NULL")
         conn.commit()
     except (sqlite3.OperationalError, sqlite3.IntegrityError) as e:
-        print(f"[init] pos_payments: reader-charge-once index not built ({e})")
+        log_line(f"[init] pos_payments: reader-charge-once index not built ({e})")
 
     hold_legacy_balance_stamps(conn)
     link_held_letters(conn)
@@ -8320,7 +8374,7 @@ def init_db():
         )
         conn.commit()
     except sqlite3.Error as e:
-        print(f"[init_db] could not create unique guest-email index: {e}")
+        log_line(f"[init_db] could not create unique guest-email index: {e}")
 
     # One paid Stripe Checkout session must never produce two bookings.
     #
@@ -8353,7 +8407,7 @@ def init_db():
         except sqlite3.Error as e:
             # Pre-existing duplicates would block this — surface it rather than
             # failing startup, since the app is still usable without it.
-            print(f"[init_db] could not create unique index {table}.{column}: {e}")
+            log_line(f"[init_db] could not create unique index {table}.{column}: {e}")
 
     # tasks.assigned_to_user_id used to be NOT NULL; SQLite can't relax a
     # column constraint in place, so databases from before priority/room_note
@@ -8772,7 +8826,7 @@ def init_db():
                 f"INSERT INTO extras ({', '.join(fields)}) "
                 f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
         conn.commit()
-        print(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
+        log_line(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
 
     # Extras added to the catalogue since, once each. See ADDED_EXTRAS.
     seed_added_extras(conn)
@@ -8786,7 +8840,7 @@ def init_db():
     seeded_standards = seed_room_standards(conn)
     if seeded_standards:
         conn.commit()
-        print(f"Seeded {seeded_standards} room standards — edit them under "
+        log_line(f"Seeded {seeded_standards} room standards — edit them under "
               "Estate, Room Checks.")
 
     # The order the rooms appear in on the front page, set once.
@@ -8973,7 +9027,7 @@ def init_db():
         link_stays_to_profiles(conn)
     except sqlite3.Error as exc:
         conn.rollback()
-        print(f"[guests] could not link every stay to a profile: {exc}")
+        log_line(f"[guests] could not link every stay to a profile: {exc}")
 
     # WHERE THE GATES ARE.
     #
@@ -9045,7 +9099,7 @@ def init_db():
                        capacity, notes, created_at) VALUES (?, ?, ?, 10, NULL, ?)""",
                     (new_id, start, end, datetime.now(timezone.utc).isoformat()))
         conn.commit()
-        print(f"Seeded {len(DEFAULT_WORKSHOPS)} ateliers with their published "
+        log_line(f"Seeded {len(DEFAULT_WORKSHOPS)} ateliers with their published "
               f"prices and dates.")
 
 
@@ -9104,7 +9158,7 @@ def init_db():
                      (datetime.now(timezone.utc).isoformat(),))
         conn.commit()
         if added:
-            print(f"Added {len(added)} atelier(s) missing from this database: "
+            log_line(f"Added {len(added)} atelier(s) missing from this database: "
                   f"{', '.join(added)}")
 
     # 27 Oct 2026 (owner): the Immersive Artisan Workshops come off the site
@@ -9119,14 +9173,14 @@ def init_db():
                      (datetime.now(timezone.utc).isoformat(),))
         conn.commit()
         if off:
-            print(f"{RETIRED_WORKSHOP_TITLE} taken off the site")
+            log_line(f"{RETIRED_WORKSHOP_TITLE} taken off the site")
 
     moved, repriced = apply_workshop_deposit_percent(conn)
     if moved or repriced:
-        print(f"Workshop deposit set to {WORKSHOP_DEPOSIT_PERCENT}%: {moved} atelier(s), "
+        log_line(f"Workshop deposit set to {WORKSHOP_DEPOSIT_PERCENT}%: {moved} atelier(s), "
               f"{repriced} unpaid deposit(s) repriced")
     if switch_guest_texts_off_once(conn):
-        print("Guest texts switched off, and any copy of the old made-up "
+        log_line("Guest texts switched off, and any copy of the old made-up "
               "wording removed")
 
     # 2a. Rewritten copy. Applied only where the description is still one of
@@ -9281,13 +9335,13 @@ def init_db():
         )
         conn.commit()
 
-        print("=" * 70)
-        print("FIRST RUN — owner account created.")
-        print(f"  Email:    {owner_email}")
-        print(f"  Password: {generated_password}")
-        print("  (change this after your first login — there is no email")
-        print("   recovery configured yet, so store this somewhere safe)")
-        print("=" * 70)
+        log_line("=" * 70)
+        log_line("FIRST RUN — owner account created.")
+        log_line(f"  Email:    {owner_email}")
+        log_line(f"  Password: {generated_password}")
+        log_line("  (change this after your first login — there is no email")
+        log_line("   recovery configured yet, so store this somewhere safe)")
+        log_line("=" * 70)
 
     # A PASSWORD SET FROM THE DEPLOYMENT, when there is no other way in.
     #
@@ -9320,17 +9374,17 @@ def init_db():
             # recovery path was being defeated by the lockout it had caused.
             conn.execute("DELETE FROM login_throttle")
             conn.commit()
-            print("=" * 70)
-            print("OWNER_TEMP_PASSWORD is set, so the owner password has been")
-            print(f"  changed to it. SIGN IN AS: {who['email']}")
-            print("  (that is the account it was set on — not necessarily")
-            print("   the address you normally use)")
-            print("  NOW REMOVE OWNER_TEMP_PASSWORD from the deployment —")
-            print("  while it is set, it is reapplied on every restart and it")
-            print("  is sitting in plain text in your variables.")
-            print("=" * 70)
+            log_line("=" * 70)
+            log_line("OWNER_TEMP_PASSWORD is set, so the owner password has been")
+            log_line(f"  changed to it. SIGN IN AS: {who['email']}")
+            log_line("  (that is the account it was set on — not necessarily")
+            log_line("   the address you normally use)")
+            log_line("  NOW REMOVE OWNER_TEMP_PASSWORD from the deployment —")
+            log_line("  while it is set, it is reapplied on every restart and it")
+            log_line("  is sitting in plain text in your variables.")
+            log_line("=" * 70)
         else:
-            print("OWNER_TEMP_PASSWORD is set but there is no owner account.")
+            log_line("OWNER_TEMP_PASSWORD is set but there is no owner account.")
 
     # The built-in revenue categories, carrying across whatever was already
     # mapped. Called here rather than inline above because it reads app_settings
@@ -9950,6 +10004,8 @@ NAV_AREAS = {
         "admin_outlook_addin_people", "admin_outlook_addin_revoke",
         "admin_outlook_addin_revoke_check",
         "admin_outlook_addin_mailboxes", "admin_outlook_addin_settings",
+        # The house's email signatures: they go out on every email the add-in signs.
+        "admin_outlook_addin_signatures",
         # Saying Microsoft 365 has fetched the new add-in: it closes the
         # owner's warning and task, so it is the owner's to say.
         "admin_outlook_addin_updated",
@@ -10075,6 +10131,9 @@ OWNER_ONLY_AREAS = {
     "add_channel_stay": "management",
     "remove_channel_stay": "management",
     "sync_channel_stays_now": "management",
+    # Booking.com's monthly statement, uploaded on the same page: commission
+    # and payouts, the owner's money like the page it sits on.
+    "upload_booking_com_statement": "management",
     # One reservation, several rooms: grouping the rooms, taking one off.
     "group_channel_stay_rooms": "management",
     "remove_channel_stay_room": "management",
@@ -12475,7 +12534,7 @@ def note_bot_refusal(conn, action, reason):
                   datetime.now(timezone.utc).isoformat()))
     if not already_open:
         conn.commit()
-    print(f"[bot guard] {action} refused: {reason}")
+    log_line(f"[bot guard] {action} refused: {reason}")
 
 
 BOT_REFUSAL_MESSAGE = ("That did not go through. Please check your details and send the form "
@@ -18610,7 +18669,7 @@ def sync_ical_source(conn, source):
                 try:
                     notify_room_waitlist_opening(conn, start_iso, end_iso)
                 except Exception as e:      # the sync has done its job either way
-                    print(f"[ical] waiting list not told about {start_iso}: {e}")
+                    log_line(f"[ical] waiting list not told about {start_iso}: {e}")
     return True
 
 
@@ -20541,12 +20600,12 @@ def incident_times_to_utc(conn):
         changed += 1
     if changed:
         conn.commit()
-        print(f"[init] incidents: {changed} time(s) typed on the house's clock "
+        log_line(f"[init] incidents: {changed} time(s) typed on the house's clock "
               "now stored in UTC")
     if unreadable:
         # Named rather than guessed at: a time nobody can read is shown as "?"
         # and drops off the insurer's clock, and that wants a person.
-        print(f"[init] incidents: the time on {', '.join(unreadable)} cannot be "
+        log_line(f"[init] incidents: the time on {', '.join(unreadable)} cannot be "
               "read, so it was left as it was")
     return changed
 
@@ -31359,6 +31418,9 @@ CAMPAIGN_SEGMENTS = {
     "restaurant": "Past dinner guests",
     "workshop": "Past workshop guests",
     "profiles": "All guest profiles",
+    # Everybody with a stay or an atelier still to come: the audience for a
+    # letter quoting their own booking ({{reference}}, {{guest_page}}).
+    "booked": "Booked to come",
     # A different KIND of list, and the reason it is worth naming as such is
     # written out beside GUEST_BLAST_SEGMENTS. It belongs here because the
     # public workshops page promises dates reach it, and until now the
@@ -31493,6 +31555,15 @@ def edit_campaign_template(template_id):
     ).fetchone()
     ctx = campaign_context_for(sample["n"] if sample else "Isabelle Fontaine",
                                sample["e"] if sample else "guest@example.com")
+    if campaign_uses_booking(template["subject"], template["body"]):
+        # A letter quoting a booking is previewed on somebody who has one.
+        coming = booked_to_come(conn)
+        if coming:
+            ctx = campaign_context_for(coming[0]["name"], coming[0]["email"])
+            ctx.update(campaign_booking_context(conn, coming[0]["email"]))
+        else:
+            ctx.update({"reference": "WRK-EXAMPLE",
+                        "guest_page": url_for("dashboard", _external=True)})
     preview_subject, preview_body = render_campaign(template["subject"], template["body"], ctx)
 
     # The fixed segments, plus one per workshop that has anybody who has
@@ -31505,6 +31576,13 @@ def edit_campaign_template(template_id):
     segments = dict(CAMPAIGN_SEGMENTS)
     for w in workshops_with_alumni(conn):
         segments[f"workshop:{w['id']}"] = f"Did {w['title']}"
+    # And one per tag on the guest list, so a group put together there -- the
+    # old system's waitlist -- can be written to as itself.
+    for r in conn.execute(
+            """SELECT DISTINCT t.tag FROM guest_tags t
+                 JOIN guests g ON g.id = t.guest_id
+                WHERE g.merged_into_id IS NULL ORDER BY t.tag""").fetchall():
+        segments[f"tag:{r['tag']}"] = f"Tagged “{r['tag']}”"
 
     audience_counts = {
         key: len(campaign_audience(conn, [key])) for key in segments
@@ -34338,7 +34416,7 @@ def send_email_via_resend(to_address, subject, body, ics_content=None,
         return True, None
     except Exception as e:
         why = resend_refusal(e)
-        print(f"[resend email failed] To: {to_address} | Subject: {subject} | {why}")
+        log_line(f"[resend email failed] To: {to_address} | Subject: {subject} | {why}")
         return False, why
 
 
@@ -34679,7 +34757,7 @@ def file_held_letters(letters):
     except Exception as e:                     # pragma: no cover - last resort
         for letter in letters:
             letter.id = None
-            print(f"[outbox write failed] To: {letter.values[0]} | "
+            log_line(f"[outbox write failed] To: {letter.values[0]} | "
                   f"Subject: {letter.values[1]} | Error: {e}")
 
 
@@ -35026,7 +35104,7 @@ def write_guest_messages(rows):
         finally:
             conn.close()
     except Exception as e:                     # pragma: no cover - last resort
-        print(f"[correspondence not filed] {e}")
+        log_line(f"[correspondence not filed] {e}")
     return written
 
 
@@ -35225,7 +35303,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # A test deployment sends everything to its own inbox, which is not this.
     stopped = None if MAIL_REDIRECT_TO else address_suppressed(to_address)
     if stopped:
-        print(f"[email not sent — {stopped}] To: {to_address} | Subject: {subject}")
+        log_line(f"[email not sent — {stopped}] To: {to_address} | Subject: {subject}")
         if report is not None:
             report["why"] = f"Not sent: {stopped}."
             report["stopped"] = True
@@ -35260,7 +35338,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             held_why = guest_letter_held_why(template_key)
     if held_why:
         why = held_why
-        print(f"[email held — {why}] To: {to_address} | Subject: {subject}")
+        log_line(f"[email held — {why}] To: {to_address} | Subject: {subject}")
         if report is not None:
             report["why"] = ("Writing to guests is switched off until the house "
                              "goes live." if not guest_mail_live() else
@@ -35309,7 +35387,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                                failure=why or "the provider refused it", **filed)
         return False
     if not email_enabled():
-        print(f"[email held — no email provider configured] To: {to_address} | Subject: {subject}")
+        log_line(f"[email held — no email provider configured] To: {to_address} | Subject: {subject}")
         if report is not None:
             report["why"] = "No email provider is configured."
         if keep:
@@ -35363,7 +35441,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                                **filed)
         return True
     except Exception as e:
-        print(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
+        log_line(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
         if report is not None:
             report["why"] = "The mail server refused it: %s" % (e,)
         if keep:
@@ -35510,9 +35588,9 @@ def send_notification(conn, user_id, kind, title, body=None, link=None, related_
                 # permission revoked) — stop trying it on future notifications.
                 dead_ids.append(sub["id"])
             else:
-                print(f"[push failed] user={user_id} status={status} error={e}")
+                log_line(f"[push failed] user={user_id} status={status} error={e}")
         except Exception as e:
-            print(f"[push failed] user={user_id} error={e}")
+            log_line(f"[push failed] user={user_id} error={e}")
     if dead_ids:
         conn.executemany("DELETE FROM push_subscriptions WHERE id = ?", [(i,) for i in dead_ids])
         conn.commit()
@@ -35993,12 +36071,12 @@ def create_booking_from_stripe_session(conn, session):
     # page they land on after paying. Returning None gives them the honest
     # "we could not create it automatically, contact us" instead.
     if not (meta.get("room_id") or "").strip().isdigit():
-        print(f"[stripe] session {session['id']} carries no room_id "
+        log_line(f"[stripe] session {session['id']} carries no room_id "
               f"(kind={meta.get('kind')!r}) — not a new booking, not creating one")
         return None
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (int(meta["room_id"]),)).fetchone()
     if not room:
-        print(f"[stripe] room {meta.get('room_id')} missing for paid session {session['id']} — not creating booking")
+        log_line(f"[stripe] room {meta.get('room_id')} missing for paid session {session['id']} — not creating booking")
         return None
     extra_ids = {int(i) for i in meta.get("extra_ids", "").split(",") if i}
     chosen_extras = []
@@ -36317,7 +36395,7 @@ def card_from_stripe(ref):
         return {"brand": sval(card, "brand"), "last4": last4 if last4.isdigit() else None,
                 "wallet": sval(sval(card, "wallet") or {}, "type")}
     except Exception as e:
-        print(f"[card details] could not read {ref}: {e}")
+        log_line(f"[card details] could not read {ref}: {e}")
         return None
 
 
@@ -37441,6 +37519,11 @@ def page_draws_a_calendar(endpoint):
     return not (endpoint in NAV_AREA_OF or endpoint in OWNER_ONLY_ENDPOINTS)
 
 
+# The Booking.com check-in message: how many days before arrival the owner is
+# advised to schedule it in the extranet ("a week before they arrive").
+BOOKING_COM_CHECKIN_TEMPLATE_DAYS = 7
+
+
 def house_windows():
     """Every window a page states in words, so it can state the real one.
 
@@ -37468,6 +37551,10 @@ def house_windows():
         "workshop_deposit_percent": WORKSHOP_DEPOSIT_PERCENT,
         "refunds_recent_days": REFUNDS_RECENT_DAYS,
         "email_usage_days": EMAIL_USAGE_DAYS,
+        # What the Booking.com Stays page tells the owner to schedule in the
+        # extranet for the check-in message. Booking.com sends it, not the app;
+        # the number lives here so the advice is one figure, said once.
+        "booking_com_checkin_days": BOOKING_COM_CHECKIN_TEMPLATE_DAYS,
     }
 
 
@@ -40997,6 +41084,27 @@ def owner_home_warnings(conn, today):
 
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
     # the next pass that writes cleanly takes the line away.
+    # AN EVENT THAT ENDS BEFORE IT BEGINS. The + Add event form took one until
+    # 10 Nov 2026: a photoshoot "22 November to 26 October" was filed under
+    # History as already over, and Microsoft refused it for the house calendar
+    # 64,668 times. The forms refuse one now; this finds any already saved.
+    # It closes itself: correct the last day and the line goes.
+    backwards = conn.execute(
+        """SELECT id, reference_code, contact_name, event_type, preferred_date, end_date
+             FROM event_inquiries
+            WHERE end_date IS NOT NULL AND end_date != '' AND preferred_date IS NOT NULL
+              AND end_date < preferred_date AND status NOT IN ('declined', 'cancelled')
+            ORDER BY preferred_date""").fetchall()
+    if backwards:
+        e = backwards[0]
+        add("warn", f"{len(backwards)} event(s) end before they begin",
+            f"{e['contact_name'] or e['reference_code']}"
+            f" ({(e['event_type'] or 'event').replace('_', ' ')}, {e['reference_code']}) runs from "
+            f"{format_date_human(e['preferred_date'])} to {format_date_human(e['end_date'])}"
+            + (f", and {len(backwards) - 1} more" if len(backwards) > 1 else "")
+            + ". Give it the right last day.", len(backwards),
+            "admin_event", event_id=e["id"])
+
     problem = house_calendar_problem(conn)
     if problem:
         level, title, detail = problem
@@ -49109,7 +49217,7 @@ GUEST_IMPORT_ALIASES = {
     "phone": ("phone", "telephone", "mobile", "phone_number"),
     "person_id": ("person_id", "id", "personid"),
     "num_programs": ("num_programs", "programs", "programmes"),
-    "date_added": ("date_added", "created", "created_at", "date_created"),
+    "date_added": ("date_added", "date added", "created", "created_at", "date_created"),
     "balance": ("overall_balance", "balance", "outstanding"),
     "credit": ("personal_credit", "credit"),
 }
@@ -49181,6 +49289,11 @@ def parse_guest_import(text):
         return [], [("the file", "there is no email column, so nobody in it "
                                  "can be matched to a guest")]
 
+    # THE OLD SYSTEM'S WAITLIST. The same names and addresses, one row per
+    # retreat somebody asked to hear about. What they waited for is the reason
+    # they are worth writing to, so it comes across on their profile.
+    waitlist = all(c in normalised[0] for c in ("position", "program"))
+
     by_email = {}
     order = []
     for i, row in enumerate(normalised, start=2):   # 2 = first row after header
@@ -49203,6 +49316,10 @@ def parse_guest_import(text):
             value = (row.get(column) or "").strip()
             if value:
                 notes.append(f"{heading}: {value}")
+        if waitlist and (row.get("program") or "").strip():
+            dates = (row.get("program dates") or "").strip()
+            notes.append(f"On the waitlist for {row['program'].strip()}"
+                         + (f" ({dates})" if dates else ""))
 
         entry = by_email.get(email)
         if entry is None:
@@ -49212,10 +49329,13 @@ def parse_guest_import(text):
                 "phone": _guest_import_pick(row, "phone"),
                 "notes": notes,
                 "created_at": _guest_import_pick(row, "date_added"),
-                "programs": _guest_import_pick(row, "num_programs"),
+                # A waitlist row's own number is its place in a queue, not a
+                # person, so it is not read as one.
+                "programs": "" if waitlist else _guest_import_pick(row, "num_programs"),
                 "person_ids": [],
                 "balance": _guest_import_money(_guest_import_pick(row, "balance")),
                 "rows": 1,
+                "source": "waitlist" if waitlist else "people",
             }
             by_email[email] = entry
             order.append(email)
@@ -49239,14 +49359,14 @@ def parse_guest_import(text):
             if more is not None:
                 entry["balance"] = round((entry["balance"] or 0.0) + more, 2)
             entry["rows"] += 1
-        person_id = _guest_import_pick(row, "person_id")
+        person_id = "" if waitlist else _guest_import_pick(row, "person_id")
         if person_id and person_id not in entry["person_ids"]:
             entry["person_ids"].append(person_id)
 
     return [by_email[e] for e in order], problems
 
 
-def import_guest_rows(conn, people, dry_run=True):
+def import_guest_rows(conn, people, dry_run=True, tag=None, user_id=None):
     """Put the people in, and say exactly what happened to each.
 
     Matching is on the email address, lower-cased — the same key
@@ -49257,9 +49377,14 @@ def import_guest_rows(conn, people, dry_run=True):
     note written in this house are left exactly as they are; the import can add
     what is missing and nothing else. That is what makes running it twice safe,
     and it is also the honest order of trust: somebody here typed that.
+
+    `tag` goes on everybody in the file -- new, filled in, or already complete
+    -- so the file can be found again as a group in the guest list and written
+    to as one (a campaign's "Tagged" audience). `tagged` lists who gained it.
     """
-    added, filled, untouched, skipped = [], [], [], []
+    added, filled, untouched, skipped, tagged = [], [], [], [], []
     now = datetime.now(timezone.utc).isoformat()
+    tag = normalise_tag(tag) if tag else None
 
     for person in people:
         existing = conn.execute(
@@ -49269,12 +49394,15 @@ def import_guest_rows(conn, people, dry_run=True):
         note_block = "\n".join(person["notes"])
         # Where they came from, so somebody looking at an odd note a year from
         # now can tell it was imported rather than typed by a colleague.
-        provenance = "From the old workshop booking system"
+        provenance = ("From the old workshop booking system's waitlist"
+                      if person.get("source") == "waitlist"
+                      else "From the old workshop booking system")
         if person["programs"] and person["programs"] not in ("0", ""):
             provenance += f" — {person['programs']} programme(s) before this one"
         full_note = "\n".join(x for x in (note_block, provenance) if x)
 
         if existing:
+            gid = existing["id"]
             updates = {}
             if not (existing["phone"] or "").strip() and person["phone"]:
                 updates["phone"] = person["phone"]
@@ -49285,25 +49413,35 @@ def import_guest_rows(conn, people, dry_run=True):
                     x for x in ((existing["notes"] or "").strip(), full_note) if x)
             if not updates:
                 untouched.append(person["name"])
-                continue
+            else:
+                if not dry_run:
+                    conn.execute(
+                        "UPDATE guests SET %s WHERE id = ?"
+                        % ", ".join(f"{k} = ?" for k in updates),
+                        list(updates.values()) + [gid])
+                filled.append(person["name"])
+        else:
+            gid = None
             if not dry_run:
-                conn.execute(
-                    "UPDATE guests SET %s WHERE id = ?"
-                    % ", ".join(f"{k} = ?" for k in updates),
-                    list(updates.values()) + [existing["id"]])
-            filled.append(person["name"])
-            continue
+                gid = conn.execute(
+                    """INSERT INTO guests (name, email, phone, notes, created_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (person["name"], person["email"], person["phone"] or None,
+                     full_note or None, person["created_at"] or now)).lastrowid
+            added.append(person["name"])
 
-        if not dry_run:
-            conn.execute(
-                """INSERT INTO guests (name, email, phone, notes, created_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (person["name"], person["email"], person["phone"] or None,
-                 full_note or None, person["created_at"] or now))
-        added.append(person["name"])
+        if tag:
+            if dry_run:
+                has = gid and conn.execute(
+                    "SELECT 1 FROM guest_tags WHERE guest_id = ? AND tag = ?",
+                    (gid, tag)).fetchone()
+                if not has:
+                    tagged.append(person["name"])
+            elif add_guest_tag(conn, gid, tag, user_id):
+                tagged.append(person["name"])
 
     return {"added": added, "filled": filled, "untouched": untouched,
-            "skipped": skipped}
+            "skipped": skipped, "tagged": tagged, "tag": tag}
 
 
 @app.route("/management/import-guests", methods=["GET", "POST"])
@@ -49366,23 +49504,34 @@ def import_guests():
     } if owing else None
 
     dry_run = request.form.get("dry_run") == "on"
-    result = import_guest_rows(conn, people, dry_run=dry_run)
+    result = import_guest_rows(conn, people, dry_run=dry_run,
+                               tag=request.form.get("tag"), user_id=user["id"])
     result["dry_run"] = dry_run
     result["read"] = len(people)
     result["duplicates"] = sum(1 for p in people if p["rows"] > 1)
+    result["waitlist"] = any(p.get("source") == "waitlist" for p in people)
+    tagging = (f", {len(result['tagged'])} tagged “{result['tag']}”"
+               if result["tag"] else "")
     if not dry_run:
         log_audit(conn, "guests_imported",
                   target=upload.filename,
                   details=f"{len(result['added'])} added, "
-                          f"{len(result['filled'])} filled in")
+                          f"{len(result['filled'])} filled in" + tagging)
         conn.commit()
     conn.close()
 
-    message, category = bulk_message(
-        "would import" if dry_run else "imported", "guest",
-        len(result["added"]) + len(result["filled"]), problems,
-        detail=f"{len(result['added'])} new, {len(result['filled'])} filled in, "
-               f"{len(result['untouched'])} already complete")
+    if not result["added"] and not result["filled"] and not problems:
+        # Everybody already here and complete -- a second run, say. The bulk
+        # reporter reads nothing done and nothing skipped as nothing chosen,
+        # which is not what happened: the whole file was read and checked.
+        message, category = (f"Nobody new and nothing to fill in: all {len(people)} "
+                             f"already here and complete{tagging}.", "success")
+    else:
+        message, category = bulk_message(
+            "would import" if dry_run else "imported", "guest",
+            len(result["added"]) + len(result["filled"]), problems,
+            detail=f"{len(result['added'])} new, {len(result['filled'])} filled in, "
+                   f"{len(result['untouched'])} already complete" + tagging)
     flash(message, category)
     return render_template("import_guests.html", guest_count=guest_count,
                            result=result, money=money)
@@ -51359,7 +51508,7 @@ def whats_on_classify(rows):
                                        "english_title": {"type": "string"},
                                        "why": {"type": "string"}}}}}})
     except Exception as e:      # an unreachable assistant leaves them to the owner
-        print(f"[whats on] could not ask the assistant: {e}")
+        log_line(f"[whats on] could not ask the assistant: {e}")
         return {}
     if not data:
         return {}
@@ -51447,7 +51596,7 @@ def run_whats_on_reader_job(conn, fetch=None, today=None, classify=None,
         try:
             pages = lister(read)
         except Exception as e:
-            print(f"[whats on] {source}: the listing could not be read ({e})")
+            log_line(f"[whats on] {source}: the listing could not be read ({e})")
             continue
         read_ok = 0
         for url in pages:
@@ -56068,7 +56217,7 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
         except Exception as e:
             # The payment above is saved. The reader is the till's to sort
             # out, and the owner home lists any tab it is left asking for.
-            print(f"[pos] couldn't stop the reader for tab {order_id}: {e}")
+            log_line(f"[pos] couldn't stop the reader for tab {order_id}: {e}")
     return True
 
 
@@ -56143,7 +56292,7 @@ def stripe_webhook():
             # made the next write fail with "database is locked". Re-raise so
             # Stripe sees a 500 and retries, which is the correct behaviour
             # for a payment we may not have recorded.
-            print(f"[stripe webhook] {event['type']} failed: {e}")
+            log_line(f"[stripe webhook] {event['type']} failed: {e}")
             raise
         finally:
             conn.close()
@@ -56166,7 +56315,7 @@ def stripe_webhook():
             else:
                 record_refund_from_stripe(conn, obj)
         except Exception as e:
-            print(f"[stripe webhook] {event['type']} failed: {e}")
+            log_line(f"[stripe webhook] {event['type']} failed: {e}")
             raise
         finally:
             conn.close()
@@ -56181,7 +56330,7 @@ def stripe_webhook():
         try:
             note = pos_reader_charge_from_webhook(conn, intent)
             if note not in ("not a reader charge", "not the till's charge"):
-                print(f"[stripe webhook] reader charge {sval(intent, 'id')}: {note}")
+                log_line(f"[stripe webhook] reader charge {sval(intent, 'id')}: {note}")
         except sqlite3.IntegrityError:
             # Another path wrote it first. The claim should make that
             # impossible; the unique index on the reader's payments is the
@@ -56189,7 +56338,7 @@ def stripe_webhook():
             # books once, which is what Stripe needs to hear.
             conn.rollback()
         except Exception as e:
-            print(f"[stripe webhook] {event['type']} failed: {e}")
+            log_line(f"[stripe webhook] {event['type']} failed: {e}")
             raise
         finally:
             conn.close()
@@ -56200,7 +56349,7 @@ def stripe_webhook():
         try:
             record_dispute(conn, obj)
         except Exception as e:
-            print(f"[stripe webhook] {event['type']} failed: {e}")
+            log_line(f"[stripe webhook] {event['type']} failed: {e}")
             raise
         finally:
             conn.close()
@@ -56232,7 +56381,7 @@ def stripe_webhook():
                  service_day_iso(), datetime.now(timezone.utc).isoformat()))
             conn.commit()
         except Exception as e:
-            print(f"[stripe webhook] async_payment_failed handling failed: {e}")
+            log_line(f"[stripe webhook] async_payment_failed handling failed: {e}")
             raise
         finally:
             conn.close()
@@ -58913,7 +59062,7 @@ def apply_room_lineup(conn):
         changed += 1
     if changed:
         conn.commit()
-        print(f"[rooms] the 24 September line-up: {changed} room(s) renamed and repriced")
+        log_line(f"[rooms] the 24 September line-up: {changed} room(s) renamed and repriced")
     return changed
 
 
@@ -58971,7 +59120,7 @@ def apply_room_facts_2026_10_15(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[rooms] the 15 October facts: {changed} room(s) corrected")
+        log_line(f"[rooms] the 15 October facts: {changed} room(s) corrected")
     return changed
 
 
@@ -59001,7 +59150,7 @@ def apply_room_bathroom_floor_2026_11_09(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[rooms] the bathrooms' floor: {changed} room description(s) corrected")
+        log_line(f"[rooms] the bathrooms' floor: {changed} room description(s) corrected")
     return changed
 
 
@@ -59042,7 +59191,7 @@ def apply_extras_transfers_2026_10_18(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[extras] {changed} transfer(s) filed under Transfers at {TRANSFER_VAT_RATE:g}% VAT")
+        log_line(f"[extras] {changed} transfer(s) filed under Transfers at {TRANSFER_VAT_RATE:g}% VAT")
     return changed
 
 
@@ -59065,7 +59214,7 @@ def apply_extras_sunday_2026_10_19(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[extras] {changed} charcuterie extra(s) no longer arranged on a Sunday")
+        log_line(f"[extras] {changed} charcuterie extra(s) no longer arranged on a Sunday")
     return changed
 
 
@@ -59098,7 +59247,7 @@ def apply_room_occupancy_2026_10_18(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[rooms] who fits, as on Booking.com: {changed} room(s) set")
+        log_line(f"[rooms] who fits, as on Booking.com: {changed} room(s) set")
     return changed
 
 
@@ -59141,7 +59290,7 @@ def apply_stray_channel_stay_2026_10_18(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if done:
-        print("[rooms] the Booking.com stay of 30 October put on The Twin Room")
+        log_line("[rooms] the Booking.com stay of 30 October put on The Twin Room")
     return done
 
 
@@ -59158,7 +59307,7 @@ def apply_room_views_2026_10_16(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[rooms] the view put back on {changed} room(s)")
+        log_line(f"[rooms] the view put back on {changed} room(s)")
     return changed
 
 
@@ -59208,7 +59357,7 @@ def apply_room_names_2026_10_16(conn):
         found = ids.get(_room_key(old), [])
         if len(found) != 1 or ids.get(_room_key(new)):
             if len(found) > 1:
-                print(f"[rooms] {len(found)} rooms are called {old!r}; none renamed {new!r}")
+                log_line(f"[rooms] {len(found)} rooms are called {old!r}; none renamed {new!r}")
             continue
         conn.execute(
             """UPDATE rooms SET name = ?,
@@ -59221,7 +59370,7 @@ def apply_room_names_2026_10_16(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print(f"[rooms] the 16 October names: {changed} room(s) renamed")
+        log_line(f"[rooms] the 16 October names: {changed} room(s) renamed")
     return changed
 
 
@@ -59244,7 +59393,7 @@ def apply_family_beds_2026_10_18(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
-        print("[rooms] the Family Suite's beds, as the owner gave them on 18 October")
+        log_line("[rooms] the Family Suite's beds, as the owner gave them on 18 October")
     return changed
 
 
@@ -59273,7 +59422,7 @@ def apply_workshops_fifteen_2026_10_18(conn):
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if sessions or workshops:
-        print(f"[workshops] fifteen guests: {sessions} session(s), {workshops} workshop(s)")
+        log_line(f"[workshops] fifteen guests: {sessions} session(s), {workshops} workshop(s)")
     return sessions, workshops
 
 
@@ -59408,7 +59557,7 @@ def tidy_contact_enquiries(conn):
             aside += 1
     conn.commit()
     if tied or aside:
-        print(f"[enquiries] {tied} task(s) tied to their enquiry, {aside} pitch(es) set aside")
+        log_line(f"[enquiries] {tied} task(s) tied to their enquiry, {aside} pitch(es) set aside")
     return tied, aside
 
 
@@ -59454,7 +59603,7 @@ def widen_waitlist_statuses(conn):
         r"CHECK\s*\(\s*status\s+IN\s*\(\s*'open'\s*,",
         "CHECK(status IN ('open','enquiry',", row[0], count=1)
     if not found:
-        print("[init_db] waitlist_entries: the status CHECK is not in the shape "
+        log_line("[init_db] waitlist_entries: the status CHECK is not in the shape "
               "expected, so 'enquiry' was not added; Contact enquiries stay open")
         return False
     cols = ", ".join(r[1] for r in conn.execute("PRAGMA table_info(waitlist_entries)"))
@@ -59480,7 +59629,7 @@ def widen_waitlist_statuses(conn):
         conn.commit()
     except sqlite3.Error as e:
         conn.rollback()
-        print(f"[init_db] waitlist_entries: could not add 'enquiry' ({e}); "
+        log_line(f"[init_db] waitlist_entries: could not add 'enquiry' ({e}); "
               "Contact enquiries stay open")
         return False
     return True
@@ -64841,7 +64990,7 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
                 pay_url=pay_url, workshops=workshops or [], extras=extras or [],
                 foot=foot, photos=photos or [])
     except Exception as e:      # pragma: no cover - the text still goes
-        print(f"[email html failed] {subject}: {e}")
+        log_line(f"[email html failed] {subject}: {e}")
         return ""
 
 
@@ -64923,7 +65072,7 @@ def confirmation_letter_html(subject, body_src, context, *, conn=None, card=None
                 foot={"email": letter_contact("room_confirmed")},
                 settings=settings)
     except Exception as e:      # pragma: no cover - the plain letter still goes
-        print(f"[email html failed] {subject}: {e}")
+        log_line(f"[email html failed] {subject}: {e}")
         return ""
 
 
@@ -65301,6 +65450,76 @@ def campaign_context_for(name, email):
     }
 
 
+# The two merge tags that belong to one guest's own booking rather than to the
+# guest: the reference they quote and the page that is theirs. A letter using
+# either goes only to somebody with a booking to come, and is never sent with
+# the tag left showing.
+CAMPAIGN_BOOKING_FIELDS = {
+    "reference": "Their booking reference (to anyone booked to come)",
+    "guest_page": "The link to their own booking page (to anyone booked to come)",
+}
+CAMPAIGN_MERGE_FIELDS.update(CAMPAIGN_BOOKING_FIELDS)
+
+
+def campaign_uses_booking(subject, body):
+    """Whether a campaign quotes somebody's own booking."""
+    return bool(re.search(r"\{\{\s*(" + "|".join(CAMPAIGN_BOOKING_FIELDS) + r")\s*\}\}",
+                          f"{subject or ''}\n{body or ''}"))
+
+
+def booked_to_come(conn, email=None):
+    """Every booking somebody is still to come for: confirmed, stay or atelier,
+    not yet over -- as [{start, reference, endpoint, token, email, name}],
+    soonest first. One address, or everybody.
+
+    The "Booked to come" audience and the {{reference}} tag both read this, so
+    the list a letter is sent to and the booking it quotes cannot disagree. An
+    atelier whose emails are switched off is not here: the house said it would
+    not write to them about it until somebody switches them back on.
+    """
+    today = house_today_iso()
+    one = (email or "").strip().lower() or None
+    out = []
+    for r in conn.execute(
+            """SELECT reference_code, manage_token, arrival_date AS start, guest_email,
+                      guest_name FROM bookings
+                WHERE status = 'confirmed' AND departure_date >= ?
+                  AND (? IS NULL OR LOWER(TRIM(guest_email)) = ?)""",
+            (today, one, one)).fetchall():
+        out.append({"start": r["start"], "reference": r["reference_code"],
+                    "endpoint": "manage_booking", "token": r["manage_token"],
+                    "email": (r["guest_email"] or "").strip().lower(), "name": r["guest_name"]})
+    for r in conn.execute(
+            """SELECT wb.reference_code, wb.manage_token, ws.start_date AS start,
+                      wb.guest_email, wb.guest_name
+                 FROM workshop_bookings wb
+                 JOIN workshop_sessions ws ON ws.id = wb.session_id
+                WHERE wb.status = 'confirmed' AND wb.do_not_email = 0
+                  AND COALESCE(ws.end_date, ws.start_date) >= ?
+                  AND (? IS NULL OR LOWER(TRIM(wb.guest_email)) = ?)""",
+            (today, one, one)).fetchall():
+        out.append({"start": r["start"], "reference": r["reference_code"],
+                    "endpoint": "workshop_manage", "token": r["manage_token"],
+                    "email": (r["guest_email"] or "").strip().lower(), "name": r["guest_name"]})
+    return sorted((b for b in out if b["email"]), key=lambda b: (b["start"] or "", b["reference"]))
+
+
+def campaign_booking_context(conn, email):
+    """{reference, guest_page} for somebody booked to come, or None.
+
+    All their references are quoted -- somebody with a room and a retreat has
+    two -- and the page is the one for whichever comes first.
+    """
+    found = booked_to_come(conn, email)
+    if not found:
+        return None
+    refs = [b["reference"] for b in found]
+    first = found[0]
+    return {"reference": refs[0] if len(refs) == 1 else ", ".join(refs[:-1]) + " and " + refs[-1],
+            "guest_page": url_for(first["endpoint"], manage_token=first["token"],
+                                  _external=True)}
+
+
 def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False):
     """Who a campaign would go to: {email: name}, de-duplicated.
 
@@ -65314,6 +65533,10 @@ def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False
             "SELECT email, name FROM guests WHERE email IS NOT NULL AND TRIM(email) != ''"
         ).fetchall():
             recipients.setdefault(row["email"], row["name"])
+    if "booked" in segments:
+        # Still to come, so no "visited within" filter: nobody has visited yet.
+        for b in booked_to_come(conn):
+            recipients.setdefault(b["email"], b["name"])
 
     recipients = {(e or "").strip().lower(): n for e, n in recipients.items() if e and e.strip()}
     if not include_optouts:
@@ -65440,6 +65663,24 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
     context = campaign_context_for(name, email)
     if letter.get("extra_context"):
         context.update(letter["extra_context"])
+    if campaign_uses_booking(letter["subject"], letter["body"]):
+        booked = campaign_booking_context(conn, address)
+        if booked is None and as_test:
+            # The owner's own test: shown what the tags become, with a
+            # booking that is plainly not anybody's.
+            booked = {"reference": "WRK-EXAMPLE",
+                      "guest_page": url_for("dashboard", _external=True)}
+        if booked is None:
+            why = "has no booking to come, so there is no reference to quote"
+            conn.execute(
+                """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
+                   recipient_name, subject, status, detail, sent_by_user_id, created_at,
+                   outcome, send_id) VALUES (?, ?, ?, ?, ?, 'skipped', ?, ?, ?, 'skipped', ?)""",
+                (letter["template_id"], letter["template_name"], email, name,
+                 letter["subject"], why, letter["user_id"], now_iso, letter["send_id"]))
+            conn.commit()
+            return "skipped", why
+        context.update(booked)
     subject, body = render_campaign(letter["subject"], letter["body"], context)
     # Every marketing message carries its own unsubscribe key, and the row that
     # holds it is written and COMMITTED BEFORE the send: the link in the email
@@ -65903,11 +66144,11 @@ def _drain_campaigns_in_background():
             try:
                 if get_automation_settings(conn).get(
                         "automation_campaign_queue_enabled") == "1":
-                    print(f"[campaign] {drain_campaign_queue(conn)}")
+                    log_line(f"[campaign] {drain_campaign_queue(conn)}")
             finally:
                 conn.close()
     except Exception as e:
-        print(f"[campaign] could not start on the send: {type(e).__name__}: {e}")
+        log_line(f"[campaign] could not start on the send: {type(e).__name__}: {e}")
 
 
 def start_campaign_drain():
@@ -66577,7 +66818,7 @@ def workshop_stripe_customer(conn, booking):
             idempotency_key=f"wscus-{booking['id']}",
         )
     except Exception as e:
-        print(f"[workshop card] no customer for {booking['reference_code']}: {e}")
+        log_line(f"[workshop card] no customer for {booking['reference_code']}: {e}")
         return None
     customer_id = sval(customer, "id")
     if customer_id:
@@ -66604,7 +66845,7 @@ def remember_workshop_card(conn, booking_id, session):
         customer_id = sval(intent, "customer")
         method_id = sval(intent, "payment_method")
     except Exception as e:
-        print(f"[workshop card] could not read {intent_id}: {e}")
+        log_line(f"[workshop card] could not read {intent_id}: {e}")
         return
     if not customer_id or not method_id:
         return
@@ -68344,7 +68585,7 @@ def _queue_in_background():
     try:
         queue_every_page()
     except Exception as e:                      # pragma: no cover - last resort
-        print("[queue every page failed] %s" % e)
+        log_line("[queue every page failed] %s" % e)
     finally:
         _LANGUAGE_QUEUE_LOCK.release()
 
@@ -73022,7 +73263,7 @@ def note_wanted_translations(rows):
         finally:
             conn.close()
     except Exception as e:                      # pragma: no cover - last resort
-        print("[translations not noted] %s" % e)
+        log_line("[translations not noted] %s" % e)
         return 0
     return len(rows)
 
@@ -73561,10 +73802,10 @@ def link_stays_to_profiles(conn):
                          (profile_for_stay(conn, b), b["id"]))
             done += 1
         except sqlite3.IntegrityError as exc:
-            print(f"[guests] stay {b['reference_code']} left without a profile: {exc}")
+            log_line(f"[guests] stay {b['reference_code']} left without a profile: {exc}")
     if done:
         conn.commit()
-        print(f"[guests] {done} confirmed stay(s) given their guest profile")
+        log_line(f"[guests] {done} confirmed stay(s) given their guest profile")
     return done
 
 
@@ -79046,11 +79287,14 @@ def valid_segments(raw):
     """
     out = []
     for seg in raw or ():
-        if seg in GUEST_BLAST_SEGMENTS or seg == "profiles":
+        if seg in GUEST_BLAST_SEGMENTS or seg in ("profiles", "booked"):
             out.append(seg)
         elif isinstance(seg, str) and seg.count(":") == 1:
             head, tail = seg.split(":", 1)
             if head in ("workshop", "notsession") and tail.isdigit():
+                out.append(seg)
+            # A tag exactly as it is kept, and nothing that only resembles one.
+            elif head == "tag" and tail and normalise_tag(tail) == tail:
                 out.append(seg)
     return out
 
@@ -79183,6 +79427,18 @@ def promo_blast_recipients(conn, segments, since_date_iso=None):
         for row in workshop_alumni(conn, alumni_of, exclude_session_id=exclude,
                                    since_date_iso=since_date_iso):
             recipients.setdefault(row["guest_email"], row["guest_name"])
+
+    # A tag on the guest list: the people somebody put together on purpose --
+    # RetreatGuru's waitlist, say. No visit date to filter on, so none is.
+    for seg in segments:
+        if isinstance(seg, str) and seg.startswith("tag:"):
+            for row in conn.execute(
+                    """SELECT g.email, g.name FROM guests g
+                         JOIN guest_tags t ON t.guest_id = g.id
+                        WHERE t.tag = ? AND g.merged_into_id IS NULL
+                          AND g.email IS NOT NULL AND TRIM(g.email) != ''""",
+                    (seg.split(":", 1)[1],)).fetchall():
+                recipients.setdefault(row["email"], row["name"])
 
     if "newsletter" in segments:
         # Through newsletter_recipients, not a fourth query. That function is
@@ -94291,10 +94547,10 @@ def read_receipt(image_bytes, media_type="image/jpeg"):
             ]}],
         )
     except Exception as e:
-        print(f"[claude] receipt reading failed: {e}")
+        log_line(f"[claude] receipt reading failed: {e}")
         return None
     if why:
-        print(f"[claude] receipt reading failed: {why}")
+        log_line(f"[claude] receipt reading failed: {why}")
         return None
     if parsed.get("unreadable"):
         return None
@@ -94325,10 +94581,10 @@ def suggest_photo_caption(image_bytes):
             ]}],
         )
     except Exception as e:
-        print(f"[claude] caption suggestion failed: {e}")
+        log_line(f"[claude] caption suggestion failed: {e}")
         return None
     if why:
-        print(f"[claude] caption suggestion failed: {why}")
+        log_line(f"[claude] caption suggestion failed: {why}")
         return None
     if not parsed.get("captions"):
         return None
@@ -97545,7 +97801,7 @@ def booking_confirmation_html(conn, booking, room_name, portal_url=""):
             merge_email_text(subject_src, context).strip(), body_src, context,
             conn=conn, card=card)
     except Exception as e:      # pragma: no cover - the plain letter still goes
-        print(f"[email html failed] {booking['reference_code']}: {e}")
+        log_line(f"[email html failed] {booking['reference_code']}: {e}")
         return ""
 
 
@@ -104255,10 +104511,10 @@ def assess_media_with_claude(image_bytes, media_type="image/jpeg"):
             ]}],
         )
     except Exception as e:
-        print(f"[claude] media check failed: {e}")
+        log_line(f"[claude] media check failed: {e}")
         return None
     if why:
-        print(f"[claude] media check failed: {why}")
+        log_line(f"[claude] media check failed: {why}")
         return None
     return parsed
 
@@ -104779,10 +105035,10 @@ def meeting_minutes_with_claude(meeting, notes, attendee_names):
                 f"Notes taken during the meeting:\n{notes}")}],
         )
     except Exception as e:                     # pragma: no cover - network
-        print(f"[claude] minutes failed: {e}")
+        log_line(f"[claude] minutes failed: {e}")
         return None
     if why:
-        print(f"[claude] minutes failed: {why}")
+        log_line(f"[claude] minutes failed: {why}")
         return None
     if "summary" not in parsed:
         return None
@@ -109303,7 +109559,7 @@ def get_graph_token():
         _graph_token_cache["expires_at"] = now + max(60, int(payload.get("expires_in", 3600)) - 120)
         return token
     except Exception as e:
-        print(f"[graph] token request failed: {e}")
+        log_line(f"[graph] token request failed: {e}")
         return None
 
 
@@ -109324,7 +109580,7 @@ def graph_get(path, token, params=None, headers=None):
         return body
     except Exception as e:
         _GRAPH_ANSWER.error = graph_failure_words(e)
-        print(f"[graph] GET {path} failed: {_GRAPH_ANSWER.error}")
+        log_line(f"[graph] GET {path} failed: {_GRAPH_ANSWER.error}")
         return None
 
 
@@ -109558,10 +109814,12 @@ def escalate_stale_flags(conn):
 # the owner's: it is kept on the page and can be changed there.
 INBOX_NEVER_FLAG_KEY = "inbox_flags_never_flag"
 INBOX_NEVER_FLAG_DEFAULT = "\n".join((
-    "# One a line. A name ending in @ is that name at any address (noreply@);",
-    "# an address is that address; anything else is a domain and everything",
-    "# under it (stripe.com is also mail.stripe.com). A line starting # is a note.",
-    "no-reply@", "noreply@", "no_reply@", "donotreply@", "do-not-reply@",
+    "# One a line. A name ending in @ is that name at any address (news@), and",
+    "# with a * before the @ any name starting so (no-reply*@ is also",
+    "# no-reply-support@); an address is that address; anything else is a domain",
+    "# and everything under it (stripe.com is also mail.stripe.com). A line",
+    "# starting # is a note.",
+    "no-reply*@", "noreply*@", "no_reply*@", "donotreply*@", "do-not-reply*@",
     "notifications@", "notification@", "news@", "newsletter@", "mailer-daemon@",
     "postmaster@",
     "stripe.com", "retreat.guru", "retreatguru.com", "apple.com",
@@ -109609,7 +109867,8 @@ def sender_on_list(address, entries):
     local, domain = address.rsplit("@", 1)
     for e in entries:
         if e.endswith("@") and "@" not in e[:-1]:
-            if local == e[:-1]:
+            name = e[:-1]
+            if (local.startswith(name[:-1]) if name.endswith("*") else local == name):
                 return e
         elif "@" in e.lstrip("@"):
             if address == e:
@@ -109781,12 +110040,12 @@ def tidy_inbox_flags_once(conn):
         if closed:
             conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
                          ("inbox_flags_tidy_note", words))
-            print(f"[inbox flags] {words}")
+            log_line(f"[inbox flags] {words}")
         conn.commit()
         return words
     except Exception as e:
         conn.rollback()
-        print(f"[inbox flags] the one-off tidy did not run: {type(e).__name__}: {e}")
+        log_line(f"[inbox flags] the one-off tidy did not run: {type(e).__name__}: {e}")
         return None
 
 
@@ -110635,7 +110894,7 @@ def translate_batch_with_claude(lines, lang):
         # ever is worse than one that fails loudly once: the pages stay
         # English, the queue keeps growing, and the only sign is a
         # percentage that never moves.
-        print("[translation call failed] %s" % e)
+        log_line("[translation call failed] %s" % e)
         return {}, {}, "%s: %s" % (type(e).__name__, e)
     if why:
         return {}, {}, why
@@ -112344,6 +112603,7 @@ def run_email_inbox_scan_job(conn):
     booking_com_box = booking_com_mailbox(conn)
     unread, read_boxes, left_to_booking_com = [], 0, False
     no_headers = []
+    headers_asked = headers_left = 0
     for mb in mailboxes:
         mailbox = mb["mailbox"]
         # Booking.com's mailbox is read by its own job, into its own page:
@@ -112390,6 +112650,41 @@ def run_email_inbox_scan_job(conn):
         read_boxes += 1
         if getattr(_GRAPH_ANSWER, "without_headers", None):
             no_headers.append(f"{mailbox} ({_GRAPH_ANSWER.without_headers})")
+        # THE HEADERS, ONE MESSAGE AT A TIME. Asked for in the listing, they
+        # did not come: on 11 Nov 2026, a day after these rules, Netflix,
+        # Flying Blue and Zoomalia were still flagged as waiting on a reply,
+        # and the scan had said nothing. Microsoft's documented way is to ask
+        # one message for its own. So a message the listing brought without
+        # them is asked -- only one that would otherwise be flagged as waiting,
+        # and only once: the answer is kept on its flag. Asked before anything
+        # in this inbox is written, so no Graph read holds the database.
+        asked_here = 0
+        for msg in inbox_messages:
+            mid, got_at = msg.get("id"), msg.get("receivedDateTime")
+            if not mid or not got_at or msg.get("internetMessageHeaders"):
+                continue
+            frm = ((msg.get("from") or {}).get("emailAddress") or {}).get("address", "")
+            last = reply_map.get(msg.get("conversationId"))
+            waited = now - datetime.fromisoformat(got_at.replace("Z", "+00:00"))
+            if (sender_not_waiting(frm, never, house) or (last and last > got_at)
+                    or waited <= timedelta(hours=unanswered_hours)):
+                continue
+            # Kept on its flag -- by this copy's id, or by the email's own
+            # Message-ID when another inbox's copy holds the flag.
+            if flag_row("(graph_message_id = ? OR internet_message_id = ?) AND header_verdict IS NOT NULL",
+                        (mid, (msg.get("internetMessageId") or "").strip() or "-")):
+                continue
+            if asked_here >= INBOX_HEADERS_PER_INBOX:
+                headers_left += 1
+                continue
+            got = graph_get(f"/users/{mailbox}/messages/{mid}", token,
+                            params={"$select": "id,internetMessageHeaders"})
+            asked_here += 1
+            if got is not None:
+                msg["internetMessageHeaders"] = got.get("internetMessageHeaders") or []
+                msg["_headers_read"] = True
+        _GRAPH_ANSWER.error = None
+        headers_asked += asked_here
         for msg in inbox_messages:
             message_id = msg.get("id")
             received_at = msg.get("receivedDateTime")
@@ -112426,10 +112721,30 @@ def run_email_inbox_scan_job(conn):
             subject = msg.get("subject") or ""
             preview = msg.get("bodyPreview") or ""
 
+            have_headers = bool(msg.get("internetMessageHeaders")) or bool(msg.get("_headers_read"))
             reason = not_waiting_for_a_reply(msg, from_address, never, house)
+            if not reason and not have_headers and existing \
+                    and existing["header_verdict"] in ("mailing", "machine"):
+                reason = existing["header_verdict"]
+            header_verdict = ((reason if reason in ("mailing", "machine") else "") if have_headers
+                              else (existing["header_verdict"] if existing else None))
             if reason:
                 if existing and existing["status"] == "open":
                     close(existing["id"], reason)
+                if existing:
+                    conn.execute("UPDATE email_flags SET header_verdict = COALESCE(?, header_verdict) "
+                                 "WHERE id = ?", (header_verdict, existing["id"]))
+                elif msg.get("_headers_read") and header_verdict:
+                    # Read one at a time and found to be a mailing: kept, closed,
+                    # so it is never asked for again.
+                    conn.execute(
+                        """INSERT INTO email_flags (graph_message_id, internet_message_id, from_name,
+                               from_address, subject, received_at, mailbox, mailboxes, status,
+                               closed_by_app, header_verdict, resolved_at, rules_checked_at,
+                               created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'dismissed', ?, ?, ?, ?, ?, ?)""",
+                        (message_id, internet_id, from_name, from_address, subject, received_at,
+                         mailbox, mailbox, reason, header_verdict, now_iso, now_iso, now_iso, now_iso))
                 verdicts[ident] = dict(earlier or {}, flag_id=existing["id"] if existing else None,
                                        raise_it=False, never=reason)
                 continue
@@ -112527,8 +112842,9 @@ def run_email_inbox_scan_job(conn):
                        conflict_category=?, extracted_price=?, computed_price=?, extracted_dates=?, detail_note=?,
                        reply_price_conflict=?, reply_availability_conflict=?, reply_detail_note=?, last_reply_checked_id=?,
                        first_reply_at=?, internet_message_id=COALESCE(?, internet_message_id), mailboxes=?,
-                       rules_checked_at=?, updated_at=? WHERE id=?""",
-                    common + (now_iso, existing["id"]),
+                       rules_checked_at=?, header_verdict=COALESCE(?, header_verdict), updated_at=?
+                       WHERE id=?""",
+                    common + (header_verdict, now_iso, existing["id"]),
                 )
                 if raise_it and existing["status"] != "open":
                     # Closed by the app, and true again: a sender taken off
@@ -112542,10 +112858,10 @@ def run_email_inbox_scan_job(conn):
                        conflict_category, extracted_price, computed_price, extracted_dates, detail_note,
                        reply_price_conflict, reply_availability_conflict, reply_detail_note, last_reply_checked_id,
                        first_reply_at, internet_message_id, mailboxes, rules_checked_at,
-                       mailbox, assigned_to_user_id, status, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       mailbox, assigned_to_user_id, header_verdict, status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                'open', ?, ?)""",
-                    (message_id,) + common + (mailbox, default_user_id, now_iso, now_iso),
+                    (message_id,) + common + (mailbox, default_user_id, header_verdict, now_iso, now_iso),
                 )
                 verdict["flag_id"] = cur.lastrowid
                 what = ("reply" if (reply_price_conflict_val or reply_availability_conflict_val)
@@ -112591,6 +112907,10 @@ def run_email_inbox_scan_job(conn):
     if no_headers:
         tail += ("; read without the headers that mark a mailing, so judged by sender only: "
                  + "; ".join(no_headers))
+    if headers_asked:
+        tail += f"; headers read one message at a time for {headers_asked}"
+    if headers_left:
+        tail += f" ({headers_left} more wait for the next scan)"
     # Counted from the mailboxes actually read. It counted every configured
     # one, so "scanned 0 messages across 1 mailbox" on 12 October was a
     # mailbox it had skipped (Booking.com's has its own job) and never opened.
@@ -112605,6 +112925,9 @@ def run_email_inbox_scan_job(conn):
 # scan, for the headers that say a message is a mailing. A few at a time, so
 # the backlog goes in a handful of scans and no scan is slow.
 INBOX_RECHECK_PER_SCAN = 100
+# And per inbox, for the messages in the scan's own window whose listing came
+# without their headers. Each is asked once; any left wait for the next scan.
+INBOX_HEADERS_PER_INBOX = 80
 
 
 def recheck_older_flags(conn, token, never, house, closed, now_iso):
@@ -112614,7 +112937,7 @@ def recheck_older_flags(conn, token, never, house, closed, now_iso):
     nothing written and unsaved, and the answers are written after."""
     out = {"closed": 0, "unread": 0}
     rows = conn.execute(
-        """SELECT * FROM email_flags WHERE status = 'open' AND rules_checked_at IS NULL
+        """SELECT * FROM email_flags WHERE status = 'open' AND header_verdict IS NULL
             ORDER BY received_at LIMIT ?""", (INBOX_RECHECK_PER_SCAN,)).fetchall()
     if not rows:
         return out
@@ -112643,10 +112966,10 @@ def recheck_older_flags(conn, token, never, house, closed, now_iso):
             close_flag_by_app(conn, row["id"], reason, now_iso)
             closed[reason] = closed.get(reason, 0) + 1
             out["closed"] += 1
-        else:
-            conn.execute("UPDATE email_flags SET rules_checked_at = ?, "
-                         "internet_message_id = COALESCE(internet_message_id, ?) WHERE id = ?",
-                         (now_iso, (got.get("internetMessageId") or "").strip() or None, row["id"]))
+        conn.execute("UPDATE email_flags SET rules_checked_at = ?, header_verdict = ?, "
+                     "internet_message_id = COALESCE(internet_message_id, ?) WHERE id = ?",
+                     (now_iso, reason if reason in ("mailing", "machine") else "",
+                      (got.get("internetMessageId") or "").strip() or None, row["id"]))
     conn.commit()
     return out
 
@@ -116307,7 +116630,7 @@ def get_calendar_graph_token():
         return token
     except Exception as e:
         _calendar_token_cache["error"] = graph_failure_words(e)
-        print(f"[calendar] token request failed: {_calendar_token_cache['error']}")
+        log_line(f"[calendar] token request failed: {_calendar_token_cache['error']}")
         return None
 
 
@@ -116534,12 +116857,9 @@ def sync_house_calendar(conn, *, full=False, retry_held=False):
         doubts = graph_event_doubts(body)
         line = (f"[calendar] Microsoft refused {key}: {err}. Sent: {summary}"
                 + (f". Looks wrong: {'; '.join(doubts)}" if doubts else ""))
-        try:
-            print(line)
-        except UnicodeEncodeError:
-            # A console that cannot print the subject's mark must not stop
-            # the pass: the line goes out escaped instead.
-            print(line.encode("ascii", "backslashreplace").decode("ascii"))
+        # A console that cannot print the subject's mark must not stop the
+        # pass: log_line sends it out escaped instead.
+        log_line(line)
         _hc_record(conn, key, item, error=err, attempts=attempts, refused_hash=digest,
                    first_failed_at=row["first_failed_at"] if same else None,
                    refused_body=summary + (f". Looks wrong: {'; '.join(doubts)}." if doubts else ""))
@@ -116722,7 +117042,7 @@ def house_calendar_loop():
         try:
             house_calendar_tick()
         except Exception as e:
-            print(f"[calendar] tick failed: {e}")
+            log_line(f"[calendar] tick failed: {e}")
         time.sleep(HOUSE_CALENDAR_POLL_SECONDS)
 
 
@@ -117431,16 +117751,16 @@ def automation_tick():
             try:
                 result = job_fn(conn)
                 record_job_run(conn, job_name, True, str(result))
-                print(f"[automation] {job_name}: {result}")
+                log_line(f"[automation] {job_name}: {result}")
             except JobNotSetUp as e:
                 record_job_run(conn, job_name, False, str(e), idle=True)
-                print(f"[automation] {job_name} could not run: {e}")
+                log_line(f"[automation] {job_name} could not run: {e}")
             except Exception as e:
                 # Recorded, not just printed. A Railway log line scrolls away;
                 # this is the same fact somewhere the owner can still read it
                 # next Tuesday.
                 record_job_run(conn, job_name, False, f"{type(e).__name__}: {e}")
-                print(f"[automation] {job_name} failed: {e}")
+                log_line(f"[automation] {job_name} failed: {e}")
 
         if settings["automation_room_balance_reminder_enabled"] == "1":
             try:
@@ -117451,10 +117771,10 @@ def automation_tick():
                 try:
                     result = run_room_balance_reminder_job(conn, days_before)
                     record_job_run(conn, "room_balance_reminder", True, result)
-                    print(f"[automation] room_balance_reminder: {result}")
+                    log_line(f"[automation] room_balance_reminder: {result}")
                 except Exception as e:
                     record_job_run(conn, "room_balance_reminder", False, f"{type(e).__name__}: {e}")
-                    print(f"[automation] room_balance_reminder failed: {e}")
+                    log_line(f"[automation] room_balance_reminder failed: {e}")
 
         if settings["automation_workshop_balance_reminder_enabled"] == "1":
             if claim_job_run(conn, "workshop_balance_reminder", 24 * 3600):
@@ -117464,11 +117784,11 @@ def automation_tick():
                 try:
                     result = run_balance_reminder(conn, settings, "workshop_balance_reminder")
                     record_job_run(conn, "workshop_balance_reminder", True, result)
-                    print(f"[automation] workshop_balance_reminder: {result}")
+                    log_line(f"[automation] workshop_balance_reminder: {result}")
                 except Exception as e:
                     record_job_run(conn, "workshop_balance_reminder", False,
                                    f"{type(e).__name__}: {e}")
-                    print(f"[automation] workshop_balance_reminder failed: {e}")
+                    log_line(f"[automation] workshop_balance_reminder failed: {e}")
 
         if settings["automation_event_balance_reminder_enabled"] == "1":
             try:
@@ -117479,11 +117799,11 @@ def automation_tick():
                 try:
                     result = run_event_balance_reminder_job(conn, days_before)
                     record_job_run(conn, "event_balance_reminder", True, result)
-                    print(f"[automation] event_balance_reminder: {result}")
+                    log_line(f"[automation] event_balance_reminder: {result}")
                 except Exception as e:
                     record_job_run(conn, "event_balance_reminder", False,
                                    f"{type(e).__name__}: {e}")
-                    print(f"[automation] event_balance_reminder failed: {e}")
+                    log_line(f"[automation] event_balance_reminder failed: {e}")
 
         if settings["automation_stale_shift_enabled"] == "1":
             try:
@@ -117493,9 +117813,9 @@ def automation_tick():
             if claim_job_run(conn, "stale_shift_cleanup", 3600):
                 try:
                     result = run_stale_shift_cleanup_job(conn, stale_hours)
-                    print(f"[automation] stale_shift_cleanup: {result}")
+                    log_line(f"[automation] stale_shift_cleanup: {result}")
                 except Exception as e:
-                    print(f"[automation] stale_shift_cleanup failed: {e}")
+                    log_line(f"[automation] stale_shift_cleanup failed: {e}")
         conn.close()
 
 
@@ -117504,7 +117824,7 @@ def automation_loop():
         try:
             automation_tick()
         except Exception as e:
-            print(f"[automation] tick failed: {e}")
+            log_line(f"[automation] tick failed: {e}")
         time.sleep(AUTOMATION_TICK_SECONDS)
 
 
@@ -118219,7 +118539,7 @@ def save_inbox_never_flag():
         if not entry or entry.startswith("#"):
             continue
         if entry.endswith("@"):
-            good = bool(re.fullmatch(r"[a-z0-9._%+-]+@", entry))
+            good = bool(re.fullmatch(r"[a-z0-9._%+-]+\*?@", entry))
         elif "@" in entry.lstrip("@"):
             good = bool(EMAIL_RE.match(entry))
         else:
@@ -118370,7 +118690,10 @@ OUTLOOK_ADDIN_GUID = "31db9023-97b7-4519-8829-c0b1e3bed58e"
 # offered on an email read in a shared inbox (experience@ had no add-ins at
 # all), and SupportsPinning on the Guest pane, so it stays open and follows
 # the email chosen.
-OUTLOOK_ADDIN_VERSION = "2.2.0.0"
+#
+# 2.3.0.0, 10 November 2026: OnMessageFromChanged, so the signature the add-in
+# now puts in (see ADDIN_SIGNATURES) is redone when the email's From changes.
+OUTLOOK_ADDIN_VERSION = "2.3.0.0"
 # Microsoft's sign-in library: the only file the panels take from a CDN, so
 # pinned to one release and fingerprinted, and the browser refuses any other
 # bytes under that name.
@@ -120092,7 +120415,7 @@ def draft_reply_with_claude(context, compose_text):
             messages=[{"role": "user", "content": user_content}],
         )
     except Exception as e:
-        print(f"[claude] draft_reply request failed: {type(e).__name__}: {e}")
+        log_line(f"[claude] draft_reply request failed: {type(e).__name__}: {e}")
         return None
     if getattr(response, "stop_reason", None) in ("refusal", "max_tokens"):
         return None
@@ -120136,7 +120459,7 @@ def summarise_history_with_claude(history):
                     "factual English. Never guess at anything not in the lines."),
             messages=[{"role": "user", "content": "\n".join(lines)}])
     except Exception as e:
-        print(f"[claude] history summary failed: {type(e).__name__}: {e}")
+        log_line(f"[claude] history summary failed: {type(e).__name__}: {e}")
         return None
     return data
 
@@ -122446,7 +122769,7 @@ def ensure_pdf(data, mimetype, title="Document"):
         img.save(buf, format="PDF", resolution=200.0)
         return buf.getvalue(), "pdf"
     except Exception as e:
-        print(f"[scan] couldn't convert to PDF ({e}) — keeping the original")
+        log_line(f"[scan] couldn't convert to PDF ({e}) — keeping the original")
         return data, (mimetype or "image/jpeg").split("/")[-1]
 
 
@@ -122607,10 +122930,10 @@ def read_invoice_with_claude(pdf_bytes, filename, stock_items):
             ]}],
         )
     except Exception as e:
-        print(f"[claude] invoice read failed: {e}")
+        log_line(f"[claude] invoice read failed: {e}")
         return None
     if why:
-        print(f"[claude] invoice read failed: {why}")
+        log_line(f"[claude] invoice read failed: {why}")
         return None
     if not parsed.get("lines"):
         return None
@@ -122717,10 +123040,10 @@ def read_menu_card(*, pdf_bytes=None, filename=None, text=None):
             messages=[{"role": "user", "content": content}],
         )
     except Exception as e:
-        print(f"[claude] menu read failed: {e}")
+        log_line(f"[claude] menu read failed: {e}")
         return None
     if why:
-        print(f"[claude] menu read failed: {why}")
+        log_line(f"[claude] menu read failed: {why}")
         return None
     if not parsed.get("dishes"):
         return None
@@ -123594,7 +123917,7 @@ def assistant_turn(conn, user, said):
                 system=ASSISTANT_SYSTEM, tools=ASSISTANT_TOOLS,
                 messages=history)
         except Exception as e:      # pragma: no cover - network/credit/limits
-            print(f"[assistant failed] {e}")
+            log_line(f"[assistant failed] {e}")
             return False, "The assistant could not be reached just now."
 
         text_parts, tool_calls = [], []
@@ -123859,7 +124182,7 @@ def addin_after_answer(response, write):
             finally:
                 conn.close()
         except Exception as e:                  # pragma: no cover - last resort
-            print(f"[send check] not recorded: {type(e).__name__}: {e}")
+            log_line(f"[send check] not recorded: {type(e).__name__}: {e}")
     response.call_on_close(run)
     return response
 
@@ -124069,14 +124392,14 @@ def api_check_send_conflict():
             # next form is learned from the first one met.
             shape = unrecognised_quote_header(body_text)
             if shape:
-                print(f"[send check] a line starts {shape!r} but no quoted thread was found")
+                log_line(f"[send check] a line starts {shape!r} but no quoted thread was found")
             conflict, internal = guess_email_conflict(
                 conn, outside, subject, own_words(body_text),
                 datetime.now(timezone.utc).isoformat()), False
     except Exception as e:
         conn.close()
         write, _ms = owed("could_not_check", "server_error", type(e).__name__)
-        print(f"[send check] failed: {type(e).__name__}: {e}")
+        log_line(f"[send check] failed: {type(e).__name__}: {e}")
         return addin_after_answer(jsonify(error="The check failed on the server.",
                                           recorded=True), write), 500
     conn.close()
@@ -124364,6 +124687,132 @@ def addin_house_domains():
     return sorted(d for d in house_domains() if d not in PUBLIC_MAIL_DOMAINS)
 
 
+# ---------------------------------------------------------------------------
+# THE SIGNATURE, PUT IN BY THE ADD-IN (10 November 2026).
+#
+# Five Exchange transport rules (Ben, Accounts, the Chateau Team, Jasmine,
+# Karina; set up 15-19 October) used to add the signature, and the owner saw
+# two faults on 20 October: it landed at the very bottom of the whole thread,
+# under the quoted guest email, because a transport rule can only append to
+# the end of a message; and its logo showed as a broken picture, because
+# Outlook blocks a remotely hosted image until the reader asks for it. A
+# server-added signature is also never in the sender's own Sent Items.
+#
+# So the add-in puts it in while the email is being written
+# (setSignatureAsync, Mailbox 1.10): above the quoted text on a reply, under
+# the body on a new email, with the logo carried inside the email as an
+# inline attachment that nothing blocks. Chosen by the address the email is
+# FROM, which in a shared inbox is the inbox, not the person.
+#
+# THE ADDRESS LINE IS THE DOUBLING GUARD. The transport rules stay, as the
+# fallback for mail sent without the add-in (a phone without it, another
+# app), and they skip any email already containing "2 Route de Beille". A
+# signature saved without those words would be signed twice, so it is not
+# saved. The rules themselves are not touched from here.
+#
+# Data the owner edits on /admin/outlook-addin, seeded from the v5 HTML that
+# was live in the transport rules on 20 October (signatures-v5/). Nothing is
+# written to the database until the owner saves one: until then the add-in
+# serves these.
+# ---------------------------------------------------------------------------
+ADDIN_SIGNATURE_GUARD = "2 Route de Beille"
+# setSignatureAsync refuses anything longer.
+ADDIN_SIGNATURE_MAX = 30000
+ADDIN_SIGNATURE_SETTING = "addin_signature_{}"
+ADDIN_SIGNATURE_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                         "static", "email", "gudanes-logo-email.png")
+# The name the logo is attached under, and what the signature points at as
+# cid:<this> once it is attached.
+ADDIN_SIGNATURE_LOGO_NAME = "gudanes-logo.png"
+ADDIN_SIGNATURES = [
+    {"key": "team", "label": "The Château Team",
+     "mailboxes": ("reservations", "house", "chateauteam"),
+     "default": '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:16px"><tr><td style="padding:0 14px 0 0;vertical-align:middle;border-right:1px solid #C5A24A"><a href="https://chateaugudanes.com" style="text-decoration:none"><img src="https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png" width="104" alt="Château de Gudanes" style="display:block;border:0;width:104px;height:auto"></a></td><td style="padding:0 0 0 14px;vertical-align:middle"><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:16px;line-height:1.25;color:#14305F">The Château Team</div><div style="font-family:Arial,Helvetica,sans-serif;font-size:9px;letter-spacing:1.5px;line-height:1.4;color:#9A7B2E;padding-top:3px">CHÂTEAU DE GUDANES</div></td></tr></table><table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:10px"><tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#4A6076"><a href="tel:+33628069776" style="color:#4A6076;text-decoration:none;white-space:nowrap">+33 6 28 06 97 76</a><br><a href="https://chateaugudanes.com" style="color:#14305F;text-decoration:none;white-space:nowrap">chateaugudanes.com</a> <span style="color:#C5A24A">·</span> <a href="https://www.instagram.com/chateaugudanes" style="color:#14305F;text-decoration:none;white-space:nowrap">@chateaugudanes</a><br><a href="https://www.google.com/maps/place/Ch%C3%A2teau+de+Gudanes,+2+Route+de+Beille,+09310+Ch%C3%A2teau-Verdun,+France" style="color:#4A6076;text-decoration:none">2 Route de Beille, 09310 Château-Verdun, France</a></td></tr></table>'},
+    {"key": "experience", "label": "Jasmine (Experiences)", "mailboxes": ("experience",),
+     "default": '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:16px"><tr><td style="padding:0 14px 0 0;vertical-align:middle;border-right:1px solid #C5A24A"><a href="https://chateaugudanes.com" style="text-decoration:none"><img src="https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png" width="104" alt="Château de Gudanes" style="display:block;border:0;width:104px;height:auto"></a></td><td style="padding:0 0 0 14px;vertical-align:middle"><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:16px;line-height:1.25;color:#14305F">Château de Gudanes</div><div style="font-family:Arial,Helvetica,sans-serif;font-size:9px;letter-spacing:1.5px;line-height:1.4;color:#9A7B2E;padding-top:3px">EXPERIENCES</div></td></tr></table><table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:10px"><tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#4A6076"><a href="tel:+33628069776" style="color:#4A6076;text-decoration:none;white-space:nowrap">+33 6 28 06 97 76</a><br><a href="https://chateaugudanes.com" style="color:#14305F;text-decoration:none;white-space:nowrap">chateaugudanes.com</a> <span style="color:#C5A24A">·</span> <a href="https://www.instagram.com/chateaugudanes" style="color:#14305F;text-decoration:none;white-space:nowrap">@chateaugudanes</a><br><a href="https://www.google.com/maps/place/Ch%C3%A2teau+de+Gudanes,+2+Route+de+Beille,+09310+Ch%C3%A2teau-Verdun,+France" style="color:#4A6076;text-decoration:none">2 Route de Beille, 09310 Château-Verdun, France</a></td></tr></table>'},
+    {"key": "ariege", "label": "Karina", "mailboxes": ("ariege",),
+     "default": '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:16px"><tr><td style="padding:0 14px 0 0;vertical-align:middle;border-right:1px solid #C5A24A"><a href="https://chateaugudanes.com" style="text-decoration:none"><img src="https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png" width="104" alt="Château de Gudanes" style="display:block;border:0;width:104px;height:auto"></a></td><td style="padding:0 0 0 14px;vertical-align:middle"><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:16px;line-height:1.25;color:#14305F">Château de Gudanes</div></td></tr></table><table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:10px"><tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#4A6076"><a href="tel:+33628069776" style="color:#4A6076;text-decoration:none;white-space:nowrap">+33 6 28 06 97 76</a><br><a href="https://chateaugudanes.com" style="color:#14305F;text-decoration:none;white-space:nowrap">chateaugudanes.com</a> <span style="color:#C5A24A">·</span> <a href="https://www.instagram.com/chateaugudanes" style="color:#14305F;text-decoration:none;white-space:nowrap">@chateaugudanes</a><br><a href="https://www.google.com/maps/place/Ch%C3%A2teau+de+Gudanes,+2+Route+de+Beille,+09310+Ch%C3%A2teau-Verdun,+France" style="color:#4A6076;text-decoration:none">2 Route de Beille, 09310 Château-Verdun, France</a></td></tr></table>'},
+    {"key": "accounts", "label": "Accounts", "mailboxes": ("accounts",),
+     "default": '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:16px"><tr><td style="padding:0 14px 0 0;vertical-align:middle;border-right:1px solid #C5A24A"><a href="https://chateaugudanes.com" style="text-decoration:none"><img src="https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png" width="104" alt="Château de Gudanes" style="display:block;border:0;width:104px;height:auto"></a></td><td style="padding:0 0 0 14px;vertical-align:middle"><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:16px;line-height:1.25;color:#14305F">Accounts</div><div style="font-family:Arial,Helvetica,sans-serif;font-size:9px;letter-spacing:1.5px;line-height:1.4;color:#9A7B2E;padding-top:3px">CHÂTEAU DE GUDANES</div></td></tr></table><table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:10px"><tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#4A6076"><a href="tel:+33631374426" style="color:#4A6076;text-decoration:none;white-space:nowrap">+33 6 31 37 44 26</a><br><a href="https://chateaugudanes.com" style="color:#14305F;text-decoration:none;white-space:nowrap">chateaugudanes.com</a><br><a href="https://www.google.com/maps/place/Ch%C3%A2teau+de+Gudanes,+2+Route+de+Beille,+09310+Ch%C3%A2teau-Verdun,+France" style="color:#4A6076;text-decoration:none">2 Route de Beille, 09310 Château-Verdun, France</a></td></tr></table>'},
+    {"key": "benw", "label": "Ben Waters", "mailboxes": ("benw",),
+     "default": '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:16px"><tr><td style="padding:0 14px 0 0;vertical-align:middle;border-right:1px solid #C5A24A"><a href="https://chateaugudanes.com" style="text-decoration:none"><img src="https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png" width="104" alt="Château de Gudanes" style="display:block;border:0;width:104px;height:auto"></a></td><td style="padding:0 0 0 14px;vertical-align:middle"><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:16px;line-height:1.25;color:#14305F">Ben Waters</div><div style="font-family:Arial,Helvetica,sans-serif;font-size:9px;letter-spacing:1.5px;line-height:1.4;color:#9A7B2E;padding-top:3px">CHÂTEAU DE GUDANES</div></td></tr></table><table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;margin-top:10px"><tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#4A6076"><a href="tel:+33631374426" style="color:#4A6076;text-decoration:none;white-space:nowrap">+33 6 31 37 44 26</a> <span style="color:#C5A24A">·</span> <a href="tel:+61405073432" style="color:#4A6076;text-decoration:none;white-space:nowrap">+61 405 073 432</a><br><a href="https://chateaugudanes.com" style="color:#14305F;text-decoration:none;white-space:nowrap">chateaugudanes.com</a> <span style="color:#C5A24A">·</span> <a href="https://www.instagram.com/chateaugudanes" style="color:#14305F;text-decoration:none;white-space:nowrap">@chateaugudanes</a><br><a href="https://www.google.com/maps/place/Ch%C3%A2teau+de+Gudanes,+2+Route+de+Beille,+09310+Ch%C3%A2teau-Verdun,+France" style="color:#4A6076;text-decoration:none">2 Route de Beille, 09310 Château-Verdun, France</a></td></tr></table>'},
+]
+ADDIN_SIGNATURE_KEYS = tuple(s["key"] for s in ADDIN_SIGNATURES)
+# The hosted copy of the logo the stored HTML points at. On a client that
+# cannot attach the logo, that is what is used.
+ADDIN_SIGNATURE_LOGO_URL = "https://cdg1-production-9186.up.railway.app/static/email/gudanes-logo-email.png"
+
+
+def addin_signature_problem(html):
+    """Why this HTML cannot be a signature, or None."""
+    text = html or ""
+    if not text.strip():
+        return "it is empty"
+    if ADDIN_SIGNATURE_GUARD not in text:
+        return (f'it does not say "{ADDIN_SIGNATURE_GUARD}" -- the server rules look for '
+                "those words to know the add-in has signed it, and would sign it a second time")
+    if re.search(r"data:", text, re.I):
+        return ("it carries a picture inside it (data:) -- Outlook strips those, and the "
+                "logo is attached by the add-in instead")
+    if re.search(r"<\s*script|javascript:|\son\w+\s*=", text, re.I):
+        return "it has script in it, which no email may carry"
+    if len(text) > ADDIN_SIGNATURE_MAX:
+        return f"it is longer than Outlook takes ({ADDIN_SIGNATURE_MAX:,} characters)"
+    return None
+
+
+def addin_signature_html(conn, key):
+    """(html, saved) for one signature: the owner's, or the v5 one it started from."""
+    spec = next(s for s in ADDIN_SIGNATURES if s["key"] == key)
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (ADDIN_SIGNATURE_SETTING.format(key),)).fetchone()
+    saved = (row["value"] if row else "") or ""
+    if saved.strip() and addin_signature_problem(saved) is None:
+        return saved, True
+    return spec["default"], False
+
+
+def addin_signature_text(html):
+    """The same signature as plain text, for an email written in plain text."""
+    text = re.sub(r"(?i)<br\s*/?>", "\n", html or "")
+    text = re.sub(r"(?i)</(?:div|tr|table|p)>", "\n", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    lines = [" ".join(html_unescape(line).split()) for line in text.splitlines()]
+    return "\n".join(line for line in lines if line)
+
+
+_ADDIN_LOGO_B64 = []
+
+
+def addin_signature_logo_base64():
+    """The logo as base64, for the add-in to attach inline. "" if it is missing,
+    which the add-in reads as "use the hosted copy"."""
+    if not _ADDIN_LOGO_B64:
+        try:
+            with open(ADDIN_SIGNATURE_LOGO_PATH, "rb") as fh:
+                _ADDIN_LOGO_B64.append(base64.b64encode(fh.read()).decode("ascii"))
+        except OSError:
+            _ADDIN_LOGO_B64.append("")
+    return _ADDIN_LOGO_B64[0]
+
+
+def addin_signature_script_data(conn):
+    """What the event script is given: which inbox gets which signature, each
+    signature as HTML and as text, and the logo. In the script itself rather
+    than asked for, so signing an email needs no sign-in and no network."""
+    html, text, by_mailbox = {}, {}, {}
+    for spec in ADDIN_SIGNATURES:
+        body, _saved = addin_signature_html(conn, spec["key"])
+        html[spec["key"]] = body
+        text[spec["key"]] = addin_signature_text(body)
+        for local in spec["mailboxes"]:
+            by_mailbox[local] = spec["key"]
+    return {"by_mailbox": by_mailbox, "html": html, "text": text,
+            "guard": ADDIN_SIGNATURE_GUARD, "logo_url": ADDIN_SIGNATURE_LOGO_URL,
+            "logo_name": ADDIN_SIGNATURE_LOGO_NAME,
+            "logo_base64": addin_signature_logo_base64()}
+
+
 def addin_page_config():
     """What every add-in page and script is told: where to ask, and how to sign in."""
     return {
@@ -124496,8 +124945,13 @@ def addin_msal_source_js():
 
 def addin_event_script():
     """The event handlers as served, and a fingerprint of exactly those bytes."""
+    conn = get_db()
+    try:
+        signatures = addin_signature_script_data(conn)
+    finally:
+        conn.close()
     js = render_template("outlook_addin_launchevent.js", config=addin_page_config(),
-                         msal_source=addin_msal_source_js())
+                         msal_source=addin_msal_source_js(), signatures=signatures)
     return js, hashlib.sha256(js.encode("utf-8")).hexdigest()[:20]
 
 
@@ -124556,6 +125010,11 @@ ADDIN_SUPPORT = [
     {"feature": "A note about the guest when they are put in To",
      "desktop": "yes", "web": "yes", "phone": "yes",
      "fallback": "Outlook on a phone needs version 4.2425 or later."},
+    {"feature": "The house signature, under the reply, with its logo",
+     "desktop": "yes", "web": "yes", "phone": "yes",
+     "fallback": "Where Outlook cannot attach the logo (a phone), the signature uses the hosted "
+                 "logo, which the reader may have to download. Mail sent without the add-in "
+                 "is still signed by the server, at the bottom of the thread."},
     {"feature": "Microsoft 365 sign-in, no key to paste",
      "desktop": "yes", "web": "yes", "phone": "yes",
      "fallback": "An older Outlook that cannot sign in this way asks for the shared key, if "
@@ -124639,7 +125098,68 @@ def _admin_addin_context(conn):
                 WHERE addin_send_checks.outcome = 'conflict' AND addin_send_checks.at >= ?
                 ORDER BY addin_send_checks.at DESC LIMIT 12""",
             ((datetime.now(timezone.utc) - timedelta(days=14)).isoformat(),)).fetchall(),
+        "signatures": [
+            dict(spec, html=html, saved=saved, guard=ADDIN_SIGNATURE_GUARD,
+                 addresses=", ".join(f"{local}@" for local in spec["mailboxes"]))
+            for spec in ADDIN_SIGNATURES
+            for html, saved in (addin_signature_html(conn, spec["key"]),)],
     }
+
+
+@app.route("/admin/outlook-addin/signatures", methods=["POST"])
+@owner_required
+def admin_outlook_addin_signatures():
+    """The five signatures the add-in puts in. One that would let the server
+    sign the email a second time, or that carries what no email should, is
+    refused by name and the rest are still saved; "Put back" returns one to
+    the v5 HTML it started from."""
+    conn = get_db()
+    saved, restored, refused = [], [], []
+    put_back = request.form.get("put_back") or ""
+    for spec in ADDIN_SIGNATURES:
+        key = spec["key"]
+        setting = ADDIN_SIGNATURE_SETTING.format(key)
+        if put_back == key:
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (setting,))
+            restored.append(spec["label"])
+            continue
+        field = f"signature_{key}"
+        if field not in request.form:
+            continue
+        html = (request.form.get(field) or "").strip()
+        current, _was_saved = addin_signature_html(conn, key)
+        if html == current.strip():
+            continue
+        problem = addin_signature_problem(html)
+        if problem:
+            refused.append(f"{spec['label']}: {problem}")
+            continue
+        if html == spec["default"].strip():
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (setting,))
+        else:
+            conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                         (setting, html))
+        saved.append(spec["label"])
+    if saved or restored:
+        log_audit(conn, "addin_signatures",
+                  details="; ".join(filter(None, [
+                      ("saved " + ", ".join(saved)) if saved else "",
+                      ("put back " + ", ".join(restored)) if restored else ""])))
+    conn.commit()
+    conn.close()
+    done = []
+    if saved:
+        done.append("Saved: " + ", ".join(saved) + ".")
+    if restored:
+        done.append("Put back to the original: " + ", ".join(restored) + ".")
+    if refused:
+        flash("Not saved -- " + "; ".join(refused) + ". " + " ".join(done), "error")
+    elif done:
+        flash(" ".join(done) + " The add-in uses it on the next email anybody starts.",
+              "success")
+    else:
+        flash("Nothing had changed.", "success")
+    return redirect(url_for("admin_outlook_addin") + "#signatures")
 
 
 @app.route("/admin/outlook-addin")
@@ -124928,7 +125448,7 @@ def turnstile_siteverify(token, ip):
                      timeout=8) as resp:
             return bool(json.loads(resp.read().decode("utf-8")).get("success"))
     except (URLError, HTTPError, OSError, ValueError) as e:
-        print(f"[enquiries] Turnstile could not be asked: {e}")
+        log_line(f"[enquiries] Turnstile could not be asked: {e}")
         return None
 
 
@@ -125218,7 +125738,7 @@ def contact_page():
     if aside:
         conn.commit()
         conn.close()
-        print(f"[enquiries] set aside as spam: {email} ({aside})")
+        log_line(f"[enquiries] set aside as spam: {email} ({aside})")
         flash(thanks, "success")
         return redirect(url_for("contact_page"))
     # A task, because anything that becomes a task reaches the calendar by

@@ -23,6 +23,8 @@ SUITES = [
     "test_chat",
     "test_assistant",
     "test_guest_import",
+    "test_rg_waitlist_import",
+    "test_booked_to_come_letter",
     "test_way_back_in",
     "test_access_levels",
     "test_booking_quote",
@@ -547,6 +549,7 @@ SUITES = [
     "test_outlook_addin",
     "test_send_check",
     "test_send_check_french_reply",
+    "test_addin_signature",
     # Shared inboxes and a pinned Guest pane, 19 October 2026.
     "test_addin_shared_inboxes",
     # 22 October 2026: a new add-in version reaches the owner as a task.
@@ -640,6 +643,10 @@ SUITES = [
     "test_inbox_flags_quiet",
     "test_email_own_booking",
     "test_house_calendar_refused",
+    # 11 November 2026: a tick in a task subject stopped the calendar pass
+    # on a cp1252 console. Every log line goes through log_line, which never
+    # raises, and app.py holds no print().
+    "test_log_line",
 ]
 
 

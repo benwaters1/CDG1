@@ -37,6 +37,9 @@
  */
 var CONFIG = {{ config|tojson }};
 var MSAL_SOURCE = {{ msal_source }};
+// The house's signatures, which inbox gets which, and the logo to carry
+// inside the email. Here rather than asked for, so signing needs no network.
+var SIGNATURES = {{ signatures|tojson }};
 
 var SEND_BUDGET_MS = CONFIG.send_budget_ms || 3000;
 var COMPOSE_BUDGET_MS = 10000;
@@ -611,11 +614,236 @@ function whileWriting(event) {
   }
 }
 
-function onNewMessageComposeHandler(event) { whileWriting(event); }
+// ---- the signature ---------------------------------------------------------
+//
+// Put in by the add-in, not the server (10 November 2026). A transport rule
+// can only add to the very end of a message, so on a reply the signature
+// landed under the whole quoted thread, and its logo was a hosted picture
+// Outlook blocks. setSignatureAsync puts it where Outlook puts a signature:
+// above the quoted email on a reply, under the body on a new one. The logo
+// goes in as an inline attachment, which nothing blocks.
+//
+// Chosen by the address the email is FROM: in a shared inbox that is the
+// inbox, so a reply from reservations@ is the Chateau Team's whoever writes
+// it. Every signature carries SIGNATURES.guard ("2 Route de Beille"): the
+// server's rules skip an email that already has it, which is how the two do
+// not both sign one email. An address with no signature of its own is left
+// alone, and the server signs it as before.
+
+var SIG_DATA_KEY = "gudanesSignature";
+var SIG_BUDGET_MS = 8000;
+
+function signatureFor(address) {
+  var a = String(address || "").toLowerCase();
+  var at = a.lastIndexOf("@");
+  if (at < 1) { return ""; }
+  if (!contains(CONFIG.house_domains, a.slice(at + 1))) { return ""; }
+  var key = SIGNATURES.by_mailbox[a.slice(0, at)];
+  if (!key || !SIGNATURES.html[key]) { return ""; }
+  return key;
+}
+
+// Who the email is from: the From line where Outlook gives it, else the
+// mailbox's own address.
+function fromAddress(item, done) {
+  try {
+    if (item.from && item.from.getAsync) {
+      item.from.getAsync(function (result) {
+        if (result && result.status === Office.AsyncResultStatus.Succeeded && result.value &&
+            result.value.emailAddress) {
+          done(String(result.value.emailAddress).toLowerCase());
+          return;
+        }
+        done(profileAddress());
+      });
+      return;
+    }
+  } catch (e) { /* fall through to the mailbox's own */ }
+  done(profileAddress());
+}
+
+// Which signature this email already carries, as far as this add-in put it
+// there (Mailbox 1.11). "" when it put none in, or cannot say.
+function rememberedSignature(item, done) {
+  try {
+    if (item.sessionData && item.sessionData.getAsync) {
+      item.sessionData.getAsync(SIG_DATA_KEY, function (result) {
+        if (result && result.status === Office.AsyncResultStatus.Succeeded) {
+          done(String(result.value || ""));
+          return;
+        }
+        done("");
+      });
+      return;
+    }
+  } catch (e) { /* nothing remembered */ }
+  done("");
+}
+
+function rememberSignature(item, key) {
+  try {
+    if (item.sessionData && item.sessionData.setAsync) {
+      item.sessionData.setAsync(SIG_DATA_KEY, key, function () { /* nothing waits on it */ });
+    }
+  } catch (e) { /* not on this Outlook */ }
+}
+
+// The logo, inside the email. done(true) once it is attached (or already
+// was), done(false) where this Outlook cannot, and the hosted copy is used.
+//
+// "Already was" means THIS add-in attached it to THIS email, known by the id
+// Outlook gave it and kept in the email's own session data -- never by its
+// name. A reply to an email the house signed carries that email's logo in the
+// quoted thread, under the same name, and Outlook does not give the reply a
+// copy the cid: can reach: taking that one for ours left the new signature
+// pointing at nothing, an empty box where the logo goes (owner, 11 Nov 2026).
+var LOGO_DATA_KEY = "gudanesLogoId";
+
+function attachLogo(item, done) {
+  var name = SIGNATURES.logo_name;
+  if (!SIGNATURES.logo_base64 || !item.addFileAttachmentFromBase64Async) { done(false); return; }
+  function add() {
+    try {
+      item.addFileAttachmentFromBase64Async(SIGNATURES.logo_base64, name, { isInline: true },
+        function (result) {
+          var ok = !!(result && result.status === Office.AsyncResultStatus.Succeeded);
+          if (ok && result.value) { remember(LOGO_DATA_KEY, String(result.value)); }
+          done(ok);
+        });
+    } catch (e) { done(false); }
+  }
+  // Not twice: the From can change more than once while an email is written.
+  recall(LOGO_DATA_KEY, function (ours) {
+    if (!ours || !item.getAttachmentsAsync) { add(); return; }
+    try {
+      item.getAttachmentsAsync(function (result) {
+        var list = (result && result.status === Office.AsyncResultStatus.Succeeded && result.value) || [];
+        for (var i = 0; i < list.length; i++) {
+          if (list[i] && list[i].id === ours && list[i].isInline) { done(true); return; }
+        }
+        add();
+      });
+    } catch (e) { add(); }
+  });
+}
+
+// The email's own session data, where Outlook has it.
+function recall(key, then) {
+  var item = Office.context.mailbox.item;
+  try {
+    if (item && item.sessionData && item.sessionData.getAsync) {
+      item.sessionData.getAsync(key, function (result) {
+        var value = "";
+        if (result && result.status === Office.AsyncResultStatus.Succeeded) { value = result.value || ""; }
+        then(value);
+      });
+      return;
+    }
+  } catch (e) { /* not on this Outlook */ }
+  then("");
+}
+
+function remember(key, value) {
+  var item = Office.context.mailbox.item;
+  try {
+    if (item && item.sessionData && item.sessionData.setAsync) {
+      item.sessionData.setAsync(key, value, function () { /* nothing waits on it */ });
+    }
+  } catch (e) { /* not on this Outlook */ }
+}
+
+function setSignature(item, html, text, done) {
+  var body = item.body;
+  try {
+    body.setSignatureAsync(html, { coercionType: Office.CoercionType.Html }, function (result) {
+      if (result && result.status === Office.AsyncResultStatus.Succeeded) { done(true); return; }
+      // An email being written in plain text takes the text one.
+      try {
+        body.setSignatureAsync(text, { coercionType: Office.CoercionType.Text }, function (again) {
+          done(!!(again && again.status === Office.AsyncResultStatus.Succeeded));
+        });
+      } catch (e2) { done(false); }
+    });
+  } catch (e) { done(false); }
+}
+
+// Put the right signature in, or take ours out if the From no longer has one.
+// done() exactly once, inside SIG_BUDGET_MS whatever Outlook does.
+function signEmail(done) {
+  var finished = false;
+  function finish() {
+    if (finished) { return; }
+    finished = true;
+    done();
+  }
+  setTimeout(finish, SIG_BUDGET_MS);
+  try {
+    var item = Office.context.mailbox.item;
+    if (!item || !item.body || !item.body.setSignatureAsync) { finish(); return; }
+    fromAddress(item, function (address) {
+      var key = signatureFor(address);
+      rememberedSignature(item, function (had) {
+        if (finished) { return; }
+        if (!key) {
+          // Only ever our own signature removed, never somebody's Outlook one.
+          if (had) {
+            setSignature(item, "", "", function () { rememberSignature(item, ""); finish(); });
+            return;
+          }
+          finish();
+          return;
+        }
+        // Outlook's own signature would stack on top of the house's.
+        try {
+          if (item.disableClientSignatureAsync) {
+            item.disableClientSignatureAsync(function () { /* best effort */ });
+          }
+        } catch (e) { /* not on this Outlook */ }
+        attachLogo(item, function (inline) {
+          if (finished) { return; }
+          var html = SIGNATURES.html[key];
+          if (inline) { html = html.split(SIGNATURES.logo_url).join("cid:" + SIGNATURES.logo_name); }
+          setSignature(item, html, SIGNATURES.text[key], function (ok) {
+            if (ok) { rememberSignature(item, key); }
+            finish();
+          });
+        });
+      });
+    });
+  } catch (e) {
+    finish();
+  }
+}
+
+// Outlook takes one completed() per event: the note and the signature both
+// finish first.
+function bothThen(event) {
+  var waiting = 2;
+  var done = false;
+  return function () {
+    waiting -= 1;
+    if (waiting > 0 || done) { return; }
+    done = true;
+    try { event.completed(); } catch (e) { /* nothing more to do */ }
+  };
+}
+
+function onNewMessageComposeHandler(event) {
+  var one = bothThen(event);
+  signEmail(one);
+  whileWriting({ completed: one });
+}
 function onMessageRecipientsChangedHandler(event) { whileWriting(event); }
+// Jasmine switching from experience@ to her own address, say (Mailbox 1.13).
+function onMessageFromChangedHandler(event) {
+  signEmail(function () {
+    try { event.completed(); } catch (e) { /* nothing more to do */ }
+  });
+}
 
 // Required so Outlook can find each handler by the name the manifest gives.
 // See "Activate add-ins with events" in Microsoft's documentation.
 Office.actions.associate("onMessageSendHandler", onMessageSendHandler);
 Office.actions.associate("onNewMessageComposeHandler", onNewMessageComposeHandler);
 Office.actions.associate("onMessageRecipientsChangedHandler", onMessageRecipientsChangedHandler);
+Office.actions.associate("onMessageFromChangedHandler", onMessageFromChangedHandler);

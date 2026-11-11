@@ -31,6 +31,10 @@ class FakeGraph:
         # The inbox folder, for the unanswered-email scan: mailbox -> [message].
         # Kept apart from `messages`, which the add-in's search reads.
         self.inbox = {}
+        # False plays Microsoft as it was found on 11 Nov 2026: the inbox
+        # listing comes back without the headers it was asked for, and only
+        # one message asked on its own gives them.
+        self.list_headers = True
         self.bodies = {}            # message id -> text
         self.sent = {}              # mailbox -> [sent message dicts]
         self.refuse_mailboxes = {}  # mailbox -> status code to answer with
@@ -110,7 +114,9 @@ class FakeGraph:
         if rest == "mailFolders/sentitems/messages":
             return {"value": list(self.sent.get(mailbox, []))}
         if rest == "mailFolders/inbox/messages":
-            return {"value": list(self.inbox.get(mailbox, []))}
+            if self.list_headers:
+                return {"value": list(self.inbox.get(mailbox, []))}
+            return {"value": [dict(msg, internetMessageHeaders=[]) for msg in self.inbox.get(mailbox, [])]}
         if rest == "calendars":
             return {"value": [{"id": cid, "name": c["name"]} for cid, c in self.calendars.items()]}
         if rest == "calendar":

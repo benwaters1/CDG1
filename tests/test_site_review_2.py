@@ -396,6 +396,56 @@ def _run(s, anon):
         put_back_x()
         put_back_k()
         conn.close()
+    _book_cards(s, anon)
+
+
+ROOM_CARD = re.compile(r'(?s)<article class="g-card g-card--room".*?</article>')
+
+
+def card_photos(html):
+    """Each /book room card: its name, and the alt of every photograph in its slider, in order."""
+    out = {}
+    for card in ROOM_CARD.findall(html):
+        name = re.search(r'class="g-card__name">([^<]+)', card)
+        out[name.group(1).strip() if name else "?"] = (re.findall(r'<img\b[^>]*\bsrc="([^"]*)"', card),
+                                                       re.findall(r'<img\b[^>]*\balt="([^"]*)"', card))
+    return out
+
+
+def _book_cards(s, anon):
+    """11 Nov 2026 (owner): "make this the primary photo" (the Marquis Suite, then the Family Suite), "whys there
+    none of the views", "wheres the bathroom photos". Each card on /book ends with its own view, where the room
+    has one; the bathrooms have their own section."""
+    s.section("The room cards on /book: the photographs the owner chose, the views, and the bathrooms")
+    cards = card_photos(anon.get("/book").get_data(as_text=True))
+    s.check("the room cards are there to read", len(cards) >= 4, detail=str(list(cards)))
+    marquis, family = cards.get("The Marquis Suite"), cards.get("The Family Suite")
+    s.check("the Marquis Suite leads with the gold four-poster by the fireplace",
+            bool(marquis) and "GudanesCookingintheKitchenStay59of925" in marquis[0][0], detail=str(marquis and marquis[0][:1]))
+    s.check("the Family Suite leads with the two chairs at the open windows",
+            bool(family) and "799483474" in family[0][0], detail=str(family and family[0][:1]))
+    with m.app.test_request_context("/"):
+        mod = m.app.jinja_env.get_template("_room_photos.html").module
+        lists = {n: list(mod.ROOM_PHOTOS.get(n, [])) + list(mod.ROOM_EXTRA.get(n, [])) for n in cards}
+        baths = {a for _, a in mod.BATH_PHOTOS}
+    with_view = [n for n, l in lists.items() if any(a == "The view from your window" for _, a in l)]
+    s.check("several rooms have a view of their own to show", len(with_view) >= 3, detail=str(with_view))
+    lost = [n for n in with_view if "The view from your window" not in cards[n][1]]
+    s.check("and every one of them shows it on its card", not lost, detail=str(lost))
+    # The bathrooms have a section of their own (owner, 11 Nov: "they are a real feature, they are incredible"),
+    # with every photograph of them and the owner's facts, so the cards no longer carry one each.
+    page = anon.get("/book").get_data(as_text=True)
+    # Up to the section's own close: the slider inside it has a closing tag of its own.
+    at = page.find('<section class="g-sec g-baths-sec"')
+    sec = page[at:page.find("</div></section>", at)] if at != -1 else ""
+    s.check("/book has a section on the bathrooms", bool(sec))
+    shown = set(re.findall(r'<img\b[^>]*\balt="([^"]*)"', sec))
+    s.check("showing every photograph of them", baths <= shown, detail=str(baths - shown))
+    words = visible_text(sec)
+    for fact in ("2019", "historic monument", "ground floor", "Antoinette Poisson", "terracotta",
+                 "the château’s logo", "Mountain views", "Heaters", "Luxury linen", "shampoo, conditioner and bath gel",
+                 "The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath"):
+        s.check(f"and says: {fact}", fact in words)
 
 
 if __name__ == "__main__":
