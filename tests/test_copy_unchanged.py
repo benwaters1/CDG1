@@ -83,7 +83,9 @@ m = _harness.m
 # welcome glass, no artisan, no pool on Cooking and "on site" for "in the house" kept.
 # 11 Nov: moved to dc5309b, Cooking in the Cuisine's "five spring days" (owner: "change to
 # spring"); it listed /workshops and /workshops/4, and nothing else.
-COPY_BASE = "dc5309b"
+# 11 Nov: moved to 06ba88c, the bathrooms' section on /book (owner: "they are a real feature");
+# it listed /book only.
+COPY_BASE = "06ba88c"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
