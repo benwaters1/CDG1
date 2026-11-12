@@ -89,7 +89,9 @@ m = _harness.m
 # /book only.
 # 11 Nov: moved to d0edfb2, the owner's "from" prices (weddings from €120,000 + VAT; a private retreat
 # from €45,000 for four nights); it listed /workshops and /events/weddings, and nothing else.
-COPY_BASE = "d0edfb2"
+# 12 Nov: moved to 9fda41b, the "from" prices taken off again (owner); it listed /workshops and
+# /events/weddings, and nothing else.
+COPY_BASE = "9fda41b"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
