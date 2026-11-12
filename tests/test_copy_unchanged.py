@@ -98,7 +98,8 @@ m = _harness.m
 # prices taken off).
 # 12 Nov: moved to 524b5b9, one home per photograph drawn large (the second review, 3.3); it listed
 # /restoration only, "The kitchen" for the dining room's line.
-COPY_BASE = "f0eb8dd"
+# 12 Nov: both moved to 42862c8, the merge that holds the site-copy brief and one home per photograph.
+COPY_BASE = "42862c8"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
