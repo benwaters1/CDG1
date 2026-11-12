@@ -69,7 +69,7 @@
       'Antique': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fa0ac24f-4a8c-4140-8a2f-41dc5beb9b99/AB23770B-DF11-4893-95A0-C89825994C9A.jpg?format=1000w",
       'Noël':    url_for('static', filename='img/retreats/noel-at-gudanes-800.jpg'),
       'Cooking': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/27199697-d1e3-4a6d-b875-e8c325e1b231/Screenshot+2026-08-12+at+8.39.43+pm.png?format=1000w",
-      'Seven':   "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1000w"
+      'Seven':   url_for('static', filename='img/retreats/film-under-the-stars-800.jpg')
   } %}
   {#- The dates' photograph per atelier. This map had bedrooms for the
       Cooking, Artisans and Seven-night ateliers (Chambre Bleue, bedroom 3, Chambre du Parc). -#}
@@ -82,7 +82,7 @@
   {#- (card, dates): the wider one for the arched card, which crops to 4:3. -#}
   {%- set WS_SPARE = [
     ('/static/img/retreats/lawn-afternoon.jpg', '/static/img/retreats/guests-with-baskets.jpg'),
-    ('/static/img/retreats/garden-in-bloom.jpg', '/static/img/retreats/long-lunch-outdoors.jpg'),
+    ('/static/img/retreats/garden-in-bloom.jpg', '/static/img/retreats/guests-rose-gate.jpg'),
     ('/static/img/retreats/candlelit-dinner-party.jpg', '/static/img/retreats/garden-conversation.jpg'),
     ('/static/img/retreats/sparkling-tray.jpg', '/static/img/retreats/chateau-framed-by-roses.jpg')
   ] %}
@@ -145,7 +145,7 @@
     {%- for slug, alt, fr, en, line in [
       ('crepe-cart', 'Crêpes made at the crêpe cart, in a red beret', 'Le petit-déjeuner', 'Breakfast', 'Bread and croissants from the village <em lang="fr">boulangerie</em>, coffee on the terrace, and on some mornings the crêpe cart.'),
       ('cooking-class-hands', 'The cooking class from above, hands at work', 'La matinée', 'The morning', 'At the stove with the chefs, at the market with the producers, or on the restorers’ scaffold.'),
-      ('lunch-outdoors-many', 'The long lunch on the lawn, many guests', 'Le déjeuner', 'Lunch', 'A long table in the garden, or lunch out in the valley: Foix beneath its castle, or Ax-les-Thermes among the hot springs.'),
+      ('long-lunch-outdoors', 'A long lunch outdoors, the mountains beyond', 'Le déjeuner', 'Lunch', 'A long table in the garden, or lunch out in the valley: Foix beneath its castle, or Ax-les-Thermes among the hot springs.'),
       ('sorbet-pouring', 'Wine poured over sorbet in a crystal coupe', 'L’après-midi', 'The afternoon', 'The pool and a glass of rosé, pétanque on the lawn, homemade ice cream, the library, or an easel and a box of watercolours. Or a brocante, or the great cave at Lombrives.'),
       ('pink-cocktails', 'Pink cocktails on a silver tray', 'L’apéritif', 'As the light goes', 'As the mountains turn blue: a Kir Royale, a Lillet tonic, the château’s own botanical syrups.'),
       ('candlelit-dinner-salon', 'Dinner by candlelight in the salon, the long table', 'Le dîner', 'Dinner', 'Several courses by candlelight, or the barbecue on the terrace, or the last-night banquet, dressed for the occasion. Then a French film under the stars, or dancing.')] %}
@@ -168,7 +168,7 @@
   <p class="g-p g-lede-first">In France, the table is the point of the day, and so it is here. The château’s chefs cook the classics of the French table. There is bread from the village <em lang="fr">boulangerie</em> each morning, trout from the farm right beside the château, cheeses from the Ariège, produce from the morning’s market, pastries from our own pastry kitchen, and now and then a dish from the château’s eighteenth-century cookbook.</p>
   <p class="g-p">Some meals are long and easy: platters passed down a table in the garden, the barbecue on the terrace, a kitchen supper of what you cooked that afternoon. Most evenings are an occasion. Several courses are served by candlelight, perhaps a fillet of beef, a ballotine of guinea fowl or the trout from next door, with the silver laid and flowers down the table. There is local sparkling wine as you arrive, the wines of France at every meal, an apéritif at dusk, and <i>nothing to pay at the end</i>.</p>
   {{ mosaique([[rsrc('trout-on-the-grill'), 'Trout from the farm next door, on the grill', 'Trout from next door'], [rsrc('plating-asparagus'), 'Plating asparagus, in a château apron', 'Plating the asparagus'], [rsrc('chateau-apron-plate'), 'Smiling, in a château apron, with a plate', 'From the kitchen'], [rsrc('red-beret-tart'), 'A tricolour tart, made in a red beret', 'A tricolour tart']]) }}
-  {{ carrousel([[rsrc('roast-birds'), 'Roast birds on old platters', 'Roast birds on old platters'], [rsrc('roast-on-old-china'), 'A roast dish on old china', 'On old china'], [rsrc('plated-starter'), 'A starter with egg, the silver laid', 'The silver laid'], [rsrc('plated-spring-dish'), 'A spring dish, plated', 'A spring dish'], [rsrc('mille-feuille'), 'Mille-feuille, plated', 'Mille-feuille'], [rsrc('shared-dish'), 'Serving from a shared dish', 'From a shared dish'], [rsrc('chef-across-the-lawn'), 'The chef carrying a dish across the lawn', 'Across the lawn'], [rsrc('croquembouche'), 'A croquembouche, held up outdoors', 'A croquembouche']], 'The Table') }}
+  {{ carrousel([[rsrc('roast-on-old-china'), 'A roast dish on old china', 'On old china'], [rsrc('plated-starter'), 'A starter with egg, the silver laid', 'The silver laid'], [rsrc('plated-spring-dish'), 'A spring dish, plated', 'A spring dish'], [rsrc('mille-feuille'), 'Mille-feuille, plated', 'Mille-feuille'], [rsrc('shared-dish'), 'Serving from a shared dish', 'From a shared dish'], [rsrc('chef-across-the-lawn'), 'The chef carrying a dish across the lawn', 'Across the lawn'], [rsrc('croquembouche'), 'A croquembouche, held up outdoors', 'A croquembouche']], 'The Table') }}
 </div></section>
 
 {#- 9 Nov, evening (owner's second review, 1): /workshops keeps the hero, the introduction, the retreats, A Day at Gudanes, The Table, When You Can Come, the comparison, Key Information, the questions and the close. The Art of the Find and its gold frame, The Evenings' polaroids and film strip, Be Part of It, The Valley, Why So Many Return and Everything Included went: the retreat pages carry the photographs. -#}

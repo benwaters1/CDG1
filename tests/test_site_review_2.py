@@ -43,6 +43,8 @@ from datetime import date
 from _harness import Suite, db, visible_text
 import _harness
 from test_copy_unchanged import public_paths
+from test_home_pictures import picture_key
+from test_page_pictures import _visible
 
 m = _harness.m
 
@@ -397,6 +399,7 @@ def _run(s, anon):
         put_back_k()
         conn.close()
     _book_cards(s, anon)
+    _one_home(s, anon)
 
 
 ROOM_CARD = re.compile(r'(?s)<article class="g-card g-card--room".*?</article>')
@@ -448,6 +451,77 @@ def _book_cards(s, anon):
                  "the château’s logo", "Mountain views", "Heaters", "Luxury linen", "shampoo, conditioner and bath gel",
                  "The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath"):
         s.check(f"and says: {fact}", fact in words)
+
+
+# A photograph drawn large: a page's hero, a room page's hero, one across the page, one in a frame, a before or after.
+FEATURE = re.compile(r"\b(g-hero__img|g-roomhero|g-plein__img|g-cadre__img|g-ba__img)\b")
+
+
+def photos_by_page(pages):
+    """For each page: the photographs it shows (by what each is), and those it draws large. Not the menu drawer's
+    picture, not the lightbox's or a gallery's hidden extras, not the footer."""
+    shown, large = {}, {}
+    for path, page in pages.items():
+        page = _visible(page)
+        page = re.sub(r"(?s)<template\b.*?</template>", "", page)
+        page = re.sub(r'(?s)<nav class="g-navwrap.*?</nav>', "", page)
+        page = page.split('<footer class="g-footer">')[0]
+        shown[path], large[path] = set(), set()
+        for tag in re.findall(r"<img\b[^>]*>", page):
+            src = re.search(r'\ssrc="([^"]*)"', tag)
+            if not src or not src.group(1):
+                continue
+            key = picture_key(htmllib.unescape(src.group(1)))
+            shown[path].add(key)
+            cls = re.search(r'\sclass="([^"]*)"', tag)
+            if cls and FEATURE.search(cls.group(1)):
+                large[path].add(key)
+    return shown, large
+
+
+def two_homes(pages, exempt=frozenset()):
+    """Photographs drawn large on one page and shown on another too, the gallery apart."""
+    shown, large = photos_by_page(pages)
+    out = []
+    for path, keys in large.items():
+        if path == "/gallery":
+            continue
+        for key in keys - set(exempt):
+            elsewhere = sorted(p for p, ks in shown.items() if key in ks and p not in (path, "/gallery"))
+            if elsewhere:
+                out.append((key, path, elsewhere))
+    return sorted(out)
+
+
+def _one_home(s, anon):
+    """The second review, 3.3: "One home per hero photograph; the gallery may repeat it." The woman on the ladder at
+    the fresco was on five pages, the roof open to the mountains on four. A room's own photographs are not in this:
+    a room is shown by its photographs wherever it is offered."""
+    s.section("One home for each photograph drawn large")
+    a = '<section><img class="g-hero__img" src="/static/img/x/one.jpg" alt="One"></section>'
+    b = '<section><img src="/static/img/x/one.jpg" alt="One again"><img class="g-hero__img" src="/static/img/x/two.jpg" alt="Two"></section>'
+    found = two_homes({"/a": a, "/b": b, "/gallery": b})
+    s.check("the reader finds a hero shown again on another page, and lets the gallery be",
+            [(k, p, e) for k, p, e in found] == [("x/one.jpg", "/a", ["/b"])], detail=str(found))
+    pages = {}
+    for path in public_paths(anon):
+        r = anon.get(path)
+        if r.status_code == 200:
+            pages[path] = r.get_data(as_text=True)
+    with m.app.test_request_context("/"):
+        mod = m.app.jinja_env.get_template("_room_photos.html").module
+        own = {picture_key(src) for lists in (mod.ROOM_PHOTOS, mod.ROOM_EXTRA) for v in lists.values() for src, _ in v}
+        own |= {picture_key(src) for src, _ in mod.BATH_PHOTOS}
+    found = two_homes(pages, own)
+    s.check("no photograph drawn large on one page is shown on another", not found,
+            detail="; ".join(f"{k} (large on {p}, also {', '.join(e)})" for k, p, e in found[:5]))
+    shown, _ = photos_by_page(pages)
+    for name, key in (("the roof open to the mountains", "found/mountains-through-the-roof.jpg"),
+                      ("the woman on the ladder at the painted medallion",
+                       picture_key("https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/"
+                                   "1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg"))):
+        homes = sorted(p for p, ks in shown.items() if key in ks and p != "/gallery")
+        s.check(f"{name} lives on /restoration alone", homes == ["/restoration"], detail=str(homes))
 
 
 if __name__ == "__main__":

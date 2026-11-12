@@ -157,6 +157,39 @@ def _checks(s, conn):
     s.check("applied once", conn.execute(
         "SELECT 1 FROM app_settings WHERE key = 'room_occupancy_2026_10_18'").fetchone() is not None)
 
+    s.section("The Twin Room (Ground Floor) sleeps three again (owner, 12 November)")
+    # Live had it at two, so a party of three on a winter night found nothing and was waitlisted.
+    gf = conn.execute("SELECT * FROM rooms WHERE name = 'The Twin Room (Ground Floor)'").fetchone()
+    flag = conn.execute("SELECT value FROM app_settings WHERE key = 'gf_twin_sleeps_three_2026_11_12'").fetchone()
+    if not s.check("the room is there to set", gf is not None):
+        return
+    try:
+        conn.execute("UPDATE rooms SET max_occupancy = 2, max_adults = 2, max_children = 0 WHERE id = ?", (gf["id"],))
+        conn.execute("DELETE FROM app_settings WHERE key = 'gf_twin_sleeps_three_2026_11_12'")
+        conn.commit()
+        s.check("a room left at two is put back to three, two adults, two children",
+                m.apply_ground_floor_twin_sleeps_three_2026_11_12(conn) == 1
+                and tuple(conn.execute("SELECT max_occupancy, max_adults, max_children FROM rooms WHERE id = ?",
+                                       (gf["id"],)).fetchone()) == (3, 2, 2))
+        conn.execute("UPDATE rooms SET max_occupancy = 2 WHERE id = ?", (gf["id"],))
+        conn.commit()
+        s.check("once: a later edit by hand stays", m.apply_ground_floor_twin_sleeps_three_2026_11_12(conn) == 0
+                and conn.execute("SELECT max_occupancy FROM rooms WHERE id = ?", (gf["id"],)).fetchone()[0] == 2)
+        conn.execute("UPDATE rooms SET max_occupancy = 3, max_adults = 2, max_children = 2 WHERE id = ?", (gf["id"],))
+        conn.commit()
+        with m.app.test_request_context():
+            ok, why = m.room_offer(conn, gf, house_today() + timedelta(days=60),
+                                   house_today() + timedelta(days=61), 3)
+        s.check("so a party of three is not turned away by its size", why != "Sleeps up to 2", detail=str(why))
+    finally:
+        conn.execute("UPDATE rooms SET max_occupancy = ?, max_adults = ?, max_children = ? WHERE id = ?",
+                     (gf["max_occupancy"], gf["max_adults"], gf["max_children"], gf["id"]))
+        conn.execute("DELETE FROM app_settings WHERE key = 'gf_twin_sleeps_three_2026_11_12'")
+        if flag:
+            conn.execute("INSERT INTO app_settings (key, value) VALUES ('gf_twin_sleeps_three_2026_11_12', ?)",
+                         (flag[0],))
+        conn.commit()
+
 
 if __name__ == "__main__":
     print(run().report())
