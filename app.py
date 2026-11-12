@@ -27781,6 +27781,15 @@ def channel_cost(conn, start=None, end=None):
             (start.isoformat(), end.isoformat())):
         if (r["room_id"], r["arrival_date"], r["departure_date"]) in own:
             continue
+        # A CANCELLED STAY'S FIGURES ARE ONLY MONEY IF A STATEMENT SAID SO
+        # AFTER IT WAS CANCELLED. Chiodi's (6348479172, EUR 5,530) was in the
+        # 9 November statement while it stood, and was cancelled by email on
+        # the 12th: the figures stayed on it and the page went on counting a
+        # stay that had gone. A statement read since the cancellation that
+        # still shows a commission is a charged cancellation; anything else is
+        # not revenue until a statement says it is.
+        if r["status"] != "confirmed" and (r["statement_at"] or "") < (r["last_event_at"] or ""):
+            continue
         sold.append(r)
         if r["status"] == "confirmed" and not r["statement_at"]:
             waiting += 1
@@ -91213,6 +91222,13 @@ def apply_booking_com_statement(conn, rows, *, user_id=None, filename=""):
             report["new"].append(label)
             continue
         sets = {k: v for k, v in money.items() if v is not None and stay[k] != v}
+        if not charged:
+            # Cancelled and not charged: whatever price it carried while it
+            # stood is no longer money, so it goes, rather than being left
+            # for the report to count.
+            for key in ("amount", "currency", "commission_pct", "commission_amount"):
+                if stay[key] is not None:
+                    sets[key] = None
         sets.pop("statement_at", None)
         changed = bool(sets)
         for key, value in gaps.items():
