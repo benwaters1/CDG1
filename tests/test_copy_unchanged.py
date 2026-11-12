@@ -91,7 +91,9 @@ m = _harness.m
 # from €45,000 for four nights); it listed /workshops and /events/weddings, and nothing else.
 # 12 Nov: moved to 9fda41b, the "from" prices taken off again (owner); it listed /workshops and
 # /events/weddings, and nothing else.
-COPY_BASE = "9fda41b"
+# 12 Nov: moved to 524b5b9, one home per photograph drawn large (the second review, 3.3); it listed
+# /restoration only, "The kitchen" for the dining room's line.
+COPY_BASE = "524b5b9"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
