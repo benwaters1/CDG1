@@ -54854,6 +54854,51 @@ def guest_availability_grid(conn, rooms, month_arg):
     }
 
 
+def room_offer(conn, room, arrival, departure, party_size):
+    """(available, why not) for one room, these nights and this party.
+
+    The one answer Stay shows on each room's card, and the waitlist email
+    repeats (owner, 12 Nov 2026), so the house reads the same reason the
+    guest was given.
+    """
+    stay_nights = (departure - arrival).days
+    ok, why = is_range_available(conn, room["id"], arrival, departure)
+    rules = stay_rules(conn, room, arrival, departure)
+    too_short = stay_nights < rules["min_nights"]
+    # CAPACITY, WHICH THE SEARCH USED TO IGNORE ENTIRELY. The rooms
+    # sleep two, two, two, three and five, so a family of four was
+    # shown all five as available, chose one, filled in the whole
+    # form and was then told it sleeps two. A party of four is not an
+    # edge case; it is a family.
+    too_small = bool(party_size and party_size > 0
+                     and room["max_occupancy"]
+                     and party_size > room["max_occupancy"])
+    available = ok and not too_short and not too_small
+    # Capacity first: a room that cannot hold the party will not hold
+    # it on any date, so "sleeps up to two" is the useful sentence and
+    # "not available these dates" sends them off to try other ones.
+    if too_small:
+        return available, f"Sleeps up to {room['max_occupancy']}"
+    if too_short:
+        return available, (
+            f"Requires a {rules['min_nights']}-night minimum stay"
+            + (" on these dates" if rules["min_nights"] > (room["min_nights"] or 1) else ""))
+    if not ok and why and why == season_note_for(conn, room["id"], arrival, departure):
+        # Closed for the season: the owner's own line, "The Gold
+        # Suite reopens on 1 April."
+        return available, why
+    if not ok and is_house_full_reason(why):
+        # The house's rooms all let on a night of the stay: said
+        # plainly, because "not available" sends somebody hunting for
+        # another room that is not there either (z28 item 1) -- and
+        # with the next night it can be had (owner, 18 October 2026).
+        return available, why.rstrip(".") + next_free_words(conn, room, arrival, stay_nights)
+    if not ok:
+        return available, "Not available these dates" + next_free_words(
+            conn, room, arrival, stay_nights)
+    return available, None
+
+
 @app.route("/book")
 def book_rooms():
     conn = get_db()
@@ -54926,41 +54971,9 @@ def book_rooms():
                   if any(c["mode"] == "hidden" for c in cl)}
         rooms = [r for r in rooms if r["id"] not in hidden]
         for room in rooms:
-            ok, why = is_range_available(conn, room["id"], arrival, departure)
-            rules = stay_rules(conn, room, arrival, departure)
-            too_short = stay_nights < rules["min_nights"]
-            # CAPACITY, WHICH THE SEARCH USED TO IGNORE ENTIRELY. The rooms
-            # sleep two, two, two, three and five, so a family of four was
-            # shown all five as available, chose one, filled in the whole
-            # form and was then told it sleeps two. A party of four is not an
-            # edge case; it is a family.
-            too_small = bool(party_size and party_size > 0
-                             and room["max_occupancy"]
-                             and party_size > room["max_occupancy"])
-            availability[room["id"]] = ok and not too_short and not too_small
-            # Capacity first: a room that cannot hold the party will not hold
-            # it on any date, so "sleeps up to two" is the useful sentence and
-            # "not available these dates" sends them off to try other ones.
-            if too_small:
-                unavailable_reason[room["id"]] = f"Sleeps up to {room['max_occupancy']}"
-            elif too_short:
-                unavailable_reason[room["id"]] = (
-                    f"Requires a {rules['min_nights']}-night minimum stay"
-                    + (" on these dates" if rules["min_nights"] > (room["min_nights"] or 1) else ""))
-            elif not ok and why and why == season_note_for(conn, room["id"], arrival, departure):
-                # Closed for the season: the owner's own line, "The Gold
-                # Suite reopens on 1 April."
-                unavailable_reason[room["id"]] = why
-            elif not ok and is_house_full_reason(why):
-                # The house's rooms all let on a night of the stay: said
-                # plainly, because "not available" sends somebody hunting for
-                # another room that is not there either (z28 item 1) -- and
-                # with the next night it can be had (owner, 18 October 2026).
-                unavailable_reason[room["id"]] = why.rstrip(".") + next_free_words(
-                    conn, room, arrival, stay_nights)
-            elif not ok:
-                unavailable_reason[room["id"]] = "Not available these dates" + next_free_words(
-                    conn, room, arrival, stay_nights)
+            availability[room["id"]], reason = room_offer(conn, room, arrival, departure, party_size)
+            if reason:
+                unavailable_reason[room["id"]] = reason
             # A room closed for the season over these nights is RESTING: its
             # card draws the winter box, in the owner's words, and the rooms
             # still open say how they are kept warm. This used to be the
@@ -55029,6 +55042,34 @@ def book_rooms():
     )
 
 
+def waitlist_email_body(conn, name, email, phone, arrival_iso, departure_iso, party_size, notes):
+    """The house's note of a waitlist request: who, which nights, how many, and
+    why each room said no -- the reasons Stay gave them, from room_offer
+    (owner, 12 Nov 2026: the note said only "nothing was available", which
+    left the house guessing whether the rooms were full or the party too big)."""
+    party = (f"{party_size} guest{'' if party_size == 1 else 's'}" if party_size
+             else "party size not given")
+    contact = email + (f", {phone}" if phone else "")
+    lines = [f"{name} ({contact}) would like {arrival_iso or '?'} to {departure_iso or '?'}, "
+             f"for {party}, but nothing was available."]
+    arrival, departure = parse_date(arrival_iso or ""), parse_date(departure_iso or "")
+    if arrival and departure and departure > arrival:
+        hidden = {rid for rid, cl in room_closures(conn, arrival, departure).items()
+                  if any(c["mode"] == "hidden" for c in cl)}
+        said = []
+        for room in conn.execute(
+                "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall():
+            if room["id"] in hidden:
+                continue
+            ok, why = room_offer(conn, room, arrival, departure, party_size)
+            said.append(f"  {room['name']}: {'free now' if ok else why}")
+        if said:
+            lines += ["", "What each room said:"] + said
+    if notes:
+        lines += ["", notes]
+    return "\n".join(lines)
+
+
 @app.route("/waitlist/join", methods=["POST"])
 def join_waitlist():
     name = request.form.get("name", "").strip()
@@ -55073,11 +55114,9 @@ def join_waitlist():
     conn.commit()
     owner_to = house_address_for(conn, "rooms")
     if owner_to:
-        send_email(
-            owner_to, "New waitlist request",
-            f"{name} ({email}) would like {desired_arrival or '?'} to {desired_departure or '?'}, "
-            f"but nothing was available.\n\n{notes or ''}",
-        )
+        send_email(owner_to, "New waitlist request",
+                   waitlist_email_body(conn, name, email, phone, desired_arrival,
+                                       desired_departure, party_size, notes))
     conn.close()
     flash("You're on the waitlist — we'll reach out if those dates open up.", "success")
     return redirect(url_for("book_rooms", arrival=desired_arrival, departure=desired_departure))

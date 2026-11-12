@@ -630,6 +630,8 @@ SUITES = [
     "test_bnb_comparisons",
     # 10 November 2026: a room marked ready in one tap from the Today page.
     "test_room_mark_ready",
+    # 12 November 2026: the waitlist note says how many, and why each room said no.
+    "test_waitlist_email",
     # 9 November 2026: the address opens the map and sits under the home page's
     # hero, and every public page measured for its margins at three widths.
     "test_house_address",
