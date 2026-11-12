@@ -94,7 +94,9 @@ m = _harness.m
 # Included), the room pages and the four retreat pages, and nothing else.
 # 12 Nov: moved to 9fda41b, the "from" prices taken off again (owner); it listed /workshops and
 # /events/weddings, and nothing else.
-COPY_BASE = "4c2827e"
+# 12 Nov: the two moved together, to f0eb8dd, the merge that holds both (the brief's pages and the
+# prices taken off).
+COPY_BASE = "f0eb8dd"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
