@@ -73,7 +73,7 @@ def _csv(rows, delimiter=","):
 
 def _row(number, name, arrive, leave, status="ok", price="400 EUR", commission="60 EUR",
          unit="", rooms=1, persons=2, adults=2, children=0, country="gb"):
-    return [number, name, name, arrive, leave, "2030-01-02 10:00:00", status, rooms, persons,
+    return [number, name, name, arrive, leave, "2026-01-02 10:00:00", status, rooms, persons,
             adults, children, "", price, "15", commission, "Payment via Booking.com", "", "",
             country, "", "Desktop", unit, 1, "", "", ""]
 
@@ -374,6 +374,42 @@ def _run(s, oc, conn):
                      f"({','.join('?' * len(uncovered))})", uncovered)
     conn.execute("DELETE FROM ical_sources WHERE id = ?", (cur.lastrowid,))
     conn.commit()
+
+    s.section("Cancelled after the statement: not money any more")
+    # Chiodi's, 12 November 2026: in the statement while it stood, then
+    # cancelled by email, and still counted at EUR 5,530.
+    late = today + timedelta(days=500)
+    la, ld = late.isoformat(), (late + timedelta(days=7)).isoformat()
+    rows, _p = m.read_booking_com_statement(_csv([_row("9744400050", "Late Cancel", la, ld,
+                                                       price="5530 EUR", commission="829.50 EUR")]))
+    with m.app.test_request_context("/"):
+        m.apply_booking_com_statement(conn, rows, filename="before.csv")
+    window = (late - timedelta(days=1), late + timedelta(days=30))
+    with m.app.test_request_context("/"):
+        before = next((r for r in m.channel_cost(conn, *window)["rows"] if r.get("from_statement")), None)
+    s.check("while it stands it is counted (a precondition)",
+            before and abs(before["revenue"] - 5530) < 0.01, detail=str(before))
+    m.ingest_booking_com_email(
+        conn, source="graph", source_id=f"<{TAG}7@booking.com>",
+        received_at=(_now() + timedelta(minutes=1)).isoformat(),
+        from_address="noreply@booking.com", from_name="Booking.com",
+        subject=f"Booking.com - Cancelled booking! (9744400050, {late.strftime('%A, %d %B %Y')})",
+        notify=False)
+    conn.commit()
+    s.check("the cancellation email cancels it (a precondition)",
+            _stay(conn, "9744400050")["status"] == "cancelled")
+    with m.app.test_request_context("/"):
+        after = next((r for r in m.channel_cost(conn, *window)["rows"] if r.get("from_statement")), None)
+    s.check("and from then it is not counted as money, though the statement's figures are still on it",
+            after is None or abs(after["revenue"]) < 0.01, detail=str(after))
+    rows, _p = m.read_booking_com_statement(_csv([_row("9744400050", "Late Cancel", la, ld,
+                                                       status="cancelled_by_guest",
+                                                       price="5530 EUR", commission="")]))
+    with m.app.test_request_context("/"):
+        m.apply_booking_com_statement(conn, rows, filename="after.csv")
+    gone = _stay(conn, "9744400050")
+    s.check("and the next statement, showing it uncharged, takes the figures off it",
+            gone["amount"] is None and gone["commission_amount"] is None, detail=str(dict(gone)))
 
     s.section("The privacy notice says it")
     notice = visible_text(m.app.test_client().get("/privacy").get_data(as_text=True))
