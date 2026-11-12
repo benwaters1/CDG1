@@ -92,6 +92,8 @@ m = _harness.m
 # 11 Nov, evening: moved to 4c2827e, the owner's site-copy brief (the bathrooms as a feature, the
 # retreat days in dot points, What Guests Say gilded); it listed /, /book, /facilities (What Is
 # Included), the room pages and the four retreat pages, and nothing else.
+# 12 Nov: moved to 9fda41b, the "from" prices taken off again (owner); it listed /workshops and
+# /events/weddings, and nothing else.
 COPY_BASE = "4c2827e"
 
 # Words the brief adds, each only inside its own element.
