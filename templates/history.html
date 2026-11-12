@@ -186,7 +186,8 @@
     <div class="g-hist__figs">
       {#- 16 Oct (owner): "the horse one isn't good for the history page" - a collapsed floor, as it was found. -#}
       <figure class="g-hist__fig"><img src="{{ url_for('static', filename='img/found/collapsed-floor-window-800.jpg') }}" alt="A collapsed floor beneath a tall window, as the château was found" loading="lazy"><figcaption>A floor gone, beneath a tall window, as it was found</figcaption></figure>
-      <figure class="g-hist__fig"><img src="{{ url_for('static', filename='img/found/mountains-through-the-roof-800.jpg') }}" alt="The mountains seen through the open roof" loading="lazy"><figcaption>The mountains, through the roof</figcaption></figure>
+      {#- 12 Nov 2026 (the second review, 3.3: one home per hero photograph; the gallery may repeat it): the roof open to the mountains is /restoration's. -#}
+      <figure class="g-hist__fig"><img src="{{ url_for('static', filename='img/found/window-and-shutter-800.jpg') }}" alt="A broken window and its shutter, as the château was found" loading="lazy"></figure>
     </div>
   </div>
 </div></section>
@@ -218,7 +219,8 @@
         <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a>
       </p>
     </div>
-    <figure class="g-hist__fig"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1500w" alt="The restoration of a fresco, close up" loading="lazy"><figcaption>A painted medallion, brought back</figcaption></figure>
+    {#- 12 Nov 2026 (the second review, 3.3: one home per hero photograph; the gallery may repeat it): the painted medallion on the ladder is /restoration's. -#}
+    <figure class="g-hist__fig"><img src="{{ url_for('static', filename='img/retreats/uncovering-fresco-800.jpg') }}" alt="A painted frieze coming back from under the plaster" loading="lazy"></figure>
   </div>
 </div></section>
 <div class="g-mono__wrap">{{ monogram() }}</div>

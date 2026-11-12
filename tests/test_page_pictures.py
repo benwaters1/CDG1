@@ -71,7 +71,9 @@ PAGES = {
     "/events/photoshoots": [
         ("an uneven collage", r'class="g-mos g-mos--tall ', 1),
         ("a room as it was found across the page", r'class="g-plein "', 1),
-        ("a room as found among them", r'mountains-through-the-roof', 1),
+        # 12 Nov (the second review, 3.3): the roof open to the mountains is /restoration's alone; this band is
+        # another room as it was found.
+        ("a room as found among them", r'fireplace-and-pram', 1),
         ("and all thirteen behind See all", r'See all 13 photos', 1),
     ],
     "/restoration": [

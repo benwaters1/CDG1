@@ -9020,6 +9020,8 @@ def init_db():
     # Who fits each room, as Booking.com has it -- by the names of 16 October,
     # so after them.
     apply_room_occupancy_2026_10_18(conn)
+    # And the Twin Room (Ground Floor) back to three, once (owner, 12 November).
+    apply_ground_floor_twin_sleeps_three_2026_11_12(conn)
     # Every confirmed stay has a guest profile (19 October 2026). A repair
     # that runs at every start must never be what stops the house starting:
     # anything it cannot do is said in the log and left for the next start.
@@ -59289,6 +59291,30 @@ def apply_room_occupancy_2026_10_18(conn):
     conn.commit()
     if changed:
         log_line(f"[rooms] who fits, as on Booking.com: {changed} room(s) set")
+    return changed
+
+
+def apply_ground_floor_twin_sleeps_three_2026_11_12(conn):
+    """Once: the Twin Room (Ground Floor) back to three guests, two adults, two
+    children -- ROOM_OCCUPANCY_2026_10_18's figures, Booking.com's.
+
+    The live site had it at "Sleeps up to 2" by 12 November, so a party of three
+    on a winter night, with the Family Suite resting, found nothing and was sent
+    to the waitlist (Juliya Borie, 28-29 December). The owner: "fix it". The
+    house's fifteen-guest ceiling (house_guest_capacity) still binds every night.
+    """
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'gf_twin_sleeps_three_2026_11_12'").fetchone():
+        return 0
+    want = ROOM_OCCUPANCY_2026_10_18["The Twin Room (Ground Floor)"]
+    changed = conn.execute(
+        "UPDATE rooms SET max_occupancy = ?, max_adults = ?, max_children = ? WHERE name = ? "
+        "AND (max_occupancy, max_adults, max_children) IS NOT (?, ?, ?)",
+        (*want, "The Twin Room (Ground Floor)", *want)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('gf_twin_sleeps_three_2026_11_12', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        log_line("[rooms] the Twin Room (Ground Floor) sleeps three again")
     return changed
 
 

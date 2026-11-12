@@ -96,6 +96,8 @@ m = _harness.m
 # /events/weddings, and nothing else.
 # 12 Nov: the two moved together, to f0eb8dd, the merge that holds both (the brief's pages and the
 # prices taken off).
+# 12 Nov: moved to 524b5b9, one home per photograph drawn large (the second review, 3.3); it listed
+# /restoration only, "The kitchen" for the dining room's line.
 COPY_BASE = "f0eb8dd"
 
 # Words the brief adds, each only inside its own element.
