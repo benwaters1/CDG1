@@ -12203,7 +12203,8 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 /* 11 Nov 2026 (owner): the bathrooms, a section of their own on /book ("they are a real feature, they are
    incredible"). Evening brief: a feature, not a disclaimer, and moved up to sit straight under the availability box.
    One large photograph (the long bathroom) with the heading and words beside it, above it on a phone; the other three
-   in a row beneath; then the six points in a 3 x 2 grid, each with its drawing. Same cream band as before. */
+   in a row beneath; then the points, each with its drawing. Same cream band as before.
+   13 Nov (owner): below the rooms again, with all eight of the owner's points, four by two (two by four on a phone). */
 .g .g-baths-sec{ background: #FBF7EF; border-top: 1px solid rgba(115,86,45,.16); border-bottom: 1px solid rgba(115,86,45,.16); }
 .g .g-baths__top{ display: grid; gap: var(--s5); align-items: center; }
 .g .g-baths__head{ max-width: 34rem; }
@@ -12234,11 +12235,12 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   text-decoration: underline; text-underline-offset: 3px; }
 @media (min-width: 40rem){
   .g .g-baths__row{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .g .g-baths__feat{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (min-width: 56rem){
-  .g .g-baths__top{ grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: var(--s7, 4rem); }
+  .g .g-baths__top{ grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--s7, 4rem); }
   .g .g-baths__row{ gap: var(--s4); }
+  /* 13 Nov: the owner's eight points, four by two */
+  .g .g-baths__feat{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 /* 11 Nov 2026 (owner's site-copy brief, part 4): "What Guests Say" as Louis XV / Marie Antoinette -- a gold treillage on
    the sand, a gilded shell over the heading, each quote a gilded cartouche, each photograph a portrait oval in a beaded
