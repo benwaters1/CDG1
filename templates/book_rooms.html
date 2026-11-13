@@ -27,7 +27,6 @@
 {% from '_notify.html' import notify %}
 {% from '_before.html' import honest, terms_upfront, packing, arriving %}
 {% from '_animals.html' import bruce_card, animals, animals_note %}
-{% from '_roompick.html' import room_pick %}
 {% from '_weekcost.html' import week_cost %}
 {% from '_flexible.html' import flexible %}
 {% from '_availcal.html' import avail_cal %}
@@ -403,7 +402,8 @@
   </ul>
 </div></section>
 
-{{ room_pick(rooms) }}
+{#- 13 Nov (owner): "lets remove this" -- Finding Your Room / Answer Two Questions, the two-question room
+    picker, went. The rooms' cards above already say how many each sleeps and the bed. -#}
 
 
 {#- 9 Nov, evening (owner's second review, 1): the two galleries (the rooms, breakfast and the lounge; the park, which is /facilities), the kitchen strip, Dinner Nearby and Days Out went. Dinner and days out are a line each under Key Information, with a link to What's On. -#}
