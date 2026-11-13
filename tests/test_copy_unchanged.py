@@ -101,7 +101,8 @@ m = _harness.m
 # 12 Nov: both moved to 42862c8, the merge that holds the site-copy brief and one home per photograph.
 # 13 Nov: moved to c5506fa, the bathrooms back below the rooms with all the owner's own facts ("wheres all
 # the stuff i said"); it listed /book only.
-COPY_BASE = "c5506fa"
+# 13 Nov: moved to 2f463c9, the room picker (Answer Two Questions) taken off /book; it listed /book only.
+COPY_BASE = "2f463c9"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
