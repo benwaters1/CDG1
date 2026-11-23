@@ -627,6 +627,8 @@ SUITES = [
     # of their length, one newsletter form, the words and the photographs.
     "test_site_review_2",
     "test_public_pages_measured",
+    # 23 Nov 2026: a drawing beside every place on /whats-on, put in at the response (owner: "all the plain text is not good").
+    "test_nearby_art",
     # 9 November 2026: the photograph at the top of a page at the size it is shown.
     "test_hero_sizes",
     # 9 November 2026: each room's own words on its page, and its bathroom on the ground floor.

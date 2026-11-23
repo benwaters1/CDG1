@@ -15,7 +15,7 @@ cover.
 WHAT IS HELD
 
   - LENGTH, at 1400px wide. No public page over 9,000px, or 12,000 for
-    /gallery and /whats-on, whose length is their contents. Fails when a
+    /gallery and 13,500 for /whats-on, whose length is their contents. Fails when a
     section is added. The pages still over it after the owner's cuts are named
     in KNOWN_LONG, each with the height it may not grow past, and the list is
     checked both ways like COVERAGE_KNOWN_GAPS: a page that grows reds the run,
@@ -52,7 +52,10 @@ ROOT = _harness.ROOT
 DESK = 1400
 PHONES = (320, 375, 390)
 BUDGET = 9000
-LONG_BUDGET = {"/gallery": 12000, "/whats-on": 12000}
+# 23 Nov 2026: /whats-on raised to 13,500. The owner asked for its plain text to have "illustrations and stuff" and
+# then "more images ... not just all in a row": a drawing beside each of its forty-odd entries, a second photograph
+# tucked over Towns, a pair beside Things to Do and a collage set into Outdoors took it from 11,567px to about 13,000.
+LONG_BUDGET = {"/gallery": 12000, "/whats-on": 13500}
 SHARP = 1.25
 TAP = 44
 SMALLEST = 12
@@ -269,7 +272,7 @@ def _run(s, browser, pages, workdir):
     for k, ceiling in KNOWN_LONG.items():
         if k in tallest and tallest[k] <= budget(k):
             mended.append("%s is %dpx now" % (k, tallest[k]))
-    s.check("no public page is over its budget (%d, or 12,000 for the gallery and What's On)" % BUDGET,
+    s.check("no public page is over its budget (%d, 12,000 for the gallery, 13,500 for What's On)" % BUDGET,
             not over, detail="; ".join(over))
     s.check("no page on the known-long list has grown", not grown, detail="; ".join(grown))
     s.check("no page on that list has come under the budget and is still on it", not mended,

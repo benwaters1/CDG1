@@ -673,3 +673,58 @@
 /* The currency control takes its colour from the header (2.3 above), which is navy: over a hero photograph, where the
    logo, the menu and the languages turn white, it stayed navy on the picture and could not be seen. It turns with them. */
 body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
+
+/* ==== 23 Nov 2026: a drawing beside every place on /whats-on ==============
+   Owner: "i want illustrations and stuff on here and around, all the plain text is not good". Forty-odd places and
+   pastimes, each a small heading over a paragraph. draw_the_nearby_vignettes() in app.py puts a drawing at the head
+   of each entry at the response (the drawings are templates/_nearby_art.html); these are its rules. Each sits in a
+   gilt-ringed medallion to the left of its words, so the page gains a picture an entry and almost no length. */
+.g .g-key:has(> .g-key__i--drawn:nth-child(4):last-child){ grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr)); }
+/* The medallion floats at the head of the entry and the words run round it and on beneath it, the way a
+   drop-capital sits in an old guide: a picture to every entry for almost none of the page's length, which /whats-on
+   has little of to spare (test_public_pages_measured holds it to 12,000px). */
+.g .g-key__i--drawn{ display: flow-root; }
+.g .g-key__i--drawn > .g-key__art{ float: left; margin: 0 var(--s4, 16px) var(--s2, 8px) 0; }
+.g .g-key__art{
+  display: block; box-sizing: border-box; width: 3.5rem; height: 3.5rem; padding: .4rem; border-radius: 50%;
+  color: var(--gilt, #73562D);
+  background: radial-gradient(circle at 50% 38%, rgba(255,255,255,.75), rgba(255,255,255,0) 72%), rgba(198,166,110,.12);
+  box-shadow: inset 0 0 0 1px rgba(115,86,45,.30), 0 0 0 5px rgba(198,166,110,.07);
+  transition: transform .5s cubic-bezier(.2,.7,.2,1), box-shadow .5s;
+}
+.g .g-key__art .g-illus{ width: 100%; height: 100%; }
+.g .g-sec--sand .g-key__art{ background: radial-gradient(circle at 50% 38%, rgba(255,255,255,.9), rgba(255,255,255,.35) 72%); }
+.g .g-sec--dark .g-key__art, .g .g-sec--blue .g-key__art{ color: var(--gilt-on-dark, #C6A66E); background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(198,166,110,.4); }
+/* A turn of the medallion under the pointer, where there is one. */
+@media (hover: hover){
+  .g .g-key__i--drawn:hover .g-key__art{ transform: rotate(-4deg) scale(1.04); box-shadow: inset 0 0 0 1px rgba(115,86,45,.5), 0 0 0 6px rgba(198,166,110,.12); }
+}
+/* Drawn in, stroke by stroke, as it comes up the screen (the script is put in with the drawings). */
+.g .g-key__art.is-drawing [pathLength]{ stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1.6s cubic-bezier(.45,0,.2,1); }
+.g .g-key__art.is-drawing.is-drawn [pathLength]{ stroke-dashoffset: 0; }
+@media (prefers-reduced-motion: reduce){ .g .g-key__art, .g .g-key__art [pathLength]{ transition: none !important; stroke-dashoffset: 0 !important; } }
+@media print{ .g .g-key__art [pathLength]{ stroke-dashoffset: 0 !important; } .g .g-key__art{ box-shadow: none; background: none; } }
+@media (max-width: 600px){
+  .g .g-key__art{ width: 3rem; height: 3rem; padding: .3rem; box-shadow: inset 0 0 0 1px rgba(115,86,45,.30); }
+}
+/* Drawn at 96 and shown at a half or less, the house's 1.15 line went to a hair: thickened in the medallion. Larger
+   where a section has no photograph beside it, since there the drawing is the only picture; smaller in a photograph's
+   column, where the entries are short and the photograph already speaks. */
+.g .g-key__art .g-illus{ stroke-width: 2; }
+.g .g-key__i--drawn > .g-key__art{ width: 5rem; height: 5rem; padding: .55rem; margin-right: var(--s5, 24px); }
+.g .g-sp__text .g-key__i--drawn > .g-key__art{ width: 3.5rem; height: 3.5rem; padding: .4rem; margin-right: var(--s4, 16px); }
+.g .g-sp__text .g-key__art .g-illus{ stroke-width: 2.3; }
+@media (max-width: 600px){
+  .g .g-key__i--drawn > .g-key__art, .g .g-sp__text .g-key__i--drawn > .g-key__art{ width: 3.5rem; height: 3.5rem; padding: .35rem; margin-right: var(--s3, 12px); }
+  .g .g-key__art .g-illus{ stroke-width: 2.4; }
+}
+/* 23 Nov (owner: "more images and where they arent just all in a row like display them asorted nicely"). On /whats-on,
+   Outdoors and Adventure's collage sits in the grid of entries, two entries wide, so the photographs are among the
+   words. A phone gives it the whole width. */
+.g .g-key > .g-key__mos{ grid-column: span 2; min-width: 0; }
+@media (min-width: 52.01rem){
+.g .g-key > .g-key__mos .g-mos{ margin: 0; height: 100%; min-height: 20rem; grid-template-rows: 1fr 1fr; grid-auto-rows: auto; }
+/* The two small ones stepped, not squared off: the lower one sits in from the edge and down, over the large one's corner. */
+.g .g-key > .g-key__mos .g-mos__i:nth-child(3){ position: relative; left: -14%; top: 10%; box-shadow: 0 10px 28px rgba(20,30,50,.22); outline: 6px solid #fff; z-index: 1; }
+}
+@media (max-width: 52rem){ .g .g-key > .g-key__mos{ grid-column: 1 / -1; } .g .g-key > .g-key__mos .g-mos{ margin: 0; } }

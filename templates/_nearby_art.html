@@ -1,0 +1,303 @@
+{# =============================================================================
+   _nearby_art.html - 23 Nov 2026. A drawing for every place and pastime on
+   /whats-on (owner: "i want illustrations and stuff on here and around, all
+   the plain text is not good").
+
+   Same hand as _illus.html: a 96x96 vignette, fine strokes in currentColor,
+   round ends, like the engraved vignettes of an old French guide. Decorative,
+   so aria-hidden, and no <title>: test_copy_unchanged reads every word on the
+   page and these add none.
+
+   They are NOT called from whats_on.html. draw_the_nearby_vignettes() in app.py
+   puts one beside each entry at the response, choosing it from the entry's own
+   heading (NEARBY_ART in app.py), because whats_on.html arrives whole in the
+   design handovers and twenty-odd calls in it would last one zip.
+
+   A kind not drawn here falls through to illus() in _illus.html, so the
+   house's existing kayak, ski, horse, barbecue and wine are used as they are.
+   ============================================================================= #}
+{% from '_illus.html' import illus %}
+{% macro nearby(kind) -%}
+{%- set drawn = ['canyon', 'fish', 'cave', 'bison', 'flint', 'porch', 'hearth', 'boat', 'arch', 'thermal',
+                 'spring', 'spa', 'parkspa', 'caldea', 'climb', 'ferrata', 'paraglide', 'bike', 'horsehead',
+                 'treetop', 'gondola', 'lake', 'road', 'shopping', 'church', 'castle', 'towers', 'peakcastle',
+                 'quarry', 'arcades', 'cafe', 'dine', 'pizza', 'nordic'] -%}
+{%- if kind not in drawn %}{{ illus(kind) }}{% else -%}
+<svg class="g-illus" viewBox="0 0 96 96" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{%- if kind == 'canyon' %}
+  {#- A gorge: two walls, the fall between them, somebody on a rope -#}
+  <path d="M6 88V20l6-8 4 10 6-4 2 14-6 10 6 12-4 12 6 10v12"/>
+  <path d="M90 88V16l-6-6-3 12-6-2-1 16 6 10-7 12 5 10-4 10v10"/>
+  <path d="M40 16q-2 22 1 44M47 14q-1 24 1 46M54 16q1 22-1 44" opacity=".5"/>
+  <path d="M28 74q20-8 42 0q-20 9-42 0z"/><path d="M36 74q12-3 26 0" opacity=".5"/>
+  <path d="M34 66q3-4 6 0M58 66q3-4 6 0" opacity=".55"/>
+  <path d="M80 10L66 44" opacity=".8"/><circle cx="80" cy="10" r="1.4"/>
+  <circle cx="65" cy="42" r="2.6"/><path d="M65 45v8M65 48l-5 2M65 48l4-4M65 53l-4 6M65 53l3 6"/>
+{%- elif kind == 'fish' %}
+  {#- Fly fishing: the rod, the line's long loop, a trout up out of the water -#}
+  <path d="M8 88Q22 50 60 14"/><path d="M10 82l4-1" opacity=".7"/>
+  <path d="M60 14q26 2 24 22t-22 30" opacity=".7"/>
+  <path d="M62 66l-2 3" opacity=".7"/>
+  <path d="M30 60q14-13 32-5q-16 13-32 5z"/><path d="M30 60l-8-6v12z"/>
+  <circle cx="56" cy="57" r=".9"/><path d="M42 56l1 4M48 54l1 4" opacity=".55"/>
+  <path d="M38 52q4-4 9-3" opacity=".55"/>
+  <path d="M6 76q8-3 16 0t16 0M52 78q8-3 16 0t16 0M20 84q8-3 16 0t16 0" opacity=".5"/>
+{%- elif kind == 'cave' %}
+  {#- A great chamber, hung with stalactites, and one small figure with a lamp -#}
+  <path d="M6 86V52Q8 14 48 12q40 2 42 40v34"/>
+  <path d="M14 86V56q2-30 34-32q32 2 34 32v30" opacity=".35"/>
+  <path d="M28 22l2 12 2-11M40 15l2 15 2-15M54 15l2 12 2-12M66 20l2 10 2-8M76 30l1 7 2-5" />
+  <path d="M24 86l3-10 3 10M64 86l2-8 3 8M72 86l2-6 2 6" opacity=".8"/>
+  <circle cx="46" cy="66" r="2.4"/><path d="M46 69v9M46 72l5-2M46 72l-4 3M46 78l-3 8M46 78l3 8"/>
+  <circle cx="52" cy="68" r="1.4" opacity=".8"/><path d="M52 64q8 4 4 12" opacity=".35"/>
+  <path d="M4 88h88" opacity=".45"/>
+{%- elif kind == 'bison' %}
+  {#- Niaux: a bison as the painters drew it, on the rock -#}
+  <path d="M6 18q22-8 44-4t40 0v66q-22 6-44 2t-40 4z" opacity=".35"/>
+  <path d="M26 60c-3-9-1-18 8-22 5-7 13-9 21-7 10 2 17 8 19 16 2 5 0 9-4 11"/>
+  <path d="M28 62c10 3 28 3 42 0"/>
+  <path d="M26 60c-6 1-10-3-10-9 0-4 2-7 5-7"/><path d="M21 44c-3-2-4-6-1-9" />
+  <circle cx="22" cy="50" r=".9"/>
+  <path d="M33 63l-2 11M41 64l1 11M60 64l-1 11M68 62l2 11"/>
+  <path d="M74 50q7 2 6 11"/>
+  <path d="M40 40q6-3 12-2M44 46q8-2 14 0" opacity=".45"/>
+{%- elif kind == 'flint' %}
+  {#- The Parc de la Préhistoire: a hand-axe, a spear, a fire -#}
+  <path d="M30 18q14 8 16 30q-2 22-16 30q-14-8-16-30q2-22 16-30z"/>
+  <path d="M30 18v60M22 30l8 7 8-7M19 46l11 7 11-7M22 62l8 6 8-6" opacity=".45"/>
+  <path d="M56 86L84 12"/><path d="M84 12l-6 9 7 1z"/><path d="M60 76l4 2M58 81l4 2" opacity=".6"/>
+  <path d="M62 86q-2-8 4-12q0 6 4 6q2-8-2-14q10 6 8 20" opacity=".85"/>
+  <path d="M8 88h80" opacity=".45"/>
+{%- elif kind == 'porch' %}
+  {#- Bédeilhac, "the giant": the vast entrance porch in the hillside -#}
+  <path d="M2 74q12-40 46-46q36 4 46 44" opacity=".55"/>
+  <path d="M14 84q2-38 34-40q32 2 34 40"/>
+  <path d="M22 84q2-28 26-30q24 2 26 30" opacity=".4"/>
+  <path d="M36 72h24M48 68v8M45 70l3-2 3 2" opacity=".75"/>
+  <path d="M30 30l4-4M62 26l4 4M46 22v-4" opacity=".5"/>
+  <path d="M4 86h88" opacity=".45"/>
+{%- elif kind == 'hearth' %}
+  {#- La Vache: a winter shelter under the rock, and its fire -#}
+  <path d="M4 26q40-20 88 2q-6 8-4 16"/>
+  <path d="M10 30q36-14 74 2" opacity=".4"/>
+  <path d="M40 84q-6-10 2-18q0 8 6 8q2-12-4-20q16 8 12 30"/>
+  <path d="M32 86l32-6M34 80l30 6" opacity=".7"/>
+  <path d="M50 46q-4-6 0-10t0-10M58 50q-4-6 0-10" opacity=".4"/>
+  <path d="M18 86V70l4-2 4 2v16M74 86V72l4-2 4 2v14" opacity=".5"/>
+  <path d="M4 88h88" opacity=".45"/>
+{%- elif kind == 'boat' %}
+  {#- Labouiche: a boat on the underground river, the boatman pulling on the rope -#}
+  <path d="M4 66V46Q8 12 48 10q40 2 44 36v20"/>
+  <path d="M8 38h80" opacity=".5"/>
+  <path d="M30 18l1 8 2-7M60 16l1 8 2-7M74 24l1 6 1-5" opacity=".7"/>
+  <path d="M22 64h48l-6 7H28z"/>
+  <circle cx="56" cy="46" r="2.4"/><path d="M56 49v9M56 58l-3 6M56 58l3 6M56 52l-4-12M56 52l4-12"/>
+  <circle cx="36" cy="58" r="2"/><path d="M36 60v4"/><circle cx="44" cy="58" r="2"/><path d="M44 60v4"/>
+  <path d="M10 78q8-3 16 0t16 0t16 0t16 0t16 0M22 86q8-3 16 0t16 0t16 0" opacity=".5"/>
+{%- elif kind == 'arch' %}
+  {#- Mas d'Azil: the road and the river run through the hill -#}
+  <path d="M2 84V50q16-34 46-36q32 2 46 36v34"/>
+  <path d="M24 84q0-32 24-32t24 32"/>
+  <path d="M42 84l4-28M54 84l-4-28" opacity=".55"/><path d="M48 80v-3M48 72v-3M48 64v-3" opacity=".5"/>
+  <path d="M30 28q6-4 12-2M58 26q6-2 10 2M16 46q4-4 8-4M74 44q4 0 8 4" opacity=".4"/>
+  <path d="M4 90q22-4 44 0t44 0" opacity=".45"/>
+{%- elif kind == 'thermal' %}
+  {#- Les Bains du Couloubret: a glass roof on columns over the warm pool -#}
+  <path d="M12 32l36-18 36 18"/><path d="M24 26l24-12 24 12" opacity=".45"/>
+  <path d="M30 23v9M48 14v18M66 23v9" opacity=".45"/>
+  <path d="M10 32h76"/>
+  <path d="M18 32v36M32 32v36M64 32v36M78 32v36"/><path d="M15 36h6M29 36h6M61 36h6M75 36h6M15 66h6M29 66h6M61 66h6M75 66h6" opacity=".7"/>
+  <path d="M44 60q-3-4 0-8t0-8M52 60q-3-4 0-8t0-8" opacity=".5"/>
+  <path d="M8 70h80"/>
+  <path d="M12 77q6-3 12 0t12 0t12 0t12 0t12 0t12 0M18 84q6-3 12 0t12 0t12 0t12 0t12 0" opacity=".55"/>
+{%- elif kind == 'spring' %}
+  {#- The Bassin des Ladres: a stone basin of hot water, steaming -#}
+  <path d="M12 56h72v22H12z"/>
+  <path d="M12 67h72M28 56v11M48 56v11M68 56v11M20 67v11M38 67v11M58 67v11M76 67v11" opacity=".45"/>
+  <path d="M16 56q8-4 16 0t16 0t16 0t16 0" opacity=".8"/>
+  <path d="M30 46q-4-6 0-12t0-12M48 44q-4-6 0-12t0-14M66 46q-4-6 0-12t0-12" opacity=".55"/>
+  <path d="M30 56v-6q0-2 2-2h4M36 48v8" opacity=".7"/>
+  <path d="M6 84h84" opacity=".45"/>
+{%- elif kind == 'spa' %}
+  {#- A spa's half-day: folded towels, warm stones, a sprig, the steam off a cup -#}
+  <path d="M16 70h46v10H16zM20 60h38v10H20z"/><path d="M16 75h46M20 65h38" opacity=".4"/>
+  <ellipse cx="72" cy="76" rx="10" ry="4"/><ellipse cx="72" cy="68" rx="7" ry="3.2"/><ellipse cx="72" cy="62" rx="4.6" ry="2.4"/>
+  <path d="M38 60q-2-16 10-24M38 52q-8-2-10-10q8 0 10 10M44 42q8-2 10-10q-8 0-10 10" opacity=".8"/>
+  <path d="M68 50q-3-5 0-10t0-10M76 50q-3-5 0-10" opacity=".45"/>
+  <path d="M8 84h80" opacity=".45"/>
+{%- elif kind == 'parkspa' %}
+  {#- Ussat-les-Bains: a small spa pavilion among the trees of its park -#}
+  <path d="M30 82V50h36v32"/><path d="M26 50l22-14 22 14"/><path d="M28 50h40" opacity=".6"/>
+  <path d="M42 82V66a6 6 0 0112 0v16"/><path d="M34 56h6v6h-6zM56 56h6v6h-6z" opacity=".7"/>
+  <path d="M14 82V64"/><ellipse cx="14" cy="54" rx="9" ry="12"/>
+  <path d="M82 82V66"/><ellipse cx="82" cy="56" rx="8" ry="11"/>
+  <path d="M44 32q-2-4 0-7M52 32q-2-4 0-7" opacity=".45"/>
+  <path d="M4 84h88" opacity=".45"/>
+{%- elif kind == 'caldea' %}
+  {#- Caldea: the glass spire over the lagoons, under the mountains of Andorra -#}
+  <path d="M2 56l14-18 10 10 10-14M60 34l12-14 10 12 12-10" opacity=".35"/>
+  <path d="M48 6L36 66h24z"/>
+  <path d="M44 26h8M42 36h12M40 46h16M38 56h20M48 6v60" opacity=".5"/>
+  <path d="M12 82l22-16h28l22 16"/>
+  <path d="M8 84h80"/>
+  <path d="M14 90q6-3 12 0t12 0t12 0t12 0t12 0" opacity=".5"/>
+{%- elif kind == 'climb' %}
+  {#- A crag of pale limestone, a climber on the wall, the rope to the ground -#}
+  <path d="M90 88L74 70l8-14-10-10 8-14-8-12 6-14"/>
+  <path d="M82 56q-6-2-8 2M78 32q-6 0-6 4" opacity=".45"/>
+  <circle cx="76" cy="20" r="1.2"/><circle cx="72" cy="40" r="1.2"/><circle cx="76" cy="62" r="1.2"/>
+  <path d="M76 20L58 44M58 44L22 86" opacity=".7"/>
+  <circle cx="60" cy="40" r="2.6"/><path d="M60 43l-2 9M59 46l6-8M59 46l-7-3M58 52l6 5M58 52l-5 7"/>
+  <circle cx="20" cy="76" r="2.2"/><path d="M20 78v8"/>
+  <path d="M4 88h70" opacity=".45"/>
+{%- elif kind == 'ferrata' %}
+  {#- Via ferrata: rungs up the cliff, a cable, a rope bridge to the next -#}
+  <path d="M6 88V22l8-10 6 8"/>
+  <path d="M90 88V26l-6-8-6 8"/>
+  <path d="M20 82V30M28 82V30"/><path d="M20 38h8M20 46h8M20 54h8M20 62h8M20 70h8M20 78h8" opacity=".75"/>
+  <path d="M30 26q24 14 48 0M30 32q24 14 48 0"/>
+  <path d="M38 30v4M46 33v4M54 34v4M62 33v4M70 30v4" opacity=".6"/>
+  <circle cx="50" cy="26" r="2.2"/><path d="M50 28v7"/>
+{%- elif kind == 'paraglide' %}
+  {#- A tandem flight: the canopy, its lines, the valley far below -#}
+  <path d="M16 26q32-22 64 0"/><path d="M20 31q28-15 56 0"/>
+  <path d="M28 18l2 7M40 14l1 6M56 14l-1 6M68 18l-2 7" opacity=".6"/>
+  <path d="M18 28L46 58M78 28L50 58M34 22l12 36M62 22L50 58" opacity=".5"/>
+  <circle cx="47" cy="61" r="2.4"/><circle cx="51" cy="63" r="2.2"/><path d="M43 66h12"/>
+  <path d="M4 88l18-14 10 8 16-18 14 14 10-8 20 18" opacity=".4"/>
+  <circle cx="82" cy="14" r="4" opacity=".55"/>
+{%- elif kind == 'bike' %}
+  {#- A mountain bike on the trail, the peaks behind -#}
+  <path d="M4 44l16-16 10 8 14-14 12 12 8-6 28 22" opacity=".35"/>
+  <circle cx="26" cy="68" r="12"/><circle cx="70" cy="68" r="12"/>
+  <circle cx="26" cy="68" r="1.6" opacity=".7"/><circle cx="70" cy="68" r="1.6" opacity=".7"/>
+  <path d="M26 68l20 0-6-20zM40 48h20l-14 20M60 48l10 20"/>
+  <path d="M36 46h10M60 48l-2-6h6"/>
+  <path d="M6 82h84" opacity=".45"/><path d="M8 76h8M4 72h6" opacity=".4"/>
+{%- elif kind == 'horsehead' %}
+  {#- A Mérens horse, the black horse of these mountains -#}
+  <path d="M56 16l3-8 4 10"/>
+  <path d="M58 18q-12 2-18 12L26 52q-4 6 2 10l5 2q5 2 9-2l10-10q4 14-2 28h30q4-18-2-36q-4-16-20-26z"/>
+  <path d="M60 18q8 4 12 14q4 10 6 20" opacity=".8"/>
+  <path d="M62 22l6-3M66 30l7-2M70 38l7-1M72 46l7 1" opacity=".55"/>
+  <circle cx="45" cy="34" r="1.2"/><path d="M30 56q2-2 4-1" opacity=".7"/>
+  <path d="M38 62q6 2 10-2" opacity=".5"/>
+  <path d="M14 88h68" opacity=".45"/>
+{%- elif kind == 'treetop' %}
+  {#- The treetop courses at Orlu: two firs and a zip line between them -#}
+  <path d="M18 88V40"/><path d="M18 14l-12 22h24zM18 26l-14 22h28z" />
+  <path d="M78 88V48"/><path d="M78 24l-11 20h22zM78 36l-13 22h26z"/>
+  <path d="M22 40L74 56"/><path d="M14 46h10M70 58h14" opacity=".7"/>
+  <path d="M48 47l-1 5"/><circle cx="47" cy="55" r="2.2"/><path d="M47 57v6M47 63l-3 4M47 63l3 4"/>
+  <path d="M4 88h88" opacity=".45"/>
+{%- elif kind == 'gondola' %}
+  {#- Ax 3 Domaines: the gondola up out of the town to the plateau -#}
+  <path d="M4 62l18-24 10 10 18-26 16 18 10-8 18 22" opacity=".35"/>
+  <path d="M4 74L92 22M4 78L92 26" />
+  <path d="M48 52v6"/><path d="M40 58h16l2 16H38z"/><path d="M41 62h14v6H41z" opacity=".6"/>
+  <path d="M76 34l-4 52M84 30l4 56M74 46h12M72 62h16" opacity=".7"/>
+  <path d="M4 88h88" opacity=".45"/>
+{%- elif kind == 'lake' %}
+  {#- The high lakes: a tarn under the peaks, and the path round it -#}
+  <path d="M4 58l18-28 10 12 16-24 18 26 8-10 18 24"/>
+  <path d="M40 28l8-10 8 10M14 44l8-12 5 6" opacity=".5"/>
+  <path d="M14 70q34-10 68 0q-34 10-68 0z"/>
+  <path d="M28 70h14M52 72h12" opacity=".5"/>
+  <path d="M10 86q10-6 20-8t20-2t22-4" stroke-dasharray="2 3" opacity=".8"/>
+  <path d="M74 80l2-5 2 5zM76 75v-3" opacity=".7"/>
+{%- elif kind == 'road' %}
+  {#- Up the valley and over the pass: the mountain road's hairpins -#}
+  <path d="M4 52l20-30 12 14 14-22 18 24 10-10 14 22" opacity=".4"/>
+  <path d="M30 88q-22-6 0-14t28-8q12-4 0-10t-12-8q-4-6 10-10"/>
+  <path d="M40 88q-18-4 4-12t26-10q14-6 2-12t-12-8q-2-4 8-8"/>
+  <path d="M48 26l4-2M58 20l4-1" opacity=".6"/>
+  <path d="M60 78h10l2-4h-14zM61 80a1.6 1.6 0 103 0M67 80a1.6 1.6 0 103 0" opacity=".85"/>
+{%- elif kind == 'shopping' %}
+  {#- A day's shopping: two bags and a tag -#}
+  <path d="M18 40h32l4 44H14z"/><path d="M26 40q0-14 8-14t8 14"/>
+  <path d="M50 50h26l3 34H47"/><path d="M56 50q0-11 7-11t7 11"/>
+  <path d="M18 52h32" opacity=".45"/><path d="M50 60h28" opacity=".45"/>
+  <path d="M30 62l8 0l2 6-6 4-6-4z" opacity=".75"/>
+  <path d="M8 88h80" opacity=".45"/>
+{%- elif kind == 'church' %}
+  {#- Sant Joan de Caselles: a Romanesque bell tower, snow on the peaks -#}
+  <path d="M2 50l16-20 12 12 12-18M72 24l10-10 12 14" opacity=".35"/>
+  <path d="M52 86V24h18v62"/><path d="M50 24l11-9 11 9"/>
+  <path d="M55 36v-3a2 2 0 014 0v3M63 36v-3a2 2 0 014 0v3M55 50v-3a2 2 0 014 0v3M63 50v-3a2 2 0 014 0v3M55 64v-3a2 2 0 014 0v3M63 64v-3a2 2 0 014 0v3"/>
+  <path d="M52 40h18M52 54h18M52 68h18" opacity=".45"/>
+  <path d="M18 86V60l17-10 17 10"/><path d="M18 86V64q-10 2-10 12v10"/>
+  <path d="M31 86v-9a4 4 0 018 0v9"/>
+  <path d="M4 88h88" opacity=".45"/>
+{%- elif kind == 'castle' %}
+  {#- Lordat: the fortress ruin on its rock above the valley, a falcon over it -#}
+  <path d="M2 88q8-24 22-30l10-10 22 2 14 10q16 10 24 28"/>
+  <path d="M30 48V36h4v-3h4v3h4v-3h4v3h4v12"/>
+  <path d="M50 40V18h12v32"/><path d="M50 18v-3h3v3h3v-3h3v3h3v-3"/>
+  <path d="M54 28h4v6h-4z" opacity=".7"/>
+  <path d="M38 48l2-4 2 4" opacity=".6"/>
+  <path d="M72 18q4-4 8 0q4-4 8 0" opacity=".7"/>
+  <path d="M18 72q10-4 18-2M58 68q10 2 18 8" opacity=".4"/>
+{%- elif kind == 'towers' %}
+  {#- Foix: the counts' three towers on their rock above the old town -#}
+  <path d="M6 88q4-20 16-26l8-12h36l8 12q12 6 16 26"/>
+  <path d="M24 50V30h10v20M44 50V18h12v32M66 50V28h10v22"/>
+  <path d="M24 30v-3h3v3h4v-3h3v3M44 18v-3h3v3h3v-3h3v3h3v-3M66 28v-3h3v3h4v-3h3v3"/>
+  <path d="M48 26h4v6h-4z" opacity=".7"/>
+  <path d="M14 82h8v-6l4-3 4 3v6M70 82h8v-6l4-3 4 3v6" opacity=".55"/>
+{%- elif kind == 'peakcastle' %}
+  {#- Montségur: the castle on its peak, the last stand of the Cathars -#}
+  <path d="M2 88l26-34 10 6 10-26 10 26 10-6 26 34"/>
+  <path d="M38 34h22v-8H38z"/><path d="M38 26v-3h3v3h4v-3h4v3h4v-3h4v3"/>
+  <path d="M44 34l-6 10M54 34l4 10" opacity=".45"/>
+  <path d="M38 70q4-8 10-10q6 2 10 10" opacity=".45" stroke-dasharray="2 3"/>
+  <path d="M74 18q3-3 6 0q3-3 6 0" opacity=".6"/>
+{%- elif kind == 'quarry' %}
+  {#- Talcaneô: the great white quarry cut in steps across the mountain -#}
+  <path d="M2 84l26-46 12 8 14-24 40 62"/>
+  <path d="M28 50h22M24 58h34M20 66h44M16 74h54" opacity=".5"/>
+  <path d="M50 22l-4 8M58 34l-6 8" opacity=".4"/>
+  <path d="M70 84h16l-2-8H72z"/><circle cx="74" cy="86" r="1.6"/><circle cx="83" cy="86" r="1.6"/>
+  <path d="M4 88h88" opacity=".45"/>
+{%- elif kind == 'arcades' %}
+  {#- Mirepoix: timbered houses over covered arcades on the square -#}
+  <path d="M8 88V36l14-12 14 12v52M36 88V30l14-12 14 12v58M64 88V38l12-10 12 10v50"/>
+  <path d="M8 66q7-10 14 0q7-10 14 0q7-10 14 0q7-10 14 0q6-10 12 0q6-10 12 0"/>
+  <path d="M8 66h80" opacity=".6"/>
+  <path d="M8 46h28M36 42h28M64 48h24" opacity=".6"/>
+  <path d="M12 46l10 20M32 46L22 66M40 42l10 24M60 42L50 66M68 48l8 18M84 48l-8 18" opacity=".45"/>
+  <path d="M18 32h8v6h-8zM46 26h8v6h-8zM72 36h8v6h-8z" opacity=".7"/>
+{%- elif kind == 'cafe' %}
+  {#- Tarascon: a café table under an awning on market morning -#}
+  <path d="M14 22h68l-6 12H20z"/>
+  <path d="M20 34q4 4 8 0q4 4 8 0q4 4 8 0q4 4 8 0q4 4 8 0q4 4 8 0q4 4 8 0"/>
+  <path d="M34 62h28"/><path d="M48 62v20M40 82h16"/>
+  <path d="M42 58h6v4h-6zM52 56a3 3 0 006 0z" opacity=".8"/>
+  <path d="M24 82V60h4M24 70h8l2 12M72 82V60h-4M72 70h-8l-2 12"/>
+  <path d="M8 86h80" opacity=".45"/>
+{%- elif kind == 'dine' %}
+  {#- The finer table: a laid place, a candle -#}
+  <circle cx="44" cy="60" r="18"/><circle cx="44" cy="60" r="12" opacity=".45"/>
+  <path d="M18 44v32M15 44v8q0 3 3 3t3-3v-8"/>
+  <path d="M70 44q6 6 0 14v18"/>
+  <path d="M80 72V40h6v32"/><path d="M83 40v-5"/><path d="M83 35q-3-4 0-8q3 4 0 8z"/>
+  <path d="M76 72h14"/>
+  <path d="M8 84h84" opacity=".45"/>
+{%- elif kind == 'pizza' %}
+  {#- The pizzeria on the square: a pie on the peel, one slice away -#}
+  <path d="M8 74h50M58 74h28"/><path d="M58 70v8"/>
+  <path d="M42 60m-22 0a22 10 0 1044 0a22 10 0 10-44 0" />
+  <path d="M42 60l20-4" opacity=".7"/><path d="M42 60l-20 2" opacity=".5"/>
+  <circle cx="32" cy="58" r="1.8" opacity=".7"/><circle cx="48" cy="64" r="1.8" opacity=".7"/><circle cx="38" cy="65" r="1.8" opacity=".7"/>
+  <path d="M68 42l14-6 2 10z"/><circle cx="76" cy="42" r="1.2" opacity=".7"/>
+  <path d="M40 40q-3-5 0-9M48 40q-3-5 0-9" opacity=".45"/>
+{%- elif kind == 'nordic' %}
+  {#- Beille: cross-country tracks across the plateau, and a sled team -#}
+  <path d="M4 50l18-22 12 12 16-20 16 18 10-8 16 20" opacity=".35"/>
+  <path d="M6 80q40-12 84-6M6 86q40-12 84-6" opacity=".5"/>
+  <circle cx="30" cy="54" r="2.4"/><path d="M30 57l-2 10M29 60l7 4M29 60l-6 5M28 67l-4 8M28 67l5 7M20 76l18-2M36 64l4 12M23 65l-3 11"/>
+  <path d="M58 66q4-4 8-2l4-3 1 4q4 2 2 6h-14zM60 71l-1 4M70 71l1 4M48 70h10" opacity=".85"/>
+  <path d="M74 66q4-4 8-2l4-3 1 4q4 2 2 6h-14zM76 71l-1 4M86 71l1 4" opacity=".85"/>
+{%- endif %}
+</svg>
+{%- endif -%}
+{%- endmacro %}

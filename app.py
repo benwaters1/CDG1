@@ -68962,6 +68962,148 @@ def serve_our_own_photographs(response):
     return response
 
 
+# ---------------------------------------------------------------------------
+# A DRAWING BESIDE EVERY PLACE ON /whats-on (owner, 23 Nov 2026: "i want
+# illustrations and stuff on here and around, all the plain text is not
+# good"). The page is some forty places and pastimes, each a small heading over
+# a paragraph, and only four of its sections have a photograph.
+#
+# Put in at the response, like the photographs above and the admin bar, and
+# for the same reason: whats_on.html arrives whole in the design handovers, so
+# forty calls written into it would last exactly one zip. Here the drawing is
+# chosen from the entry's own heading, so a handover that rewords the page keeps
+# its pictures, and one that adds a place gets one (the valley's mountains,
+# until somebody adds its word to NEARBY_ART).
+#
+# The drawings are in templates/_nearby_art.html, in the hand of _illus.html.
+# test_nearby_art holds the choice, the markup and the words.
+# ---------------------------------------------------------------------------
+# Matched in order against the heading, folded to plain lower case, so the
+# specific comes before the general: "Caldea · Andorra" is Caldea's glass
+# spire, not the road to Andorra, and "A thermal spa half-day · Ax-les-Thermes"
+# is a spa, not the town.
+NEARBY_ART = (
+    (r"caves and prehistory", "cave"),
+    (r"\bniaux\b", "bison"),
+    (r"prehistoire", "flint"),
+    (r"lombrives", "cave"),
+    (r"bedeilhac", "porch"),
+    (r"la vache", "hearth"),
+    (r"labouiche|underground river", "boat"),
+    (r"mas d.azil", "arch"),
+    (r"couloubret", "thermal"),
+    (r"bassin des ladres", "spring"),
+    (r"ussat", "parkspa"),
+    (r"thermal spa|spa half", "spa"),
+    (r"caldea", "caldea"),
+    (r"canyon", "canyon"),
+    (r"fishing", "fish"),
+    (r"on the river|rafting|canoe|kayak", "kayak"),
+    (r"climbing", "climb"),
+    (r"via ferrata", "ferrata"),
+    (r"paraglid", "paraglide"),
+    (r"mountain biking|\bbikes?\b", "bike"),
+    (r"horse", "horsehead"),
+    (r"treetop|wolves", "treetop"),
+    (r"summer at ax|gondola", "gondola"),
+    (r"\blakes?\b", "lake"),
+    (r"skiing|grandvalira", "ski"),
+    (r"plateau de beille", "nordic"),
+    (r"getting there|^andorra\b", "road"),
+    (r"shopping", "shopping"),
+    (r"in summer", "church"),
+    (r"lordat", "castle"),
+    (r"talcaneo", "quarry"),
+    (r"\bfoix\b", "towers"),
+    (r"montsegur", "peakcastle"),
+    (r"mirepoix", "arcades"),
+    (r"tarascon-sur-ariege", "cafe"),
+    (r"^ax-les-thermes", "spring"),
+    (r"maison beaucoup", "dine"),
+    (r"lacube", "bbq"),
+    (r"petit en cas", "pizza"),
+    (r"local bar", "wine"),
+)
+_NEARBY_ART_RX = [(re.compile(rx), kind) for rx, kind in NEARBY_ART]
+NEARBY_ART_FALLBACK = "mountains"
+# The pages it runs on, by endpoint. Only /whats-on: the same g-key list holds
+# the address, the arrival and the payment terms on /contact and /book, where
+# a drawing beside "Payment" would be decoration for its own sake.
+NEARBY_ART_ENDPOINTS = ("whats_on",)
+# One entry: its opening tag (an id kept, as #skiing is linked to from /book)
+# and its heading. Anchored on the heading so only a real entry is touched.
+_NEARBY_ITEM = re.compile(r'<div class="g-key__i"((?: id="[^"]*")?)>(\s*)<p class="g-key__k">(.*?)</p>', re.S)
+_NEARBY_SVG = {}
+
+# Each drawing draws itself in, a stroke at a time, as it comes up the screen.
+# Only the ones below the fold on arrival, so nothing on screen blinks out and
+# back; none at all for somebody who has asked for less motion, or without the
+# observer; and a dashed line keeps its dashes. Without this script every
+# drawing is simply there, which is also what print and a screenshot get.
+NEARBY_ART_SCRIPT = (
+    '<script>(function(){var a=document.querySelectorAll(".g-key__art");'
+    'if(!a.length||!("IntersectionObserver" in window))return;'
+    'if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches)return;'
+    'var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){'
+    'e.target.classList.add("is-drawn");io.unobserve(e.target);}});},{rootMargin:"0px 0px -6% 0px"});'
+    'a.forEach(function(el){var r=el.getBoundingClientRect();if(r.top<innerHeight&&r.bottom>0)return;'
+    'el.querySelectorAll("path,circle,ellipse").forEach(function(p){'
+    'if(!p.getAttribute("stroke-dasharray"))p.setAttribute("pathLength","1");});'
+    'el.classList.add("is-drawing");io.observe(el);});})();</script>'
+)
+
+
+def nearby_art_kind(heading):
+    """The drawing for one entry, from its heading as it stands in the page."""
+    # Folded here rather than with _plain_words, which app.py defines twice: the
+    # second (for the mail rules) wins at import and turns "Ax-les-Thermes"
+    # into " ax les thermes ", so the first's callers never see their own.
+    text = unicodedata.normalize("NFKD", html_unescape(re.sub(r"<[^>]+>", "", heading or "")))
+    text = "".join(ch for ch in text if not unicodedata.combining(ch)).lower()
+    text = " ".join(text.replace("’", "'").split())
+    for rx, kind in _NEARBY_ART_RX:
+        if rx.search(text):
+            return kind
+    return NEARBY_ART_FALLBACK
+
+
+def nearby_art_svg(kind):
+    svg = _NEARBY_SVG.get(kind)
+    if svg is None:
+        macro = app.jinja_env.get_template("_nearby_art.html").module.nearby
+        svg = _NEARBY_SVG[kind] = " ".join(str(macro(kind)).split())
+    return svg
+
+
+def draw_beside_the_places(body):
+    """The page with a drawing put in at the head of every entry. Pure, for the tests."""
+    def one(match):
+        ident, gap, heading = match.groups()
+        kind = nearby_art_kind(heading)
+        return ('<div class="g-key__i g-key__i--drawn" data-art="%s"%s>%s'
+                '<span class="g-key__art" aria-hidden="true">%s</span>%s<p class="g-key__k">%s</p>'
+                % (kind, ident, gap, nearby_art_svg(kind), gap, heading))
+    drawn, n = _NEARBY_ITEM.subn(one, body)
+    if n and "</body>" in drawn:
+        drawn = drawn.replace("</body>", NEARBY_ART_SCRIPT + "</body>", 1)
+    return drawn
+
+
+@app.after_request
+def draw_the_nearby_vignettes(response):
+    if request.method not in ("GET", "HEAD") or response.status_code != 200:
+        return response
+    if request.endpoint not in NEARBY_ART_ENDPOINTS:
+        return response
+    if response.direct_passthrough or not (response.content_type or "").startswith("text/html"):
+        return response
+    raw = response.get_data()
+    if b'class="g-key__i"' not in raw:
+        return response
+    response.set_data(draw_beside_the_places(raw.decode("utf-8")))
+    return response
+
+
 @app.route("/mirrored-photo/<filename>")
 def mirrored_photo(filename):
     """A photograph the house holds its own copy of.
