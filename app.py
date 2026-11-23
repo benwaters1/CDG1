@@ -8441,6 +8441,20 @@ def init_db():
                 created_at TEXT NOT NULL)"""),
         ("pool_readings_when",
          "CREATE INDEX IF NOT EXISTS pool_readings_when ON pool_readings(read_at)"),
+        # THE TAXE DE SEJOUR, DECLARED (23 November 2026). One row per council
+        # year (1 October to 30 September, keyed by the year it starts in):
+        # when the owner said it was declared, by whom, and the figures the
+        # page showed at that moment -- so a later change to a stay does not
+        # quietly rewrite what was filed.
+        ("city_tax_declarations",
+         """CREATE TABLE IF NOT EXISTS city_tax_declarations (
+                year_from INTEGER PRIMARY KEY,
+                declared_at TEXT NOT NULL,
+                declared_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                adult_nights INTEGER,
+                exempt_nights INTEGER,
+                amount REAL,
+                note TEXT)"""),
     ):
         try:
             conn.execute(ddl)
@@ -41892,6 +41906,18 @@ def owner_home_warnings(conn, today):
              if pp["unread"]["never"] else "Last checked ")
             + format_date_human(pp["unread"]["since"].isoformat()) + ".", 1, "pool_book_page")
 
+    # THE TAXE DE SEJOUR TO DECLARE (23 November 2026): the council year
+    # just ended, from 1 October until somebody marks it declared. A warning
+    # until 15 October, a blocker after.
+    try:
+        owed = city_tax_to_declare(conn, today)
+    except sqlite3.Error:
+        owed = None
+    if owed:
+        add("blocker" if owed["late"] else "warn",
+            f"Taxe de séjour to declare for {owed['label']}: {money(owed['to_declare'])}",
+            city_tax_declaration_note(owed), 1, "admin_city_tax")
+
     # WHAT THE SPAM FILTER TOOK, so a real enquiry caught by it is seen
     # rather than lost. Since 9 November a Contact post with no name, no
     # topic, or nothing but "Test" is set aside with the sales pitches -- a
@@ -53765,15 +53791,72 @@ def admin_vat():
 @app.route("/admin/city-tax")
 @owner_required
 def admin_city_tax():
-    """What the commune is owed, and the working behind it."""
+    """What the commune is owed, and the working behind it.
+
+    At the top, the council's year: the one just ended, to declare, and the
+    one running, so far. ?council_year=2025 shows every stay of the year that
+    starts on 1 October 2025 instead of the week, month or calendar year.
+    """
     conn = get_db()
+    today = house_today()
     period = period_from_request()
-    working = city_tax_working(conn, parse_date(period["start_iso"]),
-                               parse_date(period["end_iso"]))
+    council = request.args.get("council_year", "")
+    council = int(council) if council.isdigit() and 2000 <= int(council) <= 2100 else None
+    if council:
+        start, end = date(council, *CITY_TAX_YEAR_STARTS), date(council + 1, *CITY_TAX_YEAR_STARTS)
+    else:
+        start, end = parse_date(period["start_iso"]), parse_date(period["end_iso"])
+    working = city_tax_working(conn, start, end)
     arrears = city_tax_arrears(conn)
+    now = city_tax_year_of(today)
+    years = [city_tax_declaration(conn, now - 1, today), city_tax_declaration(conn, now, today)]
     conn.close()
     return render_template("admin_city_tax.html", working=working, period=period,
-                           arrears=arrears)
+                           arrears=arrears, years=years, council=council,
+                           council_label=(f"1 October {council} to 30 September {council + 1}"
+                                          if council else None),
+                           council_url=CITY_TAX_COUNCIL_URL)
+
+
+@app.route("/admin/city-tax/declared/<int:year_from>", methods=["POST"])
+@owner_required
+def city_tax_declared(year_from):
+    """Say a council year's taxe de séjour has been declared, or take it back.
+
+    Kept with the figures the page showed when it was pressed, so what was
+    filed stays on record even if a stay in that year is changed later. Only
+    a year that is over can be declared.
+    """
+    conn = get_db()
+    year = city_tax_declaration(conn, year_from)
+    if request.form.get("what") == "undo":
+        conn.execute("DELETE FROM city_tax_declarations WHERE year_from = ?", (year_from,))
+        log_audit(conn, "city_tax_declaration_undone", None, year["label"])
+        conn.commit()
+        conn.close()
+        flash(f"{year['label']}: no longer marked as declared.", "success")
+        return redirect(url_for("admin_city_tax"))
+    if not year["over"]:
+        conn.close()
+        flash(f"{year['label']} is not over yet, so it cannot be declared.", "error")
+        return redirect(url_for("admin_city_tax"))
+    conn.execute(
+        """INSERT INTO city_tax_declarations (year_from, declared_at, declared_by_user_id,
+                   adult_nights, exempt_nights, amount, note)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(year_from) DO UPDATE SET declared_at = excluded.declared_at,
+                   declared_by_user_id = excluded.declared_by_user_id,
+                   adult_nights = excluded.adult_nights, exempt_nights = excluded.exempt_nights,
+                   amount = excluded.amount, note = excluded.note""",
+        (year_from, datetime.now(timezone.utc).isoformat(), current_user()["id"],
+         year["adult_nights"], year["exempt_nights"], year["to_declare"],
+         (request.form.get("note", "") or "").strip()[:200] or None))
+    log_audit(conn, "city_tax_declared", None,
+              f"{year['label']}: {year['adult_nights']} adult-nights, {money(year['to_declare'])}")
+    conn.commit()
+    conn.close()
+    flash(f"{year['label']}: marked as declared, {money(year['to_declare'])}.", "success")
+    return redirect(url_for("admin_city_tax"))
 
 
 @app.route("/admin/city-tax/charge/<int:booking_id>", methods=["POST"])
@@ -53827,8 +53910,16 @@ def export_city_tax_csv():
     """
     conn = get_db()
     period = period_from_request()
-    working = city_tax_working(conn, parse_date(period["start_iso"]),
-                               parse_date(period["end_iso"]))
+    council = request.args.get("council_year", "")
+    if council.isdigit() and 2000 <= int(council) <= 2100:
+        # The council's year, 1 October to 30 September: the one declared.
+        start = date(int(council), *CITY_TAX_YEAR_STARTS)
+        end = date(int(council) + 1, *CITY_TAX_YEAR_STARTS)
+        filename = f"taxe-de-sejour-{council}-{int(council) + 1}.csv"
+    else:
+        start, end = parse_date(period["start_iso"]), parse_date(period["end_iso"])
+        filename = f"taxe-de-sejour-{period['start_iso']}.csv"
+    working = city_tax_working(conn, start, end)
     conn.close()
     fieldnames = ["reference", "booked_through", "guest", "room", "arrival", "departure",
                   "nights_in_period", "nights_total", "adults", "under_18",
@@ -53855,8 +53946,7 @@ def export_city_tax_csv():
         "exempt_nights": working["exempt_nights"],
         "amount": f"{working['total']:.2f}",
     })
-    return csv_response(fieldnames, rows,
-                        f"taxe-de-sejour-{period['start_iso']}.csv")
+    return csv_response(fieldnames, rows, filename)
 
 
 @app.route("/admin/vat/export.csv")
@@ -101016,6 +101106,16 @@ def watch_task_findings(conn, today=None):
             today.isoformat(), "normal"))
     found.extend(take("kitchen", kitchen))
 
+    # THE TAXE DE SEJOUR TO DECLARE, on its due day, until it is marked
+    # declared on the taxe de séjour page.
+    owed = city_tax_to_declare(conn, today)
+    if owed:
+        found.append((
+            "filing", f"Declare the taxe de séjour for {owed['label']}",
+            city_tax_declaration_note(owed)
+            + "\n\nThen press Declared on Financial → Taxe de séjour.",
+            owed["due"].isoformat(), "high" if owed["late"] else "normal"))
+
     # THE POOL (23 November 2026), the same two, while they last.
     pp = pool_problems(conn, today)
     if pp["unanswered"]:
@@ -123884,6 +123984,84 @@ def city_tax_working(conn, start, end):
         "unpaid": round(unpaid_total, 2),
         "stays": len(rows),
     }
+
+
+# ---------------------------------------------------------------------------
+# THE COUNCIL'S YEAR (owner, 23 November 2026: "make it total it up for me so
+# i know what to declare").
+#
+# The Communauté de communes de la Haute-Ariège collects the taxe de séjour,
+# not the mairie, and its year runs from 1 October to 30 September, declared
+# once, before 15 October, on its own site (taxe.3douest.com/cchauteariege).
+# The page about the tax showed a week, a month or a calendar year, none of
+# which is the year that is declared, so the figure had to be added up by
+# hand from two calendar years.
+#
+# What is declared is NIGHTS AND PEOPLE; the council's site works out what
+# they come to. So the figure here is the chargeable adult-nights at the rate
+# set on the rates page, not what the house's bills happened to charge --
+# stays booked before 23 November 2026 were charged 0.80, and the difference
+# is the house's to pay, not a reason to declare less.
+# ---------------------------------------------------------------------------
+CITY_TAX_YEAR_STARTS = (10, 1)      # 1 October
+CITY_TAX_DECLARE_BY = (10, 15)      # 15 October, after the year ends
+CITY_TAX_COUNCIL_URL = "https://taxe.3douest.com/cchauteariege"
+
+
+def city_tax_year_of(day):
+    """The council year a day falls in, named by the year it starts in."""
+    return day.year if (day.month, day.day) >= CITY_TAX_YEAR_STARTS else day.year - 1
+
+
+def city_tax_declaration(conn, year_from, today=None):
+    """One council year: its window, its figures, and whether it was declared."""
+    today = today or house_today()
+    start = date(year_from, *CITY_TAX_YEAR_STARTS)
+    end = date(year_from + 1, *CITY_TAX_YEAR_STARTS)
+    due = date(year_from + 1, *CITY_TAX_DECLARE_BY)
+    working = city_tax_working(conn, start, end)
+    declared = conn.execute(
+        """SELECT city_tax_declarations.*, users.name AS declared_by
+             FROM city_tax_declarations
+             LEFT JOIN users ON users.id = city_tax_declarations.declared_by_user_id
+            WHERE city_tax_declarations.year_from = ?""", (year_from,)).fetchone()
+    return {
+        "year_from": year_from, "due": due,
+        "label": f"1 October {year_from} to 30 September {year_from + 1}",
+        "stays": working["stays"],
+        "adult_nights": working["adult_nights"], "exempt_nights": working["exempt_nights"],
+        "rate": working["rate"],
+        "to_declare": round(working["adult_nights"] * working["rate"], 2),
+        "booking_com": working["booking_com"],
+        "over": today >= end, "late": today > due, "declared": declared,
+    }
+
+
+def city_tax_to_declare(conn, today=None):
+    """The last council year that has ended, when it is still to declare.
+
+    None when it is declared, or when nobody stayed in it. Once the year is
+    over it is due by 15 October and late after; it stays here, late, until
+    somebody says it was declared, however long that takes.
+    """
+    today = today or house_today()
+    year = city_tax_declaration(conn, city_tax_year_of(today) - 1, today)
+    if year["declared"] or not year["stays"]:
+        return None
+    return year
+
+
+def city_tax_declaration_note(year):
+    """What the task and the owner home say about a year to declare."""
+    unknown = len(year["booking_com"]["party_unknown"])
+    return (f"{year['adult_nights']} adult-night{'' if year['adult_nights'] == 1 else 's'} "
+            f"and {year['exempt_nights']} under 18, over {counted(year['stays'], 'stay')}: "
+            f"{money(year['to_declare'])} at {money(year['rate'])} per adult per night. "
+            + (f"{counted(unknown, 'Booking.com stay')} not covered by a statement yet, so "
+               "every guest on them is counted as an adult; upload the latest one first. "
+               if unknown else "")
+            + f"Declared on the Haute-Ariège council's site ({CITY_TAX_COUNCIL_URL}), "
+            f"due by {format_date_human(year['due'].isoformat())}.")
 
 
 def vat_breakdown(lines):
