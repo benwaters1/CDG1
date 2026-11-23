@@ -585,6 +585,7 @@ SUITES = [
     "test_booking_com_multi_room",
     "test_booking_com_watch",
     "test_booking_com_statement",
+    "test_booking_com_in_returns",
     # Five rooms let a night, never six: the sixth room, z28 item 1.
     "test_rooms_let_a_night",
     # Brief of 17 October 2026: forms that post without a token, and the

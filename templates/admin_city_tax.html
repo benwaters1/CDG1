@@ -57,6 +57,28 @@ so it is declared either way.
 {% endif %}
 </p>
 
+{% if working.booking_com.stays %}
+<div class="detail-card" style="max-width:840px;">
+  {# Booking.com's guests were missing from this return until 23 Nov 2026:
+     their stays are not bookings of the house's own. #}
+  <h3 style="margin-top:0;">{{ working.booking_com.stays }} of these stays were booked on Booking.com:
+    {{ working.booking_com.amount|money }}</h3>
+  <p class="field-hint" style="margin-top:0;">
+    The tax is owed on their nights like anyone else's. Nothing in the app charged it to them, so
+    their figure is the adult-nights at today's rate. If it is taken at the door, that happens
+    outside the app. How many were adults comes from Booking.com's reservations statement.
+  </p>
+  {% if working.booking_com.party_unknown %}
+  <p class="field-hint">
+    <strong>{{ working.booking_com.party_unknown|length }} not covered by a statement yet</strong>
+    ({% for r in working.booking_com.party_unknown %}{{ r.guest }}{% if not loop.last %}, {% endif %}{% endfor %}),
+    so every guest on them is counted as an adult until one is. Upload the latest one on the
+    <a href="{{ url_for('channel_stays_page') }}#statement">Booking.com stays</a> page before you file.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if not working.rows %}
 <div class="empty-state">Nobody stayed in this period.</div>
 {% else %}
@@ -75,7 +97,7 @@ so it is declared either way.
       <tr>
         <td>
           {{ r.guest }}
-          <span class="cell-note">{{ r.reference }}{% if not r.settled %} · unpaid{% endif %}</span>
+          <span class="cell-note">{{ r.reference }}{% if r.channel %} · {{ r.channel }}{% if not r.party_known %} · party not confirmed{% endif %}{% elif not r.settled %} · unpaid{% endif %}</span>
         </td>
         <td>
           {{ r.room }}
@@ -106,7 +128,7 @@ so it is declared either way.
 {% endif %}
 
 <p class="upload-hint" style="margin-top:12px;">
-  Amounts are apportioned from what each guest was actually charged, not
+  Amounts for the house's own bookings are apportioned from what each guest was actually charged, not
   recomputed at today's rate — if the commune raises the rate mid-year,
   recomputing would put a figure on the return that never appeared on anybody's
   bill. Cancelled stays are excluded: no nights were spent, so nothing is owed.

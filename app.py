@@ -27724,6 +27724,51 @@ def channel_commission(conn, source):
         return None
 
 
+def booking_com_stays_sold(conn, start, end):
+    """Booking.com stays ARRIVING in [start, end) that are the house's money.
+
+    One definition, read by every page that counts them -- what a booking
+    costs to get, the VAT working -- so two pages cannot disagree about which
+    stays were sold. Rows of ota_reservations, the whole reservation (its
+    `amount` is the reservation's, however many rooms it took).
+
+    Left out:
+      - a stay the house has ALSO entered as its own booking (same room, same
+        nights). It is counted there, and would be counted twice.
+      - a cancelled stay, unless Booking.com still charged for it.
+
+    A CANCELLED STAY'S FIGURES ARE ONLY MONEY IF A STATEMENT SAID SO AFTER IT
+    WAS CANCELLED. Chiodi's (6348479172, EUR 5,530) was in the 9 November
+    statement while it stood, and was cancelled by email on the 12th: the
+    figures stayed on it and the page went on counting a stay that had gone. A
+    statement read since the cancellation that still shows a commission is a
+    charged cancellation; anything else is not revenue until a statement says
+    it is.
+
+    A confirmed stay no statement has covered yet is IN the list, with no
+    statement_at: it was sold, its figures are not known yet, and each caller
+    says so rather than counting it as nothing.
+    """
+    s_iso, e_iso = start.isoformat(), end.isoformat()
+    own = {(r["room_id"], r["arrival_date"], r["departure_date"]) for r in conn.execute(
+        """SELECT room_id, arrival_date, departure_date FROM bookings
+            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+        (s_iso, e_iso))}
+    sold = []
+    for r in conn.execute(
+            """SELECT * FROM ota_reservations
+                WHERE channel = 'booking.com' AND arrival_date >= ? AND arrival_date < ?
+                  AND (status = 'confirmed' OR COALESCE(commission_amount, 0) > 0)
+                ORDER BY arrival_date, id""",
+            (s_iso, e_iso)):
+        if (r["room_id"], r["arrival_date"], r["departure_date"]) in own:
+            continue
+        if r["status"] != "confirmed" and (r["statement_at"] or "") < (r["last_event_at"] or ""):
+            continue
+        sold.append(r)
+    return sold
+
+
 def channel_cost(conn, start=None, end=None):
     """What each way of getting a booking actually costs.
 
@@ -27771,30 +27816,8 @@ def channel_cost(conn, start=None, end=None):
     # counted there and not again here. A cancelled stay counts only where
     # Booking.com still charged for it. Stays no statement has covered yet are
     # counted and named, and until they are the commission is "not known".
-    own = {(r["room_id"], r["arrival_date"], r["departure_date"]) for r in conn.execute(
-        """SELECT room_id, arrival_date, departure_date FROM bookings
-            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
-        (start.isoformat(), end.isoformat()))}
-    sold, waiting = [], 0
-    for r in conn.execute(
-            """SELECT * FROM ota_reservations
-                WHERE channel = 'booking.com' AND arrival_date >= ? AND arrival_date < ?
-                  AND (status = 'confirmed' OR COALESCE(commission_amount, 0) > 0)""",
-            (start.isoformat(), end.isoformat())):
-        if (r["room_id"], r["arrival_date"], r["departure_date"]) in own:
-            continue
-        # A CANCELLED STAY'S FIGURES ARE ONLY MONEY IF A STATEMENT SAID SO
-        # AFTER IT WAS CANCELLED. Chiodi's (6348479172, EUR 5,530) was in the
-        # 9 November statement while it stood, and was cancelled by email on
-        # the 12th: the figures stayed on it and the page went on counting a
-        # stay that had gone. A statement read since the cancellation that
-        # still shows a commission is a charged cancellation; anything else is
-        # not revenue until a statement says it is.
-        if r["status"] != "confirmed" and (r["statement_at"] or "") < (r["last_event_at"] or ""):
-            continue
-        sold.append(r)
-        if r["status"] == "confirmed" and not r["statement_at"]:
-            waiting += 1
+    sold = booking_com_stays_sold(conn, start, end)
+    waiting = sum(1 for r in sold if r["status"] == "confirmed" and not r["statement_at"])
     if sold:
         revenue = round(sum(float(r["amount"] or 0) for r in sold if r["statement_at"]), 2)
         cost = (round(sum(float(r["commission_amount"] or 0) for r in sold), 2)
@@ -53112,16 +53135,24 @@ def export_city_tax_csv():
     working = city_tax_working(conn, parse_date(period["start_iso"]),
                                parse_date(period["end_iso"]))
     conn.close()
-    fieldnames = ["reference", "guest", "room", "arrival", "departure",
+    fieldnames = ["reference", "booked_through", "guest", "room", "arrival", "departure",
                   "nights_in_period", "nights_total", "adults", "under_18",
                   "adult_nights", "exempt_nights", "amount", "settled"]
     rows = [{
-        "reference": r["reference"], "guest": r["guest"], "room": r["room"] or "",
+        "reference": r["reference"],
+        # A Booking.com stay's party is the email's guest count until a
+        # statement says how many were adults. The file says so, because it
+        # goes to the commune with none of the page around it.
+        "booked_through": (r["channel"] or "direct")
+                          + ("" if r["party_known"] else " (party not confirmed)"),
+        "guest": r["guest"], "room": r["room"] or "",
         "arrival": r["arrival"], "departure": r["departure"],
         "nights_in_period": r["nights"], "nights_total": r["total_nights"],
         "adults": r["adults"], "under_18": r["exempt_guests"],
         "adult_nights": r["adult_nights"], "exempt_nights": r["exempt_nights"],
-        "amount": f"{r['amount']:.2f}", "settled": "yes" if r["settled"] else "no",
+        "amount": f"{r['amount']:.2f}",
+        "settled": ("not charged through the app" if r["channel"]
+                    else "yes" if r["settled"] else "no"),
     } for r in working["rows"]]
     rows.append({k: "" for k in fieldnames} | {
         "reference": "TOTAL", "nights_in_period": working["nights"],
@@ -53155,12 +53186,28 @@ def export_vat_csv():
     # The caveat travels with the file. A CSV lands in an accountant's inbox
     # with none of the page around it.
     unreadable = working["unreadable_days"]
+    waiting = working["booking_com_waiting"]
+    registered = working["registered_from"]
     rows.append(_row(
         source="TOTAL", vat=working["total_vat"],
         basis=f"working paper, not a return; "
               f"{counted(working['days_not_closed'], 'day')} in this period never closed off"
               + (f"; {counted(len(unreadable), 'closed day')} unreadable and not in "
-                 f"the till figures ({', '.join(unreadable)})" if unreadable else "")))
+                 f"the till figures ({', '.join(unreadable)})" if unreadable else "")
+              + (f"; not registered for VAT before {registered.isoformat()}, nothing "
+                 f"to declare" if working["not_registered"] else "")
+              + (f"; counted from {registered.isoformat()}, the day the house is "
+                 f"registered for VAT" if working["counted_from_registration"] else "")
+              + (f"; {counted(len(waiting), 'Booking.com stay')} not counted, no "
+                 f"statement yet ({', '.join(r['reservation_number'] for r in waiting)})"
+                 if waiting else "")))
+    if working["booking_com_commission"]:
+        # Beside the total, not in it: a purchase, reverse-charged.
+        rows.append(_row(
+            source="Booking.com commission (not in the total)",
+            gross=working["booking_com_commission"],
+            basis="a purchase, not VAT collected; normally reverse-charged, "
+                  "declared and deducted on the same return"))
     return csv_response(fieldnames, rows, f"vat-working-{period['start_iso']}.csv")
 
 
@@ -120681,6 +120728,11 @@ TAX_DEFAULTS = {
     "vat_extras": "20",
     "vat_events": "20",
     "city_tax_account": "",          # where the collected tax is parked
+    # The day the house is registered for VAT from. Before it there is no VAT
+    # to declare, and the VAT working says so rather than offering figures
+    # that look like a return. 1 January 2027 on the owner's word (23 Nov
+    # 2026); a date on the rates page, so it changes without a deploy.
+    "vat_registered_from": "2027-01-01",
 }
 
 # Where each kind of income lands. Revenue is class 7 in the plan comptable,
@@ -121051,7 +121103,26 @@ def vat_working(conn, start, end, today=None):
     City tax is deliberately absent. Taxe de séjour is collected for the commune
     and is not the château's VATable revenue; it is stored apart from
     total_price, so nothing here touches it.
+
+    NOT BEFORE THE HOUSE IS REGISTERED (vat_registered_from). A period that
+    ends before that day has nothing in it to declare, and one that straddles
+    it is counted from that day: the figures would otherwise read as VAT owed
+    on months when none was. The working says which, so a short period is
+    visibly short.
+
+    BOOKING.COM STAYS are rooms like any other and were missing: they are not
+    in `bookings`, and this read only that. They are counted from Booking.com's
+    own statement (booking_com_stays_sold), by arrival like the house's own
+    rooms. A stay no statement has covered yet has no price, so it is named
+    rather than counted as nothing. The commission Booking.com charges is
+    shown beside the working and kept out of its total: it is a purchase, not
+    VAT collected, and the reverse charge on it is declared and deducted on
+    the same return.
     """
+    registered_from = vat_registered_from(conn)
+    asked_from = start
+    if registered_from and start < registered_from:
+        start = min(registered_from, end)
     s_iso, e_iso = start.isoformat(), end.isoformat()
     lines = []
 
@@ -121137,6 +121208,21 @@ def vat_working(conn, start, end, today=None):
         (s_iso, e_iso)).fetchone()["t"]
     _estimate("Rooms", rooms, tax_rate(conn, "vat_accommodation"))
 
+    # Rooms sold on Booking.com. Its price is what the guest paid there, VAT
+    # included, the same as the house's own; the commission comes off later
+    # as a purchase and is not taken off here.
+    bcom = booking_com_stays_sold(conn, start, end) if start < end else []
+    bcom_priced = [r for r in bcom if r["statement_at"]]
+    bcom_waiting = [r for r in bcom if not r["statement_at"]]
+    _estimate("Rooms sold on Booking.com",
+              sum(float(r["amount"] or 0) for r in bcom_priced),
+              tax_rate(conn, "vat_accommodation"))
+    for line in lines:
+        if line["source"] == "Rooms sold on Booking.com":
+            line["basis"] = "Booking.com's statement, by arrival"
+    bcom_commission = round(sum(float(r["commission_amount"] or 0)
+                                for r in bcom_priced), 2)
+
     shops = conn.execute(
         """SELECT COALESCE(SUM(workshop_bookings.total_price), 0) AS t
            FROM workshop_bookings
@@ -121210,6 +121296,15 @@ def vat_working(conn, start, end, today=None):
     total_vat = round(sum(l["vat"] or 0 for l in lines), 2)
     return {
         "start": start, "end": end, "lines": lines, "total_vat": total_vat,
+        "asked_from": asked_from, "registered_from": registered_from,
+        # Every day of the period is before registration: nothing to declare.
+        "not_registered": bool(registered_from and end <= registered_from),
+        # Some of it is: the figures start on registered_from.
+        "counted_from_registration": bool(registered_from
+                                          and asked_from < registered_from < end),
+        "booking_com_waiting": bcom_waiting,
+        "booking_com_commission": bcom_commission,
+        "booking_com_stays": len(bcom_priced),
         "exact_vat": round(sum(l["vat"] for l in lines if l["exact"]), 2),
         "estimated_vat": round(sum(l["vat"] for l in lines if not l["exact"]), 2),
         "days_in_period": span_days, "days_closed": len(closed_days),
@@ -121221,6 +121316,15 @@ def vat_working(conn, start, end, today=None):
 def tax_setting(conn, key):
     row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (f"tax_{key}",)).fetchone()
     return ((row["value"] if row else "") or "") or TAX_DEFAULTS.get(key, "")
+
+
+def vat_registered_from(conn):
+    """The day the house is registered for VAT from, or None if no date is set.
+
+    None means the app does not know, and the VAT working counts every day as
+    it always has rather than guessing either way.
+    """
+    return parse_date(tax_setting(conn, "vat_registered_from"))
 
 
 def tax_rate(conn, key):
@@ -121794,8 +121898,22 @@ def city_tax_working(conn, start, end):
     nobody slept. A stay that is unpaid is still declared — the tax is due on the
     nights, not on our success in collecting them — but the unpaid amount is
     reported so the house can see what it is handing over ahead of receiving.
+
+    BOOKING.COM GUESTS SLEEP HERE TOO (23 November 2026). Their stays are not
+    in `bookings`, and this read only that, so every night sold on Booking.com
+    was missing from the return. They are read from ota_reservations: a
+    confirmed stay whose nights fall in the period, unless the house has
+    entered it as its own booking as well (same room, same nights), which is
+    counted above. Their party comes from Booking.com's reservations
+    statement -- adults, and children as under-18s -- and where no statement
+    has covered the stay yet, from the email's guest count, every one taken
+    as an adult and the row marked as not confirmed, so the figure is visibly
+    provisional rather than quietly wrong. Nothing on the house's bills
+    carries their tax, so there is no charged figure to apportion: theirs is
+    the adult-nights at the rate in force, which is what the commune asks for.
     """
     s_iso, e_iso = start.isoformat(), end.isoformat()
+    rate = tax_rate(conn, "city_tax_per_adult_per_night")
     rows, unpaid_total = [], 0.0
     for booking in conn.execute(
             """SELECT bookings.*, rooms.name AS room_name FROM bookings
@@ -121833,10 +121951,61 @@ def city_tax_working(conn, start, end):
             "adults": adults, "exempt_guests": exempt,
             "adult_nights": adults * nights, "exempt_nights": exempt * nights,
             "amount": amount, "settled": not (bill and bill["owed"] > 0.005),
+            "channel": None, "party_known": True,
         })
+
+    own = {(r["room_id"], r["arrival_date"], r["departure_date"]) for r in conn.execute(
+        """SELECT room_id, arrival_date, departure_date FROM bookings
+            WHERE status = 'confirmed' AND arrival_date < ? AND departure_date > ?""",
+        (e_iso, s_iso))}
+    for stay in conn.execute(
+            """SELECT ota_reservations.*, rooms.name AS room_name
+                 FROM ota_reservations
+                 LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
+                WHERE ota_reservations.channel = 'booking.com'
+                  AND ota_reservations.status = 'confirmed'
+                  AND ota_reservations.arrival_date < ?
+                  AND ota_reservations.departure_date > ?
+                ORDER BY ota_reservations.arrival_date""", (e_iso, s_iso)).fetchall():
+        if (stay["room_id"], stay["arrival_date"], stay["departure_date"]) in own:
+            continue
+        arrival = parse_date(stay["arrival_date"])
+        departure = parse_date(stay["departure_date"])
+        if not (arrival and departure) or departure <= arrival:
+            continue
+        nights = (min(departure, end) - max(arrival, start)).days
+        if nights <= 0:
+            continue
+        if stay["adults"] is not None:
+            adults = max(0, int(stay["adults"] or 0))
+            exempt = max(0, int(stay["children"] or 0))
+            party_known = True
+        else:
+            adults, exempt, party_known = max(0, int(stay["guests"] or 0)), 0, False
+        rows.append({
+            "booking": stay, "reference": stay["reservation_number"],
+            "guest": stay["guest_name"] or "Booking.com guest",
+            "room": stay["room_name"] or stay["room_label"],
+            "arrival": stay["arrival_date"], "departure": stay["departure_date"],
+            "nights": nights, "total_nights": (departure - arrival).days,
+            "adults": adults, "exempt_guests": exempt,
+            "adult_nights": adults * nights, "exempt_nights": exempt * nights,
+            "amount": round(adults * nights * rate, 2),
+            # Not on any bill of the house's, so neither settled nor owed by
+            # the guest as far as the app knows.
+            "settled": True, "channel": "Booking.com", "party_known": party_known,
+        })
+    rows.sort(key=lambda r: (r["arrival"] or "", r["reference"] or ""))
+    bcom = [r for r in rows if r["channel"] == "Booking.com"]
     return {
         "rows": rows,
-        "rate": tax_rate(conn, "city_tax_per_adult_per_night"),
+        "booking_com": {
+            "stays": len(bcom),
+            "amount": round(sum(r["amount"] for r in bcom), 2),
+            "adult_nights": sum(r["adult_nights"] for r in bcom),
+            "party_unknown": [r for r in bcom if not r["party_known"]],
+        },
+        "rate": rate,
         "nights": sum(r["nights"] for r in rows),
         "adult_nights": sum(r["adult_nights"] for r in rows),
         "exempt_nights": sum(r["exempt_nights"] for r in rows),
