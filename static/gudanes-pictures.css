@@ -909,3 +909,74 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
   .g .g-book-bar .g-guests{ height: 44px; }
   .g .g-book-bar .g-guests__b{ width: 44px; height: 44px; }
 }
+
+/* ==========================================================================
+   THE TYPE PASS (23 Nov 2026, owner: "go through every page and look at all
+   the text sizing and make sure its correct, and formatting of it too so its
+   nicer designed and looks elegant")
+   Measured on every public page in the browser. Three things were wrong.
+   1. A third typeface in running text. Inter is the house's capitals: the
+      menu, the small labels over a field, the eyebrows. But it was also
+      setting sentences - every price's "per room, a night", "about €800 a
+      night", the Stay page's "Up to 3 nights available / from €580", the
+      weather line, the hints under a form and the breadcrumb - beside
+      Garamond, so a card read in two hands. Those are Garamond now; Inter
+      keeps only what it sets in capitals, and the breadcrumb becomes capitals.
+   2. Headings of one rank at five sizes. A section heading measured 42, 48,
+      52 and 54 on the home page alone, and a card or panel heading 18 to 34,
+      some in Garamond, some in Cormorant. Now one size per rank: section
+      headings at --t-h2, card and panel headings at --t-h3, all Cormorant.
+   3. Small faults: guest quotes set at 1.18 line-height, the wedding page's
+      two-line heading at 1.1, photo credits at 10px, and the home and Stay
+      search labels on an undefined --sans (Helvetica, not the house's Inter).
+   ========================================================================== */
+
+/* 1. Sentences in Garamond, not Inter. */
+.g .g-price__u, .g .g-card__rate span:not(.g-price__k), .g .g-wscard__price span:last-child, .g .g-sit__rate span:last-child,
+.g .g-pernight, .g .g-nextf__n, .g .g-nextf__p, .g .g-typwx, .g .g-typwx__v, .g .g-wx__d{
+  font-family: var(--serif); letter-spacing: 0; font-size: 16px;
+}
+.g .g-nextf__p{ color: var(--blue-deep, #14305F); }
+.g .g-pernight{ font-style: italic; color: var(--ink-2); }
+.g .g-typwx__k{ font-family: var(--ui); }
+.g .g-hint, .g .g-foot-note{ font-family: var(--serif); font-size: 16px; line-height: 1.5; letter-spacing: 0; }
+.g .g-crumbs a, .g .g-crumbs [aria-current]{
+  font-family: var(--ui); font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase;
+}
+
+/* 2. One size per rank. Section headings: */
+.g .g-full__h, .g .g-plaisirs__h, .g section.rc-says .rc-head h2{ font-size: var(--t-h2); line-height: 1.12; }
+.g section.rc-says .rc-head h2{ font-weight: 400; letter-spacing: 0; }
+/* Card and panel headings, in Cormorant at the card size: */
+.g .g-sow__t, .g .g-bruce__h, .g .g-addon__t, .g .g-nearby__t, .g .g-how__t, .g .g-agenda__title{
+  font-family: var(--display); font-weight: 400; font-size: var(--t-h3); line-height: 1.2;
+}
+
+/* 3. The small faults. */
+.g .g-say__q{ line-height: 1.4; }
+.g .g-place{ line-height: 1.15; }
+.g .g-credit, .g .g-credit a{ font-size: 11px; }
+.g .g-hero .g-herosearch__f > label, .g .g-hero .g-hbook__tab .g-hbook__tk, .g .g-hero .g-hbook__w .g-hbook__d,
+.g #book .g-search__f > label{ font-family: var(--ui); }
+
+/* The Stay page's "What is open next": five columns of one small size read as a timetable. The date and the heading
+   take the label capitals, the room its name in Cormorant, the nights in italic and the price in navy. The reading
+   floor in gudanes.css holds every main span at 15px with a selector no component can outrank, so the two sizes
+   that must clear it say !important, and only here. */
+.g .g-nextf__h{ font-family: var(--ui); font-style: normal; font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+.g .g-nextf__i{ grid-template-columns: 8.5rem minmax(10rem,1fr) auto auto auto; padding: 14px 0; }
+.g .g-nextf__d{ font-family: var(--ui); font-size: 11.5px !important; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+.g .g-nextf__r{ font-family: var(--display); font-size: 21px !important; line-height: 1.2; color: var(--blue-deep, #14305F); }
+.g .g-nextf__n{ font-style: italic; color: var(--ink-2); white-space: nowrap; }
+@media (max-width: 52rem){ .g .g-nextf__i{ grid-template-columns: 1fr; } }
+
+/* The home page's two cards, A Night and la Vie de Château: their lines at the card body size, not the label size. */
+.g .g-sow__list li{ font-size: 16px; line-height: 1.55; }
+.g .g-sow__foot{ font-size: 16px; }
+.g .g-plaisirs__cta span{ margin-left: .35em; }
+/* Four retreats on /workshops sat three and one. Exactly four make two rows of two; any other count keeps the three. */
+@media (min-width: 64rem){
+  .g .g-wscards:has(> .g-wscard:nth-child(4):last-child) > .g-wscard{
+    flex-basis: calc((100% - var(--s5)) / 2); max-width: calc((100% - var(--s5)) / 2);
+  }
+}
