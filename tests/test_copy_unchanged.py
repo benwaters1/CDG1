@@ -105,7 +105,9 @@ m = _harness.m
 # 13 Nov: moved to 2f463c9, the room picker (Answer Two Questions) taken off /book; it listed /book only.
 # 23 Nov: moved to 67e2599, how many a room sleeps as its own total (owner: "it sleeps up to 3 for the
 # ground floor"); it listed /, /book and /book/1, "Sleeps 3, up to 2 adults" for "Sleeps 2", and nothing else.
-COPY_BASE = "67e2599"
+# 23 Nov: moved to 68c905f, Les Bains du Couloubret off Things to Do Nearby (owner: "yes if its on there
+# twice"); it listed /whats-on only.
+COPY_BASE = "68c905f"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
