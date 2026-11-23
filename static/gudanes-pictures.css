@@ -980,3 +980,27 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
     flex-basis: calc((100% - var(--s5)) / 2); max-width: calc((100% - var(--s5)) / 2);
   }
 }
+
+/* ==========================================================================
+   THE COLOUR PASS (23 Nov 2026, owner: "and the colouring is all correct?")
+   Every public page measured for the colour of each line of words against
+   what is actually behind it. Two places failed, both the closing band on
+   /restoration and /events/photoshoots: it is marked g-sec--dark but was
+   turned sand (gudanes.css, .g .g-sec--dark.g-closer), and three things in
+   it kept their colours for navy.
+   - The French line over the heading ("Venir à Gudanes", "Venez voir") was
+     pale gold on sand, 1.6:1: there, but barely legible.
+   - /restoration's second button, "Discover the full experience", was cream
+     words with a cream outline on sand, 1.0:1: invisible.
+   - The filled button was pale gold on sand. It is navy now, like every
+     other filled button on a light ground.
+   And one more on the home page: the reviewers' names under each quote were
+   gold at 12px, 3.8:1 against the card. They take the deeper gilt.
+   ========================================================================== */
+.g .g-closer .g-fr{ color: var(--gilt-deep, #73562d); }
+.g .g-closer .g-btn:not(.g-btn--solid){ background: transparent; color: var(--blue-deep, #14305F); border-color: var(--blue-deep, #14305F); }
+.g .g-closer .g-btn:not(.g-btn--solid):hover{ background: var(--blue-deep, #14305F); color: #F8F3E9; }
+.g .g-closer .g-btn--solid{ background: var(--blue-deep, #14305F); color: #F8F3E9; border-color: var(--blue-deep, #14305F); }
+.g .g-closer .g-btn--solid:hover{ background: #0D2851; color: #fff; }
+.g section.rc-says figcaption.rc-sig{ color: var(--gilt-deep, #73562d); }
+.g .g-closer .g-closer__cta .g-btn{ margin: 0; }
