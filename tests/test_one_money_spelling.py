@@ -56,8 +56,6 @@ GUEST_FACING = {
     "send_share_request": "the letter asking a guest for their share",
     "send_refund_letter": "the refund letter",
     "_refund_balance_line": "its balance line",
-    "send_autocharge_taken_email": "the guest told their balance was taken",
-    "send_autocharge_failed_email": "the guest told it was not",
 }
 HAND_MONEY_PY = re.compile(r"(?:€|EUR\s?)\{[^{}]*:[^{}]*f\}|(?:€|EUR\s?)%(?:\.\d)?f")
 
