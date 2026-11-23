@@ -30,7 +30,7 @@
 {% from '_weekcost.html' import week_cost %}
 {% from '_flexible.html' import flexible %}
 {% from '_availcal.html' import avail_cal %}
-{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath, room_bath_link, room_sleeps %}
+{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath, room_bath_link, room_sleeps, room_heading %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_compare_rooms.html' import compare_rooms %}
 
@@ -78,7 +78,7 @@
 <div class="g-wrap">
   <p class="g-welcome">
     <span class="g-welcome__k">Welcome back{% if returning_guest['name'] %}, {{ returning_guest['name'].split(' ')[0] }}{% endif %}</span>
-    <span class="g-welcome__t">{% if returning_guest['last_room'] %}You stayed in {{ room_name(returning_guest['last_room']) }}{% if returning_guest['last_year'] %} in {{ returning_guest['last_year'] }}{% endif %}. It is still here, and so is the work.{% else %}Since you were last here, more of the château has opened.{% endif %}</span>
+    <span class="g-welcome__t">{% if returning_guest['last_room'] %}You stayed in {{ room_title(returning_guest['last_room']) }}{% if returning_guest['last_year'] %} in {{ returning_guest['last_year'] }}{% endif %}. It is still here, and so is the work.{% else %}Since you were last here, more of the château has opened.{% endif %}</span>
   <a href="{{ url_for('find_booking') }}">Your past stays</a>
   </p>
 </div>
@@ -175,7 +175,7 @@
     {% for room in rooms %}
     <article class="g-card g-card--room" id="room-{{ room['id'] }}"
              data-room-url="{{ url_for('book_room', room_id=room['id']) }}"
-             data-room-name="{{ room_name(room['name'])|trim }}">
+             data-room-name="{{ room_title(room['name'])|trim }}">
       {# Until a room has its own uploaded photograph, show a château interior
          matched to the room's character. A card with no image is worse than a
          representative one, and the real photo takes over the moment it is
@@ -217,7 +217,7 @@
       <div class="g-card__media">{{ room_carrousel(room_name(room['name'])|trim, _first|trim, room_name(room['name'])|trim, skip='799432953.jpg', tail=_tail) }}</div>{#- 9 Nov: skip the photograph the header shows (the Family Suite's two beds since 18 Oct; this still named the blue bedroom, so the same picture was on the page twice) -#}
       <div class="g-card__b">
         {{ emblem(room['name']) }}
-        <h3 class="g-card__name">{{ room_name(room['name']) }}</h3>
+        {{ room_heading(room['name'], cls='g-card__name') }}
         {#- 16 Oct (owner): the two suites close from 1 December to mid-February - "too large to heat". The dates are held by
             the rooms' own closures (Admin > Close rooms, "Closed for the season"), which the booking check refuses; this only
             says so gracefully. z27 item 17: which rooms are resting, and in what words, comes from book_rooms() as
@@ -306,7 +306,7 @@
               {#- 17 Oct: the open rooms are read from the rooms on sale rather than written out, so The Twin Room (Ground Floor)
                   joins the list the day it goes on sale. The rooms resting on these dates are left out by their closures,
                   not by name (z27 item 17); every other room stays open. -#}
-              {%- set _wo = [] %}{% for _r in rooms if _r['id'] not in _rest %}{% set _ = _wo.append('the ' ~ (room_name(_r['name'])|trim)[4:] if (room_name(_r['name'])|trim).startswith('The ') else room_name(_r['name'])|trim) %}{% endfor %}
+              {%- set _wo = [] %}{% for _r in rooms if _r['id'] not in _rest %}{% set _ = _wo.append(room_title(_r['name']) if room_plain(_r['name']) else ('the ' ~ (room_name(_r['name'])|trim)[4:] if (room_name(_r['name'])|trim).startswith('The ') else room_name(_r['name'])|trim)) %}{% endfor %}
               <p class="g-winter__p">The suites are open from mid-February to the end of November.{% if _wo %} For winter dates, {{ (_wo[:-1]|join(', ') ~ ' and ' ~ _wo[-1]) if _wo|length > 1 else _wo[0] }} {{ 'are' if _wo|length > 1 else 'is' }} open, each with a space heater and electric blankets.{% endif %}</p>
             </div>
           {% else %}

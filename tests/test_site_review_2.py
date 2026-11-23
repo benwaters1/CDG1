@@ -409,7 +409,9 @@ def card_photos(html):
     """Each /book room card: its name, and the alt of every photograph in its slider, in order."""
     out = {}
     for card in ROOM_CARD.findall(html):
-        name = re.search(r'class="g-card__name">([^<]+)', card)
+        # By the room's own name: beneath its French title since 23 November 2026 (g-room__plain), else the heading.
+        name = (re.search(r'class="g-room__plain">([^<]+)', card)
+                or re.search(r'class="g-card__name">([^<]+)', card))
         out[name.group(1).strip() if name else "?"] = (re.findall(r'<img\b[^>]*\bsrc="([^"]*)"', card),
                                                        re.findall(r'<img\b[^>]*\balt="([^"]*)"', card))
     return out

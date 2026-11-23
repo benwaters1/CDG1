@@ -117,7 +117,8 @@ def run():
     s.check("and the section is there to check", bool(shared.strip()),
             detail="without it every check below is against an empty string, "
                    "which passes everything")
-    s.check("the room", room["name"] in shared)
+    # By its title on the website since 23 November 2026.
+    s.check("the room", m.room_title(room["name"]) in shared)
     s.check("the dates", (today + timedelta(days=20)).isoformat() in shared)
     s.check("what time they are expected", "around 6pm" in shared)
     s.check("the dinner booking",

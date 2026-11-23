@@ -333,6 +333,8 @@ ENDPOINT_ARGS = {
     ("legacy_atelier_product", "slug"): "seven-starry-nights-2027",
     ("legacy_celebrations_portfolio_any", "_rest"): "dan-and-carl",
     ("legacy_chateau_ateliers_any", "_rest"): "category/2024",
+    # The old press archive (owner's website brief, 23 November 2026).
+    ("legacy_press_2_any", "_rest"): "moments-magazine",
     ("legacy_letter_club_subscription_any", "_rest"):
         "p/seasonal-letter-subscription-from-chteau-de-gudanes",
     # A job page is only a MAINTENANCE task's (the rest of tasks is people's own

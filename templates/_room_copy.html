@@ -41,6 +41,17 @@
 {{- db_name -}}
 {%- endmacro %}
 
+{#- 23 Nov 2026 (owner): the rooms are named after remarkable French women. A room's heading is its French title, and
+    the plain name -- the one Booking.com lists, and the key to every photograph and word in this file -- sits small
+    beneath it: "La Chambre Jeanne d'Arc" over "The Twin Room". room_title() and room_plain() are app globals reading
+    rooms.website_title (Admin > Rooms, "Title on the website"); a room with no title shows its name alone, with no
+    second line. The title is the house's own words in every language, so the translator leaves it alone. -#}
+{% macro room_heading(db_name, tag='h3', cls='') -%}
+<{{ tag }} translate="no" class="{{ cls }}">{{ room_title(db_name) }}</{{ tag }}>
+{%- set _plain = room_plain(db_name) %}{% if _plain %}
+<p class="g-room__plain">{{ _plain }}</p>{% endif %}
+{%- endmacro %}
+
 {# The English gloss, for the first mention on a page and for anywhere a
    guest needs to know what they are choosing. #}
 {% macro room_note(db_name) -%}

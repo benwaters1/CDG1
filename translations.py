@@ -131,6 +131,11 @@ FR = {
     "Weddings": "Mariages",
     "Photoshoots": "Séances photo",
     "Celebrations": "Célébrations",
+    # /links, the Instagram page (23 November 2026): its third button, and the
+    # small link to the newsletter at its foot. One word each, so the page
+    # translator's memory, which files sentences, never asks for them.
+    "Celebrate": "Célébrer",
+    "Newsletter": "Lettre d’information",
     "Private Photo & Videoshoots": "Séances photo et vidéo privées",
     "Gallery & Story": "Galerie et histoire",
     "Inside the Château": "À l'intérieur du château",
@@ -904,6 +909,9 @@ ES = {
     "Weddings": "Bodas",
     "Photoshoots": "Sesiones de fotos",
     "Celebrations": "Celebraciones",
+    # /links, the Instagram page (23 November 2026).
+    "Celebrate": "Celebrar",
+    "Newsletter": "Boletín",
     "Private Photo & Videoshoots": "Sesiones privadas de foto y vídeo",
     "Gallery & Story": "Galería e historia",
     "Inside the Château": "El interior del château",

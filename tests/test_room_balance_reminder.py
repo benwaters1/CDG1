@@ -177,10 +177,12 @@ def _checks(s):
             """SELECT rooms.name AS n FROM bookings JOIN rooms ON rooms.id = bookings.room_id
                  WHERE bookings.reference_code = ?""", (f"{TAG}-OWES",)).fetchone()
         _r.close()
+        # By its title on the website, as every letter names it since 23
+        # November 2026 (letter_room_title).
         s.check("it names the room",
-                room_label is not None and room_label["n"] in mail["subject"],
+                room_label is not None and m.room_title(room_label["n"]) in mail["subject"],
                 detail=f"{mail['subject']!r} — expected "
-                       f"{room_label['n']!r}" if room_label else "no room found")
+                       f"{m.room_title(room_label['n'])!r}" if room_label else "no room found")
         s.check("it gives a figure", "€" in mail["body"])
         s.check("and a link to settle it", "/book/manage/" in mail["body"],
                 detail="no way to pay from the reminder")

@@ -57,7 +57,7 @@
   </div>
 
   <p class="g-hint">
-    {{ booking['room_name'] }} · {{ booking['arrival_date']|date_short }} to {{ booking['departure_date']|date_short }}
+    {{ room_title(booking['room_name']) }} · {{ booking['arrival_date']|date_short }} to {{ booking['departure_date']|date_short }}
     · {{ s.nights }} night{{ '' if s.nights == 1 else 's' }}
     · {{ s.adults }} adult{{ '' if s.adults == 1 else 's' }}{% if s.children %}, {{ s.children }} under 18{% endif %}
   </p>

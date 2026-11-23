@@ -200,7 +200,9 @@ def _checks(s, conn):
             anon = m.app.test_client()
             stay = anon.get("/book").get_data(as_text=True)
             room_page = anon.get(f"/book/{gf['id']}").get_data(as_text=True)
-            at = stay.find('<h3 class="g-card__name">The Twin Room (Ground Floor)')
+            # Found by the card's own id: its heading is the room's French title
+            # since 23 November 2026, with this name small beneath it.
+            at = stay.find('id="room-%s"' % gf["id"])
             card = stay[at:at + 5000] if at != -1 else ""
             s.check("its card on Stay says it sleeps three", "Sleeps 3, up to 2 adults" in card)
             s.check("and so does its own page, in its facts", "<dt>Sleeps</dt><dd>3, up to 2 adults</dd>" in room_page)

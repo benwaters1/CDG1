@@ -34,7 +34,10 @@ from _harness import Suite
 import _harness
 
 m = _harness.m
-PAGES = ("/events/weddings", "/events/private", "/events/photoshoots")
+PAGES = ("/events/weddings", "/events/private")
+# 23 Nov 2026, later (owner: "this is really not good"): /events/photoshoots opens on a photograph now, the
+# a shoot made here, in a photograph hero's own frame (.g-hero__in), so none of the navy art's faults can reach it.
+PHOTO_PAGES = ("/events/photoshoots",)
 
 
 def _hex(value):
@@ -72,6 +75,13 @@ def run():
         hero = re.search(r'<section class="g-hero[^"]*\bg-hero--art\b[^"]*">(.*?)</section>', page, re.S)
         s.check(f"{path} opens on the art hero, with its filled button",
                 hero is not None and "g-btn--solid" in hero.group(1), detail="" if hero else "no art hero")
+    for path in PHOTO_PAGES:
+        page = client.get(path).get_data(as_text=True)
+        hero = re.search(r'<section class="g-hero[^"]*">(.*?)</section>', page, re.S)
+        body = hero.group(1) if hero else ""
+        s.check(f"{path} opens on a photograph, its words in the photograph hero's frame, with its filled button",
+                'class="g-hero__img"' in body and 'class="g-hero__in"' in body and "g-btn--solid" in body
+                and "g-hero--art" not in (hero.group(0)[:80] if hero else ""), detail=body[:200])
 
     s.section("The button on navy")
     tokens = dict(re.findall(r"--([a-z-]+):\s*(#[0-9A-Fa-f]{3,6})\b", base))

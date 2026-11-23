@@ -12330,3 +12330,198 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g section.rc-says blockquote.rc-q{font-size:24px}
   .g section.rc-says figcaption.rc-sig{white-space:normal}
 }
+
+/* ==========================================================================
+   23 NOVEMBER 2026 (the owner's website brief): the rooms' French titles,
+   the press page rebuilt, and /links for the Instagram bio.
+   ========================================================================== */
+
+/* A room's plain name -- the one Booking.com lists -- small beneath its
+   French title, wherever the title is a heading (_room_copy.html,
+   room_heading). Absent when a room has no title of its own. */
+.g .g-room__plain{
+  margin: calc(-1 * var(--s1)) 0 var(--s3);
+  font-family: var(--serif); font-size: 13px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; line-height: 1.4;
+  color: var(--ink-soft);
+}
+.g h1 + .g-room__plain{ margin-top: var(--s2); }
+
+/* As featured in: the names as type, in the serif, centred, a dot between.
+   Each name keeps its own dot (::after), so a wrapped line ends on a dot
+   rather than opening with one. Never logos: the house holds none of them. */
+.g .g-featured-sec{ text-align: center; }
+.g .g-featured__h{
+  margin: 0 0 var(--s5); font-family: var(--serif); font-size: 13px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+}
+.g .g-featured{
+  list-style: none; margin: 0 auto; padding: 0; max-width: 62rem;
+  display: flex; flex-wrap: wrap; justify-content: center; row-gap: var(--s2);
+}
+.g .g-featured li{
+  font-family: var(--display); font-weight: 400; font-size: 19px; line-height: 1.35;
+  color: var(--blue-deep); white-space: nowrap; margin: 0; padding: 0;
+}
+.g .g-featured li:not(:last-child)::after{ content: "\00B7"; margin: 0 .5em; color: var(--gilt-leaf); }
+.g .g-featured--lead{ margin-bottom: var(--s5); }
+.g .g-featured--lead li{ font-size: clamp(24px, 3vw, 34px); }
+@media (max-width: 40rem){
+  .g .g-featured li{ font-size: 17px; }
+  .g .g-featured--lead li{ font-size: 23px; }
+}
+
+/* In print: the six pages in one row, each with its caption. Captions are
+   hidden under photographs across the site (15 Oct); the owner asked for
+   these, so this row lets its own through. Below 64rem the row scrolls
+   sideways inside itself rather than wrapping, and never widens the page. */
+.g .g-print{
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--s4); margin: var(--s5) 0 0; align-items: start;
+}
+.g .g-print__p{ margin: 0; min-width: 0; }
+.g .g-print__f{
+  background: var(--white); border: 1px solid var(--line); padding: 6px;
+  box-shadow: 0 12px 26px -20px rgba(20, 48, 95, .5);
+}
+.g .g-print__img{
+  display: block; width: 100%; height: auto; aspect-ratio: 3 / 4;
+  object-fit: contain; background: var(--white); cursor: zoom-in;
+}
+.g main .g-print figcaption.g-print__cap{
+  display: block !important; margin: var(--s3) 0 0; padding: 0; border: 0;
+  font-size: 15px; line-height: 1.45; color: var(--ink-soft); text-align: left; max-width: none;
+}
+.g .g-print__cap b{
+  display: block; font-family: var(--display); font-weight: 400; font-size: 18px;
+  line-height: 1.25; color: var(--blue-deep);
+}
+.g .g-print__cap span{ display: block; margin-top: 2px; font-family: var(--serif); font-size: 15px; }
+.g .g-print__hint{
+  margin: var(--s4) auto 0; max-width: none; font-family: var(--serif); font-style: italic;
+  font-size: 15px; color: var(--ink-soft); text-align: center;
+}
+@media (max-width: 64rem){
+  .g .g-print{
+    display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch; padding-bottom: var(--s3);
+  }
+  .g .g-print__p{ flex: 0 0 min(42%, 14rem); scroll-snap-align: start; }
+}
+
+/* Selected stories: one card each, the publication over the title, and a
+   "Read in" button only where there is somewhere to read it. */
+.g .g-pstories{
+  list-style: none; margin: var(--s5) 0 0; padding: 0; display: grid; gap: var(--s5);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+}
+.g .g-pstory{
+  background: var(--white); border: 1px solid var(--line); padding: var(--s5);
+  display: flex; flex-direction: column; margin: 0;
+}
+.g .g-pstory__pub{
+  margin: 0 0 var(--s2); font-family: var(--serif); font-size: 13px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+}
+.g .g-pstory__t{
+  margin: 0 0 var(--s3); font-family: var(--display); font-weight: 400;
+  font-size: 24px; line-height: 1.2; color: var(--blue-deep);
+}
+.g .g-pstory__l{ margin: 0 0 var(--s4); font-size: 16px; line-height: 1.55; color: var(--ink-soft); flex: 1; }
+.g .g-pstory__a{ margin: 0; }
+
+/* Also in, and the book. */
+.g .g-also{ text-align: center; }
+.g .g-also .g-p{ margin-left: auto; margin-right: auto; }
+.g .g-also__names{ font-family: var(--display); font-size: 20px; line-height: 1.5; }
+.g .g-booktitle{ font-style: italic; }
+
+/* /links, the page the Instagram bio opens (links.html). Phone first: one
+   column, three buttons a thumb can find, the prices beneath each. */
+.g .g-links{ padding: var(--s7) 0 var(--s8); }
+.g .g-links__in{ max-width: 30rem; margin: 0 auto; padding: 0 var(--s4); text-align: center; }
+.g .g-links__name{
+  margin: 0 0 var(--s2); font-family: var(--display); font-weight: 400;
+  font-size: clamp(34px, 9vw, 46px); line-height: 1.1; color: var(--blue-deep);
+}
+.g .g-links__line{
+  margin: 0 auto var(--s6); max-width: 22rem; font-family: var(--serif); font-style: italic;
+  font-size: 18px; line-height: 1.45; color: var(--ink-soft);
+}
+.g .g-links__list{ list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s4); }
+.g .g-links__list li{ margin: 0; padding: 0; }
+.g .g-links__btn{
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  min-height: 5.5rem; padding: var(--s4) var(--s5);
+  background: var(--blue-deep); color: var(--white); border: 1px solid var(--blue-deep);
+  text-decoration: none; transition: background-color .2s ease, color .2s ease;
+}
+.g .g-links__btn, .g .g-links__btn *{ text-decoration: none; }
+.g .g-links__btn .g-fig{ color: inherit; }
+.g .g-links__btn:hover, .g .g-links__btn:focus-visible{ background: var(--white); color: var(--blue-deep); }
+.g .g-links__btn:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 3px; }
+.g .g-links__k{
+  font-family: var(--serif); font-size: 15px; font-weight: 600;
+  letter-spacing: .16em; text-transform: uppercase;
+}
+.g .g-links__u{ font-family: var(--display); font-size: 20px; line-height: 1.3; }
+.g .g-links__u em{ font-style: italic; font-weight: 400; }
+.g .g-links__small{ margin: var(--s6) 0 0; font-size: 15px; color: var(--ink-soft); }
+.g .g-links__small a{
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--s2);
+  color: var(--blue-deep); text-decoration: underline; text-underline-offset: 4px;
+  text-decoration-color: var(--gilt-leaf);
+}
+@media (prefers-reduced-motion: reduce){ .g .g-links__btn{ transition: none; } }
+
+/* The menu panel (owner, 23 November 2026: "the text could be bigger ... its a
+   little hard to follow"). Every link one size, in the display serif, at 19px
+   where it was 13; the group headings gilt and spaced, so the three groups read
+   as three. #g-mainnav, because a dozen earlier rules size these links. */
+.g #g-mainnav .g-navwrap__item,
+.g #g-mainnav .g-navwrap__item--sm{
+  display: flex; align-items: center; gap: 14px; min-height: 46px; padding: 6px 0;
+  font-family: var(--display); font-size: 19px; font-weight: 500; line-height: 1.25;
+  letter-spacing: 0; text-transform: none; color: var(--blue-deep);
+}
+.g #g-mainnav .g-navwrap__item svg{ width: 20px; height: 20px; color: var(--gilt-leaf); }
+.g #g-mainnav .g-navwrap__item--sm{ justify-content: space-between; }
+.g #g-mainnav .g-navwrap__item--sm .g-navwrap__chev{ width: 16px; height: 16px; color: var(--gilt-leaf); }
+.g #g-mainnav .g-navwrap__item:hover{ color: var(--gilt); }
+.g #g-mainnav .g-navwrap__item--plain{ font-family: var(--serif); font-size: 16px; }
+.g #g-mainnav .g-navwrap__group{
+  margin: var(--s5) 0 var(--s2); font-family: var(--serif); font-size: 13px; font-weight: 600;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--gilt);
+}
+
+/* A photograph beside its words (the split) spans the whole width even in a
+   narrow section. The narrow rule holds prose to 46rem against the left edge,
+   which left the History page's Revolution section a narrow column with half
+   the page empty beside it (owner, 23 November 2026: "spacing here no good"). */
+.g .g-sec .g-wrap--narrow > .g-sp{ max-width: none; }
+
+/* The menu's Check dates box (owner, 23 November 2026, a screenshot of the
+   phone): Arrival and Departure shared one row, half the panel each, and the
+   date inside was cut to "dd-----yyy". One above the other, the full width
+   each, so the whole date shows; 16px so a phone does not zoom on a tap. */
+.g #g-mainnav .g-qbook__row{ flex-direction: column; gap: var(--s3); }
+.g #g-mainnav .g-qbook__f{ flex: 1 1 auto; width: 100%; }
+.g #g-mainnav .g-qbook__f input{ width: 100%; min-width: 0; font-size: 16px; }
+
+/* =====================================================================
+   23 Nov 2026 - CENTRED, AND CLOSER (owner: "whys so much of the site off
+   centre", "huge gaps and all off centre", "big spacing everywhere").
+   The 2 Oct rule above sent every text column to the left edge of a 76rem
+   section and held it to 46rem, so on a wide screen each prose section had
+   up to 450px of nothing on its right. The column keeps its 46rem measure
+   (lines stay readable, text stays left-aligned within it) but the column
+   itself is centred in the section. A section with a drawing in a medallion
+   beside its words keeps that two-column layout, which already fills the
+   width. And the space between sections, which reached 160px, is now at
+   most 120px.
+   ===================================================================== */
+.g .g-sec .g-wrap--narrow > :not(.g-vignette){ margin-left: auto; margin-right: auto; }
+.g .g-sec .g-wrap--narrow > .g-sp{ margin-left: auto; margin-right: auto; }
+.g .g-sec .g-wrap:has(> p.g-p):not(:has(> .g-vignette)):not(:has(> ul, > ol, > dl, > form, > table, > div)) > *{
+  max-width: 46rem; margin-left: auto; margin-right: auto; }
+.g main > .g-sec, .g main > .g-sec ~ .g-sec{ padding-top: clamp(40px, 4vw, 60px); padding-bottom: clamp(40px, 4vw, 60px); }
