@@ -67485,6 +67485,10 @@ def workshop_detail(workshop_id):
     rooms = conn.execute(
         "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
     conn.close()
+    # Its dates for search engines, put on the page by structured_data_for_search:
+    # the template arrives whole from the design side and carries none.
+    g.structured_events = workshop_events_structured(
+        workshop, session_rows, workshop_page_url(workshop), "")
     return render_template("workshop_detail.html", workshop=workshop,
                            session_rows=session_rows, rooms=rooms)
 
@@ -68075,6 +68079,149 @@ def mirror_cache_index():
 _SHARE_IMAGE_META = re.compile(
     r"<meta\b[^>]*\b(?:property|name)=[\"'](?:og:image(?::secure_url)?|twitter:image)[\"'][^>]*>",
     re.I)
+
+
+# ---------------------------------------------------------------------------
+# WHAT GOOGLE READS ABOUT THE HOUSE (23 November 2026).
+#
+# The public templates carry schema.org data: the house as a LodgingBusiness
+# on every page, each atelier sitting as an Event on /workshops, the FAQ, the
+# restaurant and the rest. Three things undid much of it, none of which showed:
+#
+#   ADDRESSES WITHOUT A HOST. Google takes image and url as full addresses.
+#   The handovers write "/static/img/...", and the photo swap writes
+#   "/mirrored-photo/..." into the JSON as readily as into an <img>.
+#
+#   THE OTHER HOST. The blocks name https://chateaugudanes.com while every
+#   page's canonical is www. -- two addresses for one house, in the one place
+#   whose job is to say which is which.
+#
+#   AN ATELIER'S OWN PAGE SAID NOTHING. Only the list carried its dates, so a
+#   search landing on /workshops/7 found a page with no event on it.
+#
+# Mended at the response, like the photographs and the share images, because
+# the templates arrive whole in every handover. Registered above
+# share_images_in_full, so it runs after the photo swap has written its paths.
+# ---------------------------------------------------------------------------
+_LD_JSON_BLOCK = re.compile(
+    r'(<script type="application/ld\+json">)(.*?)(</script>)', re.S | re.I)
+# Only fields that hold an address are made full. A description that happens
+# to begin with "/" is a sentence, not a path.
+_LD_ADDRESS_KEYS = {"@id", "url", "image", "logo", "photo", "contentUrl", "thumbnailUrl",
+                    "item", "mainEntityOfPage", "hasMap", "sameAs", "menu", "hasMenu"}
+_LD_APEX = "chateaugudanes.com"
+
+
+def structured_data_in_full(value, base, roots=(), key=None):
+    """The JSON, with every address field made a full address on `base`.
+
+    `roots` are other origins for the same site (the bare domain): an address
+    on one of them is moved onto `base`, so the data names the same host as the
+    page's canonical link.
+    """
+    if isinstance(value, dict):
+        return {k: structured_data_in_full(v, base, roots, k) for k, v in value.items()}
+    if isinstance(value, list):
+        return [structured_data_in_full(v, base, roots, key) for v in value]
+    if isinstance(value, str) and key in _LD_ADDRESS_KEYS:
+        if value.startswith("/") and not value.startswith("//"):
+            return base + value
+        for root in roots:
+            if value == root or value.startswith((root + "/", root + "#", root + "?")):
+                return base + value[len(root):]
+    return value
+
+
+def _ld_has_event(blocks):
+    """Whether the page already says what is on: an Event or EducationEvent."""
+    return any(re.search(r'"@type"\s*:\s*"\w*Event"', raw) for raw in blocks)
+
+
+def workshop_events_structured(workshop, session_rows, page_url, image):
+    """An atelier's sittings as schema.org Events, for its own page: the same
+    shape /workshops gives the list, so the two pages cannot disagree."""
+    description = " ".join(re.sub(r"<[^>]+>", " ", workshop["description"] or "").split()) or \
+        "A few days of French country-house life, in a château brought back from ruin."
+    out = []
+    for r in session_rows:
+        s = r["session"]
+        start = str(s["start_date"] or "")[:10]
+        if not start:
+            continue
+        ev = {
+            "@context": "https://schema.org", "@type": "EducationEvent",
+            "name": f"{workshop['title']} — a retreat at Château de Gudanes",
+            "startDate": start,
+            "endDate": str(s["end_date"] or s["start_date"])[:10],
+            "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+            "eventStatus": "https://schema.org/EventScheduled",
+            "location": {"@type": "Place", "@id": "/#chateau", "name": "Château de Gudanes",
+                         "address": {"@type": "PostalAddress", "streetAddress": "2 Route de Beille",
+                                     "addressLocality": "Château-Verdun", "postalCode": "09310",
+                                     "addressRegion": "Ariège", "addressCountry": "FR"}},
+            "organizer": {"@type": "Organization", "name": "Château de Gudanes", "url": "/"},
+            "description": description[:600],
+            "url": page_url,
+        }
+        if image:
+            ev["image"] = [image]
+        if workshop["price_per_person"]:
+            ev["offers"] = {"@type": "Offer", "price": workshop["price_per_person"],
+                            "priceCurrency": "EUR", "url": page_url,
+                            "availability": ("https://schema.org/SoldOut" if r["remaining"] <= 0
+                                             else "https://schema.org/InStock")}
+        out.append(ev)
+    return out
+
+
+_OG_IMAGE_CONTENT = re.compile(
+    r"<meta\b[^>]*\bproperty=[\"']og:image[\"'][^>]*\bcontent=[\"']([^\"']+)[\"']", re.I)
+
+
+@app.after_request
+def structured_data_for_search(response):
+    """Full addresses on the house's own host in every schema.org block, and an
+    atelier's own page given its dates. See the note above."""
+    if request.method not in ("GET", "HEAD") or response.status_code != 200:
+        return response
+    if response.direct_passthrough or not (response.content_type or "").startswith("text/html"):
+        return response
+    if request.endpoint and is_staff_page(request.endpoint):
+        return response
+    raw = response.get_data()
+    events = getattr(g, "structured_events", None)
+    if b"application/ld+json" not in raw and not events:
+        return response
+    body = raw.decode("utf-8", "replace")
+    home = house_address()
+    base = f"{home[0]}://{home[1]}" if home else request.url_root.rstrip("/")
+    roots = []
+    if home and home[1] != _LD_APEX:
+        roots = [f"https://{_LD_APEX}", f"http://{_LD_APEX}"]
+
+    def mend(match):
+        try:
+            data = json.loads(match.group(2))
+        except ValueError:
+            return match.group(0)         # somebody's hand-written block: left as it came
+        fixed = structured_data_in_full(data, base, roots)
+        text = json.dumps(fixed, ensure_ascii=False).replace("</", "<\\/")
+        return match.group(1) + text + match.group(3)
+
+    done = _LD_JSON_BLOCK.sub(mend, body)
+    blocks_now = [m[1] for m in _LD_JSON_BLOCK.findall(done)]
+    if events and not _ld_has_event(blocks_now):
+        seen = _OG_IMAGE_CONTENT.search(done)
+        image = seen.group(1) if seen else ""
+        built = [dict(ev, image=[image]) if image and "image" not in ev else ev for ev in events]
+        block = json.dumps(structured_data_in_full(built, base, roots),
+                           ensure_ascii=False).replace("</", "<\\/")
+        tag = '<script type="application/ld+json">' + block + "</script>"
+        at = done.lower().rfind("</head>")
+        done = (done[:at] + tag + done[at:]) if at >= 0 else (done + tag)
+    if done != body:
+        response.set_data(done)
+    return response
 
 
 @app.after_request

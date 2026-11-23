@@ -10328,6 +10328,12 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 .g .g-facil-frame__cart svg{ width: 34px; height: 34px; }
 .g .g-facil-frame__cart svg:first-child{ transform: rotate(-90deg); }
 .g .g-facil-frame__cart svg:last-child{ transform: rotate(90deg); }
+/* 23 Nov: the breakfast tile on /book carries its photograph (768x1024, portrait). It takes two rows so the
+   tiles beside it stay their size, and the photograph is never wider than the tile -- a card, not a band. */
+.g .g-facil > .g-facil__i--photo{ grid-row: span 2; }
+.g .g-facil__photo{ margin: 0 auto var(--s3); max-width: 16rem; }
+.g .g-facil__photo .g-facil__img{ display: block; width: 100%; height: auto; aspect-ratio: 3 / 4; object-fit: cover; border: 1px solid var(--line); }
+@media (max-width: 40rem){ .g .g-facil__photo{ margin-bottom: var(--s2); } }
 
 /* =====================================================================
    2 Oct - L'ESSENTIEL, rebuilt: three even facts with drawings, the

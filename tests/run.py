@@ -312,6 +312,7 @@ SUITES = [
     "test_filings",
     "test_discount_outcomes",
     "test_noindex_meta",
+    "test_structured_data",
     "test_privacy",
     "test_terms",
     "test_refunds",
