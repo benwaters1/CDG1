@@ -810,6 +810,18 @@ FR = {
     "See everything you have with us": "Voir tout ce que vous avez chez nous",
     "Under restoration since 2013": "En restauration depuis 2013",
     "What’s On in the Ariège": "Que faire en Ariège",
+    # 23 Nov 2026 (owner): check-out moved to 11am. Every sentence that carries the
+    # times, written here so French never falls back to English while the page
+    # memory catches up. Times as house_guide_clock writes them in French: 15h, 11h.
+    "Arrival and departure": "Arrivée et départ",
+    "Check-in from 3pm, check-out by 11am.": "Arrivée à partir de 15h, départ avant 11h.",
+    "Check-in from 3pm, check-out by 11am. Later arrivals by arrangement.":
+        "Arrivée à partir de 15h, départ avant 11h. Arrivée plus tardive sur demande.",
+    "Check-in from 3pm, check-out by 11am. Arriving earlier? Early check-in is on request — choose it above and we will do our best.":
+        "Arrivée à partir de 15h, départ avant 11h. Vous arrivez plus tôt ? L’arrivée anticipée est possible sur demande — choisissez-la ci-dessus et nous ferons de notre mieux.",
+    "From 3pm · by 11am": "À partir de 15h · avant 11h",
+    "Arrival is from 3pm and departure by 11am, unless your confirmation says otherwise. Tell us if you expect to arrive late so that someone can be there to meet you.":
+        "L’arrivée se fait à partir de 15h et le départ avant 11h, sauf indication contraire dans votre confirmation. Prévenez-nous si vous pensez arriver tard, afin que quelqu’un soit là pour vous accueillir.",
 }
 
 ES = {
@@ -1475,6 +1487,17 @@ ES = {
     "See everything you have with us": "Ver todo lo que tiene con nosotros",
     "Under restoration since 2013": "En restauración desde 2013",
     "What’s On in the Ariège": "Qué hacer en Ariège",
+    # 23 Nov 2026 (owner): check-out moved to 11am; the sentences that carry the
+    # times. Times as house_guide_clock writes them in Spanish: 15:00, 11:00.
+    "Arrival and departure": "Llegada y salida",
+    "Check-in from 3pm, check-out by 11am.": "Entrada a partir de las 15:00, salida antes de las 11:00.",
+    "Check-in from 3pm, check-out by 11am. Later arrivals by arrangement.":
+        "Entrada a partir de las 15:00, salida antes de las 11:00. Llegadas más tardías, previo acuerdo.",
+    "Check-in from 3pm, check-out by 11am. Arriving earlier? Early check-in is on request — choose it above and we will do our best.":
+        "Entrada a partir de las 15:00, salida antes de las 11:00. ¿Llega antes? La entrada anticipada es bajo petición: elíjala arriba y haremos lo posible.",
+    "From 3pm · by 11am": "Desde las 15:00 · antes de las 11:00",
+    "Arrival is from 3pm and departure by 11am, unless your confirmation says otherwise. Tell us if you expect to arrive late so that someone can be there to meet you.":
+        "La llegada es a partir de las 15:00 y la salida antes de las 11:00, salvo que su confirmación indique otra cosa. Avísenos si prevé llegar tarde, para que alguien pueda recibirle.",
 }
 
 # The public pages' own prose, kept in its own file because it is 1,900

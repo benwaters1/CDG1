@@ -1022,16 +1022,19 @@ def rollover_hour_is_safe(hour=None, day=None):
 # the booking terms, which guests AGREE to, said 4pm. It was set at 2pm, which
 # Booking.com also said; the owner moved it to 3pm in and 10am out later on
 # 15 October 2026 (handover z15, confirmed in chat), so Booking.com and the
-# stored terms in Admin > Terms are his to bring into line.
+# stored terms in Admin > Terms are his to bring into line. On 23 November
+# 2026 he moved check-out to 11am ("check-in from 3pm, check-out by 11am
+# everywhere they appear on the site"); Booking.com's own setting is his.
 #
 # The terms are the owner's own words in the database, so they are not
 # rewritten from here: terms_time_mismatches reads them and the owner home
-# says when they disagree with this.
+# says when they disagree with this. The one exception is the sentence he
+# asked to have changed with that move: correct_terms_checkout_11am, once.
 #
 # The staff's Outlook calendar blocks a stay by these too (HOUSE_CALENDAR_CHECK_IN,
 # since 16 October; it had its own 4pm and 11am).
 CHECK_IN_TIME = "15:00"
-CHECK_OUT_TIME = "10:00"
+CHECK_OUT_TIME = "11:00"
 
 
 def clock_words(value):
@@ -1219,7 +1222,7 @@ paid us.
   and we cannot guarantee the absence of any ingredient.
 
 6. Arrival, departure and the château
-- Arrival is from 3pm and departure by 10am, unless your confirmation says
+- Arrival is from 3pm and departure by 11am, unless your confirmation says
   otherwise. Tell us if you expect to arrive late so that someone can be
   there to meet you.
 - Guests must be eight or older.
@@ -8992,6 +8995,7 @@ def init_db():
     seed_added_extras(conn)
     correct_extra_wording(conn)
     correct_terms_la_table(conn)
+    correct_terms_checkout_11am(conn)
     conn.commit()
 
     # The list a room is walked against, so the first person to open the page
@@ -16369,6 +16373,32 @@ def correct_terms_la_table(conn):
     conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
                  "ON CONFLICT(key) DO NOTHING",
                  (TERMS_LA_TABLE_9NOV, datetime.now(timezone.utc).isoformat()))
+    return changed
+
+
+# 23 Nov 2026 (owner): 'Terms & Conditions, section 6: change "Arrival is from
+# 3pm and departure by 10am" to "Arrival is from 3pm and departure by 11am".
+# Keep the rest of that line as it is.' The stored terms are his words, so only
+# that sentence, matched across a line break, and only once: if he later writes
+# another time in by hand, the next deploy does not overrule him.
+TERMS_CHECKOUT_11AM = "terms_checkout_11am_done"
+_TERMS_DEPARTURE_10AM = re.compile(r"(Arrival is from 3pm and\s+departure by\s+)10am\b")
+
+
+def correct_terms_checkout_11am(conn):
+    """Move the stored terms' departure time from 10am to 11am, once."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (TERMS_CHECKOUT_11AM,)).fetchone():
+        return 0
+    row = conn.execute("SELECT value FROM app_settings WHERE key = 'terms_and_conditions'").fetchone()
+    changed = 0
+    if row and row["value"]:
+        text, changed = _TERMS_DEPARTURE_10AM.subn(r"\g<1>11am", row["value"])
+        if changed:
+            conn.execute("UPDATE app_settings SET value = ? WHERE key = 'terms_and_conditions'", (text,))
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO NOTHING",
+                 (TERMS_CHECKOUT_11AM, datetime.now(timezone.utc).isoformat()))
     return changed
 
 
@@ -36301,8 +36331,9 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
 
     checkin_url = url_for("guest_checkin", manage_token=manage_token, _external=True)
     detail_lines = [
-        f"Arrival: {format_date_human(arrival.isoformat())}",
-        f"Departure: {format_date_human(departure.isoformat())}",
+        # 23 Nov (owner): the confirmation gives the times as well as the days.
+        f"Arrival: {format_date_human(arrival.isoformat())}, from {CHECK_IN_WORDS}",
+        f"Departure: {format_date_human(departure.isoformat())}, by {CHECK_OUT_WORDS}",
         f"Party size: {party_size}",
     ]
     if city_tax:
@@ -53574,8 +53605,8 @@ def send_reservation_link(conn, booking_id):
     if not booking or "@" not in (booking["guest_email"] or ""):
         return False
     bill = booking_bill(conn, booking_id)
-    lines = [f"Arriving: {format_date_human(booking['arrival_date'])}",
-             f"Leaving: {format_date_human(booking['departure_date'])}"]
+    lines = [f"Arriving: {format_date_human(booking['arrival_date'])}, from {CHECK_IN_WORDS}",
+             f"Leaving: {format_date_human(booking['departure_date'])}, by {CHECK_OUT_WORDS}"]
     if bill:
         lines.append(f"For the stay: €{bill['total']:,.2f}"
                      + (" including taxe de séjour" if (booking["city_tax"] or 0) > 0 else ""))
@@ -66129,7 +66160,8 @@ SAMPLE_MERGE_VALUES = {
     "quote_total": "€18,400.00",
     # What the confirmation's card says in its plain-text form. The drawn
     # letter puts the card itself in this place instead.
-    "stay_details": "Arriving: 14 October 2026\nLeaving: 17 October 2026\n"
+    "stay_details": f"Arriving: 14 October 2026, from {CHECK_IN_WORDS}\n"
+                    f"Leaving: 17 October 2026, by {CHECK_OUT_WORDS}\n"
                     "Room: Chambre Émeraude\nReference code: GUD-4417\n\n"
                     "Your booking page:\nhttps://chateaugudanes.com/stay/9f2c1a7b\n\n"
                     "Check in online — confirm your arrival time, tell us about "
