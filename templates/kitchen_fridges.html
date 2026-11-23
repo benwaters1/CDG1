@@ -38,7 +38,7 @@
   unit from a list and saving once per fridge was five presses a fridge,
   twice a day. A box left empty is a unit not read this time.
 #}
-<form method="post" class="detail-card fridge-sweep" id="sweep">
+<form method="post" class="detail-card" id="sweep">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="what" value="all">
   <h2 class="section-heading">Take the readings</h2>
@@ -161,7 +161,8 @@
                      aria-label="What was done about {{ u.unit['name'] }} at {{ '%g'|format(r['celsius']) }} degrees">
               <button type="submit" class="btn-mini">Save</button>
             </form>
-            {% else %}{{ r['action_taken'] or '&mdash;'|safe }}{% endif %}
+            {% else %}{{ r['action_taken'] or '&mdash;'|safe }}{% if r['answered_by'] %}
+            <span class="upload-hint">said afterwards by {{ r['answered_by'] }}</span>{% endif %}{% endif %}
             {% if r['note'] %}<div class="upload-hint">{{ r['note'] }}</div>{% endif %}
           </td>
         </tr>

@@ -39457,9 +39457,10 @@ def fridge_log(conn, *, days=14, today=None):
     out = []
     for u in units:
         rows = conn.execute(
-            """SELECT fridge_readings.*, users.name AS who
+            """SELECT fridge_readings.*, users.name AS who, answerer.name AS answered_by
                  FROM fridge_readings
                  LEFT JOIN users ON users.id = fridge_readings.read_by_user_id
+                 LEFT JOIN users AS answerer ON answerer.id = fridge_readings.answered_by_user_id
                 WHERE fridge_readings.unit_id = ?
                   AND fridge_readings.read_at >= ?
                 ORDER BY fridge_readings.read_at DESC""",
@@ -40123,8 +40124,10 @@ def pool_book(conn, today=None, days=30):
     today = today or house_today()
     settings = pool_settings(conn)
     rows = conn.execute(
-        """SELECT pool_readings.*, users.name AS who FROM pool_readings
+        """SELECT pool_readings.*, users.name AS who, answerer.name AS answered_by
+             FROM pool_readings
              LEFT JOIN users ON users.id = pool_readings.read_by_user_id
+             LEFT JOIN users AS answerer ON answerer.id = pool_readings.answered_by_user_id
             WHERE pool_readings.read_at >= ?
             ORDER BY pool_readings.read_at DESC, pool_readings.id DESC""",
         (house_moment(today - timedelta(days=days)),)).fetchall()
@@ -85051,6 +85054,8 @@ SETTINGS_PLACES = [
         ("vendors", "Suppliers", "Who the house buys from"),
         ("weather_jobs_page", "Weather jobs",
          "The frost, storm and heat lines, and the outdoor jobs each one raises"),
+        ("pool_book_page", "Pool book",
+         "The pool's season, and the ranges its water should read"),
         ("admin_readiness", "Go-live checklist", "What is still to set before guests book here"),
     ]),
     ("Who can open what", "lock", [
@@ -90876,7 +90881,7 @@ def export_pool_csv():
     book = pool_book(conn, days=366)
     conn.close()
     fieldnames = ["when", "free_chlorine_mg_l", "ph", "water_c", "clear", "swimmers",
-                  "out_of_range", "what_was_done", "by", "note"]
+                  "out_of_range", "what_was_done", "by", "answered_by", "note"]
     rows = [{
         "when": local_datetime_str(x["row"]["read_at"]),
         "free_chlorine_mg_l": "" if x["row"]["free_chlorine"] is None else f"{x['row']['free_chlorine']:g}",
@@ -90887,6 +90892,7 @@ def export_pool_csv():
         "out_of_range": "; ".join(x["problems"]),
         "what_was_done": x["row"]["action_taken"] or "",
         "by": x["row"]["who"] or "",
+        "answered_by": x["row"]["answered_by"] or "",
         "note": x["row"]["note"] or "",
     } for x in reversed(book["readings"])]
     return csv_response(fieldnames, rows, f"pool-book-{house_today_iso()}.csv")
@@ -122211,7 +122217,7 @@ def vat_working(conn, start, end, today=None):
     total_vat = round(sum(l["vat"] or 0 for l in lines), 2)
     return {
         "start": start, "end": end, "lines": lines, "total_vat": total_vat,
-        "asked_from": asked_from, "registered_from": registered_from,
+        "registered_from": registered_from,
         # Every day of the period is before registration: nothing to declare.
         "not_registered": bool(registered_from and end <= registered_from),
         # Some of it is: the figures start on registered_from.
@@ -122219,7 +122225,6 @@ def vat_working(conn, start, end, today=None):
                                           and asked_from < registered_from < end),
         "booking_com_waiting": bcom_waiting,
         "booking_com_commission": bcom_commission,
-        "booking_com_stays": len(bcom_priced),
         "exact_vat": round(sum(l["vat"] for l in lines if l["exact"]), 2),
         "estimated_vat": round(sum(l["vat"] for l in lines if not l["exact"]), 2),
         "days_in_period": span_days, "days_closed": len(closed_days),

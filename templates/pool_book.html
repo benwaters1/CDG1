@@ -103,21 +103,15 @@
   <div class="table-wrap">
     <table class="data-table">
       <thead>
-        <tr><th>When</th><th class="num">Chlorine</th><th class="num">pH</th>
-            <th class="num">&deg;C</th><th>Clear</th><th class="num">Swimmers</th>
-            <th>Who</th><th>What was done</th></tr>
+        <tr><th>When</th><th>What was done</th><th class="num">Chlorine</th>
+            <th class="num">pH</th><th class="num">&deg;C</th><th>Clear</th>
+            <th class="num">Swimmers</th><th>Who</th></tr>
       </thead>
       <tbody>
         {% for x in book.readings %}
         {% set r = x.row %}
         <tr class="{{ 'row-alert' if x.problems }}">
           <th scope="row">{{ local_datetime_str(r['read_at']) }}</th>
-          <td class="num">{{ '%g'|format(r['free_chlorine']) if r['free_chlorine'] is not none else '—' }}</td>
-          <td class="num">{{ '%g'|format(r['ph']) if r['ph'] is not none else '—' }}</td>
-          <td class="num">{{ '%g'|format(r['water_c']) if r['water_c'] is not none else '—' }}</td>
-          <td>{{ {1: 'yes', 0: 'no'}.get(r['clear'], '—') }}</td>
-          <td class="num">{{ r['swimmers'] if r['swimmers'] is not none else '—' }}</td>
-          <td>{{ r['who'] or '—' }}</td>
           <td>
             {% if x.problems %}<div class="upload-hint">{{ x.problems|join('; ') }}</div>{% endif %}
             {% if x.unanswered %}
@@ -128,9 +122,16 @@
                      aria-label="What was done about the check at {{ local_datetime_str(r['read_at']) }}">
               <button type="submit" class="btn-mini">Save</button>
             </form>
-            {% else %}{{ r['action_taken'] or '' }}{% endif %}
+            {% else %}{{ r['action_taken'] or '' }}{% if r['answered_by'] %}
+            <span class="upload-hint">said afterwards by {{ r['answered_by'] }}</span>{% endif %}{% endif %}
             {% if r['note'] %}<div class="upload-hint">{{ r['note'] }}</div>{% endif %}
           </td>
+          <td class="num">{{ '%g'|format(r['free_chlorine']) if r['free_chlorine'] is not none else '—' }}</td>
+          <td class="num">{{ '%g'|format(r['ph']) if r['ph'] is not none else '—' }}</td>
+          <td class="num">{{ '%g'|format(r['water_c']) if r['water_c'] is not none else '—' }}</td>
+          <td>{{ {1: 'yes', 0: 'no'}.get(r['clear'], '—') }}</td>
+          <td class="num">{{ r['swimmers'] if r['swimmers'] is not none else '—' }}</td>
+          <td>{{ r['who'] or '—' }}</td>
         </tr>
         {% endfor %}
       </tbody>

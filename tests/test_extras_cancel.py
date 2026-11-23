@@ -199,15 +199,19 @@ def run():
     end = (today.replace(day=1) + timedelta(days=45)).replace(day=1)
 
     conn = db()
+    put_back = _harness.as_registered_for_vat(conn)
     with m.app.test_request_context():
         before_vat = m.vat_working(conn, start, end)
+    put_back()
     conn.close()
     vat_before = _extras_line(before_vat)
 
     oc.post(f"/admin/bookings/extras/{sold['id']}/cancel", follow_redirects=True)
     conn = db()
+    put_back = _harness.as_registered_for_vat(conn)
     with m.app.test_request_context():
         after_vat = m.vat_working(conn, start, end)
+    put_back()
     conn.close()
     vat_after = _extras_line(after_vat)
 

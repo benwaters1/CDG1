@@ -24,7 +24,7 @@
 {% endif %}
 
 {% for r in rounds %}
-<div class="detail-card kitchen-job{{ ' kitchen-job--late' if r.overdue }}">
+<div class="detail-card{{ ' kitchen-job--late' if r.overdue }}">
   <div class="kitchen-job__head">
     <div>
       <h2 class="section-heading kitchen-job__what">{{ r.round['what'] }}</h2>
