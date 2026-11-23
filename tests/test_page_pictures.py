@@ -113,6 +113,10 @@ PAGES = {
     ],
     "/gallery": [
         ("the gallery as a masonry of mixed heights", r'g-gal--masonry', 1),
+        # 23 Nov (the live audit): a phone was sent 1600px for a 174px tile.
+        ("each tile offered at the size it is shown", r'<img src="[^"]*" srcset="/pic/\d+/[^"]*" sizes="auto, ', 6),
+        # and the lightbox opens the photograph's own file, not the small copy the page drew
+        ("the lightbox opens the photograph itself", r"img\.src=s\.getAttribute\('src'\)\|\|s\.currentSrc", 1),
     ],
 }
 

@@ -49,7 +49,10 @@
     if(!shots.length) return;
     at=(n+shots.length)%shots.length;
     var s=shots[at];
-    img.src=s.currentSrc||s.src;
+    /* 23 Nov: the photograph's own file, not the copy the page drew. A photograph with smaller sizes (pic())
+       had drawn its 800px copy, and the lightbox blew that up to the screen, soft. The file is asked for only
+       when somebody opens it. */
+    img.src=s.getAttribute('src')||s.currentSrc||s.src;
     img.alt=s.alt||'';
     /* If the photograph sits inside a room card, say which room and offer
        the way in — a picture someone stopped to enlarge is the best possible

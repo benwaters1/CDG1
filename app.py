@@ -68307,7 +68307,16 @@ def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upt
     return Markup("<img " + " ".join(attrs) + ">")
 
 
+def pic_srcset(src, sizes="100vw"):
+    """The srcset and sizes pic() would give `src`, as attributes for an <img> a template writes by hand
+    (23 Nov 2026: the gallery's tiles); nothing for a file the house does not hold."""
+    from markupsafe import Markup
+    found = re.search(r'\s(srcset="[^"]*")\s(sizes="[^"]*")', str(pic(src, "", sizes=sizes)))
+    return Markup(" %s %s" % found.groups()) if found else Markup("")
+
+
 app.jinja_env.globals["pic"] = pic
+app.jinja_env.globals["pic_srcset"] = pic_srcset
 app.jinja_env.globals["pic_size"] = pic_size
 
 
