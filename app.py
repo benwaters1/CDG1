@@ -8324,6 +8324,67 @@ def init_db():
             written_at TEXT NOT NULL,
             UNIQUE(kind, email, year)
         )"""),
+        # THE KITCHEN'S CLEANING, KEPT (23 November 2026). cleaning_rounds
+        # holds only when each job was LAST done, and the question the chef
+        # or an inspector asks is when it was done before that. One row each
+        # time somebody presses Done.
+        ("cleaning_log",
+         """CREATE TABLE IF NOT EXISTS cleaning_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                round_id INTEGER NOT NULL REFERENCES cleaning_rounds(id) ON DELETE CASCADE,
+                done_on TEXT NOT NULL,
+                done_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                note TEXT,
+                created_at TEXT NOT NULL)"""),
+        ("cleaning_log_round",
+         "CREATE INDEX IF NOT EXISTS cleaning_log_round ON cleaning_log(round_id, done_on)"),
+        # The three the owner named (23 November 2026), on the kitchen's round
+        # from the start, every week until somebody says otherwise. Put there
+        # once: NOT EXISTS reads every row, stopped ones too, so a job taken
+        # off the round stays off and a renamed one is not added again.
+        ("kitchen_round_ovens",
+         """INSERT INTO cleaning_rounds (what, area, every_days, active, created_at)
+            SELECT 'Clean the ovens', 'Kitchen', 7, 1, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
+             WHERE NOT EXISTS (SELECT 1 FROM cleaning_rounds WHERE what = 'Clean the ovens')"""),
+        ("kitchen_round_fridges",
+         """INSERT INTO cleaning_rounds (what, area, every_days, active, created_at)
+            SELECT 'Clean the fridges', 'Kitchen', 7, 1, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
+             WHERE NOT EXISTS (SELECT 1 FROM cleaning_rounds WHERE what = 'Clean the fridges')"""),
+        ("kitchen_round_dishwasher",
+         """INSERT INTO cleaning_rounds (what, area, every_days, active, created_at)
+            SELECT 'Run the dishwasher''s cleaning-tablet cycle', 'Kitchen', 7, 1,
+                   strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
+             WHERE NOT EXISTS (SELECT 1 FROM cleaning_rounds
+                                WHERE what = 'Run the dishwasher''s cleaning-tablet cycle')"""),
+        # Who said what was done about a fridge reading out of range, and
+        # when, where it was said after the reading rather than with it.
+        ("fridge_readings_answered_by",
+         "ALTER TABLE fridge_readings ADD COLUMN answered_by_user_id INTEGER"),
+        ("fridge_readings_answered_at",
+         "ALTER TABLE fridge_readings ADD COLUMN answered_at TEXT"),
+        # THE POOL BOOK (23 November 2026). The water's readings as somebody
+        # takes them: free chlorine, pH, the temperature, whether the bottom
+        # can be seen, how many were swimming, and what was done about a
+        # reading out of range -- the record French rules expect for a pool
+        # guests use, and that an inspector asks to see. Any of the four
+        # readings may be missing from a check; a check with none is refused.
+        ("pool_readings",
+         """CREATE TABLE IF NOT EXISTS pool_readings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                read_at TEXT NOT NULL,
+                free_chlorine REAL,
+                ph REAL,
+                water_c REAL,
+                clear INTEGER,
+                swimmers INTEGER,
+                action_taken TEXT,
+                note TEXT,
+                read_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                answered_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                answered_at TEXT,
+                created_at TEXT NOT NULL)"""),
+        ("pool_readings_when",
+         "CREATE INDEX IF NOT EXISTS pool_readings_when ON pool_readings(read_at)"),
     ):
         try:
             conn.execute(ddl)
@@ -9835,6 +9896,8 @@ NAV_AREAS = {
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "shift_handover", "mark_handover_read", "mileage",
         "kitchen_fridges", "kitchen_prep", "prep_item_done",
+        "answer_fridge_reading", "fridge_unit_change", "kitchen_cleaning",
+        "cleaning_round_every", "pool_book_page", "answer_pool_reading", "export_pool_csv",
         "pass_screen", "pass_guest_note", "pass_stock_ask", "pass_message",
         "room_access_page", "room_checks_page", "walk_room",
         "management_meters", "management_lost_property",
@@ -10422,6 +10485,7 @@ OWNER_MENU = [
         ("Kitchen", [
             _nav("kitchen_prep", "Prep List", "restaurant"),
             _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
+            _nav("kitchen_cleaning", "Kitchen Cleaning", "wrench"),
             _nav("admin_stock", "Stock", "shopping"),
         ]),
         ("Planning and set-up", [
@@ -10498,6 +10562,7 @@ OWNER_MENU = [
                  ("maintenance_job", "maintenance_check")),
             _nav("report_problem", "Report a Problem", "pin", phone=True),
             _nav("manage_plans", "Plans", "folder", ("place_on_plan",)),
+            _nav("pool_book_page", "Pool Book", "wrench", ("answer_pool_reading",)),
         ]),
         ("What the house owns", [
             _nav("admin_assets", "Asset Register", "building"),
@@ -10619,6 +10684,7 @@ STAFF_MENU = [
             _nav("restaurant_tables", "Tables", "restaurant"),
             _nav("kitchen_prep", "Prep List", "restaurant", ("prep_item_done",)),
             _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
+            _nav("kitchen_cleaning", "Kitchen Cleaning", "wrench"),
         ]),
     ]),
     ("house", "The House", "wrench", (), (), [
@@ -10635,6 +10701,7 @@ STAFF_MENU = [
             _nav("management_lost_property", "Lost Property", "shopping",
                  ("resolve_lost_property",)),
             _nav("management_meters", "Meter Readings", "building"),
+            _nav("pool_book_page", "Pool Book", "wrench", ("answer_pool_reading",)),
         ]),
     ]),
     ("me", "My Work", "shifts", (), (), [
@@ -27962,6 +28029,51 @@ def channel_commission(conn, source):
         return None
 
 
+def booking_com_stays_sold(conn, start, end):
+    """Booking.com stays ARRIVING in [start, end) that are the house's money.
+
+    One definition, read by every page that counts them -- what a booking
+    costs to get, the VAT working -- so two pages cannot disagree about which
+    stays were sold. Rows of ota_reservations, the whole reservation (its
+    `amount` is the reservation's, however many rooms it took).
+
+    Left out:
+      - a stay the house has ALSO entered as its own booking (same room, same
+        nights). It is counted there, and would be counted twice.
+      - a cancelled stay, unless Booking.com still charged for it.
+
+    A CANCELLED STAY'S FIGURES ARE ONLY MONEY IF A STATEMENT SAID SO AFTER IT
+    WAS CANCELLED. Chiodi's (6348479172, EUR 5,530) was in the 9 November
+    statement while it stood, and was cancelled by email on the 12th: the
+    figures stayed on it and the page went on counting a stay that had gone. A
+    statement read since the cancellation that still shows a commission is a
+    charged cancellation; anything else is not revenue until a statement says
+    it is.
+
+    A confirmed stay no statement has covered yet is IN the list, with no
+    statement_at: it was sold, its figures are not known yet, and each caller
+    says so rather than counting it as nothing.
+    """
+    s_iso, e_iso = start.isoformat(), end.isoformat()
+    own = {(r["room_id"], r["arrival_date"], r["departure_date"]) for r in conn.execute(
+        """SELECT room_id, arrival_date, departure_date FROM bookings
+            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+        (s_iso, e_iso))}
+    sold = []
+    for r in conn.execute(
+            """SELECT * FROM ota_reservations
+                WHERE channel = 'booking.com' AND arrival_date >= ? AND arrival_date < ?
+                  AND (status = 'confirmed' OR COALESCE(commission_amount, 0) > 0)
+                ORDER BY arrival_date, id""",
+            (s_iso, e_iso)):
+        if (r["room_id"], r["arrival_date"], r["departure_date"]) in own:
+            continue
+        if r["status"] != "confirmed" and (r["statement_at"] or "") < (r["last_event_at"] or ""):
+            continue
+        sold.append(r)
+    return sold
+
+
 def channel_cost(conn, start=None, end=None):
     """What each way of getting a booking actually costs.
 
@@ -28009,30 +28121,8 @@ def channel_cost(conn, start=None, end=None):
     # counted there and not again here. A cancelled stay counts only where
     # Booking.com still charged for it. Stays no statement has covered yet are
     # counted and named, and until they are the commission is "not known".
-    own = {(r["room_id"], r["arrival_date"], r["departure_date"]) for r in conn.execute(
-        """SELECT room_id, arrival_date, departure_date FROM bookings
-            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
-        (start.isoformat(), end.isoformat()))}
-    sold, waiting = [], 0
-    for r in conn.execute(
-            """SELECT * FROM ota_reservations
-                WHERE channel = 'booking.com' AND arrival_date >= ? AND arrival_date < ?
-                  AND (status = 'confirmed' OR COALESCE(commission_amount, 0) > 0)""",
-            (start.isoformat(), end.isoformat())):
-        if (r["room_id"], r["arrival_date"], r["departure_date"]) in own:
-            continue
-        # A CANCELLED STAY'S FIGURES ARE ONLY MONEY IF A STATEMENT SAID SO
-        # AFTER IT WAS CANCELLED. Chiodi's (6348479172, EUR 5,530) was in the
-        # 9 November statement while it stood, and was cancelled by email on
-        # the 12th: the figures stayed on it and the page went on counting a
-        # stay that had gone. A statement read since the cancellation that
-        # still shows a commission is a charged cancellation; anything else is
-        # not revenue until a statement says it is.
-        if r["status"] != "confirmed" and (r["statement_at"] or "") < (r["last_event_at"] or ""):
-            continue
-        sold.append(r)
-        if r["status"] == "confirmed" and not r["statement_at"]:
-            waiting += 1
+    sold = booking_com_stays_sold(conn, start, end)
+    waiting = sum(1 for r in sold if r["status"] == "confirmed" and not r["statement_at"])
     if sold:
         revenue = round(sum(float(r["amount"] or 0) for r in sold if r["statement_at"]), 2)
         cost = (round(sum(float(r["commission_amount"] or 0) for r in sold), 2)
@@ -39547,6 +39637,66 @@ def purge_stale_access_needs(conn, today=None):
     return {"guest_profile_notes": n}
 
 
+# A fridge with no reading for this many days is on the owner home and the
+# task list. Two, so a reading missed yesterday is noticed today and a day the
+# kitchen was shut is not a fault on its own.
+FRIDGE_UNREAD_DAYS = 2
+
+
+def parse_celsius(raw):
+    """A temperature as somebody types it on a phone, or None.
+
+    "4", "4.5", "4,5", "4.5°C", "-18" and "−18" (the minus a phone's keyboard
+    may give) all read. Anything outside what a fridge or a freezer can
+    believably read is refused rather than recorded: a fat thumb on "45" is a
+    typo, and written down it is a reading of a fridge at 45 degrees.
+    """
+    text = (raw or "").strip().lower().replace("\u2212", "-").replace(",", ".")
+    for junk in ("°c", "°", "c", " "):
+        text = text.replace(junk, "")
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    if not -40 <= value <= 40:
+        return None
+    return round(value, 1)
+
+
+def fridge_out_of_band(unit, reading):
+    """True when a reading is outside the unit's band. No band, no judgement."""
+    return bool(unit) and (
+        (unit["min_c"] is not None and reading < unit["min_c"])
+        or (unit["max_c"] is not None and reading > unit["max_c"]))
+
+
+def fridge_problems(conn, today=None):
+    """What the owner home and the task list say about the fridges.
+
+    unanswered: (unit name, reading) for every reading out of its band in the
+                last fortnight with nothing written against it.
+    unread:     units in use with no reading for FRIDGE_UNREAD_DAYS days, each
+                {"unit", "last"} (the house's day of the last reading, or None).
+                A unit added today is not late yet: it is measured from when
+                it was added until its first reading.
+
+    A unit switched off (not in use) is in neither. Both close themselves: a
+    reading taken, or a word said, and it is gone.
+    """
+    today = today or house_today()
+    log = fridge_log(conn, today=today)
+    unanswered = [(u["unit"]["name"], x["row"]) for u in log for x in u["unanswered"]]
+    unread = []
+    for u in log:
+        row = conn.execute("SELECT MAX(read_at) AS t FROM fridge_readings WHERE unit_id = ?",
+                           (u["unit"]["id"],)).fetchone()
+        last = house_date(row["t"]) if row and row["t"] else None
+        since = last or house_date(u["unit"]["created_at"])
+        if since and (today - since).days >= FRIDGE_UNREAD_DAYS:
+            unread.append({"unit": u["unit"], "last": last})
+    return {"unanswered": unanswered, "unread": unread}
+
+
 def fridge_log(conn, *, days=14, today=None):
     """Every unit with its recent readings, and whether any sat outside its band.
 
@@ -39563,9 +39713,10 @@ def fridge_log(conn, *, days=14, today=None):
     out = []
     for u in units:
         rows = conn.execute(
-            """SELECT fridge_readings.*, users.name AS who
+            """SELECT fridge_readings.*, users.name AS who, answerer.name AS answered_by
                  FROM fridge_readings
                  LEFT JOIN users ON users.id = fridge_readings.read_by_user_id
+                 LEFT JOIN users AS answerer ON answerer.id = fridge_readings.answered_by_user_id
                 WHERE fridge_readings.unit_id = ?
                   AND fridge_readings.read_at >= ?
                 ORDER BY fridge_readings.read_at DESC""",
@@ -39586,6 +39737,9 @@ def fridge_log(conn, *, days=14, today=None):
             "unanswered": [x for x in out_of_band
                            if not (x["row"]["action_taken"] or "").strip()],
             "last": rows[0] if rows else None,
+            # What has been read today, at the house: the sweep shows it
+            # beside each unit, so nobody reads a fridge twice or not at all.
+            "today": [r for r in rows if house_date(r["read_at"]) == today],
         })
     return out
 
@@ -40119,6 +40273,184 @@ def cleaning_rounds_due(conn, today=None):
                     "overdue": days < 0, "never": last is None})
     out.sort(key=lambda x: x["days"])
     return out
+
+
+# ---------------------------------------------------------------------------
+# THE POOL BOOK (23 November 2026)
+#
+# The water's readings, kept the way the kitchen keeps its fridges: taken on a
+# phone, judged against a range the house sets, and anything out of range
+# answered with what was done. The ranges are the owner's to enter, not the
+# app's to guess -- they depend on how the pool is treated, and the pool's
+# contractor or the ARS gives them. Until a range is set, a reading is written
+# down and judged against nothing, and the page says so.
+#
+# The season is the owner's too, as two days of the year (stored "MM-DD"):
+# outside it nothing is asked for and nothing nags. With no season set the
+# book still takes readings, and never says one was missed.
+# ---------------------------------------------------------------------------
+POOL_SETTING_DEFAULTS = {
+    "pool_open_from": "",          # "MM-DD"
+    "pool_open_to": "",            # "MM-DD"
+    "pool_chlorine_min": "",       # free chlorine, mg/L
+    "pool_chlorine_max": "",
+    "pool_ph_min": "",
+    "pool_ph_max": "",
+    "pool_checks_a_day": "2",
+}
+# In season, the water not checked for this many days is on the owner home and
+# the task list.
+POOL_UNREAD_DAYS = 2
+
+
+def pool_number(raw):
+    """A reading as typed: "1,2", "7.4", "26°". None when it is not a number."""
+    text = (raw or "").strip().replace(",", ".").replace("°", "").replace("\u2212", "-")
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def pool_settings(conn):
+    out = dict(POOL_SETTING_DEFAULTS)
+    for row in conn.execute(
+            "SELECT key, value FROM app_settings WHERE key IN (%s)"
+            % ",".join("?" * len(POOL_SETTING_DEFAULTS)), tuple(POOL_SETTING_DEFAULTS)):
+        out[row["key"]] = row["value"] or ""
+    return out
+
+
+def _pool_md(value):
+    """ "MM-DD" as a (month, day) pair, or None."""
+    try:
+        month, day = (int(x) for x in (value or "").split("-"))
+        date(2024, month, day)          # a leap year, so 29 February is a day
+        return month, day
+    except (TypeError, ValueError):
+        return None
+
+
+def pool_season_start(settings, day):
+    """The day this season opened, if `day` is in it; None outside it or with
+    no season set. A season may run over the new year (from > to)."""
+    start, end = _pool_md(settings["pool_open_from"]), _pool_md(settings["pool_open_to"])
+    if not (start and end):
+        return None
+    here = (day.month, day.day)
+    if start <= end:
+        if not start <= here <= end:
+            return None
+        year = day.year
+    else:
+        if end < here < start:
+            return None
+        year = day.year if here >= start else day.year - 1
+
+    def _on(y, md):
+        try:
+            return date(y, *md)
+        except ValueError:              # 29 February in a year without one
+            return date(y, md[0], 28)
+    return _on(year, start)
+
+
+def pool_reading_problems(settings, row):
+    """What is wrong with one check, in words, against the house's ranges."""
+    out = []
+
+    def check(value, low_key, high_key, words, unit):
+        if value is None:
+            return
+        low, high = pool_number(settings[low_key]), pool_number(settings[high_key])
+        if low is not None and value < low:
+            out.append(f"{words} {value:g}{unit}, below {low:g}")
+        elif high is not None and value > high:
+            out.append(f"{words} {value:g}{unit}, above {high:g}")
+    check(row["free_chlorine"], "pool_chlorine_min", "pool_chlorine_max",
+          "free chlorine", " mg/L")
+    check(row["ph"], "pool_ph_min", "pool_ph_max", "pH", "")
+    if row["clear"] == 0:
+        out.append("the water was not clear")
+    return out
+
+
+def pool_book(conn, today=None, days=30):
+    """The last `days` of checks, each judged, and the state of today."""
+    today = today or house_today()
+    settings = pool_settings(conn)
+    rows = conn.execute(
+        """SELECT pool_readings.*, users.name AS who, answerer.name AS answered_by
+             FROM pool_readings
+             LEFT JOIN users ON users.id = pool_readings.read_by_user_id
+             LEFT JOIN users AS answerer ON answerer.id = pool_readings.answered_by_user_id
+            WHERE pool_readings.read_at >= ?
+            ORDER BY pool_readings.read_at DESC, pool_readings.id DESC""",
+        (house_moment(today - timedelta(days=days)),)).fetchall()
+    readings = []
+    for r in rows:
+        problems = pool_reading_problems(settings, r)
+        readings.append({"row": r, "problems": problems,
+                         "unanswered": bool(problems) and not (r["action_taken"] or "").strip()})
+    last = conn.execute("SELECT MAX(read_at) AS t FROM pool_readings").fetchone()["t"]
+    try:
+        per_day = max(1, int(settings["pool_checks_a_day"] or 2))
+    except ValueError:
+        per_day = 2
+    return {
+        "settings": settings, "readings": readings,
+        "today": [x for x in readings if house_date(x["row"]["read_at"]) == today],
+        "unanswered": [x for x in readings if x["unanswered"]],
+        "season_start": pool_season_start(settings, today),
+        "season_set": bool(_pool_md(settings["pool_open_from"])
+                           and _pool_md(settings["pool_open_to"])),
+        "ranges_set": any(settings[k] for k in ("pool_chlorine_min", "pool_chlorine_max",
+                                                 "pool_ph_min", "pool_ph_max")),
+        "last": house_date(last) if last else None,
+        "checks_a_day": per_day,
+    }
+
+
+def pool_problems(conn, today=None):
+    """What the owner home and the task list say about the pool.
+
+    unanswered: checks out of range in the last fortnight with nothing said.
+    unread:     in season, the last check (or the season's opening, if there
+                has been none since) this many days ago; None when not late.
+    """
+    today = today or house_today()
+    book = pool_book(conn, today, days=14)
+    unread = None
+    start = book["season_start"]
+    if start:
+        since = max(book["last"], start) if book["last"] else start
+        if (today - since).days >= POOL_UNREAD_DAYS:
+            unread = {"since": since, "never": not book["last"] or book["last"] < start}
+    return {"unanswered": book["unanswered"], "unread": unread}
+
+
+# The kitchen's part of the cleaning round: rounds whose area is this.
+KITCHEN_AREA = "Kitchen"
+
+
+def kitchen_cleaning_rounds(conn, today=None):
+    """The kitchen's jobs on the cleaning round, worst first, each with the
+    last few times it was done (cleaning_log) -- who, when, and anything said.
+
+    Before 23 November 2026 the round kept only the latest time; a job done
+    before then shows that one date and no history, which is the truth.
+    """
+    today = today or house_today()
+    rounds = [r for r in cleaning_rounds_due(conn, today)
+              if (r["round"]["area"] or "").strip().casefold() == KITCHEN_AREA.casefold()]
+    for r in rounds:
+        r["history"] = conn.execute(
+            """SELECT cleaning_log.*, users.name AS who FROM cleaning_log
+                 LEFT JOIN users ON users.id = cleaning_log.done_by_user_id
+                WHERE cleaning_log.round_id = ?
+                ORDER BY cleaning_log.done_on DESC, cleaning_log.id DESC LIMIT 8""",
+            (r["round"]["id"],)).fetchall()
+    return rounds
 
 
 def meter_history(conn, meter=None, limit=24):
@@ -41435,6 +41767,55 @@ def owner_home_warnings(conn, today):
         n = len(due["arrange_now"])
         add("warn", f"{n} extra{'' if n == 1 else 's'} to arrange now",
             named(due["arrange_now"]) + ".", n, "extras_due_page", state="Arrange now")
+
+    # THE KITCHEN (23 November 2026). A fridge reading out of its range with
+    # nothing said is a blocker: food may have to go. A fridge not read for
+    # two days, and a cleaning job behind, are warnings. All three close
+    # themselves -- a word written, a reading taken, Done pressed.
+    try:
+        fp = fridge_problems(conn, today)
+        behind = [r for r in kitchen_cleaning_rounds(conn, today) if r["overdue"]]
+    except sqlite3.Error:
+        fp, behind = {"unanswered": [], "unread": []}, []
+    if fp["unanswered"]:
+        n = len(fp["unanswered"])
+        add("blocker", f"{n} fridge reading{'' if n == 1 else 's'} out of range with "
+            "nothing said",
+            "; ".join(f"{name}: {r['celsius']:g}°C, {format_date_human(house_date_iso(r['read_at']))}"
+                      for name, r in fp["unanswered"][:4])
+            + ". Say what was done, beside the reading.", n, "kitchen_fridges")
+    if fp["unread"]:
+        n = len(fp["unread"])
+        add("warn", f"{n} fridge{'' if n == 1 else 's'} not read for "
+            f"{FRIDGE_UNREAD_DAYS} days or more",
+            "; ".join(u["unit"]["name"] + (f", last {format_date_human(u['last'].isoformat())}"
+                                            if u["last"] else ", never read")
+                      for u in fp["unread"][:4])
+            + ". Switch a unit off on the page if it is not in use.", n, "kitchen_fridges")
+    if behind:
+        n = len(behind)
+        add("warn", f"{n} kitchen cleaning job{'' if n == 1 else 's'} behind",
+            "; ".join(f"{r['round']['what']} ({counted(-r['days'], 'day')} late)"
+                      for r in behind[:4]) + ".", n, "kitchen_cleaning")
+
+    # THE POOL (23 November 2026): a check out of range with nothing said is
+    # a blocker, the water not checked in season a warning. Both close
+    # themselves.
+    try:
+        pp = pool_problems(conn, today)
+    except sqlite3.Error:
+        pp = {"unanswered": [], "unread": None}
+    if pp["unanswered"]:
+        n = len(pp["unanswered"])
+        add("blocker", f"{n} pool check{'' if n == 1 else 's'} out of range with nothing said",
+            "; ".join(f"{format_date_human(house_date_iso(x['row']['read_at']))}: "
+                      + ", ".join(x["problems"]) for x in pp["unanswered"][:3])
+            + ". Say what was done, beside the check.", n, "pool_book_page")
+    if pp["unread"]:
+        add("warn", "The pool water has not been checked",
+            ("Nothing checked since the season opened on "
+             if pp["unread"]["never"] else "Last checked ")
+            + format_date_human(pp["unread"]["since"].isoformat()) + ".", 1, "pool_book_page")
 
     # WHAT THE SPAM FILTER TOOK, so a real enquiry caught by it is seen
     # rather than lost. Since 9 November a Contact post with no name, no
@@ -47382,6 +47763,12 @@ PALETTE_PAGES = [
      "step free walking guest needs"),
     ("Fridge temperatures", "kitchen_fridges",
      "fridge freezer temperature cold storage haccp log reading"),
+    ("Pool book", "pool_book_page",
+     "pool swimming chlorine ph water temperature clear swimmers carnet sanitaire "
+     "ars inspection reading log"),
+    ("Kitchen cleaning", "kitchen_cleaning",
+     "kitchen clean cleaning oven ovens fridge dishwasher tablet cycle descale "
+     "hygiene haccp plan de nettoyage last cleaned"),
     ("Prep list", "kitchen_prep",
      "prep mise en place kitchen board before service"),
     ("The pass", "pass_screen",
@@ -53368,16 +53755,24 @@ def export_city_tax_csv():
     working = city_tax_working(conn, parse_date(period["start_iso"]),
                                parse_date(period["end_iso"]))
     conn.close()
-    fieldnames = ["reference", "guest", "room", "arrival", "departure",
+    fieldnames = ["reference", "booked_through", "guest", "room", "arrival", "departure",
                   "nights_in_period", "nights_total", "adults", "under_18",
                   "adult_nights", "exempt_nights", "amount", "settled"]
     rows = [{
-        "reference": r["reference"], "guest": r["guest"], "room": r["room"] or "",
+        "reference": r["reference"],
+        # A Booking.com stay's party is the email's guest count until a
+        # statement says how many were adults. The file says so, because it
+        # goes to the commune with none of the page around it.
+        "booked_through": (r["channel"] or "direct")
+                          + ("" if r["party_known"] else " (party not confirmed)"),
+        "guest": r["guest"], "room": r["room"] or "",
         "arrival": r["arrival"], "departure": r["departure"],
         "nights_in_period": r["nights"], "nights_total": r["total_nights"],
         "adults": r["adults"], "under_18": r["exempt_guests"],
         "adult_nights": r["adult_nights"], "exempt_nights": r["exempt_nights"],
-        "amount": f"{r['amount']:.2f}", "settled": "yes" if r["settled"] else "no",
+        "amount": f"{r['amount']:.2f}",
+        "settled": ("not charged through the app" if r["channel"]
+                    else "yes" if r["settled"] else "no"),
     } for r in working["rows"]]
     rows.append({k: "" for k in fieldnames} | {
         "reference": "TOTAL", "nights_in_period": working["nights"],
@@ -53411,12 +53806,28 @@ def export_vat_csv():
     # The caveat travels with the file. A CSV lands in an accountant's inbox
     # with none of the page around it.
     unreadable = working["unreadable_days"]
+    waiting = working["booking_com_waiting"]
+    registered = working["registered_from"]
     rows.append(_row(
         source="TOTAL", vat=working["total_vat"],
         basis=f"working paper, not a return; "
               f"{counted(working['days_not_closed'], 'day')} in this period never closed off"
               + (f"; {counted(len(unreadable), 'closed day')} unreadable and not in "
-                 f"the till figures ({', '.join(unreadable)})" if unreadable else "")))
+                 f"the till figures ({', '.join(unreadable)})" if unreadable else "")
+              + (f"; not registered for VAT before {registered.isoformat()}, nothing "
+                 f"to declare" if working["not_registered"] else "")
+              + (f"; counted from {registered.isoformat()}, the day the house is "
+                 f"registered for VAT" if working["counted_from_registration"] else "")
+              + (f"; {counted(len(waiting), 'Booking.com stay')} not counted, no "
+                 f"statement yet ({', '.join(r['reservation_number'] for r in waiting)})"
+                 if waiting else "")))
+    if working["booking_com_commission"]:
+        # Beside the total, not in it: a purchase, reverse-charged.
+        rows.append(_row(
+            source="Booking.com commission (not in the total)",
+            gross=working["booking_com_commission"],
+            basis="a purchase, not VAT collected; normally reverse-charged, "
+                  "declared and deducted on the same return"))
     return csv_response(fieldnames, rows, f"vat-working-{period['start_iso']}.csv")
 
 
@@ -84919,6 +85330,8 @@ SETTINGS_PLACES = [
         ("vendors", "Suppliers", "Who the house buys from"),
         ("weather_jobs_page", "Weather jobs",
          "The frost, storm and heat lines, and the outdoor jobs each one raises"),
+        ("pool_book_page", "Pool book",
+         "The pool's season, and the ranges its water should read"),
         ("admin_readiness", "Go-live checklist", "What is still to set before guests book here"),
     ]),
     ("Who can open what", "lock", [
@@ -89924,12 +90337,50 @@ def kitchen_fridges():
             flash(f"{name} added.", "success")
             return redirect(url_for("kitchen_fridges"))
 
+        if request.form.get("what") == "all":
+            # EVERY UNIT ON ONE SCREEN, ONE PRESS (owner, 23 November 2026:
+            # "make it so fridge temps can be done really easy"). Choosing a
+            # unit from a list, typing, saving and starting again for the next
+            # was five presses a fridge, twice a day. A box left empty is a
+            # unit not read, not an error.
+            units = conn.execute(
+                "SELECT * FROM fridge_units WHERE active = 1 ORDER BY name").fetchall()
+            now = datetime.now(timezone.utc).isoformat()
+            done, skipped, unanswered = 0, [], []
+            for unit in units:
+                raw = (request.form.get(f"c_{unit['id']}", "") or "").strip()
+                if not raw:
+                    continue
+                reading = parse_celsius(raw)
+                if reading is None:
+                    skipped.append((unit["name"], f"“{raw[:12]}” is not a temperature "
+                                    "a fridge or freezer reads"))
+                    continue
+                action = (request.form.get(f"a_{unit['id']}", "") or "").strip()[:300]
+                if fridge_out_of_band(unit, reading) and not action:
+                    unanswered.append(f"{unit['name']} at {reading:g}°C")
+                conn.execute(
+                    """INSERT INTO fridge_readings (unit_id, read_at, celsius,
+                               read_by_user_id, action_taken, note, created_at)
+                       VALUES (?, ?, ?, ?, ?, NULL, ?)""",
+                    (unit["id"], now, reading, user["id"], action or None, now))
+                done += 1
+            conn.commit()
+            conn.close()
+            if not done and not skipped:
+                flash("Nothing was written down: every box was empty.", "error")
+            else:
+                message, category = bulk_message("Wrote down", "reading", done, skipped)
+                flash(message, category)
+            if unanswered:
+                # Recorded anyway, for the reason the single reading is.
+                flash("Outside the range, with nothing written against it: "
+                      + "; ".join(unanswered) + ". Say what was done beside the reading "
+                      "below when you know.", "error")
+            return redirect(url_for("kitchen_fridges", wall=request.args.get("wall") or None))
+
         unit_raw = (request.form.get("unit_id", "") or "").strip()
-        celsius = request.form.get("celsius", "")
-        try:
-            reading = float((celsius or "").strip().replace(",", "."))
-        except ValueError:
-            reading = None
+        reading = parse_celsius(request.form.get("celsius", ""))
         if not unit_raw.isdigit() or reading is None:
             conn.close()
             flash("Which unit, and what did it read?", "error")
@@ -89938,9 +90389,7 @@ def kitchen_fridges():
         unit = conn.execute("SELECT * FROM fridge_units WHERE id = ?",
                             (int(unit_raw),)).fetchone()
         action = (request.form.get("action_taken", "") or "").strip()[:300]
-        out_of_band = unit and (
-            (unit["min_c"] is not None and reading < unit["min_c"])
-            or (unit["max_c"] is not None and reading > unit["max_c"]))
+        out_of_band = fridge_out_of_band(unit, reading)
         if out_of_band and not action:
             # Recorded anyway. Refusing would mean the reading never gets
             # written down at all, which is worse than one with no action
@@ -89964,16 +90413,94 @@ def kitchen_fridges():
         return redirect(url_for("kitchen_fridges"))
 
     log = fridge_log(conn)
+    off = conn.execute(
+        "SELECT * FROM fridge_units WHERE active = 0 ORDER BY name").fetchall()
     conn.close()
     unanswered = [u for u in log if u["unanswered"]]
     never = [u for u in log if not u["last"]]
+    not_today = [u for u in log if not u["today"]]
     overview = [
         overview_cell("Units", len(log)),
+        overview_cell("Not read today", len(not_today)),
         overview_cell("Out of range, nothing said", len(unanswered),
                       alert=bool(unanswered)),
         overview_cell("Never read", len(never), alert=bool(never)),
     ]
-    return render_template("kitchen_fridges.html", log=log, overview=overview)
+    return render_template("kitchen_fridges.html", log=log, overview=overview, off=off,
+                           wall=request.args.get("wall"))
+
+
+@app.route("/kitchen/fridges/reading/<int:reading_id>/answer", methods=["POST"])
+@login_required
+def answer_fridge_reading(reading_id):
+    """Say what was done about a reading out of range, after the event.
+
+    The reading said "say what was done when you know", and there was nowhere
+    to say it: the only way to answer was a second reading. Written once --
+    an answer already given is the record, and is not overwritten here.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM fridge_readings WHERE id = ?", (reading_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    action = (request.form.get("action_taken", "") or "").strip()[:300]
+    if not action:
+        conn.close()
+        flash("Say what was done.", "error")
+    elif (row["action_taken"] or "").strip():
+        conn.close()
+        flash("Something is already written against that reading.", "error")
+    else:
+        conn.execute(
+            """UPDATE fridge_readings SET action_taken = ?, answered_by_user_id = ?,
+                      answered_at = ? WHERE id = ?""",
+            (action, current_user()["id"], datetime.now(timezone.utc).isoformat(), reading_id))
+        conn.commit()
+        conn.close()
+        flash("Written against the reading.", "success")
+    return redirect(url_for("kitchen_fridges", wall=request.form.get("wall") or None))
+
+
+@app.route("/kitchen/fridges/unit/<int:unit_id>", methods=["POST"])
+@login_required
+def fridge_unit_change(unit_id):
+    """Change a unit's band, or switch it off for a while and back on.
+
+    A fridge emptied and turned off for the winter is not a fridge nobody
+    read: switched off, it leaves the sweep, the owner home and the task list,
+    and everything ever read from it is kept.
+    """
+    conn = get_db()
+    unit = conn.execute("SELECT * FROM fridge_units WHERE id = ?", (unit_id,)).fetchone()
+    if not unit:
+        conn.close()
+        abort(404)
+    what = request.form.get("what", "")
+    if what == "off":
+        conn.execute("UPDATE fridge_units SET active = 0 WHERE id = ?", (unit_id,))
+        message = f"{unit['name']} is switched off. Its readings are kept."
+    elif what == "on":
+        conn.execute("UPDATE fridge_units SET active = 1 WHERE id = ?", (unit_id,))
+        message = f"{unit['name']} is back in use."
+    elif what == "range":
+        low = parse_celsius(request.form.get("min_c", ""))
+        high = parse_celsius(request.form.get("max_c", ""))
+        if low is not None and high is not None and low > high:
+            conn.close()
+            flash("The coldest it should be is warmer than the warmest. Swap them over?",
+                  "error")
+            return redirect(url_for("kitchen_fridges"))
+        conn.execute("UPDATE fridge_units SET min_c = ?, max_c = ? WHERE id = ?",
+                     (low, high, unit_id))
+        message = f"{unit['name']}'s range is saved."
+    else:
+        conn.close()
+        abort(400)
+    conn.commit()
+    conn.close()
+    flash(message, "success")
+    return redirect(url_for("kitchen_fridges"))
 
 
 @app.route("/kitchen/prep", methods=["GET", "POST"])
@@ -90430,7 +90957,8 @@ def management_cleaning():
                       alert=any(r["never"] for r in rounds)),
     ]
     return render_template("management_cleaning.html", rounds=rounds,
-                           overview=overview, today=today)
+                           overview=overview, today=today,
+                           is_owner=(user["role"] == "owner"))
 
 
 @app.route("/management/cleaning/<int:round_id>/done", methods=["POST"])
@@ -90444,15 +90972,251 @@ def cleaning_round_done(round_id):
         conn.close()
         abort(404)
     user = current_user()
-    when = parse_date(request.form.get("done_on", "")) \
-        or house_today()
+    today = house_today()
+    when = parse_date(request.form.get("done_on", "")) or today
+    # Not tomorrow: a job is done when it has been. And an earlier day
+    # entered after a later one is history, not the latest: it is logged, and
+    # leaves "last done" where it was.
+    when = min(when, today)
+    note = (request.form.get("note", "") or "").strip()[:200]
+    conn.execute(
+        """INSERT INTO cleaning_log (round_id, done_on, done_by_user_id, note, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (round_id, when.isoformat(), user["id"], note or None,
+         datetime.now(timezone.utc).isoformat()))
     conn.execute(
         """UPDATE cleaning_rounds SET last_done_on = ?, last_done_by_user_id = ?
-            WHERE id = ?""", (when.isoformat(), user["id"], round_id))
+            WHERE id = ? AND (last_done_on IS NULL OR last_done_on <= ?)""",
+        (when.isoformat(), user["id"], round_id, when.isoformat()))
     conn.commit()
     conn.close()
-    flash(f"{row['what']} \u2014 done.", "success")
+    flash(f"{row['what']} \u2014 done"
+          + ("" if when == today else f" on {format_date_human(when.isoformat())}") + ".",
+          "success")
+    return _cleaning_back()
+
+
+def _cleaning_back():
+    """Back to the page the press came from: the kitchen's, or the round."""
+    if request.form.get("back") == "kitchen":
+        return redirect(url_for("kitchen_cleaning", wall=request.form.get("wall") or None))
     return redirect(url_for("management_cleaning"))
+
+
+@app.route("/management/cleaning/<int:round_id>/every", methods=["POST"])
+@login_required
+def cleaning_round_every(round_id):
+    """How often a job wants doing, changed by whoever does it."""
+    conn = get_db()
+    row = conn.execute("SELECT what FROM cleaning_rounds WHERE id = ?",
+                       (round_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    raw = (request.form.get("every_days", "") or "").strip()
+    if not raw.isdigit() or not 1 <= int(raw) <= 400:
+        conn.close()
+        flash("Every how many days? A whole number, 1 or more.", "error")
+        return _cleaning_back()
+    conn.execute("UPDATE cleaning_rounds SET every_days = ? WHERE id = ?",
+                 (int(raw), round_id))
+    conn.commit()
+    conn.close()
+    flash(f"{row['what']}: every {counted(int(raw), 'day')}.", "success")
+    return _cleaning_back()
+
+
+@app.route("/pool", methods=["GET", "POST"])
+@login_required
+def pool_book_page():
+    """The pool book: the water's checks, and what was done about any out of range."""
+    conn = get_db()
+    user = current_user()
+    if request.method == "POST" and request.form.get("what") == "settings":
+        if user["role"] != "owner":
+            conn.close()
+            abort(403)
+        values = {}
+        for key in ("pool_open_from", "pool_open_to"):
+            raw = (request.form.get(key, "") or "").strip()
+            # A date input gives the year as well; the season is the same
+            # days every year, so only the month and the day are kept.
+            md = raw[5:] if len(raw) == 10 else raw
+            values[key] = md if _pool_md(md) else ""
+        for key in ("pool_chlorine_min", "pool_chlorine_max", "pool_ph_min", "pool_ph_max"):
+            number = pool_number(request.form.get(key, ""))
+            values[key] = f"{number:g}" if number is not None else ""
+        for low, high, words in (("pool_chlorine_min", "pool_chlorine_max", "free chlorine"),
+                                 ("pool_ph_min", "pool_ph_max", "pH")):
+            if values[low] and values[high] and float(values[low]) > float(values[high]):
+                conn.close()
+                flash(f"The lowest {words} is above the highest. Swap them over?", "error")
+                return redirect(url_for("pool_book_page"))
+        per_day = (request.form.get("pool_checks_a_day", "") or "").strip()
+        values["pool_checks_a_day"] = per_day if per_day.isdigit() and 1 <= int(per_day) <= 12 else "2"
+        for key, value in values.items():
+            conn.execute("""INSERT INTO app_settings (key, value) VALUES (?, ?)
+                            ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                         (key, value))
+        log_audit(conn, "pool_settings_changed", None,
+                  f"season {values['pool_open_from'] or '?'} to {values['pool_open_to'] or '?'}")
+        conn.commit()
+        conn.close()
+        flash("The pool's season and ranges are saved.", "success")
+        return redirect(url_for("pool_book_page"))
+
+    if request.method == "POST":
+        reading = {
+            "free_chlorine": pool_number(request.form.get("free_chlorine", "")),
+            "ph": pool_number(request.form.get("ph", "")),
+            "water_c": pool_number(request.form.get("water_c", "")),
+            "clear": {"yes": 1, "no": 0}.get(request.form.get("clear", "")),
+        }
+        bad = [words for key, words, low, high in (
+                   ("free_chlorine", "free chlorine", 0, 20), ("ph", "pH", 0, 14),
+                   ("water_c", "the water's temperature", -5, 45))
+               if reading[key] is not None and not low <= reading[key] <= high]
+        if bad:
+            conn.close()
+            flash("That is not a reading the water could give: " + ", ".join(bad)
+                  + ". Nothing was written down.", "error")
+            return redirect(url_for("pool_book_page"))
+        if all(v is None for v in reading.values()):
+            conn.close()
+            flash("Nothing was read: give at least one of the readings.", "error")
+            return redirect(url_for("pool_book_page"))
+        swimmers = (request.form.get("swimmers", "") or "").strip()
+        action = (request.form.get("action_taken", "") or "").strip()[:300]
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO pool_readings (read_at, free_chlorine, ph, water_c, clear, swimmers,
+                       action_taken, note, read_by_user_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (now, reading["free_chlorine"], reading["ph"], reading["water_c"], reading["clear"],
+             int(swimmers) if swimmers.isdigit() else None, action or None,
+             (request.form.get("note", "") or "").strip()[:200] or None, user["id"], now))
+        problems = pool_reading_problems(pool_settings(conn), reading)
+        conn.commit()
+        conn.close()
+        if problems and not action:
+            flash("Written down. Out of range, with nothing written against it: "
+                  + "; ".join(problems) + ". Say what was done beside the check below.",
+                  "error")
+        else:
+            flash("Written down.", "success")
+        return redirect(url_for("pool_book_page"))
+
+    book = pool_book(conn)
+    conn.close()
+    overview = [
+        overview_cell("Checks today", len(book["today"]),
+                      sub=f"of {book['checks_a_day']}" if book["season_start"] else None),
+        overview_cell("Out of range, nothing said", len(book["unanswered"]),
+                      alert=bool(book["unanswered"])),
+        overview_cell("In season", "yes" if book["season_start"] else
+                      ("no" if book["season_set"] else "not set")),
+    ]
+    return render_template("pool_book.html", book=book, overview=overview,
+                           is_owner=(user["role"] == "owner"),
+                           season_from=_pool_md(book["settings"]["pool_open_from"]),
+                           season_to=_pool_md(book["settings"]["pool_open_to"]),
+                           this_year=house_today().year)
+
+
+@app.route("/pool/reading/<int:reading_id>/answer", methods=["POST"])
+@login_required
+def answer_pool_reading(reading_id):
+    """Say what was done about a check out of range, afterwards. Once."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM pool_readings WHERE id = ?", (reading_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    action = (request.form.get("action_taken", "") or "").strip()[:300]
+    if not action:
+        flash("Say what was done.", "error")
+    elif (row["action_taken"] or "").strip():
+        flash("Something is already written against that check.", "error")
+    else:
+        conn.execute(
+            """UPDATE pool_readings SET action_taken = ?, answered_by_user_id = ?,
+                      answered_at = ? WHERE id = ?""",
+            (action, current_user()["id"], datetime.now(timezone.utc).isoformat(), reading_id))
+        conn.commit()
+        flash("Written against the check.", "success")
+    conn.close()
+    return redirect(url_for("pool_book_page"))
+
+
+@app.route("/pool/book.csv")
+@login_required
+def export_pool_csv():
+    """The pool book as a file, every check of the last year: what an
+    inspector asks for, with what was done beside each one out of range."""
+    conn = get_db()
+    book = pool_book(conn, days=366)
+    conn.close()
+    fieldnames = ["when", "free_chlorine_mg_l", "ph", "water_c", "clear", "swimmers",
+                  "out_of_range", "what_was_done", "by", "answered_by", "note"]
+    rows = [{
+        "when": local_datetime_str(x["row"]["read_at"]),
+        "free_chlorine_mg_l": "" if x["row"]["free_chlorine"] is None else f"{x['row']['free_chlorine']:g}",
+        "ph": "" if x["row"]["ph"] is None else f"{x['row']['ph']:g}",
+        "water_c": "" if x["row"]["water_c"] is None else f"{x['row']['water_c']:g}",
+        "clear": {1: "yes", 0: "no"}.get(x["row"]["clear"], ""),
+        "swimmers": "" if x["row"]["swimmers"] is None else x["row"]["swimmers"],
+        "out_of_range": "; ".join(x["problems"]),
+        "what_was_done": x["row"]["action_taken"] or "",
+        "by": x["row"]["who"] or "",
+        "answered_by": x["row"]["answered_by"] or "",
+        "note": x["row"]["note"] or "",
+    } for x in reversed(book["readings"])]
+    return csv_response(fieldnames, rows, f"pool-book-{house_today_iso()}.csv")
+
+
+@app.route("/kitchen/cleaning", methods=["GET", "POST"])
+@login_required
+def kitchen_cleaning():
+    """The kitchen's cleaning: when the ovens, the fridges and the dishwasher
+    were last done, by whom, and what is due.
+
+    The kitchen's part of the cleaning round (area "Kitchen"), on a page of
+    its own with a button big enough to press with wet hands, and the times
+    before the last one kept. Anything due is a task on the calendar until
+    somebody presses Done (watch_task_findings).
+    """
+    conn = get_db()
+    if request.method == "POST":
+        what = (request.form.get("what", "") or "").strip()[:120]
+        every_raw = (request.form.get("every_days", "") or "").strip()
+        if not what:
+            conn.close()
+            flash("Say what needs doing.", "error")
+            return redirect(url_for("kitchen_cleaning"))
+        conn.execute(
+            """INSERT INTO cleaning_rounds (what, area, every_days, note, active, created_at)
+               VALUES (?, ?, ?, ?, 1, ?)""",
+            (what, KITCHEN_AREA,
+             int(every_raw) if every_raw.isdigit() and 0 < int(every_raw) <= 400 else 7,
+             (request.form.get("note", "") or "").strip()[:300] or None,
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash(f"{what} added. It reads as due now until somebody says it has been done.",
+              "success")
+        return redirect(url_for("kitchen_cleaning"))
+    today = house_today()
+    rounds = kitchen_cleaning_rounds(conn, today)
+    conn.close()
+    late = [r for r in rounds if r["overdue"]]
+    overview = [
+        overview_cell("Jobs", len(rounds)),
+        overview_cell("Due today", len([r for r in rounds if r["days"] == 0])),
+        overview_cell("Behind", len(late), alert=bool(late)),
+    ]
+    return render_template("kitchen_cleaning.html", rounds=rounds, overview=overview,
+                           today=today, wall=request.args.get("wall"),
+                           is_owner=(current_user()["role"] == "owner"))
 
 
 @app.route("/management/cleaning/<int:round_id>/stop", methods=["POST"])
@@ -90464,7 +91228,7 @@ def stop_cleaning_round(round_id):
     conn.commit()
     conn.close()
     flash("Off the round. When it was last done is kept.", "success")
-    return redirect(url_for("management_cleaning"))
+    return _cleaning_back()
 
 
 @app.route("/management/meters", methods=["GET", "POST"])
@@ -96359,6 +97123,8 @@ WATCH_TASK_KINDS = {
     "house_calendar": "An event Microsoft will not put on the house calendar",
     "recap": "An atelier's recap drafted and waiting for you to send it",
     "whats_on": "What's On: events found to look at, or dates nothing has confirmed",
+    "kitchen": "Kitchen cleaning due, or a fridge out of range or not read",
+    "pool": "The pool's water out of range, or not checked in season",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -99908,6 +100674,61 @@ def watch_task_findings(conn, today=None):
     # sites list and nobody has added or waved away, dates in the next four
     # months nothing has confirmed, an official page that could not be read --
     # due on a Monday, and gone once the list is clear.
+    # THE KITCHEN (23 November 2026). Each cleaning job is a task on the day
+    # it falls due, titled by the job so pressing Done closes it, and back on
+    # the day it is next due. A fridge reading out of range with nothing said,
+    # and fridges not read, are a task each while they last.
+    kitchen = []
+    for r in kitchen_cleaning_rounds(conn, today):
+        if r["days"] > 0:
+            continue
+        late = -r["days"]
+        kitchen.append((
+            "kitchen", f"Kitchen cleaning: {r['round']['what']}",
+            ("Never recorded. " if r["never"] else
+             f"Last done {format_date_human(r['last'].isoformat())}"
+             + (f" by {r['round']['last_done_by']}" if r["round"]["last_done_by"] else "")
+             + ". ")
+            + (f"{counted(late, 'day')} late. " if late else "Due today. ")
+            + "Press Done on Kitchen → Kitchen Cleaning when it has been.",
+            r["due"].isoformat(), "normal"))
+    fp = fridge_problems(conn, today)
+    if fp["unanswered"]:
+        kitchen.append((
+            "kitchen", "A fridge reading out of range with nothing said",
+            "; ".join(f"{name}: {r['celsius']:g}°C, "
+                      f"{format_date_human(house_date_iso(r['read_at']))}"
+                      for name, r in fp["unanswered"][:6])
+            + ".\n\nSay what was done, beside the reading on Fridge Temperatures.",
+            today.isoformat(), "high"))
+    if fp["unread"]:
+        kitchen.append((
+            "kitchen", "Fridge temperatures not taken",
+            "; ".join(u["unit"]["name"] + (f": last read {format_date_human(u['last'].isoformat())}"
+                                            if u["last"] else ": never read")
+                      for u in fp["unread"][:6])
+            + ".\n\nKitchen → Fridge Temperatures. Switch a unit off there if it is not in use.",
+            today.isoformat(), "normal"))
+    found.extend(take("kitchen", kitchen))
+
+    # THE POOL (23 November 2026), the same two, while they last.
+    pp = pool_problems(conn, today)
+    if pp["unanswered"]:
+        found.append((
+            "pool", "A pool check out of range with nothing said",
+            "; ".join(f"{format_date_human(house_date_iso(x['row']['read_at']))}: "
+                      + ", ".join(x["problems"]) for x in pp["unanswered"][:4])
+            + ".\n\nSay what was done, beside the check in the Pool Book.",
+            today.isoformat(), "high"))
+    if pp["unread"]:
+        found.append((
+            "pool", "Check the pool water",
+            ("Nothing checked since the season opened on "
+             if pp["unread"]["never"] else "Last checked ")
+            + format_date_human(pp["unread"]["since"].isoformat())
+            + ".\n\nThe House → Pool Book.",
+            today.isoformat(), "normal"))
+
     look = whats_on_to_look_at(conn, today)
     if look["new"] or look["unconfirmed"] or look["problems"]:
         parts = []
@@ -121392,6 +122213,11 @@ TAX_DEFAULTS = {
     "vat_extras": "20",
     "vat_events": "20",
     "city_tax_account": "",          # where the collected tax is parked
+    # The day the house is registered for VAT from. Before it there is no VAT
+    # to declare, and the VAT working says so rather than offering figures
+    # that look like a return. 1 January 2027 on the owner's word (23 Nov
+    # 2026); a date on the rates page, so it changes without a deploy.
+    "vat_registered_from": "2027-01-01",
 }
 
 # Where each kind of income lands. Revenue is class 7 in the plan comptable,
@@ -121762,7 +122588,26 @@ def vat_working(conn, start, end, today=None):
     City tax is deliberately absent. Taxe de séjour is collected for the commune
     and is not the château's VATable revenue; it is stored apart from
     total_price, so nothing here touches it.
+
+    NOT BEFORE THE HOUSE IS REGISTERED (vat_registered_from). A period that
+    ends before that day has nothing in it to declare, and one that straddles
+    it is counted from that day: the figures would otherwise read as VAT owed
+    on months when none was. The working says which, so a short period is
+    visibly short.
+
+    BOOKING.COM STAYS are rooms like any other and were missing: they are not
+    in `bookings`, and this read only that. They are counted from Booking.com's
+    own statement (booking_com_stays_sold), by arrival like the house's own
+    rooms. A stay no statement has covered yet has no price, so it is named
+    rather than counted as nothing. The commission Booking.com charges is
+    shown beside the working and kept out of its total: it is a purchase, not
+    VAT collected, and the reverse charge on it is declared and deducted on
+    the same return.
     """
+    registered_from = vat_registered_from(conn)
+    asked_from = start
+    if registered_from and start < registered_from:
+        start = min(registered_from, end)
     s_iso, e_iso = start.isoformat(), end.isoformat()
     lines = []
 
@@ -121848,6 +122693,21 @@ def vat_working(conn, start, end, today=None):
         (s_iso, e_iso)).fetchone()["t"]
     _estimate("Rooms", rooms, tax_rate(conn, "vat_accommodation"))
 
+    # Rooms sold on Booking.com. Its price is what the guest paid there, VAT
+    # included, the same as the house's own; the commission comes off later
+    # as a purchase and is not taken off here.
+    bcom = booking_com_stays_sold(conn, start, end) if start < end else []
+    bcom_priced = [r for r in bcom if r["statement_at"]]
+    bcom_waiting = [r for r in bcom if not r["statement_at"]]
+    _estimate("Rooms sold on Booking.com",
+              sum(float(r["amount"] or 0) for r in bcom_priced),
+              tax_rate(conn, "vat_accommodation"))
+    for line in lines:
+        if line["source"] == "Rooms sold on Booking.com":
+            line["basis"] = "Booking.com's statement, by arrival"
+    bcom_commission = round(sum(float(r["commission_amount"] or 0)
+                                for r in bcom_priced), 2)
+
     shops = conn.execute(
         """SELECT COALESCE(SUM(workshop_bookings.total_price), 0) AS t
            FROM workshop_bookings
@@ -121921,6 +122781,14 @@ def vat_working(conn, start, end, today=None):
     total_vat = round(sum(l["vat"] or 0 for l in lines), 2)
     return {
         "start": start, "end": end, "lines": lines, "total_vat": total_vat,
+        "registered_from": registered_from,
+        # Every day of the period is before registration: nothing to declare.
+        "not_registered": bool(registered_from and end <= registered_from),
+        # Some of it is: the figures start on registered_from.
+        "counted_from_registration": bool(registered_from
+                                          and asked_from < registered_from < end),
+        "booking_com_waiting": bcom_waiting,
+        "booking_com_commission": bcom_commission,
         "exact_vat": round(sum(l["vat"] for l in lines if l["exact"]), 2),
         "estimated_vat": round(sum(l["vat"] for l in lines if not l["exact"]), 2),
         "days_in_period": span_days, "days_closed": len(closed_days),
@@ -121932,6 +122800,15 @@ def vat_working(conn, start, end, today=None):
 def tax_setting(conn, key):
     row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (f"tax_{key}",)).fetchone()
     return ((row["value"] if row else "") or "") or TAX_DEFAULTS.get(key, "")
+
+
+def vat_registered_from(conn):
+    """The day the house is registered for VAT from, or None if no date is set.
+
+    None means the app does not know, and the VAT working counts every day as
+    it always has rather than guessing either way.
+    """
+    return parse_date(tax_setting(conn, "vat_registered_from"))
 
 
 def tax_rate(conn, key):
@@ -122505,8 +123382,22 @@ def city_tax_working(conn, start, end):
     nobody slept. A stay that is unpaid is still declared — the tax is due on the
     nights, not on our success in collecting them — but the unpaid amount is
     reported so the house can see what it is handing over ahead of receiving.
+
+    BOOKING.COM GUESTS SLEEP HERE TOO (23 November 2026). Their stays are not
+    in `bookings`, and this read only that, so every night sold on Booking.com
+    was missing from the return. They are read from ota_reservations: a
+    confirmed stay whose nights fall in the period, unless the house has
+    entered it as its own booking as well (same room, same nights), which is
+    counted above. Their party comes from Booking.com's reservations
+    statement -- adults, and children as under-18s -- and where no statement
+    has covered the stay yet, from the email's guest count, every one taken
+    as an adult and the row marked as not confirmed, so the figure is visibly
+    provisional rather than quietly wrong. Nothing on the house's bills
+    carries their tax, so there is no charged figure to apportion: theirs is
+    the adult-nights at the rate in force, which is what the commune asks for.
     """
     s_iso, e_iso = start.isoformat(), end.isoformat()
+    rate = tax_rate(conn, "city_tax_per_adult_per_night")
     rows, unpaid_total = [], 0.0
     for booking in conn.execute(
             """SELECT bookings.*, rooms.name AS room_name FROM bookings
@@ -122544,10 +123435,61 @@ def city_tax_working(conn, start, end):
             "adults": adults, "exempt_guests": exempt,
             "adult_nights": adults * nights, "exempt_nights": exempt * nights,
             "amount": amount, "settled": not (bill and bill["owed"] > 0.005),
+            "channel": None, "party_known": True,
         })
+
+    own = {(r["room_id"], r["arrival_date"], r["departure_date"]) for r in conn.execute(
+        """SELECT room_id, arrival_date, departure_date FROM bookings
+            WHERE status = 'confirmed' AND arrival_date < ? AND departure_date > ?""",
+        (e_iso, s_iso))}
+    for stay in conn.execute(
+            """SELECT ota_reservations.*, rooms.name AS room_name
+                 FROM ota_reservations
+                 LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
+                WHERE ota_reservations.channel = 'booking.com'
+                  AND ota_reservations.status = 'confirmed'
+                  AND ota_reservations.arrival_date < ?
+                  AND ota_reservations.departure_date > ?
+                ORDER BY ota_reservations.arrival_date""", (e_iso, s_iso)).fetchall():
+        if (stay["room_id"], stay["arrival_date"], stay["departure_date"]) in own:
+            continue
+        arrival = parse_date(stay["arrival_date"])
+        departure = parse_date(stay["departure_date"])
+        if not (arrival and departure) or departure <= arrival:
+            continue
+        nights = (min(departure, end) - max(arrival, start)).days
+        if nights <= 0:
+            continue
+        if stay["adults"] is not None:
+            adults = max(0, int(stay["adults"] or 0))
+            exempt = max(0, int(stay["children"] or 0))
+            party_known = True
+        else:
+            adults, exempt, party_known = max(0, int(stay["guests"] or 0)), 0, False
+        rows.append({
+            "booking": stay, "reference": stay["reservation_number"],
+            "guest": stay["guest_name"] or "Booking.com guest",
+            "room": stay["room_name"] or stay["room_label"],
+            "arrival": stay["arrival_date"], "departure": stay["departure_date"],
+            "nights": nights, "total_nights": (departure - arrival).days,
+            "adults": adults, "exempt_guests": exempt,
+            "adult_nights": adults * nights, "exempt_nights": exempt * nights,
+            "amount": round(adults * nights * rate, 2),
+            # Not on any bill of the house's, so neither settled nor owed by
+            # the guest as far as the app knows.
+            "settled": True, "channel": "Booking.com", "party_known": party_known,
+        })
+    rows.sort(key=lambda r: (r["arrival"] or "", r["reference"] or ""))
+    bcom = [r for r in rows if r["channel"] == "Booking.com"]
     return {
         "rows": rows,
-        "rate": tax_rate(conn, "city_tax_per_adult_per_night"),
+        "booking_com": {
+            "stays": len(bcom),
+            "amount": round(sum(r["amount"] for r in bcom), 2),
+            "adult_nights": sum(r["adult_nights"] for r in bcom),
+            "party_unknown": [r for r in bcom if not r["party_known"]],
+        },
+        "rate": rate,
         "nights": sum(r["nights"] for r in rows),
         "adult_nights": sum(r["adult_nights"] for r in rows),
         "exempt_nights": sum(r["exempt_nights"] for r in rows),

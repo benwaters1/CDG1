@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Kitchen cleaning{% endblock %}
+{% block content %}
+{% from '_kitchenwall.html' import wall_mode %}
+{{ wall_mode() }}
+
+<div class="page-head">
+  <h1>Kitchen cleaning</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('kitchen_fridges') }}" class="btn-ghost">Fridge temperatures</a>
+    <a href="{{ url_for('management_cleaning') }}" class="btn-ghost">The whole round</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  When the ovens, the fridges and the dishwasher were last cleaned, by whom, and what is due.
+  Press Done when a job is finished. Anything due is a task on the calendar until somebody does.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not rounds %}
+<div class="empty-state">Nothing on the kitchen's round yet. Add the first job below.</div>
+{% endif %}
+
+{% for r in rounds %}
+<div class="detail-card{{ ' kitchen-job--late' if r.overdue }}">
+  <div class="kitchen-job__head">
+    <div>
+      <h2 class="section-heading kitchen-job__what">{{ r.round['what'] }}</h2>
+      <p class="kitchen-job__when">
+        {% if r.never %}<strong>Never recorded</strong>
+        {% else %}Last done {{ r.last|date_short }}{% if r.round['last_done_by'] %} by {{ r.round['last_done_by'] }}{% endif %}{% endif %}
+        &middot;
+        {% if r.overdue %}<strong class="kitchen-job__late">{{ -r.days }} day{{ '' if -r.days == 1 else 's' }} late</strong>
+        {% elif r.days == 0 %}<strong>due today</strong>
+        {% else %}due {{ r.days|in_words }}{% endif %}
+        &middot; every {{ r.round['every_days'] }} day{{ '' if r.round['every_days'] == 1 else 's' }}
+      </p>
+      {% if r.round['note'] %}<p class="upload-hint">{{ r.round['note'] }}</p>{% endif %}
+    </div>
+    <form method="post" action="{{ url_for('cleaning_round_done', round_id=r.round['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="back" value="kitchen">
+      <input type="hidden" name="wall" value="{{ wall or '' }}">
+      <input type="hidden" name="done_on" value="{{ today }}">
+      <button type="submit" class="btn-primary kitchen-job__done">Done today</button>
+    </form>
+  </div>
+
+  <details class="kitchen-job__more">
+    <summary>Done on another day, or with a note</summary>
+    <form method="post" action="{{ url_for('cleaning_round_done', round_id=r.round['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="back" value="kitchen">
+      <input type="hidden" name="wall" value="{{ wall or '' }}">
+      <div class="field-row-2">
+        <input type="date" name="done_on" value="{{ today }}" max="{{ today }}"
+               aria-label="The day it was done">
+        <input type="text" name="note" maxlength="200" placeholder="Anything worth saying, e.g. descaled too"
+               aria-label="Anything worth saying">
+      </div>
+      <button type="submit" class="btn-mini">Record it</button>
+    </form>
+    <form method="post" action="{{ url_for('cleaning_round_every', round_id=r.round['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="back" value="kitchen">
+      <label class="field-label" for="every_{{ r.round['id'] }}">Every how many days</label>
+      <input type="number" id="every_{{ r.round['id'] }}" name="every_days" min="1" max="400"
+             value="{{ r.round['every_days'] }}" inputmode="numeric">
+      <button type="submit" class="btn-mini">Save</button>
+    </form>
+    {% if is_owner %}
+    <form method="post" action="{{ url_for('stop_cleaning_round', round_id=r.round['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="back" value="kitchen">
+      <button type="submit" class="btn-ghost">Take it off the round</button>
+      <span class="upload-hint">When it was done is kept.</span>
+    </form>
+    {% endif %}
+  </details>
+
+  {% if r.history %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Done</th><th>By</th><th>Note</th></tr></thead>
+      <tbody>
+        {% for h in r.history %}
+        <tr>
+          <th scope="row">{{ h['done_on']|date_short }}</th>
+          <td>{{ h['who'] or '—' }}</td>
+          <td>{{ h['note'] or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Add a job</h2>
+  <div class="field-row-2">
+    <input aria-label="What, e.g. degrease the extractor hood" type="text" name="what" maxlength="120"
+           placeholder="What, e.g. degrease the extractor hood" required>
+    <input aria-label="Every how many days (7)" type="number" name="every_days" min="1" max="400"
+           placeholder="Every how many days (7)">
+  </div>
+  <input aria-label="Anything worth saying" type="text" name="note" maxlength="300"
+         placeholder="Anything worth saying, e.g. which product">
+  <button type="submit" class="btn-mini">Add</button>
+</form>
+
+{% endblock %}

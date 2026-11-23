@@ -31,6 +31,34 @@
   </ul>
 </div>
 
+{% if working.not_registered %}
+<div class="alert-band">
+  {# Before the house is registered there is no VAT to declare, and figures
+     laid out like a return get filed like one. #}
+  <strong>{{ t('Nothing in this period is VAT to declare.') }}</strong>
+  {{ t('The house is registered for VAT from {day}. Before then it charges none, so there is no working to show.', day=working.registered_from|date_short) }}
+  <a href="{{ url_for('admin_tax') }}">{{ t('Change the date') }}</a>
+</div>
+{% elif working.counted_from_registration %}
+<div class="alert-band">
+  <strong>{{ t('Counted from {day}, when the house is registered for VAT.', day=working.registered_from|date_short) }}</strong>
+  {{ t('The days before it are not in these figures: there was no VAT to declare on them.') }}
+</div>
+{% endif %}
+
+{% if working.booking_com_waiting %}
+<div class="alert-band">
+  {# Sold, and not counted: Booking.com's emails carry no price. A figure
+     that is short must say it is short. #}
+  <strong>{{ t('{n} Booking.com stays are not in the figures yet.', n=working.booking_com_waiting|length) }}</strong>
+  {{ t("Booking.com's emails give no price; its reservations statement does. Upload the latest one and they are counted here.") }}
+  <a href="{{ url_for('channel_stays_page') }}#statement">{{ t('Booking.com stays') }}</a>
+  <span class="pass-short-row">
+    {% for r in working.booking_com_waiting %}{{ r['guest_name'] or r['reservation_number'] }}, {{ r['arrival_date']|date_short }}{% if not loop.last %} · {% endif %}{% endfor %}
+  </span>
+</div>
+{% endif %}
+
 {% if working.days_not_closed %}
 <div class="alert-band">
   {# A short figure that does not say it is short is the worst kind. #}
@@ -102,6 +130,14 @@
     </tbody>
   </table>
 </div>
+{% endif %}
+
+{% if working.booking_com_commission %}
+<p class="upload-hint">
+  {# Beside the working, not in it: commission is something the house buys,
+     not VAT it collected. #}
+  {{ t('Booking.com charged {amount} in commission on these stays. It is a purchase, not VAT collected, so it is not in the total. Booking.com invoices from the Netherlands without French VAT, so the VAT on it is normally reverse-charged: declared and deducted on the same return. Check this with your accountant.', amount=working.booking_com_commission|money) }}
+</p>
 {% endif %}
 
 <h2 class="section-heading">{{ t('The rates these figures used') }}</h2>
