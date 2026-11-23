@@ -122580,7 +122580,13 @@ def summarise_history_with_claude(history):
 # ---------------------------------------------------------------------------
 
 TAX_DEFAULTS = {
-    "city_tax_per_adult_per_night": "0.80",
+    # The Communauté de communes de la Haute-Ariège's rate for chambres
+    # d'hôtes, which the house is declared as (owner, 23 November 2026):
+    # EUR 0.94 per adult per night, the département's 10% and the 34% for the
+    # south-west rail line already in it (CCHA grid "Taxe de séjour 2025",
+    # taxe.3douest.com/cchauteariege). It was 0.80, which is no category's
+    # rate there. The live figure is the one saved on the rates page.
+    "city_tax_per_adult_per_night": "0.94",
     "city_tax_exempt_under_age": "18",
     "vat_accommodation": "10",
     "vat_food": "10",
