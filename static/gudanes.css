@@ -134,6 +134,10 @@
 
 .g *, .g *::before, .g *::after{ box-sizing: border-box; }
 .g img{ max-width: 100%; display: block; }
+/* 23 Nov 2026: HIDDEN MEANS HIDDEN, as style.css says for the staff side. The rule above beat the browser's own
+   [hidden], so every photograph a page held back for its lightbox was drawn on the page: under each place to stay
+   nearby, a column of three or four of different heights beside a column of one (owner: "its not nice design"). */
+.g [hidden]{ display: none !important; }
 .g a{ color: var(--blue-mid); }
 
 /* ---- Layout ------------------------------------------------------------ */

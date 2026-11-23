@@ -437,6 +437,25 @@
    4:3 picture sits on an empty card stretched to the rooms' height (live, 23 Nov). */
 .g .g-car--cards .g-homeroom--aerial{ position: relative; overflow: hidden; }
 .g .g-car--cards .g-homeroom--aerial .g-homeroom__img{ position: absolute; inset: 0; height: 100%; aspect-ratio: auto; }
+/* 23 Nov 2026 (owner, of the next card peeking in on a computer: "it looks shit"): the peek cut each room's words
+   mid-line beside empty cream. On a wide screen the rooms do not slide at all: the estate from the air is a band
+   across the top, and every room's card is whole beneath it, three to a row and a short last row widened to fill
+   it (rows start at the 2nd, 5th, 8th child, the aerial being the 1st). Phones keep the swipe. */
+@media (min-width: 64rem){
+  .g .g-car--cards .g-car__track{ grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(6, minmax(0, 1fr));
+    overflow: visible; scroll-snap-type: none; gap: var(--s5); }
+  .g .g-car--cards .g-car__s{ grid-column: span 2; }
+  .g .g-car--cards .g-homeroom--aerial{ grid-column: 1 / -1; aspect-ratio: 21 / 8; }
+  .g .g-car--cards .g-homeroom--aerial .g-homeroom__img{ object-position: center 55%; }
+  .g .g-car--cards .g-car__s:nth-child(3n+2):nth-last-child(2),
+  .g .g-car--cards .g-car__s:nth-child(3n+2):nth-last-child(2) + .g-car__s{ grid-column: span 3; }
+  .g .g-car--cards .g-car__s:nth-child(3n+2):last-child{ grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
+  .g .g-car--cards .g-car__s:nth-child(3n+2):last-child .g-homeroom__img{ aspect-ratio: auto; height: 100%; }
+  /* The column the rooms sit in is a reading width; three cards in it are cramped, so the grid runs wider. */
+  /* It has to outrank the reading-width rule for a wrap holding a paragraph (.g-wrap:has(> p.g-p) > *). */
+  .g .g-sec .g-wrap > section.g-car.g-car--cards[data-car]{ max-width: 72rem; margin-left: auto; margin-right: auto; }
+  .g .g-car--cards .g-car__bar{ display: none; }
+}
 
 /* What guests say: a medallion of the house and a wax seal above each quote. */
 .g .g-say__pic{ display: flex; align-items: flex-end; gap: var(--s3); margin: 0 0 var(--s4); }
