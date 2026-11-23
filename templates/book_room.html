@@ -396,6 +396,12 @@
             </p>
             <p class="g-hint" id="quote_note">{%- if initial_quote and initial_quote.available and initial_quote.per_night %}€{{ '{:,.2f}'.format(initial_quote.per_night) }} a night average.{%- endif %}</p>
           </div>
+          {#- 23 Nov 2026 (owner: "when someone enters dates but theres a wrkshop on i want to point them there"): the
+              atelier on these nights, offered under the price box. Drawn here when the page opens with dates or comes
+              back refused, and by drawOnYourDates below as the dates change -- the same card, the same words. -#}
+          {% from '_atelier_on_your_dates.html' import atelier_on_your_dates with context %}
+          {%- set _onyour = ateliers or (initial_quote.ateliers if initial_quote and initial_quote.ateliers else []) %}
+          <div id="onyour_box" class="g-onyour-box"{{ ' hidden' if not _onyour }}>{{ atelier_on_your_dates(_onyour) }}</div>
           {# 1 Oct (owner): no tick box - the line says it, as hotel sites do. The agreement is still sent, so the server check holds. #}
           <input type="hidden" name="agree_terms" value="on">
           <p class="g-hint g-terms-line" style="margin:0 0 var(--s3)">By booking, you agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">terms and conditions</a>.</p>
@@ -642,6 +648,38 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   // on screen if a request fails rather than blanking the panel mid-decision.
   var box=document.getElementById('quote_box'), pending;
   function money(n){ return '€'+Number(n).toFixed(2); }
+  /* 23 Nov 2026: the atelier on the chosen nights, drawn as _atelier_on_your_dates.html draws it, from what
+     /api/quote sends. Text through textContent only: a title is the owner's words, never markup. */
+  function drawOnYourDates(list){
+    var holder=document.getElementById('onyour_box');
+    if(!holder) return;
+    holder.innerHTML='';
+    holder.hidden=!list.length;
+    function el(tag,cls,text){ var e=document.createElement(tag); if(cls) e.className=cls; if(text) e.textContent=text; return e; }
+    function link(cls,href,text){ var a=el('a',cls,text); a.href=href; return a; }
+    list.forEach(function(o){
+      var card=el('aside','g-onyour'); card.setAttribute('data-onyour',o.session_id);
+      var pic=el('span','g-onyour__pic'), img=el('img','g-onyour__img');
+      img.src=o.photo; img.alt=o.title; img.loading='lazy'; img.decoding='async'; pic.appendChild(img);
+      var body=el('div','g-onyour__body');
+      body.appendChild(el('p','g-onyour__k','On your dates'));
+      body.appendChild(el('h3','g-onyour__t',o.title));
+      body.appendChild(el('p','g-onyour__when',o.dates+(o.nights_label?' · '+o.nights_label:'')));
+      body.appendChild(el('p','g-onyour__p',o.lead));
+      if(o.included) body.appendChild(el('p','g-onyour__p',o.included));
+      if(o.price||o.places) body.appendChild(el('p','g-onyour__price',[o.price,o.places].filter(Boolean).join(' · ')));
+      var acts=el('p','g-onyour__acts');
+      if(o.register_url) acts.appendChild(link('g-btn g-btn--solid',o.register_url,'Reserve a place'));
+      acts.appendChild(link('g-btn',o.page_url,o.page_words));
+      body.appendChild(acts);
+      if(o.around&&o.around.length){
+        var or=el('p','g-onyour__or','Or a stay of your own, beside it: ');
+        o.around.forEach(function(a,i){ if(i) or.appendChild(document.createTextNode(' · ')); or.appendChild(link('',a.url,a.words)); });
+        body.appendChild(or);
+      }
+      card.appendChild(pic); card.appendChild(body); holder.appendChild(card);
+    });
+  }
   // WHEN, for the extras that ask: the days of the stay, filled in from the
   // dates as they are chosen, and each box shown only while its extra is ticked.
   function isoDay(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
@@ -716,6 +754,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
           var totalRow=document.getElementById('quote_total_row');
           var note=document.getElementById('quote_note');
           lines.innerHTML='';
+          drawOnYourDates(d.ateliers||[]);
           if(!d.available){
             reason.textContent=d.reason||'Not available.'; reason.hidden=false;
             totalRow.hidden=true; note.textContent=''; barTotal(null); return;

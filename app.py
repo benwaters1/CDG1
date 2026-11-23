@@ -19606,6 +19606,151 @@ def atelier_holding_the_house(conn, arrival, departure):
     return None
 
 
+# ---------------------------------------------------------------------------
+# AN ATELIER ON THE DATES A GUEST ASKED FOR (owner, 23 Nov 2026: "when someone
+# enters dates but theres a wrkshop on i want to point them there" -- "do a
+# proper job of it though"). An atelier has the whole house, so every room
+# says no on its nights, and a guest told only that goes elsewhere on the very
+# nights the house is offering more than a room. So the refusal names the
+# atelier, what it includes and costs, its places and the way to take one, and
+# the stays of the guest's own length either side of it where a room can be
+# had. Drawn by templates/_atelier_on_your_dates.html, on /book and on a
+# room's own page, and from /api/quote as the room page's dates change.
+#
+# A PUBLIC atelier only. A private stay is reached by its own link and named
+# nowhere else, so on its nights the page says only that the house is taken.
+# ---------------------------------------------------------------------------
+# The house's own photographs of the ateliers it runs, by a word of the title,
+# as the ateliers page has them; an atelier's own upload comes first.
+ATELIER_CARD_PHOTOS = (("Noël", "retreats/noel-at-gudanes-800.jpg"),
+                       ("Seven", "retreats/film-under-the-stars-800.jpg"),
+                       ("Antique", "xx/shelves-of-china.jpg"),
+                       ("Cooking", "xx/tomato-tart-above.jpg"))
+ATELIER_CARD_PHOTO_ELSE = "retreats/guests-toasting.jpg"
+# What the room page's price box says above the card, in place of "Those dates
+# are already reserved", which is true and sends the guest away.
+ATELIER_NIGHTS_WORDS = "On those nights the château is given over to an atelier."
+
+
+def atelier_included_words(workshop):
+    """What an atelier includes, in one sentence: the words its letters use
+    (workshop_email_context reads this), so a guest is promised the same thing
+    on the booking page as in their confirmation."""
+    keys = workshop.keys()
+    words = ("Everything is included, the full experience: every meal, "
+             "the château's wines and spirits and a tour of the "
+             "château")
+    if "excursions_included" in keys and workshop["excursions_included"]:
+        words += ", and the excursions"
+    return words + "."
+
+
+def atelier_card_photo(workshop):
+    """The photograph an atelier's card carries: its own upload, else the
+    house's photograph of the atelier its title names, else the long table."""
+    if workshop["photo_filename"]:
+        return url_for("room_photo", filename=workshop["photo_filename"])
+    for word, name in ATELIER_CARD_PHOTOS:
+        if word in (workshop["title"] or ""):
+            return url_for("static", filename="img/" + name)
+    return url_for("static", filename="img/" + ATELIER_CARD_PHOTO_ELSE)
+
+
+def a_room_can_be_had(conn, arrival, departure, party_size=None):
+    """Whether any room on sale takes this party on these nights, by the same
+    answer each room's card on /book gives (room_offer)."""
+    for room in conn.execute("SELECT * FROM rooms WHERE active = 1").fetchall():
+        if room_offer(conn, room, arrival, departure, party_size)[0]:
+            return True
+    return False
+
+
+def ateliers_on_these_nights(conn, arrival, departure, party_size=None, today=None):
+    """[offer] for each public atelier holding the house on any night of this
+    stay, soonest first -- what the card shows, every value a plain string or
+    None so /api/quote can send it as it is.
+
+    The nights are the ones the gate refuses for (sessions_holding_the_house,
+    the first night to the night before the atelier ends), so the card is shown
+    exactly when an atelier is the reason, and never for a sitting called off.
+    """
+    if not (arrival and departure and departure > arrival):
+        return []
+    today = today or house_today()
+    nights = (departure - arrival).days
+    try:
+        party = int(party_size) if party_size not in (None, "") else None
+    except (TypeError, ValueError):
+        party = None
+    offers = []
+    for row in sessions_holding_the_house(conn, arrival, departure):
+        if row["is_private"]:
+            continue
+        session = conn.execute("SELECT * FROM workshop_sessions WHERE id = ?",
+                               (row["id"],)).fetchone()
+        workshop = conn.execute("SELECT * FROM workshops WHERE id = ?",
+                                (session["workshop_id"],)).fetchone() if session else None
+        # An atelier taken off the public pages is not offered from this one.
+        if not workshop or not workshop["active"]:
+            continue
+        start = parse_date(session["start_date"])
+        end = parse_date(session["end_date"]) or start
+        if not start:
+            continue
+        last_night = max(start, end - timedelta(days=1))
+        if not (arrival <= last_night and start < departure):
+            continue
+        # A place can be taken until the day it starts (public_sittings).
+        open_to_join = start >= today
+        left = workshop_session_remaining_capacity(conn, session["id"]) if open_to_join else 0
+        if not open_to_join:
+            lead = ("The château is given over to this atelier on those nights, and its "
+                    "guests have the rooms.")
+            places, register_url = "", None
+        elif left > 0:
+            lead = ("The château is given over to this atelier on those nights, so its "
+                    "rooms are part of it rather than let by the night. Come for the atelier "
+                    "instead.")
+            places = f"{left} place{'' if left == 1 else 's'} left"
+            register_url = workshop_register_url(session["id"])
+        else:
+            lead = ("The château is given over to this atelier on those nights, so its "
+                    "rooms are part of it rather than let by the night.")
+            places, register_url = "This sitting is full", None
+        # The stays of their own length either side: ending the day it begins,
+        # and starting the day its guests leave. Offered only where a room can
+        # be had for this party, so neither link is a second refusal.
+        around = []
+        after = last_night + timedelta(days=1)
+        for a, d in ((start - timedelta(days=nights), start), (after, after + timedelta(days=nights))):
+            if a < today or not a_room_can_be_had(conn, a, d, party):
+                continue
+            args = {"arrival": a.isoformat(), "departure": d.isoformat()}
+            if party:
+                args["party_size"] = party
+            around.append({
+                "words": (f"{nights} night{'' if nights == 1 else 's'}, "
+                          f"{format_date_range(a.isoformat(), d.isoformat())}"),
+                "url": url_for("book_rooms", **args) + "#rooms"})
+        offers.append({
+            "session_id": session["id"],
+            "title": workshop["title"],
+            "dates": format_date_range(session["start_date"], session["end_date"] or session["start_date"]),
+            "nights_label": workshop["nights_label"] or "",
+            "lead": lead,
+            "included": atelier_included_words(workshop) if open_to_join else "",
+            "price": (f"{euro(workshop['price_per_person'])} per person"
+                      if open_to_join and workshop["price_per_person"] else ""),
+            "places": places,
+            "register_url": register_url,
+            "page_url": workshop_page_url(workshop),
+            "page_words": "See its other dates" if open_to_join and left <= 0 else "About the atelier",
+            "photo": atelier_card_photo(workshop),
+            "around": around,
+        })
+    return offers
+
+
 # What a guest is told when their dates are taken. The reasons below are
 # for the house -- which booking, which channel -- and a guest hears none of
 # it: not that another channel exists, and never "free", which reads as "no
@@ -55093,6 +55238,11 @@ def book_rooms():
     # day after the atelier ends. Only asked when every room said no.
     blocking_atelier = (atelier_holding_the_house(conn, arrival, departure)
                         if nothing_available else None)
+    # And when that atelier is one a guest can come to, the card that offers it
+    # (owner, 23 Nov 2026): what it is, what it includes and costs, its places,
+    # and the stays of their length either side. Asked only after a search.
+    ateliers = (ateliers_on_these_nights(conn, arrival, departure, party_size)
+                if searched else [])
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
     # Computed before the connection closes. Only when nobody has searched:
@@ -55128,7 +55278,7 @@ def book_rooms():
         resting=resting,
         stay_nights=stay_nights, room_quotes=room_quotes,
         nothing_available=nothing_available, next_free=next_free,
-        blocking_atelier=blocking_atelier,
+        blocking_atelier=blocking_atelier, ateliers=ateliers,
         weather=weather,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
@@ -55466,6 +55616,14 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
 
     if nights < 1:
         quote.update(available=False, reason="Departure must be after arrival.")
+        return quote
+    # An atelier on these nights is THE answer, ahead of a minimum stay or the
+    # size of the party: either of those sends a guest off adjusting nights the
+    # house is not letting at all, when it is offering the atelier on them
+    # (owner, 23 Nov 2026). The room page draws the card from "ateliers".
+    ateliers = ateliers_on_these_nights(conn, arrival, departure, party_size)
+    if ateliers:
+        quote.update(available=False, reason=ATELIER_NIGHTS_WORDS, ateliers=ateliers)
         return quote
     rules = stay_rules(conn, room, arrival, departure)
     if nights < rules["min_nights"]:
@@ -55903,8 +56061,12 @@ def book_room(room_id):
             # line, and a query on a closed handle is not a blank prefill,
             # it is a 500 on the one page where giving up costs a booking.
             prefill = book_room_prefill(request.form, conn)
+            # The atelier on these nights, if that is what refused them -- the
+            # same card the price box drew before they pressed Book.
+            ateliers = (ateliers_on_these_nights(conn, arrival, departure, party_size)
+                        if arrival and departure and departure > arrival else [])
             conn.close()
-            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **prefill)
+            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, ateliers=ateliers, **prefill)
 
         nights = (departure - arrival).days
         room_total = compute_room_total(conn, room, arrival, departure)
@@ -66849,12 +67011,8 @@ def workshop_email_context(booking):
     # rows from several routes, and one that predates these columns would
     # raise rather than quietly tell the guest the wrong thing.
     has = booking.keys()
-    included = ["Everything is included, the full experience: every meal, "
-                "the ch\u00e2teau's wines and spirits and a tour of the "
-                "ch\u00e2teau"]
-    if "excursions_included" in has and booking["excursions_included"]:
-        included[0] += ", and the excursions"
-    included[0] += "."
+    # One sentence, shared with the booking page's atelier card.
+    included = [atelier_included_words(booking)]
     if "transfers_included" in has and booking["transfers_included"]:
         included.append(
             "We meet you at 11am in central Toulouse on the first day, and "
@@ -119766,6 +119924,8 @@ GUEST_DOSSIER_TABLES = {
     "guest_profile_changes": "left out: the history of edits is on their page; the "
                              "panel shows the profile as it stands",
     "mail_log": "left out: delivery bookkeeping for letters already shown",
+    "come_back_letters": "left out: it only marks that a year-on or anniversary letter "
+                         "was written to them this year, so it is never written twice",
 }
 
 # The mailboxes that are the owner's alone, by local part, until the add-in

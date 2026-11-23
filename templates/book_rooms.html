@@ -156,13 +156,16 @@
     <p class="g-searched__count">
       {% set free = availability.values()|select|list|length %}
       {% if free %}{{ free }} of {{ rooms|length }} room{{ '' if rooms|length == 1 else 's' }} available
+      {% elif ateliers %}An atelier has the château on these dates
       {% else %}No rooms free on these dates
         {#- A blind refusal sends a guest away. When the reason is an atelier the
             route can say so by passing blocking_atelier (start_date, end_date);
             this renders nothing until it does. -#}
-        {%- if blocking_atelier %} — a workshop holds the whole château {{ date_range(blocking_atelier.start_date, blocking_atelier.end_date) }}; it is free again from the day after{% endif %}{%- endif %}</p>
+        {%- if blocking_atelier and not ateliers %} — a workshop holds the whole château {{ date_range(blocking_atelier.start_date, blocking_atelier.end_date) }}; it is free again from the day after{% endif %}{%- endif %}</p>
     <a href="{{ url_for('book_rooms') }}" class="g-searched__clear">Clear dates</a>
   </div>
+  {#- 23 Nov 2026 (owner): an atelier on these nights is offered, not just given as the reason. -#}
+  {% if ateliers %}{% from '_atelier_on_your_dates.html' import atelier_on_your_dates with context %}{{ atelier_on_your_dates(ateliers) }}{% endif %}
   {% endif %}
 
   {% if not rooms %}
