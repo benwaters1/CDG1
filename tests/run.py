@@ -487,6 +487,7 @@ SUITES = [
     "test_html_email",
     "test_letters_drawn",
     "test_letter_design",
+    "test_letter_house_style",
     "test_mail_redirect",
     "test_not_live_yet",
     "test_guest_emails",
