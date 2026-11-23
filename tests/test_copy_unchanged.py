@@ -111,7 +111,11 @@ m = _harness.m
 # /book/1 to /book/5 (each room headed by its French title over its plain name, which
 # the <title> of a room's page carries too) and /press (rebuilt, its captions shown on
 # purpose), and nothing else. Each was read.
-COPY_BASE = "6c6e9da"
+# 23 Nov 2026, later: moved to 310d694, the menu the owner asked to be easier to
+# follow. Against 6c6e9da every page differed in one place only, the menu's
+# Chateau group: The History before The Restoration, and the photograph's
+# "Under restoration since 2013" gone with it. Read on every page listed.
+COPY_BASE = "310d694"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
