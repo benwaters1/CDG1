@@ -1,9 +1,10 @@
-"""The two come-back letters, and the review invitation made ready.
+"""The three come-back letters, and the review invitation made ready.
 
 The owner, 23 November 2026, to five marketing suggestions: "yes to 2 just
 ready the email first" (the invitation to review us, which waits on the house's
 Google page) and "4 yes we will do that" -- a letter a year on from a stay,
-naming the room, and one before an anniversary a guest told us.
+naming the room, and one before an anniversary a guest told us. Then "Yes,
+add birthday": a third, before a birthday a guest told us.
 
 Both come-back letters are the house writing for its own reasons, so what is
 checked here is every rule it keeps for that, and the privacy notice's account
@@ -13,7 +14,10 @@ of them:
     letter: an anniversary letter released a month late arrives after the day.
     Nobody is stamped while it cannot go, so each is written the first morning
     it can.
-  - ONCE A YEAR to an address, whatever runs twice; one letter to a party.
+  - ONCE A YEAR to an address, whatever runs twice; one letter to a party;
+    and never two different ones within six weeks.
+  - A database made before birthdays is rebuilt to take them, keeping every
+    row, so the live table is not the one place the birthday letter fails.
   - NEVER to anybody who unsubscribed or asked us to stop using their details,
     to a Booking.com or agent's guest (the address was lent for one stay), to
     anybody copied on the booking, to somebody booked to come again (year on)
@@ -23,6 +27,7 @@ of them:
 send_email is replaced for every send; nothing here can reach a guest.
 """
 import re
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, house_today, keep_rows
@@ -30,10 +35,12 @@ import _harness
 
 m = _harness.m
 TAG = "ZZCB"
-KEYS = ("room_year_on", "guest_anniversary_ahead")
+KEYS = ("room_year_on", "guest_anniversary_ahead", "guest_birthday_ahead")
 SETTINGS = ("automation_year_on_enabled", "automation_year_on_days_before",
             "automation_anniversary_letter_enabled",
-            "automation_anniversary_letter_days_before", "guest_mail_live", "guest_emails_on")
+            "automation_anniversary_letter_days_before",
+            "automation_birthday_letter_enabled", "automation_birthday_letter_days_before",
+            "guest_mail_live", "guest_emails_on")
 
 
 def _addr(ref):
@@ -88,11 +95,12 @@ def _stay(conn, ref, arrival, *, status="confirmed", nights=3, source="direct", 
     return room
 
 
-def _guest(conn, ref, anniversary, *, email=None, restricted=False, merged_into=None):
+def _guest(conn, ref, anniversary, *, birthday=None, email=None, restricted=False,
+           merged_into=None):
     conn.execute(
-        """INSERT INTO guests (name, email, anniversary, restricted_at, merged_into_id,
-                               created_at) VALUES (?, ?, ?, ?, ?, ?)""",
-        (f"Camille {TAG}{ref}", _addr(ref) if email is None else email, anniversary,
+        """INSERT INTO guests (name, email, anniversary, birthday, restricted_at,
+                               merged_into_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (f"Camille {TAG}{ref}", _addr(ref) if email is None else email, anniversary, birthday,
          datetime.now(timezone.utc).isoformat() if restricted else None, merged_into,
          datetime.now(timezone.utc).isoformat()))
     conn.commit()
@@ -135,6 +143,15 @@ def _to(letters, ref):
     return [x for x in letters if x["to"] == _addr(ref)]
 
 
+def _stamp(conn, ref, kind, days_ago):
+    """A come-back letter of `kind` written to this address `days_ago` days back."""
+    at = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    conn.execute("""INSERT INTO come_back_letters (kind, email, year, outcome,
+                        unsubscribe_token, written_at) VALUES (?, ?, ?, 'sent', ?, ?)""",
+                 (kind, _addr(ref), at.year - 5, f"{TAG}{ref}{kind}{days_ago}", at.isoformat()))
+    conn.commit()
+
+
 def _stamped(conn, ref):
     return conn.execute("SELECT * FROM come_back_letters WHERE email = ?",
                         (_addr(ref),)).fetchall()
@@ -146,9 +163,11 @@ def run():
     conn = db()
     put_settings = keep_rows(conn, "app_settings",
                              "key IN (%s)" % ",".join("?" * len(SETTINGS)), SETTINGS)
-    put_letters = keep_rows(conn, "email_templates", "template_key IN (?, ?, ?)",
+    put_letters = keep_rows(conn, "email_templates",
+                            "template_key IN (%s)" % ",".join("?" * (len(KEYS) + 1)),
                             KEYS + ("review_invitation",))
-    put_approvals = keep_rows(conn, "guest_letter_approvals", "letter_key IN (?, ?)", KEYS)
+    put_approvals = keep_rows(conn, "guest_letter_approvals",
+                              "letter_key IN (%s)" % ",".join("?" * len(KEYS)), KEYS)
     _cleanup(conn)
     was = m.send_email
     m.send_email = lambda *a, **kw: True
@@ -206,21 +225,32 @@ def _checks(s, oc, conn):
     jobs = {name: key for name, key, _i, _c, _f in m.AUTOMATION_JOBS}
     s.check("the scheduler asks each switch before its job runs",
             jobs.get("year_on") == "automation_year_on_enabled"
-            and jobs.get("anniversary_letter") == "automation_anniversary_letter_enabled",
-            detail=str((jobs.get("year_on"), jobs.get("anniversary_letter"))))
-    s.check("both are morning letters", m.JOB_HOURS.get("year_on") == (9, 12)
-            and m.JOB_HOURS.get("anniversary_letter") == (9, 12))
+            and jobs.get("anniversary_letter") == "automation_anniversary_letter_enabled"
+            and jobs.get("birthday_letter") == "automation_birthday_letter_enabled",
+            detail=str((jobs.get("year_on"), jobs.get("anniversary_letter"),
+                        jobs.get("birthday_letter"))))
+    s.check("all three are morning letters",
+            all(m.JOB_HOURS.get(j) == (9, 12)
+                for j in ("year_on", "anniversary_letter", "birthday_letter")))
+    switches = {sw["key"]: sw for sw in m.AUTOMATION_SWITCHES}
+    s.check("the birthday letter has its own switch on the Automation page",
+            switches.get("automation_birthday_letter_enabled", {}).get("letters")
+            == ("guest_birthday_ahead",))
     s.check("the year-on letter names the room and when, and links to booking",
             all(t in shipped["room_year_on"][1]
                 for t in ("{room_name}", "{stay_month}", "{book_url}")))
     s.check("the anniversary letter names the day, and links to booking",
             all(t in shipped["guest_anniversary_ahead"][1]
                 for t in ("{anniversary_date}", "{book_url}")))
-    s.check("neither can be saved without its booking link",
+    s.check("the birthday letter names the day, links to booking, and wishes one person well",
+            all(t in shipped["guest_birthday_ahead"][1] for t in ("{birthday_date}", "{book_url}"))
+            and "happy birthday" in shipped["guest_birthday_ahead"][1]
+            and "both" not in shipped["guest_birthday_ahead"][1])
+    s.check("none can be saved without its booking link",
             all("book_url" in m.REQUIRED_MERGE_TAGS.get(k, {}) for k in KEYS)
             and all(m.wording_problems(k, shipped[k][0], shipped[k][1].replace("{book_url}", ""))
                     for k in KEYS))
-    s.check("and both go as shipped, with nothing the send would refuse",
+    s.check("and all go as shipped, with nothing the send would refuse",
             not any(m.wording_problems(k, *shipped[k]) for k in KEYS),
             detail=str([m.wording_problems(k, *shipped[k]) for k in KEYS]))
     s.check("a deleted guest's record of these letters goes with them",
@@ -233,6 +263,47 @@ def _checks(s, oc, conn):
         _approve(conn, k)
     _set(conn, "automation_year_on_days_before", None)
     _set(conn, "automation_anniversary_letter_days_before", None)
+    _set(conn, "automation_birthday_letter_days_before", None)
+
+    s.section("A table made before birthdays takes them, keeping what it had")
+    old = sqlite3.connect(":memory:")
+    old.execute(m.COME_BACK_LETTERS_TABLE.replace("'year_on','anniversary','birthday'",
+                                                  "'year_on','anniversary'"))
+    old.execute("INSERT INTO come_back_letters (kind, email, year, outcome, unsubscribe_token, "
+                "written_at) VALUES ('anniversary', 'kept@example.invalid', 2026, 'sent', "
+                "'tok-kept', '2026-11-23T09:00:00+00:00')")
+    old.commit()
+    try:
+        old.execute("INSERT INTO come_back_letters (kind, email, year, outcome, "
+                    "unsubscribe_token, written_at) VALUES ('birthday', 'b@example.invalid', "
+                    "2026, 'sent', 'tok-b', '2026-11-23')")
+        refused_before = False
+    except sqlite3.IntegrityError:
+        refused_before = True
+    old.rollback()
+    s.check("(the old table refuses a birthday, which is what this mends)", refused_before)
+    s.check("it is rebuilt", m.come_back_letters_take_birthdays(old) is True)
+    kept = old.execute("SELECT kind, email, unsubscribe_token FROM come_back_letters").fetchall()
+    s.check("every row kept, its unsubscribe link with it",
+            kept == [("anniversary", "kept@example.invalid", "tok-kept")], detail=str(kept))
+    old.execute("INSERT INTO come_back_letters (kind, email, year, outcome, unsubscribe_token, "
+                "written_at) VALUES ('birthday', 'b@example.invalid', 2026, 'sent', 'tok-b', "
+                "'2026-11-23')")
+    s.check("and a birthday stamp now goes in", old.execute(
+        "SELECT COUNT(*) FROM come_back_letters WHERE kind = 'birthday'").fetchone()[0] == 1)
+    try:
+        old.execute("INSERT INTO come_back_letters (kind, email, year, outcome, "
+                    "unsubscribe_token, written_at) VALUES ('anniversary', 'kept@example.invalid', "
+                    "2026, 'sent', 'tok-again', '2026-11-23')")
+        once = False
+    except sqlite3.IntegrityError:
+        once = True
+    s.check("still once a year to an address", once)
+    s.check("asked again, it leaves the table alone", m.come_back_letters_take_birthdays(old) is False)
+    old.close()
+    s.check("the suite's own database already takes birthdays",
+            "'birthday'" in conn.execute("SELECT sql FROM sqlite_master WHERE name = "
+                                         "'come_back_letters'").fetchone()[0])
 
     s.section("Nothing while it cannot go")
     _stay(conn, "WAIT", _year_ago(10))
@@ -268,6 +339,8 @@ def _checks(s, oc, conn):
     _stay(conn, "BACK2", house_today() + timedelta(days=60), email=_addr("BACK"))
     _stay(conn, "TWICE", _year_ago(3))
     _stay(conn, "TWICE2", _year_ago(8), email=_addr("TWICE"))
+    _stay(conn, "LATELY", _year_ago(6))
+    _stamp(conn, "LATELY", "birthday", 10)
     conn.commit()
     said, letters, refused = _run("run_year_on_job")
     one = _to(letters, "ONE")
@@ -290,7 +363,8 @@ def _checks(s, oc, conn):
                      ("GONE", "a cancelled stay"), ("BCOM", "a Booking.com stay"),
                      ("AGENT", "a stay booked through an agent"),
                      ("STOP", "somebody who unsubscribed"),
-                     ("BACK", "somebody booked to come again")):
+                     ("BACK", "somebody booked to come again"),
+                     ("LATELY", "somebody sent their birthday letter ten days ago")):
         s.check(f"not {why}", not _to(letters, ref))
     s.check("nor an address Booking.com lent us",
             not [x for x in letters if x["to"].endswith("@guest.booking.com")])
@@ -313,6 +387,7 @@ def _checks(s, oc, conn):
     _stay(conn, "HERE", house_today() + timedelta(days=11), nights=2)
     keep = _guest(conn, "KEPT", _md(12), email=_addr("KEPTMAIN"))
     _guest(conn, "OLD", _md(12), merged_into=keep)
+    _guest(conn, "PAIR", _md(5), birthday=_md(15))
     _set(conn, "automation_anniversary_letter_enabled", "1")
     said, letters, refused = _run("run_anniversary_letter_job")
     anni = _to(letters, "ANNI")
@@ -333,6 +408,48 @@ def _checks(s, oc, conn):
     s.check("the profile it was merged into is written to once",
             len(_to(letters, "KEPTMAIN")) == 1)
     said, again, refused = _run("run_anniversary_letter_job")
+    s.check("run again, nobody hears twice", not again, detail=str(said))
+
+    s.check("the guest with both days near gets the anniversary, which comes first",
+            len(_to(letters, "PAIR")) == 1
+            and _to(letters, "PAIR")[0]["key"] == "guest_anniversary_ahead")
+
+    s.section("Before a birthday")
+    _guest(conn, "BDAY", None, birthday=_md(20))
+    _guest(conn, "BLATER", None, birthday=_md(50))
+    _guest(conn, "BHERE", None, birthday=_md(20))
+    _stay(conn, "BHERE", house_today() + timedelta(days=19), nights=3)
+    _guest(conn, "BLONG", None, birthday=_md(20))
+    _stamp(conn, "BLONG", "anniversary", 50)
+    _set(conn, "automation_birthday_letter_enabled", None)
+    said, letters, refused = _run("run_birthday_letter_job")
+    s.check("switched off, it says so and writes to nobody",
+            refused and "switched off" in refused and not letters, detail=str(refused))
+    _set(conn, "automation_birthday_letter_enabled", "1")
+    said, letters, refused = _run("run_birthday_letter_job")
+    bday = _to(letters, "BDAY")
+    when = house_today() + timedelta(days=20)
+    s.check("a guest whose birthday is twenty days off is written to",
+            len(bday) == 1, detail=f"{said} / {refused}")
+    s.check("as the birthday letter, with the day and the way to book",
+            bday and bday[0]["key"] == "guest_birthday_ahead"
+            and f"{when.day} {when.strftime('%B')}" in bday[0]["body"]
+            and "/book" in bday[0]["body"] and "Hi Camille" in bday[0]["body"],
+            detail=bday[0]["body"][:200] if bday else "")
+    s.check("and its own way to stop",
+            bday and "To stop letters like this one:" in bday[0]["body"])
+    s.check("stamped as a birthday, so it is once a year",
+            [r["kind"] for r in _stamped(conn, "BDAY")] == ["birthday"])
+    for ref, why in (("BLATER", "a birthday seven weeks off"),
+                     ("BHERE", "somebody staying with us around it"),
+                     ("PAIR", "somebody whose anniversary letter went this morning")):
+        s.check(f"not {why}", not _to(letters, ref))
+    s.check("but somebody whose last letter was seven weeks ago is",
+            len(_to(letters, "BLONG")) == 1)
+    s.check("it says who it did not write to, and why",
+            said and m.COME_BACK_LATELY_WHY in said and "staying with us around it" in said,
+            detail=str(said))
+    said, again, refused = _run("run_birthday_letter_job")
     s.check("run again, nobody hears twice", not again, detail=str(said))
 
     s.section("Pressing stop")
@@ -364,6 +481,11 @@ def _checks(s, oc, conn):
     s.check("never through Booking.com or an agent: which is what the job leaves out",
             "Never if you came to us through Booking.com or an agent" in text
             and set(m.COME_BACK_NOT_FROM_SOURCES) == {"booking.com", "agent"})
+    s.check("and before an anniversary or a birthday, once a year",
+            "the date of an anniversary or a birthday, we may write once a year before it" in text)
+    s.check("never two within six weeks: which is the gap the jobs keep",
+            "Never two of these letters within six weeks of each other" in text
+            and m.COME_BACK_GAP_DAYS == 42)
     s.check("every letter carries an unsubscribe link that stops them",
             "carries an unsubscribe link, and using it stops them at once" in text)
 
