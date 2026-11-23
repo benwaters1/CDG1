@@ -12432,3 +12432,29 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   text-decoration-color: var(--gilt-leaf);
 }
 @media (prefers-reduced-motion: reduce){ .g .g-links__btn{ transition: none; } }
+
+/* The menu panel (owner, 23 November 2026: "the text could be bigger ... its a
+   little hard to follow"). Every link one size, in the display serif, at 19px
+   where it was 13; the group headings gilt and spaced, so the three groups read
+   as three. #g-mainnav, because a dozen earlier rules size these links. */
+.g #g-mainnav .g-navwrap__item,
+.g #g-mainnav .g-navwrap__item--sm{
+  display: flex; align-items: center; gap: 14px; min-height: 46px; padding: 6px 0;
+  font-family: var(--display); font-size: 19px; font-weight: 500; line-height: 1.25;
+  letter-spacing: 0; text-transform: none; color: var(--blue-deep);
+}
+.g #g-mainnav .g-navwrap__item svg{ width: 20px; height: 20px; color: var(--gilt-leaf); }
+.g #g-mainnav .g-navwrap__item--sm{ justify-content: space-between; }
+.g #g-mainnav .g-navwrap__item--sm .g-navwrap__chev{ width: 16px; height: 16px; color: var(--gilt-leaf); }
+.g #g-mainnav .g-navwrap__item:hover{ color: var(--gilt); }
+.g #g-mainnav .g-navwrap__item--plain{ font-family: var(--serif); font-size: 16px; }
+.g #g-mainnav .g-navwrap__group{
+  margin: var(--s5) 0 var(--s2); font-family: var(--serif); font-size: 13px; font-weight: 600;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--gilt);
+}
+
+/* A photograph beside its words (the split) spans the whole width even in a
+   narrow section. The narrow rule holds prose to 46rem against the left edge,
+   which left the History page's Revolution section a narrow column with half
+   the page empty beside it (owner, 23 November 2026: "spacing here no good"). */
+.g .g-sec .g-wrap--narrow > .g-sp{ max-width: none; }
