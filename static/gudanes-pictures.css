@@ -1047,6 +1047,16 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-shoot-rooms .g-sp:first-child{ margin-top: 0; }
 .g .g-shoot-rooms .g-sp:last-child{ margin-bottom: 0; }
 .g .g-shoot-rooms .g-sp + .g-sp{ margin-top: var(--s8); }
+
+/* THE WEDDINGS PAGE (23 Nov 2026, owner: "the spacing here isnt great and theres no photo on top"). Its two opening
+   sections sit beside a photograph each, as on the photoshoot page; the Marquis Suite's few words had a tall
+   photograph beside them and a field of empty sand, so it says more now, and its facts are a short gilt-ruled list. */
+.g .g-wed-intro .g-sp:first-child{ margin-top: 0; }
+.g .g-wed-intro .g-sp:last-child{ margin-bottom: 0; }
+.g .g-wed-intro .g-sp + .g-sp{ margin-top: var(--s8); }
+.g .g-wedgold__facts{ list-style: none; margin: var(--s5) 0 0; padding: 0; border-top: 1px solid rgba(176, 141, 87, .55); }
+.g .g-wedgold__facts li{ margin: 0; padding: 10px 0; border-bottom: 1px solid rgba(176, 141, 87, .35); font-size: 17px; line-height: 1.5; color: var(--ink-soft); }
+.g .g-wedgold__facts li b{ font-weight: 500; color: var(--blue-deep, #14305F); }
 .g .g-shoot-how{ text-align: center; }
 .g .g-shoot-how .g-place{ margin-left: auto; margin-right: auto; }
 .g .g-shootsteps{
@@ -1073,3 +1083,24 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
   font-size: var(--t-h3, 1.6rem); line-height: 1.15; color: var(--blue-deep, #14305F);
 }
 .g .g-shootsteps__p{ margin: 0 auto; max-width: 32ch; font-size: 17px; line-height: 1.55; color: var(--ink-soft); }
+
+/* The weddings page, from the brochure (23 Nov 2026): the sample days reuse the photoshoot page's four numbered steps,
+   each with a short list; the finer details are three columns, gilt-ruled. */
+.g .g-wed-days__l{ list-style: none; margin: 0 auto; padding: 0; max-width: 30ch; }
+.g .g-wed-days__l li{ margin: 0; padding: 8px 0; border-bottom: 1px solid rgba(176, 141, 87, .3); font-size: 16px; line-height: 1.5; color: var(--ink-soft); }
+.g .g-wed-days__l li:last-child{ border-bottom: 0; }
+.g .g-wed-table .g-sp{ margin: 0; }
+.g .g-wed-fine__cols{ display: grid; gap: var(--s7) var(--s6); margin-top: var(--s6); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 52rem){ .g .g-wed-fine__cols{ grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.g .g-wed-fine__h{ margin: 0 0 var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid rgba(176, 141, 87, .6); font-family: var(--display); font-weight: 500; font-size: var(--t-h3, 1.6rem); color: var(--blue-deep, #14305F); }
+.g .g-wed-fine__c ul{ list-style: none; margin: 0; padding: 0; }
+.g .g-wed-fine__c li{ position: relative; margin: 0; padding: 8px 0 8px 18px; font-size: 16px; line-height: 1.5; color: var(--ink-soft); }
+.g .g-wed-fine__c li::before{ content: ''; position: absolute; left: 0; top: 17px; width: 7px; height: 7px; transform: rotate(45deg); border: 1px solid var(--gilt, #B08D57); }
+
+/* The private events page (23 Nov 2026): the occasions from the brochure, five short entries, gilt-ruled. */
+.g .g-occ{ list-style: none; margin: var(--s6) 0 0; padding: 0; display: grid; gap: 0 var(--s6); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 52rem){ .g .g-occ{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.g .g-occ__i{ margin: 0; padding: var(--s4) 0; border-top: 1px solid rgba(176, 141, 87, .45); }
+.g .g-occ__t{ margin: 0 0 6px; font-family: var(--display); font-weight: 500; font-size: 1.35rem; color: var(--blue-deep, #14305F); }
+.g .g-occ__p{ margin: 0; font-size: 17px; line-height: 1.55; color: var(--ink-soft); }
+@media (min-width: 52rem){ .g .g-wed-fine--two .g-wed-fine__cols{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }

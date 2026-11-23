@@ -34,9 +34,12 @@ from _harness import Suite
 import _harness
 
 m = _harness.m
-PAGES = ("/events/weddings", "/events/private")
 # 23 Nov 2026, later (owner: "this is really not good"): /events/photoshoots opens on a photograph now, the
 # a shoot made here, in a photograph hero's own frame (.g-hero__in), so none of the navy art's faults can reach it.
+# 23 Nov 2026, later (owner: "theres no photo on top"): /events/weddings opens on the long table now; test_weddings_top
+# holds it. And /events/private, the same evening ("same with private"); test_private_top holds it. No page opens on
+# the art hero now; the rules below stay, for the one that next does.
+PAGES = ()
 PHOTO_PAGES = ("/events/photoshoots",)
 
 

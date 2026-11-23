@@ -59,6 +59,9 @@ PAGES = {
          r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*" alt="The château lit at night', 1),
     ],
     "/events/weddings": [
+        # 23 Nov 2026: the long table, every candle lit, is the hero; the two opening sections each beside a photograph.
+        ("the long table as the hero", r'<section class="g-hero g-hero--wed">\s*<img[^>]*class="g-hero__img"', 1),
+        ("the two opening sections, each beside a photograph", r'<section class="g-sec g-wed-intro">.*?<div class="g-sp ">.*?<div class="g-sp g-sp--flip ">', 1),
         ("the Marquis Suite: its words beside its photographs", r'<div class="g-sp g-sp--tuck', 1),
         ("the church: its words beside the ceremony", r'<div class="g-sp g-sp--flip g-sp--tuck', 1),
         ("Weddings at Gudanes: a collage of four", r'class="g-mos g-mos--lead g-mos--4 ', 1),
@@ -66,6 +69,7 @@ PAGES = {
         ("and all forty-five behind See all", r'See all 45 photos', 1),
     ],
     "/events/private": [
+        ("the long table by candlelight as the hero", r'<section class="g-hero g-hero--private">\s*<img[^>]*class="g-hero__img"', 1),
         ("A Gathering of Your Own: a collage, a slider, and the whole set behind See all",
          r'class="g-mos g-mos--lead g-mos--4 .*aria-label="A gathering of your own".*See all 18 photos', 1),
     ],
