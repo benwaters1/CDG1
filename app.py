@@ -36011,27 +36011,40 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
         # "somebody is waiting on you" is a job, and the subject line says
         # which so the ones needing a person stand out from the ones that do
         # not. A stay that fell back to pending says so in as many words.
+        # A line to each thing they gave (owner, 23 November 2026), as every
+        # form's notice to the house now reads: see form_fields_letter.
+        booked_fields = [
+            ("Name", guest_name), ("Email", guest_email), ("Telephone", guest_phone),
+            ("Room", room["name"]),
+            ("Arriving", format_date_human(arrival.isoformat())),
+            ("Leaving", format_date_human(departure.isoformat())),
+            ("Guests", party_size),
+            ("Payment", "Paid in full" if paid else "No payment taken"),
+            ("Reference", reference_code),
+        ]
+        booking_link = (url_for("admin_booking", booking_id=new_row["id"], _external=True)
+                        if new_row else url_for("admin_bookings", _external=True))
         if confirmed_now:
             send_email(
                 owner_to,
                 f"Booked — {room['name']} ({reference_code})",
-                f"{guest_name} booked {room['name']}, {format_date_short(arrival.isoformat())} to "
-                f"{format_date_short(departure.isoformat())}, party of {party_size}.\n"
-                f"{'Paid in full.' if paid else 'No payment taken.'}\n\n"
-                f"Nothing to do — they have their confirmation.\n"
-                f"{url_for('admin_bookings', _external=True)}",
+                form_fields_letter(booked_fields, message=special_requests,
+                                   message_label="Their requests:", end=[
+                    "Nothing to do: they have their confirmation.",
+                    ["The booking:", booking_link],
+                ]),
             )
         else:
             send_email(
                 owner_to,
                 f"Needs you — {room['name']} ({reference_code})",
-                f"{guest_name} requested {room['name']}, {format_date_short(arrival.isoformat())} to {format_date_short(departure.isoformat())}, "
-                f"party of {party_size}.\n"
-                f"{'Payment already received.' if payment_status == 'paid' else 'No payment taken.'}\n\n"
-                f"This one did not confirm itself — either there is a standing "
-                f"instruction about this guest, or the room went while they were "
-                f"typing. Review and confirm.\n"
-                f"{url_for('admin_bookings', _external=True)}",
+                form_fields_letter(booked_fields, message=special_requests,
+                                   message_label="Their requests:", end=[
+                    "This one did not confirm itself: either there is a standing "
+                    "instruction about this guest, or the room went while they were "
+                    "typing. Review and confirm.",
+                    ["The booking:", booking_link],
+                ]),
             )
     return reference_code, manage_token
 
@@ -55053,17 +55066,44 @@ def book_rooms():
     )
 
 
+def form_fields_letter(fields, message=None, message_label="Their message:", end=()):
+    """A form somebody filled in, as the house reads it: one "Label: value" to a
+    line, "not said" where they left it empty, then their own words, then
+    whatever the house does next.
+
+    The owner, 23 November 2026: the notices came as one sentence -- "A guest
+    (their address) inquired about hosting a wedding, preferred
+    date 18 September 2027, 100 guests" -- and every name and address had to
+    be picked out of the middle of it to be copied. A line each copies with a
+    triple-click. The Contact page's letter has read this way since z29
+    (contact_enquiry_letter); every form that writes to the house now does.
+
+    A value of False leaves the line out altogether, for a field this form
+    does not ask; None or "" is a question it asks that they did not answer.
+    `end` is a list of blocks, each a line or a list of lines, set apart by a
+    blank line.
+    """
+    lines = ["%s: %s" % (label, value if value not in (None, "") else "not said")
+             for label, value in fields if value is not False]
+    if message:
+        lines += ["", message_label, message]
+    for block in end:
+        lines += [""] + ([block] if isinstance(block, str) else list(block))
+    return "\n".join(lines)
+
+
 def waitlist_email_body(conn, name, email, phone, arrival_iso, departure_iso, party_size, notes):
     """The house's note of a waitlist request: who, which nights, how many, and
     why each room said no -- the reasons Stay gave them, from room_offer
     (owner, 12 Nov 2026: the note said only "nothing was available", which
     left the house guessing whether the rooms were full or the party too big)."""
-    party = (f"{party_size} guest{'' if party_size == 1 else 's'}" if party_size
-             else "party size not given")
-    contact = email + (f", {phone}" if phone else "")
-    lines = [f"{name} ({contact}) would like {arrival_iso or '?'} to {departure_iso or '?'}, "
-             f"for {party}, but nothing was available."]
     arrival, departure = parse_date(arrival_iso or ""), parse_date(departure_iso or "")
+    lines = [form_fields_letter([
+        ("Name", name), ("Email", email), ("Telephone", phone),
+        ("Arriving", format_date_human(arrival.isoformat()) if arrival else arrival_iso),
+        ("Leaving", format_date_human(departure.isoformat()) if departure else departure_iso),
+        ("Guests", party_size),
+    ]), "", "Nothing was free for these dates when they asked."]
     if arrival and departure and departure > arrival:
         hidden = {rid for rid, cl in room_closures(conn, arrival, departure).items()
                   if any(c["mode"] == "hidden" for c in cl)}
@@ -55077,7 +55117,8 @@ def waitlist_email_body(conn, name, email, phone, arrival_iso, departure_iso, pa
         if said:
             lines += ["", "What each room said:"] + said
     if notes:
-        lines += ["", notes]
+        lines += ["", "Their note:", notes]
+    lines += ["", "The waiting list:", url_for("admin_waitlist", q=email, _external=True)]
     return "\n".join(lines)
 
 
@@ -57954,10 +57995,17 @@ def submit_event_inquiry():
     if owner_to:
         send_email(
             owner_to, f"New event inquiry — {event_type} ({reference_code})",
-            f"{contact_name} ({contact_email}) inquired about hosting a {event_type}"
-            f"{f', preferred date {format_date_short(preferred_date)}' if preferred_date else ''}"
-            f"{f', {guest_count} guests' if guest_count else ''}.\n\n{message or ''}\n\n"
-            f"Review: {url_for('admin_events', _external=True)}",
+            form_fields_letter([
+                ("Name", contact_name), ("Email", contact_email), ("Telephone", contact_phone),
+                ("Event", (event_type or "").capitalize()),
+                ("Preferred date", format_date_human(preferred_date) if preferred_date else ""),
+                ("Other date", format_date_human(alternate_date) if alternate_date else ""),
+                ("Guests", guest_count),
+                ("Promo code", promo_code or False),
+                ("Reference", reference_code),
+            ], message=message, end=[
+                ["Open the inquiry:", url_for("admin_event", event_id=inquiry["id"], _external=True)],
+            ]),
         )
     owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
     if owner_row:
@@ -80123,8 +80171,14 @@ def join_restaurant_waitlist():
     if owner_to:
         send_email(
             owner_to, "New dinner waitlist request",
-            f"{name} ({email}) would like {desired_date or 'a date'}, party of {party_size or '?'}, "
-            f"but it's fully booked.\n\n{notes or ''}",
+            form_fields_letter([
+                ("Name", name), ("Email", email), ("Telephone", phone),
+                ("Dinner on", format_date_human(desired_date) if desired_date else ""),
+                ("Guests", party_size),
+            ], message=notes, message_label="Their note:", end=[
+                "The table was full that evening when they asked.",
+                ["The dinner waiting list:", url_for("admin_restaurant_waitlist", _external=True)],
+            ]),
         )
     conn.close()
     flash("You're on the waitlist — we'll reach out if a table opens up.", "success")
@@ -84687,10 +84741,23 @@ def join_workshop_waitlist():
     )
     conn.commit()
     owner_to = house_address_for(conn, "workshops")
+    wanted = conn.execute(
+        """SELECT workshops.title, workshop_sessions.start_date, workshop_sessions.end_date
+             FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.id = ?""", (session_id,)).fetchone()
     if owner_to:
         send_email(
             owner_to, "New workshop waitlist request",
-            f"{name} ({email}) would like a spot, party of {party_size or '?'}, but it's fully booked.\n\n{notes or ''}",
+            form_fields_letter([
+                ("Name", name), ("Email", email), ("Telephone", phone),
+                ("Retreat", wanted["title"] if wanted else ""),
+                ("Dates", format_date_range(wanted["start_date"], wanted["end_date"] or wanted["start_date"])
+                 if wanted else ""),
+                ("Guests", party_size),
+            ], message=notes, message_label="Their note:", end=[
+                "It was full when they asked.",
+                ["The retreats' waiting list:", url_for("admin_workshop_waitlist", _external=True)],
+            ]),
         )
     conn.close()
     flash("You're on the waitlist — we'll reach out if a spot opens up.", "success")

@@ -444,6 +444,42 @@ def _links(s, anon):
             m.retreats_from_price([{"price_per_person": 0}, {"price_per_person": None}]) is None)
 
 
+def _form_notices(s, anon):
+    """The owner, the same day: the form notices came as one sentence, "too annoying to copy paste -- make it
+    Name: Email: etc". A wedding enquiry, as the house receives it."""
+    s.section("5. A form's notice to the house: a line to each thing they gave")
+    sent = []
+    was_send, was_to = m.send_email, m.house_address_for
+    m.send_email = lambda to, subject, body, **k: sent.append((to, subject, body)) or True
+    m.house_address_for = lambda conn, area: "zzhouse@example.invalid"
+    try:
+        anon.post("/events/inquire", data=dict(
+            _harness.contact_form_fields(), event_type="wedding", contact_name=TAG + " Mathilde",
+            contact_email="zzbrief.mz@example.invalid", contact_phone="+33 6 12 34 56 78",
+            preferred_date="2027-09-18", guest_count="100", message="A September wedding."))
+    finally:
+        m.send_email, m.house_address_for = was_send, was_to
+    note = next((b for to, subj, b in sent if to == "zzhouse@example.invalid"), "")
+    fields = dict(re.findall(r"^([A-Z][A-Za-z ]+): (.+)$", note, re.M))
+    s.check("the house is told", bool(note), detail=str([x[1] for x in sent]))
+    s.check("name, email and telephone each on a line of their own",
+            fields.get("Name") == TAG + " Mathilde" and fields.get("Email") == "zzbrief.mz@example.invalid"
+            and fields.get("Telephone") == "+33 6 12 34 56 78", detail=note[:300])
+    s.check("the event, the date and how many, each on a line",
+            fields.get("Event") == "Wedding" and fields.get("Preferred date") == "18 September 2027"
+            and fields.get("Guests") == "100", detail=str(fields))
+    s.check("a question left empty says so", fields.get("Other date") == "not said")
+    s.check("their own words follow, under their own heading", "Their message:\nA September wedding." in note)
+    s.check("and the link opens this inquiry, not the list of them all",
+            re.search(r"Open the inquiry:\n\S+/admin/events/\d+$", note.rstrip()) is not None,
+            detail=note[-160:])
+    s.check("nothing of it run into a sentence", "inquired about" not in note)
+    conn = db()
+    conn.execute("DELETE FROM event_inquiries WHERE contact_name LIKE ?", (TAG + "%",))
+    conn.commit()
+    conn.close()
+
+
 def run():
     s = Suite("The website brief of 23 November 2026")
     oc, _ec, _owner, _emp = clients()
@@ -452,6 +488,7 @@ def run():
     _redirects(s, anon)
     _rooms(s, oc, anon)
     _links(s, anon)
+    _form_notices(s, anon)
     return s
 
 
