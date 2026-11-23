@@ -117,7 +117,7 @@ m = _harness.m
 # "Under restoration since 2013" gone with it. Read on every page listed.
 # 23 Nov 2026, on main meanwhile: 1ad191a, the owner's chosen reviews, on purpose.
 # Merged: the base is the merge, which holds both sets, each read on its own side.
-COPY_BASE = "MERGE"
+COPY_BASE = "4fd612f"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
