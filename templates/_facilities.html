@@ -4,9 +4,10 @@
    framed tiles inside an ornamental frame, each with its gilt drawing, the
    French name, the English and one line. The owner's facts only. Stay, Estate.
    facilities(dm, heading, eyebrow)   dm = the dining switch ('open' adds the dinner line)
+   breakfast_photo = [src, alt], drawn in the breakfast tile at the tile's width (/book, 23 Nov)
    ============================================================================= #}
 {% from '_illus.html' import illus %}
-{% macro facilities(dm='open', heading='What Is Included', eyebrow='Your Stay') %}
+{% macro facilities(dm='open', heading='What Is Included', eyebrow='Your Stay', breakfast_photo=None) %}
 <section class="g-sec g-facil-sec"><div class="g-wrap">
   <p class="g-fr">Les équipements <span class="g-fr__en">The facilities</span></p>
   <p class="g-eyebrow">{{ eyebrow }}</p>
@@ -29,7 +30,10 @@
         ('garden', 'Les jardins', 'The gardens', 'Ten acres of gardens and grounds'),
         ('terrace', 'Les terrasses', 'The terraces and barbecue', 'A glass of local wine, and long summer evenings'),
         ('laundry', 'La buanderie', 'Laundry and ironing', 'Facilities for guests')] %}
-      <li class="g-facil__i">
+      {%- set _photo = breakfast_photo if kind == 'breakfast' else None %}
+      <li class="g-facil__i{{ ' g-facil__i--photo' if _photo }}">
+        {#- 23 Nov (owner): a portrait photograph, 768x1024, so it stays the size of the tile -- never a band. -#}
+        {% if _photo %}<figure class="g-facil__photo">{{ pic(_photo[0], _photo[1], sizes='(min-width: 64rem) 16rem, (min-width: 48rem) 30vw, 33vw', cls='g-facil__img') }}</figure>{% endif %}
         <div class="g-facil__ill" aria-hidden="true">{{ illus(kind) }}</div>
         <p class="g-facil__fr" lang="fr">{{ fr }}</p>
         <p class="g-facil__en">{{ en }}</p>
