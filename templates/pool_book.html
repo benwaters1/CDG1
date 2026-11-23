@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Pool book{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Pool book</h1>
+  <a href="{{ url_for('export_pool_csv') }}" class="btn-ghost">The last year, as a file</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The water's checks as they are taken: free chlorine, pH, the temperature, whether you can see
+  the bottom, and what was done about anything out of range. This is the record kept for a pool
+  that guests use, and the one an inspector asks to see.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% set s = book.settings %}
+{% if not book.ranges_set %}
+<div class="alert-band">
+  <strong>No ranges are set, so no reading is being judged.</strong>
+  Checks are written down, and nobody is told whether they are all right.
+  {% if is_owner %}Set them below: your pool contractor or the ARS can give them for how this pool
+  is treated.{% else %}The owner sets them.{% endif %}
+</div>
+{% endif %}
+
+<form method="post" class="detail-card pool-check" id="pool-check">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="what" value="check">
+  <h2 class="section-heading">Check the water</h2>
+  <p class="upload-hint">
+    {% if book.season_start %}{{ book.today|length }} of {{ book.checks_a_day }} check{{ '' if book.checks_a_day == 1 else 's' }} today.
+    {% elif book.season_set %}Out of season: nothing is asked for, but a check can still be written down.
+    {% endif %}
+    Leave out anything you did not measure.
+  </p>
+  <div class="pool-check__grid">
+    <label class="pool-check__field">
+      <span class="field-label">Free chlorine, mg/L</span>
+      <input type="text" name="free_chlorine" inputmode="decimal" autocomplete="off"
+             data-min="{{ s.pool_chlorine_min }}" data-max="{{ s.pool_chlorine_max }}"
+             placeholder="{% if s.pool_chlorine_min or s.pool_chlorine_max %}{{ s.pool_chlorine_min or '…' }} to {{ s.pool_chlorine_max or '…' }}{% endif %}">
+    </label>
+    <label class="pool-check__field">
+      <span class="field-label">pH</span>
+      <input type="text" name="ph" inputmode="decimal" autocomplete="off"
+             data-min="{{ s.pool_ph_min }}" data-max="{{ s.pool_ph_max }}"
+             placeholder="{% if s.pool_ph_min or s.pool_ph_max %}{{ s.pool_ph_min or '…' }} to {{ s.pool_ph_max or '…' }}{% endif %}">
+    </label>
+    <label class="pool-check__field">
+      <span class="field-label">Water, &deg;C</span>
+      <input type="text" name="water_c" inputmode="decimal" autocomplete="off">
+    </label>
+    <label class="pool-check__field">
+      <span class="field-label">Swimmers since the last check</span>
+      <input type="number" name="swimmers" min="0" inputmode="numeric">
+    </label>
+  </div>
+  <fieldset class="pool-check__clear">
+    <legend class="field-label">Can you see the bottom at the deep end?</legend>
+    <label><input type="radio" name="clear" value="yes"> Yes, clear</label>
+    <label><input type="radio" name="clear" value="no" data-out> No</label>
+  </fieldset>
+  <input type="text" name="action_taken" maxlength="300" class="pool-check__action"
+         placeholder="Out of range: what was done? e.g. shock dose, pool closed to swimmers"
+         aria-label="If anything is out of range, what was done about it">
+  <input type="text" name="note" maxlength="200" placeholder="Anything else worth saying"
+         aria-label="Anything else worth saying">
+  <button type="submit" class="btn-primary pool-check__save">Write it down</button>
+</form>
+<script>
+/* Opens the box for what was done as soon as a reading is out of range.
+   Without this script the box is simply always there. */
+(function(){
+  var form = document.getElementById('pool-check');
+  if (!form) return;
+  form.classList.add('js-pool');
+  function judge(){
+    var out = false;
+    Array.prototype.forEach.call(form.querySelectorAll('input[data-min]'), function(el){
+      var v = parseFloat((el.value || '').replace(',', '.'));
+      var lo = parseFloat(el.dataset.min), hi = parseFloat(el.dataset.max);
+      var bad = !isNaN(v) && ((!isNaN(lo) && v < lo) || (!isNaN(hi) && v > hi));
+      el.classList.toggle('pool-check--bad', bad);
+      out = out || bad;
+    });
+    var cloudy = form.querySelector('input[data-out]');
+    out = out || (cloudy && cloudy.checked);
+    form.classList.toggle('pool-check--out', out);
+  }
+  form.addEventListener('input', judge);
+  form.addEventListener('change', judge);
+  judge();
+})();
+</script>
+
+<div class="detail-card">
+  <h2 class="section-heading">The last thirty days</h2>
+  {% if not book.readings %}
+  <div class="empty-state">Nothing checked in the last thirty days.</div>
+  {% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>When</th><th class="num">Chlorine</th><th class="num">pH</th>
+            <th class="num">&deg;C</th><th>Clear</th><th class="num">Swimmers</th>
+            <th>Who</th><th>What was done</th></tr>
+      </thead>
+      <tbody>
+        {% for x in book.readings %}
+        {% set r = x.row %}
+        <tr class="{{ 'row-alert' if x.problems }}">
+          <th scope="row">{{ local_datetime_str(r['read_at']) }}</th>
+          <td class="num">{{ '%g'|format(r['free_chlorine']) if r['free_chlorine'] is not none else '—' }}</td>
+          <td class="num">{{ '%g'|format(r['ph']) if r['ph'] is not none else '—' }}</td>
+          <td class="num">{{ '%g'|format(r['water_c']) if r['water_c'] is not none else '—' }}</td>
+          <td>{{ {1: 'yes', 0: 'no'}.get(r['clear'], '—') }}</td>
+          <td class="num">{{ r['swimmers'] if r['swimmers'] is not none else '—' }}</td>
+          <td>{{ r['who'] or '—' }}</td>
+          <td>
+            {% if x.problems %}<div class="upload-hint">{{ x.problems|join('; ') }}</div>{% endif %}
+            {% if x.unanswered %}
+            <form method="post" action="{{ url_for('answer_pool_reading', reading_id=r['id']) }}" class="fridge-answer">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="action_taken" maxlength="300" required
+                     placeholder="Nothing said yet: what was done?"
+                     aria-label="What was done about the check at {{ local_datetime_str(r['read_at']) }}">
+              <button type="submit" class="btn-mini">Save</button>
+            </form>
+            {% else %}{{ r['action_taken'] or '' }}{% endif %}
+            {% if r['note'] %}<div class="upload-hint">{{ r['note'] }}</div>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% if is_owner %}
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="what" value="settings">
+  <h2 class="section-heading">The season and the ranges</h2>
+  <p class="upload-hint">The season is the same days every year. Outside it nothing is asked for
+    and nothing reminds anyone. The ranges are what this pool's water should read; leave one blank
+    and that reading is written down but not judged.</p>
+  <div class="field-row-2">
+    <label><span class="field-label">Opens</span>
+      <input type="date" name="pool_open_from"
+             value="{% if season_from %}{{ '%04d-%02d-%02d'|format(this_year, season_from[0], season_from[1]) }}{% endif %}"></label>
+    <label><span class="field-label">Closes</span>
+      <input type="date" name="pool_open_to"
+             value="{% if season_to %}{{ '%04d-%02d-%02d'|format(this_year, season_to[0], season_to[1]) }}{% endif %}"></label>
+  </div>
+  <div class="field-row-2">
+    <label><span class="field-label">Free chlorine, lowest (mg/L)</span>
+      <input type="text" inputmode="decimal" name="pool_chlorine_min" value="{{ s.pool_chlorine_min }}"></label>
+    <label><span class="field-label">Free chlorine, highest (mg/L)</span>
+      <input type="text" inputmode="decimal" name="pool_chlorine_max" value="{{ s.pool_chlorine_max }}"></label>
+  </div>
+  <div class="field-row-2">
+    <label><span class="field-label">pH, lowest</span>
+      <input type="text" inputmode="decimal" name="pool_ph_min" value="{{ s.pool_ph_min }}"></label>
+    <label><span class="field-label">pH, highest</span>
+      <input type="text" inputmode="decimal" name="pool_ph_max" value="{{ s.pool_ph_max }}"></label>
+  </div>
+  <label><span class="field-label">Checks a day, in season</span>
+    <input type="number" name="pool_checks_a_day" min="1" max="12" value="{{ s.pool_checks_a_day or 2 }}"></label>
+  <button type="submit" class="btn-mini">Save</button>
+</form>
+{% endif %}
+
+{% endblock %}

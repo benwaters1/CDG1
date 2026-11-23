@@ -8271,6 +8271,29 @@ def init_db():
          "ALTER TABLE fridge_readings ADD COLUMN answered_by_user_id INTEGER"),
         ("fridge_readings_answered_at",
          "ALTER TABLE fridge_readings ADD COLUMN answered_at TEXT"),
+        # THE POOL BOOK (23 November 2026). The water's readings as somebody
+        # takes them: free chlorine, pH, the temperature, whether the bottom
+        # can be seen, how many were swimming, and what was done about a
+        # reading out of range -- the record French rules expect for a pool
+        # guests use, and that an inspector asks to see. Any of the four
+        # readings may be missing from a check; a check with none is refused.
+        ("pool_readings",
+         """CREATE TABLE IF NOT EXISTS pool_readings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                read_at TEXT NOT NULL,
+                free_chlorine REAL,
+                ph REAL,
+                water_c REAL,
+                clear INTEGER,
+                swimmers INTEGER,
+                action_taken TEXT,
+                note TEXT,
+                read_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                answered_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                answered_at TEXT,
+                created_at TEXT NOT NULL)"""),
+        ("pool_readings_when",
+         "CREATE INDEX IF NOT EXISTS pool_readings_when ON pool_readings(read_at)"),
     ):
         try:
             conn.execute(ddl)
@@ -9781,7 +9804,7 @@ NAV_AREAS = {
         "shift_handover", "mark_handover_read", "mileage",
         "kitchen_fridges", "kitchen_prep", "prep_item_done",
         "answer_fridge_reading", "fridge_unit_change", "kitchen_cleaning",
-        "cleaning_round_every",
+        "cleaning_round_every", "pool_book_page", "answer_pool_reading", "export_pool_csv",
         "pass_screen", "pass_guest_note", "pass_stock_ask", "pass_message",
         "room_access_page", "room_checks_page", "walk_room",
         "management_meters", "management_lost_property",
@@ -10446,6 +10469,7 @@ OWNER_MENU = [
                  ("maintenance_job", "maintenance_check")),
             _nav("report_problem", "Report a Problem", "pin", phone=True),
             _nav("manage_plans", "Plans", "folder", ("place_on_plan",)),
+            _nav("pool_book_page", "Pool Book", "wrench", ("answer_pool_reading",)),
         ]),
         ("What the house owns", [
             _nav("admin_assets", "Asset Register", "building"),
@@ -10584,6 +10608,7 @@ STAFF_MENU = [
             _nav("management_lost_property", "Lost Property", "shopping",
                  ("resolve_lost_property",)),
             _nav("management_meters", "Meter Readings", "building"),
+            _nav("pool_book_page", "Pool Book", "wrench", ("answer_pool_reading",)),
         ]),
     ]),
     ("me", "My Work", "shifts", (), (), [
@@ -39993,6 +40018,158 @@ def cleaning_rounds_due(conn, today=None):
     return out
 
 
+# ---------------------------------------------------------------------------
+# THE POOL BOOK (23 November 2026)
+#
+# The water's readings, kept the way the kitchen keeps its fridges: taken on a
+# phone, judged against a range the house sets, and anything out of range
+# answered with what was done. The ranges are the owner's to enter, not the
+# app's to guess -- they depend on how the pool is treated, and the pool's
+# contractor or the ARS gives them. Until a range is set, a reading is written
+# down and judged against nothing, and the page says so.
+#
+# The season is the owner's too, as two days of the year (stored "MM-DD"):
+# outside it nothing is asked for and nothing nags. With no season set the
+# book still takes readings, and never says one was missed.
+# ---------------------------------------------------------------------------
+POOL_SETTING_DEFAULTS = {
+    "pool_open_from": "",          # "MM-DD"
+    "pool_open_to": "",            # "MM-DD"
+    "pool_chlorine_min": "",       # free chlorine, mg/L
+    "pool_chlorine_max": "",
+    "pool_ph_min": "",
+    "pool_ph_max": "",
+    "pool_checks_a_day": "2",
+}
+# In season, the water not checked for this many days is on the owner home and
+# the task list.
+POOL_UNREAD_DAYS = 2
+
+
+def pool_number(raw):
+    """A reading as typed: "1,2", "7.4", "26°". None when it is not a number."""
+    text = (raw or "").strip().replace(",", ".").replace("°", "").replace("\u2212", "-")
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def pool_settings(conn):
+    out = dict(POOL_SETTING_DEFAULTS)
+    for row in conn.execute(
+            "SELECT key, value FROM app_settings WHERE key IN (%s)"
+            % ",".join("?" * len(POOL_SETTING_DEFAULTS)), tuple(POOL_SETTING_DEFAULTS)):
+        out[row["key"]] = row["value"] or ""
+    return out
+
+
+def _pool_md(value):
+    """ "MM-DD" as a (month, day) pair, or None."""
+    try:
+        month, day = (int(x) for x in (value or "").split("-"))
+        date(2024, month, day)          # a leap year, so 29 February is a day
+        return month, day
+    except (TypeError, ValueError):
+        return None
+
+
+def pool_season_start(settings, day):
+    """The day this season opened, if `day` is in it; None outside it or with
+    no season set. A season may run over the new year (from > to)."""
+    start, end = _pool_md(settings["pool_open_from"]), _pool_md(settings["pool_open_to"])
+    if not (start and end):
+        return None
+    here = (day.month, day.day)
+    if start <= end:
+        if not start <= here <= end:
+            return None
+        year = day.year
+    else:
+        if end < here < start:
+            return None
+        year = day.year if here >= start else day.year - 1
+
+    def _on(y, md):
+        try:
+            return date(y, *md)
+        except ValueError:              # 29 February in a year without one
+            return date(y, md[0], 28)
+    return _on(year, start)
+
+
+def pool_reading_problems(settings, row):
+    """What is wrong with one check, in words, against the house's ranges."""
+    out = []
+
+    def check(value, low_key, high_key, words, unit):
+        if value is None:
+            return
+        low, high = pool_number(settings[low_key]), pool_number(settings[high_key])
+        if low is not None and value < low:
+            out.append(f"{words} {value:g}{unit}, below {low:g}")
+        elif high is not None and value > high:
+            out.append(f"{words} {value:g}{unit}, above {high:g}")
+    check(row["free_chlorine"], "pool_chlorine_min", "pool_chlorine_max",
+          "free chlorine", " mg/L")
+    check(row["ph"], "pool_ph_min", "pool_ph_max", "pH", "")
+    if row["clear"] == 0:
+        out.append("the water was not clear")
+    return out
+
+
+def pool_book(conn, today=None, days=30):
+    """The last `days` of checks, each judged, and the state of today."""
+    today = today or house_today()
+    settings = pool_settings(conn)
+    rows = conn.execute(
+        """SELECT pool_readings.*, users.name AS who FROM pool_readings
+             LEFT JOIN users ON users.id = pool_readings.read_by_user_id
+            WHERE pool_readings.read_at >= ?
+            ORDER BY pool_readings.read_at DESC, pool_readings.id DESC""",
+        (house_moment(today - timedelta(days=days)),)).fetchall()
+    readings = []
+    for r in rows:
+        problems = pool_reading_problems(settings, r)
+        readings.append({"row": r, "problems": problems,
+                         "unanswered": bool(problems) and not (r["action_taken"] or "").strip()})
+    last = conn.execute("SELECT MAX(read_at) AS t FROM pool_readings").fetchone()["t"]
+    try:
+        per_day = max(1, int(settings["pool_checks_a_day"] or 2))
+    except ValueError:
+        per_day = 2
+    return {
+        "settings": settings, "readings": readings,
+        "today": [x for x in readings if house_date(x["row"]["read_at"]) == today],
+        "unanswered": [x for x in readings if x["unanswered"]],
+        "season_start": pool_season_start(settings, today),
+        "season_set": bool(_pool_md(settings["pool_open_from"])
+                           and _pool_md(settings["pool_open_to"])),
+        "ranges_set": any(settings[k] for k in ("pool_chlorine_min", "pool_chlorine_max",
+                                                 "pool_ph_min", "pool_ph_max")),
+        "last": house_date(last) if last else None,
+        "checks_a_day": per_day,
+    }
+
+
+def pool_problems(conn, today=None):
+    """What the owner home and the task list say about the pool.
+
+    unanswered: checks out of range in the last fortnight with nothing said.
+    unread:     in season, the last check (or the season's opening, if there
+                has been none since) this many days ago; None when not late.
+    """
+    today = today or house_today()
+    book = pool_book(conn, today, days=14)
+    unread = None
+    start = book["season_start"]
+    if start:
+        since = max(book["last"], start) if book["last"] else start
+        if (today - since).days >= POOL_UNREAD_DAYS:
+            unread = {"since": since, "never": not book["last"] or book["last"] < start}
+    return {"unanswered": book["unanswered"], "unread": unread}
+
+
 # The kitchen's part of the cleaning round: rounds whose area is this.
 KITCHEN_AREA = "Kitchen"
 
@@ -41361,6 +41538,25 @@ def owner_home_warnings(conn, today):
         add("warn", f"{n} kitchen cleaning job{'' if n == 1 else 's'} behind",
             "; ".join(f"{r['round']['what']} ({counted(-r['days'], 'day')} late)"
                       for r in behind[:4]) + ".", n, "kitchen_cleaning")
+
+    # THE POOL (23 November 2026): a check out of range with nothing said is
+    # a blocker, the water not checked in season a warning. Both close
+    # themselves.
+    try:
+        pp = pool_problems(conn, today)
+    except sqlite3.Error:
+        pp = {"unanswered": [], "unread": None}
+    if pp["unanswered"]:
+        n = len(pp["unanswered"])
+        add("blocker", f"{n} pool check{'' if n == 1 else 's'} out of range with nothing said",
+            "; ".join(f"{format_date_human(house_date_iso(x['row']['read_at']))}: "
+                      + ", ".join(x["problems"]) for x in pp["unanswered"][:3])
+            + ". Say what was done, beside the check.", n, "pool_book_page")
+    if pp["unread"]:
+        add("warn", "The pool water has not been checked",
+            ("Nothing checked since the season opened on "
+             if pp["unread"]["never"] else "Last checked ")
+            + format_date_human(pp["unread"]["since"].isoformat()) + ".", 1, "pool_book_page")
 
     # WHAT THE SPAM FILTER TOOK, so a real enquiry caught by it is seen
     # rather than lost. Since 9 November a Contact post with no name, no
@@ -47308,6 +47504,9 @@ PALETTE_PAGES = [
      "step free walking guest needs"),
     ("Fridge temperatures", "kitchen_fridges",
      "fridge freezer temperature cold storage haccp log reading"),
+    ("Pool book", "pool_book_page",
+     "pool swimming chlorine ph water temperature clear swimmers carnet sanitaire "
+     "ars inspection reading log"),
     ("Kitchen cleaning", "kitchen_cleaning",
      "kitchen clean cleaning oven ovens fridge dishwasher tablet cycle descale "
      "hygiene haccp plan de nettoyage last cleaned"),
@@ -90399,6 +90598,153 @@ def cleaning_round_every(round_id):
     return _cleaning_back()
 
 
+@app.route("/pool", methods=["GET", "POST"])
+@login_required
+def pool_book_page():
+    """The pool book: the water's checks, and what was done about any out of range."""
+    conn = get_db()
+    user = current_user()
+    if request.method == "POST" and request.form.get("what") == "settings":
+        if user["role"] != "owner":
+            conn.close()
+            abort(403)
+        values = {}
+        for key in ("pool_open_from", "pool_open_to"):
+            raw = (request.form.get(key, "") or "").strip()
+            # A date input gives the year as well; the season is the same
+            # days every year, so only the month and the day are kept.
+            md = raw[5:] if len(raw) == 10 else raw
+            values[key] = md if _pool_md(md) else ""
+        for key in ("pool_chlorine_min", "pool_chlorine_max", "pool_ph_min", "pool_ph_max"):
+            number = pool_number(request.form.get(key, ""))
+            values[key] = f"{number:g}" if number is not None else ""
+        for low, high, words in (("pool_chlorine_min", "pool_chlorine_max", "free chlorine"),
+                                 ("pool_ph_min", "pool_ph_max", "pH")):
+            if values[low] and values[high] and float(values[low]) > float(values[high]):
+                conn.close()
+                flash(f"The lowest {words} is above the highest. Swap them over?", "error")
+                return redirect(url_for("pool_book_page"))
+        per_day = (request.form.get("pool_checks_a_day", "") or "").strip()
+        values["pool_checks_a_day"] = per_day if per_day.isdigit() and 1 <= int(per_day) <= 12 else "2"
+        for key, value in values.items():
+            conn.execute("""INSERT INTO app_settings (key, value) VALUES (?, ?)
+                            ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                         (key, value))
+        log_audit(conn, "pool_settings_changed", None,
+                  f"season {values['pool_open_from'] or '?'} to {values['pool_open_to'] or '?'}")
+        conn.commit()
+        conn.close()
+        flash("The pool's season and ranges are saved.", "success")
+        return redirect(url_for("pool_book_page"))
+
+    if request.method == "POST":
+        reading = {
+            "free_chlorine": pool_number(request.form.get("free_chlorine", "")),
+            "ph": pool_number(request.form.get("ph", "")),
+            "water_c": pool_number(request.form.get("water_c", "")),
+            "clear": {"yes": 1, "no": 0}.get(request.form.get("clear", "")),
+        }
+        bad = [words for key, words, low, high in (
+                   ("free_chlorine", "free chlorine", 0, 20), ("ph", "pH", 0, 14),
+                   ("water_c", "the water's temperature", -5, 45))
+               if reading[key] is not None and not low <= reading[key] <= high]
+        if bad:
+            conn.close()
+            flash("That is not a reading the water could give: " + ", ".join(bad)
+                  + ". Nothing was written down.", "error")
+            return redirect(url_for("pool_book_page"))
+        if all(v is None for v in reading.values()):
+            conn.close()
+            flash("Nothing was read: give at least one of the readings.", "error")
+            return redirect(url_for("pool_book_page"))
+        swimmers = (request.form.get("swimmers", "") or "").strip()
+        action = (request.form.get("action_taken", "") or "").strip()[:300]
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO pool_readings (read_at, free_chlorine, ph, water_c, clear, swimmers,
+                       action_taken, note, read_by_user_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (now, reading["free_chlorine"], reading["ph"], reading["water_c"], reading["clear"],
+             int(swimmers) if swimmers.isdigit() else None, action or None,
+             (request.form.get("note", "") or "").strip()[:200] or None, user["id"], now))
+        problems = pool_reading_problems(pool_settings(conn), reading)
+        conn.commit()
+        conn.close()
+        if problems and not action:
+            flash("Written down. Out of range, with nothing written against it: "
+                  + "; ".join(problems) + ". Say what was done beside the check below.",
+                  "error")
+        else:
+            flash("Written down.", "success")
+        return redirect(url_for("pool_book_page"))
+
+    book = pool_book(conn)
+    conn.close()
+    overview = [
+        overview_cell("Checks today", len(book["today"]),
+                      sub=f"of {book['checks_a_day']}" if book["season_start"] else None),
+        overview_cell("Out of range, nothing said", len(book["unanswered"]),
+                      alert=bool(book["unanswered"])),
+        overview_cell("In season", "yes" if book["season_start"] else
+                      ("no" if book["season_set"] else "not set")),
+    ]
+    return render_template("pool_book.html", book=book, overview=overview,
+                           is_owner=(user["role"] == "owner"),
+                           season_from=_pool_md(book["settings"]["pool_open_from"]),
+                           season_to=_pool_md(book["settings"]["pool_open_to"]),
+                           this_year=house_today().year)
+
+
+@app.route("/pool/reading/<int:reading_id>/answer", methods=["POST"])
+@login_required
+def answer_pool_reading(reading_id):
+    """Say what was done about a check out of range, afterwards. Once."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM pool_readings WHERE id = ?", (reading_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    action = (request.form.get("action_taken", "") or "").strip()[:300]
+    if not action:
+        flash("Say what was done.", "error")
+    elif (row["action_taken"] or "").strip():
+        flash("Something is already written against that check.", "error")
+    else:
+        conn.execute(
+            """UPDATE pool_readings SET action_taken = ?, answered_by_user_id = ?,
+                      answered_at = ? WHERE id = ?""",
+            (action, current_user()["id"], datetime.now(timezone.utc).isoformat(), reading_id))
+        conn.commit()
+        flash("Written against the check.", "success")
+    conn.close()
+    return redirect(url_for("pool_book_page"))
+
+
+@app.route("/pool/book.csv")
+@login_required
+def export_pool_csv():
+    """The pool book as a file, every check of the last year: what an
+    inspector asks for, with what was done beside each one out of range."""
+    conn = get_db()
+    book = pool_book(conn, days=366)
+    conn.close()
+    fieldnames = ["when", "free_chlorine_mg_l", "ph", "water_c", "clear", "swimmers",
+                  "out_of_range", "what_was_done", "by", "note"]
+    rows = [{
+        "when": local_datetime_str(x["row"]["read_at"]),
+        "free_chlorine_mg_l": "" if x["row"]["free_chlorine"] is None else f"{x['row']['free_chlorine']:g}",
+        "ph": "" if x["row"]["ph"] is None else f"{x['row']['ph']:g}",
+        "water_c": "" if x["row"]["water_c"] is None else f"{x['row']['water_c']:g}",
+        "clear": {1: "yes", 0: "no"}.get(x["row"]["clear"], ""),
+        "swimmers": "" if x["row"]["swimmers"] is None else x["row"]["swimmers"],
+        "out_of_range": "; ".join(x["problems"]),
+        "what_was_done": x["row"]["action_taken"] or "",
+        "by": x["row"]["who"] or "",
+        "note": x["row"]["note"] or "",
+    } for x in reversed(book["readings"])]
+    return csv_response(fieldnames, rows, f"pool-book-{house_today_iso()}.csv")
+
+
 @app.route("/kitchen/cleaning", methods=["GET", "POST"])
 @login_required
 def kitchen_cleaning():
@@ -96349,6 +96695,7 @@ WATCH_TASK_KINDS = {
     "recap": "An atelier's recap drafted and waiting for you to send it",
     "whats_on": "What's On: events found to look at, or dates nothing has confirmed",
     "kitchen": "Kitchen cleaning due, or a fridge out of range or not read",
+    "pool": "The pool's water out of range, or not checked in season",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -99934,6 +100281,24 @@ def watch_task_findings(conn, today=None):
             + ".\n\nKitchen → Fridge Temperatures. Switch a unit off there if it is not in use.",
             today.isoformat(), "normal"))
     found.extend(take("kitchen", kitchen))
+
+    # THE POOL (23 November 2026), the same two, while they last.
+    pp = pool_problems(conn, today)
+    if pp["unanswered"]:
+        found.append((
+            "pool", "A pool check out of range with nothing said",
+            "; ".join(f"{format_date_human(house_date_iso(x['row']['read_at']))}: "
+                      + ", ".join(x["problems"]) for x in pp["unanswered"][:4])
+            + ".\n\nSay what was done, beside the check in the Pool Book.",
+            today.isoformat(), "high"))
+    if pp["unread"]:
+        found.append((
+            "pool", "Check the pool water",
+            ("Nothing checked since the season opened on "
+             if pp["unread"]["never"] else "Last checked ")
+            + format_date_human(pp["unread"]["since"].isoformat())
+            + ".\n\nThe House → Pool Book.",
+            today.isoformat(), "normal"))
 
     look = whats_on_to_look_at(conn, today)
     if look["new"] or look["unconfirmed"] or look["problems"]:
