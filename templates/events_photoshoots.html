@@ -9,6 +9,9 @@
    reading about weddings a bedroom -- the one thing the comment on that
    bar in public_base says it exists to avoid. #}
 {% set sticky_bar = 'events' %}
+{#- 23 Nov 2026: a photograph hero now, so the page is marked as one, as Stay and Contact are: the header and
+    the hero's button take the colours meant for a photograph (navy words on the light button, not white on it). -#}
+{% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
 {#- 9 Nov (the image layout brief, 4.5): the photographs through the picture components (_pictures.html, shown together
     on /design). Not one word changes. -#}
@@ -18,10 +21,10 @@
 {% from '_marks.html' import mark %}
 
 {#- 23 Nov 2026 (owner: "this is really not good"): the page opened on a plain navy band with a camera drawn off its
-    right edge. A photograph of a shoot that was made here instead: two pairs of shoes on an old flowered carpet,
-    which no other page shows. The page's own slot in Admin > Site images ("Photoshoots and film") replaces it. -#}
+    right edge. A photograph instead: the owner asked for food (23 Nov), so a mille-feuille plated on the house's own
+    plate, which no other page shows. The page's own slot in Admin > Site images ("Photoshoots and film") replaces it. -#}
 <section class="g-hero g-hero--short">
-  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ site_image('events.photoshoots', url_for('static', filename='img/retreats/dancing-shoes.jpg')) }}" alt="A fashion shoot in a salon: two pairs of shoes on an old flowered carpet before a gilded settee">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ site_image('events.photoshoots', url_for('static', filename='img/retreats/mille-feuille.jpg')) }}" style="object-position: center 55%" alt="A mille-feuille with strawberries, a berry sorbet and flowers, on a Château de Gudanes plate">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Ariège · Location Hire</p>

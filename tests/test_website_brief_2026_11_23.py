@@ -420,7 +420,7 @@ def _links(s, anon):
     shoot = anon.get("/events/photoshoots").get_data(as_text=True)
     hero = re.search(r'<img[^>]*class="g-hero__img"[^>]*>', shoot)
     s.check("/events/photoshoots opens on a photograph, not a plain band",
-            hero is not None and ("dancing-shoes" in hero.group(0) or "/room-photos/" in hero.group(0)),
+            hero is not None and ("mille-feuille" in hero.group(0) or "/room-photos/" in hero.group(0)),
             detail=hero.group(0)[:160] if hero else "no hero photograph")
 
     s.section("Its prices are the site's own, and follow the owner's changes")

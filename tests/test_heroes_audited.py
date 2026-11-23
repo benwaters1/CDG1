@@ -34,10 +34,12 @@ from _harness import Suite
 import _harness
 
 m = _harness.m
-PAGES = ("/events/weddings", "/events/private")
+PAGES = ()  # all three open on a photograph since 23 Nov 2026 (below); the art hero's rules are still held
 # 23 Nov 2026, later (owner: "this is really not good"): /events/photoshoots opens on a photograph now, the
-# a shoot made here, in a photograph hero's own frame (.g-hero__in), so none of the navy art's faults can reach it.
-PHOTO_PAGES = ("/events/photoshoots",)
+# a plate from the kitchen, in a photograph hero's own frame (.g-hero__in), so none of the navy art's faults can reach it.
+# Weddings and private events followed the same evening ("i need the wedding and the workshop sections really
+# good its marketing"): the candlelit table, and the salon open onto the mountains.
+PHOTO_PAGES = ("/events/weddings", "/events/private", "/events/photoshoots")
 
 
 def _hex(value):

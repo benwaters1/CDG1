@@ -8,6 +8,9 @@
    reading about weddings a bedroom -- the one thing the comment on that
    bar in public_base says it exists to avoid. #}
 {% set sticky_bar = 'events' %}
+{#- 23 Nov 2026: a photograph hero now, so the page is marked as one, as Stay and Contact are: the header and
+    the hero's button take the colours meant for a photograph (navy words on the light button, not white on it). -#}
+{% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
 {#- 9 Nov (the image layout brief, 4.5): the photographs through the picture components (_pictures.html, shown together
     on /design). Not one word changes. -#}
@@ -17,14 +20,17 @@
 {% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 
-<section class="g-hero g-hero--short g-hero--art">
+{#- 23 Nov 2026 (owner, the same review): a photograph to open on rather than the navy band. The salon with its
+    three tall windows open onto the mountains: a room of your own for a few days. The page's own slot in Admin >
+    Site images ("Private events") replaces it. -#}
+<section class="g-hero g-hero--short">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ site_image('events.private', url_for('static', filename='img/xx/salon-floral-curtains.jpg')) }}" style="object-position: center 45%" alt="Two armchairs and a small table in a salon, three tall windows open onto the mountains">
   <div class="g-hero__wash"></div>
-  <div class="g-hero__art" aria-hidden="true">{{ illus('wine') }}</div>
-  <div class="g-wrap">
+  <div class="g-hero__in">
     <p class="g-hero__eyebrow">Ariège · Private Hire</p>
     <h1 class="g-hero__title">A Private Château for a Few Days</h1>
     <p class="g-hero__lede">Birthdays, anniversaries, milestone dinners, and reasons that need no name.</p>
-    <p><a href="#enquire" class="g-btn g-btn--solid">Ask about private hire</a></p>
+    <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Ask about private hire</a></p>
   </div>
 </section>
 
