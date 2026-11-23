@@ -2312,6 +2312,41 @@ stroke='%238F8C78' stroke-width='1'>\
 .g-searched__clear:hover{ border-bottom-color: var(--stone); }
 @media (max-width: 34rem){ .g-searched__clear{ margin-left: 0; } }
 
+/* An atelier on the nights a guest searched (owner, 23 Nov 2026): offered, not only given as the reason
+   (_atelier_on_your_dates.html). One column in the room page's booking panel; beside its photograph under
+   /book's search. Gilt-ruled like the search band it follows, on the paper white so it reads as an offer. */
+.g-onyour{
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 0;
+  background: var(--white); border: 1px solid var(--gilt);
+  margin: var(--s5) 0 0; overflow: hidden;
+}
+.g-onyour__pic{ display: block; aspect-ratio: 16 / 9; overflow: hidden; background: var(--stone-pale); }
+.g-onyour__pic img, .g-onyour__img{ display: block; width: 100%; height: 100%; object-fit: cover; }
+.g-onyour__body{ padding: var(--s5); }
+.g-onyour__k{
+  margin: 0 0 var(--s2); font-family: var(--ui); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gold-deep, var(--stone));
+}
+.g-onyour__t{ margin: 0; font-family: var(--display); font-weight: 400; font-size: 28px; line-height: 1.15; color: var(--blue-deep); }
+.g-onyour__when{ margin: var(--s2) 0 var(--s3); font-family: var(--ui); font-size: 14px; color: var(--ink-soft); }
+.g-onyour__p{ margin: 0 0 var(--s3); }
+.g-onyour__price{ margin: 0 0 var(--s4); font-family: var(--ui); font-size: 14px; font-weight: 600; color: var(--blue-deep); }
+.g-onyour__acts{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s5); margin: 0; }
+.g-onyour__acts .g-btn + .g-btn{ margin-top: 0; }
+.g-onyour__or{ margin: var(--s4) 0 0; padding-top: var(--s3); border-top: 1px solid var(--line); font-size: 15px; color: var(--ink-soft); }
+.g-onyour__or a{ color: var(--blue-deep); border-bottom: 1px solid var(--line); }
+.g-onyour__or a:hover{ border-bottom-color: var(--stone); }
+.g-onyour-box[hidden]{ display: none; }
+/* In the room page's navy booking panel the card keeps its own ink: the panel's pale words and gilt links
+   are for navy, and on the card's paper they all but vanish. */
+.g .g-onyour{ color: var(--ink); }
+.g .g-dossier .g-onyour a:not(.g-btn){ color: var(--blue-deep); }
+.g .g-dossier .g-onyour a:not(.g-btn):hover{ color: var(--blue-deep); border-bottom-color: var(--stone); }
+@media (min-width: 48rem){
+  .g-searched ~ .g-onyour{ grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+  .g-searched ~ .g-onyour .g-onyour__pic{ aspect-ratio: auto; min-height: 100%; }
+}
+
 
 /* ==========================================================================
    HEADER LEGIBILITY

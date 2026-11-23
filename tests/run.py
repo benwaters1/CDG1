@@ -640,6 +640,12 @@ SUITES = [
     # 23 November 2026 (site audit): the heroes -- the event pages' navy art and its button, /history's postcard
     # and dates, and the currency control over a photograph.
     "test_heroes_audited",
+    # 23 November 2026: the come-back letters (a year on, before an anniversary) and the review
+    # invitation readied (owner: "yes to 2 just ready the email first", "4 yes we will do that").
+    "test_come_back_letters",
+    # 23 November 2026 (owner): an atelier on the dates a guest searched is offered, on /book, a room's page
+    # and its live quote, not only given as the reason every room says no.
+    "test_atelier_on_your_dates",
     # 9 November 2026: the address opens the map and sits under the home page's
     # hero, and every public page measured for its margins at three widths.
     "test_house_address",

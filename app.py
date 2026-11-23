@@ -505,6 +505,14 @@ AUTOMATION_SETTING_DEFAULTS = {
     # once the owner has written the letter and switched this on.
     "automation_checkin_letter_enabled": "0",
     "automation_checkin_letter_days_before": "3",
+    # OFF (23 Nov 2026): the two come-back letters, a year on from a stay and
+    # before an anniversary a guest told us. They ship with wording the owner
+    # reads at Guest emails; he switches them on once he has. See
+    # run_year_on_job and run_anniversary_letter_job.
+    "automation_year_on_enabled": "0",
+    "automation_year_on_days_before": "30",
+    "automation_anniversary_letter_enabled": "0",
+    "automation_anniversary_letter_days_before": "30",
     "automation_backup_interval_hours": "24",
     "automation_social_schedule_enabled": "1",
     # OFF until somebody turns it on. The switch is the last thing between a
@@ -2490,13 +2498,38 @@ DEFAULT_EMAIL_TEMPLATES = [
      "Hi {guest_name},\n\nA friendly reminder that the balance of €{balance_amount} for {workshop_title} "
      "({dates}) is due by {balance_due_date}.\n"
      "Manage your registration and pay online: {manage_url}\n\n— Château de Gudanes"),
+    # 23 Nov 2026 (owner: "yes to 2 just ready the email first"): reworded to
+    # be ready for the day the review page is set. The wording it replaces is
+    # REVIEW_INVITATION_UNTIL_23NOV, swapped by init_db only where nobody edited it.
     ("review_invitation", "Rooms: Would you say so publicly?",
-     "Would you tell somebody else about Ch\u00e2teau de Gudanes?",
-     "Hi {guest_name},\n\nThank you for telling us how your stay went \u2014 it "
-     "meant a lot to read.\n\nIf you have another minute, saying the same thing "
-     "where other people can read it helps us more than almost anything "
-     "else:\n{review_url}\n\nAnd if you would rather not, that is perfectly "
-     "all right \u2014 we will not ask again.\n\n\u2014 Ch\u00e2teau de Gudanes"),
+     "Would you tell others about your stay at Ch\u00e2teau de Gudanes?",
+     "Hi {guest_name},\n\nThank you for telling us about your stay. We read every "
+     "word, and yours meant a great deal to us.\n\nMany people choose where to stay "
+     "by what other guests have written. If you have a minute to say the same thing "
+     "where others can read it, it would help the ch\u00e2teau more than almost "
+     "anything else:\n{review_url}\n\nIf you would rather not, that is perfectly all "
+     "right, and we will not ask again.\n\nWith our thanks, and in the hope of "
+     "welcoming you back,\n\u2014 Ch\u00e2teau de Gudanes"),
+    # 23 Nov 2026: the two come-back letters (owner: "4 yes we will do that").
+    # Each goes once, held at Guest emails until the owner approves its words,
+    # and only with its Automation switch on. See run_year_on_job.
+    ("room_year_on", "Rooms: A year since their stay",
+     "Almost a year since your stay at Ch\u00e2teau de Gudanes",
+     "Hi {guest_name},\n\nIt is almost a year since you stayed with us in "
+     "{room_name}, in {stay_month}.\n\nThe ch\u00e2teau is still being brought back "
+     "to life, room by room, and we think often of the guests who have shared it "
+     "with us along the way.\n\nIf you would like to come back \u2014 at the same "
+     "time of year, or whenever suits you \u2014 you can see which nights are free "
+     "and book here:\n{book_url}\n\nWe would love to welcome you home to Gudanes."
+     "\n\n\u2014 Ch\u00e2teau de Gudanes"),
+    ("guest_anniversary_ahead", "Guests: Before their anniversary",
+     "Your anniversary, at Ch\u00e2teau de Gudanes?",
+     "Hi {guest_name},\n\nYou once told us that your anniversary falls on "
+     "{anniversary_date}, and we have kept it in mind.\n\nIf you would like to "
+     "spend it somewhere a little out of the ordinary \u2014 a room in a ch\u00e2teau "
+     "in the Pyrenees, breakfast in the morning, the mountains all around \u2014 we "
+     "would be delighted to have you:\n{book_url}\n\nAnd if you already have plans, "
+     "we wish you both a very happy anniversary.\n\n\u2014 Ch\u00e2teau de Gudanes"),
     ("room_feedback_request", "Rooms: How was your stay?",
      "How was your stay at Ch\u00e2teau de Gudanes?",
      "Hi {guest_name},\n\nWe hope the ch\u00e2teau treated you well. If you have a "
@@ -2849,6 +2882,37 @@ for _key, _label, _subject, _body in DEFAULT_EMAIL_TEMPLATES:
     _fixed.append((_key, _label, _ns, _nb))
 DEFAULT_EMAIL_TEMPLATES = _fixed
 del _fixed
+# 23 Nov 2026: the review invitation as it shipped until then. init_db puts the
+# new wording in only where a database still holds this word for word, in any
+# form the 5 Oct rewrites could have stored it, and nobody has edited it.
+REVIEW_INVITATION_UNTIL_23NOV = (
+    "Would you tell somebody else about Château de Gudanes?",
+    "Hi {guest_name},\n\nThank you for telling us how your stay went — it "
+    "meant a lot to read.\n\nIf you have another minute, saying the same thing "
+    "where other people can read it helps us more than almost anything "
+    "else:\n{review_url}\n\nAnd if you would rather not, that is perfectly "
+    "all right — we will not ask again.\n\n— Château de Gudanes")
+EMAIL_WORDING_REPLACED_23NOV = {"review_invitation": {
+    REVIEW_INVITATION_UNTIL_23NOV,
+    _email_wording_5oct("review_invitation", *REVIEW_INVITATION_UNTIL_23NOV),
+    _email_wording_as_of_5oct("review_invitation", *REVIEW_INVITATION_UNTIL_23NOV),
+}}
+
+
+def apply_letter_wording_2026_11_23(conn):
+    """Put the 23 Nov wording in where a stored letter still holds what it
+    replaces word for word and nobody has edited it. Returns how many changed."""
+    shipped = {k: (sj, bd) for k, _l, sj, bd in DEFAULT_EMAIL_TEMPLATES}
+    changed = 0
+    for template_key, olds in EMAIL_WORDING_REPLACED_23NOV.items():
+        new_subject, new_body = shipped[template_key]
+        for old_subject, old_body in olds:
+            changed += conn.execute(
+                "UPDATE email_templates SET subject = ?, body = ? WHERE template_key = ? "
+                "AND updated_at IS NULL AND subject = ? AND body = ?",
+                (new_subject, new_body, template_key, old_subject, old_body)).rowcount
+    conn.commit()
+    return changed
 # What each template is called, for anything that names a letter.
 EMAIL_TEMPLATE_LABELS = {k: label for k, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
 # Letters nothing sends any more, whose stored rows init_db removes.
@@ -8249,6 +8313,23 @@ def init_db():
         # notification.
         ("restaurant_bookings_instant_held",
          "ALTER TABLE restaurant_bookings ADD COLUMN instant_held TEXT"),
+        # The two come-back letters (23 Nov 2026), one row per letter written:
+        # which kind, to which address, for which year, so a guest hears each
+        # at most once a year whatever runs twice. The token is their way to
+        # stop them, read by the same unsubscribe page as a campaign's.
+        ("come_back_letters", """CREATE TABLE IF NOT EXISTS come_back_letters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL CHECK(kind IN ('year_on','anniversary')),
+            email TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            guest_name TEXT,
+            booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+            guest_id INTEGER REFERENCES guests(id) ON DELETE SET NULL,
+            outcome TEXT NOT NULL,
+            unsubscribe_token TEXT NOT NULL UNIQUE,
+            written_at TEXT NOT NULL,
+            UNIQUE(kind, email, year)
+        )"""),
         # THE KITCHEN'S CLEANING, KEPT (23 November 2026). cleaning_rounds
         # holds only when each job was LAST done, and the question the chef
         # or an inspector asks is when it was done before that. One row each
@@ -8863,6 +8944,8 @@ def init_db():
             "AND subject = ? AND body = ?",
             (new_subject, new_body, template_key, old_subject, old_body))
     conn.commit()
+    # 23 Nov: the review invitation, readied for the day its review page is set.
+    apply_letter_wording_2026_11_23(conn)
     # 16 Oct: five guest rooms and no new beds, in stored letters too.
     apply_letter_words_2026_10_16(conn)
 
@@ -19607,6 +19690,151 @@ def atelier_holding_the_house(conn, arrival, departure):
             return None
         return {"start_date": a.isoformat(), "end_date": b.isoformat()}
     return None
+
+
+# ---------------------------------------------------------------------------
+# AN ATELIER ON THE DATES A GUEST ASKED FOR (owner, 23 Nov 2026: "when someone
+# enters dates but theres a wrkshop on i want to point them there" -- "do a
+# proper job of it though"). An atelier has the whole house, so every room
+# says no on its nights, and a guest told only that goes elsewhere on the very
+# nights the house is offering more than a room. So the refusal names the
+# atelier, what it includes and costs, its places and the way to take one, and
+# the stays of the guest's own length either side of it where a room can be
+# had. Drawn by templates/_atelier_on_your_dates.html, on /book and on a
+# room's own page, and from /api/quote as the room page's dates change.
+#
+# A PUBLIC atelier only. A private stay is reached by its own link and named
+# nowhere else, so on its nights the page says only that the house is taken.
+# ---------------------------------------------------------------------------
+# The house's own photographs of the ateliers it runs, by a word of the title,
+# as the ateliers page has them; an atelier's own upload comes first.
+ATELIER_CARD_PHOTOS = (("Noël", "retreats/noel-at-gudanes-800.jpg"),
+                       ("Seven", "retreats/film-under-the-stars-800.jpg"),
+                       ("Antique", "xx/shelves-of-china.jpg"),
+                       ("Cooking", "xx/tomato-tart-above.jpg"))
+ATELIER_CARD_PHOTO_ELSE = "retreats/guests-toasting.jpg"
+# What the room page's price box says above the card, in place of "Those dates
+# are already reserved", which is true and sends the guest away.
+ATELIER_NIGHTS_WORDS = "On those nights the château is given over to an atelier."
+
+
+def atelier_included_words(workshop):
+    """What an atelier includes, in one sentence: the words its letters use
+    (workshop_email_context reads this), so a guest is promised the same thing
+    on the booking page as in their confirmation."""
+    keys = workshop.keys()
+    words = ("Everything is included, the full experience: every meal, "
+             "the château's wines and spirits and a tour of the "
+             "château")
+    if "excursions_included" in keys and workshop["excursions_included"]:
+        words += ", and the excursions"
+    return words + "."
+
+
+def atelier_card_photo(workshop):
+    """The photograph an atelier's card carries: its own upload, else the
+    house's photograph of the atelier its title names, else the long table."""
+    if workshop["photo_filename"]:
+        return url_for("room_photo", filename=workshop["photo_filename"])
+    for word, name in ATELIER_CARD_PHOTOS:
+        if word in (workshop["title"] or ""):
+            return url_for("static", filename="img/" + name)
+    return url_for("static", filename="img/" + ATELIER_CARD_PHOTO_ELSE)
+
+
+def a_room_can_be_had(conn, arrival, departure, party_size=None):
+    """Whether any room on sale takes this party on these nights, by the same
+    answer each room's card on /book gives (room_offer)."""
+    for room in conn.execute("SELECT * FROM rooms WHERE active = 1").fetchall():
+        if room_offer(conn, room, arrival, departure, party_size)[0]:
+            return True
+    return False
+
+
+def ateliers_on_these_nights(conn, arrival, departure, party_size=None, today=None):
+    """[offer] for each public atelier holding the house on any night of this
+    stay, soonest first -- what the card shows, every value a plain string or
+    None so /api/quote can send it as it is.
+
+    The nights are the ones the gate refuses for (sessions_holding_the_house,
+    the first night to the night before the atelier ends), so the card is shown
+    exactly when an atelier is the reason, and never for a sitting called off.
+    """
+    if not (arrival and departure and departure > arrival):
+        return []
+    today = today or house_today()
+    nights = (departure - arrival).days
+    try:
+        party = int(party_size) if party_size not in (None, "") else None
+    except (TypeError, ValueError):
+        party = None
+    offers = []
+    for row in sessions_holding_the_house(conn, arrival, departure):
+        if row["is_private"]:
+            continue
+        session = conn.execute("SELECT * FROM workshop_sessions WHERE id = ?",
+                               (row["id"],)).fetchone()
+        workshop = conn.execute("SELECT * FROM workshops WHERE id = ?",
+                                (session["workshop_id"],)).fetchone() if session else None
+        # An atelier taken off the public pages is not offered from this one.
+        if not workshop or not workshop["active"]:
+            continue
+        start = parse_date(session["start_date"])
+        end = parse_date(session["end_date"]) or start
+        if not start:
+            continue
+        last_night = max(start, end - timedelta(days=1))
+        if not (arrival <= last_night and start < departure):
+            continue
+        # A place can be taken until the day it starts (public_sittings).
+        open_to_join = start >= today
+        left = workshop_session_remaining_capacity(conn, session["id"]) if open_to_join else 0
+        if not open_to_join:
+            lead = ("The château is given over to this atelier on those nights, and its "
+                    "guests have the rooms.")
+            places, register_url = "", None
+        elif left > 0:
+            lead = ("The château is given over to this atelier on those nights, so its "
+                    "rooms are part of it rather than let by the night. Come for the atelier "
+                    "instead.")
+            places = f"{left} place{'' if left == 1 else 's'} left"
+            register_url = workshop_register_url(session["id"])
+        else:
+            lead = ("The château is given over to this atelier on those nights, so its "
+                    "rooms are part of it rather than let by the night.")
+            places, register_url = "This sitting is full", None
+        # The stays of their own length either side: ending the day it begins,
+        # and starting the day its guests leave. Offered only where a room can
+        # be had for this party, so neither link is a second refusal.
+        around = []
+        after = last_night + timedelta(days=1)
+        for a, d in ((start - timedelta(days=nights), start), (after, after + timedelta(days=nights))):
+            if a < today or not a_room_can_be_had(conn, a, d, party):
+                continue
+            args = {"arrival": a.isoformat(), "departure": d.isoformat()}
+            if party:
+                args["party_size"] = party
+            around.append({
+                "words": (f"{nights} night{'' if nights == 1 else 's'}, "
+                          f"{format_date_range(a.isoformat(), d.isoformat())}"),
+                "url": url_for("book_rooms", **args) + "#rooms"})
+        offers.append({
+            "session_id": session["id"],
+            "title": workshop["title"],
+            "dates": format_date_range(session["start_date"], session["end_date"] or session["start_date"]),
+            "nights_label": workshop["nights_label"] or "",
+            "lead": lead,
+            "included": atelier_included_words(workshop) if open_to_join else "",
+            "price": (f"{euro(workshop['price_per_person'])} per person"
+                      if open_to_join and workshop["price_per_person"] else ""),
+            "places": places,
+            "register_url": register_url,
+            "page_url": workshop_page_url(workshop),
+            "page_words": "See its other dates" if open_to_join and left <= 0 else "About the atelier",
+            "photo": atelier_card_photo(workshop),
+            "around": around,
+        })
+    return offers
 
 
 # What a guest is told when their dates are taken. The reasons below are
@@ -31827,6 +32055,13 @@ def campaign_unsubscribe(token):
         "SELECT recipient_email, recipient_name FROM campaign_sends WHERE unsubscribe_token = ?",
         (token,),
     ).fetchone()
+    # Or a come-back letter's (23 Nov 2026): the same way out, so a guest who
+    # presses Unsubscribe under one is off every letter the house writes for its
+    # own reasons, as they would expect.
+    if not row:
+        row = conn.execute(
+            """SELECT email AS recipient_email, guest_name AS recipient_name
+                 FROM come_back_letters WHERE unsubscribe_token = ?""", (token,)).fetchone()
     if not row:
         conn.close()
         return render_template("unsubscribe.html", state="unknown"), 404
@@ -33090,6 +33325,8 @@ LETTER_TRIGGERS = {
     'workshop_moved': ('Sent when staff move a registration to other dates with "tell the guest" ticked.'),
     'workshop_balance_reminder': ('Sent by the daily atelier-balance job, once per confirmed unpaid registration, when the balance falls due within 7 days (overdue included). Also sent when staff press Send pay link on the Balances page.'),
     'review_invitation': ('Sent by the daily job to a guest whose stay feedback was glowing, once, 2 or more days after they gave it (only once a review page link is set). Also sent when staff press Ask for a review on a feedback entry.'),
+    'room_year_on': ('Sent between 09:00 and 12:00, once a year at most to an address, to a guest whose stay a year ago is coming round within the days set under Automation (30 as shipped), unless they are booked to come again. Needs its Automation switch on.'),
+    'guest_anniversary_ahead': ('Sent between 09:00 and 12:00, once a year, to a guest whose profile carries an anniversary falling within the days set under Automation (30 as shipped), unless they are booked to stay around it. Needs its Automation switch on.'),
     'room_feedback_request': ('Sent by the daily job 3 days after departure to a confirmed stay with no feedback. Also sent at once when staff check a stay out at the desk. Once per stay.'),
     'workshop_feedback_request': ('Sent by the daily job once per confirmed registration, on or after the day after the atelier ends.'),
     'workshop_recap': ("Sent only when staff press Send recap on a sitting's page after the atelier, to each confirmed guest. Never sent until written."),
@@ -55453,6 +55690,11 @@ def book_rooms():
     # day after the atelier ends. Only asked when every room said no.
     blocking_atelier = (atelier_holding_the_house(conn, arrival, departure)
                         if nothing_available else None)
+    # And when that atelier is one a guest can come to, the card that offers it
+    # (owner, 23 Nov 2026): what it is, what it includes and costs, its places,
+    # and the stays of their length either side. Asked only after a search.
+    ateliers = (ateliers_on_these_nights(conn, arrival, departure, party_size)
+                if searched else [])
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
     # Computed before the connection closes. Only when nobody has searched:
@@ -55488,7 +55730,7 @@ def book_rooms():
         resting=resting,
         stay_nights=stay_nights, room_quotes=room_quotes,
         nothing_available=nothing_available, next_free=next_free,
-        blocking_atelier=blocking_atelier,
+        blocking_atelier=blocking_atelier, ateliers=ateliers,
         weather=weather,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
@@ -55854,6 +56096,14 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
 
     if nights < 1:
         quote.update(available=False, reason="Departure must be after arrival.")
+        return quote
+    # An atelier on these nights is THE answer, ahead of a minimum stay or the
+    # size of the party: either of those sends a guest off adjusting nights the
+    # house is not letting at all, when it is offering the atelier on them
+    # (owner, 23 Nov 2026). The room page draws the card from "ateliers".
+    ateliers = ateliers_on_these_nights(conn, arrival, departure, party_size)
+    if ateliers:
+        quote.update(available=False, reason=ATELIER_NIGHTS_WORDS, ateliers=ateliers)
         return quote
     rules = stay_rules(conn, room, arrival, departure)
     if nights < rules["min_nights"]:
@@ -56291,8 +56541,12 @@ def book_room(room_id):
             # line, and a query on a closed handle is not a blank prefill,
             # it is a 500 on the one page where giving up costs a booking.
             prefill = book_room_prefill(request.form, conn)
+            # The atelier on these nights, if that is what refused them -- the
+            # same card the price box drew before they pressed Book.
+            ateliers = (ateliers_on_these_nights(conn, arrival, departure, party_size)
+                        if arrival and departure and departure > arrival else [])
             conn.close()
-            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **prefill)
+            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, ateliers=ateliers, **prefill)
 
         nights = (departure - arrival).days
         room_total = compute_room_total(conn, room, arrival, departure)
@@ -64935,6 +65189,8 @@ EMAIL_TEMPLATE_TAGS = {
                                         "reference_code", "refund_note"),
     "restaurant_waitlist_opening": ("book_url", "desired_date", "name", "party_size"),
     "review_invitation": ("guest_name", "review_url"),
+    "room_year_on": ("book_url", "guest_name", "room_name", "stay_month"),
+    "guest_anniversary_ahead": ("anniversary_date", "book_url", "guest_name"),
     "room_feedback_request": ("feedback_url", "guest_name", "room_name"),
     "room_waitlist_opening": ("book_url", "desired_arrival", "desired_departure", "name"),
     "workshop_moved": ("included_note", "balance_amount", "balance_due_date", "balance_line",
@@ -65070,6 +65326,8 @@ REQUIRED_MERGE_TAGS = {
                            "amount": "it is the sum being asked for"},
     "room_feedback_request": {"feedback_url": "it is the form they are being asked to fill in"},
     "review_invitation": {"review_url": "it is where they leave the review"},
+    "room_year_on": {"book_url": "it is how they come back"},
+    "guest_anniversary_ahead": {"book_url": "it is how they come for it"},
     "event_quote": {"quote_url": "it is where they read and accept the quote"},
     "room_waitlist_opening": {"book_url": "it is how they take the room"},
     "restaurant_waitlist_opening": {"book_url": "it is how they take the table"},
@@ -65360,6 +65618,7 @@ _LETTER_EYEBROWS = {
                   "review_invitation"),
     "Your bookings": ("guest_link_updated",),
     "News from the château": ("newsletter_welcome",),
+    "Come back to Gudanes": ("room_year_on", "guest_anniversary_ahead"),
     "For the house": ("house_payment_received",),
 }
 LETTER_EYEBROW = {key: label for label, keys in _LETTER_EYEBROWS.items() for key in keys}
@@ -65379,6 +65638,7 @@ LETTER_HERO = {
     "restaurant_confirmed": "hero-table.jpg", "restaurant_waitlist_opening": "hero-table.jpg",
     "event_inquiry_received": "hero-facade.jpg", "event_inquiry_confirmed": "hero-facade.jpg",
     "event_quote": "hero-facade.jpg", "newsletter_welcome": "hero-house.jpg",
+    "room_year_on": "hero-bedroom.jpg", "guest_anniversary_ahead": "hero-house.jpg",
 }
 
 
@@ -67407,12 +67667,8 @@ def workshop_email_context(booking):
     # rows from several routes, and one that predates these columns would
     # raise rather than quietly tell the guest the wrong thing.
     has = booking.keys()
-    included = ["Everything is included, the full experience: every meal, "
-                "the ch\u00e2teau's wines and spirits and a tour of the "
-                "ch\u00e2teau"]
-    if "excursions_included" in has and booking["excursions_included"]:
-        included[0] += ", and the excursions"
-    included[0] += "."
+    # One sentence, shared with the booking page's atelier card.
+    included = [atelier_included_words(booking)]
     if "transfers_included" in has and booking["transfers_included"]:
         included.append(
             "We meet you at 11am in central Toulouse on the first day, and "
@@ -103215,6 +103471,7 @@ TEMPLATE_STAGES = [
     ("waitlist", "Waitlist"), ("declined", "Declined"), ("cancelled", "Cancelled"),
     ("not_running", "Cancelled"),
     ("extras_offer", "Before the stay"),
+    ("year_on", "A year on"), ("anniversary", "Before their anniversary"),
     ("feedback", "After the stay"), ("recap", "After the stay"),
     ("review", "After the stay"), ("newsletter", "Signing up"),
     ("checkin", "Before arrival"),
@@ -103287,6 +103544,17 @@ EMAIL_TEMPLATE_INFO = {
                               "anyone who asked not to be written to", "The guest"),
     "review_invitation": ("After a guest's own feedback was glowing — asking whether "
                           "they would say so publicly", "The guest"),
+    "room_year_on": ("Once, as the first anniversary of a stay comes round — as many days "
+                     "before it as you set under Automation, Write to a guest a year on — "
+                     "while that is switched on", "The guest who booked, never anyone "
+                     "copied; once a year at most to an address. Never to somebody booked "
+                     "to come again, nor a Booking.com guest, nor anybody who asked not "
+                     "to be written to"),
+    "guest_anniversary_ahead": ("Once a year, ahead of an anniversary on a guest's profile — as "
+                                "many days before it as you set under Automation, Write before "
+                                "a guest's anniversary — while that is switched on",
+                                "The guest on the profile. Never to somebody already staying "
+                                "around it, nor anybody who asked not to be written to"),
     "room_waitlist_opening": ("When a room frees up for dates somebody is waiting "
                               "for", "The person on the waiting list"),
     "restaurant_reservation_received": ("When a table is booked online", "The diner"),
@@ -112836,6 +113104,247 @@ def extras_offer_runs_today(conn):
             and job_window_open(conn, "extras_offer", (0, window[1])))
 
 
+# ---------------------------------------------------------------------------
+# COME-BACK LETTERS (owner, 23 Nov 2026: "4 yes we will do that"). Two letters
+# asking a guest back, each to an address at most once a year:
+#   - a year on from a stay, naming the room they had, a month (as shipped)
+#     before the stay's first anniversary, so there is time to come again at
+#     the same time of year;
+#   - ahead of an anniversary the guest told the house, from their profile.
+# Both are the house writing for its own reasons, so both keep every rule it
+# keeps for that: never to anybody who unsubscribed or asked us to stop using
+# their details, never to an address Booking.com or an agent lent us for one
+# stay, never to anyone copied on a booking, and each carries its own way to
+# stop, read by the same page as a campaign's.
+#
+# NOTHING IS WRITTEN WHILE GUEST EMAILS WOULD HOLD IT. A letter about an
+# anniversary held for a month is released after the day; so while the letter
+# is not approved, or guest mail is off, the job says so and stamps nobody,
+# and each guest is written to the first morning it may go.
+# ---------------------------------------------------------------------------
+COME_BACK_LETTERS = {
+    "year_on": {"key": "room_year_on", "switch": "automation_year_on_enabled",
+                "days": "automation_year_on_days_before"},
+    "anniversary": {"key": "guest_anniversary_ahead",
+                    "switch": "automation_anniversary_letter_enabled",
+                    "days": "automation_anniversary_letter_days_before"},
+}
+COME_BACK_DEFAULT_DAYS = 30
+# Never further ahead than this, whatever is typed: a letter about an
+# anniversary five months off reads as a machine that has lost count.
+COME_BACK_MOST_DAYS = 90
+# A stay that came through one of these was booked with an address the platform
+# or the agent lent us for that stay; it is not the guest's to write to again.
+COME_BACK_NOT_FROM_SOURCES = ("booking.com", "agent")
+# A guest already here around their anniversary is celebrating it with us.
+ANNIVERSARY_STAY_MARGIN_DAYS = 3
+COME_BACK_WHY = ("You are receiving this because you have stayed at Château de "
+                 "Gudanes.")
+
+
+def come_back_days(settings, kind):
+    """How many days ahead each letter goes, as the owner set it."""
+    try:
+        days = int(settings.get(COME_BACK_LETTERS[kind]["days"]))
+    except (TypeError, ValueError):
+        return COME_BACK_DEFAULT_DAYS
+    return max(0, min(COME_BACK_MOST_DAYS, days))
+
+
+def same_day_in(year, month, day):
+    """That day in `year`; 29 February is the 1st of March in a year with none,
+    as upcoming_guest_dates marks a birthday."""
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return date(year, 3, 1)
+
+
+def come_back_refusal(conn, email):
+    """Why this address is not written to at all, or None."""
+    email = (email or "").strip().lower()
+    if not email:
+        return "there is no email address"
+    if email.endswith("@guest.booking.com"):
+        return "the address is Booking.com's, lent for one stay"
+    if conn.execute("SELECT 1 FROM email_optouts WHERE LOWER(email) = ?",
+                    (email,)).fetchone():
+        return "they asked not to be written to"
+    if guest_restricted(conn, email=email):
+        return "they asked us to stop using their details"
+    return None
+
+
+def come_back_ready(conn, kind):
+    """The days ahead this letter goes, or JobNotSetUp saying why it cannot."""
+    cfg = COME_BACK_LETTERS[kind]
+    settings = get_automation_settings(conn)
+    if settings.get(cfg["switch"]) != "1":
+        raise JobNotSetUp("it is switched off")
+    if not guest_mail_live():
+        raise JobNotSetUp("Write to guests is off, so nobody was written to")
+    held = guest_letter_held_why(cfg["key"])
+    if held:
+        raise JobNotSetUp(f"Guest emails would hold “{EMAIL_TEMPLATE_LABELS[cfg['key']]}” "
+                          f"({held}), so nobody was written to; it goes once it is approved there")
+    return come_back_days(settings, kind)
+
+
+def write_come_back_letter(conn, kind, email, name, year, context, *, booking_id=None,
+                           guest_id=None):
+    """Write one come-back letter, once: 'sent', 'held', or None if this
+    address already had this letter this year.
+
+    Stamped and committed BEFORE the send, like every letter here: a send
+    under an open write locks every other writer, and a second copy the next
+    morning is worse than one that waits."""
+    token = secrets.token_urlsafe(24)
+    cur = conn.execute(
+        """INSERT OR IGNORE INTO come_back_letters
+               (kind, email, year, guest_name, booking_id, guest_id, outcome,
+                unsubscribe_token, written_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'writing', ?, ?)""",
+        (kind, email, year, name, booking_id, guest_id, token,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    if not cur.rowcount:
+        return None
+    unsubscribe = external_url("campaign_unsubscribe", token=token)
+    key = COME_BACK_LETTERS[kind]["key"]
+    subject, body, letter = render_email_template(conn, key, context, foot={
+        "unsubscribe": unsubscribe, "why": COME_BACK_WHY})
+    if not subject:
+        conn.execute("DELETE FROM come_back_letters WHERE unsubscribe_token = ?", (token,))
+        conn.commit()
+        return None
+    body = body.rstrip() + f"\n\n—\nTo stop letters like this one: {unsubscribe}\n"
+    delivered = send_email(email, subject, body, html=letter,
+                           about=("room", booking_id) if booking_id else None,
+                           template_key=key)
+    outcome = "sent" if delivered else "held"
+    conn.execute("UPDATE come_back_letters SET outcome = ? WHERE unsubscribe_token = ?",
+                 (outcome, token))
+    conn.commit()
+    return outcome
+
+
+def come_back_summary(sent, held, skipped, nobody):
+    parts = [f"wrote to {sent}"] if sent else []
+    if held:
+        parts.append(f"{held} waiting in Held Email")
+    for why, n in skipped.items():
+        parts.append(f"{n} not written to: {why}")
+    return ", ".join(parts) or nobody
+
+
+def run_year_on_job(conn, days_before=None, today=None):
+    """Write once to each guest whose stay a year ago is coming round.
+
+    Which stays: confirmed, booked by the guest themselves (not through
+    Booking.com or an agent), the party's lead booking, whose first anniversary
+    of arrival falls between today and `days_before` days from now. A window
+    rather than one day, so a morning the job did not run costs nothing; the
+    stamp is per address per year, so a guest with two stays that spring hears
+    once. Never to somebody booked to come again: they are coming back.
+    """
+    days = come_back_ready(conn, "year_on")
+    days = days if days_before is None else days_before
+    day = today or house_today()
+    first = same_day_in(day.year - 1, day.month, day.day)
+    end = day + timedelta(days=days)
+    last = same_day_in(end.year - 1, end.month, end.day)
+    marks = ",".join("?" * len(COME_BACK_NOT_FROM_SOURCES))
+    stays = conn.execute(
+        f"""SELECT bookings.*, rooms.name AS room_name FROM bookings
+              JOIN rooms ON rooms.id = bookings.room_id
+             WHERE bookings.status = 'confirmed'
+               AND bookings.arrival_date >= ? AND bookings.arrival_date <= ?
+               AND bookings.departure_date < ?
+               AND LOWER(COALESCE(bookings.source, '')) NOT IN ({marks})
+             ORDER BY bookings.arrival_date, bookings.id""",
+        (first.isoformat(), last.isoformat(), day.isoformat())
+        + COME_BACK_NOT_FROM_SOURCES).fetchall()
+    if not stays:
+        return (f"nobody stayed {format_date_short(first.isoformat())} to "
+                f"{format_date_short(last.isoformat())} a year ago")
+    by_id = {b["id"]: b for b in stays}
+    sent = held = 0
+    skipped = {}
+    for lead_id in party_lead_bookings(conn, list(by_id)):
+        stay = by_id[lead_id]
+        email = (stay["guest_email"] or "").strip().lower()
+        why = come_back_refusal(conn, email)
+        if not why and booked_to_come(conn, email):
+            why = "they are booked to come again"
+        if why:
+            skipped[why] = skipped.get(why, 0) + 1
+            continue
+        arrived = parse_date(stay["arrival_date"])
+        outcome = write_come_back_letter(conn, "year_on", email, stay["guest_name"],
+                                         arrived.year + 1, {
+            "guest_name": (stay["guest_name"] or "").strip().split(" ")[0] or "there",
+            "room_name": stay["room_name"],
+            "stay_month": f"{arrived.strftime('%B')} {arrived.year}",
+            "book_url": external_url("book_rooms"),
+        }, booking_id=stay["id"])
+        if outcome == "sent":
+            sent += 1
+        elif outcome == "held":
+            held += 1
+    return come_back_summary(sent, held, skipped, "nobody new to write to")
+
+
+def run_anniversary_letter_job(conn, days_before=None, today=None):
+    """Write once a year to each guest whose anniversary is coming up.
+
+    From the profile (guests.anniversary, a day and a month), never a merged
+    one. Written the first morning the day is within `days_before`; not to
+    somebody staying with us around it, who is celebrating it here already.
+    """
+    days = come_back_ready(conn, "anniversary")
+    days = days if days_before is None else days_before
+    day = today or house_today()
+    sent = held = 0
+    skipped = {}
+    for guest in conn.execute(
+            """SELECT * FROM guests
+                WHERE merged_into_id IS NULL
+                  AND COALESCE(anniversary, '') != '' AND COALESCE(email, '') != ''
+                ORDER BY id""").fetchall():
+        try:
+            month, dom = (int(x) for x in guest["anniversary"].split("-"))
+            when = same_day_in(day.year, month, dom)
+            if when < day:
+                when = same_day_in(day.year + 1, month, dom)
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if (when - day).days > days:
+            continue
+        email = (guest["email"] or "").strip().lower()
+        why = come_back_refusal(conn, email)
+        if not why and conn.execute(
+                """SELECT 1 FROM bookings
+                    WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'
+                      AND arrival_date <= ? AND departure_date >= ?""",
+                (email, (when + timedelta(days=ANNIVERSARY_STAY_MARGIN_DAYS)).isoformat(),
+                 (when - timedelta(days=ANNIVERSARY_STAY_MARGIN_DAYS)).isoformat())
+        ).fetchone():
+            why = "they are staying with us around it"
+        if why:
+            skipped[why] = skipped.get(why, 0) + 1
+            continue
+        outcome = write_come_back_letter(conn, "anniversary", email, guest["name"], when.year, {
+            "guest_name": (guest["name"] or "").strip().split(" ")[0] or "there",
+            "anniversary_date": f"{when.day} {when.strftime('%B')}",
+            "book_url": external_url("book_rooms"),
+        }, guest_id=guest["id"])
+        if outcome == "sent":
+            sent += 1
+        elif outcome == "held":
+            held += 1
+    return come_back_summary(sent, held, skipped, "no anniversary coming up to write about")
+
+
 def run_workshop_balance_reminder_job(conn, days_before):
     """Remind each registration once, `days_before` its money is due.
 
@@ -118987,6 +119496,11 @@ AUTOMATION_JOBS = [
     # inside its window hears the next morning.
     ("extras_offer", "automation_extras_offer_enabled", None, 24 * 3600,
      run_extras_offer_job),
+    # The two come-back letters (23 Nov 2026). Daily, in the morning: each is
+    # stamped per address per year, so a second run writes to nobody twice.
+    ("year_on", "automation_year_on_enabled", None, 24 * 3600, run_year_on_job),
+    ("anniversary_letter", "automation_anniversary_letter_enabled", None, 24 * 3600,
+     run_anniversary_letter_job),
     # The letter with the online check-in link. Daily, in the morning (see
     # JOB_HOURS); each stay is stamped, so a run twice sends nothing twice.
     ("checkin_letter", "automation_checkin_letter_enabled", None, 24 * 3600,
@@ -119059,6 +119573,9 @@ JOB_HOURS = {
     # The letter offering a stay's extras, in the morning like a letter from
     # somebody at the house, and never at whatever hour the process restarted.
     "extras_offer": (9, 12),
+    # The come-back letters: morning letters from the house, like the offer.
+    "year_on": (9, 12),
+    "anniversary_letter": (9, 12),
     # The letter with the online check-in link: a morning letter, from nine
     # to noon on the house's clock, which is what its label says.
     "checkin_letter": (9, 12),
@@ -119346,6 +119863,31 @@ AUTOMATION_SWITCHES = [
              "letter to a party. Nothing until you have written it, and nothing "
              "while Write to guests is off: an offer is not kept to send later.",
      "fields": (("automation_extras_offer_days_before", "Days before arrival", "days"),)},
+    {"key": "automation_year_on_enabled", "job": "year_on",
+     "runs": ("run_year_on_job",), "group": "guests", "reaches": ("guests",),
+     "letters": ("room_year_on",),
+     "label": "Write to a guest a year on",
+     "what": "Emails a guest once, between 9am and noon, as the first anniversary of "
+             "their stay comes within the days set below, naming the room they had and "
+             "asking them back. Never to somebody booked to come again, a Booking.com or "
+             "agent's guest, anyone copied on the booking, or anybody who asked not to "
+             "be written to; once a year at most to an address, and one letter to a "
+             "party. Each carries its own way to stop. Nothing while Guest emails would "
+             "hold it: approve the letter there first.",
+     "fields": (("automation_year_on_days_before",
+                 "Days before the stay's anniversary", "days"),)},
+    {"key": "automation_anniversary_letter_enabled", "job": "anniversary_letter",
+     "runs": ("run_anniversary_letter_job",), "group": "guests", "reaches": ("guests",),
+     "letters": ("guest_anniversary_ahead",),
+     "label": "Write before a guest's anniversary",
+     "what": "Emails a guest whose profile carries an anniversary, once a year, between "
+             "9am and noon, when the day comes within the days set below, asking whether "
+             "they would like to spend it here. Not to somebody already staying with us "
+             "around it, nor anybody who asked not to be written to. Each carries its own "
+             "way to stop. Nothing while Guest emails would hold it: approve the letter "
+             "there first.",
+     "fields": (("automation_anniversary_letter_days_before",
+                 "Days before the anniversary", "days"),)},
     {"key": "automation_checkin_letter_enabled", "job": "checkin_letter",
      "runs": ("run_checkin_letter_job",), "group": "guests", "reaches": ("guests",),
      "letters": ("room_checkin_before", "workshop_checkin_before"),
@@ -120619,6 +121161,8 @@ GUEST_DOSSIER_TABLES = {
     "guest_profile_changes": "left out: the history of edits is on their page; the "
                              "panel shows the profile as it stands",
     "mail_log": "left out: delivery bookkeeping for letters already shown",
+    "come_back_letters": "left out: it only marks that a year-on or anniversary letter "
+                         "was written to them this year, so it is never written twice",
 }
 
 # The mailboxes that are the owner's alone, by local part, until the add-in
