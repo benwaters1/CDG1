@@ -71,10 +71,8 @@ PAGES = {
     ],
     "/events/photoshoots": [
         ("an uneven collage", r'class="g-mos g-mos--tall ', 1),
-        ("a room as it was found across the page", r'class="g-plein "', 1),
-        # 12 Nov (the second review, 3.3): the roof open to the mountains is /restoration's alone; this band is
-        # another room as it was found.
-        ("a room as found among them", r'fireplace-and-pram', 1),
+        # 23 Nov 2026 (owner): the band of a room as it was found (the fireplace and the old pram) is gone, and
+        # nothing as derelict takes its place; the page opens on a shoot made here instead.
         ("and all thirteen behind See all", r'See all 13 photos', 1),
     ],
     "/restoration": [

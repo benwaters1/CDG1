@@ -12464,3 +12464,29 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
    which left the History page's Revolution section a narrow column with half
    the page empty beside it (owner, 23 November 2026: "spacing here no good"). */
 .g .g-sec .g-wrap--narrow > .g-sp{ max-width: none; }
+
+/* The menu's Check dates box (owner, 23 November 2026, a screenshot of the
+   phone): Arrival and Departure shared one row, half the panel each, and the
+   date inside was cut to "dd-----yyy". One above the other, the full width
+   each, so the whole date shows; 16px so a phone does not zoom on a tap. */
+.g #g-mainnav .g-qbook__row{ flex-direction: column; gap: var(--s3); }
+.g #g-mainnav .g-qbook__f{ flex: 1 1 auto; width: 100%; }
+.g #g-mainnav .g-qbook__f input{ width: 100%; min-width: 0; font-size: 16px; }
+
+/* =====================================================================
+   23 Nov 2026 - CENTRED, AND CLOSER (owner: "whys so much of the site off
+   centre", "huge gaps and all off centre", "big spacing everywhere").
+   The 2 Oct rule above sent every text column to the left edge of a 76rem
+   section and held it to 46rem, so on a wide screen each prose section had
+   up to 450px of nothing on its right. The column keeps its 46rem measure
+   (lines stay readable, text stays left-aligned within it) but the column
+   itself is centred in the section. A section with a drawing in a medallion
+   beside its words keeps that two-column layout, which already fills the
+   width. And the space between sections, which reached 160px, is now at
+   most 120px.
+   ===================================================================== */
+.g .g-sec .g-wrap--narrow > :not(.g-vignette){ margin-left: auto; margin-right: auto; }
+.g .g-sec .g-wrap--narrow > .g-sp{ margin-left: auto; margin-right: auto; }
+.g .g-sec .g-wrap:has(> p.g-p):not(:has(> .g-vignette)):not(:has(> ul, > ol, > dl, > form, > table, > div)) > *{
+  max-width: 46rem; margin-left: auto; margin-right: auto; }
+.g main > .g-sec, .g main > .g-sec ~ .g-sec{ padding-top: clamp(40px, 4vw, 60px); padding-bottom: clamp(40px, 4vw, 60px); }

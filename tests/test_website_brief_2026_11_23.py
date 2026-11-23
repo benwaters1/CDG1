@@ -412,6 +412,17 @@ def _links(s, anon):
             and 'href="#g-newsletter"' in html and 'id="g-newsletter"' in html)
     s.check("no exclamation marks", "!" not in words)
 
+    s.section("The old pram is on no public page (owner, 23 November 2026)")
+    shown = [p for p in ("/", "/gallery", "/events/photoshoots", "/restoration", "/history", "/events",
+                         "/events/weddings", "/events/private", "/facilities", "/workshops")
+             if "fireplace-and-pram" in anon.get(p).get_data(as_text=True)]
+    s.check("the fireplace and the old pram are shown nowhere", not shown, detail=str(shown))
+    shoot = anon.get("/events/photoshoots").get_data(as_text=True)
+    hero = re.search(r'<img[^>]*class="g-hero__img"[^>]*>', shoot)
+    s.check("/events/photoshoots opens on a photograph, not a plain band",
+            hero is not None and ("dancing-shoes" in hero.group(0) or "/room-photos/" in hero.group(0)),
+            detail=hero.group(0)[:160] if hero else "no hero photograph")
+
     s.section("Its prices are the site's own, and follow the owner's changes")
     conn = db()
     facts = m.house_room_facts(conn)
