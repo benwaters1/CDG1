@@ -107,6 +107,7 @@ NOT_LINKED_ON_PURPOSE = {
     "admin_overview_status": "polled by the overview",
     "mirrored_photo": "served in place of a hotlinked image",
     "design_page": "the picture designs, for the owner only (image layout brief, 27 Oct): hidden on purpose",
+    "links_page": "the Instagram bio's page (owner's website brief, 23 Nov 2026): linked from Instagram, never from the site",
     "outlook_addin_manifest": "loaded by Outlook",
     "outlook_addin_taskpane": "loaded by Outlook",
     "outlook_addin_compose": "loaded by Outlook",

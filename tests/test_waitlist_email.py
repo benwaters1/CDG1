@@ -45,10 +45,21 @@ def run():
                                          a, d, 4, "Two adults and two children")
             bare = m.waitlist_email_body(conn, TAG + " Guest", "g@example.invalid", "", a, d, None, "")
             expected = {r["name"]: m.room_offer(conn, r, arrive, leave, 4) for r in rooms}
-        s.check("how many: for 4 guests", f"would like {a} to {d}, for 4 guests, but nothing was available" in body,
+        # A line to each thing they gave since 23 November 2026 (owner: "its too annoying to copy paste
+        # make it Name: Email: etc"), so each is read as its own line rather than out of a sentence.
+        fields = dict(re.findall(r"^([A-Z][A-Za-z ]+): (.+)$", body, re.M))
+        s.check("who: their name and email, each on a line of its own",
+                fields.get("Name") == TAG + " Guest" and fields.get("Email") == "g@example.invalid",
                 detail=body[:200])
-        s.check("and the phone, beside the email", "(g@example.invalid, +33 6 00 00 00 00)" in body)
-        s.check("with no party size, it says so rather than guessing", "for party size not given" in bare)
+        s.check("the nights they wanted",
+                fields.get("Arriving") == m.format_date_human(a)
+                and fields.get("Leaving") == m.format_date_human(d), detail=str(fields))
+        s.check("how many: 4 guests", fields.get("Guests") == "4", detail=str(fields))
+        s.check("and the phone, on its own line", fields.get("Telephone") == "+33 6 00 00 00 00")
+        bare_fields = dict(re.findall(r"^([A-Z][A-Za-z ]+): (.+)$", bare, re.M))
+        s.check("with no party size or phone, it says so rather than guessing",
+                bare_fields.get("Guests") == "not said" and bare_fields.get("Telephone") == "not said",
+                detail=str(bare_fields))
         lines = dict(re.findall(r"^  (.+?): (.+)$", body, re.M))
         s.check("one line for each room Stay would have shown", set(lines) == set(expected),
                 detail=f"{sorted(lines)} vs {sorted(expected)}")
@@ -58,7 +69,9 @@ def run():
         s.check("a room too small for four says it sleeps up to two",
                 small and all(lines.get(r["name"]) == f"Sleeps up to {r['max_occupancy']}" for r in small),
                 detail=str([(r["name"], lines.get(r["name"])) for r in small]))
-        s.check("and the guest's own note comes last", body.rstrip().endswith("Two adults and two children"))
+        s.check("and the guest's own note after the rooms, then the way to the list",
+                body.index("What each room said:") < body.index("Their note:\nTwo adults and two children")
+                < body.index("The waiting list:"), detail=body[-300:])
 
         s.section("The same reasons as the Stay page printed")
         page = m.app.test_client().get(f"/book?arrival={a}&departure={d}&party_size=4").get_data(as_text=True)
@@ -87,7 +100,7 @@ def run():
         s.check("joining the waitlist sends the house its note", r.status_code in (302, 303) and len(note) == 1,
                 detail=f"{r.status_code}, {len(note)} sent; house address set: {bool(had)}")
         s.check("and it is this note: how many, and each room's reason",
-                bool(note) and "for 4 guests" in note[0] and "What each room said:" in note[0],
+                bool(note) and "\nGuests: 4\n" in note[0] and "What each room said:" in note[0],
                 detail=(note[0][:240] if note else ""))
     finally:
         conn.close()

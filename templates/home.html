@@ -14,7 +14,7 @@
 {% block content %}
 {% from '_proof.html' import credential, proof %}
 {% from '_stay_panel.html' import stay_panel with context %}
-{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath, room_sleeps %}
+{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath, room_sleeps, room_heading %}
 {% from '_marks.html' import mark, monogram %}
 {% from '_emblems.html' import emblem %}
 {#- 28 Oct (the image layout brief, 4.2): the home page's photographs through the picture components (_pictures.html,
@@ -264,7 +264,7 @@
       {{ pic(_first|trim, room_name(r['name'])|trim, sizes='(min-width: 64rem) 30rem, 84vw', cls='g-homeroom__img') }}
       <div class="g-homeroom__b">
         {{ emblem(r['name']) }}
-        <h3 class="g-homeroom__name">{{ room_name(r['name']) }}</h3>
+        {{ room_heading(r['name'], cls='g-homeroom__name') }}
         {% set _rc = room_copy(r['name'], r['description'] or '') %}
         {# truncate(140) cut on a character count - "The bathroom is downstairs and...",
            "A dressing..." - clipping the one fact a guest was reading for. Each room's

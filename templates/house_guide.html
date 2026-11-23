@@ -25,7 +25,7 @@
   <p class="g-eyebrow">Château de Gudanes</p>
   <h1 class="g-display">{{ t('The House') }}</h1>
   {% if booking %}
-  <p class="g-p">{{ booking['room_name'] }} · {{ date_range(booking['arrival_date'], booking['departure_date']) }}</p>
+  <p class="g-p">{{ room_title(booking['room_name']) }} · {{ date_range(booking['arrival_date'], booking['departure_date']) }}</p>
   {% endif %}
 
   {% if sections %}

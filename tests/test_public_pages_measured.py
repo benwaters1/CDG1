@@ -68,7 +68,8 @@ KNOWN_LONG = {
     "/restoration": 15100,
     "/events/weddings": 12700,
     # 11 Nov: +600 for the bathrooms' own section, which the owner asked for ("they are a real feature").
-    "/book": 13100,
+    # 23 Nov: +100 for each room's plain name, small beneath its French title (owner's website brief, 3).
+    "/book": 13200,
     "/workshops": 11600,
     "/workshops/<id>": 11900,
     "/history": 9900,

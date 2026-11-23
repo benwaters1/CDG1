@@ -35,7 +35,7 @@
     {% for d in _shown %}
     <li class="g-nextf__i">
       <span class="g-nextf__d">{{ d['date'] }}</span>
-      <span class="g-nextf__r">{{ d['room_name'] }}</span>
+      <span class="g-nextf__r" translate="no">{{ room_title(d['room_name']) }}</span>
       <span class="g-nextf__n">Up to {{ d['nights'] }} night{{ '' if d['nights'] == 1 else 's' }} available</span>
       {% if d['price'] %}<span class="g-nextf__p">from €{{ '%.0f'|format(d['price']) }}</span>{% endif %}
       <a class="g-btn" href="{{ url_for('book_rooms') }}?arrival={{ d['date_iso'] }}">Check this date</a>

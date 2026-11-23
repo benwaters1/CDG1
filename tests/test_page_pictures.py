@@ -71,10 +71,8 @@ PAGES = {
     ],
     "/events/photoshoots": [
         ("an uneven collage", r'class="g-mos g-mos--tall ', 1),
-        ("a room as it was found across the page", r'class="g-plein "', 1),
-        # 12 Nov (the second review, 3.3): the roof open to the mountains is /restoration's alone; this band is
-        # another room as it was found.
-        ("a room as found among them", r'fireplace-and-pram', 1),
+        # 23 Nov 2026 (owner): the band of a room as it was found (the fireplace and the old pram) is gone, and
+        # nothing as derelict takes its place; the page opens on a shoot made here instead.
         ("and all thirteen behind See all", r'See all 13 photos', 1),
     ],
     "/restoration": [
@@ -106,8 +104,9 @@ PAGES = {
         ("the hot springs and the cave credited", r'Jeunamateur.*Traumrune', 1),
     ],
     "/press": [
-        ("The Pages Themselves: a fanned album", r'class="g-album g-album--3 g-rv g-album--fan"', 1),
-        ("and all six behind See all", r'See all 6 photos', 1),
+        # 23 Nov 2026 (owner's website brief, 1): the six pages in one captioned row, each opening the set.
+        ("The Pages Themselves: the six pages in one row", r'<figure class="g-print__p">', 6),
+        ("each with its caption", r'<figcaption class="g-print__cap">', 6),
     ],
     "/contact": [
         ("the band of four: one photograph across the page, down the drive", r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*down-the-drive', 1),

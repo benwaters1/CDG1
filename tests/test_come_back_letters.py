@@ -350,7 +350,8 @@ def _checks(s, oc, conn):
     body = one[0]["body"] if one else ""
     arrived = _year_ago(10)
     s.check("named by their first name, with the room they had and when",
-            "Hi Hélène" in body and room["name"] in body
+            # By its title on the website, as every letter names a room since 23 Nov 2026.
+            "Hi Hélène" in body and m.room_title(room["name"]) in body
             and f"{arrived.strftime('%B')} {arrived.year}" in body, detail=body[:200])
     s.check("with the way to book", "/book" in body)
     stop = re.search(r"To stop letters like this one: (\S+)", body)

@@ -309,16 +309,15 @@ window.houseDay = (function () {
 
         <div class="g-navwrap__divider"></div>
 
+        {#- 23 Nov 2026 (owner: "the text could be bigger, the history further up, its a little hard to follow"). One
+            list in one style: The History first, then the restoration, with no photograph between the group's heading
+            and its links (it pushed The History below the fold on a laptop, and the same photograph is /press's hero). -#}
         <p class="g-navwrap__group">{{ t('The Château') }}</p>
-        <a href="{{ url_for('restoration_page') }}" class="g-navwrap__feature">
-          <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/chateau_facade_formal.jpg') }}" alt="Château de Gudanes, front elevation">
-          <span>
-            <b>{{ t('The Restoration') }}</b>
-            <em>{{ t('Under restoration since 2013') }}</em>
-          </span>
-        </a>
         <a href="/history" class="g-navwrap__item g-navwrap__item--sm">
           {{ t('The History') }} <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
+        <a href="{{ url_for('restoration_page') }}" class="g-navwrap__item g-navwrap__item--sm">
+          {{ t('The Restoration') }} <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg>
         </a>
         <a href="/facilities" class="g-navwrap__item g-navwrap__item--sm">
           {{ t('The Estate') }} <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg>

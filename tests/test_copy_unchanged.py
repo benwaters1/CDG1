@@ -107,7 +107,17 @@ m = _harness.m
 # ground floor"); it listed /, /book and /book/1, "Sleeps 3, up to 2 adults" for "Sleeps 2", and nothing else.
 # 23 Nov: moved to 68c905f, Les Bains du Couloubret off Things to Do Nearby (owner: "yes if its on there
 # twice"); it listed /whats-on only.
-COPY_BASE = "1ad191a"  # 23 Nov: the owner's chosen reviews, on purpose
+# 23 Nov 2026: moved to 6c6e9da, the owner's website brief. Against 68c905f it listed /, /book,
+# /book/1 to /book/5 (each room headed by its French title over its plain name, which
+# the <title> of a room's page carries too) and /press (rebuilt, its captions shown on
+# purpose), and nothing else. Each was read.
+# 23 Nov 2026, later: moved to 310d694, the menu the owner asked to be easier to
+# follow. Against 6c6e9da every page differed in one place only, the menu's
+# Chateau group: The History before The Restoration, and the photograph's
+# "Under restoration since 2013" gone with it. Read on every page listed.
+# 23 Nov 2026, on main meanwhile: 1ad191a, the owner's chosen reviews, on purpose.
+# Merged: the base is the merge, which holds both sets, each read on its own side.
+COPY_BASE = "4fd612f"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

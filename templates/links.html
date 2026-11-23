@@ -1,0 +1,46 @@
+{% extends "public_base.html" %}
+{#- 23 Nov 2026 (owner's website brief, 4): the page the Instagram bio links to. The house's name, one line, three large
+    buttons and, small at the foot, Instagram and the newsletter. Phone first: most who arrive here arrive from the
+    Instagram app. Linked from nowhere on the site, out of the sitemap, and noindex below, so it never competes with the
+    home page in search. Every price is the site's own: house_rooms.from_price is the rooms table's (house_room_facts),
+    retreats_from the workshops on offer, as the stay panel reads them (links_page in app.py). -#}
+{% block title %}Stay, Retreats, Celebrate{% endblock %}
+{% block description %}Château de Gudanes, an eighteenth-century château in the French Pyrénées: a room for the night, a retreat, or a wedding.{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, follow">{% endblock %}
+{% block bodyclass %} g-linkpage{% endblock %}
+{#- The three buttons are the page; the sticky "Book" bar would only repeat the first. -#}
+{% set sticky_bar = 'none' %}
+{% block content %}
+{%- set _room_from = house_rooms.from_price if house_rooms and house_rooms.from_price else none %}
+<section class="g-links"><div class="g-links__in">
+  <h1 class="g-links__name" translate="no">Château de Gudanes</h1>
+  <p class="g-links__line">An 18th-century château in the French Pyrénées</p>
+
+  <ul class="g-links__list">
+    <li>
+      <a class="g-links__btn" href="{{ url_for('book_rooms') }}">
+        <span class="g-links__k">Stay</span>
+        <span class="g-links__u">Room and breakfast{% if _room_from %} from <span class="g-fig" data-eur="{{ _room_from|int }}">€{{ '{:,.0f}'.format(_room_from|float) }}</span>{% endif %}</span>
+      </a>
+    </li>
+    <li>
+      <a class="g-links__btn" href="{{ url_for('workshops_public') }}">
+        <span class="g-links__k">Retreats</span>
+        <span class="g-links__u"><em lang="fr" translate="no">La vie de château</em>{% if retreats_from %}, from <span class="g-fig" data-eur="{{ retreats_from|int }}">€{{ '{:,.0f}'.format(retreats_from) }}</span> per person{% endif %}</span>
+      </a>
+    </li>
+    <li>
+      <a class="g-links__btn" href="{{ url_for('events_weddings') }}">
+        <span class="g-links__k">Celebrate</span>
+        <span class="g-links__u">Weddings and private events</span>
+      </a>
+    </li>
+  </ul>
+
+  <p class="g-links__small">
+    <a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a>
+    <span aria-hidden="true">·</span>
+    <a href="#g-newsletter">Newsletter</a>
+  </p>
+</div></section>
+{% endblock %}
