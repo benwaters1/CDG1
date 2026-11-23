@@ -9,10 +9,12 @@
    reading about weddings a bedroom -- the one thing the comment on that
    bar in public_base says it exists to avoid. #}
 {% set sticky_bar = 'events' %}
+{#- 23 Nov 2026: a photograph hero, so the header lies over it as on /events. -#}
+{% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
 {#- 9 Nov (the image layout brief, 4.5): the photographs through the picture components (_pictures.html, shown together
     on /design). Not one word changes. -#}
-{% from '_pictures.html' import mosaique, carrousel, plein, see_all, pictures_script %}
+{% from '_pictures.html' import mosaique, carrousel, plein, split, see_all, pictures_script %}
 {% from '_proof.html' import credential, proof %}
 {% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
@@ -27,34 +29,38 @@
     <p class="g-hero__eyebrow">Ariège · Location Hire</p>
     <h1 class="g-hero__title">Every Room, Every State</h1>
     <p class="g-hero__lede">Bare plaster, gilded panelling, old stone, and an eighteenth-century façade.</p>
-    {# Its paragraph had no class, so the button missed the hero's light fill: navy text on a transparent
-       ground, over the photograph (1.9:1). Written as the other heroes' calls are. #}
-    <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Ask about a shoot</a></p>
+    <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Ask about a shoot</a> <a href="#recce" class="g-btn">Arrange a recce</a></p>
   </div>
 </section>
 
 <div class="g-wrap">{{ event_tabs('photoshoots') }}</div>
 
 
-<section class="g-sec g-duo-sec"><div class="g-wrap">
-  {# 2 Oct: two short sections that sat one after another, each with a medallion, now side by side - nothing reworded #}
-  <div class="g-duo">
-    <div class="g-duo__i">
-      <div class="g-duo__ill" aria-hidden="true">{{ illus('restoration') }}</div>
-      <p class="g-fr">Les pièces <span class="g-fr__en">The rooms</span></p>
-  <p class="g-eyebrow">The Rooms</p>
-  <h2 class="g-place">Rooms Between Ruin and Restoration</h2>
-  <p class="g-p g-intro">About fifty-five rooms, in every state between ruin and restored. The walls stay as they are.</p>
-  <p class="g-p">The château is a Class I Historic Monument, so every shoot is agreed with us in advance, and priced on request.</p>
-    </div>
-    <div class="g-duo__i">
-      <div class="g-duo__ill" aria-hidden="true">{{ illus('camera') }}</div>
-  <p class="g-fr">La lumière <span class="g-fr__en">The light</span></p>
-  <p class="g-eyebrow">On Location</p>
-  <h2 class="g-place">The Light and the Walls</h2>
-  <p class="g-p g-lede-first">Light through tall windows, plaster as the centuries left it, and rooms at every stage of their return. Very few locations look like this, because very few are allowed to stay this way.</p>
-    </div>
-  </div>
+{#- The figures a location scout asks first, said plainly, from what the page already states. -#}
+<div class="g-wrap">{{ fact_strip([
+  {'mark':'window', 'n':'About 55', 'l':'Rooms, ruin to restored'},
+  {'mark':'facade', 'n':'Class I',  'l':'Historic Monument'},
+  {'mark':'key',    'n':'One',      'l':'Shoot at a time'},
+  {'mark':'house',  'n':'On site',  'l':'Rooms for the crew'}
+]) }}</div>
+
+{#- 23 Nov 2026: the two sections stood side by side with a drawn medallion each and no photograph, on the one page
+    where the photographs are the point. Each now sits beside a room it describes, taken from the slider below so
+    nothing shows twice. Not one of their words changed. -#}
+<section class="g-sec g-shoot-rooms"><div class="g-wrap">
+  {% call split(['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2ff5aa70-fc65-4aa1-91dc-befc589d5322/Screenshot+2026-08-13+at+2.28.25+pm.png?format=1000w', 'A salon, the chandelier lit', 'A salon, the chandelier lit']) %}
+    <p class="g-fr">Les pièces <span class="g-fr__en">The rooms</span></p>
+    <p class="g-eyebrow">The Rooms</p>
+    <h2 class="g-place">Rooms Between Ruin and Restoration</h2>
+    <p class="g-p g-intro">About fifty-five rooms, in every state between ruin and restored. The walls stay as they are.</p>
+    <p class="g-p">The château is a Class I Historic Monument, so every shoot is agreed with us in advance, and priced on request.</p>
+  {% endcall %}
+  {% call split(['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/dd096969-0a3d-4765-aa39-8223dd6a23b4/Screenshot+2024-06-02+at+10.58.42+am.png?format=1000w', 'A tall window, the mountains beyond', 'A tall window, the mountains beyond'], flip=True) %}
+    <p class="g-fr">La lumière <span class="g-fr__en">The light</span></p>
+    <p class="g-eyebrow">On Location</p>
+    <h2 class="g-place">The Light and the Walls</h2>
+    <p class="g-p g-lede-first">Light through tall windows, plaster as the centuries left it, and rooms at every stage of their return. Very few locations look like this, because very few are allowed to stay this way.</p>
+  {% endcall %}
 </div></section>
 
 
@@ -67,6 +73,19 @@
 {# 1 Oct: ">Before You Send a Scout<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <div class="g-wrap g-mark__wrap">{{ mark('scaffold') }}</div>
+
+{#- 23 Nov 2026: what happens between the first email and the shoot day, so a producer can see the whole of it at
+    once. Every step is something this page already said; nothing here is new to the house. -#}
+<section class="g-sec g-shoot-how"><div class="g-wrap">
+  <p class="g-fr">Le tournage <span class="g-fr__en">The shoot</span></p>
+  <h2 class="g-place">How a Shoot Works</h2>
+  <ol class="g-shootsteps">
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">I</b><h3 class="g-shootsteps__t">Tell us</h3><p class="g-shootsteps__p">Your dates, the size of your crew, and what you need the rooms to do: power, a room darkened for filming, vehicle access.</p></li>
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">II</b><h3 class="g-shootsteps__t">Come and see</h3><p class="g-shootsteps__p">A recce by appointment, before you book a day. Better to see the scaffolding now than on the morning of the shoot.</p></li>
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">III</b><h3 class="g-shootsteps__t">Agreed in advance</h3><p class="g-shootsteps__p">The château is a Class I Historic Monument, so every shoot is agreed with us beforehand, and priced on request.</p></li>
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">IV</b><h3 class="g-shootsteps__t">The house is yours</h3><p class="g-shootsteps__p">Only one event runs at the château at once, and the crew can stay on site or close by.</p></li>
+  </ol>
+</div></section>
 
 <!-- ============ LIGHT THROUGH THE DAY ============ -->
 {# 1 Oct: ">Where the Light Is, and When<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
@@ -84,12 +103,13 @@
   <h2 class="g-place">At Gudanes</h2>
   <p class="g-p g-intro">Fashion, bridal and editorial work in rooms between ruin and restoration.</p>
   {#- 9 Nov (the brief, 4.5): the house's range. An uneven collage, the music room restored across the page, a slider,
-      then a room as it was found across the page; all 13 behind See all. -#}
-  {{ mosaique([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fa4a9349-7543-4042-90e0-fe44be41db28/Screenshot+2026-08-13+at+12.43.10+am.png?format=1000w', 'A bridal shoot on the steps', 'A bridal shoot on the steps'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/32fc2250-3e0e-40e7-be9f-89c54c89ee03/a8685623-53f6-4af2-9c31-d6bd3567bea4.jpg?format=1000w', 'An editorial shoot in the salon', 'An editorial shoot in the salon'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c3cb12de-a9c2-4630-b53c-16cb741db12c/Screenshot+2026-08-13+at+12.45.36+am.png?format=1000w', 'A gown on the drive', 'A gown on the drive']], layout='tall') }}
+      then a room as it was found across the page; all 13 behind See all. 23 Nov: the editorial in the salon is the hero now,
+      the red dress on the staircase takes its place here, and the two rooms beside the words above leave the slider. -#}
+  {{ mosaique([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fa4a9349-7543-4042-90e0-fe44be41db28/Screenshot+2026-08-13+at+12.43.10+am.png?format=1000w', 'A bridal shoot on the steps', 'A bridal shoot on the steps'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f20ae1c6-adcc-41d7-80d3-e0870039f52a/fd81cb6b-b1ed-4d9f-a7a3-c5e96b5a8dda.jpg?format=1000w', 'A red dress on the staircase', 'A red dress on the staircase'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c3cb12de-a9c2-4630-b53c-16cb741db12c/Screenshot+2026-08-13+at+12.45.36+am.png?format=1000w', 'A gown on the drive', 'A gown on the drive']], layout='tall') }}
 </div>
 {#- 9 Nov, evening (owner's second review, 3.1): a portrait photograph cropped into a wide band reads as a smear; no band here. -#}
 <div class="g-wrap">
-  {{ carrousel([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f20ae1c6-adcc-41d7-80d3-e0870039f52a/fd81cb6b-b1ed-4d9f-a7a3-c5e96b5a8dda.jpg?format=1000w', 'A red dress on the staircase', 'A red dress on the staircase'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f8a75998-9665-4bdf-bda4-9c252e7c8acb/P1088759+2.png?format=1000w', 'A salon brought back', 'A salon brought back'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6c7351c8-8bbc-442f-98f7-27d10cd0dab2/Screenshot+2026-08-13+at+12.42.53+am.png?format=1000w', 'A shoot under the blossom', 'Under the blossom'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2ff5aa70-fc65-4aa1-91dc-befc589d5322/Screenshot+2026-08-13+at+2.28.25+pm.png?format=1000w', 'A salon, the chandelier lit', 'A salon, the chandelier lit'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/4330033e-159e-4180-b8d4-1fd010742c8f/Screen+Shot+2023-01-05+at+2.38.03+pm.png?format=1000w', 'A shoot on the steps', 'On the steps'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/dd096969-0a3d-4765-aa39-8223dd6a23b4/Screenshot+2024-06-02+at+10.58.42+am.png?format=1000w', 'A tall window, the mountains beyond', 'A tall window'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/900b3c3f-286a-45cb-abe8-53a83da726ce/Screenshot%2B2024-11-08%2Bat%2B12.59.50%2Bpm.webp?format=1000w', 'A salon, two sofas by the fire', 'Two sofas by the fire'], [url_for('static', filename='img/shoots/furniture-shoot-salon.jpg'), 'A furniture shoot in a salon, at Christmas', 'A furniture shoot in a salon, at Christmas'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fca57c81-108b-4b2a-bbab-77cda1891874/The+Chateau+From+Afar+-+Chateau+de+Gudanes.JPG?format=1000w', 'The château from afar, below the cliffs', 'The château below the cliffs']], 'At Gudanes') }}
+  {{ carrousel([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f8a75998-9665-4bdf-bda4-9c252e7c8acb/P1088759+2.png?format=1000w', 'A salon brought back', 'A salon brought back'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6c7351c8-8bbc-442f-98f7-27d10cd0dab2/Screenshot+2026-08-13+at+12.42.53+am.png?format=1000w', 'A shoot under the blossom', 'Under the blossom'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/4330033e-159e-4180-b8d4-1fd010742c8f/Screen+Shot+2023-01-05+at+2.38.03+pm.png?format=1000w', 'A shoot on the steps', 'On the steps'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/900b3c3f-286a-45cb-abe8-53a83da726ce/Screenshot%2B2024-11-08%2Bat%2B12.59.50%2Bpm.webp?format=1000w', 'A salon, two sofas by the fire', 'Two sofas by the fire'], [url_for('static', filename='img/shoots/furniture-shoot-salon.jpg'), 'A furniture shoot in a salon, at Christmas', 'A furniture shoot in a salon, at Christmas'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fca57c81-108b-4b2a-bbab-77cda1891874/The+Chateau+From+Afar+-+Chateau+de+Gudanes.JPG?format=1000w', 'The château from afar, below the cliffs', 'The château below the cliffs']], 'At Gudanes') }}
 </div>
   {#- 12 Nov 2026 (the second review, 3.3: one home per hero photograph; the gallery may repeat it): the roof open to the mountains is /restoration's; here, another room as it was found. -#}
 <div class="g-wrap">
@@ -111,7 +131,7 @@
   <p class="g-eyebrow">Tell Us</p>
   <h2 class="g-place">What Are You Shooting?</h2>
   <p class="g-p">Dates, crew size, and what you need the rooms to do. Tell us if you need power, a room darkened for filming, or vehicle access, and we will say plainly what is possible.</p>
-  <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Tell us about the shoot</a></p>
+  <p class="g-p"><a href="{{ url_for('events_info', type='photoshoot') }}#enquire" class="g-btn g-btn--solid">Tell us about the shoot</a></p>
   <p class="g-limit"><span class="g-limit__k">One at a time</span> Only one event runs at the château at once.</p>
 </div></section>
 
@@ -121,7 +141,7 @@
 
 
 <!-- ============ THE CLOSER ============ -->
-<section class="g-sec g-sec--dark g-closer"><div class="g-wrap">
+<section class="g-sec g-sec--dark g-closer" id="recce"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('key') }}</div>
   <p class="g-fr">Venez voir <span class="g-fr__en">Come and look</span></p>
   <p class="g-eyebrow">Before You Commit</p>
@@ -132,39 +152,5 @@
 
 <div class="g-wrap">{{ proof(settings) }}</div>
 
-<script>
-/* The light through a shoot day. The house runs east to west along a
-   north-facing valley, which decides more than anything else about when to
-   shoot what — so it is stated rather than discovered on the day. */
-(function(){
-  var root=document.querySelector('[data-light]'); if(!root) return;
-  var H={
-    7:{t:'First light comes over the ridge late — the valley holds shadow after the peaks are lit.',
-       l:['East rooms first, and briefly','Mist on the parkland most mornings to about nine','Façade still flat — not the hour for exteriors']},
-    9:{t:'The south rooms come up. This is when the salon is worth shooting.',
-       l:['Salon and dining, both south-facing','Soft and directional through original glass','Exteriors improving but still cool']},
-    12:{t:'Flat and bright. The worst hour for the façade and the best for the interiors that have no south window.',
-        l:['North rooms and the stair are usable now','Façade washes out — leave it','Courtyard and gravel are hard-lit']},
-    15:{t:'The light comes round. Warm on the west range, and the mountain begins to read.',
-        l:['Kitchen and west rooms','Parkland with the peaks behind','Best hour for anything with the valley in frame']},
-    18:{t:'The hour everyone comes for. Long light directly onto the façade.',
-        l:['Façade, full and warm','Terraces and the pool below the cherry trees','Interiors going amber — plan for it or correct it']},
-    21:{t:'Gone in summer, long gone in winter. What is left is candle and window light.',
-        l:['Unrestored salons by candle — no electric light is fitted','Very long exposures or fast glass','Nothing outside without a generator']}
-  };
-  var T=root.querySelector('[data-light-t]'), L=root.querySelector('[data-light-l]');
-  function paint(h){
-    var d=H[h]; if(!d) return;
-    T.textContent=d.t;
-    L.innerHTML=d.l.map(function(x){ return '<li>'+x+'</li>'; }).join('');
-  }
-  root.addEventListener('click', function(e){
-    var b=e.target.closest('[data-hour]'); if(!b) return;
-    root.querySelectorAll('.g-light__h').forEach(function(x){ x.classList.remove('is-on'); });
-    b.classList.add('is-on'); paint(+b.dataset.hour);
-  });
-  paint(12);
-})();
-</script>
 {{ pictures_script() }}
 {% endblock %}

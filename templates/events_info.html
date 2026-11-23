@@ -128,12 +128,14 @@
           <select id="event_type" name="event_type" required>
             <option value="">— choose —</option>
             {# If the route ever passes no types, a required select with only "choose" makes the enquiry unsendable. #}
+            {#- 23 Nov 2026: a page that sends a reader here for one kind of event says which (?type=photoshoot from
+                /events/photoshoots), so the form opens with it chosen rather than asking again. -#}
             {% for t in (event_types or ['wedding', 'photoshoot', 'corporate', 'other']) %}{% set EVENT_LABEL = {
      'wedding': 'Wedding',
      'photoshoot': 'Photography or film',
      'corporate': 'Exclusive hire',
      'other': 'Something else'
-   } %}<option value="{{ t }}">{{ EVENT_LABEL.get(t, t|capitalize) }}</option>{% endfor %}
+   } %}<option value="{{ t }}"{% if request.args.get('type') == t %} selected{% endif %}>{{ EVENT_LABEL.get(t, t|capitalize) }}</option>{% endfor %}
           </select>
         </p>
         <p class="g-field">

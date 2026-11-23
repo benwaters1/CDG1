@@ -673,6 +673,10 @@
 /* The currency control takes its colour from the header (2.3 above), which is navy: over a hero photograph, where the
    logo, the menu and the languages turn white, it stayed navy on the picture and could not be seen. It turns with them. */
 body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
+/* 23 Nov 2026: but on a page with breadcrumbs the header stays cream at the top (gudanes.css, has-hero.at-top:has(.g-crumbs)),
+   and the logo and the menu stay navy there; the currency turned white anyway, white on cream, on /events, /book,
+   /contact and every page like them. Found while redoing /events/photoshoots. It stays navy where they do. */
+.g.has-hero.at-top:has(.g-crumbs) .g-top .g-curtop__s{ color: var(--blue-deep, #14305F); }
 
 /* ==========================================================================
    THE HOME PAGE: RETREATS FIRST (23 Nov 2026, owner: "i wanted it redesigned
@@ -1030,3 +1034,42 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g #g-mainnav .g-qbook__f .g-rp__nights{ font-size: 12px !important; line-height: 1; }
 .g #g-mainnav .g-qbook__go{ margin-top: 12px; }
 .g #g-mainnav .g-qbook__n{ margin: 10px 0 0; text-align: center; font-family: var(--serif); font-style: italic; font-size: 15px; }
+
+/* ==========================================================================
+   THE PHOTOSHOOT PAGE (23 Nov 2026, owner: "work on the photoshoot page
+   improving it")
+   It opens on a shoot rather than a drawing of a camera; its two sections
+   sit beside the rooms they describe; and How a Shoot Works sets out the
+   four steps from first email to shoot day, numbered I to IV in a gilt
+   ring (g-shootsteps: g-how is /restoration's), joined by a hairline on a wide screen so they read as a sequence.
+   The numeral is a <b>: the reading floor sets every span in main to 15px.
+   ========================================================================== */
+.g .g-shoot-rooms .g-sp:first-child{ margin-top: 0; }
+.g .g-shoot-rooms .g-sp:last-child{ margin-bottom: 0; }
+.g .g-shoot-rooms .g-sp + .g-sp{ margin-top: var(--s8); }
+.g .g-shoot-how{ text-align: center; }
+.g .g-shoot-how .g-place{ margin-left: auto; margin-right: auto; }
+.g .g-shootsteps{
+  list-style: none; margin: var(--s7) 0 0; padding: 0;
+  display: grid; gap: var(--s7) var(--s6); grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 40rem){ .g .g-shootsteps{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 64rem){ .g .g-shootsteps{ grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.g .g-shootsteps__i{ position: relative; margin: 0; padding: 0 var(--s2); max-width: none; text-align: center; }
+.g .g-shootsteps__n{
+  display: flex; align-items: center; justify-content: center; margin: 0 auto;
+  width: 54px; height: 54px; border: 1px solid var(--gilt, #B08D57); border-radius: 50%;
+  font-family: var(--display); font-weight: 400; font-size: 22px; line-height: 1; letter-spacing: .04em;
+  color: var(--gilt-deep, #73562d); font-variant-numeric: lining-nums;
+}
+@media (min-width: 64rem){
+  .g .g-shootsteps__i + .g-shootsteps__i::before{
+    content: ''; position: absolute; top: 27px; right: calc(50% + 36px);
+    width: calc(100% + var(--s6) - 72px); height: 1px; background: rgba(176, 141, 87, .55);
+  }
+}
+.g .g-shootsteps__t{
+  margin: var(--s4) 0 var(--s2); font-family: var(--display); font-weight: 500;
+  font-size: var(--t-h3, 1.6rem); line-height: 1.15; color: var(--blue-deep, #14305F);
+}
+.g .g-shootsteps__p{ margin: 0 auto; max-width: 32ch; font-size: 17px; line-height: 1.55; color: var(--ink-soft); }

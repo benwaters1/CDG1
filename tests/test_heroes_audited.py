@@ -1,6 +1,6 @@
 """The tops of the pages, as the 23 Nov 2026 audit of the live site found them.
 
-THE EVENT PAGES. Weddings, private events and photoshoots open on a navy hero
+THE EVENT PAGES. Weddings and private events (and photoshoots, until 23 Nov) open on a navy hero
 with drawn art (g-hero--art) rather than a photograph. The owner's second
 review made every filled button navy, in gudanes-pictures.css, which is read
 after gudanes.css -- so it beat the hero's own gilt rule at the same weight,
@@ -11,7 +11,7 @@ phone every hero is 88svh, there for a photograph: on navy art that was a
 screen of empty blue with the button under the sticky bar. All of it rendered
 and none of it errored; found on the live site in the 23 Nov audit.
 
-WHAT IS CHECKED. The three pages still open on the art hero with a filled
+WHAT IS CHECKED. The two pages still open on the art hero with a filled
 button; the stylesheet gives that button a light fill with navy words, from a
 rule that comes after the navy one it has to beat; the words have room below;
 and on a phone the hero is the height of its words with the art up top.
