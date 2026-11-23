@@ -121,7 +121,10 @@ m = _harness.m
 # the retreats first on the home page, the search bars, the type and colour passes, the menu's Check dates, the
 # photoshoot page, and weddings and private events in the brochures' words. Against 4fd612f it listed /, /book,
 # /workshops, /events/weddings, /events/private and /events/photoshoots, and nothing else: the bundle's pages.
-COPY_BASE = "1d27227"
+# 23 Nov 2026, later: moved to cf9625d, "the house" made "the chateau" on the weddings, private events and photoshoot
+# pages (the second review's word list), and "House parties" became "A party of friends". Against 1d27227 it listed
+# /events/weddings, /events/private and /events/photoshoots, and nothing else. Was: "1d27227"
+COPY_BASE = "cf9625d"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
