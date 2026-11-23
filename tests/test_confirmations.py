@@ -98,9 +98,11 @@ def run():
         name = conn.execute(
             """SELECT rooms.name FROM bookings JOIN rooms ON rooms.id = bookings.room_id
                WHERE bookings.manage_token = ?""", (room["manage_token"],)).fetchone()
+        # By the title the website gives it, where it has one (owner, 23 November
+        # 2026): the letter names the room the guest chose on the site.
         s.check("the room's name is on its confirmation",
-                name and name["name"] in bodies["the room booking"],
-                detail=f"expected {name['name'] if name else '?'!r}")
+                name and m.room_title(name["name"]) in bodies["the room booking"],
+                detail=f"expected {m.room_title(name['name']) if name else '?'!r}")
         # THE "WHAT IT COMES TO" PANEL. Its own docstring says why it exists:
         # the page showed the reference and the dates and "then nothing about
         # money at all". It arrived asking the booking row for rooms_total,

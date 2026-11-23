@@ -7713,6 +7713,12 @@ def init_db():
         # translating in their heads every time an arrival comes off a feed.
         # Free text, never matched on -- a label for a person to read.
         ("rooms_channel_name", "ALTER TABLE rooms ADD COLUMN channel_name TEXT"),
+        # The room's title on the website (owner, 23 November 2026): the French
+        # woman it is named after -- "La Chambre Jeanne d'Arc" -- with `name`,
+        # the plain name Booking.com knows, printed small beneath it. Display
+        # only. Nothing matches on it, nothing keys a photograph on it, and
+        # nothing that talks to Booking.com reads it. See room_title().
+        ("rooms_website_title", "ALTER TABLE rooms ADD COLUMN website_title TEXT"),
         # An enquiry's task knows its enquiry, so it can be opened from the
         # day's list and closes when the enquiry is answered, closed or spam.
         ("tasks_waitlist_entry_id", "ALTER TABLE tasks ADD COLUMN waitlist_entry_id INTEGER"),
@@ -9008,6 +9014,9 @@ def init_db():
     # The stock descriptions' bathrooms on the ground floor, not the first,
     # once (owner, 9 November). By the words, so names do not matter.
     apply_room_bathroom_floor_2026_11_09(conn)
+    # The rooms' French titles on the website (owner, 23 November), once, by
+    # the names of 16 October.
+    apply_room_titles_2026_11_23(conn)
     # Every atelier takes fifteen (owner, 18 October), once.
     apply_workshops_fifteen_2026_10_18(conn)
     # The waitlist learns the status 'enquiry', once, before the tidy below
@@ -57795,6 +57804,42 @@ def press():
     return render_template("press.html", workshops=offered_workshops())
 
 
+def retreats_from_price(workshops):
+    """The lowest price per person among the retreats on offer, or None.
+
+    The same figure the stay panel's "From" reads (_stay_panel.html takes the
+    least price_per_person of the same offered_workshops()), so the Instagram
+    page, the panel and the retreats themselves cannot say three different
+    things the morning the owner changes a price in Admin. None when nothing
+    on offer carries a price: no figure is better than "from EUR0".
+    """
+    prices = []
+    for w in workshops or []:
+        try:
+            price = w["price_per_person"]
+        except (KeyError, IndexError, TypeError):
+            continue
+        if price and float(price) > 0:
+            prices.append(float(price))
+    return min(prices) if prices else None
+
+
+# The page the Instagram bio points at (owner's website brief, 23 November
+# 2026, 4): the house's name, one line, and three large buttons -- Stay,
+# Retreats, Celebrate. Linked from nowhere on the site and noindex in its
+# template, so it is a door for people arriving from Instagram and never a
+# page competing with the home page in search. Not in the sitemap either.
+#
+# The prices are the site's own: the rooms' from the rooms table
+# (house_room_facts, as every page that states one), the retreats' from the
+# workshops on offer, as the stay panel does. Nothing is typed into the page.
+@app.route("/links")
+def links_page():
+    workshops = offered_workshops()
+    return render_template("links.html", workshops=workshops,
+                           retreats_from=retreats_from_price(workshops))
+
+
 # The family behind the house, which the footer has been linking to since the
 # designer wrote it -- at a page that did not exist, so the link quietly went
 # to the restoration page instead. Self-contained, like /press: no route data,
@@ -59471,6 +59516,110 @@ def apply_family_beds_2026_10_18(conn):
     if changed:
         log_line("[rooms] the Family Suite's beds, as the owner gave them on 18 October")
     return changed
+
+
+# THE ROOMS' TITLES ON THE WEBSITE (owner, 23 November 2026). The rooms are
+# named after remarkable French women, and the website says so: the French
+# title is the heading, and the plain name -- the one Booking.com lists, the
+# one every rate, room id and channel mapping is keyed to -- sits small beneath
+# it. Two of these are confirmed and four are still the owner's to settle, which
+# is why each is a field in Admin -> Rooms rather than a line of code.
+#
+# Typographic apostrophes, as the room copy already spells "Chambre Jeanne
+# d’Arc". Written once, by a flag, and only where a room has no title yet, so
+# a title the owner has changed is never put back on the next deploy. By the
+# names of 16 October, after apply_room_names_2026_10_16 has given them.
+ROOM_TITLES_2026_11_23 = [
+    ("The Twin Room", "La Chambre Jeanne d’Arc"),
+    ("The King Room", "La Chambre Olympe de Gouges"),
+    ("The Twin Room (Ground Floor)", "La Chambre Marie Curie"),
+    ("The King Suite", "La Suite Émilie du Châtelet"),
+    ("The Marquis Suite", "La Suite Joséphine"),
+    ("The Family Suite", "Les Appartements Bleus et Fleuris"),
+]
+
+
+def apply_room_titles_2026_11_23(conn):
+    """Once: each room's French title, where it has none. Returns rooms given one."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_titles_2026_11_23'").fetchone():
+        return 0
+    changed = 0
+    for name, title in ROOM_TITLES_2026_11_23:
+        changed += conn.execute(
+            "UPDATE rooms SET website_title = ? WHERE name = ? "
+            "AND TRIM(COALESCE(website_title, '')) = ''", (title, name)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('room_titles_2026_11_23', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        log_line(f"[rooms] the French titles of 23 November: {changed} room(s)")
+    return changed
+
+
+def room_website_titles(conn=None):
+    """{room name: its title on the website}, for the rooms that have one.
+
+    Read once per request and kept on g: a Stay page names every room several
+    times over, and a letter is drawn from more than one template. Outside a
+    request (a job sending a letter) it is read fresh, which is one query over
+    six rows.
+    """
+    if has_request_context():
+        cached = getattr(g, "_room_titles", None)
+        if cached is not None:
+            return cached
+    own = conn is None
+    try:
+        if own:
+            conn = get_db()
+        try:
+            rows = conn.execute(
+                "SELECT name, website_title FROM rooms "
+                "WHERE TRIM(COALESCE(website_title, '')) != ''").fetchall()
+        finally:
+            if own:
+                conn.close()
+        titles = {r["name"]: r["website_title"].strip() for r in rows}
+    except sqlite3.Error:
+        # A page names its rooms by their plain names rather than not at all.
+        titles = {}
+    if has_request_context():
+        g._room_titles = titles
+    return titles
+
+
+def room_title(name, conn=None):
+    """What the website calls the room named `name`: its French title, or the
+    name itself where it has none (or `name` is not a room's name at all -- a
+    Booking.com label, "Room not stated", a workshop's room list).
+
+    The name stays the key everywhere. Photographs, room copy, bathrooms and
+    the room picker are all matched on `rooms.name`, and the public templates
+    read them through room_name(); this is only ever what is PRINTED.
+    """
+    if not name:
+        return name
+    return room_website_titles(conn).get(name, name)
+
+
+def room_plain(name, conn=None):
+    """The plain name to print small beneath a room's title, or "" when the
+    title IS the plain name and a second line would only repeat it."""
+    if not name:
+        return ""
+    return name if room_title(name, conn) != name else ""
+
+
+def room_title_and_plain(name, conn=None):
+    """"La Chambre Jeanne d’Arc (The Twin Room)", for the one line of a letter
+    where a guest checks which room they booked; the name alone where there is
+    no title."""
+    plain = room_plain(name, conn)
+    return f"{room_title(name, conn)} ({plain})" if plain else (name or "")
+
+
+app.jinja_env.globals["room_title"] = room_title
+app.jinja_env.globals["room_plain"] = room_plain
 
 
 # FIFTEEN TO AN ATELIER (owner, 18 October 2026: "all workshops are 15
@@ -65134,6 +65283,7 @@ def confirmation_letter_html(subject, body_src, context, *, conn=None, card=None
                 arrival_long=context.get("arrival_date", ""),
                 departure_long=context.get("departure_date", ""),
                 room_name=context.get("room_name", ""),
+                room_plain=card.get("room_plain", ""),
                 reference_code=context.get("reference_code", ""),
                 party=card.get("party", ""),
                 balance_due=card.get("balance_due", ""),
@@ -65403,6 +65553,8 @@ def render_email_template(conn, template_key, context, *, statement=None, pay_ur
     it is not enough: the send itself has to refuse. The shipped wording is
     used instead, and the substitution is recorded so it can be found later.
     """
+    # Before both halves, so the words and the drawing name the same room.
+    context = letter_room_title(conn, template_key, context)
     subject, body, _problems = email_template_text(conn, template_key, context)
     if not subject:
         # THREE, always. This returned two here and three below, so a missing
@@ -65419,6 +65571,30 @@ def render_email_template(conn, template_key, context, *, statement=None, pay_ur
         pay_url=pay_url, workshops=workshops, foot=foot, extras=extras, photos=photos)
 
 
+def letter_room_title(conn, template_key, context):
+    """The merge tags with {room_name} as the website names the room.
+
+    "Use the same titles in guest confirmation emails" (owner, 23 November
+    2026): a guest who chose La Chambre Jeanne d’Arc on the website is written
+    to about La Chambre Jeanne d’Arc. Done here, where every stored letter is
+    filled in, rather than at the forty places that build a context, so a letter
+    added next month says it too without anybody remembering to.
+
+    Only a room's own name is replaced, and only by its title; a Booking.com
+    label, "Room not stated" or a workshop's list of rooms is left as it came.
+    The letters to a Booking.com guest (channel_*) keep the plain name: that is
+    the name closest to what they booked under, and the brief keeps the plain
+    names wherever Booking.com is involved.
+    """
+    name = (context or {}).get("room_name")
+    if not name or not isinstance(name, str) or (template_key or "").startswith("channel_"):
+        return context
+    title = room_title(name, conn)
+    if title == name:
+        return context
+    return dict(context, room_name=title)
+
+
 def email_template_text(conn, template_key, context):
     """(subject, body, problems) as a guest would receive them, or Nones.
 
@@ -65429,6 +65605,7 @@ def email_template_text(conn, template_key, context):
     subject_src, body_src, problems = email_template_source(conn, template_key)
     if subject_src is None:
         return None, None, problems
+    context = letter_room_title(conn, template_key, context)
     subject = merge_email_text(subject_src, context).strip()
     # Which letter, left where send_email can find it by the subject -- so the
     # record of every letter says which template it was without two hundred
@@ -71192,12 +71369,12 @@ def new_room():
         conn = get_db()
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM rooms").fetchone()["m"]
         conn.execute(
-            """INSERT INTO rooms (name, channel_name, description, max_occupancy, max_adults, max_children,
+            """INSERT INTO rooms (name, channel_name, website_title, description, max_occupancy, max_adults, max_children,
                price_per_night, min_nights, size_sqm, bed_setup, bathroom, outlook, floor,
                access_steps, access_car_metres, access_bathroom, access_notes,
                export_token, sort_order, photo_filename, amenities, active)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
-            (f["name"], f["channel_name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
+            (f["name"], f["channel_name"], f["website_title"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
              f["access_steps"], f["access_car_metres"], f["access_bathroom"],
@@ -71242,12 +71419,12 @@ def edit_room(room_id):
             photo_filename = room["photo_filename"]
 
         conn.execute(
-            """UPDATE rooms SET name=?, channel_name=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
+            """UPDATE rooms SET name=?, channel_name=?, website_title=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
                price_per_night=?, min_nights=?, size_sqm=?, bed_setup=?, bathroom=?, outlook=?,
                floor=?, access_steps=?, access_car_metres=?, access_bathroom=?,
                access_notes=?, active=?, photo_filename=?, amenities=?,
                workshop_room=? WHERE id=?""",
-            (f["name"], f["channel_name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
+            (f["name"], f["channel_name"], f["website_title"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
              f["access_steps"], f["access_car_metres"], f["access_bathroom"],
@@ -98089,8 +98266,11 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
     balance_due = f"\u20ac{owed:,.2f}" if owed and owed > 0.005 else ""
     arrival = format_date_human(booking["arrival_date"])
     departure = format_date_human(booking["departure_date"])
+    # The French title and the plain name, together, on the one line a guest
+    # checks to see which room they have (owner, 23 November 2026); the
+    # card draws the plain name small beneath the title, as the website does.
     details = [f"Arriving: {arrival}", f"Leaving: {departure}",
-               f"Room: {room_name}",
+               f"Room: {room_title_and_plain(room_name, conn)}",
                f"Reference code: {booking['reference_code']}"]
     if balance_due:
         # 5 October: a stay is settled online before arrival, not at the door.
@@ -98137,7 +98317,9 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
     context = {
         "guest_name": booking["guest_name"] or "",
         "first_name": (booking["guest_name"] or "").split(" ")[0] or "there",
-        "room_name": room_name,
+        # Titled here as well as in email_template_text: the drawn letter is
+        # filled from this context directly, not through that function.
+        "room_name": room_title(room_name, conn),
         "arrival_date": arrival,
         "departure_date": departure,
         "party_size": booking["party_size"] or "",
@@ -98167,7 +98349,7 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
         party=party_words, has_transfer=booking_has_transfer(booking),
         door_url=door_url if door else "",
         door_opens=_door_setting(conn, "door_opens_at", DOOR_DEFAULT_OPENS) if door else "",
-        portal_url=portal_url)
+        portal_url=portal_url, room_plain=room_plain(room_name, conn))
 
 
 def write_about_stay(booking, subject, body, side="stay",
@@ -121141,6 +121323,11 @@ def room_fields_from_form():
         # and must not render as an empty second line on every card.
         "channel_name": ((request.form.get("channel_name", "") or "").strip()
                          or None),
+        # The French title on the website. Blank means the website uses the
+        # name, with no second line under it. One line of words: collapsed,
+        # and kept to a length a card heading can carry.
+        "website_title": (" ".join((request.form.get("website_title", "") or "").split())[:80]
+                          or None),
         "description": (request.form.get("description", "") or "").strip(),
         "max_adults": adults, "max_children": children,
         "max_occupancy": guests,
@@ -126270,6 +126457,12 @@ LEGACY_PATHS = [
     ("/stay-2026", "workshops_public", True),
     ("/stay-2024", "workshops_public", True),
     ("/workshops-2026", "workshops_public", True),
+    # 23 November 2026 (the owner's website brief, 2): the old site's press
+    # archive, so the links magazines printed still land. Its whole section
+    # is in LEGACY_SECTIONS below: 74 of its articles were asked for between
+    # October and November, /press-2/moments-magazine and
+    # /press-2/2017/1/18/sydney-morning-herald the most.
+    ("/press-2", "press", True),
 ]
 
 # Old addresses that were ONE atelier, sent to it by the words of its title,
@@ -126300,6 +126493,7 @@ LEGACY_SECTIONS = [
     ("/celebrations-portfolio", "events_weddings", True),
     ("/chateau-ateliers", "workshops_public", True),
     ("/letter-club-subscription", "dashboard", True),
+    ("/press-2", "press", True),
 ]
 
 
@@ -126796,7 +126990,33 @@ def not_found(e):
     plain = request.path.rstrip("/").lower()
     if plain and plain != request.path and plain in LEGACY_LOOKUP:
         return redirect(_with_query(plain), code=301)
+    # One of this site's own pages with a slash on the end: /press/, /contact/,
+    # /history/. Squarespace printed its links that way, and /press/ alone was
+    # asked for 122 times in October and November 2026 and answered "not
+    # here" every time (owner's website brief, 23 November). Not a guess: the
+    # same address exactly, the slash and nothing else taken off, case kept,
+    # and only to a page that answers a plain GET with no part of its address
+    # to fill in.
+    bare = request.path.rstrip("/")
+    if (bare and bare != request.path and request.method in ("GET", "HEAD")
+            and bare in own_plain_pages()):
+        return redirect(_with_query(bare), code=301)
     return render_template("error.html", code=404), 404
+
+
+_OWN_PLAIN_PAGES = None
+
+
+def own_plain_pages():
+    """Every address of this site that is a whole page by itself: a GET rule
+    with nothing in it to fill in. Read from the url map once, after every
+    route is registered (a request cannot come before that)."""
+    global _OWN_PLAIN_PAGES
+    if _OWN_PLAIN_PAGES is None:
+        _OWN_PLAIN_PAGES = frozenset(
+            r.rule for r in app.url_map.iter_rules()
+            if not r.arguments and "GET" in (r.methods or ()) and r.rule != "/")
+    return _OWN_PLAIN_PAGES
 
 
 @app.errorhandler(500)

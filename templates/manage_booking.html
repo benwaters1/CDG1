@@ -22,7 +22,8 @@
     <circle cx="60" cy="13" r="1.4"/>
   </svg>
   <p class="g-eyebrow">{{ t('Your booking') }}</p>
-  <h1>{{ booking['room_name'] }}</h1>
+  {%- from '_room_copy.html' import room_heading %}
+  {{ room_heading(booking['room_name'], tag='h1') }}
   <p class="g-p">Status: <span class="mini-status status-{{ (booking['status']|string)|lower }}">{{ booking['status'] }}</span>
     {% if booking['payment_status'] and (booking['payment_status']|lower) != 'unpaid' %}· Payment: <span class="mini-status status-{{ (booking['payment_status']|string)|lower }}">{{ booking['payment_status'] }}</span>{% endif %}
   </p>

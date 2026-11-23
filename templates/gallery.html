@@ -328,7 +328,7 @@
              image of the gardens simply stays a picture. #}
           {% if rooms %}{% for r in rooms %}
             {% if r['name'] and r['name']|lower in (img['caption']|default('')|lower) %}
-              <a class="g-gal__go" href="{{ url_for('book_room', room_id=r['id']) }}">See {{ r['name'] }} <span aria-hidden="true">&rsaquo;</span></a>
+              <a class="g-gal__go" href="{{ url_for('book_room', room_id=r['id']) }}">See {{ room_title(r['name']) }} <span aria-hidden="true">&rsaquo;</span></a>
             {% endif %}
           {% endfor %}{% endif %}
         </figure>

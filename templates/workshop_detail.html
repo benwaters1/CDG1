@@ -249,7 +249,7 @@
   {%- for r in (rooms or []) -%}
     {%- set _n = room_name(r['name'])|trim -%}{%- set _rp = ROOM_PHOTOS.get(_n) -%}
     {%- set _src = url_for('room_photo', filename=r['photo_filename']) if r['photo_filename'] else (_rp[0][0] if _rp else '') -%}
-    {%- if _src %}{% set _ = _rooms.append({'src': _src, 'alt': _n, 'label': _n, 'href': url_for('book_room', room_id=r['id'])}) %}{% endif -%}
+    {%- if _src %}{% set _ = _rooms.append({'src': _src, 'alt': room_title(_n), 'label': room_title(_n), 'href': url_for('book_room', room_id=r['id'])}) %}{% endif -%}
   {%- endfor %}
   {% if _rooms|length > 1 %}{{ carrousel(_rooms, 'Les Chambres') }}{% endif %}
 </div></section>

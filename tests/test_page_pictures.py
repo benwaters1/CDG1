@@ -105,8 +105,9 @@ PAGES = {
         ("the hot springs and the cave credited", r'Jeunamateur.*Traumrune', 1),
     ],
     "/press": [
-        ("The Pages Themselves: a fanned album", r'class="g-album g-album--3 g-rv g-album--fan"', 1),
-        ("and all six behind See all", r'See all 6 photos', 1),
+        # 23 Nov 2026 (owner's website brief, 1): the six pages in one captioned row, each opening the set.
+        ("The Pages Themselves: the six pages in one row", r'<figure class="g-print__p">', 6),
+        ("each with its caption", r'<figcaption class="g-print__cap">', 6),
     ],
     "/contact": [
         ("the band of four: one photograph across the page, down the drive", r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*down-the-drive', 1),

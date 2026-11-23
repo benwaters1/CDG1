@@ -223,7 +223,7 @@ def run():
         f"/book/manage/tok-{TAG}-a".lower()).get_data(as_text=True)
     s.check("it says they are travelling together",
             "Travelling together" in body)
-    s.check("naming the other room", rooms[1]["name"] in body)
+    s.check("naming the other room", m.room_title(rooms[1]["name"]) in body)
     s.check("and marking which one is theirs", "yours" in body)
     s.check("but offering no way to touch the other booking",
             f"tok-{TAG}-b".lower() not in body,

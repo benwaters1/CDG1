@@ -29,7 +29,7 @@
   {% for stay in stays %}
   <div class="g-mb-card" style="margin-bottom:var(--s3);">
     <dl class="g-facts-list">
-      <div><dt>{{ t('Room') }}</dt><dd>{{ stay['room_name'] }}</dd></div>
+      <div><dt>{{ t('Room') }}</dt><dd translate="no">{{ room_title(stay['room_name']) }}</dd></div>
       <div><dt>{{ t('Dates') }}</dt><dd>{{ stay['arrival_date']|date_short }} → {{ stay['departure_date']|date_short }}</dd></div>
       <div><dt>{{ t('Reference') }}</dt><dd>{{ stay['reference_code'] }}</dd></div>
       <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ (stay['status']|string)|lower }}">{{ stay['status'] }}</span></dd></div>

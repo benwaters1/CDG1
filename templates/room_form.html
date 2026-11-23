@@ -24,6 +24,15 @@
         <label class="field-label" for="name">Name</label>
         <input type="text" id="name" name="name" required
                value="{{ room['name'] if room else '' }}" placeholder="Chambre du Levant">
+        {#- 23 Nov 2026 (owner): the French title the website gives the room, with the name above printed small
+            beneath it. A field rather than code, so the four titles still to confirm change here. -#}
+        <label class="field-label" for="website_title" style="margin-top:10px;">Title on the website</label>
+        <input type="text" id="website_title" name="website_title" maxlength="80"
+               value="{{ room['website_title'] or '' if room else '' }}"
+               placeholder="La Chambre Jeanne d’Arc">
+        <p class="field-hint">The room's heading on the website and in guests' letters, with the
+          name above in small letters beneath it. Booking.com, the rates and the calendar feeds
+          keep using the name. Leave it blank to show the name alone.</p>
         <label class="field-label" for="channel_name" style="margin-top:10px;">Name on Booking.com</label>
         <input type="text" id="channel_name" name="channel_name"
                value="{{ room['channel_name'] or '' if room else '' }}"

@@ -80,12 +80,15 @@ def run():
     # the loose way first, and it did not notice the heading being swapped
     # back to the database name — because the alt text beside it still
     # carried the French one, so the string was "on the page" either way.
-    headings = re.findall(r'<h3 class="g-homeroom__name">(.*?)</h3>', html, re.S)
+    # A heading is the room's title on the website since 23 November 2026
+    # (La Chambre Jeanne d'Arc over The Twin Room), so it is checked against
+    # the titles: the name a guest is shown, with the plain name beneath it.
+    headings = re.findall(r'<h3[^>]*class="g-homeroom__name"[^>]*>(.*?)</h3>', html, re.S)
     headings = [h.strip() for h in headings]
     s.check("the room cards are headed by name at all", headings,
             detail="no room headings found — the selector this reads has moved, "
                    "and the two checks below would pass on an empty list")
-    wrong = [h for h in headings if h not in rooms]
+    wrong = [h for h in headings if h not in [m.room_title(r) for r in rooms]]
     s.check("every room card is headed by the name a guest is shown",
             not wrong, detail=f"{wrong} — the front page is using a name the "
                               "rest of the site does not")

@@ -653,6 +653,9 @@ SUITES = [
     # on a cp1252 console. Every log line goes through log_line, which never
     # raises, and app.py holds no print().
     "test_log_line",
+    # 23 November 2026, the owner's website brief: /press rebuilt, the old
+    # press archive redirected, the rooms' French titles, and /links.
+    "test_website_brief_2026_11_23",
 ]
 
 

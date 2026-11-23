@@ -323,7 +323,7 @@ def _checks(s, oc, conn):
 
     letter = first[0] if first else {"subject": "", "body": "", "html": ""}
     s.check("it is the owner's letter, filled in",
-            letter["subject"] == f"Before you come to {soon['room_name']}"
+            letter["subject"] == f"Before you come to {m.room_title(soon['room_name'])}"
             and letter["body"].startswith("Hi Marie,"), detail=letter["subject"])
     taken_letter = (_to(letters, "TAKEN") or [{"body": "", "html": ""}])[0]
     s.check("the letter to the stay with the tasting does not offer it",

@@ -49,7 +49,7 @@
   <div class="account-card {{ 'is-past' if not upcoming }}">
     <div class="account-card-head">
       <div>
-        <strong>{{ b['room_name'] }}</strong>
+        <strong translate="no">{{ room_title(b['room_name']) }}</strong>
         <span class="mini-status status-{{ (b['status']|string)|lower }}">{{ b['status'] }}</span>
         {% if not upcoming %}<span class="mini-status status-inactive">past</span>{% endif %}
       </div>
