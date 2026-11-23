@@ -513,6 +513,10 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_year_on_days_before": "30",
     "automation_anniversary_letter_enabled": "0",
     "automation_anniversary_letter_days_before": "30",
+    # And the third, before a birthday a guest told us (23 Nov 2026): off
+    # until the owner has read it. See run_birthday_letter_job.
+    "automation_birthday_letter_enabled": "0",
+    "automation_birthday_letter_days_before": "30",
     "automation_backup_interval_hours": "24",
     "automation_social_schedule_enabled": "1",
     # OFF until somebody turns it on. The switch is the last thing between a
@@ -2530,6 +2534,14 @@ DEFAULT_EMAIL_TEMPLATES = [
      "in the Pyrenees, breakfast in the morning, the mountains all around \u2014 we "
      "would be delighted to have you:\n{book_url}\n\nAnd if you already have plans, "
      "we wish you both a very happy anniversary.\n\n\u2014 Ch\u00e2teau de Gudanes"),
+    ("guest_birthday_ahead", "Guests: Before their birthday",
+     "Your birthday, at Ch\u00e2teau de Gudanes?",
+     "Hi {guest_name},\n\nYou once told us that your birthday falls on "
+     "{birthday_date}, and we have kept it in mind.\n\nIf you would like to "
+     "spend it somewhere a little out of the ordinary \u2014 a room in a ch\u00e2teau "
+     "in the Pyrenees, breakfast in the morning, the mountains all around \u2014 we "
+     "would be delighted to have you:\n{book_url}\n\nAnd if you already have plans, "
+     "we wish you a very happy birthday.\n\n\u2014 Ch\u00e2teau de Gudanes"),
     ("room_feedback_request", "Rooms: How was your stay?",
      "How was your stay at Ch\u00e2teau de Gudanes?",
      "Hi {guest_name},\n\nWe hope the ch\u00e2teau treated you well. If you have a "
@@ -2897,6 +2909,56 @@ EMAIL_WORDING_REPLACED_23NOV = {"review_invitation": {
     _email_wording_5oct("review_invitation", *REVIEW_INVITATION_UNTIL_23NOV),
     _email_wording_as_of_5oct("review_invitation", *REVIEW_INVITATION_UNTIL_23NOV),
 }}
+
+
+# The come-back letters, one row per letter written (see COME-BACK LETTERS).
+# Its CHECK names every kind; a database made before the birthday letter is
+# rebuilt with it once, by come_back_letters_take_birthdays.
+COME_BACK_LETTERS_TABLE = """CREATE TABLE IF NOT EXISTS come_back_letters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL CHECK(kind IN ('year_on','anniversary','birthday')),
+            email TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            guest_name TEXT,
+            booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+            guest_id INTEGER REFERENCES guests(id) ON DELETE SET NULL,
+            outcome TEXT NOT NULL,
+            unsubscribe_token TEXT NOT NULL UNIQUE,
+            written_at TEXT NOT NULL,
+            UNIQUE(kind, email, year)
+        )"""
+COME_BACK_LETTERS_COLUMNS = ("id, kind, email, year, guest_name, booking_id, guest_id, "
+                             "outcome, unsubscribe_token, written_at")
+
+
+def come_back_letters_take_birthdays(conn):
+    """Let a come_back_letters table made on 23 Nov 2026 hold birthdays.
+
+    It shipped with CHECK(kind IN ('year_on','anniversary')), and SQLite cannot
+    change a CHECK in place, so without this every birthday letter's stamp
+    would be refused and the job would fail on the live database while passing
+    on a fresh one. Rebuilt once, inside one write, every row kept as it was
+    (the unsubscribe links already sent still work); a table that already
+    names birthday is left alone, so it is safe on every start."""
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' "
+                       "AND name = 'come_back_letters'").fetchone()
+    if not row or "'birthday'" in (row[0] or ""):
+        return False
+    conn.commit()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DROP TABLE IF EXISTS come_back_letters_rebuilt")
+        conn.execute(COME_BACK_LETTERS_TABLE.replace(
+            "come_back_letters (", "come_back_letters_rebuilt (", 1))
+        conn.execute(f"INSERT INTO come_back_letters_rebuilt ({COME_BACK_LETTERS_COLUMNS}) "
+                     f"SELECT {COME_BACK_LETTERS_COLUMNS} FROM come_back_letters")
+        conn.execute("DROP TABLE come_back_letters")
+        conn.execute("ALTER TABLE come_back_letters_rebuilt RENAME TO come_back_letters")
+        conn.commit()
+    except sqlite3.Error:
+        conn.rollback()
+        raise
+    return True
 
 
 def apply_letter_wording_2026_11_23(conn):
@@ -8311,19 +8373,7 @@ def init_db():
         # which kind, to which address, for which year, so a guest hears each
         # at most once a year whatever runs twice. The token is their way to
         # stop them, read by the same unsubscribe page as a campaign's.
-        ("come_back_letters", """CREATE TABLE IF NOT EXISTS come_back_letters (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kind TEXT NOT NULL CHECK(kind IN ('year_on','anniversary')),
-            email TEXT NOT NULL,
-            year INTEGER NOT NULL,
-            guest_name TEXT,
-            booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
-            guest_id INTEGER REFERENCES guests(id) ON DELETE SET NULL,
-            outcome TEXT NOT NULL,
-            unsubscribe_token TEXT NOT NULL UNIQUE,
-            written_at TEXT NOT NULL,
-            UNIQUE(kind, email, year)
-        )"""),
+        ("come_back_letters", COME_BACK_LETTERS_TABLE),
         # THE KITCHEN'S CLEANING, KEPT (23 November 2026). cleaning_rounds
         # holds only when each job was LAST done, and the question the chef
         # or an inspector asks is when it was done before that. One row each
@@ -8940,6 +8990,8 @@ def init_db():
     conn.commit()
     # 23 Nov: the review invitation, readied for the day its review page is set.
     apply_letter_wording_2026_11_23(conn)
+    # 23 Nov: the come-back table learns the birthday letter's kind.
+    come_back_letters_take_birthdays(conn)
     # 16 Oct: five guest rooms and no new beds, in stored letters too.
     apply_letter_words_2026_10_16(conn)
 
@@ -33318,6 +33370,7 @@ LETTER_TRIGGERS = {
     'review_invitation': ('Sent by the daily job to a guest whose stay feedback was glowing, once, 2 or more days after they gave it (only once a review page link is set). Also sent when staff press Ask for a review on a feedback entry.'),
     'room_year_on': ('Sent between 09:00 and 12:00, once a year at most to an address, to a guest whose stay a year ago is coming round within the days set under Automation (30 as shipped), unless they are booked to come again. Needs its Automation switch on.'),
     'guest_anniversary_ahead': ('Sent between 09:00 and 12:00, once a year, to a guest whose profile carries an anniversary falling within the days set under Automation (30 as shipped), unless they are booked to stay around it. Needs its Automation switch on.'),
+    'guest_birthday_ahead': ('Sent between 09:00 and 12:00, once a year, to a guest whose profile carries a birthday falling within the days set under Automation (30 as shipped), unless they are booked to stay around it or had another of these letters in the last six weeks. Needs its Automation switch on.'),
     'room_feedback_request': ('Sent by the daily job 3 days after departure to a confirmed stay with no feedback. Also sent at once when staff check a stay out at the desk. Once per stay.'),
     'workshop_feedback_request': ('Sent by the daily job once per confirmed registration, on or after the day after the atelier ends.'),
     'workshop_recap': ("Sent only when staff press Send recap on a sitting's page after the atelier, to each confirmed guest. Never sent until written."),
@@ -64994,6 +65047,7 @@ EMAIL_TEMPLATE_TAGS = {
     "review_invitation": ("guest_name", "review_url"),
     "room_year_on": ("book_url", "guest_name", "room_name", "stay_month"),
     "guest_anniversary_ahead": ("anniversary_date", "book_url", "guest_name"),
+    "guest_birthday_ahead": ("birthday_date", "book_url", "guest_name"),
     "room_feedback_request": ("feedback_url", "guest_name", "room_name"),
     "room_waitlist_opening": ("book_url", "desired_arrival", "desired_departure", "name"),
     "workshop_moved": ("included_note", "balance_amount", "balance_due_date", "balance_line",
@@ -65131,6 +65185,7 @@ REQUIRED_MERGE_TAGS = {
     "review_invitation": {"review_url": "it is where they leave the review"},
     "room_year_on": {"book_url": "it is how they come back"},
     "guest_anniversary_ahead": {"book_url": "it is how they come for it"},
+    "guest_birthday_ahead": {"book_url": "it is how they come for it"},
     "event_quote": {"quote_url": "it is where they read and accept the quote"},
     "room_waitlist_opening": {"book_url": "it is how they take the room"},
     "restaurant_waitlist_opening": {"book_url": "it is how they take the table"},
@@ -65421,7 +65476,7 @@ _LETTER_EYEBROWS = {
                   "review_invitation"),
     "Your bookings": ("guest_link_updated",),
     "News from the château": ("newsletter_welcome",),
-    "Come back to Gudanes": ("room_year_on", "guest_anniversary_ahead"),
+    "Come back to Gudanes": ("room_year_on", "guest_anniversary_ahead", "guest_birthday_ahead"),
     "For the house": ("house_payment_received",),
 }
 LETTER_EYEBROW = {key: label for label, keys in _LETTER_EYEBROWS.items() for key in keys}
@@ -65442,6 +65497,7 @@ LETTER_HERO = {
     "event_inquiry_received": "hero-facade.jpg", "event_inquiry_confirmed": "hero-facade.jpg",
     "event_quote": "hero-facade.jpg", "newsletter_welcome": "hero-house.jpg",
     "room_year_on": "hero-bedroom.jpg", "guest_anniversary_ahead": "hero-house.jpg",
+    "guest_birthday_ahead": "hero-house.jpg",
 }
 
 
@@ -103223,6 +103279,7 @@ TEMPLATE_STAGES = [
     ("not_running", "Cancelled"),
     ("extras_offer", "Before the stay"),
     ("year_on", "A year on"), ("anniversary", "Before their anniversary"),
+    ("birthday", "Before their birthday"),
     ("feedback", "After the stay"), ("recap", "After the stay"),
     ("review", "After the stay"), ("newsletter", "Signing up"),
     ("checkin", "Before arrival"),
@@ -103306,6 +103363,13 @@ EMAIL_TEMPLATE_INFO = {
                                 "a guest's anniversary — while that is switched on",
                                 "The guest on the profile. Never to somebody already staying "
                                 "around it, nor anybody who asked not to be written to"),
+    "guest_birthday_ahead": ("Once a year, ahead of a birthday on a guest's profile — as "
+                             "many days before it as you set under Automation, Write before "
+                             "a guest's birthday — while that is switched on",
+                             "The guest on the profile. Never to somebody already staying "
+                             "around it, nor to somebody who had another of these letters "
+                             "in the last six weeks, nor anybody who asked not to be "
+                             "written to"),
     "room_waitlist_opening": ("When a room frees up for dates somebody is waiting "
                               "for", "The person on the waiting list"),
     "restaurant_reservation_received": ("When a table is booked online", "The diner"),
@@ -112856,12 +112920,17 @@ def extras_offer_runs_today(conn):
 
 
 # ---------------------------------------------------------------------------
-# COME-BACK LETTERS (owner, 23 Nov 2026: "4 yes we will do that"). Two letters
-# asking a guest back, each to an address at most once a year:
+# COME-BACK LETTERS (owner, 23 Nov 2026: "4 yes we will do that", then "Yes,
+# add birthday"). Three letters asking a guest back, each to an address at
+# most once a year:
 #   - a year on from a stay, naming the room they had, a month (as shipped)
 #     before the stay's first anniversary, so there is time to come again at
 #     the same time of year;
-#   - ahead of an anniversary the guest told the house, from their profile.
+#   - ahead of an anniversary the guest told the house, from their profile;
+#   - ahead of a birthday the guest told the house, from their profile.
+# And never two of them to one address within six weeks: somebody whose
+# birthday is a fortnight after their anniversary hears from the house once,
+# about whichever comes first, not twice in a month.
 # Both are the house writing for its own reasons, so both keep every rule it
 # keeps for that: never to anybody who unsubscribed or asked us to stop using
 # their details, never to an address Booking.com or an agent lent us for one
@@ -112879,7 +112948,19 @@ COME_BACK_LETTERS = {
     "anniversary": {"key": "guest_anniversary_ahead",
                     "switch": "automation_anniversary_letter_enabled",
                     "days": "automation_anniversary_letter_days_before"},
+    "birthday": {"key": "guest_birthday_ahead",
+                 "switch": "automation_birthday_letter_enabled",
+                 "days": "automation_birthday_letter_days_before"},
 }
+# The profile's day each guest-day letter is about, the tag it is written
+# into, and what the job says when nobody's day is coming.
+GUEST_DAY_LETTERS = {
+    "anniversary": ("anniversary", "anniversary_date", "no anniversary coming up to write about"),
+    "birthday": ("birthday", "birthday_date", "no birthday coming up to write about"),
+}
+# Never two come-back letters to one address within this many days, of any kind.
+COME_BACK_GAP_DAYS = 42
+COME_BACK_LATELY_WHY = "they had another of these letters from us in the last six weeks"
 COME_BACK_DEFAULT_DAYS = 30
 # Never further ahead than this, whatever is typed: a letter about an
 # anniversary five months off reads as a machine that has lost count.
@@ -112924,6 +113005,19 @@ def come_back_refusal(conn, email):
     if guest_restricted(conn, email=email):
         return "they asked us to stop using their details"
     return None
+
+
+def come_back_lately(conn, email, kind, today=None):
+    """Whether this address had a DIFFERENT come-back letter in the last
+    COME_BACK_GAP_DAYS days. The same letter again is stopped by its own
+    once-a-year stamp, so it is not counted here."""
+    day = today or house_today()
+    since = datetime.combine(day - timedelta(days=COME_BACK_GAP_DAYS), datetime.min.time(),
+                             tzinfo=timezone.utc).isoformat()
+    return conn.execute(
+        """SELECT 1 FROM come_back_letters
+            WHERE LOWER(email) = ? AND kind != ? AND written_at >= ? LIMIT 1""",
+        ((email or "").strip().lower(), kind, since)).fetchone() is not None
 
 
 def come_back_ready(conn, kind):
@@ -113027,6 +113121,8 @@ def run_year_on_job(conn, days_before=None, today=None):
         why = come_back_refusal(conn, email)
         if not why and booked_to_come(conn, email):
             why = "they are booked to come again"
+        if not why and come_back_lately(conn, email, "year_on", day):
+            why = COME_BACK_LATELY_WHY
         if why:
             skipped[why] = skipped.get(why, 0) + 1
             continue
@@ -113046,24 +113142,37 @@ def run_year_on_job(conn, days_before=None, today=None):
 
 
 def run_anniversary_letter_job(conn, days_before=None, today=None):
-    """Write once a year to each guest whose anniversary is coming up.
+    """Write once a year to each guest whose anniversary is coming up."""
+    return run_guest_day_letter(conn, "anniversary", days_before, today)
 
-    From the profile (guests.anniversary, a day and a month), never a merged
-    one. Written the first morning the day is within `days_before`; not to
-    somebody staying with us around it, who is celebrating it here already.
+
+def run_birthday_letter_job(conn, days_before=None, today=None):
+    """Write once a year to each guest whose birthday is coming up."""
+    return run_guest_day_letter(conn, "birthday", days_before, today)
+
+
+def run_guest_day_letter(conn, kind, days_before=None, today=None):
+    """The anniversary and birthday letters: one job, two days on a profile.
+
+    From the profile (guests.anniversary or guests.birthday, a day and a month,
+    the year never kept), never a merged one. Written the first morning the day
+    is within `days_before`; not to somebody staying with us around it, who is
+    celebrating it here already, nor to somebody who had another come-back
+    letter in the last six weeks.
     """
-    days = come_back_ready(conn, "anniversary")
+    field, tag, nobody = GUEST_DAY_LETTERS[kind]
+    days = come_back_ready(conn, kind)
     days = days if days_before is None else days_before
     day = today or house_today()
     sent = held = 0
     skipped = {}
     for guest in conn.execute(
-            """SELECT * FROM guests
+            f"""SELECT * FROM guests
                 WHERE merged_into_id IS NULL
-                  AND COALESCE(anniversary, '') != '' AND COALESCE(email, '') != ''
+                  AND COALESCE({field}, '') != '' AND COALESCE(email, '') != ''
                 ORDER BY id""").fetchall():
         try:
-            month, dom = (int(x) for x in guest["anniversary"].split("-"))
+            month, dom = (int(x) for x in guest[field].split("-"))
             when = same_day_in(day.year, month, dom)
             if when < day:
                 when = same_day_in(day.year + 1, month, dom)
@@ -113081,19 +113190,21 @@ def run_anniversary_letter_job(conn, days_before=None, today=None):
                  (when - timedelta(days=ANNIVERSARY_STAY_MARGIN_DAYS)).isoformat())
         ).fetchone():
             why = "they are staying with us around it"
+        if not why and come_back_lately(conn, email, kind, day):
+            why = COME_BACK_LATELY_WHY
         if why:
             skipped[why] = skipped.get(why, 0) + 1
             continue
-        outcome = write_come_back_letter(conn, "anniversary", email, guest["name"], when.year, {
+        outcome = write_come_back_letter(conn, kind, email, guest["name"], when.year, {
             "guest_name": (guest["name"] or "").strip().split(" ")[0] or "there",
-            "anniversary_date": f"{when.day} {when.strftime('%B')}",
+            tag: f"{when.day} {when.strftime('%B')}",
             "book_url": external_url("book_rooms"),
         }, guest_id=guest["id"])
         if outcome == "sent":
             sent += 1
         elif outcome == "held":
             held += 1
-    return come_back_summary(sent, held, skipped, "no anniversary coming up to write about")
+    return come_back_summary(sent, held, skipped, nobody)
 
 
 def run_workshop_balance_reminder_job(conn, days_before):
@@ -119252,6 +119363,8 @@ AUTOMATION_JOBS = [
     ("year_on", "automation_year_on_enabled", None, 24 * 3600, run_year_on_job),
     ("anniversary_letter", "automation_anniversary_letter_enabled", None, 24 * 3600,
      run_anniversary_letter_job),
+    ("birthday_letter", "automation_birthday_letter_enabled", None, 24 * 3600,
+     run_birthday_letter_job),
     # The letter with the online check-in link. Daily, in the morning (see
     # JOB_HOURS); each stay is stamped, so a run twice sends nothing twice.
     ("checkin_letter", "automation_checkin_letter_enabled", None, 24 * 3600,
@@ -119327,6 +119440,7 @@ JOB_HOURS = {
     # The come-back letters: morning letters from the house, like the offer.
     "year_on": (9, 12),
     "anniversary_letter": (9, 12),
+    "birthday_letter": (9, 12),
     # The letter with the online check-in link: a morning letter, from nine
     # to noon on the house's clock, which is what its label says.
     "checkin_letter": (9, 12),
@@ -119639,6 +119753,19 @@ AUTOMATION_SWITCHES = [
              "there first.",
      "fields": (("automation_anniversary_letter_days_before",
                  "Days before the anniversary", "days"),)},
+    {"key": "automation_birthday_letter_enabled", "job": "birthday_letter",
+     "runs": ("run_birthday_letter_job",), "group": "guests", "reaches": ("guests",),
+     "letters": ("guest_birthday_ahead",),
+     "label": "Write before a guest's birthday",
+     "what": "Emails a guest whose profile carries a birthday, once a year, between "
+             "9am and noon, when the day comes within the days set below, asking whether "
+             "they would like to spend it here. Not to somebody already staying with us "
+             "around it, nor to somebody who had another of these letters in the last six "
+             "weeks, nor anybody who asked not to be written to. Each carries its own way "
+             "to stop. Nothing while Guest emails would hold it: approve the letter there "
+             "first.",
+     "fields": (("automation_birthday_letter_days_before",
+                 "Days before the birthday", "days"),)},
     {"key": "automation_checkin_letter_enabled", "job": "checkin_letter",
      "runs": ("run_checkin_letter_job",), "group": "guests", "reaches": ("guests",),
      "letters": ("room_checkin_before", "workshop_checkin_before"),
