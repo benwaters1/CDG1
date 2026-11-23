@@ -24,6 +24,7 @@ in their own elements: a slider's counter ("3 / 8") and "See all 23 photos".
 COPY CHANGED ON PURPOSE? Then this is doing its job. Look at what it lists,
 and if every difference is meant, move COPY_BASE to the commit that made them.
 """
+import html as htmlmod
 import io
 import os
 import re
@@ -102,7 +103,9 @@ m = _harness.m
 # 13 Nov: moved to c5506fa, the bathrooms back below the rooms with all the owner's own facts ("wheres all
 # the stuff i said"); it listed /book only.
 # 13 Nov: moved to 2f463c9, the room picker (Answer Two Questions) taken off /book; it listed /book only.
-COPY_BASE = "2f463c9"
+# 23 Nov: moved to 67e2599, how many a room sleeps as its own total (owner: "it sleeps up to 3 for the
+# ground floor"); it listed /, /book and /book/1, "Sleeps 3, up to 2 adults" for "Sleeps 2", and nothing else.
+COPY_BASE = "67e2599"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
@@ -226,6 +229,14 @@ def words_of(html):
     return " ".join(words), Counter(p.caps), p.stray
 
 
+def every_caption(html):
+    """Every figure caption in the page, on screen or behind a See all, where a photograph carries its words only as
+    its description (alt) until the strip is opened."""
+    found = (re.findall(r"(?is)<figcaption\b[^>]*>(.*?)</figcaption>", html)
+             + re.findall(r'<img\b[^>]*\balt="([^"]+)"', html))
+    return {" ".join(htmlmod.unescape(re.sub(r"<[^>]+>", " ", c)).split()) for c in found}
+
+
 def _first_difference(a, b, span=70):
     """Where two long strings part company, with a little of each."""
     i = 0
@@ -310,7 +321,9 @@ def run():
             text_then = _less_removed(text_then)
             s.check(f"{path}: the same words, in the same order", text_now == text_then,
                     detail=_first_difference(text_now, text_then))
-            new_caps = caps_now - caps_then
+            # 23 Nov: a caption the page already carried behind its See all is not new words when a duplicate
+            # photograph above it goes and it moves up into view (the gallery's four-poster, twice).
+            new_caps = Counter({c: n for c, n in (caps_now - caps_then).items() if c not in every_caption(html_then)})
             s.check(f"{path}: no caption it did not have", not new_caps,
                     detail=str(list(new_caps)[:3]))
             s.check(f"{path}: a counter or See all says only that", not stray,
@@ -322,6 +335,11 @@ def run():
         text, caps, stray = words_of(sample)
         s.check("reads the words in order", text == "One two three", detail=repr(text))
         s.check("keeps captions apart", caps == Counter(["A caption"]), detail=str(caps))
+        behind = every_caption('<figure><figcaption>Seen</figcaption></figure><div hidden><figure><figcaption>Behind '
+                               '<b>See</b> all</figcaption></figure></div>')
+        behind |= every_caption('<div hidden><img src="x.jpg" alt="Only an alt &amp; no caption"></div>')
+        s.check("and knows the ones behind a See all too, a caption or a photograph's alt",
+                behind == {"Seen", "Behind See all", "Only an alt & no caption"}, detail=str(behind))
         s.check("sets the counter aside", not stray, detail=str(stray))
         _, _, stray = words_of('<p>x</p><button class="g-seeall__b">Book now</button>')
         s.check("but not new words dressed as one", stray == ["Book now"], detail=str(stray))
