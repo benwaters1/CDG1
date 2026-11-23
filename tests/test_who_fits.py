@@ -181,6 +181,33 @@ def _checks(s, conn):
             ok, why = m.room_offer(conn, gf, house_today() + timedelta(days=60),
                                    house_today() + timedelta(days=61), 3)
         s.check("so a party of three is not turned away by its size", why != "Sleeps up to 2", detail=str(why))
+
+        s.section("And the pages say three, not two (owner, 23 November)")
+        # The cards and the room's facts printed the ADULT limit: "Sleeps 2" for a room that takes three.
+        with m.app.test_request_context():
+            sleeps = m.app.jinja_env.get_template("_room_copy.html").module.room_sleeps
+            said = {k: str(sleeps(v)).strip() for k, v in {
+                "three, two adults": {"max_occupancy": 3, "max_adults": 2},
+                "two, two adults": {"max_occupancy": 2, "max_adults": 2},
+                "no total, two adults": {"max_occupancy": None, "max_adults": 2}}.items()}
+        s.check("a room's total, with its adult limit beside it when that is lower",
+                said == {"three, two adults": "3, up to 2 adults", "two, two adults": "2",
+                         "no total, two adults": "2"}, detail=str(said))
+        was_active = gf["active"]
+        conn.execute("UPDATE rooms SET active = 1 WHERE id = ?", (gf["id"],))
+        conn.commit()
+        try:
+            anon = m.app.test_client()
+            stay = anon.get("/book").get_data(as_text=True)
+            room_page = anon.get(f"/book/{gf['id']}").get_data(as_text=True)
+            at = stay.find('<h3 class="g-card__name">The Twin Room (Ground Floor)')
+            card = stay[at:at + 5000] if at != -1 else ""
+            s.check("its card on Stay says it sleeps three", "Sleeps 3, up to 2 adults" in card)
+            s.check("and so does its own page, in its facts", "<dt>Sleeps</dt><dd>3, up to 2 adults</dd>" in room_page)
+            s.check("the two-person rooms still say two", "Sleeps 2</li>" in stay)
+        finally:
+            conn.execute("UPDATE rooms SET active = ? WHERE id = ?", (was_active, gf["id"]))
+            conn.commit()
     finally:
         conn.execute("UPDATE rooms SET max_occupancy = ?, max_adults = ?, max_children = ? WHERE id = ?",
                      (gf["max_occupancy"], gf["max_adults"], gf["max_children"], gf["id"]))

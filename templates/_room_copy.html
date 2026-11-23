@@ -84,3 +84,11 @@
 {% macro room_stairs(db_name) -%}
 {{- 'No lift; on the ground floor, but still reached by stairs' if db_name in ['The Twin Room (Ground Floor)'] else 'No lift; the bedrooms are on the top floor' -}}
 {%- endmacro %}
+
+{#- 23 Nov (owner): how many a room sleeps is its own total, with its adult limit beside it when that is lower. The
+    cards, the room's facts and its search description printed the ADULT limit, so the Twin Room (Ground Floor), set to
+    three (two adults, two children), read "Sleeps 2" while taking a party of three. -#}
+{% macro room_sleeps(room) -%}
+{%- set o = (room['max_occupancy'] or 0)|int -%}{%- set a = (room['max_adults'] or 0)|int -%}
+{{- o or a -}}{%- if o and a and o > a %}, up to {{ a }} adults{% endif -%}
+{%- endmacro %}
