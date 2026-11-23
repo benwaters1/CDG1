@@ -101,7 +101,7 @@ def run():
     # test_page_pictures holds the whole page to no photograph twice; these four are the ones that moved. By their
     # words, as above; See all's hidden set and the lightbox are not on the page until asked for.
     shown = _visible(page)
-    for alt, what in (("A fashion shoot in a salon: two pairs of shoes", "the shoes on the carpet"),
+    for alt, what in (("A mille-feuille with strawberries", "the mille-feuille"),
                       ("A salon, the chandelier lit", "the chandelier lit"),
                       ("A tall window, the mountains beyond", "the tall window"),
                       ("A red dress on the staircase", "the red dress on the staircase")):
