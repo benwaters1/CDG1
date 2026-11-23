@@ -42,7 +42,7 @@
     {% if (booking['status']|string|lower) not in ('cancelled', 'canceled') %}
     <div class="g-mb-note">
       <span class="g-mb-dt">Stay a little longer</span>
-      <p>Arrive a day early or stay on after the workshop, in the same rooms, at the nightly rate.
+      <p>Arrive a day early or stay on after the workshop, in the same rooms: booked here and paid online, at the nightly rate.
       {% if extend_before is defined and extend_before and extend_after is defined and extend_after %}
         <a href="{{ url_for('book_rooms', arrival=extend_before[0], departure=extend_before[1], party_size=booking['party_size']) }}">A night before</a>
         · <a href="{{ url_for('book_rooms', arrival=extend_after[0], departure=extend_after[1], party_size=booking['party_size']) }}">A night after</a>

@@ -1004,3 +1004,29 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-closer .g-btn--solid:hover{ background: #0D2851; color: #fff; }
 .g section.rc-says figcaption.rc-sig{ color: var(--gilt-deep, #73562d); }
 .g .g-closer .g-closer__cta .g-btn{ margin: 0; }
+
+/* ==========================================================================
+   THE MENU'S "CHECK DATES" (23 Nov 2026, owner: "this could be better")
+   Two of the browser's own date boxes reading dd-----yyyy, in Inter, on a
+   tan panel. Now the home page's card in small: a white box with a gilt
+   hairline, the two dates side by side behind one rule, each opening the
+   house's calendar and reading "Add dates" in navy Garamond until chosen.
+   ========================================================================== */
+.g #g-mainnav .g-qbook{
+  padding: 18px 18px 16px; background: #fff; border: 1px solid rgba(176,141,87,.6); border-radius: 3px;
+  box-shadow: 0 10px 28px rgba(20,48,95,.08);
+}
+.g #g-mainnav .g-qbook__h{ margin: 0 0 12px; font-family: var(--ui); font-size: 11px; letter-spacing: .16em; }
+.g #g-mainnav .g-qbook__row{ gap: 0; flex-wrap: nowrap; border: 1px solid rgba(140,106,56,.3); border-radius: 2px; background: #FFFDF8; }
+.g #g-mainnav .g-qbook__f{ padding: 9px 12px 7px; gap: 0; }
+.g #g-mainnav .g-qbook__f + .g-qbook__f{ border-left: 1px solid rgba(140,106,56,.3); }
+.g #g-mainnav .g-qbook__f label{
+  margin: 0 0 2px; font-family: var(--ui); font-size: 10px; font-weight: 600; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--gilt-deep, #73562d);
+}
+.g #g-mainnav .g-qbook__f .g-rp__btn{ min-height: 0; height: 32px; justify-content: center; white-space: nowrap; }
+/* .g .g-rp__val sets every picker label to 15px !important; the id outranks it. */
+.g #g-mainnav .g-qbook__f .g-rp__val{ font-family: var(--serif); font-size: 19px !important; line-height: 1.2; color: var(--blue-deep, #14305F); }
+.g #g-mainnav .g-qbook__f .g-rp__nights{ font-size: 12px !important; line-height: 1; }
+.g #g-mainnav .g-qbook__go{ margin-top: 12px; }
+.g #g-mainnav .g-qbook__n{ margin: 10px 0 0; text-align: center; font-family: var(--serif); font-style: italic; font-size: 15px; }

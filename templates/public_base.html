@@ -262,13 +262,24 @@ window.houseDay = (function () {
         <form class="g-qbook" method="get" action="{{ url_for('book_rooms') }}">
           <p class="g-qbook__h">{{ t('Check dates') }}</p>
           <div class="g-qbook__row">
+            {#- 23 Nov (owner: "this could be better"): the two fields were the browser's own date boxes, reading
+                dd-----yyyy. They open the house's calendar now, as the home page and Stay page do; the native inputs stay,
+                as the values the form posts and the fallback with no script. The calendar is a child of body, so the
+                drawer's inert walk (below) keeps it clickable. -#}
             <span class="g-qbook__f">
               <label for="qb_in">{{ t('Arrival') }}</label>
               <input type="date" id="qb_in" name="arrival">
+              <button type="button" class="g-rp__btn" data-rp-open="arrival" hidden>
+                <span class="g-rp__val" data-rp-label="arrival" data-rp-blank="{{ t('Add dates') }}">{{ t('Add dates') }}</span>
+              </button>
             </span>
             <span class="g-qbook__f">
               <label for="qb_out">{{ t('Departure') }}</label>
               <input type="date" id="qb_out" name="departure">
+              <button type="button" class="g-rp__btn" data-rp-open="departure" hidden>
+                <span class="g-rp__val" data-rp-label="departure" data-rp-blank="{{ t('Add dates') }}">{{ t('Add dates') }}</span>
+                <span class="g-rp__nights" data-rp-nights></span>
+              </button>
             </span>
           </div>
           <button type="submit" class="g-btn g-btn--solid g-qbook__go">{{ t('Check availability') }}</button>
@@ -774,7 +785,7 @@ window.houseDay = (function () {
   var rest=[];
   function setInert(on){
     if(!on){ rest.forEach(function(el){ el.inert=false; }); rest=[]; return; }
-    var keep=[w, overlay]; var n=w; while(n && n!==document.body){ keep.push(n); n=n.parentElement; }
+    var keep=[w, overlay, document.getElementById('g-rp-panel')]; var n=w; while(n && n!==document.body){ keep.push(n); n=n.parentElement; }
     n=w; while(n && n!==document.body){
       [].slice.call(n.parentElement.children).forEach(function(el){
         if(keep.indexOf(el)===-1 && el.tagName!=='SCRIPT'){ el.inert=true; rest.push(el); }
