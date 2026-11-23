@@ -34099,7 +34099,7 @@ def event_payment_context(conn, inquiry, amount):
     owed = bill["owed"] if bill else 0.0
     return {
         "contact_name": inquiry["contact_name"],
-        "event_type": inquiry["event_type"] or "event",
+        "event_type": event_type_words(inquiry["event_type"]),
         "amount": f"€{amount:,.2f}",
         "balance_line": (f"Still to pay: €{owed:,.2f}." if owed > 0.005
                          else "It is now paid in full."),
@@ -57747,13 +57747,26 @@ def make_event_reference_code():
     return REFERENCE_PREFIXES["event"] + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
 
+# What a letter calls each kind of event. The list is the form's values, which
+# are words for a drop-down, not for a sentence: the letters said "hosting a
+# corporate", "your other" and "towards your corporate" (23 Nov 2026). A kind
+# the owner adds ("elopement") is a noun already and is said as written.
+EVENT_TYPE_WORDS = {"corporate": "corporate event", "other": "event"}
+
+
+def event_type_words(value):
+    """An event's kind as a letter says it: "wedding", "corporate event"."""
+    kind = " ".join(str(value or "").split()).lower()
+    return EVENT_TYPE_WORDS.get(kind, kind) or "event"
+
+
 def event_email_context(inquiry):
     price_lines = []
     if inquiry["quoted_price"]:
         price_lines.append(f"Quoted price: €{inquiry['quoted_price']:,.2f}")
     return {
         "contact_name": inquiry["contact_name"],
-        "event_type": inquiry["event_type"],
+        "event_type": event_type_words(inquiry["event_type"]),
         "reference_code": inquiry["reference_code"],
         "price_block": ("\n" + "\n".join(price_lines)) if price_lines else "",
         "manage_url": url_for("event_manage", manage_token=inquiry["manage_token"], _external=True),
@@ -57930,7 +57943,7 @@ def submit_event_inquiry():
     if owner_to:
         send_email(
             owner_to, f"New event enquiry — {event_type} ({reference_code})",
-            f"{contact_name} ({contact_email}) asked about hosting a {event_type}"
+            f"{contact_name} ({contact_email}) sent an event enquiry: {event_type_words(event_type)}"
             f"{f', preferred date {format_date_short(preferred_date)}' if preferred_date else ''}"
             f"{f', {guest_count} guests' if guest_count else ''}.\n\n{message or ''}\n\n"
             f"Review: {url_for('admin_events', _external=True)}",
@@ -87031,7 +87044,7 @@ def send_event_quote(quote_id):
     net = round(float(quote["quoted_price"] or 0) - float(quote["discount_amount"] or 0), 2)
     subject, body, letter = render_email_template(conn, "event_quote", {
         "contact_name": event["contact_name"],
-        "event_type": event["event_type"],
+        "event_type": event_type_words(event["event_type"]),
         "quote_total": f"\u20ac{net:,.2f}",
         "quote_url": link,
     })
@@ -111821,7 +111834,7 @@ def run_event_balance_reminder_job(conn, days_before):
             manage_url = f"{PUBLIC_BASE_URL or ''}/events/manage/{event['manage_token']}"
         subject, body, letter = render_email_template(conn, "event_balance_reminder", {
             "contact_name": event["contact_name"] or "there",
-            "event_type": event["event_type"] or "event",
+            "event_type": event_type_words(event["event_type"]),
             "event_date": format_date_human(event["preferred_date"])
                           if event["preferred_date"] else "the agreed date",
             # With its euro sign: the wording of 8 October took the "€" out of

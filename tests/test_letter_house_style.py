@@ -30,6 +30,8 @@ letters it writes whole -- because nothing read those as a guest would:
     at the foot.
   - "INQUIRY" in the house's notices, where every public page says enquiry;
     "a spot" where the letters say a place.
+  - THE FORM'S WORDS IN A SENTENCE. An event's kind went into its letters as
+    the drop-down's value: "hosting a corporate", "towards your other".
   - THE FACTS: the directions said miles where the site's map says "4 km,
     unlit", and left out the A61; the editor's preview showed a room by the
     name it had before 16 October; the Booking.com message the owner pastes
@@ -342,6 +344,33 @@ def _words_and_facts(s):
             for line, text in _letter_strings(fn) if re.search(r"\ba spot\b", text)]
     s.check("'a place', never 'a spot', on an atelier or a table", not spot, detail=spot)
 
+    s.section("An event is called what it is, not the value off the form")
+    w = m.event_type_words
+    s.check("the form's 'corporate' and 'other' are said as nouns",
+            w("corporate") == "corporate event" and w("other") == "event",
+            detail=(w("corporate"), w("other")))
+    s.check("a kind that is a noun already is said as written, in lower case",
+            w("Wedding") == "wedding" and w("elopement") == "elopement")
+    s.check("and no kind at all is 'event'", w(None) == "event" and w("  ") == "event")
+    raw = []
+    for name, fn in _letter_writers().items():
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Dict):
+                continue
+            for key, value in zip(node.keys, node.values):
+                if (isinstance(key, ast.Constant) and key.value == "event_type"
+                        and not (isinstance(value, ast.Call)
+                                 and getattr(value.func, "id", None) == "event_type_words")):
+                    raw.append(f"{name}:{key.lineno}")
+    s.check("every event letter is filled through event_type_words()", not raw, detail=raw)
+    with m.app.test_request_context("/"):
+        ctx = m.event_email_context({"contact_name": "Claire Moreau", "event_type": "corporate",
+                                     "reference_code": "EVT-ZZLH", "quoted_price": None,
+                                     "manage_token": "zzlh"})
+    s.check("so a client reads 'your corporate event', never 'your corporate'",
+            ctx["event_type"] == "corporate event", detail=ctx["event_type"])
+
+    s.section("The directions, the rooms and the signatures")
     with open(os.path.join(ROOT, "templates", "_email.html"), encoding="utf-8") as fh:
         shell = fh.read()
     s.check("the directions are in kilometres, as the site's map says '4 km, unlit'",
