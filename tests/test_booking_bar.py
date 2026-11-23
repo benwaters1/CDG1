@@ -100,11 +100,23 @@ def _ensure_booking(conn):
     conn.commit()
 
 
+def _dining(conn, mode):
+    """Set La Table's switch (as test_dining_switch does); None leaves it unset, which reads as open."""
+    conn.execute("DELETE FROM app_settings WHERE key = 'dining_mode'")
+    if mode is not None:
+        conn.execute("INSERT INTO app_settings (key, value) VALUES ('dining_mode', ?)", (mode,))
+    conn.commit()
+
+
 def run():
     s = Suite("the sticky bar")
     anon = m.app.test_client()
     conn = m.get_db()
     _ensure_booking(conn)
+
+    # The dining bar depends on the switch: pinned open here, put back at the end, and read shut below.
+    was_mode = conn.execute("SELECT value FROM app_settings WHERE key = 'dining_mode'").fetchone()
+    _dining(conn, "open")
 
     s.section("It offers what the page is about")
 
@@ -137,6 +149,21 @@ def run():
         s.check("%s: and it goes to %s" % (endpoint, goes_to),
                 any(h == wants or h.startswith(wants + "#") for h in found),
                 detail="%s, found %s" % (wants, found))
+
+    s.section("While La Table is not serving (23 Nov)")
+    # Live: /restaurant said "Not Serving at the Moment" in its heading and "Dine at La Table" in the bar below it.
+    for mode in ("closed", "hidden"):
+        _dining(conn, mode)
+        r = anon.get(_url("restaurant_info", conn))
+        bar = html_mod.unescape(_bar(r.get_data(as_text=True)))
+        words = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", bar))[:90]
+        s.check("%s: the bar does not invite a guest to dine" % mode,
+                r.status_code == 200 and bool(bar) and "Dine at La Table" not in bar, detail=words)
+        with m.app.test_request_context():
+            rooms = m.url_for("book_rooms")
+        s.check("%s: it offers a room, in words and button" % mode,
+                "Stay the Night" in bar and 'href="%s" class="g-btn g-stickybar__cta"' % rooms in bar, detail=words)
+    _dining(conn, "open")
 
     s.section("And it is silent where they are already doing it")
 
@@ -193,6 +220,7 @@ def run():
                             "booking_confirmation.html")),
             detail="one of them is quiet for some other reason")
 
+    _dining(conn, was_mode["value"] if was_mode else None)
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.commit()
     conn.close()

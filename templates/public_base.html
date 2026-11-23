@@ -674,7 +674,9 @@ window.houseDay = (function () {
 {% if _sb != 'none' %}
 <div class="g-stickybar">
   <span class="g-stickybar__t">
-    <b>{% if _sb == 'dining' %}{{ t('Dine at La Table') }}
+    {#- 23 Nov (audit): while La Table is not serving, /restaurant says so in its heading and the bar's button offers a
+    room, so the bar does not invite a guest to dine either. -#}
+    <b>{% if _sb == 'dining' and _dm == 'open' %}{{ t('Dine at La Table') }}
        {%- elif _sb == 'events' %}{{ t('Weddings & Celebrations') }}
        {%- elif _sb == 'atelier' %}{{ t('Retreats') }}
        {%- else %}{{ t('Stay the Night') }}{% endif %}</b>

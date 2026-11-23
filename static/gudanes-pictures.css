@@ -433,6 +433,10 @@
 .g .g-car--cards .g-car__track{ grid-auto-columns: min(25rem, 84%); align-items: stretch; }
 .g .g-car--cards .g-homeroom{ display: flex; flex-direction: column; }
 .g .g-car--cards .g-homeroom__img{ width: 100%; aspect-ratio: 4 / 3; height: auto; object-fit: cover; }
+/* The estate from the air opens the rooms with no words under it: its photograph fills the whole card, or a
+   4:3 picture sits on an empty card stretched to the rooms' height (live, 23 Nov). */
+.g .g-car--cards .g-homeroom--aerial{ position: relative; overflow: hidden; }
+.g .g-car--cards .g-homeroom--aerial .g-homeroom__img{ position: absolute; inset: 0; height: 100%; aspect-ratio: auto; }
 
 /* What guests say: a medallion of the house and a wax seal above each quote. */
 .g .g-say__pic{ display: flex; align-items: flex-end; gap: var(--s3); margin: 0 0 var(--s4); }
@@ -592,6 +596,18 @@
   background: transparent; color: var(--sand); border: 1px solid var(--sand);
 }
 .g .g-full__cta:hover, .g .g-hero .g-hero__altbtn:hover{ background: var(--sand); color: var(--blue-deep); }
+/* 23 Nov (audit): the three event pages open on navy art, not a photograph, so the navy filled button above vanished
+   into it -- and their words sat in a bare .g-wrap with nothing under it, so the button was cut by the hero's edge.
+   Filled on navy is cream with navy words, as in a dark section; and the photograph heroes' 64px below. */
+.g .g-hero--art .g-btn--solid{ background: var(--sand); border-color: var(--sand); color: var(--blue-deep); }
+.g .g-hero--art .g-btn--solid:hover{ background: #fff; border-color: #fff; }
+.g .g-hero--art > .g-wrap{ padding-bottom: var(--s8); }
+/* On a phone every hero is 88svh, there for a photograph; on navy art it was two empty screens' worth with the
+   button under the bar at the foot of the screen. The art's height is its words, and its rings go up top. */
+@media (max-width: 34rem){
+  .g .g-hero--art{ min-height: 0; }
+  .g .g-hero--art .g-hero__art{ top: var(--s4); bottom: auto; }
+}
 /* The date widget and the booking forms: their labels in the body serif too. */
 .g .g-herosearch label, .g .g-search__f label, .g .g-qbook__f label, .g .g-rp__val, .g .g-rp__nights,
 .g .g-herosearch input, .g .g-search__f input{ font-family: var(--serif); letter-spacing: .02em; }
@@ -646,3 +662,14 @@
 .g .g-full__in{ align-items: start; }
 /* 2.4  The menu panel's way down to the footer's newsletter form, in place of a second form. */
 .g .g-navwrap__newslink{ color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+
+/* ==== 23 Nov 2026: the site audit ========================================
+   /history's hero is a postcard with its own printed title along the top, "Chateau de Gudannes": cropped at the
+   middle it sat half-cut under the header's logo on a wide screen. Cropped from the drive up, it goes. */
+.g .g-hist-hero .g-hero__img{ object-position: 50% 80%; }
+/* Its dates were the one line in that hero with nothing behind them, a mid gold straight on the photograph's grey.
+   The lighter gilt the dark sections use, and the eyebrow's shadow. */
+.g .g-hero .g-hist-tag{ color: #D9C79B; text-shadow: 0 1px 12px rgba(10,22,40,.85), 0 0 3px rgba(10,22,40,.7); }
+/* The currency control takes its colour from the header (2.3 above), which is navy: over a hero photograph, where the
+   logo, the menu and the languages turn white, it stayed navy on the picture and could not be seen. It turns with them. */
+body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }

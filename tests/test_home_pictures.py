@@ -20,6 +20,7 @@ What is left of the first brief, and would go quietly if it went:
 
 The words are test_copy_unchanged's.
 """
+import os
 import re
 
 from _harness import Suite, db
@@ -76,7 +77,19 @@ def run():
             len(re.findall(r"<img\b", cars)) == cards + 1 and "g-slides" not in cars)
     s.check("the slider has its arrows and its count, the estate included",
             'data-car-prev' in cars and f"1 / {cards + 1}" in cars)
-    resto = page[page.find("g-homeresto"):]
+    # 23 Nov, live: the cards' 4:3 rule (gudanes-pictures.css, read after gudanes.css) beat the aerial's own, so the
+    # estate sat as a short picture on an empty card stretched to the rooms' height. Its photograph fills the card.
+    with open(os.path.join(m.app.root_path, "static", "gudanes-pictures.css"), encoding="utf-8") as fh:
+        pics_css = fh.read()
+    four_three = pics_css.find(".g .g-car--cards .g-homeroom__img{")
+    fills = re.search(r"\.g \.g-car--cards \.g-homeroom--aerial \.g-homeroom__img\{([^}]*)\}", pics_css)
+    s.check("the estate's photograph fills its whole card, not a 4:3 picture on an empty one",
+            fills is not None and four_three >= 0 and fills.start() > four_three
+            and "position: absolute" in fills.group(1) and "inset: 0" in fills.group(1)
+            and "height: 100%" in fills.group(1) and "aspect-ratio: auto" in fills.group(1)
+            and re.search(r"\.g \.g-car--cards \.g-homeroom--aerial\{[^}]*position: relative", pics_css) is not None,
+            detail=fills.group(0) if fills else "no rule")
+    resto =page[page.find("g-homeresto"):]
     pair = resto[:resto.find("</section>")]
     figs = re.findall(r'<figure class="g-homeresto__f">(.*?)</figure>', pair, re.S)
     s.check("the dining room's before and now side by side, not a slider",

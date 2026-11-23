@@ -632,6 +632,9 @@ SUITES = [
     "test_room_mark_ready",
     # 12 November 2026: the waitlist note says how many, and why each room said no.
     "test_waitlist_email",
+    # 23 November 2026 (site audit): the heroes -- the event pages' navy art and its button, /history's postcard
+    # and dates, and the currency control over a photograph.
+    "test_heroes_audited",
     # 9 November 2026: the address opens the map and sits under the home page's
     # hero, and every public page measured for its margins at three widths.
     "test_house_address",
