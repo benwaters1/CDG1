@@ -107,7 +107,11 @@ m = _harness.m
 # ground floor"); it listed /, /book and /book/1, "Sleeps 3, up to 2 adults" for "Sleeps 2", and nothing else.
 # 23 Nov: moved to 68c905f, Les Bains du Couloubret off Things to Do Nearby (owner: "yes if its on there
 # twice"); it listed /whats-on only.
-COPY_BASE = "68c905f"
+# 23 Nov 2026: moved to 6c6e9da, the owner's website brief. Against 68c905f it listed /, /book,
+# /book/1 to /book/5 (each room headed by its French title over its plain name, which
+# the <title> of a room's page carries too) and /press (rebuilt, its captions shown on
+# purpose), and nothing else. Each was read.
+COPY_BASE = "6c6e9da"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
