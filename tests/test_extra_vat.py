@@ -125,7 +125,12 @@ def run():
                 - (statement["accommodation"] + statement["extras_total"])) < 0.01)
 
     s.section("On the VAT working, and to Pennylane")
+    # Today is before the house is registered for VAT (1 Jan 2027), and
+    # before that the working has nothing to declare. This is about the
+    # rates, so the house is taken as registered for the one call.
+    put_back = _harness.as_registered_for_vat(conn)
     lines = m.vat_working(conn, today, today + timedelta(days=1))["lines"]
+    put_back()
     extras = {l["rate"]: l["gross"] for l in lines if l["source"] == "Extras"}
     s.check("the working shows the extras at each rate",
             extras.get(10.0, 0) >= 50.0 - 0.01 and extras.get(20.0, 0) >= 45.0 - 0.01,

@@ -48,6 +48,14 @@
               <input type="hidden" name="done_on" value="{{ today }}">
               <button type="submit" class="small-link" style="background:none;border:0;cursor:pointer;color:var(--steel);">Done</button>
             </form>
+            {% if is_owner %}
+            {# The route has been there since the round was built; nothing
+               on any page reached it. #}
+            <form method="post" action="{{ url_for('stop_cleaning_round', round_id=r.round['id']) }}" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="small-link" style="background:none;border:0;cursor:pointer;color:var(--rust);">Take off</button>
+            </form>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

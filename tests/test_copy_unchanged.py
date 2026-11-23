@@ -115,7 +115,9 @@ m = _harness.m
 # follow. Against 6c6e9da every page differed in one place only, the menu's
 # Chateau group: The History before The Restoration, and the photograph's
 # "Under restoration since 2013" gone with it. Read on every page listed.
-COPY_BASE = "310d694"
+# 23 Nov 2026, on main meanwhile: 1ad191a, the owner's chosen reviews, on purpose.
+# Merged: the base is the merge, which holds both sets, each read on its own side.
+COPY_BASE = "MERGE"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

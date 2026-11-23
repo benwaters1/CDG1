@@ -420,7 +420,7 @@
 {# The commonest reason a luxury booking is abandoned is not knowing what the
    number covers. Both columns, stated before anyone reaches a payment page.
    Every line below is checked against what the app actually does. #}
-{{ facilities(_dm) }}
+{{ facilities(_dm, breakfast_photo=['/static/img/more/breakfast-table-bruce.jpg', 'Breakfast laid in the kitchen: croissants, cherries, juices and homemade jams, with Bruce by the window.']) }}
 {#- 9 Nov, evening (owner's second review, 1): A Night, or la Vie de Château is on the home page and /workshops; not here. -#}
 
 <section class="g-sec" id="extras"><div class="g-wrap">
@@ -569,6 +569,24 @@
 <div class="g-wrap">{{ bruce_card() }}</div>
 
 
+
+<!-- ============ WHAT GUESTS SAID ============ -->
+{# 23 Nov (owner): two Booking.com reviews, each beside the room it was about. Each in the guest's
+   own words; the King Suite one is the review "spacious rooms with private, well-equipped bathrooms"
+   was taken from, quoted now by the line the owner preferred. #}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">From Guests Who Stayed</p>
+  <div class="g-grid g-grid--2">
+    <figure class="g-panel g-say" style="margin:0">
+      <blockquote class="g-say__q">An excellent place for an exclusive stay of a few days. A first-class experience and a place to return to.</blockquote>
+      <figcaption class="g-say__by">A guest from the Netherlands · The King Suite<span class="g-say__src">Booking.com, 10/10</span></figcaption>
+    </figure>
+    <figure class="g-panel g-say" style="margin:0">
+      <blockquote class="g-say__q">Loved everything about the Château de Gudanes! Beautiful location, very peaceful and charming.</blockquote>
+      <figcaption class="g-say__by">Cynthia · The Marquis Suite<span class="g-say__src">Booking.com, 10/10</span></figcaption>
+    </figure>
+  </div>
+</div></section>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than

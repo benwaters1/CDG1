@@ -76,6 +76,14 @@
 {% if not email_configured %}
 <div class="flash flash-error">Email isn't connected, so nothing can be sent yet. The template and preview above still work.</div>
 {% endif %}
+{# Which address this goes from. A big send that bounces or draws complaints
+   costs its sending domain its standing, so campaigns have a news address of
+   their own and booking confirmations keep theirs. #}
+{% if campaign_sender %}
+<p class="upload-hint">Goes out from <strong>{{ campaign_sender }}</strong>, the news address, so a send that bounces cannot affect booking confirmations.</p>
+{% elif email_configured %}
+<div class="flash flash-error">No separate news address is set, so this goes out from <strong>{{ booking_sender }}</strong>, the address booking confirmations come from. A large send to an old list can push those into spam. Set RESEND_CAMPAIGN_FROM first.</div>
+{% endif %}
 
 <form method="post" action="{{ url_for('send_campaign_template', template_id=template['id']) }}" class="detail-card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -342,16 +342,17 @@
     <h2>What Guests Say</h2>
     <div class="rc-rule" aria-hidden="true"><span></span><i></i><span></span></div>
   </header>
+  {#- 23 Nov (owner): the three cards are three Google reviews the owner chose, each in the guest's own words.
+      "Spacious rooms with private, well-equipped bathrooms" went ("not the shitty one"), and the card that
+      repeated the review featured on /book gave way to the third; that one still shows on /book. Daniel's
+      line is not the "not spooky at all" one the owner took off on 9 Nov. -#}
   {%- set says = [
     {'img': url_for('static', filename='img/retreats/chateau-framed-by-roses.jpg'), 'alt': 'The château framed by roses',
-     'quote': 'Each morning I woke up worried that it was only a dream.'},
+     'quote': 'Each morning I woke up worried that it was only a dream.', 'by': 'Cy, on Google'},
     {'img': url_for('static', filename='img/retreats/chateau-snowy-peaks.jpg'), 'alt': 'The château below the snowy peaks',
-     'quote': 'Spacious rooms with private, well-equipped bathrooms'}] %}
-  {#- 9 Nov, evening (owner's second review, 5): the quote ending "and not spooky at all" went. The third is the first
-      review the owner has featured for /book (featured_room_reviews), so nothing is quoted here that is not quoted there. -#}
-  {%- set _br = (featured_reviews or [])|first %}
-  {%- if _br %}{% set says = says + [{'img': url_for('static', filename='img/rk/down-the-drive.jpg'), 'alt': 'Down the drive to the château',
-     'quote': _br['comment'], 'by': ((_br['guest_name'] or '').split(' ')[0]), 'reply': _br['reply']}] %}{% endif %}
+     'quote': 'The overnight stay in this historic château was an unforgettable experience.', 'by': 'Daniel E., on Google'},
+    {'img': url_for('static', filename='img/rk/down-the-drive.jpg'), 'alt': 'Down the drive to the château',
+     'quote': 'Been following for years, finally got to visit. A bucket-list place to see. Beautiful.', 'by': 'David W., on Google'}] %}
   {%- set CORNER = '<svg class="rc-corner %s" viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10L34 10M10 10L32.2 19.2M10 10L27 27M10 10L19.2 32.2M10 10L10 34" stroke-width=".7"/><path d="M34 10Q38.4 15.7 32.2 19.2Q34.1 26.1 27 27Q26.1 34.1 19.2 32.2Q15.7 38.4 10 34"/><path d="M34 10C46 6 57 12 53 19C50 23 45 19 48 16"/><path d="M10 34C6 46 12 57 19 53C23 50 19 45 16 48"/><path d="M53 19C56 22 60 22 63 20" stroke-width=".7"/><path d="M19 53C22 56 22 60 20 63" stroke-width=".7"/></g><circle cx="10" cy="10" r="2.2" fill="currentColor"/></svg>' %}
   <div class="rc-grid">
     {%- for q in says %}

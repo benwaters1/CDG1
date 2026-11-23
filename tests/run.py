@@ -25,6 +25,7 @@ SUITES = [
     "test_guest_import",
     "test_rg_waitlist_import",
     "test_booked_to_come_letter",
+    "test_campaign_news_address",
     "test_way_back_in",
     "test_access_levels",
     "test_booking_quote",
@@ -586,6 +587,9 @@ SUITES = [
     "test_booking_com_multi_room",
     "test_booking_com_watch",
     "test_booking_com_statement",
+    "test_booking_com_in_returns",
+    "test_kitchen_logs",
+    "test_pool_book",
     # Five rooms let a night, never six: the sixth room, z28 item 1.
     "test_rooms_let_a_night",
     # Brief of 17 October 2026: forms that post without a token, and the

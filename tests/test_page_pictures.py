@@ -18,6 +18,7 @@ import os
 import re
 import shutil
 from datetime import timedelta
+from urllib.parse import urlsplit
 
 from _harness import Suite
 import _harness
@@ -266,11 +267,19 @@ def _unnamed_retreats(s, client):
             except ValueError:
                 continue
             events += [e for e in (data if isinstance(data, list) else [data]) if isinstance(e, dict)]
+        # Compared by path, and held to being full addresses. Since 5fb947c the event data names each
+        # photograph on the house's own host, because Google reads image as a full address; the cards and
+        # dates on the page keep the bare path. The same photograph, either way -- so the path is what has to
+        # agree, and a bare path in the event data is wrong in itself.
         wrong = []
         for title, wid in mine.items():
-            want = list(dict.fromkeys([cards.get(title, ""), (dates.get(wid) or [""])[0].split("?", 1)[0]]))
+            want = list(dict.fromkeys(urlsplit(x).path for x in [cards.get(title, ""), (dates.get(wid) or [""])[0]]))
             for e in events:
-                if e.get("url", "").endswith("/workshops/%d" % wid) and e.get("image") != want:
+                if not e.get("url", "").endswith("/workshops/%d" % wid):
+                    continue
+                got = e.get("image") if isinstance(e.get("image"), list) else [e.get("image")]
+                if ([urlsplit(u or "").path for u in got] != want
+                        or not all(urlsplit(u or "").scheme in ("http", "https") for u in got)):
                     wrong.append(f"{title}: {e.get('image')}")
         s.check("the page's event data names each retreat's own photographs", not wrong
                 and any(e.get("url", "").endswith("/workshops/%d" % ids[0]) for e in events),

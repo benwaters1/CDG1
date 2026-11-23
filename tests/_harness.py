@@ -963,6 +963,22 @@ def keep_rows(conn, table, where, params=()):
     return put_back
 
 
+def as_registered_for_vat(conn):
+    """The house taken as registered for VAT, for a suite about the figures.
+
+    The house is registered from 1 January 2027 (vat_registered_from), and
+    before then the VAT working has nothing to declare -- so a suite that
+    sells something today and reads the working would find it empty, and be
+    testing the date rather than what it was written for. Returns what puts
+    the setting back; call it in a `finally`.
+    """
+    put_back = keep_rows(conn, "app_settings", "key = 'tax_vat_registered_from'")
+    conn.execute("""INSERT INTO app_settings (key, value) VALUES ('tax_vat_registered_from', '2020-01-01')
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value""")
+    conn.commit()
+    return put_back
+
+
 def write_guest_text(conn, kind, words="Bonjour {guest_name}. {manage_url}"):
     """Put the owner's wording in for one guest text, and return what takes it
     back out. Neither text has a default any more, so a suite that wants one

@@ -351,9 +351,11 @@ def run():
 
     def vat_figures():
         conn = db()
+        put_back = _harness.as_registered_for_vat(conn)
         try:
             lines = m.vat_working(conn, start, end)["lines"]
         finally:
+            put_back()
             conn.close()
         get = lambda label: sum(l["gross"] or 0 for l in lines if l["source"] == label)
         return get("Rooms"), get("Extras")
