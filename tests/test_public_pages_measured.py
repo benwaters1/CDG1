@@ -52,7 +52,10 @@ ROOT = _harness.ROOT
 DESK = 1400
 PHONES = (320, 375, 390)
 BUDGET = 9000
-LONG_BUDGET = {"/gallery": 12000, "/whats-on": 12000}
+# 23 Nov 2026: the home page 9,500. The owner would not have the rooms slide on a computer ("it looks shit"), so
+# every room's card is shown whole, the aerial and five rooms in two rows of three where there was one sliding row.
+# That row cost about 350px after the photographs were lowered and the facts set side by side.
+LONG_BUDGET = {"/gallery": 12000, "/whats-on": 12000, "/": 9500}
 SHARP = 1.25
 TAP = 44
 SMALLEST = 12
@@ -66,11 +69,17 @@ SMALLEST = 12
 # databases. Take a page off when it comes under the budget; the run says so.
 KNOWN_LONG = {
     "/restoration": 15100,
-    "/events/weddings": 12700,
+    # 23 Nov: 14,900, the brochure's facts the owner asked for ("lets use the info from everything and the brochure
+    # and really make it good"): the table, a sample of the days, what is included and what is on request.
+    "/events/weddings": 14900,
+    # 23 Nov: the same for private events ("same with private").
+    "/events/private": 11400,
     # 11 Nov: +600 for the bathrooms' own section, which the owner asked for ("they are a real feature").
     # 23 Nov: +100 for each room's plain name, small beneath its French title (owner's website brief, 3).
-    "/book": 13200,
-    "/workshops": 11600,
+    # 23 Nov, later: +200 for the type pass (one size per rank of heading).
+    "/book": 13400,
+    # 23 Nov, later: +100 for the same type pass.
+    "/workshops": 11700,
     "/workshops/<id>": 11900,
     "/history": 9900,
     "/book/<id>": 9600,
@@ -275,7 +284,7 @@ def _run(s, browser, pages, workdir):
     s.check("no page on the known-long list has grown", not grown, detail="; ".join(grown))
     s.check("no page on that list has come under the budget and is still on it", not mended,
             detail="take off KNOWN_LONG: " + "; ".join(mended))
-    s.check("the home page is under it, from seventeen screens", 0 < got.get("/", {}).get("h", 0) <= BUDGET,
+    s.check("the home page is under it, from seventeen screens", 0 < got.get("/", {}).get("h", 0) <= budget("/"),
             detail=str(got.get("/", {}).get("h")))
     s.check("and the gallery, from forty-one", 0 < got.get("/gallery", {}).get("h", 0) <= LONG_BUDGET["/gallery"],
             detail=str(got.get("/gallery", {}).get("h")))

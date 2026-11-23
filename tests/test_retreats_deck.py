@@ -68,6 +68,8 @@ NEVER = ["all meals and drinks", "activities", "unique", "once in a lifetime",
          "welcome drinks", "why the walls are left as they are",
          "A Retreat With a Purpose", "Experience the Château in Full", "Nicolas Jover"]
 LUXURY_ONLY = "the rare luxury of having nowhere else to be"
+# 23 Nov 2026 (owner: "they all need to say like luxury french linen"): the rooms' linen is the owner's word too.
+LUXURY_ALSO = "luxury french linen"
 RETREATS = os.path.join(_harness.ROOT, "static", "img", "retreats")
 
 
@@ -147,7 +149,7 @@ def run():
         s.check(f"{path}: no exclamation marks", "!" not in seen,
                 detail=seen[max(0, seen.find("!") - 60):seen.find("!") + 5])
         lux = seen.lower().count("luxury")
-        s.check(f"{path}: 'luxury' only in the owner's own line", lux == seen.lower().count(LUXURY_ONLY),
+        s.check(f"{path}: 'luxury' only in the owner's own line", lux == seen.lower().count(LUXURY_ONLY) + seen.lower().count(LUXURY_ALSO),
                 detail=f"{lux} times")
         named = [n for n in team if n in seen]
         s.check(f"{path}: nobody on the team named", not named, detail=", ".join(named))

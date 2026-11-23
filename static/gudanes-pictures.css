@@ -438,27 +438,26 @@
 .g .g-car--cards .g-homeroom--aerial{ position: relative; overflow: hidden; }
 .g .g-car--cards .g-homeroom--aerial .g-homeroom__img{ position: absolute; inset: 0; height: 100%; aspect-ratio: auto; }
 /* 23 Nov 2026 (owner, of the next card peeking in on a computer: "it looks shit"): the peek cut each room's words
-   mid-line beside empty cream. On a wide screen the rooms do not slide at all: the estate from the air is a band
-   across the top, and every room's card is whole beneath it, three to a row and a short last row widened to fill
-   it (rows start at the 2nd, 5th, 8th child, the aerial being the 1st). Phones keep the swipe. */
+   mid-line beside empty cream. On a wide screen the rooms do not slide at all: the estate from the air is the first
+   tile and every room's card is whole beside it, three to a row, so five rooms make two even rows. A short last row
+   is widened to fill it (rows start at the 1st, 4th, 7th child). Phones keep the swipe. */
 @media (min-width: 64rem){
+  /* It has to outrank the reading-width rule for a wrap holding a paragraph (.g-wrap:has(> p.g-p) > *). */
+  .g .g-sec .g-wrap > section.g-car.g-car--cards[data-car]{ max-width: 72rem; margin-left: auto; margin-right: auto; }
   .g .g-car--cards .g-car__track{ grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(6, minmax(0, 1fr));
     overflow: visible; scroll-snap-type: none; gap: var(--s5); }
   .g .g-car--cards .g-car__s{ grid-column: span 2; }
-  .g .g-car--cards .g-homeroom--aerial{ grid-column: 1 / -1; aspect-ratio: 21 / 8; }
-  .g .g-car--cards .g-homeroom--aerial .g-homeroom__img{ object-position: center 55%; }
-  .g .g-car--cards .g-car__s:nth-child(3n+2):nth-last-child(2),
-  .g .g-car--cards .g-car__s:nth-child(3n+2):nth-last-child(2) + .g-car__s{ grid-column: span 3; }
-  .g .g-car--cards .g-car__s:nth-child(3n+2):last-child{ grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
-  .g .g-car--cards .g-car__s:nth-child(3n+2):last-child .g-homeroom__img{ aspect-ratio: auto; height: 100%; }
-  /* The column the rooms sit in is a reading width; three cards in it are cramped, so the grid runs wider. */
-  /* It has to outrank the reading-width rule for a wrap holding a paragraph (.g-wrap:has(> p.g-p) > *). */
-  .g .g-sec .g-wrap > section.g-car.g-car--cards[data-car]{ max-width: 72rem; margin-left: auto; margin-right: auto; }
+  .g .g-car--cards .g-car__s:nth-child(3n+1):nth-last-child(2),
+  .g .g-car--cards .g-car__s:nth-child(3n+1):nth-last-child(2) + .g-car__s{ grid-column: span 3; }
+  .g .g-car--cards .g-car__s:nth-child(3n+1):last-child{ grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
+  .g .g-car--cards .g-car__s:nth-child(3n+1):last-child .g-homeroom__img{ aspect-ratio: auto; height: 100%; }
   .g .g-car--cards .g-car__bar{ display: none; }
+  /* Two rows where there was one: the photographs a little lower and the facts set side by side, so the page keeps
+     inside the length the owner cut it to (test_public_pages_measured). */
+  .g .g-car--cards .g-homeroom__img{ aspect-ratio: 3 / 2; }
+  .g .g-car--cards .g-tags--icons{ display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .g .g-car--cards .g-tags--icons li{ margin: 0; }
 }
-
-/* What guests say: a medallion of the house and a wax seal above each quote. */
-.g .g-say__pic{ display: flex; align-items: flex-end; gap: var(--s3); margin: 0 0 var(--s4); }
 .g .g-say__pic .g-med{ float: none; margin: 0; width: clamp(5.5rem, 8vw, 7rem); }
 .g .g-say__pic .g-seal{ width: 34px; height: 34px; margin-bottom: 4px; }
 
@@ -721,7 +720,7 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-hero .g-hbook__tab:hover{ background: rgba(248,243,233,.16); }
 .g .g-hero .g-hbook__tab .g-hbook__tk{
   display: block; font-style: normal;
-  font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 11.5px; font-weight: 600;
+  font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 12px; font-weight: 600;
   letter-spacing: .18em; text-transform: uppercase; color: #E6CF95;
 }
 .g .g-hero .g-hbook__tab .g-hbook__ts{ display: block; font-weight: 400; font-size: 15px; font-style: italic; color: rgba(248,243,233,.92); }
@@ -753,7 +752,7 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-hero .g-hbook__w .g-hbook__t,
 .g .g-hero .g-hbook__w .g-hbook__m{ display: block; padding: 0 16px; }
 .g .g-hero .g-hbook__w .g-hbook__d{
-  font-style: normal; font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 10.5px; font-weight: 600;
+  font-style: normal; font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 12px; font-weight: 600;
   letter-spacing: .16em; text-transform: uppercase; color: #7A5A2C;
 }
 .g .g-hero .g-hbook__w .g-hbook__t{ font-weight: 500; font-family: var(--display, var(--serif)); font-size: 21px; line-height: 1.2; color: #14305F; }
@@ -785,7 +784,7 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-hero .g-hbook .g-herosearch__f + .g-herosearch__f{ border-left: 1px solid rgba(140,106,56,.28); }
 .g .g-hero .g-hbook .g-herosearch__f > label{
   display: block; height: 15px; line-height: 15px; margin: 0 0 4px; padding: 0; text-align: left;
-  font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 10.5px; font-weight: 600;
+  font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 12px; font-weight: 600;
   letter-spacing: .16em; text-transform: uppercase; color: #7A5A2C;
 }
 .g .g-hero .g-hbook .g-rp__btn{ text-align: left; padding: 0; margin: 0; height: 36px; min-height: 0; color: #14305F; white-space: nowrap; }
@@ -887,7 +886,7 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-book-bar .g-search__f{ justify-content: center; padding: 14px 24px; min-width: 0; }
 .g .g-book-bar .g-search__f > label{
   display: block; margin: 0 0 4px; padding: 0; line-height: 15px;
-  font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 10.5px; font-weight: 600;
+  font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 12px; font-weight: 600;
   letter-spacing: .16em; text-transform: uppercase; color: #7A5A2C;
 }
 .g .g-book-bar .g-search .g-rp__btn{ text-align: left; padding: 0; margin: 0; height: 40px; min-height: 0; color: #14305F; white-space: nowrap; }
@@ -896,10 +895,10 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g #book .g-search .g-rp__val:not(.is-set){ font-size: 23px !important; line-height: 40px; font-style: normal; color: #4A5F82; opacity: 1; }
 .g #book .g-search .g-rp__val.is-set{ color: #14305F; }
 .g #book .g-search .g-rp__nights{ color: #7A5A2C; font-size: 14px !important; margin-left: 6px; }
-.g .g-book-bar .g-guests{ display: flex; align-items: center; gap: 8px; height: 40px; min-height: 0; }
+.g .g-book-bar .g-guests{ display: flex; align-items: center; gap: 8px; height: 44px; min-height: 0; }
 /* .g main input:not(...) holds every input at 16px with a long :not() chain; #book outranks it. */
 .g #book .g-guests .g-guests__n{
-  font-family: var(--serif); font-size: 23px; line-height: 40px; color: #14305F; width: 1.6em; height: 40px; min-height: 0;
+  font-family: var(--serif); font-size: 23px; line-height: 44px; color: #14305F; width: 2em; height: 44px; min-height: 0; flex: none; min-width: 44px;
   text-align: center; -moz-appearance: textfield; appearance: textfield;
   background: none; border: 0; padding: 0; margin: 0;
 }
@@ -964,7 +963,7 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-typwx__k{ font-family: var(--ui); }
 .g .g-hint, .g .g-foot-note{ font-family: var(--serif); font-size: 16px; line-height: 1.5; letter-spacing: 0; }
 .g .g-crumbs a, .g .g-crumbs [aria-current]{
-  font-family: var(--ui); font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase;
+  font-family: var(--ui); font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
 }
 
 /* 2. One size per rank. Section headings: */
@@ -986,9 +985,9 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
    take the label capitals, the room its name in Cormorant, the nights in italic and the price in navy. The reading
    floor in gudanes.css holds every main span at 15px with a selector no component can outrank, so the two sizes
    that must clear it say !important, and only here. */
-.g .g-nextf__h{ font-family: var(--ui); font-style: normal; font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+.g .g-nextf__h{ font-family: var(--ui); font-style: normal; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
 .g .g-nextf__i{ grid-template-columns: 8.5rem minmax(10rem,1fr) auto auto auto; padding: 14px 0; }
-.g .g-nextf__d{ font-family: var(--ui); font-size: 11.5px !important; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+.g .g-nextf__d{ font-family: var(--ui); font-size: 12px !important; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
 .g .g-nextf__r{ font-family: var(--display); font-size: 21px !important; line-height: 1.2; color: var(--blue-deep, #14305F); }
 .g .g-nextf__n{ font-style: italic; color: var(--ink-2); white-space: nowrap; }
 @media (max-width: 52rem){ .g .g-nextf__i{ grid-template-columns: 1fr; } }

@@ -99,7 +99,7 @@
           {% for s in upcoming[:3] %}
           {%- set _ph = ws_pic(s, HB_PIC)|trim %}{% if _ph in _hbused.seen %}{% set _ph = '' %}{% endif %}{% set _hbused.seen = _hbused.seen + [_ph] %}
           <li><a class="g-hbook__w" href="{{ workshop_page_url(s) }}">
-            {% if _ph %}<b class="g-hbook__ph"><img src="{{ _ph }}" alt="" loading="lazy" decoding="async"></b>{% endif %}
+            {% if _ph %}<b class="g-hbook__ph"><img src="{{ _ph }}" alt="A photograph from {{ s['title'] }}" loading="lazy" decoding="async"></b>{% endif %}
             <b class="g-hbook__d">{{ date_range(s['start_date'], s['end_date']) }}</b>
             <strong class="g-hbook__t">{{ s['title'] }}</strong>
             <small class="g-hbook__m">{{ s['nights_label'] or '' }}{% if s['nights_label'] and s['price_per_person'] %} · {% endif %}{% if s['price_per_person'] %}<span data-eur="{{ s['price_per_person']|int }}">€{{ '{:,.0f}'.format(s['price_per_person']) }}</span> per person{% endif %}</small>
@@ -238,7 +238,7 @@
       {%- set _nph = ws_pic(s, ND_PIC, false)|trim %}{% if _nph in _ndused.seen %}{% set _nph = '' %}{% endif %}{% set _ndused.seen = _ndused.seen + [_nph] %}
       {#- 23 Nov (owner: "fix this other one up too its super basic"): each date leads with its photograph. -#}
       <li class="g-full__row"><a href="{{ workshop_page_url(s) }}"{% if _nph %} class="g-full__has-ph"{% endif %}>
-        {% if _nph %}<b class="g-full__ph"><img src="{{ _nph }}" alt="" loading="lazy" decoding="async"></b>{% endif %}
+        {% if _nph %}<b class="g-full__ph"><img src="{{ _nph }}" alt="A photograph from {{ s['title'] }}" loading="lazy" decoding="async"></b>{% endif %}
         <span class="g-full__t">{{ s['title'] }}</span>
         {% if _hk %}<span class="g-full__hook">{{ _hk }}</span>{% endif %}
         <span class="g-full__d">{{ date_range(s['start_date'], s['end_date']) }}</span>

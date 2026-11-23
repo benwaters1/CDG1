@@ -87,7 +87,7 @@ def run():
     how = re.search(r'<ol class="g-shootsteps">(.*?)</ol>', page, re.S)
     how = how.group(1) if how else ""
     steps = re.findall(r'<h3 class="g-shootsteps__t">([^<]*)</h3>', how)
-    s.check("four steps, in order", steps == ["Tell us", "Come and see", "Agreed in advance", "The house is yours"],
+    s.check("four steps, in order", steps == ["Tell us", "Come and see", "Agreed in advance", "The château is yours"],
             detail=str(steps))
     numerals = re.findall(r'<b class="g-shootsteps__n" aria-hidden="true">([IV]+)</b>', how)
     # A <span> numeral is set to 15px by the reading floor (main span:not(...)); a <b> is not.

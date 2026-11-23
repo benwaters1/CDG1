@@ -202,7 +202,7 @@ def run():
             and "Olympe de Gouges" not in card(ids["The King Suite"]),
             detail=card(ids["The King Room"])[:200])
     s.check("and the King Suite is the four-poster with the bath",
-            "four-poster canopy" in card(ids["The King Suite"]),
+            "canopy of a wooden four-poster" in card(ids["The King Suite"]),  # 23 Nov: the room copy redone, owner
             detail=card(ids["The King Suite"])[:200])
     s.check("and the Marquis Suite the gilded one",
             "gilded four-poster" in card(ids["The Marquis Suite"]),

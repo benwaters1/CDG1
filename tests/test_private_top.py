@@ -51,7 +51,7 @@ def run():
     s.section("What the brochure says")
     occ = re.findall(r'<h3 class="g-occ__t">([^<]*)</h3>', page)
     s.check("five occasions", occ == ["Milestone birthdays", "Anniversaries", "Family gatherings", "Company retreats",
-                                      "House parties"], detail=str(occ))
+                                      "A party of friends"], detail=str(occ))
     days = re.findall(r'<h3 class="g-shootsteps__t">([^<]*)</h3>', page)
     s.check("a sample stay of four days", days == ["The Day of Arrival", "The Celebration", "The Day After", "Au Revoir"],
             detail=str(days))
