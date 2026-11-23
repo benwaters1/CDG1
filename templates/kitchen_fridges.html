@@ -6,7 +6,10 @@
 
 <div class="page-head">
   <h1>Fridge temperatures</h1>
-  <a href="{{ url_for('kitchen_prep') }}" class="btn-ghost">Prep list</a>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('kitchen_cleaning') }}" class="btn-ghost">Kitchen cleaning</a>
+    <a href="{{ url_for('kitchen_prep') }}" class="btn-ghost">Prep list</a>
+  </div>
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
@@ -16,28 +19,91 @@
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 
+{% macro band(unit) -%}
+  {%- if unit['min_c'] is not none and unit['max_c'] is not none -%}
+    {{ '%g'|format(unit['min_c']) }} to {{ '%g'|format(unit['max_c']) }}&deg;C
+  {%- elif unit['max_c'] is not none -%}
+    {{ '%g'|format(unit['max_c']) }}&deg;C or colder
+  {%- elif unit['min_c'] is not none -%}
+    {{ '%g'|format(unit['min_c']) }}&deg;C or warmer
+  {%- else -%}
+    no range set
+  {%- endif -%}
+{%- endmacro %}
+
 {% if log %}
-<form method="post" class="detail-card">
+{#
+  THE SWEEP (owner, 23 November 2026: "make it so fridge temps can be done
+  really easy"). Every unit on one screen, one box each, one Save. Choosing a
+  unit from a list and saving once per fridge was five presses a fridge,
+  twice a day. A box left empty is a unit not read this time.
+#}
+<form method="post" class="detail-card fridge-sweep" id="sweep">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <h2 class="section-heading">Write down a reading</h2>
-  <div class="field-row-2">
-    <select name="unit_id" required>
-      {% for u in log %}
-      <option value="{{ u.unit['id'] }}">{{ u.unit['name'] }}{% if u.unit['where_it_is'] %} &mdash; {{ u.unit['where_it_is'] }}{% endif %}</option>
-      {% endfor %}
-    </select>
-    <input aria-label="What it reads, e.g. 4.5" type="text" name="celsius" inputmode="decimal" placeholder="What it reads, e.g. 4.5" required>
+  <input type="hidden" name="what" value="all">
+  <h2 class="section-heading">Take the readings</h2>
+  <p class="upload-hint">Type what each one reads, then press Save once. Leave a box empty if you
+    did not read it.</p>
+  {% for u in log %}
+  {% set unit = u.unit %}
+  {% set cold = (unit['max_c'] is not none and unit['max_c'] < 0) or (unit['min_c'] is not none and unit['min_c'] < 0) %}
+  <div class="fridge-row" data-min="{{ unit['min_c'] if unit['min_c'] is not none else '' }}"
+       data-max="{{ unit['max_c'] if unit['max_c'] is not none else '' }}">
+    <label class="fridge-row__name" for="c_{{ unit['id'] }}">
+      {{ unit['name'] }}{% if unit['where_it_is'] %} <span class="fridge-row__where">{{ unit['where_it_is'] }}</span>{% endif %}
+      <span class="fridge-row__hint">{{ band(unit) }} &middot;
+        {% if u.today %}read today at {% for r in u.today|reverse %}{{ local_time_str(r['read_at']) }} ({{ '%g'|format(r['celsius']) }}&deg;){% if not loop.last %}, {% endif %}{% endfor %}
+        {% else %}<span class="fridge-row__due">not read today</span>{% endif %}</span>
+    </label>
+    <div class="fridge-row__entry">
+      {% if cold %}
+      {# A phone's number pad often has no minus. One press puts it in. #}
+      <button type="button" class="fridge-row__minus" data-minus="c_{{ unit['id'] }}"
+              aria-label="Make {{ unit['name'] }}'s reading below zero">&minus;</button>
+      {% endif %}
+      <input class="fridge-row__c" id="c_{{ unit['id'] }}" name="c_{{ unit['id'] }}" type="text"
+             inputmode="decimal" autocomplete="off" placeholder="&deg;C"
+             aria-label="What {{ unit['name'] }} reads, in degrees">
+    </div>
+    <input class="fridge-row__a" name="a_{{ unit['id'] }}" type="text" maxlength="300"
+           placeholder="Outside its range: what was done?"
+           aria-label="If {{ unit['name'] }} is outside its range, what was done about it">
   </div>
-  <div class="field-row-2">
-    <input aria-label="If it was out of range, what was done about it" type="text" name="action_taken" maxlength="300"
-           placeholder="If it was out of range, what was done about it">
-    <input aria-label="Anything else worth saying" type="text" name="note" maxlength="200" placeholder="Anything else worth saying">
-  </div>
-  <button type="submit" class="btn-mini">Write it down</button>
+  {% endfor %}
+  <button type="submit" class="btn-primary fridge-sweep__save">Save the readings</button>
   <p class="pay-disclaimer" style="margin-top:6px;">A reading outside the range is recorded even
     with nothing written against it &mdash; refusing would mean it never gets written down at all.
     It shows below as unanswered until somebody says what was done.</p>
 </form>
+<script>
+/* Says at once when a number is outside its range, and opens the box for
+   what was done about it. Without this script every box simply shows. */
+(function(){
+  var form = document.getElementById('sweep');
+  if (!form) return;
+  form.classList.add('js-fridge');
+  function judge(row){
+    var input = row.querySelector('.fridge-row__c');
+    var raw = (input.value || '').replace(',', '.').replace('−', '-').replace(/[^0-9.\-]/g, '');
+    var v = parseFloat(raw), lo = parseFloat(row.dataset.min), hi = parseFloat(row.dataset.max);
+    var out = raw !== '' && !isNaN(v) && ((!isNaN(lo) && v < lo) || (!isNaN(hi) && v > hi));
+    row.classList.toggle('fridge-row--out', out);
+  }
+  Array.prototype.forEach.call(form.querySelectorAll('.fridge-row'), function(row){
+    row.querySelector('.fridge-row__c').addEventListener('input', function(){ judge(row); });
+    judge(row);
+  });
+  Array.prototype.forEach.call(form.querySelectorAll('[data-minus]'), function(btn){
+    btn.addEventListener('click', function(){
+      var input = document.getElementById(btn.dataset.minus);
+      var v = (input.value || '').trim();
+      input.value = v.charAt(0) === '-' ? v.slice(1) : '-' + v;
+      input.dispatchEvent(new Event('input'));
+      input.focus();
+    });
+  });
+})();
+</script>
 {% endif %}
 
 {% for u in log %}
@@ -83,7 +149,18 @@
           <td class="num">{{ '%g'|format(r['celsius']) }}</td>
           <td>{{ r['who'] or '&mdash;'|safe }}</td>
           <td>
-            {% if bad and not r['action_taken'] %}nothing said
+            {% if bad and not r['action_taken'] %}
+            {# Said after the event: the reading asked for it, and until now
+               there was nowhere to say it. #}
+            <form method="post" action="{{ url_for('answer_fridge_reading', reading_id=r['id']) }}"
+                  class="fridge-answer">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="wall" value="{{ wall or '' }}">
+              <input type="text" name="action_taken" maxlength="300" required
+                     placeholder="Nothing said yet: what was done?"
+                     aria-label="What was done about {{ u.unit['name'] }} at {{ '%g'|format(r['celsius']) }} degrees">
+              <button type="submit" class="btn-mini">Save</button>
+            </form>
             {% else %}{{ r['action_taken'] or '&mdash;'|safe }}{% endif %}
             {% if r['note'] %}<div class="upload-hint">{{ r['note'] }}</div>{% endif %}
           </td>
@@ -93,8 +170,50 @@
     </table>
   </div>
   {% endif %}
+
+  <details class="fridge-unit-change">
+    <summary>Change its range, or switch it off</summary>
+    <form method="post" action="{{ url_for('fridge_unit_change', unit_id=u.unit['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="what" value="range">
+      <div class="field-row-2">
+        <input aria-label="No colder than, in C" type="text" name="min_c" inputmode="decimal"
+               value="{{ '%g'|format(u.unit['min_c']) if u.unit['min_c'] is not none else '' }}"
+               placeholder="No colder than, in C">
+        <input aria-label="No warmer than, in C" type="text" name="max_c" inputmode="decimal"
+               value="{{ '%g'|format(u.unit['max_c']) if u.unit['max_c'] is not none else '' }}"
+               placeholder="No warmer than, in C">
+      </div>
+      <button type="submit" class="btn-mini">Save the range</button>
+    </form>
+    <form method="post" action="{{ url_for('fridge_unit_change', unit_id=u.unit['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="what" value="off">
+      <button type="submit" class="btn-ghost">Not in use: switch it off</button>
+      <span class="upload-hint">Emptied for the winter, say. It leaves the readings and the
+        reminders; everything read from it is kept.</span>
+    </form>
+  </details>
 </div>
 {% endfor %}
+
+{% if off %}
+<div class="detail-card">
+  <h2 class="section-heading">Switched off</h2>
+  <ul class="plain-list">
+    {% for unit in off %}
+    <li>
+      {{ unit['name'] }}{% if unit['where_it_is'] %} &mdash; {{ unit['where_it_is'] }}{% endif %}
+      <form method="post" action="{{ url_for('fridge_unit_change', unit_id=unit['id']) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="what" value="on">
+        <button type="submit" class="btn-mini">Back in use</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 
 <form method="post" class="detail-card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -8233,6 +8233,44 @@ def init_db():
         # notification.
         ("restaurant_bookings_instant_held",
          "ALTER TABLE restaurant_bookings ADD COLUMN instant_held TEXT"),
+        # THE KITCHEN'S CLEANING, KEPT (23 November 2026). cleaning_rounds
+        # holds only when each job was LAST done, and the question the chef
+        # or an inspector asks is when it was done before that. One row each
+        # time somebody presses Done.
+        ("cleaning_log",
+         """CREATE TABLE IF NOT EXISTS cleaning_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                round_id INTEGER NOT NULL REFERENCES cleaning_rounds(id) ON DELETE CASCADE,
+                done_on TEXT NOT NULL,
+                done_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                note TEXT,
+                created_at TEXT NOT NULL)"""),
+        ("cleaning_log_round",
+         "CREATE INDEX IF NOT EXISTS cleaning_log_round ON cleaning_log(round_id, done_on)"),
+        # The three the owner named (23 November 2026), on the kitchen's round
+        # from the start, every week until somebody says otherwise. Put there
+        # once: NOT EXISTS reads every row, stopped ones too, so a job taken
+        # off the round stays off and a renamed one is not added again.
+        ("kitchen_round_ovens",
+         """INSERT INTO cleaning_rounds (what, area, every_days, active, created_at)
+            SELECT 'Clean the ovens', 'Kitchen', 7, 1, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
+             WHERE NOT EXISTS (SELECT 1 FROM cleaning_rounds WHERE what = 'Clean the ovens')"""),
+        ("kitchen_round_fridges",
+         """INSERT INTO cleaning_rounds (what, area, every_days, active, created_at)
+            SELECT 'Clean the fridges', 'Kitchen', 7, 1, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
+             WHERE NOT EXISTS (SELECT 1 FROM cleaning_rounds WHERE what = 'Clean the fridges')"""),
+        ("kitchen_round_dishwasher",
+         """INSERT INTO cleaning_rounds (what, area, every_days, active, created_at)
+            SELECT 'Run the dishwasher''s cleaning-tablet cycle', 'Kitchen', 7, 1,
+                   strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
+             WHERE NOT EXISTS (SELECT 1 FROM cleaning_rounds
+                                WHERE what = 'Run the dishwasher''s cleaning-tablet cycle')"""),
+        # Who said what was done about a fridge reading out of range, and
+        # when, where it was said after the reading rather than with it.
+        ("fridge_readings_answered_by",
+         "ALTER TABLE fridge_readings ADD COLUMN answered_by_user_id INTEGER"),
+        ("fridge_readings_answered_at",
+         "ALTER TABLE fridge_readings ADD COLUMN answered_at TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -9742,6 +9780,8 @@ NAV_AREAS = {
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "shift_handover", "mark_handover_read", "mileage",
         "kitchen_fridges", "kitchen_prep", "prep_item_done",
+        "answer_fridge_reading", "fridge_unit_change", "kitchen_cleaning",
+        "cleaning_round_every",
         "pass_screen", "pass_guest_note", "pass_stock_ask", "pass_message",
         "room_access_page", "room_checks_page", "walk_room",
         "management_meters", "management_lost_property",
@@ -10329,6 +10369,7 @@ OWNER_MENU = [
         ("Kitchen", [
             _nav("kitchen_prep", "Prep List", "restaurant"),
             _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
+            _nav("kitchen_cleaning", "Kitchen Cleaning", "wrench"),
             _nav("admin_stock", "Stock", "shopping"),
         ]),
         ("Planning and set-up", [
@@ -10526,6 +10567,7 @@ STAFF_MENU = [
             _nav("restaurant_tables", "Tables", "restaurant"),
             _nav("kitchen_prep", "Prep List", "restaurant", ("prep_item_done",)),
             _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
+            _nav("kitchen_cleaning", "Kitchen Cleaning", "wrench"),
         ]),
     ]),
     ("house", "The House", "wrench", (), (), [
@@ -39314,6 +39356,66 @@ def purge_stale_access_needs(conn, today=None):
     return {"guest_profile_notes": n}
 
 
+# A fridge with no reading for this many days is on the owner home and the
+# task list. Two, so a reading missed yesterday is noticed today and a day the
+# kitchen was shut is not a fault on its own.
+FRIDGE_UNREAD_DAYS = 2
+
+
+def parse_celsius(raw):
+    """A temperature as somebody types it on a phone, or None.
+
+    "4", "4.5", "4,5", "4.5°C", "-18" and "−18" (the minus a phone's keyboard
+    may give) all read. Anything outside what a fridge or a freezer can
+    believably read is refused rather than recorded: a fat thumb on "45" is a
+    typo, and written down it is a reading of a fridge at 45 degrees.
+    """
+    text = (raw or "").strip().lower().replace("\u2212", "-").replace(",", ".")
+    for junk in ("°c", "°", "c", " "):
+        text = text.replace(junk, "")
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    if not -40 <= value <= 40:
+        return None
+    return round(value, 1)
+
+
+def fridge_out_of_band(unit, reading):
+    """True when a reading is outside the unit's band. No band, no judgement."""
+    return bool(unit) and (
+        (unit["min_c"] is not None and reading < unit["min_c"])
+        or (unit["max_c"] is not None and reading > unit["max_c"]))
+
+
+def fridge_problems(conn, today=None):
+    """What the owner home and the task list say about the fridges.
+
+    unanswered: (unit name, reading) for every reading out of its band in the
+                last fortnight with nothing written against it.
+    unread:     units in use with no reading for FRIDGE_UNREAD_DAYS days, each
+                {"unit", "last"} (the house's day of the last reading, or None).
+                A unit added today is not late yet: it is measured from when
+                it was added until its first reading.
+
+    A unit switched off (not in use) is in neither. Both close themselves: a
+    reading taken, or a word said, and it is gone.
+    """
+    today = today or house_today()
+    log = fridge_log(conn, today=today)
+    unanswered = [(u["unit"]["name"], x["row"]) for u in log for x in u["unanswered"]]
+    unread = []
+    for u in log:
+        row = conn.execute("SELECT MAX(read_at) AS t FROM fridge_readings WHERE unit_id = ?",
+                           (u["unit"]["id"],)).fetchone()
+        last = house_date(row["t"]) if row and row["t"] else None
+        since = last or house_date(u["unit"]["created_at"])
+        if since and (today - since).days >= FRIDGE_UNREAD_DAYS:
+            unread.append({"unit": u["unit"], "last": last})
+    return {"unanswered": unanswered, "unread": unread}
+
+
 def fridge_log(conn, *, days=14, today=None):
     """Every unit with its recent readings, and whether any sat outside its band.
 
@@ -39353,6 +39455,9 @@ def fridge_log(conn, *, days=14, today=None):
             "unanswered": [x for x in out_of_band
                            if not (x["row"]["action_taken"] or "").strip()],
             "last": rows[0] if rows else None,
+            # What has been read today, at the house: the sweep shows it
+            # beside each unit, so nobody reads a fridge twice or not at all.
+            "today": [r for r in rows if house_date(r["read_at"]) == today],
         })
     return out
 
@@ -39886,6 +39991,30 @@ def cleaning_rounds_due(conn, today=None):
                     "overdue": days < 0, "never": last is None})
     out.sort(key=lambda x: x["days"])
     return out
+
+
+# The kitchen's part of the cleaning round: rounds whose area is this.
+KITCHEN_AREA = "Kitchen"
+
+
+def kitchen_cleaning_rounds(conn, today=None):
+    """The kitchen's jobs on the cleaning round, worst first, each with the
+    last few times it was done (cleaning_log) -- who, when, and anything said.
+
+    Before 23 November 2026 the round kept only the latest time; a job done
+    before then shows that one date and no history, which is the truth.
+    """
+    today = today or house_today()
+    rounds = [r for r in cleaning_rounds_due(conn, today)
+              if (r["round"]["area"] or "").strip().casefold() == KITCHEN_AREA.casefold()]
+    for r in rounds:
+        r["history"] = conn.execute(
+            """SELECT cleaning_log.*, users.name AS who FROM cleaning_log
+                 LEFT JOIN users ON users.id = cleaning_log.done_by_user_id
+                WHERE cleaning_log.round_id = ?
+                ORDER BY cleaning_log.done_on DESC, cleaning_log.id DESC LIMIT 8""",
+            (r["round"]["id"],)).fetchall()
+    return rounds
 
 
 def meter_history(conn, meter=None, limit=24):
@@ -41202,6 +41331,36 @@ def owner_home_warnings(conn, today):
         n = len(due["arrange_now"])
         add("warn", f"{n} extra{'' if n == 1 else 's'} to arrange now",
             named(due["arrange_now"]) + ".", n, "extras_due_page", state="Arrange now")
+
+    # THE KITCHEN (23 November 2026). A fridge reading out of its range with
+    # nothing said is a blocker: food may have to go. A fridge not read for
+    # two days, and a cleaning job behind, are warnings. All three close
+    # themselves -- a word written, a reading taken, Done pressed.
+    try:
+        fp = fridge_problems(conn, today)
+        behind = [r for r in kitchen_cleaning_rounds(conn, today) if r["overdue"]]
+    except sqlite3.Error:
+        fp, behind = {"unanswered": [], "unread": []}, []
+    if fp["unanswered"]:
+        n = len(fp["unanswered"])
+        add("blocker", f"{n} fridge reading{'' if n == 1 else 's'} out of range with "
+            "nothing said",
+            "; ".join(f"{name}: {r['celsius']:g}°C, {format_date_human(house_date_iso(r['read_at']))}"
+                      for name, r in fp["unanswered"][:4])
+            + ". Say what was done, beside the reading.", n, "kitchen_fridges")
+    if fp["unread"]:
+        n = len(fp["unread"])
+        add("warn", f"{n} fridge{'' if n == 1 else 's'} not read for "
+            f"{FRIDGE_UNREAD_DAYS} days or more",
+            "; ".join(u["unit"]["name"] + (f", last {format_date_human(u['last'].isoformat())}"
+                                            if u["last"] else ", never read")
+                      for u in fp["unread"][:4])
+            + ". Switch a unit off on the page if it is not in use.", n, "kitchen_fridges")
+    if behind:
+        n = len(behind)
+        add("warn", f"{n} kitchen cleaning job{'' if n == 1 else 's'} behind",
+            "; ".join(f"{r['round']['what']} ({counted(-r['days'], 'day')} late)"
+                      for r in behind[:4]) + ".", n, "kitchen_cleaning")
 
     # WHAT THE SPAM FILTER TOOK, so a real enquiry caught by it is seen
     # rather than lost. Since 9 November a Contact post with no name, no
@@ -47149,6 +47308,9 @@ PALETTE_PAGES = [
      "step free walking guest needs"),
     ("Fridge temperatures", "kitchen_fridges",
      "fridge freezer temperature cold storage haccp log reading"),
+    ("Kitchen cleaning", "kitchen_cleaning",
+     "kitchen clean cleaning oven ovens fridge dishwasher tablet cycle descale "
+     "hygiene haccp plan de nettoyage last cleaned"),
     ("Prep list", "kitchen_prep",
      "prep mise en place kitchen board before service"),
     ("The pass", "pass_screen",
@@ -89548,12 +89710,50 @@ def kitchen_fridges():
             flash(f"{name} added.", "success")
             return redirect(url_for("kitchen_fridges"))
 
+        if request.form.get("what") == "all":
+            # EVERY UNIT ON ONE SCREEN, ONE PRESS (owner, 23 November 2026:
+            # "make it so fridge temps can be done really easy"). Choosing a
+            # unit from a list, typing, saving and starting again for the next
+            # was five presses a fridge, twice a day. A box left empty is a
+            # unit not read, not an error.
+            units = conn.execute(
+                "SELECT * FROM fridge_units WHERE active = 1 ORDER BY name").fetchall()
+            now = datetime.now(timezone.utc).isoformat()
+            done, skipped, unanswered = 0, [], []
+            for unit in units:
+                raw = (request.form.get(f"c_{unit['id']}", "") or "").strip()
+                if not raw:
+                    continue
+                reading = parse_celsius(raw)
+                if reading is None:
+                    skipped.append((unit["name"], f"“{raw[:12]}” is not a temperature "
+                                    "a fridge or freezer reads"))
+                    continue
+                action = (request.form.get(f"a_{unit['id']}", "") or "").strip()[:300]
+                if fridge_out_of_band(unit, reading) and not action:
+                    unanswered.append(f"{unit['name']} at {reading:g}°C")
+                conn.execute(
+                    """INSERT INTO fridge_readings (unit_id, read_at, celsius,
+                               read_by_user_id, action_taken, note, created_at)
+                       VALUES (?, ?, ?, ?, ?, NULL, ?)""",
+                    (unit["id"], now, reading, user["id"], action or None, now))
+                done += 1
+            conn.commit()
+            conn.close()
+            if not done and not skipped:
+                flash("Nothing was written down: every box was empty.", "error")
+            else:
+                message, category = bulk_message("Wrote down", "reading", done, skipped)
+                flash(message, category)
+            if unanswered:
+                # Recorded anyway, for the reason the single reading is.
+                flash("Outside the range, with nothing written against it: "
+                      + "; ".join(unanswered) + ". Say what was done beside the reading "
+                      "below when you know.", "error")
+            return redirect(url_for("kitchen_fridges", wall=request.args.get("wall") or None))
+
         unit_raw = (request.form.get("unit_id", "") or "").strip()
-        celsius = request.form.get("celsius", "")
-        try:
-            reading = float((celsius or "").strip().replace(",", "."))
-        except ValueError:
-            reading = None
+        reading = parse_celsius(request.form.get("celsius", ""))
         if not unit_raw.isdigit() or reading is None:
             conn.close()
             flash("Which unit, and what did it read?", "error")
@@ -89562,9 +89762,7 @@ def kitchen_fridges():
         unit = conn.execute("SELECT * FROM fridge_units WHERE id = ?",
                             (int(unit_raw),)).fetchone()
         action = (request.form.get("action_taken", "") or "").strip()[:300]
-        out_of_band = unit and (
-            (unit["min_c"] is not None and reading < unit["min_c"])
-            or (unit["max_c"] is not None and reading > unit["max_c"]))
+        out_of_band = fridge_out_of_band(unit, reading)
         if out_of_band and not action:
             # Recorded anyway. Refusing would mean the reading never gets
             # written down at all, which is worse than one with no action
@@ -89588,16 +89786,94 @@ def kitchen_fridges():
         return redirect(url_for("kitchen_fridges"))
 
     log = fridge_log(conn)
+    off = conn.execute(
+        "SELECT * FROM fridge_units WHERE active = 0 ORDER BY name").fetchall()
     conn.close()
     unanswered = [u for u in log if u["unanswered"]]
     never = [u for u in log if not u["last"]]
+    not_today = [u for u in log if not u["today"]]
     overview = [
         overview_cell("Units", len(log)),
+        overview_cell("Not read today", len(not_today)),
         overview_cell("Out of range, nothing said", len(unanswered),
                       alert=bool(unanswered)),
         overview_cell("Never read", len(never), alert=bool(never)),
     ]
-    return render_template("kitchen_fridges.html", log=log, overview=overview)
+    return render_template("kitchen_fridges.html", log=log, overview=overview, off=off,
+                           wall=request.args.get("wall"))
+
+
+@app.route("/kitchen/fridges/reading/<int:reading_id>/answer", methods=["POST"])
+@login_required
+def answer_fridge_reading(reading_id):
+    """Say what was done about a reading out of range, after the event.
+
+    The reading said "say what was done when you know", and there was nowhere
+    to say it: the only way to answer was a second reading. Written once --
+    an answer already given is the record, and is not overwritten here.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM fridge_readings WHERE id = ?", (reading_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    action = (request.form.get("action_taken", "") or "").strip()[:300]
+    if not action:
+        conn.close()
+        flash("Say what was done.", "error")
+    elif (row["action_taken"] or "").strip():
+        conn.close()
+        flash("Something is already written against that reading.", "error")
+    else:
+        conn.execute(
+            """UPDATE fridge_readings SET action_taken = ?, answered_by_user_id = ?,
+                      answered_at = ? WHERE id = ?""",
+            (action, current_user()["id"], datetime.now(timezone.utc).isoformat(), reading_id))
+        conn.commit()
+        conn.close()
+        flash("Written against the reading.", "success")
+    return redirect(url_for("kitchen_fridges", wall=request.form.get("wall") or None))
+
+
+@app.route("/kitchen/fridges/unit/<int:unit_id>", methods=["POST"])
+@login_required
+def fridge_unit_change(unit_id):
+    """Change a unit's band, or switch it off for a while and back on.
+
+    A fridge emptied and turned off for the winter is not a fridge nobody
+    read: switched off, it leaves the sweep, the owner home and the task list,
+    and everything ever read from it is kept.
+    """
+    conn = get_db()
+    unit = conn.execute("SELECT * FROM fridge_units WHERE id = ?", (unit_id,)).fetchone()
+    if not unit:
+        conn.close()
+        abort(404)
+    what = request.form.get("what", "")
+    if what == "off":
+        conn.execute("UPDATE fridge_units SET active = 0 WHERE id = ?", (unit_id,))
+        message = f"{unit['name']} is switched off. Its readings are kept."
+    elif what == "on":
+        conn.execute("UPDATE fridge_units SET active = 1 WHERE id = ?", (unit_id,))
+        message = f"{unit['name']} is back in use."
+    elif what == "range":
+        low = parse_celsius(request.form.get("min_c", ""))
+        high = parse_celsius(request.form.get("max_c", ""))
+        if low is not None and high is not None and low > high:
+            conn.close()
+            flash("The coldest it should be is warmer than the warmest. Swap them over?",
+                  "error")
+            return redirect(url_for("kitchen_fridges"))
+        conn.execute("UPDATE fridge_units SET min_c = ?, max_c = ? WHERE id = ?",
+                     (low, high, unit_id))
+        message = f"{unit['name']}'s range is saved."
+    else:
+        conn.close()
+        abort(400)
+    conn.commit()
+    conn.close()
+    flash(message, "success")
+    return redirect(url_for("kitchen_fridges"))
 
 
 @app.route("/kitchen/prep", methods=["GET", "POST"])
@@ -90054,7 +90330,8 @@ def management_cleaning():
                       alert=any(r["never"] for r in rounds)),
     ]
     return render_template("management_cleaning.html", rounds=rounds,
-                           overview=overview, today=today)
+                           overview=overview, today=today,
+                           is_owner=(user["role"] == "owner"))
 
 
 @app.route("/management/cleaning/<int:round_id>/done", methods=["POST"])
@@ -90068,15 +90345,103 @@ def cleaning_round_done(round_id):
         conn.close()
         abort(404)
     user = current_user()
-    when = parse_date(request.form.get("done_on", "")) \
-        or house_today()
+    today = house_today()
+    when = parse_date(request.form.get("done_on", "")) or today
+    # Not tomorrow: a job is done when it has been. And an earlier day
+    # entered after a later one is history, not the latest: it is logged, and
+    # leaves "last done" where it was.
+    when = min(when, today)
+    note = (request.form.get("note", "") or "").strip()[:200]
+    conn.execute(
+        """INSERT INTO cleaning_log (round_id, done_on, done_by_user_id, note, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (round_id, when.isoformat(), user["id"], note or None,
+         datetime.now(timezone.utc).isoformat()))
     conn.execute(
         """UPDATE cleaning_rounds SET last_done_on = ?, last_done_by_user_id = ?
-            WHERE id = ?""", (when.isoformat(), user["id"], round_id))
+            WHERE id = ? AND (last_done_on IS NULL OR last_done_on <= ?)""",
+        (when.isoformat(), user["id"], round_id, when.isoformat()))
     conn.commit()
     conn.close()
-    flash(f"{row['what']} \u2014 done.", "success")
+    flash(f"{row['what']} \u2014 done"
+          + ("" if when == today else f" on {format_date_human(when.isoformat())}") + ".",
+          "success")
+    return _cleaning_back()
+
+
+def _cleaning_back():
+    """Back to the page the press came from: the kitchen's, or the round."""
+    if request.form.get("back") == "kitchen":
+        return redirect(url_for("kitchen_cleaning", wall=request.form.get("wall") or None))
     return redirect(url_for("management_cleaning"))
+
+
+@app.route("/management/cleaning/<int:round_id>/every", methods=["POST"])
+@login_required
+def cleaning_round_every(round_id):
+    """How often a job wants doing, changed by whoever does it."""
+    conn = get_db()
+    row = conn.execute("SELECT what FROM cleaning_rounds WHERE id = ?",
+                       (round_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    raw = (request.form.get("every_days", "") or "").strip()
+    if not raw.isdigit() or not 1 <= int(raw) <= 400:
+        conn.close()
+        flash("Every how many days? A whole number, 1 or more.", "error")
+        return _cleaning_back()
+    conn.execute("UPDATE cleaning_rounds SET every_days = ? WHERE id = ?",
+                 (int(raw), round_id))
+    conn.commit()
+    conn.close()
+    flash(f"{row['what']}: every {counted(int(raw), 'day')}.", "success")
+    return _cleaning_back()
+
+
+@app.route("/kitchen/cleaning", methods=["GET", "POST"])
+@login_required
+def kitchen_cleaning():
+    """The kitchen's cleaning: when the ovens, the fridges and the dishwasher
+    were last done, by whom, and what is due.
+
+    The kitchen's part of the cleaning round (area "Kitchen"), on a page of
+    its own with a button big enough to press with wet hands, and the times
+    before the last one kept. Anything due is a task on the calendar until
+    somebody presses Done (watch_task_findings).
+    """
+    conn = get_db()
+    if request.method == "POST":
+        what = (request.form.get("what", "") or "").strip()[:120]
+        every_raw = (request.form.get("every_days", "") or "").strip()
+        if not what:
+            conn.close()
+            flash("Say what needs doing.", "error")
+            return redirect(url_for("kitchen_cleaning"))
+        conn.execute(
+            """INSERT INTO cleaning_rounds (what, area, every_days, note, active, created_at)
+               VALUES (?, ?, ?, ?, 1, ?)""",
+            (what, KITCHEN_AREA,
+             int(every_raw) if every_raw.isdigit() and 0 < int(every_raw) <= 400 else 7,
+             (request.form.get("note", "") or "").strip()[:300] or None,
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash(f"{what} added. It reads as due now until somebody says it has been done.",
+              "success")
+        return redirect(url_for("kitchen_cleaning"))
+    today = house_today()
+    rounds = kitchen_cleaning_rounds(conn, today)
+    conn.close()
+    late = [r for r in rounds if r["overdue"]]
+    overview = [
+        overview_cell("Jobs", len(rounds)),
+        overview_cell("Due today", len([r for r in rounds if r["days"] == 0])),
+        overview_cell("Behind", len(late), alert=bool(late)),
+    ]
+    return render_template("kitchen_cleaning.html", rounds=rounds, overview=overview,
+                           today=today, wall=request.args.get("wall"),
+                           is_owner=(current_user()["role"] == "owner"))
 
 
 @app.route("/management/cleaning/<int:round_id>/stop", methods=["POST"])
@@ -90088,7 +90453,7 @@ def stop_cleaning_round(round_id):
     conn.commit()
     conn.close()
     flash("Off the round. When it was last done is kept.", "success")
-    return redirect(url_for("management_cleaning"))
+    return _cleaning_back()
 
 
 @app.route("/management/meters", methods=["GET", "POST"])
@@ -95983,6 +96348,7 @@ WATCH_TASK_KINDS = {
     "house_calendar": "An event Microsoft will not put on the house calendar",
     "recap": "An atelier's recap drafted and waiting for you to send it",
     "whats_on": "What's On: events found to look at, or dates nothing has confirmed",
+    "kitchen": "Kitchen cleaning due, or a fridge out of range or not read",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -99532,6 +99898,43 @@ def watch_task_findings(conn, today=None):
     # sites list and nobody has added or waved away, dates in the next four
     # months nothing has confirmed, an official page that could not be read --
     # due on a Monday, and gone once the list is clear.
+    # THE KITCHEN (23 November 2026). Each cleaning job is a task on the day
+    # it falls due, titled by the job so pressing Done closes it, and back on
+    # the day it is next due. A fridge reading out of range with nothing said,
+    # and fridges not read, are a task each while they last.
+    kitchen = []
+    for r in kitchen_cleaning_rounds(conn, today):
+        if r["days"] > 0:
+            continue
+        late = -r["days"]
+        kitchen.append((
+            "kitchen", f"Kitchen cleaning: {r['round']['what']}",
+            ("Never recorded. " if r["never"] else
+             f"Last done {format_date_human(r['last'].isoformat())}"
+             + (f" by {r['round']['last_done_by']}" if r["round"]["last_done_by"] else "")
+             + ". ")
+            + (f"{counted(late, 'day')} late. " if late else "Due today. ")
+            + "Press Done on Kitchen → Kitchen Cleaning when it has been.",
+            r["due"].isoformat(), "normal"))
+    fp = fridge_problems(conn, today)
+    if fp["unanswered"]:
+        kitchen.append((
+            "kitchen", "A fridge reading out of range with nothing said",
+            "; ".join(f"{name}: {r['celsius']:g}°C, "
+                      f"{format_date_human(house_date_iso(r['read_at']))}"
+                      for name, r in fp["unanswered"][:6])
+            + ".\n\nSay what was done, beside the reading on Fridge Temperatures.",
+            today.isoformat(), "high"))
+    if fp["unread"]:
+        kitchen.append((
+            "kitchen", "Fridge temperatures not taken",
+            "; ".join(u["unit"]["name"] + (f": last read {format_date_human(u['last'].isoformat())}"
+                                            if u["last"] else ": never read")
+                      for u in fp["unread"][:6])
+            + ".\n\nKitchen → Fridge Temperatures. Switch a unit off there if it is not in use.",
+            today.isoformat(), "normal"))
+    found.extend(take("kitchen", kitchen))
+
     look = whats_on_to_look_at(conn, today)
     if look["new"] or look["unconfirmed"] or look["problems"]:
         parts = []
