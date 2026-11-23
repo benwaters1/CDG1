@@ -42198,7 +42198,7 @@ def dashboard():
         upcoming = [dict(r) for r in conn.execute(
             f"""SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
                       workshops.nights_label, workshops.id AS workshop_id,
-                      workshops.private_token
+                      workshops.private_token, workshops.photo_filename
                  FROM workshop_sessions
                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                 WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?

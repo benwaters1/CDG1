@@ -2,7 +2,7 @@
 {% from '_illus.html' import illus %}
 {% from '_ws_copy.html' import ws_lead, ws_copy with context %}
 {% set sticky_bar = 'atelier' %}
-{% set crumbs = [('Workshops', None)] %}
+{% set crumbs = [('Retreats', None)] %}
 {% block title_fr %}Les Retraites : la vie de château{% endblock %}
 {% block description_fr %}Trois à sept nuits de vie de château à Gudanes : la cuisine et les chefs du château, les marchés et les brocantes de l’Ariège, châteaux et grottes, la restauration, et de longues soirées aux chandelles.{% endblock %}
 {% block title %}La Vie de Château: Retreats at Château de Gudanes{% endblock %}
@@ -355,11 +355,24 @@
 
 
 {% from '_faq.html' import faq %}
+{#- 23 Nov (owner): the questions a retreat guest asks before paying, each answer taken from
+    what the site already commits to - the terms (sections 4 and 5), the register and
+    confirmation pages (transfers, dietary notes) and the single supplement
+    set per retreat in Admin. Change one of those and change the answer here. Nothing about
+    arriving the night before (owner, 23 Nov: leave it out). -#}
 {{ faq([
   ('Can I come on my own?',
-   'Yes. Write to us about a room.'),
+   'Yes. You can share a room with another guest travelling on their own, or take a room to yourself for a supplement, shown on each retreat’s page.'),
+  ('What if I need to cancel?',
+   'Retreats are non-refundable, but please write to us all the same: we look at every cancellation individually, and we can sometimes move you to another date instead. If we ever cancel a retreat, we return everything you have paid or offer you another date, as you prefer. The detail is in our <a href="' ~ url_for('terms_page') ~ '">terms</a>.'),
   ('What if I need to change my dates?',
    'Write to us; we can sometimes move you to another date.'),
+  ('Can the kitchen cater for my diet?',
+   'Yes. Tell us about allergies and dietary requirements when you register, and the chefs design them into the menu rather than working around them on the night. A château kitchen is not an allergen-free kitchen, so we cannot guarantee the absence of any ingredient.'),
+  ('How do I get there?',
+   'On the three-, five- and seven-night retreats we meet in central Toulouse at 11am on the first day and drive up together, and bring you back on the last. On the retreats spent at the château, you make your own way: it is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station.'),
+  ('What should I pack?',
+   'Something to dress up in for the last night, comfortable shoes for the markets and brocantes, and in summer a swimsuit for the pool. There is no lift, so pack lightly.'),
   ('How fit do I need to be?',
    'Fit enough for the original staircase: there is no lift.')
 ], 'Before You Register', 'The Questions That Come Up') }}

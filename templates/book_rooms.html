@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_guests.html' import guests_field %}
 {% from '_roomslides.html' import room_slides with context %}
 {#- 9 Nov (the image layout brief, 4.4): the photographs through the picture components (_pictures.html, shown together
     on /design). Not one word changes. -#}
@@ -105,16 +106,18 @@
     <div class="g-search__f"><label for="s_arrival">Arrival</label>
       <input type="date" id="s_arrival" name="arrival" value="{{ arrival }}">
       <button type="button" class="g-rp__btn" data-rp-open="arrival" hidden>
-        <span class="g-rp__val" data-rp-label="arrival">{{ t('Add dates') }}</span>
+        <span class="g-rp__val" data-rp-label="arrival" data-rp-blank="{{ t('Add dates') }}">{{ t('Add dates') }}</span>
       </button></div>
     <div class="g-search__f"><label for="s_departure">Departure</label>
       <input type="date" id="s_departure" name="departure" value="{{ departure }}">
       <button type="button" class="g-rp__btn" data-rp-open="departure" hidden>
-        <span class="g-rp__val" data-rp-label="departure">{{ t('Add dates') }}</span>
+        <span class="g-rp__val" data-rp-label="departure" data-rp-blank="{{ t('Add dates') }}">{{ t('Add dates') }}</span>
         <span class="g-rp__nights" data-rp-nights></span>
       </button></div>
-    <div class="g-search__f"><label for="s_party">Guests</label>
-      <input type="number" inputmode="numeric" id="s_party" name="party_size" min="1" value="{{ prefill_party_size or 2 }}"></div>
+    {#- 23 Nov (owner: "the design isnt finished here either"): the bar drawn as the home page's card, with a
+        minus and a plus for the guests (_guests.html). Styles in gudanes-pictures.css. -#}
+    <div class="g-search__f g-search__f--n"><label for="s_party">Guests</label>
+      {{ guests_field('s_party', prefill_party_size or 2, 15) }}</div>
     <button type="submit" class="g-btn g-search__go">Check availability</button>
   </form>
   <p class="g-book-bar__note">

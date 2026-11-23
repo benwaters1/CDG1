@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_guests.html' import guests_field %}
 {% from '_roomslides.html' import room_slides with context %}
 {% from '_chipicons.html' import ci %}
 {% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO, ROOM_STANDIN %}
@@ -67,6 +68,103 @@
     {#- 9 Nov (owner's second review, 1): Bienvenue's plate went, and its one sentence came up here. -#}
     <p class="g-hero__fact">An eighteenth-century château in the French Pyrénées, under restoration since 2013.</p>
   
+    {#- 23 Nov (owner): "i wanted it redesigned so the retreats are more prominent". The hero offered a room
+        search and, under it, one italic line and a small button for the retreats. Now one card with two tabs,
+        Retreats first and open with the next three dates and their prices, Stay the night the other tab with the
+        date search exactly as it was. With no script both panels show. With no dates on sale the card is the
+        search alone and the old line for the retreats comes back beneath it. -#}
+    {#- Each retreat's photograph: in the hero, the owner's upload for it in Admin if there is one, otherwise one of the
+        house's own by its name; in The Next Dates always the house's own, from a second set, so the page never shows
+        one picture twice. -#}
+    {%- set HB_PIC = {'Noël': 'img/retreats/noel-at-gudanes-800.jpg', 'Cooking': 'img/xx/tomato-tart-above.jpg',
+                      'Antique': 'img/xx/shelves-of-china.jpg', 'Seven': 'img/dining/long-table-tall-candles.jpg'} %}
+    {%- set ND_PIC = {'Noël': 'img/dining/garland-staircase.jpg', 'Cooking': 'img/retreats/cooking-class-hands-800.jpg',
+                      'Antique': 'img/retreats/brocante-china-800.jpg', 'Seven': 'img/retreats/film-under-the-stars-800.jpg'} %}
+    {% macro ws_pic(s, MAP, upload=true) -%}
+      {%- set _p = namespace(u=None) %}
+      {%- if upload and s['photo_filename'] %}{% set _p.u = url_for('room_photo', filename=s['photo_filename']) %}
+      {%- else %}{% for k in MAP %}{% if k in (s['title'] or '') %}{% set _p.u = url_for('static', filename=MAP[k]) %}{% endif %}{% endfor %}{% endif %}
+      {{- _p.u or '' -}}
+    {%- endmacro %}
+    {% if upcoming %}
+    <div class="g-hbook" data-hbook>
+      <div class="g-hbook__tabs" role="tablist" aria-label="Book">
+        <button type="button" role="tab" class="g-hbook__tab" id="hb-tab-r" aria-selected="true" aria-controls="hb-r"><b class="g-hbook__tk">Retreats</b> <i class="g-hbook__ts">Three to seven nights, all inclusive</i></button>
+        <button type="button" role="tab" class="g-hbook__tab" id="hb-tab-s" aria-selected="false" aria-controls="hb-s" tabindex="-1"><b class="g-hbook__tk">Stay the night</b> <i class="g-hbook__ts">A room and breakfast, your own dates</i></button>
+      </div>
+      <div class="g-hbook__p" id="hb-r" role="tabpanel" aria-labelledby="hb-tab-r">
+        <ul class="g-hbook__list">
+          {#- Two dates of one retreat would show one photograph twice; the second goes without. -#}
+          {%- set _hbused = namespace(seen=[]) %}
+          {% for s in upcoming[:3] %}
+          {%- set _ph = ws_pic(s, HB_PIC)|trim %}{% if _ph in _hbused.seen %}{% set _ph = '' %}{% endif %}{% set _hbused.seen = _hbused.seen + [_ph] %}
+          <li><a class="g-hbook__w" href="{{ workshop_page_url(s) }}">
+            {% if _ph %}<b class="g-hbook__ph"><img src="{{ _ph }}" alt="" loading="lazy" decoding="async"></b>{% endif %}
+            <b class="g-hbook__d">{{ date_range(s['start_date'], s['end_date']) }}</b>
+            <strong class="g-hbook__t">{{ s['title'] }}</strong>
+            <small class="g-hbook__m">{{ s['nights_label'] or '' }}{% if s['nights_label'] and s['price_per_person'] %} · {% endif %}{% if s['price_per_person'] %}<span data-eur="{{ s['price_per_person']|int }}">€{{ '{:,.0f}'.format(s['price_per_person']) }}</span> per person{% endif %}</small>
+          </a></li>
+          {% endfor %}
+        </ul>
+        <p class="g-hbook__foot">Every meal, the wine and the château’s chefs, with nothing to pay at the end. <a href="{{ url_for('workshops_public') }}#dates">See every date</a></p>
+      </div>
+      <div class="g-hbook__p" id="hb-s" role="tabpanel" aria-labelledby="hb-tab-s">
+      <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
+        {# The two native date fields remain, as the values the form posts and as
+           the fallback when JavaScript is off. The picker below replaces them
+           visually and writes into them. #}
+        <div class="g-herosearch__f g-rp__f" data-rp="arrival">
+          <label for="hs_arrival">{{ t('Arrival') }}</label>
+          <input type="date" id="hs_arrival" name="arrival">
+          <button type="button" class="g-rp__btn" data-rp-open="arrival" hidden>
+            <span class="g-rp__val" data-rp-label="arrival" data-rp-blank="{{ t('Add dates') }}">{{ t('Add dates') }}</span>
+          </button>
+        </div>
+        <div class="g-herosearch__f g-rp__f" data-rp="departure">
+          <label for="hs_departure">{{ t('Departure') }}</label>
+          <input type="date" id="hs_departure" name="departure">
+          <button type="button" class="g-rp__btn" data-rp-open="departure" hidden>
+            <span class="g-rp__val" data-rp-label="departure" data-rp-blank="{{ t('Add dates') }}">{{ t('Add dates') }}</span>
+            <span class="g-rp__nights" data-rp-nights></span>
+          </button>
+        </div>
+        {#- 23 Nov (owner): the guests get a minus and a plus (_guests.html). -#}
+        <div class="g-herosearch__f g-herosearch__f--n">
+          <label for="hs_guests">{{ t('Guests') }}</label>
+          {{ guests_field('hs_guests', 2, 15) }}
+        </div>
+        <button type="submit" class="g-herosearch__go">{{ t('Check availability') }}</button>
+      </form>
+      </div>
+    </div>
+    <script>
+    /* The two tabs. Retreats opens first; the arrow keys move between them, as a tab list should. */
+    (function(){
+      var card = document.querySelector('[data-hbook]');
+      if (!card) return;
+      var tabs = Array.prototype.slice.call(card.querySelectorAll('[role=tab]'));
+      function show(tab, focus){
+        tabs.forEach(function(t){
+          var on = t === tab;
+          t.setAttribute('aria-selected', on ? 'true' : 'false');
+          t.tabIndex = on ? 0 : -1;
+          document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+        });
+        if (focus) tab.focus();
+      }
+      tabs.forEach(function(t, i){
+        t.addEventListener('click', function(){ show(t); });
+        t.addEventListener('keydown', function(e){
+          if (e.key === 'ArrowRight' || e.key === 'ArrowLeft'){
+            e.preventDefault();
+            show(tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length], true);
+          }
+        });
+      });
+      show(tabs[0]);
+    })();
+    </script>
+    {% else %}
     <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
       {# The two native date fields remain, as the values the form posts and as
          the fallback when JavaScript is off. The picker below replaces them
@@ -97,6 +195,7 @@
         the full sentence from 640px up, a shorter one below (measured: fits a 360px phone). -#}
     {#- 26 Oct (owner, the retreats deck 1a). The short form is for a phone, from 360px up. -#}
     <p class="g-hero__alt"><span class="g-hero__alttext"><span class="g-hero__altlong">Or stay longer, for a retreat: three to seven nights of <em lang="fr">la vie de château</em>.</span><span class="g-hero__altshort">Or three to seven nights of <em lang="fr">la vie de château</em>.</span></span> <a class="g-hero__altbtn" href="{{ url_for('workshops_public') }}">See the retreats</a></p>
+    {% endif %}
 </div>
   <button type="button" class="g-hero__pause" id="g-hero-pause" aria-label="Pause video">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
@@ -132,10 +231,14 @@
     {% if upcoming %}
     <p class="g-full__k">The next dates</p>
     <ul class="g-full__list">
+      {%- set _ndused = namespace(seen=[]) %}
       {% for s in upcoming[:3] %}
       {#- 26 Oct (owner, the retreats deck 1d and 5): name, dates, nights and the Admin's price, with a line for each. -#}
       {%- set _hk = ws_hook(s)|trim %}{% set _an = a_night(s, s) %}
-      <li class="g-full__row"><a href="{{ workshop_page_url(s) }}">
+      {%- set _nph = ws_pic(s, ND_PIC, false)|trim %}{% if _nph in _ndused.seen %}{% set _nph = '' %}{% endif %}{% set _ndused.seen = _ndused.seen + [_nph] %}
+      {#- 23 Nov (owner: "fix this other one up too its super basic"): each date leads with its photograph. -#}
+      <li class="g-full__row"><a href="{{ workshop_page_url(s) }}"{% if _nph %} class="g-full__has-ph"{% endif %}>
+        {% if _nph %}<b class="g-full__ph"><img src="{{ _nph }}" alt="" loading="lazy" decoding="async"></b>{% endif %}
         <span class="g-full__t">{{ s['title'] }}</span>
         {% if _hk %}<span class="g-full__hook">{{ _hk }}</span>{% endif %}
         <span class="g-full__d">{{ date_range(s['start_date'], s['end_date']) }}</span>

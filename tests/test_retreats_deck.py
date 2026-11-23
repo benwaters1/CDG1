@@ -156,7 +156,11 @@ def run():
     home = words(pages["/"].get_data(as_text=True))
     # 9 Nov 2026, evening (owner's second review, 1 and 5): "château", never "house"; no
     # renovation; the eight moments went (A Day at Gudanes on /workshops is the same idea).
-    for line in ["Or stay longer, for a retreat: three to seven nights of la vie de château.",
+    # 23 Nov 2026 (owner: "i wanted it redesigned so the retreats are more prominent"): the hero's one line
+    # for the retreats became the Retreats tab, open first, with the next dates in it. The old line only
+    # comes back when no date is on sale.
+    for line in ["Retreats Three to seven nights, all inclusive",
+                 "Every meal, the wine and the château’s chefs, with nothing to pay at the end.",
                  "For two centuries Gudanes was a château of guests.",
                  "Guests arrive as strangers and leave as friends, and so many of them return.",
                  "Many of our guests return, some year after year, each time for a different retreat.",

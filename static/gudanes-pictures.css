@@ -673,3 +673,239 @@
 /* The currency control takes its colour from the header (2.3 above), which is navy: over a hero photograph, where the
    logo, the menu and the languages turn white, it stayed navy on the picture and could not be seen. It turns with them. */
 body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
+
+/* ==========================================================================
+   THE HOME PAGE: RETREATS FIRST (23 Nov 2026, owner: "i wanted it redesigned
+   so the retreats are more prominent")
+   The hero offered a room search and, under it, one italic line and a small
+   button for the retreats. Now one card with two tabs, Retreats first and
+   open, showing the next three dates as photograph cards with their price;
+   Stay the night is the other tab and holds the date search. Without a
+   script both show.
+   No <span> carries the words: the reading floor in gudanes.css holds every
+   main span at 15px with a selector a component cannot beat, so they are b,
+   i, small and strong, which it leaves alone.
+   ========================================================================== */
+.g .g-hero .g-hbook{ width: 100%; max-width: 880px; margin: var(--s6, 2.5rem) auto 0; text-align: left; }
+.g .g-hero .g-hbook__tabs{ display: flex; gap: 4px; }
+.g .g-hero .g-hbook__tab{
+  flex: 0 1 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 11px 26px 10px; min-height: 0; cursor: pointer; text-align: left;
+  background: rgba(248,243,233,.08); border: 1px solid rgba(230,207,149,.45); border-bottom: 0;
+  border-radius: 3px 3px 0 0; color: #F8F3E9; font-family: var(--serif);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.g .g-hero .g-hbook__tab:hover{ background: rgba(248,243,233,.16); }
+.g .g-hero .g-hbook__tab .g-hbook__tk{
+  display: block; font-style: normal;
+  font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 11.5px; font-weight: 600;
+  letter-spacing: .18em; text-transform: uppercase; color: #E6CF95;
+}
+.g .g-hero .g-hbook__tab .g-hbook__ts{ display: block; font-weight: 400; font-size: 15px; font-style: italic; color: rgba(248,243,233,.92); }
+.g .g-hero .g-hbook__tab[aria-selected="true"]{
+  background: #F8F3E9; border-color: rgba(176,141,87,.75); position: relative; z-index: 1;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+.g .g-hero .g-hbook__tab[aria-selected="true"] .g-hbook__tk{ color: #7A5A2C; }
+.g .g-hero .g-hbook__tab[aria-selected="true"] .g-hbook__ts{ color: #14305F; }
+.g .g-hero .g-hbook__tab:focus-visible{ outline: 2px solid #E6CF95; outline-offset: 2px; }
+.g .g-hero .g-hbook__p{
+  background: #F8F3E9; border: 1px solid rgba(176,141,87,.75); border-radius: 0 3px 3px 3px;
+  box-shadow: 0 20px 60px rgba(5,12,24,.5); padding: 8px; margin-top: -1px;
+}
+.g .g-hero .g-hbook__p[hidden]{ display: none; }
+/* The retreats: the next three, each a photograph card linking to its page. */
+.g .g-hero .g-hbook__list{ list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.g .g-hero .g-hbook__list li{ margin: 0; padding: 0; max-width: none; }
+.g .g-hero .g-hbook__w{
+  display: flex; flex-direction: column; gap: 2px; height: 100%; padding: 0 0 13px;
+  background: #fff; border-radius: 2px; overflow: hidden; text-decoration: none; color: #14305F;
+  box-shadow: 0 0 0 1px rgba(140,106,56,.18); transition: box-shadow .2s;
+}
+.g .g-hero .g-hbook__w:hover, .g .g-hero .g-hbook__w:focus-visible{ box-shadow: 0 8px 22px rgba(20,48,95,.16), 0 0 0 1px rgba(140,106,56,.4); }
+.g .g-hero .g-hbook__ph{ display: block; aspect-ratio: 16 / 9; overflow: hidden; margin-bottom: 10px; background: #E9E1D0; }
+.g .g-hero .g-hbook__ph img{ display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
+.g .g-hero .g-hbook__w:hover .g-hbook__ph img{ transform: scale(1.04); }
+.g .g-hero .g-hbook__w .g-hbook__d,
+.g .g-hero .g-hbook__w .g-hbook__t,
+.g .g-hero .g-hbook__w .g-hbook__m{ display: block; padding: 0 16px; }
+.g .g-hero .g-hbook__w .g-hbook__d{
+  font-style: normal; font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 10.5px; font-weight: 600;
+  letter-spacing: .16em; text-transform: uppercase; color: #7A5A2C;
+}
+.g .g-hero .g-hbook__w .g-hbook__t{ font-weight: 500; font-family: var(--display, var(--serif)); font-size: 21px; line-height: 1.2; color: #14305F; }
+.g .g-hero .g-hbook__w .g-hbook__m{ font-size: 15px; color: #3E5272; }
+/* The price carries data-eur for the currency control, and .g-hero span{} would paint it light. */
+.g .g-hero .g-hbook__w .g-hbook__m span{ color: inherit; }
+.g .g-hero .g-hbook__foot{
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px;
+  margin: 4px 0 0; padding: 10px 8px 2px; max-width: none;
+  font-size: 15px; font-style: italic; color: #3E5272;
+}
+.g .g-hero .g-hbook__foot a{
+  font-style: normal; color: #F8F3E9; background: #14305F; padding: 10px 22px; border-radius: 2px;
+  text-decoration: none; white-space: nowrap;
+}
+.g .g-hero .g-hbook__foot a:hover{ background: #0D2851; color: #fff; }
+/* Stay the night: the date search, inside the card rather than a card of its own. */
+.g .g-hero .g-hbook .g-herosearch{
+  background: transparent; border: 0; border-radius: 0; box-shadow: none;
+  padding: 0; margin: 0; gap: 0; max-width: none; width: 100%;
+}
+@media (min-width: 46rem){
+  .g .g-hero .g-hbook .g-herosearch{ grid-template-columns: minmax(0,1fr) minmax(0,1fr) 10rem auto; align-items: stretch; }
+}
+.g .g-hero .g-hbook .g-herosearch__f{
+  background: transparent; text-align: left; min-height: 0; min-width: 0;
+  display: flex; flex-direction: column; justify-content: center; gap: 0; padding: 12px 22px;
+}
+.g .g-hero .g-hbook .g-herosearch__f + .g-herosearch__f{ border-left: 1px solid rgba(140,106,56,.28); }
+.g .g-hero .g-hbook .g-herosearch__f > label{
+  display: block; height: 15px; line-height: 15px; margin: 0 0 4px; padding: 0; text-align: left;
+  font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 10.5px; font-weight: 600;
+  letter-spacing: .16em; text-transform: uppercase; color: #7A5A2C;
+}
+.g .g-hero .g-hbook .g-rp__btn{ text-align: left; padding: 0; margin: 0; height: 36px; min-height: 0; color: #14305F; white-space: nowrap; }
+.g .g-hero .g-hbook .g-rp__val,
+.g .g-hero .g-hbook .g-rp__val:not(.is-set){ font-size: 22px; line-height: 36px; font-style: normal; color: #4A5F82; opacity: 1; }
+.g .g-hero .g-hbook .g-rp__val.is-set{ color: #14305F; }
+.g .g-hero .g-hbook .g-rp__nights{ color: #7A5A2C; }
+.g .g-hero .g-hbook .g-guests{ display: flex; align-items: center; gap: 8px; height: 36px; min-height: 0; }
+.g .g-hero .g-hbook .g-guests #hs_guests{
+  font-size: 22px; line-height: 36px; color: #14305F; width: 1.6em; height: 36px; min-height: 0;
+  text-align: center; -moz-appearance: textfield; appearance: textfield;
+  background: none; border: 0; padding: 0; margin: 0; font-style: normal;
+}
+.g .g-hero .g-hbook .g-guests #hs_guests::-webkit-inner-spin-button,
+.g .g-hero .g-hbook .g-guests #hs_guests::-webkit-outer-spin-button{ -webkit-appearance: none; margin: 0; }
+.g .g-hero .g-hbook .g-guests__b{
+  flex: none; width: 30px; height: 30px; min-height: 0; min-width: 0; padding: 0;
+  border-radius: 50%; border: 1px solid rgba(20,48,95,.4); background: transparent;
+  color: #14305F; font-size: 17px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+/* .g-hero span{} paints every span in the hero a light colour; the minus and plus keep the button's navy. */
+.g .g-hero .g-hbook .g-guests__b span{ color: inherit; }
+.g .g-hero .g-hbook .g-guests__b:hover{ border-color: #14305F; background: rgba(20,48,95,.06); }
+.g .g-hero .g-hbook .g-guests__b:focus-visible{ outline: 2px solid #14305F; outline-offset: 2px; }
+.g .g-hero .g-hbook .g-guests__b:disabled{ opacity: .3; cursor: default; background: transparent; }
+.g .g-hero .g-hbook .g-herosearch__go{
+  background: #14305F; color: #F8F3E9; border: 0; border-radius: 2px;
+  padding: 0 28px; font-size: 17px; letter-spacing: .02em;
+}
+.g .g-hero .g-hbook .g-herosearch__go:hover{ background: #0D2851; color: #fff; }
+@media (max-width: 44rem){
+  .g .g-hero .g-hbook__tabs{ gap: 3px; }
+  .g .g-hero .g-hbook__tab{ flex: 1 1 0; padding: 10px 12px 9px; }
+  .g .g-hero .g-hbook__tab .g-hbook__ts{ font-size: 13.5px; }
+  .g .g-hero .g-hbook__p{ border-radius: 0 0 3px 3px; padding: 6px; }
+  .g .g-hero .g-hbook__list{ grid-template-columns: 1fr; gap: 6px; }
+  .g .g-hero .g-hbook__w{ display: grid; grid-template-columns: 96px 1fr; column-gap: 12px; align-items: center; padding: 0; }
+  .g .g-hero .g-hbook__ph{ grid-column: 1; grid-row: 1 / span 3; aspect-ratio: 1; margin: 0; height: 100%; }
+  .g .g-hero .g-hbook__w .g-hbook__d,
+  .g .g-hero .g-hbook__w .g-hbook__t,
+  .g .g-hero .g-hbook__w .g-hbook__m{ grid-column: 2; padding: 0 10px 0 0; }
+  .g .g-hero .g-hbook__w .g-hbook__d{ padding-top: 10px; }
+  .g .g-hero .g-hbook__w .g-hbook__m{ padding-bottom: 10px; }
+  .g .g-hero .g-hbook__w .g-hbook__t{ font-size: 19px; }
+  .g .g-hero .g-hbook__foot a{ width: 100%; text-align: center; }
+  .g .g-hero .g-hbook .g-herosearch{ grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .g .g-hero .g-hbook .g-herosearch__f{ padding: 10px 14px; }
+  .g .g-hero .g-hbook .g-herosearch__f:nth-child(-n+2){ border-bottom: 1px solid rgba(140,106,56,.28); }
+  .g .g-hero .g-hbook .g-herosearch__f + .g-herosearch__f--n{ border-left: 0; }
+  .g .g-hero .g-hbook .g-rp__btn{ height: 44px; }
+  .g .g-hero .g-hbook .g-rp__val,
+  .g .g-hero .g-hbook .g-rp__val:not(.is-set){ font-size: 20px; line-height: 44px; }
+  .g .g-hero .g-hbook .g-herosearch__go{ padding: 0 16px; min-height: 56px; }
+}
+@media (pointer: coarse){
+  .g .g-hero .g-hbook .g-guests{ height: 44px; }
+  .g .g-hero .g-hbook .g-guests__b{ width: 44px; height: 44px; }
+}
+
+/* ==========================================================================
+   THE NEXT DATES, WITH THEIR PICTURES (23 Nov 2026, owner: "fix this other
+   one up too its super basic")
+   Beside La Vie de Château the three dates were rules and words. Each row now
+   leads with its photograph in a gilt frame, a different one from the card
+   in the hero above so the page does not show the same picture twice.
+   ========================================================================== */
+.g .g-full .g-full__row a.g-full__has-ph{ grid-template-columns: 116px minmax(0,1fr) auto; column-gap: 22px; align-items: center; padding: 22px 0; }
+.g .g-full .g-full__row a.g-full__has-ph > :not(.g-full__ph):not(.g-full__go){ grid-column: 2; }
+.g .g-full .g-full__row a.g-full__has-ph .g-full__go{ grid-column: 3; grid-row: 1 / span 6; }
+.g .g-full__ph{
+  grid-column: 1; grid-row: 1 / span 6; align-self: center; display: block; width: 116px; aspect-ratio: 4 / 5;
+  padding: 4px; border: 1px solid rgba(198,166,110,.65); background: rgba(255,255,255,.04); overflow: hidden;
+}
+.g .g-full__ph img{ display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
+.g .g-full .g-full__row a:hover .g-full__ph img{ transform: scale(1.05); }
+@media (max-width: 34rem){
+  .g .g-full .g-full__row a.g-full__has-ph{ grid-template-columns: 84px minmax(0,1fr) auto; column-gap: 14px; }
+  .g .g-full__ph{ width: 84px; }
+}
+
+/* ==========================================================================
+   THE STAY PAGE'S SEARCH, AS THE HOME PAGE'S CARD (23 Nov 2026, owner: "the
+   design isnt finished here either")
+   It was three bare fields on the grey band: a small grey label, the date as
+   plain text, a white box with a 2 in it and the button. Now a white card
+   with a gilt hairline, the labels in small capitals, the dates in navy at
+   the size of the home page's, and the guests with a minus and a plus.
+   ========================================================================== */
+.g .g-book-bar .g-search{
+  background: #fff; border: 1px solid rgba(176,141,87,.6); border-radius: 3px;
+  box-shadow: 0 14px 40px rgba(20,48,95,.10); padding: 6px; gap: 0;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+}
+@media (min-width: 50rem){
+  .g .g-book-bar .g-search{ grid-template-columns: minmax(0,1fr) minmax(0,1fr) 11rem auto; align-items: stretch; }
+  .g .g-book-bar .g-search__f + .g-search__f{ border-left: 1px solid rgba(140,106,56,.28); }
+}
+.g .g-book-bar .g-search__f{ justify-content: center; padding: 14px 24px; min-width: 0; }
+.g .g-book-bar .g-search__f > label{
+  display: block; margin: 0 0 4px; padding: 0; line-height: 15px;
+  font-family: var(--sans, "Helvetica Neue", Arial, sans-serif); font-size: 10.5px; font-weight: 600;
+  letter-spacing: .16em; text-transform: uppercase; color: #7A5A2C;
+}
+.g .g-book-bar .g-search .g-rp__btn{ text-align: left; padding: 0; margin: 0; height: 40px; min-height: 0; color: #14305F; white-space: nowrap; }
+/* #book, and !important on the size: .g .g-rp__val in this sheet sets every picker label to 15px !important. */
+.g #book .g-search .g-rp__val,
+.g #book .g-search .g-rp__val:not(.is-set){ font-size: 23px !important; line-height: 40px; font-style: normal; color: #4A5F82; opacity: 1; }
+.g #book .g-search .g-rp__val.is-set{ color: #14305F; }
+.g #book .g-search .g-rp__nights{ color: #7A5A2C; font-size: 14px !important; margin-left: 6px; }
+.g .g-book-bar .g-guests{ display: flex; align-items: center; gap: 8px; height: 40px; min-height: 0; }
+/* .g main input:not(...) holds every input at 16px with a long :not() chain; #book outranks it. */
+.g #book .g-guests .g-guests__n{
+  font-family: var(--serif); font-size: 23px; line-height: 40px; color: #14305F; width: 1.6em; height: 40px; min-height: 0;
+  text-align: center; -moz-appearance: textfield; appearance: textfield;
+  background: none; border: 0; padding: 0; margin: 0;
+}
+.g #book .g-guests .g-guests__n::-webkit-inner-spin-button,
+.g #book .g-guests .g-guests__n::-webkit-outer-spin-button{ -webkit-appearance: none; margin: 0; }
+.g .g-book-bar .g-guests__b{
+  flex: none; width: 30px; height: 30px; min-height: 0; min-width: 0; padding: 0;
+  border-radius: 50%; border: 1px solid rgba(20,48,95,.4); background: transparent;
+  color: #14305F; font-size: 17px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.g .g-book-bar .g-guests__b span{ color: inherit; }
+.g .g-book-bar .g-guests__b:hover{ border-color: #14305F; background: rgba(20,48,95,.06); }
+.g .g-book-bar .g-guests__b:focus-visible{ outline: 2px solid #14305F; outline-offset: 2px; }
+.g .g-book-bar .g-guests__b:disabled{ opacity: .3; cursor: default; background: transparent; }
+.g .g-book-bar .g-search .g-search__go{
+  grid-column: auto; min-height: 56px; margin: 0; padding: 0 30px; border: 0; border-radius: 2px;
+  background: #14305F; color: #F8F3E9; font-size: 17px; letter-spacing: .02em;
+}
+.g .g-book-bar .g-search .g-search__go:hover{ background: #0D2851; color: #fff; }
+@media (max-width: 49.99rem){
+  .g .g-book-bar .g-search__f{ padding: 10px 14px; }
+  .g .g-book-bar .g-search__f:nth-child(-n+2){ border-bottom: 1px solid rgba(140,106,56,.28); }
+  .g .g-book-bar .g-search__f:nth-child(2){ border-left: 1px solid rgba(140,106,56,.28); }
+  .g .g-book-bar .g-search .g-rp__btn{ height: 44px; }
+  .g #book .g-search .g-rp__val,
+  .g #book .g-search .g-rp__val:not(.is-set){ font-size: 20px !important; line-height: 44px; }
+}
+@media (pointer: coarse){
+  .g .g-book-bar .g-guests{ height: 44px; }
+  .g .g-book-bar .g-guests__b{ width: 44px; height: 44px; }
+}
