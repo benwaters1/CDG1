@@ -68171,8 +68171,11 @@ _PIC_MIRRORED = re.compile(r"[0-9a-f]{40}\.(?:jpg|png|webp|gif|avif)")
 def _pic_file(src):
     """The file a /pic address names, or None.
 
-    Two kinds: a path under static/img ("retreats/vin-chaud.jpg"), and a
-    mirrored photograph on the volume ("~m/<its hashed name>").
+    Three kinds: a path under static/img ("retreats/vin-chaud.jpg"), a
+    mirrored photograph on the volume ("~m/<its hashed name>"), and a room
+    photograph the owner uploaded ("~r/<its file name>", 23 Nov 2026: the
+    Twin Room (Ground Floor)'s went out at 1920px wherever its card was drawn,
+    88px to 400px wide).
     """
     if not src:
         return None
@@ -68183,6 +68186,11 @@ def _pic_file(src):
         if not _PIC_MIRRORED.fullmatch(name):
             return None
         path = os.path.join(MIRROR_DIR, name)
+    elif rel.startswith("~r/"):
+        name = rel[3:]
+        if not re.fullmatch(r"[A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*\.(?:jpe?g|png|webp)", name, re.I):
+            return None
+        path = os.path.join(ROOM_PHOTO_DIR, name)
     elif src.startswith("/static/img/"):
         if not re.fullmatch(r"[A-Za-z0-9_\-/]+\.(?:jpe?g|png)", rel) or ".." in rel:
             return None
@@ -68263,8 +68271,9 @@ def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upt
     """
     from markupsafe import Markup, escape
     rel = (src[len("/static/img/"):] if src.startswith("/static/img/")
+           else "~r/" + src[len("/room-photos/"):].split("?", 1)[0] if src.startswith("/room-photos/")
            else _pic_held(src))
-    size = pic_size("/static/img/" + rel if rel and not rel.startswith("~m/") else rel)
+    size = pic_size("/static/img/" + rel if rel and not rel.startswith(("~m/", "~r/")) else rel)
     if size:
         w, h = size
     attrs = [f'src="{escape(src)}"', f'alt="{escape(alt or "")}"']
@@ -68311,7 +68320,7 @@ def sized_photo(width, filename):
     number between 1 and 5000; never wider than the file itself, so one
     picture has one address per width.
     """
-    src = filename if filename.startswith("~m/") else "/static/img/" + filename
+    src = filename if filename.startswith(("~m/", "~r/")) else "/static/img/" + filename
     path = _pic_file(src)
     size = pic_size(src)
     if (not path or not size or width > size[0]
@@ -68373,6 +68382,9 @@ def _hero_pic_name(src):
     if src.startswith("/mirrored-photo/"):
         name = src[len("/mirrored-photo/"):].split("?", 1)[0]
         return "~m/" + name if _pic_file("~m/" + name) else None
+    if src.startswith("/room-photos/"):
+        name = src[len("/room-photos/"):].split("?", 1)[0]
+        return "~r/" + name if _pic_file("~r/" + name) else None
     return _pic_held(src)
 
 
@@ -68382,7 +68394,7 @@ def size_hero(tag):
         return tag
     found = _HERO_SRC.search(tag)
     rel = _hero_pic_name(found.group(1)) if found else None
-    size = pic_size(rel if rel and rel.startswith("~m/") else "/static/img/" + rel) if rel else None
+    size = pic_size(rel if rel and rel.startswith(("~m/", "~r/")) else "/static/img/" + rel) if rel else None
     if not size:
         return tag
     widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
