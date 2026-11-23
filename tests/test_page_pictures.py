@@ -71,7 +71,9 @@ PAGES = {
     "/events/photoshoots": [
         ("an uneven collage", r'class="g-mos g-mos--tall ', 1),
         ("a room as it was found across the page", r'class="g-plein "', 1),
-        ("a room as found among them", r'mountains-through-the-roof', 1),
+        # 12 Nov (the second review, 3.3): the roof open to the mountains is /restoration's alone; this band is
+        # another room as it was found.
+        ("a room as found among them", r'fireplace-and-pram', 1),
         ("and all thirteen behind See all", r'See all 13 photos', 1),
     ],
     "/restoration": [
@@ -111,6 +113,10 @@ PAGES = {
     ],
     "/gallery": [
         ("the gallery as a masonry of mixed heights", r'g-gal--masonry', 1),
+        # 23 Nov (the live audit): a phone was sent 1600px for a 174px tile.
+        ("each tile offered at the size it is shown", r'<img src="[^"]*" srcset="/pic/\d+/[^"]*" sizes="auto, ', 6),
+        # and the lightbox opens the photograph's own file, not the small copy the page drew
+        ("the lightbox opens the photograph itself", r"img\.src=s\.getAttribute\('src'\)\|\|s\.currentSrc", 1),
     ],
 }
 
@@ -279,6 +285,40 @@ def _unnamed_retreats(s, client):
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+_PRINTS = {}
+
+
+def _print(key):
+    """A photograph reduced to 16x16 in grey: two copies of one picture at different sizes come out the same."""
+    if key not in _PRINTS:
+        name = key.split("?", 1)[0]
+        for page_dir, pic_dir in (("/mirrored-photo/", "~m/"), ("/room-photos/", "~r/")):
+            if name.startswith(page_dir):
+                name = pic_dir + name[len(page_dir):]
+        path = m._pic_file(name if name.startswith(("~m/", "~r/")) else "/static/img/" + name.lstrip("/"))
+        try:
+            from PIL import Image
+            with Image.open(path) as im:
+                _PRINTS[key] = (im.width / im.height, list(im.convert("L").resize((16, 16)).getdata()))
+        except Exception:
+            _PRINTS[key] = None
+    return _PRINTS[key]
+
+
+def same_pictures(keys):
+    """Pairs of the house's own files that are one photograph (23 Nov: the gallery opened on the King Suite's
+    four-poster twice, retreats/king-suite-four-poster.jpg and more/king-room-canopy.jpg, the one a smaller copy;
+    on the live site the same photographs measured 0 to 7.1 apart, and the four-poster against the bath beside it 93)."""
+    held = [(k, _print(k)) for k in keys]
+    held = [(k, p) for k, p in held if p]
+    out = []
+    for i, (a, pa) in enumerate(held):
+        for b, pb in held[i + 1:]:
+            if abs(pa[0] - pb[0]) < 0.02 and sum(abs(x - y) for x, y in zip(pa[1], pb[1])) / 256 < 8:
+                out.append((a, b))
+    return out
+
+
 def run():
     s = Suite("Pages in pictures")
     client = m.app.test_client()
@@ -320,6 +360,9 @@ def run():
             keys.append(key)
         twice = sorted({k for k in keys if keys.count(k) > 1})
         s.check("no photograph twice, by what it is", not twice, detail=", ".join(twice[:4]))
+        same = same_pictures(dict.fromkeys(keys))
+        s.check("nor the same photograph under two names, by what is in it", not same,
+                detail="; ".join(" = ".join(pair) for pair in same[:3]))
     _unnamed_retreats(s, client)
     return s
 

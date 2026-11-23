@@ -27,11 +27,10 @@
 {% from '_notify.html' import notify %}
 {% from '_before.html' import honest, terms_upfront, packing, arriving %}
 {% from '_animals.html' import bruce_card, animals, animals_note %}
-{% from '_roompick.html' import room_pick %}
 {% from '_weekcost.html' import week_cost %}
 {% from '_flexible.html' import flexible %}
 {% from '_availcal.html' import avail_cal %}
-{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath %}
+{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath, room_bath_link, room_sleeps %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_compare_rooms.html' import compare_rooms %}
 
@@ -269,7 +268,7 @@
                 card that costs an apology when it is wrong, and imported amenities on two rooms
                 still said "Shared bathroom" after every room became private. The column decides. -#}
             {% for tag in room['amenities'].split(',') if 'bathroom' not in tag|lower %}<li>{{ tag.strip() }}</li>{% endfor %}
-            {% if room['bathroom'] %}<li>{{ room_bath(room_name(room['name'])|trim, room['bathroom']) }}</li>{% endif %}
+            {% if room['bathroom'] %}<li>{{ room_bath_link(room_name(room['name'])|trim, room['bathroom']) }}</li>{% endif %}
             {#- z27: the winter line in this branch too. It lived only in the derived list below, so a room with
                 features typed in Admin - four of the five on the house's own data - never said how it is kept warm. -#}
             {% if _wdates and not _winter_room %}<li>Space heater and electric blankets</li>{% endif %}
@@ -280,11 +279,11 @@
                 one on the page a guest books from. Anything unset says
                 nothing rather than guessing: the wrong guess here is the one
                 that costs an apology. -#}
-            {% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}<li>{{ ci('guests') }}{{ room['max_adults'] }} adults, {{ room['max_children'] }} children</li>{% elif room['max_adults'] or room['max_occupancy'] %}<li>{{ ci('guests') }}Sleeps {{ room['max_adults'] or room['max_occupancy'] }}</li>{% endif %}{#- 20 Oct (owner): '2 adults, 1 children' read as a child staying and a third guest; only the Family Suite names children -#}{#- 15 Oct (owner): the Family Suite reads '2 adults, 3 children', not 'Sleeps 5' -#}
+            {% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}<li>{{ ci('guests') }}{{ room['max_adults'] }} adults, {{ room['max_children'] }} children</li>{% elif room['max_adults'] or room['max_occupancy'] %}<li>{{ ci('guests') }}Sleeps {{ room_sleeps(room) }}</li>{% endif %}{#- 20 Oct (owner): '2 adults, 1 children' read as a child staying and a third guest; only the Family Suite names children -#}{#- 15 Oct (owner): the Family Suite reads '2 adults, 3 children', not 'Sleeps 5' -#}
             {% if room['size_sqm'] %}<li>{{ ci('size') }}{{ room['size_sqm']|int }} m²</li>{% endif %}
             {% if room['bed_setup'] %}<li>{{ ci('bed') }}{{ room['bed_setup'] }}</li>
             {% else %}{# Was "Double bed" on every card, whatever the room. A room it does not recognise gets no bed line rather than a guess - set bed_setup. #}{%- set _rn = room_name(room['name']) %}{%- set _bl = 'Twin beds' if ('Twin' in _rn or 'Tilleul' in _rn) else ('Queen bed' if ('Queen' in _rn or 'Cerise' in _rn) else ('King bed' if ('King' in _rn or 'Levant' in _rn) else ('Emperor bed' if ('Gold' in _rn or 'Émeraude' in _rn) else ('Two bedrooms' if ('Family' in _rn or 'Deux' in _rn) else '')))) %}{% if _bl %}<li>{{ ci('bed') }}{{ _bl }}</li>{% endif %}{% endif %}
-            {% if room['bathroom'] %}<li>{{ ci('bath') }}{{ room_bath(room_name(room['name'])|trim, room['bathroom']) }}</li>{% endif %}{#- 15 Oct (owner): say it is not attached - the room page says each is on the ground floor -#}
+            {% if room['bathroom'] %}<li>{{ ci('bath') }}{{ room_bath_link(room_name(room['name'])|trim, room['bathroom']) }}</li>{% endif %}{#- 15 Oct (owner): say it is not attached - the room page says each is on the ground floor -#}
             {% if room['outlook'] %}<li>{{ ci('view') }}{% if room_name(room['name']) in ['The Marquis Suite', 'The Family Suite'] %}Mountain and front views{% else %}{{ room['outlook']|capitalize }} view{% endif %}</li>{% endif %}{#- 22 Oct (owner): the two suites look to the mountains and over the front; every other room, the mountains. -#}
             <li>{{ ci('cup') }}Breakfast included</li>
             {% if _wdates and not _winter_room %}<li>{{ ci('bed') }}Space heater and electric blankets</li>{% endif %}
@@ -362,43 +361,49 @@
   {% from '_stay_or_workshop.html' import night_notice %}{{ night_notice(dm=_dm) }}
 </div></section>
 
-{#- 11 Nov 2026 (owner): "why isnt there a section on the bathrooms ... the bathrooms are a real feature, they are incredible."
-    Every fact here is the owner's, from that message: new in 2019; no bathroom in a bedroom because the château is a
-    historic monument; the bathrooms together on the ground floor; the larger bathroom with a bath for the King, Marquis and
-    Family Suites; and the list. Each room's own bathroom is private, as its card says. -#}
-<section class="g-sec g-baths-sec" aria-labelledby="baths-h"><div class="g-wrap">
-  <header class="g-baths__head">
-    <p class="g-eyebrow">Les salles de bains</p>
-    <h2 id="baths-h" class="g-place">The Bathrooms</h2>
-    <p class="g-baths__lede">Installed in 2019, and among the finest rooms in the château.</p>
-  </header>
-  {#- Four photographs side by side, tall. Not the fifth in BATH_PHOTOS: it is the same bath
-      from almost the same place as the second. -#}
-  <div class="g-baths__row">
+{#- The bathrooms. 11 Nov 2026 (owner): "why isnt there a section on the bathrooms ... the bathrooms are a real
+    feature, they are incredible." 13 Nov (owner, on the site-copy brief's version): "move this down on the page ...
+    the parisian wallpaper etc wheres all the stuff i said". So it sits below the rooms again, and every fact is the
+    owner's own from 11 Nov, word for word: installed in 2019; no bathroom in a bedroom because the château is a
+    historic monument, so each room has its own and they are together on the ground floor; the larger bathroom with a
+    bath for the King, Marquis and Family Suites; and the eight things it is made of. The brief's layout stays: the
+    long bathroom large beside the words, the bath, a painted basin and the window beneath, and the points with a
+    drawing each. #bathrooms is what the room cards' "Your own private bathroom" opens. -#}
+<section class="g-sec g-baths-sec" id="bathrooms" aria-labelledby="baths-h"><div class="g-wrap">
+  <div class="g-baths__top">
+    <header class="g-baths__head">
+      <p class="g-eyebrow">Les salles de bains</p>
+      <h2 id="baths-h" class="g-place">The Bathrooms</h2>
+      <p class="g-baths__lede">Installed in 2019, and among the finest rooms in the château.</p>
+      <p class="g-p g-baths__p">Because the château is a historic monument, bathrooms cannot be built into its bedrooms. Instead each room has its own private bathroom, and the bathrooms are together on the ground floor.</p>
+      <p class="g-p g-baths__p">The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath.</p>
+    </header>
     {#- No captions: the owner took them off every photograph on 15 Oct; the alt says what each shows. -#}
-    {%- for _i in (0, 1, 3, 4) %}
-    <figure class="g-baths__f">{{ pic(BATH_PHOTOS[_i][0], BATH_PHOTOS[_i][1], sizes='(min-width: 56rem) 25vw, 50vw', cls='g-baths__img') }}</figure>
+    <figure class="g-baths__lead">{{ pic(BATH_PHOTOS[0][0], BATH_PHOTOS[0][1], sizes='(min-width: 56rem) 62vw, 100vw', cls='g-baths__img g-baths__img--lead') }}</figure>
+  </div>
+  <div class="g-baths__row">
+    {%- for _i in (1, 3, 4) %}
+    <figure class="g-baths__f">{{ pic(BATH_PHOTOS[_i][0], BATH_PHOTOS[_i][1], sizes='(min-width: 40rem) 33vw, 100vw', cls='g-baths__img') }}</figure>
     {%- endfor %}
   </div>
-  <div class="g-baths__body">
-    <div class="g-baths__why">
-      <p class="g-p">Because the château is a historic monument, bathrooms cannot be built into its bedrooms. Instead each room has its own private bathroom, and the bathrooms are together on the ground floor.</p>
-      <p class="g-p">The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath.</p>
-    </div>
-    <dl class="g-baths__feat">
-      <div><dt>The wallpaper</dt><dd>Bespoke, by Antoinette Poisson, made by hand in Paris</dd></div>
-      <div><dt>The floors</dt><dd>Eighteenth-century terracotta tiles</dd></div>
-      <div><dt>The basins</dt><dd>Painted with custom artwork and the château’s logo</dd></div>
-      <div><dt>The fittings</dt><dd>Luxury fittings throughout</dd></div>
-      <div><dt>The linen</dt><dd>Luxury linen</dd></div>
-      <div><dt>For you</dt><dd>Luxury shampoo, conditioner and bath gel</dd></div>
-      <div><dt>Warmth</dt><dd>Heaters</dd></div>
-      <div><dt>The view</dt><dd>Mountain views</dd></div>
-    </dl>
-  </div>
+  <ul class="g-baths__feat">
+    {%- for _k, _label, _text in [
+      ('wallpaper', 'The wallpaper', 'Bespoke, by Antoinette Poisson, made by hand in Paris'),
+      ('parquet', 'The floors', 'Eighteenth-century terracotta tiles'),
+      ('basin', 'The basins', 'Painted with custom artwork and the château’s logo'),
+      ('tap', 'The fittings', 'Luxury fittings throughout'),
+      ('towels', 'The linen', 'Luxury linen'),
+      ('toiletries', 'For you', 'Luxury shampoo, conditioner and bath gel'),
+      ('heater', 'Warmth', 'Heaters'),
+      ('mountains', 'The view', 'Mountain views')] %}
+    <li class="g-baths__pt"><span class="g-baths__ill" aria-hidden="true">{{ illus(_k) }}</span>
+      <span class="g-baths__k">{{ _label }}</span><span class="g-baths__t">{{ _text }}</span></li>
+    {%- endfor %}
+  </ul>
 </div></section>
 
-{{ room_pick(rooms) }}
+{#- 13 Nov (owner): "lets remove this" -- Finding Your Room / Answer Two Questions, the two-question room
+    picker, went. The rooms' cards above already say how many each sleeps and the bed. -#}
 
 
 {#- 9 Nov, evening (owner's second review, 1): the two galleries (the rooms, breakfast and the lounge; the park, which is /facilities), the kitchen strip, Dinner Nearby and Days Out went. Dinner and days out are a line each under Key Information, with a link to What's On. -#}

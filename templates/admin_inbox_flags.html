@@ -210,6 +210,13 @@
         <input type="hidden" name="back" value="{{ request.full_path }}">
         <button type="submit" class="btn-mini">Dismiss</button>
       </form>
+      {% if f['from_address'] %}
+      <form method="post" action="{{ url_for('never_flag_sender', flag_id=f['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="back" value="{{ request.full_path }}">
+        <button type="submit" class="btn-mini" title="Puts {{ f['from_address'] }} on the never-flag list and closes every open flag from them">Never flag this sender</button>
+      </form>
+      {% endif %}
       <form method="post" action="{{ url_for('assign_email_flag', flag_id=f['id']) }}" style="display:flex; gap:4px; align-items:center;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="back" value="{{ request.full_path }}">

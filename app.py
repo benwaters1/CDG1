@@ -9030,6 +9030,8 @@ def init_db():
     # Who fits each room, as Booking.com has it -- by the names of 16 October,
     # so after them.
     apply_room_occupancy_2026_10_18(conn)
+    # And the Twin Room (Ground Floor) back to three, once (owner, 12 November).
+    apply_ground_floor_twin_sleeps_three_2026_11_12(conn)
     # Every confirmed stay has a guest profile (19 October 2026). A repair
     # that runs at every start must never be what stops the house starting:
     # anything it cannot do is said in the log and left for the next start.
@@ -9817,7 +9819,7 @@ NAV_AREAS = {
         "mark_social_post_posted", "new_social_post", "record_texting_consent", "resolve_email_flag",
         "update_mailbox_routing",
         # The senders Inbox Flags never waits on a reply from.
-        "save_inbox_never_flag",
+        "save_inbox_never_flag", "never_flag_sender",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         
@@ -27790,6 +27792,15 @@ def channel_cost(conn, start=None, end=None):
                   AND (status = 'confirmed' OR COALESCE(commission_amount, 0) > 0)""",
             (start.isoformat(), end.isoformat())):
         if (r["room_id"], r["arrival_date"], r["departure_date"]) in own:
+            continue
+        # A CANCELLED STAY'S FIGURES ARE ONLY MONEY IF A STATEMENT SAID SO
+        # AFTER IT WAS CANCELLED. Chiodi's (6348479172, EUR 5,530) was in the
+        # 9 November statement while it stood, and was cancelled by email on
+        # the 12th: the figures stayed on it and the page went on counting a
+        # stay that had gone. A statement read since the cancellation that
+        # still shows a commission is a charged cancellation; anything else is
+        # not revenue until a statement says it is.
+        if r["status"] != "confirmed" and (r["statement_at"] or "") < (r["last_event_at"] or ""):
             continue
         sold.append(r)
         if r["status"] == "confirmed" and not r["statement_at"]:
@@ -54864,6 +54875,51 @@ def guest_availability_grid(conn, rooms, month_arg):
     }
 
 
+def room_offer(conn, room, arrival, departure, party_size):
+    """(available, why not) for one room, these nights and this party.
+
+    The one answer Stay shows on each room's card, and the waitlist email
+    repeats (owner, 12 Nov 2026), so the house reads the same reason the
+    guest was given.
+    """
+    stay_nights = (departure - arrival).days
+    ok, why = is_range_available(conn, room["id"], arrival, departure)
+    rules = stay_rules(conn, room, arrival, departure)
+    too_short = stay_nights < rules["min_nights"]
+    # CAPACITY, WHICH THE SEARCH USED TO IGNORE ENTIRELY. The rooms
+    # sleep two, two, two, three and five, so a family of four was
+    # shown all five as available, chose one, filled in the whole
+    # form and was then told it sleeps two. A party of four is not an
+    # edge case; it is a family.
+    too_small = bool(party_size and party_size > 0
+                     and room["max_occupancy"]
+                     and party_size > room["max_occupancy"])
+    available = ok and not too_short and not too_small
+    # Capacity first: a room that cannot hold the party will not hold
+    # it on any date, so "sleeps up to two" is the useful sentence and
+    # "not available these dates" sends them off to try other ones.
+    if too_small:
+        return available, f"Sleeps up to {room['max_occupancy']}"
+    if too_short:
+        return available, (
+            f"Requires a {rules['min_nights']}-night minimum stay"
+            + (" on these dates" if rules["min_nights"] > (room["min_nights"] or 1) else ""))
+    if not ok and why and why == season_note_for(conn, room["id"], arrival, departure):
+        # Closed for the season: the owner's own line, "The Gold
+        # Suite reopens on 1 April."
+        return available, why
+    if not ok and is_house_full_reason(why):
+        # The house's rooms all let on a night of the stay: said
+        # plainly, because "not available" sends somebody hunting for
+        # another room that is not there either (z28 item 1) -- and
+        # with the next night it can be had (owner, 18 October 2026).
+        return available, why.rstrip(".") + next_free_words(conn, room, arrival, stay_nights)
+    if not ok:
+        return available, "Not available these dates" + next_free_words(
+            conn, room, arrival, stay_nights)
+    return available, None
+
+
 @app.route("/book")
 def book_rooms():
     conn = get_db()
@@ -54936,41 +54992,9 @@ def book_rooms():
                   if any(c["mode"] == "hidden" for c in cl)}
         rooms = [r for r in rooms if r["id"] not in hidden]
         for room in rooms:
-            ok, why = is_range_available(conn, room["id"], arrival, departure)
-            rules = stay_rules(conn, room, arrival, departure)
-            too_short = stay_nights < rules["min_nights"]
-            # CAPACITY, WHICH THE SEARCH USED TO IGNORE ENTIRELY. The rooms
-            # sleep two, two, two, three and five, so a family of four was
-            # shown all five as available, chose one, filled in the whole
-            # form and was then told it sleeps two. A party of four is not an
-            # edge case; it is a family.
-            too_small = bool(party_size and party_size > 0
-                             and room["max_occupancy"]
-                             and party_size > room["max_occupancy"])
-            availability[room["id"]] = ok and not too_short and not too_small
-            # Capacity first: a room that cannot hold the party will not hold
-            # it on any date, so "sleeps up to two" is the useful sentence and
-            # "not available these dates" sends them off to try other ones.
-            if too_small:
-                unavailable_reason[room["id"]] = f"Sleeps up to {room['max_occupancy']}"
-            elif too_short:
-                unavailable_reason[room["id"]] = (
-                    f"Requires a {rules['min_nights']}-night minimum stay"
-                    + (" on these dates" if rules["min_nights"] > (room["min_nights"] or 1) else ""))
-            elif not ok and why and why == season_note_for(conn, room["id"], arrival, departure):
-                # Closed for the season: the owner's own line, "The Gold
-                # Suite reopens on 1 April."
-                unavailable_reason[room["id"]] = why
-            elif not ok and is_house_full_reason(why):
-                # The house's rooms all let on a night of the stay: said
-                # plainly, because "not available" sends somebody hunting for
-                # another room that is not there either (z28 item 1) -- and
-                # with the next night it can be had (owner, 18 October 2026).
-                unavailable_reason[room["id"]] = why.rstrip(".") + next_free_words(
-                    conn, room, arrival, stay_nights)
-            elif not ok:
-                unavailable_reason[room["id"]] = "Not available these dates" + next_free_words(
-                    conn, room, arrival, stay_nights)
+            availability[room["id"]], reason = room_offer(conn, room, arrival, departure, party_size)
+            if reason:
+                unavailable_reason[room["id"]] = reason
             # A room closed for the season over these nights is RESTING: its
             # card draws the winter box, in the owner's words, and the rooms
             # still open say how they are kept warm. This used to be the
@@ -55039,6 +55063,34 @@ def book_rooms():
     )
 
 
+def waitlist_email_body(conn, name, email, phone, arrival_iso, departure_iso, party_size, notes):
+    """The house's note of a waitlist request: who, which nights, how many, and
+    why each room said no -- the reasons Stay gave them, from room_offer
+    (owner, 12 Nov 2026: the note said only "nothing was available", which
+    left the house guessing whether the rooms were full or the party too big)."""
+    party = (f"{party_size} guest{'' if party_size == 1 else 's'}" if party_size
+             else "party size not given")
+    contact = email + (f", {phone}" if phone else "")
+    lines = [f"{name} ({contact}) would like {arrival_iso or '?'} to {departure_iso or '?'}, "
+             f"for {party}, but nothing was available."]
+    arrival, departure = parse_date(arrival_iso or ""), parse_date(departure_iso or "")
+    if arrival and departure and departure > arrival:
+        hidden = {rid for rid, cl in room_closures(conn, arrival, departure).items()
+                  if any(c["mode"] == "hidden" for c in cl)}
+        said = []
+        for room in conn.execute(
+                "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall():
+            if room["id"] in hidden:
+                continue
+            ok, why = room_offer(conn, room, arrival, departure, party_size)
+            said.append(f"  {room['name']}: {'free now' if ok else why}")
+        if said:
+            lines += ["", "What each room said:"] + said
+    if notes:
+        lines += ["", notes]
+    return "\n".join(lines)
+
+
 @app.route("/waitlist/join", methods=["POST"])
 def join_waitlist():
     name = request.form.get("name", "").strip()
@@ -55083,11 +55135,9 @@ def join_waitlist():
     conn.commit()
     owner_to = house_address_for(conn, "rooms")
     if owner_to:
-        send_email(
-            owner_to, "New waitlist request",
-            f"{name} ({email}) would like {desired_arrival or '?'} to {desired_departure or '?'}, "
-            f"but nothing was available.\n\n{notes or ''}",
-        )
+        send_email(owner_to, "New waitlist request",
+                   waitlist_email_body(conn, name, email, phone, desired_arrival,
+                                       desired_departure, party_size, notes))
     conn.close()
     flash("You're on the waitlist — we'll reach out if those dates open up.", "success")
     return redirect(url_for("book_rooms", arrival=desired_arrival, departure=desired_departure))
@@ -59269,6 +59319,30 @@ def apply_room_occupancy_2026_10_18(conn):
     conn.commit()
     if changed:
         log_line(f"[rooms] who fits, as on Booking.com: {changed} room(s) set")
+    return changed
+
+
+def apply_ground_floor_twin_sleeps_three_2026_11_12(conn):
+    """Once: the Twin Room (Ground Floor) back to three guests, two adults, two
+    children -- ROOM_OCCUPANCY_2026_10_18's figures, Booking.com's.
+
+    The live site had it at "Sleeps up to 2" by 12 November, so a party of three
+    on a winter night, with the Family Suite resting, found nothing and was sent
+    to the waitlist (Juliya Borie, 28-29 December). The owner: "fix it". The
+    house's fifteen-guest ceiling (house_guest_capacity) still binds every night.
+    """
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'gf_twin_sleeps_three_2026_11_12'").fetchone():
+        return 0
+    want = ROOM_OCCUPANCY_2026_10_18["The Twin Room (Ground Floor)"]
+    changed = conn.execute(
+        "UPDATE rooms SET max_occupancy = ?, max_adults = ?, max_children = ? WHERE name = ? "
+        "AND (max_occupancy, max_adults, max_children) IS NOT (?, ?, ?)",
+        (*want, "The Twin Room (Ground Floor)", *want)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('gf_twin_sleeps_three_2026_11_12', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        log_line("[rooms] the Twin Room (Ground Floor) sleeps three again")
     return changed
 
 
@@ -68117,8 +68191,11 @@ _PIC_MIRRORED = re.compile(r"[0-9a-f]{40}\.(?:jpg|png|webp|gif|avif)")
 def _pic_file(src):
     """The file a /pic address names, or None.
 
-    Two kinds: a path under static/img ("retreats/vin-chaud.jpg"), and a
-    mirrored photograph on the volume ("~m/<its hashed name>").
+    Three kinds: a path under static/img ("retreats/vin-chaud.jpg"), a
+    mirrored photograph on the volume ("~m/<its hashed name>"), and a room
+    photograph the owner uploaded ("~r/<its file name>", 23 Nov 2026: the
+    Twin Room (Ground Floor)'s went out at 1920px wherever its card was drawn,
+    88px to 400px wide).
     """
     if not src:
         return None
@@ -68129,6 +68206,11 @@ def _pic_file(src):
         if not _PIC_MIRRORED.fullmatch(name):
             return None
         path = os.path.join(MIRROR_DIR, name)
+    elif rel.startswith("~r/"):
+        name = rel[3:]
+        if not re.fullmatch(r"[A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*\.(?:jpe?g|png|webp)", name, re.I):
+            return None
+        path = os.path.join(ROOM_PHOTO_DIR, name)
     elif src.startswith("/static/img/"):
         if not re.fullmatch(r"[A-Za-z0-9_\-/]+\.(?:jpe?g|png)", rel) or ".." in rel:
             return None
@@ -68209,8 +68291,9 @@ def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upt
     """
     from markupsafe import Markup, escape
     rel = (src[len("/static/img/"):] if src.startswith("/static/img/")
+           else "~r/" + src[len("/room-photos/"):].split("?", 1)[0] if src.startswith("/room-photos/")
            else _pic_held(src))
-    size = pic_size("/static/img/" + rel if rel and not rel.startswith("~m/") else rel)
+    size = pic_size("/static/img/" + rel if rel and not rel.startswith(("~m/", "~r/")) else rel)
     if size:
         w, h = size
     attrs = [f'src="{escape(src)}"', f'alt="{escape(alt or "")}"']
@@ -68244,7 +68327,16 @@ def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upt
     return Markup("<img " + " ".join(attrs) + ">")
 
 
+def pic_srcset(src, sizes="100vw"):
+    """The srcset and sizes pic() would give `src`, as attributes for an <img> a template writes by hand
+    (23 Nov 2026: the gallery's tiles); nothing for a file the house does not hold."""
+    from markupsafe import Markup
+    found = re.search(r'\s(srcset="[^"]*")\s(sizes="[^"]*")', str(pic(src, "", sizes=sizes)))
+    return Markup(" %s %s" % found.groups()) if found else Markup("")
+
+
 app.jinja_env.globals["pic"] = pic
+app.jinja_env.globals["pic_srcset"] = pic_srcset
 app.jinja_env.globals["pic_size"] = pic_size
 
 
@@ -68257,7 +68349,7 @@ def sized_photo(width, filename):
     number between 1 and 5000; never wider than the file itself, so one
     picture has one address per width.
     """
-    src = filename if filename.startswith("~m/") else "/static/img/" + filename
+    src = filename if filename.startswith(("~m/", "~r/")) else "/static/img/" + filename
     path = _pic_file(src)
     size = pic_size(src)
     if (not path or not size or width > size[0]
@@ -68319,6 +68411,9 @@ def _hero_pic_name(src):
     if src.startswith("/mirrored-photo/"):
         name = src[len("/mirrored-photo/"):].split("?", 1)[0]
         return "~m/" + name if _pic_file("~m/" + name) else None
+    if src.startswith("/room-photos/"):
+        name = src[len("/room-photos/"):].split("?", 1)[0]
+        return "~r/" + name if _pic_file("~r/" + name) else None
     return _pic_held(src)
 
 
@@ -68328,7 +68423,7 @@ def size_hero(tag):
         return tag
     found = _HERO_SRC.search(tag)
     rel = _hero_pic_name(found.group(1)) if found else None
-    size = pic_size(rel if rel and rel.startswith("~m/") else "/static/img/" + rel) if rel else None
+    size = pic_size(rel if rel and rel.startswith(("~m/", "~r/")) else "/static/img/" + rel) if rel else None
     if not size:
         return tag
     widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
@@ -91233,6 +91328,13 @@ def apply_booking_com_statement(conn, rows, *, user_id=None, filename=""):
             report["new"].append(label)
             continue
         sets = {k: v for k, v in money.items() if v is not None and stay[k] != v}
+        if not charged:
+            # Cancelled and not charged: whatever price it carried while it
+            # stood is no longer money, so it goes, rather than being left
+            # for the report to count.
+            for key in ("amount", "currency", "commission_pct", "commission_amount"):
+                if stay[key] is not None:
+                    sets[key] = None
         sets.pop("statement_at", None)
         changed = bool(sets)
         for key, value in gaps.items():
@@ -109873,6 +109975,7 @@ INBOX_CLOSE_REASONS = {
     "duplicate": ("already flagged in another inbox", "the same email, flagged in another inbox"),
     "answered": ("answered since", "answered"),
     "cleared": ("with nothing left to flag", "nothing about it is flagged any more"),
+    "gone": ("no longer in the inbox", "moved out of the inbox or deleted there, so dealt with"),
 }
 
 
@@ -112637,6 +112740,10 @@ def run_email_inbox_scan_job(conn):
     unread, read_boxes, left_to_booking_com = [], 0, False
     no_headers = []
     headers_asked = headers_left = 0
+    # What Microsoft actually sent, counted for the report: on 11 Nov 2026 the
+    # newsletters stayed open and nothing said why. Header names only, never
+    # their values.
+    heard = {"listed": 0, "listed_with": 0, "mailing": 0, "asked_failed": None}
     for mb in mailboxes:
         mailbox = mb["mailbox"]
         # Booking.com's mailbox is read by its own job, into its own page:
@@ -112693,6 +112800,10 @@ def run_email_inbox_scan_job(conn):
         # in this inbox is written, so no Graph read holds the database.
         asked_here = 0
         for msg in inbox_messages:
+            heard["listed"] += 1
+            if msg.get("internetMessageHeaders"):
+                heard["listed_with"] += 1
+        for msg in inbox_messages:
             mid, got_at = msg.get("id"), msg.get("receivedDateTime")
             if not mid or not got_at or msg.get("internetMessageHeaders"):
                 continue
@@ -112713,6 +112824,8 @@ def run_email_inbox_scan_job(conn):
             got = graph_get(f"/users/{mailbox}/messages/{mid}", token,
                             params={"$select": "id,internetMessageHeaders"})
             asked_here += 1
+            if got is None and not heard["asked_failed"]:
+                heard["asked_failed"] = graph_last_error() or "no answer"
             if got is not None:
                 msg["internetMessageHeaders"] = got.get("internetMessageHeaders") or []
                 msg["_headers_read"] = True
@@ -112755,6 +112868,8 @@ def run_email_inbox_scan_job(conn):
             preview = msg.get("bodyPreview") or ""
 
             have_headers = bool(msg.get("internetMessageHeaders")) or bool(msg.get("_headers_read"))
+            if _message_header(msg, "list-unsubscribe") is not None:
+                heard["mailing"] += 1
             reason = not_waiting_for_a_reply(msg, from_address, never, house)
             if not reason and not have_headers and existing \
                     and existing["header_verdict"] in ("mailing", "machine"):
@@ -112944,6 +113059,11 @@ def run_email_inbox_scan_job(conn):
         tail += f"; headers read one message at a time for {headers_asked}"
     if headers_left:
         tail += f" ({headers_left} more wait for the next scan)"
+    tail += (f"; headers came with {heard['listed_with']} of {heard['listed']} listed, "
+             f"{heard['mailing']} with List-Unsubscribe")
+    why_not = heard["asked_failed"] or rechecked.get("failed")
+    if why_not:
+        tail += f"; a message asked on its own: {why_not}"
     # Counted from the mailboxes actually read. It counted every configured
     # one, so "scanned 0 messages across 1 mailbox" on 12 October was a
     # mailbox it had skipped (Booking.com's has its own job) and never opened.
@@ -112985,11 +113105,26 @@ def recheck_older_flags(conn, token, never, house, closed, now_iso):
             to_read.append(row)
     conn.commit()
     answers = []
+    gone = []
     for row in to_read:
         got = graph_get(f"/users/{row['mailbox']}/messages/{row['graph_message_id']}", token,
                         params={"$select": "id,internetMessageId,internetMessageHeaders"})
+        said = graph_last_error() or ""
+        # NOT FOUND is an answer, not a failure: the email has been deleted,
+        # archived or filed, and the scan, which reads the inbox, would never
+        # meet it again. 224 flags sat open on 11 Nov 2026 for emails nobody
+        # could see any more. Any other refusal is tried again next scan.
+        if got is None and "answered 404" in said and "ErrorItemNotFound" in said:
+            gone.append(row)
+            continue
+        if got is None and not out.get("failed"):
+            out["failed"] = said or "no answer"
         answers.append((row, got))
     _GRAPH_ANSWER.error = None
+    for row in gone:
+        close_flag_by_app(conn, row["id"], "gone", now_iso)
+        closed["gone"] = closed.get("gone", 0) + 1
+        out["closed"] += 1
     for row, got in answers:
         if got is None:
             out["unread"] += 1
@@ -118653,6 +118788,51 @@ def resolve_email_flag(flag_id):
     conn.commit()
     conn.close()
     flash("Marked resolved.", "success")
+    return redirect(inbox_flags_back())
+
+
+@app.route("/admin/inbox-flags/<int:flag_id>/never-flag", methods=["POST"])
+@owner_required
+def never_flag_sender(flag_id):
+    """Never flag this sender again: their address goes on the never-flag
+    list, and every open flag from them closes now, counted.
+
+    For the senders no header gives away. A bill from Free Mobile, a payment
+    notice from Weglot, an invitation service's "your order is ready": none
+    carries List-Unsubscribe, so none can be told from a person by the rules,
+    and on 11 Nov 2026 they were most of the 123 still open. Typing each into
+    the list by hand is how a list never gets kept."""
+    conn = get_db()
+    flag = conn.execute("SELECT * FROM email_flags WHERE id = ?", (flag_id,)).fetchone()
+    if not flag:
+        conn.close()
+        abort(404)
+    address = (flag["from_address"] or "").strip().lower()
+    if not EMAIL_RE.match(address):
+        conn.close()
+        flash("That flag has no sender address to put on the list.", "error")
+        return redirect(inbox_flags_back())
+    text = inbox_never_flag_text(conn)
+    if address not in inbox_never_flag_entries(conn):
+        if text and not text.endswith(chr(10)):
+            text += chr(10)
+        text += address + chr(10)
+        conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                     (INBOX_NEVER_FLAG_KEY, text))
+    never, house = inbox_never_flag_entries(conn), inbox_house_senders()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    closed = {}
+    for row in conn.execute("SELECT id, from_address FROM email_flags WHERE status = 'open'").fetchall():
+        reason = sender_not_waiting(row["from_address"], never, house)
+        if reason:
+            close_flag_by_app(conn, row["id"], reason, now_iso)
+            closed[reason] = closed.get(reason, 0) + 1
+    log_audit(conn, "inbox_never_flag_sender", target=address,
+              details=f"closed {sum(closed.values())}")
+    conn.commit()
+    conn.close()
+    flash(f"{address} is never flagged now." + (" " + inbox_closed_words(closed) if closed else ""),
+          "success")
     return redirect(inbox_flags_back())
 
 

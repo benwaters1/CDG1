@@ -171,6 +171,31 @@ def run():
                 '<img class="g-hero__img" src="/static/img/retreats/guests-toasting.jpg" srcset="/a.jpg 1w" alt="">'):
         s.check("unchanged: " + _attr(tag, "src"), m.size_hero(tag) == tag, detail=m.size_hero(tag))
 
+    s.section("A room photograph the owner uploaded (23 Nov)")
+    # The Twin Room (Ground Floor)'s uploads went out at 1920px wherever its card was drawn, 88px to 400px wide.
+    os.makedirs(m.ROOM_PHOTO_DIR, exist_ok=True)
+    upload = "room_ztheroes_" + secrets.token_hex(4) + ".jpg"
+    upath = os.path.join(m.ROOM_PHOTO_DIR, upload)
+    with io.open(upath, "wb") as fh:
+        fh.write(_jpeg(1920, 1280))
+    try:
+        with m.app.test_request_context():
+            tag = str(m.pic("/room-photos/" + upload, "A room"))
+        widths = _widths(_attr(tag, "srcset"))
+        s.check("pic() offers its smaller sizes", [w for _u, w in widths] == [480, 800, 1200, 1600, 1920]
+                and all(u == f"/pic/{w}/~r/{upload}" for u, w in widths), detail=tag[:200])
+        s.check("the src is still the upload's own address", _attr(tag, "src") == "/room-photos/" + upload)
+        small = client.get(f"/pic/800/~r/{upload}")
+        s.check("and the 800px copy answers, as a WebP", small.status_code == 200 and small.mimetype == "image/webp"
+                and 0 < len(small.get_data()) < os.path.getsize(upath), detail=str(small.status_code))
+        s.check("a hero that is an upload is sized too",
+                f"/pic/800/~r/{upload} 800w" in m.size_hero(f'<img class="g-hero__img" src="/room-photos/{upload}" alt="">'))
+        s.check("nothing outside the room photographs can be asked for",
+                all(client.get(f"/pic/800/~r/{bad}").status_code == 404
+                    for bad in ("../gudanes_hr.db", "..%2Fgudanes_hr.db", "x/../" + upload, ".hidden.jpg")))
+    finally:
+        s.check("the test upload is cleared away", _drop(upath))
+
     s.section("Every page in the sitemap")
     was_live = m.SITE_IS_LIVE
     try:

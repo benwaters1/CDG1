@@ -216,15 +216,18 @@ def run():
         days, journey = journey_days(html)
         s.check(f"{w['title']}: a day-by-day plan", len(days) >= 4, detail=f"{len(days)} days")
         if len(days) >= 4:
-            s.check(f"{w['title']}: day one opens with a welcome glass, the drink unnamed",
-                    "a welcome glass" in days[0] and "sparkling" not in days[0], detail=days[0][:120])
+            # 11 Nov (the owner's site-copy brief): the summer retreats open with the transfer and luncheon in
+            # the garden; Noël, at the house, with a welcome glass by the fire. No drink named either way.
+            s.check(f"{w['title']}: day one names no drink", "sparkling" not in days[0], detail=days[0][:120])
             s.check(f"{w['title']}: the last night is the banquet in the Salon de Musique, then dancing",
-                    "Salon de Musique" in days[-2] and "dressed for the occasion" in days[-2]
-                    and "dancing" in days[-2], detail=days[-2][:200])
-            s.check(f"{w['title']}: every morning, the village boulangerie", "boulangerie" in journey)
+                    "Salon de Musique" in days[-2] and "dancing" in days[-2], detail=days[-2][:200])
+            s.check(f"{w['title']}: every morning, breakfast with the village boulangerie's bread",
+                    "Breakfast, with bread from the village boulangerie" in journey)
+            s.check(f"{w['title']}: leisure time, said once above the days",
+                    "Enjoy your time at the château however you choose" in journey)
             s.check(f"{w['title']}: l'apéritif, with no drink named",
                     "L’apéritif" in journey and "Kir Royale" not in journey and "Lillet" not in journey)
-            s.check(f"{w['title']}: the crêpe cart, on one morning at least", "crêpe cart" in journey)
+            s.check(f"{w['title']}: no crêpes on a day: dishes stay in the invitation", "crêpe" not in " ".join(days))
             s.check(f"{w['title']}: the restoration without a century or the walls",
                     "eighteenth-century frescoes" not in journey and "walls are left" not in journey)
         if kind == "finds":
@@ -237,19 +240,22 @@ def run():
                               r"|a last morning of making", seen, re.I)
             s.check("Noël: no embroidery or candle-pouring on the page", not made, detail=", ".join(made))
             s.check("Noël: and none on its card", not re.search(r"embroider|candle", words(macro("ws_lead", w)), re.I))
-            # 9 Nov (owner): broader, no champagne jellies in copper moulds, the tree and wreaths on day two, carols
-            # by the fire, the tasting and cocktails in Le Bar. test_retreat_days holds the rest of what was asked.
+            # 11 Nov (the owner's site-copy brief): the days in dot points, as the brief gives them. Day two keeps
+            # no yoga (owner, 9 Nov: too cold for Noël). test_retreat_days holds the rest of what was asked.
             if len(days) == 5:
-                # 10 Nov (owner): the village's own Christmas market, a walk away, on the morning of day 2.
-                s.check("Noël: day two is a Christmas market, then the tree and the wreaths",
-                        "Le marché de Noël" in days[1] and "the village Christmas market, a short walk away" in days[1]
-                        and "Christmas tree" in days[1] and "wreaths" in days[1], detail=days[1][:160])
-                s.check("Noël: day three is the gingerbread château",
-                        "Le pain d’épices" in days[2] and "gingerbread château" in days[2]
-                        and "Carols and vin chaud by the fire" in days[2],
+                s.check("Noël: day one, a welcome glass by the fire", "a welcome glass by the fire" in days[0],
+                        detail=days[0][:160])
+                s.check("Noël: day two is the château, and Christmas baking with the pastry chef",
+                        "Le château" in days[1] and "A tour of the château and its restoration" in days[1]
+                        and "Christmas baking with the pastry chef" in days[1] and "oga" not in days[1],
+                        detail=days[1][:160])
+                s.check("Noël: day three is the gingerbread château, then a tasting and a film by the fire",
+                        "Le pain d’épices" in days[2] and "The gingerbread château, with the pastry chef" in days[2]
+                        and "A wine tasting by the fire, then a Christmas film" in days[2],
                         detail=days[2][:160])
-                s.check("Noël: the last day opens slowly, with watercolours, and cocktails in Le Bar",
-                        "watercolours at the long table" in days[3] and "Cocktails in Le Bar" in days[3],
+                s.check("Noël: the last day, the tree to help dress, chocolate-making, and the Christmas banquet",
+                        "help dress the tree" in days[3] and "Chocolate-making with the chefs" in days[3]
+                        and "The Christmas banquet in the Salon de Musique, then dancing" in days[3],
                         detail=days[3][:160])
             s.check("Noël: no outings", not re.search(r"\bFoix\b|Lombrives|Ax-les-Thermes|Mirepoix|transfer from Toulouse",
                                                        journey), detail=journey[:120])

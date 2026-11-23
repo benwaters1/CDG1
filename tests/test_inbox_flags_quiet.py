@@ -259,6 +259,24 @@ def run():
         b_flag = conn.execute("SELECT * FROM email_flags WHERE id = ?", (b_flag["id"],)).fetchone()
         s.check("taken off the list, a guest still waiting is flagged again",
                 b_flag["status"] == "open" and not b_flag["closed_by_app"], detail=dict(b_flag))
+        page = oc.get("/admin/inbox-flags").get_data(as_text=True)
+        s.check("each open flag has a Never flag this sender button",
+                f"/admin/inbox-flags/{b_flag['id']}/never-flag" in page)
+        c_flag = conn.execute("SELECT * FROM email_flags WHERE from_address = 'zzif.guestc@guest.example'").fetchone()
+        r = oc.post(f"/admin/inbox-flags/{c_flag['id']}/never-flag", follow_redirects=True)
+        c_flag = conn.execute("SELECT * FROM email_flags WHERE id = ?", (c_flag["id"],)).fetchone()
+        s.check("one press puts the sender on the list",
+                "zzif.guestc@guest.example" in m.inbox_never_flag_entries(conn), response=r)
+        s.check("and closes their open flag, saying so",
+                c_flag["status"] == "dismissed" and c_flag["closed_by_app"] == "listed"
+                and any("never flagged now" in f and "Closed 1 flag" in f for f in flashes(r)),
+                response=r, detail=dict(c_flag))
+        s.check("pressed twice, the address is on the list once",
+                oc.post(f"/admin/inbox-flags/{c_flag['id']}/never-flag").status_code == 302
+                and m.inbox_never_flag_entries(conn).count("zzif.guestc@guest.example") == 1)
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (m.INBOX_NEVER_FLAG_KEY,))
+        conn.execute("UPDATE email_flags SET status = 'open', closed_by_app = NULL WHERE id = ?", (c_flag["id"],))
+        conn.commit()
         oc.post(f"/admin/inbox-flags/{b_flag['id']}/dismiss")
         _scan(conn, fake)
         b_flag = conn.execute("SELECT * FROM email_flags WHERE id = ?", (b_flag["id"],)).fetchone()
@@ -358,6 +376,9 @@ def run():
                 detail=str(pinged))
         s.check("the scan says it read headers one at a time",
                 "headers read one message at a time" in report, detail=report)
+        s.check("and says how many came with the listing, and how many were mailings",
+                "headers came with 0 of 30 listed, 7 with List-Unsubscribe" in report,
+                detail=report)
         s.check("and asked only the messages that would otherwise wait: not the never-flag "
                 "senders, the house, the answered or the new",
                 0 < len(asked) <= 14, detail=str([c[1].rsplit("/", 1)[-1] for c in asked]))
@@ -400,6 +421,8 @@ def run():
     conn.execute("DELETE FROM email_flags WHERE subject LIKE ?", (f"%{TAG}%",))
     old_flag("letter", "hello@a-shop.example", "Our winter catalogue", unanswered=1)
     old_flag("person", "zzif.person@guest.example", "A real question", unanswered=1)
+    # Filed or deleted in Outlook since: Microsoft no longer has it.
+    old_flag("filed", "zzif.filed@guest.example", "Dealt with and filed", unanswered=1)
     conn.commit()
     with FakeGraph(mailboxes=[RES]) as fake:
         fake.inbox = {RES: [
@@ -426,6 +449,10 @@ def run():
     person = conn.execute("SELECT * FROM email_flags WHERE graph_message_id = ?", (f"{TAG}-old-person",)).fetchone()
     s.check("an older flag that turns out to be a mailing is closed",
             letter["status"] == "dismissed" and letter["closed_by_app"] == "mailing", detail=f"{dict(letter)}; {report}")
+    filed = conn.execute("SELECT * FROM email_flags WHERE graph_message_id = ?", (f"{TAG}-old-filed",)).fetchone()
+    s.check("one whose email is no longer in the inbox is closed: it was dealt with there",
+            filed["status"] == "dismissed" and filed["closed_by_app"] == "gone"
+            and "no longer in the inbox" in report, detail=f"{dict(filed)}; {report}")
     s.check("a person's stays open, and is not read again",
             person["status"] == "open" and person["rules_checked_at"], detail=dict(person))
 
