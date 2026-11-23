@@ -1307,6 +1307,12 @@ Last updated: 20 October 2026"""
 # SMTP is the fallback so existing deployments keep working unchanged.
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 RESEND_FROM = os.environ.get("RESEND_FROM")
+# Campaigns and the newsletter go from a sending address of their own, on a
+# subdomain of its own (news.chateaugudanes.com): mail providers judge a sender
+# by its domain, so a big send to an old list that bounces or draws complaints
+# costs that address its standing, not the one booking confirmations come
+# from. Unset, campaigns go from RESEND_FROM and the campaign page says so.
+RESEND_CAMPAIGN_FROM = (os.environ.get("RESEND_CAMPAIGN_FROM") or "").strip() or None
 # Where a guest's reply should land when nothing more specific claims it.
 # RESEND_FROM is a send-only subdomain and receives nothing, so without
 # this a reply goes nowhere rather than to the wrong inbox.
@@ -7744,6 +7750,10 @@ def init_db():
         # IntegrityError instead of a second payment.
         ("workshop_transactions_stripe_ref",
          "ALTER TABLE workshop_transactions ADD COLUMN stripe_ref TEXT"),
+        # Who a held letter is FROM, when not the house's usual address -- a
+        # campaign, from the news subdomain -- so sending it later sends it as
+        # it was written rather than from the address booking mail relies on.
+        ("email_outbox_sender", "ALTER TABLE email_outbox ADD COLUMN sender TEXT"),
         ("workshop_transactions_stripe_ref_once",
          "CREATE UNIQUE INDEX IF NOT EXISTS workshop_transactions_stripe_ref_once "
          "ON workshop_transactions(stripe_ref) WHERE stripe_ref IS NOT NULL"),
@@ -31701,6 +31711,8 @@ def edit_campaign_template(template_id):
     conn.close()
     return render_template(
         "admin_email_edit.html", template=template, areas=CAMPAIGN_AREAS, tags=tags,
+        campaign_sender=RESEND_CAMPAIGN_FROM if resend_enabled() else None,
+        booking_sender=RESEND_FROM if resend_enabled() else SMTP_FROM,
         segments=segments, audience_counts=audience_counts,
         merge_fields=CAMPAIGN_MERGE_FIELDS, preview_subject=preview_subject,
         preview_body=preview_body, sends=sends,
@@ -33344,9 +33356,12 @@ def send_held_letter(conn, row):
     # keep=False: this row IS the queue entry. Re-queueing on failure
     # would add a duplicate every time the owner pressed the button.
     why = {}
+    # From whoever it was written as: a campaign held goes from the news
+    # address it was meant for, not the one booking mail relies on.
+    sent_as = row["sender"] if "sender" in row.keys() else None
     ok = send_email(row["to_address"], row["subject"], row["body"],
                     row["ics_content"], row["ics_filename"], keep=False, report=why,
-                    log=False,
+                    log=False, **({"sender": sent_as} if sent_as else {}),
                     despite_switch="a held letter somebody chose to send from Held Email")
     now = datetime.now(timezone.utc).isoformat()
     if ok:
@@ -34482,7 +34497,7 @@ _RESEND_RECEIPT = threading.local()
 
 
 def send_email_via_resend(to_address, subject, body, ics_content=None,
-                          ics_filename=None, html=None, reply_to=None):
+                          ics_filename=None, html=None, reply_to=None, sender=None):
     """Resend's HTTP API — plain urllib, no extra dependency (matches how
     the rest of this file makes outbound HTTP calls, e.g. fetch_ical_ranges).
 
@@ -34492,7 +34507,8 @@ def send_email_via_resend(to_address, subject, body, ics_content=None,
     what it said. The HTML is an addition to it and never a replacement, so
     the text is written first and stays the authoritative version.
     """
-    payload = {"from": RESEND_FROM, "to": [to_address], "subject": subject, "text": body}
+    payload = {"from": sender or RESEND_FROM, "to": [to_address], "subject": subject,
+               "text": body}
     if reply_to:
         payload["reply_to"] = reply_to
     if html:
@@ -34852,8 +34868,8 @@ def file_held_letters(letters):
             for letter in letters:
                 letter.id = conn.execute(
                     """INSERT INTO email_outbox (to_address, subject, body, ics_content,
-                       ics_filename, reason, last_error, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", letter.values).lastrowid
+                       ics_filename, reason, last_error, created_at, sender)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", letter.values).lastrowid
             conn.commit()
         finally:
             conn.close()
@@ -34864,7 +34880,8 @@ def file_held_letters(letters):
                   f"Subject: {letter.values[1]} | Error: {e}")
 
 
-def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None):
+def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None,
+                      sender=None):
     """Keep a message that could not be sent, so it can go out later.
 
     Deliberately on a connection of its own, with everything swallowed: this
@@ -34890,7 +34907,7 @@ def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reas
     written after it, so the record of the letter still points at its row.
     """
     letter = HeldLetter((to_address, subject, body, ics_content, ics_filename, reason,
-                         error, datetime.now(timezone.utc).isoformat()))
+                         error, datetime.now(timezone.utc).isoformat(), sender))
     if has_request_context() and request_holds_a_write():
         g.setdefault("_held_letters", []).append(letter)
         return letter
@@ -35325,7 +35342,7 @@ def letter_label(template_key, sent_by=None):
 
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                keep=True, html=None, report=None, area=None, about=None,
-               template_key=None, sent_by=None, log=True, despite_switch=None):
+               template_key=None, sent_by=None, log=True, despite_switch=None, sender=None):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything that must not be queued: a credential -- a
@@ -35455,7 +35472,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                                    failure=why, **filed)
             return False
         outbox_id = queue_undelivered(to_address, subject, body, ics_content,
-                                      ics_filename, why)
+                                      ics_filename, why, sender=sender)
         keep_guest_message(to_address, subject, body, outbox_id=outbox_id,
                            failure=why, **filed)
         return False
@@ -35466,7 +35483,8 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         _RESEND_RECEIPT.id = None
         went, why = send_email_via_resend(to_address, subject, body, ics_content,
                                           ics_filename, html=html,
-                                          reply_to=reply_to_header_for(area))
+                                          reply_to=reply_to_header_for(area),
+                                          **({"sender": sender} if sender else {}))
         if went:
             provider_id = getattr(_RESEND_RECEIPT, "id", None)
             filed["provider_id"] = provider_id
@@ -35482,7 +35500,8 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             report["why"] = why
         if keep:
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                                     "provider rejected it", why or "Resend API call failed")
+                                     "provider rejected it", why or "Resend API call failed",
+                                     sender=sender)
             keep_guest_message(to_address, subject, body, outbox_id=held,
                                failure=why or "the provider refused it", **filed)
         elif log:
@@ -35495,7 +35514,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             report["why"] = "No email provider is configured."
         if keep:
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                                     "no email provider configured")
+                                     "no email provider configured", sender=sender)
             keep_guest_message(to_address, subject, body, outbox_id=held,
                                failure="no email provider configured", **filed)
         elif log:
@@ -66200,7 +66219,8 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
     report = {}
     try:
         ok = send_email(email, subject, body, area=letter.get("area"), report=report,
-                        template_key="campaign:" + (letter["template_name"] or ""))
+                        template_key="campaign:" + (letter["template_name"] or ""),
+                        sender=RESEND_CAMPAIGN_FROM)
         status = ("test" if as_test else "sent") if ok is not False else "failed"
         # NOT SENT IS NOT FAILED. With no provider, or Write to guests off,
         # the letter is kept and goes when it can -- and the page said
