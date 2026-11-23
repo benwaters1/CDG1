@@ -12525,3 +12525,11 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-sec .g-wrap:has(> p.g-p):not(:has(> .g-vignette)):not(:has(> ul, > ol, > dl, > form, > table, > div)) > *{
   max-width: 46rem; margin-left: auto; margin-right: auto; }
 .g main > .g-sec, .g main > .g-sec ~ .g-sec{ padding-top: clamp(40px, 4vw, 60px); padding-bottom: clamp(40px, 4vw, 60px); }
+
+/* The retreats on /workshops (owner, 23 November 2026: "really good, its
+   marketing"). Four retreats laid three across left the fourth alone on a row
+   of its own. Exactly four: two by two, each card larger, nothing stranded. */
+@media (min-width: 64rem){
+  .g .g-wscards:has(> .g-wscard:nth-child(4):last-child) > .g-wscard{
+    flex-basis: calc((100% - var(--s5)) / 2); max-width: calc((100% - var(--s5)) / 2); }
+}

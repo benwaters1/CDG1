@@ -76,7 +76,7 @@ PAGES = {
     "/events/photoshoots": [
         ("an uneven collage", r'class="g-mos g-mos--tall ', 1),
         # 23 Nov 2026 (owner): the band of a room as it was found (the fireplace and the old pram) is gone, and
-        # nothing as derelict takes its place; the page opens on a shoot made here instead.
+        # nothing as derelict takes its place; the page opens on a plate from the kitchen instead.
         ("and all thirteen behind See all", r'See all 13 photos', 1),
     ],
     "/restoration": [

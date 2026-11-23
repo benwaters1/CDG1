@@ -3,8 +3,8 @@
 THE PAGE. A page selling the house to photographers opened on a drawing of a
 camera on navy, and its two sections stood side by side with a medallion each
 and no photograph: the one page where the photographs are the point showed
-none until a third of the way down. It now opens on a shoot (main's hero of the
-same day, two pairs of shoes on an old flowered carpet), under a strip of the figures
+none until a third of the way down. It now opens on food from the kitchen (the owner,
+23 Nov evening, after the shoes on the carpet), under a strip of the figures
 a location scout asks first, with each section beside a room it describes,
 and How a Shoot Works sets out the four steps from first email to shoot day.
 Every word of the steps is something the page already said.
@@ -57,7 +57,11 @@ def run():
     # By its words, not its address: the house's own copy of it replaces the address at the response.
     # Landed from the Cowork bundle on 23 Nov: main had already opened the page on a shoot, the shoes on the carpet,
     # and the handover kept main's hero.
-    s.check("of a shoot made here, the shoes on the carpet", 'alt="A fashion shoot in a salon: two pairs of shoes' in hero)
+    # Then the owner, the same evening: "do you have a foot fetish / put one of food". The shoes went; the page
+    # opens on a mille-feuille plated on the house's own plate until the owner's photograph of Sean cooking fish
+    # goes in the slot (Admin > Site images, "Photoshoots and film").
+    s.check("of food from the kitchen, not the shoes on the carpet",
+            "mille-feuille" in hero and "pairs of shoes" not in hero, detail=hero[:240])
     s.check("not the drawn art on navy", "g-hero--art" not in hero)
     s.check("its words are the ones the art hero carried",
             all(w in hero for w in ("Every Room, Every State", "Bare plaster, gilded panelling, old stone",
