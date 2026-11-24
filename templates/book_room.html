@@ -395,6 +395,8 @@
               <span class="g-fig" id="quote_total">{{ '€%.2f'|format(initial_quote.total) if initial_quote and initial_quote.available }}</span>
             </p>
             <p class="g-hint" id="quote_note">{%- if initial_quote and initial_quote.available and initial_quote.per_night %}€{{ '{:,.2f}'.format(initial_quote.per_night) }} a night average.{%- endif %}</p>
+            {%- set _occs = (initial_quote.occasions if initial_quote and initial_quote.available and initial_quote.occasions else []) %}
+            <p class="g-hint g-quote-occasions" id="quote_occasions"{% if not _occs %} hidden{% endif %}>{% for o in _occs %}{{ o.name }}: {{ o.chef_line }}{% if not loop.last %} {% endif %}{% endfor %}</p>
           </div>
           {#- 23 Nov 2026 (owner: "when someone enters dates but theres a wrkshop on i want to point them there"): the
               atelier on these nights, offered under the price box. Drawn here when the page opens with dates or comes
@@ -773,6 +775,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
           barTotal(d.total);
           totalRow.hidden=false;
           note.textContent=d.per_night?money(d.per_night)+' a night average.':'';
+          /* Occasions at Gudanes: the occasion's own chef line, word for word, for nights inside one. */
+          var occ=document.getElementById('quote_occasions');
+          if(occ){ occ.textContent=(d.occasions||[]).map(function(o){ return o.name+': '+o.chef_line; }).join(' '); occ.hidden=!(d.occasions||[]).length; }
           topPrice(d.per_night||null);
         })
         .catch(function(){});
