@@ -274,6 +274,7 @@ def _read(page, html, found):
 # for.
 ID_TABLES = {
     "booking_id": ("bookings", "id"),
+    "occ_id": ("stay_occasions", "id"),
     "arrival_id": ("photo_inbox", "id"),
     "user_id": ("users", "id"),
     "order_id": ("pos_orders", "id"),
@@ -331,6 +332,8 @@ ENDPOINT_ARGS = {
     # The old Squarespace addresses that carry a name. Each is a redirect, so
     # the sweep reaches it and reads where it lands, not a page of its own.
     ("legacy_atelier_product", "slug"): "seven-starry-nights-2027",
+    # The owner may open any occasion's page, a draft included.
+    ("stay_occasion_page", "slug"): ("stay_occasions", "slug"),
     ("legacy_celebrations_portfolio_any", "_rest"): "dan-and-carl",
     ("legacy_chateau_ateliers_any", "_rest"): "category/2024",
     # The old press archive (owner's website brief, 23 November 2026).

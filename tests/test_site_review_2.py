@@ -105,7 +105,12 @@ def nav_mismatch(path, html):
 FORBIDDEN = re.compile(
     r"\b(house|grants?|funded|funding|renovat\w*|artisans?|conservators?|padel)\b|!", re.I)
 # Proper names that carry the letters, allowed by name and nowhere else.
-ALLOWED = ["House & Garden", "FIN!"]
+# And one sentence the owner wrote on 24 Nov 2026, after the rule ("its the house as it was, full of
+# life"), on the retreats and the home page: their own later words win for those words only.
+ALLOWED = ["House & Garden", "FIN!", "the house as it was, full of life"]
+# A guest's own words are quoted as they wrote them (owner, site review of 24 Nov 2026: "the only
+# ones are inside guests' quotes, which are verbatim and stay"). The rule is for the house's voice.
+GUEST_QUOTE = re.compile(r"(?is)<blockquote\b.*?</blockquote>")
 
 
 def forbidden_words(text):
@@ -241,7 +246,10 @@ def _run(s, anon):
     s.check("the reader finds each of them",
             len(forbidden_words("the house, a grant, privately funded, a renovation, an artisan, padel, lovely!")) == 7)
     s.check("and passes the two magazine titles", forbidden_words("House & Garden and FIN! Magazine") == [])
-    said = {p: forbidden_words(visible_text(h)) for p, h in pages.items()}
+    s.check("a guest's quoted words are theirs, and the house's around them are still read",
+            forbidden_words(visible_text(GUEST_QUOTE.sub(" ", "<p>Lovely</p><blockquote>Loved it!</blockquote>"))) == []
+            and len(forbidden_words(visible_text(GUEST_QUOTE.sub(" ", "<p>Lovely!</p><blockquote>Loved it</blockquote>")))) == 1)
+    said = {p: forbidden_words(visible_text(GUEST_QUOTE.sub(" ", h))) for p, h in pages.items()}
     said = {p: w for p, w in said.items() if w}
     s.check("no public page says them", not said, detail=str(said)[:800])
 

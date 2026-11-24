@@ -109,7 +109,7 @@
         <p class="g-hbook__foot">Every meal, the wine, the château’s chefs and much more, with nothing to pay at the end. <a href="{{ url_for('workshops_public') }}#dates">See every date</a></p>
       </div>
       <div class="g-hbook__p" id="hb-s" role="tabpanel" aria-labelledby="hb-tab-s">
-      <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
+      <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}#results">
         {# The two native date fields remain, as the values the form posts and as
            the fallback when JavaScript is off. The picker below replaces them
            visually and writes into them. #}
@@ -165,7 +165,7 @@
     })();
     </script>
     {% else %}
-    <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
+    <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}#results">
       {# The two native date fields remain, as the values the form posts and as
          the fallback when JavaScript is off. The picker below replaces them
          visually and writes into them. #}
@@ -283,6 +283,21 @@
   });
 })();
 </script>
+
+{#- 24 Nov 2026 (owner): "on the homepage a special events like bastille day, tour de france, new years, christmas,
+    easter at gudanes - all for stay the night rather than actual events ... tabled like workshops in a grid".
+    The next three live occasions, under the retreats, in the retreats' own card. Not there at all when none is on
+    sale. test_stay_occasions holds it. -#}
+{% if occasions %}
+{% from '_occasion_cards.html' import occasion_cards with context %}
+<section class="g-sec g-occasions-home" aria-labelledby="occasions-h"><div class="g-wrap">
+  <p class="g-fr">À Gudanes <span class="g-fr__en">At Gudanes</span></p>
+  <h2 class="g-place" id="occasions-h">Occasions at Gudanes</h2>
+  <p class="g-p g-lede-first">Dates worth the journey, with a room and breakfast at the château.</p>
+  {{ occasion_cards(occasions) }}
+  <div class="g-occasions__more" style="display:flex;justify-content:center;margin-top:var(--s5)"><a href="{{ url_for('whats_on_at_gudanes') }}" class="g-btn">Every occasion</a></div>
+</div></section>
+{% endif %}
 
 {#- 9 Nov, evening (owner's second review, 1): the home page keeps eight sections, in this order -- the hero, La Vie
     de Château, the rooms, the two ways to stay, the restoration's before and after, Ways to Spend the Days, What
@@ -452,12 +467,14 @@
   {#- 24 Nov 2026 (owner's brief, guests' own words): three lines from thank-you letters retreat guests wrote after
         their stay, verbatim and cut only at a sentence. NO NAMES, the owner's instruction: the season and the year
         only. test_guest_letters holds it. -#}
+  {#- 24 Nov 2026: the drive is the large photograph on /contact, and one photograph has one home
+      (test_site_review_2); the corner in the mist was on no page. -#}
   {%- set says = [
     {'img': url_for('static', filename='img/retreats/chateau-framed-by-roses.jpg'), 'alt': 'The château framed by roses',
      'quote': 'Each morning I woke up worried that it was only a dream.', 'by': 'Cy, on Google'},
     {'img': url_for('static', filename='img/retreats/chateau-snowy-peaks.jpg'), 'alt': 'The château below the snowy peaks',
      'quote': 'The overnight stay in this historic château was an unforgettable experience.', 'by': 'Daniel E., on Google'},
-    {'img': url_for('static', filename='img/rk/down-the-drive.jpg'), 'alt': 'Down the drive to the château',
+    {'img': url_for('static', filename='img/rk/corner-in-the-mist.jpg'), 'alt': 'A corner of the château, the mountains in mist behind',
      'quote': 'Been following for years, finally got to visit. A bucket-list place to see. Beautiful.', 'by': 'David W., on Google'},
     {'img': url_for('static', filename='img/retreats/chef-from-the-garden.jpg'), 'alt': 'The chef coming in from the garden',
      'quote': 'Several times every day, I witnessed magic being performed in the Chateau kitchen, at the table, and the hours in between.', 'by': 'Workshop guest, summer 2024'},

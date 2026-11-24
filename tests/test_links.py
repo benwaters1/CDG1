@@ -478,6 +478,11 @@ def run():
         r = anon.get(str(rule))
         if r.status_code != 200:
             continue
+        # Only pages. /favicon.ico and the apple-touch icons answer at the root
+        # since 7429c7f with an image's bytes; read as text they crashed the
+        # suite, and every #anchor check after it went unrun.
+        if not (r.content_type or "").startswith("text/html"):
+            continue
         body = r.get_data(as_text=True)
         if "<body" not in body:
             continue

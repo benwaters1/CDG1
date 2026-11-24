@@ -233,6 +233,10 @@ def run():
             _one("SELECT value FROM app_settings WHERE key = 'event_types'")["value"] == now_types)
     if was_types:
         _exec("UPDATE app_settings SET value = ? WHERE key = 'event_types'", (was_types["value"],))
+    else:
+        # There was no list: the house was on the presets. Leaving the test's list behind turned every later suite's
+        # /events form into "wedding, retreat, film shoot" (test_photoshoots found it: no "photoshoot" to choose).
+        _exec("DELETE FROM app_settings WHERE key = 'event_types'")
 
     # --------------------------------------------------------- deposits
     s.section("When a deposit is taken")

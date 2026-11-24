@@ -5,7 +5,8 @@
 {# Crumbs are set before the base template reads the dining switch, so read it here. #}
 {% set crumbs = [('Dining', url_for('restaurant_info') if (setting(site, 'dining_mode') or 'open')|lower|trim != 'hidden' else None), ('Reserve', None)] %}
 {% block title %}Reserve a Table{% endblock %}
-{% block content %}{% if _dm != 'open' %}
+{% block content %}{#- 24 Nov 2026: a guest chef's nights open La Table even when it is otherwise closed (Occasions at Gudanes). -#}
+{% set _chef_only = _dm != 'open' and chef_nights %}{% if _dm != 'open' and not chef_nights %}
 {# Shown when settings.dining_mode is not "open". #}
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">La Table</p>
@@ -32,6 +33,17 @@
   <h1 class="g-display" >Reserve a table</h1>
   <p class="g-lede" style="margin-bottom:var(--s2)">{%- if settings['price_per_person'] %}<span class="g-fig" data-eur="{{ settings['price_per_person']|int }}">€{{ '{:,.0f}'.format(settings['price_per_person']) }}</span> per person{% endif %}{% if settings['dinner_time'] %} · seating from {{ settings['dinner_time'] }}{% endif %}{% if settings['capacity'] %} · up to {{ settings['capacity'] }} guests each evening{%- endif %}</p>
 
+  {% if chef_nights %}
+  {#- The guest chef's nights, named: the price, the seating and who they are for come from the occasion. -#}
+  <div class="g-chefnights" style="margin:var(--s4) 0;padding:var(--s4);border:1px solid var(--rule, #d8cfbd)">
+    {% for occ_name, nights in chef_nights|groupby('name') %}{% set n0 = nights[0] %}
+    <p class="g-eyebrow">Guest chef in residence{% if n0['chef_name'] %}: {{ n0['chef_name'] }}{% endif %}</p>
+    <p class="g-p" style="margin:0 0 var(--s2)">{{ occ_name }}: dinner on {% for n in nights %}<a href="{{ url_for('restaurant_book', date=n['dinner_date']) }}">{{ n['dinner_date']|date_short }}</a>{% if not loop.last %}{{ ' and ' if loop.revindex == 2 else ', ' }}{% endif %}{% endfor %}{% if n0['dinner_time'] %}, seated at {{ n0['dinner_time'] }}{% endif %}{% if n0['dinner_price'] %}, €{{ '{:,.0f}'.format(n0['dinner_price']) }} per person{% endif %}. {{ 'Open to everyone.' if n0['outside_diners'] else 'For guests staying at the château that night: use the email address on your booking.' }} <a href="{{ url_for('stay_occasion_page', slug=n0['slug']) }}">More about it</a></p>
+    {% endfor %}
+    {% if _chef_only %}<p class="g-hint">La Table is otherwise closed, so only these evenings can be booked.</p>{% endif %}
+  </div>
+  {% endif %}
+
   <form id="restaurant_book-form" method="post" class="g-resform">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -45,7 +57,8 @@
               <label for="dinner_date">Date</label>
               <input type="date" id="dinner_date" name="dinner_date"
                      min="{{ min_date.isoformat() }}" value="{{ prefill_date }}" required
-                     data-open-days="{{ (setting(site, 'dining_days') or '')|string|replace(' ', '') }}">
+                     data-open-days="{{ (setting(site, 'dining_days') or '')|string|replace(' ', '') }}"
+                     data-chef-dates="{{ (chef_nights or [])|map(attribute='dinner_date')|join(',') }}"{% if _chef_only %} data-chef-only="1"{% endif %}>
               {% set _w = when_text()|trim %}{% if _w %}<span class="g-hint" id="dinner_date_hint">La Table is open {{ _w[:1]|lower ~ _w[1:] if _w.startswith('Every') else _w }}.</span>{% endif %}
             </p>
             <p class="g-field">
@@ -215,12 +228,17 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 (function(){
   var el = document.getElementById('dinner_date'); if(!el) return;
   var raw = (el.getAttribute('data-open-days') || '').split(',').filter(function(x){ return /^\d$/.test(x); }).map(Number);
-  if(!raw.length) return;
+  /* A guest chef's dinner night is open whatever the weekday; with La Table otherwise closed, only those are. */
+  var chef = (el.getAttribute('data-chef-dates') || '').split(',').filter(Boolean);
+  var chefOnly = el.getAttribute('data-chef-only') === '1';
+  if(!raw.length && !chefOnly) return;
   var names = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   var hint = document.getElementById('dinner_date_hint');
   function check(){
     if(!el.value){ el.setCustomValidity(''); return; }
     var d = new Date(el.value + 'T12:00:00'); var wd = (d.getDay() + 6) % 7;
+    if(chef.indexOf(el.value) !== -1){ el.setCustomValidity(''); return; }
+    if(chefOnly){ el.setCustomValidity('La Table is closed, apart from the guest chef's evenings listed above.'); return; }
     if(raw.indexOf(wd) === -1){
       el.setCustomValidity('La Table is closed on ' + names[wd] + 's. ' + (hint ? hint.textContent : ''));
     } else { el.setCustomValidity(''); }

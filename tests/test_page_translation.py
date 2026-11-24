@@ -738,6 +738,11 @@ def run():
         r = anon.get(str(rule))
         if r.status_code != 200:
             continue
+        # Only pages. /favicon.ico and /apple-touch-icon.png answer at the root
+        # since 7429c7f, with an image's bytes, and reading those as text was a
+        # crash that took every check after it down too.
+        if not (r.content_type or "").startswith("text/html"):
+            continue
         text = r.get_data(as_text=True)
         if '<body class="g' not in text:
             continue
@@ -785,6 +790,11 @@ def run():
             continue
         r = anon.get(str(rule))
         if r.status_code != 200:
+            continue
+        # Only pages. /favicon.ico and /apple-touch-icon.png answer at the root
+        # since 7429c7f, with an image's bytes, and reading those as text was a
+        # crash that took every check after it down too.
+        if not (r.content_type or "").startswith("text/html"):
             continue
         text = r.get_data(as_text=True)
         if '<body class="g' not in text:

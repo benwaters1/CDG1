@@ -96,13 +96,22 @@
     which said the same in more words, went; so did the second paragraph, with "renovation" in it. -#}
 {% set _gf = namespace(on=false) %}{% for _r in rooms %}{% if ((_r['floor'] or '')|lower).startswith('ground') or 'Ground Floor' in _r['name'] %}{% set _gf.on = true %}{% endif %}{% endfor -%}
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room, breakfast and the lounge, with the pool, tennis and the grounds outside.</p>
+  <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room and breakfast, with the pool, tennis and the grounds outside, or a glass of wine in the lounge.</p>
 </div></section>
 
 
+{#- 24 Nov 2026 (booking-flow brief, 4): ONE guest count for the page. The bar shows 2 when /book is opened with dates
+    and no party_size (the menu's quick dates have no guests box), but the room links carried party_size empty, so the
+    number the guest saw was dropped on the way to the form. The bar and every "Book this room" link read this; the
+    results line still names a count only when the search gave one, since that is what the rooms were asked for. -#}
+{%- set _party = prefill_party_size or 2 %}
 <!-- Availability. Replaces "BOOK IN" per card with a real search. -->
 <section class="g-book-bar" id="book"><div class="g-wrap">
-  <form method="get" class="g-search" aria-label="Check availability">
+  {#- 24 Nov 2026 (booking-flow brief, 2): the search opens on its results. It posted to /book with no anchor, so the
+      page came back at the top photograph and the guest scrolled past the hero and the introduction to see what was
+      free. A GET form keeps its action's #fragment, so the answer lands on #results (the line under "Rooms, Each Its
+      Own"); a search that went wrong has no #results, and the page stays at the top, where the flash says why. -#}
+  <form method="get" action="{{ url_for('book_rooms') }}#results" class="g-search" aria-label="Check availability">
     <div class="g-search__f"><label for="s_arrival">Arrival</label>
       <input type="date" id="s_arrival" name="arrival" value="{{ arrival }}">
       <button type="button" class="g-rp__btn" data-rp-open="arrival" hidden>
@@ -117,7 +126,7 @@
     {#- 23 Nov (owner: "the design isnt finished here either"): the bar drawn as the home page's card, with a
         minus and a plus for the guests (_guests.html). Styles in gudanes-pictures.css. -#}
     <div class="g-search__f g-search__f--n"><label for="s_party">Guests</label>
-      {{ guests_field('s_party', prefill_party_size or 2, 15) }}</div>
+      {{ guests_field('s_party', _party, 15) }}</div>
     <button type="submit" class="g-btn g-search__go">Check availability</button>
   </form>
   <p class="g-book-bar__note">
@@ -145,7 +154,7 @@
   <h2 id="rooms" class="g-place">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} Rooms, Each Its Own</h2>
   <p class="g-p g-lede-first">Each room is different, because the château is: its own shape, its own light, its own view of the valley and the mountains. All {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} share what matters most: antiques from the brocantes beside new pieces, a bathroom of your own on the ground floor, and walls left as the centuries made them.</p>
   {% if searched %}
-  <div class="g-searched" role="status">
+  <div class="g-searched" id="results" role="status">
     <p class="g-searched__dates">
       <strong>{{ arrival|date_short }}</strong> to <strong>{{ departure|date_short }}</strong>
       {#- The night count comes from the route now. It was worked out here, on
@@ -298,7 +307,7 @@
         </ul>
         {% if searched %}
           {% if availability.get(room['id']) %}
-            <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}">Book this room</a>
+            <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=_party) }}">Book this room</a>
           {% elif _wstay %}
             <div class="g-winter">
               <p class="g-winter__fr" lang="fr">Une suite pour la belle saison</p>
@@ -596,6 +605,19 @@
       <blockquote class="g-say__q">Loved everything about the Château de Gudanes! Beautiful location, very peaceful and charming.</blockquote>
       <figcaption class="g-say__by">Cynthia · The Marquis Suite<span class="g-say__src">Booking.com, 10/10</span></figcaption>
     </figure>
+    {#- 24 Nov 2026: then the reviews the owner features in the app, once the guest has said yes. The feedback page
+        tells the owner a featured review goes on the booking page, and from 23 Nov nothing drew them: a guest's yes
+        put nothing on the site. Their own words, their first name, the stars they gave on the house's form, and
+        what the house said back. featured_room_reviews holds the consent rule; test_publish_consent watches it. -#}
+    {%- for r in featured_reviews or [] %}
+    <figure class="g-panel g-say" style="margin:0">
+      <blockquote class="g-say__q">{{ r['comment'] }}</blockquote>
+      <figcaption class="g-say__by">{{ (r['guest_name'] or 'A guest').split(' ')[0] }}{% if r['room_name'] %} · {{ r['room_name'] }}{% endif %}<span class="g-say__src">{{ '★' * (r['rating']|int) }}{{ '☆' * (5 - r['rating']|int) }}</span></figcaption>
+      {%- if r['reply'] %}
+      <p class="g-say__reply"><span class="g-say__reply-by">Château de Gudanes</span> {{ r['reply'] }}</p>
+      {%- endif %}
+    </figure>
+    {%- endfor %}
   </div>
 </div></section>
 

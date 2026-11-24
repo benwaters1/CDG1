@@ -27,6 +27,11 @@
     <input type="text" id="guest_postcode" name="guest_postcode" autocomplete="postal-code" value="{{ _v.f.guest_postcode }}" required data-postcode>
   </div>
 </div>
+{#- 24 Nov 2026 (booking-flow brief, 5): the country starts on "Choose your country". It was guessed from the browser's
+    language (en-US, the default of half the world's browsers, is not a country of residence), and the telephone code
+    guessed separately, so one visitor got Ukraine and the United States on the same form. Only a proxy's own word
+    for where the visitor is (visitor_country, app.py) picks it first, and nothing does today. -#}
+{%- set _geo = visitor_country() if not _v.f.guest_country else '' -%}
 <div class="g-field g-country">
   <label for="guest_country">Country of residence<span class="g-req" aria-hidden="true">*</span></label>
   <select id="guest_country" name="guest_country" required data-country autocomplete="country-name"
@@ -34,7 +39,7 @@
     <option value="">Choose your country</option>
     {%- for iso, cname, code in PHONE_CODES|sort(attribute=1) %}
     {%- if not (iso == 'CA' and cname == 'Canada' and false) %}
-    <option value="{{ cname }}" data-iso="{{ iso }}" {{ 'selected' if _v.f.guest_country == cname }}>{{ cname }}</option>
+    <option value="{{ cname }}" data-iso="{{ iso }}" {{ 'selected' if (_v.f.guest_country == cname) or (_geo and iso == _geo) }}>{{ cname }}</option>
     {%- endif %}
     {%- endfor %}
     <option value="Other" data-iso="">Another country</option>
@@ -47,12 +52,17 @@
     var sel = document.querySelector('[data-country]'); if (!sel) return;
     var form = sel.form, cc = form && form.querySelector('[data-phone-cc]');
     if (cc) cc.addEventListener('change', function(){ cc.dataset.touched = '1'; });
-    var region = ((navigator.language || '').split('-')[1] || '').toUpperCase();
-    if (!sel.value && region){ var o = sel.querySelector('option[data-iso="' + region + '"]'); if (o) sel.value = o.value; }
-    sel.addEventListener('change', function(){
-      var iso = (sel.selectedOptions[0] || {}).dataset ? sel.selectedOptions[0].dataset.iso : '';
-      if (cc && iso && !cc.dataset.touched){ var p = cc.querySelector('option[data-iso="' + iso + '"]'); if (p){ p.selected = true; cc.dispatchEvent(new Event('g-sync')); } }
-    });
+    /* The telephone code FOLLOWS the country, now and whenever it changes: one answer, not two guesses. Not once the
+       guest has chosen a code themselves, nor when the code came from a number already given (data-chosen), which
+       is a fact about that number and not about where they live. */
+    function follow(){
+      var o = sel.selectedOptions[0], iso = o && o.dataset ? o.dataset.iso : '';
+      if (!cc || !iso || cc.dataset.touched || cc.hasAttribute('data-chosen')) return;
+      var p = cc.querySelector('option[data-iso="' + iso + '"]');
+      if (p && !p.selected){ p.selected = true; cc.dispatchEvent(new Event('g-sync')); }
+    }
+    sel.addEventListener('change', follow);
+    follow();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

@@ -309,7 +309,8 @@ def run():
                        f"rooms={new['rooms_before']}")
         page = oc.get("/guests/recall?email=" + TAG + "back@example.invalid"
                       ).get_data(as_text=True)
-        tile = re.search(r'stat-tile-value">([^<]*)</span>\s*'
+        # The value's class may carry a modifier: a date in words wraps (24 Nov 2026).
+        tile = re.search(r'stat-tile-value[^"]*">([^<]*)</span>\s*'
                          r'<span class="stat-tile-label">Last here', page)
         s.check("the page's Last here is the stay they made",
                 tile and tile.group(1).strip() == m.format_date_short(iso(-300)),

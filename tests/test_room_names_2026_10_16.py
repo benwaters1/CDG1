@@ -17,13 +17,14 @@ look like nothing at all.
 Also held here, because the rename broke them and nothing errored:
   - the room picker on Stay read each bed from the old names ("king" meant the
     bath, "gold" the emperor), so it offered the King Room as the room with
-    the bath and found no room at all for a king bed or an emperor;
+    the bath and found no room at all for a king bed or an emperor. The picker
+    came off /book on 13 November 2026 (owner, 2f463c9); the room cards say
+    each bed now, and are checked for it instead;
   - Booking.com mail naming "King Room with Mountain View" found the new King
     Room by its own name, unless the King Suite carries that as its channel
     name.
 """
 import io
-import json
 import os
 import re
 
@@ -208,34 +209,25 @@ def run():
             "gilded four-poster" in card(ids["The Marquis Suite"]),
             detail=card(ids["The Marquis Suite"])[:200])
 
-    s.section("The room picker reads each bed from the new names")
-    html = anon.get("/book").get_data(as_text=True)
-    line = re.search(r"r\.bed\s*=\s*(.+?);\s*\}\);", html)
-    listed = re.search(r"var R=\[(.*?)\];", html, re.S)
-    s.check("the Stay page carries the picker", bool(line and listed))
-    if line and listed:
-        rules = re.findall(r"/([^/]+)/\.test\(t\)\?'(\w+)'", line.group(1))
-        names = [json.loads(n) for n in re.findall(r'n:("(?:[^"\\]|\\.)*")', listed.group(1))]
-
-        def bed(name):
-            return next((b for rx, b in rules if re.search(rx, name.lower())), "")
-
-        wanted = {"The King Suite": "kingbath", "The King Room": "king", "The Twin Room": "twin",
-                  "The Marquis Suite": "emperor", "The Family Suite": "family"}
-        for name, b in wanted.items():
-            if name in names:
-                s.check(f"{name} is the room for '{b}'", bed(name) == b, detail=repr(bed(name)))
-        offered = re.findall(r'name="pk_b" value="(\w+)"', html)
-        lost = [b for b in offered if not any(bed(n) == b for n in names)]
-        s.check("every bed a guest can choose finds a room", not lost,
-                detail=f"no room for {lost} -- the guest is told to write in")
-        # Except two separate beds, once the sixth room is on sale: z28 (owner,
-        # 17 October 2026) has the picker name both twin rooms and send the
-        # guest to the cards. Any other bed finding two is the old fault.
-        twin_rooms = [n for n in names if bed(n) == "twin"]
-        twice = [b for b in offered if sum(bed(n) == b for n in names) > 1
-                 and not (b == "twin" and all("Twin Room" in n for n in twin_rooms))]
-        s.check("and no bed finds two, but for the two twin rooms", not twice, detail=str(twice))
+    s.section("Each card on Stay says its own bed")
+    # The two-question picker read each bed from the room's NAME, so the rename
+    # had it offer the King Room as the room with the bath and find no room at
+    # all for a king bed or an emperor. It came off /book on 13 November 2026
+    # (owner: "lets remove this", 2f463c9) because the room cards already say
+    # the bed -- so the cards are where a guest learns it now, and where the
+    # three renamed rooms are held to the bed each has.
+    s.check("the picker is off the Stay page (owner, 13 November)",
+            "var R=[" not in stay and 'name="pk_b"' not in stay)
+    suite_card = card(ids["The King Suite"]).lower()
+    room_card = card(ids["The King Room"]).lower()
+    marquis_card = card(ids["The Marquis Suite"]).lower()
+    s.check("the King Suite's card: a king bed, with a bath in the room",
+            "king bed" in suite_card and "bath and a basin in the room" in suite_card,
+            detail=suite_card[:200])
+    s.check("the King Room's card: a king bed, and no bath in the room",
+            "king bed" in room_card and "bath and a basin" not in room_card, detail=room_card[:200])
+    s.check("the Marquis Suite's card: the emperor bed", "emperor bed" in marquis_card,
+            detail=marquis_card[:200])
 
     s.section("Booking.com mail finds the room it names")
     conn = db()

@@ -633,13 +633,22 @@
 /* 2.2  The FAQ answers in the body serif, like every other paragraph. */
 .g .g-faq-sec details p, .g .g-faq-sec dd, .g .g-faq__a{ font-family: var(--serif); }
 
-/* 2.3  The currency control: in the header strip, right of Book, small. */
+/* 2.3  The control in the header strip, right of Book, small. Since 24 Nov 2026 (owner) it is the LANGUAGE:
+        the currency moved to the menu panel. On a phone the strip has no room, so the panel's language row
+        shows there instead, and only there. */
 .g .g-curtop{ display: inline-flex; align-items: center; margin-left: var(--s2); }
 .g .g-curtop__s{ font-family: var(--serif); font-size: 13px; padding: 2px 4px; border: 1px solid currentColor;
   background: transparent; color: inherit; border-radius: 0; }
 .g .g-curtop__s option{ color: var(--ink); }
 .g .g-curbar{ display: none; }
 @media (max-width: 40rem){ .g .g-curtop{ display: none; } }
+.g .g-navwrap__prefs-row--lang{ display: none; }
+@media (max-width: 40rem){ .g .g-navwrap__prefs-row--lang{ display: flex; } }
+/* The header row has a fixed width (the wrap stops at 1216px), so a wider screen gives it no more room, and with
+   What's On a dropdown and the language beside Book its links ran under the wordmark ("Stay" hidden behind it,
+   measured 24 Nov 2026). The compact spacing the narrower screens already used, at every width. */
+.g .g-top .g-nav{ gap: 10px; }
+.g .g-top .g-nav a{ letter-spacing: .04em; }
 
 /* 6  The phone's booking bar waits for the hero's own date widget to scroll off:
    on the home page the two booking buttons sat an inch apart. Slid away, not
@@ -1260,3 +1269,55 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
    work before its two buttons, cut to the gallery's own tile above it. */
 .g .g-work-now{ margin: var(--s5) 0 var(--s5); }
 .g .g-work-now img{ display: block; width: 100%; height: 16rem; object-fit: cover; }
+/* ==== 23 Nov 2026: /workshops, the owner's retreats brief ================
+   WHAT YOU'LL DO. The three the owner named (cooking, the brocantes, the restoration) lead, larger, with two photographs
+   side by side; the rest follow in a smaller row of one photograph each. One column on a phone, the photographs of a
+   leading three still in a pair. Here rather than gudanes.css, which arrives whole from the design side. */
+.g .g-todo{ list-style: none; margin: var(--s5) 0 0; padding: 0; display: grid; gap: var(--s5); grid-template-columns: minmax(0, 1fr); }
+.g .g-todo__i{ margin: 0; min-width: 0; }
+.g .g-todo__pics{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2); }
+.g .g-todo__f{ margin: 0; min-width: 0; }
+.g .g-todo__img{ display: block; width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; }
+.g .g-todo--more .g-todo__img{ aspect-ratio: 3 / 2; }
+.g .g-todo__h{ margin: var(--s3) 0 var(--s1, 4px); font-family: var(--display, var(--serif)); font-weight: 400; font-size: clamp(1.15rem, .6vw + 1rem, 1.35rem); line-height: 1.25; }
+.g .g-todo__i--lead .g-todo__h{ font-size: clamp(1.4rem, 1vw + 1.1rem, 1.85rem); }
+.g .g-todo__p{ margin: 0; font-size: 16px; line-height: 1.55; }
+.g .g-todo__on{ margin: var(--s2) 0 0; font-family: var(--ui); font-size: 13px; letter-spacing: .04em; line-height: 1.45; color: #73562d; }
+.g .g-todo__on a{ color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.g .g-todo .g-credit{ display: block; margin-top: 4px; }
+.g .g-todo .g-credit, .g .g-todo .g-credit a{ font-size: 12px; }   /* the Commons credit, at the phone's 12px floor */
+.g .g-todo--more{ margin-top: var(--s6, 3rem); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.18); }
+@media (min-width: 40rem){
+  .g .g-todo--more{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 60rem){
+  .g .g-todo--lead{ grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s6, 3rem) var(--s5); }
+  .g .g-todo--more{ grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s4); }
+}
+/* A retreat's card and its dates: what is included above the price, "10% reserves your place" beside it, and the
+   per-night figure last. Not .g-reserve: that is the header's Book button. */
+.g .g-wscard__foot .g-wscard__inc, .g .g-sit__inc{ margin: 0 0 var(--s2); font-family: var(--ui); font-size: 14px; letter-spacing: .04em; line-height: 1.45; color: #73562d; }
+.g .g-wscard__price:has(+ .g-toreserve), .g .g-sit__rate:has(+ .g-toreserve){ margin-bottom: 0; }
+.g .g-toreserve{ margin: 2px 0 var(--s4); font-family: var(--ui); font-size: 14.5px; font-weight: 600; line-height: 1.4; color: var(--ink); }
+.g .g-toreserve:has(+ .g-pernight){ margin-bottom: 0; }
+/* 24 Nov 2026 (booking-flow brief, 1): "Pay & book" is the one thing on the room page that takes the money, and the
+   navy filled button above made it navy on the navy booking panel, and on the navy bar at the foot of a phone: a line
+   of white words, not a button. On navy it is the home page's gold with navy words ("Discover the retreats"), the
+   full width of the panel and 48px at least. The two are measured against their panels in test_booking_flow_24_nov. */
+.g .g-dossier .g-submit, .g .g-bookbar .g-btn--solid{
+  background: var(--gilt-on-dark, #C6A66E); border-color: var(--gilt-on-dark, #C6A66E); color: var(--blue-deep);
+  min-height: 48px;
+}
+.g .g-dossier .g-submit{ width: 100%; display: flex; align-items: center; justify-content: center; }
+.g .g-dossier .g-submit:hover, .g .g-dossier .g-submit:focus-visible,
+.g .g-bookbar .g-btn--solid:hover, .g .g-bookbar .g-btn--solid:focus-visible{ background: #fff; border-color: #fff; color: var(--blue-deep); }
+/* 24 Nov 2026 (booking-flow brief, 6): on a room's form, once the calendar is up, the dates read above it as words and
+   the two date boxes step out of sight -- still in the form, still what it posts and what its check marks. */
+.g .g-datefields.is-read .g-field{ position: relative; }
+.g .g-datefields.is-read input[type="date"]{
+  position: absolute !important; width: 1px !important; height: 1px !important; min-height: 0 !important;
+  padding: 0 !important; margin: 0 !important; border: 0 !important; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+}
+.g .g-dateread{ display: block; padding: 4px 0 2px; font-family: var(--serif); font-size: 19px; line-height: 1.4; font-style: italic; color: var(--ink-2); }
+.g .g-dateread.is-set{ font-style: normal; color: var(--blue-deep); }
+.g .g-dateread[hidden]{ display: none; }
