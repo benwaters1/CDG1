@@ -404,8 +404,11 @@ def run():
             detail=", ".join("#%d active=%s" % (r["id"], r["active"]) for r in gone))
     for r in gone:
         page = c.get("/workshops/%d" % r["id"])
-        s.check(f"its page (/workshops/{r['id']}) is gone, not a redirect naming it", page.status_code == 404,
-                detail=str(page.status_code))
+        # 24 Nov 2026 (old-links brief): a gone retreat goes to the list, 302.
+        s.check(f"its page (/workshops/{r['id']}) is gone: the list, not a redirect naming it",
+                page.status_code == 302
+                and page.headers.get("Location", "").split("?")[0].endswith("/workshops"),
+                detail=f"{page.status_code} {page.headers.get('Location')}")
     for path, html in shown.items():
         s.check(f"{path}: no card, no date, no name", not re.search(r"Immersive|Artisan Workshops", html),
                 detail=path)

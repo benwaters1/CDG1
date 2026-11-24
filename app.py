@@ -56592,8 +56592,11 @@ def book_room(room_id):
     conn = get_db()
     room = conn.execute("SELECT * FROM rooms WHERE id = ? AND active = 1", (room_id,)).fetchone()
     if not room:
+        # A room taken off the site, or a number that never was: the rooms,
+        # temporarily, as a gone retreat goes to the retreats (24 Nov 2026).
+        # A room comes back on sale by a tick, so nothing is handed on for good.
         conn.close()
-        abort(404)
+        return redirect(url_for("book_rooms"), code=302)
     # Only what a guest may add. guest_bookable is the flag that decides it
     # everywhere else, and this form did not ask -- so an item kept for the
     # till was offered to anybody booking a room.
@@ -68528,14 +68531,19 @@ def workshops_public():
 @app.route("/workshops/<int:workshop_id>")
 def workshop_detail(workshop_id):
     conn = get_db()
-    # A private stay is not here: a plain 404, never a redirect to its link,
-    # so counting through the numbers finds nothing.
+    # A retreat that is not on the site -- deleted, switched off, or a number
+    # that never was -- sends the visitor to the list, temporarily: Google held
+    # /workshops/6 as "not found" (24 Nov 2026), and an id is the house's to
+    # reuse or restore, so nothing is handed on for good. A private stay gets
+    # exactly the same answer, never a redirect to its link and never one
+    # that differs from a missing number's, so counting through the numbers
+    # still tells nobody which ones are private.
     workshop = conn.execute(
         f"SELECT * FROM workshops WHERE id = ? AND active = 1 AND {WORKSHOP_IS_PUBLIC}",
         (workshop_id,)).fetchone()
     if not workshop:
         conn.close()
-        abort(404)
+        return redirect(url_for("workshops_public"), code=302)
     today = house_today()
     sessions = public_sittings(conn, workshop_id, today)
     session_rows = [{"session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"])} for s in sessions]
@@ -128575,6 +128583,20 @@ LEGACY_PATHS = [
     ("/44-our-first-party", "dashboard", True),
     ("/42-whispering-walls", "dashboard", True),
     ("/28-march-missive", "dashboard", True),
+    # 24 November 2026, 16:00: the nine Google still listed as "Not found"
+    # once the list above was live (Search Console, Page indexing). Two old
+    # retreat programmes, an old stay page and the Letter Club's last address
+    # carry ranking and go for good. The photoshoot terms go where every other
+    # set of terms goes, temporarily, as they do. A Squarespace draft that
+    # leaked and its system address had nothing to hand on, so they go home
+    # temporarily: the house may want either name for itself.
+    ("/5-four-seasons-at-the-chateau", "workshops_public", True),
+    ("/grand-chateaux-tour-2025", "workshops_public", True),
+    ("/stay-2", "book_rooms", True),
+    ("/chateau-letter-club-unlinked", "dashboard", True),
+    ("/photoshoot-and-film-shoot-terms-and-conditions", "terms_page", False),
+    ("/new-page-2", "dashboard", False),
+    ("/universal", "dashboard", False),
 ]
 
 # Old addresses that were ONE atelier, sent to it by the words of its title,
@@ -128599,6 +128621,8 @@ LEGACY_ATELIERS = [
     ("/cooking-in-the-cuisine-pastry", "Cooking Cuisine"),
     ("/seven-starry-nights-stay-july", "Seven Starry Nights"),
     ("/bric-a-brac-away-fall", "Antique Finds"),
+    # 24 November 2026: the same retreat's 2026 page, still in Google.
+    ("/bric-a-brac-away-stay-2026", "Antique Finds"),
 ]
 
 # Whole sections of the old site, for the pages under them that no sitemap
