@@ -87,7 +87,9 @@ def run():
         for tag in re.findall(r"<form[^>]*>", html):
             method = (re.search(r'method="([a-z]+)"', tag, re.I) or [None, "get"])[1].lower()
             action = (re.search(r'action="([^"]*)"', tag) or [None, path])[1] or path
-            target = action.split("?")[0]
+            # The fragment never leaves the browser: /book#results asks the server for /book
+            # (the booking-flow brief of 24 Nov 2026 sends a search to its results).
+            target = action.split("#")[0].split("?")[0] or path
             if not target.startswith("/"):
                 continue
             if not m.app.url_map.bind("x").test(target, method.upper()):
