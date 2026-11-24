@@ -124,7 +124,11 @@ m = _harness.m
 # 23 Nov 2026, later: moved to cf9625d, "the house" made "the chateau" on the weddings, private events and photoshoot
 # pages (the second review's word list), and "House parties" became "A party of friends". Against 1d27227 it listed
 # /events/weddings, /events/private and /events/photoshoots, and nothing else. Was: "1d27227"
-COPY_BASE = "cf9625d"
+# 24 Nov 2026: moved to 6d92fc0, guests' own words from their thank-you letters (owner's brief): three on the home
+# page, three on /workshops, one on the weddings page, each signed with the season and the year; the weddings questions
+# say Les Gites de Beille and the note under its places to stay says we arrange them. Against cf9625d it listed /,
+# /workshops and /events/weddings, and nothing else. Was: "cf9625d"
+COPY_BASE = "6d92fc0"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
