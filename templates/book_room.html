@@ -170,14 +170,21 @@
   </p>
 </div>
 {% endif %}
-          <div class="g-row">
+          {#- 24 Nov 2026 (booking-flow brief, 6): ONE way to choose the dates. The two date boxes and a full calendar under
+              them did the same thing, a screen and a half on a phone before "Who is coming". The calendar stays, because it
+              shows what is taken; once it is up (it needs the nights taken, from the server) the boxes step out of sight
+              and the dates read above it as words. The boxes stay in the form: they are what it posts, what the page's
+              own check marks "This one is needed." under, and all there is with no script, or no answer about the nights. -#}
+          <div class="g-row g-datefields" data-datefields>
             <p class="g-field">
               <label for="arrival_date">Arrival<span class="g-req" aria-hidden="true">*</span></label>
               <input type="date" id="arrival_date" name="arrival_date" value="{{ arrival }}" required>
+              <span class="g-dateread" data-dateread="arrival_date" hidden>Choose on the calendar</span>
             </p>
             <p class="g-field">
               <label for="departure_date">Departure<span class="g-req" aria-hidden="true">*</span></label>
               <input type="date" id="departure_date" name="departure_date" value="{{ departure }}" required>
+              <span class="g-dateread" data-dateread="departure_date" hidden>Choose on the calendar</span>
               <span class="g-hint" id="nights_hint" aria-live="polite"></span>
             </p>
           </div>
@@ -516,6 +523,18 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
       el.textContent = src.value;
     });
     var nEl=document.querySelector('[data-nights]'); if(nEl) nEl.textContent = nt===null?'—':nt;
+    /* The dates as words above the calendar, once it has taken over (booking-flow brief, 6). */
+    f.querySelectorAll('[data-dateread]').forEach(function(el){
+      var src = f.querySelector('#' + el.getAttribute('data-dateread'));
+      var v = src && src.value ? src.value.split('-') : null;
+      if (!v || v.length !== 3) { el.textContent = 'Choose on the calendar'; el.classList.remove('is-set'); return; }
+      /* "Sat 21 November 2026", spelt out here: a browser's own en-GB puts a comma after the day, and some do not. */
+      var d = new Date(+v[0], +v[1] - 1, +v[2]);
+      el.textContent = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()] + ' ' + d.getDate() + ' '
+        + ['January','February','March','April','May','June','July','August','September','October','November','December'][d.getMonth()]
+        + ' ' + d.getFullYear();
+      el.classList.add('is-set');
+    });
   }
   [arrive,depart,party].forEach(function(el){ el.addEventListener('change',sync); el.addEventListener('input',sync); });
 
@@ -643,6 +662,16 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         taken = data.unavailable || {};
         if (arrive.value) { cursor = parse(arrive.value); cursor.setDate(1); }
         wrap.hidden = false;
+        /* The calendar is the way to choose now: the boxes step out of sight (still posted, still checked, and focused
+           by the page's own check when one is empty, so its "This one is needed." shows under the words), and are left
+           out of the tab order, since the days are the buttons to use. */
+        var row = f.querySelector('[data-datefields]');
+        if (row) {
+          row.classList.add('is-read');
+          [arrive, depart].forEach(function(el){ el.classList.add('g-vh'); el.tabIndex = -1; });
+          row.querySelectorAll('[data-dateread]').forEach(function(el){ el.hidden = false; });
+          sync();
+        }
         render();
       })
       .catch(function(){ /* leave the plain date fields working */ });
@@ -719,7 +748,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
      is further down the page than this script, so it is looked up each time. */
   function barTotal(x){
     var b=document.querySelector('[data-bar-total]');
-    if(b) b.textContent = x==null ? 'Choose dates' : '€'+Math.round(x).toLocaleString('en-GB');
+    /* To the cent, as the box above says it and as Stripe will charge (24 Nov 2026, booking-flow brief 7): rounded,
+       the bar said €544 under a summary of €543.76. */
+    if(b) b.textContent = x==null ? 'Choose dates' : money(x);
   }
   function refreshQuote(){
     fillWhen();
@@ -823,7 +854,6 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     var ms = new Date(d) - new Date(a); return ms > 0 ? Math.round(ms / 86400000) : 0; }
   function num(t){ return Number(String(t || '').replace(/[^0-9.]/g, '')); }
   function eur2(x){ return '€' + x.toFixed(2); }
-  function eur0(x){ return '€' + Math.round(x).toLocaleString('en-GB'); }
   function paint(){
     var mine = lines.querySelector('[data-tax-line]'); if (mine) mine.remove();
     var theirs = [].some.call(lines.querySelectorAll('dt'), function(dt){ return /tax/i.test(dt.textContent); });
@@ -843,7 +873,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     row.appendChild(dt); row.appendChild(dd); lines.appendChild(row);
     var shown = eur2(base + tax); tot.textContent = shown; tot.setAttribute('data-shown', shown);
     /* The bar is further down the page than this script, so it is found when painting. */
-    var bar = document.querySelector('[data-bar-total]'); if (bar) bar.textContent = eur0(base + tax);
+    var bar = document.querySelector('[data-bar-total]'); if (bar) bar.textContent = shown;
   }
   /* The quote script rebuilds the lines, then writes the total, in the same task; an observer
      runs after both. The guest-count and date fields repaint without waiting for a refresh. */
@@ -969,7 +999,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 <div class="g-bookbar" role="region" aria-label="Your booking">
   <span class="g-bookbar__sum">
-    <span class="g-bookbar__t" data-bar-total>{% if initial_quote and initial_quote.total %}€{{ '{:,.0f}'.format(initial_quote.total) }}{% else %}Choose dates{% endif %}</span>
+    <span class="g-bookbar__t" data-bar-total>{% if initial_quote and initial_quote.total %}{{ '€%.2f'|format(initial_quote.total) }}{% else %}Choose dates{% endif %}</span>
     <span class="g-bookbar__n" data-bar-note translate="no">{{ room_title(room['name']) }}</span>
   </span>
   {# Says what the form's own button says. It read "Hold these dates" in every case, so a paying guest saw "Pay & book" in the form and "Hold these dates" in the bar on the same screen. #}

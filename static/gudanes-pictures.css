@@ -1267,3 +1267,24 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-wscard__price:has(+ .g-toreserve), .g .g-sit__rate:has(+ .g-toreserve){ margin-bottom: 0; }
 .g .g-toreserve{ margin: 2px 0 var(--s4); font-family: var(--ui); font-size: 14.5px; font-weight: 600; line-height: 1.4; color: var(--ink); }
 .g .g-toreserve:has(+ .g-pernight){ margin-bottom: 0; }
+/* 24 Nov 2026 (booking-flow brief, 1): "Pay & book" is the one thing on the room page that takes the money, and the
+   navy filled button above made it navy on the navy booking panel, and on the navy bar at the foot of a phone: a line
+   of white words, not a button. On navy it is the home page's gold with navy words ("Discover the retreats"), the
+   full width of the panel and 48px at least. The two are measured against their panels in test_booking_flow_24_nov. */
+.g .g-dossier .g-submit, .g .g-bookbar .g-btn--solid{
+  background: var(--gilt-on-dark, #C6A66E); border-color: var(--gilt-on-dark, #C6A66E); color: var(--blue-deep);
+  min-height: 48px;
+}
+.g .g-dossier .g-submit{ width: 100%; display: flex; align-items: center; justify-content: center; }
+.g .g-dossier .g-submit:hover, .g .g-dossier .g-submit:focus-visible,
+.g .g-bookbar .g-btn--solid:hover, .g .g-bookbar .g-btn--solid:focus-visible{ background: #fff; border-color: #fff; color: var(--blue-deep); }
+/* 24 Nov 2026 (booking-flow brief, 6): on a room's form, once the calendar is up, the dates read above it as words and
+   the two date boxes step out of sight -- still in the form, still what it posts and what its check marks. */
+.g .g-datefields.is-read .g-field{ position: relative; }
+.g .g-datefields.is-read input[type="date"]{
+  position: absolute !important; width: 1px !important; height: 1px !important; min-height: 0 !important;
+  padding: 0 !important; margin: 0 !important; border: 0 !important; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+}
+.g .g-dateread{ display: block; padding: 4px 0 2px; font-family: var(--serif); font-size: 19px; line-height: 1.4; font-style: italic; color: var(--ink-2); }
+.g .g-dateread.is-set{ font-style: normal; color: var(--blue-deep); }
+.g .g-dateread[hidden]{ display: none; }

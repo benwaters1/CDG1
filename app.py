@@ -66255,6 +66255,39 @@ def phone_from_form(field="guest_phone"):
     return normalise_phone(raw) or raw
 
 
+# A proxy in front of the app that knows where a visitor is, and the header it
+# says so in. Cloudflare sets CF-IPCountry when it proxies the site.
+VISITOR_COUNTRY_HEADERS = ("CF-IPCountry",)
+
+
+def visitor_country():
+    """Where the visitor is, as two letters, when a proxy in front says so; else "".
+
+    24 November 2026 (booking-flow brief, 5): the room form's country of
+    residence came up as Ukraine and its telephone code as the United States
+    for one visitor, because each guessed on its own from the browser's
+    language -- which says what language somebody reads, not where they live.
+    The country now starts on "Choose your country" unless this knows better,
+    and the telephone code follows whatever country is chosen.
+
+    Railway sets no such header, and www is not proxied through Cloudflare
+    today (DNS only), so this is "" on the live site until it is. A visitor
+    could send the header themselves; all it does is pick the first answer on
+    their own form, which they can change.
+    """
+    if not has_request_context():
+        return ""
+    for name in VISITOR_COUNTRY_HEADERS:
+        code = (request.headers.get(name) or "").strip().upper()
+        # XX: Cloudflare could not tell. T1: Tor. Neither is a country.
+        if re.fullmatch(r"[A-Z]{2}", code) and code not in ("XX", "T1"):
+            return code
+    return ""
+
+
+app.jinja_env.globals["visitor_country"] = visitor_country
+
+
 def parse_quantity(raw):
     """A typed-in amount of something. None if the box was empty or junk.
 
@@ -71433,8 +71466,13 @@ def sized_photo(width, filename):
 # Registered after serve_our_own_photographs, so it runs first and usually
 # sees the Squarespace address; it reads a /mirrored-photo/ one as well, so the
 # order is not something it depends on.
+#
+# 24 Nov 2026 (booking-flow brief, 8): a room's own page too. Its photograph
+# across the top is a g-roomhero, not a g-hero__img, so it went out whole -- a
+# 2,048px file, and the beige box for a second or two before it -- on the page
+# a guest books from.
 # ---------------------------------------------------------------------------
-_HERO_IMG = re.compile(r'<img\b[^>]*\bclass="[^"]*\bg-hero__img\b[^"]*"[^>]*>')
+_HERO_IMG = re.compile(r'<img\b[^>]*\bclass="[^"]*\bg-(?:hero__img|roomhero)\b[^"]*"[^>]*>')
 _HERO_SRC = re.compile(r'\ssrc="([^"]*)"')
 
 
@@ -71475,7 +71513,7 @@ def size_the_heroes(response):
     if not (response.content_type or "").startswith("text/html"):
         return response
     raw = response.get_data()
-    if b"g-hero__img" not in raw:
+    if b"g-hero__img" not in raw and b"g-roomhero" not in raw:
         return response
     body = raw.decode("utf-8", "replace")
     sized = _HERO_IMG.sub(lambda m: size_hero(m.group(0)), body)

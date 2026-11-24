@@ -109,7 +109,7 @@
         <p class="g-hbook__foot">Every meal, the wine, the château’s chefs and much more, with nothing to pay at the end. <a href="{{ url_for('workshops_public') }}#dates">See every date</a></p>
       </div>
       <div class="g-hbook__p" id="hb-s" role="tabpanel" aria-labelledby="hb-tab-s">
-      <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
+      <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}#results">
         {# The two native date fields remain, as the values the form posts and as
            the fallback when JavaScript is off. The picker below replaces them
            visually and writes into them. #}
@@ -165,7 +165,7 @@
     })();
     </script>
     {% else %}
-    <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
+    <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}#results">
       {# The two native date fields remain, as the values the form posts and as
          the fallback when JavaScript is off. The picker below replaces them
          visually and writes into them. #}

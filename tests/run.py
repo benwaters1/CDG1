@@ -522,6 +522,8 @@ SUITES = [
     "test_saved_views",
     "test_bookings_list",
     "test_booking_page",
+    # 24 Nov 2026: the room booking path, search to Pay & book (BRIEF-booking-flow-24-nov).
+    "test_booking_flow_24_nov",
     "test_unreachable_code",
     "test_handover_check",
     "test_repair_handover",
