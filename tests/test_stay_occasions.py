@@ -122,24 +122,24 @@ def _run(s, oc, owner, conn):
     page = oc.get("/admin/stay-occasions")
     s.check("the occasions page opens", page.status_code == 200)
     s.check("the new-occasion form opens", oc.get("/admin/stay-occasions/new").status_code == 200)
-    first = {r["name"]: r for r in conn.execute(
+    listed = {r["name"]: r for r in conn.execute(
         "SELECT * FROM stay_occasions WHERE name IN (%s)" % ",".join("?" * len(m.FIRST_OCCASIONS)),
         [row[0] for row in m.FIRST_OCCASIONS])}
     s.check("the owner's first list is there, every one a draft",
-            len(first) == len(m.FIRST_OCCASIONS) == 15
-            and all(r["status"] in ("draft", "live") for r in first.values()),
-            detail=str(sorted(first)))
+            len(listed) == len(m.FIRST_OCCASIONS) == 15
+            and all(r["status"] in ("draft", "live") for r in listed.values()),
+            detail=str(sorted(listed)))
     s.check("with the chef off on every one",
-            all(not r["chef_on_site"] for r in first.values()))
+            all(not r["chef_on_site"] for r in listed.values()))
     s.check("and the list's own words, without the chef line (the page adds it)",
-            first.get("Tour de France Week") is not None
-            and first["Tour de France Week"]["description"].startswith("The Tour comes to the south-west")
-            and not any(m.CHEF_OFF_SITE_LINE in (r["description"] or "") for r in first.values()))
-    s.check("Bastille Day is 2028, not 2027", first.get("Bastille Day") is not None
-            and first["Bastille Day"]["first_night"].startswith("2028-07"))
+            listed.get("Tour de France Week") is not None
+            and listed["Tour de France Week"]["description"].startswith("The Tour comes to the south-west")
+            and not any(m.CHEF_OFF_SITE_LINE in (r["description"] or "") for r in listed.values()))
+    s.check("Bastille Day is 2028, not 2027", listed.get("Bastille Day") is not None
+            and listed["Bastille Day"]["first_night"].startswith("2028-07"))
     s.check("Christmas is the nights of 23 to 25 December, leaving on the 26th",
-            first.get("Christmas at Gudanes") is not None
-            and (first["Christmas at Gudanes"]["first_night"], first["Christmas at Gudanes"]["last_night"])
+            listed.get("Christmas at Gudanes") is not None
+            and (listed["Christmas at Gudanes"]["first_night"], listed["Christmas at Gudanes"]["last_night"])
             == ("2026-12-23", "2026-12-25"))
 
     seeded = {r["key"] for r in conn.execute("SELECT key FROM stay_occasion_suggestions")}
