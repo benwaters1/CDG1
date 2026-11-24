@@ -655,6 +655,8 @@ SUITES = [
     "test_guest_letters",
     "test_weddings_top",
     "test_private_top",
+    # 24 Nov 2026: the private page is a private retreat; JBL (BRIEF-private-retreat-and-images, 1 and 2).
+    "test_private_retreat",
     # 23 November 2026: the photographs the owner will not have on the site, by what they show.
     "test_photos_refused",
     # 9 November 2026: the address opens the map and sits under the home page's

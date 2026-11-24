@@ -15,7 +15,11 @@
    the handler already treats them as blank. See FOR-CODE-z29.md.
    ========================================================================== #}
 {% macro flexible() %}
-<section class="g-flex"><div class="g-wrap">
+{#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 1): #write to land on, and ?topic= chooses what it is about, so the
+    private retreat page's "Send an enquiry" opens with "A private retreat" chosen. private_event is still the value,
+    so the enquiries before it and the reports read the same. -#}
+{%- set _topic = request.args.get('topic', '') if request else '' %}
+<section class="g-flex" id="write"><div class="g-wrap">
   <p class="g-eyebrow">Write to Us</p>
   <h2 class="g-place">Private Events, and Anything Else</h2>
   <p class="g-p g-lede-first">Rooms and retreats book online, at the price you see, so there is no need to write for those. For a private event, a wedding, a photoshoot, taking the whole château, or a question the pages do not answer, tell us here.</p>
@@ -30,12 +34,11 @@
     <p class="g-field">
       <label for="fx_topic">What it is about<span class="g-req" aria-hidden="true">*</span></label>
       <select id="fx_topic" name="topic" required>
-        <option value="" selected disabled>Choose one</option>
-        <option value="private_event">A private event or celebration</option>
-        <option value="wedding">A wedding</option>
-        <option value="photoshoot">A photoshoot or filming</option>
-        <option value="whole_chateau">The whole château, for a group</option>
-        <option value="other">Something else</option>
+        {%- set _topics = [('private_event', 'A private retreat'), ('wedding', 'A wedding'), ('photoshoot', 'A photoshoot or filming'), ('whole_chateau', 'The whole château, for a group'), ('other', 'Something else')] %}
+        <option value=""{{ '' if _topic in _topics|map(attribute=0)|list else ' selected' }} disabled>Choose one</option>
+        {%- for _v, _w in _topics %}
+        <option value="{{ _v }}"{{ ' selected' if _topic == _v }}>{{ _w }}</option>
+        {%- endfor %}
       </select>
     </p>
 

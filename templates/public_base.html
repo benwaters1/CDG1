@@ -239,7 +239,7 @@ window.houseDay = (function () {
           {# Each link falls back to the events page until its route exists,
              so a missing endpoint cannot break the header site-wide. #}
           <li><a href="{{ url_for('events_weddings') }}"{% if request.endpoint == 'events_weddings' %} class="is-here" aria-current="page"{% endif %}>{{ t('Weddings') }}</a></li>
-          <li><a href="{{ url_for('events_private') }}"{% if request.endpoint == 'events_private' %} class="is-here" aria-current="page"{% endif %}>{{ t('Private') }}</a></li>
+          <li><a href="{{ url_for('events_private') }}"{% if request.endpoint == 'events_private' %} class="is-here" aria-current="page"{% endif %}>{{ t('Private Retreats') }}</a></li>
           <li><a href="{{ url_for('events_photoshoots') }}"{% if request.endpoint == 'events_photoshoots' %} class="is-here" aria-current="page"{% endif %}>{{ t('Photoshoots') }}</a></li>
         </ul>
       </div>

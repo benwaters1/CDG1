@@ -121,6 +121,7 @@ FR = {
     'Terrace': 'Terrasse',
     'Bar': 'Bar',
     'Private': 'Privé',
+    'Private Retreats': 'Séjours privés',
     # -- Navigation and shell -------------------------------------------
     "Stay": "Séjourner",
     "Stay Now": "Réserver un séjour",
@@ -911,6 +912,7 @@ ES = {
     'Terrace': 'Terraza',
     'Bar': 'Barra',
     'Private': 'Privado',
+    'Private Retreats': 'Retiros privados',
     # -- Navigation and shell -------------------------------------------
     "Stay": "Alojarse",
     "Stay Now": "Reservar estancia",

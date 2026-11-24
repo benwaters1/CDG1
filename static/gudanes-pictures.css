@@ -1236,3 +1236,23 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
    15 Oct rule that hides every caption under a photograph (gudanes.css) hid its signature with them: the quote stood
    unsigned. A pull quote's caption is who said it, not a description of a photograph, so it shows. */
 .g main figure.g-pull figcaption{ display: block !important; margin-top: var(--s3); padding: 0; border: 0; }
+/* 24 Nov 2026 (BRIEF-private-retreat-and-images, 1): /events/private is a private retreat. All Inclusive draws the
+   retreats' own list (_retreat_included.html), larger here where it is the section and not a column of a comparison,
+   in two columns on a wide screen; then "Choose Your Days", the retreats' themes, a photograph each: five across on a
+   computer, the photograph beside the words on a tablet, one under the other on a phone. */
+.g .g-priv-incl__l{ max-width: 52rem; margin: var(--s5) 0 var(--s3); }
+.g .g-priv-incl__l li{ font-size: 18px; line-height: 1.55; }
+@media (min-width: 52rem){ .g .g-priv-incl__l{ columns: 2; column-gap: var(--s6); } .g .g-priv-incl__l li{ break-inside: avoid; } }
+.g .g-priv-incl__tx{ margin: 0 0 var(--s6); color: var(--ink-2); }
+.g .g-choose__l{ list-style: none; margin: var(--s6) 0 0; padding: 0; display: grid; gap: var(--s6) var(--s5); grid-template-columns: minmax(0,1fr); }
+.g .g-choose__i{ margin: 0; min-width: 0; }
+.g .g-choose__ph{ margin: 0 0 var(--s3); aspect-ratio: 3 / 2; overflow: hidden; background: #EDE6D6; }
+.g .g-choose__ph img{ display: block; width: 100%; height: 100%; object-fit: cover; }
+.g .g-choose__fr{ margin: 0; font-family: var(--display); font-style: italic; font-weight: 400; font-size: 26px; line-height: 1.2; color: var(--blue-deep); }
+.g .g-choose__en{ margin: 2px 0 var(--s2); font-family: var(--ui); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.g .g-choose__p{ margin: 0; font-family: var(--serif); font-size: 17px; line-height: 1.5; color: var(--ink); }
+@media (min-width: 40rem) and (max-width: 63.99rem){
+  .g .g-choose__i{ display: grid; grid-template-columns: 13rem minmax(0,1fr); gap: var(--s5); align-items: center; }
+  .g .g-choose__ph{ margin: 0; }
+}
+@media (min-width: 64rem){ .g .g-choose__l{ grid-template-columns: repeat(5, minmax(0,1fr)); } .g .g-choose__ph{ aspect-ratio: 4 / 5; } }
