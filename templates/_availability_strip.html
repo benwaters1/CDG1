@@ -31,17 +31,24 @@
   <p class="g-nextf__one">All {{ _all }} rooms are open from <a href="{{ url_for('book_rooms') }}?arrival={{ _shown[0]['date_iso'] }}#book">{{ _days[0] }}</a>.</p>
 {% else %}
   <p class="g-nextf__h">What is open next</p>
-  <ul class="g-nextf">
-    {% for d in _shown %}
-    <li class="g-nextf__i">
-      <span class="g-nextf__d">{{ d['date'] }}</span>
-      <span class="g-nextf__r" translate="no">{{ room_title(d['room_name']) }}</span>
-      <span class="g-nextf__n">Up to {{ d['nights'] }} night{{ '' if d['nights'] == 1 else 's' }} available</span>
-      {% if d['price'] %}<span class="g-nextf__p">from €{{ '%.0f'|format(d['price']) }}</span>{% endif %}
-      <a class="g-btn" href="{{ url_for('book_rooms') }}?arrival={{ d['date_iso'] }}">Check this date</a>
-    </li>
-    {% endfor %}
-  </ul>
+  {#- 24 Nov 2026 (site review, 6): five rows that all began "28 November" read like a mistake. The date is said once,
+      as the heading of its group ("From Saturday 28 November", with the one link that carries it), and the rooms open
+      that night are listed under it. -#}
+  {%- for _iso, _grp in _shown|groupby('date_iso') %}
+  <div class="g-nextf__g">
+    <p class="g-nextf__gh"><span class="g-nextf__d">From {% if _grp[0].get('weekday') %}{{ _grp[0]['weekday'] }} {% endif %}{{ _grp[0]['date'] }}</span>
+      <a class="g-btn" href="{{ url_for('book_rooms') }}?arrival={{ _iso }}">Check this date</a></p>
+    <ul class="g-nextf">
+      {% for d in _grp %}
+      <li class="g-nextf__i">
+        <span class="g-nextf__r" translate="no">{{ room_title(d['room_name']) }}</span>
+        <span class="g-nextf__n">Up to {{ d['nights'] }} night{{ '' if d['nights'] == 1 else 's' }} available</span>
+        {% if d['price'] %}<span class="g-nextf__p">from €{{ '%.0f'|format(d['price']) }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {%- endfor %}
 {% endif %}
 </div>
 {% endif %}

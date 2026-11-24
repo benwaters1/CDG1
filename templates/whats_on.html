@@ -75,7 +75,9 @@
     {% endfor %}
   </div>
   {% if upcoming|length > 4 %}
-  <details class="g-agenda__more"><summary>The rest of the year</summary>
+  {#- 24 Nov 2026 (site review, 6): the fold read as a row with a date label and nothing beside it. It says what it
+      holds and that it opens: the count of dates on the left, Show all on the right, across the row. -#}
+  <details class="g-agenda__more"><summary><span class="g-agenda__morel">The rest of the year: {{ upcoming[4:]|length }} more date{{ '' if upcoming[4:]|length == 1 else 's' }}</span><span class="g-agenda__moreb" aria-hidden="true">Show all</span></summary>
   <div class="g-agenda">
     {% for e in upcoming[4:] %}
     <article class="g-agenda__row">
@@ -94,6 +96,11 @@
   {% endif %}
   {% endif %}
 
+  {#- 24 Nov 2026 (site review, 10): "Grotte de Lombrives open all year" checked against the cave's own site
+      (grottedelombrives.com: open "toute l'année", dates and departures on its online booking) and the tourist offices
+      (ariegepyrenees.com, The Cave of Lombrives: 16 Nov - 20 Dec 2026 Wednesday, Saturday and Sunday, then daily to 31
+      Dec). It is open all year, so it stays here, and its line now says the days are set out of season
+      (LOMBRIVES_ALL_YEAR, correct_whats_on_lombrives). -#}
   {% if all_year %}
   <p class="g-eyebrow" style="margin-top:var(--s8)">All Year</p>
   <div class="g-agenda">

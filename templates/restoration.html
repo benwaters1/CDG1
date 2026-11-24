@@ -71,7 +71,7 @@
       {%- for year, text in YEARS|sort(attribute='0') %}
       <li><b>{{ year }}</b><span>{{ text }}{% if LINKS[year] %} <a href="{{ LINKS[year][0] }}">{{ LINKS[year][1] }}</a>{% endif %}</span></li>
       {%- endfor %}
-      <li><b>Now</b><span>A Class I Historic Monument under restoration, with {{ ROOMS_WORD }} guest rooms, and the workshops.</span></li>
+      <li><b>Now</b><span>A Class I Historic Monument under restoration, with {{ ROOMS_WORD }} guest rooms, and the retreats.</span></li>
     </ul>
   </div>
 </section>
@@ -310,10 +310,10 @@
   <div class="g-vignette" aria-hidden="true">{{ illus('bed') }}</div>
   <p class="g-fr">Venir à Gudanes <span class="g-fr__en">Coming to Gudanes</span></p>
   <h2 class="g-place">Stay While It Happens</h2>
-  <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms are open: bare walls on one side of the door, new floors and antiques from the brocantes on the other. The workshops open the rest of the château. Every stay helps the restoration go on.</p>
+  <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms are open: bare walls on one side of the door, new floors and antiques from the brocantes on the other. The retreats open the rest of the château. Every stay helps the restoration go on.</p>
   <p class="g-closer__cta">
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See the rooms</a>
-    <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the full experience</a>
+    <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the retreats</a>
   </p>
 </div></section>
 {{ lightbox() }}

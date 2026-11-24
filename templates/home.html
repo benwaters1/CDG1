@@ -8,8 +8,8 @@
 {% from '_ws_copy.html' import ws_hook with context %}
 {% from '_retreat_photos.html' import rphoto, rsrc, rcredit with context %}
 {% block title %}A French Château Experience in the Pyrénées{% endblock %}
-{% block description %}A French château experience in the Pyrénées: a Class I Historic Monument under restoration, open to guests for a night or a workshop retreat.{% endblock %}
-{% block og_desc %}An eighteenth-century Class I Historic Monument in the Ariège, still under restoration and open to guests. Rooms, dinner, and workshop retreats.{% endblock %}
+{% block description %}A French château experience in the Pyrénées: a Class I Historic Monument under restoration, open to guests for a night or a retreat.{% endblock %}
+{% block og_desc %}An eighteenth-century Class I Historic Monument in the Ariège, still under restoration and open to guests. Rooms, dinner, and retreats.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--full{% endblock %}
 {% block content %}
@@ -76,15 +76,28 @@
     {#- Each retreat's photograph: in the hero, the owner's upload for it in Admin if there is one, otherwise one of the
         house's own by its name; in The Next Dates always the house's own, from a second set, so the page never shows
         one picture twice. -#}
-    {%- set HB_PIC = {'Noël': 'img/retreats/noel-at-gudanes-800.jpg', 'Cooking': 'img/xx/tomato-tart-above.jpg',
-                      'Antique': 'img/xx/shelves-of-china.jpg', 'Seven': 'img/dining/long-table-tall-candles.jpg'} %}
-    {%- set ND_PIC = {'Noël': 'img/dining/garland-staircase.jpg', 'Cooking': 'img/retreats/cooking-class-hands-800.jpg',
-                      'Antique': 'img/retreats/brocante-china-800.jpg', 'Seven': 'img/retreats/film-under-the-stars-800.jpg'} %}
+    {#- 24 Nov 2026 (site review, 7): each photograph says what it shows -- "A tomato tart, from above", in the words
+        the other pages already use for the same file -- rather than "A photograph from Cooking in the Cuisine", which
+        is what a screen reader and Google's image search read. An owner's own upload is described by its retreat,
+        since nothing here knows what is in it. -#}
+    {%- set HB_PIC = {'Noël': ['img/retreats/noel-at-gudanes-800.jpg', 'The gingerbread château by the Christmas tree'],
+                      'Cooking': ['img/xx/tomato-tart-above.jpg', 'A tomato tart, from above'],
+                      'Antique': ['img/xx/shelves-of-china.jpg', 'Shelves of china, pink and white'],
+                      'Seven': ['img/dining/long-table-tall-candles.jpg', 'A long table, lit with tall candles']} %}
+    {%- set ND_PIC = {'Noël': ['img/dining/garland-staircase.jpg', 'The staircase, dressed with a garland and candles'],
+                      'Cooking': ['img/retreats/cooking-class-hands-800.jpg', 'The cooking class from above, hands at work'],
+                      'Antique': ['img/retreats/brocante-china-800.jpg', 'Tables of old china'],
+                      'Seven': ['img/retreats/film-under-the-stars-800.jpg', 'A film under the stars, on the château wall']} %}
     {% macro ws_pic(s, MAP, upload=true) -%}
       {%- set _p = namespace(u=None) %}
       {%- if upload and s['photo_filename'] %}{% set _p.u = url_for('room_photo', filename=s['photo_filename']) %}
-      {%- else %}{% for k in MAP %}{% if k in (s['title'] or '') %}{% set _p.u = url_for('static', filename=MAP[k]) %}{% endif %}{% endfor %}{% endif %}
+      {%- else %}{% for k in MAP %}{% if k in (s['title'] or '') %}{% set _p.u = url_for('static', filename=MAP[k][0]) %}{% endif %}{% endfor %}{% endif %}
       {{- _p.u or '' -}}
+    {%- endmacro %}
+    {% macro ws_pic_alt(s, MAP, upload=true) -%}
+      {%- set _a = namespace(t=None) %}
+      {%- if not (upload and s['photo_filename']) %}{% for k in MAP %}{% if k in (s['title'] or '') %}{% set _a.t = MAP[k][1] %}{% endif %}{% endfor %}{% endif %}
+      {{- _a.t or s['title'] -}}
     {%- endmacro %}
     {% if upcoming %}
     <div class="g-hbook" data-hbook>
@@ -99,7 +112,7 @@
           {% for s in upcoming[:3] %}
           {%- set _ph = ws_pic(s, HB_PIC)|trim %}{% if _ph in _hbused.seen %}{% set _ph = '' %}{% endif %}{% set _hbused.seen = _hbused.seen + [_ph] %}
           <li><a class="g-hbook__w" href="{{ workshop_page_url(s) }}">
-            {% if _ph %}<b class="g-hbook__ph"><img src="{{ _ph }}" alt="A photograph from {{ s['title'] }}" loading="lazy" decoding="async"></b>{% endif %}
+            {% if _ph %}<b class="g-hbook__ph"><img src="{{ _ph }}" alt="{{ ws_pic_alt(s, HB_PIC)|trim }}" loading="lazy" decoding="async"></b>{% endif %}
             <b class="g-hbook__d">{{ date_range(s['start_date'], s['end_date']) }}</b>
             <strong class="g-hbook__t">{{ s['title'] }}</strong>
             <small class="g-hbook__m">{{ s['nights_label'] or '' }}{% if s['nights_label'] and s['price_per_person'] %} · {% endif %}{% if s['price_per_person'] %}<span data-eur="{{ s['price_per_person']|int }}">€{{ '{:,.0f}'.format(s['price_per_person']) }}</span> per person{% endif %}</small>
@@ -238,7 +251,7 @@
       {%- set _nph = ws_pic(s, ND_PIC, false)|trim %}{% if _nph in _ndused.seen %}{% set _nph = '' %}{% endif %}{% set _ndused.seen = _ndused.seen + [_nph] %}
       {#- 23 Nov (owner: "fix this other one up too its super basic"): each date leads with its photograph. -#}
       <li class="g-full__row"><a href="{{ workshop_page_url(s) }}"{% if _nph %} class="g-full__has-ph"{% endif %}>
-        {% if _nph %}<b class="g-full__ph"><img src="{{ _nph }}" alt="A photograph from {{ s['title'] }}" loading="lazy" decoding="async"></b>{% endif %}
+        {% if _nph %}<b class="g-full__ph"><img src="{{ _nph }}" alt="{{ ws_pic_alt(s, ND_PIC, false)|trim }}" loading="lazy" decoding="async"></b>{% endif %}
         <span class="g-full__t">{{ s['title'] }}</span>
         {% if _hk %}<span class="g-full__hook">{{ _hk }}</span>{% endif %}
         <span class="g-full__d">{{ date_range(s['start_date'], s['end_date']) }}</span>
@@ -373,8 +386,6 @@
            "A dressing..." - clipping the one fact a guest was reading for. Each room's
            first sentence is complete on its own; show that. #}
         {% if _rc %}{% set _s1 = _rc.split('. ')[0].rstrip('.') ~ '.' %}<p class="g-p">{{ _s1 if _s1|length <= 200 else _rc|truncate(170) }}</p>{% endif %}
-        {% set rate = r.get('rate') or r['price_per_night'] %}
-        {% if rate %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n g-fig" data-eur="{{ rate|int }}">€{{ '{:,.0f}'.format(rate) }}</span><span class="g-price__u">per room, a night · breakfast included</span></p>{%- endif %}
         {# The homepage showed no facts and no price band — a guest could not
            tell whether this was in their range without clicking through. #}
         <ul class="g-tags g-tags--sm g-tags--icons">
@@ -385,6 +396,10 @@
           {% if r['outlook'] %}<li>{{ ci('view') }}{% if r['name'] in ['The Marquis Suite', 'The Family Suite'] %}Mountain and front views{% else %}{{ r['outlook']|capitalize }} view{% endif %}</li>{% endif %}
           <li>{{ ci('cup') }}Breakfast included</li>
         </ul>
+        {#- 24 Nov 2026 (site review, 6): the facts above the price, so the price and the button are the same height at
+            the foot of every card and the prices line up across a row, whatever the length of a room's list. -#}
+        {% set rate = r.get('rate') or r['price_per_night'] %}
+        {% if rate %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n g-fig" data-eur="{{ rate|int }}">€{{ '{:,.0f}'.format(rate) }}</span><span class="g-price__u">per room, a night · breakfast included</span></p>{%- endif %}
         <a href="{% if r.get('id') %}{{ url_for('book_room', room_id=r['id']) }}{% else %}{{ url_for('book_rooms') }}{% endif %}" class="g-btn g-btn--line">Check dates</a>
       </div>
     </article>
@@ -421,10 +436,16 @@
     <figure class="g-homeresto__f">{{ pic(url_for('static', filename='img/history/horse-dining-room-a.jpg'), 'A horse in an empty room of the château, before the work', sizes='(min-width: 40rem) 50vw, 100vw', cls='g-homeresto__img') }}<span class="g-ba__tag g-ba__tag--b">Before</span></figure>
     <figure class="g-homeresto__f">{{ pic('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=1500w', 'The dining room now, laid for dinner under the chandeliers', sizes='(min-width: 40rem) 50vw, 100vw', cls='g-homeresto__img') }}<span class="g-ba__tag g-ba__tag--b">Now</span></figure>
   </div>
-  <p class="g-homeresto__cap">The dining room: once empty enough for a horse.</p>
-  <p class="g-homeresto__cap">New floors, new bathrooms and good French beds, among antiques found at the brocantes of the valley and fresh flowers in every room. The château feels lived in, never furnished.</p>
-  <p class="g-p g-homeresto__p">Bought as a ruin in 2013, the château has been brought back room by room, and the work goes on around you.</p>
-  <p class="g-homeresto__cta"><a href="{{ url_for('restoration_page') }}" class="g-btn g-btn--solid">See how it came back</a></p>
+  {#- 24 Nov 2026 (site review, 6): the words sat under the before alone and left the right half of the band empty.
+      Each caption now sits under its own photograph, and the paragraph and its button run across the pair. -#}
+  <div class="g-homeresto__caps">
+    <p class="g-homeresto__cap">The dining room: once empty enough for a horse.</p>
+    <p class="g-homeresto__cap">New floors, new bathrooms and good French beds, among antiques found at the brocantes of the valley and fresh flowers in every room. The château feels lived in, never furnished.</p>
+  </div>
+  <div class="g-homeresto__foot">
+    <p class="g-p g-homeresto__p">Bought as a ruin in 2013, the château has been brought back room by room, and the work goes on around you.</p>
+    <p class="g-homeresto__cta"><a href="{{ url_for('restoration_page') }}" class="g-btn g-btn--solid">See how it came back</a></p>
+  </div>
 </div></section>
 
 {% include '_plaisirs.html' %}

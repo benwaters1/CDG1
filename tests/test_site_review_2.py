@@ -427,8 +427,11 @@ def _book_cards(s, anon):
     marquis, family = cards.get("The Marquis Suite"), cards.get("The Family Suite")
     s.check("the Marquis Suite leads with the gold four-poster by the fireplace",
             bool(marquis) and "GudanesCookingintheKitchenStay59of925" in marquis[0][0], detail=str(marquis and marquis[0][:1]))
-    s.check("the Family Suite leads with the two chairs at the open windows",
-            bool(family) and "799483474" in family[0][0], detail=str(family and family[0][:1]))
+    # 24 Nov (site review, 5): a bedroom card leads with a bed. /book's header shows the suite's two beds side by side,
+    # so its card leads with the large bed, and the chairs at the open windows (11 Nov's lead) come second.
+    s.check("the Family Suite leads with a bed, the chairs at the open windows second",
+            bool(family) and len(family[0]) > 1 and "799432864" in family[0][0] and "799483474" in family[0][1],
+            detail=str(family and family[0][:2]))
     with m.app.test_request_context("/"):
         mod = m.app.jinja_env.get_template("_room_photos.html").module
         lists = {n: list(mod.ROOM_PHOTOS.get(n, [])) + list(mod.ROOM_EXTRA.get(n, [])) for n in cards}

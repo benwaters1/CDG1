@@ -152,7 +152,7 @@ FR = {
     "Menu": "Menu",
     "Close menu": "Fermer le menu",
     "Subscribe to our newsletter": "Abonnez-vous à notre lettre d'information",
-    "The restoration, the rooms as they open, and the workshop dates. No more than a few times a year; unsubscribe in one click.": "La restauration, les chambres à mesure qu'elles ouvrent, et les dates des ateliers. Quelques fois par an, pas davantage ; désabonnement en un clic.",
+    "The restoration, the rooms as they open, and the retreat dates. No more than a few times a year; unsubscribe in one click.": "La restauration, les chambres à mesure qu'elles ouvrent, et les dates des séjours. Quelques fois par an, pas davantage ; désabonnement en un clic.",
     "Subscribe": "S'abonner",
     "Email": "E-mail",
     "Email address": "Adresse e-mail",
@@ -757,7 +757,7 @@ FR = {
     'The ateliers': 'Les ateliers',
     'Your events': 'Vos événements',
     'stays &amp; general': 'séjours et questions générales',
-    'workshops & events': 'ateliers et événements',
+    'retreats and events': 'séjours et événements',
     'For now, the château is open only to its guests.': "Pour l'instant, le château n'est ouvert qu'à ses hôtes.",
     # Handover q, 7 October: new English on the nav and the
     # booking pages. t() falls back silently, so without these a
@@ -941,7 +941,7 @@ ES = {
     "Menu": "Menú",
     "Close menu": "Cerrar menú",
     "Subscribe to our newsletter": "Suscríbase a nuestro boletín",
-    "The restoration, the rooms as they open, and the workshop dates. No more than a few times a year; unsubscribe in one click.": "La restauración, las habitaciones a medida que se abren y las fechas de los talleres. Unas pocas veces al año; se da de baja con un clic.",
+    "The restoration, the rooms as they open, and the retreat dates. No more than a few times a year; unsubscribe in one click.": "La restauración, las habitaciones a medida que se abren y las fechas de los retiros. Unas pocas veces al año; se da de baja con un clic.",
     "Subscribe": "Suscribirse",
     "Email": "Correo electrónico",
     "Email address": "Dirección de correo electrónico",
@@ -1443,7 +1443,7 @@ ES = {
     'The ateliers': 'Los talleres',
     'Your events': 'Sus eventos',
     'stays &amp; general': 'estancias y consultas generales',
-    'workshops & events': 'talleres y eventos',
+    'retreats and events': 'retiros y eventos',
     'For now, the château is open only to its guests.': 'Por ahora, el castillo solo está abierto a sus huéspedes.',
     # Handover q, 7 October. See the note on the French table.
     'Ask to move your dates': 'Solicitar un cambio de fechas',

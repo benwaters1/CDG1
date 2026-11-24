@@ -44,6 +44,11 @@ def _setting(conn, key, value):
     conn.commit()
 
 
+def _flat(text):
+    """Visible text with the space a link leaves before the punctuation after it taken out ("nearby , which")."""
+    return re.sub(r"\s+(?=[,.;:])", "", text)
+
+
 def _linked(html):
     """Every 'restaurants nearby' in this piece links the search at the pin, in a new tab, safely."""
     links = LINK.findall(html)
@@ -77,8 +82,10 @@ def run():
                 stay_html = _block(panel, 'class="g-sow__col', 'g-sow__col--full')
                 stay, retreat = visible_text(stay_html), visible_text(_block(panel, 'g-sow__col--full', "</article>"))
                 s.check(f"{path}: the night is a room and breakfast", "Room and breakfast" in stay, detail=stay[:160])
-                s.check(f"{path}: its lunch and dinner unavailable, the restaurants nearby linked",
-                        "Lunch and dinner unavailable: restaurants nearby" in stay and _linked(stay_html), detail=stay[:200])
+                # 24 Nov (site review, 2): what the guest gets, not a refusal.
+                s.check(f"{path}: its lunch and dinner at the restaurants nearby, linked, which we book",
+                        "Lunch and dinner at the restaurants nearby, which we are happy to book for you" in _flat(stay)
+                        and "unavailable" not in stay.lower() and _linked(stay_html), detail=stay[:200])
                 s.check(f"{path}: and no dinner offered to it", not STAY_OFFERS_DINNER.search(stay), detail=stay[:240])
                 s.check(f"{path}: the retreat has the gourmet chefs, every meal, and drinks included",
                         "gourmet chefs" in retreat and "every meal, and drinks included" in retreat, detail=retreat[:200])
@@ -89,8 +96,8 @@ def run():
             s.check("/workshops: the table calls the night a room and breakfast",
                     '<span class="g-vs__t">Room and breakfast</span>' in table and "a room and breakfast." in visible_text(table))
             meals = re.search(r'<th scope="row">Lunch and dinner</th><td>(.*?)</td><td class="g-vs__full">(.*?)</td>', table, re.S)
-            s.check("/workshops: lunch and dinner unavailable with a night, the restaurants nearby linked; every meal and drinks with a retreat",
-                    bool(meals) and visible_text(meals.group(1)).strip() == "Unavailable: restaurants nearby"
+            s.check("/workshops: lunch and dinner at restaurants nearby with a night, linked, we book; every meal and drinks with a retreat",
+                    bool(meals) and _flat(visible_text(meals.group(1))).strip() == "At restaurants nearby; we book for you"
                     and _linked(meals.group(1)) and "Every meal, and drinks included" in meals.group(2),
                     detail=meals.group(0)[:240] if meals else "no row")
             chefs = re.search(r'<th scope="row">Gourmet chefs on site</th><td>(.*?)</td><td class="g-vs__full">(.*?)</td>', table, re.S)
@@ -104,8 +111,9 @@ def run():
                 notice = visible_text(notice_html)
                 s.check(f"{path}: before a night is booked, it is called a room and breakfast",
                         "A night here is a room and breakfast." in notice, detail=notice[:160])
-                s.check(f"{path}: lunch and dinner unavailable, the restaurants nearby linked, the chefs with the retreats",
-                        "Lunch and dinner are unavailable: there are restaurants nearby" in notice and _linked(notice_html)
+                s.check(f"{path}: lunch and dinner at the restaurants nearby, linked, the chefs with the retreats",
+                        "Lunch and dinner at the restaurants nearby, which we are happy to book for you" in _flat(notice)
+                        and "unavailable" not in notice.lower() and _linked(notice_html)
                         and "gourmet chefs" in notice and not STAY_OFFERS_DINNER.search(notice), detail=notice[:240])
 
         s.section("Where no pin is set, the words stand without a link")

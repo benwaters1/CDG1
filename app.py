@@ -7854,6 +7854,13 @@ def init_db():
         # only. Nothing matches on it, nothing keys a photograph on it, and
         # nothing that talks to Booking.com reads it. See room_title().
         ("rooms_website_title", "ALTER TABLE rooms ADD COLUMN website_title TEXT"),
+        # The small line under that title (24 November 2026, the site review):
+        # the plain name unless this says otherwise, so a room whose plain
+        # name misleads a guest -- "The Twin Room (Ground Floor)" is a queen
+        # and a double, beside a real twin room -- can be called what it is
+        # without renaming the key Booking.com and the rates are matched on.
+        # Display only, like website_title. See room_plain().
+        ("rooms_website_label", "ALTER TABLE rooms ADD COLUMN website_label TEXT"),
         # An enquiry's task knows its enquiry, so it can be opened from the
         # day's list and closes when the enquiry is answered, closed or spam.
         ("tasks_waitlist_entry_id", "ALTER TABLE tasks ADD COLUMN waitlist_entry_id INTEGER"),
@@ -9241,6 +9248,8 @@ def init_db():
     # The rooms' French titles on the website (owner, 23 November), once, by
     # the names of 16 October.
     apply_room_titles_2026_11_23(conn)
+    # The line under La Chambre Marie Curie's title (site review, 24 November), once.
+    apply_room_labels_2026_11_24(conn)
     # Every atelier takes fifteen (owner, 18 October), once.
     apply_workshops_fifteen_2026_10_18(conn)
     # The waitlist learns the status 'enquiry', once, before the tidy below
@@ -9522,6 +9531,8 @@ def init_db():
                  position, datetime.now(timezone.utc).isoformat()))
     conn.commit()
     correct_whats_on(conn)
+    # Lombrives opens on set days out of season (site review, 24 Nov), once.
+    correct_whats_on_lombrives(conn)
     fix_ax_market_days(conn)
     seed_whats_on_dates(conn)
     link_whats_on_sources(conn)
@@ -16192,6 +16203,9 @@ DEFAULT_WHATS_ON = [
 # `until` are only where the line is placed and how long it stays -- the brief
 # gives no day, so none is ever shown for them. An entry with `when` and no
 # `date` at all ("All year") is listed apart, under All year.
+# What What's On says of the cave at Lombrives (site review, 24 Nov 2026; sources at its row below).
+LOMBRIVES_ALL_YEAR = "Grotte de Lombrives, open all year: on set days out of season, so book ahead"
+
 DEFAULT_WHATS_ON_DATES = [
     {"title": "Grandvalira (Andorra) ski season opens", "date": "2026-12-04", "yearly": True},
     {"title": "Ax 3 Domaines ski season opens (provisional)", "date": "2026-12-05",
@@ -16236,8 +16250,30 @@ DEFAULT_WHATS_ON_DATES = [
      "when": "Early September (date to come)", "yearly": True},
     {"title": "Les Bains du Couloubret thermal baths, Ax-les-Thermes, open all year",
      "when": "All year"},
-    {"title": "Grotte de Lombrives open all year", "when": "All year"},
+    # Checked 24 Nov 2026 (site review, 10) on the cave's own site, grottedelombrives.com ("toute l'année", dates
+    # and departures on its online booking), and the tourist offices' pages (ariegepyrenees.com, The Cave of
+    # Lombrives; tourisme-occitanie.com): open all year, but out of season on set days only -- from 16 November to
+    # 20 December 2026 Wednesday, Saturday and Sunday, then daily to 31 December -- and booking ahead is advised.
+    {"title": LOMBRIVES_ALL_YEAR, "when": "All year", "source": "https://www.grottedelombrives.com/"},
 ]
+
+LOMBRIVES_ALL_YEAR_SEEDED = "Grotte de Lombrives open all year"
+
+
+def correct_whats_on_lombrives(conn):
+    """Once: the Lombrives line says it opens on set days out of season, and links the cave.
+
+    Only while the row still reads as seeded -- an owner's edit is theirs. Returns rows changed."""
+    key = "whats_on_lombrives_set_days"
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
+        return 0
+    changed = conn.execute(
+        "UPDATE whats_on SET title = ?, source_url = COALESCE(source_url, ?) WHERE title = ?",
+        (LOMBRIVES_ALL_YEAR, "https://www.grottedelombrives.com/", LOMBRIVES_ALL_YEAR_SEEDED)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
+                 (key, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return changed
 
 def fix_ax_market_days(conn):
     """The Ax market on its real days, once per database. Returns what it did.
@@ -60504,6 +60540,62 @@ def apply_room_titles_2026_11_23(conn):
     return changed
 
 
+# THE LINE UNDER A ROOM'S TITLE (site review, 24 November 2026). Two rooms
+# printed "The Twin Room" beneath their titles: La Chambre Jeanne d'Arc, which
+# is one (two gilded beds), and La Chambre Marie Curie, which is a queen bed and
+# a double. The owner approved "The Queen Room (ground floor)" for the second,
+# beside the King Room, the Twin Room and the three suites, so every room has a
+# label of its own. Only the printed line changes: the room keeps its name, and
+# Booking.com, the rates and every photograph stay matched on that. Once, by a
+# flag, and only where the room has no label yet, so the owner's own edit in
+# Admin > Rooms is never put back.
+ROOM_LABELS_2026_11_24 = [
+    ("The Twin Room (Ground Floor)", "The Queen Room (ground floor)"),
+]
+
+
+def apply_room_labels_2026_11_24(conn):
+    """Once: the line under a room's title, where the plain name misleads. Returns rooms changed."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_labels_2026_11_24'").fetchone():
+        return 0
+    changed = 0
+    for name, label in ROOM_LABELS_2026_11_24:
+        changed += conn.execute(
+            "UPDATE rooms SET website_label = ? WHERE name = ? "
+            "AND TRIM(COALESCE(website_label, '')) = ''", (label, name)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('room_labels_2026_11_24', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        log_line(f"[rooms] the line under the title, 24 November: {changed} room(s)")
+    return changed
+
+
+def room_website_labels(conn=None):
+    """{room name: the line printed under its title}, for the rooms that set one."""
+    if has_request_context():
+        cached = getattr(g, "_room_labels", None)
+        if cached is not None:
+            return cached
+    own = conn is None
+    try:
+        if own:
+            conn = get_db()
+        try:
+            rows = conn.execute(
+                "SELECT name, website_label FROM rooms "
+                "WHERE TRIM(COALESCE(website_label, '')) != ''").fetchall()
+        finally:
+            if own:
+                conn.close()
+        labels = {r["name"]: r["website_label"].strip() for r in rows}
+    except sqlite3.Error:
+        labels = {}
+    if has_request_context():
+        g._room_labels = labels
+    return labels
+
+
 def room_website_titles(conn=None):
     """{room name: its title on the website}, for the rooms that have one.
 
@@ -60551,11 +60643,13 @@ def room_title(name, conn=None):
 
 
 def room_plain(name, conn=None):
-    """The plain name to print small beneath a room's title, or "" when the
-    title IS the plain name and a second line would only repeat it."""
+    """The line to print small beneath a room's title: its label where the owner
+    has set one (Admin > Rooms, "Line under the title"), else its plain name;
+    or "" when the title IS that line and a second one would only repeat it."""
     if not name:
         return ""
-    return name if room_title(name, conn) != name else ""
+    line = room_website_labels(conn).get(name) or name
+    return line if room_title(name, conn) != line else ""
 
 
 def room_title_and_plain(name, conn=None):
@@ -60563,7 +60657,10 @@ def room_title_and_plain(name, conn=None):
     where a guest checks which room they booked; the name alone where there is
     no title."""
     plain = room_plain(name, conn)
-    return f"{room_title(name, conn)} ({plain})" if plain else (name or "")
+    if not plain:
+        return name or ""
+    # A line with brackets of its own ("The Queen Room (ground floor)", 24 Nov) after a comma, not in a second pair.
+    return f"{room_title(name, conn)}, {plain}" if "(" in plain else f"{room_title(name, conn)} ({plain})"
 
 
 app.jinja_env.globals["room_title"] = room_title
@@ -61936,6 +62033,8 @@ def next_free_nights(conn, *, limit=6, today=None):
                 # this is written on Windows, which is exactly the way round
                 # that never shows up until it is live.
                 "date": f"{day.day} {day.strftime('%B')}",
+                # The heading of its group on /book: "From Saturday 28 November" (24 Nov).
+                "weekday": WEEKDAY_NAMES[day.weekday()],
                 "date_iso": day.isoformat(),
                 "room_name": room["name"],
                 "room_id": room["id"],
@@ -72474,12 +72573,12 @@ def new_room():
         conn = get_db()
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM rooms").fetchone()["m"]
         conn.execute(
-            """INSERT INTO rooms (name, channel_name, website_title, description, max_occupancy, max_adults, max_children,
+            """INSERT INTO rooms (name, channel_name, website_title, website_label, description, max_occupancy, max_adults, max_children,
                price_per_night, min_nights, size_sqm, bed_setup, bathroom, outlook, floor,
                access_steps, access_car_metres, access_bathroom, access_notes,
                export_token, sort_order, photo_filename, amenities, active)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
-            (f["name"], f["channel_name"], f["website_title"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
+            (f["name"], f["channel_name"], f["website_title"], f["website_label"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
              f["access_steps"], f["access_car_metres"], f["access_bathroom"],
@@ -72524,12 +72623,12 @@ def edit_room(room_id):
             photo_filename = room["photo_filename"]
 
         conn.execute(
-            """UPDATE rooms SET name=?, channel_name=?, website_title=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
+            """UPDATE rooms SET name=?, channel_name=?, website_title=?, website_label=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
                price_per_night=?, min_nights=?, size_sqm=?, bed_setup=?, bathroom=?, outlook=?,
                floor=?, access_steps=?, access_car_metres=?, access_bathroom=?,
                access_notes=?, active=?, photo_filename=?, amenities=?,
                workshop_room=? WHERE id=?""",
-            (f["name"], f["channel_name"], f["website_title"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
+            (f["name"], f["channel_name"], f["website_title"], f["website_label"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
              f["access_steps"], f["access_car_metres"], f["access_bathroom"],
@@ -123241,6 +123340,9 @@ def room_fields_from_form():
         # name, with no second line under it. One line of words: collapsed,
         # and kept to a length a card heading can carry.
         "website_title": (" ".join((request.form.get("website_title", "") or "").split())[:80]
+                          or None),
+        # The line under it (24 Nov). Blank means the name.
+        "website_label": (" ".join((request.form.get("website_label", "") or "").split())[:80]
                           or None),
         "description": (request.form.get("description", "") or "").strip(),
         "max_adults": adults, "max_children": children,

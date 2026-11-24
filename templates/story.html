@@ -4,6 +4,7 @@
 {% block description %}The Waters family bought Château de Gudanes in 2013, and has been restoring it since. What happened next, and why it is still happening.{% endblock %}
 {% block og_image %}https://cf.bstatic.com/xdata/images/hotel/max2048x2048/798764955.jpg?k=d8653db73b32b57205f0af9b550ee5ee521deae7ec1638ed4dafcc67057d01c9&amp;o={% endblock %}
 {% block title_fr %}La famille{% endblock %}
+{% block bodyclass %} has-hero hero--short{% endblock %}
 {% block description_fr %}La famille Waters a acheté le château de Gudanes en 2013 et le restaure depuis.{% endblock %}
 {% set crumbs = [('The family', None)] %}
 {% block content %}
@@ -14,51 +15,36 @@
 {% from '_stay_panel.html' import stay_panel with context %}
 {% from '_animals.html' import animals_note %}
 
-<section class="g-sec g-sec--tight"><div class="g-wrap">
-  <p class="g-fr">Une famille, pas une société <span class="g-fr__en">A family, not a company</span></p>
-  <p class="g-eyebrow">Since 2013</p>
-  <h1 class="g-pagehead">Who bought it, and why</h1>
-</div></section>
-
-<section class="g-sec g-duo-sec"><div class="g-wrap">
-  {# 2 Oct: two short sections that sat one after another, each with a medallion, now side by side - nothing reworded #}
-  <div class="g-duo">
-    <div class="g-duo__i">
-      <div class="g-duo__ill" aria-hidden="true">{{ illus('chateau') }}</div>
-  <p class="g-fr">Une maison de famille <span class="g-fr__en">A family château</span></p>
-  <p class="g-eyebrow">The Story</p>
-  <h2 class="g-place">A Family Château</h2>
-  <p class="g-p g-lede-first">When the Waters family bought Château de Gudanes in 2013, it was classified as a ruin: floors remained in only three of its rooms, and 500 tonnes of rubble had to be cleared before the work could begin. Since then the restoration has been followed the world over, room by room, and the château has begun, slowly, to live again. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco.</p>
-  <p class="g-p">Why: because a château this beautiful should not be allowed to fall, and because someone had to.</p>
-  <p class="g-p">Gudanes is a family château, not a hotel. Guests are welcomed into it as it returns, and the workshops, the full Gudanes experience, let them stay long enough to become part of its story.</p>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the full experience</a></p>
-    </div>
-    <div class="g-duo__i">
-      <div class="g-duo__ill" aria-hidden="true">{{ illus('laurel') }}</div>
-      <p class="g-fr">Depuis 2013 <span class="g-fr__en">Since 2013</span></p>
-  <p class="g-eyebrow">The Family</p>
-  <h2 class="g-place">Since 2013</h2>
-  <p class="g-p g-lede-first">The Waters family bought Château de Gudanes in 2013, and has been bringing it back ever since.</p>
-  <p class="g-p">A château like this was never meant to stand empty, so it is lived in while it is restored. {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms are open, and the workshops bring people to stay, cook and take part in the château as it comes back.</p>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the full experience</a></p>
-    </div>
+{#- 24 Nov 2026 (site review, 3): the page said the same thing three times -- "A Family Château", "Since 2013" and "The
+    Family" each opened on the Waters family buying the château in 2013, "room by room" four times, and two identical
+    "Discover the full experience" buttons -- under a hero with no photograph and the right half of the screen empty.
+    One section now, in this order: the purchase and the ruin (the 500 tonnes and the Polignac medal kept), then why,
+    then the household. Every fact is still here; only the repeats went. The hero is the household laying the table,
+    taken out of the slider below so it is not shown twice. test_site_review_24_nov holds it. -#}
+<section class="g-hero">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c7a763e0-e047-4bc6-ac87-6bc312a89731/_DSC9185.jpg?format=1500w" alt="Laying the table in the salon">
+  <div class="g-hero__wash"></div>
+  <div class="g-hero__in">
+    <p class="g-hero__eyebrow" lang="fr">Une famille, pas une société</p>
+    <h1 class="g-hero__title">Who Bought It, and Why</h1>
+    <p class="g-hero__lede">A family, not a company, since 2013.</p>
   </div>
-</div></section>
+</section>
 
 <section class="g-sec g-sec--sand g-person-sec"><div class="g-wrap g-person">
   <figure class="g-person__fig"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/61684200-6d8b-4438-a170-ff92cc99a0a8/Screenshot+2026-08-12+at+8.37.48+pm.png?format=1000w" alt="Lighting the candles at Château de Gudanes" loading="lazy"></figure>
   <div class="g-person__t">
-    <span class="g-hill" aria-hidden="true">{{ illus('laurel') }}</span>
-    <p class="g-fr">La famille <span class="g-fr__en">The family</span></p>
-    <h2 class="g-place">The Family</h2>
-    <p class="g-p">The restoration began in November 2013 as a family undertaking. The family leads the restoration and the care of the château, room by room, and every decision about the walls, the rooms and the guests who come to stay passes through them. The restoration is the family's own, room by room.</p>
+    <span class="g-hill" aria-hidden="true">{{ illus('chateau') }}</span>
+    <p class="g-fr">Une maison de famille <span class="g-fr__en">A family château</span></p>
+    <p class="g-eyebrow">Since 2013</p>
+    <h2 class="g-place">A Family Château</h2>
+    <p class="g-p g-lede-first">When the Waters family bought Château de Gudanes in 2013, it was classified as a ruin: floors remained in only three of its rooms, and 500 tonnes of rubble had to be cleared before the work could begin. The restoration began that November as a family undertaking, and it has been followed the world over, room by room, as the château has begun, slowly, to live again. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco.</p>
+    <p class="g-p">Why: because a château this beautiful should not be allowed to fall, and because someone had to.</p>
+    <p class="g-p">A château like this was never meant to stand empty, so it is lived in while it is restored. It is a family château, not a hotel, and the restoration is the family’s own: they lead it and the care of the château, and every decision about the walls, the rooms and the guests who come to stay passes through them.</p>
+    <p class="g-p">Guests are welcomed into it as it returns. {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms are open, and the retreats let people stay long enough to cook, to take part in the château as it comes back, and to become part of its story.</p>
+    <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the retreats</a></p>
   </div>
 </div></section>
-
-
-
-
-
 
 <div class="g-wrap g-mark__wrap">{{ mark('ivy') }}</div>
 
@@ -78,7 +64,7 @@
   <p class="g-p g-intro">The family, the kitchen and the people who look after the château and its guests, and Bruce, the French bulldog, who looks after all of them.</p>
   {#- 9 Nov (the brief, 4.6): three in an album, the rest in a slider. -#}
   {{ album([['https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1586814184307-PRBEXYIKAU816PYCGTSZ/Me+and+Lari+pastry+kitchen+with+Brucey.jpg?format=1000w', 'Two of the team in aprons in the pastry kitchen, holding Bruce', 'In the pastry kitchen, with Bruce'], ['https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1587881704710-HV3GWORU8Q339A5RB5Y7/christmas+bruce+2.jpg?format=1000w', 'Bruce in a green winter coat, a Christmas tree lit behind him', 'Bruce, dressed for winter'], ['https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1587881723318-ZJBZOKH25VMJCIQYNMRI/christmas+bruce+1.jpg?format=1000w', 'Bruce by the Christmas tree', 'Bruce at Christmas']]) }}
-  {{ carrousel([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c7a763e0-e047-4bc6-ac87-6bc312a89731/_DSC9185.jpg?format=1000w', 'Laying the table in the salon', 'Laying the table in the salon'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w', 'The chef in the candlelit salon', 'The chef, before dinner'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/4a0ae86a-ad32-4b6d-a8d9-45476c3cb734/Screenshot+2026-08-12+at+8.41.31+pm.png?format=1000w', 'By the window, in black and white', 'By the window'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9df28121-271f-40e4-8b15-131a03f75991/Screenshot+2026-08-12+at+8.39.57+pm.png?format=1000w', 'The chef bringing a tray through the garden', 'From the garden to the table'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/09362d9c-6029-42ff-bda7-e82976ae1e4a/Screenshot+2026-08-12+at+8.42.38+pm.png?format=1000w', 'In the salon', 'In the salon'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1000w', 'Lighting the candles in the salon', 'Lighting the candles'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/27199697-d1e3-4a6d-b875-e8c325e1b231/Screenshot+2026-08-12+at+8.39.43+pm.png?format=1000w', 'The chef on the terrace steps', 'On the terrace steps'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/35718cba-ae0d-4d2a-adc1-cace54a9e369/Screenshot+2026-08-12+at+8.40.54+pm.png?format=1000w', 'In the salon, flowers on the table', 'In the salon, flowers on the table'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9e7fe534-e9e9-498a-a050-53a072fafbe7/Screenshot+2026-08-12+at+9.11.24+pm.png?format=1000w', 'The chef, in black and white', 'The chef']], 'The people who keep it') }}
+  {{ carrousel([['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w', 'The chef in the candlelit salon', 'The chef, before dinner'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/4a0ae86a-ad32-4b6d-a8d9-45476c3cb734/Screenshot+2026-08-12+at+8.41.31+pm.png?format=1000w', 'By the window, in black and white', 'By the window'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9df28121-271f-40e4-8b15-131a03f75991/Screenshot+2026-08-12+at+8.39.57+pm.png?format=1000w', 'The chef bringing a tray through the garden', 'From the garden to the table'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/09362d9c-6029-42ff-bda7-e82976ae1e4a/Screenshot+2026-08-12+at+8.42.38+pm.png?format=1000w', 'In the salon', 'In the salon'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1000w', 'Lighting the candles in the salon', 'Lighting the candles'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/27199697-d1e3-4a6d-b875-e8c325e1b231/Screenshot+2026-08-12+at+8.39.43+pm.png?format=1000w', 'The chef on the terrace steps', 'On the terrace steps'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/35718cba-ae0d-4d2a-adc1-cace54a9e369/Screenshot+2026-08-12+at+8.40.54+pm.png?format=1000w', 'In the salon, flowers on the table', 'In the salon, flowers on the table'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9e7fe534-e9e9-498a-a050-53a072fafbe7/Screenshot+2026-08-12+at+9.11.24+pm.png?format=1000w', 'The chef, in black and white', 'The chef']], 'The people who keep it') }}
   {#- Put back after z22: Bruce is in this gallery, and wherever the animals are named the allergy line goes
       with them (test_animals). -#}
   {{ animals_note() }}
