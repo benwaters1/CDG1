@@ -55,8 +55,9 @@ PAGES = {
     "/events": [
         ("three ways to take the château, each with an arched framed photograph", r'class="g-cadre g-cadre--arch[^"]*g-way__cadre"', 3),
         # (the château at night has a house copy, so its address on the page is the copy's, not IMG_4368)
-        ("the band of four: one photograph across the page, the château at night",
-         r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*" alt="The château lit at night', 1),
+        # 24 Nov 2026: the château at night opens /press now (its one home); the band is the gates in the snow.
+        ("the band of four: one photograph across the page, the gates in the snow",
+         r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*" alt="The gates in the snow', 1),
     ],
     "/events/weddings": [
         # 23 Nov 2026: the long table, every candle lit, is the hero; the two opening sections each beside a photograph.

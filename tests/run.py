@@ -680,6 +680,9 @@ SUITES = [
     # 24 November 2026, the owner's brief for /restoration: the painted beams
     # and the frescoes in a section of their own, and the timeline to 2026.
     "test_restoration_page",
+    # 24 November 2026: the old addresses to The History, the crest as the
+    # site's icon, and a sharp photograph at the top of /press.
+    "test_history_redirects_and_icon",
 ]
 
 

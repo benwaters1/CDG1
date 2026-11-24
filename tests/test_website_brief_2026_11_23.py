@@ -81,7 +81,7 @@ def _press(s, anon):
             re.search(r"<h1[^>]*>\s*Written About, the World Over\s*</h1>", html) is not None)
     hero = re.search(r'<img[^>]*class="g-hero__img"[^>]*>', html)
     s.check("its hero is the front elevation, unless the owner fills the page's own slot",
-            hero is not None and ("chateau_facade_formal.jpg" in hero.group(0)
+            hero is not None and ("chateau-at-night.jpg" in hero.group(0)
                                   or "/room-photos/" in hero.group(0)),
             detail=hero.group(0)[:160] if hero else "no hero image")
     order = ["Since the first photographs of a roofless château", "As featured in",

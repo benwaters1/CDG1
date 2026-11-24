@@ -6,7 +6,7 @@
     as logos: the house does not hold the publications' marks. -#}
 {% block title %}Press: Written About, the World Over{% endblock %}
 {% block description %}Château de Gudanes in Vogue, Harper’s Bazaar, Architectural Digest, Kinfolk and the Financial Times; the 2016 Medal of Honour of the Fondation Prince Louis de Polignac; and the book.{% endblock %}
-{% block og_image %}{% set _h = site_image('press.hero') %}{% if _h %}{{ request.host_url.rstrip('/') ~ _h }}{% else %}{{ url_for('static', filename='img/chateau_facade_formal.jpg', _external=True) }}{% endif %}{% endblock %}
+{% block og_image %}{% set _h = site_image('press.hero') %}{% if _h %}{{ request.host_url.rstrip('/') ~ _h }}{% else %}{{ url_for('static', filename='img/retreats/chateau-at-night.jpg', _external=True) }}{% endif %}{% endblock %}
 {% block og_image_alt %}Château de Gudanes, the front elevation{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% set crumbs = [('Press', None)] %}
@@ -18,9 +18,11 @@
 {% from '_marks.html' import mark, monogram %}
 
 {#- The front elevation, unless the owner has put another photograph in the page's own slot (Admin > Site images,
-    "The press page"). -#}
+    "The press page"). 24 Nov 2026 (owner: "fix the photo"): the daylight file was 896px wide and soft across the
+    page, and the house holds no larger copy of it; the front elevation at night, lit gold under the stars, is
+    1,600px and sharp. Its one other use, the band on /events, became the gates in the snow. -#}
 <section class="g-hero">
-  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ site_image('press.hero', url_for('static', filename='img/chateau_facade_formal.jpg')) }}" alt="Château de Gudanes, the front elevation">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ site_image('press.hero', url_for('static', filename='img/retreats/chateau-at-night.jpg')) }}" alt="Château de Gudanes at night, its front elevation lit gold under the stars">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Press · Since 2013</p>

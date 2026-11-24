@@ -128521,6 +128521,52 @@ LEGACY_PATHS = [
     # October and November, /press-2/moments-magazine and
     # /press-2/2017/1/18/sydney-morning-herald the most.
     ("/press-2", "press", True),
+    # 24 November 2026 (owner: "put it to history"). The old addresses still
+    # asked for, from the site's own count of pages not found between 1 October
+    # and 23 November (OLD-ADDRESSES-23-nov.md). The Captain's Log -- the old
+    # blog, 3,000 requests -- and every page that told the house's past or the
+    # work on it go to The History. Temporary for the Captain's Log, as /journal
+    # is: the house may publish its log again at its own address. Bot probes
+    # (/wp/, /.env, /dashboard) are not here: a 404 is the right answer to them.
+    ("/captains-log", "history_page", False),
+    ("/captains-log2", "history_page", False),
+    ("/the-project", "history_page", True),
+    ("/work-in-progress", "history_page", True),
+    ("/front-facade", "history_page", True),
+    ("/before-the-work-began", "history_page", True),
+    ("/chateau-discoveries", "history_page", True),
+    ("/restoration-timeline", "history_page", True),
+    ("/a-brief-history", "history_page", True),
+    ("/lhistoire-en-francais", "history_page", True),
+    ("/the-chateau-today", "history_page", True),
+    ("/faq-the-chateau-today", "history_page", True),
+    ("/chateauexperiences", "workshops_public", True),
+    ("/stay-2023", "workshops_public", True),
+    ("/stay-2022", "workshops_public", True),
+    ("/stay-details-2025", "workshops_public", True),
+    ("/stay-summer-2026", "workshops_public", True),
+    ("/gardens", "facilities_page", True),
+    ("/leparc", "facilities_page", True),
+    ("/leparc-1", "facilities_page", True),
+    ("/chateau-videos", "gallery_page", False),
+    ("/interior", "gallery_page", True),
+    ("/exterior", "gallery_page", True),
+    ("/chateau-interior", "gallery_page", True),
+    ("/chateau-exterior", "gallery_page", True),
+    ("/before-and-after-the-chateau-bathrooms", "book_rooms", True),
+    ("/chateauboutique", "dashboard", True),
+    ("/chateaubook", "press", True),
+    ("/about-us", "story", True),
+    ("/faq-our-story", "story", True),
+    ("/terms-and-conditions", "terms_page", True),
+    ("/get-in-touch", "contact_page", True),
+    ("/mentions-legales", "legal_page", True),
+    # The Letter Club's old posts; the Club's own pages already go home.
+    ("/39-treading-lightly", "dashboard", True),
+    ("/37-just-to-recap", "dashboard", True),
+    ("/44-our-first-party", "dashboard", True),
+    ("/42-whispering-walls", "dashboard", True),
+    ("/28-march-missive", "dashboard", True),
 ]
 
 # Old addresses that were ONE atelier, sent to it by the words of its title,
@@ -128540,6 +128586,11 @@ LEGACY_ATELIERS = [
     # search with the 2026 cooking offer at its old price.
     ("/5-nights", "Cooking Cuisine"),
     ("/christmas", "Noel"),
+    # 24 November 2026: old offers still asked for (OLD-ADDRESSES-23-nov.md).
+    ("/cookinginthecuisine", "Cooking Cuisine"),
+    ("/cooking-in-the-cuisine-pastry", "Cooking Cuisine"),
+    ("/seven-starry-nights-stay-july", "Seven Starry Nights"),
+    ("/bric-a-brac-away-fall", "Antique Finds"),
 ]
 
 # Whole sections of the old site, for the pages under them that no sitemap
@@ -128552,6 +128603,12 @@ LEGACY_SECTIONS = [
     ("/chateau-ateliers", "workshops_public", True),
     ("/letter-club-subscription", "dashboard", True),
     ("/press-2", "press", True),
+    # 24 November 2026 (owner: "put it to history"): the Captain's Log's 69
+    # posts asked for, and the old videos and shop pages under their sections.
+    ("/captains-log", "history_page", False),
+    ("/captains-log2", "history_page", False),
+    ("/chateau-videos", "gallery_page", False),
+    ("/boutique", "dashboard", True),
 ]
 
 
@@ -129089,6 +129146,29 @@ def server_error(e):
     if request.path.startswith("/api/"):
         return jsonify(error="server error"), 500
     return render_template("error.html", code=500), 500
+
+
+# The house's crest as the site's icon (owner, 24 Nov 2026: "the G crest"). Browsers and phones ask for these at
+# the root of the site whatever a page's <link> tags say -- /favicon.ico was asked for 6,299 times in November and
+# answered "not found" every time, the iPhone's two home-screen names another 2,070. The files are in static/,
+# drawn from the logo's crest; these only answer at the addresses that are asked for.
+HOUSE_ICONS = {
+    "/favicon.ico": ("favicon.ico", "image/vnd.microsoft.icon"),
+    "/apple-touch-icon.png": ("apple-touch-icon.png", "image/png"),
+    "/apple-touch-icon-precomposed.png": ("apple-touch-icon.png", "image/png"),
+}
+
+
+def house_icon():
+    filename, mimetype = HOUSE_ICONS[request.path]
+    response = send_from_directory(os.path.join(BASE_DIR, "static"), filename, mimetype=mimetype,
+                                   max_age=7 * 24 * 3600)
+    return response
+
+
+for _icon_path in HOUSE_ICONS:
+    app.add_url_rule(_icon_path, "house_icon" + re.sub(r"[^a-z0-9]+", "_", _icon_path).rstrip("_"),
+                     house_icon)
 
 
 @app.route("/robots.txt")
