@@ -145,7 +145,12 @@ m = _harness.m
 # menu card on every page; with that line put back for one run, /, /workshops, /events, /events/weddings,
 # /events/private, /facilities, the La vie de chateau card on /press, /story and /gallery, and the four retreats' own
 # pages, each at one of those changes, and nothing else. Was: "5b20f5a"
-COPY_BASE = "a4eb7a5"
+# 24 Nov 2026, late: moved to 46b6c34, the five branches merged in one (restoration 6 to 11, the retreats
+# page and the old addresses, Occasions and Getting Here, the booking path, the owner home's clearings) and
+# the fixes on top. Against a4eb7a5 it listed every public page, each first at the main menu's new What's On
+# dropdown (In the Ariège, At Gudanes: the occasions brief), and the room pages' "With the Room" lines.
+# Was: "a4eb7a5"
+COPY_BASE = "46b6c34"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
