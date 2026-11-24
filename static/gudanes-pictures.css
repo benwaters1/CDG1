@@ -1128,3 +1128,15 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-pull--alone blockquote{ margin: 0; padding: 0; border: 0; }
 .g .g-pull--alone p{ max-width: none; }
 .g .g-pull--alone cite{ font-style: normal; }
+
+/* 24 Nov 2026: the address the owner wanted high on the home page (10 Nov: "i wated another address further up") fell
+   to 1188px on a phone once the hero carried the retreats, three cards stacked. On a phone the three now sit in one row
+   that swipes, the next peeking in, so the address is back inside the first screen (test_public_margins). */
+@media (max-width: 44rem){
+  .g .g-hero .g-hbook__list{ grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 86%;
+    overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .g .g-hero .g-hbook__list::-webkit-scrollbar{ display: none; }
+  .g .g-hero .g-hbook__list li{ scroll-snap-align: start; }
+  .g .g-hero .g-hbook__w{ height: 100%; grid-template-columns: 84px minmax(0, 1fr); }
+  .g .g-hero .g-hbook__ph{ width: 84px; height: 100%; aspect-ratio: auto; overflow: hidden; }
+}
