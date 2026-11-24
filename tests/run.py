@@ -677,6 +677,9 @@ SUITES = [
     # 23 November 2026, the owner's website brief: /press rebuilt, the old
     # press archive redirected, the rooms' French titles, and /links.
     "test_website_brief_2026_11_23",
+    # 24 November 2026: the old addresses to The History, the crest as the
+    # site's icon, and a sharp photograph at the top of /press.
+    "test_history_redirects_and_icon",
 ]
 
 
