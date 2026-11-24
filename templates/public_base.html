@@ -260,7 +260,7 @@ window.houseDay = (function () {
 
         {# Dates from anywhere. The panel is reachable at every width, so this
            is the shortest path to booking on any page of the site. #}
-        <form class="g-qbook" method="get" action="{{ url_for('book_rooms') }}">
+        <form class="g-qbook" method="get" action="{{ url_for('book_rooms') }}#results">
           <p class="g-qbook__h">{{ t('Check dates') }}</p>
           <div class="g-qbook__row">
             {#- 23 Nov (owner: "this could be better"): the two fields were the browser's own date boxes, reading
@@ -1189,18 +1189,22 @@ window.houseDay = (function () {
     return Math.round((end - start) / 864e5);
   }
 
+  /* "Fri 12 Mar": the day of the week as well (24 Nov 2026, booking-flow brief 3), as a guest says a stay. */
+  var WEEKDAY = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   function pretty(d){
     if(!d) return null;
-    return d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0,3);
+    return WEEKDAY[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0,3);
   }
+  /* The words the page drew for no date, in the page's language; this wrote "Add dates" in English over them. */
+  function blank(el){ return el.getAttribute('data-rp-blank') || 'Add dates'; }
 
   function paintFields(){
     var n = nights();
     var la = scope.querySelector('[data-rp-label=arrival]');
     var ld = scope.querySelector('[data-rp-label=departure]');
     var ln = scope.querySelector('[data-rp-nights]');
-    if (la) la.textContent = pretty(start) || 'Add dates';
-    if (ld) ld.textContent = pretty(end) || 'Add dates';
+    if (la) la.textContent = pretty(start) || blank(la);
+    if (ld) ld.textContent = pretty(end) || blank(ld);
     if (ln) ln.textContent = n ? (n + (n===1 ? ' night' : ' nights')) : '';
     aIn.value = start ? iso(start) : '';
     dIn.value = end ? iso(end) : '';
@@ -1374,7 +1378,18 @@ window.houseDay = (function () {
   window.addEventListener('resize', function(){ if(!panel.hidden && openAnchor) place(openAnchor); });
 
   takeOver();
-  paintFields();
+  /* EVERY FORM'S BAR SAYS ITS OWN DATES (24 Nov 2026, booking-flow brief 3). This painted only the pair it was bound to
+     at the top, the first on the page -- which since 23 Nov is the menu's quick dates, in the drawer, on every page. So
+     /book, opened for 12 to 14 March, showed the rooms free on those nights under a bar that still said "Add dates"
+     twice. Each form is painted from its own inputs; open() binds to the right one again whenever it is used. */
+  var painted = [];
+  fields.forEach(function(b){
+    var form = b.closest('form') || document;
+    if (painted.indexOf(form) > -1 || !bindTo(b)) return;
+    painted.push(form);
+    start = parse(aIn.value); end = parse(dIn.value);
+    paintFields();
+  });
 })();
 </script>
 
