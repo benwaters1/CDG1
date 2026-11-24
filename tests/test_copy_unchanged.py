@@ -158,7 +158,11 @@ m = _harness.m
 # the fixes on top. Against a4eb7a5 it listed every public page, each first at the main menu's new What's On
 # dropdown (In the Ariège, At Gudanes: the occasions brief), and the room pages' "With the Room" lines.
 # Was: "a4eb7a5"
-COPY_BASE = "46b6c34"
+# 24 Nov 2026, later still: moved to 2d3c474, the room page a guest books from with its form first (owner: "too much
+# scrolling" before the details): the room's words, its facts, the note on the walls and the gallery moved from above
+# the form to below it. Against 46b6c34 it listed /book/1 to /book/5 and nothing else, each the same words in a new
+# order (counted word for word, every room, with dates and without). Was: "46b6c34"
+COPY_BASE = "2d3c474"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

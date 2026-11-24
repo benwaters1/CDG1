@@ -71916,7 +71916,11 @@ def size_hero(tag):
     widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
     srcset = ", ".join(f"/pic/{x}/{html_escape(rel)} {x}w" for x in widths)
     close = "/>" if tag.endswith("/>") else ">"
-    return tag[:-len(close)].rstrip() + f' srcset="{srcset}" sizes="100vw"' + close
+    # A tag that says how wide it is drawn keeps its own sizes: the room page's photograph sits in a 24rem column beside
+    # the room's name (24 Nov 2026), and "100vw" sent a phone and a computer the full-width file for it. A second sizes
+    # attribute would be ignored by the browser, so the default is added only where there is none.
+    sizes = "" if re.search(r"\ssizes=", tag) else ' sizes="100vw"'
+    return tag[:-len(close)].rstrip() + f' srcset="{srcset}"{sizes}' + close
 
 
 @app.after_request

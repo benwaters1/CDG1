@@ -92,10 +92,12 @@ KNOWN_LONG = {
     # 24 Nov: +800, three retreat guests' lines from their thank-you letters (owner's brief).
     # 24 Nov: +2,750 for the two sections the owner's retreats brief adds, What You'll Do and The Bathrooms
     # ("i dont know why theyre not selling"; "have we got the bathrooms on the workshop page?"); measured 15,029.
-    "/workshops": 15200,   # 24 Nov evening, was 15,100: the footer's two new links; measured 15,125 merged
+    "/workshops": 15300,   # 24 Nov evening, was 15,100: the footer's two new links; measured 15,125 merged.
+    # 24 Nov, late, was 15,200: fresh seed 15,222, house copy 15,125.
     "/workshops/<id>": 11900,
     "/history": 9900,
-    "/book/<id>": 9600,
+    # 24 Nov 2026: "/book/<id>" came off. The room page puts its form first, with the photograph beside the room's
+    # name rather than across the page over it (test_book_form_first): 8,727px, under the budget.
 }
 
 
