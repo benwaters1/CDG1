@@ -87,6 +87,7 @@
             <a href="{{ w.href }}">{{ w.title }}</a>
             {%- if w.count > 1 %} <span class="mini-status status-past">{{ w.count }}</span>{% endif %}
             — {{ 'snoozed until ' ~ w.until|date_short if w.until else 'cleared until it changes' }}
+            {%- if w.cleared_by %}, by {{ w.cleared_by }}{% endif %}{% if w.cleared_on %}, {{ w.cleared_on|date_short }}{% endif %}
           </span>
           <form method="post" action="{{ url_for('restore_home_warning') }}" class="oh-warn__acts">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -99,6 +99,14 @@ def _run(s, oc, ec, conn, live):
     shown = _page(oc, "?cleared=1")
     s.check("asking to see them lists it, with Bring back",
             "Ztest police register has gaps" in shown and "Bring back</button>" in shown)
+    # Who cleared it, by name (24 Nov 2026, test_who_did_it): a hidden line is a decision.
+    from markupsafe import escape
+    who = conn.execute(
+        """SELECT users.name FROM home_warning_dismissals
+             JOIN users ON users.id = home_warning_dismissals.dismissed_by_user_id
+            WHERE home_warning_dismissals.title = ?""", (base["title"],)).fetchone()
+    s.check("and says who cleared it, by name",
+            bool(who and who[0]) and f", by {escape(who[0])}" in shown, detail=str(who and who[0]))
     s.check("the clearing was audited",
             conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = "
                          "'home_warning_cleared' AND target = ?",

@@ -42190,8 +42190,14 @@ def split_cleared_warnings(conn, warnings, today):
     for w in warnings:
         w["key"] = home_warning_fingerprint(w)
     try:
+        # Who cleared it, by name: a line hidden from the panel is a decision,
+        # and on a house with more than one owner "cleared" alone does not say
+        # whom to ask (test_who_did_it).
         rows = {r["fingerprint"]: r for r in conn.execute(
-            "SELECT fingerprint, until_date, dismissed_at FROM home_warning_dismissals")}
+            """SELECT home_warning_dismissals.fingerprint, home_warning_dismissals.until_date,
+                      home_warning_dismissals.dismissed_at, users.name AS cleared_by
+                 FROM home_warning_dismissals
+                 LEFT JOIN users ON users.id = home_warning_dismissals.dismissed_by_user_id""")}
     except sqlite3.OperationalError:
         rows = {}
     today_iso = today.isoformat()
@@ -42200,7 +42206,8 @@ def split_cleared_warnings(conn, warnings, today):
         r = rows.get(w["key"])
         if r is not None and (not r["until_date"] or r["until_date"] > today_iso):
             hidden.append(dict(w, until=r["until_date"],
-                               cleared_on=house_date_iso(r["dismissed_at"])))
+                               cleared_on=house_date_iso(r["dismissed_at"]),
+                               cleared_by=r["cleared_by"]))
         else:
             shown.append(w)
     # A clearing whose line has changed or gone can never be used again, and
