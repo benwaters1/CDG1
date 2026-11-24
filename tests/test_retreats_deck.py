@@ -185,7 +185,8 @@ def run():
 
     s.section("/workshops")
     ws = words(pages["/workshops"].get_data(as_text=True))
-    for line in ["Les retraites", "La Vie de Château",
+    # 24 Nov 2026 (site review, 9): the hero's eyebrow is "Les séjours"; "Les retraites" reads first as pensions in French.
+    for line in ["Les séjours", "La Vie de Château",
                  # 23 Nov 2026 (owner's retreats brief): the hero and the opening name what a guest does, and the
                  # page no longer opens on what a retreat is not. test_retreats_page_sells holds the rest.
                  "Cooking with the château’s chefs, antiquing in the brocantes, and the frescoes coming back to the light.",
