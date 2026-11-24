@@ -567,7 +567,7 @@ window.houseDay = (function () {
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 6h16v14H4z"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
       <b>Clear at the point of booking</b>
-      <span>{% if _private_page %}A place on this stay holds with a deposit, and the balance is taken closer to the date.{% else %}A room is paid in full when you book it. A workshop holds with a deposit, and the balance is taken closer to the date.{% endif %}</span>
+      <span>{% if _private_page %}A place on this stay holds with a deposit, and the balance is taken closer to the date.{% else %}A room is paid in full when you book it. A retreat holds with a deposit, and the balance is taken closer to the date.{% endif %}</span>
     </li>
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>
@@ -621,7 +621,7 @@ window.houseDay = (function () {
           <a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
           {# Two bare addresses gave a guest no way to tell which to write to. The
              contact page splits them; the footer now says so too. #}
-          <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a> <span class="g-footer__k">{{ t('workshops & events') }}</span><br>
+          <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a> <span class="g-footer__k">{{ t('retreats and events') }}</span><br>
           <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> <span class="g-footer__k">{{ t('general enquiries') }}</span>
           {%- if _dm == 'open' %}{% set _fw = when_text()|trim %}{% if _fw %}<br>
           <a href="{{ url_for('restaurant_info') }}">La Table</a> <span class="g-footer__k">{{ _fw }}</span>{% endif %}{% endif %}

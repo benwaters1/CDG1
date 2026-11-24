@@ -1300,6 +1300,65 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-wscard__price:has(+ .g-toreserve), .g .g-sit__rate:has(+ .g-toreserve){ margin-bottom: 0; }
 .g .g-toreserve{ margin: 2px 0 var(--s4); font-family: var(--ui); font-size: 14.5px; font-weight: 600; line-height: 1.4; color: var(--ink); }
 .g .g-toreserve:has(+ .g-pernight){ margin-bottom: 0; }
+
+/* 24 Nov 2026 (site review, 6): the home page's room cards. The facts now come before the price, and the description
+   takes the slack, so the price and the button sit at the foot of every card and the prices line up across a row. */
+.g .g-car--cards .g-homeroom__b > .g-tags{ margin-top: var(--s4); }
+.g .g-car--cards .g-homeroom__b > .g-price{ margin-top: var(--s4); }
+/* 24 Nov 2026 (site review, 6): "Compare everything, side by side" was centred in a reading-width box, so under the
+   left card only; it is centred under both now. And the retreat column's open last line shares the class name
+   g-sow__more with that link, so it was centred too: it sits at the list's left edge like the lines above it. */
+.g .g-sow > .g-wrap > p.g-sow__more{ max-width: none; text-align: center; }
+.g .g-sow__list li.g-sow__more{ text-align: left; margin: 0; }
+/* From Ruin, Room by Room on the home page: each caption under its own photograph, the paragraph and the button
+   across the pair. One column on a phone, as the photographs are. */
+.g .g-homeresto__caps{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 var(--s4); }
+.g .g-homeresto__foot{ display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s3) var(--s6); margin-top: var(--s5); }
+.g .g-homeresto__foot .g-homeresto__p{ margin: 0; max-width: 46rem; flex: 1 1 24rem; }
+.g .g-homeresto__foot .g-homeresto__cta{ margin: 0; flex: none; }
+@media (min-width: 40rem){ .g .g-homeresto__caps{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* 24 Nov 2026 (site review, 6): La Vie de Château's two buttons on the home page, one above the other, did not share a
+   lettering: "Discover the retreats" in the house's sentence case, "THE STORY OF THE CHÂTEAU" in letter-spaced capitals.
+   The one face every other button has (above) left this link out; it has it now. */
+.g .g-full .g-full__link{ font-family: var(--serif) !important; font-size: 15px !important; font-weight: 500 !important;
+  letter-spacing: .02em !important; text-transform: none !important; }
+/* 24 Nov 2026 (site review, 6): /book's What is open next, one heading per date ("From Saturday 28 November", at 14px,
+   with the link that carries it) and the rooms open that night beneath it, a row each. */
+.g .g-nextf__g{ margin-top: var(--s4); }
+.g .g-nextf__gh{ display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s4);
+  margin: 0; padding: 0 0 var(--s2); border-bottom: 1px solid var(--line); }
+.g .g-nextf__gh .g-nextf__d{ font-size: 14px !important; }
+.g .g-nextf__g .g-nextf{ margin: 0 0 var(--s3); }
+.g .g-nextf__g .g-nextf__i{ grid-template-columns: minmax(10rem, 1fr) auto auto; }
+@media (max-width: 52rem){ .g .g-nextf__g .g-nextf__i{ grid-template-columns: 1fr; } }
+/* 24 Nov 2026 (site review, 6): on /book the live weather line was centred under a list set at the left; it sits at the
+   list's left edge, as one quiet line, as it does on /facilities. */
+.g .g-nextf-wrap ~ .g-wx, .g .g-typwx ~ .g-wx{ max-width: var(--m-read); margin-left: 0; margin-right: auto; text-align: left; }
+.g .g-nextf-wrap ~ .g-wx .g-wx__live, .g .g-typwx ~ .g-wx .g-wx__live{ justify-content: flex-start; }
+/* 24 Nov 2026 (site review, 6): /whats-on's fold as a control across the row, ruled like the rows above it: what it
+   holds on the left, "Show all" and a turning chevron on the right. */
+.g .g-agenda__more > summary{ list-style: none; justify-content: space-between; gap: var(--s4); padding: var(--s3) 0;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.g .g-agenda__more > summary::-webkit-details-marker{ display: none; }
+.g .g-agenda__moreb{ font-family: var(--serif); font-style: normal; font-size: 15px; letter-spacing: .02em;
+  color: var(--blue-deep, #14305F); white-space: nowrap; }
+.g .g-agenda__moreb::after{ content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 10px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-3px) rotate(45deg); transition: transform .2s ease; }
+.g .g-agenda__more[open] .g-agenda__moreb::after{ transform: translateY(1px) rotate(-135deg); }
+.g .g-agenda__more[open] .g-agenda__moreb{ font-size: 0; }
+.g .g-agenda__more[open] .g-agenda__moreb::after{ margin-left: 0; }
+/* 24 Nov 2026 (site review, 6): the weddings page's church. Its paragraph sat level with the foot of the photograph (or
+   halfway down it) and left a screen of empty space beside it; it starts level with the photograph's top, as the
+   page's other photograph-and-words pairs do. */
+.g .g-wed-church .g-sp{ align-items: start; }
+/* 24 Nov 2026 (site review, 8): two tap targets a thumb missed on a phone. "See N photographs" under the stays nearby on
+   the wedding, private and photoshoot pages was 108 by 28; it is at least 44 tall now. The arrows on /book's room
+   photographs are 44 by 44 at every width, as they already were below 600px. */
+.g .g-nearby__more{ display: flex; align-items: center; justify-content: center; width: fit-content; min-height: 44px; min-width: 44px; padding: 8px 14px; }
+.g .g-car--room .g-car__btn{ width: 44px; height: 44px; min-width: 44px; flex: none; }
+/* 24 Nov 2026 (site review, 8): the retreat dates on the home page's hero card ("5 – 9 DECEMBER 2026") are what a guest
+   is choosing by, and at 12px they were the smallest type on the site. 14px, still in the label's capitals. */
+.g .g-hero .g-hbook__w .g-hbook__d{ font-size: 14px; letter-spacing: .12em; }
 /* 24 Nov 2026 (booking-flow brief, 1): "Pay & book" is the one thing on the room page that takes the money, and the
    navy filled button above made it navy on the navy booking panel, and on the navy bar at the foot of a phone: a line
    of white words, not a button. On navy it is the home page's gold with navy words ("Discover the retreats"), the

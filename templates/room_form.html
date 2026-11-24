@@ -33,6 +33,14 @@
         <p class="field-hint">The room's heading on the website and in guests' letters, with the
           name above in small letters beneath it. Booking.com, the rates and the calendar feeds
           keep using the name. Leave it blank to show the name alone.</p>
+        {#- 24 Nov 2026 (site review): the small line under that title. The name unless this says otherwise -- for a
+            room whose name misleads a guest, as "The Twin Room (Ground Floor)" did for a queen and a double. -#}
+        <label class="field-label" for="website_label" style="margin-top:10px;">Line under the title</label>
+        <input type="text" id="website_label" name="website_label" maxlength="80"
+               value="{{ room['website_label'] or '' if room else '' }}"
+               placeholder="The Queen Room (ground floor)">
+        <p class="field-hint">The small line printed under the title on the website and in guests'
+          letters. Leave it blank to print the name. Nothing else reads it.</p>
         <label class="field-label" for="channel_name" style="margin-top:10px;">Name on Booking.com</label>
         <input type="text" id="channel_name" name="channel_name"
                value="{{ room['channel_name'] or '' if room else '' }}"

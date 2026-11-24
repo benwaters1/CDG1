@@ -700,6 +700,9 @@ SUITES = [
     # 23 November 2026, the owner's retreats brief: /workshops leads with what
     # a guest does, the bathrooms honestly, and what is included before the price.
     "test_retreats_page_sells",
+    # 24 November 2026, the owner's full review of the public site: the old words, the rooms' labels,
+    # /story said once, /restaurant as The Table, rows that line up, photographs first, phone tap targets.
+    "test_site_review_24_nov",
 ]
 
 

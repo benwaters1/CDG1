@@ -23,22 +23,46 @@
 {% set sticky_bar = 'dining' %}
 {% set crumbs = [('Dining', None)] %}
 {% block title_fr %}La Table{% endblock %}
-{% block description_fr %}Le dîner au château, dans la salle à manger. Pas tous les soirs.{% endblock %}
-{% block title %}Dining in a French Château, Ariège{% endblock %}
-{% block description %}{% set _w = when_text()|trim %}Dinner in the dining room of a Class I French château, {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.{% endblock %}
-{% block og_desc %}Dinner at Château de Gudanes, in the dining room of a Class I Historic Monument.{% endblock %}
+{% block description_fr %}{% if _dm == 'hidden' %}Le petit-déjeuner à chaque séjour, et tous les repas pendant les séjours de la vie de château.{% else %}Le dîner au château, dans la salle à manger. Pas tous les soirs.{% endif %}{% endblock %}
+{% block title %}{% if _dm == 'hidden' %}The Table at a French Château, Ariège{% else %}Dining in a French Château, Ariège{% endif %}{% endblock %}
+{% block description %}{% if _dm == 'hidden' %}Breakfast with every stay at Château de Gudanes, every meal on a retreat, and the restaurants nearby that we book for guests.{% else %}{% set _w = when_text()|trim %}Dinner in the dining room of a Class I French château, {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.{% endif %}{% endblock %}
+{% block og_desc %}{% if _dm == 'hidden' %}Breakfast with every stay, and every meal on a retreat, at Château de Gudanes.{% else %}Dinner at Château de Gudanes, in the dining room of a Class I Historic Monument.{% endif %}{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1200w{% endblock %}
-{% block bodyclass %}{% if _dm != 'hidden' %} has-hero hero--short{% endif %}{% endblock %}
+{% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
 {% from '_proof.html' import credential, proof %}
 {% from '_marks.html' import mark %}
 {% if _dm == 'hidden' %}
-{# Shown when settings.dining_mode is not "open". #}
+{#- 24 Nov 2026 (site review, 4): with the table not serving, this page said "Not Serving at the Moment" -- a dead end at
+    a public address search engines show. It is The Table instead: what breakfast is, how the retreats eat, and the
+    restaurants nearby that we book for guests. Nothing on it offers a meal at the château beyond breakfast to a
+    night's stay, and it still works the day the table reopens (the guest-chef weeks will open it). The facts are the
+    site's own: breakfast with every stay (/book), every meal and the wine on a retreat (/workshops, The Table), the
+    restaurants nearby (_stay_or_workshop.eat_nearby, a map search at the pin). test_site_review_24_nov holds it. -#}
+{% from '_stay_or_workshop.html' import eat_nearby with context %}
+<section class="g-hero">
+<img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24c85ec2-72d4-45e6-9755-68ff10cce381/Screenshot+2026-08-14+at+11.53.22+pm.png?format=1500w" alt="The table laid for dinner at the château">
+<div class="g-hero__wash"></div>
+<div class="g-hero__in"><p class="g-hero__eyebrow">La Table · Château de Gudanes</p>
+    <h1 class="g-hero__title">The Table</h1>
+    <p class="g-hero__lede">Breakfast with every stay, and every meal on a retreat.</p>
+  </div>
+</section>
+
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">La Table</p>
-  <h1 class="g-place">{% if _dm == 'closed' %}Closed for the Season{% else %}Not Serving at the Moment{% endif %}</h1>
-  <p class="g-p">{% if _dm == 'closed' %}La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.{% else %}The château's table is not taking reservations at the moment.{% endif %} Breakfast is served every morning for guests staying in the château, and the workshops are full board as always.</p>
-  <p class="g-p" style="margin-top:var(--s5)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the full experience</a></p>
+  <div class="g-vignette" aria-hidden="true">{{ illus('candelabra') }}</div>
+  <p class="g-fr">Le petit-déjeuner <span class="g-fr__en">Breakfast</span></p>
+  <h2 class="g-place">Breakfast, Every Morning</h2>
+  <p class="g-p g-lede-first">Breakfast is included with every stay, served each morning for the guests staying in the château.</p>
+  <p class="g-p">Lunch and dinner on a night’s stay are at the {{ eat_nearby() }}, which we are happy to book for you. Les Cabannes, just down the hill, has good places to eat.</p>
+  <p class="g-p" style="margin-top:var(--s5)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
+</div></section>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">À table <span class="g-fr__en">At the table</span></p>
+  <h2 class="g-place">On a Retreat, Every Meal</h2>
+  <p class="g-p g-lede-first">In France, the table is the point of the day. On a retreat every meal is included, with the wine, cooked by the château’s chefs: bread from the village <em lang="fr">boulangerie</em> in the morning, long lunches in the garden or out in the valley, the barbecue on the terrace, and most evenings several courses by candlelight.</p>
+  <p class="g-p" style="margin-top:var(--s5)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the retreats</a></p>
 </div></section>
 {% else %}
 <section class="g-hero">
@@ -123,8 +147,8 @@
   <p class="g-eyebrow">The French Table</p>
   <h2 class="g-place">La Table Française</h2>
   <p class="g-p g-lede-first">French cooking is about time as much as taste: a meal that is not hurried, and a table that is not cleared too soon. Dinner at Gudanes is cooked that way, seasonal and generous, in a dining room brought back from ruin, and it begins, as it should, with an apéritif.</p>
-  <p class="g-p">On a workshop every meal is included, with alcoholic and non-alcoholic drinks, mostly local: the table is at the heart of the full experience.</p>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the full experience</a></p>
+  <p class="g-p">On a retreat every meal is included, with alcoholic and non-alcoholic drinks, mostly local: the table is at the heart of <em lang="fr">la vie de château</em>.</p>
+  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the retreats</a></p>
 </div></section>
 
 
@@ -207,11 +231,11 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" width="62" height="62" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Come to the table</h2>
-  <p class="g-close__p">Meals are arranged in advance so the kitchen buys for the table it is cooking for. Tell us when you book. On a workshop, every meal is cooked here, and drinks are included.</p>
+  <p class="g-close__p">Meals are arranged in advance so the kitchen buys for the table it is cooking for. Tell us when you book. On a retreat, every meal is cooked here, and drinks are included.</p>
   <div class="g-close__acts">
       {% if _dm == 'open' %}<a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve a table</a>{% endif %}
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn">Stay the night</a>
-<a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the full experience</a>
+<a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the retreats</a>
   </div>
 </div></section>
 

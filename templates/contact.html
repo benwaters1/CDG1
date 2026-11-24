@@ -51,11 +51,11 @@
   <div>
     <p class="g-fr">Écrivez-nous <span class="g-fr__en">Write to us</span></p>
     <h2 class="g-h2">However You Would Rather Reach Us</h2>
-    <p class="g-p">Every message is read. The booking pages are the fastest route for a stay{% if _dm == 'open' %}, a workshop or a table{% else %} or a workshop{% endif %}; for anything else, write and we will answer.</p>
+    <p class="g-p">Every message is read. The booking pages are the fastest route for a stay{% if _dm == 'open' %}, a retreat or a table{% else %} or a retreat{% endif %}; for anything else, write and we will answer.</p>
 
     <dl class="g-facts-list" style="margin-top:var(--s6)">
       <div><dt>Stays &amp; reservations</dt><dd><a href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com</a></dd></div>
-      <div><dt>Workshops</dt><dd><a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a></dd></div>
+      <div><dt>Retreats</dt><dd><a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a></dd></div>
       <div><dt>Weddings &amp; events</dt><dd><a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a></dd></div>
       <div><dt>General enquiries</dt><dd><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></dd></div>
       <div><dt>Telephone</dt><dd><a href="tel:+33628069776">+33 6 28 06 97 76</a></dd></div>
@@ -124,7 +124,7 @@
       <span>Check dates and reserve a room</span>
     </a>
     <a href="{{ url_for('workshops_public') }}" class="g-contact-link">
-      <b>{{ t('Workshops') }}</b>
+      <b>{{ t('Retreats') }}</b>
       <span>Every date, and what each one includes</span>
     </a>
     {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}" class="g-contact-link">
@@ -222,7 +222,7 @@
   <p class="g-close__p">Book online, and the directions come with your confirmation.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Discover the full experience</a>
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Discover the retreats</a>
       {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Reserve a table</a>{% endif %}
   </div>
 </div></section>

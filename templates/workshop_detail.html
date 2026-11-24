@@ -7,9 +7,9 @@
     parts). Places left are shown; who else is coming is not. test_private_stays reads every one of these. -#}
 {% set _private = private_token is defined and private_token %}
 {% set sticky_bar = 'none' if _private else 'atelier' %}
-{% set crumbs = none if _private else [('Workshops', url_for('workshops_public')), (workshop['title'], None)] %}
+{% set crumbs = none if _private else [('Retreats', url_for('workshops_public')), (workshop['title'], None)] %}
 {% block robots %}{% if private_token is defined and private_token %}<meta name="robots" content="noindex, nofollow">{% endif %}{% endblock %}
-{% block title %}{{ workshop['title'] }}{% if not (private_token is defined and private_token) %} · The Full Experience{% endif %}{% endblock %}
+{% block title %}{{ workshop['title'] }}{% if not (private_token is defined and private_token) %} · A Château Retreat{% endif %}{% endblock %}
 {# Every atelier shared one generic description; this one is the atelier's own, trimmed for search. #}{% block description %}{{ ((workshop['title'] ~ ': ' ~ (ws_copy(workshop)|striptags|trim))|truncate(158, False, '…')) if workshop else 'The full Gudanes experience: a workshop retreat at a French château under restoration.' }}{% endblock %}
 {#- 26 Oct (owner, the retreats deck): the same link preview on every retreat page. -#}
 {% block og_desc %}Three to seven nights of French country-house life at Château de Gudanes: the kitchen and the château’s chefs, the markets and brocantes of the Ariège, castles and caves, the restoration, long candlelit evenings and so much more.{% endblock %}

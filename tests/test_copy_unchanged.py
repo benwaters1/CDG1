@@ -145,6 +145,14 @@ m = _harness.m
 # menu card on every page; with that line put back for one run, /, /workshops, /events, /events/weddings,
 # /events/private, /facilities, the La vie de chateau card on /press, /story and /gallery, and the four retreats' own
 # pages, each at one of those changes, and nothing else. Was: "5b20f5a"
+# 24 Nov 2026, late: moved to f0e9feb, the retreats brief (/workshops made to sell, from 20d2ef0, 23 Nov) and the
+# site review of 24 Nov on top of a4eb7a5: workshop and the full experience out of the footer, newsletter and every
+# page that said them, lunch and dinner at the restaurants nearby, /story said once, /restaurant as The Table, the
+# Queen Room's line, the facts above the price, What is open next by date, the What's On fold, the retreats' alt
+# words and the wine in the lounge. Against a4eb7a5 it listed /, /book and /book/4 to /book/8, /contact, /events and
+# its three pages (the footer), /facilities, /gallery, /history, /press, /restaurant, /restoration, /story, /terms
+# (its description and the footer), /whats-on, /workshops and the four retreats' pages, and nothing else.
+# Was: "a4eb7a5"
 # 24 Nov 2026, late: moved to 46b6c34, the five branches merged in one (restoration 6 to 11, the retreats
 # page and the old addresses, Occasions and Getting Here, the booking path, the owner home's clearings) and
 # the fixes on top. Against a4eb7a5 it listed every public page, each first at the main menu's new What's On

@@ -36,7 +36,7 @@
     {% endif %}
     <div class="expense-head">
       <div>
-        <strong>{{ room['name'] }}</strong>{% if room['website_title'] %} <span class="muted">· {{ room['website_title'] }} on the website</span>{% endif %}{% if room['channel_name'] %} <span class="muted">({{ room['channel_name'] }} on the channels)</span>{% endif %}
+        <strong>{{ room['name'] }}</strong>{% if room['website_title'] %} <span class="muted">· {{ room['website_title'] }}{% if room['website_label'] %} over “{{ room['website_label'] }}”{% endif %} on the website</span>{% endif %}{% if room['channel_name'] %} <span class="muted">({{ room['channel_name'] }} on the channels)</span>{% endif %}
         {% if room['price_per_night'] %} — {{ room['price_per_night']|money(0) }}/night{% endif %}
         · sleeps {{ room['max_occupancy'] }} <span class="muted">(up to {{ room['max_adults'] or room['max_occupancy'] }} adults, {{ room['max_children'] or 0 }} children)</span>
         <span class="mini-status {{ 'status-active' if room['active'] else 'status-inactive' }}" style="margin-left:8px;">{{ 'open for booking' if room['active'] else 'hidden' }}</span>
