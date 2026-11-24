@@ -52,6 +52,29 @@
   <p class="g-p g-intro">The whole château for a few days: a birthday, an anniversary or a gathering of your own, with up to fifteen guests staying.</p>
   <p class="g-p">Throughout the seasons, the château welcomes private celebrations, bringing loved ones together within its historic salons, gardens and terraces. Each salon has its own stories to share, and aperitifs, dinners and music move from room to room by candlelight, exactly as the Marquis intended.</p>
   {% endcall %}
+</div></section>
+
+{#- 24 Nov 2026 (owner: "double check the order on the pages for most important to least now that we have done more"):
+    What We Look After is All Inclusive now, and comes third, straight after the first section, as on the weddings page.
+    Its words are as they were: nothing is added that the owner has not confirmed for a private stay. -#}
+{#- 13 Oct (owner): private stays typically include the meals, the drinks and the flowers; transport can be arranged, at an
+    additional charge. -#}
+<section class="g-sec g-sec--sand g-wed-us"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('wine') }}</span>
+  <p class="g-fr">Tout compris <span class="g-fr__en">All inclusive</span></p>
+  <h2 class="g-place">All Inclusive</h2>
+  <p class="g-p g-intro">We look after the meals, the drinks and the flowers, so the days are yours to enjoy. Transport from Toulouse can be arranged too, at an additional charge.</p>
+  <div class="g-wedus">
+    <figure class="g-wedus__i"><img src="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }}" srcset="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }} 800w, {{ url_for('static', filename='img/life/asparagus-on-the-grill.jpg') }} 1600w" sizes="(min-width: 52rem) 33vw, 100vw" alt="White asparagus and sausage on the grill in the grounds" loading="lazy">
+      <figcaption><b>The meals</b> Cooked by us, at the château’s tables or on the grill in the grounds.</figcaption></figure>
+    <figure class="g-wedus__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/075b6dc2-abff-45ee-99dc-241f6af1bf41/Screenshot+2023-04-25+at+2.42.47+pm.png?format=1000w" alt="Champagne, poured" loading="lazy">
+      <figcaption><b>The drinks</b> From the first glass of the evening to the last, poured by us.</figcaption></figure>
+    <figure class="g-wedus__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7fabd381-88e6-481d-9380-00222dd920fa/Screenshot+2026-08-15+at+3.31.41+pm.png?format=1000w" alt="Flowers and candles on the table" loading="lazy">
+      <figcaption><b>The flowers</b> Chosen at the markets and gathered from the gardens, for the tables and the rooms.</figcaption></figure>
+  </div>
+</div></section>
+
+<section class="g-sec g-wed-intro"><div class="g-wrap">
   {% call split([url_for('static', filename='img/more/terrace-at-night.jpg'), 'A terrace at night, strung with lights', 'A terrace at night, strung with lights'], flip=True) %}
   <p class="g-fr">Entre soi <span class="g-fr__en">Among your own</span></p>
   <p class="g-eyebrow">Private Hire</p>
@@ -100,22 +123,6 @@
 
 <!-- ============ ENQUIRE ============ -->
 {# 6 Oct (owner: "more photo work ... the photos will make the website") - photographs from the original site #}
-{#- 13 Oct (owner): private stays typically include the meals, the drinks and the flowers; transport can be arranged, at an
-    additional charge. -#}
-<section class="g-sec g-wed-us"><div class="g-wrap">
-  <span class="g-hill" aria-hidden="true">{{ illus('wine') }}</span>
-  <p class="g-fr">Entre nos mains <span class="g-fr__en">In our hands</span></p>
-  <h2 class="g-place">What We Look After</h2>
-  <p class="g-p g-intro">We look after the meals, the drinks and the flowers, so the days are yours to enjoy. Transport from Toulouse can be arranged too, at an additional charge.</p>
-  <div class="g-wedus">
-    <figure class="g-wedus__i"><img src="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }}" srcset="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }} 800w, {{ url_for('static', filename='img/life/asparagus-on-the-grill.jpg') }} 1600w" sizes="(min-width: 52rem) 33vw, 100vw" alt="White asparagus and sausage on the grill in the grounds" loading="lazy">
-      <figcaption><b>The meals</b> Cooked by us, at the château’s tables or on the grill in the grounds.</figcaption></figure>
-    <figure class="g-wedus__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/075b6dc2-abff-45ee-99dc-241f6af1bf41/Screenshot+2023-04-25+at+2.42.47+pm.png?format=1000w" alt="Champagne, poured" loading="lazy">
-      <figcaption><b>The drinks</b> From the first glass of the evening to the last, poured by us.</figcaption></figure>
-    <figure class="g-wedus__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7fabd381-88e6-481d-9380-00222dd920fa/Screenshot+2026-08-15+at+3.31.41+pm.png?format=1000w" alt="Flowers and candles on the table" loading="lazy">
-      <figcaption><b>The flowers</b> Chosen at the markets and gathered from the gardens, for the tables and the rooms.</figcaption></figure>
-  </div>
-</div></section>
 
 <section class="g-sec g-wed-fine g-wed-fine--two"><div class="g-wrap">
   <p class="g-fr">Les détails <span class="g-fr__en">The details</span></p>
@@ -145,7 +152,7 @@
   <p class="g-p">One party at a time. Tell us the occasion, your dates and how many of you there are, and you will receive a written quote and our terms.</p>
   <p class="g-p">A deposit of half the total, paid by bank transfer, reserves your dates; the balance is due on a date agreed before your arrival. All amounts paid are non-refundable, so we kindly ask that you arrange travel insurance.</p>
   <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
-  <p class="g-p">If your party would rather spend its days learning something, ask us about <a href="{{ url_for('workshops_public') }}">the retreats</a>: three to seven nights of <em lang="fr">la vie de château</em>, with the kitchen, the brocantes and the château around you.</p>
+  <p class="g-p">If your party would rather spend its days learning something, ask us about <a href="{{ url_for('workshops_public') }}">the retreats</a>: three to seven nights of <em lang="fr">la vie de château</em>: the kitchen, the brocantes, the château around you, and so much more.</p>
   <p class="g-limit"><span class="g-limit__k">One at a time</span> Only one event runs at the château at once.</p>
 </div></section>
 <div class="g-wrap">{{ proof(settings) }}</div>

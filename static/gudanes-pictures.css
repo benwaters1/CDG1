@@ -1195,3 +1195,44 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-key > .g-key__mos .g-mos__i:nth-child(3){ position: relative; left: -14%; top: 10%; box-shadow: 0 10px 28px rgba(20,30,50,.22); outline: 6px solid #fff; z-index: 1; }
 }
 @media (max-width: 52rem){ .g .g-key > .g-key__mos{ grid-column: 1 / -1; } .g .g-key > .g-key__mos .g-mos{ margin: 0; } }
+
+/* 24 Nov 2026 (owner: "its starting to get a bit long on that part so make sure the design is good and formatting"). The
+   weddings page's All Inclusive, the brochure's page of it: four groups side by side, each a photograph over a small-caps
+   heading and a short list, one thing to a line, in the finer details' gilt diamond; two by two below a wide screen,
+   and one column only on the narrowest phone. The photographs share one shape, so the four headings line up. */
+.g .g-wed-incl__grid{ display: grid; gap: var(--s6) var(--s5); margin-top: var(--s6); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 64rem){ .g .g-wed-incl__grid{ grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s6); } }
+@media (max-width: 22.4rem){ .g .g-wed-incl__grid{ grid-template-columns: minmax(0, 1fr); } }
+.g .g-wed-incl__g{ min-width: 0; }
+.g .g-wed-incl__ph{ margin: 0 0 var(--s4); }
+.g .g-wed-incl__ph img{ display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; background: var(--sand, #EDE4D3); }
+.g .g-wed-incl__h{ margin: 0 0 var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid rgba(176, 141, 87, .6); font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .16em; line-height: 1.4; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+.g .g-wed-incl__l{ list-style: none; margin: 0; padding: 0; }
+.g .g-wed-incl__l li{ position: relative; margin: 0; padding: 7px 0 7px 18px; font-size: 16px; line-height: 1.5; color: var(--ink-soft); text-wrap: pretty; }
+.g .g-wed-incl__l li::before{ content: ''; position: absolute; left: 0; top: 16px; width: 7px; height: 7px; transform: rotate(45deg); border: 1px solid var(--gilt, #B08D57); }
+@media (max-width: 40rem){
+  .g .g-wed-incl__l li{ font-size: 15px; padding-left: 15px; }
+  .g .g-wed-incl__l li::before{ width: 6px; height: 6px; top: 15px; }
+}
+.g .g-wed-fine__c li{ text-wrap: pretty; }
+
+/* 24 Nov 2026 (owner, of /facilities on a desktop: "fix the formatting here"). Le Domaine kept to the left half of a wide
+   screen with the right half empty, and the live weather line was centred under words that were not. The words sit
+   beside a photograph of the grounds now (split), and the weather is one quiet line at their left edge. */
+.g .g-domaine .g-sp{ margin: 0; }
+.g .g-domaine .g-wx{ max-width: none; margin: var(--s2) 0 var(--s4); text-align: left; }
+.g .g-domaine .g-wx__live{ justify-content: flex-start; gap: 2px 10px; font-size: 15px; }
+.g .g-domaine .g-wx__t{ font-family: var(--serif); font-size: 17px; }
+.g .g-domaine .g-wx__n{ flex-basis: auto; }
+.g .g-domaine__cta{ margin: var(--s6) 0 0; }
+/* Arranged for You: four cards to the row on a desk, two by two on a tablet, one column on a phone, each the height of
+   the tallest in its row. Scoped to the section: the room page and the booking form use .g-extras for other things. */
+.g .g-extras-sec .g-extras{ grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+@media (min-width: 40rem){ .g .g-extras-sec .g-extras{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 64rem){ .g .g-extras-sec .g-extras{ grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* 24 Nov 2026 (owner: "a retreat is not a list"): the A Retreat column ends on a line that leaves it open. */
+.g .g-sow__list li.g-sow__more{ font-style: italic; }
+/* 24 Nov 2026 (owner's brief: "Attribution shown under it, visibly"). The weddings page's guest line is a figure, and the
+   15 Oct rule that hides every caption under a photograph (gudanes.css) hid its signature with them: the quote stood
+   unsigned. A pull quote's caption is who said it, not a description of a photograph, so it shows. */
+.g main figure.g-pull figcaption{ display: block !important; margin-top: var(--s3); padding: 0; border: 0; }

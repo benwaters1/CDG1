@@ -326,7 +326,7 @@ FR = {
     "Six rooms · from €{price} a night · breakfast included": "Six chambres · à partir de {price} € la nuit · petit-déjeuner compris",
     "A room and breakfast, your own dates": "Une chambre et le petit-déjeuner, à vos dates",
     "Five rooms · from one night": "Cinq chambres · dès une nuit",
-    "Cooking, the brocantes and the restoration": "La cuisine, les brocantes et la restauration",
+    "Cooking, the brocantes, the restoration and more": "La cuisine, les brocantes, la restauration et bien plus encore",
     # 26 Oct: the Book menu's retreats line, its French words left in French (the deck, section 5).
     "Three to seven nights of": "Trois à sept nuits de",
     "Three to seven nights · full board · itinerary included": "De trois à sept nuits · pension complète · programme compris",
@@ -1109,7 +1109,7 @@ ES = {
     "Six rooms · from €{price} a night · breakfast included": "Seis habitaciones · desde {price} € la noche · desayuno incluido",
     "A room and breakfast, your own dates": "Habitación y desayuno, en sus fechas",
     "Five rooms · from one night": "Cinco habitaciones · desde una noche",
-    "Cooking, the brocantes and the restoration": "La cocina, las brocantes y la restauración",
+    "Cooking, the brocantes, the restoration and more": "La cocina, las brocantes, la restauración y mucho más",
     "Three to seven nights of": "De tres a siete noches de",
     "Three to seven nights · full board · itinerary included": "De tres a siete noches · pensión completa · programa incluido",
     "Fixed dates, a small group": "Fechas fijas, en grupo reducido",

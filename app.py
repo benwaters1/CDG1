@@ -16520,6 +16520,11 @@ def seed_added_extras(conn):
 # replaces a description matching any of them, and leaves anything a
 # human has written alone. A list rather than one string because the
 # copy has now been revised twice, and one string only works once.
+#
+# 24 Nov 2026 (owner: "where we describe whats included for the workshops put and much more.. do it not just there but
+# everywhere ... its the house as it was, full of life"): each description below ends open. That reaches a NEW database
+# only. The wording these replaced is deliberately NOT added to was_descriptions, so no deploy rewrites a live row: the
+# owner's brief asks for the live rows to be changed through the admin, where the owner sees them.
 DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
   'price_per_person': 2400.0,
   'sort_order': 0,
@@ -16529,8 +16534,9 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
                ('2026-07-04', '2026-07-07'),
                ('2026-08-01', '2026-08-04')],
   'description': "Bric-a-brac and brocante hunting through the region's best antique "
-                 'markets, a private tour of a neighbouring château, and long, '
-                 'laissez-faire days spent wandering village vide-greniers.',
+                 'markets, a private tour of a neighbouring château, long, '
+                 'laissez-faire days spent wandering village vide-greniers, and much '
+                 'more besides.',
   'sample_day': 'After breakfast, a gentle stroll to the local market — stalls '
                 'brimming with fresh produce and local crafts. In the afternoon, '
                 'choose your adventure: join the restoration team working on the '
@@ -16559,7 +16565,8 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
   'sessions': [('2026-12-05', '2026-12-09')],
   'description': 'The château as a sanctuary of gentle anticipation. Four nights of '
                  'making heirlooms by hand, long festive meals, champagne jellies set '
-                 'in historic moulds, and candlelight against a Pyrenean winter.'},
+                 'in historic moulds, candlelight against a Pyrenean winter, and so '
+                 'much more.'},
  {'title': 'Cooking in the Cuisine',
   'was': 'Cooking in the Cuisine 2027',
   'price_per_person': 3800.0,
@@ -16582,7 +16589,8 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
                  'always cooked — from the market that morning, from the garden if it '
                  'is summer, and from a recipe book written at Gudanes in the 1700s. '
                  'You will also spend a morning on the frescoes, because it is '
-                 'difficult to eat in a room and not want to know how it was saved.',
+                 'difficult to eat in a room and not want to know how it was saved. '
+                 'And much more: the house as it was, full of life.',
   'itinerary': 'SEASONAL FRENCH COOKING — four hands-on classes with the château '
                'chefs, built around whatever the Ariège is giving that week\n'
                "THE 1700s COOKBOOK — historic dishes from the château's own recipe "
@@ -16620,8 +16628,8 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
                  'vide-greniers and antique fairs, and this is three days of working '
                  'through them properly — with someone who knows which dealers are '
                  'worth the detour, what things are worth, and how to get them home. '
-                 'Cooking and long lunches between, and a chef who knows the region as '
-                 'well as the dealers do.',
+                 'Cooking and long lunches between, a chef who knows the region as '
+                 'well as the dealers do, and more besides.',
   'sample_day': 'An early start for the fair at Mirepoix — timbered arcades, four '
                 'hundred years old, and dealers setting up before light. You arrive '
                 'ahead of the crowd.\n'
@@ -16678,7 +16686,7 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
                  'under a century of overpaint — the slowest, most exacting work in '
                  'the château, and the reason it is taking a decade. Between those '
                  'mornings there is cooking in the château kitchens, the brocantes of '
-                 'the valley, and dinner by candlelight every evening.',
+                 'the valley, dinner by candlelight every evening, and much more.',
   'itinerary': 'FRESCO CONSERVATION — four mornings alongside the restoration team, '
                'working on the salon and dining-room walls under the supervision of '
                'professional conservators from France, Italy and England\n'

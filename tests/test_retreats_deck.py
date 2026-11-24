@@ -162,7 +162,8 @@ def run():
     # for the retreats became the Retreats tab, open first, with the next dates in it. The old line only
     # comes back when no date is on sale.
     for line in ["Retreats Three to seven nights, all inclusive",
-                 "Every meal, the wine and the château’s chefs, with nothing to pay at the end.",
+                 # 24 Nov 2026 (owner: a retreat is not a list): "and much more".
+                 "Every meal, the wine, the château’s chefs and much more, with nothing to pay at the end.",
                  "For two centuries Gudanes was a château of guests.",
                  "Guests arrive as strangers and leave as friends, and so many of them return.",
                  "Many of our guests return, some year after year, each time for a different retreat.",

@@ -42,7 +42,10 @@ LETTERS = {
         ("The château is truly in a magical location.", "Workshop guest, autumn 2023"),
     ],
     "/events/weddings": [
-        ("We are still dreaming of being at the Chateau with everyone.", "Married at the château, 2024"),
+        # 24 Nov 2026 (owner, of "We are still dreaming of being at the Chateau with everyone.": "this doesnt seem
+        # like a testimonial"): another line from the same couple's letter.
+        ("I’ve found a lot of delight watching virtually as subsequent guests enjoyed the chateau, knowing how "
+         "magical the experience is to be there with you all.", "Married at the château, 2024"),
     ],
 }
 

@@ -683,6 +683,12 @@ SUITES = [
     # 24 November 2026: the old addresses to The History, the crest as the
     # site's icon, and a sharp photograph at the top of /press.
     "test_history_redirects_and_icon",
+    # 24 November 2026, the same brief, sections 6 to 11: weddings seat eighty inside and are all
+    # inclusive, the wedding quote, the event pages most important first, /facilities beside the
+    # grounds with cycling, and every description of a retreat ending open.
+    "test_wedding_inclusive",
+    "test_facilities_domaine",
+    "test_retreats_end_open",
 ]
 
 
