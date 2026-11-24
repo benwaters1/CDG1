@@ -1206,6 +1206,57 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-dossier .g-submit{ width: 100%; display: flex; align-items: center; justify-content: center; }
 .g .g-dossier .g-submit:hover, .g .g-dossier .g-submit:focus-visible,
 .g .g-bookbar .g-btn--solid:hover, .g .g-bookbar .g-btn--solid:focus-visible{ background: #fff; border-color: #fff; color: var(--blue-deep); }
+/* 24 Nov 2026 (owner, on the room page a guest lands on from Book: "too much scrolling before they can enter their
+   details", and Pay & book "very hard to see"). PAY & BOOK IN EVERY STATE. The rules above make it the house's gold
+   with navy words (5.6:1, AA for text) on the navy panel and the navy bar. Here: the size of the one button that takes
+   the money, a focus ring a keyboard can see (the white of hover alone was the only sign before), a press, and the
+   moment it is sent -- the bar's button is disabled and says "Holding..." while the page goes, and the 0.65 opacity
+   every disabled submit gets took its words to 3.2:1, below AA, at the one moment the guest is reading it.
+   Measured, every state, in test_book_form_first. */
+.g .g-dossier .g-submit, .g .g-bookbar .g-btn--solid{
+  font-family: var(--serif); font-weight: 600; letter-spacing: .02em;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .3);
+}
+.g .g-dossier .g-submit{ min-height: 56px; font-size: 18px; }
+.g .g-dossier .g-submit:focus-visible, .g .g-bookbar .g-btn--solid:focus-visible{
+  outline: 3px solid var(--gilt-on-dark, #C6A66E); outline-offset: 3px;
+}
+.g .g-dossier .g-submit:active, .g .g-bookbar .g-btn--solid:active{ transform: translateY(1px); box-shadow: 0 2px 8px rgba(0, 0, 0, .3); }
+.g .g-dossier .g-submit[disabled], .g .g-bookbar .g-btn--solid[disabled]{
+  opacity: 1; cursor: progress; transform: none;
+  background: var(--gilt-on-dark, #C6A66E); border-color: var(--gilt-on-dark, #C6A66E); color: var(--blue-deep);
+}
+/* THE FORM FIRST (same day, same report). The room's photograph, its name and price, and the guest's dates open the
+   form's own column (.g-booktop); the form follows at once; the room's words, facts and gallery come after the form
+   (.g-roomabout). Being in the form's column, the booking panel -- the total and Pay & book -- runs beside it from the
+   top on a computer. The photograph is beside the name from 40rem and a short band over it on a phone, never a screen
+   of its own. The Family Suite's tall top photograph (.g-room--family .g-roomhero, 72vh) was for a page hero; this is
+   not one, so it is held to the same size here. */
+.g .g-booktop{ display: grid; gap: var(--s4); align-items: center; }
+.g .g-booktop .g-roomhero{
+  width: 100%; height: clamp(7.5rem, 32vw, 15rem); object-fit: cover; display: block;
+  background: var(--sand-2, #EDE5D6);
+}
+.g .g-booktop__t > :first-child{ margin-top: 0; }
+.g .g-booktop__t .g-display{ font-size: clamp(34px, 1.8vw + 22px, 50px); margin: 0 0 var(--s2); }
+.g .g-booktop__t .g-room__meta{ margin: var(--s3) 0 0; }
+.g .g-booktop .g-roomtop__dates{ margin: 0; padding: var(--s3) 14px; max-width: none; }
+.g .g-booktop .g-roomtop__dv{ margin-bottom: var(--s2); }
+/* the two temperatures on one line on a phone, as on a computer: they took a line each, and the form a line further down */
+.g .g-booktop .g-roomtop__dates .g-typwx{ margin-bottom: var(--s2); column-gap: 14px; }
+.g .g-booktop .g-roomtop__dates .g-typwx__v b{ font-size: 19px; }
+@media (min-width: 40rem){
+  .g .g-booktop{ grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); column-gap: var(--s5); row-gap: var(--s5); }
+  .g .g-booktop .g-roomhero{ height: auto; aspect-ratio: 4 / 3; }
+  .g .g-booktop .g-roomtop__dates{ grid-column: 1 / -1; padding: var(--s4) var(--s5); }
+}
+/* the night card follows the dates as the next part of the same column, not as a new section of the page */
+.g .g-cols > div > .g-booktop + .g-night{ margin-top: var(--s6) !important; }
+.g .g-roomabout{
+  margin-top: clamp(48px, 6vw, 88px); padding-top: clamp(32px, 4vw, 48px);
+  border-top: 1px solid var(--gilt-leaf, #B08D57);
+}
+.g .g-roomabout .g-room__words{ margin-top: 0; }
 /* 24 Nov 2026 (booking-flow brief, 6): on a room's form, once the calendar is up, the dates read above it as words and
    the two date boxes step out of sight -- still in the form, still what it posts and what its check marks. */
 .g .g-datefields.is-read .g-field{ position: relative; }

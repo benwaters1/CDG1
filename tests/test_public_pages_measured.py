@@ -89,7 +89,8 @@ KNOWN_LONG = {
     "/workshops": 12500,
     "/workshops/<id>": 11900,
     "/history": 9900,
-    "/book/<id>": 9600,
+    # 24 Nov 2026: "/book/<id>" came off. The room page puts its form first, with the photograph beside the room's
+    # name rather than across the page over it (test_book_form_first): 8,727px, under the budget.
 }
 
 
