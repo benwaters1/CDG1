@@ -88,7 +88,9 @@ KNOWN_LONG = {
     "/book": 13600,
     # 23 Nov, later: +100 for the same type pass.
     # 24 Nov: +800, three retreat guests' lines from their thank-you letters (owner's brief).
-    "/workshops": 12500,
+    # 24 Nov: +2,750 for the two sections the owner's retreats brief adds, What You'll Do and The Bathrooms
+    # ("i dont know why theyre not selling"; "have we got the bathrooms on the workshop page?"); measured 15,029.
+    "/workshops": 15100,
     "/workshops/<id>": 11900,
     "/history": 9900,
     "/book/<id>": 9600,

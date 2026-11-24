@@ -186,8 +186,10 @@ def run():
     s.section("/workshops")
     ws = words(pages["/workshops"].get_data(as_text=True))
     for line in ["Les retraites", "La Vie de Château",
-                 "A few days of French château life, in rooms brought back from ruin.",
-                 "This is not a hotel stay, and it is not a course.",
+                 # 23 Nov 2026 (owner's retreats brief): the hero and the opening name what a guest does, and the
+                 # page no longer opens on what a retreat is not. test_retreats_page_sells holds the rest.
+                 "Cooking with the château’s chefs, antiquing in the brocantes, and the frescoes coming back to the light.",
+                 "A few days of French château life: cooking classes with the château’s chefs",
                  "Une journée à Gudanes", "Le petit-déjeuner", "Le dîner",
                  "In France, the table is the point of the day",
                  "the great cave at Lombrives"]:

@@ -1236,3 +1236,34 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
    15 Oct rule that hides every caption under a photograph (gudanes.css) hid its signature with them: the quote stood
    unsigned. A pull quote's caption is who said it, not a description of a photograph, so it shows. */
 .g main figure.g-pull figcaption{ display: block !important; margin-top: var(--s3); padding: 0; border: 0; }
+/* ==== 23 Nov 2026: /workshops, the owner's retreats brief ================
+   WHAT YOU'LL DO. The three the owner named (cooking, the brocantes, the restoration) lead, larger, with two photographs
+   side by side; the rest follow in a smaller row of one photograph each. One column on a phone, the photographs of a
+   leading three still in a pair. Here rather than gudanes.css, which arrives whole from the design side. */
+.g .g-todo{ list-style: none; margin: var(--s5) 0 0; padding: 0; display: grid; gap: var(--s5); grid-template-columns: minmax(0, 1fr); }
+.g .g-todo__i{ margin: 0; min-width: 0; }
+.g .g-todo__pics{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2); }
+.g .g-todo__f{ margin: 0; min-width: 0; }
+.g .g-todo__img{ display: block; width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; }
+.g .g-todo--more .g-todo__img{ aspect-ratio: 3 / 2; }
+.g .g-todo__h{ margin: var(--s3) 0 var(--s1, 4px); font-family: var(--display, var(--serif)); font-weight: 400; font-size: clamp(1.15rem, .6vw + 1rem, 1.35rem); line-height: 1.25; }
+.g .g-todo__i--lead .g-todo__h{ font-size: clamp(1.4rem, 1vw + 1.1rem, 1.85rem); }
+.g .g-todo__p{ margin: 0; font-size: 16px; line-height: 1.55; }
+.g .g-todo__on{ margin: var(--s2) 0 0; font-family: var(--ui); font-size: 13px; letter-spacing: .04em; line-height: 1.45; color: #73562d; }
+.g .g-todo__on a{ color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.g .g-todo .g-credit{ display: block; margin-top: 4px; }
+.g .g-todo .g-credit, .g .g-todo .g-credit a{ font-size: 12px; }   /* the Commons credit, at the phone's 12px floor */
+.g .g-todo--more{ margin-top: var(--s6, 3rem); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.18); }
+@media (min-width: 40rem){
+  .g .g-todo--more{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 60rem){
+  .g .g-todo--lead{ grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s6, 3rem) var(--s5); }
+  .g .g-todo--more{ grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s4); }
+}
+/* A retreat's card and its dates: what is included above the price, "10% reserves your place" beside it, and the
+   per-night figure last. Not .g-reserve: that is the header's Book button. */
+.g .g-wscard__foot .g-wscard__inc, .g .g-sit__inc{ margin: 0 0 var(--s2); font-family: var(--ui); font-size: 14px; letter-spacing: .04em; line-height: 1.45; color: #73562d; }
+.g .g-wscard__price:has(+ .g-toreserve), .g .g-sit__rate:has(+ .g-toreserve){ margin-bottom: 0; }
+.g .g-toreserve{ margin: 2px 0 var(--s4); font-family: var(--ui); font-size: 14.5px; font-weight: 600; line-height: 1.4; color: var(--ink); }
+.g .g-toreserve:has(+ .g-pernight){ margin-bottom: 0; }

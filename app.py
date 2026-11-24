@@ -12368,6 +12368,36 @@ app.jinja_env.globals["a_night"] = lambda workshop, session=None: about_a_night(
     _row_value(workshop, "price_per_person"), workshop_nights(workshop, session))
 
 
+def reserve_line(workshop, sessions=()):
+    """'10% reserves your place.', or what is true instead (owner's retreats
+    brief, 23 Nov 2026: the deposit was buried in Key Information).
+
+    The figure is the retreat's own deposit_percent, never typed. And it is
+    only a deposit while the balance is not yet due: compute_workshop_payment_terms
+    takes the whole price from anyone booking after the balance day, so a date
+    inside that window says so instead. Given several sittings (a retreat's
+    card), the deposit line stands while ANY of them still takes a deposit;
+    given none, it is the retreat's standing terms."""
+    pct = _row_value(workshop, "deposit_percent")
+    try:
+        pct = int(pct) if pct not in (None, "") else WORKSHOP_DEPOSIT_PERCENT
+    except (TypeError, ValueError):
+        pct = WORKSHOP_DEPOSIT_PERCENT
+    if pct <= 0 or pct >= 100:
+        return "Paid in full when you book."
+    dated = []
+    for s in sessions or ():
+        start = parse_date(str(_row_value(s, "start_date") or "")[:10])
+        if start:
+            dated.append(workshop_balance_due_day(start, _row_value(s, "balance_due_on")))
+    if dated and all(house_today() > due for due in dated):
+        return "These dates are close, so they are paid in full when you book."
+    return f"{pct}% reserves your place."
+
+
+app.jinja_env.globals["reserve_line"] = reserve_line
+
+
 # A retreat's days, named for the week they fall in (owner, 9 Nov 2026): "Day 1
 # · Friday · Vendredi". The day-by-day plan is one per retreat, and a weekday
 # belongs to a sitting, so the days are named only when every sitting on the
@@ -19827,9 +19857,10 @@ def atelier_included_words(workshop):
     (workshop_email_context reads this), so a guest is promised the same thing
     on the booking page as in their confirmation."""
     keys = workshop.keys()
+    # 23 Nov 2026 (owner): "also include wine tasting for all 3 workshops".
     words = ("Everything is included, the full experience: every meal, "
-             "the château's wines and spirits and a tour of the "
-             "château")
+             "the château's wines and spirits, a wine tasting and a tour of "
+             "the château")
     if "excursions_included" in keys and workshop["excursions_included"]:
         words += ", and the excursions"
     return words + "."
@@ -67860,8 +67891,11 @@ def workshop_email_context(booking):
     included = [atelier_included_words(booking)]
     if "transfers_included" in has and booking["transfers_included"]:
         included.append(
-            "We meet you at 11am in central Toulouse on the first day, and "
-            "have you back by about one on the last.")
+            # 23 Nov 2026 (owner): the retreats start at midday at the Grand
+            # Hôtel de l'Opéra, Place du Capitole -- the page says the same.
+            "We meet you at midday on the first day at the Grand Hôtel de "
+            "l'Opéra, on Place du Capitole in Toulouse, and have you back by "
+            "about one on the last.")
     included.append("Please pack lightly: the bedrooms are reached by the "
                     "original staircase, and there is no lift.")
 

@@ -109,7 +109,7 @@
     <div><dt>Drinks</dt><dd>A private selection of wines, sparkling wines, apéritifs and spirits with every meal, and the château’s own botanical syrups</dd></div>
     <div><dt>Evenings</dt><dd><em lang="fr">L’apéritif</em>, dinner by candlelight, and on the last night a banquet in the Salon de Musique, dressed for the occasion, then dancing</dd></div>
     <div><dt>Laundry</dt><dd>Laundry and ironing facilities for guests</dd></div>
-    <div><dt>Transfers</dt><dd>{% if _tx %}From Toulouse on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
+    <div><dt>Transfers</dt><dd>{% if _tx %}From the Grand Hôtel de l’Opéra on Place du Capitole in Toulouse, at midday on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
     {#- 10 Nov (owner): Noël has a morning at the village Christmas market, a walk away, so it no longer says "no outings". -#}
     {% if not _ex %}<div><dt>The days</dt><dd>{% if 'Noël' in workshop['title'] or 'Noel' in workshop['title'] or 'Christmas' in workshop['title'] %}Spent at the château, but for a walk to the village Christmas market: the making, the meals and the rooms{% else %}Spent at the château itself, with no outings to plan around: the making, the meals and the rooms{% endif %}</dd></div>{% endif %}
     <div><dt>To hold a place</dt><dd>A deposit. The balance is taken closer to the date</dd></div>
@@ -226,9 +226,11 @@
     {#- 26 Oct: the three-night plan dines at the château every night; five and seven go out to both. -#}
     {% set _wn = ws_nights(workshop)|trim %}{% if _wn in ['5','7'] %}<li>Dinners at Maison Beaucoup and at La Maison Lacube, in Les Cabannes</li>{% endif %}
     <li>A tour of the château and its restoration</li>
-    {% if _tx %}<li>The transfers from central Toulouse, there and back</li>{% endif %}
+    {#- 23 Nov (owner): "also include wine tasting for all 3 workshops". -#}
+    <li>A wine tasting</li>
+    {% if _tx %}<li>The transfers from the Grand Hôtel de l’Opéra in Toulouse, meeting at midday on the first day, and back on the last</li>{% endif %}
     {#- 9 Nov (owner, think about the weather): in December, no pool, no tennis court and no terraces. -#}
-    <li>Free time with {% if 'Noël' in workshop['title'] or 'Noel' in workshop['title'] or 'Christmas' in workshop['title'] %}the gardens, table tennis, the lounge and la Bibliothèque{% elif 'Cooking' in workshop['title'] %}{#- 10 Nov (owner): no pool on Cooking, too cold -#}the tennis court, the gardens, table tennis, the lounge and the terraces{% else %}the pool, the tennis court, the gardens, table tennis, the lounge and the terraces{% endif %}</li>
+    <li>Free time with {% if 'Noël' in workshop['title'] or 'Noel' in workshop['title'] or 'Christmas' in workshop['title'] %}the gardens, table tennis, the lounge and la Bibliothèque{% elif 'Cooking' in workshop['title'] %}{#- 10 Nov (owner): no pool on Cooking, too cold -#}the tennis court, the gardens, table tennis and the terraces, or a glass of wine in the lounge{% else %}the pool, the tennis court, the gardens, table tennis and the terraces, or a glass of wine in the lounge{% endif %}</li>
     {% endif %}
   </ul>
   {% if _basis %}<p class="g-hint">Prices are {{ _basis[:1]|lower }}{{ _basis[1:] }}</p>{% endif %}

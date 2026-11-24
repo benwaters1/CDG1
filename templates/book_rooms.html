@@ -96,7 +96,7 @@
     which said the same in more words, went; so did the second paragraph, with "renovation" in it. -#}
 {% set _gf = namespace(on=false) %}{% for _r in rooms %}{% if ((_r['floor'] or '')|lower).startswith('ground') or 'Ground Floor' in _r['name'] %}{% set _gf.on = true %}{% endif %}{% endfor -%}
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room, breakfast and the lounge, with the pool, tennis and the grounds outside.</p>
+  <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room and breakfast, with the pool, tennis and the grounds outside, or a glass of wine in the lounge.</p>
 </div></section>
 
 

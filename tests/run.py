@@ -689,6 +689,9 @@ SUITES = [
     "test_wedding_inclusive",
     "test_facilities_domaine",
     "test_retreats_end_open",
+    # 23 November 2026, the owner's retreats brief: /workshops leads with what
+    # a guest does, the bathrooms honestly, and what is included before the price.
+    "test_retreats_page_sells",
 ]
 
 

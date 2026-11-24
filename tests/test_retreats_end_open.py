@@ -67,8 +67,9 @@ def run():
             [grab(col, r"<li\b[^>]*>(.*?)</li>")[-1] for col in
              re.findall(r'<article class="g-sow__col g-sow__col--full[^"]*">.*?<ul class="g-sow__list">(.*?)</ul>',
                         html["/"], re.S)],
+        # The retreats brief (23 Nov) rewrote the opening to say what a retreat is, not what it is not.
         "/workshops the opening": [x for x in grab(html["/workshops"], r'<p class="g-p g-lede-first">(.*?)</p>')
-                                   if "This is not a hotel stay" in x],
+                                   if "A few days of French château life" in x],
         "/workshops a retreat gives you the château":
             [x for x in grab(html["/workshops"], r'<p class="g-p">(.*?)</p>') if x.startswith("A night’s stay is")
              or x.startswith("A night's stay is")],
