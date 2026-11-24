@@ -135,7 +135,11 @@ m = _harness.m
 # /workshops and /events/weddings, and nothing else. Was: "cf9625d"
 # 24 Nov 2026, later: merged with main at 96f5fe9; the base is the merge. Against 6d92fc0 it listed /book and
 # /book/1 to /book/5 (check-out at 11am) and nothing else.
-COPY_BASE = "96f5fe9"
+# 24 Nov 2026, evening: moved to 5b20f5a, the restoration page's own section for the painted beams and the frescoes
+# (owner's brief: "yes, they are 16th century hand painted"), its sentence out of What the Walls Gave Back, and the
+# timeline's 2018, 2019 and 2026. Against 96f5fe9 it listed /restoration (those words, and the three new captions) and
+# nothing else. Was: "96f5fe9"
+COPY_BASE = "5b20f5a"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
