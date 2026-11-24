@@ -9,7 +9,7 @@
 {% block content %}
 {#- 9 Nov (the image layout brief, 4.7): the photographs through the picture components (_pictures.html, shown together
     on /design). Not one word changes. -#}
-{% from '_pictures.html' import split, bande, pictures_script %}
+{% from '_pictures.html' import split, bande, mosaique, pictures_script %}
 {% from '_retreat_photos.html' import rcredit %}
 {% from '_marks.html' import mark %}
 
@@ -150,7 +150,8 @@
   <p class="g-eyebrow">Places</p>
   <h2 class="g-place">Towns and Places Nearby</h2>
   {#- 9 Nov (the brief, 4.7): one photograph beside the place, sides alternating down the page. -#}
-  {% call split([url_for('static', filename='img/retreats/foix-castle.jpg'), 'The castle of Foix above the old town', '']) %}
+  {#- 23 Nov (owner: "more images ... not just all in a row"): Mirepoix's arcades tucked over the corner of Foix, tilted. -#}
+  {% call split([url_for('static', filename='img/retreats/foix-castle.jpg'), 'The castle of Foix above the old town', ''], tuck=[url_for('static', filename='img/retreats/mirepoix-arcades.jpg'), 'Mirepoix under its old arcades']) %}
   <div class="g-key">
     <div class="g-key__i">
       <p class="g-key__k">Tarascon-sur-Ariège · about fifteen minutes</p>
@@ -188,6 +189,7 @@
     </div>
   </div>
   {% endcall %}
+  <p class="g-car__credits">{{ rcredit('mirepoix-arcades', new_tab=True) }}</p>
 </div></section>
 {#- 6 Oct (owner: "take photos online of ax for the part where we advertise skiing"). Wikimedia Commons photographs under
     Creative Commons licences that allow commercial use with credit - photographer and licence shown under each, linked to
@@ -200,6 +202,8 @@
   <h2 class="g-place">Things to Do Nearby</h2>
   {#- 23 Nov (owner: "yes if its on there twice"): Les Bains du Couloubret came off this list; it is described in full
       under The Hot Springs below. -#}
+  {#- 23 Nov (owner: "more images ... display them assorted nicely"): the hills beside it, with the peaks tucked over. -#}
+  {% call split([url_for('static', filename='img/retreats/mountain-walk.jpg'), 'Walking in the hills', ''], flip=True, cls='g-sp--few', tuck=[url_for('static', filename='img/views/clouds-over-the-peaks.jpg'), 'The mountains through an open window of the château']) %}
   <div class="g-key">
     <div class="g-key__i">
       <p class="g-key__k">On the river · about ten minutes</p>
@@ -218,6 +222,7 @@
       <p class="g-key__v">Beyond Niaux, the caves of Bédeilhac and Lombrives, and the Parc de la Préhistoire at Tarascon</p>
     </div>
   </div>
+  {% endcall %}
 </div></section>
 {#- 9 Nov, evening (owner's second review, 1 and 3.4): winter is not prominent. The Skiing Nearby gallery and the Winter section are one entry inside Outdoors and Adventure, which keeps the #skiing address /book links to. -#}
 
@@ -235,7 +240,7 @@
   <p class="g-fr">Les eaux chaudes <span class="g-fr__en">The hot springs</span></p>
   <h2 class="g-place">The Hot Springs</h2>
   {#- 9 Nov (the brief, 4.7): one photograph beside the place, sides alternating down the page. -#}
-  {% call split([url_for('static', filename='img/retreats/bassin-des-ladres.jpg'), 'The hot-spring basin of the Bassin des Ladres in Ax-les-Thermes', ''], flip=True) %}
+  {% call split([url_for('static', filename='img/retreats/bassin-des-ladres.jpg'), 'The hot-spring basin of the Bassin des Ladres in Ax-les-Thermes', '']) %}
   <p class="g-p g-intro">Ax-les-Thermes has some sixty hot springs, the hottest in the Pyrenees, rising from the ground at over 70°C.</p>
   <div class="g-key">
     <div class="g-key__i">
@@ -286,6 +291,12 @@
       <p class="g-key__v">Guided descents of the mountain gorges, with abseils, jumps and natural water slides. All the kit is provided, and there are trips for first-timers. Summer.</p>
       <p class="g-key__v g-key__links">{{ site('https://www.vertikarst.fr/', 'vertikarst.fr') }} · {{ site('https://cavernecanyon.com/', 'cavernecanyon.com') }} · {{ site('https://acrobranche-ariege.com/', 'acrobranche-ariege.com') }}</p>
     </div>
+    {#- 23 Nov (owner: "more images ... not just all in a row"): three photographs of the mountains as one collage,
+        set into the grid two entries wide, so the pictures sit among the words rather than in a strip of their own. -#}
+    <div class="g-key__mos">{{ mosaique([
+      [url_for('static', filename='img/views/mist-on-the-mountain.jpg'), 'Mist on the mountain above the valley', ''],
+      [url_for('static', filename='img/views/mountain-spring-sky.jpg'), 'The mountain under a spring sky', ''],
+      [url_for('static', filename='img/retreats/chateau-snowy-peaks.jpg'), 'The château below the snowy peaks', '']]) }}</div>
     <div class="g-key__i">
       <p class="g-key__k">Rafting, canoe and paddleboard · Bouan, 10–15 minutes</p>
       <p class="g-key__v">Down the Ariège by raft, canoe or kayak, guided or on your own, with a minibus back; paddleboards on the lake below the Sinsat cliffs. May to October.</p>
