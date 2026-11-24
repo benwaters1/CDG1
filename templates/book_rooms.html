@@ -605,6 +605,19 @@
       <blockquote class="g-say__q">Loved everything about the Château de Gudanes! Beautiful location, very peaceful and charming.</blockquote>
       <figcaption class="g-say__by">Cynthia · The Marquis Suite<span class="g-say__src">Booking.com, 10/10</span></figcaption>
     </figure>
+    {#- 24 Nov 2026: then the reviews the owner features in the app, once the guest has said yes. The feedback page
+        tells the owner a featured review goes on the booking page, and from 23 Nov nothing drew them: a guest's yes
+        put nothing on the site. Their own words, their first name, the stars they gave on the house's form, and
+        what the house said back. featured_room_reviews holds the consent rule; test_publish_consent watches it. -#}
+    {%- for r in featured_reviews or [] %}
+    <figure class="g-panel g-say" style="margin:0">
+      <blockquote class="g-say__q">{{ r['comment'] }}</blockquote>
+      <figcaption class="g-say__by">{{ (r['guest_name'] or 'A guest').split(' ')[0] }}{% if r['room_name'] %} · {{ r['room_name'] }}{% endif %}<span class="g-say__src">{{ '★' * (r['rating']|int) }}{{ '☆' * (5 - r['rating']|int) }}</span></figcaption>
+      {%- if r['reply'] %}
+      <p class="g-say__reply"><span class="g-say__reply-by">Château de Gudanes</span> {{ r['reply'] }}</p>
+      {%- endif %}
+    </figure>
+    {%- endfor %}
   </div>
 </div></section>
 

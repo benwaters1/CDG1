@@ -9319,6 +9319,9 @@ def init_db():
     # The rooms' French titles on the website (owner, 23 November), once, by
     # the names of 16 October.
     apply_room_titles_2026_11_23(conn)
+    # "The house" out of the booking terms and the tour's description (the
+    # owner's words rule of 9 November), once, where the words are unchanged.
+    apply_no_house_2026_11_24(conn)
     # Every atelier takes fifteen (owner, 18 October), once.
     apply_workshops_fifteen_2026_10_18(conn)
     # The waitlist learns the status 'enquiry', once, before the tidy below
@@ -10157,7 +10160,7 @@ NAV_AREAS = {
         "decide_breakage",
         "stop_filing",
         "management_payment_cost", "save_card_fee_settings",
-        "admin_city_tax", "export_city_tax_csv",
+        "admin_city_tax", "export_city_tax_csv", "city_tax_declared",
         "new_revenue_category", "toggle_revenue_category",
         "charge_city_tax", "charge_city_tax_upcoming",
         "record_event_payment_route", "send_event_revenue",
@@ -10403,6 +10406,11 @@ AREA_TITLES = {
 # can see, which is how 181 of them accumulated unnoticed.
 OWNER_ONLY_AREAS = {
     "reports_index": "management",
+    # The owner home's "Nobody has told you this" (24 November 2026): clearing
+    # a line, or bringing one back, changes only the owner's own panel. Owner-
+    # only on purpose, like the home page they sit on.
+    "clear_home_warning": "management",
+    "restore_home_warning": "management",
     # An atelier's recap: the owner approves each one (22 October 2026), so
     # choosing its photographs, writing down who may appear, and the button
     # that sends it are the owner's, whatever a preset gives on the sitting's
@@ -42507,8 +42515,12 @@ def owner_home_next_up(conn, today, day_rows):
 def featured_room_reviews(conn, limit=6):
     """The room reviews the owner has featured AND the guest agreed to publish.
 
-    One query for every public page that quotes a guest -- /book, and since
-    9 Nov 2026 the home page, whose third quotation is the first of these.
+    One query for every public page that quotes a guest. /book draws them,
+    after the house's own two (24 Nov 2026): the home page's quotations are
+    the six the owner chose by hand on 23-24 Nov, and from then until this
+    went back on /book nothing drew these at all, so featuring a review and
+    the guest saying yes put nothing on the site, while the feedback page told
+    the owner it was on the booking page.
     """
     return conn.execute(
         """SELECT guest_feedback.*, rooms.name AS room_name FROM guest_feedback
@@ -42569,12 +42581,11 @@ def dashboard():
                   AND {SESSION_IS_LIVE} AND {WORKSHOP_IS_PUBLIC}
                 ORDER BY workshop_sessions.start_date LIMIT 3""",
             (house_today_iso(),)).fetchall()]
-        reviews = [r for r in featured_room_reviews(conn) if r["comment"]]
         occasions = upcoming_stay_occasions(conn, limit=3)
         conn.close()
         # Both are optional in the template, so an empty house still renders.
         return render_template("home.html", rooms=rooms, upcoming=upcoming,
-                               featured_reviews=reviews, occasions=occasions)
+                               occasions=occasions)
     return staff_dashboard()
 
 
@@ -57686,10 +57697,13 @@ def book_rooms():
     stay_extras = conn.execute(
         """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
            ORDER BY category, sort_order, name""").fetchall()
+    # What guests said that the owner featured and the guest agreed to show.
+    # Read before the close, like the rest.
+    featured_reviews = [r for r in featured_room_reviews(conn) if r["comment"]]
     conn.close()
     return render_template(
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
-        returning_guest=welcome, extras=stay_extras,
+        returning_guest=welcome, extras=stay_extras, featured_reviews=featured_reviews,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
         resting=resting,
         stay_nights=stay_nights, room_quotes=room_quotes,
@@ -62019,6 +62033,47 @@ def apply_extras_sunday_2026_10_19(conn):
     conn.commit()
     if changed:
         log_line(f"[extras] {changed} charcuterie extra(s) no longer arranged on a Sunday")
+    return changed
+
+
+# The owner's words rule (second review, 9 November 2026): the public pages do
+# not say "the house" (test_site_review_2). Two places it reached that no
+# template holds, because both are words the owner can edit: the booking terms
+# in app_settings and the tour of the château in the extras catalogue. Each
+# phrase changes only where it still reads exactly as written, so an owner who
+# has rewritten either keeps their own words. (table, key column, key, column,
+# old, new); a key of None means every row of the table.
+NO_HOUSE_2026_11_24 = [
+    ("app_settings", "key", "terms_and_conditions", "value",
+     "6. Arrival, departure and the house", "6. Arrival, departure and the château"),
+    ("app_settings", "key", "terms_and_conditions", "value",
+     "Please treat the house as the historic building it is",
+     "Please treat the château as the historic building it is"),
+    ("extras", None, None, "description",
+     "The house and its restoration, shown to you by the people doing it.",
+     "The château and its restoration, shown to you by the people doing it."),
+]
+
+
+def apply_no_house_2026_11_24(conn):
+    """Once: "the house" out of the terms and the tour's description.
+
+    See NO_HOUSE_2026_11_24. Once, by the flag, so wording put back later on
+    the settings or catalogue page stands. Returns how many rows changed.
+    """
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'no_house_2026_11_24'").fetchone():
+        return 0
+    changed = 0
+    for table, key_col, key, col, old, new in NO_HOUSE_2026_11_24:
+        where = f"INSTR({col}, ?) > 0" + (f" AND {key_col} = ?" if key_col else "")
+        args = (old, new, old) + ((key,) if key_col else ())
+        changed += conn.execute(
+            f"UPDATE {table} SET {col} = REPLACE({col}, ?, ?) WHERE {where}", args).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('no_house_2026_11_24', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        log_line(f"[words] 'the house' changed to 'the château' in {changed} place(s): terms, tour")
     return changed
 
 

@@ -222,6 +222,12 @@ def _run(s, oc, conn, now, today):
                                         (m.ADDIN_CONFIRMED_VERSION_SETTING,))
     conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
                  (m.ADDIN_CONFIRMED_VERSION_SETTING, m.OUTLOOK_ADDIN_VERSION))
+    # Suggested occasions waiting for a yes or a no (24 Nov 2026) are on the
+    # panel too, and the copy holds the owner's first list. Settled the way the
+    # house settles it -- each one decided, here dismissed -- and put back
+    # straight after the check. test_stay_occasions proves the line comes.
+    put_back_suggestions = _harness.keep_rows(conn, "stay_occasion_suggestions", "1 = 1")
+    conn.execute("UPDATE stay_occasion_suggestions SET status = 'dismissed' WHERE status = 'new'")
     conn.commit()
     # Booking.com, settled: this week's statement in, and every room's
     # Booking.com calendar read just now (on a copy of a live house they are
@@ -256,6 +262,7 @@ def _run(s, oc, conn, now, today):
         put_back_letters()
         put_back_terms()
         put_back_addin()
+        put_back_suggestions()
         conn.executemany("UPDATE ical_sources SET last_synced_at = ?, last_sync_error = ? WHERE id = ?",
                          sources_before)
         conn.execute("DELETE FROM booking_com_statements WHERE id = ?", (statement_id,))
