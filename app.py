@@ -53047,8 +53047,7 @@ def room_night_segments(conn, room, arrival, departure):
             if len(set(s["rates"])) == 1:
                 rate = s["rates"][0]
                 label = (f"{s['occasion']}, {n} night{plural} at "
-                         f"€{rate:,.0f}" if float(rate).is_integer() else
-                         f"{s['occasion']}, {n} night{plural} at €{rate:,.2f}")
+                         f"{money(rate, 0 if float(rate).is_integer() else 2)}")
             else:
                 label = f"{s['occasion']}, {n} night{plural}"
         else:
@@ -54109,7 +54108,7 @@ def admin_stay_occasion(occ_id):
             error = "Type how much to add to every room."
         else:
             v["prices"] = {r["id"]: round(r["usual"] + plus, 2) if r["usual"] else None for r in rooms}
-            flash(f"Every room at its usual rate plus €{plus:,.0f}. Save to keep it.", "success")
+            flash(f"Every room at its usual rate plus {money(plus, 0)}. Save to keep it.", "success")
             out = _render_occasion_form(conn, dict(occ, **{k: v[k] for k in _BLANK_OCCASION if k in v}), v)
             conn.close()
             return out
@@ -54267,7 +54266,7 @@ def admin_stay_occasion_suggestion_create(sid):
     log_audit(conn, "stay_occasion_created", target=s["name"], details="from a suggestion")
     conn.commit()
     conn.close()
-    flash(f"{s['name']} is drafted at the usual rates plus €{STAY_OCCASION_UPLIFT}. "
+    flash(f"{s['name']} is drafted at the usual rates plus {money(STAY_OCCASION_UPLIFT, 0)}. "
           "Check it, then put it on sale.", "success")
     return redirect(url_for("admin_stay_occasion", occ_id=occ_id))
 

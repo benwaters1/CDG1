@@ -633,13 +633,22 @@
 /* 2.2  The FAQ answers in the body serif, like every other paragraph. */
 .g .g-faq-sec details p, .g .g-faq-sec dd, .g .g-faq__a{ font-family: var(--serif); }
 
-/* 2.3  The currency control: in the header strip, right of Book, small. */
+/* 2.3  The control in the header strip, right of Book, small. Since 24 Nov 2026 (owner) it is the LANGUAGE:
+        the currency moved to the menu panel. On a phone the strip has no room, so the panel's language row
+        shows there instead, and only there. */
 .g .g-curtop{ display: inline-flex; align-items: center; margin-left: var(--s2); }
 .g .g-curtop__s{ font-family: var(--serif); font-size: 13px; padding: 2px 4px; border: 1px solid currentColor;
   background: transparent; color: inherit; border-radius: 0; }
 .g .g-curtop__s option{ color: var(--ink); }
 .g .g-curbar{ display: none; }
 @media (max-width: 40rem){ .g .g-curtop{ display: none; } }
+.g .g-navwrap__prefs-row--lang{ display: none; }
+@media (max-width: 40rem){ .g .g-navwrap__prefs-row--lang{ display: flex; } }
+/* The header row has a fixed width (the wrap stops at 1216px), so a wider screen gives it no more room, and with
+   What's On a dropdown and the language beside Book its links ran under the wordmark ("Stay" hidden behind it,
+   measured 24 Nov 2026). The compact spacing the narrower screens already used, at every width. */
+.g .g-top .g-nav{ gap: 10px; }
+.g .g-top .g-nav a{ letter-spacing: .04em; }
 
 /* 6  The phone's booking bar waits for the hero's own date widget to scroll off:
    on the home page the two booking buttons sat an inch apart. Slid away, not
