@@ -129,7 +129,11 @@ m = _harness.m
 # /book/5 (the times above Pay & book), and nothing else. Each was read.
 # 24 Nov 2026: merged with main at 9d00c13; the base is the merge. Against cf9625d it listed /book and
 # /book/1 to /book/5, the check-out lines above, and nothing else (What's On's drawings add no words).
-COPY_BASE = "9d00c13"
+# 24 Nov 2026: moved to 6d92fc0, guests' own words from their thank-you letters (owner's brief): three on the home
+# page, three on /workshops, one on the weddings page, each signed with the season and the year; the weddings questions
+# say Les Gites de Beille and the note under its places to stay says we arrange them. Against cf9625d it listed /,
+# /workshops and /events/weddings, and nothing else. Was: "cf9625d"
+COPY_BASE = "6d92fc0"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

@@ -652,6 +652,7 @@ SUITES = [
     # 23 November 2026: /events/photoshoots opens on a shoot, says how a shoot works, and its enquiry
     # arrives with Photography or film chosen.
     "test_photoshoots",
+    "test_guest_letters",
     "test_weddings_top",
     "test_private_top",
     # 23 November 2026: the photographs the owner will not have on the site, by what they show.

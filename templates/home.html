@@ -338,7 +338,7 @@
   <section class="g-car g-car--cards" data-car aria-roledescription="carousel" aria-label="The rooms">
   <div class="g-car__track g-homerooms--car" data-car-track tabindex="0">
     {#- 9 Nov, evening (owner's second review, 1): the estate from the air opens the rooms, in place of its own band,
-        its strip of cream and its one lonely link. 14 Oct: Paulina Bruni's aerial (Rebecca & Ken, no credits). -#}
+        its strip of cream and its one lonely link. 14 Oct: Paulina Bruni's aerial, from a wedding (no credits). -#}
     <figure class="g-homeroom g-homeroom--aerial g-car__s" aria-roledescription="slide" aria-label="1 / {{ _slides }}">
       {{ pic(url_for('static', filename='img/rk/from-the-air-pool-garden.jpg'), 'The château from the air, with the formal garden and the pool', sizes='(min-width: 64rem) 30rem, 84vw', cls='g-homeroom__img') }}
     </figure>
@@ -449,13 +449,22 @@
       "Spacious rooms with private, well-equipped bathrooms" went ("not the shitty one"), and the card that
       repeated the review featured on /book gave way to the third; that one still shows on /book. Daniel's
       line is not the "not spooky at all" one the owner took off on 9 Nov. -#}
+  {#- 24 Nov 2026 (owner's brief, guests' own words): three lines from thank-you letters retreat guests wrote after
+        their stay, verbatim and cut only at a sentence. NO NAMES, the owner's instruction: the season and the year
+        only. test_guest_letters holds it. -#}
   {%- set says = [
     {'img': url_for('static', filename='img/retreats/chateau-framed-by-roses.jpg'), 'alt': 'The château framed by roses',
      'quote': 'Each morning I woke up worried that it was only a dream.', 'by': 'Cy, on Google'},
     {'img': url_for('static', filename='img/retreats/chateau-snowy-peaks.jpg'), 'alt': 'The château below the snowy peaks',
      'quote': 'The overnight stay in this historic château was an unforgettable experience.', 'by': 'Daniel E., on Google'},
     {'img': url_for('static', filename='img/rk/down-the-drive.jpg'), 'alt': 'Down the drive to the château',
-     'quote': 'Been following for years, finally got to visit. A bucket-list place to see. Beautiful.', 'by': 'David W., on Google'}] %}
+     'quote': 'Been following for years, finally got to visit. A bucket-list place to see. Beautiful.', 'by': 'David W., on Google'},
+    {'img': url_for('static', filename='img/retreats/chef-from-the-garden.jpg'), 'alt': 'The chef coming in from the garden',
+     'quote': 'Several times every day, I witnessed magic being performed in the Chateau kitchen, at the table, and the hours in between.', 'by': 'Workshop guest, summer 2024'},
+    {'img': url_for('static', filename='img/retreats/guests-round-the-table.jpg'), 'alt': 'Guests round the table',
+     'quote': 'We truly felt like royalty, but more importantly, like family.', 'by': 'Workshop guest, autumn 2023'},
+    {'img': url_for('static', filename='img/retreats/croquembouche.jpg'), 'alt': 'A croquembouche',
+     'quote': 'Nothing we ate in Paris compared to the meals and desserts.', 'by': 'Workshop guest, autumn 2023'}] %}
   {%- set CORNER = '<svg class="rc-corner %s" viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10L34 10M10 10L32.2 19.2M10 10L27 27M10 10L19.2 32.2M10 10L10 34" stroke-width=".7"/><path d="M34 10Q38.4 15.7 32.2 19.2Q34.1 26.1 27 27Q26.1 34.1 19.2 32.2Q15.7 38.4 10 34"/><path d="M34 10C46 6 57 12 53 19C50 23 45 19 48 16"/><path d="M10 34C6 46 12 57 19 53C23 50 19 45 16 48"/><path d="M53 19C56 22 60 22 63 20" stroke-width=".7"/><path d="M19 53C22 56 22 60 20 63" stroke-width=".7"/></g><circle cx="10" cy="10" r="2.2" fill="currentColor"/></svg>' %}
   <div class="rc-grid">
     {%- for q in says %}

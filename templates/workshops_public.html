@@ -390,15 +390,29 @@
 
 <!-- ============ WHAT PARTICIPANTS SAY ============ -->
 {# Shown only once there are atelier reviews: without them it was a "Not yet" placeholder on a selling page. #}
-{% if (atelier_reviews or [])|selectattr('text')|list %}
+{#- 24 Nov 2026 (owner's brief, guests' own words): three lines from the thank-you letters retreat guests wrote after
+    their stay, verbatim and cut only at a sentence (the third begins at its second sentence: the first ended in an
+    exclamation mark, which the second review keeps off the public pages). NO NAMES, the owner's instruction: the season
+    and the year only. test_guest_letters holds it. -#}
+{%- set GUEST_LETTERS = [
+  ('From stunning arrival to tearful farewell, I felt I was a member of your family’s elegant household, an honored guest.', 'Workshop guest, summer 2024'),
+  ('We had an absolutely wonderful experience and have told so many about how much magic the Chateau boasts. Can’t wait to come back again.', 'Workshop guest, autumn 2023'),
+  ('The château is truly in a magical location.', 'Workshop guest, autumn 2023')] %}
+{% if GUEST_LETTERS or (atelier_reviews or [])|selectattr('text')|list %}
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">From the Retreats</p>
   <h2 class="g-place">What Retreat Guests Say</h2>
   <p class="g-p">From guests who spent a few days at the château on a retreat.</p>
 
   {% set _ar = (atelier_reviews or [])|selectattr('text')|list %}
-  {% if _ar %}
+  {% if _ar or GUEST_LETTERS %}
   <div class="g-grid g-grid--2">
+    {% for q, by in GUEST_LETTERS %}
+    <blockquote class="g-panel g-say g-say--letter">
+      <p class="g-say__q">{{ q }}</p>
+      <footer class="g-say__by">{{ by }}</footer>
+    </blockquote>
+    {% endfor %}
     {% for r in _ar %}
     <blockquote class="g-panel g-say">
       <p class="g-say__q">{{ r['text'] }}</p>

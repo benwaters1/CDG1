@@ -1177,3 +1177,8 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-key > .g-key__mos .g-mos__i:nth-child(3){ position: relative; left: -14%; top: 10%; box-shadow: 0 10px 28px rgba(20,30,50,.22); outline: 6px solid #fff; z-index: 1; }
 }
 @media (max-width: 52rem){ .g .g-key > .g-key__mos{ grid-column: 1 / -1; } .g .g-key > .g-key__mos .g-mos{ margin: 0; } }
+/* 24 Nov 2026: a guest's line standing on its own between two sections (the weddings page), not floated into a column. */
+.g .g-pull--alone{ float: none; width: auto; max-width: 40rem; margin: 0 auto; text-align: center; }
+.g .g-pull--alone blockquote{ margin: 0; padding: 0; border: 0; }
+.g .g-pull--alone p{ max-width: none; }
+.g .g-pull--alone cite{ font-style: normal; }

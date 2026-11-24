@@ -159,7 +159,8 @@
   </ol>
 </div></section>
 
-{{ nearby_stays(heading='Where Your Wedding Guests Stay', intro='Fifteen of your guests stay at the château itself. For the rest of your party we arrange rooms at three lovely places close by, all run by friends of the château, with refreshments, snacks and flowers waiting when they arrive, and a shuttle to bring them to and from the château throughout your stay.', fr='Vos invités', fr_en='Your guests') }}
+{#- 24 Nov 2026 (owner's brief): the intro says we arrange these rooms and run a shuttle, so the note under them says it too. -#}
+{{ nearby_stays(note='We arrange these rooms for you, and the shuttle between them and the château.', heading='Where Your Wedding Guests Stay', intro='Fifteen of your guests stay at the château itself. For the rest of your party we arrange rooms at three lovely places close by, all run by friends of the château, with refreshments, snacks and flowers waiting when they arrive, and a shuttle to bring them to and from the château throughout your stay.', fr='Vos invités', fr_en='Your guests') }}
 <section class="g-sec g-wed-us"><div class="g-wrap">
   <span class="g-hill" aria-hidden="true">{{ illus('wine') }}</span>
   <p class="g-fr">Entre nos mains <span class="g-fr__en">In our hands</span></p>
@@ -228,7 +229,7 @@
 {% from '_faq.html' import faq %}
 {{ faq([
   ('How many guests can we invite?', 'Up to forty inside the château, for the ceremony, the dinner and the evening. For a larger wedding, a marquee can be hired for the grounds.'),
-  ('Can our guests stay at the château?', 'Fifteen guests can stay the night in the château. For the rest of your party there are three places close by: Pays de Beille at the foot of the drive, Maison Beaucoup about a kilometre away, and Les Granges de Léo about two.'),
+  ('Can our guests stay at the château?', 'Fifteen guests can stay the night in the château. For the rest of your party there are three places close by: Les Gîtes de Beille at the foot of the drive, Maison Beaucoup about a kilometre away, and Les Granges de Léo about two.'),
   ('Do you do the catering?', 'Every meal is cooked and served by us at the château, and you create the menu with our chefs before you arrive. Local Ariégeois wines are served from the welcome reception to your wedding dinner.'),
   ('Who does the flowers?', 'We create them with you, from what is growing in the gardens and from the local market. For more bespoke bouquets and arrangements, we liaise with a local florist on your behalf.'),
   ('Can we bring our own photographer or wedding planner?', 'Of course. Photography, film and everything else are yours to choose, or your planner’s, and we are glad to work alongside them.'),
@@ -237,6 +238,13 @@
   ('How do our guests get here?', 'Toulouse-Blagnac airport is an hour and three quarters away by car, and the station at Les Cabannes is a few minutes from the château.'),
   ('What does a wedding cost?', 'Every wedding is priced on request. Tell us your dates, the size of your party and the budget you have in mind, and you will receive a written quote and our terms.')
 ], eyebrow='Weddings', heading='Questions Couples Ask') }}
+{#- 24 Nov 2026 (owner's brief, guests' own words): a line from a couple's thank-you letter, verbatim. No names. -#}
+<section class="g-sec g-sec--tight"><div class="g-wrap">
+  <figure class="g-pull g-pull--alone">
+    <blockquote><p>We are still dreaming of being at the Chateau with everyone.</p></blockquote>
+    <figcaption><cite>Married at the château, 2024</cite></figcaption>
+  </figure>
+</div></section>
 <section class="g-sec g-sec--sand" id="enquire"><div class="g-wrap">
   <p class="g-eyebrow">Tell Us</p>
   <h2 class="g-place">Tell Us the Shape of It</h2>
