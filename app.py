@@ -8455,6 +8455,21 @@ def init_db():
                 exempt_nights INTEGER,
                 amount REAL,
                 note TEXT)"""),
+        # A LINE ON THE OWNER HOME, CLEARED (24 November 2026). Keyed on a
+        # fingerprint of the line -- its severity, title and count -- so a
+        # cleared "8 guests with no fiche" is back the moment it is 9. Hides
+        # the line from the panel and nothing else: the data, the page it
+        # links to and the watch task all still say what is true.
+        # until_date NULL is "until it changes"; a date is a snooze that also
+        # ends on that day.
+        ("home_warning_dismissals",
+         """CREATE TABLE IF NOT EXISTS home_warning_dismissals (
+                fingerprint TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                count INTEGER,
+                until_date TEXT,
+                dismissed_at TEXT NOT NULL,
+                dismissed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL)"""),
     ):
         try:
             conn.execute(ddl)
@@ -41939,6 +41954,135 @@ def owner_home_warnings(conn, today):
     return out
 
 
+# How long "Snooze" hides a line for, if it has not changed first.
+HOME_WARNING_SNOOZE_DAYS = 7
+
+
+def home_warning_fingerprint(w):
+    """Which line this is, in the sense that matters for clearing it.
+
+    Severity, title and count -- not the detail. The detail carries ages
+    ("wrote 36 days ago", "waiting since 23 September") that move every
+    morning, and a line keyed on them would come back daily having changed
+    nothing. The count is what moves when the fact does: 8 police register
+    gaps becoming 9 is a new line, and so is a warning that turns into a
+    blocker. Titles that carry their own figure ("129 held messages",
+    "Taxe de séjour ... €47.94") change with it.
+    """
+    raw = f"{w['severity']}|{w['title']}|{w['count']}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def split_cleared_warnings(conn, warnings, today):
+    """(shown, hidden): the owner's panel, minus the lines they have cleared.
+
+    Only for the owner home panel. The daily digest, the assistant and the
+    watch tasks still take owner_home_warnings whole: clearing a line says
+    "I have seen this", not "this is no longer true", and a task routed to
+    somebody else is theirs to settle by fixing the thing.
+
+    A clearing applies to the line exactly as it was. When the fact changes
+    the fingerprint changes, and the line is back with nothing to undo; a
+    snooze also lapses on its date.
+    """
+    for w in warnings:
+        w["key"] = home_warning_fingerprint(w)
+    try:
+        rows = {r["fingerprint"]: r for r in conn.execute(
+            "SELECT fingerprint, until_date, dismissed_at FROM home_warning_dismissals")}
+    except sqlite3.OperationalError:
+        rows = {}
+    today_iso = today.isoformat()
+    shown, hidden = [], []
+    for w in warnings:
+        r = rows.get(w["key"])
+        if r is not None and (not r["until_date"] or r["until_date"] > today_iso):
+            hidden.append(dict(w, until=r["until_date"],
+                               cleared_on=house_date_iso(r["dismissed_at"])))
+        else:
+            shown.append(w)
+    # A clearing whose line has changed or gone can never be used again, and
+    # if it were kept it would be: 8 gaps cleared, then 9, then a different 8
+    # would come back already hidden. So it goes as soon as it is spent, as
+    # does a snooze that has run out. Usually nothing, so usually no write.
+    live = {w["key"] for w in hidden}
+    spent = [k for k in rows if k not in live]
+    if spent:
+        try:
+            conn.executemany("DELETE FROM home_warning_dismissals WHERE fingerprint = ?",
+                             [(k,) for k in spent])
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # busy: it is spent either way, and the next look clears it
+    return shown, hidden
+
+
+@app.route("/home/warnings/clear", methods=["POST"])
+@owner_required
+def clear_home_warning():
+    """Clear one line from "Nobody has told you this", until it changes.
+
+    how=snooze also brings it back after HOME_WARNING_SNOOZE_DAYS whether or
+    not it has changed. The line is found again from the live list, never
+    taken on the form's word: a key that no longer matches anything is a line
+    that has already changed or gone, and saying so beats storing a clearing
+    for a line nobody can see.
+    """
+    key = (request.form.get("key") or "").strip()
+    how = request.form.get("how") or "dismiss"
+    today = house_today()
+    conn = get_db()
+    current = owner_home_warnings(conn, today)
+    by_key = {home_warning_fingerprint(w): w for w in current}
+    w = by_key.get(key)
+    if w is None:
+        conn.close()
+        flash("That line has changed since the page was drawn, so it was not "
+              "cleared. Here it is as it stands now.", "error")
+        return redirect(url_for("dashboard", _anchor="nobody-told"))
+    until = ((today + timedelta(days=HOME_WARNING_SNOOZE_DAYS)).isoformat()
+             if how == "snooze" else None)
+    user = current_user()
+    conn.execute(
+        """INSERT INTO home_warning_dismissals
+             (fingerprint, title, count, until_date, dismissed_at, dismissed_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(fingerprint) DO UPDATE SET
+             until_date = excluded.until_date, dismissed_at = excluded.dismissed_at,
+             dismissed_by_user_id = excluded.dismissed_by_user_id""",
+        (key, w["title"], w["count"], until, datetime.now(timezone.utc).isoformat(),
+         user["id"] if user else None))
+    log_audit(conn, "home_warning_cleared", w["title"],
+              f"until {until}" if until else "until it changes")
+    conn.commit()
+    conn.close()
+    flash(f"Cleared “{w['title']}”"
+          + (f" for {HOME_WARNING_SNOOZE_DAYS} days, or until it changes."
+             if until else " until it changes.")
+          + " Nothing about it was changed, and its page still has it.", "success")
+    return redirect(url_for("dashboard", _anchor="nobody-told"))
+
+
+@app.route("/home/warnings/restore", methods=["POST"])
+@owner_required
+def restore_home_warning():
+    """Put a cleared line back on the panel; key=all puts every one back."""
+    key = (request.form.get("key") or "").strip()
+    conn = get_db()
+    if key == "all":
+        n = conn.execute("DELETE FROM home_warning_dismissals").rowcount or 0
+    else:
+        n = conn.execute("DELETE FROM home_warning_dismissals WHERE fingerprint = ?",
+                         (key,)).rowcount or 0
+    if n:
+        log_audit(conn, "home_warning_restored", "all" if key == "all" else key, None)
+    conn.commit()
+    conn.close()
+    flash("Back on the panel." if n else "Nothing was cleared, so nothing came back.",
+          "success" if n else "error")
+    return redirect(url_for("dashboard", _anchor="nobody-told"))
+
+
 def _day_link(endpoint, **values):
     """Where a row of the day opens, or "" when there is no page to open it on.
 
@@ -42606,7 +42750,11 @@ def staff_dashboard():
         revenue, revenue_budget, revenue_budget_pct = owner_home_revenue(conn, today)
         occupancy, occupancy_lead, occupancy_avg = owner_home_occupancy(conn, today)
         queue = owner_home_queue(conn)
-        warnings = owner_home_warnings(conn, today)
+        # The lines the owner has cleared are held back, and only from this
+        # panel; the greeting counts what is shown, so it never says "two
+        # things need looking at" over an empty panel.
+        warnings, warnings_hidden = split_cleared_warnings(
+            conn, owner_home_warnings(conn, today), today)
         hour = datetime.now(timezone.utc).hour
         greeting = ("Good morning" if hour < 12 else
                     "Good afternoon" if hour < 18 else "Good evening")
@@ -42649,7 +42797,9 @@ def staff_dashboard():
             greeting=greeting, hero_line=hero_line,
             figures=owner_home_figures(conn, today),
             next_up=owner_home_next_up(conn, today, day_rows),
-            queue=queue, warnings=warnings,
+            queue=queue, warnings=warnings, warnings_hidden=warnings_hidden,
+            show_cleared=request.args.get("cleared") == "1",
+            snooze_days=HOME_WARNING_SNOOZE_DAYS,
             queue_money=[q for q in queue if q["tone"] == "money"],
             queue_people=[q for q in queue if q["tone"] != "money"],
             bulk_count=sum(1 for q in queue if q["bulk_eligible"]),
