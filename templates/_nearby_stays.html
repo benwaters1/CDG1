@@ -22,7 +22,7 @@
 } -%}
 {%- set PLACE_SITES = {'Maison Beaucoup': 'https://www.maison-beaucoup.fr/', 'Les Granges de Léo': 'https://www.lesgrangesdeleo.fr/'} -%}
 {% from '_illus.html' import illus %}
-{% macro nearby_stays(heading='Where Your Guests Stay', intro='', fr='À deux pas', fr_en='A few minutes away') -%}
+{% macro nearby_stays(heading='Where Your Guests Stay', intro='', fr='À deux pas', fr_en='A few minutes away', note='Each is booked directly. Ask us, and we will gladly tell you which would suit your party.') -%}
 <section class="g-sec g-nearby"><div class="g-wrap">
   <span class="g-hill" aria-hidden="true">{{ illus('key') }}</span>
   <p class="g-fr">{{ fr }} <span class="g-fr__en">{{ fr_en }}</span></p>
@@ -52,6 +52,6 @@
     {%- endfor %}
   </div>
   {%- if PLACE_PHOTOS|length >= 3 %}{% from '_lightbox.html' import lightbox %}{{ lightbox() }}{% endif %}
-  <p class="g-p g-nearby__note">Each is booked directly. Ask us, and we will gladly tell you which would suit your party.</p>
+  <p class="g-p g-nearby__note">{{ note }}</p>
 </div></section>
 {%- endmacro %}

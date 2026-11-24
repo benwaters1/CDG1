@@ -55,7 +55,8 @@ BUDGET = 9000
 # 23 Nov 2026: the home page 9,500. The owner would not have the rooms slide on a computer ("it looks shit"), so
 # every room's card is shown whole, the aerial and five rooms in two rows of three where there was one sliding row.
 # That row cost about 350px after the photographs were lowered and the facts set side by side.
-LONG_BUDGET = {"/gallery": 12000, "/whats-on": 12000, "/": 9500}
+# 24 Nov 2026: 10,200, for three lines from guests' thank-you letters beside the Google three (owner's brief).
+LONG_BUDGET = {"/gallery": 12000, "/whats-on": 12000, "/": 10200}
 SHARP = 1.25
 TAP = 44
 SMALLEST = 12
@@ -71,7 +72,8 @@ KNOWN_LONG = {
     "/restoration": 15100,
     # 23 Nov: 14,900, the brochure's facts the owner asked for ("lets use the info from everything and the brochure
     # and really make it good"): the table, a sample of the days, what is included and what is on request.
-    "/events/weddings": 14900,
+    # 24 Nov: +100, a couple's line from their thank-you letter above the enquiry.
+    "/events/weddings": 15000,
     # 23 Nov: the same for private events ("same with private").
     "/events/private": 11400,
     # 11 Nov: +600 for the bathrooms' own section, which the owner asked for ("they are a real feature").
@@ -79,7 +81,8 @@ KNOWN_LONG = {
     # 23 Nov, later: +200 for the type pass (one size per rank of heading).
     "/book": 13400,
     # 23 Nov, later: +100 for the same type pass.
-    "/workshops": 11700,
+    # 24 Nov: +800, three retreat guests' lines from their thank-you letters (owner's brief).
+    "/workshops": 12500,
     "/workshops/<id>": 11900,
     "/history": 9900,
     "/book/<id>": 9600,
