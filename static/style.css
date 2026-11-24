@@ -695,6 +695,12 @@ body.staff-shell .stat-tile-icon-steel{ color:var(--steel); }
 .stat-tile-value{ font-family:'Playfair Display', serif; font-size:21px; font-weight:700; color:var(--chestnut-deep); line-height:1.15; white-space:nowrap; }
 body.staff-shell .stat-tile-value{ color:var(--ivory); font-family:'Inter',sans-serif; }
 .stat-tile-value-danger{ color:var(--danger) !important; }
+/* A figure written in words may break at its spaces. nowrap above keeps
+   "€1,234.50" whole, but a date the house writes day first in words, "23
+   November 2026", is wider at 21px than a 150px tile: on /admin/retention at
+   600px it ran out of the last tile and the page with it, one pixel past the
+   screen (test_text_stands_clear). */
+.stat-tile-value-words{ white-space:normal; }
 .stat-tile-sub{ font-size:12px; font-weight:500; color:var(--ink-soft); margin-left:3px; }
 /* Labels wrap rather than ellipse — "Confirmed room-nights" was rendering as
    "CONFIRMED ROOM…", which tells the reader nothing. Two lines is fine; a
