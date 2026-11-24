@@ -262,8 +262,15 @@ def run():
                     f"SELECT deposit_percent FROM workshops WHERE active = 1 AND {m.WORKSHOP_IS_PUBLIC}")),
             detail=str(deposit_shown))
     r = anon.get(f"/workshops/{private['id']}")
-    s.check("its numbered page is a plain 404, not a redirect to its link",
-            r.status_code == 404 and token not in r.get_data(as_text=True), detail=str(r.status_code))
+    # 24 Nov 2026 (old-links brief): a missing number goes to the list with a
+    # 302, so a private one must get exactly that answer too -- a 404 here
+    # beside a 302 there would tell anybody counting which numbers are private.
+    nobody = anon.get("/workshops/987654321")
+    s.check("its numbered page answers as a number that never was, never with its link",
+            r.status_code == nobody.status_code == 302
+            and r.headers.get("Location") == nobody.headers.get("Location")
+            and token not in r.get_data(as_text=True) + (r.headers.get("Location") or ""),
+            detail=f"{r.status_code} {r.headers.get('Location')} / {nobody.status_code}")
 
     # ------------------------------------------------------------------
     s.section("The link, and only the link")

@@ -1,0 +1,23 @@
+{% extends "public_base.html" %}
+{% from '_occasion_cards.html' import occasion_cards with context %}
+{% set crumbs = [("What’s On", url_for('whats_on')), ("At Gudanes", None)] %}
+{% block title %}Occasions at Gudanes{% endblock %}
+{% block description %}Christmas, Easter, the Tour de France in the Pyrénées: dates worth a stay at Château de Gudanes, with a room and breakfast at a price set for the occasion.{% endblock %}
+{% block og_desc %}Dates worth a stay at Château de Gudanes, with a room and breakfast at a price set for the occasion.{% endblock %}
+{% block content %}
+{#- 24 Nov 2026 (owner): "split the whats on into the current page then a drop down with other events at
+    gudanes". Every upcoming occasion, in the retreats' grid. Stays sold around a date, never events: nothing
+    here promises a party or a programme. -#}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">À Gudanes <span class="g-fr__en">At Gudanes</span></p>
+  <h1 class="g-place">Occasions at Gudanes</h1>
+  <p class="g-p g-lede-first">Some dates are worth planning a journey around. For these, the château keeps its rooms for guests who want to spend them here, with breakfast each morning and the valley at the door.</p>
+  {% if occasions %}
+  {{ occasion_cards(occasions) }}
+  <p class="g-hint" style="margin-top:var(--s5)">Prices are per room, a night, in euros; other currencies shown are approximate. Coming from abroad? <a href="{{ url_for('getting_here') }}">Getting here</a>, by train, air and car.</p>
+  {% else %}
+  <p class="g-p">The next dates are being chosen. In the meantime every room can be booked for any night it is free.</p>
+  <p class="g-p"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('whats_on') }}" class="g-btn">What’s On in the Ariège</a></p>
+  {% endif %}
+</div></section>
+{% endblock %}

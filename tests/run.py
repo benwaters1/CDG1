@@ -213,6 +213,8 @@ SUITES = [
     "test_whats_on",
     "test_whats_on_through_the_year",
     "test_whats_on_kept_up",
+    "test_stay_occasions",
+    "test_getting_here",
     "test_ateliers",
     "test_atelier_recap",
     "test_navigation",
@@ -247,6 +249,7 @@ SUITES = [
     "test_sick_note",
     "test_insurer_notice",
     "test_home_warnings",
+    "test_home_warning_clear",
     "test_waitlist_offer",
     "test_watch_tasks",
     "test_job_outcomes",
@@ -602,6 +605,7 @@ SUITES = [
     "test_form_csrf_tokens",
     "test_house_inbox_delivery",
     "test_workshop_deposit_hold",
+    "test_workshop_started_again",
     "test_form_bot_guard",
     "test_bot_registrations_listed",
     "test_newsletter_signup",
@@ -681,9 +685,21 @@ SUITES = [
     # 23 November 2026, the owner's website brief: /press rebuilt, the old
     # press archive redirected, the rooms' French titles, and /links.
     "test_website_brief_2026_11_23",
+    # 24 November 2026, the owner's brief for /restoration: the painted beams
+    # and the frescoes in a section of their own, and the timeline to 2026.
+    "test_restoration_page",
     # 24 November 2026: the old addresses to The History, the crest as the
     # site's icon, and a sharp photograph at the top of /press.
     "test_history_redirects_and_icon",
+    # 24 November 2026, the same brief, sections 6 to 11: weddings seat eighty inside and are all
+    # inclusive, the wedding quote, the event pages most important first, /facilities beside the
+    # grounds with cycling, and every description of a retreat ending open.
+    "test_wedding_inclusive",
+    "test_facilities_domaine",
+    "test_retreats_end_open",
+    # 23 November 2026, the owner's retreats brief: /workshops leads with what
+    # a guest does, the bathrooms honestly, and what is included before the price.
+    "test_retreats_page_sells",
 ]
 
 

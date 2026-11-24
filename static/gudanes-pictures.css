@@ -633,13 +633,22 @@
 /* 2.2  The FAQ answers in the body serif, like every other paragraph. */
 .g .g-faq-sec details p, .g .g-faq-sec dd, .g .g-faq__a{ font-family: var(--serif); }
 
-/* 2.3  The currency control: in the header strip, right of Book, small. */
+/* 2.3  The control in the header strip, right of Book, small. Since 24 Nov 2026 (owner) it is the LANGUAGE:
+        the currency moved to the menu panel. On a phone the strip has no room, so the panel's language row
+        shows there instead, and only there. */
 .g .g-curtop{ display: inline-flex; align-items: center; margin-left: var(--s2); }
 .g .g-curtop__s{ font-family: var(--serif); font-size: 13px; padding: 2px 4px; border: 1px solid currentColor;
   background: transparent; color: inherit; border-radius: 0; }
 .g .g-curtop__s option{ color: var(--ink); }
 .g .g-curbar{ display: none; }
 @media (max-width: 40rem){ .g .g-curtop{ display: none; } }
+.g .g-navwrap__prefs-row--lang{ display: none; }
+@media (max-width: 40rem){ .g .g-navwrap__prefs-row--lang{ display: flex; } }
+/* The header row has a fixed width (the wrap stops at 1216px), so a wider screen gives it no more room, and with
+   What's On a dropdown and the language beside Book its links ran under the wordmark ("Stay" hidden behind it,
+   measured 24 Nov 2026). The compact spacing the narrower screens already used, at every width. */
+.g .g-top .g-nav{ gap: 10px; }
+.g .g-top .g-nav a{ letter-spacing: .04em; }
 
 /* 6  The phone's booking bar waits for the hero's own date widget to scroll off:
    on the home page the two booking buttons sat an inch apart. Slid away, not
@@ -1195,6 +1204,78 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-key > .g-key__mos .g-mos__i:nth-child(3){ position: relative; left: -14%; top: 10%; box-shadow: 0 10px 28px rgba(20,30,50,.22); outline: 6px solid #fff; z-index: 1; }
 }
 @media (max-width: 52rem){ .g .g-key > .g-key__mos{ grid-column: 1 / -1; } .g .g-key > .g-key__mos .g-mos{ margin: 0; } }
+
+/* 24 Nov 2026 (owner: "its starting to get a bit long on that part so make sure the design is good and formatting"). The
+   weddings page's All Inclusive, the brochure's page of it: four groups side by side, each a photograph over a small-caps
+   heading and a short list, one thing to a line, in the finer details' gilt diamond; two by two below a wide screen,
+   and one column only on the narrowest phone. The photographs share one shape, so the four headings line up. */
+.g .g-wed-incl__grid{ display: grid; gap: var(--s6) var(--s5); margin-top: var(--s6); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 64rem){ .g .g-wed-incl__grid{ grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s6); } }
+@media (max-width: 22.4rem){ .g .g-wed-incl__grid{ grid-template-columns: minmax(0, 1fr); } }
+.g .g-wed-incl__g{ min-width: 0; }
+.g .g-wed-incl__ph{ margin: 0 0 var(--s4); }
+.g .g-wed-incl__ph img{ display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; background: var(--sand, #EDE4D3); }
+.g .g-wed-incl__h{ margin: 0 0 var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid rgba(176, 141, 87, .6); font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .16em; line-height: 1.4; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+.g .g-wed-incl__l{ list-style: none; margin: 0; padding: 0; }
+.g .g-wed-incl__l li{ position: relative; margin: 0; padding: 7px 0 7px 18px; font-size: 16px; line-height: 1.5; color: var(--ink-soft); text-wrap: pretty; }
+.g .g-wed-incl__l li::before{ content: ''; position: absolute; left: 0; top: 16px; width: 7px; height: 7px; transform: rotate(45deg); border: 1px solid var(--gilt, #B08D57); }
+@media (max-width: 40rem){
+  .g .g-wed-incl__l li{ font-size: 15px; padding-left: 15px; }
+  .g .g-wed-incl__l li::before{ width: 6px; height: 6px; top: 15px; }
+}
+.g .g-wed-fine__c li{ text-wrap: pretty; }
+
+/* 24 Nov 2026 (owner, of /facilities on a desktop: "fix the formatting here"). Le Domaine kept to the left half of a wide
+   screen with the right half empty, and the live weather line was centred under words that were not. The words sit
+   beside a photograph of the grounds now (split), and the weather is one quiet line at their left edge. */
+.g .g-domaine .g-sp{ margin: 0; }
+.g .g-domaine .g-wx{ max-width: none; margin: var(--s2) 0 var(--s4); text-align: left; }
+.g .g-domaine .g-wx__live{ justify-content: flex-start; gap: 2px 10px; font-size: 15px; }
+.g .g-domaine .g-wx__t{ font-family: var(--serif); font-size: 17px; }
+.g .g-domaine .g-wx__n{ flex-basis: auto; }
+.g .g-domaine__cta{ margin: var(--s6) 0 0; }
+/* Arranged for You: four cards to the row on a desk, two by two on a tablet, one column on a phone, each the height of
+   the tallest in its row. Scoped to the section: the room page and the booking form use .g-extras for other things. */
+.g .g-extras-sec .g-extras{ grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+@media (min-width: 40rem){ .g .g-extras-sec .g-extras{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 64rem){ .g .g-extras-sec .g-extras{ grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* 24 Nov 2026 (owner: "a retreat is not a list"): the A Retreat column ends on a line that leaves it open. */
+.g .g-sow__list li.g-sow__more{ font-style: italic; }
+/* 24 Nov 2026 (owner's brief: "Attribution shown under it, visibly"). The weddings page's guest line is a figure, and the
+   15 Oct rule that hides every caption under a photograph (gudanes.css) hid its signature with them: the quote stood
+   unsigned. A pull quote's caption is who said it, not a description of a photograph, so it shows. */
+.g main figure.g-pull figcaption{ display: block !important; margin-top: var(--s3); padding: 0; border: 0; }
+/* ==== 23 Nov 2026: /workshops, the owner's retreats brief ================
+   WHAT YOU'LL DO. The three the owner named (cooking, the brocantes, the restoration) lead, larger, with two photographs
+   side by side; the rest follow in a smaller row of one photograph each. One column on a phone, the photographs of a
+   leading three still in a pair. Here rather than gudanes.css, which arrives whole from the design side. */
+.g .g-todo{ list-style: none; margin: var(--s5) 0 0; padding: 0; display: grid; gap: var(--s5); grid-template-columns: minmax(0, 1fr); }
+.g .g-todo__i{ margin: 0; min-width: 0; }
+.g .g-todo__pics{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2); }
+.g .g-todo__f{ margin: 0; min-width: 0; }
+.g .g-todo__img{ display: block; width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; }
+.g .g-todo--more .g-todo__img{ aspect-ratio: 3 / 2; }
+.g .g-todo__h{ margin: var(--s3) 0 var(--s1, 4px); font-family: var(--display, var(--serif)); font-weight: 400; font-size: clamp(1.15rem, .6vw + 1rem, 1.35rem); line-height: 1.25; }
+.g .g-todo__i--lead .g-todo__h{ font-size: clamp(1.4rem, 1vw + 1.1rem, 1.85rem); }
+.g .g-todo__p{ margin: 0; font-size: 16px; line-height: 1.55; }
+.g .g-todo__on{ margin: var(--s2) 0 0; font-family: var(--ui); font-size: 13px; letter-spacing: .04em; line-height: 1.45; color: #73562d; }
+.g .g-todo__on a{ color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.g .g-todo .g-credit{ display: block; margin-top: 4px; }
+.g .g-todo .g-credit, .g .g-todo .g-credit a{ font-size: 12px; }   /* the Commons credit, at the phone's 12px floor */
+.g .g-todo--more{ margin-top: var(--s6, 3rem); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.18); }
+@media (min-width: 40rem){
+  .g .g-todo--more{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 60rem){
+  .g .g-todo--lead{ grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s6, 3rem) var(--s5); }
+  .g .g-todo--more{ grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s4); }
+}
+/* A retreat's card and its dates: what is included above the price, "10% reserves your place" beside it, and the
+   per-night figure last. Not .g-reserve: that is the header's Book button. */
+.g .g-wscard__foot .g-wscard__inc, .g .g-sit__inc{ margin: 0 0 var(--s2); font-family: var(--ui); font-size: 14px; letter-spacing: .04em; line-height: 1.45; color: #73562d; }
+.g .g-wscard__price:has(+ .g-toreserve), .g .g-sit__rate:has(+ .g-toreserve){ margin-bottom: 0; }
+.g .g-toreserve{ margin: 2px 0 var(--s4); font-family: var(--ui); font-size: 14.5px; font-weight: 600; line-height: 1.4; color: var(--ink); }
+.g .g-toreserve:has(+ .g-pernight){ margin-bottom: 0; }
 /* 24 Nov 2026 (booking-flow brief, 1): "Pay & book" is the one thing on the room page that takes the money, and the
    navy filled button above made it navy on the navy booking panel, and on the navy bar at the foot of a phone: a line
    of white words, not a button. On navy it is the home page's gold with navy words ("Discover the retreats"), the

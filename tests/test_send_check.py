@@ -159,6 +159,27 @@ FAKE_OFFICE = r"""
   window.__store = store;
   window.__notes = [];
   window.__saves = 0;
+  // THE APP'S DAY, IN THE BROWSER TOO. The suite pins the app's clock and
+  // leaves Chrome's on the wall calendar. The keys planted below were issued
+  // by the app and last thirty days from ITS day, so once the real date passed
+  // the pinned one by a month (21 November 2026) the handler read every one as
+  // long expired, never sent it, and each check answered "not signed in". In
+  // Outlook the server and the browser share a calendar; here they are made
+  // to: every Date the page makes is the real clock moved by the app's shift,
+  // so the clock still runs and every elapsed time is unchanged.
+  if (sc.clock_shift_ms) {
+    var RealDate = Date, shift = sc.clock_shift_ms;
+    var Shifted = function () {
+      if (!(this instanceof Shifted)) { return new RealDate(RealDate.now() + shift).toString(); }
+      var args = arguments.length ? Array.prototype.slice.call(arguments) : [RealDate.now() + shift];
+      return new (Function.prototype.bind.apply(RealDate, [null].concat(args)))();
+    };
+    Shifted.prototype = RealDate.prototype;
+    Shifted.now = function () { return RealDate.now() + shift; };
+    Shifted.UTC = RealDate.UTC;
+    Shifted.parse = RealDate.parse;
+    window.Date = Shifted;
+  }
   function atLeast(have, want) {
     var a = String(have).split("."), b = String(want).split(".");
     for (var i = 0; i < Math.max(a.length, b.length); i++) {
@@ -859,8 +880,11 @@ def _checking_only(s, anon, oc, conn):
 
 def _scenarios(conn, room, wrong, right, keys, ms_token):
     house = "zzsc.sender@chateaugudanes.com"
+    # How far the app's clock (pinned by the harness) is from Chrome's (not
+    # pinned), so the fake Outlook can live on the app's day: see FAKE_OFFICE.
+    shift_ms = round(m.datetime.now(m.timezone.utc).timestamp() * 1000 - time.time() * 1000)
     base = {"handler": "onMessageSendHandler", "profile": house, "to": [GUEST],
-            "subject": "Your stay", "sets": {"Mailbox": "1.14"}}
+            "subject": "Your stay", "sets": {"Mailbox": "1.14"}, "clock_shift_ms": shift_ms}
 
     def sc(name, **over):
         out = dict(base, name=name, platform="zzsc-" + name)

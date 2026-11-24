@@ -42,10 +42,11 @@ def run():
     s.check("the header lies over it", body is not None and "has-hero" in body.group(1))
 
     s.section("No medallions and gaps")
-    intro = re.search(r'<section class="g-sec g-wed-intro">(.*?)</section>', page, re.S)
-    intro = intro.group(1) if intro else ""
-    s.check("the two sections each sit beside a photograph", intro.count('class="g-sp__main"') == 2,
-            detail=str(intro.count('class="g-sp__main"')))
+    # 24 Nov 2026 (owner: the order, most important first): All Inclusive comes between the two now, so each is a
+    # section of its own, with its one photograph (test_wedding_inclusive holds the order).
+    intros = re.findall(r'<section class="g-sec g-wed-intro">(.*?)</section>', page, re.S)
+    s.check("the two sections each sit beside a photograph", [i.count('class="g-sp__main"') for i in intros] == [1, 1],
+            detail=str([i.count('class="g-sp__main"') for i in intros]))
     s.check("the medallion pair is gone", "g-duo-sec" not in page)
 
     s.section("What the brochure says")

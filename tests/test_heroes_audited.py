@@ -141,9 +141,20 @@ def run():
     s.check("the same dates are in both heroes the rule is for, /history's and the home page's",
             all(re.search(r'<section class="g-hero[^"]*">.*?class="g-hist-tag[^"]*"', page, re.S) for page in (history, home)))
 
-    s.section("The currency control over a photograph")
-    s.check("the header carries it, built beside Book by the page's script",
-            "sel.className = 'g-curtop__s';" in history and "document.querySelector('.g-top .g-booksel')" in history)
+    s.section("The header's selector over a photograph")
+    # 24 Nov 2026 (owner): "the language selector where the currency selector is and put the currency
+    # selector in the side bar". The header's selector, right of Book, is the language now, drawn by the
+    # template (no script to build it); the currency is the menu panel's alone.
+    with open(os.path.join(root, "templates", "public_base.html"), encoding="utf-8") as fh:
+        layout = fh.read()
+    top = layout[layout.index('<span class="g-booksel">'):layout.index("</header>")]
+    s.check("the header carries the language, right of Book",
+            '<span class="g-curtop g-langtop"><span class="g-lang"><select class="g-curtop__s"' in top
+            and top.index('class="g-booksel"') < top.index("g-langtop")
+            and "url_for('set_language', code=code)" in top)
+    s.check("and the currency is the side bar's alone",
+            'id="g-currency"' in layout and 'id="g-currency"' not in top
+            and "sel.className = 'g-curtop__s';" not in history)
     s.check("over a hero it turns white with the header's other words",
             re.search(r"body\.has-hero \.g-top:not\(\.is-solid\) \.g-curtop__s\{\s*color:\s*#fff;\s*\}", pics) is not None
             and "body.has-hero .g-top:not(.is-solid) .g-nav a{ color: #fff; }" in base)

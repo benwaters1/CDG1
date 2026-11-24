@@ -59,7 +59,9 @@ BUDGET = 9000
 # then "more images ... not just all in a row": a drawing beside each of its forty-odd entries, a second photograph
 # tucked over Towns, a pair beside Things to Do and a collage set into Outdoors took it from 11,567px to about 13,000.
 # 24 Nov 2026: 10,200, for three lines from guests' thank-you letters beside the Google three (owner's brief).
-LONG_BUDGET = {"/gallery": 12000, "/whats-on": 13500, "/": 10200}
+# 24 Nov 2026, evening: 10,300. The five branches merged together put two links in every page's footer
+# (What's On at Gudanes, Getting Here: the occasions brief) and "and much more" on the retreats; measured 10,214.
+LONG_BUDGET = {"/gallery": 12000, "/whats-on": 13500, "/": 10300}
 SHARP = 1.25
 TAP = 44
 SMALLEST = 12
@@ -72,7 +74,9 @@ SMALLEST = 12
 # address, with a room or a retreat by its kind, since the ids differ between
 # databases. Take a page off when it comes under the budget; the run says so.
 KNOWN_LONG = {
-    "/restoration": 15100,
+    # 24 Nov: +200 for The Paintings, the section of their own the owner asked for (the painted beams and the
+    # frescoes, three photographs), and the timeline's three new years; measured 15,216.
+    "/restoration": 15300,
     # 23 Nov: 14,900, the brochure's facts the owner asked for ("lets use the info from everything and the brochure
     # and really make it good"): the table, a sample of the days, what is included and what is on request.
     # 24 Nov: +100, a couple's line from their thank-you letter above the enquiry.
@@ -86,7 +90,9 @@ KNOWN_LONG = {
     "/book": 13600,
     # 23 Nov, later: +100 for the same type pass.
     # 24 Nov: +800, three retreat guests' lines from their thank-you letters (owner's brief).
-    "/workshops": 12500,
+    # 24 Nov: +2,750 for the two sections the owner's retreats brief adds, What You'll Do and The Bathrooms
+    # ("i dont know why theyre not selling"; "have we got the bathrooms on the workshop page?"); measured 15,029.
+    "/workshops": 15200,   # 24 Nov evening, was 15,100: the footer's two new links; measured 15,125 merged
     "/workshops/<id>": 11900,
     "/history": 9900,
     # 24 Nov 2026: "/book/<id>" came off. The room page puts its form first, with the photograph beside the room's

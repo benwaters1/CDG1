@@ -162,7 +162,8 @@ def run():
     # for the retreats became the Retreats tab, open first, with the next dates in it. The old line only
     # comes back when no date is on sale.
     for line in ["Retreats Three to seven nights, all inclusive",
-                 "Every meal, the wine and the château’s chefs, with nothing to pay at the end.",
+                 # 24 Nov 2026 (owner: a retreat is not a list): "and much more".
+                 "Every meal, the wine, the château’s chefs and much more, with nothing to pay at the end.",
                  "For two centuries Gudanes was a château of guests.",
                  "Guests arrive as strangers and leave as friends, and so many of them return.",
                  "Many of our guests return, some year after year, each time for a different retreat.",
@@ -185,8 +186,10 @@ def run():
     s.section("/workshops")
     ws = words(pages["/workshops"].get_data(as_text=True))
     for line in ["Les retraites", "La Vie de Château",
-                 "A few days of French château life, in rooms brought back from ruin.",
-                 "This is not a hotel stay, and it is not a course.",
+                 # 23 Nov 2026 (owner's retreats brief): the hero and the opening name what a guest does, and the
+                 # page no longer opens on what a retreat is not. test_retreats_page_sells holds the rest.
+                 "Cooking with the château’s chefs, antiquing in the brocantes, and the frescoes coming back to the light.",
+                 "A few days of French château life: cooking classes with the château’s chefs",
                  "Une journée à Gudanes", "Le petit-déjeuner", "Le dîner",
                  "In France, the table is the point of the day",
                  "the great cave at Lombrives"]:
@@ -403,8 +406,11 @@ def run():
             detail=", ".join("#%d active=%s" % (r["id"], r["active"]) for r in gone))
     for r in gone:
         page = c.get("/workshops/%d" % r["id"])
-        s.check(f"its page (/workshops/{r['id']}) is gone, not a redirect naming it", page.status_code == 404,
-                detail=str(page.status_code))
+        # 24 Nov 2026 (old-links brief): a gone retreat goes to the list, 302.
+        s.check(f"its page (/workshops/{r['id']}) is gone: the list, not a redirect naming it",
+                page.status_code == 302
+                and page.headers.get("Location", "").split("?")[0].endswith("/workshops"),
+                detail=f"{page.status_code} {page.headers.get('Location')}")
     for path, html in shown.items():
         s.check(f"{path}: no card, no date, no name", not re.search(r"Immersive|Artisan Workshops", html),
                 detail=path)

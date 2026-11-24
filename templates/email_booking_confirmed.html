@@ -135,8 +135,16 @@
 
   {# What a guest is actually most likely to want next, and the directions
      they will come back for on the day. #}
+  {#- A guest chef in residence on the nights of this stay (Occasions at Gudanes, 24 Nov 2026): the dinners,
+      each with the restaurant's own booking page for that evening. -#}
+  {% if chef_dinners %}
+  <p style="margin:22px 0 6px; font-family:{{ SANS }}; font-size:15px; line-height:1.6; color:#1C2833;">
+    <strong>A guest chef is cooking during your stay.</strong>
+    {{ chef_dinners[0]['chef_name'] or 'Our guest chef' }} serves dinner on
+    {% for d in chef_dinners %}<a href="{{ d['book_url'] }}" style="color:#14305F;">{{ d['words'] }}</a>{% if not loop.last %}{{ ' and ' if loop.revindex == 2 else ', ' }}{% endif %}{% endfor %}{% if chef_dinners[0]['dinner_time'] %}, seated at {{ chef_dinners[0]['dinner_time'] }}{% endif %}{% if chef_dinners[0]['dinner_price'] %}, €{{ '{:,.0f}'.format(chef_dinners[0]['dinner_price']) }} per person{% endif %}. Places are limited: book a table from the link.</p>
+  {% endif %}
   {{ email_extras(manage_url, settings) }}
-  {{ email_directions(settings) }}
+  {{ email_directions(settings, getting_here_url) }}
 
   {% if closing %}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"

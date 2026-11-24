@@ -135,7 +135,22 @@ m = _harness.m
 # /workshops and /events/weddings, and nothing else. Was: "cf9625d"
 # 24 Nov 2026, later: merged with main at 96f5fe9; the base is the merge. Against 6d92fc0 it listed /book and
 # /book/1 to /book/5 (check-out at 11am) and nothing else.
-COPY_BASE = "96f5fe9"
+# 24 Nov 2026, evening: moved to 5b20f5a, the restoration page's own section for the painted beams and the frescoes
+# (owner's brief: "yes, they are 16th century hand painted"), its sentence out of What the Walls Gave Back, and the
+# timeline's 2018, 2019 and 2026. Against 96f5fe9 it listed /restoration (those words, and the three new captions) and
+# nothing else. Was: "96f5fe9"
+# 24 Nov 2026, night: moved to a4eb7a5, the same brief's sections 6 to 11: weddings seat eighty and are all inclusive,
+# the wedding quote, the event pages most important first, /facilities ("On a retreat", cycling), and every description
+# of a retreat ending open ("and much more"), the menu card's line on every page with it. Against 5b20f5a it listed the
+# menu card on every page; with that line put back for one run, /, /workshops, /events, /events/weddings,
+# /events/private, /facilities, the La vie de chateau card on /press, /story and /gallery, and the four retreats' own
+# pages, each at one of those changes, and nothing else. Was: "5b20f5a"
+# 24 Nov 2026, late: moved to 46b6c34, the five branches merged in one (restoration 6 to 11, the retreats
+# page and the old addresses, Occasions and Getting Here, the booking path, the owner home's clearings) and
+# the fixes on top. Against a4eb7a5 it listed every public page, each first at the main menu's new What's On
+# dropdown (In the Ariège, At Gudanes: the occasions brief), and the room pages' "With the Room" lines.
+# Was: "a4eb7a5"
+COPY_BASE = "46b6c34"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
