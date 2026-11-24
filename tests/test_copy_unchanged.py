@@ -139,7 +139,13 @@ m = _harness.m
 # (owner's brief: "yes, they are 16th century hand painted"), its sentence out of What the Walls Gave Back, and the
 # timeline's 2018, 2019 and 2026. Against 96f5fe9 it listed /restoration (those words, and the three new captions) and
 # nothing else. Was: "96f5fe9"
-COPY_BASE = "5b20f5a"
+# 24 Nov 2026, night: moved to a4eb7a5, the same brief's sections 6 to 11: weddings seat eighty and are all inclusive,
+# the wedding quote, the event pages most important first, /facilities ("On a retreat", cycling), and every description
+# of a retreat ending open ("and much more"), the menu card's line on every page with it. Against 5b20f5a it listed the
+# menu card on every page; with that line put back for one run, /, /workshops, /events, /events/weddings,
+# /events/private, /facilities, the La vie de chateau card on /press, /story and /gallery, and the four retreats' own
+# pages, each at one of those changes, and nothing else. Was: "5b20f5a"
+COPY_BASE = "a4eb7a5"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
