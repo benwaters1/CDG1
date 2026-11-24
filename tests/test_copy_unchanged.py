@@ -133,7 +133,9 @@ m = _harness.m
 # page, three on /workshops, one on the weddings page, each signed with the season and the year; the weddings questions
 # say Les Gites de Beille and the note under its places to stay says we arrange them. Against cf9625d it listed /,
 # /workshops and /events/weddings, and nothing else. Was: "cf9625d"
-COPY_BASE = "6d92fc0"
+# 24 Nov 2026, later: merged with main at 96f5fe9; the base is the merge. Against 6d92fc0 it listed /book and
+# /book/1 to /book/5 (check-out at 11am) and nothing else.
+COPY_BASE = "96f5fe9"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
