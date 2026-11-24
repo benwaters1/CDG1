@@ -60,8 +60,13 @@ def _run(s, oc, conn):
             "sncf-connect.com/en-en/tgv-inoui/route/paris/toulouse" in html
             and "sncf-connect.com/train/trajet/toulouse/les-cabannes" in html
             and "read on 24 November 2026" in text)
-    s.check("the retreats' meeting in Toulouse at 11am, in the site's own words",
-            "we meet in central Toulouse at 11am on the first day and drive up together" in text)
+    # 24 Nov 2026, merge: the retreats now meet at midday at the Grand Hôtel de l'Opéra (owner,
+    # 23 Nov, on /workshops in claude/briefs-24nov). This page said 11am in central Toulouse and
+    # would have contradicted /workshops the day both went live.
+    s.check("the retreats' meeting: midday at the Grand Hôtel de l'Opéra, as /workshops says",
+            "we meet at midday on the first day at the Grand Hôtel de l’Opéra, on Place du Capitole in Toulouse" in text
+            and "central Toulouse" not in text
+            and "11am" not in text.split("Our transfer")[-1].split("Make a trip of it")[0])
     s.check("no lift, and the stairs", "There is no lift" in text and "stairs" in text)
     tables = len(re.findall(r"<table\b", html))
     wrapped = len(re.findall(r'<div class="table-wrap">\s*<table\b', html))
