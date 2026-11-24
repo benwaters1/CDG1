@@ -106,13 +106,13 @@ def run():
     s.check("and are not among what is included", not any("Toulouse" in i for i in items), detail=str(items))
 
     s.section("Choose Your Days, a sample, and the reason lower down")
-    choose = re.search(r'<section class="g-sec g-choose"[^>]*>(.*?)</section>', page, re.S)
+    choose = re.search(r'<section class="g-sec g-pdays-sec"[^>]*>(.*?)</section>', page, re.S)
     choose = choose.group(1) if choose else ""
-    names = [visible_text(x) for x in re.findall(r'<h3 class="g-choose__fr"[^>]*>(.*?)</h3>', choose, re.S)]
+    names = [visible_text(x) for x in re.findall(r'<h3 class="g-pdays__fr"[^>]*>(.*?)</h3>', choose, re.S)]
     s.check("the retreats' five themes", names == ["En cuisine", "Chiner", "La restauration", "Noël", "L’été"],
             detail=str(names))
     s.check("each with a photograph of its own",
-            len(re.findall(r'<li class="g-choose__i">\s*<figure class="g-choose__ph"><img\b', choose)) == 5
+            len(re.findall(r'<li class="g-pdays__i">\s*<figure class="g-pdays__ph"><img\b', choose)) == 5
             and len(set(re.findall(r'<img\b[^>]*\salt="([^"]*)"', choose))) == 5)
     days = re.findall(r'<h3 class="g-shootsteps__t">([^<]*)</h3>', page)
     s.check("A Sample Private Retreat: the arrival, the kitchen and the market, the restoration and Foix, Au Revoir",
@@ -164,6 +164,54 @@ def run():
     loose = [p for p in ("/", "/events", "/events/weddings", PATH, "/facilities")
              if re.search(r"connected speakers", visible_text(client.get(p).get_data(as_text=True)), re.I)]
     s.check("and no page says connected speakers without it", not loose, detail=str(loose))
+
+    s.section("3. The photographs: the gallery's three sections each show some")
+    gal = client.get("/gallery").get_data(as_text=True)
+
+    def part(start, end_pattern):
+        at = gal.find(start)
+        if at < 0:
+            return ""
+        nxt = re.search(end_pattern, gal[at + len(start):])
+        return gal[at:at + len(start) + (nxt.start() if nxt else len(gal))]
+
+    story = part('id="restoration"', r"<h2\b")
+    story_alts = re.findall(r'<img\b[^>]*\salt="([^"]*)"', story)
+    s.check("The Restoration Story shows photographs", len(story_alts) >= 3, detail=str(len(story_alts)))
+    s.check("none of them the drive or the gates, here or behind See all",
+            not [a for a in story_alts if re.search(r"\bdrive\b|\bgates?\b", a, re.I)],
+            detail=str([a for a in story_alts if re.search(r"\bdrive\b|\bgates?\b", a, re.I)]))
+    s.check("it opens on the château as it was found: its first photograph is the ruin",
+            story_alts and story_alts[0] == "The mountains, through a broken window under the roof", detail=str(story_alts[:2]))
+    grounds = part('id="grounds"', r"<h2\b")
+    s.check("the drive and the gates are with the grounds",
+            "The drive under a storm sky" in grounds and "Through the gates" in grounds)
+    archive = part('id="archive"', r"</section>")
+    s.check("Rooms That No Longer Look Like This shows the Then and Now pairs",
+            archive.count("data-slider") >= 3 and len(re.findall(r"<img\b", archive)) >= 6,
+            detail=f"{archive.count('data-slider')} pairs, {len(re.findall(r'<img', archive))} photographs")
+    resto = client.get("/restoration").get_data(as_text=True)
+    s.check("the same pairs as /restoration, from the one partial",
+            re.findall(r'<div class="g-tn__pair" data-slider>.*?<p class="g-tn__cap">([^<]*)</p>', archive, re.S)
+            == re.findall(r'<div class="g-tn__pair" data-slider>.*?<p class="g-tn__cap">([^<]*)</p>', resto, re.S)
+            != [])
+    s.check("and each page carries the slider's script once",
+            gal.count("if (window.__gThenNow)") == 1 and resto.count("if (window.__gThenNow)") == 1)
+    work = part("The Work, As It Happens", r"</section>")
+    before_buttons = work.split("instagram.com")[0]
+    s.check("The Work, As It Happens shows six photographs before its buttons",
+            len(re.findall(r"<img\b", before_buttons)) == 6, detail=str(len(re.findall(r"<img\b", before_buttons))))
+    s.check("each described", all(len(a) > 12 for a in re.findall(r'<img\b[^>]*\salt="([^"]*)"', before_buttons)))
+
+    s.section("3. The logo and the engraving have a size before they arrive")
+    for path in ("/", "/events", "/book"):
+        other = client.get(path).get_data(as_text=True)
+        engr = re.search(r'<img\b[^>]*chateau_engraving\.png[^>]*>', other)
+        s.check(f"{path}: the engraving at the foot", engr and 'width="691"' in engr.group(0) and 'height="396"' in engr.group(0),
+                detail=engr.group(0)[:160] if engr else "none")
+        marks = re.findall(r'<img class="g-close__mark"[^>]*>', other)
+        s.check(f"{path}: the logo in the closing band", marks and all('width="62" height="62"' in t for t in marks),
+                detail=str([t[:80] for t in marks]))
     return s
 
 
