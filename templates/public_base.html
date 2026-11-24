@@ -406,8 +406,11 @@ window.houseDay = (function () {
         {% set _show_lang = site.get('show_language_switcher') %}
         {% if _show_lang or fx_rates %}
         <div class="g-navwrap__prefs">
+          {#- 24 Nov 2026 (owner): "the language selector where the currency selector is and put the currency
+              selector in the side bar". The language is a selector in the header now; this row is for a phone,
+              where the header has no room for it (gudanes-pictures.css). The currency lives here only. -#}
           {% if _show_lang %}
-          <span class="g-navwrap__prefs-row">
+          <span class="g-navwrap__prefs-row g-navwrap__prefs-row--lang">
             <span class="g-navwrap__prefs-label">{{ t('Language') }}</span>
             <span class="g-lang">
               {% for code, label in languages.items() %}
@@ -478,6 +481,16 @@ window.houseDay = (function () {
         </a>
       </div>
     </span>
+    {%- if site.get('show_language_switcher') %}
+    {#- The language, as a selector, right of Book: the place the currency selector had (owner, 24 Nov 2026).
+        Each option is the address that switches to it, so the page needs no script to know where to go. -#}
+    <span class="g-curtop g-langtop"><span class="g-lang"><select class="g-curtop__s" aria-label="{{ t('Language') }}"
+        onchange="if(this.value)location.href=this.value">
+      {%- for code, label in languages.items() %}
+      <option value="{{ url_for('set_language', code=code) }}"{% if code == lang %} selected{% endif %} lang="{{ code }}" label="{{ code|upper }}" aria-label="{{ label }}">{{ code|upper }}</option>
+      {%- endfor %}
+    </select></span></span>
+    {%- endif %}
   </div>
 </header>
 
@@ -1095,40 +1108,6 @@ window.houseDay = (function () {
 })();
 </script>
 
-<script>
-/* Currency control in the header strip, once. 9 Nov 2026, evening (owner's
-   second review, 2.3): it was placed beside the first price on the page, which
-   put "SHOW PRICES IN [EUR]" between a retreat's title and its price and under
-   the section headings of /book and /workshops -- a control in the middle of
-   the copy. It sits right of Book now, small, on every page that has rates;
-   the menu panel's control is the master and the two stay in step. Every price
-   marked data-eur follows either. */
-(function(){
-  var master = document.getElementById('g-currency');
-  var book = document.querySelector('.g-top .g-booksel');
-  if (!master || !book) return;
-
-  var bar = document.createElement('span');
-  bar.className = 'g-curtop';
-  var sel = document.createElement('select');
-  sel.className = 'g-curtop__s';
-  sel.setAttribute('aria-label', 'Show prices in');
-  master.querySelectorAll('option').forEach(function(o){
-    sel.appendChild(o.cloneNode(true));
-  });
-  sel.value = master.value;
-  bar.appendChild(sel);
-
-  /* Keep the two controls in step, whichever the guest uses. */
-  sel.addEventListener('change', function(){
-    master.value = sel.value;
-    master.dispatchEvent(new Event('change'));
-  });
-  master.addEventListener('change', function(){ sel.value = master.value; });
-
-  book.parentElement.insertBefore(bar, book.nextSibling);
-})();
-</script>
 
 <script>
 /* ============================================================
