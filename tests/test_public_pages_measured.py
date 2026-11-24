@@ -72,7 +72,9 @@ SMALLEST = 12
 # address, with a room or a retreat by its kind, since the ids differ between
 # databases. Take a page off when it comes under the budget; the run says so.
 KNOWN_LONG = {
-    "/restoration": 15100,
+    # 24 Nov: +200 for The Paintings, the section of their own the owner asked for (the painted beams and the
+    # frescoes, three photographs), and the timeline's three new years; measured 15,216.
+    "/restoration": 15300,
     # 23 Nov: 14,900, the brochure's facts the owner asked for ("lets use the info from everything and the brochure
     # and really make it good"): the table, a sample of the days, what is included and what is on request.
     # 24 Nov: +100, a couple's line from their thank-you letter above the enquiry.

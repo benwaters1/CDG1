@@ -677,6 +677,9 @@ SUITES = [
     # 23 November 2026, the owner's website brief: /press rebuilt, the old
     # press archive redirected, the rooms' French titles, and /links.
     "test_website_brief_2026_11_23",
+    # 24 November 2026, the owner's brief for /restoration: the painted beams
+    # and the frescoes in a section of their own, and the timeline to 2026.
+    "test_restoration_page",
 ]
 
 
