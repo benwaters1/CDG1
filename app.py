@@ -12604,6 +12604,9 @@ GUEST_AUDIT_ACTIONS = frozenset({
     "booking_contact_changed_by_guest", "guest_extended_stay", "guest_added_extra",
     "guest_wrote_in", "guest_restricted", "guest_asked_to_be_forgotten",
     "guest_downloaded_their_data",
+    # Their unpaid hold on an atelier, given back because they filled the
+    # form in again (release_own_earlier_holds).
+    "workshop_hold_released_by_guest",
 })
 
 
@@ -13172,21 +13175,98 @@ def release_lapsed_workshop_holds(conn, now=None):
                 WHERE status = 'pending' AND deposit_hold_until IS NOT NULL
                   AND deposit_hold_until <= ? AND deposit_paid_at IS NULL""",
             (now,)).fetchall():
-        if amount_paid_for(conn, "workshop", row) > 0.005:
-            continue
-        cur = conn.execute(
-            """UPDATE workshop_bookings SET status = 'cancelled', decided_at = ?,
-                      hold_released_at = ?
-                WHERE id = ? AND status = 'pending' AND deposit_paid_at IS NULL""",
-            (now, now, row["id"]))
-        if cur.rowcount:
-            log_audit(conn, "workshop_hold_released", target=row["reference_code"],
-                      via=f"no deposit within {WORKSHOP_DEPOSIT_HOLD_MINUTES} minutes",
-                      actor=None)
+        if release_workshop_hold(conn, row, now,
+                                 f"no deposit within {WORKSHOP_DEPOSIT_HOLD_MINUTES} minutes"):
             count += 1
     if count:
         conn.commit()
     return count
+
+
+def release_workshop_hold(conn, row, now, via, action="workshop_hold_released"):
+    """Give back ONE place held for a deposit. True if it was given back.
+
+    The one way a hold is released, whether its hour ran out or the same guest
+    started again (release_own_earlier_holds): cancelled, stamped as a hold
+    that lapsed rather than anybody's decision, and written on its history.
+    Anything with money on the ledger is left alone for a person. Writes to
+    nobody and does not commit.
+    """
+    if amount_paid_for(conn, "workshop", row) > 0.005:
+        return False
+    cur = conn.execute(
+        """UPDATE workshop_bookings SET status = 'cancelled', decided_at = ?,
+                  hold_released_at = ?
+            WHERE id = ? AND status = 'pending' AND deposit_paid_at IS NULL
+              AND deposit_hold_until IS NOT NULL""",
+        (now, now, row["id"]))
+    if not cur.rowcount:
+        return False
+    log_audit(conn, action, target=row["reference_code"], via=via, actor=None)
+    return True
+
+
+def same_guest(email):
+    """An address as the house compares it: one person whatever the case or
+    the stray space they typed it with."""
+    return (email or "").strip().casefold()
+
+
+def release_own_earlier_holds(conn, session_id, guest_email, now=None):
+    """A guest registering again for a session gives back their own unpaid
+    hold on it. Returns the references released.
+
+    Leaving the card page and filling the form in again made a second
+    registration while the first still held its places for the hour. So one
+    person held two places with nothing paid -- and on a session with one
+    place left, the guest was turned away as fully booked by their own first
+    attempt. Belinda Down, 24 November 2026: WRK-ZSO3FV held and never paid,
+    WRK-TFM3I5 made a minute or two later and paid at 02:07, the first given
+    back by the hourly run at 03:13 -- and the register listed her twice.
+
+    The old card page can still be paid for until it closes. That deposit
+    reaches settle_workshop_deposit_hold, which will not hand back a second
+    place to somebody whose later registration already holds one.
+    """
+    who = same_guest(guest_email)
+    if not who:
+        return []
+    now = (now or datetime.now(timezone.utc)).isoformat()
+    released = []
+    for row in conn.execute(
+            """SELECT id, reference_code, guest_email FROM workshop_bookings
+                WHERE session_id = ? AND status = 'pending' AND deposit_hold_until IS NOT NULL
+                  AND deposit_paid_at IS NULL""", (session_id,)).fetchall():
+        if same_guest(row["guest_email"]) == who and release_workshop_hold(
+                conn, row, now, "they registered again",
+                action="workshop_hold_released_by_guest"):
+            released.append(row["reference_code"])
+    return released
+
+
+def later_registration_by_same_guest(conn, booking_id):
+    """The same guest's later registration on the same session that has the
+    place -- confirmed, or with money paid -- or None.
+
+    What a deposit arriving on a released hold has to ask before taking the
+    place back: if the guest started again and paid that time, the place is
+    already theirs, and this is a second payment for it, not a second place.
+    """
+    row = conn.execute("SELECT id, session_id, guest_email FROM workshop_bookings WHERE id = ?",
+                       (booking_id,)).fetchone()
+    if not row or not same_guest(row["guest_email"]):
+        return None
+    for later in conn.execute(
+            """SELECT wb.id, wb.reference_code, wb.status, wb.guest_email,
+                      COALESCE((SELECT SUM(amount) FROM workshop_transactions t
+                                 WHERE t.workshop_booking_id = wb.id AND t.kind = 'payment'), 0) AS paid
+                 FROM workshop_bookings wb
+                WHERE wb.session_id = ? AND wb.id > ? AND wb.status IN ('pending', 'confirmed')
+                ORDER BY wb.id""", (row["session_id"], booking_id)).fetchall():
+        if same_guest(later["guest_email"]) == same_guest(row["guest_email"]) and (
+                later["status"] == "confirmed" or later["paid"] > 0.005):
+            return later
+    return None
 
 
 def overdue_vehicle_checkouts(conn, hours=24):
@@ -70120,7 +70200,14 @@ def settle_workshop_deposit_hold(conn, booking_id, via=None):
     # under the same lock the registration form takes.
     why = None
     start = parse_date(row["start_date"])
-    if row["cancelled_at"]:
+    # A guest who started again and paid that time already has the place.
+    # Taking this one back as well gave one person two places and two
+    # deposits; it is a second payment, and giving it back is the owner's.
+    again = later_registration_by_same_guest(conn, booking_id)
+    if again:
+        why = (f"they had already registered again as {again['reference_code']}, "
+               "which has their place")
+    elif row["cancelled_at"]:
         why = "the session has since been called off"
     elif not start or start < house_today():
         why = "the session has already started"
@@ -70150,10 +70237,17 @@ def settle_workshop_deposit_hold(conn, booking_id, via=None):
               details=why)
     title = (f"Deposit paid for a released place — {row['title']}, {row['guest_name']} "
              f"({row['reference_code']})")
-    body = (f"The deposit arrived after the {workshop_hold_length_words()} hold had run out "
-            f"and {why}, so the guest has paid and has no place. Nothing has been refunded "
-            "and nothing has been sent to them. Take them back from the registration (over "
-            "the cap, if you choose), or give the money back from it.")
+    if again:
+        body = (f"The guest started again and paid on {again['reference_code']}, which has "
+                f"their place. This deposit came in afterwards on the attempt they left, "
+                f"{row['reference_code']}, so they have paid twice for one place. Nothing "
+                "has been refunded and nothing has been sent to them: give this one back "
+                "from its registration.")
+    else:
+        body = (f"The deposit arrived after the {workshop_hold_length_words()} hold had run out "
+                f"and {why}, so the guest has paid and has no place. Nothing has been refunded "
+                "and nothing has been sent to them. Take them back from the registration (over "
+                "the cap, if you choose), or give the money back from it.")
     for owner in conn.execute("SELECT id FROM users WHERE role = 'owner'").fetchall():
         send_notification(conn, owner["id"], "workshop_booking", title, body=body,
                           link=url_for("admin_workshop_registrations", q=row["reference_code"],
@@ -70185,9 +70279,12 @@ def workshop_stripe_success():
             outcome = ("unplaced" if now["status"] == "cancelled" and now["hold_released_at"]
                        else "confirmed" if now["status"] == "confirmed" else None)
         if outcome == "unplaced":
-            flash("Your payment has reached us, but the place we were holding had already been "
-                  "released and the atelier has filled since. The château has been told and "
-                  "will write to you about it.", "error")
+            # Not "the atelier has filled since": it is as often called off,
+            # already begun, or a second payment from somebody who started
+            # again and has their place on the other registration.
+            flash("Your payment has reached us, but the place we were holding for it had "
+                  "already been released. The château has been told and will write to you "
+                  "about it.", "error")
         elif outcome in ("confirmed", "reconfirmed"):
             flash("Deposit received, thank you — your place is confirmed.", "success")
         else:
@@ -70588,6 +70685,12 @@ def workshop_register(session_id):
 
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
+        # The same guest filling the form in again -- back from the card page,
+        # or the button pressed twice -- has walked away from their first
+        # attempt. Its places are given back before they are counted, so the
+        # guest is not refused by their own unpaid hold, nor holding two.
+        if guest_name and EMAIL_RE.match(guest_email):
+            release_own_earlier_holds(conn, session_id, guest_email)
         guest_phone = phone_from_form("guest_phone")
         notes = request.form.get("notes", "").strip()[:500]
         party_size_raw = request.form.get("party_size", "").strip()
@@ -85842,8 +85945,46 @@ def workshop_register_rows(conn, today=None):
             "charged": charged, "paid": paid, "owed": owed, "money": money_state,
             "card": card, "due_date": r["balance_due_date"],
             "room": r["assigned_room_name"],
+            "attempts_left": [],
         })
-    return out
+    return fold_attempts_left(out)
+
+
+def fold_attempts_left(rows):
+    """One row per person per session: an attempt they walked away from is
+    named on the registration that followed it, not listed as another.
+
+    A guest who leaves the card page and fills the form in again leaves the
+    first registration behind, held and then given back unpaid. Both were
+    rows, so the register showed the same person twice -- once released, once
+    paid -- and read as a double booking (Belinda Down, 24 November 2026).
+
+    Only a hold given back with nothing paid is folded, into the same guest's
+    latest registration on the same session that is not one -- which is
+    usually the later attempt, and is the earlier one when the deposit went
+    through on the page they had left. If every attempt was given back, the
+    latest stands for them. One with money on it stays a row of its own,
+    because that is money to give back; and two real registrations from one
+    address both stay, because nothing was walked away from.
+    """
+    groups = {}
+    for r in rows:
+        who = same_guest(r["email"])
+        if who:
+            groups.setdefault((r["session_id"], who), []).append(r)
+    folded = set()
+    for group in groups.values():
+        left = [r for r in group if r["released"] and r["paid"] <= 0.005]
+        if not left or len(group) < 2:
+            continue
+        left_ids = {r["id"] for r in left}
+        stood = [r for r in group if r["id"] not in left_ids] or left
+        home = max(stood, key=lambda x: x["id"])
+        for r in sorted(left, key=lambda x: x["id"]):
+            if r["id"] != home["id"]:
+                home["attempts_left"].append(r)
+                folded.add(r["id"])
+    return [r for r in rows if r["id"] not in folded]
 
 
 def workshop_return():
@@ -85952,7 +86093,9 @@ def workshop_register_view(conn, args, today=None):
     lv = list_view(
         items, args,
         search=["who", "email", "phone", "reference", "what",
-                lambda r: " ".join(r["party_names"])],
+                lambda r: " ".join(r["party_names"]),
+                # A reference they walked away from still finds them.
+                lambda r: " ".join(e["reference"] for e in r["attempts_left"])],
         search_hint="Search guest, email, phone, reference or workshop",
         facets=[
             facet("when", "When", lambda r: r["when"], order=["Current", "History"],

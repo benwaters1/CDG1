@@ -603,6 +603,7 @@ SUITES = [
     "test_form_csrf_tokens",
     "test_house_inbox_delivery",
     "test_workshop_deposit_hold",
+    "test_workshop_started_again",
     "test_form_bot_guard",
     "test_bot_registrations_listed",
     "test_newsletter_signup",
