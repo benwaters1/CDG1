@@ -87,6 +87,10 @@
 {%- macro phone_field(id, name, value='', label='Telephone', wrap='p', extra_class='') -%}
 {%- set v = (value or '')|string|trim -%}
 {%- set ns = namespace(cc='', iso='', national=v) -%}
+{#- 24 Nov 2026 (booking-flow brief, 5): a proxy's word for where the visitor is, when there is one (visitor_country),
+    starts the code; else France, the house's. Only a country on this list, or the menu would open on Afghanistan. -#}
+{%- set _geo = visitor_country() -%}
+{%- if _geo not in PHONE_CODES|map(attribute=0)|list %}{% set _geo = '' %}{% endif -%}
 {%- if v.startswith('+') -%}
   {%- for iso, country, code in PHONE_CODES|sort(attribute=2, reverse=true) -%}
     {%- if not ns.cc and v.replace(' ', '').startswith(code) -%}{%- set ns.cc = code -%}{%- set ns.iso = iso -%}{%- set ns.national = v.replace(' ', '')[code|length:] -%}{%- endif -%}
@@ -95,10 +99,10 @@
 <{{ wrap }} class="g-field g-phone {{ extra_class }}">
   <label for="{{ id }}">{{ label }}<span class="g-req" aria-hidden="true">*</span></label>
   <span class="g-phone__row">
-    <select class="g-phone__cc" id="{{ id }}_cc" aria-label="Country code" data-phone-cc="{{ id }}" {{ 'data-chosen' if ns.iso }}
+    <select class="g-phone__cc" id="{{ id }}_cc" aria-label="Country code" data-phone-cc="{{ id }}" {{ 'data-chosen' if ns.iso }} {{ 'data-geo' if _geo and not ns.iso }}
             data-searchable data-search-hint="Country or +code">
       {%- for iso, country, code in PHONE_CODES|sort(attribute=1) %}
-      <option value="{{ code }}" data-iso="{{ iso }}" data-rank="{{ PHONE_CODES.index((iso, country, code)) }}" {{ 'selected' if (ns.iso == iso) or (not ns.iso and iso == 'FR') }}>{{ country }} {{ code }}</option>
+      <option value="{{ code }}" data-iso="{{ iso }}" data-rank="{{ PHONE_CODES.index((iso, country, code)) }}" {{ 'selected' if (ns.iso == iso) or (not ns.iso and iso == (_geo or 'FR')) }}>{{ country }} {{ code }}</option>
       {%- endfor %}
     </select>
     <input type="tel" inputmode="tel" id="{{ id }}" name="{{ name }}" autocomplete="tel-national" value="{{ v }}" required
@@ -112,7 +116,11 @@
   function init(){
     var region = ((navigator.language || '').split('-')[1] || '').toUpperCase();
     document.querySelectorAll('[data-phone-cc]').forEach(function(sel){
-      if (!sel.hasAttribute('data-chosen') && region){
+      /* Not on a form that asks for the country: there the code follows the country (_country.html), and a second
+         guess from the browser's language is how one visitor got Ukraine above the United States (24 Nov 2026).
+         Nor when the server already knew where the visitor is (data-geo). */
+      var follows = sel.form && sel.form.querySelector('[data-country]');
+      if (!follows && !sel.hasAttribute('data-chosen') && !sel.hasAttribute('data-geo') && region){
         var o = sel.querySelector('option[data-iso="' + region + '"]'); if (o) o.selected = true;
       }
       // SPLIT WHAT THE SERVER SENT. The input carries the whole

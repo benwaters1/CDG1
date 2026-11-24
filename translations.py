@@ -200,6 +200,10 @@ FR = {
     # The top bar's short name for What's On in the Ariège (z22).
     "What’s On": "Que faire",
     "In the Ariège": "En Ariège",
+    # Occasions at Gudanes and Getting Here (24 Nov 2026).
+    "At Gudanes": "À Gudanes",
+    "What’s On at Gudanes": "Que faire à Gudanes",
+    "Getting Here": "Venir au château",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Vos dates",
@@ -983,6 +987,9 @@ ES = {
     "The History": "La historia",
     "What’s On": "Qué hacer",
     "In the Ariège": "En el Ariège",
+    "At Gudanes": "En Gudanes",
+    "What’s On at Gudanes": "Qué hacer en Gudanes",
+    "Getting Here": "Cómo llegar",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Sus fechas",

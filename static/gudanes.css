@@ -10537,8 +10537,9 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 /* 2 Oct - the facilities as a compact strip (room page) */
 .g .g-fstrip{ list-style: none; margin: var(--s6) 0 0; padding: var(--s5) 0 0; border-top: 1px solid var(--gilt-leaf); display: grid; gap: var(--s4) var(--s3);
   grid-template-columns: repeat(3, minmax(0,1fr)); }
-@media (min-width: 48rem){ .g .g-fstrip{ grid-template-columns: repeat(5, minmax(0,1fr)); } }
-@media (min-width: 72rem){ .g .g-fstrip{ grid-template-columns: repeat(9, minmax(0,1fr)); } }
+/* 24 Nov 2026: twelve items on rows of three, four and six, so no row is left with one (it was five and nine, for ten). */
+@media (min-width: 48rem){ .g .g-fstrip{ grid-template-columns: repeat(4, minmax(0,1fr)); } }
+@media (min-width: 72rem){ .g .g-fstrip{ grid-template-columns: repeat(6, minmax(0,1fr)); } }
 .g .g-fstrip > .g-fstrip__i{ max-width: none; display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--s2); }
 .g .g-fstrip__ill{ display: block; width: 52px; color: var(--gilt); }
 .g .g-fstrip .g-fstrip__l{ font-family: var(--serif); font-size: var(--t-small) !important; line-height: 1.35; color: var(--ink-2); }

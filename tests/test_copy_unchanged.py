@@ -153,7 +153,12 @@ m = _harness.m
 # its three pages (the footer), /facilities, /gallery, /history, /press, /restaurant, /restoration, /story, /terms
 # (its description and the footer), /whats-on, /workshops and the four retreats' pages, and nothing else.
 # Was: "a4eb7a5"
-COPY_BASE = "f0e9feb"
+# 24 Nov 2026, late: moved to 46b6c34, the five branches merged in one (restoration 6 to 11, the retreats
+# page and the old addresses, Occasions and Getting Here, the booking path, the owner home's clearings) and
+# the fixes on top. Against a4eb7a5 it listed every public page, each first at the main menu's new What's On
+# dropdown (In the Ariège, At Gudanes: the occasions brief), and the room pages' "With the Room" lines.
+# Was: "a4eb7a5"
+COPY_BASE = "46b6c34"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

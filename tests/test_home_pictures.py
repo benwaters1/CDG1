@@ -105,8 +105,17 @@ def run():
             quotes >= 2 and says.count('class="rc-oval"') == quotes and says.count('class="rc-bow"') == quotes
             and len(re.findall(r'class="g-seal[ "]', says)) == quotes,
             detail=f"{quotes} quotes")
-    s.check("signed as a guest of the château, with no name or stars made up",
-            says.count("A guest of the château") >= 2 and "★" not in says and "&#9733;" not in says)
+    # 23-24 Nov 2026 (owner): the cards are three Google reviews, signed as Google shows the reviewer,
+    # and three lines from retreat guests' letters, signed with the season and year only (NO NAMES,
+    # test_guest_letters). "A guest of the château" is what a card with no signature says. Nothing
+    # else: no name the page made up, and no stars.
+    sigs = re.findall(r'<span class="rc-sig__l">([^<]*)</span>', says)
+    ok_sig = re.compile(r"^(A guest of the château|[A-Z][a-z]+( [A-Z]\.)?, on Google|"
+                        r"Workshop guest, (spring|summer|autumn|winter) \d{4})$")
+    s.check("signed as the owner chose: the Google reviewer, a retreat guest by season, or a guest of the château; no stars",
+            len(sigs) == quotes and all(ok_sig.match(x.strip()) for x in sigs)
+            and "★" not in says and "&#9733;" not in says,
+            detail=str(sigs))
     s.check("and the two navy rules that sat over the cards are gone", 'class="g-fleur"' not in says)
     s.section("no photograph twice")
     keys = [picture_key(_src(t)) for t in _visible_imgs(page) if "Logo" not in _src(t)]

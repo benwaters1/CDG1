@@ -695,6 +695,12 @@ body.staff-shell .stat-tile-icon-steel{ color:var(--steel); }
 .stat-tile-value{ font-family:'Playfair Display', serif; font-size:21px; font-weight:700; color:var(--chestnut-deep); line-height:1.15; white-space:nowrap; }
 body.staff-shell .stat-tile-value{ color:var(--ivory); font-family:'Inter',sans-serif; }
 .stat-tile-value-danger{ color:var(--danger) !important; }
+/* A figure written in words may break at its spaces. nowrap above keeps
+   "€1,234.50" whole, but a date the house writes day first in words, "23
+   November 2026", is wider at 21px than a 150px tile: on /admin/retention at
+   600px it ran out of the last tile and the page with it, one pixel past the
+   screen (test_text_stands_clear). */
+.stat-tile-value-words{ white-space:normal; }
 .stat-tile-sub{ font-size:12px; font-weight:500; color:var(--ink-soft); margin-left:3px; }
 /* Labels wrap rather than ellipse — "Confirmed room-nights" was rendering as
    "CONFIRMED ROOM…", which tells the reader nothing. Two lines is fine; a
@@ -2313,6 +2319,28 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   padding:11px 14px; margin-bottom:14px;
 }
 .pass-short-row{ font-size:14.5px; font-variant-numeric:tabular-nums; }
+/* The owner home's lines, each with its own Clear / Snooze. The text takes
+   the room and the two buttons sit at the right; on a phone they drop under
+   the sentence rather than squeezing it to a column of single words. */
+.oh-warn{ display:flex; align-items:flex-start; gap:10px; padding:3px 0; }
+.oh-warn + .oh-warn{ border-top:1px solid var(--parchment-line); padding-top:6px; }
+.oh-warn__text{ flex:1 1 auto; min-width:0; }
+.oh-warn__acts{ flex:0 0 auto; display:flex; gap:4px; margin:0; }
+.oh-warn__btn{ padding:4px 8px; font-size:12.5px; white-space:nowrap; color:var(--ink-soft); }
+.oh-warn--hidden .oh-warn__text{ color:var(--ink-soft); }
+.oh-warn__cleared{ display:flex; flex-direction:column; gap:4px; margin-top:6px;
+  padding-top:6px; border-top:1px dashed var(--parchment-line); }
+.oh-warn__show{ align-self:flex-start; }
+/* Every line cleared: still there, so the cleared ones are reachable, but
+   no longer red -- a red frame round "nothing new" is an alarm about nothing. */
+.pass-short.oh-warn--quiet{ border-color:var(--parchment-line); border-left-color:var(--parchment-line); }
+@media (max-width: 600px){
+  .oh-warn{ flex-direction:column; gap:2px; }
+  .oh-warn__acts{ align-self:flex-start; }
+}
+@media (pointer: coarse){
+  .oh-warn__btn{ min-height:44px; display:inline-flex; align-items:center; }
+}
 .pass{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
 .ticket{
   background:var(--surface); border:1px solid var(--parchment-line);
