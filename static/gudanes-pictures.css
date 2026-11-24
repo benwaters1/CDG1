@@ -1123,6 +1123,24 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-occ__p{ margin: 0; font-size: 17px; line-height: 1.55; color: var(--ink-soft); }
 @media (min-width: 52rem){ .g .g-wed-fine--two .g-wed-fine__cols{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
+/* 24 Nov 2026: a guest's line standing on its own between two sections (the weddings page), not floated into a column. */
+.g .g-pull--alone{ float: none; width: auto; max-width: 40rem; margin: 0 auto; text-align: center; }
+.g .g-pull--alone blockquote{ margin: 0; padding: 0; border: 0; }
+.g .g-pull--alone p{ max-width: none; }
+.g .g-pull--alone cite{ font-style: normal; }
+
+/* 24 Nov 2026: the address the owner wanted high on the home page (10 Nov: "i wated another address further up") fell
+   to 1188px on a phone once the hero carried the retreats, three cards stacked. On a phone the three now sit in one row
+   that swipes, the next peeking in, so the address is back inside the first screen (test_public_margins). */
+@media (max-width: 44rem){
+  .g .g-hero .g-hbook__list{ grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 86%;
+    overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .g .g-hero .g-hbook__list::-webkit-scrollbar{ display: none; }
+  .g .g-hero .g-hbook__list li{ scroll-snap-align: start; }
+  .g .g-hero .g-hbook__w{ height: 100%; grid-template-columns: 84px minmax(0, 1fr); }
+  .g .g-hero .g-hbook__ph{ width: 84px; height: 100%; aspect-ratio: auto; overflow: hidden; }
+}
+
 /* ==== 23 Nov 2026: a drawing beside every place on /whats-on ==============
    Owner: "i want illustrations and stuff on here and around, all the plain text is not good". Forty-odd places and
    pastimes, each a small heading over a paragraph. draw_the_nearby_vignettes() in app.py puts a drawing at the head
@@ -1177,8 +1195,3 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-key > .g-key__mos .g-mos__i:nth-child(3){ position: relative; left: -14%; top: 10%; box-shadow: 0 10px 28px rgba(20,30,50,.22); outline: 6px solid #fff; z-index: 1; }
 }
 @media (max-width: 52rem){ .g .g-key > .g-key__mos{ grid-column: 1 / -1; } .g .g-key > .g-key__mos .g-mos{ margin: 0; } }
-/* 24 Nov 2026: a guest's line standing on its own between two sections (the weddings page), not floated into a column. */
-.g .g-pull--alone{ float: none; width: auto; max-width: 40rem; margin: 0 auto; text-align: center; }
-.g .g-pull--alone blockquote{ margin: 0; padding: 0; border: 0; }
-.g .g-pull--alone p{ max-width: none; }
-.g .g-pull--alone cite{ font-style: normal; }

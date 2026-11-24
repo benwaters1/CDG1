@@ -82,7 +82,8 @@ KNOWN_LONG = {
     # 11 Nov: +600 for the bathrooms' own section, which the owner asked for ("they are a real feature").
     # 23 Nov: +100 for each room's plain name, small beneath its French title (owner's website brief, 3).
     # 23 Nov, later: +200 for the type pass (one size per rank of heading).
-    "/book": 13400,
+    # 24 Nov: +200 for Key Information's "Arrival and departure" line (owner: check-out at 11am); measured 13,496.
+    "/book": 13600,
     # 23 Nov, later: +100 for the same type pass.
     # 24 Nov: +800, three retreat guests' lines from their thank-you letters (owner's brief).
     "/workshops": 12500,
