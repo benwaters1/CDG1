@@ -43,20 +43,70 @@
        visited. This is the line that makes them reachable. Deliberately NOT in
        the decision queue below: that is things waiting on a yes or no, and
        these are things nobody has said out loud. #}
-    {% if warnings %}
-    <div class="pass-short" style="margin:0 0 18px;">
+    {# Each line can be cleared: "Clear" hides it until it changes (a count
+       going up or down, a warning becoming a blocker), "Snooze" also brings
+       it back after a week. Clearing hides it from THIS panel only — the
+       page it links to and the watch task still say what is true. The
+       cleared lines are one tap away below, so nothing is lost for good. #}
+    {% if warnings or warnings_hidden %}
+    <div class="pass-short{{ ' oh-warn--quiet' if not warnings }}" id="nobody-told" style="margin:0 0 18px;">
       <strong>Nobody has told you this</strong>
       {% for w in warnings %}
-      <span class="pass-short-row">
-        <a href="{{ w.href }}">{{ w.title }}</a>
-        {%- if w.count > 1 %} <span class="mini-status {{ 'status-declined' if w.severity == 'blocker' else 'status-pending' }}">{{ w.count }}</span>{% endif %}
-        — {{ w.detail }}
-      </span>
+      <div class="pass-short-row oh-warn">
+        <span class="oh-warn__text">
+          <a href="{{ w.href }}">{{ w.title }}</a>
+          {%- if w.count > 1 %} <span class="mini-status {{ 'status-declined' if w.severity == 'blocker' else 'status-pending' }}">{{ w.count }}</span>{% endif %}
+          — {{ w.detail }}
+        </span>
+        <form method="post" action="{{ url_for('clear_home_warning') }}" class="oh-warn__acts">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="key" value="{{ w.key }}">
+          <button type="submit" name="how" value="dismiss" class="btn-ghost oh-warn__btn"
+                  title="Hide this line until it changes">Clear</button>
+          <button type="submit" name="how" value="snooze" class="btn-ghost oh-warn__btn"
+                  title="Hide this line for {{ snooze_days }} days, or until it changes">Snooze {{ snooze_days }} days</button>
+        </form>
+      </div>
       {% endfor %}
+      {% if not warnings %}
+      <span class="pass-short-row">Nothing new. Every line here has been cleared, and each comes back by itself if it changes.</span>
+      {% else %}
       <span class="upload-hint">
         Each one is two things this system already knew, sitting in different
         places. Nothing here needs a decision from you — it needs a look.
+        Clearing a line hides it here until it changes; it fixes nothing.
       </span>
+      {% endif %}
+      {% if warnings_hidden %}
+      {% if show_cleared %}
+      <div class="oh-warn__cleared">
+        <span class="upload-hint"><strong>Cleared</strong> — <a href="{{ url_for('dashboard', _anchor='nobody-told') }}">hide these</a></span>
+        {% for w in warnings_hidden %}
+        <div class="pass-short-row oh-warn oh-warn--hidden">
+          <span class="oh-warn__text">
+            <a href="{{ w.href }}">{{ w.title }}</a>
+            {%- if w.count > 1 %} <span class="mini-status status-past">{{ w.count }}</span>{% endif %}
+            — {{ 'snoozed until ' ~ w.until|date_short if w.until else 'cleared until it changes' }}
+          </span>
+          <form method="post" action="{{ url_for('restore_home_warning') }}" class="oh-warn__acts">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="key" value="{{ w.key }}">
+            <button type="submit" class="btn-ghost oh-warn__btn">Bring back</button>
+          </form>
+        </div>
+        {% endfor %}
+        {% if warnings_hidden|length > 1 %}
+        <form method="post" action="{{ url_for('restore_home_warning') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="key" value="all">
+          <button type="submit" class="btn-ghost oh-warn__btn">Bring them all back</button>
+        </form>
+        {% endif %}
+      </div>
+      {% else %}
+      <a class="upload-hint oh-warn__show" href="{{ url_for('dashboard', cleared=1, _anchor='nobody-told') }}">{{ warnings_hidden|length }} cleared — show</a>
+      {% endif %}
+      {% endif %}
     </div>
     {% endif %}
 
