@@ -14,6 +14,7 @@
 {% from '_stay_panel.html' import stay_panel with context %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_beforeafter.html' import before_after, before_after_script %}
+{% from '_then_and_now.html' import THEN_NOW %}
 {% from '_marks.html' import mark %}
 {% from '_animals.html' import animals_note %}
 {# `galleries` comes from gallery_page(): a list of
@@ -313,6 +314,9 @@
       {% set shown = gal['images'] or FALLBACK.get(gal['slug'], []) %}
       {#- 9 Nov, evening (owner's second review, 1): the before-and-afters /restoration no longer shows live here. -#}
       {% if gal['slug'] == 'restoration' %}{% set _have = shown|map(attribute='url')|map('replace', '?format=1000w', '')|map('replace', '?format=1500w', '')|list %}{% set _more = [] %}{% for _p in RESTO_PAIRS %}{% if (_p['url'].split('?')[0]) not in _have %}{% set _ = _more.append(_p) %}{% endif %}{% endfor %}{% set shown = shown + _more %}{% endif %}
+      {#- 24 Nov 2026: the Then and Now pairs are shown below, in Rooms That No Longer Look Like This, so The Restoration
+          Story leaves them out rather than show the same photograph twice on one page. -#}
+      {%- if gal['slug'] == 'restoration' %}{% set _tn = [] %}{% for _c, _b, _n in THEN_NOW %}{% set _ = _tn.extend([_b[0].split('?')[0], _n[0].split('?')[0]]) %}{% endfor %}{% set _kept = [] %}{% for _i in shown %}{% if _i['url'].split('?')[0] not in _tn %}{% set _ = _kept.append(_i) %}{% endif %}{% endfor %}{% set shown = _kept %}{% endif %}
       {% if shown %}
       {#- 9 Nov, evening (owner's second review, 1): 244 photographs in one 27,000px block, every one lazy but every one
           in the document. Each section shows six -- two rows of three, so no row ends on one photograph -- and keeps
