@@ -124,6 +124,9 @@ m = _harness.m
 # 23 Nov 2026, later: moved to cf9625d, "the house" made "the chateau" on the weddings, private events and photoshoot
 # pages (the second review's word list), and "House parties" became "A party of friends". Against 1d27227 it listed
 # /events/weddings, /events/private and /events/photoshoots, and nothing else. Was: "1d27227"
+# 23 Nov 2026, evening: moved to 265c4d9, check-out at 11am (owner). Against 4fd612f it
+# listed /book (Key Information's new "Arrival and departure" line) and /book/1 to
+# /book/5 (the times above Pay & book), and nothing else. Each was read.
 COPY_BASE = "cf9625d"
 
 # Words the brief adds, each only inside its own element.

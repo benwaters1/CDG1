@@ -239,7 +239,7 @@
           <div class="g-stack g-stack--arrive">
             {#- 5 Oct (owner): an estimated arrival time, with check-in and check-out stated and early check-in on request.
                 Saved in bookings.estimated_arrival_time. The times are read from CHECK_IN_TIME and
-                CHECK_OUT_TIME in app.py, never typed (3pm and 10am, owner, 15 Oct); the hourly
+                CHECK_OUT_TIME in app.py, never typed (3pm and 10am, owner, 15 Oct; 11am out from 23 Nov); the hourly
                 choices start at check-in, so they move with it. -#}
             <p class="g-field g-eta">
               <label for="estimated_arrival_time">Estimated arrival time<span class="g-req" aria-hidden="true">*</span></label>
@@ -405,6 +405,8 @@
           {# 1 Oct (owner): no tick box - the line says it, as hotel sites do. The agreement is still sent, so the server check holds. #}
           <input type="hidden" name="agree_terms" value="on">
           <p class="g-hint g-terms-line" style="margin:0 0 var(--s3)">By booking, you agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">terms and conditions</a>.</p>
+          {#- 23 Nov 2026 (owner): the times where the guest pays, so they are seen before paying. From CHECK_IN_TIME / CHECK_OUT_TIME. -#}
+          <p class="g-foot-note g-times-line"><strong>Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}.</strong></p>
 
           {% if stripe_enabled and room['price_per_night'] %}
           <p class="g-foot-note"><strong>Non-refundable.</strong> Payments are not refunded if you cancel.</p>

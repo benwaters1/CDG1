@@ -535,6 +535,11 @@
       <p class="g-key__k">Getting here</p>
       <p class="g-key__v">Toulouse-Blagnac is an hour and three quarters away; the station at Les Cabannes, three minutes by car. <a href="{{ url_for('whats_on') }}#skiing">Skiing at Ax 3 Domaines</a> is about half an hour; Andorra, about an hour</p>
     </div>
+    {#- 23 Nov 2026 (owner): the times, in his words. Read from CHECK_IN_TIME / CHECK_OUT_TIME, never typed. -#}
+    <div class="g-key__i">
+      <p class="g-key__k">Arrival and departure</p>
+      <p class="g-key__v">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}. Later arrivals by arrangement.</p>
+    </div>
     <div class="g-key__i">
       <p class="g-key__k">The stairs</p>
       <p class="g-key__v">No lift: the bedrooms are up the original staircase{% if _gf.on %}, and the one on the ground floor is reached by stairs too{% endif %}. Pack lightly</p>
