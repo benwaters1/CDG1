@@ -188,6 +188,7 @@ SUITES = [
     "test_promo_privacy",
     "test_promo_blast",
     "test_group_mail",
+    "test_group_letter_schedule",
     "test_letters_named",
     "test_delivery_reports",
     "test_terminal",
