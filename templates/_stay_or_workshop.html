@@ -119,12 +119,15 @@
 
 {#- Before a night is booked (owner, 28 Sept): "so people do not book nightly expecting more" - and towards the workshops.
     On Stay before the rooms, and on each room page above the booking form. The tour's €50 is the nightly extra's price. -#}
-{% macro night_notice(dm='open', bath=False) %}
+{#- 25 Nov 2026 (Dinner at Gudanes): on dates with a dinner night it says the house's dinner is added in the extras,
+    rather than sending them to the restaurants nearby for an evening the château is cooking. -#}
+{% macro night_notice(dm='open', bath=False, dinner=False) %}
 <aside class="g-night" aria-label="What a night includes">
   <p class="g-night__k">Before you book a night</p>
   <p class="g-night__t">A night here is a room and breakfast.</p>
   {% if bath %}<p class="g-night__p g-night__bath">Every room has a private bathroom of its own, on the ground floor &mdash; not in the room itself.</p>{% endif %}
-  <p class="g-night__p">Lunch and dinner at the {{ eat_nearby() }}, which we are happy to book for you. On a retreat every meal is included, cooked by the château’s gourmet chefs over three to seven nights of <em lang="fr">la vie de château</em>.</p>
+  {% if dinner %}<p class="g-night__p">On your dates the château hosts Dinner at Gudanes, added in the extras below; for the other meals, the {{ eat_nearby() }}, which we are happy to book for you. On a retreat every meal is included, cooked by the château’s gourmet chefs over three to seven nights of <em lang="fr">la vie de château</em>.</p>
+  {% else %}<p class="g-night__p">Lunch and dinner at the {{ eat_nearby() }}, which we are happy to book for you. On a retreat every meal is included, cooked by the château’s gourmet chefs over three to seven nights of <em lang="fr">la vie de château</em>.</p>{% endif %}
   <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the retreats</a></p>
 </aside>
 {% endmacro %}

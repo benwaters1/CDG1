@@ -463,6 +463,24 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-check__t b{ display: block; font-weight: 400; color: var(--blue-deep); }
 .g-check__t span{ font-size: 13px; color: var(--ink-faint); }
 
+/* Dinner at Gudanes (25 Nov 2026). The note under a room's price, in the house's quiet style: the night, the time
+   and the price, and "See the menu". Then a line a dinner night first in the extras: its words, how many for dinner,
+   the menu, and a refusal said on the line itself. */
+.g-dinnernote{ margin: var(--s3) 0 0; padding: var(--s2) 0 0; border-top: 1px solid var(--line); }
+.g-dinnernote__p{ margin: 0 0 var(--s1); font-size: 14px; line-height: 1.5; color: var(--ink-soft); }
+.g-card .g-dinnernote{ margin-top: var(--s2); }
+.g-menu-link{ color: var(--blue-deep); text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.g-extras--dinner{ margin-bottom: var(--s3); }
+.g-dinnerx{
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s2) var(--s3);
+  padding: var(--s3) var(--s4); background: var(--white); border: 1px solid var(--line);
+}
+.g-dinnerx__l{ min-width: 0; cursor: pointer; }
+.g-dinnerx__n{ display: inline-flex; align-items: center; gap: var(--s1); font-size: 14px; color: var(--ink-faint); }
+.g-dinnerx__n input{ width: 4.5rem; min-height: 44px; font-size: 16px; padding: 0 var(--s2); }
+.g-dinnerx__m, .g-dinnerx__why{ grid-column: 1 / -1; margin: 0; }
+.g-dinnerx__why{ color: var(--danger); }
+
 /* ---- Reservation summary ---------------------------------------------- */
 
 .g-dossier{ background: var(--blue-deep); color: #C9D4DF; padding: var(--s6); }
@@ -5407,12 +5425,30 @@ main img{ height: auto; }
 /* ==========================================================================
    LIGHTBOX
    ========================================================================== */
+/* 25 Nov 2026 (owner's screenshot): a portrait photograph opened hard against the
+   left edge, the arrows gone and the cross in the corner of the screen. The box
+   used to shrink to the photograph, and since 23 Nov the photograph is its own
+   full-size file: a box sizes to a picture's natural width, not the width it is
+   drawn at once max-height has scaled it, so a 2,000px file made the box 96vw
+   and the picture sat at its left, with the arrows 60px outside the screen.
+   Now the open box IS the screen, and the picture is centred in it, so its file
+   size cannot move anything. Clicking the dark around it still closes: that
+   click lands on the dialog itself. test_lightbox_and_signatures measures it. */
 .g-lb{
   border: 0; padding: 0; max-width: 96vw; max-height: 96vh; width: auto;
   background: transparent; overflow: visible;
 }
+.g-lb[open]{
+  position: fixed; inset: 0; margin: 0; box-sizing: border-box;
+  width: 100%; height: 100%; max-width: none; max-height: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 72px 76px 24px;
+}
 .g-lb::backdrop{ background: rgba(14,28,48,.92); }
-.g-lb__img{ display: block; max-width: 92vw; max-height: 82vh; width: auto; height: auto; }
+.g-lb__img{
+  display: block; flex: none; width: auto; height: auto;
+  max-width: 100%; max-height: calc(100vh - 140px); max-height: calc(100dvh - 140px);
+}
 .g-lb__cap{
   margin: var(--s3) 0 0; text-align: center; color: #E8E2D6;
   font-family: var(--ui); font-size: var(--t-ui); max-width: var(--m-wide);
@@ -5423,11 +5459,13 @@ main img{ height: auto; }
   border: 1px solid rgba(232,226,214,.4); background: rgba(14,28,48,.6);
   color: #fff; font-size: 26px; line-height: 1;
 }
-.g-lb__x{ top: -56px; right: 0; }
+.g-lb__x{ top: 12px; right: 16px; }
 .g-lb__nav{ top: 50%; transform: translateY(-50%); }
-.g-lb__nav--p{ left: -60px; }
-.g-lb__nav--n{ right: -60px; }
+.g-lb__nav--p{ left: 16px; }
+.g-lb__nav--n{ right: 16px; }
 @media (max-width: 52rem){
+  .g-lb[open]{ padding: 60px 8px 16px; }
+  .g-lb__img{ max-height: calc(100vh - 100px); max-height: calc(100dvh - 100px); }
   .g-lb__nav--p{ left: 4px; }
   .g-lb__nav--n{ right: 4px; }
   .g-lb__x{ top: 4px; right: 4px; }
@@ -10240,6 +10278,39 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
   color: var(--blue-deep); font-family: var(--ui); font-weight: 600; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; text-decoration: none !important; transition: background .2s, color .2s; }
 .g .g-full .g-full__cta:hover, .g .g-full .g-full__cta:focus-visible{ background: transparent; color: #fff; }
 .g .g-full .g-full__link{ color: #fff; font-family: var(--serif); font-style: italic; font-size: 18px; text-decoration: underline; text-decoration-color: var(--gilt-on-dark, #C6A66E); text-underline-offset: 5px; }
+
+/* =====================================================================
+   25 Nov 2026 (Dinner at Gudanes, 3b; owner: "like an advertisement"). The occasion the owner ticks, directly under
+   the video: a photograph on the left and the navy of La Pleine Expérience on the right, in its type and its gilt --
+   the line, the name in the display face, the dates large enough to read across a room, one sentence, the price,
+   Book your stay and See the menu. On a phone the photograph sits on top at 16:9 and the buttons go full width.
+   No new colour, no animation. Measured at 320 and 375px by test_dinner_at_gudanes.
+   ===================================================================== */
+.g .g-hband{ display: grid; background: var(--blue-deep); color: #fff; border-bottom: 1px solid var(--gilt-leaf); overflow: hidden; }
+@media (min-width: 48rem){ .g .g-hband{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 300px; max-height: 360px; } }
+.g .g-hband__ph{ display: block; aspect-ratio: 16 / 9; overflow: hidden; background: var(--blue-deep); }
+@media (min-width: 48rem){ .g .g-hband__ph{ aspect-ratio: auto; height: 100%; min-height: 300px; } }
+.g .g-hband__ph img{ display: block; width: 100%; height: 100%; object-fit: cover; }
+.g .g-hband__b{ min-width: 0; display: flex; flex-direction: column; justify-content: center;
+  padding: clamp(28px, 4vw, 48px) clamp(16px, 4vw, 56px); }
+.g .g-hband__k{ font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .2em; text-transform: uppercase;
+  color: var(--gilt-on-dark, #C6A66E); margin: 0 0 var(--s3); }
+.g .g-hband__h{ font-family: var(--display); font-weight: 400; font-size: clamp(30px, 2vw + 18px, 48px); line-height: 1.06;
+  margin: 0; color: #fff; overflow-wrap: anywhere; }
+.g .g-hband .g-hband__h a{ color: #fff; text-decoration: none; }
+.g .g-hband .g-hband__h a:hover, .g .g-hband .g-hband__h a:focus-visible{ text-decoration: underline; text-decoration-color: var(--gilt-on-dark, #C6A66E); text-underline-offset: 6px; }
+.g .g-hband__d{ font-family: var(--display); font-size: clamp(22px, 1vw + 16px, 30px); line-height: 1.2; color: #fff; margin: var(--s2) 0 0; }
+.g .g-hband__p{ font-family: var(--serif); font-size: 17px; line-height: 1.55; color: rgba(255,255,255,.88); margin: var(--s3) 0 0; max-width: 34rem; }
+.g .g-hband__price{ font-family: var(--serif); font-style: italic; font-size: 18px; color: #fff; margin: var(--s2) 0 0; }
+.g .g-hband__btns{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s5) 0 0; }
+.g .g-hband .g-hband__book, .g .g-hband .g-hband__menu{ display: inline-flex; align-items: center; justify-content: center;
+  min-height: 50px; padding: 0 var(--s6); font-family: var(--ui); font-weight: 600; font-size: 13px; letter-spacing: .14em;
+  text-transform: uppercase; text-align: center; text-decoration: none !important; transition: background .2s, color .2s, border-color .2s; }
+.g .g-hband .g-hband__book{ background: var(--gilt-on-dark, #C6A66E); border: 1px solid var(--gilt-on-dark, #C6A66E); color: var(--blue-deep); }
+.g .g-hband .g-hband__book:hover, .g .g-hband .g-hband__book:focus-visible{ background: transparent; color: #fff; }
+.g .g-hband .g-hband__menu{ background: transparent; border: 1px solid rgba(255,255,255,.7); color: #fff; }
+.g .g-hband .g-hband__menu:hover, .g .g-hband .g-hband__menu:focus-visible{ border-color: var(--gilt-on-dark, #C6A66E); }
+@media (max-width: 47.99rem){ .g .g-hband__btns > *{ flex: 1 1 100%; } }
 .g .g-full__k{ font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .16em; text-transform: uppercase; color: var(--gilt-on-dark, #C6A66E); margin: 0 0 var(--s3); }
 .g .g-full__list{ list-style: none; margin: 0; padding: 0; border-top: 1px solid rgba(198,166,110,.5); }
 .g .g-full__row{ border-bottom: 1px solid rgba(198,166,110,.5); }
@@ -12336,12 +12407,16 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g section.rc-says .rc-mark{display:block;max-width:none;font-family:"Cormorant Garamond",Georgia,serif;font-size:88px;line-height:1;height:44px;margin:-6px 0 4px;color:#C5A24A;text-align:center}
 .g section.rc-says blockquote.rc-q{border:0;padding:0;margin:0 auto;max-width:22ch;text-align:center;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:29px;line-height:1.35;color:#14305f;background:none}
 .g section.rc-says blockquote.rc-q::before, .g section.rc-says blockquote.rc-q::after{content:none}
-.g section.rc-says figcaption.rc-sig{display:flex;align-items:center;justify-content:center;gap:12px;margin:30px 0 0;padding:0;border:0;white-space:nowrap;max-width:none;
+/* 25 Nov 2026 (owner's screenshot): the signature could not wrap, so "WORKSHOP GUEST, AUTUMN 2023" beside its seal
+   was wider than a card three to a row: it ran out through the gilt frame on the right and, being centred, put the
+   seal over the frame on the left. It wraps now, the label in two balanced lines beside the seal, and only when the
+   card is too narrow for one. test_lightbox_and_signatures measures the ink against the card. */
+.g section.rc-says figcaption.rc-sig{display:flex;align-items:center;justify-content:center;gap:12px;margin:30px 0 0;padding:0;border:0;max-width:none;
   font-family:"Cormorant Garamond",Georgia,serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#9A7B2E}
 /* The signature is not a photograph's description, so the 15 Oct rule that hides every figcaption in main (with
    !important) lets it through, as it does the wedding section's labels. */
 .g main section.rc-says figcaption.rc-sig{display:flex !important}
-.g section.rc-says .rc-sig .rc-sig__l{font-size:inherit;color:inherit}
+.g section.rc-says .rc-sig .rc-sig__l{font-size:inherit;color:inherit;min-width:0;text-align:left;text-wrap:balance}
 .g section.rc-says .rc-sig .g-seal{width:34px;height:34px;flex:none}
 .g section.rc-says .rc-reply{margin:22px auto 0;max-width:32ch;text-align:center}
 @media (max-width:640px){

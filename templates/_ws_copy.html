@@ -156,11 +156,17 @@
 {%- set ARRIVE = ('L’arrivée', 'Arrival', ['Midday at the Grand Hôtel de l’Opéra, Toulouse; luncheon in the garden', 'Leisure time: settle in and enjoy the château', '<em lang="fr">L’apéritif</em>, then dinner'], 'chateau', true) -%}
 {%- set DEPART = ('Le départ', 'Departure', ['A last breakfast, and back to Toulouse at eleven'], 'depart', false) -%}
 {#- Cooking in the Cuisine, and any five nights (a Friday start: Mirepoix falls on the Monday). 10 Nov (owner): no
-    pool on Cooking in the Cuisine -- "it'll be too cold". test_site_review_2 holds it. -#}
-{%- set C_CUISINE = ('En cuisine', 'The kitchen', ['To the market with the chef, then the cooking class', 'The frescoes with the restorers, or leisure time', 'A barbecue, then a film under the stars'], 'cuisine', true) -%}
+    pool on Cooking in the Cuisine -- "it'll be too cold". test_site_review_2 holds it.
+    25 Nov 2026 (owner): "add in more cooking classes, remove market with the chef ... it's on Sundays? check this,
+    but there's hardly any cooking classes". Checked: the village market at Les Cabannes is on Sunday mornings
+    (Ariège Pyrénées tourism), Ax-les-Thermes Tuesday and Saturday, Tarascon Wednesday; the plan had the chef taking
+    guests to market on the Saturday. That went, and every full day now has its time in the kitchen: the class on the
+    Saturday, the pastry kitchen on the Sunday, a class from what came back from Mirepoix on the Monday, and
+    chocolate-making on the Tuesday. test_retreat_days holds the four. -#}
+{%- set C_CUISINE = ('En cuisine', 'The kitchen', ['A cooking class with the chefs: the classics of the French table', 'The frescoes with the restorers, or leisure time', 'A barbecue, then a film under the stars'], 'cuisine', true) -%}
 {%- set C_FOIX = ('Foix', 'Foix and its castle', ['The pastry kitchen, with the pastry chef', 'Lunch in Foix, and the castle', 'A wine tasting, then dinner out in Les Cabannes'], 'mountains', true) -%}
-{%- set C_CHINER = ('Chiner', 'The brocantes', ['Market day at Mirepoix, and the brocantes', 'Leisure time', 'Dinner out in Les Cabannes'], 'brocante', true) -%}
-{%- set C_VALLEE = ('La vallée', 'The valley, and the last night', ['The cave at Lombrives, then lunch in Ax-les-Thermes', 'Chocolate-making, or leisure time', 'The banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
+{%- set C_CHINER = ('Le marché', 'Market day, and the kitchen', ['Market day at Mirepoix, and the brocantes', 'A cooking class with the chefs, from the market', 'Dinner out in Les Cabannes'], 'brocante', true) -%}
+{%- set C_VALLEE = ('La vallée', 'The valley, and the last night', ['The cave at Lombrives, then lunch in Ax-les-Thermes', 'Chocolate-making in the pastry kitchen', 'The banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
 {#- Seven Starry Nights, and any seven (a Saturday start: Mirepoix falls on the Monday). Day five's evening is a
     dinner by candlelight; on the 2027 dates it is 14 July, and becomes the Bastille Day dinner and party. -#}
 {%- set S_CHATEAU = ('Le château', 'The château', ['Yoga, then a tour of the château and its restoration', 'The pastry kitchen, or leisure time', 'A wine tasting, then dinner out in Les Cabannes'], 'key', true) -%}

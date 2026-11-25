@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_menu_dialog.html' import menu_link %}
 {% from '_guests.html' import guests_field %}
 {% from '_roomslides.html' import room_slides with context %}
 {#- 9 Nov (the image layout brief, 4.4): the photographs through the picture components (_pictures.html, shown together
@@ -280,6 +281,11 @@
             {%- else %}<span class="g-price__k">From</span><b data-eur="{{ room['price_per_night']|int }}">€{{ '{:,.0f}'.format(room['price_per_night']) }}</b>{% endif %}
             <span>per room, a night · breakfast included</span>
           {%- endif %}</p>
+        {% endif %}
+        {#- Dinner at Gudanes (owner, 25 Nov 2026): the price above is the room's normal one; this says dinner is hosted on
+            a night of these dates, at what time and price, and that it is added in the extras. "See the menu" opens it. -#}
+        {% if searched and dinner_notes is defined and dinner_notes and availability.get(room['id']) %}
+        <div class="g-dinnernote">{% for n in dinner_notes %}<p class="g-dinnernote__p">{{ n.text }}{% if n.menu %} {{ menu_link(n.menu) }}{% endif %}</p>{% endfor %}</div>
         {% endif %}
         {# Prefer the written description. The database column holds imported
            listing copy — generic, and in one case factually wrong — so it is
@@ -724,4 +730,5 @@
 </script>
 {{ lightbox() }}
 {{ pictures_script() }}
+{% if searched and dinner_notes is defined and dinner_notes %}{{ menu_dialog_once() }}{% endif %}
 {% endblock %}

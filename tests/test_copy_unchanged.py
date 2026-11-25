@@ -176,7 +176,16 @@ m = _harness.m
 # 25 Nov 2026, evening: moved to fe3ed84, the weather card on Stay the Night (dinner brief, 4) merged with main at
 # 7385d87. Against 89a5af6 it listed nothing: the card's words come from the house's reading and forecast, which this
 # copy has neither of (test_book_weather holds them). Was: "89a5af6"
-COPY_BASE = "fe3ed84"
+# 25 Nov 2026, evening: moved to 9e23b90, Dinner at Gudanes merged with main at 1487968. Against fe3ed84 it
+# listed one change, meant: the extras step on /book/<room> says "Anything you add here", not "tick", now that
+# a dinner is a number box there. The rest of the brief's words need a live occasion with dinner, which this copy
+# has none of (test_dinner_at_gudanes holds them). Was: "fe3ed84"
+# 25 Nov 2026, night: moved to bb225d0, Cooking in the Cuisine with a class every full day and no market with the
+# chef on the Saturday (owner) merged with main at 1487968; the base is the merge. Against fe3ed84 it listed
+# /workshops/352 alone, its day-by-day, and nothing else. Was: "fe3ed84"
+# 25 Nov 2026, night: moved to 5375687, the two above merged together (Dinner at Gudanes with main at
+# dd48c58). Was: "bb225d0"
+COPY_BASE = "5375687"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
