@@ -188,7 +188,10 @@ m = _harness.m
 # /workshops/352 alone, its day-by-day, and nothing else. Was: "fe3ed84"
 # 25 Nov 2026, night: moved to 5375687, the two above merged together (Dinner at Gudanes with main at
 # dd48c58). Was: "bb225d0"
-COPY_BASE = "5375687"
+# 25 Nov 2026, night: moved to 77ee210, the itinerary wording (2f95473 above) merged with main at 8d67a89, Cooking's
+# three days in the brief's words. Against 5375687 it listed /events/private and /workshops/351 to /workshops/354,
+# the same pages as against 89a5af6, and nothing else. Was: "5375687"
+COPY_BASE = "77ee210"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
