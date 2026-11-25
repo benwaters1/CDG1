@@ -116,7 +116,7 @@
           <button type="button" class="rte__b" data-rte-cmd="undo" title="Undo (Ctrl+Z)" aria-label="Undo">&#8630;</button>
           <button type="button" class="rte__b" data-rte-cmd="redo" title="Redo (Ctrl+Y)" aria-label="Redo">&#8631;</button>
         </span>
-        <label class="rte__pick rte__pick--insert"><span class="rte__pick-k">Insert</span>
+        <label class="rte__pick"><span class="rte__pick-k">Insert</span>
           <select data-rte-insert>
             <option value="">Their name, dates…</option>
             {% for t in tags %}{% if t != 'manage_url' %}<option value="{{ t }}">{{ tag_words.get(t, t) }}</option>{% endif %}{% endfor %}
