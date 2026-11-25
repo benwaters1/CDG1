@@ -134,14 +134,17 @@
     Booked here, and confirmed the moment you pay.
     <a class="g-inline-link" href="{{ url_for('find_booking') }}">Manage an existing booking</a>
   </p>
-  {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#s_arrival', '#s_departure') }}
+  {#- 25 Nov 2026 (owner: "we can do this a bit better"): one card for the weather. What it is like right now at the
+      château, labelled as now, and what their dates will be like: the forecast for their nights when they are within a
+      fortnight, the month's averages when they are further off. The reading used to sit loose under the averages, so
+      "At the château 8°C overcast" read as March's weather. _typical_weather.html says how. -#}
+  {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#s_arrival', '#s_departure', now=weather, stay=stay_wx, nights=wx_nights or [], drawn=(arrival ~ '|' ~ departure) if stay_wx else '') }}
   {#- 9 Nov, evening (owner's second review, 1): the film strip under the bar went. -#}
   {#- 9 Nov, evening (owner's second review, 2.5): what is open next, under the dates it answers. One sentence when
       every room opens on the same night; the table only when they differ. -#}
   {% from '_availability_strip.html' import next_free as next_free_strip %}
   {{ next_free_strip(next_free) }}
-  {#- What it is doing at the château now, from the house's hourly reading (the owner asked for it on Stay). -#}
-  {% from '_weather_live.html' import weather_now %}{{ weather_now(weather) }}
+  {#- What it is doing at the château now is inside the weather card above (25 Nov 2026). -#}
 </div></section>
 
 <!-- ============ WHY THE WALLS STAY ============ -->
