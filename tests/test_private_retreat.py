@@ -131,9 +131,9 @@ def run():
     send = re.search(r'<section class="g-sec g-sec--sand" id="enquire">.*?href="([^"]*)"[^>]*>Send an enquiry<', page, re.S)
     target = m.html_unescape(send.group(1)) if send else ""
     s.check("Send an enquiry opens the Contact form with the topic chosen",
-            target.startswith("/contact?topic=private_event") and target.endswith("#write"), detail=target)
+            target.startswith("/contact?topic=private_event") and target.endswith("#write-to-us"), detail=target)
     form = client.get(target.split("#")[0]).get_data(as_text=True)
-    s.check("where the form has #write to land on", 'id="write"' in form)
+    s.check("where the form has #write-to-us to land on, its own", form.count('id="write-to-us"') == 1)
     s.check("and opens with A private retreat chosen",
             re.search(r'<option value="private_event" selected>A private retreat</option>', form) is not None)
     plain = client.get("/contact").get_data(as_text=True)
