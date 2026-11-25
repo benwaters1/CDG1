@@ -3025,11 +3025,18 @@ _CAMPAIGN_BARE_SIGNATURE = "\n\nChâteau de Gudanes"
 
 
 def campaign_words_2026_11_25(body):
-    """A campaign's body with item 9 made, if it is one of those three."""
+    """A campaign's body with item 9 made, if it is one of those three.
+
+    Read with its line breaks as "\\n". The campaign editor keeps what the
+    browser posts, "\\r\\n", so on the live site not one of the three matched
+    the first time this ran (25 Nov) and every letter changed but them. One
+    it does make comes back with plain "\\n" throughout; one it does not make
+    comes back exactly as it was."""
     old, new = CAMPAIGN_WORDS_2026_11_25
-    if old not in body:
+    text = body.replace("\r\n", "\n")
+    if old not in text:
         return body
-    body = body.replace(old, new)
+    body = text.replace(old, new)
     if body.rstrip().endswith(_CAMPAIGN_BARE_SIGNATURE):
         body = body.rstrip()[:-len(_CAMPAIGN_BARE_SIGNATURE)] + LETTER_SIGN_OFF
     return body
@@ -3317,8 +3324,8 @@ def apply_letter_words_2026_10_16(conn):
 
 
 def apply_letter_words_2026_11_25(conn):
-    """Once: the 25 November wording put into the stored letters and the three
-    2027 retreats campaigns.
+    """Once: the 25 November wording put into the stored letters. The three
+    2027 retreats campaigns are apply_campaign_words_2026_11_25's.
 
     Asked for by the owner on 25 November 2026 ("yes to all"), so another
     exception to "read, never rewritten" above. A sentence at a time and only
@@ -3338,16 +3345,35 @@ def apply_letter_words_2026_11_25(conn):
             conn.execute("UPDATE email_templates SET subject = ?, body = ? WHERE template_key = ?",
                          now + (row["template_key"],))
             changed.append(row["template_key"])
-    for row in conn.execute("SELECT id, name, body FROM campaign_templates").fetchall():
-        body = campaign_words_2026_11_25(row["body"] or "")
-        if body != (row["body"] or ""):
-            conn.execute("UPDATE campaign_templates SET body = ? WHERE id = ?", (body, row["id"]))
-            changed.append(f"campaign: {row['name']}")
     conn.execute("INSERT INTO app_settings (key, value) VALUES ('letter_words_2026_11_25', ?)",
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
     if changed:
         log_line(f"[letters] the wording of 25 November: {len(changed)} changed "
+                 f"({', '.join(changed)})")
+    return changed
+
+
+def apply_campaign_words_2026_11_25(conn):
+    """Once: item 9 of the same yes, made to the three 2027 retreats campaigns.
+
+    Its own flag, apart from the letters': the letters' swap ran on the live
+    site on 25 Nov and set its flag, while the campaigns, stored with "\\r\\n",
+    did not match (see campaign_words_2026_11_25). Returns what changed, by
+    name."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'campaign_words_2026_11_25'").fetchone():
+        return []
+    changed = []
+    for row in conn.execute("SELECT id, name, body FROM campaign_templates").fetchall():
+        body = campaign_words_2026_11_25(row["body"] or "")
+        if body != (row["body"] or ""):
+            conn.execute("UPDATE campaign_templates SET body = ? WHERE id = ?", (body, row["id"]))
+            changed.append(f"campaign: {row['name']}")
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('campaign_words_2026_11_25', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        log_line(f"[letters] the 2027 retreats campaigns: {len(changed)} changed "
                  f"({', '.join(changed)})")
     return changed
 
@@ -9380,6 +9406,7 @@ def init_db():
     # 25 Nov: the letters' review, in stored letters and the retreats campaigns.
     # After 16 Oct's, whose "Five guest rooms" it turns into the count.
     apply_letter_words_2026_11_25(conn)
+    apply_campaign_words_2026_11_25(conn)
 
     for slug, name, description, areas, full, order in DEFAULT_ACCESS_PRESETS:
         if not conn.execute("SELECT 1 FROM access_presets WHERE slug = ?", (slug,)).fetchone():

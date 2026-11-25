@@ -475,7 +475,15 @@ CAMPAIGN_AFTER = LIVE_CAMPAIGN.replace(
     "on our website: https://www.chateaugudanes.com\n",
     "on our website.\nSee the 2027 retreats:\nhttps://www.chateaugudanes.com/workshops\n",
 ).replace("the château.\n\nChâteau de Gudanes", "the château.\n\n— Château de Gudanes")
+# The campaign editor stores what the browser posts, so on the live site the
+# campaigns' line breaks are "\r\n". The first swap was tested on "\n" alone,
+# passed, and on the live site changed every letter and none of the three.
+def crlf(text):
+    return text.replace("\n", "\r\n")
+
+
 FLAG = "letter_words_2026_11_25"
+CAMPAIGN_FLAG = "campaign_words_2026_11_25"
 
 
 def _guest_letters():
@@ -533,7 +541,7 @@ def _words_of_25_november(s):
     keys = ["room_confirmed", "room_declined", "room_payment_received", *LIVE_AS_SHIPPED]
     marks = ",".join("?" * len(keys))
     restore = _harness.keep_rows(conn, "email_templates", f"template_key IN ({marks})", keys)
-    restore_flag = _harness.keep_rows(conn, "app_settings", "key = ?", (FLAG,))
+    restore_flag = _harness.keep_rows(conn, "app_settings", "key IN (?, ?)", (FLAG, CAMPAIGN_FLAG))
     tag = "ZZLH25 "
     try:
         conn.execute("DELETE FROM campaign_templates WHERE name LIKE ?", (tag + "%",))
@@ -553,14 +561,19 @@ def _words_of_25_november(s):
         put("room_payment_received", "Payment received — {room_name}",
             "Hi {guest_name},\n\nThank you, {amount} has arrived.")
         now = _harness.datetime_now()
-        for name, text in ((tag + "2027 retreats", LIVE_CAMPAIGN),
-                           (tag + "another", "Hello,\n\nA note.\n\nChâteau de Gudanes")):
+        another = crlf("Hello,\n\nA note.\n\nChâteau de Gudanes")
+        for name, text in ((tag + "2027 retreats", crlf(LIVE_CAMPAIGN)), (tag + "another", another)):
             conn.execute("INSERT INTO campaign_templates (name, area, subject, body, created_at) "
                          "VALUES (?, 'workshops', 'News', ?, ?)", (name, text, now))
-        conn.execute("DELETE FROM app_settings WHERE key = ?", (FLAG,))
+        conn.execute("DELETE FROM app_settings WHERE key IN (?, ?)", (FLAG, CAMPAIGN_FLAG))
         conn.commit()
 
         changed = m.apply_letter_words_2026_11_25(conn)
+        untouched = conn.execute("SELECT body FROM campaign_templates WHERE name = ?",
+                                 (tag + "2027 retreats",)).fetchone()[0] == crlf(LIVE_CAMPAIGN)
+        # As on the live site: the letters' flag is set before the campaigns
+        # are put right, and that must not stop them.
+        changed_campaigns = m.apply_campaign_words_2026_11_25(conn)
 
         def row(k):
             return tuple(conn.execute("SELECT subject, body FROM email_templates "
@@ -589,13 +602,17 @@ def _words_of_25_november(s):
                 "payment_line" in drift.get("room_payment_received", []), detail=drift)
         s.check("   while every letter it put right is named nowhere",
                 not set(drift) & ({"room_confirmed"} | set(LIVE_AS_SHIPPED)), detail=drift)
-        s.check("the retreats campaign gets its button to the retreats and its signature",
-                camp("2027 retreats") == CAMPAIGN_AFTER, detail=camp("2027 retreats")[-220:])
-        s.check("   and a campaign without that sentence is left alone",
-                camp("another") == "Hello,\n\nA note.\n\nChâteau de Gudanes")
+        s.check("the letters' swap leaves the campaigns to their own", untouched)
+        s.check("the retreats campaign, stored with \\r\\n as the live site stores it, gets its "
+                "button to the retreats and its signature",
+                camp("2027 retreats") == CAMPAIGN_AFTER, detail=repr(camp("2027 retreats")[-220:]))
+        s.check("   even with the letters' flag already set, as it is on the live site",
+                changed_campaigns == ["campaign: " + tag + "2027 retreats"], detail=changed_campaigns)
+        s.check("   and a campaign without that sentence is left exactly as it was",
+                camp("another") == another)
         s.check("what changed is said by name",
-                {"room_confirmed", "room_declined", "campaign: " + tag + "2027 retreats"}
-                <= set(changed) and "room_payment_received" not in changed, detail=changed)
+                {"room_confirmed", "room_declined"} <= set(changed)
+                and "room_payment_received" not in changed, detail=changed)
         blocks = m.dress_blocks(m.letter_blocks(camp("2027 retreats")))
         buttons = [(b.get("label"), b.get("href")) for b in blocks if b["kind"] == "button"]
         s.check("   the campaign draws one button, to the retreats page, saying what it is",
@@ -605,13 +622,21 @@ def _words_of_25_november(s):
                 detail=[b["kind"] for b in blocks])
 
         put("room_confirmed", "Booking confirmed — {room_name}", LIVE_CONFIRMED)
+        conn.execute("UPDATE campaign_templates SET body = ? WHERE name = ?",
+                     (crlf(LIVE_CAMPAIGN), tag + "2027 retreats"))
         conn.commit()
         s.check("once: a second start changes nothing",
                 m.apply_letter_words_2026_11_25(conn) == []
                 and row("room_confirmed")[1] == LIVE_CONFIRMED)
-        conn.execute("DELETE FROM app_settings WHERE key = ?", (FLAG,))
+        s.check("   and nor does the campaigns' second start",
+                m.apply_campaign_words_2026_11_25(conn) == []
+                and camp("2027 retreats") == crlf(LIVE_CAMPAIGN))
+        conn.execute("UPDATE campaign_templates SET body = ? WHERE name = ?",
+                     (CAMPAIGN_AFTER, tag + "2027 retreats"))
+        conn.execute("DELETE FROM app_settings WHERE key IN (?, ?)", (FLAG, CAMPAIGN_FLAG))
         conn.commit()
         m.apply_letter_words_2026_11_25(conn)
+        m.apply_campaign_words_2026_11_25(conn)
         again = [k for k in LIVE_AS_SHIPPED if row(k) != shipped[k]]
         s.check("and run again over its own work, it changes nothing twice",
                 not again and camp("2027 retreats") == CAMPAIGN_AFTER, detail=again)
