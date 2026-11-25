@@ -48,27 +48,96 @@
   </form>
   {% endif %}
 {% else %}
+  {#- 25 Nov 2026 (owner, beside RetreatGuru's bulk email: "add in the font and stuff like that and size", "its not
+      very intuitive the menus either"). A saved letter loads the moment it is chosen; the message is written in a
+      formatting editor with its menus named (Style, Font, Size, Colour, Insert), and what it writes is kept to what a
+      letter may carry on the way out (email_rich_html). With no script the plain box below is the letter, as before. -#}
   {% if templates %}
-  <form method="get" class="group-mail__template">
-    <label class="field-label" for="gm-template">Start from a template</label>
+  <form method="get" class="group-mail__template" data-gm-template>
+    <label class="field-label" for="gm-template">Start from a saved letter</label>
     <select id="gm-template" name="template_id">
       <option value="">Write it yourself</option>
       {% for t in templates %}<option value="{{ t['id'] }}" {{ 'selected' if chosen == t['id']|string }}>{{ t['name'] }}</option>{% endfor %}
     </select>
-    <button type="submit" class="btn-mini">Use this wording</button>
+    <button type="submit" class="btn-mini" data-gm-template-go>Use this wording</button>
   </form>
   {% endif %}
 
-  <form method="post" class="group-mail__compose">
+  <form method="post" class="group-mail__compose" data-gm-compose>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="expect" value="{{ going|length }}">
     <input type="hidden" name="template_id" value="{{ chosen }}">
     <label class="field-label" for="gm-subject">Subject</label>
     <input type="text" id="gm-subject" name="subject" value="{{ subject }}" maxlength="200" required>
-    <label class="field-label" for="gm-body">Message</label>
-    <textarea id="gm-body" name="body" rows="10" required>{{ body }}</textarea>
-    <p class="upload-hint">Filled in for each person:
-      {% for t in tags %}<code>{{ '{{' }}{{ t }}{{ '}}' }}</code>{{ ', ' if not loop.last }}{% endfor %}.
+    <label class="field-label" id="gm-body-label" for="gm-body">Message</label>
+
+    <div class="rte" data-rte hidden>
+      <div class="rte__bar" role="toolbar" aria-label="Formatting" aria-controls="gm-rte-area">
+        <label class="rte__pick"><span class="rte__pick-k">Style</span>
+          <select data-rte-block>
+            <option value="p">Paragraph</option><option value="h2">Heading</option><option value="h3">Subheading</option>
+          </select></label>
+        <label class="rte__pick"><span class="rte__pick-k">Font</span>
+          <select data-rte-font>
+            <option value="">Choose…</option>
+            {% for key, stack in fonts.items() %}<option value="{{ stack }}" style="font-family:{{ stack }}">{{ {'helvetica': 'Helvetica (the letters’ own)'}.get(key, key|capitalize) }}</option>{% endfor %}
+          </select></label>
+        <label class="rte__pick"><span class="rte__pick-k">Size</span>
+          <select data-rte-size>
+            <option value="">Choose…</option>
+            <option value="2">Small</option><option value="3">Normal</option><option value="4">Large</option>
+            <option value="5">Larger</option><option value="6">Largest</option>
+          </select></label>
+        <span class="rte__group" role="group" aria-label="Bold, italic, underline">
+          <button type="button" class="rte__b" data-rte-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold" aria-pressed="false"><b>B</b></button>
+          <button type="button" class="rte__b" data-rte-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic" aria-pressed="false"><i>I</i></button>
+          <button type="button" class="rte__b" data-rte-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline" aria-pressed="false"><u>U</u></button>
+        </span>
+        <label class="rte__pick"><span class="rte__pick-k">Colour</span>
+          <select data-rte-colour>
+            <option value="">Choose…</option>
+            {% for name, hex in colours.items() %}<option value="{{ hex }}" style="color:{{ hex }}">&#9632; {{ {'ink': 'Ink (the letters’ own)'}.get(name, name|capitalize) }}</option>{% endfor %}
+          </select></label>
+        <span class="rte__group" role="group" aria-label="Line up">
+          <button type="button" class="rte__b" data-rte-cmd="justifyLeft" title="Line up on the left" aria-label="Line up on the left">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h8" stroke="currentColor" stroke-width="1.6" fill="none"/></svg></button>
+          <button type="button" class="rte__b" data-rte-cmd="justifyCenter" title="Centre" aria-label="Centre">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M4 6.5h8M2 10h12M4 13.5h8" stroke="currentColor" stroke-width="1.6" fill="none"/></svg></button>
+          <button type="button" class="rte__b" data-rte-cmd="justifyRight" title="Line up on the right" aria-label="Line up on the right">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M6 6.5h8M2 10h12M6 13.5h8" stroke="currentColor" stroke-width="1.6" fill="none"/></svg></button>
+        </span>
+        <span class="rte__group" role="group" aria-label="Lists">
+          <button type="button" class="rte__b rte__b--w" data-rte-cmd="insertUnorderedList" title="A list with dots" aria-label="List with dots" aria-pressed="false">&bull; List</button>
+          <button type="button" class="rte__b rte__b--w" data-rte-cmd="insertOrderedList" title="A numbered list" aria-label="Numbered list" aria-pressed="false">1. List</button>
+        </span>
+        <span class="rte__group" role="group" aria-label="Link and tidy">
+          <button type="button" class="rte__b rte__b--w" data-rte-link title="Make the chosen words a link" aria-label="Link">Link</button>
+          <button type="button" class="rte__b rte__b--w" data-rte-cmd="removeFormat" title="Take the formatting off the chosen words" aria-label="Clear formatting">Clear</button>
+          <button type="button" class="rte__b" data-rte-cmd="undo" title="Undo (Ctrl+Z)" aria-label="Undo">&#8630;</button>
+          <button type="button" class="rte__b" data-rte-cmd="redo" title="Redo (Ctrl+Y)" aria-label="Redo">&#8631;</button>
+        </span>
+        <label class="rte__pick rte__pick--insert"><span class="rte__pick-k">Insert</span>
+          <select data-rte-insert>
+            <option value="">Their name, dates…</option>
+            {% for t in tags %}{% if t != 'manage_url' %}<option value="{{ t }}">{{ tag_words.get(t, t) }}</option>{% endif %}{% endfor %}
+          </select></label>
+      </div>
+      <div class="rte__linkbar" data-rte-linkbar hidden>
+        <label class="field-label" for="gm-rte-href">Link to</label>
+        <input type="url" id="gm-rte-href" placeholder="https://…" data-rte-href>
+        <button type="button" class="btn-mini" data-rte-link-apply>Make it a link</button>
+        {% if 'manage_url' in tags %}<button type="button" class="btn-mini" data-rte-link-manage>Their own booking page</button>{% endif %}
+        <button type="button" class="btn-mini" data-rte-link-remove>Take the link off</button>
+        <button type="button" class="btn-mini" data-rte-link-cancel>Cancel</button>
+      </div>
+      <div class="rte__area" id="gm-rte-area" contenteditable="true" role="textbox" aria-multiline="true"
+           aria-labelledby="gm-body-label" spellcheck="true" data-rte-area>{{ editor_html|safe }}</div>
+      <p class="rte__note" data-rte-note hidden role="alert">Write the message first.</p>
+    </div>
+    <input type="hidden" name="body_html" value="" data-rte-out>
+    <textarea id="gm-body" name="body" rows="10" required data-rte-plain>{{ body }}</textarea>
+    <p class="upload-hint">Insert puts in each person’s own details when it is sent:
+      {% for t in tags %}{{ tag_words.get(t, t) }} <code>{{ '{{' }}{{ t }}{{ '}}' }}</code>{{ ', ' if not loop.last }}{% endfor %}.
       Anything else in double braces is left as it is, so a typo shows in the preview.</p>
     <div class="group-mail__buttons">
       <button type="submit" name="action" value="preview" class="btn-mini">Preview it</button>
@@ -82,10 +151,161 @@
   {% if sample %}
   <div class="detail-card group-mail__sample">
     <h2 class="section-heading">As {{ going[0].label }} will read it</h2>
+    {% if sample_html %}
+    {#- The letter itself, drawn as it is sent: the house's design around the words, with the fonts and sizes chosen.
+        Sandboxed: it is a letter to look at, nothing in it runs. -#}
+    <iframe class="group-mail__letter" title="The letter as {{ going[0].label }} will read it" sandbox
+            srcdoc="{{ sample_html }}" data-gm-letter></iframe>
+    {% else %}
     <p><strong>{{ sample[0] }}</strong></p>
     <div class="manual-body">{{ sample[1] }}</div>
+    {% endif %}
   </div>
   {% endif %}
+
+<script>
+/* The formatting editor (25 Nov 2026). The browser's own editing commands do the work; this keeps the
+   selection when a menu is used, names what is on, and copies the letter into the form when it is sent. */
+(function () {
+  var root = document.querySelector('[data-rte]');
+  if (!root || !document.execCommand) return;
+  var area = root.querySelector('[data-rte-area]');
+  var form = document.querySelector('[data-gm-compose]');
+  var out = form.querySelector('[data-rte-out]'), plain = form.querySelector('[data-rte-plain]');
+  var note = root.querySelector('[data-rte-note]'), linkbar = root.querySelector('[data-rte-linkbar]');
+  var href = root.querySelector('[data-rte-href]');
+  var OPEN = String.fromCharCode(123, 123), SHUT = String.fromCharCode(125, 125);
+  try { document.execCommand('styleWithCSS', false, true); } catch (e) {}
+  try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) {}
+  if (!area.innerHTML.replace(/\s+/g, '')) area.innerHTML = '<p><br></p>';
+  root.hidden = false;
+  plain.hidden = true;
+  plain.required = false;
+
+  var saved = null;
+  function inside(node) { return !!node && area.contains(node.nodeType === 1 ? node : node.parentNode); }
+  function remember() {
+    var s = window.getSelection();
+    if (s.rangeCount && inside(s.anchorNode)) saved = s.getRangeAt(0).cloneRange();
+  }
+  function restore() {
+    area.focus();
+    if (saved) { var s = window.getSelection(); s.removeAllRanges(); s.addRange(saved); }
+  }
+  function sync() {
+    out.value = area.innerHTML;
+    plain.value = (area.innerText || '').trim();
+  }
+  function state() {
+    root.querySelectorAll('[aria-pressed]').forEach(function (b) {
+      var on = false;
+      try { on = document.queryCommandState(b.getAttribute('data-rte-cmd')); } catch (e) {}
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    var block = '';
+    try { block = (document.queryCommandValue('formatBlock') || '').toLowerCase(); } catch (e) {}
+    var pick = root.querySelector('[data-rte-block]');
+    pick.value = (block === 'h2' || block === 'h3') ? block : 'p';
+  }
+  function run(name, value) {
+    restore();
+    document.execCommand(name, false, value === undefined ? null : value);
+    remember();
+    sync();
+    state();
+  }
+  document.addEventListener('selectionchange', function () { remember(); if (document.activeElement === area) state(); });
+  root.querySelectorAll('.rte__bar button').forEach(function (b) {
+    b.addEventListener('mousedown', function (e) { e.preventDefault(); });   /* keep the words chosen */
+  });
+  root.querySelectorAll('[data-rte-cmd]').forEach(function (b) {
+    b.addEventListener('click', function () { run(b.getAttribute('data-rte-cmd')); });
+  });
+  function picker(sel, how) {
+    var el = root.querySelector(sel);
+    el.addEventListener('change', function () {
+      if (el.value) how(el.value);
+      if (sel !== '[data-rte-block]') el.value = '';
+    });
+  }
+  picker('[data-rte-block]', function (v) { run('formatBlock', '<' + v + '>'); });
+  picker('[data-rte-font]', function (v) { run('fontName', v); });
+  picker('[data-rte-size]', function (v) { run('fontSize', v); });
+  picker('[data-rte-colour]', function (v) { run('foreColor', v); });
+  picker('[data-rte-insert]', function (v) { run('insertText', OPEN + v + SHUT); });
+
+  /* A link: the words chosen, an address, or the person's own booking page. */
+  function openLink() {
+    var s = window.getSelection(), a = s.anchorNode && (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentNode);
+    a = a && a.closest ? a.closest('a') : null;
+    href.value = a && inside(a) ? a.getAttribute('href') : '';
+    linkbar.hidden = false;
+    href.focus();
+  }
+  function setLink(url, words) {
+    restore();
+    var s = window.getSelection();
+    if (s.isCollapsed) {
+      var a = document.createElement('a');
+      a.href = url;
+      a.textContent = words || url;
+      document.execCommand('insertHTML', false, a.outerHTML);
+    } else {
+      document.execCommand('createLink', false, url);
+    }
+    linkbar.hidden = true;
+    remember();
+    sync();
+  }
+  root.querySelector('[data-rte-link]').addEventListener('click', openLink);
+  root.querySelector('[data-rte-link-apply]').addEventListener('click', function () {
+    var url = href.value.trim();
+    if (!url) { href.focus(); return; }
+    if (!/^(https?:\/\/|mailto:)/i.test(url)) url = (url.indexOf('@') > 0 ? 'mailto:' : 'https://') + url;
+    setLink(url);
+  });
+  var manage = root.querySelector('[data-rte-link-manage]');
+  if (manage) manage.addEventListener('click', function () { setLink(OPEN + 'manage_url' + SHUT, 'your booking page'); });
+  root.querySelector('[data-rte-link-remove]').addEventListener('click', function () { linkbar.hidden = true; run('unlink'); });
+  root.querySelector('[data-rte-link-cancel]').addEventListener('click', function () { linkbar.hidden = true; restore(); });
+  href.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); root.querySelector('[data-rte-link-apply]').click(); }
+    if (e.key === 'Escape') { linkbar.hidden = true; restore(); }
+  });
+
+  /* Pasted words come as words: another page's fonts and colours would not survive the trip anyway. */
+  area.addEventListener('paste', function (e) {
+    var t = (e.clipboardData || window.clipboardData).getData('text/plain');
+    if (t === undefined) return;
+    e.preventDefault();
+    document.execCommand('insertText', false, t);
+  });
+  area.addEventListener('input', sync);
+  form.addEventListener('submit', function (e) {
+    sync();
+    if (!plain.value) {
+      e.preventDefault();
+      note.hidden = false;
+      area.focus();
+    } else {
+      note.hidden = true;
+    }
+  });
+  sync();
+  state();
+
+  /* A saved letter loads when it is chosen, after asking if there is already a message to lose. */
+  var pickForm = document.querySelector('[data-gm-template]');
+  if (pickForm) {
+    var go = pickForm.querySelector('[data-gm-template-go]');
+    if (go) go.hidden = true;
+    pickForm.querySelector('select').addEventListener('change', function () {
+      if ((area.innerText || '').trim() && !confirm('Put this saved letter in place of what is written?')) return;
+      pickForm.submit();
+    });
+  }
+})();
+</script>
 {% endif %}
 
 {% endblock %}
