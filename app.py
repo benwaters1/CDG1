@@ -80423,20 +80423,21 @@ def language_addresses_on_the_page(response):
     one handover (the reason serve_our_own_photographs works this way)."""
     if not has_request_context() or on_admin_host():
         return response
-    offered = languages_offered()
-    if len(offered) < 2:
-        return response
     in_path = request.environ.get("gudanes.lang_path")
     # A redirect from a French page lands on the French page.
     if in_path and response.status_code in (301, 302, 303, 307, 308):
         where = response.headers.get("Location", "")
-        if where and not urlparse(where).netloc:
+        if where and not urlparse(where).netloc and len(languages_offered()) > 1:
             response.headers["Location"] = language_address(where, in_path)
         return response
     if response.direct_passthrough or not (response.content_type or "").startswith("text/html"):
         return response
     raw = response.get_data()
     if _PUBLIC_BODY not in raw:
+        return response
+    # Asked only now, so a staff page or a file costs no lookup.
+    offered = languages_offered()
+    if len(offered) < 2:
         return response
     body = raw.decode("utf-8", "replace")
     lang = current_language()
