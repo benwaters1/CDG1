@@ -147,6 +147,7 @@ def run():
     _account_link(s)
     _words_and_facts(s)
     _words_of_25_november(s)
+    _retreat(s)
     return s
 
 
@@ -643,6 +644,87 @@ def _words_of_25_november(s):
     finally:
         conn.execute("DELETE FROM campaign_templates WHERE name LIKE ?", (tag + "%",))
         conn.commit()
+        restore()
+        restore_flag()
+        conn.close()
+
+
+# "workshop" or "atelier" as a word a guest reads: not a tag ({workshop_title}),
+# not an address (/workshops), not an identifier (workshop_manage).
+GUEST_WORKSHOP = re.compile(r"(?<![/\w{.\-])(?:workshops?|ateliers?)(?![\w}/(\-])", re.I)
+# The newsletter welcome as shipped until 25 November, and as the live site held it.
+WELCOME_UNTIL_25NOV = (
+    "Thank you for subscribing to news from Château de Gudanes.\n\nWe will write when there is "
+    "something to tell: the restoration as it goes, the house as it opens, and new dates for the "
+    "workshops.\n\n{workshops_block}\n\nAll the workshops:\n{workshops_url}\n\n— Château de Gudanes")
+RETREAT_FLAG = "letter_retreat_2026_11_25"
+
+
+def _retreat(s):
+    s.section("'Retreat' in the letters (the owner's answer, 25 November)")
+    said = [(k, GUEST_WORKSHOP.findall(sj + "\n" + bd)) for k, sj, bd in _guest_letters()
+            if GUEST_WORKSHOP.search(sj + "\n" + bd)]
+    s.check("no letter a guest reads says workshop or atelier", not said, detail=said)
+    said = [k for k, (sj, bd) in m.CODE_LETTERS_TO_GUESTS.items()
+            if GUEST_WORKSHOP.search(sj + "\n" + bd)]
+    s.check("   nor any the code writes whole", not said, detail=said)
+    # Written in room_confirmation_context, which sends nothing itself, into
+    # its list of details (details += [...]).
+    portal = [c.value for c in ast.walk(_functions()["room_confirmation_context"])
+              if isinstance(c, ast.Constant) and isinstance(c.value, str)
+              and "Everything you have with us" in c.value]
+    s.check("   nor the confirmation's line about the guest's own page",
+            portal and not any(GUEST_WORKSHOP.search(t) for t in portal), detail=portal)
+    seen = []
+    for name in ("_email.html", "email_booking_confirmed.html", "_stay_bits.html"):
+        with open(os.path.join(ROOT, "templates", name), encoding="utf-8") as fh:
+            words = re.sub(r"\{#.*?#\}|\{\{.*?\}\}|\{%.*?%\}|<[^>]*>", " ", fh.read(), flags=re.S)
+        seen += [f"{name}: {w}" for w in GUEST_WORKSHOP.findall(words)]
+    s.check("   nor the designs the letters are drawn in", not seen, detail=seen)
+    welcome = {k: b for k, _l, _s, b in m.DEFAULT_EMAIL_TEMPLATES}["newsletter_welcome"]
+    s.check("the tags and the address keep their names: only the words changed",
+            "{workshops_block}" in welcome and "{workshops_url}" in welcome)
+    with m.app.test_request_context("/"):
+        blocks = m.dress_blocks(m.letter_blocks(m.merge_email_text(
+            welcome, m.drawn_context(m.sample_merge_context("newsletter_welcome")))))
+    labels = [b.get("label") for b in blocks if b["kind"] == "button"]
+    s.check("the welcome's button reads 'All the retreats'", "All the retreats" in labels,
+            detail=labels)
+
+    conn = _harness.db()
+    restore = _harness.keep_rows(conn, "email_templates", "template_key = ?",
+                                 ("newsletter_welcome",))
+    restore_flag = _harness.keep_rows(conn, "app_settings", "key = ?", (RETREAT_FLAG,))
+    try:
+        def put(body):
+            conn.execute("UPDATE email_templates SET body = ? WHERE template_key = "
+                         "'newsletter_welcome'", (body,))
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (RETREAT_FLAG,))
+            conn.commit()
+
+        def stored():
+            return conn.execute("SELECT body FROM email_templates WHERE template_key = "
+                                "'newsletter_welcome'").fetchone()[0]
+
+        put(WELCOME_UNTIL_25NOV)
+        changed = m.apply_letter_retreat_2026_11_25(conn)
+        s.check("the welcome as the live site held it comes out as shipped now",
+                stored() == welcome and changed == ["newsletter_welcome"],
+                detail=(changed, stored()[-120:]))
+        put(crlf(WELCOME_UNTIL_25NOV))
+        m.apply_letter_retreat_2026_11_25(conn)
+        s.check("   and so does one stored with \\r\\n, as a form posts it", stored() == welcome,
+                detail=repr(stored()[-120:]))
+        own = crlf("Thank you for subscribing.\n\nNew workshops soon.\n\n— Château de Gudanes")
+        put(own)
+        s.check("one the owner wrote their own way is left exactly as it was",
+                m.apply_letter_retreat_2026_11_25(conn) == [] and stored() == own)
+        conn.execute("UPDATE email_templates SET body = ? WHERE template_key = "
+                     "'newsletter_welcome'", (WELCOME_UNTIL_25NOV,))
+        conn.commit()
+        s.check("once: a second start changes nothing",
+                m.apply_letter_retreat_2026_11_25(conn) == [] and stored() == WELCOME_UNTIL_25NOV)
+    finally:
         restore()
         restore_flag()
         conn.close()

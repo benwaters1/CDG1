@@ -304,9 +304,12 @@ def _run(s, oc, ec, sent):
         letter, _card = m.room_confirmation_context(conn, paid_stay, "The Twin Room",
                                                     portal_url=f"/my/{token}")
         conn.close()
-    s.check("and a stay's confirmation letter calls them workshops when it points there",
-            "any workshops or dinners" in letter["stay_details"]
-            and "atelier" not in letter["stay_details"].lower(),
+    # The letters say retreat: the owner's answer of 25 November 2026 to
+    # "workshop, retreat or atelier?" in the letters (test_letter_house_style).
+    s.check("and a stay's confirmation letter calls them retreats when it points there",
+            "any retreats or dinners" in letter["stay_details"]
+            and "atelier" not in letter["stay_details"].lower()
+            and "workshop" not in letter["stay_details"].lower(),
             detail=letter["stay_details"][-240:])
     old_token = _call(lambda c: m.guest_portal_token(c, old_email))
     merged_page = m.app.test_client().get(f"/my/{old_token}/statement").get_data(as_text=True)

@@ -3011,6 +3011,39 @@ def letter_words_2026_11_25(template_key, subject, body):
 DEFAULT_EMAIL_TEMPLATES = [(_k, _l) + letter_words_2026_11_25(_k, _s, _b)
                            for _k, _l, _s, _b in DEFAULT_EMAIL_TEMPLATES]
 
+# "Retreat" in the letters: the owner's answer of 25 November 2026 ("retreat i
+# think") to the review's last question -- workshop, retreat or atelier? --
+# as the public pages say it most and the 2027 campaigns do. Only the words a
+# guest reads: never a tag ({workshop_title}), an address (/workshops) or the
+# staff side's names for its own pages. The stored letters held it in one
+# place, the newsletter welcome; the confirmation's line about the guest's
+# page is in the code and its design. "Registration" was not asked, and stays.
+LETTER_WORDS_RETREAT_2026_11_25 = {
+    "newsletter_welcome": (
+        ("body", "new dates for the workshops.", "new dates for the retreats."),
+        ("body", "All the workshops:\n{workshops_url}", "All the retreats:\n{workshops_url}")),
+}
+
+
+def letter_retreat_words_2026_11_25(template_key, subject, body):
+    """(subject, body) saying "retreat", where they still say the sentences
+    above word for word. Read with "\\n" for a line break, as a campaign taught
+    (campaign_words_2026_11_25): a letter it changes comes back that way, one
+    it does not comes back exactly as it was."""
+    swaps = LETTER_WORDS_RETREAT_2026_11_25.get(template_key, ())
+    text_s, text_b = subject.replace("\r\n", "\n"), body.replace("\r\n", "\n")
+    new_s, new_b = text_s, text_b
+    for field, old, new in swaps:
+        if field == "subject":
+            new_s = new_s.replace(old, new)
+        else:
+            new_b = new_b.replace(old, new)
+    return (subject, body) if (new_s, new_b) == (text_s, text_b) else (new_s, new_b)
+
+
+DEFAULT_EMAIL_TEMPLATES = [(_k, _l) + letter_retreat_words_2026_11_25(_k, _s, _b)
+                           for _k, _l, _s, _b in DEFAULT_EMAIL_TEMPLATES]
+
 # Item 9: the three "2027 retreats" campaigns, the owner's own words, held
 # and not yet sent. The link sat inside a sentence and went to the home page;
 # on a line of its own under a short label it is a button to the retreats
@@ -3375,6 +3408,30 @@ def apply_campaign_words_2026_11_25(conn):
     if changed:
         log_line(f"[letters] the 2027 retreats campaigns: {len(changed)} changed "
                  f"({', '.join(changed)})")
+    return changed
+
+
+def apply_letter_retreat_2026_11_25(conn):
+    """Once: "retreat" put into the stored letters that still say the
+    sentences of LETTER_WORDS_RETREAT_2026_11_25 word for word (the owner's
+    answer, 25 November 2026). Its own flag, as each of these has. Returns what
+    changed, by name."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'letter_retreat_2026_11_25'").fetchone():
+        return []
+    changed = []
+    for row in conn.execute(
+            "SELECT template_key, subject, body FROM email_templates").fetchall():
+        was = (row["subject"] or "", row["body"] or "")
+        now = letter_retreat_words_2026_11_25(row["template_key"], *was)
+        if now != was:
+            conn.execute("UPDATE email_templates SET subject = ?, body = ? WHERE template_key = ?",
+                         now + (row["template_key"],))
+            changed.append(row["template_key"])
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('letter_retreat_2026_11_25', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        log_line(f"[letters] retreat, not workshop: {', '.join(changed)}")
     return changed
 
 
@@ -9407,6 +9464,8 @@ def init_db():
     # After 16 Oct's, whose "Five guest rooms" it turns into the count.
     apply_letter_words_2026_11_25(conn)
     apply_campaign_words_2026_11_25(conn)
+    # 25 Nov, later: "retreat" in the letters, the owner's answer.
+    apply_letter_retreat_2026_11_25(conn)
 
     for slug, name, description, areas, full, order in DEFAULT_ACCESS_PRESETS:
         if not conn.execute("SELECT 1 FROM access_presets WHERE slug = ?", (slug,)).fetchone():
@@ -105030,7 +105089,7 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
                         "arrive until you leave. The link is on your booking page too:",
                     door_url]
     if portal_url:
-        details += ["", "Everything you have with us \u2014 this stay, any workshops "
+        details += ["", "Everything you have with us \u2014 this stay, any retreats "
                         "or dinners \u2014 is always here:", portal_url]
     context = {
         "guest_name": booking["guest_name"] or "",
