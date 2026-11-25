@@ -180,6 +180,7 @@ def run():
     s.check("there are retreats on offer to read", len(offer) >= 3, detail=f"{len(offer)} on offer")
 
     mirepoix_seen = winter_seen = occasions_seen = 0
+    ariegeoise_on = []          # (retreat, day) wherever L'Ariégeoise was drawn
     for title, path, sittings, nights in pages:
         r = c.get(path)
         html = r.get_data(as_text=True)
@@ -238,7 +239,23 @@ def run():
         if len(starts) == 1:
             for n, d in enumerate(days[:-1], 1):
                 md = (start + timedelta(days=n - 1)).strftime("%m-%d")
+                full = (start + timedelta(days=n - 1)).isoformat()
                 words = day_words(d)
+                # 25 Nov (owner): L'Ariégeoise, keyed by its full date because the race moves. On 26 June 2027 the
+                # evening becomes it and keeps the day's barbecue and film; on any other day it is not there.
+                if "Ariégeoise" in words:
+                    ariegeoise_on.append((title, n))
+                if full == "2027-06-26":
+                    last_night = n == len(days) - 1
+                    s.check(f"{title}, day {n} is 26 June 2027: L’Ariégeoise, its evening and its heading",
+                            "L’Ariégeoise" in d["moments"][-1]
+                            and (last_night or ("barbecue" in d["moments"][-1]
+                                                and "film under the stars" in d["moments"][-1]
+                                                and d["title"].endswith("and L’Ariégeoise"))),
+                            detail=f"{d['title']} | {d['moments']}")
+                else:
+                    s.check(f"{title}, day {n}: no L’Ariégeoise on any other day", "Ariégeoise" not in words,
+                            detail=full)
                 if md == "07-14":
                     occasions_seen += 1
                     s.check(f"{title}, day {n} is 14 July: the Bastille Day dinner and party",
@@ -280,6 +297,10 @@ def run():
 
     s.check("a Mirepoix day was there to check", mirepoix_seen >= 2, detail=f"{mirepoix_seen}")
     s.check("a 14 July and a 21 June were there to check", occasions_seen >= 2, detail=f"{occasions_seen}")
+    # The owner's case, by name rather than by number: Cooking in the Cuisine is /workshops/8 on live and a
+    # different id in a copy. 25 to 30 June 2027, so 26 June is its second day, En cuisine.
+    s.check("Cooking in the Cuisine shows L’Ariégeoise on day 2, and nothing else does",
+            ariegeoise_on == [("Cooking in the Cuisine", 2)], detail=str(ariegeoise_on))
     s.check("a winter retreat was there to check", winter_seen >= 1,
             detail="Noël was not on offer, so the winter rules proved nothing")
 
@@ -347,6 +368,31 @@ def run():
             detail=f"{r.status_code}, {len(days)} days")
     s.check("each day is 'Day N' and no weekday", [d["kicker"] for d in days] == [f"Day {n}" for n in range(1, 5)],
             detail=str([d["kicker"] for d in days]))
+
+    s.section("L’Ariégeoise moves, so it is keyed by its full date (owner, 25 Nov)")
+    # Five nights from Sunday 25 June 2028: 26 June is day 2, En cuisine, the day the 2027 retreat celebrates.
+    # Keyed by month and day it would fire here too; keyed by the full date it does not.
+    conn = db()
+    cur = conn.execute("INSERT INTO workshops (title, description, price_per_person, active, created_at, nights_label) "
+                       "VALUES (?, '', 2000, 1, ?, '5 nights / 6 days')", (f"{TAG} Five Nights in 2028", now))
+    later_id = cur.lastrowid
+    conn.execute("INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity, created_at) "
+                 "VALUES (?, '2028-06-25', '2028-06-30', 10, ?)", (later_id, now))
+    conn.commit()
+    conn.close()
+    r = c.get("/workshops/%d" % later_id)
+    days, section = journey(r.get_data(as_text=True))
+    s.check("the page answers, with its six days", r.status_code == 200 and len(days) == 6,
+            detail=f"{r.status_code}, {len(days)} days")
+    s.check("its 26 June keeps its own evening, the barbecue and the film",
+            len(days) == 6 and days[1]["moments"][-1] == "A barbecue, then a film under the stars",
+            detail=str(days[1]["moments"] if len(days) > 1 else days))
+    s.check("and L’Ariégeoise is nowhere on it", "Ariégeoise" not in section, detail=section[:200])
+    with m.app.test_request_context("/"):
+        wk = m.retreat_week({"nights_label": "5 nights / 6 days"},
+                            [{"session": {"start_date": "2027-06-25", "end_date": "2027-06-30"}}])
+    s.check("retreat_week gives the full date of each day beside the month-day",
+            wk["full"][1] == "2027-06-26" and wk["dates"][1] == "06-26" and len(wk["full"]) == 6, detail=str(wk))
 
     _cleanup()
     return s

@@ -129,7 +129,7 @@
     change in the number of nights can never put a photograph against the wrong day.
     sittings (9 Nov): the page's session_rows, which name the days of the week. -#}
 {% macro ws_journey(w, at_house=None, day_photos=None, sittings=None) -%}
-{%- set _wk = retreat_week(w, sittings) if sittings else {'nights': none, 'days': [], 'summer': true, 'dates': []} -%}
+{%- set _wk = retreat_week(w, sittings) if sittings else {'nights': none, 'days': [], 'summer': true, 'dates': [], 'full': []} -%}
 {%- set _n = ws_nights(w)|trim -%}
 {%- if not _n and _wk['nights'] -%}{%- set _n = _wk['nights']|string -%}{%- endif -%}
 {%- set _k = ws_kind(w)|trim -%}
@@ -215,14 +215,27 @@
 {#- 10 Nov (owner): "Bastille Day dinner & party", "Fête de la Musique - dinner in Salon de Musique". An evening
     that falls on one of these (from the sittings' own dates) becomes it, and the day's English title names it. On the
     last night the banquet stays, with the day named, since it is already in the Salon de Musique and already a party.
-    A day without an evening (departures) is never changed. -#}
+    A day without an evening (departures) is never changed.
+    25 Nov (owner): "add those dates to the itineraries of the retreats, put on celebration for them" -- an occasion
+    that could not go on sale because a retreat has the house becomes that retreat's celebration on the day.
+    THE KEY IS THE DATE. Month-day ('07-14') for the ones that never move; the full date ('2027-06-26') for the ones
+    that do, so L'Ariégeoise fires on the Saturday it is run and not on 26 June every year. The full date is looked
+    up first. The owner's own, written on an occasion at /admin/stay-occasions, come from retreat_celebrations() and
+    win over both: they are the newer word. Theirs carry no 'last', so on a last night the plan's own banquet stays,
+    named for the occasion, as Bastille Day's does. Every evening is a line (test_retreat_days: twelve words at most).
+    L'Ariégeoise: the race's 2027 route is not published, so nothing here says it passes the château. -#}
 {%- set OCC = {
   '07-14': {'evening': 'Bastille Day dinner, then a party',
             'last': 'Bastille Day: the banquet in the Salon de Musique, then dancing', 'title': 'Bastille Day'},
   '06-21': {'evening': '<em lang="fr">Fête de la Musique</em>: dinner in the Salon de Musique',
             'last': '<em lang="fr">Fête de la Musique</em>: banquet in the Salon de Musique, then dancing',
-            'title': 'the Fête de la Musique'}} -%}
+            'title': 'the Fête de la Musique'},
+  '2027-06-26': {'evening': 'The evening of <em lang="fr">L’Ariégeoise</em>: a barbecue, then a film under the stars',
+                 'last': '<em lang="fr">L’Ariégeoise</em>: the banquet in the Salon de Musique, then dancing',
+                 'title': 'L’Ariégeoise'}} -%}
 {%- set _dates = _wk['dates'] if (PLAN and _wk['dates'] and _wk['dates']|length == PLAN|length) else none -%}
+{%- set _full = _wk.get('full') if (_dates and _wk.get('full') and _wk.get('full')|length == PLAN|length) else none -%}
+{%- set _cel = retreat_celebrations() if _full else {} -%}
 <section class="g-sec g-sec--sand g-journey-sec"><div class="g-wrap">
   <div class="g-journey-sec__art" aria-hidden="true">{{ illus('chateau') }}</div>
   <p class="g-fr">Le déroulé des journées <span class="g-fr__en">The shape of the days</span></p>
@@ -243,9 +256,11 @@
     {% for fr, en, items, ill, eve in PLAN %}
     {%- set _ph = _dp[loop.index0] if _dp else none %}
     {%- set _day = _wd[loop.index0] if _wd else none %}
-    {%- set _occ = OCC.get(_dates[loop.index0]) if (_dates and eve) else none %}
+    {%- set _iso = _full[loop.index0] if _full else none %}
+    {%- set _occ = (_cel.get(_iso) or OCC.get(_iso) or OCC.get(_dates[loop.index0])) if (_dates and eve) else none %}
     {%- set _last = loop.index == PLAN|length - 1 %}
-    {%- set _items = (items[:-1] + [_occ['last'] if _last else _occ['evening']]) if _occ else items %}
+    {%- set _lastline = (_occ['last'] or (_occ['title_html'] ~ ': ' ~ (items[-1][:1]|lower) ~ items[-1][1:])) if (_occ and _last) else none %}
+    {%- set _items = (items[:-1] + [_lastline if _last else _occ['evening']]) if _occ else items %}
     {#- the day's English title names the occasion too, unless it is the last night, which keeps its own -#}
     {%- set _en = en ~ (', and ' ~ _occ['title'] if (_occ and not _last) else '') %}
     <li class="g-journey__d">

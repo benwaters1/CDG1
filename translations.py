@@ -827,6 +827,14 @@ FR = {
     "From 3pm · by 11am": "À partir de 15h · avant 11h",
     "Arrival is from 3pm and departure by 11am, unless your confirmation says otherwise. Tell us if you expect to arrive late so that someone can be there to meet you.":
         "L’arrivée se fait à partir de 15h et le départ avant 11h, sauf indication contraire dans votre confirmation. Prévenez-nous si vous pensez arriver tard, afin que quelqu’un soit là pour vous accueillir.",
+    # 25 Nov 2026 (owner): L'Ariégeoise, the evening it takes on Cooking in the
+    # Cuisine (_ws_copy.html, OCC). The page translator reads text between tags,
+    # so the line is three pieces round the race's name, which stays as it is.
+    # The day's English heading is the gloss under its French one and is left
+    # alone, as page_text.py leaves every gloss.
+    "The evening of": "Le soir de",
+    ": a barbecue, then a film under the stars": " : un barbecue, puis un film à la belle étoile",
+    ": the banquet in the Salon de Musique, then dancing": " : le banquet dans le Salon de Musique, puis on danse",
 }
 
 ES = {
@@ -1507,6 +1515,10 @@ ES = {
     "From 3pm · by 11am": "Desde las 15:00 · antes de las 11:00",
     "Arrival is from 3pm and departure by 11am, unless your confirmation says otherwise. Tell us if you expect to arrive late so that someone can be there to meet you.":
         "La llegada es a partir de las 15:00 y la salida antes de las 11:00, salvo que su confirmación indique otra cosa. Avísenos si prevé llegar tarde, para que alguien pueda recibirle.",
+    # 25 Nov 2026 (owner): L'Ariégeoise on Cooking in the Cuisine; see the French.
+    "The evening of": "La noche de",
+    ": a barbecue, then a film under the stars": ": una barbacoa y luego una película bajo las estrellas",
+    ": the banquet in the Salon de Musique, then dancing": ": el banquete en el Salon de Musique y luego baile",
 }
 
 # The public pages' own prose, kept in its own file because it is 1,900

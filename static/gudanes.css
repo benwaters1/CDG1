@@ -11220,6 +11220,22 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-wx__k{ font-size: 12px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
 .g .g-wx__t{ font-family: var(--display); font-size: 21px; color: var(--blue-deep); }
 .g .g-wx__n{ flex-basis: 100%; font-style: italic; }
+/* 25 Nov 2026 (owner: "we can do this a bit better") - Stay's weather as ONE card: the dates' weather (the forecast a
+   night at a time, or the month's averages), then "Right now at the château" under a rule, so the two can never be
+   read as the same thing. The rows carry the padding the plain box has on itself. */
+.g .g-typwx--card{ display: block; padding: 0; }
+.g .g-typwx--card > .g-typwx__row{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; margin: 0; padding: 12px 16px; }
+.g .g-typwx--card > .g-typwx__row[hidden]{ display: none; }
+.g .g-typwx--card > .g-typwx__row + .g-typwx__row:not([hidden]){ border-top: 1px solid rgba(115,86,45,.2); }
+.g .g-typwx--card > [data-typwx][hidden] + .g-typwx__now{ border-top: 0; }
+.g .g-typwx__nights{ flex-basis: 100%; display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.g .g-typwx__night{ display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; margin: 0; }
+.g .g-typwx__night .g-typwx__d{ min-width: 6.5em; font-weight: 500; color: var(--ink); }
+.g .g-typwx__night .g-typwx__f{ min-width: 0; overflow-wrap: anywhere; }
+.g .g-typwx__night b{ font-family: var(--display); font-weight: 400; font-size: 19px; color: var(--blue-deep); }
+.g .g-typwx__now .g-typwx__k{ flex-basis: auto; }
+.g .g-typwx__nv b{ font-family: var(--display); font-weight: 400; font-size: 21px; color: var(--blue-deep); }
+.g .g-typwx__at, .g .g-typwx__age{ color: var(--ink-2); }
 /* The room page's price, in the same voice as the cards */
 .g .g-room__meta{ font-family: var(--ui); font-size: 14.5px; color: var(--ink-2); }
 .g .g-room__meta .g-fig{ font-family: var(--display); font-weight: 400; font-size: clamp(27px, .6vw + 22px, 32px); color: var(--blue-deep); margin-right: .35rem; }

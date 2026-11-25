@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Send bulk email{% endblock %}
+{% block content %}
+{#- 25 Nov 2026 (owner: "where do i send batch emails to workshop guests", "its not very intuitive the menus either"):
+    every group a letter can go to, each with its button, from the menu. The counts are the send page's own
+    (bulk_email_groups), so the two never disagree about who a letter reaches. -#}
+<div class="page-head">
+  <h1>Send bulk email</h1>
+  <a href="{{ url_for('admin_emails') }}" class="btn-mini">To a mailing list instead</a>
+</div>
+<p class="page-intro">Choose who to write to. Each letter is written once and goes to everyone in the group, with
+  their own name and booking filled in; you see exactly who it reaches before it is sent. To write to a list
+  (past guests, everyone booked to come, the newsletter), use <a href="{{ url_for('admin_emails') }}">Guest Email</a>.</p>
+
+{% macro group_table(rows, what) %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th scope="col">{{ what }}</th><th scope="col">Goes to</th><th scope="col">Left out</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+  <tbody>
+  {% for g in rows %}
+    <tr>
+      <th scope="row">{{ g.title }}</th>
+      <td>{{ g.going }} {{ 'person' if g.going == 1 else 'people' }}</td>
+      <td>{% if g.left_out %}{{ g.left_out }}{% else %}<span class="cell-note">nobody</span>{% endif %}</td>
+      <td class="bulk-email__acts">
+        <a href="{{ g.url }}" class="btn-primary btn-mini">Send bulk email</a>
+        {% if g.owed_url %}<a href="{{ g.owed_url }}" class="btn-mini">Send statements</a>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+
+<section class="detail-card bulk-email__sec">
+  <h2 class="section-heading">Retreats coming up</h2>
+  {% if groups.sessions %}{{ group_table(groups.sessions, 'Retreat and dates') }}
+  {% else %}<p class="empty-state">No retreat coming up has anybody booked on it yet.</p>{% endif %}
+</section>
+
+{% if groups.recent %}
+<section class="detail-card bulk-email__sec">
+  <h2 class="section-heading">Retreats finished in the last {{ recent_days }} days</h2>
+  <p class="upload-hint">For the thank-you letter and the photographs.</p>
+  {{ group_table(groups.recent, 'Retreat and dates') }}
+</section>
+{% endif %}
+
+<section class="detail-card bulk-email__sec">
+  <h2 class="section-heading">Parties of rooms</h2>
+  {% if groups.parties %}{{ group_table(groups.parties, 'Party') }}
+  {% else %}<p class="empty-state">No party of rooms is booked to come.</p>{% endif %}
+</section>
+
+{% if groups.dinners %}
+<section class="detail-card bulk-email__sec">
+  <h2 class="section-heading">Dinner nights</h2>
+  {{ group_table(groups.dinners, 'Night') }}
+</section>
+{% endif %}
+{% endblock %}
