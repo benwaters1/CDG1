@@ -5,7 +5,8 @@
     be read, and the book. The pages, the Medal of Honour and For Editors stay. The names are set in the serif, never
     as logos: the house does not hold the publications' marks. -#}
 {% block title %}Press: Written About, the World Over{% endblock %}
-{% block description %}Château de Gudanes in Vogue, Harper’s Bazaar, Architectural Digest, Kinfolk and the Financial Times; the 2016 Medal of Honour of the Fondation Prince Louis de Polignac; and the book.{% endblock %}
+{#- Site review 25 Nov: descriptions over 160 characters are cut short by Google; this one is under. -#}
+{% block description %}Château de Gudanes in Vogue, Harper’s Bazaar, Kinfolk and the Financial Times, its 2016 Medal of Honour from the Fondation Prince Louis de Polignac, and the book.{% endblock %}
 {% block og_image %}{% set _h = site_image('press.hero') %}{% if _h %}{{ request.host_url.rstrip('/') ~ _h }}{% else %}{{ url_for('static', filename='img/retreats/chateau-at-night.jpg', _external=True) }}{% endif %}{% endblock %}
 {% block og_image_alt %}Château de Gudanes, the front elevation{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}

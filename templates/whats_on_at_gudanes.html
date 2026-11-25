@@ -13,7 +13,17 @@
   <h1 class="g-place">Occasions at Gudanes</h1>
   <p class="g-p g-lede-first">Some dates are worth planning a journey around. For these, the château keeps its rooms for guests who want to spend them here, with breakfast each morning and the valley at the door.</p>
   {% if occasions %}
+  {#- Site review 25 Nov (2.17): "Bastille Day, 13-16 July 2028" sat at the end of the 2027 dates and read as a
+      mistake. Over more than one year the dates are grouped under their year; within one, as they were. -#}
+  {%- set _by_year = {} %}{% for o in occasions %}{% set _ = _by_year.setdefault(o['first_night'][:4], []).append(o) %}{% endfor %}
+  {%- if _by_year|length > 1 %}
+  {%- for _y in _by_year|sort %}
+  <h2 class="g-h3 g-occ-year">{{ _y }}</h2>
+  {{ occasion_cards(_by_year[_y]) }}
+  {%- endfor %}
+  {%- else %}
   {{ occasion_cards(occasions) }}
+  {%- endif %}
   <p class="g-hint" style="margin-top:var(--s5)">Prices are per room, a night, in euros; other currencies shown are approximate. Coming from abroad? <a href="{{ url_for('getting_here') }}">Getting here</a>, by train, air and car.</p>
   {% else %}
   <p class="g-p">The next dates are being chosen. In the meantime every room can be booked for any night it is free.</p>

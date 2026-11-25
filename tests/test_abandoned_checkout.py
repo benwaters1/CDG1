@@ -153,7 +153,8 @@ def run():
     # the site is unchanged.
     c4 = m.app.test_client()
     _stash(c4, room["id"])
-    body = c4.get(f"/book/{room['id']}?name=Someone+Else").get_data(as_text=True)
+    # The name is lifted out of the address into the session (site review 25 Nov), so the link is followed.
+    body = c4.get(f"/book/{room['id']}?name=Someone+Else", follow_redirects=True).get_data(as_text=True)
     s.check("an explicit name in the URL wins", "Someone Else" in body,
             detail="the stash overrode what the link asked for")
 

@@ -357,7 +357,7 @@ def _words_and_facts(s):
     s.section("An event is called what it is, not the value off the form")
     w = m.event_type_words
     s.check("the form's 'corporate' and 'other' are said as nouns",
-            w("corporate") == "corporate event" and w("other") == "event",
+            w("corporate") == "private retreat" and w("other") == "event",  # the form's words since 25 Nov
             detail=(w("corporate"), w("other")))
     s.check("a kind that is a noun already is said as written, in lower case",
             w("Wedding") == "wedding" and w("elopement") == "elopement")
@@ -377,8 +377,8 @@ def _words_and_facts(s):
         ctx = m.event_email_context({"contact_name": "Claire Moreau", "event_type": "corporate",
                                      "reference_code": "EVT-ZZLH", "quoted_price": None,
                                      "manage_token": "zzlh"})
-    s.check("so a client reads 'your corporate event', never 'your corporate'",
-            ctx["event_type"] == "corporate event", detail=ctx["event_type"])
+    s.check("so a client reads 'your private retreat', never 'your corporate'",
+            ctx["event_type"] == "private retreat", detail=ctx["event_type"])
 
     s.section("The directions, the rooms and the signatures")
     with open(os.path.join(ROOT, "templates", "_email.html"), encoding="utf-8") as fh:

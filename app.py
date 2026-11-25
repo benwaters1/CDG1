@@ -165,7 +165,7 @@ from html import escape as html_escape, unescape as html_unescape
 from html.parser import HTMLParser
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    session, flash, send_from_directory, abort, jsonify,
+    session, flash, send_from_directory, send_file, abort, jsonify,
     # Aliased as well: stripe_success rebinds `session` to Stripe's own
     # object, so Flask's session needs a name that survives that.
     session as flask_session,
@@ -173,7 +173,7 @@ from flask import (
 )
 from flask.sessions import SecureCookieSessionInterface
 from flask_wtf.csrf import CSRFProtect, CSRFError
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash, safe_join
 from werkzeug.utils import secure_filename
 import stripe
 import anthropic
@@ -1877,6 +1877,32 @@ def stamp_static_addresses(endpoint, values):
         stamp = static_stamp(values.get("filename") or "")
         if stamp:
             values["v"] = stamp
+
+# WHAT A BROWSER MAY KEEP (site review 25 Nov 2026). Every file under /static
+# went out as "Cache-Control: no-cache", so a returning visitor asked again for
+# every photograph on every page -- 391 of them, 109 MB. A stylesheet or script
+# carries its own fingerprint in ?v= (stamp_static_addresses), so that address
+# can never change and is kept for a year. A photograph, a font or a film is
+# kept for thirty days and then checked by its ETag. The Outlook add-in's files
+# keep the rules they have for Outlook (ADDIN_KEEP_THROUGH_A_DEPLOY).
+STATIC_KEPT_TYPES = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".svg", ".ico",
+                     ".woff", ".woff2", ".ttf", ".mp4", ".webm")
+
+
+@app.after_request
+def static_files_kept(response):
+    if not has_request_context() or request.endpoint != "static":
+        return response
+    if response.status_code not in (200, 304):
+        return response
+    name = ((request.view_args or {}).get("filename") or "").lower()
+    if name.startswith("addin/"):
+        return response
+    if name.endswith(STAMPED_STATIC) and request.args.get("v"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif name.endswith(STATIC_KEPT_TYPES):
+        response.headers["Cache-Control"] = "public, max-age=2592000"
+    return response
 
 
 # IMPORTANT: this secret key is regenerated every time the app starts unless
@@ -53366,7 +53392,7 @@ SCHOOL_HOLIDAYS_SOURCE = "https://data.education.gouv.fr/explore/dataset/fr-en-c
 
 # What the chef switch says, word for word, on the card, the occasion's page
 # and the booking page for its dates (owner's brief, 24 Nov 2026).
-CHEF_ON_SITE_LINE = ("The château's chef is in the house: lunch and dinner can be "
+CHEF_ON_SITE_LINE = ("The château’s chef is in the house: lunch and dinner can be "
                      "arranged, priced on request.")
 CHEF_OFF_SITE_LINE = ("Room and breakfast, with lovely restaurants close by, and we "
                       "are happy to help you book.")
@@ -59427,8 +59453,7 @@ def book_rooms():
         weather=weather, stay_wx=stay_wx,
         wx_nights=[n for d, n in sorted(wx_nights.items()) if d >= house_today()],
         dinner_notes=dinner_notes,
-        prefill_name=booking_prefill()["name"], prefill_email=booking_prefill()["email"],
-        prefill_phone=booking_prefill()["phone"], prefill_party_size=request.args.get("party_size", ""),
+        prefill_party_size=request.args.get("party_size", ""),
         **grid,
     )
 
@@ -62280,7 +62305,9 @@ def make_event_reference_code():
 # are words for a drop-down, not for a sentence: the letters said "hosting a
 # corporate", "your other" and "towards your corporate" (23 Nov 2026). A kind
 # the owner adds ("elopement") is a noun already and is said as written.
-EVENT_TYPE_WORDS = {"corporate": "corporate event", "other": "event"}
+# Site review 25 Nov 2026: /events' form calls a "corporate" enquiry "A private retreat", as the page it is
+# about does, so a letter says so too.
+EVENT_TYPE_WORDS = {"corporate": "private retreat", "other": "event"}
 
 
 def event_type_words(value):
@@ -73771,11 +73798,63 @@ def mirrored_photo(filename):
     """
     if not re.fullmatch(r"[0-9a-f]{40}\.(jpg|png|webp|gif|avif)", filename or ""):
         abort(404)
-    resp = send_from_directory(MIRROR_DIR, filename)
+    slim = slim_photo_copy(os.path.join(MIRROR_DIR, filename))
+    resp = (send_file(slim, mimetype="image/jpeg") if slim
+            else send_from_directory(MIRROR_DIR, filename))
     # The filename is a hash of the source URL, so a different photograph is a
     # different name. Nothing served here is ever rewritten in place.
     resp.headers["Cache-Control"] = "public, max-age=2592000"
     return resp
+
+
+# A LIGHTER COPY OF A HEAVY PHOTOGRAPH (site review 25 Nov 2026). The review
+# found 23 photographs over 600 KB on the public pages -- two room photographs
+# at 1.5 and 1.3 MB, two mirrored ones at 1.4 and 1.2 -- out of 109 MB in all.
+# A room photograph is whatever the owner uploaded, and a mirrored one is the
+# old site's file byte for byte, so neither can be fixed in git. A JPEG or an
+# opaque PNG over SLIM_ABOVE_BYTES is served as a copy made once (at most
+# SLIM_MAX_WIDTH wide, quality 82, progressive) and kept on the volume beside
+# the sized pictures; the file uploaded is never touched. A copy that would
+# save less than a tenth is not made, and that answer is remembered too.
+SLIM_ABOVE_BYTES = 600 * 1024
+SLIM_MAX_WIDTH = 2400
+
+
+def slim_photo_copy(path):
+    """A lighter copy of a large photograph, made once and kept; or None."""
+    try:
+        st = os.stat(path)
+    except (OSError, TypeError, ValueError):
+        return None
+    if st.st_size <= SLIM_ABOVE_BYTES or not path.lower().endswith((".jpg", ".jpeg", ".png")):
+        return None
+    name = hashlib.sha1(f"{path}|{st.st_mtime_ns}|slim".encode()).hexdigest()
+    out = os.path.join(PIC_DIR, "slim", name + ".jpg")
+    if os.path.isfile(out):
+        return out
+    if os.path.isfile(out + ".none"):
+        return None
+    try:
+        from PIL import Image, ImageOps
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        tmp = out + f".{os.getpid()}.{threading.get_ident()}.tmp"
+        with Image.open(path) as im:
+            if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+                open(out + ".none", "w").close()        # a picture with see-through parts stays a PNG
+                return None
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            if im.size[0] > SLIM_MAX_WIDTH:
+                im = im.resize((SLIM_MAX_WIDTH, round(im.size[1] * SLIM_MAX_WIDTH / im.size[0])),
+                               Image.LANCZOS)
+            im.save(tmp, "JPEG", quality=82, optimize=True, progressive=True)
+        if os.path.getsize(tmp) > st.st_size * 0.9:
+            os.remove(tmp)
+            open(out + ".none", "w").close()
+            return None
+        os.replace(tmp, out)
+        return out
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -73952,6 +74031,77 @@ def pic_srcset(src, sizes="100vw"):
 app.jinja_env.globals["pic"] = pic
 app.jinja_env.globals["pic_srcset"] = pic_srcset
 app.jinja_env.globals["pic_size"] = pic_size
+
+
+# EVERY HOUSE PHOTOGRAPH AT ITS DRAWN SIZE (site review 25 Nov 2026). pic()
+# gives the picture components a WebP at each width, but an <img> a template
+# writes by hand went out as the full file whatever its size on screen -- the
+# Estate's hero, 2,600px and 2.1 MB, on a 390px phone. 109 MB across the site.
+# So at the response, as with the photographs themselves: an <img> on a public
+# page that names a picture the house holds and has no srcset is given pic()'s,
+# with sizes="auto" where it loads lazily (the browser then reads the width it
+# is drawn at) and the full width otherwise. Its src stays as it was, for any
+# browser that cannot read a srcset.
+_IMG_TAG = re.compile(r"<img\b[^>]*>", re.I)
+_IMG_SRC = re.compile(r'\ssrc="([^"]+)"')
+
+
+def held_picture_name(src):
+    """The /pic name for an image address the house holds, or None."""
+    src = (src or "").replace("&amp;", "&")
+    if src.startswith("/static/img/"):
+        rel = src[len("/static/img/"):].split("?", 1)[0]
+    elif src.startswith("/room-photos/"):
+        rel = "~r/" + src[len("/room-photos/"):].split("?", 1)[0]
+    elif src.startswith("/mirrored-photo/"):
+        rel = "~m/" + src[len("/mirrored-photo/"):].split("?", 1)[0]
+    elif src.startswith("https://"):
+        rel = _pic_held(src)
+    else:
+        return None
+    if not rel:
+        return None
+    path_form = rel if rel.startswith(("~m/", "~r/")) else "/static/img/" + rel
+    return rel if _pic_file(path_form) else None
+
+
+@app.after_request
+def pictures_at_their_size(response):
+    if not has_request_context() or response.direct_passthrough:
+        return response
+    if not (response.content_type or "").startswith("text/html") or response.status_code != 200:
+        return response
+    raw = response.get_data()
+    if _PUBLIC_BODY not in raw:
+        return response
+    body = raw.decode("utf-8", "replace")
+
+    def sized(match):
+        tag = match.group(0)
+        # A hero is size_the_heroes' to size, with its own rules for a hero.
+        if "srcset=" in tag or _HERO_IMG.match(tag):
+            return tag
+        found = _IMG_SRC.search(tag)
+        rel = held_picture_name(found.group(1)) if found else None
+        if not rel:
+            return tag
+        size = pic_size(rel if rel.startswith(("~m/", "~r/")) else "/static/img/" + rel)
+        if not size:
+            return tag
+        widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
+        if len(widths) < 2:
+            return tag
+        srcset = ", ".join(f"/pic/{x}/{rel} {x}w" for x in widths)
+        # A tag that already says how wide it is drawn keeps its own sizes (a second one is ignored).
+        sizes = "" if re.search(r"\ssizes=", tag) else (
+            ' sizes="auto, 100vw"' if 'loading="lazy"' in tag else ' sizes="100vw"')
+        end = "/>" if tag.endswith("/>") else ">"
+        return tag[:-len(end)].rstrip() + f' srcset="{srcset}"' + sizes + end
+
+    done = _IMG_TAG.sub(sized, body)
+    if done != body:
+        response.set_data(done.encode("utf-8"))
+    return response
 
 
 @app.route("/pic/<int:width>/<path:filename>")
@@ -75018,7 +75168,14 @@ def arrival_to_post(arrival_id):
 
 @app.route("/room-photos/<filename>")
 def room_photo(filename):
-    return send_from_directory(ROOM_PHOTO_DIR, filename)
+    # A heavy upload goes out as its lighter copy (slim_photo_copy, site review
+    # 25 Nov), and every room photograph is kept by the browser for a week.
+    found = safe_join(ROOM_PHOTO_DIR, filename)
+    slim = slim_photo_copy(found) if found else None
+    resp = (send_file(slim, mimetype="image/jpeg") if slim
+            else send_from_directory(ROOM_PHOTO_DIR, filename))
+    resp.headers["Cache-Control"] = "public, max-age=604800"
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -79280,6 +79437,107 @@ def purge_guest_page_translations(conn):
 # this app are staff pages, form posts and CSVs, and they should pay a memory
 # scan rather than a parse.
 _PUBLIC_BODY = b'<body class="g'
+
+
+# ---------------------------------------------------------------------------
+# TYPESETTING THE PUBLIC PAGE (site review 25 Nov 2026). Registered just before
+# translate_public_page, so it runs just AFTER it (Flask calls after_request
+# functions in reverse): the words are in their final language when this sees
+# them. Text nodes only -- never a tag, an attribute, a script, a style, a form
+# field or anything marked translate="no" (page_text_spans' own rules).
+#
+#   - Apostrophes are curly. The review found "Valentine's", "Mother's Day",
+#     "All Saints'", "a night's stay", "L'équitation" and seven more straight
+#     among curly ones. They came from templates, from stored occasion names,
+#     from code and from translations; done here, it is done for all of them,
+#     and for whatever arrives next.
+#   - On a French or Spanish page a figure is written the way that language
+#     writes it: 3 800 € and 3.800 €, not €3,800; décembre and diciembre, not
+#     December. "Dates and prices are still in English" was the review's first
+#     French finding.
+#   - On a French page the English gloss under a French heading goes: it is
+#     there to help an English reader with the French, and translated it printed
+#     the heading twice ("Votre chambre Votre chambre").
+# ---------------------------------------------------------------------------
+_STRAIGHT_INSIDE = re.compile(r"(?<=[^\W\d_])'(?=[^\W_])")
+_STRAIGHT_PLURAL = re.compile(r"(?<=[sS])'(?=[\s.,;:!?)\]]|$)")
+_EURO_FIGURE = re.compile(r"€\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?(?!\d)")
+_FR_GLOSS = re.compile(r'\s*<span class="g-fr__en">[^<]*</span>')
+_MONTHS_EN = ("January", "February", "March", "April", "May", "June", "July", "August",
+              "September", "October", "November", "December")
+_DAYS_EN = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+MONTH_NAMES = {
+    "fr": ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+           "septembre", "octobre", "novembre", "décembre"),
+    "es": ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+           "septiembre", "octubre", "noviembre", "diciembre"),
+}
+DAY_NAMES = {
+    "fr": ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"),
+    "es": ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"),
+}
+_MONTH_ALT = "|".join(_MONTHS_EN)
+# A month only beside a figure -- "5 December", "5 – 9 December 2026",
+# "December 2026" -- so an English word that happens to be a month name ("May
+# we...") in a sentence still waiting for its translation is never touched.
+_DATE_DAY_MONTH = re.compile(r"(?<!\w)(\d{1,2}(?:\s*[–-]\s*\d{1,2})?)(\s+)(" + _MONTH_ALT + r")\b")
+_DATE_MONTH_YEAR = re.compile(r"\b(" + _MONTH_ALT + r")(\s+)(\d{4})\b")
+_DATE_WEEKDAY = re.compile(r"\b(" + "|".join(_DAYS_EN) + r")(\s+)(?=\d{1,2}\b)")
+
+
+def typeset_text(text, lang):
+    """One text node, typeset for `lang`. Pure; the hook below applies it."""
+    out = text
+    if "'" in out or "&#39;" in out or "&#x27;" in out:
+        # An apostrophe Jinja escaped (&#39;) is the same character in a text node.
+        out = out.replace("&#39;", "'").replace("&#x27;", "'")
+        out = _STRAIGHT_PLURAL.sub("’", _STRAIGHT_INSIDE.sub("’", out))
+        if "'" in out:
+            out = out.replace("'", "&#39;")   # any left are put back as they came
+    if lang in MONTH_NAMES:
+        months = dict(zip(_MONTHS_EN, MONTH_NAMES[lang]))
+        days = dict(zip(_DAYS_EN, DAY_NAMES[lang]))
+        out = _DATE_DAY_MONTH.sub(lambda m: m.group(1) + m.group(2) + months[m.group(3)], out)
+        out = _DATE_MONTH_YEAR.sub(lambda m: months[m.group(1)] + m.group(2) + m.group(3), out)
+        out = _DATE_WEEKDAY.sub(lambda m: days[m.group(1)] + m.group(2), out)
+        sep = "\u202f" if lang == "fr" else "."
+
+        def euro(m):
+            digits = m.group(1).replace(",", "")
+            whole = f"{int(digits):,}".replace(",", sep) if len(digits) > 3 else digits
+            return whole + ("," + m.group(2) if m.group(2) else "") + "\u00a0€"
+        out = _EURO_FIGURE.sub(euro, out)
+    return out
+
+
+@app.after_request
+def typeset_public_page(response):
+    """Apostrophes, and in French or Spanish the figures and glosses. See above."""
+    if not has_request_context() or response.direct_passthrough:
+        return response
+    if not (response.content_type or "").startswith("text/html"):
+        return response
+    raw = response.get_data()
+    if _PUBLIC_BODY not in raw:
+        return response
+    body = raw.decode("utf-8", "replace")
+    lang = current_language()
+    if lang == "fr":
+        body = _FR_GLOSS.sub("", body)
+    pieces, last, changed = [], 0, False
+    for start, end, _text in page_text_spans(body):
+        chunk = body[start:end]
+        done = typeset_text(chunk, lang)
+        if done != chunk:
+            pieces.append(body[last:start])
+            pieces.append(done)
+            last = end
+            changed = True
+    if changed:
+        pieces.append(body[last:])
+        body = "".join(pieces)
+    response.set_data(body.encode("utf-8"))
+    return response
 
 
 @app.after_request

@@ -17,7 +17,8 @@
 </script>
 {% endblock %}
 {% set crumbs = [('Contact', None)] %}
-{% block title %}Contact &amp; Getting Here{% endblock %}
+{#- Site review 25 Nov (2.18): Getting Here has its own page now; this one is Contact, and links to it below the map. -#}
+{% block title %}Contact{% endblock %}
 {% block description %}Château de Gudanes, 2 Route de Beille, Château-Verdun, Ariège. An hour and three quarters from Toulouse. Every message is read at the château.{% endblock %}
 {% block og_desc %}Château de Gudanes, 2 Route de Beille, Château-Verdun, Ariège. An hour and three quarters from Toulouse. Every message is read at the château.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1200w{% endblock %}
@@ -108,6 +109,7 @@
       <p class="g-key__v">{{ house_address(lines=3) }}</p>
     </div>
   </div>
+  <p class="g-hint"><a href="{{ url_for('getting_here') }}">Getting here in full</a>: the train, the flight and the drive, with the times.</p>
 </div></section>
 
 {# THE DRIVE ITSELF, which the address and the embedded map do not show: the

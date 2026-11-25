@@ -126,7 +126,8 @@ FR = {
     "Stay": "Séjourner",
     "Stay Now": "Réserver un séjour",
     "Workshops": "Ateliers",
-    "Retreats": "Retraites",
+    # Site review 25 Nov: "Séjours", as the pages and "Séjours privés" say; "retraite" reads first as retirement.
+    "Retreats": "Séjours",
     "Weddings & Events": "Mariages et événements",
     "Weddings & Celebrations": "Mariages et célébrations",
     "Weddings": "Mariages",
@@ -939,7 +940,7 @@ FR = {
     "Down the river by canoe, long afternoons by the pool, and a film beneath the stars":
         "La descente de la rivière en canoë, de longs après-midi au bord de la piscine, et un film à la belle étoile",
     "Three nights from the retreats’ own days, shaped around your party. Every stay is drawn up with you.":
-        "Trois nuits tirées des journées des retraites, façonnées autour de votre groupe. Chaque séjour se compose avec vous.",
+        "Trois nuits tirées des journées des séjours, façonnées autour de votre groupe. Chaque séjour se compose avec vous.",
     "Welcomed with a glass of crémant, and shown to your rooms":
         "Accueillis avec une coupe de crémant, puis conduits à vos chambres",
     "A morning at the stove with the château’s chefs": "Une matinée aux fourneaux avec les chefs du château",

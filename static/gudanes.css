@@ -12642,3 +12642,6 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-wscards:has(> .g-wscard:nth-child(4):last-child) > .g-wscard{
     flex-basis: calc((100% - var(--s5)) / 2); max-width: calc((100% - var(--s5)) / 2); }
 }
+
+/* Site review 25 Nov (2.17): the year over each group of occasions, when they run into a second year. */
+.g .g-occ-year{ margin: var(--s7) 0 var(--s4); }

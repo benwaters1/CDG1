@@ -3,10 +3,12 @@
 {% from '_ws_copy.html' import ws_lead, ws_copy, ws_kind with context %}
 {% set sticky_bar = 'atelier' %}
 {% set crumbs = [('Retreats', None)] %}
-{% block title_fr %}Les Retraites : la vie de château{% endblock %}
+{% block title_fr %}Les séjours : la vie de château{% endblock %}
 {% block description_fr %}Trois à sept nuits de vie de château à Gudanes : la cuisine et les chefs du château, les marchés et les brocantes de l’Ariège, châteaux et grottes, la restauration, de longues soirées aux chandelles, et bien plus encore.{% endblock %}
-{% block title %}La Vie de Château: Retreats at Château de Gudanes{% endblock %}
-{% block description %}Three to seven nights of French country-house life at Château de Gudanes: the kitchen, the markets and brocantes of the Ariège, castles and caves, long candlelit evenings and much more.{% endblock %}
+{#- Site review 25 Nov: it read "... Retreats at Château de Gudanes — Château de Gudanes"; the base adds the name. -#}
+{% block title %}La Vie de Château: Retreats{% endblock %}
+{#- Site review 25 Nov: descriptions over 160 characters are cut short by Google; this one is under. -#}
+{% block description %}Three to seven nights of château life at Gudanes: the kitchen, the markets and brocantes of the Ariège, castles and caves, and long candlelit evenings.{% endblock %}
 {% block og_desc %}Three to seven nights of French country-house life at Château de Gudanes: the kitchen and the château’s chefs, the markets and brocantes of the Ariège, castles and caves, the restoration, long candlelit evenings and so much more.{% endblock %}
 {% block og_image %}{{ url_for('static', filename='img/retreats/guests-toasting.jpg', _external=True) }}{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}

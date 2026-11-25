@@ -428,9 +428,10 @@ def _online_checkin(s, conn, now):
                               "workshop_police_register"))
             and {"id_checked_at", "id_checked_by_user_id"} <= cols)
 
-    # "a stay, a table, a workshop -- is deleted once that booking is over"
+    # "(a stay, a table, a retreat) is deleted once that booking is over" -- retreats, and no long
+    # dashes, since the site review of 25 Nov; the claim is the same.
     s.check("the notice counts a stay among the notes deleted afterwards",
-            "a stay, a table, a workshop" in text)
+            "a stay, a table, a retreat" in text)
     room = conn.execute("SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
     left = m.house_today() - timedelta(days=1)
     conn.execute(
@@ -448,10 +449,10 @@ def _online_checkin(s, conn, now):
             conn.execute("SELECT dietary_notes FROM bookings WHERE reference_code = ?",
                          (TAG + "CI",)).fetchone()[0] is None)
 
-    # "for a room, a stay booked through Booking.com, or an atelier, which ends
+    # "for a room, a stay booked through Booking.com, or a retreat, which ends
     # on its last day"
-    s.check("the notice says an atelier's fiche goes six months after its last day",
-            "or an atelier, which ends on its last day" in text)
+    s.check("the notice says a retreat's fiche goes six months after its last day",
+            "or a retreat, which ends on its last day" in text)
     ws = conn.execute("SELECT id FROM workshops LIMIT 1").fetchone()["id"]
     ended = m.house_today() - timedelta(days=6 * 31 + 3)
     sid = conn.execute(

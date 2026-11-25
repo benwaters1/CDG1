@@ -392,8 +392,9 @@ def run():
     # The Autumn Atelier is over (owner, 27 Oct): "this autumn" goes stale in December, the year does not.
     # /workshops said it in Why So Many Return, which went on 9 Nov; the home page keeps the line.
     page = words(shown["/"])
-    s.check("/: the Autumn Atelier line carries its year",
-            "In autumn 2026, every guest at the Autumn Atelier" in page and "This autumn, every guest" not in page)
+    # Site review 25 Nov: "the autumn retreat", not "the Autumn Atelier" (the site calls them retreats).
+    s.check("/: the autumn retreat line carries its year",
+            "In autumn 2026, every guest on the autumn retreat" in page and "This autumn, every guest" not in page)
     s.check("/workshops: and nowhere says 'this autumn'", "This autumn, every guest" not in words(shown["/workshops"]))
 
     # 27 Oct (owner): "no card, no page, no date". Switched off once at start-up, not deleted:

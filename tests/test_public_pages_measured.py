@@ -108,6 +108,9 @@ KNOWN_LONG = {
 
 
 def kind_of(path):
+    # A retreat's page is at its name since 25 Nov (/retreats/<name>); it is the same kind of page.
+    if re.fullmatch(r"/retreats/[a-z0-9-]+", path):
+        return "/workshops/<id>"
     return re.sub(r"/\d+$", "/<id>", path)
 
 
@@ -325,7 +328,7 @@ def _run(s, browser, pages, workdir):
     # ---- on a phone ------------------------------------------------------
     wanted = ["/", "/book", "/workshops"]
     wanted += sorted(p for p in by_path if re.fullmatch(r"/book/\d+", p))[:1]
-    wanted += sorted(p for p in by_path if re.fullmatch(r"/workshops/\d+", p))[:1]
+    wanted += sorted(p for p in by_path if re.fullmatch(r"/workshops/\d+|/retreats/[a-z0-9-]+", p))[:1]
     phone_pages = [(p, by_path[p]) for p in wanted if p in by_path]
     s.section("On a phone, at %s px" % ", ".join(str(w) for w in PHONES))
     s.check("the five pages the brief names are there to measure", len(phone_pages) == 5,

@@ -196,9 +196,10 @@ def run():
     arrival, departure = _window(room)
     page = _guest().get(f"/book/{room['id']}?arrival={arrival.isoformat()}"
                         f"&departure={departure.isoformat()}").get_data(as_text=True)
+    # whole euros as /book prints them, and the apostrophe curled (site review 25 Nov)
     s.check("it is offered, at its price", BOARD.replace("&", "&amp;") in page
-            and "€80.00" in page)
-    s.check("with the notice it needs", "3 days' notice" in page)
+            and '<span class="g-fig">€80</span>' in page)
+    s.check("with the notice it needs", "3 days’ notice" in page)
     s.check("and asks when, and for a note",
             f'name="extra_when_{board["id"]}"' in page
             and f'name="extra_note_{board["id"]}"' in page)
@@ -241,7 +242,7 @@ def run():
         refused = _book(room, soon, soon + timedelta(days=2), "soon", extras=[board["id"]])
         said = [html.unescape(f) for f in flashes(refused)]
         s.check("booking it for then is refused, saying why",
-                any("3 days' notice" in f and BOARD in f for f in said), detail=str(said))
+                any("3 days’ notice" in f and BOARD in f for f in said), detail=str(said))  # curled on the page since 25 Nov
         s.check("and no booking is made", _booking("soon") is None)
         quote = _guest().get(
             f"/api/quote?room_id={room['id']}&arrival={soon.isoformat()}"

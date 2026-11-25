@@ -222,7 +222,8 @@ def run():
     s.check("How Many, and Where: up to eighty", "Up to eighty" in wed_words
             and "in the two adjoining salons and the dining room, for up to eighty guests" in wed_words)
     s.check("the questions: eighty, two salons of around forty each",
-            "Indoors, up to eighty: two adjoining salons hold around forty guests each" in wed_words)
+            # the number first since the site review of 25 Nov: the question is how many
+            "Up to eighty indoors: two adjoining salons hold around forty guests each" in wed_words)
     s.check("what search shows says eighty", "up to eighty guests inside" in meta(wed, "description"),
             detail=meta(wed, "description"))
     fr_page = m.app.test_client().get("/events/weddings?lang=fr").get_data(as_text=True)
