@@ -9322,6 +9322,7 @@ def init_db():
     # Extras added to the catalogue since, once each. See ADDED_EXTRAS.
     seed_added_extras(conn)
     correct_extra_wording(conn)
+    correct_transfer_name(conn)
     correct_terms_la_table(conn)
     correct_terms_checkout_11am(conn)
     correct_terms_site_review_25nov(conn)
@@ -16801,7 +16802,7 @@ def correct_whats_on(conn):
 
 
 DEFAULT_EXTRAS = [
-    {"name": "Airport Transfer (Toulouse, up to 3 guests)", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1,
+    {"name": "Airport transfer from Toulouse, up to three guests", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1,
      "description": "Met at Toulouse-Blagnac and driven to the gates, up to three of you. The same on the way back, if you ask."},
 ]
 
@@ -16871,6 +16872,26 @@ def correct_extra_wording(conn):
     conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
                  "ON CONFLICT(key) DO NOTHING",
                  (EXTRA_WORDING_9NOV, datetime.now(timezone.utc).isoformat()))
+    return changed
+
+
+# Site review 25 Nov 2026: "Airport Transfer (Toulouse, up to 3 guests)" was the one extra in title case with
+# brackets beside "Crémant & charcuterie board" and "A tour of the château". Renamed once, and only while the row
+# still carries the seed's name: one the owner has renamed is hers.
+EXTRA_TRANSFER_NAME_25NOV = "extras_transfer_name_25nov"
+TRANSFER_NAME_OLD = "Airport Transfer (Toulouse, up to 3 guests)"
+TRANSFER_NAME_NEW = "Airport transfer from Toulouse, up to three guests"
+
+
+def correct_transfer_name(conn):
+    """The airport transfer's name in sentence case, once."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (EXTRA_TRANSFER_NAME_25NOV,)).fetchone():
+        return 0
+    changed = conn.execute("UPDATE extras SET name = ? WHERE name = ?",
+                           (TRANSFER_NAME_NEW, TRANSFER_NAME_OLD)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
+                 (EXTRA_TRANSFER_NAME_25NOV, datetime.now(timezone.utc).isoformat()))
     return changed
 
 
@@ -80114,20 +80135,36 @@ def typeset_public_page(response):
     lang = current_language()
     if lang == "fr":
         body = _FR_GLOSS.sub("", body)
-    pieces, last, changed = [], 0, False
-    for start, end, _text in page_text_spans(body):
-        chunk = body[start:end]
-        done = typeset_text(chunk, lang)
-        if done != chunk:
-            pieces.append(body[last:start])
-            pieces.append(done)
-            last = end
-            changed = True
-    if changed:
-        pieces.append(body[last:])
-        body = "".join(pieces)
-    response.set_data(body.encode("utf-8"))
+    done = typeset_html(body, lang)
+    if done != body:
+        response.set_data(done.encode("utf-8"))
+    elif lang == "fr":
+        response.set_data(body.encode("utf-8"))
     return response
+
+
+# What typesetting never touches: a script, a style, a form field's text, code,
+# a drawing. Everything else between a ">" and the next "<" is a run of text.
+# One regex pass rather than page_text_spans' HTML parser: this runs on every
+# public page in every language, and the parser cost 30-40ms of a 350ms page
+# (measured on /book and /gallery, 25 Nov 2026) for the same answer.
+_TYPESET_SKIP = re.compile(r"<(script|style|textarea|pre|code|svg)\b.*?</\1\s*>", re.S | re.I)
+_TEXT_RUN = re.compile(r">([^<]+)<")
+
+
+def typeset_html(body, lang):
+    """typeset_text over every run of text in `body` that may be typeset."""
+    out, last = [], 0
+
+    def runs(chunk):
+        return _TEXT_RUN.sub(lambda m: ">" + typeset_text(m.group(1), lang) + "<", chunk)
+
+    for block in _TYPESET_SKIP.finditer(body):
+        out.append(runs(body[last:block.start()]))
+        out.append(block.group(0))
+        last = block.end()
+    out.append(runs(body[last:]))
+    return "".join(out)
 
 
 @app.after_request

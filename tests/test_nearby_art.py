@@ -34,8 +34,10 @@ DRAWN = re.compile(r'<div class="g-key__i g-key__i--drawn" data-art="([a-z]+)"[^
 # The four in the owner's screenshot, and a few that are easy to get wrong
 # because a more general word is also in the heading.
 EXPECT = {
-    "On the river": "kayak",
-    "Canyoning · Tarascon": "canyon",
+    # Site review 25 Nov: "On the river" and "Canyoning · Tarascon" were the same two things said again under
+    # Outdoors; they are said once now, there.
+    "Rafting, canoe": "kayak",
+    "Canyoning · Auzat": "canyon",
     "Fly fishing": "fish",
     "Caves and prehistory": "cave",
     "Les Bains du Couloubret": "thermal",

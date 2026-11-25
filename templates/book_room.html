@@ -221,13 +221,13 @@
                     the booking does not quietly lose it (z15, 15 Oct). -#}
                 {%- set _slots = [] %}{% for _h in range(check_in_hour, 22) %}{% set _ = _slots.append(clock_words(_h) ~ '-' ~ clock_words(_h + 1)) %}{% endfor %}
                 {%- if _eta and _eta not in [_early, 'After 10pm'] + _slots %}<option value="{{ _eta }}" selected>{{ _eta }}</option>{% endif %}
-                <option value="{{ _early }}" {{ 'selected' if _eta == _early }}>Before {{ check_in_at }} &mdash; early check-in, on request</option>
+                <option value="{{ _early }}" {{ 'selected' if _eta == _early }}>Before {{ check_in_at }}: early check-in, on request</option>
                 {%- for _slot in _slots %}
                 <option value="{{ _slot }}" {{ 'selected' if _eta == _slot }}>{{ _slot.split('-')[0] }} &ndash; {{ _slot.split('-')[1] }}</option>
                 {%- endfor %}
                 <option value="After 10pm" {{ 'selected' if _eta == 'After 10pm' }}>After 10pm</option>
               </select>
-              <span class="g-hint">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}. Arriving earlier? Early check-in is on request &mdash; choose it above and we will do our best.</span>
+              <span class="g-hint">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}. Arriving earlier? Early check-in is on request: choose it above and we will do our best.</span>
             </p>
           </div>
         </section>

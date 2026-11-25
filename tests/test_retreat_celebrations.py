@@ -313,7 +313,8 @@ def _run(s, oc, ec, emp, conn, made):
             any("Cooking in the Cuisine, day 2, now celebrates L'Ariégeoise" in f for f in flashes(r)), response=r)
     r, days = _days(oc, cooking["id"])
     s.check("Cooking in the Cuisine's day 2 is the owner's line, ahead of the template's",
-            len(days) == 6 and days[1]["moments"][-1] == own and days[1]["title"].endswith("and L’Ariégeoise"),
+            # the page curls the apostrophe the owner typed straight (site review 25 Nov)
+            len(days) == 6 and days[1]["moments"][-1] == own.replace("'", "’") and days[1]["title"].endswith("and L’Ariégeoise"),
             detail=str(days[1] if len(days) > 1 else days))
 
 
