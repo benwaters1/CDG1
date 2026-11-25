@@ -193,7 +193,13 @@ m = _harness.m
 # the same pages as against 89a5af6, and nothing else. Was: "5375687"
 # 25 Nov 2026, night: moved to ac7b87c, the Booking.com prices list merged with main at 961d9b1. It touches
 # no public template, only staff pages. Was: "77ee210"
-COPY_BASE = "ac7b87c"
+# 25 Nov 2026, late: moved to 442625b, the owner's site review of 25 Nov (BRIEF-site-review-25-nov.md) merged with
+# main at 56a1096. Against ac7b87c it listed every page in the sitemap, because the Book panel on every page lost
+# its long dash ("Dining only: a table at La Table"), and on top of that the brief's own changes: château for
+# house, the distances, Noël paid in full, the press page, the terms, the privacy notice's dashes and words,
+# the wallpaper's maker, the rooms side by side on /book, Contact's title, the gallery's closing block, What's
+# On's river and canyoning said once, and the Harper's Bazaar captions. Each was read. Was: "ac7b87c"
+COPY_BASE = "442625b"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
