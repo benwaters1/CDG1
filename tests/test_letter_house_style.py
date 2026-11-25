@@ -215,6 +215,9 @@ def _buttons(s):
         "manage_booking": "Your booking page", "workshop_manage": "Your registration",
         "booking_statement": "Your statement", "workshop_statement": "Your statement",
         "pay_share": None, "guest_portal": None, "guest_feedback": None,
+        # The come-back letters (a year on, an anniversary, a birthday) and the
+        # two waiting lists end on these, in the site's own words for them.
+        "book_rooms": "Check dates", "restaurant_book": "Reserve a table",
     }
     unnamed, wrong = [], []
     for endpoint, want in wants.items():
@@ -231,6 +234,13 @@ def _buttons(s):
     s.check("every page a letter links to has a button label of its own",
             not unnamed, detail=unnamed)
     s.check("and the label says what the page is for", not wrong, detail=wrong)
+    site = "https://www.chateaugudanes.com"
+    whole = {site + "/book?arrival=2027-05-01": "Check dates", site + "/book/": "Check dates",
+             site + "/book/pay/t0k3n": "Pay now", site + "/booking/t0k3n/finish": "Finish and pay",
+             site + "/restaurant/book?date=2027-05-01": "Reserve a table"}
+    off = [f"{h}: {m._letter_label_for_link(h)!r}" for h, want in whole.items()
+           if m._letter_label_for_link(h) != want]
+    s.check("/book is matched whole: the pages under it keep their own labels", not off, detail=off)
 
     blank = []
     with m.app.test_request_context("/"):

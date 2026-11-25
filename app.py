@@ -67901,8 +67901,18 @@ _LINK_LABELS = (
 )
 
 
+# Two pages a letter sends a guest to that are matched on the WHOLE path, as
+# the site's own buttons name them: "/book" is a part of every booking page's
+# address, so a part-match would put "Check dates" on a payment link. The
+# come-back letters of 24 November (a year on, an anniversary, a birthday)
+# end on /book and their buttons read "Open the page".
+_LINK_PAGES = {"/book": "Check dates", "/restaurant/book": "Reserve a table"}
+
+
 def _letter_label_for_link(href):
     path = urlparse(href or "").path
+    if path.rstrip("/") in _LINK_PAGES:
+        return _LINK_PAGES[path.rstrip("/")]
     for part, label in _LINK_LABELS:
         if part in path:
             return label
