@@ -1396,7 +1396,10 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
    top on a computer. The photograph is beside the name from 40rem and a short band over it on a phone, never a screen
    of its own. The Family Suite's tall top photograph (.g-room--family .g-roomhero, 72vh) was for a page hero; this is
    not one, so it is held to the same size here. */
-.g .g-booktop{ display: grid; gap: var(--s4); align-items: center; }
+/* 25 Nov 2026 (owner: "there is a spacing issue"): the photograph was centred against the name beside it, so where the
+   name runs to two lines the photograph started well below "Votre chambre" and the booking panel. All three now
+   start on one line, the top of the form's column. */
+.g .g-booktop{ display: grid; gap: var(--s4); align-items: start; }
 .g .g-booktop .g-roomhero{
   width: 100%; height: clamp(7.5rem, 32vw, 15rem); object-fit: cover; display: block;
   background: var(--sand-2, #EDE5D6);
