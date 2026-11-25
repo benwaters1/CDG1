@@ -95,6 +95,8 @@ def nav_mismatch(path, html):
         target = re.sub(r"^https?://[^/]+", "", href.group(1)).split("#")[0].split("?")[0] or "/"
         marked = "is-here" in attrs
         ours = path == target or (target != "/" and path.startswith(target.rstrip("/") + "/"))
+        # A retreat's page is at its name since 25 Nov (/retreats/<name>); it belongs to the retreats' list.
+        ours = ours or (target == "/workshops" and path.startswith("/retreats/"))
         if marked and not ours:
             faults.append(f"marks {target}")
         if path == target and not marked:
@@ -207,7 +209,7 @@ def _run(s, anon):
     s.check("the sitemap gives the public pages to read", len(pages) >= 20,
             detail=f"{len(pages)} pages")
     home = pages.get("/", "")
-    retreats = [p for p in pages if re.fullmatch(r"/workshops/\d+", p)]
+    retreats = [p for p in pages if re.fullmatch(r"/workshops/\d+|/retreats/[a-z0-9-]+", p)]
     rooms = [p for p in pages if re.fullmatch(r"/book/\d+", p)]
     s.check("and among them the home page, the retreats and the rooms",
             bool(home) and len(retreats) >= 3 and len(rooms) >= 3,

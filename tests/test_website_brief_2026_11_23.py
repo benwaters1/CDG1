@@ -135,7 +135,9 @@ def _press(s, anon):
 
     s.section("Selected stories: a button only where there is something to read")
     cards = re.findall(r'<li class="g-pstory">(.*?)</li>', html, re.S)
-    s.check("seven stories", len(cards) == 7, detail=str(len(cards)))
+    # Five since the site review of 25 Nov (2.10): Architectural Digest and House & Garden had no link to read,
+    # and are named under "Also in" until they do.
+    s.check("five stories, each one to read", len(cards) == 5, detail=str(len(cards)))
     hrefs = re.findall(r'<a class="g-btn g-btn--line" href="([^"]+)" target="_blank" rel="noopener">Read in',
                        html)
     s.check("five 'Read in' buttons, to the five addresses that answered", hrefs == STORY_LINKS,

@@ -73423,7 +73423,7 @@ def workshop_detail(workshop_id):
     # Its page is at its name (site review 25 Nov 2026): /workshops/7, /retreats/7,
     # and a name it no longer goes by, all move there for good. After the checks
     # above, so a retreat that is over goes straight to the list in one step.
-    own = url_for("workshop_detail", workshop_id=workshop_id)
+    own = retreat_path(workshop_id)
     if request.path != own and request.method in ("GET", "HEAD"):
         conn.close()
         qs = request.query_string.decode("utf-8", "replace")

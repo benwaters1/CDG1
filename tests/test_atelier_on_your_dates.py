@@ -93,8 +93,9 @@ def _checks(s, conn):
             f"{TAG} Atelier" in words and m.format_date_range(start.isoformat(), end.isoformat()) in words
             and "Four nights" in words, detail=words[:200])
     s.check("what it includes, in the words its own letters use",
+            # as the page typesets it, apostrophes curled (site review 25 Nov)
             m.atelier_included_words(conn.execute("SELECT * FROM workshops WHERE id = ?",
-                                                  (wid,)).fetchone()) in words)
+                                                  (wid,)).fetchone()).replace("'", "’") in words)
     s.check("its price and its places", "€2,500 per person" in words and "8 places left" in words,
             detail=words)
     reserve = re.search(r'href="([^"]+)">Reserve a place<', card)
