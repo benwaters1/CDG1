@@ -152,9 +152,23 @@
     each day: (French title, English title, [bullets], illustration, has an evening). The evening, when there is one,
     is the last bullet: on 14 July or 21 June it becomes the occasion (OCC below). The words are the house's own, so
     they carry their italics as markup and are drawn |safe. -#}
+{#- 25 Nov 2026 (owner: "The itinerary is good, but the wording is not elegant and marketing enough";
+    BRIEF-itinerary-wording-25-nov). The days, their order and every fact are as they were; only the words changed,
+    from a schedule to an invitation. A bullet never says "Leisure time": it is "The afternoon is yours", or ", or the
+    afternoon to yourself" after an option (the everyday block above the days keeps its heading). The last night is
+    "the farewell banquet". A detail a line adds is one the site already states elsewhere: the arcades at Mirepoix
+    (whats_on), the mountains turning blue (workshops_public), the region's wine (home), the painted beams returning to
+    the light (Seven Starry Nights' own paragraph). Three facts the brief's table did not have are kept inside its new
+    words: the midday meeting at the Grand Hôtel de l'Opéra (owner, 24 Nov; test_retreats_page_sells), and the
+    frescoes on Cooking's day two and Seven Starry Nights' restoration morning (owner, 23 Nov). Two of the brief's
+    words gave way to standing rules (test_site_review_2): Noël's "with the house dressed for Christmas" says the
+    château (9 Nov: never "house" for it), and the four nights at the house arrive "to a welcome glass", not "of
+    crémant" (9 and 11 Nov: no drink named on a day; the crémant stays on /events/private's sample, which is not a
+    retreat's day). The French and Spanish for every line are written in translations.py, so neither waits on the
+    translation job. test_retreat_days holds the rest. -#}
 {#- THE SUMMER RETREATS: from Toulouse and back -#}
-{%- set ARRIVE = ('L’arrivée', 'Arrival', ['Midday at the Grand Hôtel de l’Opéra, Toulouse; luncheon in the garden', 'Leisure time: settle in and enjoy the château', '<em lang="fr">L’apéritif</em>, then dinner'], 'chateau', true) -%}
-{%- set DEPART = ('Le départ', 'Departure', ['A last breakfast, and back to Toulouse at eleven'], 'depart', false) -%}
+{%- set ARRIVE = ('L’arrivée', 'Arrival', ['Collected at midday from the Grand Hôtel de l’Opéra, Toulouse, and driven into the Pyrénées, to luncheon in the garden', 'The afternoon to settle in, and to wander the château and its grounds', '<em lang="fr">L’apéritif</em> as the mountains turn blue, then dinner'], 'chateau', true) -%}
+{%- set DEPART = ('Le départ', 'Departure', ['A last, unhurried breakfast, then the drive back to Toulouse at eleven'], 'depart', false) -%}
 {#- Cooking in the Cuisine, and any five nights (a Friday start: Mirepoix falls on the Monday). 10 Nov (owner): no
     pool on Cooking in the Cuisine -- "it'll be too cold". test_site_review_2 holds it.
     25 Nov 2026 (owner): "add in more cooking classes, remove market with the chef ... it's on Sundays? check this,
@@ -162,40 +176,41 @@
     (Ariège Pyrénées tourism), Ax-les-Thermes Tuesday and Saturday, Tarascon Wednesday; the plan had the chef taking
     guests to market on the Saturday. That went, and every full day now has its time in the kitchen: the class on the
     Saturday, the pastry kitchen on the Sunday, a class from what came back from Mirepoix on the Monday, and
-    chocolate-making on the Tuesday. test_retreat_days holds the four. -#}
-{%- set C_CUISINE = ('En cuisine', 'The kitchen', ['A cooking class with the chefs: the classics of the French table', 'The frescoes with the restorers, or leisure time', 'A barbecue, then a film under the stars'], 'cuisine', true) -%}
-{%- set C_FOIX = ('Foix', 'Foix and its castle', ['The pastry kitchen, with the pastry chef', 'Lunch in Foix, and the castle', 'A wine tasting, then dinner out in Les Cabannes'], 'mountains', true) -%}
-{%- set C_CHINER = ('Le marché', 'Market day, and the kitchen', ['Market day at Mirepoix, and the brocantes', 'A cooking class with the chefs, from the market', 'Dinner out in Les Cabannes'], 'brocante', true) -%}
-{%- set C_VALLEE = ('La vallée', 'The valley, and the last night', ['The cave at Lombrives, then lunch in Ax-les-Thermes', 'Chocolate-making in the pastry kitchen', 'The banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
+    chocolate-making on the Tuesday. test_retreat_days holds the four. (The Cooking gallery session's change, in
+    the words of BRIEF-itinerary-wording the same day.) -#}
+{%- set C_CUISINE = ('En cuisine', 'The kitchen', ['The classics of the French table, in a cooking class with the château’s chefs', 'Uncovering the frescoes with the restorers, or the afternoon to yourself', 'A barbecue in the grounds, then a film beneath the stars'], 'cuisine', true) -%}
+{%- set C_FOIX = ('Foix', 'Foix and its castle', ['The pastry kitchen, at the elbow of the pastry chef', 'Lunch in the old town of Foix, then the castle above its rooftops', 'A tasting of the region’s wines, then dinner in the village of Les Cabannes'], 'mountains', true) -%}
+{%- set C_CHINER = ('Le marché', 'Market day, and the kitchen', ['Mirepoix on market day, beneath its medieval arcades, then the brocantes', 'Back from Mirepoix, a cooking class with the château’s chefs, from the morning’s market', 'Dinner in the village of Les Cabannes'], 'brocante', true) -%}
+{%- set C_VALLEE = ('La vallée', 'The valley, and the last night', ['Into the vast cave at Lombrives, then lunch in Ax-les-Thermes', 'An afternoon of chocolate-making in the pastry kitchen', 'The farewell banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
 {#- Seven Starry Nights, and any seven (a Saturday start: Mirepoix falls on the Monday). Day five's evening is a
     dinner by candlelight; on the 2027 dates it is 14 July, and becomes the Bastille Day dinner and party. -#}
-{%- set S_CHATEAU = ('Le château', 'The château', ['Yoga, then a tour of the château and its restoration', 'The pastry kitchen, or leisure time', 'A wine tasting, then dinner out in Les Cabannes'], 'key', true) -%}
-{%- set S_CHINER = ('Chiner', 'Market day and the brocantes', ['Market day at Mirepoix, then the brocantes', 'Leisure time', 'A barbecue, then a film under the stars'], 'brocante', true) -%}
-{%- set S_RESTO = ('La restauration', 'The restoration', ['A morning with the restorers, among the frescoes and painted beams', 'The river by canoe, or leisure time', 'Dinner out in Les Cabannes'], 'restoration', true) -%}
-{%- set S_VALLEE = ('La vallée', 'The valley', ['The cave at Lombrives, then lunch in Ax-les-Thermes', 'Leisure time', 'Dinner by candlelight'], 'mountains', true) -%}
-{%- set S_CUISINE = ('En cuisine', 'The kitchen', ['A cooking class with the chefs', 'Chocolate-making, or leisure time', 'Supper of what you made, then games'], 'cuisine', true) -%}
-{%- set S_FOIX = ('Foix', 'Foix, and the last night', ['The castle at Foix, and lunch in the old town', 'Leisure time', 'The banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
+{%- set S_CHATEAU = ('Le château', 'The château', ['Morning yoga, then the château and its restoration, room by room', 'The pastry kitchen with the pastry chef, or the afternoon to yourself', 'A tasting of the region’s wines, then dinner in the village of Les Cabannes'], 'key', true) -%}
+{%- set S_CHINER = ('Chiner', 'Market day and the brocantes', ['Mirepoix on market day, beneath its medieval arcades, then the brocantes', 'The afternoon is yours', 'A barbecue in the grounds, then a film beneath the stars'], 'brocante', true) -%}
+{%- set S_RESTO = ('La restauration', 'The restoration', ['A morning beside the restorers, as the frescoes and painted beams return to the light', 'Down the river by canoe, or the afternoon to yourself', 'Dinner in the village of Les Cabannes'], 'restoration', true) -%}
+{%- set S_VALLEE = ('La vallée', 'The valley', ['Into the vast cave at Lombrives, then lunch in Ax-les-Thermes', 'The afternoon is yours', 'Dinner by candlelight at the château'], 'mountains', true) -%}
+{%- set S_CUISINE = ('En cuisine', 'The kitchen', ['A cooking class with the château’s chefs', 'Chocolate-making, or the afternoon to yourself', 'Supper of everything you made, then games at the table'], 'cuisine', true) -%}
+{%- set S_FOIX = ('Foix', 'Foix, and the last night', ['The castle at Foix, and lunch in the old town below it', 'The afternoon is yours', 'The farewell banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
 {#- Antique & French Finds, and any three nights (a Saturday start: the vide-greniers are out on the Sunday) -#}
-{%- set F_ARRIVE = ('L’arrivée', 'Arrival', ['Midday at the Grand Hôtel de l’Opéra, Toulouse; luncheon in the garden', 'A tour of the château and its antiques', 'Leisure time', '<em lang="fr">L’apéritif</em>, then dinner by candlelight'], 'chateau', true) -%}
-{%- set F_CHINER = ('Chiner', 'The brocantes', ['Out early to the brocantes and dealers', 'The art of the find, and how to bargain in French', 'Leisure time', 'Supper, and the day’s finds'], 'brocante', true) -%}
-{%- set F_FOIX = ('Foix', 'Foix, and the last night', ['A village <em lang="fr">vide-grenier</em>', 'Lunch in Foix, then a cooking class or leisure time', 'The banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
+{%- set F_ARRIVE = ('L’arrivée', 'Arrival', ['Collected at midday from the Grand Hôtel de l’Opéra, Toulouse, and driven into the Pyrénées, to luncheon in the garden', 'The château through its antiques, and the stories behind them', 'The afternoon is yours', '<em lang="fr">L’apéritif</em> as the mountains turn blue, then dinner by candlelight'], 'chateau', true) -%}
+{%- set F_CHINER = ('Chiner', 'The brocantes', ['Out early to the brocantes and the dealers, while the best pieces are still on the tables', 'The art of the find, and how to bargain in French', 'The afternoon is yours', 'Supper, with the day’s finds laid out on the table'], 'brocante', true) -%}
+{%- set F_FOIX = ('Foix', 'Foix, and the last night', ['A village <em lang="fr">vide-grenier</em>, where whole attics come out onto the street', 'Lunch in Foix, then a cooking class or the afternoon to yourself', 'The farewell banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
 {#- Four summer nights with the outings (the private stay, a Friday start: Mirepoix falls on the Monday) -#}
-{%- set P_CHATEAU = ('Le château', 'The château', ['Yoga, then a tour of the château and its restoration', 'A cooking class, or leisure time', 'A wine tasting, then dinner by candlelight'], 'key', true) -%}
-{%- set P_VALLEE = ('La vallée', 'The valley', ['The castle at Foix, and lunch in the old town', 'The river by canoe, or leisure time', 'A barbecue, then a film under the stars'], 'mountains', true) -%}
-{%- set P_LAST = ('Chiner', 'Market day, and the last night', ['Market day at Mirepoix, and the brocantes', 'Leisure time', 'The banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
+{%- set P_CHATEAU = ('Le château', 'The château', ['Morning yoga, then the château and its restoration, room by room', 'A cooking class with the château’s chefs, or the afternoon to yourself', 'A tasting of the region’s wines, then dinner by candlelight'], 'key', true) -%}
+{%- set P_VALLEE = ('La vallée', 'The valley', ['The castle at Foix, and lunch in the old town below it', 'Down the river by canoe, or the afternoon to yourself', 'A barbecue in the grounds, then a film beneath the stars'], 'mountains', true) -%}
+{%- set P_LAST = ('Chiner', 'Market day, and the last night', ['Mirepoix on market day, beneath its medieval arcades, then the brocantes', 'The afternoon is yours', 'The farewell banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
 {#- THE FOUR NIGHTS, spent at the house -#}
-{%- set H_ARRIVE = ('L’arrivée', 'Arrival', ['Arrive in the afternoon, to a welcome glass', 'Leisure time: settle in and enjoy the château', '<em lang="fr">L’apéritif</em>, then the welcome dinner'], 'chateau', true) -%}
-{%- set H_TOUR = ('Le château', 'The château', ['Yoga, then a tour of the château and its restoration', 'The pastry kitchen, or leisure time', 'A wine tasting, then dinner by candlelight'], 'key', true) -%}
-{%- set H_SESS = ('Les ateliers', 'The sessions', ['The retreat’s own sessions', 'A cooking class, or leisure time', 'Dinner by candlelight, then a film'], 'atelier', true) -%}
-{%- set H_LAST = ('La fête', 'The last night', ['The last session', 'Leisure time', 'The banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
-{%- set H_DEPART = ('Le départ', 'Departure', ['A last breakfast, and the journey home'], 'depart', false) -%}
+{%- set H_ARRIVE = ('L’arrivée', 'Arrival', ['Arrive in the afternoon, to a welcome glass', 'The afternoon to settle in, and to wander the château and its grounds', '<em lang="fr">L’apéritif</em> as the mountains turn blue, then the welcome dinner by candlelight'], 'chateau', true) -%}
+{%- set H_TOUR = ('Le château', 'The château', ['Morning yoga, then the château and its restoration, room by room', 'The pastry kitchen with the pastry chef, or the afternoon to yourself', 'A tasting of the region’s wines, then dinner by candlelight'], 'key', true) -%}
+{%- set H_SESS = ('Les ateliers', 'The sessions', ['The morning given to the retreat’s own sessions', 'A cooking class with the château’s chefs, or the afternoon to yourself', 'Dinner by candlelight, then a film'], 'atelier', true) -%}
+{%- set H_LAST = ('La fête', 'The last night', ['The final session', 'The afternoon is yours', 'The farewell banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
+{%- set H_DEPART = ('Le départ', 'Departure', ['A last, unhurried breakfast, and the journey home'], 'depart', false) -%}
 {#- Noël at Gudanes: four December nights at the house, no outings (owner, 27 Oct: no vans in winter), nothing outdoors
-    after the light goes. Day three is the gingerbread château. -#}
-{%- set N_ARRIVE = ('L’arrivée', 'Arrival', ['Arrive in the afternoon, to a welcome glass by the fire', 'Leisure time: settle in and enjoy the château', '<em lang="fr">L’apéritif</em>, then the welcome dinner'], 'chateau', true) -%}
-{%- set N_CHATEAU = ('Le château', 'The château', ['A tour of the château and its restoration', 'Christmas baking with the pastry chef', 'Leisure time', 'Dinner by candlelight'], 'key', true) -%}
-{%- set N_EPICES = ('Le pain d’épices', 'The gingerbread château', ['The gingerbread château, with the pastry chef', 'Leisure time', 'A wine tasting by the fire, then a Christmas film'], 'cuisine', true) -%}
-{%- set N_FETE = ('La fête', 'The last night', ['Leisure time: the grounds, la Bibliothèque, or help dress the tree', 'Chocolate-making with the chefs', 'The Christmas banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
-{%- set N_DEPART = ('Le départ', 'Departure', ['A last breakfast, and the journey home'], 'depart', false) -%}
+    after the light goes. Day three is the gingerbread château. The grounds are on the last day's afternoon. -#}
+{%- set N_ARRIVE = ('L’arrivée', 'Arrival', ['Arrive in the afternoon, to a welcome glass by the fire', 'The afternoon to settle in, with the château dressed for Christmas', '<em lang="fr">L’apéritif</em>, then the welcome dinner by candlelight'], 'chateau', true) -%}
+{%- set N_CHATEAU = ('Le château', 'The château', ['The château and its restoration, room by room', 'Christmas baking with the pastry chef', 'The afternoon is yours', 'Dinner by candlelight'], 'key', true) -%}
+{%- set N_EPICES = ('Le pain d’épices', 'The gingerbread château', ['The gingerbread château, built with the pastry chef', 'The afternoon is yours', 'A tasting of the region’s wines by the fire, then a Christmas film'], 'cuisine', true) -%}
+{%- set N_FETE = ('La fête', 'The last night', ['The grounds, <em lang="fr">la Bibliothèque</em>, or a hand in dressing the tree', 'Chocolate-making with the chefs', 'The Christmas banquet in the Salon de Musique, then dancing'], 'candelabra', true) -%}
+{%- set N_DEPART = ('Le départ', 'Departure', ['A last, unhurried breakfast, and the journey home'], 'depart', false) -%}
 {#- Every plan but Noël's is a summer plan (the pool, the terrace, the river, films under the stars, morning yoga), so it
     is used only when the sittings start May to September (retreat_week); a retreat set in winter gets the outline. -#}
 {%- if _h -%}
@@ -226,12 +241,12 @@
     L'Ariégeoise: the race's 2027 route is not published, so nothing here says it passes the château. -#}
 {%- set OCC = {
   '07-14': {'evening': 'Bastille Day dinner, then a party',
-            'last': 'Bastille Day: the banquet in the Salon de Musique, then dancing', 'title': 'Bastille Day'},
+            'last': 'Bastille Day: the farewell banquet in the Salon de Musique, then dancing', 'title': 'Bastille Day'},
   '06-21': {'evening': '<em lang="fr">Fête de la Musique</em>: dinner in the Salon de Musique',
-            'last': '<em lang="fr">Fête de la Musique</em>: banquet in the Salon de Musique, then dancing',
+            'last': '<em lang="fr">Fête de la Musique</em>: the farewell banquet in the Salon de Musique, then dancing',
             'title': 'the Fête de la Musique'},
   '2027-06-26': {'evening': 'The evening of <em lang="fr">L’Ariégeoise</em>: a barbecue, then a film under the stars',
-                 'last': '<em lang="fr">L’Ariégeoise</em>: the banquet in the Salon de Musique, then dancing',
+                 'last': '<em lang="fr">L’Ariégeoise</em>: the farewell banquet in the Salon de Musique, then dancing',
                  'title': 'L’Ariégeoise'}} -%}
 {%- set _dates = _wk['dates'] if (PLAN and _wk['dates'] and _wk['dates']|length == PLAN|length) else none -%}
 {%- set _full = _wk.get('full') if (_dates and _wk.get('full') and _wk.get('full')|length == PLAN|length) else none -%}

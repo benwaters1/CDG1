@@ -18,6 +18,8 @@ What this holds:
   - THE CHEF SWITCH: off, nothing on the card or the page offers a meal.
   - THE GRID: the home page and /whats-on/at-gudanes draw the retreats' cards,
     upcoming live occasions only; What's On is a dropdown with both entries.
+    The home page only the ones with the chef in the house (owner, 25 Nov: "i
+    only want it on the homepage if there is a chef not just normal dates").
   - THE WORDS: what the owner types is saved as typed, and Write it again never
     replaces an edited description without being told to.
   - A GUEST CHEF opens /restaurant/book on its dinner nights only, at its price
@@ -264,11 +266,12 @@ def _run(s, oc, owner, conn):
     flat = " ".join(re.sub(r"<[^>]+>", "", rate.group(1)).split()) if rate else ""
     s.check("and its price reads 'from €N a night', spaces and all",
             re.fullmatch(r"from €[\d,]+ a night", flat) is not None, detail=flat or "no price line")
+    # 25 Nov (owner): "i only want it on the homepage if there is a chef not just normal dates". A room-and-
+    # breakfast card is not on the home page at all, so it cannot say breakfast twice there either.
     home_cards = [visible_text(c) for c in re.findall(r'<article class="g-sit g-occasion">.*?</article>',
                                                        m.app.test_client().get("/").get_data(as_text=True), re.S)]
-    s.check("nor on the home page", home_cards
-            and not [c for c in home_cards if len(re.findall(r"breakfast", c, re.I)) > 1],
-            detail=f"{len(home_cards)} cards")
+    s.check("and the home page shows no room-and-breakfast card, only the chef's",
+            not [c for c in home_cards if "Room and breakfast" in c], detail=str([c[:80] for c in home_cards]))
     s.check("and never lunch or dinner", not re.search(r"lunch|dinner", card_text, re.I), detail=card_text)
     page = oc.get(f"/whats-on/at-gudanes/{occ['slug']}").get_data(as_text=True)
     body = re.search(r'class="g-wrap g-occasion-page">(.*?)</div></section>', page, re.S)
@@ -445,10 +448,27 @@ def _run(s, oc, owner, conn):
     conn.execute("INSERT INTO stay_occasion_prices (occasion_id, room_id, price) VALUES (?, ?, 300)",
                  (past, room["id"]))
     conn.commit()
-    home = oc.get("/", headers={"Host": "www.chateaugudanes.com"}).get_data(as_text=True)
-    if "g-occasions-home" not in home:
-        _harness_public = m.app.test_client()
-        home = _harness_public.get("/").get_data(as_text=True)
+
+    def home_page():
+        page = oc.get("/", headers={"Host": "www.chateaugudanes.com"}).get_data(as_text=True)
+        return page if "g-occasions-home" in page else m.app.test_client().get("/").get_data(as_text=True)
+
+    # 25 Nov (owner): "i only want it on the homepage if there is a chef not just normal dates". The occasion is
+    # live with the chef away: its own page lists it, the home page does not, and with nothing else of the kind
+    # on sale the home page has no occasions section at all.
+    conn.execute("UPDATE stay_occasions SET chef_on_site = 0 WHERE name LIKE ? AND status = 'live'", (f"{TAG}%",))
+    conn.commit()
+    plain = home_page()
+    s.check("room and breakfast only: on sale, listed under At Gudanes, but not on the home page",
+            name in oc.get("/whats-on/at-gudanes").get_data(as_text=True) and name not in plain)
+    s.check("and with no chef's occasion on sale, the home page has no occasions section",
+            "g-occasions-home" not in plain)
+    # The chef in the house, as a guest chef or a dinner night sets it: now it is on the home page.
+    conn.execute("UPDATE stay_occasions SET chef_on_site = 1 WHERE name = ?", (name,))
+    conn.commit()
+    home = home_page()
+    s.check("the chef in the house: on the home page, tagged so",
+            name in home and "Chef in the house" in home)
     ours = oc.get("/whats-on/at-gudanes").get_data(as_text=True)
     for where, html in (("the home page", home), ("/whats-on/at-gudanes", ours)):
         s.check(f"{where} draws the retreats' grid and card",
@@ -468,7 +488,7 @@ def _run(s, oc, owner, conn):
     s.check("the past occasion's page is gone", oc.get(f"/whats-on/at-gudanes/{TAG.lower()}-past")
             .status_code in (200, 404) and m.app.test_client().get(
                 f"/whats-on/at-gudanes/{TAG.lower()}-past").status_code == 404)
-    conn.execute("UPDATE stay_occasions SET status = 'live' WHERE name = ?", (name,))
+    conn.execute("UPDATE stay_occasions SET status = 'live', chef_on_site = 0 WHERE name = ?", (name,))
     conn.commit()
 
     s.section("What's On is a dropdown: In the Ariège and At Gudanes")

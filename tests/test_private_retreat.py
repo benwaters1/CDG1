@@ -117,9 +117,11 @@ def run():
     days = re.findall(r'<h3 class="g-shootsteps__t">([^<]*)</h3>', page)
     s.check("A Sample Private Retreat: the arrival, the kitchen and the market, the restoration and Foix, Au Revoir",
             "A Sample Private Retreat" in heads
-            and days == ["The Day of Arrival", "The Kitchen and the Market", "The Restoration and Foix", "Au Revoir"],
+            and days == ["Arrival", "The Kitchen and the Market", "The Restoration and Foix", "Au Revoir"],
             detail=str(days))
-    s.check("the picnic bag stays on the last day", "A little picnic bag each for your onward travels" in words)
+    # 25 Nov (BRIEF-itinerary-wording, 2): the days in new words; test_retreat_days holds the rest.
+    s.check("the picnic bag stays on the last day",
+            "A picnic bag each, packed by the kitchen, for the journey onward" in words)
     s.check("If There Is a Reason comes after the sample",
             "If There Is a Reason" in heads and heads.index("If There Is a Reason") > heads.index("A Sample Private Retreat"),
             detail=" | ".join(heads))

@@ -88,11 +88,11 @@
     stands for), so nothing here is new to the house; only Noël and L'été, which are seasons, not days, are named for
     the season. -#}
 {%- set _CHOOSE = [
-  ('En cuisine', 'The kitchen', 'A cooking class with the château’s chefs, and the pastry kitchen with the pastry chef', '/static/img/xx/the-kitchen.jpg', 'The kitchen, its table laid with fresh produce'),
-  ('Chiner', 'The brocantes', 'Market day at Mirepoix, and the brocantes of the valley', '/static/img/retreats/mirepoix-arcades.jpg', 'Mirepoix under its old arcades'),
-  ('La restauration', 'The restoration', 'A morning with the restorers, among the painted beams', '/static/img/retreats/restoration-scaffold.jpg', 'Guests on the scaffold among the frescoes'),
-  ('Noël', 'In December', 'The gingerbread château with the pastry chef, Christmas baking, and the banquet in the Salon de Musique', '/static/img/retreats/gingerbread-under-lights.jpg', 'The gingerbread château under the lights'),
-  ('L’été', 'In summer', 'The river by canoe, the pool, and a film under the stars', '/static/img/retreats/film-under-the-stars.jpg', 'A film under the stars, on the château wall')] %}
+  ('En cuisine', 'The kitchen', 'A morning at the stove with the château’s chefs, and an afternoon in the pastry kitchen', '/static/img/xx/the-kitchen.jpg', 'The kitchen, its table laid with fresh produce'),
+  ('Chiner', 'The brocantes', 'Mirepoix on market day, beneath its medieval arcades, and the brocantes of the valley', '/static/img/retreats/mirepoix-arcades.jpg', 'Mirepoix under its old arcades'),
+  ('La restauration', 'The restoration', 'A morning beside the restorers, as the painted beams return to the light', '/static/img/retreats/restoration-scaffold.jpg', 'Guests on the scaffold among the frescoes'),
+  ('Noël', 'In December', 'The gingerbread château, Christmas baking, and the Christmas banquet in the Salon de Musique', '/static/img/retreats/gingerbread-under-lights.jpg', 'The gingerbread château under the lights'),
+  ('L’été', 'In summer', 'Down the river by canoe, long afternoons by the pool, and a film beneath the stars', '/static/img/retreats/film-under-the-stars.jpg', 'A film under the stars, on the château wall')] %}
 <section class="g-sec g-pdays-sec" aria-labelledby="choose-h"><div class="g-wrap">
   <p class="g-fr">Vos journées <span class="g-fr__en">Your days</span></p>
   <h2 class="g-place" id="choose-h">Choose Your Days</h2>
@@ -113,16 +113,18 @@
 
 {#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 1): four days built from the retreats' own (_ws_copy.html), in their
     words: the arrival, the kitchen and the market, the restoration and Foix with the banquet and dancing, and Au Revoir
-    with its picnic bag, kept from the sample stay. -#}
+    with its picnic bag, kept from the sample stay.
+    25 Nov 2026 (BRIEF-itinerary-wording, 2): the same days in the retreats' new words, an invitation rather than a
+    schedule; "Arrival" for the first, and no bullet says "Leisure time". The French and Spanish are in translations.py. -#}
 <section class="g-sec g-sec--sand g-shoot-how g-wed-days"><div class="g-wrap">
   <p class="g-fr">Un exemple <span class="g-fr__en">An example</span></p>
   <h2 class="g-place">A Sample Private Retreat</h2>
-  <p class="g-p g-intro">Three nights, built from the retreats’ own days and shaped around your party. This is a sample only.</p>
+  <p class="g-p g-intro">Three nights from the retreats’ own days, shaped around your party. Every stay is drawn up with you.</p>
   <ol class="g-shootsteps">
-    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">I</b><h3 class="g-shootsteps__t">The Day of Arrival</h3><ul class="g-wed-days__l"><li>Welcome to the château with a glass of crémant, and your rooms</li><li>Leisure time: settle in and enjoy the château</li><li><em lang="fr">L’apéritif</em> in the Salon de Musique, then a candlelit welcome dinner</li></ul></li>
-    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">II</b><h3 class="g-shootsteps__t">The Kitchen and the Market</h3><ul class="g-wed-days__l"><li>A morning in the kitchen with the château’s chefs</li><li>Market day at Mirepoix, and the brocantes</li><li>A wine tasting, then dinner by candlelight</li></ul></li>
-    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">III</b><h3 class="g-shootsteps__t">The Restoration and Foix</h3><ul class="g-wed-days__l"><li>A morning with the restorers, among the painted beams</li><li>The castle at Foix, and lunch in the old town</li><li>The banquet in the Salon de Musique, then dancing</li></ul></li>
-    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">IV</b><h3 class="g-shootsteps__t">Au Revoir</h3><ul class="g-wed-days__l"><li>A light breakfast before your departure</li><li>A little picnic bag each for your onward travels</li></ul></li>
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">I</b><h3 class="g-shootsteps__t">Arrival</h3><ul class="g-wed-days__l"><li>Welcomed with a glass of crémant, and shown to your rooms</li><li>The afternoon to settle in, and to wander the château and its grounds</li><li><em lang="fr">L’apéritif</em> in the Salon de Musique, then a candlelit welcome dinner</li></ul></li>
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">II</b><h3 class="g-shootsteps__t">The Kitchen and the Market</h3><ul class="g-wed-days__l"><li>A morning at the stove with the château’s chefs</li><li>Mirepoix on market day, beneath its medieval arcades, then the brocantes</li><li>A tasting of the region’s wines, then dinner by candlelight</li></ul></li>
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">III</b><h3 class="g-shootsteps__t">The Restoration and Foix</h3><ul class="g-wed-days__l"><li>A morning beside the restorers, as the painted beams return to the light</li><li>The castle at Foix, and lunch in the old town below it</li><li>The farewell banquet in the Salon de Musique, then dancing</li></ul></li>
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">IV</b><h3 class="g-shootsteps__t">Au Revoir</h3><ul class="g-wed-days__l"><li>A last, unhurried breakfast</li><li>A picnic bag each, packed by the kitchen, for the journey onward</li></ul></li>
   </ol>
 </div></section>
 

@@ -302,7 +302,9 @@ def run():
         if tx:
             s.check(f"{w['title']}: its own page says the hotel, at midday", HOTEL in page and "midday" in page)
             if kinds[w["title"]] in ("cooking", "finds", "starry"):
-                s.check(f"{w['title']}: and its first day starts there", f"Midday at the {HOTEL}, Toulouse" in page)
+                # 25 Nov (BRIEF-itinerary-wording): "Collected ... and driven into the Pyrénées", the meeting kept.
+                s.check(f"{w['title']}: and its first day starts there",
+                        f"Collected at midday from the {HOTEL}, Toulouse" in page)
         else:
             s.check(f"{w['title']}: no meeting in Toulouse on a retreat without transfers", HOTEL not in page)
     row = dict(guest_name="X", title="Cooking in the Cuisine", start_date="2027-05-01", end_date="2027-05-06",
