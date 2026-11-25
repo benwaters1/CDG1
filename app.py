@@ -59177,6 +59177,13 @@ def book_rooms():
     # render that can block on somebody else's network is one that eventually
     # does, and this is the booking page.
     weather = weather_now(conn)
+    # And the forecast for the nights they asked about, when those are close
+    # enough to have one (owner, 25 Nov 2026), from the same cache-only reader.
+    # Every night the forecast reaches goes to the page as well, so changing
+    # the dates in the bar redraws the card before they search again.
+    wx_nights = forecast_nights(conn)
+    stay_wx = (stay_forecast(conn, arrival, departure, nights=wx_nights)
+               if searched else None)
     # book_rooms.html has carried a Welcome back panel since it was designed --
     # guarded, styled, and reading a name nothing ever passed, so it has never
     # appeared for anybody. This is the missing half.
@@ -59206,7 +59213,9 @@ def book_rooms():
         occasions_here=occasions_here, occasion_nights=occasion_nights,
         nothing_available=nothing_available, next_free=next_free,
         blocking_atelier=blocking_atelier, ateliers=ateliers,
-        weather=weather, dinner_notes=dinner_notes,
+        weather=weather, stay_wx=stay_wx,
+        wx_nights=[n for d, n in sorted(wx_nights.items()) if d >= house_today()],
+        dinner_notes=dinner_notes,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
         **grid,
@@ -64709,7 +64718,11 @@ def weather_now(conn, *, max_age_minutes=WEATHER_MAX_AGE_MINUTES, now=None):
         return None
     return {"c": snap.get("c"),
             "words": WEATHER_WORDS.get(snap.get("code"), "hard to say"),
-            "minutes_old": int(age.total_seconds() // 60)}
+            "minutes_old": int(age.total_seconds() // 60),
+            # The house's clock at the reading (owner, 25 Nov 2026): "Right
+            # now at the château · 8°C, overcast · 13:40". UTC would read an
+            # hour or two out to everybody in the valley.
+            "time": at.astimezone(LOCAL_TZ).strftime("%H:%M")}
 
 
 # The currencies the site offers. EUR is not in it: it is what the house
@@ -64833,10 +64846,14 @@ def run_weather_job(conn):
 # ---------------------------------------------------------------------------
 
 FORECAST_SETTING = "weather_forecast"
-# Eight days, so the frost night of the seventh -- which ends on the morning of
-# the eighth -- is read whole. Jobs are raised only for the next few days
-# (weather_jobs_days_ahead); the rest is the outlook on the owner's page.
-FORECAST_DAYS = 8
+# Sixteen days, Open-Meteo's furthest, so a guest searching for dates up to a
+# fortnight ahead is shown the forecast for their nights (owner, 25 Nov 2026;
+# STAY_FORECAST_AHEAD_DAYS). It was eight, which is all the outdoor jobs need:
+# jobs are raised only for the next few days (weather_jobs_days_ahead), and the
+# owner's page still shows its eight-day outlook (WEATHER_OUTLOOK_DAYS), so the
+# longer fetch changes nothing there.
+FORECAST_DAYS = 16
+WEATHER_OUTLOOK_DAYS = 8
 # Older than this, a forecast is not acted on. It is fetched hourly, so this
 # only bites when Open-Meteo has been out of reach for half a day -- and then
 # withdrawing a job because an old forecast no longer mentions it would be
@@ -65027,6 +65044,155 @@ def weather_when(local, day):
 def weather_day_words(day):
     """'Wednesday 24 October'. Not strftime, which follows the server's locale."""
     return f"{WHATS_ON_DAYS[day.weekday()]} {day.day} {MONTH_NAMES[day.month - 1]}"
+
+
+# ---------------------------------------------------------------------------
+# THE FORECAST FOR A GUEST'S OWN NIGHTS (owner, 25 Nov 2026: "we can do this a
+# bit better"). Stay the Night showed "Typical in March", and under it, loose,
+# "AT THE CHÂTEAU 8°C overcast" -- the reading at that moment, which sitting
+# under a box about March read as March's weather. Now one card holds two
+# clearly different things: what it is like right now, and what their dates
+# will be like -- the forecast for their nights when they are close enough to
+# have one, the month's averages when they are not.
+#
+# Read from the forecast the house already fetches every hour for the outdoor
+# jobs, never from the guest's browser (see _weather_live.html for why).
+# ---------------------------------------------------------------------------
+
+# An arrival this many days off, or nearer, is shown the forecast. Further out
+# a forecast is a guess dressed as a fact, and the month says more.
+STAY_FORECAST_AHEAD_DAYS = 14
+# One line a night, for the first week of a stay at most.
+STAY_FORECAST_MAX_NIGHTS = 7
+# The day a guest is out in: 08:00 to 19:59 house time. The night is the twelve
+# hours after it, so Friday's low is the small hours of Saturday -- the night
+# they sleep through, which a calendar day's minimum would not be.
+STAY_FORECAST_DAY_HOURS = (8, 20)
+SNOW_CODES = frozenset({71, 73, 75, 77, 85, 86})
+# The page's script chooses nights by the same two numbers (_typical_weather.html).
+app.jinja_env.globals.update(stay_forecast_ahead=STAY_FORECAST_AHEAD_DAYS,
+                             stay_forecast_max=STAY_FORECAST_MAX_NIGHTS)
+
+
+def forecast_day_code(codes):
+    """The one word for a day's weather, from its hourly codes.
+
+    A thunderstorm in any hour wins. Then rain or snow, if two hours or more
+    have it -- snow before rain, because snow is the one that decides whether
+    somebody can drive up. Otherwise whatever the sky did most of the day.
+    Open-Meteo's own daily figure is simply the worst hour, so one hour of
+    morning fog in the valley calls a sunny day "fog", which is not what
+    anybody would say about it.
+    """
+    codes = [c for c in codes if c is not None]
+    if not codes:
+        return None
+    storms = [c for c in codes if c in THUNDER_CODES]
+    if storms:
+        return max(storms)
+    wet = [c for c in codes if c >= 51]
+    if len(wet) >= 2:
+        snow = [c for c in wet if c in SNOW_CODES]
+        return max(snow) if snow else max(wet)
+    counts = {}
+    for c in codes:
+        counts[c] = counts.get(c, 0) + 1
+    return max(counts, key=lambda c: (counts[c], c))
+
+
+def _short_day(day):
+    return WHATS_ON_DAYS[day.weekday()][:3], MONTH_NAMES[day.month - 1][:3]
+
+
+def forecast_nights(conn, *, now=None):
+    """Every night the cached forecast speaks for whole, as a guest reads it.
+    NEVER fetches, like weather_now.
+
+    {date: {'iso', 'dow': 'Fri', 'day': 28, 'mon': 'Nov', 'high': '9°C',
+    'low': '2°C' or None, 'words': 'rain', 'frost', 'snow', 'hot'}}.
+
+    A day is listed only when the forecast holds all of its daytime hours, and
+    its night low only when it holds the whole night: the forecast's last
+    evening has no small hours, and a low read from half a night is warmer
+    than the night will be. Empty when there is no forecast, or it is too old
+    to stand behind -- then the card says what the month is usually like,
+    which is true, rather than what an old forecast said.
+    """
+    forecast = weather_forecast(conn, now=now)
+    if not forecast or not forecast["fresh"]:
+        return {}
+    first, last = STAY_FORECAST_DAY_HOURS
+    days, nights = {}, {}
+    for h in forecast["hours"]:
+        loc = h["local"]
+        if first <= loc.hour < last:
+            days.setdefault(loc.date(), []).append(h)
+        else:
+            night_of = loc.date() if loc.hour >= last else loc.date() - timedelta(days=1)
+            nights.setdefault(night_of, []).append(h)
+    out = {}
+    for day in sorted(days):
+        hours = days[day]
+        temps = [h["temp"] for h in hours if h["temp"] is not None]
+        code = forecast_day_code([h["code"] for h in hours])
+        # Whole means it holds the first and the last hour of the span, read on
+        # the wall clock rather than counted: the night the clocks go forward
+        # has eleven hours and the night they go back has thirteen, and both
+        # are whole nights.
+        clock = {h["local"].hour for h in hours}
+        if first not in clock or last - 1 not in clock or not temps or code is None:
+            continue
+        dark = nights.get(day, [])
+        whole_night = (any(h["local"].date() == day and h["local"].hour == last for h in dark)
+                       and any(h["local"].date() > day and h["local"].hour == first - 1
+                               for h in dark))
+        dark = [h["temp"] for h in dark if h["temp"] is not None]
+        low = min(dark) if whole_night and dark else None
+        high = max(temps)
+        dow, mon = _short_day(day)
+        out[day] = {"iso": day.isoformat(), "dow": dow, "day": day.day, "mon": mon,
+                    "high": weather_degrees(high),
+                    "low": weather_degrees(low) if low is not None else None,
+                    "words": WEATHER_WORDS.get(code, "hard to say"),
+                    "frost": low is not None and low <= 0,
+                    "snow": code in SNOW_CODES,
+                    "hot": high >= 28}
+    return out
+
+
+def stay_forecast(conn, arrival, departure, *, now=None, today=None, nights=None):
+    """The forecast for a stay's own nights, or None for the month's averages.
+
+    None when the dates are not a stay, when the arrival is past or more than
+    STAY_FORECAST_AHEAD_DAYS away, or when the forecast has nothing for the
+    first night. Otherwise {'rows': [night, ...], 'shown', 'total', 'notes'}:
+    one row a night for the first STAY_FORECAST_MAX_NIGHTS, stopping at the
+    first night the forecast does not reach, each row saying whether to print
+    its month (the first, and the first of a new month: "Fri 28 Nov",
+    "Sat 29", "Mon 1 Dec"). `shown` short of `total` is what the card's
+    heading says: "Forecast for your first 3 nights", never a list that reads
+    as the whole stay when it is not.
+    """
+    today = today or house_today()
+    if not arrival or not departure or departure <= arrival:
+        return None
+    if arrival < today or (arrival - today).days > STAY_FORECAST_AHEAD_DAYS:
+        return None
+    if nights is None:
+        nights = forecast_nights(conn, now=now)
+    total = (departure - arrival).days
+    rows, prev = [], None
+    for i in range(min(total, STAY_FORECAST_MAX_NIGHTS)):
+        day = arrival + timedelta(days=i)
+        night = nights.get(day)
+        if not night:
+            break
+        rows.append(dict(night, show_month=prev is None or prev.month != day.month))
+        prev = day
+    if not rows:
+        return None
+    notes = [k for k in ("frost", "snow", "hot") if any(r[k] for r in rows)]
+    return {"rows": rows, "shown": len(rows), "total": total, "notes": notes}
 
 
 def weather_job_verdict(kind, d, k):
@@ -105834,7 +106000,7 @@ def weather_jobs_page():
     last_day = today + timedelta(days=cfg["days_ahead"])
     outlook = []
     for d in forecast_days(forecast) if forecast else []:
-        if d["day"] < today:
+        if d["day"] < today or d["day"] >= today + timedelta(days=WEATHER_OUTLOOK_DAYS):
             continue
         asks = []
         for kind in WEATHER_JOB_KINDS:

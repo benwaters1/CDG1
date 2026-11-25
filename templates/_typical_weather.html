@@ -5,13 +5,71 @@
     point there is 1,179 m, which would make every figure about 3 degrees too cold). Daytime highs and night lows only, plus
     the share of nights below freezing and days at 28 C or more: the archive's rain and snow day counts overstate light rain
     and valley snow, so they are not shown. Built into the page - nothing is fetched while a guest browses.
-    Use: {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#arrival_field', '#departure_field') }} -#}
-{%- macro typical_weather(arrival_sel, departure_sel) -%}
+    Use: {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#arrival_field', '#departure_field') }}
+
+    25 Nov 2026 (owner, on Stay the Night: "we can do this a bit better"). The reading at that moment sat loose under the
+    "Typical in March" box, so "AT THE CHÂTEAU 8°C overcast" read as March's weather. Pass `nights` (forecast_nights, as a
+    list) and the box becomes ONE CARD holding two clearly different things:
+      - what their dates will be like: "Forecast for your stay", a line a night, when the arrival is within a fortnight
+        and the house's cached forecast reaches it (`stay`, from stay_forecast); the month's averages, as before, when not;
+      - "Right now at the château", the house's hourly reading with the time it was taken (`now`, from weather_now).
+    No reading: no "Right now" row, never an empty one. No forecast: the averages alone, as before.
+    Every night the forecast reaches is in the page as a <template>, so changing the dates in the bar redraws the card
+    without asking anybody's server: the words are written here, once, and the script only chooses which nights to show.
+    The room page passes none of it and keeps the plain box (owner, 9 Nov: no live weather beside the booking form). -#}
+{%- macro _night(n, show_month) -%}
+<li class="g-typwx__night" data-night="{{ n.iso }}" data-frost="{{ 1 if n.frost else 0 }}" data-snow="{{ 1 if n.snow else 0 }}" data-hot="{{ 1 if n.hot else 0 }}"><span class="g-typwx__d">{{ n.dow }} {{ n.day }}{% if show_month is none %}<span data-mon> {{ n.mon }}</span>{% elif show_month %} {{ n.mon }}{% endif %}</span> <span class="g-typwx__f"><b>{{ n.high }}</b> by day{% if n.low %}, <b>{{ n.low }}</b> at night{% endif %}, {{ n.words }}</span></li>
+{%- endmacro -%}
+{%- macro typical_weather(arrival_sel, departure_sel, now=none, stay=none, nights=none, drawn='') -%}
+{%- set NOTES = [('frost', 'Frost is forecast at night. Bring a layer more than you think.'),
+                 ('snow', 'Snow is forecast. The drive may want care.'),
+                 ('hot', 'The thick walls do the work — it is cooler inside.')] -%}
+{%- set H_ALL, H_FIRST, H_ONE = 'Forecast for your stay', 'Forecast for your first {n} nights', 'Forecast for your first night' -%}
+{%- if nights is none -%}
 <p class="g-typwx" data-typwx data-a="{{ arrival_sel }}" data-d="{{ departure_sel }}" aria-live="polite" hidden></p>
+{%- else -%}
+{%- set _now = now if (now and now.c is not none) else none -%}
+<div class="g-typwx g-typwx--card" data-today="{{ house_today_iso() }}" data-ahead="{{ stay_forecast_ahead }}" data-max="{{ stay_forecast_max }}"
+     data-h-all="{{ H_ALL }}" data-h-first="{{ H_FIRST }}" data-h-one="{{ H_ONE }}"{% if not _now and not stay %} hidden{% endif %}>
+  <div class="g-typwx__row" data-typwx data-a="{{ arrival_sel }}" data-d="{{ departure_sel }}" aria-live="polite"
+       {%- if stay %} data-drawn="{{ drawn }}"{% else %} hidden{% endif %}>
+    {%- if stay -%}
+    <span class="g-typwx__k">{{ H_ALL if stay.shown == stay.total else (H_ONE if stay.shown == 1 else H_FIRST|replace('{n}', stay.shown|string)) }}</span>
+    <ul class="g-typwx__nights">{% for n in stay.rows %}{{ _night(n, n.show_month) }}{% endfor %}</ul>
+    {%- set _said = [] %}{% for k, words in NOTES if k in stay.notes %}{% set _ = _said.append(words) %}{% endfor %}
+    {%- if _said %}<span class="g-typwx__n">{{ _said|join(' ') }}</span>{% endif -%}
+    {%- endif -%}
+  </div>
+  {%- if _now %}
+  {#- The cache is refreshed hourly and kept for three, so a reading can be a couple of hours old: the time it was taken,
+      and its age when that is an hour or more, as _weather_live.html says it. -#}
+  <p class="g-typwx__row g-typwx__now">
+    <span class="g-typwx__k">Right now at the château</span>
+    <span class="g-typwx__nv"><b>{{ _now.c }}&deg;C</b>, {{ _now.words }}</span>
+    {%- if _now.time %} <span class="g-typwx__at"><span aria-hidden="true">· </span>{{ _now.time }}</span>{% endif %}
+    {%- if _now.minutes_old >= 60 %} <span class="g-typwx__age">as of {{ (_now.minutes_old // 60) }} hour{{ '' if _now.minutes_old // 60 == 1 else 's' }} ago</span>{% endif %}
+    {%- set _line -%}
+      {%- if _now.c <= 0 %}Frost on the valley. Bring a layer more than you think.
+      {%- elif _now.c >= 28 %}The thick walls do the work &mdash; it is cooler inside.
+      {%- elif 'snow' in _now.words %}Snow. The drive may want care.
+      {%- elif 'rain' in _now.words or 'shower' in _now.words %}Rain off the mountain. The valley is loud with it.
+      {%- endif %}
+    {%- endset %}
+    {%- if _line|trim %} <span class="g-typwx__n">{{ _line|trim }}</span>{% endif %}
+  </p>
+  {%- endif %}
+  <template data-typwx-nights>{% for n in nights %}{{ _night(n, none) }}{% endfor %}</template>
+  <template data-typwx-notes>{% for k, words in NOTES %}<span data-note="{{ k }}">{{ words }}</span>{% endfor %}</template>
+</div>
+{%- endif %}
 <script>
 (function(){
-  var el = document.currentScript.previousElementSibling;
-  if (!el || !el.hasAttribute('data-typwx')) return;
+  var box = document.currentScript.previousElementSibling;
+  if (!box) return;
+  /* the plain box (room page) is the element itself; the Stay card holds it as its first row */
+  var el = box.hasAttribute('data-typwx') ? box : box.querySelector('[data-typwx]');
+  if (!el) return;
+  var card = el === box ? null : box;
   /* month+half: [day high, night low, share of frosty nights, share of days at 28 C or more] */
   var W = {"1a":[9.5,0.6,.39,0],"1b":[9.1,0.1,.49,0],"2a":[11.0,0.8,.35,0],"2b":[12.0,1.9,.22,0],"3a":[12.4,3.0,.15,0],
     "3b":[13.7,3.6,.13,0],"4a":[15.3,4.7,.07,0],"4b":[15.8,6.6,.02,0],"5a":[17.7,8.5,0,.01],"5b":[19.1,9.9,0,.04],
@@ -31,17 +89,56 @@
     setInterval(draw, 700); draw();
   }
   function parse(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return m ? new Date(Date.UTC(+m[1], +m[2]-1, +m[3])) : null; }
-  function label(x, y){
-    var sameMonth = x.getUTCMonth() === y.getUTCMonth() && x.getUTCFullYear() === y.getUTCFullYear();
-    return sameMonth ? x.getUTCDate() + ' to ' + y.getUTCDate() + ' ' + MONTHS[y.getUTCMonth()]
-                     : x.getUTCDate() + ' ' + MONTHS[x.getUTCMonth()] + ' to ' + y.getUTCDate() + ' ' + MONTHS[y.getUTCMonth()];
+  function show(){ el.hidden = false; if (card) card.hidden = false; }
+  /* 25 Nov: the nights the house's forecast reaches, written by the page; this only chooses which to show. The same
+     rule as stay_forecast() in app.py: an arrival no further off than data-ahead days, a line a night for the first
+     data-max nights, stopping at the first night the forecast does not reach. */
+  var NIGHTS = {}, NOTES = {}, TODAY = null, AHEAD = 0, MAX = 0;
+  if (card) {
+    var t = card.querySelector('template[data-typwx-nights]'), n = card.querySelector('template[data-typwx-notes]'), i;
+    var lis = t ? t.content.querySelectorAll('li[data-night]') : [];
+    for (i = 0; i < lis.length; i++) NIGHTS[lis[i].getAttribute('data-night')] = lis[i];
+    var ns = n ? n.content.querySelectorAll('[data-note]') : [];
+    for (i = 0; i < ns.length; i++) NOTES[ns[i].getAttribute('data-note')] = ns[i].textContent;
+    TODAY = parse(card.getAttribute('data-today')); AHEAD = +card.getAttribute('data-ahead') || 0; MAX = +card.getAttribute('data-max') || 0;
   }
-  var last = '';
+  function forecast(arrival, x, y){
+    if (!card || !TODAY || !x || !y || y <= x || !window.houseDay) return false;
+    var ahead = Math.round((x - TODAY) / 864e5), total = Math.round((y - x) / 864e5);
+    if (ahead < 0 || ahead > AHEAD) return false;
+    var rows = [], flags = {}, prev = '';
+    for (var k = 0; k < Math.min(total, MAX); k++) {
+      /* each night counted on the calendar by the house's own helper (public_base), never cut from a UTC string */
+      var night = window.houseDay.after(arrival, k), li = NIGHTS[night];
+      if (!li) break;
+      li = li.cloneNode(true);
+      var mon = li.querySelector('[data-mon]'), month = night.slice(0, 7);
+      if (mon) mon.hidden = !(prev === '' || prev !== month);
+      prev = month;
+      ['frost', 'snow', 'hot'].forEach(function(f){ if (li.getAttribute('data-' + f) === '1') flags[f] = true; });
+      rows.push(li);
+    }
+    if (!rows.length) return false;
+    var h = rows.length === total ? card.getAttribute('data-h-all')
+          : rows.length === 1 ? card.getAttribute('data-h-one')
+          : card.getAttribute('data-h-first').replace('{n}', rows.length);
+    el.innerHTML = '<span class="g-typwx__k"></span><ul class="g-typwx__nights"></ul>';
+    el.firstChild.textContent = h;
+    var ul = el.lastChild;
+    rows.forEach(function(r){ ul.appendChild(r); });
+    var said = ['frost', 'snow', 'hot'].filter(function(f){ return flags[f] && NOTES[f]; }).map(function(f){ return NOTES[f]; });
+    if (said.length) { var s = document.createElement('span'); s.className = 'g-typwx__n'; s.textContent = said.join(' '); el.appendChild(s); }
+    return true;
+  }
+  /* what the page drew for the dates it was asked about, put back if the guest returns to them */
+  var last = el.getAttribute('data-drawn') || '', drawnKey = last, drawnHTML = el.innerHTML;
   /* 8 Oct (owner: "it doesn't need to be too specific"): month by month - the month they arrive, or this month before
      any dates are chosen. */
   function draw(){
     var key = a.value + '|' + d.value; if (key === last) return; last = key;
+    if (drawnKey && key === drawnKey) { el.innerHTML = drawnHTML; show(); return; }
     var x = parse(a.value), y = parse(d.value);
+    if (forecast(a.value, x, y)) { show(); return; }
     var mo = (x && y && y > x) ? x.getUTCMonth() + 1 : new Date().getMonth() + 1;
     var A = W[mo + 'a'], B = W[mo + 'b'];
     var hi = Math.round((A[0] + B[0]) / 2), lo = Math.round((A[1] + B[1]) / 2), fr = (A[2] + B[2]) / 2, hot = (A[3] + B[3]) / 2;
@@ -55,7 +152,7 @@
       '<span class="g-typwx__v"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg><span>Nights around <b>' + lo + '°C</b></span></span>' +
       (notes.length ? '<span class="g-typwx__n">' + notes.join(' ') + '</span>' : '');
     /* owner, 8 Oct: no source note - "Typical in" already says it is an average, not a forecast */
-    el.hidden = false;
+    show();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

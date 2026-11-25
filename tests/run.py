@@ -404,6 +404,7 @@ SUITES = [
     "test_travelling_together",
     "test_weather",
     "test_weather_jobs",
+    "test_book_weather",
     "test_own_record",
     "test_utc_slices",
     "test_stamp_times",
