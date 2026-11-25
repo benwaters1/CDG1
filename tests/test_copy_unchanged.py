@@ -173,6 +173,9 @@ m = _harness.m
 # e26d86d it listed /workshops/352 (Cooking in the Cuisine: day 2's heading and evening name L'Ariégeoise) and
 # nothing else; the cards' "a night" and the search results' occasion line need a live occasion or a search,
 # which this copy has neither of (test_stay_occasions holds them). Was: "e26d86d"
+# 25 Nov 2026, evening: moved to 2f95473, BRIEF-itinerary-wording (the retreat days as an invitation, and Cooking
+# in the Cuisine's classes). Against 89a5af6 it listed /events/private (Choose Your Days and the sample private
+# retreat) and /workshops/351 to /workshops/354 (the four retreats' day-by-day), and nothing else. Was: "89a5af6"
 # 25 Nov 2026, evening: moved to fe3ed84, the weather card on Stay the Night (dinner brief, 4) merged with main at
 # 7385d87. Against 89a5af6 it listed nothing: the card's words come from the house's reading and forecast, which this
 # copy has neither of (test_book_weather holds them). Was: "89a5af6"
@@ -185,7 +188,10 @@ m = _harness.m
 # /workshops/352 alone, its day-by-day, and nothing else. Was: "fe3ed84"
 # 25 Nov 2026, night: moved to 5375687, the two above merged together (Dinner at Gudanes with main at
 # dd48c58). Was: "bb225d0"
-COPY_BASE = "5375687"
+# 25 Nov 2026, night: moved to 77ee210, the itinerary wording (2f95473 above) merged with main at 8d67a89, Cooking's
+# three days in the brief's words. Against 5375687 it listed /events/private and /workshops/351 to /workshops/354,
+# the same pages as against 89a5af6, and nothing else. Was: "5375687"
+COPY_BASE = "77ee210"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

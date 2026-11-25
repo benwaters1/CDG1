@@ -31,6 +31,18 @@ erroring:
 
   THE ROOMS. Le Bar and la Bibliothèque, never the Château Bar, the library or a
   tasting "beside the cellar".
+
+  AN INVITATION, NOT A SCHEDULE (owner, 25 Nov: "The itinerary is good, but the
+  wording is not elegant and marketing enough"). The days, their order and every
+  fact stayed; only the words changed. So: no bullet says "Leisure time" (the
+  everyday block's heading above the days is the one place it stays), "dinner
+  out" is nowhere, the last night is the farewell banquet, every plan keeps the
+  number of bullets each day had, Cooking in the Cuisine still has no pool, and
+  Noël still has nothing outdoors once the light goes and no outing. The same on
+  /events/private. A bullet is still a line, but a longer one: the brief's own
+  run to eighteen words and the arrival keeps the midday meeting inside its new
+  words, so twenty (it was twelve). The owner's own evening for an occasion,
+  typed in a form, keeps its twelve (RETREAT_EVENING_WORDS in app.py).
 """
 import re
 from datetime import date, datetime, timedelta, timezone
@@ -52,11 +64,17 @@ TOO_FINE = [r"copper", r"\bmoulds?\b", r"champagne", r"jell(?:y|ies)", r"\bfille
 # The rooms by their French names (owner, 9 Nov): the old English ones, and the old place for the tasting.
 OLD_ROOMS = [r"Château Bar", r"Chateau Bar", r"the library", r"beside the cellar", r"medieval kitchen",
              r"\bthe bar\b"]
-# Nothing for a December day: too cold, too dark, and the river and the pool are shut.
-NOT_IN_WINTER = [r"\byoga\b", r"\bpool\b", r"terrace", r"under the stars", r"\bcanoe\b", r"\bkayak\b",
+# Nothing for a December day: too cold, too dark, and the river and the pool are shut. "beneath the stars" since
+# 25 Nov, when the film moved from under them: the guard follows the words or it guards nothing.
+NOT_IN_WINTER = [r"\byoga\b", r"\bpool\b", r"terrace", r"(?:under|beneath) the stars", r"\bcanoe\b", r"\bkayak\b",
                  r"barbecue", r"(?<!table )\btennis\b", r"ice cream", r"\briver\b"]
+# Outdoors, for an evening: what a December evening must not offer once the light has gone (owner, 27 Oct).
+OUTDOORS = NOT_IN_WINTER + [r"\bgrounds\b", r"\bgarden\b", r"outdoors?", r"\bmountains?\b"]
+# Out of the house: no vans in winter (owner, 27 Oct), so no Noël day goes anywhere.
+OUTINGS = [r"\bFoix\b", r"Lombrives", r"Ax-les-Thermes", r"Mirepoix", r"Toulouse", r"Les Cabannes", r"\btransfer",
+           r"\bcollected\b", r"\bdriven\b", r"vide-grenier", r"brocantes"]
 WINTER_MONTHS = {11, 12, 1, 2}
-PARA_WORDS, MOMENT_WORDS = 70, 12
+PARA_WORDS, MOMENT_WORDS = 70, 20
 
 
 def _say(html):
@@ -270,9 +288,15 @@ def run():
                             "Bastille" not in words and "Fête de la Musique" not in words, detail=md)
         s.check(f"{title}: no evening marker left on the page", not any("|" in day_words(d) for d in days))
         if len(days) - 1 in (5, 7):
-            # the page promises dinners at the two Les Cabannes restaurants, so two evenings go out, whatever 14 July took
-            outs = sum("dinner out in les cabannes" in day_words(d).lower() for d in days)
-            s.check(f"{title}: two dinners out in Les Cabannes, as its page promises", outs == 2, detail=f"{outs}")
+            # the page promises dinners at the two Les Cabannes restaurants, so two evenings go out, whatever 14 July took.
+            # 25 Nov: "dinner in the village of Les Cabannes", never "dinner out".
+            outs = sum("dinner in the village of les cabannes" in day_words(d).lower() for d in days)
+            s.check(f"{title}: two dinners in the village of Les Cabannes, as its page promises", outs == 2,
+                    detail=f"{outs}")
+        s.check(f"{title}: no 'dinner out' and no bullet of 'Leisure time'",
+                "dinner out" not in section.lower()
+                and not any("leisure time" in x.lower() for d in days for x in d["moments"]),
+                detail=str([x for d in days for x in d["moments"] if "leisure" in x.lower() or "out in" in x])[:200])
         every = " ".join(day_words(d) for d in days)
         # 11 Nov (the owner's site-copy brief): "A wine tasting, then dinner out", with no room named; a room that is
         # named is still the right one (OLD_ROOMS above catches "beside the cellar").
@@ -291,7 +315,7 @@ def run():
             s.check(f"{title}: and no yoga anywhere on the page", not re.search(r"\byoga\b", _say(html), re.I))
             # 11 Nov (the owner's site-copy brief): the days as the brief gives them, and no drink named on one.
             for thing in ("a welcome glass by the fire", "Christmas baking", "gingerbread château", "Christmas film",
-                          "dress the tree", "Christmas banquet"):
+                          "dressing the tree", "Christmas banquet"):
                 s.check(f"{title}: {thing}", thing in every, detail=every[:100])
             s.check(f"{title}: and no vin chaud on a day", "vin chaud" not in every)
 
@@ -385,7 +409,7 @@ def run():
     s.check("the page answers, with its six days", r.status_code == 200 and len(days) == 6,
             detail=f"{r.status_code}, {len(days)} days")
     s.check("its 26 June keeps its own evening, the barbecue and the film",
-            len(days) == 6 and days[1]["moments"][-1] == "A barbecue, then a film under the stars",
+            len(days) == 6 and days[1]["moments"][-1] == "A barbecue in the grounds, then a film beneath the stars",
             detail=str(days[1]["moments"] if len(days) > 1 else days))
     s.check("and L’Ariégeoise is nowhere on it", "Ariégeoise" not in section, detail=section[:200])
     with m.app.test_request_context("/"):
@@ -394,8 +418,124 @@ def run():
     s.check("retreat_week gives the full date of each day beside the month-day",
             wk["full"][1] == "2027-06-26" and wk["dates"][1] == "06-26" and len(wk["full"]) == 6, detail=str(wk))
 
+    invitation(s, c)
     _cleanup()
     return s
+
+
+# Every plan in _ws_copy.html, drawn from the macro rather than found on offer, so the four-night plans nobody is
+# selling this month are read too. Dates in 2028 that no occasion falls on. The bullets each day had before the
+# 25 Nov words, from the plans as they stood: the words changed, the shape did not.
+PLANS = [
+    ("Cooking in the Cuisine", {"title": "Cooking in the Cuisine", "nights_label": "5 nights / 6 days"},
+     ("2028-06-02", "2028-06-07"), [3, 3, 3, 3, 3, 1]),
+    ("Seven Starry Nights", {"title": "Seven Starry Nights", "nights_label": "7 nights / 8 days"},
+     ("2028-06-03", "2028-06-10"), [3, 3, 3, 3, 3, 3, 3, 1]),
+    ("Antique & French Finds", {"title": "Antique & French Finds", "nights_label": "3 nights / 4 days"},
+     ("2028-06-03", "2028-06-06"), [4, 4, 3, 1]),
+    ("the private stay's four nights", {"title": "Four Starry French Summer Nights", "transfers_included": 1,
+                                        "excursions_included": 1}, ("2028-06-02", "2028-06-06"), [3, 3, 3, 3, 1]),
+    ("four summer nights at the house", {"title": "A Summer Atelier", "nights_label": "4 nights / 5 days",
+                                         "excursions_included": 0}, ("2028-06-02", "2028-06-06"), [3, 3, 3, 3, 1]),
+    ("Noël at Gudanes", {"title": "Noël at Gudanes", "nights_label": "4 nights / 5 days"},
+     ("2028-12-15", "2028-12-19"), [3, 4, 3, 3, 1]),
+]
+# Lines the 25 Nov brief kept word for word. Their French and Spanish come from the translation job; every other line
+# on the days is new and has its own in translations.py, so a French or Spanish reader never meets it in English.
+KEPT = {"Christmas baking with the pastry chef", "Dinner by candlelight", "Chocolate-making with the chefs",
+        "The Christmas banquet in the Salon de Musique, then dancing", "Arrive in the afternoon, to a welcome glass by the fire",
+        "Dinner by candlelight, then a film", "The art of the find, and how to bargain in French",
+        "L’apéritif in the Salon de Musique, then a candlelit welcome dinner", "Arrive in the afternoon, to a welcome glass"}
+FAREWELL = "The farewell banquet in the Salon de Musique, then dancing"
+
+
+def dishes_in_days(html):
+    """test_site_review_2's reader, imported when it is used: that suite imports nothing of this one, but a cycle
+    tomorrow should cost nothing at import."""
+    from test_site_review_2 import dishes_in_days as reader
+    return reader(html)
+
+
+def _bullets(html, ul_class):
+    return [[_say(v) for v in re.findall(r"<li>(.*?)</li>", b, re.S)]
+            for b in re.findall(r'<ul class="%s">(.*?)</ul>' % ul_class, html, re.S)]
+
+
+def invitation(s, c):
+    """The 25 Nov words: an invitation, with every fact and the shape of every day as it was."""
+    s.section("The days as an invitation (owner, 25 Nov)")
+    for name, w, (start, end), shape in PLANS:
+        with m.app.test_request_context("/"):
+            html = m.app.jinja_env.from_string(
+                "{% from '_ws_copy.html' import ws_journey with context %}{{ ws_journey(w, sittings=rows) }}").render(
+                w=w, rows=[{"session": {"start_date": start, "end_date": end}}])
+        days, section = journey(html)
+        moments = [x for d in days for x in d["moments"]]
+        s.check(f"{name}: every day keeps the bullets it had", [len(d["moments"]) for d in days] == shape,
+                detail=f"{[len(d['moments']) for d in days]} want {shape}")
+        s.check(f"{name}: no bullet says 'Leisure time'", not [x for x in moments if "leisure time" in x.lower()],
+                detail=str([x for x in moments if "leisure" in x.lower()]))
+        s.check(f"{name}: but the everyday block above the days keeps its heading",
+                '<p class="g-everyday__en">Leisure time</p>' in html)
+        s.check(f"{name}: 'dinner out' nowhere", "dinner out" not in section.lower())
+        long_m = [x for x in moments if len(x.split()) > MOMENT_WORDS]
+        s.check(f"{name}: each bullet a line", not long_m, detail=str(long_m[:1]))
+        # test_site_review_2's reader, here on the plans no page is selling yet: the brief's "welcome glass of
+        # crémant" on the four nights at the house would have gone in unseen, since no such retreat is on offer.
+        dishes = dishes_in_days(html)
+        s.check(f"{name}: no dish or drink named on a day, a tasting apart", dishes == [], detail=str(dishes))
+        last = days[-2]["moments"][-1] if len(days) > 1 else ""
+        if name.startswith("Noël"):
+            s.check(f"{name}: the last night is the Christmas banquet",
+                    last == "The Christmas banquet in the Salon de Musique, then dancing", detail=last)
+            evenings = [d["moments"][-1] for d in days[:-1]]
+            dark = [(e, p) for e in evenings for p in OUTDOORS if re.search(p, e, re.I)]
+            s.check(f"{name}: nothing outdoors once the light goes", not dark, detail=str(dark))
+            cold = [p for p in NOT_IN_WINTER if re.search(p, section, re.I)]
+            s.check(f"{name}: and nothing on any day that needs summer", not cold, detail=str(cold))
+            out = [p for p in OUTINGS if re.search(p, section)]
+            s.check(f"{name}: and no outing: no vans in winter", not out, detail=str(out))
+        else:
+            s.check(f"{name}: the last night is the farewell banquet", last == FAREWELL, detail=last)
+        if name in ("Cooking in the Cuisine", "Seven Starry Nights", "Antique & French Finds",
+                    "the private stay's four nights"):
+            # The transfers: midday at the hotel (owner, 24 Nov), and back to Toulouse at eleven.
+            first, gone = days[0]["moments"][0], days[-1]["moments"][0]
+            s.check(f"{name}: the first day starts at midday at the Grand Hôtel de l’Opéra, Toulouse",
+                    first.startswith("Collected at midday from the Grand Hôtel de l’Opéra, Toulouse"), detail=first)
+            s.check(f"{name}: and the last goes back to Toulouse at eleven", "Toulouse at eleven" in gone, detail=gone)
+        if name == "Cooking in the Cuisine":
+            s.check(f"{name}: no pool on its days (owner, 10 Nov: too cold)", not re.search(r"\bpool\b", section, re.I))
+            s.check(f"{name}: the frescoes on its days (owner, 23 Nov)", "frescoes" in section)
+        if name == "Seven Starry Nights":
+            s.check(f"{name}: the frescoes and painted beams on its days (owner, 23 Nov)",
+                    "frescoes and painted beams" in section)
+        for lang in ("fr", "es"):
+            tdays, _t = journey(m.translate_page(html, lang))
+            still = [en for d, td in zip(days, tdays) for en, said in zip(d["moments"], td["moments"])
+                     if en == said and en not in KEPT]
+            s.check(f"{name}: every new line has its {lang.upper()} in translations.py", not still and tdays,
+                    detail=str(still[:3]))
+
+    s.section("/events/private as an invitation (owner, 25 Nov)")
+    html = c.get("/events/private").get_data(as_text=True)
+    sample = _bullets(html, "g-wed-days__l")
+    choose = [_say(x) for x in re.findall(r'<p class="g-pdays__p">(.*?)</p>', html, re.S)]
+    every = [x for day in sample for x in day] + choose
+    s.check("the sample keeps its days and bullets", [len(d) for d in sample] == [3, 3, 3, 2],
+            detail=str([len(d) for d in sample]))
+    s.check("and Choose Your Days its five", len(choose) == 5, detail=str(choose))
+    s.check("no line says 'Leisure time'", not [x for x in every if "leisure time" in x.lower()],
+            detail=str([x for x in every if "leisure" in x.lower()]))
+    s.check("'dinner out' nowhere on the page", "dinner out" not in _say(html).lower())
+    s.check("the sample's last night is the farewell banquet", len(sample) == 4 and sample[2][-1] == FAREWELL,
+            detail=str(sample[2] if len(sample) > 2 else sample))
+    for lang in ("fr", "es"):
+        said = m.translate_page(html, lang)
+        tsample = _bullets(said, "g-wed-days__l")
+        tchoose = [_say(x) for x in re.findall(r'<p class="g-pdays__p">(.*?)</p>', said, re.S)]
+        still = [en for en, t in zip(every, [x for day in tsample for x in day] + tchoose) if en == t and en not in KEPT]
+        s.check(f"every new line has its {lang.upper()} in translations.py", not still and tchoose, detail=str(still[:3]))
 
 
 if __name__ == "__main__":

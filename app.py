@@ -33939,10 +33939,32 @@ LETTER_TRIGGERS = {
 # so what the owner approves is what goes. {status} is one of the two below.
 ORGANISER_NOTE = (
     "{stay}: {names}",
-    "Hello {organiser},\n\nA registration for {stay}, {dates}: {names}.\n{status}\n\n"
+    "Hi {organiser},\n\nA registration for {stay}, {dates}: {names}.\n{status}\n\n"
     "— Château de Gudanes")
 ORGANISER_PAID = "Deposit paid."
 ORGANISER_NOT_PAID = "Registered, not yet paid."
+
+# The two letters about an atelier balance taken from a saved card. ONE COPY of
+# the words, read by the code that sends them and by the Guest Emails page, so
+# what the owner approves is what goes -- the page used to show a copy typed
+# out again by hand. As the stored letters are written (23 Nov 2026): the link
+# on a line of its own under the words its button says, the amount as money()
+# writes it, and the sentence about how the house takes payment, because one
+# acknowledges money and the other asks for it.
+AUTOCHARGE_TAKEN_LETTER = (
+    "Balance paid — {workshop}",
+    "Hi {guest_name},\n\nAs arranged, we have taken the remaining {amount} for "
+    "{workshop} ({reference}) from the card you registered with. Nothing further "
+    "is owed.\n\nYour registration page:\n{manage_link}\n\n"
+    + PAYMENT_SAFETY_LINE + "\n\n— Château de Gudanes")
+AUTOCHARGE_FAILED_LETTER = (
+    "Payment did not go through — {workshop}",
+    "Hi {guest_name},\n\nWe tried to take the remaining {amount} for {workshop} "
+    "({reference}) from the card you registered with, and it did not go through. "
+    "Nothing has been taken.\n\nYou can pay it online whenever suits you.\n"
+    "Pay the balance:\n{manage_link}\n\nIf it keeps refusing, reply to this email "
+    "and we will sort it out another way.\n\n" + PAYMENT_SAFETY_LINE + "\n\n"
+    "— Château de Gudanes")
 
 # Letters written in the code rather than stored, to a guest, with their text
 # as the code writes it ({...} is filled in for each guest).
@@ -33950,18 +33972,8 @@ CODE_LETTERS_TO_GUESTS = {
     # Both status lines in the words approved, so changing either lapses it.
     "code:tell_the_organiser": (ORGANISER_NOTE[0], ORGANISER_NOTE[1].replace(
         "{status}", f"{ORGANISER_PAID} (or: {ORGANISER_NOT_PAID})")),
-    "code:send_autocharge_taken_email": (
-        "Balance paid — {workshop}",
-        "Hi {guest_name},\n\nAs arranged, we have taken the remaining €{amount} for "
-        "{workshop} ({reference}) from the card you registered with. Nothing further "
-        "is owed.\n\n{manage link}\n\n— Château de Gudanes"),
-    "code:send_autocharge_failed_email": (
-        "Payment did not go through — {workshop}",
-        "Hi {guest_name},\n\nWe tried to take the remaining €{amount} for {workshop} "
-        "({reference}) from the card you registered with, and it did not go through. "
-        "Nothing has been taken.\n\nYou can pay it here whenever suits you:\n"
-        "{manage link}\n\nIf it keeps refusing, reply to this email and we will sort it "
-        "out another way.\n\n— Château de Gudanes"),
+    "code:send_autocharge_taken_email": AUTOCHARGE_TAKEN_LETTER,
+    "code:send_autocharge_failed_email": AUTOCHARGE_FAILED_LETTER,
 }
 HAND_WRITTEN_LABELS = {
     "code:reply_to_feedback": ("Guests: a reply to their feedback",
@@ -35005,7 +35017,7 @@ def event_payment_context(conn, inquiry, amount):
     owed = bill["owed"] if bill else 0.0
     return {
         "contact_name": inquiry["contact_name"],
-        "event_type": inquiry["event_type"] or "event",
+        "event_type": event_type_words(inquiry["event_type"]),
         "amount": f"€{amount:,.2f}",
         "balance_line": (f"Still to pay: €{owed:,.2f}." if owed > 0.005
                          else "It is now paid in full."),
@@ -39063,7 +39075,7 @@ def forgot_password():
                 f"Your code is {code}\n\n"
                 f"Type it on the page you asked from. It works once and expires in "
                 f"{RESET_CODE_MINUTES} minutes.\n\n"
-                f"If you didn't ask for this you can ignore it — nothing has "
+                f"If you did not ask for this you can ignore it — nothing has "
                 f"changed.\n\n— Château de Gudanes",
                 keep=False,   # the body IS the credential; never queue it
                 despite_switch="a password reset code is a key; held, it locks "
@@ -42943,7 +42955,10 @@ def dashboard():
                   AND {SESSION_IS_LIVE} AND {WORKSHOP_IS_PUBLIC}
                 ORDER BY workshop_sessions.start_date LIMIT 3""",
             (house_today_iso(),)).fetchall()]
-        occasions = upcoming_stay_occasions(conn, limit=3)
+        # Only the ones with a chef in the house (owner, 25 Nov 2026: "i only
+        # want it on the homepage if there is a chef not just normal dates").
+        # Room-and-breakfast dates stay under What's On, At Gudanes.
+        occasions = upcoming_stay_occasions(conn, limit=3, chef_only=True)
         banner = home_banner_occasion(conn)
         conn.close()
         # Both are optional in the template, so an empty house still renders.
@@ -54497,12 +54512,18 @@ def stay_dinner_letter(conn, booking, today=None):
 
 # --- Public -------------------------------------------------------------------
 
-def upcoming_stay_occasions(conn, limit=None, today=None):
+def upcoming_stay_occasions(conn, limit=None, today=None, chef_only=False):
     """Live occasions whose last night has not passed, soonest first, as
-    dicts the card reads: the photograph, nights, from-price, chef tag."""
+    dicts the card reads: the photograph, nights, from-price, chef tag.
+
+    chef_only: the home page's (owner, 25 Nov 2026), only the occasions with
+    the chef in the house -- a guest chef or a Dinner at Gudanes night sets
+    chef_on_site, so both count. Filtered in the query, so the limit counts
+    three of those rather than three of anything with the plain ones taken out."""
     today = today or house_today()
     sql = ("SELECT * FROM stay_occasions WHERE status = 'live' AND last_night >= ? "
-           "ORDER BY first_night, sort_order, id")
+           + ("AND chef_on_site = 1 " if chef_only else "")
+           + "ORDER BY first_night, sort_order, id")
     rows = conn.execute(sql + (f" LIMIT {int(limit)}" if limit else ""),
                         (today.isoformat(),)).fetchall()
     return [stay_occasion_card(conn, r) for r in rows]
@@ -57247,11 +57268,20 @@ def guest_account_request():
                 # and this page deliberately says "sent" whether or not the
                 # address is known, so nobody at either end would ever find out.
                 conn.commit()
+                # Written as every other letter is (23 Nov 2026): a greeting,
+                # the link under the words its button says, no contractions,
+                # the house's name at the foot. And sent while Guest emails
+                # is off, as send_new_link is: the link IS the way in, it lapses
+                # in GUEST_SESSION_HOURS, and held it reached nobody in time.
                 send_email(
                     email, "Your Château de Gudanes bookings",
-                    f"Here is the link to everything you have booked with us:\n\n{link}\n\n"
-                    f"It works for the next {GUEST_SESSION_HOURS} hours. If you didn't ask "
-                    "for this, you can ignore it — nothing has changed.")
+                    "Hello,\n\nHere is the link to everything you have booked with us.\n"
+                    f"Your bookings:\n{link}\n\n"
+                    f"It works for the next {GUEST_SESSION_HOURS} hours. If you did not "
+                    "ask for this, you can ignore it — nothing has changed.\n\n"
+                    "— Château de Gudanes",
+                    despite_switch="the link is the key to their bookings, and "
+                                   "lapses before a held letter would go")
         conn.commit()
         conn.close()
         sent = True          # same answer either way
@@ -62617,13 +62647,26 @@ def make_event_reference_code():
     return REFERENCE_PREFIXES["event"] + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
 
+# What a letter calls each kind of event. The list is the form's values, which
+# are words for a drop-down, not for a sentence: the letters said "hosting a
+# corporate", "your other" and "towards your corporate" (23 Nov 2026). A kind
+# the owner adds ("elopement") is a noun already and is said as written.
+EVENT_TYPE_WORDS = {"corporate": "corporate event", "other": "event"}
+
+
+def event_type_words(value):
+    """An event's kind as a letter says it: "wedding", "corporate event"."""
+    kind = " ".join(str(value or "").split()).lower()
+    return EVENT_TYPE_WORDS.get(kind, kind) or "event"
+
+
 def event_email_context(inquiry):
     price_lines = []
     if inquiry["quoted_price"]:
         price_lines.append(f"Quoted price: €{inquiry['quoted_price']:,.2f}")
     return {
         "contact_name": inquiry["contact_name"],
-        "event_type": inquiry["event_type"],
+        "event_type": event_type_words(inquiry["event_type"]),
         "reference_code": inquiry["reference_code"],
         "price_block": ("\n" + "\n".join(price_lines)) if price_lines else "",
         "manage_url": url_for("event_manage", manage_token=inquiry["manage_token"], _external=True),
@@ -62835,7 +62878,7 @@ def submit_event_inquiry():
     owner_to = house_address_for(conn, "events")
     if owner_to:
         send_email(
-            owner_to, f"New event inquiry — {event_type} ({reference_code})",
+            owner_to, f"New event enquiry — {event_type} ({reference_code})",
             form_fields_letter([
                 ("Name", contact_name), ("Email", contact_email), ("Telephone", contact_phone),
                 ("Event", (event_type or "").capitalize()),
@@ -62845,7 +62888,7 @@ def submit_event_inquiry():
                 ("Promo code", promo_code or False),
                 ("Reference", reference_code),
             ], message=message, end=[
-                ["Open the inquiry:", url_for("admin_event", event_id=inquiry["id"], _external=True)],
+                ["Open the enquiry:", url_for("admin_event", event_id=inquiry["id"], _external=True)],
             ]),
         )
     owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
@@ -62979,8 +63022,8 @@ def event_manage(manage_token):
             owner_to = house_address_for(conn, "events")
             if owner_to:
                 send_email(
-                    owner_to, f"Event inquiry cancelled — {inquiry['reference_code']}",
-                    f"{inquiry['contact_name']} cancelled their {inquiry['event_type']} inquiry.",
+                    owner_to, f"Event enquiry cancelled — {inquiry['reference_code']}",
+                    f"{inquiry['contact_name']} cancelled their {inquiry['event_type']} enquiry.",
                 )
             flash("Your inquiry has been cancelled.", "success")
         conn.close()
@@ -68272,7 +68315,7 @@ def guest_text_tags(conn, booking):
         manage_url = f"{base}/book/manage/{token}"
         statement_url = f"{base}/booking/{token}/statement"
     return {
-        "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
+        "guest_name": greeting_name(booking["guest_name"]),
         "reference": booking["reference_code"] or "",
         "arrival_date": format_date_human(booking["arrival_date"]),
         "departure_date": format_date_human(booking["departure_date"]),
@@ -68667,7 +68710,7 @@ def run_review_invitation_job(conn, days_after=None):
             conn.commit()
             continue
         subject, body, letter = render_email_template(conn, "review_invitation", {
-            "guest_name": (answer["guest_name"] or "").strip().split(" ")[0] or "there",
+            "guest_name": greeting_name(answer["guest_name"]),
             "review_url": link,
         })
         if not subject:
@@ -68744,7 +68787,7 @@ def ask_room_feedback(conn, booking):
     if guest_restricted(conn, email=booking["guest_email"]):
         return False
     subject, body, letter = render_email_template(conn, "room_feedback_request", {
-        "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
+        "guest_name": greeting_name(booking["guest_name"]),
         "room_name": booking["room_name"],
         "feedback_url": url_for("guest_feedback",
                                 token=booking["manage_token"], _external=True),
@@ -69404,7 +69447,7 @@ def tell_the_organiser(conn, booking_id):
     words = {
         "stay": row["title"],
         "names": names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1],
-        "organiser": (row["organiser_name"] or "").strip() or "there",
+        "organiser": greeting_name(row["organiser_name"]),
         "dates": format_date_range(row["start_date"], row["end_date"] or row["start_date"]),
         "status": ORGANISER_PAID if row["deposit_paid_at"] else ORGANISER_NOT_PAID,
     }
@@ -69875,6 +69918,54 @@ _PAYING_WORDS = re.compile(
     r"invoice[ds]?|charge[ds]?|on[- ]site|onsite|cash)\b", re.I)
 
 
+# Words a guest may type before their name. A letter that greets by the first
+# word would say "Hi Mr," -- so a name that opens with one is greeted whole.
+_NAME_TITLES = frozenset({
+    "mr", "mrs", "ms", "miss", "mx", "dr", "prof", "sir", "dame", "lady", "lord",
+    "m", "mme", "mlle", "monsieur", "madame", "mademoiselle", "herr", "frau",
+    "sr", "sra", "srta", "don", "doña", "señor", "señora"})
+# Two people in one name ("Jean & Marie Dupont"): greeted as written.
+_NAME_JOINS = frozenset({"&", "and", "et", "y", "und", "+"})
+
+
+def greeting_name(name):
+    """The name a letter greets somebody by: their first name.
+
+    ONE NAME PER GUEST (23 November 2026, the communications review). The same
+    guest was "Hi Marie," in the feedback request and the review invitation,
+    "Your stay is booked, Marie" in the confirmation, and "Hi Marie Dubois,"
+    in the statement, the refund, the decline and every atelier letter --
+    whichever the code that wrote it happened to pass. A title or a couple is
+    greeted whole ("Hi Mr & Mrs Martin,"); no name, or an address standing in
+    for one, is "there".
+    """
+    whole = " ".join(str(name or "").split())
+    if not whole or "@" in whole:
+        return "there"
+    words = whole.split(" ")
+    if (len(words) == 1 or words[0].lower().rstrip(".") in _NAME_TITLES
+            or any(w.lower() in _NAME_JOINS for w in words)):
+        return whole
+    return words[0]
+
+
+# "Hi {guest_name}," -- a greeting line whose name is a tag. Only the tag ON
+# the greeting is filled with the first name; the same tag anywhere else in a
+# letter ("Booked under {guest_name}") is still the whole name.
+_GREETING_TAG = re.compile(
+    r"^((?:Hi|Hello|Dear|Bonjour)[ \t]+)\{(guest_name|contact_name|name)\}([ \t]*,)", re.M)
+
+
+def _greet_by_first_name(source, context):
+    def one(found):
+        value = context.get(found.group(2))
+        if value in (None, ""):
+            return found.group(0)
+        said = greeting_name(value).replace("{", "{{").replace("}", "}}")
+        return found.group(1) + said + found.group(3)
+    return _GREETING_TAG.sub(one, source)
+
+
 def merge_email_text(source, context):
     """Fill the tags in one piece of wording. Never raises.
 
@@ -69883,7 +69974,10 @@ def merge_email_text(source, context):
     wrong place to find out, so the text goes as it is rather than not at all.
     Three or more line breaks are closed to two: a block tag with nothing to
     say (no add-ons, no account link) otherwise leaves a hole in the letter.
+    The greeting's name is the first name (greeting_name).
     """
+    if source and context:
+        source = _greet_by_first_name(source, context)
     # The house's own facts, filled here for every letter that names one, so
     # no send site, preview or test has to remember to pass them -- and they
     # win over the context, because they are facts about the house and never
@@ -70006,18 +70100,34 @@ def _letter_label_from_sentence(blocks, href=""):
 # couple of minutes:" put "Open the page" on the one button a reserved guest
 # has to press. First match wins, so the longer paths come first.
 _LINK_LABELS = (
+    # Check-in first: the Booking.com guest's link (/checkin/stay/...) and the
+    # direct one (.../check-in) said "Your booking page", which a guest who
+    # booked through Booking.com does not have with us (23 Nov 2026).
+    ("/checkin/stay/", "Check in online"), ("/check-in", "Check in online"),
+    ("/my-account/", "Your bookings"), ("/onboard/", "Choose your password"),
     ("/finish", "Finish and pay"), ("/book/pay/", "Pay now"), ("/pay-share/", "Pay your share"),
     ("/pay-balance/", "Pay the balance"), ("/pay-deposit/", "Pay the deposit"),
     ("/statement", "Your statement"), ("/door", "Open the front door"),
     ("/workshops/manage/", "Your registration"), ("/book/manage/", "Your booking page"),
     ("/checkin/", "Your booking page"), ("/feedback", "Tell us how it was"),
     ("/review", "Leave a review"), ("/quote", "See the quote"),
-    ("/unsubscribe", "Unsubscribe"), ("/you/", "Your page"),
+    # The guest's own page is /my/<token>; it was /you/ when this was written.
+    ("/unsubscribe", "Unsubscribe"), ("/my/", "Your page"),
 )
+
+
+# Two pages a letter sends a guest to that are matched on the WHOLE path, as
+# the site's own buttons name them: "/book" is a part of every booking page's
+# address, so a part-match would put "Check dates" on a payment link. The
+# come-back letters of 24 November (a year on, an anniversary, a birthday)
+# end on /book and their buttons read "Open the page".
+_LINK_PAGES = {"/book": "Check dates", "/restaurant/book": "Reserve a table"}
 
 
 def _letter_label_for_link(href):
     path = urlparse(href or "").path
+    if path.rstrip("/") in _LINK_PAGES:
+        return _LINK_PAGES[path.rstrip("/")]
     for part, label in _LINK_LABELS:
         if part in path:
             return label
@@ -70624,18 +70734,19 @@ SAMPLE_MERGE_VALUES = {
     # letter puts the card itself in this place instead.
     "stay_details": f"Arriving: 14 October 2026, from {CHECK_IN_WORDS}\n"
                     f"Leaving: 17 October 2026, by {CHECK_OUT_WORDS}\n"
-                    "Room: Chambre Émeraude\nReference code: GUD-4417\n\n"
+                    "Room: La Suite Joséphine (The Marquis Suite)\nReference code: GUD-4417\n\n"
                     "Your booking page:\nhttps://chateaugudanes.com/stay/9f2c1a7b\n\n"
                     "Check in online — confirm your arrival time, tell us about "
                     "any requests:\nhttps://chateaugudanes.com/stay/9f2c1a7b/check-in",
     "stay_lines": "Arrival: 14 October 2026\nDeparture: 17 October 2026\n"
                   "Party size: 2\nTotal: €666.60",
-    "statement_lines": "3 night(s), Chambre Émeraude   €660.00\n"
+    # The room by its name since 16 October; the preview showed the one before.
+    "statement_lines": "Three nights, The Marquis Suite   €660.00\n"
                        "Taxe de séjour   €6.60\n\n"
                        "Total   €666.60\nReceived   €250.00\n"
                        "Still to pay   €416.60",
     "account_block": "Your bookings and balances:\n"
-                      "https://chateaugudanes.com/you/c05d9e",
+                      "https://chateaugudanes.com/my/c05d9e",
     "note_block": "Thank you for sorting this so quickly — Marie",
     "reason_block": "The plasterer who teaches it has broken his wrist.",
     # 8 Oct: the house's payment notice is sent with these - without them its preview showed "{guest_email}" and the like
@@ -70927,7 +71038,7 @@ def render_campaign(subject, body, context):
 def campaign_context_for(name, email):
     full = (name or "").strip()
     return {
-        "first_name": full.split()[0] if full else "there",
+        "first_name": greeting_name(full),
         "full_name": full or email,
         "guest_name": full or "there",
         "email": email,
@@ -72155,6 +72266,13 @@ def workshop_email_context(booking):
     date_line = format_date_human(booking["start_date"])
     if booking["end_date"] != booking["start_date"]:
         date_line += f" to {format_date_human(booking['end_date'])}"
+    # WHEN THE BALANCE IS DUE, and never "at check-in". An atelier is paid
+    # online and in advance, and nothing is taken at the door, so a place
+    # with no due date of its own owes its balance by the day the atelier
+    # starts -- the latest it can be. "Due at check-in" told a guest the
+    # opposite of the payment sentence four lines below it, and "due by at
+    # check-in" in the reminder was not English (23 Nov 2026).
+    due_by = format_date_human(booking["balance_due_date"] or booking["start_date"])
     price_lines = []
     if booking["total_price"]:
         price_lines.append(f"Estimated total: €{booking['total_price']:,.2f}")
@@ -72162,8 +72280,7 @@ def workshop_email_context(booking):
         price_lines.append(f"Deposit due now: €{booking['deposit_amount']:,.2f}")
         if booking["balance_amount"]:
             price_lines.append(
-                f"Balance of €{booking['balance_amount']:,.2f} due "
-                f"{format_date_human(booking['balance_due_date']) if booking['balance_due_date'] else 'at check-in'}")
+                f"Balance of €{booking['balance_amount']:,.2f} due by {due_by}")
     # What this workshop actually carries. Built here rather than written
     # into the template, because it differs per workshop and a template is
     # flat text the owner edits -- there is no "if" to write it with. The
@@ -72203,11 +72320,9 @@ def workshop_email_context(booking):
         "balance_amount": money(booking["balance_amount"] or 0),
         # Day first, in words, as the house writes a date: it went out as
         # "due by 2026-09-23".
-        "balance_due_date": (format_date_human(booking["balance_due_date"])
-                             if booking["balance_due_date"] else "at check-in"),
-        "balance_line": (f"Balance of €{booking['balance_amount']:,.2f} due "
-                         f"{format_date_human(booking['balance_due_date']) if booking['balance_due_date'] else 'at check-in'}."
-                          if booking["balance_amount"] else "Paid in full."),
+        "balance_due_date": due_by,
+        "balance_line": (f"Balance of €{booking['balance_amount']:,.2f} due by {due_by}."
+                         if booking["balance_amount"] else "Paid in full."),
         "price_block": ("\n" + "\n".join(price_lines)) if price_lines else "",
         "manage_url": url_for("workshop_manage", manage_token=booking["manage_token"], _external=True),
     }
@@ -77542,7 +77657,7 @@ def ask_for_a_review(feedback_id):
         flash(problem, "error")
         return redirect(url_for("admin_feedback"))
     subject, body, letter = render_email_template(conn, "review_invitation", {
-        "guest_name": (answer["guest_name"] or "").strip().split(" ")[0] or "there",
+        "guest_name": greeting_name(answer["guest_name"]),
         "review_url": link,
     })
     conn.execute("UPDATE guest_feedback SET review_invited_at = ? WHERE id = ?",
@@ -79589,7 +79704,7 @@ def send_new_link(conn, to, name, link_for, link):
     if "@" not in (to or ""):
         return False, "there is no address to send it to"
     subject, body, letter = render_email_template(conn, "guest_link_updated", {
-        "guest_name": (name or "").split(" ")[0] or name or "there",
+        "guest_name": greeting_name(name),
         "link_for": link_for, "new_link": link})
     if not subject:
         return False, "the letter would not draw"
@@ -81827,7 +81942,7 @@ def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None, via=No
     if refunded:
         refund_note = " Your payment has been refunded."
     elif was_paid:
-        refund_note = " We'll be in touch about your refund."
+        refund_note = " We will be in touch about your refund."
 
     # Commit before sending, exactly as confirm_booking_by_id does — the guest
     # is being told their request was refused and what is happening to their
@@ -83736,7 +83851,7 @@ def decline_restaurant_booking(reservation_id):
                           "A table was declined by somebody who may not give money back. "
                           "The deposit is still held; its refund page sends it back.")
             conn.commit()
-    refund_note = " Your payment has been refunded." if refunded else (" We'll be in touch about your refund." if booking["payment_status"] == "paid" else "")
+    refund_note = " Your payment has been refunded." if refunded else (" We will be in touch about your refund." if booking["payment_status"] == "paid" else "")
     send_restaurant_email(conn, booking, "restaurant_declined", restaurant_email_context(booking, refund_note))
 
     notified = notify_restaurant_waitlist_opening(conn, booking["dinner_date"])
@@ -83783,7 +83898,7 @@ def cancel_restaurant_booking_admin(reservation_id):
                           "A table was cancelled by somebody who may not give money back. "
                           "The deposit is still held; its refund page sends it back.")
             conn.commit()
-    refund_note = " Your payment has been refunded." if refunded else (" We'll be in touch about your refund." if booking["payment_status"] == "paid" else "")
+    refund_note = " Your payment has been refunded." if refunded else (" We will be in touch about your refund." if booking["payment_status"] == "paid" else "")
     send_restaurant_email(conn, booking, "restaurant_cancelled", restaurant_email_context(booking, refund_note))
 
     notified = notify_restaurant_waitlist_opening(conn, booking["dinner_date"])
@@ -93323,7 +93438,7 @@ def send_event_quote(quote_id):
     net = round(float(quote["quoted_price"] or 0) - float(quote["discount_amount"] or 0), 2)
     subject, body, letter = render_email_template(conn, "event_quote", {
         "contact_name": event["contact_name"],
-        "event_type": event["event_type"],
+        "event_type": event_type_words(event["event_type"]),
         "quote_total": f"\u20ac{net:,.2f}",
         "quote_url": link,
     })
@@ -98372,7 +98487,7 @@ def send_channel_checkin(conn, stay_id):
     token = ota_checkin_token(conn, stay_id)
     conn.commit()
     subject, body, letter = render_email_template(conn, "channel_checkin", {
-        "guest_name": (stay["guest_name"] or "").split(" ")[0] or "there",
+        "guest_name": greeting_name(stay["guest_name"]),
         "room_name": stay["room_name"] or stay["room_label"] or "your room",
         "arrival_date": format_date_human(stay["arrival_date"]) if stay["arrival_date"] else "",
         "departure_date": format_date_human(stay["departure_date"]) if stay["departure_date"] else "",
@@ -98911,7 +99026,7 @@ def send_direct_checkin_letter(conn, kind, stay_id):
     whole = " ".join((stay["guest_name"] or "").split())
     context = {
         "guest_name": whole or "there",
-        "first_name": whole.split(" ")[0] if whole else "there",
+        "first_name": greeting_name(whole),
         "arrival_date": format_date_human(stay["arrival_date"]) if stay["arrival_date"] else "",
         "departure_date": (format_date_human(stay["departure_date"])
                            if stay["departure_date"] else ""),
@@ -104715,14 +104830,18 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
     # and the confirmation is where a guest keeps what they need to arrive.
     if door_ready(conn):
         opens = _door_setting(conn, "door_opens_at", DOOR_DEFAULT_OPENS)
+        # Not "keep this link": the letter's own first paragraph says there is
+        # nothing the guest needs to keep, and the door is on their booking
+        # page as well (23 Nov 2026).
         details += ["", f"The front door opens from your phone, from {opens} on the day you "
-                        "arrive until you leave. Keep this link:", door_url]
+                        "arrive until you leave. The link is on your booking page too:",
+                    door_url]
     if portal_url:
         details += ["", "Everything you have with us \u2014 this stay, any workshops "
                         "or dinners \u2014 is always here:", portal_url]
     context = {
         "guest_name": booking["guest_name"] or "",
-        "first_name": (booking["guest_name"] or "").split(" ")[0] or "there",
+        "first_name": greeting_name(booking["guest_name"]),
         # Titled here as well as in email_template_text: the drawn letter is
         # filled from this context directly, not through that function.
         "room_name": room_title(room_name, conn),
@@ -118366,7 +118485,7 @@ def run_extras_offer_job(conn, days_before=None, today=None):
             nothing += 1
             continue
         subject, body, letter = render_email_template(conn, "room_extras_offer", {
-            "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
+            "guest_name": greeting_name(booking["guest_name"]),
             "room_name": booking["room_name"],
             "arrival_date": format_date_human(booking["arrival_date"]),
             "departure_date": format_date_human(booking["departure_date"]),
@@ -118896,7 +119015,7 @@ def run_event_balance_reminder_job(conn, days_before):
             manage_url = f"{PUBLIC_BASE_URL or ''}/events/manage/{event['manage_token']}"
         subject, body, letter = render_email_template(conn, "event_balance_reminder", {
             "contact_name": event["contact_name"] or "there",
-            "event_type": event["event_type"] or "event",
+            "event_type": event_type_words(event["event_type"]),
             "event_date": format_date_human(event["preferred_date"])
                           if event["preferred_date"] else "the agreed date",
             # With its euro sign: the wording of 8 October took the "€" out of
@@ -119525,15 +119644,15 @@ def hold_workshop_collection(conn, row, reason):
 def send_autocharge_taken_email(conn, booking, amount):
     """A receipt. Being charged with no word about it is the complaint this
     avoids — the money left their account either way."""
+    # The words are AUTOCHARGE_TAKEN_LETTER, which Guest emails shows the owner.
     send_email(
         booking["guest_email"],
-        f"Balance paid — {booking['title']}",
-        f"Hi {booking['guest_name']},\n\n"
-        f"As arranged, we have taken the remaining €{amount:,.2f} for "
-        f"{booking['title']} ({booking['reference_code']}) from the card you "
-        f"registered with. Nothing further is owed.\n\n"
-        f"{url_for('workshop_manage', manage_token=booking['manage_token'], _external=True)}\n\n"
-        f"— Château de Gudanes",
+        AUTOCHARGE_TAKEN_LETTER[0].format(workshop=booking["title"]),
+        AUTOCHARGE_TAKEN_LETTER[1].format(
+            guest_name=greeting_name(booking["guest_name"]), amount=money(amount),
+            workshop=booking["title"], reference=booking["reference_code"],
+            manage_link=url_for("workshop_manage", manage_token=booking["manage_token"],
+                                _external=True)),
     )
 
 
@@ -119542,16 +119661,12 @@ def send_autocharge_failed_email(conn, booking, amount, reason):
     went wrong internally — "authentication_required" means nothing to them."""
     send_email(
         booking["guest_email"],
-        f"Payment did not go through — {booking['title']}",
-        f"Hi {booking['guest_name']},\n\n"
-        f"We tried to take the remaining €{amount:,.2f} for {booking['title']} "
-        f"({booking['reference_code']}) from the card you registered with, and it "
-        f"did not go through. Nothing has been taken.\n\n"
-        f"You can pay it here whenever suits you:\n"
-        f"{url_for('workshop_manage', manage_token=booking['manage_token'], _external=True)}\n\n"
-        f"If it keeps refusing, reply to this email and we will sort it out "
-        f"another way.\n\n"
-        f"— Château de Gudanes",
+        AUTOCHARGE_FAILED_LETTER[0].format(workshop=booking["title"]),
+        AUTOCHARGE_FAILED_LETTER[1].format(
+            guest_name=greeting_name(booking["guest_name"]), amount=money(amount),
+            workshop=booking["title"], reference=booking["reference_code"],
+            manage_link=url_for("workshop_manage", manage_token=booking["manage_token"],
+                                _external=True)),
     )
     owner_to = owner_email(conn)
     if owner_to:

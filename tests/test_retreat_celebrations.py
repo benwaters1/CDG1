@@ -8,7 +8,8 @@ Starry Nights, and L'Ariégeoise on Cooking in the Cuisine. Those two are writte
   - THE PAGE SAYS SO. An occasion whose nights fall on a retreat says which retreat and which day, and
     takes one line for that evening. A suggestion that only a retreat blocks offers to be celebrated
     there; one that anything else blocks does not, and neither can go on sale.
-  - THE LINE IS A LINE: twelve words at most, as every bullet on a retreat's days is.
+  - THE LINE IS A LINE: twelve words at most (RETREAT_EVENING_WORDS), short enough to sit as one bullet
+    on a retreat's days. The house's own lines run longer since 25 Nov (test_retreat_days, MOMENT_WORDS).
   - IT SHOWS WHERE IT SAYS, AND ONLY THERE. Written, the retreat's own page draws it on that day in
     place of the evening and names it in the day's heading; on a last night the banquet stays, named
     for it. No other day changes. Emptied, the day is its own again.
@@ -172,7 +173,7 @@ def _run(s, oc, ec, emp, conn, made):
     r, days = _days(oc, wid)
     if len(days) == 6:
         s.check("day 5's evening is the banquet, named for the occasion",
-                days[4]["moments"][-1] == f"{name}: the banquet in the Salon de Musique, then dancing",
+                days[4]["moments"][-1] == f"{name}: the farewell banquet in the Salon de Musique, then dancing",
                 detail=str(days[4]["moments"]))
         s.check("and its heading is the last night's own", not days[4]["title"].endswith(name),
                 detail=days[4]["title"])

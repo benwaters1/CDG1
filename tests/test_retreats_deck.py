@@ -255,16 +255,17 @@ def run():
             if len(days) == 5:
                 s.check("Noël: day one, a welcome glass by the fire", "a welcome glass by the fire" in days[0],
                         detail=days[0][:160])
+                # 25 Nov (owner: "not elegant and marketing enough"): the same days in new words, test_retreat_days.
                 s.check("Noël: day two is the château, and Christmas baking with the pastry chef",
-                        "Le château" in days[1] and "A tour of the château and its restoration" in days[1]
+                        "Le château" in days[1] and "The château and its restoration, room by room" in days[1]
                         and "Christmas baking with the pastry chef" in days[1] and "oga" not in days[1],
                         detail=days[1][:160])
                 s.check("Noël: day three is the gingerbread château, then a tasting and a film by the fire",
-                        "Le pain d’épices" in days[2] and "The gingerbread château, with the pastry chef" in days[2]
-                        and "A wine tasting by the fire, then a Christmas film" in days[2],
+                        "Le pain d’épices" in days[2] and "The gingerbread château, built with the pastry chef" in days[2]
+                        and "A tasting of the region’s wines by the fire, then a Christmas film" in days[2],
                         detail=days[2][:160])
                 s.check("Noël: the last day, the tree to help dress, chocolate-making, and the Christmas banquet",
-                        "help dress the tree" in days[3] and "Chocolate-making with the chefs" in days[3]
+                        "a hand in dressing the tree" in days[3] and "Chocolate-making with the chefs" in days[3]
                         and "The Christmas banquet in the Salon de Musique, then dancing" in days[3],
                         detail=days[3][:160])
             s.check("Noël: no outings", not re.search(r"\bFoix\b|Lombrives|Ax-les-Thermes|Mirepoix|transfer from Toulouse",

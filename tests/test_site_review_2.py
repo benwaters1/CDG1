@@ -130,7 +130,10 @@ DISH = re.compile(
 # Activities, which the owner keeps: a tasting is something you do that day. And one line the owner
 # approved by name for Noël after this brief was written (9 Nov, the retreat days read aloud,
 # test_retreat_days): carols and vin chaud by the fire. Nothing else of the kind.
-ACTIVITY = re.compile(r"(?i)a tasting of french wines|a wine tasting|wine tasting|carols and vin chaud by the fire")
+# 25 Nov (BRIEF-itinerary-wording): the same tasting, in the days' new words, "a tasting of the region's wines".
+# The tasting only: "a glass of the region's wine" on a day is still a drink, and still caught.
+ACTIVITY = re.compile(r"(?i)a tasting of french wines|a tasting of the region[’']s wines|a wine tasting|wine tasting"
+                      r"|carols and vin chaud by the fire")
 JOURNEY = re.compile(r'(?is)<ol class="g-journey">(.*?)</ol>\s*(?:<div class="g-journey__|</div></section>)')
 
 
@@ -260,6 +263,10 @@ def _run(s, anon):
     found = dishes_in_days(doctored)
     s.check("the reader finds the Kir and the cheeses, and lets the tasting be",
             found == ["day 2: 'Kir'", "day 2: 'cheeses'"], detail=str(found))
+    found = dishes_in_days('<ol class="g-journey"><li class="g-journey__d"><p>A tasting of the region’s wines.</p></li>'
+                           '<li class="g-journey__d"><p>A glass of the region’s wine on the terrace.</p></li></ol>'
+                           '</div></section>')
+    s.check("and lets the region's wines be tasted, but not poured", found == ["day 2: 'wine'"], detail=str(found))
     # A retreat has a written day-by-day when its title names one of the four plans (ws_kind in
     # _ws_copy.html); an atelier with any other title has none, and is not a failure of this rule.
     # So every planned retreat must show its days, and all four plans must be among those read --

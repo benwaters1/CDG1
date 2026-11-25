@@ -481,8 +481,8 @@ def _form_notices(s, anon):
             and fields.get("Guests") == "100", detail=str(fields))
     s.check("a question left empty says so", fields.get("Other date") == "not said")
     s.check("their own words follow, under their own heading", "Their message:\nA September wedding." in note)
-    s.check("and the link opens this inquiry, not the list of them all",
-            re.search(r"Open the inquiry:\n\S+/admin/events/\d+$", note.rstrip()) is not None,
+    s.check("and the link opens this enquiry, not the list of them all",
+            re.search(r"Open the enquiry:\n\S+/admin/events/\d+$", note.rstrip()) is not None,
             detail=note[-160:])
     s.check("nothing of it run into a sentence", "inquired about" not in note)
     conn = db()

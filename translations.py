@@ -842,7 +842,109 @@ FR = {
     # alone, as page_text.py leaves every gloss.
     "The evening of": "Le soir de",
     ": a barbecue, then a film under the stars": " : un barbecue, puis un film à la belle étoile",
-    ": the banquet in the Salon de Musique, then dancing": " : le banquet dans le Salon de Musique, puis on danse",
+    # 25 Nov: "the farewell banquet" on a last night (BRIEF-itinerary-wording), for
+    # L'Ariégeoise and the Fête de la Musique, and an occasion the owner wrote.
+    ": the farewell banquet in the Salon de Musique, then dancing": " : le banquet d’adieu dans le Salon de Musique, puis on danse",
+    "Bastille Day: the farewell banquet in the Salon de Musique, then dancing":
+        "Le 14 Juillet : le banquet d’adieu dans le Salon de Musique, puis on danse",
+    # 25 Nov 2026 (owner: "The itinerary is good, but the wording is not elegant
+    # and marketing enough"; BRIEF-itinerary-wording). Every new line of the
+    # retreats' days (_ws_copy.html) and of /events/private, written here so
+    # neither waits on the translation job, in the house's register: vous, no
+    # exclamation. "The afternoon is yours" is one phrase everywhere. Each key is
+    # one text node: a line with italics in it is the words either side of them.
+    "The afternoon is yours": "L’après-midi est à vous",
+    "Collected at midday from the Grand Hôtel de l’Opéra, Toulouse, and driven into the Pyrénées, to luncheon in the garden":
+        "On vient vous chercher à midi au Grand Hôtel de l’Opéra, à Toulouse, pour vous conduire dans les Pyrénées, jusqu’au déjeuner au jardin",
+    "The afternoon to settle in, and to wander the château and its grounds":
+        "L’après-midi pour vous installer, et flâner dans le château et son parc",
+    "as the mountains turn blue, then dinner": "à l’heure où les montagnes bleuissent, puis le dîner",
+    "as the mountains turn blue, then dinner by candlelight":
+        "à l’heure où les montagnes bleuissent, puis le dîner aux chandelles",
+    "as the mountains turn blue, then the welcome dinner by candlelight":
+        "à l’heure où les montagnes bleuissent, puis le dîner de bienvenue aux chandelles",
+    ", then the welcome dinner by candlelight": ", puis le dîner de bienvenue aux chandelles",
+    "A last, unhurried breakfast, then the drive back to Toulouse at eleven":
+        "Un dernier petit-déjeuner, sans hâte, puis le retour vers Toulouse à onze heures",
+    "A last, unhurried breakfast, and the journey home": "Un dernier petit-déjeuner, sans hâte, puis le voyage du retour",
+    # Cooking in the Cuisine, 25 Nov (owner): a class every full day and no Saturday market with the chef.
+    "The classics of the French table, in a cooking class with the château’s chefs":
+        "Les classiques de la table française, lors d’un cours de cuisine avec les chefs du château",
+    "Back from Mirepoix, a cooking class with the château’s chefs, from the morning’s market":
+        "De retour de Mirepoix, un cours de cuisine avec les chefs du château, autour du marché du matin",
+    "An afternoon of chocolate-making in the pastry kitchen": "Un après-midi à travailler le chocolat, en pâtisserie",
+    "Uncovering the frescoes with the restorers, or the afternoon to yourself":
+        "Dégager les fresques aux côtés des restaurateurs, ou l’après-midi rien qu’à vous",
+    "A barbecue in the grounds, then a film beneath the stars": "Un barbecue dans le parc, puis un film à la belle étoile",
+    "The pastry kitchen, at the elbow of the pastry chef": "La pâtisserie, aux côtés du chef pâtissier",
+    "Lunch in the old town of Foix, then the castle above its rooftops":
+        "Déjeuner dans la vieille ville de Foix, puis le château qui domine ses toits",
+    "A tasting of the region’s wines, then dinner in the village of Les Cabannes":
+        "Une dégustation des vins de la région, puis le dîner au village des Cabannes",
+    "Mirepoix on market day, beneath its medieval arcades, then the brocantes":
+        "Mirepoix un jour de marché, sous ses arcades médiévales, puis les brocantes",
+    "Dinner in the village of Les Cabannes": "Le dîner au village des Cabannes",
+    "Into the vast cave at Lombrives, then lunch in Ax-les-Thermes":
+        "Dans l’immense grotte de Lombrives, puis le déjeuner à Ax-les-Thermes",
+    "Chocolate-making, or the afternoon to yourself": "L’atelier chocolat, ou l’après-midi rien qu’à vous",
+    "The farewell banquet in the Salon de Musique, then dancing": "Le banquet d’adieu dans le Salon de Musique, puis on danse",
+    "Morning yoga, then the château and its restoration, room by room":
+        "Le yoga du matin, puis le château et sa restauration, pièce par pièce",
+    "The pastry kitchen with the pastry chef, or the afternoon to yourself":
+        "La pâtisserie avec le chef pâtissier, ou l’après-midi rien qu’à vous",
+    "A morning beside the restorers, as the frescoes and painted beams return to the light":
+        "Une matinée aux côtés des restaurateurs, tandis que les fresques et les poutres peintes reviennent à la lumière",
+    "Down the river by canoe, or the afternoon to yourself": "La descente de la rivière en canoë, ou l’après-midi rien qu’à vous",
+    "Dinner by candlelight at the château": "Le dîner aux chandelles au château",
+    "A cooking class with the château’s chefs": "Un cours de cuisine avec les chefs du château",
+    "Supper of everything you made, then games at the table":
+        "Un souper de tout ce que vous avez préparé, puis des jeux autour de la table",
+    "The castle at Foix, and lunch in the old town below it":
+        "Le château de Foix, et le déjeuner dans la vieille ville, à ses pieds",
+    "The château through its antiques, and the stories behind them":
+        "Le château à travers ses antiquités, et les histoires qu’elles racontent",
+    "Out early to the brocantes and the dealers, while the best pieces are still on the tables":
+        "Tôt le matin, chez les brocanteurs et les marchands, quand les plus belles pièces sont encore sur les tables",
+    "Supper, with the day’s finds laid out on the table": "Le souper, avec les trouvailles du jour étalées sur la table",
+    # "A village <em>vide-grenier</em>, where ...": the French word stays in its
+    # italics, so the words round it carry the French order.
+    "A village": "Un village et son",
+    ", where whole attics come out onto the street": ", où des greniers entiers se vident dans la rue",
+    "Lunch in Foix, then a cooking class or the afternoon to yourself":
+        "Déjeuner à Foix, puis un cours de cuisine ou l’après-midi rien qu’à vous",
+    "A cooking class with the château’s chefs, or the afternoon to yourself":
+        "Un cours de cuisine avec les chefs du château, ou l’après-midi rien qu’à vous",
+    "A tasting of the region’s wines, then dinner by candlelight":
+        "Une dégustation des vins de la région, puis le dîner aux chandelles",
+    "The morning given to the retreat’s own sessions": "La matinée consacrée aux séances de la retraite",
+    "The final session": "La dernière séance",
+    "The afternoon to settle in, with the château dressed for Christmas":
+        "L’après-midi pour vous installer, dans un château paré pour Noël",
+    "The château and its restoration, room by room": "Le château et sa restauration, pièce par pièce",
+    "The gingerbread château, built with the pastry chef": "Le château en pain d’épices, construit avec le chef pâtissier",
+    "A tasting of the region’s wines by the fire, then a Christmas film":
+        "Une dégustation des vins de la région au coin du feu, puis un film de Noël",
+    "The grounds,": "Le parc,",
+    ", or a hand in dressing the tree": ", ou un coup de main pour décorer le sapin",
+    # /events/private: Choose Your Days, and A Sample Private Retreat.
+    "A morning at the stove with the château’s chefs, and an afternoon in the pastry kitchen":
+        "Une matinée aux fourneaux avec les chefs du château, et un après-midi en pâtisserie",
+    "Mirepoix on market day, beneath its medieval arcades, and the brocantes of the valley":
+        "Mirepoix un jour de marché, sous ses arcades médiévales, et les brocantes de la vallée",
+    "A morning beside the restorers, as the painted beams return to the light":
+        "Une matinée aux côtés des restaurateurs, tandis que les poutres peintes reviennent à la lumière",
+    "The gingerbread château, Christmas baking, and the Christmas banquet in the Salon de Musique":
+        "Le château en pain d’épices, les pâtisseries de Noël, et le banquet de Noël dans le Salon de Musique",
+    "Down the river by canoe, long afternoons by the pool, and a film beneath the stars":
+        "La descente de la rivière en canoë, de longs après-midi au bord de la piscine, et un film à la belle étoile",
+    "Three nights from the retreats’ own days, shaped around your party. Every stay is drawn up with you.":
+        "Trois nuits tirées des journées des retraites, façonnées autour de votre groupe. Chaque séjour se compose avec vous.",
+    "Welcomed with a glass of crémant, and shown to your rooms":
+        "Accueillis avec une coupe de crémant, puis conduits à vos chambres",
+    "A morning at the stove with the château’s chefs": "Une matinée aux fourneaux avec les chefs du château",
+    "A last, unhurried breakfast": "Un dernier petit-déjeuner, sans hâte",
+    "A picnic bag each, packed by the kitchen, for the journey onward":
+        "Un panier pique-nique pour chacun, préparé par la cuisine, pour la suite du voyage",
 }
 
 ES = {
@@ -1534,7 +1636,104 @@ ES = {
     # 25 Nov 2026 (owner): L'Ariégeoise on Cooking in the Cuisine; see the French.
     "The evening of": "La noche de",
     ": a barbecue, then a film under the stars": ": una barbacoa y luego una película bajo las estrellas",
-    ": the banquet in the Salon de Musique, then dancing": ": el banquete en el Salon de Musique y luego baile",
+    # 25 Nov: "the farewell banquet" on a last night; see the French.
+    ": the farewell banquet in the Salon de Musique, then dancing": ": el banquete de despedida en el Salon de Musique y luego baile",
+    "Bastille Day: the farewell banquet in the Salon de Musique, then dancing":
+        "El 14 de julio: el banquete de despedida en el Salon de Musique y luego baile",
+    # 25 Nov 2026: the retreats' days and /events/private in their new words
+    # (BRIEF-itinerary-wording); see the French. Usted, as the rest of the table.
+    "The afternoon is yours": "La tarde es suya",
+    "Collected at midday from the Grand Hôtel de l’Opéra, Toulouse, and driven into the Pyrénées, to luncheon in the garden":
+        "Le recogemos a mediodía en el Grand Hôtel de l’Opéra, en Toulouse, y le llevamos a los Pirineos, a almorzar en el jardín",
+    "The afternoon to settle in, and to wander the château and its grounds":
+        "La tarde para instalarse y recorrer el castillo y sus jardines",
+    "as the mountains turn blue, then dinner": "mientras las montañas se tiñen de azul, y luego la cena",
+    "as the mountains turn blue, then dinner by candlelight":
+        "mientras las montañas se tiñen de azul, y luego la cena a la luz de las velas",
+    "as the mountains turn blue, then the welcome dinner by candlelight":
+        "mientras las montañas se tiñen de azul, y luego la cena de bienvenida a la luz de las velas",
+    ", then the welcome dinner by candlelight": ", y luego la cena de bienvenida a la luz de las velas",
+    "A last, unhurried breakfast, then the drive back to Toulouse at eleven":
+        "Un último desayuno sin prisas y, a las once, el regreso a Toulouse",
+    "A last, unhurried breakfast, and the journey home": "Un último desayuno sin prisas, y el viaje de vuelta a casa",
+    "The classics of the French table, in a cooking class with the château’s chefs":
+        "Los clásicos de la mesa francesa, en una clase de cocina con los chefs del castillo",
+    "Back from Mirepoix, a cooking class with the château’s chefs, from the morning’s market":
+        "De vuelta de Mirepoix, una clase de cocina con los chefs del castillo, con lo comprado en el mercado",
+    "An afternoon of chocolate-making in the pastry kitchen": "Una tarde de chocolate en el obrador de pastelería",
+    "Uncovering the frescoes with the restorers, or the afternoon to yourself":
+        "Descubrir los frescos junto a los restauradores, o la tarde para usted",
+    "A barbecue in the grounds, then a film beneath the stars":
+        "Una barbacoa en los jardines y luego una película bajo las estrellas",
+    "The pastry kitchen, at the elbow of the pastry chef": "El obrador de pastelería, codo con codo con el chef pastelero",
+    "Lunch in the old town of Foix, then the castle above its rooftops":
+        "Almuerzo en el casco antiguo de Foix y, después, el castillo que domina sus tejados",
+    "A tasting of the region’s wines, then dinner in the village of Les Cabannes":
+        "Una cata de vinos de la región y luego la cena en el pueblo de Les Cabannes",
+    "Mirepoix on market day, beneath its medieval arcades, then the brocantes":
+        "Mirepoix en día de mercado, bajo sus soportales medievales, y luego las brocantes",
+    "Dinner in the village of Les Cabannes": "La cena en el pueblo de Les Cabannes",
+    "Into the vast cave at Lombrives, then lunch in Ax-les-Thermes":
+        "La inmensa cueva de Lombrives y luego el almuerzo en Ax-les-Thermes",
+    "Chocolate-making, or the afternoon to yourself": "El taller de chocolate, o la tarde para usted",
+    "The farewell banquet in the Salon de Musique, then dancing":
+        "El banquete de despedida en el Salon de Musique y luego baile",
+    "Morning yoga, then the château and its restoration, room by room":
+        "Yoga por la mañana y luego el castillo y su restauración, sala por sala",
+    "The pastry kitchen with the pastry chef, or the afternoon to yourself":
+        "El obrador con el chef pastelero, o la tarde para usted",
+    "A morning beside the restorers, as the frescoes and painted beams return to the light":
+        "Una mañana junto a los restauradores, mientras los frescos y las vigas pintadas vuelven a la luz",
+    "Down the river by canoe, or the afternoon to yourself": "Río abajo en canoa, o la tarde para usted",
+    "Dinner by candlelight at the château": "La cena a la luz de las velas en el castillo",
+    "A cooking class with the château’s chefs": "Una clase de cocina con los chefs del castillo",
+    "Supper of everything you made, then games at the table":
+        "Una cena con todo lo que ha preparado y luego juegos alrededor de la mesa",
+    "The castle at Foix, and lunch in the old town below it":
+        "El castillo de Foix, y el almuerzo en el casco antiguo, a sus pies",
+    "The château through its antiques, and the stories behind them":
+        "El castillo a través de sus antigüedades, y las historias que esconden",
+    "Out early to the brocantes and the dealers, while the best pieces are still on the tables":
+        "Temprano, a las brocantes y a los anticuarios, cuando las mejores piezas aún están sobre las mesas",
+    "Supper, with the day’s finds laid out on the table": "La cena, con los hallazgos del día dispuestos sobre la mesa",
+    "A village": "Un pueblo y su",
+    ", where whole attics come out onto the street": ", donde desvanes enteros salen a la calle",
+    "Lunch in Foix, then a cooking class or the afternoon to yourself":
+        "Almuerzo en Foix y luego una clase de cocina o la tarde para usted",
+    "A cooking class with the château’s chefs, or the afternoon to yourself":
+        "Una clase de cocina con los chefs del castillo, o la tarde para usted",
+    "A tasting of the region’s wines, then dinner by candlelight":
+        "Una cata de vinos de la región y luego la cena a la luz de las velas",
+    "The morning given to the retreat’s own sessions": "La mañana dedicada a las sesiones del propio retiro",
+    "The final session": "La última sesión",
+    "The afternoon to settle in, with the château dressed for Christmas":
+        "La tarde para instalarse, con el castillo vestido para la Navidad",
+    "The château and its restoration, room by room": "El castillo y su restauración, sala por sala",
+    "The gingerbread château, built with the pastry chef":
+        "El castillo de pan de jengibre, construido con el chef pastelero",
+    "A tasting of the region’s wines by the fire, then a Christmas film":
+        "Una cata de vinos de la región junto al fuego y luego una película navideña",
+    "The grounds,": "Los jardines,",
+    ", or a hand in dressing the tree": ", o echar una mano para decorar el árbol",
+    # /events/private: Choose Your Days, and A Sample Private Retreat.
+    "A morning at the stove with the château’s chefs, and an afternoon in the pastry kitchen":
+        "Una mañana entre fogones con los chefs del castillo, y una tarde en el obrador de pastelería",
+    "Mirepoix on market day, beneath its medieval arcades, and the brocantes of the valley":
+        "Mirepoix en día de mercado, bajo sus soportales medievales, y las brocantes del valle",
+    "A morning beside the restorers, as the painted beams return to the light":
+        "Una mañana junto a los restauradores, mientras las vigas pintadas vuelven a la luz",
+    "The gingerbread château, Christmas baking, and the Christmas banquet in the Salon de Musique":
+        "El castillo de pan de jengibre, la repostería navideña y el banquete de Navidad en el Salon de Musique",
+    "Down the river by canoe, long afternoons by the pool, and a film beneath the stars":
+        "Río abajo en canoa, largas tardes junto a la piscina y una película bajo las estrellas",
+    "Three nights from the retreats’ own days, shaped around your party. Every stay is drawn up with you.":
+        "Tres noches tomadas de los días de los retiros, a la medida de su grupo. Cada estancia se diseña con usted.",
+    "Welcomed with a glass of crémant, and shown to your rooms":
+        "Recibidos con una copa de crémant y acompañados a sus habitaciones",
+    "A morning at the stove with the château’s chefs": "Una mañana entre fogones con los chefs del castillo",
+    "A last, unhurried breakfast": "Un último desayuno sin prisas",
+    "A picnic bag each, packed by the kitchen, for the journey onward":
+        "Una bolsa de pícnic para cada uno, preparada por la cocina, para el resto del viaje",
 }
 
 # The public pages' own prose, kept in its own file because it is 1,900
