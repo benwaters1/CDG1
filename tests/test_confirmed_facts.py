@@ -337,10 +337,15 @@ def run():
     # Both ways in one check: the sentence quietly going missing from the
     # letters it protects is the same kind of silent failure as it appearing
     # where it is false.
+    # 25 Nov 2026 (owner, "yes to all"): every stay or atelier letter that
+    # takes or acknowledges money, so the payments, statements, a share of the
+    # bill and the reserved room too.
     MONEY_LETTERS_THAT_WARN = {
         "room_confirmed", "room_balance_before", "room_balance_after",
         "workshop_confirmed", "workshop_deposit_receipt",
-        "workshop_balance_reminder"}
+        "workshop_balance_reminder",
+        "room_payment_received", "workshop_payment_received", "room_statement",
+        "workshop_statement", "room_share_request", "room_reserved"}
     bodies = {k: b for k, _l, _s, b in m.DEFAULT_EMAIL_TEMPLATES}
     warns = {k for k, b in bodies.items() if m.PAYMENT_SAFETY_LINE in b}
     s.check("no event letter promises the house never asks for a transfer",

@@ -40,6 +40,17 @@ letters it writes whole -- because nothing read those as a guest would:
 Each is checked here against the source or the function that writes it, so
 the next letter written in code is held to the same rules without anybody
 remembering to.
+
+THE STORED LETTERS (25 November 2026). The owner said yes to all nine of the
+review's changes to the letters' own wording, which ship as data: enquiry, a
+place, sorry and a way on when a room is refused, "Hi", "Reference code:", the
+payment sentence in every stay or atelier letter about money, the
+confirmation's room count, times and signature, and the three 2027 retreats
+campaigns. They go in through one table, read twice -- for the shipped wording
+and, once, for the letters stored on the live site -- and the swap is checked
+here on the wording the live site held that day, word for word. Check-out had
+moved to 11am two days before, and the owner's own line in the confirmation
+still said 10am.
 """
 import ast
 import os
@@ -135,6 +146,7 @@ def run():
     _money_letters(s)
     _account_link(s)
     _words_and_facts(s)
+    _words_of_25_november(s)
     return s
 
 
@@ -411,3 +423,226 @@ def _words_and_facts(s):
         confirmed = fh.read()
     s.check("the confirmation does not ask a guest to keep a link it says they need not keep",
             "Keep this link" not in confirmed)
+
+
+# What the live site held on 25 November 2026, read from its editors that
+# morning, word for word. The confirmation is the owner's own edit of it; the
+# others were as shipped.
+LIVE_CONFIRMED = (
+    "Your stay is booked, {first_name}\n\nFive guest rooms are open, and one of them is yours "
+    "for the dates below. Everything here is also on your booking page, so there is nothing you "
+    "need to keep.\n\n{stay_details}\n\nCheck-in is from 3pm, and check-out is by 10am.\n\n"
+    "The walls of the house stay as the centuries left them; the floors and the bathrooms are "
+    "new, and the rooms are furnished from the brocantes. If anything at all needs saying before "
+    "you arrive, reply to this message; it reaches us.\n\nPayment for this booking is only ever "
+    "taken by card, on chateaugudanes.com. If anyone asks you to pay another way, please call us "
+    "first on +33 6 28 06 97 76.")
+LIVE_AS_SHIPPED = {
+    "room_reserved": (
+        "Your room is reserved — {room_name}",
+        "Hello {guest_name},\n\nAs agreed, we are holding {room_name} for you.\n\n{stay_lines}\n\n"
+        "To secure it, add your details and pay here — it takes a couple of minutes:\n"
+        "{finish_url}\n\nWe hold the room until {held_until}; after that it goes back on sale."
+        "\n\nReference: {reference_code}\n\n— Château de Gudanes"),
+    "event_quote": (
+        "Your quote for Château de Gudanes",
+        "Dear {contact_name},\n\nYour quote for {event_type} at Château de Gudanes comes to "
+        "{quote_total}.\n\nEverything it covers and the terms are on the quote, with a button to "
+        "accept it.\nSee the quote:\n{quote_url}\n\nNothing is agreed until you accept it, and we "
+        "are glad to talk any of it through first.\n\n— Château de Gudanes"),
+    "workshop_statement": (
+        "Your statement — {workshop_title}",
+        "Hi {guest_name},\n\nYour statement for {workshop_title} ({dates}) is below.\n\n"
+        "{balance_line}\n\nIt is always online, with a way to settle anything outstanding.\n"
+        "Your statement:\n{statement_url}\n\nReference code: {reference_code}\n\n{company_block}"
+        "\n\n— Château de Gudanes"),
+    "event_inquiry_received": (
+        "Event inquiry received — Château de Gudanes",
+        "Hi {contact_name},\n\nThank you for your interest in hosting a {event_type} at Château de "
+        "Gudanes. Your inquiry has been received and we will be in touch shortly to discuss "
+        "availability and pricing.\n\nReference code: {reference_code}\nYour inquiry:\n"
+        "{manage_url}\n\n— Château de Gudanes"),
+}
+LIVE_CAMPAIGN = (
+    "Dear {{first_name}},\n\nThe 2027 retreats at Château de Gudanes are now open for booking."
+    "\n\nThere is news from the château too. We are now open for overnight stays, so the house no "
+    "longer depends on the retreats alone, and that has let us bring the price of the retreats "
+    "down significantly.\n\nYou will find the dates, programmes and new prices on our website: "
+    "https://www.chateaugudanes.com\n\nAnd if you would simply like to come and stay for a few "
+    "nights in the Pyrenees, you can now book a room directly.\n\nWe would love to welcome you to "
+    "the château.\n\nChâteau de Gudanes")
+CAMPAIGN_AFTER = LIVE_CAMPAIGN.replace(
+    "on our website: https://www.chateaugudanes.com\n",
+    "on our website.\nSee the 2027 retreats:\nhttps://www.chateaugudanes.com/workshops\n",
+).replace("the château.\n\nChâteau de Gudanes", "the château.\n\n— Château de Gudanes")
+# The campaign editor stores what the browser posts, so on the live site the
+# campaigns' line breaks are "\r\n". The first swap was tested on "\n" alone,
+# passed, and on the live site changed every letter and none of the three.
+def crlf(text):
+    return text.replace("\n", "\r\n")
+
+
+FLAG = "letter_words_2026_11_25"
+CAMPAIGN_FLAG = "campaign_words_2026_11_25"
+
+
+def _guest_letters():
+    """The shipped letters a guest reads: not the house's own notices."""
+    return [(k, sj, bd) for k, label, sj, bd in m.DEFAULT_EMAIL_TEMPLATES
+            if bd.strip() and not label.startswith("House:")]
+
+
+def _words_of_25_november(s):
+    s.section("The stored letters' words of 25 November, as shipped")
+    shipped = {k: (sj, bd) for k, _l, sj, bd in m.DEFAULT_EMAIL_TEMPLATES}
+    letters = _guest_letters()
+    said = [k for k, sj, bd in letters if INQUIRY.search(sj + "\n" + bd)]
+    s.check("1. no letter says 'inquiry'", not said, detail=said)
+    s.check("2. a client reads 'your quote for your wedding'",
+            "Your quote for your {event_type} at" in shipped["event_quote"][1])
+    said = [k for k, sj, bd in letters if re.search(r"\ba spot\b", sj + "\n" + bd, re.I)]
+    s.check("3. no letter says 'a spot'", not said, detail=said)
+    declined, cancelled = shipped["room_declined"], shipped["room_cancelled"]
+    s.check("4. a room refused says sorry, and how to go on",
+            "We are sorry" in declined[1] and "try other dates" in declined[1]
+            and "declined" not in declined[0], detail=declined)
+    s.check("   and a stay cancelled by the house says how to talk about it",
+            "reply to this message" in cancelled[1])
+    greetings = [(k, bd.split("\n", 1)[0]) for k, sj, bd in letters
+                 if re.match(r"(?:Hello|Dear)\b", bd)]
+    s.check("5. every letter that greets a guest opens 'Hi'", not greetings, detail=greetings)
+    said = [k for k, sj, bd in letters if "Reference: {" in bd]
+    s.check("6. 'Reference code:' in every letter, never 'Reference:'", not said, detail=said)
+    missing = sorted(set(m.PAYMENT_LINE_LETTERS_2026_11_25) - m.LETTERS_WITH_PAYMENT_LINE)
+    s.check("7. the six letters about money are held to the payment sentence", not missing,
+            detail=missing)
+    without = sorted(k for k in m.LETTERS_WITH_PAYMENT_LINE
+                     if m.PAYMENT_SAFETY_LINE not in shipped.get(k, ("", ""))[1])
+    s.check("   and every one held to it carries it", not without, detail=without)
+    events = sorted(k for k in m.LETTERS_WITH_PAYMENT_LINE if m.template_area(k) == "Events")
+    s.check("   and none of them is an event's, which is paid by bank transfer", not events,
+            detail=events)
+    body = shipped["room_confirmed"][1]
+    s.check("8. the confirmation counts its rooms from the rooms on sale",
+            "{Room_count_word} guest rooms are open" in body and "Five guest" not in body)
+    s.check("   gives the times the house keeps, from the one place they are kept",
+            m.CHECK_TIMES_LINE in body and m.CHECK_OUT_WORDS in m.CHECK_TIMES_LINE
+            and m.CHECK_OUT_WORDS == "11am", detail=m.CHECK_TIMES_LINE)
+    s.check("   and is signed, as every other letter is", body.rstrip().endswith(SIGNOFF))
+    with m.app.test_request_context("/"):
+        ctx = m.drawn_context(m.sample_merge_context("room_confirmed"))
+        blocks = m.dress_blocks(m.letter_blocks(m.merge_email_text(body, ctx)))
+    signed = [b for b in blocks if b["kind"] == "signoff"]
+    s.check("   once: the design does not sign it a second time", len(signed) == 1,
+            detail=[b["kind"] for b in blocks])
+
+    s.section("The same words put into the letters the live site holds, once")
+    conn = _harness.db()
+    keys = ["room_confirmed", "room_declined", "room_payment_received", *LIVE_AS_SHIPPED]
+    marks = ",".join("?" * len(keys))
+    restore = _harness.keep_rows(conn, "email_templates", f"template_key IN ({marks})", keys)
+    restore_flag = _harness.keep_rows(conn, "app_settings", "key IN (?, ?)", (FLAG, CAMPAIGN_FLAG))
+    tag = "ZZLH25 "
+    try:
+        conn.execute("DELETE FROM campaign_templates WHERE name LIKE ?", (tag + "%",))
+
+        def put(k, sj, bd):
+            conn.execute("UPDATE email_templates SET subject = ?, body = ? WHERE template_key = ?",
+                         (sj, bd, k))
+
+        put("room_confirmed", "Booking confirmed — {room_name}", LIVE_CONFIRMED)
+        for k, (sj, bd) in LIVE_AS_SHIPPED.items():
+            put(k, sj, bd)
+        # Two the owner has written their own way: the sentences they hold
+        # word for word change, and nothing else does.
+        owners_declined = ("Hi {guest_name},\n\nI am afraid {room_name} is taken on those "
+                           "nights. {refund_note}\n\n— Château de Gudanes")
+        put("room_declined", "Booking request declined — {room_name}", owners_declined)
+        put("room_payment_received", "Payment received — {room_name}",
+            "Hi {guest_name},\n\nThank you, {amount} has arrived.")
+        now = _harness.datetime_now()
+        another = crlf("Hello,\n\nA note.\n\nChâteau de Gudanes")
+        for name, text in ((tag + "2027 retreats", crlf(LIVE_CAMPAIGN)), (tag + "another", another)):
+            conn.execute("INSERT INTO campaign_templates (name, area, subject, body, created_at) "
+                         "VALUES (?, 'workshops', 'News', ?, ?)", (name, text, now))
+        conn.execute("DELETE FROM app_settings WHERE key IN (?, ?)", (FLAG, CAMPAIGN_FLAG))
+        conn.commit()
+
+        changed = m.apply_letter_words_2026_11_25(conn)
+        untouched = conn.execute("SELECT body FROM campaign_templates WHERE name = ?",
+                                 (tag + "2027 retreats",)).fetchone()[0] == crlf(LIVE_CAMPAIGN)
+        # As on the live site: the letters' flag is set before the campaigns
+        # are put right, and that must not stop them.
+        changed_campaigns = m.apply_campaign_words_2026_11_25(conn)
+
+        def row(k):
+            return tuple(conn.execute("SELECT subject, body FROM email_templates "
+                                      "WHERE template_key = ?", (k,)).fetchone())
+
+        def camp(n):
+            return conn.execute("SELECT body FROM campaign_templates WHERE name = ?",
+                                (tag + n,)).fetchone()[0]
+
+        s.check("the owner's confirmation, as the live site held it, comes out as shipped",
+                row("room_confirmed") == shipped["room_confirmed"],
+                detail=row("room_confirmed")[1][-260:])
+        s.check("   so its check-out is 11am, not the 10am it said",
+                "by 10am" not in row("room_confirmed")[1])
+        off = [k for k in LIVE_AS_SHIPPED if row(k) != shipped[k]]
+        s.check("each letter stored as shipped comes out as shipped now", not off,
+                detail=[(k, row(k)) for k in off][:1])
+        s.check("a letter the owner wrote their own way keeps their words",
+                row("room_declined")[1] == owners_declined)
+        s.check("   and takes the sentence it held word for word, its subject",
+                row("room_declined")[0] == "Booking request update — {room_name}")
+        s.check("one with no signature to go above gets no payment sentence pushed in",
+                m.PAYMENT_SAFETY_LINE not in row("room_payment_received")[1])
+        drift = {d["key"]: [b["rule"] for b in d["breaches"]] for d in m.stored_letter_drift(conn)}
+        s.check("   and is named instead, where the owner looks",
+                "payment_line" in drift.get("room_payment_received", []), detail=drift)
+        s.check("   while every letter it put right is named nowhere",
+                not set(drift) & ({"room_confirmed"} | set(LIVE_AS_SHIPPED)), detail=drift)
+        s.check("the letters' swap leaves the campaigns to their own", untouched)
+        s.check("the retreats campaign, stored with \\r\\n as the live site stores it, gets its "
+                "button to the retreats and its signature",
+                camp("2027 retreats") == CAMPAIGN_AFTER, detail=repr(camp("2027 retreats")[-220:]))
+        s.check("   even with the letters' flag already set, as it is on the live site",
+                changed_campaigns == ["campaign: " + tag + "2027 retreats"], detail=changed_campaigns)
+        s.check("   and a campaign without that sentence is left exactly as it was",
+                camp("another") == another)
+        s.check("what changed is said by name",
+                {"room_confirmed", "room_declined"} <= set(changed)
+                and "room_payment_received" not in changed, detail=changed)
+        blocks = m.dress_blocks(m.letter_blocks(camp("2027 retreats")))
+        buttons = [(b.get("label"), b.get("href")) for b in blocks if b["kind"] == "button"]
+        s.check("   the campaign draws one button, to the retreats page, saying what it is",
+                buttons == [("See the 2027 retreats", "https://www.chateaugudanes.com/workshops")],
+                detail=buttons)
+        s.check("   and ends on its signature", blocks[-1]["kind"] == "signoff",
+                detail=[b["kind"] for b in blocks])
+
+        put("room_confirmed", "Booking confirmed — {room_name}", LIVE_CONFIRMED)
+        conn.execute("UPDATE campaign_templates SET body = ? WHERE name = ?",
+                     (crlf(LIVE_CAMPAIGN), tag + "2027 retreats"))
+        conn.commit()
+        s.check("once: a second start changes nothing",
+                m.apply_letter_words_2026_11_25(conn) == []
+                and row("room_confirmed")[1] == LIVE_CONFIRMED)
+        s.check("   and nor does the campaigns' second start",
+                m.apply_campaign_words_2026_11_25(conn) == []
+                and camp("2027 retreats") == crlf(LIVE_CAMPAIGN))
+        conn.execute("UPDATE campaign_templates SET body = ? WHERE name = ?",
+                     (CAMPAIGN_AFTER, tag + "2027 retreats"))
+        conn.execute("DELETE FROM app_settings WHERE key IN (?, ?)", (FLAG, CAMPAIGN_FLAG))
+        conn.commit()
+        m.apply_letter_words_2026_11_25(conn)
+        m.apply_campaign_words_2026_11_25(conn)
+        again = [k for k in LIVE_AS_SHIPPED if row(k) != shipped[k]]
+        s.check("and run again over its own work, it changes nothing twice",
+                not again and camp("2027 retreats") == CAMPAIGN_AFTER, detail=again)
+    finally:
+        conn.execute("DELETE FROM campaign_templates WHERE name LIKE ?", (tag + "%",))
+        conn.commit()
+        restore()
+        restore_flag()
+        conn.close()

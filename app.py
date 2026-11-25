@@ -2966,6 +2966,139 @@ for _key, _label, _subject, _body in DEFAULT_EMAIL_TEMPLATES:
     _fixed.append((_key, _label, _ns, _nb))
 DEFAULT_EMAIL_TEMPLATES = _fixed
 del _fixed
+
+
+# ---------------------------------------------------------------------------
+# THE LETTERS' WORDS OF 25 NOVEMBER 2026. The owner said "yes to all" to the
+# review of 23 November (REVIEW-letters-23-nov.md). One table, read twice:
+# here it brings the shipped wording up to date, so "Restore original wording"
+# gives the new version, and apply_letter_words_2026_11_25 puts the same
+# sentences once into every stored letter that still says the old ones word
+# for word. A letter that says something else is left as the owner wrote it.
+#   1. "enquiry", as every public page and the staff event pages say it;
+#   2. "your quote for your wedding", where it read "your quote for wedding";
+#   3. "a place", as every other letter says, not "a spot";
+#   4. a room refused or cancelled says sorry and gives the guest a way on,
+#      as the atelier, dinner and event refusals already did;
+#   5. every letter opens "Hi" (four said "Hello" or "Dear");
+#   6. "Reference code:", as every other letter writes it;
+#   7. the payment sentence in every stay or atelier letter about money
+#      (PAYMENT_LINE_LETTERS_2026_11_25);
+#   8. the confirmation counts its rooms from the rooms on sale, gives the
+#      times the house keeps, and is signed. Check-out moved to 11am on
+#      23 November, and the owner's own line in it still said 10am;
+#   9. the three 2027 retreats campaigns (CAMPAIGN_WORDS_2026_11_25).
+# Every swap is safe to run twice: no new sentence contains the old one.
+# ---------------------------------------------------------------------------
+LETTER_SIGN_OFF = "\n\n— Château de Gudanes"
+CHECK_TIMES_LINE = f"Check-in is from {CHECK_IN_WORDS}, and check-out is by {CHECK_OUT_WORDS}."
+LETTER_WORDS_2026_11_25 = {
+    "event_inquiry_received": (
+        ("subject", "Event inquiry received", "Event enquiry received"),
+        ("body", "in hosting a {event_type} at", "in hosting your {event_type} at"),
+        ("body", "Your inquiry has been received", "Your enquiry has been received"),
+        ("body", "\nYour inquiry:\n{manage_url}", "\nYour enquiry:\n{manage_url}")),
+    "event_inquiry_declined": (
+        ("subject", "Event inquiry update", "Event enquiry update"),),
+    "event_quote": (
+        ("body", "Dear {contact_name},", "Hi {contact_name},"),
+        ("body", "Your quote for {event_type} at", "Your quote for your {event_type} at")),
+    "workshop_waitlist_opening": (
+        ("subject", "A spot just opened up", "A place just opened up"),
+        ("body", "A spot for {workshop_title} ({dates}) just opened up.",
+         "A place on {workshop_title} ({dates}) just opened up.")),
+    "room_declined": (
+        ("subject", "Booking request declined — {room_name}",
+         "Booking request update — {room_name}"),
+        ("body", "We are not able to accommodate your request for {room_name} "
+                 "({arrival_date} to {departure_date}). {refund_note}",
+         "We are sorry — we are unable to offer you {room_name} from {arrival_date} "
+         "to {departure_date}. {refund_note} Please get in touch, or try other dates.")),
+    "room_cancelled": (
+        ("body", "({arrival_date} to {departure_date}) has been cancelled.\n",
+         "({arrival_date} to {departure_date}) has been cancelled. If you would like "
+         "to talk about it, or to book other dates, reply to this message.\n"),),
+    "room_reserved": (
+        ("body", "Hello {guest_name},", "Hi {guest_name},"),
+        ("body", "\nReference: {reference_code}", "\nReference code: {reference_code}")),
+    "channel_checkin": (
+        ("body", "Hello {guest_name},", "Hi {guest_name},"),),
+    "workshop_not_running": (
+        ("body", "Dear {name},", "Hi {name},"),),
+    "event_balance_reminder": (
+        ("body", "\nReference: {reference_code}", "\nReference code: {reference_code}"),),
+    "workshop_moved": (
+        ("body", "\nReference: {reference_code}", "\nReference code: {reference_code}"),),
+    "room_confirmed": (
+        ("body", "Five guest rooms are open, and one of them is yours",
+         "{Room_count_word} guest rooms are open, and one of them is yours"),
+        ("body", "Check-in is from 3pm, and check-out is by 10am.", CHECK_TIMES_LINE)),
+}
+# Item 7. Events stay off it: they are paid by bank transfer. So does the
+# guest's whole statement, which can include an event.
+PAYMENT_LINE_LETTERS_2026_11_25 = (
+    "room_payment_received", "workshop_payment_received", "room_statement",
+    "workshop_statement", "room_share_request", "room_reserved")
+
+
+def letter_words_2026_11_25(template_key, subject, body):
+    """(subject, body) with the 25 November wording, from what the letter says
+    now. Only sentences it holds word for word change."""
+    for field, old, new in LETTER_WORDS_2026_11_25.get(template_key, ()):
+        if field == "subject":
+            subject = subject.replace(old, new)
+        else:
+            body = body.replace(old, new)
+    if template_key == "room_confirmed":
+        # The times after the stay's card, where the letter gives none.
+        if "Check-in is from" not in body and "{stay_details}\n\n" in body:
+            body = body.replace("{stay_details}\n\n",
+                                "{stay_details}\n\n" + CHECK_TIMES_LINE + "\n\n", 1)
+        # The one letter with no signature, which ended on the payment sentence.
+        if LETTER_SIGN_OFF.strip() not in body and body.rstrip().endswith(PAYMENT_SAFETY_LINE):
+            body = body.rstrip() + LETTER_SIGN_OFF
+    if (template_key in PAYMENT_LINE_LETTERS_2026_11_25 and PAYMENT_SAFETY_LINE not in body
+            and LETTER_SIGN_OFF in body):
+        # Above the signature, where the balance reminders carry it.
+        at = body.rfind(LETTER_SIGN_OFF)
+        body = body[:at] + "\n\n" + PAYMENT_SAFETY_LINE + body[at:]
+    return subject, body
+
+
+DEFAULT_EMAIL_TEMPLATES = [(_k, _l) + letter_words_2026_11_25(_k, _s, _b)
+                           for _k, _l, _s, _b in DEFAULT_EMAIL_TEMPLATES]
+
+# Item 9: the three "2027 retreats" campaigns, the owner's own words, held
+# and not yet sent. The link sat inside a sentence and went to the home page;
+# on a line of its own under a short label it is a button to the retreats
+# themselves. And "Château de Gudanes" with no dash was drawn as one more
+# paragraph rather than as the signature.
+CAMPAIGN_WORDS_2026_11_25 = (
+    "You will find the dates, programmes and new prices on our website: "
+    "https://www.chateaugudanes.com\n",
+    "You will find the dates, programmes and new prices on our website.\n"
+    "See the 2027 retreats:\nhttps://www.chateaugudanes.com/workshops\n")
+_CAMPAIGN_BARE_SIGNATURE = "\n\nChâteau de Gudanes"
+
+
+def campaign_words_2026_11_25(body):
+    """A campaign's body with item 9 made, if it is one of those three.
+
+    Read with its line breaks as "\\n". The campaign editor keeps what the
+    browser posts, "\\r\\n", so on the live site not one of the three matched
+    the first time this ran (25 Nov) and every letter changed but them. One
+    it does make comes back with plain "\\n" throughout; one it does not make
+    comes back exactly as it was."""
+    old, new = CAMPAIGN_WORDS_2026_11_25
+    text = body.replace("\r\n", "\n")
+    if old not in text:
+        return body
+    body = text.replace(old, new)
+    if body.rstrip().endswith(_CAMPAIGN_BARE_SIGNATURE):
+        body = body.rstrip()[:-len(_CAMPAIGN_BARE_SIGNATURE)] + LETTER_SIGN_OFF
+    return body
+
+
 # 23 Nov 2026: the review invitation as it shipped until then. init_db puts the
 # new wording in only where a database still holds this word for word, in any
 # form the 5 Oct rewrites could have stored it, and nobody has edited it.
@@ -3096,7 +3229,8 @@ def letter_unwritten(conn, template_key):
 # The letters that ask for or acknowledge money for a stay or an atelier, and
 # so carry the sentence. test_confirmed_facts holds the shipped wording to the
 # same set.
-LETTERS_WITH_PAYMENT_LINE = frozenset(_EMAIL_PAYMENT_SAFETY_KEYS) | {"room_confirmed"}
+LETTERS_WITH_PAYMENT_LINE = (frozenset(_EMAIL_PAYMENT_SAFETY_KEYS) | {"room_confirmed"}
+                             | frozenset(PAYMENT_LINE_LETTERS_2026_11_25))
 # Taking the money at the house. Read a sentence at a time and only beside a
 # word about money: "champagne on arrival" is an offer, not a payment.
 _PAY_AT_THE_HOUSE = re.compile(
@@ -3243,6 +3377,61 @@ def apply_letter_words_2026_10_16(conn):
     conn.commit()
     if changed:
         log_line(f"[letters] five guest rooms, no new beds: {changed} stored letter(s) corrected")
+    return changed
+
+
+def apply_letter_words_2026_11_25(conn):
+    """Once: the 25 November wording put into the stored letters. The three
+    2027 retreats campaigns are apply_campaign_words_2026_11_25's.
+
+    Asked for by the owner on 25 November 2026 ("yes to all"), so another
+    exception to "read, never rewritten" above. A sentence at a time and only
+    where a letter says it word for word, so whatever else the owner has
+    written stays exactly as it is; a letter that says it another way keeps
+    it, and the rules above still name one with no payment sentence. Once, by
+    the flag in app_settings, so a sentence written back later stays written.
+    Returns what changed, by name."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'letter_words_2026_11_25'").fetchone():
+        return []
+    changed = []
+    for row in conn.execute(
+            "SELECT template_key, subject, body FROM email_templates").fetchall():
+        was = (row["subject"] or "", row["body"] or "")
+        now = letter_words_2026_11_25(row["template_key"], *was)
+        if now != was:
+            conn.execute("UPDATE email_templates SET subject = ?, body = ? WHERE template_key = ?",
+                         now + (row["template_key"],))
+            changed.append(row["template_key"])
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('letter_words_2026_11_25', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        log_line(f"[letters] the wording of 25 November: {len(changed)} changed "
+                 f"({', '.join(changed)})")
+    return changed
+
+
+def apply_campaign_words_2026_11_25(conn):
+    """Once: item 9 of the same yes, made to the three 2027 retreats campaigns.
+
+    Its own flag, apart from the letters': the letters' swap ran on the live
+    site on 25 Nov and set its flag, while the campaigns, stored with "\\r\\n",
+    did not match (see campaign_words_2026_11_25). Returns what changed, by
+    name."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'campaign_words_2026_11_25'").fetchone():
+        return []
+    changed = []
+    for row in conn.execute("SELECT id, name, body FROM campaign_templates").fetchall():
+        body = campaign_words_2026_11_25(row["body"] or "")
+        if body != (row["body"] or ""):
+            conn.execute("UPDATE campaign_templates SET body = ? WHERE id = ?", (body, row["id"]))
+            changed.append(f"campaign: {row['name']}")
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('campaign_words_2026_11_25', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        log_line(f"[letters] the 2027 retreats campaigns: {len(changed)} changed "
+                 f"({', '.join(changed)})")
     return changed
 
 
@@ -9279,6 +9468,10 @@ def init_db():
     come_back_letters_take_birthdays(conn)
     # 16 Oct: five guest rooms and no new beds, in stored letters too.
     apply_letter_words_2026_10_16(conn)
+    # 25 Nov: the letters' review, in stored letters and the retreats campaigns.
+    # After 16 Oct's, whose "Five guest rooms" it turns into the count.
+    apply_letter_words_2026_11_25(conn)
+    apply_campaign_words_2026_11_25(conn)
 
     for slug, name, description, areas, full, order in DEFAULT_ACCESS_PRESETS:
         if not conn.execute("SELECT 1 FROM access_presets WHERE slug = ?", (slug,)).fetchone():
