@@ -214,6 +214,7 @@ SUITES = [
     "test_whats_on_through_the_year",
     "test_whats_on_kept_up",
     "test_stay_occasions",
+    "test_retreat_celebrations",
     "test_getting_here",
     "test_ateliers",
     "test_atelier_recap",

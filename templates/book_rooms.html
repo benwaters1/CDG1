@@ -176,6 +176,14 @@
         {%- if blocking_atelier and not ateliers %} — a retreat holds the whole château {{ date_range(blocking_atelier.start_date, blocking_atelier.end_date) }}; it is free again from the day after{% endif %}{%- endif %}</p>
     <a href="{{ url_for('book_rooms') }}" class="g-searched__clear">Clear dates</a>
   </div>
+  {#- 25 Nov 2026: why the price is higher. The occasions these nights touch (book_rooms, from stay_occasions_on_stay,
+      the booking form's own reader), each with its own page; each card below says how many of its nights one
+      priced. test_stay_occasions holds it. -#}
+  {% if occasions_here is defined and occasions_here %}
+  {% for o in occasions_here %}
+  <p class="g-p g-searched__occasion">Your dates include <a href="{{ o.url }}">{{ o.name }}</a> ({{ date_range(o.first_night, o.departure) }}): those nights are priced for the occasion.</p>
+  {% endfor %}
+  {% endif %}
   {#- 23 Nov 2026 (owner): an atelier on these nights is offered, not just given as the reason. -#}
   {% if ateliers %}{% from '_atelier_on_your_dates.html' import atelier_on_your_dates with context %}{{ atelier_on_your_dates(ateliers) }}{% endif %}
   {% endif %}
@@ -259,6 +267,8 @@
                figure, so printing both says nothing twice. Nights at different
                rates say the figure is an average, not what each night costs. #}
             {% if _n > 1 %}<span class="g-card__per">€{{ ('{:,.0f}' if _pn == (_pn|int) else '{:,.2f}').format(_pn) }} per room, a night{{ ' on average' if _rq and _rq.varies }}</span>{% endif %}
+            {#- 25 Nov: the nights an occasion priced, under the nightly figure ("includes 2 nights of Easter"). -#}
+            {% for _on in (occasion_nights.get(room['id'], []) if occasion_nights is defined else []) %}<span class="g-card__per g-card__occasion">{{ _on }}</span>{% endfor %}
           {% else %}
             {#- 15 Oct (owner): with dates chosen, the price for THOSE dates. Needs room_quotes {room_id: {'per_night':..}} from
                 book_rooms() (see z16 README); without it the card keeps the standard 'From' price. -#}

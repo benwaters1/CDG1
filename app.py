@@ -8541,6 +8541,16 @@ def init_db():
                 until_date TEXT,
                 dismissed_at TEXT NOT NULL,
                 dismissed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL)"""),
+        # AN OCCASION ON A RETREAT'S NIGHTS (owner, 25 Nov 2026: "add those
+        # dates to the itineraries of the retreats, put on celebration for
+        # them"). One that cannot go on sale because a retreat has the house
+        # becomes that retreat's celebration instead: retreat_evening is the
+        # line that takes the evening's place on the retreat's page, and
+        # retreat_night the night it falls on. See retreat_celebrations.
+        ("stay_occasions_retreat_evening",
+         "ALTER TABLE stay_occasions ADD COLUMN retreat_evening TEXT"),
+        ("stay_occasions_retreat_night",
+         "ALTER TABLE stay_occasions ADD COLUMN retreat_night TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -10134,6 +10144,7 @@ NAV_AREAS = {
         "admin_whats_on_save", "admin_stay_occasions", "admin_stay_occasion",
         "admin_stay_occasion_new", "admin_stay_occasion_write", "admin_stay_occasion_delete",
         "admin_stay_occasion_suggestion_create", "admin_stay_occasion_suggestion_dismiss",
+        "admin_stay_occasion_retreat",
         "assign_email_flag", "delete_gallery_photo", "delete_social_post",
         "dismiss_email_flag", "edit_gallery_photo", "edit_gallery_section", "edit_social_post",
         "mark_social_post_posted", "new_social_post", "record_texting_consent", "resolve_email_flag",
@@ -10633,6 +10644,11 @@ OWNER_MENU = [
             _nav("breakfast", "Breakfast", "coffee", phone=True),
             _nav("extras_due_page", "Extras Due", "receipt"),
             _nav("occasions_page", "Occasions", "star"),
+            # Beside it (owner, 25 Nov 2026: he could not find them): the
+            # occasions sold to guests, a different page from the preps above.
+            # Owner-only as the page is; build_nav draws it for nobody else.
+            _nav("admin_stay_occasions", "Stay Occasions", "star",
+                 ("admin_stay_occasion", "admin_stay_occasion_new")),
             _nav("all_transfers", "Transfers", "truck",
                  ("vehicle_transfers_page", "new_vehicle_transfer")),
             _nav("door_lock_page", "Front Door", "lock"),
@@ -12553,15 +12569,24 @@ def retreat_week(workshop, sittings=()):
     # sittings cannot hold one sitting's 14 July.
     first_days = {start for start, _end in spans}
     dates = []
+    # And the same days in full ("2027-06-26"), for an occasion that MOVES
+    # (owner, 25 Nov: L'Ariégeoise, the last Saturday of June or so). Keyed by
+    # month and day it would fire on 26 June every year; keyed by the full
+    # date it fires on the one it falls on. The template looks the full date
+    # up first. The owner's own celebrations (retreat_celebrations) are keyed
+    # this way too.
+    full = []
     if nights and len(first_days) == 1:
         first_day = first_days.pop()
-        dates = [(first_day + timedelta(days=n)).strftime("%m-%d") for n in range(nights + 1)]
+        days_here = [first_day + timedelta(days=n) for n in range(nights + 1)]
+        dates = [d.strftime("%m-%d") for d in days_here]
+        full = [d.isoformat() for d in days_here]
     # The summer plans have the pool, the terrace, the river and films under the
     # stars, so they are for sittings that start May to September. A retreat
     # set in winter with one of them would promise all of that in December; it
     # gets the plain outline instead. No sittings: nothing to go on, so summer.
     summer = all(SUMMER_MONTHS[0] <= start.month <= SUMMER_MONTHS[1] for start, _end in spans)
-    return {"nights": nights, "days": days, "summer": summer, "dates": dates}
+    return {"nights": nights, "days": days, "summer": summer, "dates": dates, "full": full}
 
 
 app.jinja_env.globals["retreat_week"] = retreat_week
@@ -13965,7 +13990,10 @@ def occasions_page():
         ],
         default_sort="soonest",
     )
+    # The other page called Occasions, the dates sold to guests (owner, 25 Nov
+    # 2026), linked from the top for whoever may open it.
     return render_template("occasions.html", board=board, lv=lv, owner=owner,
+                           stay_occasions_open=bool(user and can_reach(user, "admin_stay_occasions")),
                            extras=extras, chosen_extra=chosen_extra,
                            checklist=checklist, today=house_today(),
                            booking_href=booking_href)
@@ -48476,9 +48504,9 @@ PALETTE_PAGES = [
     # the routing table instead.
     #
     # Keywords are what a person would actually type, not the page's title.
-    ("Occasions at Gudanes", "admin_stay_occasions",
-     "occasions christmas easter new year tour de france bastille guest chef pop up "
-     "suggested dates stay the night special price"),
+    ("Stay occasions", "admin_stay_occasions",
+     "stay occasions at gudanes christmas easter new year tour de france bastille guest chef pop up "
+     "suggested dates stay the night special price retreat celebration"),
     ("What's on locally", "admin_whats_on",
      "markets events local nearby whats on things to do village"),
     ("Money ahead", "money_ahead_page",
@@ -53249,7 +53277,9 @@ def stay_occasion_clashes(conn, first_night, last_night, own_id=None):
             why = f"A private stay holds the château {format_date_range(s['start_date'], s['end_date'])}"
         else:
             why = f"{s['title']} runs {format_date_range(s['start_date'], s['end_date'])}"
-        out.append({"why": why, "blocks": True})
+        # "retreat": a clash that can still be celebrated, on the retreat's
+        # own days (occasion_retreat_days). Nothing else here can.
+        out.append({"why": why, "blocks": True, "retreat": True})
     for e in conn.execute(
             """SELECT preferred_date, end_date, event_type FROM event_inquiries
                 WHERE status = 'confirmed' AND preferred_date IS NOT NULL
@@ -53675,6 +53705,10 @@ def stay_occasion_suggestions_open(conn, today=None):
         row = dict(r)
         row["clashes"] = stay_occasion_clashes(conn, r["first_night"], r["last_night"])
         row["blocked"] = stay_occasion_blocked(row["clashes"])
+        # Blocked by retreats and nothing else: it cannot be sold, but it can
+        # be the retreat's celebration (owner, 25 Nov), so the page offers that.
+        row["on_a_retreat"] = bool(row["blocked"]) and all(
+            c.get("retreat") for c in row["clashes"] if c["blocks"])
         out.append(row)
     return out
 
@@ -53853,11 +53887,134 @@ def stay_occasions_on_stay(conn, arrival, departure):
     if not (arrival and departure) or departure <= arrival:
         return []
     return [{"name": r["name"], "chef_line": chef_line(r),
-             "url": url_for("stay_occasion_page", slug=r["slug"])}
+             "url": url_for("stay_occasion_page", slug=r["slug"]),
+             "first_night": r["first_night"], "departure": stay_occasion_departure(r)}
             for r in conn.execute(
                 """SELECT * FROM stay_occasions WHERE status = 'live'
                      AND first_night < ? AND last_night >= ? ORDER BY first_night""",
                 (departure.isoformat(), arrival.isoformat()))]
+
+
+# --- An occasion on a retreat's nights -------------------------------------------
+#
+# The owner, 25 Nov 2026, of the two first occasions a retreat had the house
+# for: "add those dates to the itineraries of the retreats, put on celebration
+# for them". An occasion that cannot go on sale because a retreat holds the
+# nights is not lost: its page says which retreat and which day, and takes one
+# line for that evening, which the retreat's own day-by-day then shows in place
+# of the evening it had (_ws_copy.html, beside its OCC). The line is the switch:
+# written, it shows, whatever the occasion's status; emptied, it is gone.
+#
+# A line because every bullet on a retreat's days is one (owner, 11 Nov), and
+# test_retreat_days holds them to twelve words.
+RETREAT_EVENING_WORDS = 12
+
+
+def _occasion_title(name):
+    """The occasion as a retreat's day names it: "The kitchen, and L’Ariégeoise".
+    The typographic apostrophe the public pages use, and a leading "The"
+    lower-cased, so "The Fifteenth of August" sits after "and"."""
+    title = " ".join((name or "").split()).replace("'", "’")
+    return "the " + title[4:] if title.startswith("The ") else title
+
+
+def occasion_short_name(name):
+    """The occasion inside a sentence on the booking page: "includes 2 nights
+    of Easter", not "of Easter at Gudanes" -- the guest is booking Gudanes."""
+    title = _occasion_title(name)
+    return re.sub(r"\s+at Gudanes$", "", title, flags=re.I) or title
+
+
+def retreat_celebrations(conn=None):
+    """{"2027-06-26": {"evening", "last", "title", "title_html"}}: the owner's
+    celebrations, read by _ws_copy.html alongside its own OCC and ahead of it.
+
+    "evening" and "title_html" are already escaped (the template draws a day's
+    bullets |safe, as its own carry italics); "title" is plain, for the heading,
+    which escapes. No "last": on a retreat's last night the banquet stays,
+    named for the occasion. Two on one night: the one saved last wins.
+
+    A page must not fail over this, so an error is logged and nothing is added
+    -- the retreat's days are then exactly as they were without it.
+    """
+    own = conn is None
+    rows = []
+    try:
+        if own:
+            conn = get_db()
+        rows = conn.execute(
+            """SELECT name, retreat_evening, retreat_night FROM stay_occasions
+                WHERE TRIM(COALESCE(retreat_evening, '')) != '' AND retreat_night IS NOT NULL
+                ORDER BY updated_at, id""").fetchall()
+    except sqlite3.Error as e:
+        log_line(f"[retreat celebrations] not read: {e}")
+    finally:
+        if own and conn is not None:
+            conn.close()
+    out = {}
+    for r in rows:
+        title = _occasion_title(r["name"])
+        out[r["retreat_night"]] = {"evening": str(html_escape(" ".join(r["retreat_evening"].split()), quote=False)),
+                                   "last": None, "title": title,
+                                   "title_html": str(html_escape(title, quote=False))}
+    return out
+
+
+app.jinja_env.globals["retreat_celebrations"] = retreat_celebrations
+
+
+def occasion_retreat_days(conn, occ):
+    """The retreats (and private stays) this occasion's nights fall on, and on
+    which of their days: [{workshop, title, url, start, end, nights:
+    [{night, day, weekday}], last_day}]. A sitting's evenings run from its
+    first day to the night before it ends: the end date is departure, with no
+    evening to celebrate.
+    """
+    a, b = parse_date(occ["first_night"]), parse_date(occ["last_night"])
+    if not (a and b) or b < a:
+        return []
+    out = []
+    for s in conn.execute(
+            f"""SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.*
+                  FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                 WHERE {SESSION_IS_LIVE} AND workshop_sessions.start_date <= ?
+                   AND workshop_sessions.end_date > ?
+                 ORDER BY workshop_sessions.start_date""", (b.isoformat(), a.isoformat())):
+        start, end = parse_date(s["start_date"]), parse_date(s["end_date"])
+        if not (start and end):
+            continue
+        nights = []
+        night = max(a, start)
+        while night <= b and night < end:
+            nights.append({"night": night.isoformat(), "day": (night - start).days + 1,
+                           "weekday": night.strftime("%A")})
+            night += timedelta(days=1)
+        if nights:
+            out.append({"workshop": s, "title": s["title"], "url": workshop_page_url(s),
+                        "start": s["start_date"], "end": s["end_date"], "nights": nights,
+                        "last_day": (end - start).days})
+    return out
+
+
+def retreat_celebration_shown(conn, workshop, evening, name):
+    """Whether the retreat's own page draws this celebration -- worked out by
+    drawing that page's day-by-day exactly as the page does, rather than by a
+    second copy of its rules (which plans exist, for how many nights, in which
+    months, and when its sittings' dates name the days). A retreat in winter,
+    or one whose sittings start on different dates, has no dated days, and
+    the owner is told so rather than shown a promise the page does not keep.
+    """
+    rows = [{"session": s} for s in public_sittings(conn, workshop["id"], house_today())]
+    try:
+        html = app.jinja_env.from_string(
+            "{% from '_ws_copy.html' import ws_journey with context %}"
+            "{{ ws_journey(w, sittings=rows) }}").render(w=workshop, rows=rows)
+    except Exception as e:                      # a page that cannot be drawn shows nothing
+        log_line(f"[retreat celebrations] {workshop['title']} not drawn: {e}")
+        return False
+    said = str(html_escape(" ".join((evening or "").split()), quote=False))
+    named = str(html_escape(_occasion_title(name), quote=False)) + ":"
+    return bool(said) and (said in html or named in html)
 
 
 # --- The owner's page -----------------------------------------------------------
@@ -53980,6 +54137,25 @@ FIRST_OCCASIONS = [
      "nights, with breakfast each morning."),
 ]
 
+# Each its own photograph, as the owner set them on live on 25 Nov 2026: eight
+# of these had shared the open-window mountains picture default_occasion_photo
+# falls back to. The seed runs once and skips what exists, so this only
+# reaches a fresh database -- which would otherwise get the old ones back.
+# Christmas, New Year, Valentine's, the Tour de France and Bastille 2028 keep
+# the one default_occasion_photo gives them by name. Winter in the Mountains
+# has none here: the owner dismissed it the same day.
+FIRST_OCCASION_PHOTOS = {
+    "Easter at Gudanes": "img/retreats/roast-on-old-china.jpg",
+    "Spring Holidays": "img/retreats/garden-in-bloom.jpg",
+    "The Ascension Weekend": "img/retreats/long-lunch-outdoors.jpg",
+    "Pentecost Weekend": "img/dining/terrace-long-table.jpg",
+    "Mother's Day at Gudanes": "img/dining/flowers-in-a-jar.jpg",
+    "Les Grands Chemins, Ax-les-Thermes": "img/retreats/film-under-the-stars.jpg",
+    "The Fifteenth of August": "img/retreats/lawn-afternoon.jpg",
+    "All Saints' Weekend": "img/retreats/foix-castle.jpg",
+    "The Armistice Weekend": "img/retreats/candlelit-dinner-salon.jpg",
+}
+
 FIRST_SUGGESTIONS = [
     ("first-list:ariegeoise:2027", "L'Ariégeoise", "2027-06-25", "2027-06-26",
      "The Pyrénées cyclosportive from Tarascon, Saturday 26 June 2027.",
@@ -54003,7 +54179,7 @@ def seed_first_occasions(conn):
         occ_id = create_stay_occasion(
             conn, name=name, first_night=first, last_night=last, why=why,
             source_url=SCHOOL_HOLIDAYS_SOURCE if source == "SCHOOL" else source,
-            write=lambda occ: "")
+            photo=FIRST_OCCASION_PHOTOS.get(name), write=lambda occ: "")
         conn.execute("UPDATE stay_occasions SET description = ?, description_edited = 1 WHERE id = ?",
                      (words, occ_id))
         made += 1
@@ -54161,8 +54337,17 @@ def _render_occasion_form(conn, occ, values=None, confirm_write=None):
                           (SELECT dinner_date FROM stay_occasion_dinners WHERE occasion_id = ?)
                     GROUP BY dinner_date""", (occ["id"],)):
             covers[r["dinner_date"]] = r["n"]
+    # On a retreat's nights: which retreat, which day, and -- once the owner
+    # has written the evening -- whether its page really shows it.
+    retreat_days = occasion_retreat_days(conn, occ) if occ["id"] else []
+    celebrated = (occ["retreat_evening"] or "").strip() if occ["id"] else ""
+    for r in retreat_days:
+        r["here"] = next((n for n in r["nights"] if n["night"] == occ["retreat_night"]), None)
+        r["shown"] = bool(celebrated and r["here"]) and retreat_celebration_shown(
+            conn, r["workshop"], celebrated, occ["name"])
     return render_template(
         "admin_stay_occasion.html", occ=occ, v=values, rooms=rooms, clashes=clashes,
+        retreat_days=retreat_days, evening_words=RETREAT_EVENING_WORDS,
         photos=stay_occasion_photos(), kinds=STAY_OCCASION_KINDS,
         nights=[n.isoformat() for n in stay_occasion_nights(occ)] if occ["first_night"] else [],
         dinners=set((values or {}).get("dinners") or (stay_occasion_dinners(occ, conn) if occ["id"] else [])),
@@ -54176,7 +54361,8 @@ _BLANK_OCCASION = {"id": None, "name": "", "slug": "", "first_night": "", "last_
                    "status": "draft", "sort_order": 0, "description": "", "description_edited": 0,
                    "chef_name": "", "chef_bio": "", "chef_bio_edited": 0, "chef_photo": "",
                    "chef_link": "", "dinner_time": "20:00", "dinner_covers": None,
-                   "dinner_price": None, "outside_diners": 0}
+                   "dinner_price": None, "outside_diners": 0, "retreat_evening": None,
+                   "retreat_night": None}
 
 
 @app.route("/admin/stay-occasions/new", methods=["GET", "POST"])
@@ -54345,6 +54531,53 @@ def admin_stay_occasion_write(occ_id):
     return redirect(url_for("admin_stay_occasion", occ_id=occ_id) + "#" + field)
 
 
+@app.route("/admin/stay-occasions/<int:occ_id>/retreat", methods=["POST"])
+@owner_required
+def admin_stay_occasion_retreat(occ_id):
+    """The evening this occasion gives the retreat it falls on (owner, 25 Nov
+    2026). Saved on its own, not with the rest of the form, because it is
+    for an occasion that cannot be sold: its prices and words do not have to
+    be right for this to be. Said back as what the retreat's page now shows,
+    checked by drawing it, not as "saved"."""
+    conn = get_db()
+    occ = _occasion_or_404(conn, occ_id)
+    back = redirect(url_for("admin_stay_occasion", occ_id=occ_id) + "#retreat")
+    text = " ".join((request.form.get("retreat_evening") or "").split())
+    night = (request.form.get("retreat_night") or "").strip()
+    on = {n["night"]: (r, n) for r in occasion_retreat_days(conn, occ) for n in r["nights"]}
+    problem = None
+    if text and len(text.split()) > RETREAT_EVENING_WORDS:
+        problem = (f"Keep it to a line, as every day on a retreat's page is: {RETREAT_EVENING_WORDS} "
+                   f"words at most. That was {len(text.split())}.")
+    elif text and not on:
+        problem = f"None of {occ['name']}'s nights falls on a retreat, so there is no evening to give it."
+    elif text and night not in on:
+        problem = "Choose the night it falls on."
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return back
+    conn.execute("UPDATE stay_occasions SET retreat_evening = ?, retreat_night = ?, updated_at = ? "
+                 "WHERE id = ?", (text or None, night if text else None,
+                                  datetime.now(timezone.utc).isoformat(), occ_id))
+    log_audit(conn, "stay_occasion_retreat_evening", target=occ["name"],
+              details=f"{night}: {text}" if text else "taken off the retreat")
+    conn.commit()
+    if not text:
+        conn.close()
+        flash(f"{occ['name']} is off the retreat: that evening is the retreat's own again.", "success")
+        return back
+    r, n = on[night]
+    shown = retreat_celebration_shown(conn, r["workshop"], text, occ["name"])
+    conn.close()
+    if shown:
+        flash(f"{r['title']}, day {n['day']}, now celebrates {occ['name']}.", "success")
+    else:
+        flash(f"Saved, but {r['title']}'s page does not show it: its day-by-day has no dated "
+              f"{n['weekday']} to put it on. See the note under the line.", "error")
+    return back
+
+
 @app.route("/admin/stay-occasions/<int:occ_id>/delete", methods=["POST"])
 @owner_required
 def admin_stay_occasion_delete(occ_id):
@@ -54374,8 +54607,15 @@ def admin_stay_occasion_suggestion_create(sid):
         conn.close()
         flash("That suggestion has already been dealt with.", "error")
         return redirect(url_for("admin_stay_occasions"))
-    blocked = stay_occasion_blocked(stay_occasion_clashes(conn, s["first_night"], s["last_night"]))
-    if blocked:
+    clashes = stay_occasion_clashes(conn, s["first_night"], s["last_night"])
+    blocked = stay_occasion_blocked(clashes)
+    # "Celebrate on the retreat" (owner, 25 Nov): one that only a retreat
+    # blocks is drafted all the same -- it still cannot go on sale, since
+    # _go_live_problem asks the same question -- so that its page can take the
+    # evening the retreat shows. Anything else that blocks it still refuses.
+    celebrate = request.form.get("celebrate") == "1"
+    on_a_retreat = bool(blocked) and all(c.get("retreat") for c in clashes if c["blocks"])
+    if blocked and not (celebrate and on_a_retreat):
         conn.close()
         flash(f"Not created: {s['name']} clashes. {'; '.join(blocked)}.", "error")
         return redirect(url_for("admin_stay_occasions"))
@@ -54386,9 +54626,14 @@ def admin_stay_occasion_suggestion_create(sid):
     conn.execute("""UPDATE stay_occasion_suggestions SET status = 'created', occasion_id = ?,
                         decided_at = ?, decided_by_user_id = ? WHERE id = ?""",
                  (occ_id, datetime.now(timezone.utc).isoformat(), current_user()["id"], sid))
-    log_audit(conn, "stay_occasion_created", target=s["name"], details="from a suggestion")
+    log_audit(conn, "stay_occasion_created", target=s["name"],
+              details="from a suggestion, to celebrate on a retreat" if blocked else "from a suggestion")
     conn.commit()
     conn.close()
+    if blocked:
+        flash(f"{s['name']} is drafted so a retreat can celebrate it. It cannot go on sale while "
+              f"{'; '.join(blocked)}. Write its evening below.", "success")
+        return redirect(url_for("admin_stay_occasion", occ_id=occ_id) + "#retreat")
     flash(f"{s['name']} is drafted at the usual rates plus {money(STAY_OCCASION_UPLIFT, 0)}. "
           "Check it, then put it on sale.", "success")
     return redirect(url_for("admin_stay_occasion", occ_id=occ_id))
@@ -57782,6 +58027,33 @@ def book_rooms():
                 room_quotes[room["id"]] = {
                     "total": total, "per_night": round(total / stay_nights, 2),
                     "varies": len(nightly) > 1}
+    # WHY THE PRICE IS HIGHER (25 Nov 2026). Easter's nights were charged at
+    # Easter's price, and the booking form named it, but the results said only
+    # "€320 per room, a night" -- dearer than the €270 seen elsewhere on the
+    # site, with no reason. The occasions these nights touch are said above the
+    # cards, from the same reader the booking form uses; and each card whose
+    # figure an occasion changes says how many of its nights it priced. A night
+    # at the occasion's price that is the room's usual price changed nothing,
+    # so it is not counted.
+    occasions_here = stay_occasions_on_stay(conn, arrival, departure) if searched else []
+    occasion_nights = {}
+    if occasions_here:
+        for room in rooms:
+            if room["id"] not in room_quotes:
+                continue
+            counts = {}
+            for i in range(stay_nights):
+                night = arrival + timedelta(days=i)
+                price = live_occasion_price(conn, room["id"], night.isoformat())
+                if price is None or price == usual_night_rate(conn, room, night):
+                    continue
+                occ = live_occasion_on(conn, night.isoformat())
+                if occ:
+                    counts[occ["name"]] = counts.get(occ["name"], 0) + 1
+            if counts:
+                occasion_nights[room["id"]] = [
+                    f"includes {n} night{'' if n == 1 else 's'} of {occasion_short_name(name)}"
+                    for name, n in counts.items()]
     nothing_available = searched and rooms and not any(availability.values())
     # A blind "no rooms free" sends somebody away from a house that is free the
     # day after the atelier ends. Only asked when every room said no.
@@ -57829,6 +58101,7 @@ def book_rooms():
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
         resting=resting,
         stay_nights=stay_nights, room_quotes=room_quotes,
+        occasions_here=occasions_here, occasion_nights=occasion_nights,
         nothing_available=nothing_available, next_free=next_free,
         blocking_atelier=blocking_atelier, ateliers=ateliers,
         weather=weather,
