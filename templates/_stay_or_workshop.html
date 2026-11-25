@@ -63,13 +63,8 @@
     <article class="g-sow__col g-sow__col--full{% if here == 'workshop' %} is-here{% endif %}">
       <p class="g-sow__k">A Retreat</p>
       <h3 class="g-sow__t"><em lang="fr">La vie de château</em></h3>
-      <ul class="g-sow__list">
-        <li>Your room in the château, and a small company to share it</li>
-        <li>The château’s gourmet chefs: every meal, and drinks included, from wine and cocktails to local sparkling wine</li>
-        <li>The kitchen, the markets and brocantes, Foix and the caves, the restoration</li>
-        <li>Long lunches, candlelit dinners, a night to dress for, and dancing</li>
-        <li class="g-sow__more">And much more: the house as it was, full of life</li>
-      </ul>
+      {#- 24 Nov 2026: what a retreat includes, from the one list the private retreat page draws too. -#}
+      {% from '_retreat_included.html' import retreat_included %}{{ retreat_included() }}
       <p class="g-sow__foot">Three to seven nights. <i>Nothing to pay at the end.</i></p>
       {% if here != 'workshop' %}<p class="g-sow__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the retreats</a></p>{% endif %}
     </article>

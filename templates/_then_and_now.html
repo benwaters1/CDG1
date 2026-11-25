@@ -1,0 +1,50 @@
+{#- THEN AND NOW: the château's rooms before the work and now, each pair one frame with a handle to drag (24 Nov 2026).
+
+    The pairs and their script lived in restoration.html. BRIEF-private-retreat-and-images (3) asked for them on /gallery
+    too, where "Rooms That No Longer Look Like This" had no photographs at all, only words and two boxes; drawn from
+    here, the two pages show the same pairs and the slider is written once. The script runs once however many times
+    the macro is called on a page.
+
+    then_and_now(): the three pairs, as /restoration has had them since 12 Nov. -#}
+{#- THEN_NOW: (caption, [before, its alt], [now, its alt]). The addresses are written out whole, so the photo mirror
+    can read them here (hotlinked_urls). /gallery leaves these photographs out of The Restoration Story, so none
+    shows twice on that page. -#}
+{%- set THEN_NOW = [
+  ('The kitchen', ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2b9c1192-bf9a-40a9-8913-4bc98c8a43c7/Screenshot+2026-07-20+at+3.41.43+pm.png?format=1500w', 'The kitchen before the work, the floor gone'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a/Screenshot+2026-07-20+at+2.33.25+pm.png?format=1500w', 'The kitchen now']),
+  ('The bedrooms', ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1500w', 'A bedroom before the work'], ['https://cf.bstatic.com/xdata/images/hotel/max2048x2048/798764955.jpg?k=d8653db73b32b57205f0af9b550ee5ee521deae7ec1638ed4dafcc67057d01c9&o=', 'The King Room now']),
+  ('The vestibule and the staircase', ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/598861b7-9f24-4244-8420-468734c135e5/Before+The+Work+-+Vestibule+Ceiling.JPG?format=1500w', 'The vestibule ceiling before the work'], ['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582048556502-Y4CQSLCRE46OVEXBQUES/Grand+Vestibule+-+Wider+Angle.jpg?format=1500w', 'The grand vestibule now, the staircase and the arches'])] -%}
+{% macro then_and_now() %}
+<div class="g-tn g-tn--three">
+{%- for cap, before, now in THEN_NOW %}
+  <div class="g-tn__pair" data-slider>
+    <figure><img src="{{ before[0]|safe }}" alt="{{ before[1] }}" loading="lazy"><span class="g-tn__tag">Before</span></figure>
+    <figure><img src="{{ now[0]|safe }}" alt="{{ now[1] }}" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
+    <p class="g-tn__cap">{{ cap }}</p>
+  </div>
+{%- endfor %}
+</div>
+{#- 12 Oct (owner: "yes" to a before-and-after slider). 13 Oct (owner: "not all of them, just a few"): only the pairs marked data-slider -
+    the kitchen, the vestibule and the bathrooms - become one frame: the "now" photograph over the "before",
+    revealed by dragging a handle - a real range input, so a phone swipes it, the arrow keys move it and a screen reader
+    announces it. Without the script the pairs stay side by side. The dining-room trio keeps its own layout. -#}
+<script>
+(function(){
+  if (window.__gThenNow) return; window.__gThenNow = true;
+  document.querySelectorAll('.g-tn__pair[data-slider]').forEach(function(p){
+    var figs = p.querySelectorAll(':scope > figure'); if (figs.length !== 2) return;
+    var frame = document.createElement('div'); frame.className = 'g-tn__frame';
+    p.insertBefore(frame, figs[0]); frame.appendChild(figs[0]); frame.appendChild(figs[1]);
+    figs[0].classList.add('g-tn__b'); figs[1].classList.add('g-tn__a');
+    var r = document.createElement('input'); r.type = 'range'; r.min = 0; r.max = 100; r.value = 50; r.step = 1;
+    r.className = 'g-tn__range';
+    var cap = p.querySelector('.g-tn__cap');
+    r.setAttribute('aria-label', 'Compare before and now' + (cap ? ': ' + cap.textContent.trim() : ''));
+    var h = document.createElement('span'); h.className = 'g-tn__handle'; h.setAttribute('aria-hidden', 'true');
+    frame.appendChild(r); frame.appendChild(h);
+    function set(v){ frame.style.setProperty('--pos', v + '%'); }
+    r.addEventListener('input', function(){ set(r.value); }); set(50);
+    p.classList.add('g-tn__pair--slide');
+  });
+})();
+</script>
+{% endmacro %}
