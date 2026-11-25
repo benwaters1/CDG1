@@ -529,6 +529,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_meta_token_enabled": "1",
     "automation_social_horizon_days": "28",
     "automation_maintenance_enabled": "1",
+    # On: it sends only a letter the owner wrote and set a time for on a
+    # group's page, and guest mail held by the switch stays held.
+    "automation_group_letters_enabled": "1",
 }
 
 # What a room stay asks for up front, and when the rest falls due.
@@ -7897,6 +7900,30 @@ def init_db():
         # campaign, from the news subdomain -- so sending it later sends it as
         # it was written rather than from the address booking mail relies on.
         ("email_outbox_sender", "ALTER TABLE email_outbox ADD COLUMN sender TEXT"),
+        # A letter to a group set to go later (25 Nov 2026, owner: "add schedule
+        # to write to the group for workshops"). Who it goes to is worked out
+        # when it goes, not when it was set: the list on the day is the list.
+        ("group_letters_scheduled",
+         """CREATE TABLE IF NOT EXISTS group_letters_scheduled (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              kind TEXT NOT NULL,
+              group_key TEXT NOT NULL,
+              subject TEXT NOT NULL,
+              body TEXT NOT NULL,
+              send_at TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'scheduled',
+              created_by INTEGER,
+              created_at TEXT NOT NULL,
+              sent_at TEXT,
+              sent_count INTEGER,
+              result TEXT,
+              result_ok INTEGER)"""),
+        ("group_letters_scheduled_due",
+         "CREATE INDEX IF NOT EXISTS group_letters_scheduled_due "
+         "ON group_letters_scheduled(status, send_at)"),
+        # The formatted letter (25 Nov 2026, the bulk email's toolbar), beside its plain copy.
+        ("group_letters_scheduled_body_html",
+         "ALTER TABLE group_letters_scheduled ADD COLUMN body_html TEXT"),
         ("workshop_transactions_stripe_ref_once",
          "CREATE UNIQUE INDEX IF NOT EXISTS workshop_transactions_stripe_ref_once "
          "ON workshop_transactions(stripe_ref) WHERE stripe_ref IS NOT NULL"),
@@ -8541,6 +8568,16 @@ def init_db():
                 until_date TEXT,
                 dismissed_at TEXT NOT NULL,
                 dismissed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL)"""),
+        # AN OCCASION ON A RETREAT'S NIGHTS (owner, 25 Nov 2026: "add those
+        # dates to the itineraries of the retreats, put on celebration for
+        # them"). One that cannot go on sale because a retreat has the house
+        # becomes that retreat's celebration instead: retreat_evening is the
+        # line that takes the evening's place on the retreat's page, and
+        # retreat_night the night it falls on. See retreat_celebrations.
+        ("stay_occasions_retreat_evening",
+         "ALTER TABLE stay_occasions ADD COLUMN retreat_evening TEXT"),
+        ("stay_occasions_retreat_night",
+         "ALTER TABLE stay_occasions ADD COLUMN retreat_night TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -10134,6 +10171,7 @@ NAV_AREAS = {
         "admin_whats_on_save", "admin_stay_occasions", "admin_stay_occasion",
         "admin_stay_occasion_new", "admin_stay_occasion_write", "admin_stay_occasion_delete",
         "admin_stay_occasion_suggestion_create", "admin_stay_occasion_suggestion_dismiss",
+        "admin_stay_occasion_retreat",
         "assign_email_flag", "delete_gallery_photo", "delete_social_post",
         "dismiss_email_flag", "edit_gallery_photo", "edit_gallery_section", "edit_social_post",
         "mark_social_post_posted", "new_social_post", "record_texting_consent", "resolve_email_flag",
@@ -10239,7 +10277,7 @@ NAV_AREAS = {
     ],
     "workshops": [
         "call_off_workshop_session", "workshop_instructor_link",
-        "workshop_session_email", "workshop_session_statements",
+        "workshop_session_email", "workshop_session_statements", "bulk_email_hub",
         "send_workshop_registration_statement",
         "admin_workshop_feedback", "admin_workshop_registrations", "admin_workshop_waitlist",
         "admin_workshops", "admin_workshop", "cancel_workshop_registration_admin",
@@ -10633,6 +10671,11 @@ OWNER_MENU = [
             _nav("breakfast", "Breakfast", "coffee", phone=True),
             _nav("extras_due_page", "Extras Due", "receipt"),
             _nav("occasions_page", "Occasions", "star"),
+            # Beside it (owner, 25 Nov 2026: he could not find them): the
+            # occasions sold to guests, a different page from the preps above.
+            # Owner-only as the page is; build_nav draws it for nobody else.
+            _nav("admin_stay_occasions", "Stay Occasions", "star",
+                 ("admin_stay_occasion", "admin_stay_occasion_new")),
             _nav("all_transfers", "Transfers", "truck",
                  ("vehicle_transfers_page", "new_vehicle_transfer")),
             _nav("door_lock_page", "Front Door", "lock"),
@@ -10684,6 +10727,10 @@ OWNER_MENU = [
             _nav("admin_workshops", "Workshops & Sessions", "workshop"),
             _nav("admin_workshop_registrations", "Registrations", "approvals", (),
                  "pending_workshop_count"),
+            # 25 Nov 2026 (owner: "where do i send batch emails to workshop guests"): its own line,
+            # here and under Email, rather than a button three clicks down.
+            _nav("bulk_email_hub", "Send Bulk Email", "megaphone",
+                 ("workshop_session_email", "party_email", "dinner_email")),
             _nav("admin_workshop_waitlist", "Workshop Waitlist", "leave"),
             _nav("balances_to_collect", "Balances To Collect", "financial"),
             _nav("admin_workshop_feedback", "Workshop Feedback", "contacts"),
@@ -10759,6 +10806,7 @@ OWNER_MENU = [
     ("comms", "Website & Email", "megaphone", (), (), [
         ("Email", [
             _nav("admin_emails", "Guest Email", "contacts", ("edit_campaign_template",)),
+            _nav("bulk_email_hub", "Send Bulk Email", "megaphone"),
             _nav("management_email_templates", "Email Wording", "megaphone"),
             _nav("admin_guest_emails", "Guest Emails", "bell"),
             _nav("admin_email_outbox", "Held Email", "bell"),
@@ -12553,15 +12601,24 @@ def retreat_week(workshop, sittings=()):
     # sittings cannot hold one sitting's 14 July.
     first_days = {start for start, _end in spans}
     dates = []
+    # And the same days in full ("2027-06-26"), for an occasion that MOVES
+    # (owner, 25 Nov: L'Ariégeoise, the last Saturday of June or so). Keyed by
+    # month and day it would fire on 26 June every year; keyed by the full
+    # date it fires on the one it falls on. The template looks the full date
+    # up first. The owner's own celebrations (retreat_celebrations) are keyed
+    # this way too.
+    full = []
     if nights and len(first_days) == 1:
         first_day = first_days.pop()
-        dates = [(first_day + timedelta(days=n)).strftime("%m-%d") for n in range(nights + 1)]
+        days_here = [first_day + timedelta(days=n) for n in range(nights + 1)]
+        dates = [d.strftime("%m-%d") for d in days_here]
+        full = [d.isoformat() for d in days_here]
     # The summer plans have the pool, the terrace, the river and films under the
     # stars, so they are for sittings that start May to September. A retreat
     # set in winter with one of them would promise all of that in December; it
     # gets the plain outline instead. No sittings: nothing to go on, so summer.
     summer = all(SUMMER_MONTHS[0] <= start.month <= SUMMER_MONTHS[1] for start, _end in spans)
-    return {"nights": nights, "days": days, "summer": summer, "dates": dates}
+    return {"nights": nights, "days": days, "summer": summer, "dates": dates, "full": full}
 
 
 app.jinja_env.globals["retreat_week"] = retreat_week
@@ -13966,7 +14023,10 @@ def occasions_page():
         ],
         default_sort="soonest",
     )
+    # The other page called Occasions, the dates sold to guests (owner, 25 Nov
+    # 2026), linked from the top for whoever may open it.
     return render_template("occasions.html", board=board, lv=lv, owner=owner,
+                           stay_occasions_open=bool(user and can_reach(user, "admin_stay_occasions")),
                            extras=extras, chosen_extra=chosen_extra,
                            checklist=checklist, today=house_today(),
                            booking_href=booking_href)
@@ -41398,6 +41458,24 @@ def owner_home_warnings(conn, today):
         add("blocker", f"Mail to {fault['address']} is not arriving",
             house_inbox_fault_sentence(fault), 1, "mail_log", q=fault["address"])
 
+    # A GROUP LETTER SET FOR LATER THAT LEFT SOMEBODY OUT. Nobody is watching
+    # the page when it goes, so what it could not do is said here, for the
+    # fortnight after, linking to the group's page where the reason is written.
+    try:
+        missed = conn.execute(
+            """SELECT * FROM group_letters_scheduled
+                WHERE status = 'sent' AND result_ok = 0 AND sent_at >= ?
+                ORDER BY sent_at DESC""",
+            (house_moment(today - timedelta(days=14)),)).fetchall()
+    except sqlite3.Error:
+        missed = []
+    for r in missed[:3]:
+        endpoint, arg = GROUP_EMAIL_ENDPOINTS.get(r["kind"], (None, None))
+        if endpoint:
+            add("warn", f"“{r['subject']}”, set for later, did not reach everybody",
+                r["result"] or "", 1, endpoint,
+                **{arg: r["group_key"] if arg == "day" else int(r["group_key"])})
+
     # THE POLICE REGISTER, for guests already here: nobody recorded for some
     # of a party, or a foreign guest's fiche not yet signed (R. 814-1 wants it
     # signed on arrival). It closes itself: a fiche filled in or signed takes
@@ -48477,9 +48555,9 @@ PALETTE_PAGES = [
     # the routing table instead.
     #
     # Keywords are what a person would actually type, not the page's title.
-    ("Occasions at Gudanes", "admin_stay_occasions",
-     "occasions christmas easter new year tour de france bastille guest chef pop up "
-     "suggested dates stay the night special price"),
+    ("Stay occasions", "admin_stay_occasions",
+     "stay occasions at gudanes christmas easter new year tour de france bastille guest chef pop up "
+     "suggested dates stay the night special price retreat celebration"),
     ("What's on locally", "admin_whats_on",
      "markets events local nearby whats on things to do village"),
     ("Money ahead", "money_ahead_page",
@@ -53250,7 +53328,9 @@ def stay_occasion_clashes(conn, first_night, last_night, own_id=None):
             why = f"A private stay holds the château {format_date_range(s['start_date'], s['end_date'])}"
         else:
             why = f"{s['title']} runs {format_date_range(s['start_date'], s['end_date'])}"
-        out.append({"why": why, "blocks": True})
+        # "retreat": a clash that can still be celebrated, on the retreat's
+        # own days (occasion_retreat_days). Nothing else here can.
+        out.append({"why": why, "blocks": True, "retreat": True})
     for e in conn.execute(
             """SELECT preferred_date, end_date, event_type FROM event_inquiries
                 WHERE status = 'confirmed' AND preferred_date IS NOT NULL
@@ -53676,6 +53756,10 @@ def stay_occasion_suggestions_open(conn, today=None):
         row = dict(r)
         row["clashes"] = stay_occasion_clashes(conn, r["first_night"], r["last_night"])
         row["blocked"] = stay_occasion_blocked(row["clashes"])
+        # Blocked by retreats and nothing else: it cannot be sold, but it can
+        # be the retreat's celebration (owner, 25 Nov), so the page offers that.
+        row["on_a_retreat"] = bool(row["blocked"]) and all(
+            c.get("retreat") for c in row["clashes"] if c["blocks"])
         out.append(row)
     return out
 
@@ -53854,11 +53938,134 @@ def stay_occasions_on_stay(conn, arrival, departure):
     if not (arrival and departure) or departure <= arrival:
         return []
     return [{"name": r["name"], "chef_line": chef_line(r),
-             "url": url_for("stay_occasion_page", slug=r["slug"])}
+             "url": url_for("stay_occasion_page", slug=r["slug"]),
+             "first_night": r["first_night"], "departure": stay_occasion_departure(r)}
             for r in conn.execute(
                 """SELECT * FROM stay_occasions WHERE status = 'live'
                      AND first_night < ? AND last_night >= ? ORDER BY first_night""",
                 (departure.isoformat(), arrival.isoformat()))]
+
+
+# --- An occasion on a retreat's nights -------------------------------------------
+#
+# The owner, 25 Nov 2026, of the two first occasions a retreat had the house
+# for: "add those dates to the itineraries of the retreats, put on celebration
+# for them". An occasion that cannot go on sale because a retreat holds the
+# nights is not lost: its page says which retreat and which day, and takes one
+# line for that evening, which the retreat's own day-by-day then shows in place
+# of the evening it had (_ws_copy.html, beside its OCC). The line is the switch:
+# written, it shows, whatever the occasion's status; emptied, it is gone.
+#
+# A line because every bullet on a retreat's days is one (owner, 11 Nov), and
+# test_retreat_days holds them to twelve words.
+RETREAT_EVENING_WORDS = 12
+
+
+def _occasion_title(name):
+    """The occasion as a retreat's day names it: "The kitchen, and L’Ariégeoise".
+    The typographic apostrophe the public pages use, and a leading "The"
+    lower-cased, so "The Fifteenth of August" sits after "and"."""
+    title = " ".join((name or "").split()).replace("'", "’")
+    return "the " + title[4:] if title.startswith("The ") else title
+
+
+def occasion_short_name(name):
+    """The occasion inside a sentence on the booking page: "includes 2 nights
+    of Easter", not "of Easter at Gudanes" -- the guest is booking Gudanes."""
+    title = _occasion_title(name)
+    return re.sub(r"\s+at Gudanes$", "", title, flags=re.I) or title
+
+
+def retreat_celebrations(conn=None):
+    """{"2027-06-26": {"evening", "last", "title", "title_html"}}: the owner's
+    celebrations, read by _ws_copy.html alongside its own OCC and ahead of it.
+
+    "evening" and "title_html" are already escaped (the template draws a day's
+    bullets |safe, as its own carry italics); "title" is plain, for the heading,
+    which escapes. No "last": on a retreat's last night the banquet stays,
+    named for the occasion. Two on one night: the one saved last wins.
+
+    A page must not fail over this, so an error is logged and nothing is added
+    -- the retreat's days are then exactly as they were without it.
+    """
+    own = conn is None
+    rows = []
+    try:
+        if own:
+            conn = get_db()
+        rows = conn.execute(
+            """SELECT name, retreat_evening, retreat_night FROM stay_occasions
+                WHERE TRIM(COALESCE(retreat_evening, '')) != '' AND retreat_night IS NOT NULL
+                ORDER BY updated_at, id""").fetchall()
+    except sqlite3.Error as e:
+        log_line(f"[retreat celebrations] not read: {e}")
+    finally:
+        if own and conn is not None:
+            conn.close()
+    out = {}
+    for r in rows:
+        title = _occasion_title(r["name"])
+        out[r["retreat_night"]] = {"evening": str(html_escape(" ".join(r["retreat_evening"].split()), quote=False)),
+                                   "last": None, "title": title,
+                                   "title_html": str(html_escape(title, quote=False))}
+    return out
+
+
+app.jinja_env.globals["retreat_celebrations"] = retreat_celebrations
+
+
+def occasion_retreat_days(conn, occ):
+    """The retreats (and private stays) this occasion's nights fall on, and on
+    which of their days: [{workshop, title, url, start, end, nights:
+    [{night, day, weekday}], last_day}]. A sitting's evenings run from its
+    first day to the night before it ends: the end date is departure, with no
+    evening to celebrate.
+    """
+    a, b = parse_date(occ["first_night"]), parse_date(occ["last_night"])
+    if not (a and b) or b < a:
+        return []
+    out = []
+    for s in conn.execute(
+            f"""SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.*
+                  FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                 WHERE {SESSION_IS_LIVE} AND workshop_sessions.start_date <= ?
+                   AND workshop_sessions.end_date > ?
+                 ORDER BY workshop_sessions.start_date""", (b.isoformat(), a.isoformat())):
+        start, end = parse_date(s["start_date"]), parse_date(s["end_date"])
+        if not (start and end):
+            continue
+        nights = []
+        night = max(a, start)
+        while night <= b and night < end:
+            nights.append({"night": night.isoformat(), "day": (night - start).days + 1,
+                           "weekday": night.strftime("%A")})
+            night += timedelta(days=1)
+        if nights:
+            out.append({"workshop": s, "title": s["title"], "url": workshop_page_url(s),
+                        "start": s["start_date"], "end": s["end_date"], "nights": nights,
+                        "last_day": (end - start).days})
+    return out
+
+
+def retreat_celebration_shown(conn, workshop, evening, name):
+    """Whether the retreat's own page draws this celebration -- worked out by
+    drawing that page's day-by-day exactly as the page does, rather than by a
+    second copy of its rules (which plans exist, for how many nights, in which
+    months, and when its sittings' dates name the days). A retreat in winter,
+    or one whose sittings start on different dates, has no dated days, and
+    the owner is told so rather than shown a promise the page does not keep.
+    """
+    rows = [{"session": s} for s in public_sittings(conn, workshop["id"], house_today())]
+    try:
+        html = app.jinja_env.from_string(
+            "{% from '_ws_copy.html' import ws_journey with context %}"
+            "{{ ws_journey(w, sittings=rows) }}").render(w=workshop, rows=rows)
+    except Exception as e:                      # a page that cannot be drawn shows nothing
+        log_line(f"[retreat celebrations] {workshop['title']} not drawn: {e}")
+        return False
+    said = str(html_escape(" ".join((evening or "").split()), quote=False))
+    named = str(html_escape(_occasion_title(name), quote=False)) + ":"
+    return bool(said) and (said in html or named in html)
 
 
 # --- The owner's page -----------------------------------------------------------
@@ -53981,6 +54188,25 @@ FIRST_OCCASIONS = [
      "nights, with breakfast each morning."),
 ]
 
+# Each its own photograph, as the owner set them on live on 25 Nov 2026: eight
+# of these had shared the open-window mountains picture default_occasion_photo
+# falls back to. The seed runs once and skips what exists, so this only
+# reaches a fresh database -- which would otherwise get the old ones back.
+# Christmas, New Year, Valentine's, the Tour de France and Bastille 2028 keep
+# the one default_occasion_photo gives them by name. Winter in the Mountains
+# has none here: the owner dismissed it the same day.
+FIRST_OCCASION_PHOTOS = {
+    "Easter at Gudanes": "img/retreats/roast-on-old-china.jpg",
+    "Spring Holidays": "img/retreats/garden-in-bloom.jpg",
+    "The Ascension Weekend": "img/retreats/long-lunch-outdoors.jpg",
+    "Pentecost Weekend": "img/dining/terrace-long-table.jpg",
+    "Mother's Day at Gudanes": "img/dining/flowers-in-a-jar.jpg",
+    "Les Grands Chemins, Ax-les-Thermes": "img/retreats/film-under-the-stars.jpg",
+    "The Fifteenth of August": "img/retreats/lawn-afternoon.jpg",
+    "All Saints' Weekend": "img/retreats/foix-castle.jpg",
+    "The Armistice Weekend": "img/retreats/candlelit-dinner-salon.jpg",
+}
+
 FIRST_SUGGESTIONS = [
     ("first-list:ariegeoise:2027", "L'Ariégeoise", "2027-06-25", "2027-06-26",
      "The Pyrénées cyclosportive from Tarascon, Saturday 26 June 2027.",
@@ -54004,7 +54230,7 @@ def seed_first_occasions(conn):
         occ_id = create_stay_occasion(
             conn, name=name, first_night=first, last_night=last, why=why,
             source_url=SCHOOL_HOLIDAYS_SOURCE if source == "SCHOOL" else source,
-            write=lambda occ: "")
+            photo=FIRST_OCCASION_PHOTOS.get(name), write=lambda occ: "")
         conn.execute("UPDATE stay_occasions SET description = ?, description_edited = 1 WHERE id = ?",
                      (words, occ_id))
         made += 1
@@ -54162,8 +54388,17 @@ def _render_occasion_form(conn, occ, values=None, confirm_write=None):
                           (SELECT dinner_date FROM stay_occasion_dinners WHERE occasion_id = ?)
                     GROUP BY dinner_date""", (occ["id"],)):
             covers[r["dinner_date"]] = r["n"]
+    # On a retreat's nights: which retreat, which day, and -- once the owner
+    # has written the evening -- whether its page really shows it.
+    retreat_days = occasion_retreat_days(conn, occ) if occ["id"] else []
+    celebrated = (occ["retreat_evening"] or "").strip() if occ["id"] else ""
+    for r in retreat_days:
+        r["here"] = next((n for n in r["nights"] if n["night"] == occ["retreat_night"]), None)
+        r["shown"] = bool(celebrated and r["here"]) and retreat_celebration_shown(
+            conn, r["workshop"], celebrated, occ["name"])
     return render_template(
         "admin_stay_occasion.html", occ=occ, v=values, rooms=rooms, clashes=clashes,
+        retreat_days=retreat_days, evening_words=RETREAT_EVENING_WORDS,
         photos=stay_occasion_photos(), kinds=STAY_OCCASION_KINDS,
         nights=[n.isoformat() for n in stay_occasion_nights(occ)] if occ["first_night"] else [],
         dinners=set((values or {}).get("dinners") or (stay_occasion_dinners(occ, conn) if occ["id"] else [])),
@@ -54177,7 +54412,8 @@ _BLANK_OCCASION = {"id": None, "name": "", "slug": "", "first_night": "", "last_
                    "status": "draft", "sort_order": 0, "description": "", "description_edited": 0,
                    "chef_name": "", "chef_bio": "", "chef_bio_edited": 0, "chef_photo": "",
                    "chef_link": "", "dinner_time": "20:00", "dinner_covers": None,
-                   "dinner_price": None, "outside_diners": 0}
+                   "dinner_price": None, "outside_diners": 0, "retreat_evening": None,
+                   "retreat_night": None}
 
 
 @app.route("/admin/stay-occasions/new", methods=["GET", "POST"])
@@ -54346,6 +54582,53 @@ def admin_stay_occasion_write(occ_id):
     return redirect(url_for("admin_stay_occasion", occ_id=occ_id) + "#" + field)
 
 
+@app.route("/admin/stay-occasions/<int:occ_id>/retreat", methods=["POST"])
+@owner_required
+def admin_stay_occasion_retreat(occ_id):
+    """The evening this occasion gives the retreat it falls on (owner, 25 Nov
+    2026). Saved on its own, not with the rest of the form, because it is
+    for an occasion that cannot be sold: its prices and words do not have to
+    be right for this to be. Said back as what the retreat's page now shows,
+    checked by drawing it, not as "saved"."""
+    conn = get_db()
+    occ = _occasion_or_404(conn, occ_id)
+    back = redirect(url_for("admin_stay_occasion", occ_id=occ_id) + "#retreat")
+    text = " ".join((request.form.get("retreat_evening") or "").split())
+    night = (request.form.get("retreat_night") or "").strip()
+    on = {n["night"]: (r, n) for r in occasion_retreat_days(conn, occ) for n in r["nights"]}
+    problem = None
+    if text and len(text.split()) > RETREAT_EVENING_WORDS:
+        problem = (f"Keep it to a line, as every day on a retreat's page is: {RETREAT_EVENING_WORDS} "
+                   f"words at most. That was {len(text.split())}.")
+    elif text and not on:
+        problem = f"None of {occ['name']}'s nights falls on a retreat, so there is no evening to give it."
+    elif text and night not in on:
+        problem = "Choose the night it falls on."
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return back
+    conn.execute("UPDATE stay_occasions SET retreat_evening = ?, retreat_night = ?, updated_at = ? "
+                 "WHERE id = ?", (text or None, night if text else None,
+                                  datetime.now(timezone.utc).isoformat(), occ_id))
+    log_audit(conn, "stay_occasion_retreat_evening", target=occ["name"],
+              details=f"{night}: {text}" if text else "taken off the retreat")
+    conn.commit()
+    if not text:
+        conn.close()
+        flash(f"{occ['name']} is off the retreat: that evening is the retreat's own again.", "success")
+        return back
+    r, n = on[night]
+    shown = retreat_celebration_shown(conn, r["workshop"], text, occ["name"])
+    conn.close()
+    if shown:
+        flash(f"{r['title']}, day {n['day']}, now celebrates {occ['name']}.", "success")
+    else:
+        flash(f"Saved, but {r['title']}'s page does not show it: its day-by-day has no dated "
+              f"{n['weekday']} to put it on. See the note under the line.", "error")
+    return back
+
+
 @app.route("/admin/stay-occasions/<int:occ_id>/delete", methods=["POST"])
 @owner_required
 def admin_stay_occasion_delete(occ_id):
@@ -54375,8 +54658,15 @@ def admin_stay_occasion_suggestion_create(sid):
         conn.close()
         flash("That suggestion has already been dealt with.", "error")
         return redirect(url_for("admin_stay_occasions"))
-    blocked = stay_occasion_blocked(stay_occasion_clashes(conn, s["first_night"], s["last_night"]))
-    if blocked:
+    clashes = stay_occasion_clashes(conn, s["first_night"], s["last_night"])
+    blocked = stay_occasion_blocked(clashes)
+    # "Celebrate on the retreat" (owner, 25 Nov): one that only a retreat
+    # blocks is drafted all the same -- it still cannot go on sale, since
+    # _go_live_problem asks the same question -- so that its page can take the
+    # evening the retreat shows. Anything else that blocks it still refuses.
+    celebrate = request.form.get("celebrate") == "1"
+    on_a_retreat = bool(blocked) and all(c.get("retreat") for c in clashes if c["blocks"])
+    if blocked and not (celebrate and on_a_retreat):
         conn.close()
         flash(f"Not created: {s['name']} clashes. {'; '.join(blocked)}.", "error")
         return redirect(url_for("admin_stay_occasions"))
@@ -54387,9 +54677,14 @@ def admin_stay_occasion_suggestion_create(sid):
     conn.execute("""UPDATE stay_occasion_suggestions SET status = 'created', occasion_id = ?,
                         decided_at = ?, decided_by_user_id = ? WHERE id = ?""",
                  (occ_id, datetime.now(timezone.utc).isoformat(), current_user()["id"], sid))
-    log_audit(conn, "stay_occasion_created", target=s["name"], details="from a suggestion")
+    log_audit(conn, "stay_occasion_created", target=s["name"],
+              details="from a suggestion, to celebrate on a retreat" if blocked else "from a suggestion")
     conn.commit()
     conn.close()
+    if blocked:
+        flash(f"{s['name']} is drafted so a retreat can celebrate it. It cannot go on sale while "
+              f"{'; '.join(blocked)}. Write its evening below.", "success")
+        return redirect(url_for("admin_stay_occasion", occ_id=occ_id) + "#retreat")
     flash(f"{s['name']} is drafted at the usual rates plus {money(STAY_OCCASION_UPLIFT, 0)}. "
           "Check it, then put it on sale.", "success")
     return redirect(url_for("admin_stay_occasion", occ_id=occ_id))
@@ -57783,6 +58078,33 @@ def book_rooms():
                 room_quotes[room["id"]] = {
                     "total": total, "per_night": round(total / stay_nights, 2),
                     "varies": len(nightly) > 1}
+    # WHY THE PRICE IS HIGHER (25 Nov 2026). Easter's nights were charged at
+    # Easter's price, and the booking form named it, but the results said only
+    # "€320 per room, a night" -- dearer than the €270 seen elsewhere on the
+    # site, with no reason. The occasions these nights touch are said above the
+    # cards, from the same reader the booking form uses; and each card whose
+    # figure an occasion changes says how many of its nights it priced. A night
+    # at the occasion's price that is the room's usual price changed nothing,
+    # so it is not counted.
+    occasions_here = stay_occasions_on_stay(conn, arrival, departure) if searched else []
+    occasion_nights = {}
+    if occasions_here:
+        for room in rooms:
+            if room["id"] not in room_quotes:
+                continue
+            counts = {}
+            for i in range(stay_nights):
+                night = arrival + timedelta(days=i)
+                price = live_occasion_price(conn, room["id"], night.isoformat())
+                if price is None or price == usual_night_rate(conn, room, night):
+                    continue
+                occ = live_occasion_on(conn, night.isoformat())
+                if occ:
+                    counts[occ["name"]] = counts.get(occ["name"], 0) + 1
+            if counts:
+                occasion_nights[room["id"]] = [
+                    f"includes {n} night{'' if n == 1 else 's'} of {occasion_short_name(name)}"
+                    for name, n in counts.items()]
     nothing_available = searched and rooms and not any(availability.values())
     # A blind "no rooms free" sends somebody away from a house that is free the
     # day after the atelier ends. Only asked when every room said no.
@@ -57837,6 +58159,7 @@ def book_rooms():
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
         resting=resting,
         stay_nights=stay_nights, room_quotes=room_quotes,
+        occasions_here=occasions_here, occasion_nights=occasion_nights,
         nothing_available=nothing_available, next_free=next_free,
         blocking_atelier=blocking_atelier, ateliers=ateliers,
         weather=weather, stay_wx=stay_wx,
@@ -68326,6 +68649,12 @@ def letter_preheader(blocks):
     for block in blocks:
         if block["kind"] in ("text", "notice"):
             return block["text"][:110]
+        if block["kind"] == "rich":
+            # Its plain copy, past the greeting, the way a written letter's is.
+            paras = [p for p in (block.get("text") or "").split("\n\n") if p.strip()]
+            if paras and _GREETING.match(paras[0]) and len(paras) > 1:
+                paras = paras[1:]
+            return " ".join(paras[0].split())[:110] if paras else ""
         if block["kind"] == "facts":
             return " · ".join(f"{a}: {b}" for a, b in block["rows"])[:110]
     return ""
@@ -68346,7 +68675,7 @@ def letter_drawing_context():
 
 
 def letter_html(subject, text, settings=None, statement=None, *, key=None,
-                pay_url="", workshops=None, foot=None, extras=None, photos=None):
+                pay_url="", workshops=None, foot=None, extras=None, photos=None, rich=None):
     """One of the house's letters, drawn, or "" if it cannot be.
 
     Empty rather than raising, the same rule the booking confirmation follows:
@@ -68362,6 +68691,10 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
     {extras_block} becomes. `foot` adds to the foot: an unsubscribe link for a
     letter somebody asked for. `photos` are the pictures a recap's {photos}
     becomes, [{src, alt}].
+
+    `rich` is a formatted letter's body, already kept to what a letter may
+    carry (email_rich_html): drawn as written, in place of the paragraphs
+    `text` would make. `text` is still its plain copy, for the preheader.
     """
     try:
         if key is None:
@@ -68369,8 +68702,12 @@ def letter_html(subject, text, settings=None, statement=None, *, key=None,
                 key = rendered_letter_keys().get(subject)
             except Exception:
                 key = None
-        blocks = dress_blocks(letter_blocks(text),
-                              solid_first=not (statement is not None and pay_url))
+        if rich:
+            plain = (text or "").strip()
+            blocks = [{"kind": "rich", "html": rich, "text": plain, "lines": [plain]}]
+        else:
+            blocks = dress_blocks(letter_blocks(text),
+                                  solid_first=not (statement is not None and pay_url))
         if not blocks:
             return ""
         heading, subheading = letter_heading(subject)
@@ -86440,11 +86777,11 @@ def workshop_session_panel(conn, items, label):
 # words, and what one member is called.
 GROUP_KINDS = {
     "session": {"area": "workshops", "noun": "registration", "category": "workshop",
-                "email_title": "Email everyone on this session"},
+                "email_title": "Send bulk email to everyone on this session"},
     "party": {"area": "rooms", "noun": "stay", "category": "room",
-              "email_title": "Email everyone in this party"},
+              "email_title": "Send bulk email to everyone in this party"},
     "dinner": {"area": "restaurant", "noun": "table", "category": "restaurant",
-               "email_title": "Email everyone dining this night"},
+               "email_title": "Send bulk email to everyone dining this night"},
 }
 
 GROUP_NO_EMAIL = "no email address"
@@ -86596,8 +86933,319 @@ GROUP_NOTE_TAGS = {
     "dinner": ("first_name", "guest_name", "dates", "party_size", "reference_code"),
 }
 
+# What each merge tag is called in the editor's Insert menu: the owner picks
+# "First name", not {{first_name}}.
+GROUP_NOTE_TAG_WORDS = {
+    "first_name": "First name", "guest_name": "Full name", "workshop_title": "The retreat",
+    "room_name": "The room", "dates": "Their dates", "reference_code": "Their reference",
+    "party_size": "How many at the table", "manage_url": "Their booking page (a link)",
+}
 
-def send_group_note(conn, member, subject, body, *, area, user_id=None, held_back=None):
+
+# ---------------------------------------------------------------------------
+# A FORMATTED LETTER TO A GROUP (25 Nov 2026).
+#
+# The owner, of the group email page: "add in the font and stuff like that and
+# size", beside RetreatGuru's bulk email, which has a formatting toolbar. The
+# page's editor writes HTML; what goes out is only what this keeps of it:
+#
+#   - a short list of tags (paragraphs, two heading sizes, bold, italic,
+#     underline, lists, links, line breaks), every one re-drawn with the
+#     letter's own inline styles, since a mail app reads no stylesheet;
+#   - the fonts, sizes and colours the toolbar offers, by name, and nothing
+#     else: a colour picked from a pasted web page does not ride along;
+#   - links to http(s) and mailto addresses, or a merge tag ({{manage_url}});
+#   - text, escaped. A <script> goes with everything inside it.
+#
+# The guest's details are filled in AFTER, escaped, so a name with an "&" in it
+# cannot break the letter, and the plain-text copy every letter carries is made
+# from the same HTML, so the two say the same thing.
+# ---------------------------------------------------------------------------
+RICH_FONTS = {
+    "helvetica": "Helvetica,Arial,sans-serif",
+    "georgia": "Georgia,'Times New Roman',serif",
+    "garamond": "Garamond,Georgia,'Times New Roman',serif",
+    "times": "'Times New Roman',Times,serif",
+    "verdana": "Verdana,Geneva,sans-serif",
+    "courier": "'Courier New',Courier,monospace",
+}
+# The first family a browser writes, lower case, to the font it is.
+_RICH_FONT_NAMES = {"helvetica": "helvetica", "arial": "helvetica", "georgia": "georgia",
+                    "garamond": "garamond", "times new roman": "times", "times": "times",
+                    "verdana": "verdana", "courier new": "courier", "courier": "courier"}
+RICH_SIZES = {"small": "13px", "normal": "15.5px", "large": "19px", "larger": "24px", "largest": "30px"}
+# What a browser's own size words (execCommand fontSize) mean here.
+_RICH_SIZE_WORDS = {"x-small": "small", "small": "small", "medium": "normal",
+                    "large": "large", "x-large": "larger", "xx-large": "largest",
+                    "xxx-large": "largest"}
+RICH_COLOURS = {"ink": "#2F3E4E", "navy": "#14305F", "gold": "#73562D", "grey": "#5D6B78",
+                "red": "#8C3A2B"}
+_RICH_TEXT = "font-family:Helvetica,Arial,sans-serif; font-size:15.5px; line-height:1.7; color:#2F3E4E;"
+_RICH_BLOCK_STYLE = {
+    "p": "margin:0 0 18px; " + _RICH_TEXT,
+    "h2": "margin:6px 0 14px; font-family:Georgia,'Times New Roman',serif; font-size:24px; "
+          "line-height:1.3; font-weight:normal; color:#14305F;",
+    "h3": "margin:4px 0 12px; font-family:Georgia,'Times New Roman',serif; font-size:19px; "
+          "line-height:1.35; font-weight:normal; color:#14305F;",
+    "ul": "margin:0 0 18px; padding-left:24px; " + _RICH_TEXT,
+    "ol": "margin:0 0 18px; padding-left:24px; " + _RICH_TEXT,
+    "blockquote": "margin:0 0 18px; padding:2px 0 2px 16px; border-left:3px solid #E8E0D2; " + _RICH_TEXT,
+}
+_RICH_BLOCKS = {"p", "div", "h1", "h2", "h3", "h4", "ul", "ol", "li", "blockquote"}
+_RICH_DROP_WITH_CONTENT = {"script", "style", "iframe", "object", "embed", "template", "noscript",
+                           "head", "title", "svg", "math", "select", "textarea", "button"}
+_RICH_TAG_ONLY = re.compile(r"^\{\{\s*[a-zA-Z_][a-zA-Z0-9_]*\s*\}\}$")
+
+
+def _rich_style(style, align_attr=""):
+    """What of a style attribute this keeps: {property: value}, values its own."""
+    out = {}
+    for part in (style or "").split(";"):
+        prop, _, value = part.partition(":")
+        prop, value = prop.strip().lower(), value.strip().lower()
+        if prop == "font-family" and value:
+            first = value.split(",")[0].strip().strip("'\"")
+            key = _RICH_FONT_NAMES.get(first)
+            if key:
+                out["font-family"] = RICH_FONTS[key]
+        elif prop == "font-size" and value:
+            if value in _RICH_SIZE_WORDS:
+                out["font-size"] = RICH_SIZES[_RICH_SIZE_WORDS[value]]
+            else:
+                px = re.fullmatch(r"(\d+(?:\.\d+)?)px", value)
+                if px:
+                    want = float(px.group(1))
+                    out["font-size"] = min(RICH_SIZES.values(), key=lambda v: abs(float(v[:-2]) - want))
+        elif prop == "color" and value:
+            hexed = value
+            rgb = re.fullmatch(r"rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)", value)
+            if rgb:
+                hexed = "#%02x%02x%02x" % tuple(int(x) for x in rgb.groups())
+            for colour in RICH_COLOURS.values():
+                if hexed == colour.lower():
+                    out["color"] = colour
+        elif prop == "text-align" and value in ("left", "center", "right"):
+            out["text-align"] = value
+        elif prop == "font-weight" and (value == "bold" or value.isdigit() and int(value) >= 600):
+            out["font-weight"] = "bold"
+        elif prop == "font-style" and value == "italic":
+            out["font-style"] = "italic"
+        elif prop == "text-decoration" and "underline" in value:
+            out["text-decoration"] = "underline"
+    if align_attr and align_attr.lower() in ("left", "center", "right"):
+        out.setdefault("text-align", align_attr.lower())
+    return out
+
+
+def _rich_href(href):
+    href = (href or "").strip()
+    if _RICH_TAG_ONLY.match(href):
+        return href
+    if re.match(r"^(https?://|mailto:)[^\s\"'<>]+$", href, re.I):
+        return href
+    return ""
+
+
+def email_rich_html(raw):
+    """The editor's HTML, kept to what a letter may carry and drawn in its styles. "" when nothing is left."""
+    from html.parser import HTMLParser
+    from html import escape
+
+    class Keep(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.out, self.stack, self.dropping = [], [], 0
+            self.block_open = False        # an implicit <p> for text that sits in no block
+
+        def _open_implicit(self):
+            if not any(t in ("p", "h2", "h3", "li", "blockquote") for t, _ in self.stack):
+                self.out.append(f'<p style="{_RICH_BLOCK_STYLE["p"]}">')
+                self.stack.append(("p", "implicit"))
+
+        def _close_implicit(self):
+            while self.stack and self.stack[-1][1] == "implicit":
+                self.out.append("</p>")
+                self.stack.pop()
+
+        def handle_starttag(self, tag, attrs):
+            if tag in _RICH_DROP_WITH_CONTENT:
+                self.dropping += 1
+                return
+            if self.dropping:
+                return
+            a = dict(attrs)
+            style = _rich_style(a.get("style"), a.get("align", ""))
+            if tag in ("p", "div", "h1", "h2", "h3", "h4", "blockquote"):
+                self._close_implicit()
+                kind = {"div": "p", "h1": "h2", "h4": "h3"}.get(tag, tag)
+                # A block inside a paragraph closes it first: a mail app draws no nesting of them.
+                while self.stack and self.stack[-1][0] in ("p", "h2", "h3"):
+                    self.out.append(f"</{self.stack.pop()[0]}>")
+                # What the block itself was given (a whole paragraph in Georgia, or centred)
+                # goes after the letter's own style, which it then overrides.
+                extra = "".join(f" {k}:{v};" for k, v in style.items()
+                                if k in ("text-align", "font-family", "font-size", "color"))
+                self.out.append(f'<{kind} style="{_RICH_BLOCK_STYLE[kind]}{escape(extra, quote=True)}">')
+                self.stack.append((kind, tag))
+            elif tag in ("ul", "ol"):
+                self._close_implicit()
+                while self.stack and self.stack[-1][0] in ("p", "h2", "h3"):
+                    self.out.append(f"</{self.stack.pop()[0]}>")
+                self.out.append(f'<{tag} style="{_RICH_BLOCK_STYLE[tag]}">')
+                self.stack.append((tag, tag))
+            elif tag == "li":
+                self.out.append('<li style="margin:0 0 6px;">')
+                self.stack.append(("li", tag))
+            elif tag == "br":
+                self._open_implicit()
+                self.out.append("<br>")
+            elif tag in ("b", "strong", "i", "em", "u", "span", "font", "a"):
+                self._open_implicit()
+                if tag in ("b", "strong"):
+                    self.out.append("<strong>")
+                    self.stack.append(("strong", tag))
+                elif tag in ("i", "em"):
+                    self.out.append("<em>")
+                    self.stack.append(("em", tag))
+                elif tag == "u":
+                    self.out.append("<u>")
+                    self.stack.append(("u", tag))
+                elif tag == "a":
+                    href = _rich_href(a.get("href"))
+                    if href:
+                        self.out.append(f'<a href="{escape(href, quote=True)}" '
+                                        'style="color:#14305F; text-decoration:underline;">')
+                        self.stack.append(("a", tag))
+                    else:
+                        self.stack.append((None, tag))
+                else:
+                    if tag == "font":
+                        if a.get("face"):
+                            style.update(_rich_style("font-family:" + a["face"]))
+                        if a.get("color"):
+                            style.update(_rich_style("color:" + a["color"]))
+                        size = {"1": "small", "2": "small", "3": "normal", "4": "large",
+                                "5": "larger", "6": "largest", "7": "largest"}.get(a.get("size", ""))
+                        if size:
+                            style["font-size"] = RICH_SIZES[size]
+                    kept = "; ".join(f"{k}:{v}" for k, v in style.items() if k != "text-align")
+                    if kept:
+                        self.out.append(f'<span style="{escape(kept, quote=True)}">')
+                        self.stack.append(("span", tag))
+                    else:
+                        self.stack.append((None, tag))
+            # Anything else is dropped and its text kept.
+
+        def handle_endtag(self, tag):
+            if tag in _RICH_DROP_WITH_CONTENT:
+                self.dropping = max(0, self.dropping - 1)
+                return
+            if self.dropping or tag == "br":
+                return
+            if not any(src == tag for _k, src in self.stack):
+                return
+            while self.stack:
+                kind, src = self.stack.pop()
+                if kind:
+                    self.out.append(f"</{kind}>")
+                if src == tag:
+                    break
+
+        def handle_data(self, data):
+            if self.dropping or not data:
+                return
+            if not data.strip() and not any(k in ("p", "h2", "h3", "li", "blockquote", "span", "strong",
+                                                  "em", "u", "a") for k, _ in self.stack):
+                return
+            self._open_implicit()
+            self.out.append(escape(data, quote=False))
+
+    p = Keep()
+    p.feed(raw or "")
+    p.close()
+    while p.stack:
+        kind, _src = p.stack.pop()
+        if kind:
+            p.out.append(f"</{kind}>")
+    html_out = "".join(p.out)
+    # A paragraph with nothing in it (the editor's empty line) adds nothing: the
+    # paragraphs already stand apart.
+    html_out = re.sub(r'<(p|h2|h3)\b[^>]*>(?:\s|<br>|&nbsp;|\xa0)*</\1>', "", html_out)
+    return html_out if rich_html_text(html_out).strip() else ""
+
+
+def rich_html_text(html_in):
+    """The plain-text copy of a formatted letter: paragraphs apart, lists as
+    lines, a link's address after its words when they are not the address."""
+    from html.parser import HTMLParser
+
+    class Text(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.parts, self.lists, self.href = [""], [], None
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ("p", "h2", "h3", "blockquote", "ul", "ol"):
+                self.parts.append("")
+            if tag in ("ul", "ol"):
+                self.lists.append([tag, 0])
+            elif tag == "li":
+                mark = "- "
+                if self.lists and self.lists[-1][0] == "ol":
+                    self.lists[-1][1] += 1
+                    mark = f"{self.lists[-1][1]}. "
+                self.parts[-1] += ("\n" if self.parts[-1] else "") + mark
+            elif tag == "br":
+                self.parts[-1] += "\n"
+            elif tag == "a":
+                self.href = dict(attrs).get("href")
+                self.link_text = ""
+
+        def handle_endtag(self, tag):
+            if tag == "ul" or tag == "ol":
+                if self.lists:
+                    self.lists.pop()
+                self.parts.append("")
+            elif tag in ("p", "h2", "h3", "blockquote"):
+                self.parts.append("")
+            elif tag == "a" and self.href:
+                if self.href.strip() != (self.link_text or "").strip():
+                    self.parts[-1] += f" ({self.href})"
+                self.href = None
+
+        def handle_data(self, data):
+            self.parts[-1] += data
+            if self.href is not None:
+                self.link_text += data
+
+    t = Text()
+    t.feed(html_in or "")
+    t.close()
+    paragraphs = [re.sub(r"[ \t]+\n", "\n", p).strip() for p in t.parts]
+    return "\n\n".join(p for p in paragraphs if p)
+
+
+def rich_from_text(text):
+    """Plain wording (a saved template) as the editor's paragraphs."""
+    from html import escape
+    paras = [p for p in re.split(r"\n\s*\n", (text or "").strip()) if p.strip()]
+    return "".join("<p>" + "<br>".join(escape(line) for line in p.split("\n")) + "</p>" for p in paras)
+
+
+def render_campaign_html(subject, html_body, context):
+    """render_campaign for a formatted letter: the subject as text, the body
+    with each detail escaped for where it lands, in an attribute or in text."""
+    from html import escape
+    subject_out, _ = render_campaign(subject, "", context)
+
+    def sub(match):
+        key = match.group(1).strip()
+        value = context.get(key)
+        return escape(str(value), quote=True) if value not in (None, "") else match.group(0)
+    return subject_out, re.sub(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}", sub, html_body or "")
+
+
+def send_group_note(conn, member, subject, body, *, area, user_id=None, held_back=None, rich=None):
     """Write one message to one person on a session, party or night.
 
     The one action the bulk send repeats. Returns (sent, why_not): why_not is
@@ -86612,10 +87260,21 @@ def send_group_note(conn, member, subject, body, *, area, user_id=None, held_bac
             log_workshop_message(conn, member["id"], subject, member["email"] or "",
                                  f"skipped — {why}")
         return False, why
-    subject_out, body_out = render_campaign(subject, body, group_note_context(conn, member))
+    context = group_note_context(conn, member)
+    html = None
+    if rich:
+        # A formatted letter (email_rich_html): the details filled in escaped, the
+        # plain copy made from the same words, and the house's letter drawn
+        # around it. If the drawing fails the plain copy still goes, as for any letter.
+        subject_out, rich_out = render_campaign_html(subject, rich, context)
+        body_out = rich_html_text(rich_out)
+        html = letter_html(subject_out, body_out, key="group:" + member["category"],
+                           rich=rich_out) or None
+    else:
+        subject_out, body_out = render_campaign(subject, body, context)
     report = {}
     sent = send_email(member["email"].strip(), subject_out, body_out, area=area,
-                      about=member["about"], sent_by=user_id, report=report,
+                      about=member["about"], sent_by=user_id, report=report, html=html,
                       template_key="group:" + member["category"])
     if member["category"] == "workshop":
         log_workshop_message(conn, member["id"], subject_out, member["email"].strip(),
@@ -86688,6 +87347,129 @@ def group_statement_plan(conn, members):
     return going, skipped
 
 
+def send_group_mail(conn, kind, key, mode, subject, body, *, user_id=None, rich=None):
+    """Write to one group, or send its statements: the one send, whoever asks.
+
+    The page's Send button and a letter set to go later both come here, so a
+    letter that goes on a timer is the same letter, refused for the same
+    people for the same reasons, as one sent by hand (CLAUDE.md: a bulk action
+    must be the same action). Returns (title, done, left_out), or None when the
+    group no longer exists. Commits after each person, before the next send.
+    """
+    found = group_members(conn, kind, key)
+    if not found:
+        return None
+    title, _back, members = found
+    spec = GROUP_KINDS[kind]
+    if mode == "statements":
+        going, _skipped = group_statement_plan(conn, members)
+    else:
+        going, _skipped = group_note_plan(conn, members)
+    done, left_out = 0, []
+    held_back = restricted_addresses(conn)
+    # Everybody on it goes through the one-person function, the ones
+    # it will refuse included: that is where the refusal is decided
+    # and written on their history, so the bulk send cannot leave
+    # somebody out more quietly than the single letter would. A second
+    # registration at an address already written to is not sent twice.
+    covered = {i for m in going for i in m.get("also_ids", [])}
+    going_ids = {m["id"] for m in going}
+    for m in going + [x for x in members
+                      if x["id"] not in going_ids and x["id"] not in covered]:
+        if mode == "statements":
+            sent, why = send_statement(conn, m, user_id=user_id)
+        else:
+            sent, why = send_group_note(conn, m, subject, body, area=spec["area"],
+                                        user_id=user_id, held_back=held_back, rich=rich)
+        conn.commit()
+        if sent:
+            done += 1
+        else:
+            left_out.append((m["label"], why))
+    log_audit(conn, f"group_{mode}_sent", target=title,
+              details=f"{done} sent, {len(left_out)} not")
+    conn.commit()
+    return title, done, left_out
+
+
+# Where each kind of group is written to from, for a link to its page.
+GROUP_EMAIL_ENDPOINTS = {"session": ("workshop_session_email", "session_id"),
+                         "party": ("party_email", "party_id"),
+                         "dinner": ("dinner_email", "day")}
+
+
+def group_letter_url(kind, key):
+    endpoint, arg = GROUP_EMAIL_ENDPOINTS[kind]
+    return url_for(endpoint, **{arg: key if arg == "day" else int(key)})
+
+
+def schedule_group_letter(conn, kind, key, subject, body, send_at, *, user_id=None, rich=None):
+    """Set a letter to go to a group at `send_at`, an aware datetime. Stored in
+    UTC; who it goes to is decided when it goes. `rich` is the formatted letter
+    (email_rich_html), kept beside its plain copy so it goes as it was previewed."""
+    conn.execute(
+        """INSERT INTO group_letters_scheduled
+             (kind, group_key, subject, body, body_html, send_at, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (kind, str(key), subject, body, rich or None, send_at.astimezone(timezone.utc).isoformat(),
+         user_id, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+
+
+def scheduled_group_letters(conn, kind, key):
+    """The letters set to go to one group, and those that went: waiting first."""
+    return conn.execute(
+        """SELECT * FROM group_letters_scheduled WHERE kind = ? AND group_key = ?
+            ORDER BY CASE status WHEN 'scheduled' THEN 0 ELSE 1 END, send_at""",
+        (kind, str(key))).fetchall()
+
+
+def run_group_letters_job(conn, now=None):
+    """Send every group letter whose time has come.
+
+    Claimed before it is sent -- the row goes from 'scheduled' to 'sending' in
+    one UPDATE that only one run can win -- so two runs never send it twice.
+    What it did, and who it left out and why, is written on the row
+    (bulk_message) and shown on the group's page; a letter that left anybody
+    out raises a line on the owner home.
+    """
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    due = conn.execute(
+        """SELECT * FROM group_letters_scheduled WHERE status = 'scheduled' AND send_at <= ?
+            ORDER BY send_at""", (now.isoformat(),)).fetchall()
+    sent = 0
+    for row in due:
+        claimed = conn.execute(
+            "UPDATE group_letters_scheduled SET status = 'sending' "
+            "WHERE id = ? AND status = 'scheduled'", (row["id"],)).rowcount
+        conn.commit()
+        if not claimed:
+            continue
+        try:
+            # Kept again on the way out, as on the page: what is stored is never trusted as written.
+            rich = email_rich_html(row["body_html"] or "") or None
+            outcome = send_group_mail(conn, row["kind"], row["group_key"], "email",
+                                      row["subject"], row["body"], user_id=row["created_by"],
+                                      rich=rich)
+        except Exception as e:
+            conn.rollback()
+            outcome = ("", 0, [("the whole letter",
+                                f"it could not be sent ({type(e).__name__})")])
+        if outcome is None:
+            text, ok, count = "Not sent: the group no longer exists.", 0, 0
+        else:
+            _title, done, left_out = outcome
+            text, category = bulk_message("Sent", "letter", done, left_out)
+            ok, count = (1 if category == "success" else 0), done
+            sent += done
+        conn.execute(
+            """UPDATE group_letters_scheduled SET status = 'sent', sent_at = ?, sent_count = ?,
+                      result = ?, result_ok = ? WHERE id = ?""",
+            (datetime.now(timezone.utc).isoformat(), count, text, ok, row["id"]))
+        conn.commit()
+    return f"{len(due)} group letter(s) due, {sent} sent"
+
+
 def _group_page(kind, key, mode):
     """The preview, and then the send, for one group: a message or statements.
 
@@ -86714,6 +87496,12 @@ def _group_page(kind, key, mode):
         "SELECT id, name, subject, body FROM campaign_templates ORDER BY name").fetchall()
     subject = request.values.get("subject", "").strip()
     body = request.values.get("body", "").strip()
+    # The formatting toolbar's letter (25 Nov 2026), kept to what a letter may
+    # carry. With it, its plain copy is the body; without it (no script), the
+    # box's plain words are the letter, as they always were.
+    rich = email_rich_html(request.values.get("body_html", "")) if mode == "email" else ""
+    if rich:
+        body = rich_html_text(rich)
     chosen = request.values.get("template_id", "")
     if chosen.isdigit() and not subject and not body:
         picked = next((t for t in templates if t["id"] == int(chosen)), None)
@@ -86728,46 +87516,75 @@ def _group_page(kind, key, mode):
             flash(f"The list has changed since you looked: it is {len(going)} now. "
                   "Check who it goes to and send again.", "error")
         else:
-            done, left_out = 0, []
-            held_back = restricted_addresses(conn)
-            # Everybody on it goes through the one-person function, the ones
-            # it will refuse included: that is where the refusal is decided
-            # and written on their history, so the bulk send cannot leave
-            # somebody out more quietly than the single letter would. A second
-            # registration at an address already written to is not sent twice.
-            covered = {i for m in going for i in m.get("also_ids", [])}
-            going_ids = {m["id"] for m in going}
-            for m in going + [x for x in members
-                              if x["id"] not in going_ids and x["id"] not in covered]:
-                if mode == "statements":
-                    sent, why = send_statement(conn, m, user_id=user["id"] if user else None)
-                else:
-                    sent, why = send_group_note(conn, m, subject, body, area=spec["area"],
-                                                user_id=user["id"] if user else None,
-                                                held_back=held_back)
-                conn.commit()
-                if sent:
-                    done += 1
-                else:
-                    left_out.append((m["label"], why))
+            _t, done, left_out = send_group_mail(conn, kind, key, mode, subject, body,
+                                                 user_id=user["id"] if user else None,
+                                                 rich=rich or None)
             what = "statement" if mode == "statements" else "letter"
-            log_audit(conn, f"group_{mode}_sent", target=title,
-                      details=f"{done} sent, {len(left_out)} not")
-            conn.commit()
             conn.close()
             message, category = bulk_message("Sent", what, done, left_out)
             flash(message, category)
             return redirect(back)
 
-    sample = None
+    # SEND LATER (25 Nov 2026): the same letter, set to go at a day and time
+    # here. Nothing is counted back: who it goes to is whoever is on the list
+    # when it goes, and the page says so.
+    if request.method == "POST" and mode == "email" and request.form.get("action") == "schedule":
+        when_day = parse_date(request.form.get("send_day", ""))
+        when_time = request.form.get("send_time", "").strip() or "09:00"
+        try:
+            hh, mm = (int(x) for x in when_time.split(":")[:2])
+            send_at = (datetime(when_day.year, when_day.month, when_day.day, hh, mm,
+                                tzinfo=LOCAL_TZ) if when_day else None)
+        except (ValueError, TypeError):
+            send_at = None
+        if not subject or not body:
+            flash("Write a subject and a message first.", "error")
+        elif send_at is None:
+            flash("Choose the day, and the time, for it to go.", "error")
+        elif send_at <= datetime.now(timezone.utc):
+            flash("That time has passed. Choose a later one, or send it now.", "error")
+        else:
+            schedule_group_letter(conn, kind, key, subject, body, send_at,
+                                  user_id=user["id"] if user else None, rich=rich or None)
+            log_audit(conn, "group_letter_scheduled", target=title,
+                      details=f"{subject} at {send_at.isoformat()}")
+            conn.commit()
+            conn.close()
+            flash(f"Set to go on {send_at.day} {send_at.strftime('%B %Y at %H:%M')}, "
+                  "to whoever is on the list then.", "success")
+            return redirect(request.path)
+    if request.method == "POST" and mode == "email" and request.form.get("action") == "unschedule":
+        sid = request.form.get("scheduled_id", "")
+        n = conn.execute(
+            """UPDATE group_letters_scheduled SET status = 'cancelled'
+                WHERE id = ? AND kind = ? AND group_key = ? AND status = 'scheduled'""",
+            (int(sid) if sid.isdigit() else -1, kind, str(key))).rowcount
+        conn.commit()
+        conn.close()
+        flash("That letter will not go." if n else "That letter had already gone, or was not set.",
+              "success" if n else "error")
+        return redirect(request.path)
+
+    sample = sample_html = None
     if mode == "email" and going and (subject or body):
-        sample = render_campaign(subject, body, group_note_context(conn, going[0]))
+        context = group_note_context(conn, going[0])
+        if rich:
+            subject_out, rich_out = render_campaign_html(subject, rich, context)
+            sample = (subject_out, rich_html_text(rich_out))
+            sample_html = letter_html(subject_out, sample[1], key="group:" + spec["category"],
+                                      rich=rich_out) or None
+        else:
+            sample = render_campaign(subject, body, context)
+            sample_html = letter_html(sample[0], sample[1], key="group:" + spec["category"]) or None
+    later = scheduled_group_letters(conn, kind, key) if mode == "email" else []
     conn.close()
     return render_template(
         "group_mail.html", kind=kind, key=key, mode=mode, title=title, back=back,
         going=going, skipped=skipped, members=members, spec=spec, subject=subject,
         body=body, templates=templates, chosen=chosen, sample=sample,
-        tags=GROUP_NOTE_TAGS[kind])
+        tags=GROUP_NOTE_TAGS[kind], tag_words=GROUP_NOTE_TAG_WORDS, sample_html=sample_html,
+        editor_html=rich or rich_from_text(body), fonts=RICH_FONTS, sizes=RICH_SIZES,
+        colours=RICH_COLOURS, later=later, today_iso=house_today_iso())
 
 
 @app.route("/admin/workshops/sessions/<int:session_id>/email", methods=["GET", "POST"])
@@ -86803,6 +87620,85 @@ def party_statements(party_id):
 def dinner_email(day):
     """Write to everybody booked to dine on one night."""
     return _group_page("dinner", day, "email")
+
+
+# How long after a retreat ends it is still offered here: the thank-you letter
+# and the photographs go in the weeks after, not the year after.
+BULK_EMAIL_RECENT_DAYS = 30
+
+
+def bulk_email_groups(conn, today=None):
+    """Every group a bulk email can go to, soonest first, with how many it reaches.
+
+    {"sessions": [...], "recent": [...], "parties": [...], "dinners": [...]}, each
+    entry {title, url, going, left_out, people, owed_url}. The counts are
+    group_note_plan's, the same the send page shows, so this page and that one
+    never disagree about who a letter reaches.
+    """
+    today = today or house_today()
+    out = {"sessions": [], "recent": [], "parties": [], "dinners": []}
+
+    def entry(kind, key, url, owed_url=None):
+        found = group_members(conn, kind, key)
+        if not found:
+            return None
+        title, _back, members = found
+        going, skipped = group_note_plan(conn, members)
+        owes = any(m["owed"] > 0.005 for m in members)
+        return {"title": title, "url": url, "going": len(going), "left_out": len(skipped),
+                "people": len(members), "owed_url": owed_url if owes else None}
+
+    since = (today - timedelta(days=BULK_EMAIL_RECENT_DAYS)).isoformat()
+    for s in conn.execute(
+            f"""SELECT workshop_sessions.id, workshop_sessions.end_date FROM workshop_sessions
+                 WHERE {SESSION_IS_LIVE} AND workshop_sessions.end_date >= ?
+                   AND EXISTS (SELECT 1 FROM workshop_bookings wb
+                                WHERE wb.session_id = workshop_sessions.id
+                                  AND wb.status IN ('pending', 'confirmed'))
+                 ORDER BY workshop_sessions.start_date, workshop_sessions.id""",
+            (since,)).fetchall():
+        e = entry("session", s["id"], url_for("workshop_session_email", session_id=s["id"]),
+                  url_for("workshop_session_statements", session_id=s["id"]))
+        if e:
+            out["recent" if s["end_date"] < today.isoformat() else "sessions"].append(e)
+    for p in conn.execute(
+            """SELECT party_id, MIN(arrival_date) AS first FROM bookings
+                WHERE party_id IS NOT NULL AND status IN ('pending', 'confirmed')
+                  AND departure_date >= ?
+                GROUP BY party_id ORDER BY first""", (today.isoformat(),)).fetchall():
+        e = entry("party", p["party_id"], url_for("party_email", party_id=p["party_id"]),
+                  url_for("party_statements", party_id=p["party_id"]))
+        if e:
+            e["title"] = f"{e['title']}, from {format_date_short(p['first'])}"
+            out["parties"].append(e)
+    for d in conn.execute(
+            """SELECT DISTINCT dinner_date FROM restaurant_bookings
+                WHERE dinner_date >= ? AND status IN ('pending', 'confirmed')
+                ORDER BY dinner_date LIMIT 30""", (today.isoformat(),)).fetchall():
+        e = entry("dinner", d["dinner_date"], url_for("dinner_email", day=d["dinner_date"]))
+        if e:
+            out["dinners"].append(e)
+    return out
+
+
+@app.route("/admin/bulk-email")
+@owner_required
+def bulk_email_hub():
+    """Send bulk email: every retreat, party of rooms and dinner night a letter
+    can go to, each with its button (25 Nov 2026).
+
+    The owner, of the group letters: "where do i send batch emails to workshop
+    guests" and "its not very intuitive the menus either". The page that sends
+    them was three clicks down -- Registrations, choose the dates, the panel's
+    button -- where RetreatGuru has it on the programme's own page. It is in the
+    menu now, under the retreats and under email, and this lists what it can
+    reach and how many each letter would go to.
+    """
+    conn = get_db()
+    groups = bulk_email_groups(conn)
+    conn.close()
+    return render_template("bulk_email.html", groups=groups,
+                           recent_days=BULK_EMAIL_RECENT_DAYS)
 
 
 def _one_member(conn, category, booking_id):
@@ -122192,6 +123088,8 @@ AUTOMATION_JOBS = [
     # campaign to a list goes a little at a time, and the pace is worked out
     # from what has gone, so a late or missed run sends nothing extra.
     ("campaign_queue", "automation_campaign_queue_enabled", None, 240, run_campaign_queue_job),
+    # Every run of the thread: a letter set for 9:00 goes by 9:05.
+    ("group_letters", "automation_group_letters_enabled", None, 240, run_group_letters_job),
     ("backup_email", "automation_backup_email_enabled", "automation_backup_interval_hours", None, run_backup_email_job),
     # Daily is enough: it works a month ahead, so a missed day costs
     # nothing and a slot is never generated at short notice.
@@ -122523,6 +123421,13 @@ AUTOMATION_SWITCHES = [
      "label": "Letters set to go around a stay",
      "what": "Sends each letter you have set to go at a time around a stay or an "
              "atelier — before arrival, after departure — once per guest."},
+    {"key": "automation_group_letters_enabled", "job": "group_letters",
+     "runs": ("run_group_letters_job",), "group": "guests", "reaches": ("guests",),
+     "label": "Send group letters set for later",
+     "what": "Sends a letter you wrote on a group's page (a retreat sitting, a party of "
+             "rooms, a night's dinner) and set to go at a day and time, to whoever is on "
+             "the list when it goes. What it did, and anybody it left out, is written on "
+             "the group's page. Off, every letter waits."},
     {"key": "automation_campaign_queue_enabled", "job": "campaign_queue",
      "runs": ("run_campaign_queue_job",), "group": "guests", "reaches": ("guests",),
      "label": "Send campaigns, a little at a time",

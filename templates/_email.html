@@ -528,6 +528,9 @@
     {{ email_offers(extras) }}
   {% elif block.kind == 'photos' %}
     {{ email_photos(photos) }}
+  {% elif block.kind == 'rich' %}
+    {#- A formatted letter, already kept to what a letter may carry, in the letter's own styles (email_rich_html). -#}
+    {{ block.html|safe }}
   {% else %}
     {{ email_text(block.lines or [block.text]) }}
   {% endif %}

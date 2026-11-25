@@ -169,7 +169,11 @@ m = _harness.m
 # listed every page (the menu's "Private Retreats" where it said "Private"), /events/private (now a private retreat),
 # /events/weddings (the JBL speakers), /contact (its topic "A private retreat"), /workshops (Groups lead to the
 # private retreat) and /gallery (its three sections), which is that brief. Was: "e272bf9"
-COPY_BASE = "e26d86d"
+# 25 Nov 2026, later: moved to 89a5af6, BRIEF-occasions-in-the-retreats merged with main at f110776. Against
+# e26d86d it listed /workshops/352 (Cooking in the Cuisine: day 2's heading and evening name L'Ariégeoise) and
+# nothing else; the cards' "a night" and the search results' occasion line need a live occasion or a search,
+# which this copy has neither of (test_stay_occasions holds them). Was: "e26d86d"
+COPY_BASE = "89a5af6"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
