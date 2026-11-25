@@ -127,6 +127,10 @@ PROBE = r"""<script>
       out.room = {words: after('.g-room__words'), facts: after('.g-glance'), note: after('.g-room__note'),
                   gallery: after('.g-roomgal-car'), photos: document.querySelectorAll('.g-roomgal-car img').length};
       out.name_top = top(document.querySelector('h1'));
+      /* 25 Nov 2026 (owner: "there is a spacing issue"): where the photograph is beside the name, the two start on one line */
+      var ph = document.querySelector('.g-booktop .g-roomhero'), tx = document.querySelector('.g-booktop__t');
+      out.photo = ph ? {top: top(ph), left: Math.round(ph.getBoundingClientRect().left)} : null;
+      out.text = tx ? {top: top(tx), left: Math.round(tx.getBoundingClientRect().left)} : null;
       var pay = document.querySelector('.g-dossier .g-submit'), bar = document.querySelector('.g-bookbar .g-btn');
       var barOn = bar && getComputedStyle(bar.closest('.g-bookbar')).display !== 'none';
       out.pay_bottom = pay ? Math.round(pay.getBoundingClientRect().bottom) : null;
@@ -297,6 +301,16 @@ def run():
                     and (got.get("pay_bottom") or 10 ** 6) <= h,
                     detail=f"panel at {got.get('panel_top')}px, name at {got.get('name_top')}px, "
                            f"Pay & book's foot at {got.get('pay_bottom')}px of {h}")
+        # 4b. 25 Nov 2026 (owner: "there is a spacing issue"): the photograph was centred against the name, so where the
+        # name ran to two lines it started well below "Votre chambre" and the booking panel. Side by side, one top line.
+        ph, tx = got.get("photo") or {}, got.get("text") or {}
+        if ph and tx and ph.get("left", 0) < tx.get("left", 0):
+            s.check(f"{label}: the photograph starts level with the room's name beside it",
+                    abs(ph["top"] - tx["top"]) <= 2, detail=f"photograph at {ph['top']}px, the words at {tx['top']}px")
+            if got.get("bar_bottom") is None and got.get("panel_top") is not None:
+                s.check(f"{label}: and level with the booking panel",
+                        abs(ph["top"] - got["panel_top"]) <= 2,
+                        detail=f"photograph at {ph['top']}px, the panel at {got['panel_top']}px")
         # 5. every state
         for where, states in (got.get("states") or {}).items():
             for state in ("plain", "hover", "focus", "disabled"):
