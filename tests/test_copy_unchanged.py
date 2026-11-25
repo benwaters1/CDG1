@@ -173,7 +173,7 @@ m = _harness.m
 # e26d86d it listed /workshops/352 (Cooking in the Cuisine: day 2's heading and evening name L'Ariégeoise) and
 # nothing else; the cards' "a night" and the search results' occasion line need a live occasion or a search,
 # which this copy has neither of (test_stay_occasions holds them). Was: "e26d86d"
-COPY_BASE = "89a5af6"
+COPY_BASE = "40d28b8"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
