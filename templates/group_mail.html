@@ -146,7 +146,54 @@
               onclick="return confirm('Send this to {{ going|length }} {{ 'address' if going|length == 1 else 'addresses' }}? This cannot be undone.');">Send to {{ going|length }}</button>
       {% endif %}
     </div>
+    {#- 25 Nov 2026 (owner: "add schedule to write to the group for workshops"): the same letter, set to
+        go at a day and time. It goes to whoever is on the list then, so a late booking hears it too. -#}
+    <fieldset class="group-mail__later">
+      <legend class="field-label">Or send it later</legend>
+      <div class="group-mail__when">
+        <label>Day <input type="date" name="send_day" min="{{ today_iso }}"></label>
+        <label>Time <input type="time" name="send_time" value="09:00"></label>
+        <button type="submit" name="action" value="schedule" class="btn-mini">Send later</button>
+      </div>
+      <p class="upload-hint">It goes to whoever is on the list at that time, with the same people left out
+        for the same reasons as now, and their names filled in then.</p>
+    </fieldset>
   </form>
+
+  {% if later %}
+  <div class="detail-card group-mail__queue">
+    <h2 class="section-heading">Set for later</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>When</th><th>Subject</th><th>What happened</th><th></th></tr></thead>
+        <tbody>
+          {% for r in later %}
+          <tr>
+            <td>{{ local_datetime_str(r['send_at']) }}</td>
+            <td>{{ r['subject'] }}</td>
+            <td>
+              {% if r['status'] == 'scheduled' %}<span class="mini-status status-pending">waiting</span>
+              {% elif r['status'] == 'cancelled' %}<span class="mini-status status-declined">cancelled</span>
+              {% elif r['status'] == 'sending' %}<span class="mini-status status-pending">going now</span>
+              {% else %}<span class="mini-status {{ 'status-confirmed' if r['result_ok'] else 'status-declined' }}">sent</span>
+                <span class="cell-note">{{ r['result'] }}</span>{% endif %}
+            </td>
+            <td>
+              {% if r['status'] == 'scheduled' %}
+              <form method="post" onsubmit="return confirm('Stop this letter from going?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="scheduled_id" value="{{ r['id'] }}">
+                <button type="submit" name="action" value="unschedule" class="btn-text-danger">Cancel</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
 
   {% if sample %}
   <div class="detail-card group-mail__sample">

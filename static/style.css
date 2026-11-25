@@ -609,6 +609,11 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
 .mail-health__row{ display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; margin:8px 0; }
 .mail-health__setup{ margin-top:10px; }
 .group-mail__compose{ max-width:760px; }
+/* Send later (25 Nov 2026): the day and time sit on one line under the buttons. */
+.group-mail__later{ border:0; padding:0; margin:18px 0 0; }
+.group-mail__when{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+.group-mail__when label{ display:flex; flex-direction:column; gap:4px; font-size:14px; }
+.group-mail__queue{ margin-top:18px; }
 .group-mail__send{ margin:0; }
 .register-add, .register-edit, .register-move{ margin-top:8px; }
 .register-add>summary, .register-edit>summary, .register-move>summary{ cursor:pointer; color:var(--steel); font-size:14px; }

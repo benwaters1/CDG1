@@ -529,6 +529,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_meta_token_enabled": "1",
     "automation_social_horizon_days": "28",
     "automation_maintenance_enabled": "1",
+    # On: it sends only a letter the owner wrote and set a time for on a
+    # group's page, and guest mail held by the switch stays held.
+    "automation_group_letters_enabled": "1",
 }
 
 # What a room stay asks for up front, and when the rest falls due.
@@ -7897,6 +7900,30 @@ def init_db():
         # campaign, from the news subdomain -- so sending it later sends it as
         # it was written rather than from the address booking mail relies on.
         ("email_outbox_sender", "ALTER TABLE email_outbox ADD COLUMN sender TEXT"),
+        # A letter to a group set to go later (25 Nov 2026, owner: "add schedule
+        # to write to the group for workshops"). Who it goes to is worked out
+        # when it goes, not when it was set: the list on the day is the list.
+        ("group_letters_scheduled",
+         """CREATE TABLE IF NOT EXISTS group_letters_scheduled (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              kind TEXT NOT NULL,
+              group_key TEXT NOT NULL,
+              subject TEXT NOT NULL,
+              body TEXT NOT NULL,
+              send_at TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'scheduled',
+              created_by INTEGER,
+              created_at TEXT NOT NULL,
+              sent_at TEXT,
+              sent_count INTEGER,
+              result TEXT,
+              result_ok INTEGER)"""),
+        ("group_letters_scheduled_due",
+         "CREATE INDEX IF NOT EXISTS group_letters_scheduled_due "
+         "ON group_letters_scheduled(status, send_at)"),
+        # The formatted letter (25 Nov 2026, the bulk email's toolbar), beside its plain copy.
+        ("group_letters_scheduled_body_html",
+         "ALTER TABLE group_letters_scheduled ADD COLUMN body_html TEXT"),
         ("workshop_transactions_stripe_ref_once",
          "CREATE UNIQUE INDEX IF NOT EXISTS workshop_transactions_stripe_ref_once "
          "ON workshop_transactions(stripe_ref) WHERE stripe_ref IS NOT NULL"),
@@ -41402,6 +41429,24 @@ def owner_home_warnings(conn, today):
     for fault in house_inbox_delivery_faults(conn):
         add("blocker", f"Mail to {fault['address']} is not arriving",
             house_inbox_fault_sentence(fault), 1, "mail_log", q=fault["address"])
+
+    # A GROUP LETTER SET FOR LATER THAT LEFT SOMEBODY OUT. Nobody is watching
+    # the page when it goes, so what it could not do is said here, for the
+    # fortnight after, linking to the group's page where the reason is written.
+    try:
+        missed = conn.execute(
+            """SELECT * FROM group_letters_scheduled
+                WHERE status = 'sent' AND result_ok = 0 AND sent_at >= ?
+                ORDER BY sent_at DESC""",
+            (house_moment(today - timedelta(days=14)),)).fetchall()
+    except sqlite3.Error:
+        missed = []
+    for r in missed[:3]:
+        endpoint, arg = GROUP_EMAIL_ENDPOINTS.get(r["kind"], (None, None))
+        if endpoint:
+            add("warn", f"“{r['subject']}”, set for later, did not reach everybody",
+                r["result"] or "", 1, endpoint,
+                **{arg: r["group_key"] if arg == "day" else int(r["group_key"])})
 
     # THE POLICE REGISTER, for guests already here: nobody recorded for some
     # of a party, or a foreign guest's fiche not yet signed (R. 814-1 wants it
@@ -86864,6 +86909,129 @@ def group_statement_plan(conn, members):
     return going, skipped
 
 
+def send_group_mail(conn, kind, key, mode, subject, body, *, user_id=None, rich=None):
+    """Write to one group, or send its statements: the one send, whoever asks.
+
+    The page's Send button and a letter set to go later both come here, so a
+    letter that goes on a timer is the same letter, refused for the same
+    people for the same reasons, as one sent by hand (CLAUDE.md: a bulk action
+    must be the same action). Returns (title, done, left_out), or None when the
+    group no longer exists. Commits after each person, before the next send.
+    """
+    found = group_members(conn, kind, key)
+    if not found:
+        return None
+    title, _back, members = found
+    spec = GROUP_KINDS[kind]
+    if mode == "statements":
+        going, _skipped = group_statement_plan(conn, members)
+    else:
+        going, _skipped = group_note_plan(conn, members)
+    done, left_out = 0, []
+    held_back = restricted_addresses(conn)
+    # Everybody on it goes through the one-person function, the ones
+    # it will refuse included: that is where the refusal is decided
+    # and written on their history, so the bulk send cannot leave
+    # somebody out more quietly than the single letter would. A second
+    # registration at an address already written to is not sent twice.
+    covered = {i for m in going for i in m.get("also_ids", [])}
+    going_ids = {m["id"] for m in going}
+    for m in going + [x for x in members
+                      if x["id"] not in going_ids and x["id"] not in covered]:
+        if mode == "statements":
+            sent, why = send_statement(conn, m, user_id=user_id)
+        else:
+            sent, why = send_group_note(conn, m, subject, body, area=spec["area"],
+                                        user_id=user_id, held_back=held_back, rich=rich)
+        conn.commit()
+        if sent:
+            done += 1
+        else:
+            left_out.append((m["label"], why))
+    log_audit(conn, f"group_{mode}_sent", target=title,
+              details=f"{done} sent, {len(left_out)} not")
+    conn.commit()
+    return title, done, left_out
+
+
+# Where each kind of group is written to from, for a link to its page.
+GROUP_EMAIL_ENDPOINTS = {"session": ("workshop_session_email", "session_id"),
+                         "party": ("party_email", "party_id"),
+                         "dinner": ("dinner_email", "day")}
+
+
+def group_letter_url(kind, key):
+    endpoint, arg = GROUP_EMAIL_ENDPOINTS[kind]
+    return url_for(endpoint, **{arg: key if arg == "day" else int(key)})
+
+
+def schedule_group_letter(conn, kind, key, subject, body, send_at, *, user_id=None, rich=None):
+    """Set a letter to go to a group at `send_at`, an aware datetime. Stored in
+    UTC; who it goes to is decided when it goes. `rich` is the formatted letter
+    (email_rich_html), kept beside its plain copy so it goes as it was previewed."""
+    conn.execute(
+        """INSERT INTO group_letters_scheduled
+             (kind, group_key, subject, body, body_html, send_at, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (kind, str(key), subject, body, rich or None, send_at.astimezone(timezone.utc).isoformat(),
+         user_id, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+
+
+def scheduled_group_letters(conn, kind, key):
+    """The letters set to go to one group, and those that went: waiting first."""
+    return conn.execute(
+        """SELECT * FROM group_letters_scheduled WHERE kind = ? AND group_key = ?
+            ORDER BY CASE status WHEN 'scheduled' THEN 0 ELSE 1 END, send_at""",
+        (kind, str(key))).fetchall()
+
+
+def run_group_letters_job(conn, now=None):
+    """Send every group letter whose time has come.
+
+    Claimed before it is sent -- the row goes from 'scheduled' to 'sending' in
+    one UPDATE that only one run can win -- so two runs never send it twice.
+    What it did, and who it left out and why, is written on the row
+    (bulk_message) and shown on the group's page; a letter that left anybody
+    out raises a line on the owner home.
+    """
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    due = conn.execute(
+        """SELECT * FROM group_letters_scheduled WHERE status = 'scheduled' AND send_at <= ?
+            ORDER BY send_at""", (now.isoformat(),)).fetchall()
+    sent = 0
+    for row in due:
+        claimed = conn.execute(
+            "UPDATE group_letters_scheduled SET status = 'sending' "
+            "WHERE id = ? AND status = 'scheduled'", (row["id"],)).rowcount
+        conn.commit()
+        if not claimed:
+            continue
+        try:
+            # Kept again on the way out, as on the page: what is stored is never trusted as written.
+            rich = email_rich_html(row["body_html"] or "") or None
+            outcome = send_group_mail(conn, row["kind"], row["group_key"], "email",
+                                      row["subject"], row["body"], user_id=row["created_by"],
+                                      rich=rich)
+        except Exception as e:
+            conn.rollback()
+            outcome = ("", 0, [("the whole letter",
+                                f"it could not be sent ({type(e).__name__})")])
+        if outcome is None:
+            text, ok, count = "Not sent: the group no longer exists.", 0, 0
+        else:
+            _title, done, left_out = outcome
+            text, category = bulk_message("Sent", "letter", done, left_out)
+            ok, count = (1 if category == "success" else 0), done
+            sent += done
+        conn.execute(
+            """UPDATE group_letters_scheduled SET status = 'sent', sent_at = ?, sent_count = ?,
+                      result = ?, result_ok = ? WHERE id = ?""",
+            (datetime.now(timezone.utc).isoformat(), count, text, ok, row["id"]))
+        conn.commit()
+    return f"{len(due)} group letter(s) due, {sent} sent"
+
+
 def _group_page(kind, key, mode):
     """The preview, and then the send, for one group: a message or statements.
 
@@ -86910,36 +87078,54 @@ def _group_page(kind, key, mode):
             flash(f"The list has changed since you looked: it is {len(going)} now. "
                   "Check who it goes to and send again.", "error")
         else:
-            done, left_out = 0, []
-            held_back = restricted_addresses(conn)
-            # Everybody on it goes through the one-person function, the ones
-            # it will refuse included: that is where the refusal is decided
-            # and written on their history, so the bulk send cannot leave
-            # somebody out more quietly than the single letter would. A second
-            # registration at an address already written to is not sent twice.
-            covered = {i for m in going for i in m.get("also_ids", [])}
-            going_ids = {m["id"] for m in going}
-            for m in going + [x for x in members
-                              if x["id"] not in going_ids and x["id"] not in covered]:
-                if mode == "statements":
-                    sent, why = send_statement(conn, m, user_id=user["id"] if user else None)
-                else:
-                    sent, why = send_group_note(conn, m, subject, body, area=spec["area"],
-                                                user_id=user["id"] if user else None,
-                                                held_back=held_back, rich=rich or None)
-                conn.commit()
-                if sent:
-                    done += 1
-                else:
-                    left_out.append((m["label"], why))
+            _t, done, left_out = send_group_mail(conn, kind, key, mode, subject, body,
+                                                 user_id=user["id"] if user else None,
+                                                 rich=rich or None)
             what = "statement" if mode == "statements" else "letter"
-            log_audit(conn, f"group_{mode}_sent", target=title,
-                      details=f"{done} sent, {len(left_out)} not")
-            conn.commit()
             conn.close()
             message, category = bulk_message("Sent", what, done, left_out)
             flash(message, category)
             return redirect(back)
+
+    # SEND LATER (25 Nov 2026): the same letter, set to go at a day and time
+    # here. Nothing is counted back: who it goes to is whoever is on the list
+    # when it goes, and the page says so.
+    if request.method == "POST" and mode == "email" and request.form.get("action") == "schedule":
+        when_day = parse_date(request.form.get("send_day", ""))
+        when_time = request.form.get("send_time", "").strip() or "09:00"
+        try:
+            hh, mm = (int(x) for x in when_time.split(":")[:2])
+            send_at = (datetime(when_day.year, when_day.month, when_day.day, hh, mm,
+                                tzinfo=LOCAL_TZ) if when_day else None)
+        except (ValueError, TypeError):
+            send_at = None
+        if not subject or not body:
+            flash("Write a subject and a message first.", "error")
+        elif send_at is None:
+            flash("Choose the day, and the time, for it to go.", "error")
+        elif send_at <= datetime.now(timezone.utc):
+            flash("That time has passed. Choose a later one, or send it now.", "error")
+        else:
+            schedule_group_letter(conn, kind, key, subject, body, send_at,
+                                  user_id=user["id"] if user else None, rich=rich or None)
+            log_audit(conn, "group_letter_scheduled", target=title,
+                      details=f"{subject} at {send_at.isoformat()}")
+            conn.commit()
+            conn.close()
+            flash(f"Set to go on {send_at.day} {send_at.strftime('%B %Y at %H:%M')}, "
+                  "to whoever is on the list then.", "success")
+            return redirect(request.path)
+    if request.method == "POST" and mode == "email" and request.form.get("action") == "unschedule":
+        sid = request.form.get("scheduled_id", "")
+        n = conn.execute(
+            """UPDATE group_letters_scheduled SET status = 'cancelled'
+                WHERE id = ? AND kind = ? AND group_key = ? AND status = 'scheduled'""",
+            (int(sid) if sid.isdigit() else -1, kind, str(key))).rowcount
+        conn.commit()
+        conn.close()
+        flash("That letter will not go." if n else "That letter had already gone, or was not set.",
+              "success" if n else "error")
+        return redirect(request.path)
 
     sample = sample_html = None
     if mode == "email" and going and (subject or body):
@@ -86952,6 +87138,7 @@ def _group_page(kind, key, mode):
         else:
             sample = render_campaign(subject, body, context)
             sample_html = letter_html(sample[0], sample[1], key="group:" + spec["category"]) or None
+    later = scheduled_group_letters(conn, kind, key) if mode == "email" else []
     conn.close()
     return render_template(
         "group_mail.html", kind=kind, key=key, mode=mode, title=title, back=back,
@@ -86959,7 +87146,7 @@ def _group_page(kind, key, mode):
         body=body, templates=templates, chosen=chosen, sample=sample,
         tags=GROUP_NOTE_TAGS[kind], tag_words=GROUP_NOTE_TAG_WORDS, sample_html=sample_html,
         editor_html=rich or rich_from_text(body), fonts=RICH_FONTS, sizes=RICH_SIZES,
-        colours=RICH_COLOURS)
+        colours=RICH_COLOURS, later=later, today_iso=house_today_iso())
 
 
 @app.route("/admin/workshops/sessions/<int:session_id>/email", methods=["GET", "POST"])
@@ -122463,6 +122650,8 @@ AUTOMATION_JOBS = [
     # campaign to a list goes a little at a time, and the pace is worked out
     # from what has gone, so a late or missed run sends nothing extra.
     ("campaign_queue", "automation_campaign_queue_enabled", None, 240, run_campaign_queue_job),
+    # Every run of the thread: a letter set for 9:00 goes by 9:05.
+    ("group_letters", "automation_group_letters_enabled", None, 240, run_group_letters_job),
     ("backup_email", "automation_backup_email_enabled", "automation_backup_interval_hours", None, run_backup_email_job),
     # Daily is enough: it works a month ahead, so a missed day costs
     # nothing and a slot is never generated at short notice.
@@ -122794,6 +122983,13 @@ AUTOMATION_SWITCHES = [
      "label": "Letters set to go around a stay",
      "what": "Sends each letter you have set to go at a time around a stay or an "
              "atelier — before arrival, after departure — once per guest."},
+    {"key": "automation_group_letters_enabled", "job": "group_letters",
+     "runs": ("run_group_letters_job",), "group": "guests", "reaches": ("guests",),
+     "label": "Send group letters set for later",
+     "what": "Sends a letter you wrote on a group's page (a retreat sitting, a party of "
+             "rooms, a night's dinner) and set to go at a day and time, to whoever is on "
+             "the list when it goes. What it did, and anybody it left out, is written on "
+             "the group's page. Off, every letter waits."},
     {"key": "automation_campaign_queue_enabled", "job": "campaign_queue",
      "runs": ("run_campaign_queue_job",), "group": "guests", "reaches": ("guests",),
      "label": "Send campaigns, a little at a time",

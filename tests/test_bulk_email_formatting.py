@@ -53,6 +53,8 @@ class _Mail:
 
 def _cleanup():
     conn = db()
+    conn.execute("""DELETE FROM group_letters_scheduled WHERE kind = 'session' AND group_key IN
+                     (SELECT CAST(id AS TEXT) FROM workshop_sessions WHERE notes LIKE ?)""", (TAG + "%",))
     ids = "(SELECT id FROM workshop_bookings WHERE reference_code LIKE ?)"
     conn.execute(f"DELETE FROM workshop_transactions WHERE workshop_booking_id IN {ids}", (TAG + "%",))
     conn.execute(f"DELETE FROM workshop_messages WHERE workshop_booking_id IN {ids}", (TAG + "%",))
@@ -226,6 +228,28 @@ def _run(s):
     s.check("with a plain copy saying the same",
             tom.get("body", "").startswith("Dear Tom & Jerry,") and "Your page (http" in tom.get("body", ""),
             detail=repr(tom.get("body", "")[:200]))
+
+    s.section("Set for later, it goes formatted too")
+    day = house_today() + timedelta(days=2)
+    oc.post(email_url, data={"action": "schedule", "subject": "Later {{guest_name}}", "body": "",
+                             "body_html": rich, "send_day": day.isoformat(), "send_time": "09:00", "expect": "2"})
+    conn = db()
+    row = conn.execute("""SELECT * FROM group_letters_scheduled WHERE kind = 'session' AND group_key = ?
+                           AND status = 'scheduled'""", (str(sid),)).fetchone()
+    s.check("the letter is kept with its formatting, and without the script",
+            row and "<strong>Bold</strong>" in (row["body_html"] or "") and "alert(9)" not in (row["body_html"] or "")
+            and (row["body"] or "").startswith("Dear {{guest_name}},"),
+            detail=str(dict(row)) if row else "not set")
+    at = m.datetime(day.year, day.month, day.day, 10, 0, tzinfo=m.LOCAL_TZ)
+    with _Mail() as calls:
+        with m.app.test_request_context("/"):
+            m.run_group_letters_job(conn, now=at)
+    conn.close()
+    later = next((c for c in calls if c["to"].startswith(f"{TAG.lower()}a")), {})
+    s.check("and when its time comes it goes as the formatted letter",
+            "<strong>Bold</strong>" in (later.get("html") or "") and "font-family:Georgia" in (later.get("html") or "")
+            and "Dear Tom &amp; Jerry," in (later.get("html") or "") and later.get("subject") == "Later Tom & Jerry",
+            detail=str({k: str(v)[:80] for k, v in later.items()}))
 
     s.section("And without the editor, the plain box is the letter, as before")
     with _Mail() as calls:
