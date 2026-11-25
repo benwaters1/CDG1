@@ -165,7 +165,11 @@ m = _harness.m
 # 24 Nov 2026, night: moved to e272bf9, the site review of 24 Nov merged with main at 9a971f7. Against 2d3c474
 # it listed the same pages as against a4eb7a5 above (the footer's label on every page, and each page the review
 # changed) and nothing else. Was: "2d3c474"
-COPY_BASE = "e272bf9"
+# 25 Nov 2026: moved to e26d86d, BRIEF-private-retreat-and-images merged with main at bdd8e3c. Against e272bf9 it
+# listed every page (the menu's "Private Retreats" where it said "Private"), /events/private (now a private retreat),
+# /events/weddings (the JBL speakers), /contact (its topic "A private retreat"), /workshops (Groups lead to the
+# private retreat) and /gallery (its three sections), which is that brief. Was: "e272bf9"
+COPY_BASE = "e26d86d"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

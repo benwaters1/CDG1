@@ -247,7 +247,7 @@ window.houseDay = (function () {
           {# Each link falls back to the events page until its route exists,
              so a missing endpoint cannot break the header site-wide. #}
           <li><a href="{{ url_for('events_weddings') }}"{% if request.endpoint == 'events_weddings' %} class="is-here" aria-current="page"{% endif %}>{{ t('Weddings') }}</a></li>
-          <li><a href="{{ url_for('events_private') }}"{% if request.endpoint == 'events_private' %} class="is-here" aria-current="page"{% endif %}>{{ t('Private') }}</a></li>
+          <li><a href="{{ url_for('events_private') }}"{% if request.endpoint == 'events_private' %} class="is-here" aria-current="page"{% endif %}>{{ t('Private Retreats') }}</a></li>
           <li><a href="{{ url_for('events_photoshoots') }}"{% if request.endpoint == 'events_photoshoots' %} class="is-here" aria-current="page"{% endif %}>{{ t('Photoshoots') }}</a></li>
         </ul>
       </div>
@@ -585,7 +585,10 @@ window.houseDay = (function () {
 
 <footer class="g-footer">
   <div class="g-crest g-crest--foot">
-    <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/chateau_engraving.png') }}"
+    {#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 3): its own size, so a lazy picture has a box to be found in
+        before it arrives; without one it showed as a blank tile, and Safari can leave a sizeless lazy image unloaded.
+        The logo in each page's closing band has the same (62 by 62, as the stylesheet draws it). -#}
+    <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/chateau_engraving.png') }}" width="691" height="396"
          alt="Château de Gudanes, Château-Verdun, France">
     {#- 15 Oct (owner): "it has to say what these dates are, like a marketing tool" - the three dates of the house, each with
         what it was, under the engraving at the foot of every page, linking to the history. -#}

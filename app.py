@@ -13040,7 +13040,8 @@ def enquiries_awaiting_answer(conn, now=None, hours=None):
                   AND spam_at IS NULL AND created_at <= ?""", (cutoff,)).fetchall():
         about = (e["notes"] or "").split(". ")[0]
         rows.append({"kind": "contact", "id": e["id"], "name": e["name"] or e["email"],
-                     "about": about if about in CONTACT_TOPICS.values() else "",
+                     "about": about if (about in CONTACT_TOPICS.values()
+                                        or about in CONTACT_TOPIC_EARLIER_WORDS) else "",
                      "made": e["created_at"]})
     for e in conn.execute(
             """SELECT * FROM event_inquiries WHERE COALESCE(status, 'new') = 'new'
@@ -63771,7 +63772,7 @@ def enquiry_message_part(notes):
     put in front of them: the topic ("Private event"), the month, the nights,
     the guests and the flexibility, each said first and joined with ". " by
     contact_page. Notes made before the topic existed have no topic."""
-    labels = set(CONTACT_TOPICS.values())
+    labels = set(CONTACT_TOPICS.values()) | set(CONTACT_TOPIC_EARLIER_WORDS)
     lead = re.compile(r"Around [^.]+|\d+ nights?|\d+ guests?|flexible: [^.]*")
     parts = (notes or "").split(". ")
     while len(parts) > 1 and (parts[0] in labels or lead.fullmatch(parts[0])):
@@ -131787,13 +131788,17 @@ def contact_enquiry_letter(entry_id, topic, name, email, month, nights, party, f
 # What the Contact page's "Write to Us" form asks it is about (z29), in the
 # words the house reads it in. The keys are what _flexible.html posts.
 CONTACT_TOPICS = {
-    "private_event": "Private event",
+    # 24 Nov 2026 (BRIEF-private-retreat-and-images, 1): the private page is a private retreat now. The value stays
+    # private_event; enquiries written before say "Private event" (CONTACT_TOPIC_EARLIER_WORDS).
+    "private_event": "Private retreat",
     "wedding": "Wedding",
     "photoshoot": "Photoshoot or filming",
     "whole_chateau": "The whole château, for a group",
     "other": "Something else",
 }
 CONTACT_EVENT_TOPICS = ("private_event", "wedding", "photoshoot", "whole_chateau")
+# What a topic was called before, as enquiries already in the database have it at the front of their notes.
+CONTACT_TOPIC_EARLIER_WORDS = ("Private event",)
 # The form allows 200 (an event); a room enquiry was clamped to 40.
 CONTACT_MOST_GUESTS = 200
 

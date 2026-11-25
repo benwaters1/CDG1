@@ -308,7 +308,11 @@ def _run(s, anon):
     gal = pages.get("/gallery", "")
     s.check("the reader leaves out what a template holds",
             page_imgs('<img alt="a" src="/1"><template><img alt="b" src="/2"></template>') == 1)
-    s.check("no more than forty photographs reach the page", 0 < page_imgs(gal) <= 40,
+    # 24 Nov 2026 (BRIEF-private-retreat-and-images, 3): forty-six. Two sections that showed no photograph at all now
+    # show what they are about: Rooms That No Longer Look Like This its three Then and Now pairs (six pictures), and
+    # The Work, As It Happens six of the work. Every other section still shows six and keeps the rest behind See all.
+    # Forty-seven with the photograph the site review of 24 Nov put at the top of the page.
+    s.check("no more than forty-seven photographs reach the page", 0 < page_imgs(gal) <= 47,
             detail=f"{page_imgs(gal)} images")
     s.check("and the rest wait behind See all", "<template data-lb-more>" in gal and "See all" in gal)
     # The pairs /restoration no longer shows, by their files: the kitchen, the bathrooms' room, its window,

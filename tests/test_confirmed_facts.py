@@ -273,7 +273,8 @@ def run():
             detail=f"HTTP {r.status_code} — a press or general question should "
                    "not have to pick a month")
     s.check("it says what it is about first, and nothing about nights or guests nobody gave",
-            row and (row["notes"] or "").startswith("Private event.")
+            # 24 Nov 2026: the topic is "Private retreat" now (the private page is a private retreat).
+            row and (row["notes"] or "").startswith("Private retreat.")
             and "night" not in (row["notes"] or "") and "guest" not in (row["notes"] or ""),
             detail=f"{row['notes'] if row else None!r} -- a blank once arrived as one "
                    "night, then as 'length not decided' and two guests")

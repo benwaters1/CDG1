@@ -61,7 +61,11 @@ BUDGET = 9000
 # 24 Nov 2026: 10,200, for three lines from guests' thank-you letters beside the Google three (owner's brief).
 # 24 Nov 2026, evening: 10,300. The five branches merged together put two links in every page's footer
 # (What's On at Gudanes, Getting Here: the occasions brief) and "and much more" on the retreats; measured 10,214.
-LONG_BUDGET = {"/gallery": 12000, "/whats-on": 13500, "/": 10300}
+# 25 Nov 2026: /gallery 12,700. Rooms That No Longer Look Like This shows its Then and Now pairs and The Work, As It
+# Happens six photographs of the work (BRIEF-private-retreat-and-images, 3), and the site review put a photograph at
+# the top; measured 12,588. Every page also counts the engraving at its foot at its real height now: it has its own
+# size, so a box is kept for it before it arrives (it was never loaded here, and counted as almost nothing).
+LONG_BUDGET = {"/gallery": 12700, "/whats-on": 13500, "/": 10300}
 SHARP = 1.25
 TAP = 44
 SMALLEST = 12
@@ -76,7 +80,8 @@ SMALLEST = 12
 KNOWN_LONG = {
     # 24 Nov: +200 for The Paintings, the section of their own the owner asked for (the painted beams and the
     # frescoes, three photographs), and the timeline's three new years; measured 15,216.
-    "/restoration": 15300,
+    # 25 Nov: +100, the engraving at the foot kept at its real height (see LONG_BUDGET); measured 15,377.
+    "/restoration": 15400,
     # 23 Nov: 14,900, the brochure's facts the owner asked for ("lets use the info from everything and the brochure
     # and really make it good"): the table, a sample of the days, what is included and what is on request.
     # 24 Nov: +100, a couple's line from their thank-you letter above the enquiry.
@@ -92,7 +97,8 @@ KNOWN_LONG = {
     # 24 Nov: +800, three retreat guests' lines from their thank-you letters (owner's brief).
     # 24 Nov: +2,750 for the two sections the owner's retreats brief adds, What You'll Do and The Bathrooms
     # ("i dont know why theyre not selling"; "have we got the bathrooms on the workshop page?"); measured 15,029.
-    "/workshops": 15300,   # 24 Nov evening, was 15,100: the footer's two new links; measured 15,125 merged.
+    "/workshops": 15400,   # 24 Nov evening, was 15,100: the footer's two new links; measured 15,125 merged.
+    # 25 Nov, was 15,300: the engraving at the foot at its real height (see LONG_BUDGET); measured 15,339.
     # 24 Nov, late, was 15,200: fresh seed 15,222, house copy 15,125.
     "/workshops/<id>": 11900,
     "/history": 9900,
