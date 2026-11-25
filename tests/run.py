@@ -601,6 +601,9 @@ SUITES = [
     "test_booking_com_watch",
     "test_booking_com_statement",
     "test_booking_com_in_returns",
+    # An occasion's prices, entered on Booking.com by hand: the list, the
+    # task, and what changes after a line is entered (25 November 2026).
+    "test_booking_com_prices",
     "test_kitchen_logs",
     "test_pool_book",
     "test_city_tax_year",
