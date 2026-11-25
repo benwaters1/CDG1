@@ -183,7 +183,9 @@ m = _harness.m
 # 25 Nov 2026, night: moved to bb225d0, Cooking in the Cuisine with a class every full day and no market with the
 # chef on the Saturday (owner) merged with main at 1487968; the base is the merge. Against fe3ed84 it listed
 # /workshops/352 alone, its day-by-day, and nothing else. Was: "fe3ed84"
-COPY_BASE = "bb225d0"
+# 25 Nov 2026, night: moved to 5375687, the two above merged together (Dinner at Gudanes with main at
+# dd48c58). Was: "bb225d0"
+COPY_BASE = "5375687"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
