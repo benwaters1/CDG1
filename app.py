@@ -54071,6 +54071,20 @@ def occasion_file_is_pdf(name):
     return bool(name) and name.lower().endswith(".pdf")
 
 
+def public_link(endpoint, **values):
+    """A whole link to a PUBLIC page, for a letter: on the house's public
+    address whatever address it was written from. The owner works on admin.,
+    which answers public pages too (marked noindex), so url_for(_external=True)
+    in the owner's request would send every reader of a newsletter there."""
+    path = url_for(endpoint, **values)
+    home = house_address()
+    if home:
+        return f"{home[0]}://{home[1]}{path}"
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL + path
+    return url_for(endpoint, _external=True, **values)
+
+
 def menu_for(slug, menu_file, night=None, nights=None, external=False):
     """What "See the menu" needs ({url, pdf, alt, download}), or None when no
     menu has been uploaded: then no link is drawn anywhere. `night` is given
@@ -54079,8 +54093,9 @@ def menu_for(slug, menu_file, night=None, nights=None, external=False):
     if not (slug and menu_file):
         return None
     words = dinner_nights_words(nights or ([night] if night else []))
-    url = (url_for("occasion_menu_night", slug=slug, night=night, _external=external) if night
-           else url_for("occasion_menu", slug=slug, _external=external))
+    link = public_link if external else url_for
+    url = (link("occasion_menu_night", slug=slug, night=night) if night
+           else link("occasion_menu", slug=slug))
     return {"url": url, "pdf": occasion_file_is_pdf(menu_file),
             "alt": f"The menu for {DINNER_AT_GUDANES}" + (f", {words}" if words else ""),
             "download": url + "?download=1"}
@@ -54483,10 +54498,8 @@ def occasion_newsletter_parts(conn, occ):
     words = (occ["description"] or "").strip().split("\n")[0].strip()
     base = PUBLIC_BASE_URL or ""
     with letter_drawing_context():
-        book = url_for("book_rooms", arrival=occ["first_night"], departure=departure,
-                       _external=True)
-        menu = (url_for("occasion_menu", slug=occ["slug"], _external=True)
-                if occ["menu_file"] else "")
+        book = public_link("book_rooms", arrival=occ["first_night"], departure=departure)
+        menu = public_link("occasion_menu", slug=occ["slug"]) if occ["menu_file"] else ""
     price_bits = []
     if dinners and occ["dinner_price"]:
         price_bits.append(f"Dinner from {dinner_price_words(occ['dinner_price'], occ['wine_included'])}.")
@@ -54514,17 +54527,17 @@ def occasion_newsletter_pictures(conn, occ):
     out = []
     with letter_drawing_context():
         if occ["kind"] == "guest_chef" and occ["chef_photo"]:
-            out.append({"src": url_for("static", filename=occ["chef_photo"], _external=True),
+            out.append({"src": public_link("static", filename=occ["chef_photo"]),
                         "alt": f"Cooking by {occ['chef_name'] or 'our guest chef'} at Château de Gudanes"})
         elif occ["banner_file"]:
-            out.append({"src": url_for("occasion_banner_photo", slug=occ["slug"], _external=True),
+            out.append({"src": public_link("occasion_banner_photo", slug=occ["slug"]),
                         "alt": f"{occ['name']} at Château de Gudanes"})
         elif occ["photo"]:
-            out.append({"src": url_for("static", filename=occ["photo"], _external=True),
+            out.append({"src": public_link("static", filename=occ["photo"]),
                         "alt": f"{occ['name']} at Château de Gudanes"})
         if occ["menu_file"] and not occasion_file_is_pdf(occ["menu_file"]):
             nights = stay_occasion_dinners(occ, conn)
-            out.append({"src": url_for("occasion_menu", slug=occ["slug"], _external=True),
+            out.append({"src": public_link("occasion_menu", slug=occ["slug"]),
                         "alt": f"The menu for {DINNER_AT_GUDANES}"
                                + (f", {dinner_nights_words(nights)}" if nights else "")})
     return out

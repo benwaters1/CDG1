@@ -105,7 +105,7 @@
       for a number of covers -- and a guest chef is the same thing with a chef's name and bio on top. The menu is a file
       (PDF, JPG or PNG) guests open in a pop-up wherever dinner is mentioned. -#}
   {%- set _dinner_shown = dinner_on or o['kind'] == 'guest_chef' %}
-  <fieldset id="dinner" class="so-box" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
+  <fieldset id="dinner" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
     <legend class="section-heading" style="padding:0 .5rem">Dinner at Gudanes</legend>
     <input type="hidden" name="dinner_section_shown" value="1">
     <label class="checkbox-row"><input type="checkbox" name="serve_dinner" value="1" id="so_serve"{% if _dinner_shown %} checked{% endif %}> <span>Serve dinner at the château on this occasion</span></label>
@@ -139,7 +139,7 @@
       {#- The menu: one for the occasion, and one for a night where the nights differ. -#}
       <p class="field-label" style="margin-top:1.25rem">The menu</p>
       {% if occ['menu_file'] %}
-      <p class="so-file" style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin:.25rem 0">
+      <p style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin:.25rem 0">
         {% if occ['menu_file'].endswith('.pdf') %}<span>PDF: {{ occ['menu_name'] or 'menu.pdf' }}</span>
         {% else %}<img src="{{ url_for('occasion_menu', slug=occ['slug']) }}" alt="The menu for Dinner at Gudanes" style="max-width:120px;max-height:160px;border:1px solid #ddd;border-radius:3px">{% endif %}
         <a href="{{ url_for('occasion_menu', slug=occ['slug']) }}" target="_blank" rel="noopener" class="btn-mini">Open</a>
@@ -150,10 +150,10 @@
       <input type="file" id="so_menu" name="menu" accept="application/pdf,image/jpeg,image/png">
       <span class="upload-hint">PDF, JPG or PNG, up to 10 MB. Guests open it from “See the menu”. With none, nothing mentions a menu.</span>
       {% if nights %}
-      <div class="so-nightmenus" style="margin-top:.5rem">
+      <div style="margin-top:.5rem">
         {% for n in nights if n in dinners %}
         {%- set _nm = night_menus.get(n) %}
-        <details class="so-nightmenu"{% if _nm %} open{% endif %} style="margin:.25rem 0">
+        <details{% if _nm %} open{% endif %} style="margin:.25rem 0">
           <summary class="upload-hint" style="cursor:pointer">Different menu on {{ n|date_short }}</summary>
           {% if _nm %}<p style="margin:.25rem 0"><a href="{{ url_for('occasion_menu_night', slug=occ['slug'], night=n) }}" target="_blank" rel="noopener">{{ _nm['menu_name'] or 'This night’s menu' }}</a>
             <label class="checkbox-row" style="display:inline-flex;margin-left:1rem"><input type="checkbox" name="menu_remove_{{ n }}" value="1"> <span>Remove</span></label></p>{% endif %}
@@ -165,7 +165,7 @@
     </div>
   </fieldset>
 
-  <fieldset id="guest-chef" class="so-box" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
+  <fieldset id="guest-chef" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
     <legend class="section-heading" style="padding:0 .5rem">Guest chef <span class="upload-hint">(when “What it is” is Guest chef)</span></legend>
     <p class="upload-hint">The chef cooks the Dinner at Gudanes nights above, under their own name.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
@@ -184,7 +184,7 @@
 
   {#- 3b (owner, 25 Nov 2026): "like an advertisement", under the video on the home page, until its last dinner night
       (or last night) has passed. One band only: the soonest of those ticked. -#}
-  <fieldset id="home-banner" class="so-box" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
+  <fieldset id="home-banner" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
     <legend class="section-heading" style="padding:0 .5rem">On the home page</legend>
     <label class="checkbox-row"><input type="checkbox" name="home_banner" value="1"{% if o['home_banner'] %} checked{% endif %}> <span>Show on the home page, under the video</span></label>
     <p class="upload-hint">A panel with a photograph, this line, the name, the dates, the price and Book your stay. Only while it is on sale, and it takes itself down after its last night. If two are ticked, the sooner shows.</p>

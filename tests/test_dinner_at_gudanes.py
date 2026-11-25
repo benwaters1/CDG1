@@ -507,6 +507,26 @@ def _run(s, oc, owner, conn):
             "Dinner at Gudanes</span> each night" in home and "g-occasion__menu" in home,
             detail=re.search(r'g-sit__meta">[^<]*<span class="g-occasion__tag">[^<]*</span>[^<]*', home).group(0)
             if re.search(r'g-sit__meta">[^<]*<span class="g-occasion__tag">[^<]*</span>[^<]*', home) else "")
+    r = oc.post(f"/admin/stay-occasions/{oid}", data=dict(_form(name, n1, n2, **save), **{
+                f"menu_{n2.isoformat()}": (io.BytesIO(_pdf()), "samedi.pdf")}),
+                content_type="multipart/form-data", follow_redirects=True)
+    own = conn.execute("SELECT menu_file FROM stay_occasion_dinners WHERE occasion_id = ? AND dinner_date = ?",
+                       (oid, n2.isoformat())).fetchone()
+    s.check("a night can have a menu of its own", own and (own["menu_file"] or "").endswith(".pdf"), response=r)
+    night_menu = anon.get(f"{occ_page}/menu/{n2.isoformat()}")
+    s.check("served at its own address", night_menu.status_code == 200 and night_menu.data.startswith(b"%PDF"),
+            detail=str(night_menu.status_code))
+    night_menu.close()
+    p3 = htmllib.unescape(anon.get(occ_page).get_data(as_text=True))
+    s.check("and named on the occasion's page beside its night",
+            f"{words2}: See the menu" in re.sub(r"<[^>]+>", "", p3))
+    r = oc.post(f"/admin/stay-occasions/{oid}", data=dict(_form(name, n1, n2, **save),
+                **{f"menu_remove_{n2.isoformat()}": "1"}), follow_redirects=True)
+    gone = conn.execute("SELECT menu_file FROM stay_occasion_dinners WHERE occasion_id = ? AND dinner_date = ?",
+                        (oid, n2.isoformat())).fetchone()
+    s.check("and removed again, the night shares the occasion's menu",
+            gone and not gone["menu_file"] and anon.get(f"{occ_page}/menu/{n2.isoformat()}").status_code == 404,
+            response=r)
     for state in ("draft", "dismissed"):
         conn.execute("UPDATE stay_occasions SET status = ? WHERE id = ?", (state, oid))
         conn.commit()
@@ -585,6 +605,20 @@ def _run(s, oc, owner, conn):
     oc.post(f"/admin/stay-occasions/{oid}", data=dict(_form(name, n1, n2, **banner), menu_remove="1"))
     b = band(anon.get("/").get_data(as_text=True))
     s.check("with the menu removed, no See the menu", b and "See the menu" not in b.group(0))
+    r = oc.post(f"/admin/stay-occasions/{oid}", data=dict(_form(name, n1, n2, **banner),
+                banner=(io.BytesIO(_pdf()), "banner.jpg")), content_type="multipart/form-data",
+                follow_redirects=True)
+    s.check("the banner's own photograph must be a picture, whatever it is called",
+            any("not a JPG or PNG" in f for f in flashes(r)) and not _occ(conn, name)["banner_file"], response=r)
+    r = oc.post(f"/admin/stay-occasions/{oid}", data=dict(_form(name, n1, n2, **banner),
+                banner=(io.BytesIO(_png()), "banner.png")), content_type="multipart/form-data",
+                follow_redirects=True)
+    b = band(anon.get("/").get_data(as_text=True))
+    photo = anon.get(f"{occ_page}/banner")
+    s.check("a photograph of its own takes the banner's left half",
+            b and f'src="{occ_page}/banner"' in b.group(0) and photo.status_code == 200
+            and photo.mimetype == "image/png", detail=b.group(0)[:300] if b else "no banner")
+    photo.close()
     other = f"{TAG} The later one"
     oc.post("/admin/stay-occasions/new", data=_form(other, n1 + timedelta(days=2), n1 + timedelta(days=2),
                                                     serve_dinner="1", dinner_price="55"))
@@ -653,6 +687,19 @@ def _run(s, oc, owner, conn):
                 len(again) == 1 and again[0]["redrafted_at"] and "€72 a person" in again[0]["body"],
                 detail=again[0]["body"] if again else "")
         s.check("and nothing was sent while saving", not letters.sent, detail=str(letters.sent[:1]))
+        # Written while the owner is on the staff address, its links are still the public site's.
+        was_home = m.house_address
+        m.house_address = lambda: ("https", "www.chateaugudanes.com")
+        try:
+            with m.app.test_request_context("/", base_url="https://admin.chateaugudanes.com"):
+                _subj, body, _fp, _b = m.occasion_newsletter_parts(conn, _occ(conn, name))
+                pics = m.occasion_newsletter_pictures(conn, _occ(conn, name))
+        finally:
+            m.house_address = was_home
+        s.check("drafted from the staff address, its links and pictures are on the public site",
+                "https://www.chateaugudanes.com/book?arrival=" in body and "admin." not in body
+                and pics and all(p["src"].startswith("https://www.chateaugudanes.com/") for p in pics),
+                detail=body[-300:])
         for state in ("draft", "dismissed"):
             other_name = f"{TAG} A {state} one"
             oc.post("/admin/stay-occasions/new", data=_form(other_name, n1, n1, serve_dinner="1", dinner_price="50"))
