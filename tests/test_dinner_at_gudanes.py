@@ -269,6 +269,8 @@ def _run(s, oc, owner, conn):
             price_with and abs(float(price_with.group(1)) - usual) < 0.005,
             detail=f"{price_with and price_with.group(1)} against {usual}")
     s.check("without dinner, no note", "is hosted on" not in card_without)
+    s.check("and with no room prices of its own, nothing says the nights are priced for the occasion",
+            "priced for the occasion" not in page and "includes 2 nights of" not in page)
     outside = anon.get(f"/book?arrival={later}&departure={later_out}&party_size=2").get_data(as_text=True)
     s.check("dates without a dinner night carry no note", "is hosted on" not in outside)
 

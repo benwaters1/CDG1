@@ -1,9 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Occasions at Gudanes{% endblock %}
+{% block title %}Stay occasions{% endblock %}
 {% block content %}
 
+{#- 25 Nov 2026 (owner): "Stay occasions", not "Occasions at Gudanes" -- the staff menu's "Occasions" is the other page
+    (/occasions, the birthday and event preps), and two pages both called Occasions is why he could not find this one. -#}
 <div class="page-head">
-  <h1>Occasions at Gudanes</h1>
+  <h1>Stay occasions</h1>
   <a href="{{ url_for('whats_on_at_gudanes') }}" class="btn-mini" target="_blank" rel="noopener">View public page ↗</a>
   <a href="{{ url_for('admin_stay_occasion_new') }}" class="btn-mini">+ New occasion</a>
 </div>
@@ -35,7 +37,14 @@
           {% if s['source_url'] %}<br><a href="{{ s['source_url'] }}" target="_blank" rel="noopener" class="upload-hint">Source</a>{% endif %}
           {% for c in s.clashes %}<br><span class="{{ 'wo-problem' if c.blocks else 'upload-hint' }}">{{ c.why }}</span>{% endfor %}</td>
         <td style="white-space:nowrap">
-          {% if s.blocked %}<span class="upload-hint">Cannot go on sale</span>
+          {#- 25 Nov (owner): blocked by a retreat and nothing else, it can be that retreat's celebration instead. -#}
+          {% if s.blocked and s.on_a_retreat %}<span class="upload-hint">Cannot go on sale</span><br>
+          <form method="post" action="{{ url_for('admin_stay_occasion_suggestion_create', sid=s['id']) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="celebrate" value="1">
+            <button type="submit" class="btn-mini">Celebrate on the retreat</button>
+          </form>
+          {% elif s.blocked %}<span class="upload-hint">Cannot go on sale</span>
           {% else %}
           <form method="post" action="{{ url_for('admin_stay_occasion_suggestion_create', sid=s['id']) }}" style="display:inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -69,7 +78,8 @@
       <th scope="row">{{ date_range(o['first_night'], o['last_night']) }}<br><span class="upload-hint">{{ o.nights }} night{{ '' if o.nights == 1 else 's' }}</span></th>
       <td><a href="{{ url_for('admin_stay_occasion', occ_id=o['id']) }}"><strong>{{ o['name'] }}</strong></a>
         {% if o['kind'] == 'guest_chef' %}<br><span class="upload-hint">Guest chef{% if o['chef_name'] %}: {{ o['chef_name'] }}{% endif %}</span>{% endif %}
-        {% for b in o.blocked %}<br><span class="wo-problem">{{ b }}</span>{% endfor %}</td>
+        {% for b in o.blocked %}<br><span class="wo-problem">{{ b }}</span>{% endfor %}
+        {% if o['retreat_evening'] %}<br><span class="upload-hint">On the retreat, {{ o['retreat_night']|date_short }}: {{ o['retreat_evening'] }}</span>{% endif %}</td>
       <td>{% if o.from_price %}{{ o.from_price|money(0) }} a night{% else %}<span class="wo-problem">no price</span>{% endif %}</td>
       <td>{{ o.chef_tag }}</td>
       <td>{% if o.past %}<span class="upload-hint">Past</span>

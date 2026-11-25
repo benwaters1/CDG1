@@ -208,6 +208,29 @@ def _run(s, oc, owner, conn):
             any(name in (l or "") and "3 nights at" in l for l in labels), detail=str(labels))
     s.check("and carries its chef line", any(o.get("chef_line") == m.CHEF_OFF_SITE_LINE
                                              for o in api.get("occasions", [])), detail=str(api.get("occasions")))
+
+    # 25 Nov (owner): the results charged the occasion's price and said only "€320 per room, a night", dearer than
+    # the rate a guest had seen elsewhere, with no reason given.
+    s.section("The search results say why the price is higher")
+    over = oc.get(f"/book?arrival={(a - timedelta(days=1)).isoformat()}"
+                  f"&departure={(b + timedelta(days=1)).isoformat()}")
+    over_html = over.get_data(as_text=True)
+    line = re.search(r'<p class="g-p g-searched__occasion">(.*?)</p>', over_html, re.S)
+    said = visible_text(line.group(1)) if line else ""
+    s.check("a search over the occasion names it above the rooms, with its dates",
+            said.startswith(f"Your dates include {name} (") and "those nights are priced for the occasion" in said,
+            detail=said or "no line", response=over)
+    s.check("linking to its own page",
+            bool(line) and f'href="/whats-on/at-gudanes/{occ["slug"]}"' in line.group(1),
+            detail=line.group(1)[:200] if line else "")
+    card = re.search(rf'<article class="g-card g-card--room" id="room-{room["id"]}".*?</article>', over_html, re.S)
+    s.check("and the room it prices says how many of its nights it priced",
+            bool(card) and f"includes 3 nights of {name}" in visible_text(card.group(0)),
+            detail=visible_text(card.group(0))[:300] if card else "no card")
+    outside_page = oc.get(f"/book?arrival={(first - timedelta(days=5)).isoformat()}&departure={first.isoformat()}")
+    s.check("a search outside it says nothing of it",
+            outside_page.status_code == 200 and name not in outside_page.get_data(as_text=True)
+            and "g-searched__occasion" not in outside_page.get_data(as_text=True), response=outside_page)
     conn.execute("UPDATE stay_occasions SET status = 'dismissed' WHERE id = ?", (occ["id"],))
     conn.commit()
     with m.app.test_request_context("/"):
@@ -229,6 +252,23 @@ def _run(s, oc, owner, conn):
     card = re.search(r'<article class="g-sit g-occasion">.*?</article>', html, re.S)
     card_text = visible_text(card.group(0)) if card else ""
     s.check("the card says Room and breakfast", "Room and breakfast" in card_text, detail=card_text[:200])
+    # 25 Nov: "4 nights · Room and breakfast" and then "from €320 a night, room and breakfast" under it.
+    cards = [visible_text(c) for c in re.findall(r'<article class="g-sit g-occasion">.*?</article>', html, re.S)]
+    twice = [c for c in cards if len(re.findall(r"breakfast", c, re.I)) > 1]
+    s.check("and says it once: no card says breakfast twice", cards and not twice,
+            detail=(twice[0][:200] if twice else f"{len(cards)} cards"))
+    # Read with tags taken out and nothing put in their place, as a browser joins inline text: a comment with
+    # dashes between the figure and "a night" once took the space out ("€330a night"), and visible_text, which
+    # puts a space for every tag, read it as fine.
+    rate = re.search(r'<p class="g-sit__rate">(.*?)</p>', card.group(0) if card else "", re.S)
+    flat = " ".join(re.sub(r"<[^>]+>", "", rate.group(1)).split()) if rate else ""
+    s.check("and its price reads 'from €N a night', spaces and all",
+            re.fullmatch(r"from €[\d,]+ a night", flat) is not None, detail=flat or "no price line")
+    home_cards = [visible_text(c) for c in re.findall(r'<article class="g-sit g-occasion">.*?</article>',
+                                                       m.app.test_client().get("/").get_data(as_text=True), re.S)]
+    s.check("nor on the home page", home_cards
+            and not [c for c in home_cards if len(re.findall(r"breakfast", c, re.I)) > 1],
+            detail=f"{len(home_cards)} cards")
     s.check("and never lunch or dinner", not re.search(r"lunch|dinner", card_text, re.I), detail=card_text)
     page = oc.get(f"/whats-on/at-gudanes/{occ['slug']}").get_data(as_text=True)
     body = re.search(r'class="g-wrap g-occasion-page">(.*?)</div></section>', page, re.S)
@@ -535,6 +575,42 @@ def _run(s, oc, owner, conn):
     s.check("it is on the automation list", any(j[0] == "stay_occasions" for j in m.AUTOMATION_JOBS))
     s.check("and Occasions at Gudanes can be found from the palette",
             any(p[1] == "admin_stay_occasions" for p in m.PALETTE_PAGES))
+
+    # 25 Nov (owner): he could not find them. The menu's "Occasions" is the other page, the guests' own occasions
+    # prepared for (/occasions), and nothing in the menu reached this one.
+    s.section("Stay occasions are in the owner's menu, beside Occasions")
+    _oc, ec, _o, emp = clients()
+    with m.app.test_request_context("/"):
+        where = m.url_for("admin_stay_occasions")
+        home_url, staff_url = m.url_for("dashboard"), m.url_for("staff_today")
+    home = oc.get(home_url, follow_redirects=True)
+    menu = re.search(r'<a [^>]*href="%s"[^>]*>(.*?)</a>' % re.escape(where), home.get_data(as_text=True), re.S)
+    s.check("the owner home's menu links to them, as Stay Occasions",
+            home.status_code == 200 and bool(menu) and "Stay Occasions" in visible_text(menu.group(1)),
+            detail=visible_text(menu.group(1)) if menu else "no link", response=home)
+    with m.app.test_request_context("/"):
+        owner_nav = m.build_nav(conn.execute("SELECT * FROM users WHERE id = ?", (owner["id"],)).fetchone(),
+                                "dashboard", {})
+    items = [i["endpoint"] for g in owner_nav["groups"] for _h, links in g["sections"] for i in links]
+    s.check("beside Occasions", "occasions_page" in items and "admin_stay_occasions" in items
+            and items.index("admin_stay_occasions") == items.index("occasions_page") + 1, detail=str(items[:20]))
+    if emp:
+        staff = ec.get(staff_url, follow_redirects=True)
+        s.check("a member of staff does not see them", staff.status_code == 200
+                and f'href="{where}"' not in staff.get_data(as_text=True), response=staff)
+        prep = ec.get("/occasions")
+        s.check("nor the link from Occasions", prep.status_code == 200
+                and f'href="{where}"' not in prep.get_data(as_text=True), response=prep)
+    else:
+        s.check("there is a member of staff to look with", False)
+    prep = oc.get("/occasions")
+    s.check("the owner's Occasions page links across: Selling a date to guests? Stay occasions",
+            prep.status_code == 200 and "Selling a date to guests? Stay occasions" in visible_text(prep.get_data(as_text=True))
+            and f'href="{where}"' in prep.get_data(as_text=True), response=prep)
+    page = oc.get(where).get_data(as_text=True)
+    s.check("and the page itself is headed Stay occasions",
+            re.search(r"<h1>\s*Stay occasions\s*</h1>", page) is not None,
+            detail=(re.search(r"<h1>(.*?)</h1>", page, re.S).group(1) if "<h1>" in page else "no h1"))
 
 
 if __name__ == "__main__":

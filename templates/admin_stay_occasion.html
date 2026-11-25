@@ -6,7 +6,7 @@
 
 <div class="page-head">
   <h1>{{ occ['name'] or 'New occasion' }}</h1>
-  <a href="{{ url_for('admin_stay_occasions') }}" class="btn-mini">← Occasions</a>
+  <a href="{{ url_for('admin_stay_occasions') }}" class="btn-mini">← Stay occasions</a>
   {% if editing and occ['slug'] %}<a href="{{ url_for('stay_occasion_page', slug=occ['slug']) }}" class="btn-mini" target="_blank" rel="noopener">{{ 'View on the site' if occ['status'] == 'live' else 'Preview' }} ↗</a>{% endif %}
 </div>
 
@@ -20,6 +20,51 @@
 {% if who and (who['created_by'] or who['taken_up_by']) %}<p class="upload-hint">{% if who['taken_up_by'] %}Created from a suggestion by {{ who['taken_up_by'] }}.{% else %}Drafted by {{ who['created_by'] }}.{% endif %}</p>{% endif %}
 {% if occ['why'] %}<p class="upload-hint" style="max-width:52rem">Why these dates: {{ occ['why'] }}{% if occ['source_url'] %} <a href="{{ occ['source_url'] }}" target="_blank" rel="noopener">Source</a>{% endif %}</p>{% endif %}
 {% for c in clashes %}<p class="{{ 'wo-problem' if c.blocks else 'upload-hint' }}" style="margin:.25rem 0">{{ 'Clash: ' if c.blocks else '' }}{{ c.why }}</p>{% endfor %}
+
+{#- 25 Nov 2026 (owner): "add those dates to the itineraries of the retreats, put on celebration for them". An
+    occasion on a retreat's nights cannot be sold, but it can be that retreat's celebration on the day: one line, in
+    place of the evening the retreat's page had. Whether the page really shows it is checked by drawing that page
+    (retreat_celebration_shown), and said here either way. -#}
+{% if retreat_days %}
+{%- set _opts = [] -%}{%- for r in retreat_days -%}{%- for n in r.nights -%}{%- set _ = _opts.append((n.night, r, n)) -%}{%- endfor -%}{%- endfor -%}
+{%- set _chosen = occ['retreat_night'] if occ['retreat_night'] else _opts[-1][0] -%}
+<section class="detail-card" id="retreat" style="margin-top:1rem">
+  <h2 class="section-heading">On a retreat</h2>
+  {% for r in retreat_days %}
+  <p style="margin:.25rem 0">
+    {%- set _n = r.here or r.nights[-1] -%}
+    Falls on <a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.title }}</a>,
+    {% if r.here or r.nights|length == 1 %}day {{ _n.day }}{% else %}days {{ r.nights[0].day }} to {{ r.nights[-1].day }}{% endif %}:
+    {% if r.shown %}shows on that retreat's days as a celebration.
+    {% elif occ['retreat_evening'] and r.here %}<span class="wo-problem">its page does not show it. That retreat's day-by-day has no dated {{ _n.weekday }} to put it on: its sittings start on different dates, or it is set outside the summer, when its page gives the plain outline.</span>
+    {% elif occ['retreat_evening'] %}not celebrated there: its evening is set on another night.
+    {% else %}write its evening below and it shows on that retreat's days as a celebration.{% endif %}
+  </p>
+  {% endfor %}
+  <form method="post" action="{{ url_for('admin_stay_occasion_retreat', occ_id=occ['id']) }}" style="margin-top:.75rem">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;align-items:end">
+      <div>
+        <label for="so_retreat_night" class="field-label">The evening of</label>
+        <select id="so_retreat_night" name="retreat_night">
+          {% for night, r, n in _opts %}<option value="{{ night }}"{% if night == _chosen %} selected{% endif %}>{{ night|date_short }}: {{ r.title }}, day {{ n.day }}{% if n.day == r.last_day %} (the last night){% endif %}</option>{% endfor %}
+        </select>
+      </div>
+      <div style="grid-column:span 2">
+        <label for="so_retreat_evening" class="field-label">The evening, in one line</label>
+        <input type="text" id="so_retreat_evening" name="retreat_evening" value="{{ occ['retreat_evening'] or '' }}" maxlength="160"
+               placeholder="The evening of {{ occ['name'] }}: dinner, then a party">
+      </div>
+    </div>
+    <p class="upload-hint" style="margin-top:.5rem">
+      {{ evening_words }} words at most, as every day on a retreat's page is a line. It takes the place of that
+      evening's own line, and the day's heading names {{ occ['name'] }}. On a retreat's last night the banquet
+      stays, named for it. Empty the line to take it off the retreat. Shown whether or not this occasion is on sale.
+    </p>
+    <button type="submit" class="btn-mini">Save the evening</button>
+  </form>
+</section>
+{% endif %}
 
 <form method="post" action="{{ url_for('admin_stay_occasion', occ_id=occ['id']) if editing else url_for('admin_stay_occasion_new') }}" class="detail-card" id="occasion-form" style="margin-top:1rem" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

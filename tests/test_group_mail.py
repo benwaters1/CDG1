@@ -163,7 +163,7 @@ def run():
 
     s.section("The session's register offers both, from the app")
     page = oc.get(register_url).get_data(as_text=True)
-    s.check("'Email everyone on this session' opens the app's page, not Outlook",
+    s.check("'Send bulk email' opens the app's page, not Outlook",
             email_url in page and "mailto:?bcc=" not in page)
     s.check("and 'Send statements to everyone' is beside it", statements_url in page)
     with m.app.test_request_context():

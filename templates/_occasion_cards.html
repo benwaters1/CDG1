@@ -19,7 +19,9 @@
       {% if o.from_price %}
       <p class="g-sit__rate">
         <span>from</span> <span class="g-fig" data-eur="{{ o.from_price|int }}">€{{ '{:,.0f}'.format(o.from_price) }}</span>
-        <span>a night, room and breakfast</span>
+        {# "a night", not "a night, room and breakfast" (25 Nov): the tag above already says room and breakfast.
+           No dashes on this comment: they would take the space out of "€320 a night". #}
+        <span>a night</span>
       </p>
       {% endif %}
       <a href="{{ url_for('book_rooms', arrival=o['first_night'], departure=o.departure) }}" class="g-btn g-btn--solid">Check these dates</a>
