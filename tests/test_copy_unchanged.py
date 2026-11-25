@@ -191,7 +191,9 @@ m = _harness.m
 # 25 Nov 2026, night: moved to 77ee210, the itinerary wording (2f95473 above) merged with main at 8d67a89, Cooking's
 # three days in the brief's words. Against 5375687 it listed /events/private and /workshops/351 to /workshops/354,
 # the same pages as against 89a5af6, and nothing else. Was: "5375687"
-COPY_BASE = "77ee210"
+# 25 Nov 2026, night: moved to ac7b87c, the Booking.com prices list merged with main at 961d9b1. It touches
+# no public template, only staff pages. Was: "77ee210"
+COPY_BASE = "ac7b87c"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
