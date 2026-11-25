@@ -180,7 +180,10 @@ m = _harness.m
 # listed one change, meant: the extras step on /book/<room> says "Anything you add here", not "tick", now that
 # a dinner is a number box there. The rest of the brief's words need a live occasion with dinner, which this copy
 # has none of (test_dinner_at_gudanes holds them). Was: "fe3ed84"
-COPY_BASE = "9e23b90"
+# 25 Nov 2026, night: moved to bb225d0, Cooking in the Cuisine with a class every full day and no market with the
+# chef on the Saturday (owner) merged with main at 1487968; the base is the merge. Against fe3ed84 it listed
+# /workshops/352 alone, its day-by-day, and nothing else. Was: "fe3ed84"
+COPY_BASE = "bb225d0"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

@@ -5425,12 +5425,30 @@ main img{ height: auto; }
 /* ==========================================================================
    LIGHTBOX
    ========================================================================== */
+/* 25 Nov 2026 (owner's screenshot): a portrait photograph opened hard against the
+   left edge, the arrows gone and the cross in the corner of the screen. The box
+   used to shrink to the photograph, and since 23 Nov the photograph is its own
+   full-size file: a box sizes to a picture's natural width, not the width it is
+   drawn at once max-height has scaled it, so a 2,000px file made the box 96vw
+   and the picture sat at its left, with the arrows 60px outside the screen.
+   Now the open box IS the screen, and the picture is centred in it, so its file
+   size cannot move anything. Clicking the dark around it still closes: that
+   click lands on the dialog itself. test_lightbox_and_signatures measures it. */
 .g-lb{
   border: 0; padding: 0; max-width: 96vw; max-height: 96vh; width: auto;
   background: transparent; overflow: visible;
 }
+.g-lb[open]{
+  position: fixed; inset: 0; margin: 0; box-sizing: border-box;
+  width: 100%; height: 100%; max-width: none; max-height: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 72px 76px 24px;
+}
 .g-lb::backdrop{ background: rgba(14,28,48,.92); }
-.g-lb__img{ display: block; max-width: 92vw; max-height: 82vh; width: auto; height: auto; }
+.g-lb__img{
+  display: block; flex: none; width: auto; height: auto;
+  max-width: 100%; max-height: calc(100vh - 140px); max-height: calc(100dvh - 140px);
+}
 .g-lb__cap{
   margin: var(--s3) 0 0; text-align: center; color: #E8E2D6;
   font-family: var(--ui); font-size: var(--t-ui); max-width: var(--m-wide);
@@ -5441,11 +5459,13 @@ main img{ height: auto; }
   border: 1px solid rgba(232,226,214,.4); background: rgba(14,28,48,.6);
   color: #fff; font-size: 26px; line-height: 1;
 }
-.g-lb__x{ top: -56px; right: 0; }
+.g-lb__x{ top: 12px; right: 16px; }
 .g-lb__nav{ top: 50%; transform: translateY(-50%); }
-.g-lb__nav--p{ left: -60px; }
-.g-lb__nav--n{ right: -60px; }
+.g-lb__nav--p{ left: 16px; }
+.g-lb__nav--n{ right: 16px; }
 @media (max-width: 52rem){
+  .g-lb[open]{ padding: 60px 8px 16px; }
+  .g-lb__img{ max-height: calc(100vh - 100px); max-height: calc(100dvh - 100px); }
   .g-lb__nav--p{ left: 4px; }
   .g-lb__nav--n{ right: 4px; }
   .g-lb__x{ top: 4px; right: 4px; }
@@ -12387,12 +12407,16 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g section.rc-says .rc-mark{display:block;max-width:none;font-family:"Cormorant Garamond",Georgia,serif;font-size:88px;line-height:1;height:44px;margin:-6px 0 4px;color:#C5A24A;text-align:center}
 .g section.rc-says blockquote.rc-q{border:0;padding:0;margin:0 auto;max-width:22ch;text-align:center;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:29px;line-height:1.35;color:#14305f;background:none}
 .g section.rc-says blockquote.rc-q::before, .g section.rc-says blockquote.rc-q::after{content:none}
-.g section.rc-says figcaption.rc-sig{display:flex;align-items:center;justify-content:center;gap:12px;margin:30px 0 0;padding:0;border:0;white-space:nowrap;max-width:none;
+/* 25 Nov 2026 (owner's screenshot): the signature could not wrap, so "WORKSHOP GUEST, AUTUMN 2023" beside its seal
+   was wider than a card three to a row: it ran out through the gilt frame on the right and, being centred, put the
+   seal over the frame on the left. It wraps now, the label in two balanced lines beside the seal, and only when the
+   card is too narrow for one. test_lightbox_and_signatures measures the ink against the card. */
+.g section.rc-says figcaption.rc-sig{display:flex;align-items:center;justify-content:center;gap:12px;margin:30px 0 0;padding:0;border:0;max-width:none;
   font-family:"Cormorant Garamond",Georgia,serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#9A7B2E}
 /* The signature is not a photograph's description, so the 15 Oct rule that hides every figcaption in main (with
    !important) lets it through, as it does the wedding section's labels. */
 .g main section.rc-says figcaption.rc-sig{display:flex !important}
-.g section.rc-says .rc-sig .rc-sig__l{font-size:inherit;color:inherit}
+.g section.rc-says .rc-sig .rc-sig__l{font-size:inherit;color:inherit;min-width:0;text-align:left;text-wrap:balance}
 .g section.rc-says .rc-sig .g-seal{width:34px;height:34px;flex:none}
 .g section.rc-says .rc-reply{margin:22px auto 0;max-width:32ch;text-align:center}
 @media (max-width:640px){
