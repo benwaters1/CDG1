@@ -42907,7 +42907,10 @@ def dashboard():
                   AND {SESSION_IS_LIVE} AND {WORKSHOP_IS_PUBLIC}
                 ORDER BY workshop_sessions.start_date LIMIT 3""",
             (house_today_iso(),)).fetchall()]
-        occasions = upcoming_stay_occasions(conn, limit=3)
+        # Only the ones with a chef in the house (owner, 25 Nov 2026: "i only
+        # want it on the homepage if there is a chef not just normal dates").
+        # Room-and-breakfast dates stay under What's On, At Gudanes.
+        occasions = upcoming_stay_occasions(conn, limit=3, chef_only=True)
         banner = home_banner_occasion(conn)
         conn.close()
         # Both are optional in the template, so an empty house still renders.
@@ -54461,12 +54464,18 @@ def stay_dinner_letter(conn, booking, today=None):
 
 # --- Public -------------------------------------------------------------------
 
-def upcoming_stay_occasions(conn, limit=None, today=None):
+def upcoming_stay_occasions(conn, limit=None, today=None, chef_only=False):
     """Live occasions whose last night has not passed, soonest first, as
-    dicts the card reads: the photograph, nights, from-price, chef tag."""
+    dicts the card reads: the photograph, nights, from-price, chef tag.
+
+    chef_only: the home page's (owner, 25 Nov 2026), only the occasions with
+    the chef in the house -- a guest chef or a Dinner at Gudanes night sets
+    chef_on_site, so both count. Filtered in the query, so the limit counts
+    three of those rather than three of anything with the plain ones taken out."""
     today = today or house_today()
     sql = ("SELECT * FROM stay_occasions WHERE status = 'live' AND last_night >= ? "
-           "ORDER BY first_night, sort_order, id")
+           + ("AND chef_on_site = 1 " if chef_only else "")
+           + "ORDER BY first_night, sort_order, id")
     rows = conn.execute(sql + (f" LIMIT {int(limit)}" if limit else ""),
                         (today.isoformat(),)).fetchall()
     return [stay_occasion_card(conn, r) for r in rows]
