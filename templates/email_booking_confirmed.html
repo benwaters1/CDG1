@@ -143,6 +143,19 @@
     {{ chef_dinners[0]['chef_name'] or 'Our guest chef' }} serves dinner on
     {% for d in chef_dinners %}<a href="{{ d['book_url'] }}" style="color:#14305F;">{{ d['words'] }}</a>{% if not loop.last %}{{ ' and ' if loop.revindex == 2 else ', ' }}{% endif %}{% endfor %}{% if chef_dinners[0]['dinner_time'] %}, seated at {{ chef_dinners[0]['dinner_time'] }}{% endif %}{% if chef_dinners[0]['dinner_price'] %}, €{{ '{:,.0f}'.format(chef_dinners[0]['dinner_price']) }} per person{% endif %}. Places are limited: book a table from the link.</p>
   {% endif %}
+  {#- Dinner at Gudanes (25 Nov 2026): the dinners added with the stay, and the dinner nights of the stay that were
+      not, with the stay's own page to add one later. The night, the time and the price only; the menu says the rest. -#}
+  {% if dinners_booked %}
+  <p style="margin:22px 0 6px; font-family:{{ SANS }}; font-size:15px; line-height:1.6; color:#1C2833;">
+    <strong>Dinner at Gudanes is booked</strong> for
+    {% for d in dinners_booked %}{{ d['words'] }} ({{ d['covers'] }} × €{{ '{:,.2f}'.format(d['price']) }}){% if not loop.last %}{{ ' and ' if loop.revindex == 2 else ', ' }}{% endif %}{% endfor %}. It is on your bill with the room.</p>
+  {% endif %}
+  {% if dinners_more %}
+  <p style="margin:{{ '10px' if dinners_booked else '22px' }} 0 6px; font-family:{{ SANS }}; font-size:15px; line-height:1.6; color:#1C2833;">
+    Dinner is also served on
+    {% for n in dinners_more %}{{ n['words'] }}{% if n['time_words'] %}, {{ n['time_words'] }}{% endif %}, €{{ '{:,.0f}'.format(n['price']) if n['price'] == n['price']|int else '{:,.2f}'.format(n['price']) }} a person{% if not loop.last %}{{ ' and ' if loop.revindex == 2 else '; ' }}{% endif %}{% endfor %}.
+    {% if dinner_add_url %}<a href="{{ dinner_add_url }}" style="color:#14305F;">Add it to your stay</a> up to the day before.{% endif %}{% for n in dinners_more if n['menu'] %}{% if loop.first %} <a href="{{ n['menu']['url'] }}" style="color:#14305F;">See the menu</a>.{% endif %}{% endfor %}</p>
+  {% endif %}
   {{ email_extras(manage_url, settings) }}
   {{ email_directions(settings, getting_here_url) }}
 

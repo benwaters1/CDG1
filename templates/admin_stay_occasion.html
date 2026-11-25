@@ -21,7 +21,7 @@
 {% if occ['why'] %}<p class="upload-hint" style="max-width:52rem">Why these dates: {{ occ['why'] }}{% if occ['source_url'] %} <a href="{{ occ['source_url'] }}" target="_blank" rel="noopener">Source</a>{% endif %}</p>{% endif %}
 {% for c in clashes %}<p class="{{ 'wo-problem' if c.blocks else 'upload-hint' }}" style="margin:.25rem 0">{{ 'Clash: ' if c.blocks else '' }}{{ c.why }}</p>{% endfor %}
 
-<form method="post" action="{{ url_for('admin_stay_occasion', occ_id=occ['id']) if editing else url_for('admin_stay_occasion_new') }}" class="detail-card" id="occasion-form" style="margin-top:1rem">
+<form method="post" action="{{ url_for('admin_stay_occasion', occ_id=occ['id']) if editing else url_for('admin_stay_occasion_new') }}" class="detail-card" id="occasion-form" style="margin-top:1rem" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
@@ -101,9 +101,73 @@
   <p class="upload-hint">Written for you from the name, the dates and why they were chosen; yours to change. With the chef away it cannot mention lunch, dinner or a chef. The chef line above is added after it on its own.</p>
   <textarea name="description" rows="4" style="width:100%">{{ o['description'] or '' }}</textarea>
 
-  <fieldset id="guest-chef" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
+  {#- DINNER AT GUDANES (owner, 25 Nov 2026): any occasion can serve dinner -- on the nights ticked, at a price a person,
+      for a number of covers -- and a guest chef is the same thing with a chef's name and bio on top. The menu is a file
+      (PDF, JPG or PNG) guests open in a pop-up wherever dinner is mentioned. -#}
+  {%- set _dinner_shown = dinner_on or o['kind'] == 'guest_chef' %}
+  <fieldset id="dinner" class="so-box" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
+    <legend class="section-heading" style="padding:0 .5rem">Dinner at Gudanes</legend>
+    <input type="hidden" name="dinner_section_shown" value="1">
+    <label class="checkbox-row"><input type="checkbox" name="serve_dinner" value="1" id="so_serve"{% if _dinner_shown %} checked{% endif %}> <span>Serve dinner at the château on this occasion</span></label>
+    <p class="upload-hint" id="so_serve_hint">La Table opens on the nights ticked, at this price and for these covers, and closes again after. Guests staying those nights see a note under each room's price and add dinner in the extras when they book; it goes on their bill and in the restaurant's book.{% if dining != 'open' %} La Table is otherwise {{ 'closed for the season' if dining == 'closed' else 'switched off' }}; these nights open it all the same.{% endif %}{% if o['kind'] == 'guest_chef' %} A guest chef always serves dinner.{% endif %}</p>
+    <div id="so_dinner_body">
+      {% if nights %}
+      <input type="hidden" name="dinner_nights_shown" value="1">
+      <p class="field-label" style="margin-top:1rem">Dinner nights</p>
+      <div style="display:flex;flex-wrap:wrap;gap:.25rem 1rem">
+        {% for n in nights %}
+        <label class="checkbox-row"><input type="checkbox" name="dinner_{{ n }}" value="1"{% if n in dinners or not _dinner_shown %} checked{% endif %}> <span>{{ n|date_short }}{% if covers.get(n) %} · {{ covers[n] }} booked{% endif %}</span></label>
+        {% endfor %}
+      </div>
+      {% else %}<p class="upload-hint">Every night of the occasion, until you untick one after saving.</p>{% endif %}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-top:1rem">
+        <div><label for="so_time" class="field-label">Time</label>
+          <input type="time" id="so_time" name="dinner_time" value="{{ o['dinner_time'] if (dinner_on or o['kind'] == 'guest_chef' or v) and o['dinner_time'] else dinner_defaults.time }}"></div>
+        <div><label for="so_dprice" class="field-label">Price a person (€)</label>
+          <input type="number" id="so_dprice" name="dinner_price" min="0" step="0.01" value="{{ ((o['dinner_price']|int) if o['dinner_price'] == o['dinner_price']|int else o['dinner_price']) if o['dinner_price'] else '' }}"></div>
+        <div><label for="so_covers" class="field-label">Covers a night</label>
+          <input type="number" id="so_covers" name="dinner_covers" min="1" value="{{ o['dinner_covers'] or dinner_defaults.covers }}"></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:.25rem 1.5rem;margin-top:.75rem">
+        <label class="checkbox-row"><input type="checkbox" name="wine_included" value="1"{% if o['wine_included'] is none or o['wine_included'] %} checked{% endif %}> <span>Wine included</span></label>
+        <label class="checkbox-row"><input type="checkbox" name="outside_diners" value="1"{% if o['outside_diners'] %} checked{% endif %}> <span>Open to diners not staying</span></label>
+      </div>
+      {% if price_clash and v and v['dinner_price'] %}
+      <p class="wo-problem" style="margin:.75rem 0 0"><label class="checkbox-row"><input type="checkbox" name="confirm_dinner_price" value="1"> <span>Serve it at {{ v['dinner_price']|money(0 if v['dinner_price'] == v['dinner_price']|int else 2) }} all the same: the tables already booked keep their price</span></label></p>
+      {% endif %}
+
+      {#- The menu: one for the occasion, and one for a night where the nights differ. -#}
+      <p class="field-label" style="margin-top:1.25rem">The menu</p>
+      {% if occ['menu_file'] %}
+      <p class="so-file" style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin:.25rem 0">
+        {% if occ['menu_file'].endswith('.pdf') %}<span>PDF: {{ occ['menu_name'] or 'menu.pdf' }}</span>
+        {% else %}<img src="{{ url_for('occasion_menu', slug=occ['slug']) }}" alt="The menu for Dinner at Gudanes" style="max-width:120px;max-height:160px;border:1px solid #ddd;border-radius:3px">{% endif %}
+        <a href="{{ url_for('occasion_menu', slug=occ['slug']) }}" target="_blank" rel="noopener" class="btn-mini">Open</a>
+        <label class="checkbox-row"><input type="checkbox" name="menu_remove" value="1"> <span>Remove</span></label>
+      </p>
+      {% endif %}
+      <label for="so_menu" class="field-label" style="font-weight:normal">{{ 'Replace the menu' if occ['menu_file'] else 'Upload the menu' }}</label>
+      <input type="file" id="so_menu" name="menu" accept="application/pdf,image/jpeg,image/png">
+      <span class="upload-hint">PDF, JPG or PNG, up to 10 MB. Guests open it from “See the menu”. With none, nothing mentions a menu.</span>
+      {% if nights %}
+      <div class="so-nightmenus" style="margin-top:.5rem">
+        {% for n in nights if n in dinners %}
+        {%- set _nm = night_menus.get(n) %}
+        <details class="so-nightmenu"{% if _nm %} open{% endif %} style="margin:.25rem 0">
+          <summary class="upload-hint" style="cursor:pointer">Different menu on {{ n|date_short }}</summary>
+          {% if _nm %}<p style="margin:.25rem 0"><a href="{{ url_for('occasion_menu_night', slug=occ['slug'], night=n) }}" target="_blank" rel="noopener">{{ _nm['menu_name'] or 'This night’s menu' }}</a>
+            <label class="checkbox-row" style="display:inline-flex;margin-left:1rem"><input type="checkbox" name="menu_remove_{{ n }}" value="1"> <span>Remove</span></label></p>{% endif %}
+          <input type="file" name="menu_{{ n }}" accept="application/pdf,image/jpeg,image/png" aria-label="A menu for {{ n|date_short }}">
+        </details>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </fieldset>
+
+  <fieldset id="guest-chef" class="so-box" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
     <legend class="section-heading" style="padding:0 .5rem">Guest chef <span class="upload-hint">(when “What it is” is Guest chef)</span></legend>
-    <p class="upload-hint">La Table opens on the dinner nights ticked below, at this price and for these covers, under the chef's name, and closes again after. Delete the occasion or untick a night and the restaurant closes that evening.{% if dining != 'open' %} La Table is otherwise {{ 'closed for the season' if dining == 'closed' else 'switched off' }}; the guest chef's nights open it all the same.{% endif %}</p>
+    <p class="upload-hint">The chef cooks the Dinner at Gudanes nights above, under their own name.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
       <div><label for="so_chef" class="field-label">Chef's name</label>
         <input type="text" id="so_chef" name="chef_name" value="{{ o['chef_name'] or '' }}"></div>
@@ -116,23 +180,24 @@
     </div>
     <label for="so_bio" class="field-label" style="margin-top:1rem" id="chef_bio">A short bio</label>
     <textarea id="so_bio" name="chef_bio" rows="3" style="width:100%">{{ o['chef_bio'] or '' }}</textarea>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-top:1rem">
-      <div><label for="so_time" class="field-label">Seating</label>
-        <input type="time" id="so_time" name="dinner_time" value="{{ o['dinner_time'] or '20:00' }}"></div>
-      <div><label for="so_covers" class="field-label">Covers each night</label>
-        <input type="number" id="so_covers" name="dinner_covers" min="1" value="{{ o['dinner_covers'] or '' }}"></div>
-      <div><label for="so_dprice" class="field-label">Price per person (€)</label>
-        <input type="number" id="so_dprice" name="dinner_price" min="0" step="1" value="{{ (o['dinner_price']|int) if o['dinner_price'] else '' }}"></div>
-      <div style="display:flex;align-items:flex-end"><label class="checkbox-row"><input type="checkbox" name="outside_diners" value="1"{% if o['outside_diners'] %} checked{% endif %}> <span>Open to outside diners too</span></label></div>
+  </fieldset>
+
+  {#- 3b (owner, 25 Nov 2026): "like an advertisement", under the video on the home page, until its last dinner night
+      (or last night) has passed. One band only: the soonest of those ticked. -#}
+  <fieldset id="home-banner" class="so-box" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
+    <legend class="section-heading" style="padding:0 .5rem">On the home page</legend>
+    <label class="checkbox-row"><input type="checkbox" name="home_banner" value="1"{% if o['home_banner'] %} checked{% endif %}> <span>Show on the home page, under the video</span></label>
+    <p class="upload-hint">A panel with a photograph, this line, the name, the dates, the price and Book your stay. Only while it is on sale, and it takes itself down after its last night. If two are ticked, the sooner shows.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-top:.5rem">
+      <div><label for="so_bline" class="field-label">The line above the name</label>
+        <input type="text" id="so_bline" name="home_banner_text" maxlength="80" value="{{ o['home_banner_text'] or banner_default }}"></div>
+      <div><label for="so_banner" class="field-label">{{ 'Replace the photograph' if occ['banner_file'] else 'A photograph of its own' }} <span class="upload-hint">optional</span></label>
+        <input type="file" id="so_banner" name="banner" accept="image/jpeg,image/png">
+        <span class="upload-hint">JPG or PNG, up to 10 MB. Without one, the {{ 'chef’s photograph or the ' if o['kind'] == 'guest_chef' else '' }}occasion’s photograph is used.</span>
+        {% if occ['banner_file'] %}<p style="display:flex;gap:1rem;align-items:center;margin:.5rem 0 0"><img src="{{ url_for('occasion_banner_photo', slug=occ['slug']) }}" alt="The banner photograph" style="max-width:160px;border-radius:3px">
+          <label class="checkbox-row"><input type="checkbox" name="banner_remove" value="1"> <span>Remove</span></label></p>{% endif %}
+      </div>
     </div>
-    {% if nights %}
-    <p class="field-label" style="margin-top:1rem">Dinner nights</p>
-    <div style="display:flex;flex-wrap:wrap;gap:.25rem 1rem">
-      {% for n in nights %}
-      <label class="checkbox-row"><input type="checkbox" name="dinner_{{ n }}" value="1"{% if n in dinners %} checked{% endif %}> <span>{{ n|date_short }}{% if covers.get(n) %} · {{ covers[n] }} booked{% endif %}</span></label>
-      {% endfor %}
-    </div>
-    {% else %}<p class="upload-hint">Save the dates first, then tick the dinner nights.</p>{% endif %}
   </fieldset>
 
   <p style="margin-top:1.5rem"><button type="submit" class="btn-primary">{{ 'Save' if editing else 'Create the draft' }}</button></p>
@@ -170,9 +235,16 @@
     document.querySelectorAll('input[name^="price_"]').forEach(function(i){
       var u = Number(i.getAttribute('data-usual')); if(u) i.value = Math.round(u + plus); });
   }); }
-  /* The guest chef's part of the form, only for a guest chef. */
+  /* The guest chef's part of the form, only for a guest chef; a guest chef always serves dinner.
+     Dinner's own fields show once Serve dinner is ticked; without script they are always there. */
   var kind = document.getElementById('so_kind'), gc = document.getElementById('guest-chef');
-  function showChef(){ if(gc && kind) gc.hidden = kind.value !== 'guest_chef'; }
+  var serve = document.getElementById('so_serve'), body = document.getElementById('so_dinner_body');
+  function showDinner(){ if(body && serve) body.hidden = !serve.checked; }
+  function showChef(){
+    if(gc && kind) gc.hidden = kind.value !== 'guest_chef';
+    if(serve && kind && kind.value === 'guest_chef'){ serve.checked = true; showDinner(); }
+  }
+  if(serve){ serve.addEventListener('change', showDinner); showDinner(); }
   if(kind){ kind.addEventListener('change', showChef); showChef(); }
   var line = document.getElementById('chef-line');
   document.querySelectorAll('input[name="chef_on_site"]').forEach(function(r){ r.addEventListener('change', function(){

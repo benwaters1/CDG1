@@ -4,6 +4,7 @@
 {% block description %}{{ occ['name'] }} at Château de Gudanes, {{ date_range(occ['first_night'], occ.departure) }}: a room and breakfast in a Class I monument in the Pyrénées.{% endblock %}
 {% block og_desc %}{{ occ['name'] }} at Château de Gudanes, {{ date_range(occ['first_night'], occ.departure) }}.{% endblock %}
 {% block content %}
+{% from '_menu_dialog.html' import menu_link %}
 {#- One occasion (24 Nov 2026): the words the owner approved, the chef line exactly as the switch sets it, and the
     two ways in. With the chef away nothing here mentions a meal beyond breakfast (test_stay_occasions). -#}
 {% if preview %}<p class="g-hint" style="text-align:center;padding:var(--s3);background:var(--sand-2)">A preview: not on sale, and not shown to guests.</p>{% endif %}
@@ -15,6 +16,17 @@
   {% for para in (occ['description'] or '').split('\n') if para.strip() %}<p class="g-p">{{ para }}</p>{% endfor %}
   <p class="g-p g-occasion__chef"><span class="g-occasion__tag">{{ occ.chef_tag }}</span> {{ occ.chef_line }}</p>
 
+  {#- DINNER AT GUDANES (owner, 25 Nov 2026): the nights, the time and the price, and that it is added when the room is
+      booked. What is cooked is in the uploaded menu, never in words written here. A one-night occasion is a Dinner at
+      Gudanes evening of its own. -#}
+  {% if dinners and not occ.is_guest_chef %}
+  <div class="g-occasion__dinner" style="margin-top:var(--s6)">
+    <p class="g-eyebrow">Dinner at Gudanes</p>
+    <p class="g-p">Dinner is hosted at the château on {{ dinner_nights_words(dinners) }}{% if dinner_time_words %}, {{ dinner_time_words }}{% endif %}{% if occ['dinner_price'] %}, {{ dinner_price_words(occ['dinner_price'], occ['wine_included']) }}{% endif %}. Add it in the extras when you book your room{{ ', or book a table on its own' if occ['outside_diners'] else '' }}.{% if occ.menu %} {{ menu_link(occ.menu) }}{% endif %}</p>
+    {% for night, m in night_menus|dictsort %}<p class="g-p" style="margin-top:0">{{ dinner_nights_words([night]) }}: {{ menu_link(m) }}</p>{% endfor %}
+  </div>
+  {% endif %}
+
   {% if occ.is_guest_chef %}
   <div class="g-occasion__guest" style="margin-top:var(--s6)">
     <p class="g-eyebrow">Guest chef in residence</p>
@@ -23,7 +35,8 @@
     {% for para in (occ['chef_bio'] or '').split('\n') if para.strip() %}<p class="g-p">{{ para }}</p>{% endfor %}
     {% if occ['chef_link'] %}<p class="g-p"><a href="{{ occ['chef_link'] }}" rel="noopener">{{ occ['chef_name'] or 'The chef' }}’s own page</a></p>{% endif %}
     {% if dinners %}
-    <p class="g-p">Dinner is served on {% for d in dinners %}{{ d|date_short }}{% if not loop.last %}{{ ' and ' if loop.revindex == 2 else ', ' }}{% endif %}{% endfor %}{% if occ['dinner_time'] %}, seated at {{ occ['dinner_time'] }}{% endif %}{% if occ['dinner_price'] %}, <span data-eur="{{ occ['dinner_price']|int }}">€{{ '{:,.0f}'.format(occ['dinner_price']) }}</span> per person{% endif %}{% if occ['dinner_covers'] %}, for {{ occ['dinner_covers'] }} guests an evening{% endif %}. {{ 'Open to guests from outside the château too.' if occ['outside_diners'] else 'For guests staying at the château.' }}</p>
+    <p class="g-p">Dinner is served on {% for d in dinners %}{{ d|date_short }}{% if not loop.last %}{{ ' and ' if loop.revindex == 2 else ', ' }}{% endif %}{% endfor %}{% if occ['dinner_time'] %}, seated at {{ occ['dinner_time'] }}{% endif %}{% if occ['dinner_price'] %}, <span data-eur="{{ occ['dinner_price']|int }}">€{{ '{:,.0f}'.format(occ['dinner_price']) }}</span> a person{{ ', wine included' if occ['wine_included'] }}{% endif %}{% if occ['dinner_covers'] %}, for {{ occ['dinner_covers'] }} guests an evening{% endif %}. {{ 'Open to guests from outside the château too.' if occ['outside_diners'] else 'For guests staying at the château.' }} Add it in the extras when you book your room.{% if occ.menu %} {{ menu_link(occ.menu) }}{% endif %}</p>
+    {% for night, m in night_menus|dictsort %}<p class="g-p" style="margin-top:0">{{ dinner_nights_words([night]) }}: {{ menu_link(m) }}</p>{% endfor %}
     {% endif %}
     {% if menu %}
     <div class="g-occasion__menu">
@@ -42,4 +55,5 @@
   </p>
   <p class="g-hint">Coming from abroad? <a href="{{ url_for('getting_here') }}">Getting here</a>: Paris, Toulouse and the last few miles. Every other date is on <a href="{{ url_for('whats_on_at_gudanes') }}">At Gudanes</a>.</p>
 </div></section>
+{% if occ.menu or night_menus %}{{ menu_dialog_once() }}{% endif %}
 {% endblock %}

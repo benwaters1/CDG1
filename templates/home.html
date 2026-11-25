@@ -215,6 +215,30 @@
   </button>
 </section>
 
+{#- DINNER AT GUDANES, 3b (owner, 25 Nov 2026: "add it so I can select it to be added to the top of the home page under
+    the video, like a banner saying chef in residence and the dates" ... "like an advertisement"). The occasion the owner
+    ticks, from home_banner_occasion(): live, and only until its last dinner night (or last night) has passed; two
+    ticked, the soonest. Not one giant link: the photograph and the name go to the occasion's page, and the two buttons
+    are buttons. test_dinner_at_gudanes holds it. -#}
+{% if home_banner is defined and home_banner %}{% set hb = home_banner %}
+{% from '_menu_dialog.html' import menu_link %}
+<section class="g-hband" aria-labelledby="hband-h">
+  <a class="g-hband__ph" href="{{ hb.page_url }}"><img src="{{ hb.photo }}" alt="{{ hb.alt }}" loading="eager" decoding="async"></a>
+  <div class="g-hband__b">
+    <p class="g-hband__k">{{ t(hb.eyebrow) }}</p>
+    <h2 class="g-hband__h" id="hband-h"><a href="{{ hb.page_url }}">{{ t(hb.headline) }}</a></h2>
+    <p class="g-hband__d">{{ date_range(hb.first_night, hb.departure) }}</p>
+    {% if hb.sentence %}<p class="g-hband__p">{{ hb.sentence }}</p>{% endif %}
+    {% if hb.price %}<p class="g-hband__price">{{ t('Dinner from') }} <span data-eur="{{ hb.price|int }}">€{{ ('{:,.0f}' if hb.price == hb.price|int else '{:,.2f}').format(hb.price) }}</span> {{ t('a person') }}{% if hb.wine %}, {{ t('wine included') }}{% endif %}</p>{% endif %}
+    <p class="g-hband__btns">
+      <a class="g-hband__book" href="{{ hb.book_url }}">{{ t('Book your stay') }}</a>
+      {% if hb.menu %}{{ menu_link(hb.menu, t('See the menu'), 'g-hband__menu') }}{% endif %}
+    </p>
+  </div>
+</section>
+{% if hb.menu %}{{ menu_dialog_once() }}{% endif %}
+{% endif %}
+
 {#- 9 Nov (owner): "its also alot of scrolling on the home page to get to [the address], we should have
     the address elsewhere further up". The first thing under the hero: the same words as the footer, opening
     the same pin at the gates (_house_address.html). test_house_address holds it here.
