@@ -18,6 +18,10 @@
     Booking.com). -#}
 {#- 11 Nov (owner): "make this the primary photo", twice: the Marquis Suite leads with the gold four-poster by the
     fireplace (landscape), and the Family Suite with the two chairs at the open windows, the mountains beyond. -#}
+{#- 24 Nov (site review, 5): a bedroom card leads with a bed, so the Family Suite leads with its two beds side by side
+    (799432953), then the large blue bed (799432864), then 11 Nov's lead, the two chairs at the open windows. /book's
+    header already shows the two beds and its card skips them, so there the card leads with the large bed and the
+    windows come second. The windows are the suite's own room, not the salon: two beds show at the foot of the frame. -#}
 {%- set ROOM_PHOTOS = {
   'The King Suite': [
     (url_for('static', filename='img/retreats/king-suite-four-poster.jpg'), 'The King Suite, the four-poster'),
@@ -38,10 +42,10 @@
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/903132506.jpg?k=811b8839a6591fedad373a4fdadbe663f017a838829239048e179d2c57106ff8&o=', 'The mirror above the fireplace in the Marquis Suite'),
   ],
   'The Family Suite': [
-    ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799483474.jpg?k=6048ecc7cc013b2674bb20fa1d9d081920cd74c9a993ca30522fd4be5416eb00&o=', 'Chairs and a table by the windows, Family Suite'),
-    ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432953.jpg?k=bfe46237a062c76163feac464aa8a8aa65e4f2d55d0bebc5842f0b5f785c5fa6&o=', 'The second bedroom, Family Suite'),
-    ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432918.jpg?k=92504ccbbb71665f6edb7454ec16d877018713a9f9e603dcb62aa3bb166f0a91&o=', 'The Family Suite'),
+    ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432953.jpg?k=bfe46237a062c76163feac464aa8a8aa65e4f2d55d0bebc5842f0b5f785c5fa6&o=', 'Two beds side by side in the second bedroom, Family Suite'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432864.jpg?k=ebda5e5045693aab2c11f0a9b643d8bc01db6f0247640660e15f2125e1b1f41d&o=', 'The large bed in the Family Suite'),
+    ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799483474.jpg?k=6048ecc7cc013b2674bb20fa1d9d081920cd74c9a993ca30522fd4be5416eb00&o=', 'Chairs and a table by the windows, Family Suite'),
+    ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432918.jpg?k=92504ccbbb71665f6edb7454ec16d877018713a9f9e603dcb62aa3bb166f0a91&o=', 'The Family Suite'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/921671186.jpg?k=a5670a5a51ac1bf53f853d25ff405ae439028dc711265e0afa7b4bf116e3c9f6&o=', 'A bedroom of the Family Suite'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/790004185.jpg?k=c368a1bd82adf70e3d26e3629c4646c5781ef052ced007424000f7c7cd375c9f&o=', 'A bed against the floral wallpaper, Family Suite'),
   ],

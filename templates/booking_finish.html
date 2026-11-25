@@ -16,7 +16,7 @@
     <div>
       <h1 class="g-place" style="margin:0;">Your room is reserved</h1>
       <p class="g-hint" style="margin:var(--s1) 0 0;">
-        {{ booking['room_name'] }} · {{ booking['arrival_date']|date_short }} to {{ booking['departure_date']|date_short }}
+        {{ room_title(booking['room_name']) }} · {{ booking['arrival_date']|date_short }} to {{ booking['departure_date']|date_short }}
         · {{ booking['reference_code'] }}
       </p>
     </div>

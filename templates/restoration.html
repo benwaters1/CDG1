@@ -29,7 +29,7 @@
 {% block content %}
 {#- 9 Nov (the image layout brief, 4.6): the photographs through the picture components (_pictures.html, shown together
     on /design). Not one word changes. -#}
-{% from '_pictures.html' import bande, split, carrousel, cadre, passe_partout, see_all, pictures_script %}
+{% from '_pictures.html' import bande, split, carrousel, cadre, passe_partout, mosaique, see_all, pictures_script %}
 {% from '_lightbox.html' import lightbox %}
 {# Needs a route, e.g.:
    @app.route('/restoration')
@@ -49,14 +49,29 @@
 
 <section class="g-sec">
   <div class="g-wrap g-wrap--narrow">
+    {#- 24 Nov 2026 (owner's brief, 3): brought up to 2026 with only what is on record. 2018: the Seven Starry Nights
+        registrations of June 2018 in the experience@ mailbox. 2019: The Bathrooms, Made to Come Away, below. 2026: the
+        room count is the rooms table's, as on the Now line, so the two can never disagree.
+        ONE LINE A YEAR: add ('year', 'What happened.') to YEARS and it takes its place in order. LINKS holds the one
+        link a line ends on. "Now" is not in the list, so it is always the last line. -#}
+    {%- set ROOMS_WORD = house_rooms.count_word if house_rooms and house_rooms.count_word else 'five' %}
+    {%- set YEARS = [
+        ('1741', 'The château is built, to designs by Ange-Jacques Gabriel.'),
+        ('1994', 'Classified a Historic Monument: classé, the highest level of protection in France.'),
+        ('2013', 'The Waters family buys it, and the restoration begins.'),
+        ('2014', 'The first winter spent inside: no electricity, heating or water yet, and a tent pitched in one of the rooms against the cold.'),
+        ('2016', 'The restoration receives the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco.'),
+        ('2018', 'The first guests: the château’s first retreats, the Seven Starry Nights among them.'),
+        ('2019', 'The guest bathrooms are built, made to come away.'),
+        ('2020', 'Work begins on bringing back the gardens.'),
+        ('2026', 'The rooms open for a night: ' ~ ROOMS_WORD ~ ' guest rooms, room and breakfast, on your own dates.'),
+    ] %}
+    {%- set LINKS = {'1741': ('/history', 'Its history')} %}
     <ul class="g-time">
-      <li><b>1741</b><span>The château is built, to designs by Ange-Jacques Gabriel. <a href="/history">Its history</a></span></li>
-      <li><b>1994</b><span>Classified a Historic Monument: classé, the highest level of protection in France.</span></li>
-      <li><b>2013</b><span>The Waters family buys it, and the restoration begins.</span></li>
-      <li><b>2014</b><span>The first winter spent inside: no electricity, heating or water yet, and a tent pitched in one of the rooms against the cold.</span></li>
-      <li><b>2016</b><span>The restoration receives the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco.</span></li>
-      <li><b>2020</b><span>Work begins on bringing back the gardens.</span></li>
-      <li><b>Now</b><span>A Class I Historic Monument under restoration, with {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} guest rooms, and the workshops.</span></li>
+      {%- for year, text in YEARS|sort(attribute='0') %}
+      <li><b>{{ year }}</b><span>{{ text }}{% if LINKS[year] %} <a href="{{ LINKS[year][0] }}">{{ LINKS[year][1] }}</a>{% endif %}</span></li>
+      {%- endfor %}
+      <li><b>Now</b><span>A Class I Historic Monument under restoration, with {{ ROOMS_WORD }} guest rooms, and the retreats.</span></li>
     </ul>
   </div>
 </section>
@@ -96,6 +111,22 @@
       and no more: nothing on the page says what the beams are for, so neither does the caption. -#}
   <figure class="g-found__lead"><img src="{{ url_for('static', filename='img/retreats/guest-painting.jpg') }}" srcset="{{ url_for('static', filename='img/retreats/guest-painting-800.jpg') }} 800w, {{ url_for('static', filename='img/retreats/guest-painting.jpg') }} 1600w" sizes="(min-width: 75rem) 1170px, 100vw" alt="Painting a pattern of leaves and birds onto a beam, before the old painted walls" loading="lazy"><figcaption>Painting a beam by hand, before the old painted walls</figcaption></figure>
 </div></section>
+{#- 24 Nov 2026 (owner's brief, 1: "yes, they are 16th century hand painted"): the painted beams and the frescoes, a
+    section of their own. They were the first sentence of What the Walls Gave Back, which keeps the rest. The beams are
+    sixteenth-century, as the owner said; the frescoes stay Renaissance, as the page had them. The facts are the ones in
+    the sources comment above Restoring the Château; nothing is added.
+    The photographs are captioned for what each shows and no more. The medallion by the ladder came here from beside the
+    second half of Restoring the Château (this page is still its one home: test_site_review_2). The painted beams are the
+    family's own photograph as the château was found; /gallery shows it too, which the gallery may. -#}
+<section class="g-sec g-sec--sand" id="paintings"><div class="g-wrap">
+  <p class="g-fr">Les peintures <span class="g-fr__en">The paintings</span></p>
+  <h2 class="g-place">Beams Painted by Hand in the Sixteenth Century</h2>
+  <p class="g-p g-intro">When what remained of one plaster ceiling fell, the beams above it were found painted by hand in the sixteenth century. Under the wall plaster, Renaissance frescoes have come back to light, among them what is believed to be the château as it once was, beside the bridge that can still be seen from the window. They are uncovered slowly, by hand, as the rooms are restored.</p>
+  {{ mosaique([
+      [url_for('static', filename='img/retreats/fresco-uncovered-by-hand.jpg'), 'A woman beside a ladder, a brush to a painted medallion', 'A painted medallion, uncovered by hand'],
+      [url_for('static', filename='img/retreats/guests-uncovering-fresco.jpg'), 'Two people lifting old layers from a panelled wall, a painted pattern beneath', 'Old layers lifted from a panel, the painting beneath'],
+      [url_for('static', filename='img/found/beams-and-panels.jpg'), 'Painted beams held up by a prop, over painted walls', 'Painted beams over painted walls, held up by a prop']]) }}
+</div></section>
 {#- 9 Oct (owner: "the restoration page need more photos, a better before/after"): three pairs, large and matched, each
     labelled on the photograph. None of the library's pairs is taken from the same spot, so a drag slider would blend two
     different views - side by side is the honest comparison. -#}
@@ -134,7 +165,7 @@
       ('bed', 'That First Winter', 'In the winter of 2014 there was still no electricity, heating or water. The first nights in the château were spent in a tent, pitched inside one of the rooms against the cold.'),
       ('parquet', 'Stone, Slate and Parquet', 'The original eighteenth-century stone floor was lifted during the consolidation, stored, and laid again in the vestibule, and the original slate of one bedroom was kept to be used again. The rooms upstairs now have reclaimed antique Versailles parquetry.'),
       ('moulding', 'Mouldings, Cast Again', 'In the Chambre du Parc the floors and ceilings had fallen through four levels. Every one of its original mouldings had to be cast and recreated.'),
-      ('restoration', 'What the Walls Gave Back', 'When what remained of one plaster ceiling fell, the original hand-painted Renaissance beams were found beneath it, and Renaissance frescoes under the wall plaster, among them what is believed to be the château as it once was, beside the bridge that can still be seen from the window. Wax seals from the French Revolution are still on centuries-old walnut doors, and eighteenth-century painted walls have come to light behind later panelling. In another room, cream paint came away to reveal an eighteenth-century fresco. Elsewhere were the hatches of hiding places used by a family during the Second World War.'),
+      ('restoration', 'What the Walls Gave Back', 'Wax seals from the French Revolution are still on centuries-old walnut doors, and eighteenth-century painted walls have come to light behind later panelling. In another room, cream paint came away to reveal an eighteenth-century fresco. Elsewhere were the hatches of hiding places used by a family during the Second World War.'),
       ('wallpaper', 'Original Wallpaper, Printed Again', 'Where large pieces of the original wallpaper were lost, it has been made again. In one of the Family Suite’s bedrooms, the original paper has been printed anew by the company that first made it, from its original templates. Smaller gaps are left bare, to keep the patina.'),
       ('window', 'Glass Restored', 'The two great windows of the vestibule have been restored by a specialist in stained glass, and the painted windows of the chapel, beneath its vaulted ceiling of gold stars on midnight blue.'),
       ('candelabra', 'Beneath the Château', 'A tunnel runs six metres underground, under a vaulted ceiling; its floor has still not been found. Local legend has an owner escaping down it in a barrel during the War of the Demoiselles, around 1830.'),
@@ -152,7 +183,9 @@
     {%- endfor %}
   </ul>
   {% endcall %}
-  {% call split(['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w', 'An artisan on a ladder restoring a painted medallion', 'A painted medallion, by hand'], flip=True) %}
+  {#- 24 Nov 2026: the medallion by the ladder went up to The Paintings, and a photograph nowhere else on the site takes its
+      place: square, like the one it replaces. -#}
+  {% call split([url_for('static', filename='img/retreats/restorer-painted-wall.jpg'), 'A man cleaning a painted wall with his fingertips, a cloth in his other hand', 'A painted wall, cleaned by hand'], flip=True) %}
   <ul class="g-how">
     {%- for kind, title, text in HOW[7:] %}
     <li class="g-how__i">
@@ -173,47 +206,9 @@
     windows and the second horse are on /gallery, under The Restoration.
     12 Nov 2026 (the second review, 3.3: one home per hero photograph; the gallery may repeat it): the dining room and its horse are the home page's own slider, chosen by the owner; this
     page's first pair is the kitchen, which until now was only on /gallery. -#}
-<div class="g-tn g-tn--three">
-  <div class="g-tn__pair" data-slider>
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2b9c1192-bf9a-40a9-8913-4bc98c8a43c7/Screenshot+2026-07-20+at+3.41.43+pm.png?format=1500w" alt="The kitchen before the work, the floor gone" loading="lazy"><span class="g-tn__tag">Before</span></figure>
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a/Screenshot+2026-07-20+at+2.33.25+pm.png?format=1500w" alt="The kitchen now" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
-    <p class="g-tn__cap">The kitchen</p>
-  </div>
-  <div class="g-tn__pair" data-slider>
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1500w" alt="A bedroom before the work" loading="lazy"><span class="g-tn__tag">Before</span></figure>
-    <figure><img src="https://cf.bstatic.com/xdata/images/hotel/max2048x2048/798764955.jpg?k=d8653db73b32b57205f0af9b550ee5ee521deae7ec1638ed4dafcc67057d01c9&o=" alt="The King Room now" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
-    <p class="g-tn__cap">The bedrooms</p>
-  </div>
-  <div class="g-tn__pair" data-slider>
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/598861b7-9f24-4244-8420-468734c135e5/Before+The+Work+-+Vestibule+Ceiling.JPG?format=1500w" alt="The vestibule ceiling before the work" loading="lazy"><span class="g-tn__tag">Before</span></figure>
-    <figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582048556502-Y4CQSLCRE46OVEXBQUES/Grand+Vestibule+-+Wider+Angle.jpg?format=1500w" alt="The grand vestibule now, the staircase and the arches" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
-    <p class="g-tn__cap">The vestibule and the staircase</p>
-  </div>
-</div>
+{% from '_then_and_now.html' import then_and_now %}{{ then_and_now() }}
 <p class="g-tn__more"><a href="{{ url_for('gallery_page') }}#restoration">More of the rooms before and now, in the gallery <span aria-hidden="true">&rarr;</span></a></p>
-{#- 12 Oct (owner: "yes" to a before-and-after slider). 13 Oct (owner: "not all of them, just a few"): only the pairs marked data-slider -
-    the kitchen, the vestibule and the bathrooms - become one frame: the "now" photograph over the "before",
-    revealed by dragging a handle - a real range input, so a phone swipes it, the arrow keys move it and a screen reader
-    announces it. Without the script the pairs stay side by side. The dining-room trio keeps its own layout. -#}
-<script>
-(function(){
-  document.querySelectorAll('.g-tn__pair[data-slider]').forEach(function(p){
-    var figs = p.querySelectorAll(':scope > figure'); if (figs.length !== 2) return;
-    var frame = document.createElement('div'); frame.className = 'g-tn__frame';
-    p.insertBefore(frame, figs[0]); frame.appendChild(figs[0]); frame.appendChild(figs[1]);
-    figs[0].classList.add('g-tn__b'); figs[1].classList.add('g-tn__a');
-    var r = document.createElement('input'); r.type = 'range'; r.min = 0; r.max = 100; r.value = 50; r.step = 1;
-    r.className = 'g-tn__range';
-    var cap = p.querySelector('.g-tn__cap');
-    r.setAttribute('aria-label', 'Compare before and now' + (cap ? ': ' + cap.textContent.trim() : ''));
-    var h = document.createElement('span'); h.className = 'g-tn__handle'; h.setAttribute('aria-hidden', 'true');
-    frame.appendChild(r); frame.appendChild(h);
-    function set(v){ frame.style.setProperty('--pos', v + '%'); }
-    r.addEventListener('input', function(){ set(r.value); }); set(50);
-    p.classList.add('g-tn__pair--slide');
-  });
-})();
-</script>
+{#- The slider's script is in _then_and_now.html with the pairs (24 Nov 2026). -#}
 </div></section>
 <section class="g-sec g-sec--sand g-gallery-sec" id="the-work"><div class="g-wrap">
   <p class="g-fr">Le chantier <span class="g-fr__en">The work</span></p>
@@ -264,16 +259,23 @@
   </ul>
 </div></section>
 {#- 9 Nov, evening (owner's second review, 1): What You Will See (a stay pitch on a restoration page) and Written About, Filmed In (that is /press) went. -#}
+{#- 23 Nov (owner): one guest's word on the restoration, from Daniel E.'s Google review. -#}
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <figure class="g-say" style="margin:0">
+    <blockquote class="g-say__q">After years of careful restoration, the owners brought it back from a ruin.</blockquote>
+    <figcaption class="g-say__by">Daniel E.<span class="g-say__src">Google review</span></figcaption>
+  </figure>
+</div></section>
 {#- 9 Oct (owner): one closing section. Never "the rest still to come" or "the next ones": five bedrooms is what the house
     offers, and nothing says why. -#}
 <section class="g-sec g-sec--dark g-closer"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('bed') }}</div>
   <p class="g-fr">Venir à Gudanes <span class="g-fr__en">Coming to Gudanes</span></p>
   <h2 class="g-place">Stay While It Happens</h2>
-  <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms are open: bare walls on one side of the door, new floors and antiques from the brocantes on the other. The workshops open the rest of the château. Every stay helps the restoration go on.</p>
+  <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms are open: bare walls on one side of the door, new floors and antiques from the brocantes on the other. The retreats open the rest of the château. Every stay helps the restoration go on.</p>
   <p class="g-closer__cta">
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See the rooms</a>
-    <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the full experience</a>
+    <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the retreats</a>
   </p>
 </div></section>
 {{ lightbox() }}

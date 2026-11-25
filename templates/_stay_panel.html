@@ -48,11 +48,11 @@
           <span class="g-three__ill" aria-hidden="true">{{ illus('candelabra') }}</span>
           {#- 26 Oct (owner, the retreats deck): the price is the Admin's, then "per person · nothing to pay at the end". -#}
           <h3 class="g-three__t"><em lang="fr">La vie de château</em></h3>
-          <p class="g-three__d">Stay longer, for a retreat: three to seven nights of the kitchen and the château’s chefs, the markets and brocantes of the Ariège, and long candlelit dinners, with a small company sharing the château.</p>
+          <p class="g-three__d">Stay longer, for a retreat: three to seven nights of the kitchen and the château’s chefs, the markets and brocantes of the Ariège, long candlelit dinners and so much more, with a small company sharing the château.</p>
           {% if _wsf %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n">&euro;{{ '{:,.0f}'.format(_wsf) }}</span><span class="g-price__u">per person · nothing to pay at the end</span></p>{% else %}<p class="g-price"><span class="g-price__u">Per person · nothing to pay at the end</span></p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the dates</a>
-            <a href="{{ url_for('contact_page') }}">Bring your own group</a>
+            <a href="{{ url_for('events_private') }}">Bring your own group</a>
           </p>
         </div>
       </li>

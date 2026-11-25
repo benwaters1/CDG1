@@ -350,7 +350,13 @@ def _run(s, letters):
         if r.status_code != 200:
             missing.append(f"{url} {r.status_code}")
             continue
-        foot = html[html.find("<footer"):html.find("</footer>")]
+        # The SITE's footer, by its class. A bare "<footer" finds the first
+        # one on the page, and since 6d92fc0 (guests' own words, 24 November
+        # 2026) /workshops always quotes its retreat guests in <blockquote>s,
+        # each signed in a <footer class="g-say__by"> -- so the slice read here
+        # was a byline, the sign-up was "missing", and the page was fine.
+        at = html.find('<footer class="g-footer"')
+        foot = html[at:html.find("</footer>", at)] if at != -1 else ""
         if 'data-newsletter="footer"' not in foot:
             missing.append(url)
         if 'name="interests"' in html:

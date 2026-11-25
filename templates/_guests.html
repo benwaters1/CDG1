@@ -1,0 +1,53 @@
+{#- The number of guests, with a minus and a plus either side (23 Nov 2026, owner: the search bars were
+    "super basic"). The number stays a real input named party_size, so a form posts exactly what it did
+    and a guest can still type; the buttons only change it, within min and max.
+    The script runs once however many times the macro is called, and also marks a date as chosen
+    (is-set on [data-rp-label]) so a picked date can read darker than "Add dates". The picker in
+    public_base.html writes the label's text and nothing else, so the state is read from that text
+    rather than added to a script a handover replaces. -#}
+{% macro guests_field(input_id, value=2, max=15) %}
+<div class="g-guests">
+  <button type="button" class="g-guests__b" data-guests-step="-1" aria-label="One guest fewer" aria-controls="{{ input_id }}"><span aria-hidden="true">&minus;</span></button>
+  <input class="g-guests__n" type="number" inputmode="numeric" id="{{ input_id }}" name="party_size" min="1" max="{{ max }}" value="{{ value }}">
+  <button type="button" class="g-guests__b" data-guests-step="1" aria-label="One guest more" aria-controls="{{ input_id }}"><span aria-hidden="true">+</span></button>
+</div>
+<script>
+(function(){
+  if (window.__gGuests) return;
+  window.__gGuests = true;
+  function wire(){
+    document.querySelectorAll('.g-guests').forEach(function(box){
+      if (box.__wired) return;
+      box.__wired = true;
+      var inp = box.querySelector('input');
+      var lo = function(){ return parseInt(inp.min, 10) || 1; };
+      var hi = function(){ return parseInt(inp.max, 10) || 99; };
+      var limit = function(){
+        var v = parseInt(inp.value, 10) || lo();
+        box.querySelector('[data-guests-step="-1"]').disabled = v <= lo();
+        box.querySelector('[data-guests-step="1"]').disabled = v >= hi();
+      };
+      box.querySelectorAll('[data-guests-step]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var v = (parseInt(inp.value, 10) || lo()) + parseInt(b.getAttribute('data-guests-step'), 10);
+          inp.value = Math.max(lo(), Math.min(hi(), v));
+          inp.dispatchEvent(new Event('change', {bubbles: true}));
+          limit();
+        });
+      });
+      inp.addEventListener('input', limit);
+      limit();
+    });
+    document.querySelectorAll('[data-rp-label]').forEach(function(el){
+      if (el.__marked) return;
+      el.__marked = true;
+      var blank = el.getAttribute('data-rp-blank') || el.textContent.trim();
+      var mark = function(){ el.classList.toggle('is-set', el.textContent.trim() !== blank); };
+      if (window.MutationObserver) new MutationObserver(mark).observe(el, {childList: true, characterData: true, subtree: true});
+      mark();
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+})();
+</script>
+{% endmacro %}

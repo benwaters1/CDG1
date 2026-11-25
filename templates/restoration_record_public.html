@@ -26,7 +26,7 @@
   <div class="g-wrap g-wrap--narrow">
     <h2 class="g-pagehead">{{ w['title'] }}</h2>
     <p class="g-foot-note">
-      {{ w['room_name'] or w['place'] or 'The estate' }}
+      {{ room_title(w['room_name']) or w['place'] or 'The estate' }}
       · {{ kinds.get(w['kind'], w['kind'])|lower }}
       {%- if w['finished_on'] %} · finished {{ w['finished_on']|date_human }}{% endif %}
       {%- if w['materials'] %} · {{ w['materials'] }}{% endif %}

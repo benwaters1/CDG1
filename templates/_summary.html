@@ -29,7 +29,7 @@
          money on the right. Three separate rows for one fact was worse. #}
       {% if booking.room_name or booking.rooms_total %}
       <div>
-        <dt>{{ booking.room_name or 'The room' }}
+        <dt>{{ room_title(booking.room_name) or 'The room' }}
           {%- if booking.nights %}
           <span class="g-recap__q">{{ booking.nights }}
             {{- ' night' if booking.nights == 1 else ' nights' }}

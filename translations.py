@@ -61,6 +61,15 @@ FR = {
     'Nothing collected in this period.': 'Rien collecté sur cette période.',
     'The rates these figures used': 'Les taux utilisés pour ces chiffres',
     'This is a working paper, not your VAT return.': 'Ceci est un document de travail, pas votre déclaration de TVA.',
+    'Nothing in this period is VAT to declare.': "Rien dans cette période n'est à déclarer à la TVA.",
+    'The house is registered for VAT from {day}. Before then it charges none, so there is no working to show.': "La maison est assujettie à la TVA à partir du {day}. Avant cette date elle n'en facture pas, il n'y a donc rien à montrer.",
+    'Change the date': 'Modifier la date',
+    'Counted from {day}, when the house is registered for VAT.': "Compté à partir du {day}, date d'assujettissement de la maison à la TVA.",
+    'The days before it are not in these figures: there was no VAT to declare on them.': "Les jours précédents ne sont pas dans ces chiffres : il n'y avait pas de TVA à déclarer.",
+    '{n} Booking.com stays are not in the figures yet.': '{n} séjours Booking.com ne sont pas encore dans les chiffres.',
+    "Booking.com's emails give no price; its reservations statement does. Upload the latest one and they are counted here.": 'Les e-mails de Booking.com ne donnent pas de prix ; son relevé des réservations, si. Importez le dernier et ils seront comptés ici.',
+    'Booking.com stays': 'Séjours Booking.com',
+    'Booking.com charged {amount} in commission on these stays. It is a purchase, not VAT collected, so it is not in the total. Booking.com invoices from the Netherlands without French VAT, so the VAT on it is normally reverse-charged: declared and deducted on the same return. Check this with your accountant.': "Booking.com a facturé {amount} de commission sur ces séjours. C'est un achat, pas de la TVA collectée, donc il n'est pas dans le total. Booking.com facture depuis les Pays-Bas sans TVA française : la TVA est normalement autoliquidée, déclarée et déduite sur la même déclaration. À vérifier avec votre comptable.",
     'Hand it to your accountant as a starting point. Two things to tell them:': 'À remettre à votre comptable comme point de départ. Deux choses à lui dire :',
     'The till figures are exact — each closed day seals its VAT per rate.': 'Les chiffres de la caisse sont exacts : chaque journée clôturée scelle sa TVA par taux.',
     'Rooms, ateliers and extras are estimated: the configured rate applied to revenue by service date. French VAT on services is normally due when payment is received, which is a different date.': "Chambres, ateliers et extras sont estimés : le taux configuré appliqué au chiffre d'affaires à la date de prestation. En France, la TVA sur les services est normalement due à l'encaissement, qui est une autre date.",
@@ -112,6 +121,7 @@ FR = {
     'Terrace': 'Terrasse',
     'Bar': 'Bar',
     'Private': 'Privé',
+    'Private Retreats': 'Séjours privés',
     # -- Navigation and shell -------------------------------------------
     "Stay": "Séjourner",
     "Stay Now": "Réserver un séjour",
@@ -122,6 +132,11 @@ FR = {
     "Weddings": "Mariages",
     "Photoshoots": "Séances photo",
     "Celebrations": "Célébrations",
+    # /links, the Instagram page (23 November 2026): its third button, and the
+    # small link to the newsletter at its foot. One word each, so the page
+    # translator's memory, which files sentences, never asks for them.
+    "Celebrate": "Célébrer",
+    "Newsletter": "Lettre d’information",
     "Private Photo & Videoshoots": "Séances photo et vidéo privées",
     "Gallery & Story": "Galerie et histoire",
     "Inside the Château": "À l'intérieur du château",
@@ -138,7 +153,7 @@ FR = {
     "Menu": "Menu",
     "Close menu": "Fermer le menu",
     "Subscribe to our newsletter": "Abonnez-vous à notre lettre d'information",
-    "The restoration, the rooms as they open, and the workshop dates. No more than a few times a year; unsubscribe in one click.": "La restauration, les chambres à mesure qu'elles ouvrent, et les dates des ateliers. Quelques fois par an, pas davantage ; désabonnement en un clic.",
+    "The restoration, the rooms as they open, and the retreat dates. No more than a few times a year; unsubscribe in one click.": "La restauration, les chambres à mesure qu'elles ouvrent, et les dates des séjours. Quelques fois par an, pas davantage ; désabonnement en un clic.",
     "Subscribe": "S'abonner",
     "Email": "E-mail",
     "Email address": "Adresse e-mail",
@@ -186,6 +201,10 @@ FR = {
     # The top bar's short name for What's On in the Ariège (z22).
     "What’s On": "Que faire",
     "In the Ariège": "En Ariège",
+    # Occasions at Gudanes and Getting Here (24 Nov 2026).
+    "At Gudanes": "À Gudanes",
+    "What’s On at Gudanes": "Que faire à Gudanes",
+    "Getting Here": "Venir au château",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Vos dates",
@@ -312,7 +331,7 @@ FR = {
     "Six rooms · from €{price} a night · breakfast included": "Six chambres · à partir de {price} € la nuit · petit-déjeuner compris",
     "A room and breakfast, your own dates": "Une chambre et le petit-déjeuner, à vos dates",
     "Five rooms · from one night": "Cinq chambres · dès une nuit",
-    "Cooking, the brocantes and the restoration": "La cuisine, les brocantes et la restauration",
+    "Cooking, the brocantes, the restoration and more": "La cuisine, les brocantes, la restauration et bien plus encore",
     # 26 Oct: the Book menu's retreats line, its French words left in French (the deck, section 5).
     "Three to seven nights of": "Trois à sept nuits de",
     "Three to seven nights · full board · itinerary included": "De trois à sept nuits · pension complète · programme compris",
@@ -743,7 +762,7 @@ FR = {
     'The ateliers': 'Les ateliers',
     'Your events': 'Vos événements',
     'stays &amp; general': 'séjours et questions générales',
-    'workshops & events': 'ateliers et événements',
+    'retreats and events': 'séjours et événements',
     'For now, the château is open only to its guests.': "Pour l'instant, le château n'est ouvert qu'à ses hôtes.",
     # Handover q, 7 October: new English on the nav and the
     # booking pages. t() falls back silently, so without these a
@@ -796,6 +815,18 @@ FR = {
     "See everything you have with us": "Voir tout ce que vous avez chez nous",
     "Under restoration since 2013": "En restauration depuis 2013",
     "What’s On in the Ariège": "Que faire en Ariège",
+    # 23 Nov 2026 (owner): check-out moved to 11am. Every sentence that carries the
+    # times, written here so French never falls back to English while the page
+    # memory catches up. Times as house_guide_clock writes them in French: 15h, 11h.
+    "Arrival and departure": "Arrivée et départ",
+    "Check-in from 3pm, check-out by 11am.": "Arrivée à partir de 15h, départ avant 11h.",
+    "Check-in from 3pm, check-out by 11am. Later arrivals by arrangement.":
+        "Arrivée à partir de 15h, départ avant 11h. Arrivée plus tardive sur demande.",
+    "Check-in from 3pm, check-out by 11am. Arriving earlier? Early check-in is on request — choose it above and we will do our best.":
+        "Arrivée à partir de 15h, départ avant 11h. Vous arrivez plus tôt ? L’arrivée anticipée est possible sur demande — choisissez-la ci-dessus et nous ferons de notre mieux.",
+    "From 3pm · by 11am": "À partir de 15h · avant 11h",
+    "Arrival is from 3pm and departure by 11am, unless your confirmation says otherwise. Tell us if you expect to arrive late so that someone can be there to meet you.":
+        "L’arrivée se fait à partir de 15h et le départ avant 11h, sauf indication contraire dans votre confirmation. Prévenez-nous si vous pensez arriver tard, afin que quelqu’un soit là pour vous accueillir.",
 }
 
 ES = {
@@ -825,6 +856,15 @@ ES = {
     'Nothing collected in this period.': 'Nada cobrado en este período.',
     'The rates these figures used': 'Los tipos usados en estas cifras',
     'This is a working paper, not your VAT return.': 'Esto es un documento de trabajo, no su declaración de IVA.',
+    'Nothing in this period is VAT to declare.': 'Nada en este periodo es IVA que declarar.',
+    'The house is registered for VAT from {day}. Before then it charges none, so there is no working to show.': 'La casa está registrada para el IVA desde el {day}. Antes no lo cobra, así que no hay nada que mostrar.',
+    'Change the date': 'Cambiar la fecha',
+    'Counted from {day}, when the house is registered for VAT.': 'Contado desde el {day}, cuando la casa queda registrada para el IVA.',
+    'The days before it are not in these figures: there was no VAT to declare on them.': 'Los días anteriores no están en estas cifras: no había IVA que declarar.',
+    '{n} Booking.com stays are not in the figures yet.': '{n} estancias de Booking.com aún no están en las cifras.',
+    "Booking.com's emails give no price; its reservations statement does. Upload the latest one and they are counted here.": 'Los correos de Booking.com no dan precio; su extracto de reservas sí. Suba el último y se contarán aquí.',
+    'Booking.com stays': 'Estancias de Booking.com',
+    'Booking.com charged {amount} in commission on these stays. It is a purchase, not VAT collected, so it is not in the total. Booking.com invoices from the Netherlands without French VAT, so the VAT on it is normally reverse-charged: declared and deducted on the same return. Check this with your accountant.': 'Booking.com cobró {amount} de comisión por estas estancias. Es una compra, no IVA repercutido, así que no está en el total. Booking.com factura desde los Países Bajos sin IVA francés, por lo que normalmente se aplica la inversión del sujeto pasivo: se declara y se deduce en la misma declaración. Compruébelo con su contable.',
     'Hand it to your accountant as a starting point. Two things to tell them:': 'Entréguelo a su contable como punto de partida. Dos cosas que debe saber:',
     'The till figures are exact — each closed day seals its VAT per rate.': 'Las cifras de la caja son exactas: cada día cerrado sella su IVA por tipo.',
     'Rooms, ateliers and extras are estimated: the configured rate applied to revenue by service date. French VAT on services is normally due when payment is received, which is a different date.': 'Habitaciones, talleres y extras son estimados: el tipo configurado aplicado a los ingresos por fecha de servicio. En Francia el IVA de servicios se devenga normalmente al cobro, que es otra fecha.',
@@ -876,6 +916,7 @@ ES = {
     'Terrace': 'Terraza',
     'Bar': 'Barra',
     'Private': 'Privado',
+    'Private Retreats': 'Retiros privados',
     # -- Navigation and shell -------------------------------------------
     "Stay": "Alojarse",
     "Stay Now": "Reservar estancia",
@@ -886,6 +927,9 @@ ES = {
     "Weddings": "Bodas",
     "Photoshoots": "Sesiones de fotos",
     "Celebrations": "Celebraciones",
+    # /links, the Instagram page (23 November 2026).
+    "Celebrate": "Celebrar",
+    "Newsletter": "Boletín",
     "Private Photo & Videoshoots": "Sesiones privadas de foto y vídeo",
     "Gallery & Story": "Galería e historia",
     "Inside the Château": "El interior del château",
@@ -903,7 +947,7 @@ ES = {
     "Menu": "Menú",
     "Close menu": "Cerrar menú",
     "Subscribe to our newsletter": "Suscríbase a nuestro boletín",
-    "The restoration, the rooms as they open, and the workshop dates. No more than a few times a year; unsubscribe in one click.": "La restauración, las habitaciones a medida que se abren y las fechas de los talleres. Unas pocas veces al año; se da de baja con un clic.",
+    "The restoration, the rooms as they open, and the retreat dates. No more than a few times a year; unsubscribe in one click.": "La restauración, las habitaciones a medida que se abren y las fechas de los retiros. Unas pocas veces al año; se da de baja con un clic.",
     "Subscribe": "Suscribirse",
     "Email": "Correo electrónico",
     "Email address": "Dirección de correo electrónico",
@@ -945,6 +989,9 @@ ES = {
     "The History": "La historia",
     "What’s On": "Qué hacer",
     "In the Ariège": "En el Ariège",
+    "At Gudanes": "En Gudanes",
+    "What’s On at Gudanes": "Qué hacer en Gudanes",
+    "Getting Here": "Cómo llegar",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Sus fechas",
@@ -1071,7 +1118,7 @@ ES = {
     "Six rooms · from €{price} a night · breakfast included": "Seis habitaciones · desde {price} € la noche · desayuno incluido",
     "A room and breakfast, your own dates": "Habitación y desayuno, en sus fechas",
     "Five rooms · from one night": "Cinco habitaciones · desde una noche",
-    "Cooking, the brocantes and the restoration": "La cocina, las brocantes y la restauración",
+    "Cooking, the brocantes, the restoration and more": "La cocina, las brocantes, la restauración y mucho más",
     "Three to seven nights of": "De tres a siete noches de",
     "Three to seven nights · full board · itinerary included": "De tres a siete noches · pensión completa · programa incluido",
     "Fixed dates, a small group": "Fechas fijas, en grupo reducido",
@@ -1405,7 +1452,7 @@ ES = {
     'The ateliers': 'Los talleres',
     'Your events': 'Sus eventos',
     'stays &amp; general': 'estancias y consultas generales',
-    'workshops & events': 'talleres y eventos',
+    'retreats and events': 'retiros y eventos',
     'For now, the château is open only to its guests.': 'Por ahora, el castillo solo está abierto a sus huéspedes.',
     # Handover q, 7 October. See the note on the French table.
     'Ask to move your dates': 'Solicitar un cambio de fechas',
@@ -1449,6 +1496,17 @@ ES = {
     "See everything you have with us": "Ver todo lo que tiene con nosotros",
     "Under restoration since 2013": "En restauración desde 2013",
     "What’s On in the Ariège": "Qué hacer en Ariège",
+    # 23 Nov 2026 (owner): check-out moved to 11am; the sentences that carry the
+    # times. Times as house_guide_clock writes them in Spanish: 15:00, 11:00.
+    "Arrival and departure": "Llegada y salida",
+    "Check-in from 3pm, check-out by 11am.": "Entrada a partir de las 15:00, salida antes de las 11:00.",
+    "Check-in from 3pm, check-out by 11am. Later arrivals by arrangement.":
+        "Entrada a partir de las 15:00, salida antes de las 11:00. Llegadas más tardías, previo acuerdo.",
+    "Check-in from 3pm, check-out by 11am. Arriving earlier? Early check-in is on request — choose it above and we will do our best.":
+        "Entrada a partir de las 15:00, salida antes de las 11:00. ¿Llega antes? La entrada anticipada es bajo petición: elíjala arriba y haremos lo posible.",
+    "From 3pm · by 11am": "Desde las 15:00 · antes de las 11:00",
+    "Arrival is from 3pm and departure by 11am, unless your confirmation says otherwise. Tell us if you expect to arrive late so that someone can be there to meet you.":
+        "La llegada es a partir de las 15:00 y la salida antes de las 11:00, salvo que su confirmación indique otra cosa. Avísenos si prevé llegar tarde, para que alguien pueda recibirle.",
 }
 
 # The public pages' own prose, kept in its own file because it is 1,900

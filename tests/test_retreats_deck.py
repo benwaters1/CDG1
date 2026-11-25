@@ -68,6 +68,8 @@ NEVER = ["all meals and drinks", "activities", "unique", "once in a lifetime",
          "welcome drinks", "why the walls are left as they are",
          "A Retreat With a Purpose", "Experience the Château in Full", "Nicolas Jover"]
 LUXURY_ONLY = "the rare luxury of having nowhere else to be"
+# 23 Nov 2026 (owner: "they all need to say like luxury french linen"): the rooms' linen is the owner's word too.
+LUXURY_ALSO = "luxury french linen"
 RETREATS = os.path.join(_harness.ROOT, "static", "img", "retreats")
 
 
@@ -147,7 +149,7 @@ def run():
         s.check(f"{path}: no exclamation marks", "!" not in seen,
                 detail=seen[max(0, seen.find("!") - 60):seen.find("!") + 5])
         lux = seen.lower().count("luxury")
-        s.check(f"{path}: 'luxury' only in the owner's own line", lux == seen.lower().count(LUXURY_ONLY),
+        s.check(f"{path}: 'luxury' only in the owner's own line", lux == seen.lower().count(LUXURY_ONLY) + seen.lower().count(LUXURY_ALSO),
                 detail=f"{lux} times")
         named = [n for n in team if n in seen]
         s.check(f"{path}: nobody on the team named", not named, detail=", ".join(named))
@@ -156,7 +158,12 @@ def run():
     home = words(pages["/"].get_data(as_text=True))
     # 9 Nov 2026, evening (owner's second review, 1 and 5): "château", never "house"; no
     # renovation; the eight moments went (A Day at Gudanes on /workshops is the same idea).
-    for line in ["Or stay longer, for a retreat: three to seven nights of la vie de château.",
+    # 23 Nov 2026 (owner: "i wanted it redesigned so the retreats are more prominent"): the hero's one line
+    # for the retreats became the Retreats tab, open first, with the next dates in it. The old line only
+    # comes back when no date is on sale.
+    for line in ["Retreats Three to seven nights, all inclusive",
+                 # 24 Nov 2026 (owner: a retreat is not a list): "and much more".
+                 "Every meal, the wine, the château’s chefs and much more, with nothing to pay at the end.",
                  "For two centuries Gudanes was a château of guests.",
                  "Guests arrive as strangers and leave as friends, and so many of them return.",
                  "Many of our guests return, some year after year, each time for a different retreat.",
@@ -178,9 +185,12 @@ def run():
 
     s.section("/workshops")
     ws = words(pages["/workshops"].get_data(as_text=True))
-    for line in ["Les retraites", "La Vie de Château",
-                 "A few days of French château life, in rooms brought back from ruin.",
-                 "This is not a hotel stay, and it is not a course.",
+    # 24 Nov 2026 (site review, 9): the hero's eyebrow is "Les séjours"; "Les retraites" reads first as pensions in French.
+    for line in ["Les séjours", "La Vie de Château",
+                 # 23 Nov 2026 (owner's retreats brief): the hero and the opening name what a guest does, and the
+                 # page no longer opens on what a retreat is not. test_retreats_page_sells holds the rest.
+                 "Cooking with the château’s chefs, antiquing in the brocantes, and the frescoes coming back to the light.",
+                 "A few days of French château life: cooking classes with the château’s chefs",
                  "Une journée à Gudanes", "Le petit-déjeuner", "Le dîner",
                  "In France, the table is the point of the day",
                  "the great cave at Lombrives"]:
@@ -397,8 +407,11 @@ def run():
             detail=", ".join("#%d active=%s" % (r["id"], r["active"]) for r in gone))
     for r in gone:
         page = c.get("/workshops/%d" % r["id"])
-        s.check(f"its page (/workshops/{r['id']}) is gone, not a redirect naming it", page.status_code == 404,
-                detail=str(page.status_code))
+        # 24 Nov 2026 (old-links brief): a gone retreat goes to the list, 302.
+        s.check(f"its page (/workshops/{r['id']}) is gone: the list, not a redirect naming it",
+                page.status_code == 302
+                and page.headers.get("Location", "").split("?")[0].endswith("/workshops"),
+                detail=f"{page.status_code} {page.headers.get('Location')}")
     for path, html in shown.items():
         s.check(f"{path}: no card, no date, no name", not re.search(r"Immersive|Artisan Workshops", html),
                 detail=path)

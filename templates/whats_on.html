@@ -9,7 +9,7 @@
 {% block content %}
 {#- 9 Nov (the image layout brief, 4.7): the photographs through the picture components (_pictures.html, shown together
     on /design). Not one word changes. -#}
-{% from '_pictures.html' import split, bande, pictures_script %}
+{% from '_pictures.html' import split, bande, mosaique, pictures_script %}
 {% from '_retreat_photos.html' import rcredit %}
 {% from '_marks.html' import mark %}
 
@@ -75,7 +75,9 @@
     {% endfor %}
   </div>
   {% if upcoming|length > 4 %}
-  <details class="g-agenda__more"><summary>The rest of the year</summary>
+  {#- 24 Nov 2026 (site review, 6): the fold read as a row with a date label and nothing beside it. It says what it
+      holds and that it opens: the count of dates on the left, Show all on the right, across the row. -#}
+  <details class="g-agenda__more"><summary><span class="g-agenda__morel">The rest of the year: {{ upcoming[4:]|length }} more date{{ '' if upcoming[4:]|length == 1 else 's' }}</span><span class="g-agenda__moreb" aria-hidden="true">Show all</span></summary>
   <div class="g-agenda">
     {% for e in upcoming[4:] %}
     <article class="g-agenda__row">
@@ -94,6 +96,11 @@
   {% endif %}
   {% endif %}
 
+  {#- 24 Nov 2026 (site review, 10): "Grotte de Lombrives open all year" checked against the cave's own site
+      (grottedelombrives.com: open "toute l'année", dates and departures on its online booking) and the tourist offices
+      (ariegepyrenees.com, The Cave of Lombrives: 16 Nov - 20 Dec 2026 Wednesday, Saturday and Sunday, then daily to 31
+      Dec). It is open all year, so it stays here, and its line now says the days are set out of season
+      (LOMBRIVES_ALL_YEAR, correct_whats_on_lombrives). -#}
   {% if all_year %}
   <p class="g-eyebrow" style="margin-top:var(--s8)">All Year</p>
   <div class="g-agenda">
@@ -150,7 +157,8 @@
   <p class="g-eyebrow">Places</p>
   <h2 class="g-place">Towns and Places Nearby</h2>
   {#- 9 Nov (the brief, 4.7): one photograph beside the place, sides alternating down the page. -#}
-  {% call split([url_for('static', filename='img/retreats/foix-castle.jpg'), 'The castle of Foix above the old town', '']) %}
+  {#- 23 Nov (owner: "more images ... not just all in a row"): Mirepoix's arcades tucked over the corner of Foix, tilted. -#}
+  {% call split([url_for('static', filename='img/retreats/foix-castle.jpg'), 'The castle of Foix above the old town', ''], tuck=[url_for('static', filename='img/retreats/mirepoix-arcades.jpg'), 'Mirepoix under its old arcades']) %}
   <div class="g-key">
     <div class="g-key__i">
       <p class="g-key__k">Tarascon-sur-Ariège · about fifteen minutes</p>
@@ -188,6 +196,7 @@
     </div>
   </div>
   {% endcall %}
+  <p class="g-car__credits">{{ rcredit('mirepoix-arcades', new_tab=True) }}</p>
 </div></section>
 {#- 6 Oct (owner: "take photos online of ax for the part where we advertise skiing"). Wikimedia Commons photographs under
     Creative Commons licences that allow commercial use with credit - photographer and licence shown under each, linked to
@@ -198,11 +207,11 @@
 <section class="g-sec"><div class="g-wrap">
   <p class="g-fr">À faire <span class="g-fr__en">Things to do</span></p>
   <h2 class="g-place">Things to Do Nearby</h2>
+  {#- 23 Nov (owner: "yes if its on there twice"): Les Bains du Couloubret came off this list; it is described in full
+      under The Hot Springs below. -#}
+  {#- 23 Nov (owner: "more images ... display them assorted nicely"): the hills beside it, with the peaks tucked over. -#}
+  {% call split([url_for('static', filename='img/retreats/mountain-walk.jpg'), 'Walking in the hills', ''], flip=True, cls='g-sp--few', tuck=[url_for('static', filename='img/views/clouds-over-the-peaks.jpg'), 'The mountains through an open window of the château']) %}
   <div class="g-key">
-    <div class="g-key__i">
-      <p class="g-key__k">Les Bains du Couloubret · Ax-les-Thermes, about twenty minutes</p>
-      <p class="g-key__v">Roman-style thermal baths fed by the hottest springs in the Pyrénées: indoor and outdoor pools, a caldarium and a frigidarium, hammam, sauna and massages. Open all year, apart from two short closures</p>
-    </div>
     <div class="g-key__i">
       <p class="g-key__k">On the river · about ten minutes</p>
       <p class="g-key__v">Canoe, kayak or paddle-board on the Ariège with Waterploof, from the lake at Sinsat: with a guide or on your own, six or twelve kilometres downriver, and a minibus back. Every day from May to October</p>
@@ -220,6 +229,7 @@
       <p class="g-key__v">Beyond Niaux, the caves of Bédeilhac and Lombrives, and the Parc de la Préhistoire at Tarascon</p>
     </div>
   </div>
+  {% endcall %}
 </div></section>
 {#- 9 Nov, evening (owner's second review, 1 and 3.4): winter is not prominent. The Skiing Nearby gallery and the Winter section are one entry inside Outdoors and Adventure, which keeps the #skiing address /book links to. -#}
 
@@ -237,7 +247,7 @@
   <p class="g-fr">Les eaux chaudes <span class="g-fr__en">The hot springs</span></p>
   <h2 class="g-place">The Hot Springs</h2>
   {#- 9 Nov (the brief, 4.7): one photograph beside the place, sides alternating down the page. -#}
-  {% call split([url_for('static', filename='img/retreats/bassin-des-ladres.jpg'), 'The hot-spring basin of the Bassin des Ladres in Ax-les-Thermes', ''], flip=True) %}
+  {% call split([url_for('static', filename='img/retreats/bassin-des-ladres.jpg'), 'The hot-spring basin of the Bassin des Ladres in Ax-les-Thermes', '']) %}
   <p class="g-p g-intro">Ax-les-Thermes has some sixty hot springs, the hottest in the Pyrenees, rising from the ground at over 70°C.</p>
   <div class="g-key">
     <div class="g-key__i">
@@ -288,6 +298,12 @@
       <p class="g-key__v">Guided descents of the mountain gorges, with abseils, jumps and natural water slides. All the kit is provided, and there are trips for first-timers. Summer.</p>
       <p class="g-key__v g-key__links">{{ site('https://www.vertikarst.fr/', 'vertikarst.fr') }} · {{ site('https://cavernecanyon.com/', 'cavernecanyon.com') }} · {{ site('https://acrobranche-ariege.com/', 'acrobranche-ariege.com') }}</p>
     </div>
+    {#- 23 Nov (owner: "more images ... not just all in a row"): three photographs of the mountains as one collage,
+        set into the grid two entries wide, so the pictures sit among the words rather than in a strip of their own. -#}
+    <div class="g-key__mos">{{ mosaique([
+      [url_for('static', filename='img/views/mist-on-the-mountain.jpg'), 'Mist on the mountain above the valley', ''],
+      [url_for('static', filename='img/views/mountain-spring-sky.jpg'), 'The mountain under a spring sky', ''],
+      [url_for('static', filename='img/retreats/chateau-snowy-peaks.jpg'), 'The château below the snowy peaks', '']]) }}</div>
     <div class="g-key__i">
       <p class="g-key__k">Rafting, canoe and paddleboard · Bouan, 10–15 minutes</p>
       <p class="g-key__v">Down the Ariège by raft, canoe or kayak, guided or on your own, with a minibus back; paddleboards on the lake below the Sinsat cliffs. May to October.</p>

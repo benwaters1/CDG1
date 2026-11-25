@@ -4,11 +4,13 @@
    framed tiles inside an ornamental frame, each with its gilt drawing, the
    French name, the English and one line. The owner's facts only. Stay, Estate.
    facilities(dm, heading, eyebrow)   dm = the dining switch ('open' adds the dinner line)
+   breakfast_photo = [src, alt], drawn in the breakfast tile at the tile's width (/book, 23 Nov)
    ============================================================================= #}
 {% from '_illus.html' import illus %}
-{% macro facilities(dm='open', heading='What Is Included', eyebrow='Your Stay') %}
+{% macro facilities(dm='open', heading='What Is Included', eyebrow='Your Stay', breakfast_photo=None) %}
 <section class="g-sec g-facil-sec"><div class="g-wrap">
-  <p class="g-fr">Les équipements <span class="g-fr__en">The facilities</span></p>
+  {#- 24 Nov 2026 (site review, 6): "Les équipements" was said twice, over the heading and again in the frame. The
+      frame keeps it. -#}
   <p class="g-eyebrow">{{ eyebrow }}</p>
   <h2 class="g-place">{{ heading }}</h2>
   <div class="g-facil-frame">
@@ -16,6 +18,10 @@
     <ul class="g-facil">
       {#- 9 Oct (owner): film night, the gardens, laundry and ironing added; board games folded into the lounge and the barbecue
           into the terraces, so the frame stays twelve -#}
+      {#- 24 Nov 2026 (site review, 6): with breakfast's photograph its tile takes two cells, so twelve tiles made
+          thirteen and La buanderie stood alone on the last row. There, table tennis joins the tennis court's tile
+          (nothing said is lost), and the grid is twelve cells: full rows at four, three and two across. Without
+          the photograph (/facilities) the twelve tiles stand as they were. -#}
       {%- for kind, fr, en, line in [
         ('breakfast', 'Le petit-déjeuner', 'Breakfast', 'Every morning, included'),
         ('bed', 'La chambre', 'Your room', 'A comfortable bed among brocante antiques, reading lamps and power points'),
@@ -24,12 +30,16 @@
         ('film', 'La soirée cinéma', 'Film night', 'A projector, set up on request'),
         ('wifi', 'Le Wi-Fi', 'Wi-Fi', 'In a common area of the château'),
         ('pool', 'La piscine', 'The pool', 'Yours to use while you stay'),
-        ('tennis', 'Le court de tennis', 'The tennis court', 'Racquets for tennis and pickleball'),
+        ('tennis', 'Le court de tennis', 'The tennis court', 'Racquets for tennis and pickleball, and table tennis' if breakfast_photo else 'Racquets for tennis and pickleball'),
         ('pingpong', 'Le ping-pong', 'Table tennis', 'For a friendly match'),
         ('garden', 'Les jardins', 'The gardens', 'Ten acres of gardens and grounds'),
         ('terrace', 'Les terrasses', 'The terraces and barbecue', 'A glass of local wine, and long summer evenings'),
-        ('laundry', 'La buanderie', 'Laundry and ironing', 'Facilities for guests')] %}
-      <li class="g-facil__i">
+        ('laundry', 'La buanderie', 'Laundry and ironing', 'Facilities for guests')]
+        if not (breakfast_photo and kind == 'pingpong') %}
+      {%- set _photo = breakfast_photo if kind == 'breakfast' else None %}
+      <li class="g-facil__i{{ ' g-facil__i--photo' if _photo }}">
+        {#- 23 Nov (owner): a portrait photograph, 768x1024, so it stays the size of the tile -- never a band. -#}
+        {% if _photo %}<figure class="g-facil__photo">{{ pic(_photo[0], _photo[1], sizes='(min-width: 64rem) 16rem, (min-width: 48rem) 30vw, 33vw', cls='g-facil__img') }}</figure>{% endif %}
         <div class="g-facil__ill" aria-hidden="true">{{ illus(kind) }}</div>
         <p class="g-facil__fr" lang="fr">{{ fr }}</p>
         <p class="g-facil__en">{{ en }}</p>
@@ -48,8 +58,11 @@
   <p class="g-fr">Avec la chambre <span class="g-fr__en">Included</span></p>
   <h2 class="g-place">With the Room</h2>
   <p class="g-p g-intro">Breakfast every morning, and the château and its grounds to enjoy.</p>
+  {#- 24 Nov 2026 (booking-flow brief, 8): twelve, not ten. Ten on a row of nine left "Wi-Fi, in a common area" alone on
+      the last row on a computer, and on a phone's rows of three. Breakfast and the bathroom, the two the facilities
+      frame on /book opens with, make twelve, on rows of three, four and six (gudanes.css), every one full. -#}
   <ul class="g-fstrip">
-    {%- for kind, label in [('pool','The pool'),('tennis','The tennis court'),('pingpong','Table tennis'),('garden','The gardens'),('lounge','The lounge and board games'),('film','Film night, on request'),('terrace','The terraces'),('bbq','The barbecue'),('laundry','Laundry and ironing'),('wifi','Wi-Fi, in a common area')] %}
+    {%- for kind, label in [('breakfast','Breakfast, every morning'),('bath','A private bathroom'),('pool','The pool'),('tennis','The tennis court'),('pingpong','Table tennis'),('garden','The gardens'),('lounge','The lounge and board games'),('film','Film night, on request'),('terrace','The terraces'),('bbq','The barbecue'),('laundry','Laundry and ironing'),('wifi','Wi-Fi, in a common area')] %}
     <li class="g-fstrip__i"><span class="g-fstrip__ill" aria-hidden="true">{{ illus(kind) }}</span><span class="g-fstrip__l">{{ label }}</span></li>
     {%- endfor %}
   </ul>

@@ -5,13 +5,82 @@
 <div class="page-head">
   <h1>Taxe de séjour</h1>
   <div>
+    {% if council %}
+    <a href="{{ url_for('export_city_tax_csv', council_year=council) }}" class="btn-mini">Export CSV</a>
+    {% else %}
     <a href="{{ url_for('export_city_tax_csv', period=period.period, date=period.anchor_iso) }}"
        class="btn-mini">Export CSV</a>
+    {% endif %}
     <a href="{{ url_for('admin_vat') }}" class="btn-mini">VAT</a>
   </div>
 </div>
 
+{#
+  WHAT TO DECLARE (owner, 23 November 2026). The Haute-Ariège council's year
+  runs 1 October to 30 September and is declared once, by 15 October, on its
+  own site. What is declared is nights and people; the council works out the
+  money from them, so the figure is the adult-nights at the rate on the rates
+  page.
+#}
+<div class="detail-card" id="council-year">
+  <h2 class="section-heading">What to declare to the council</h2>
+  <p class="field-hint" style="margin-top:0;">
+    The Haute-Ariège council's year runs from 1 October to 30 September. It is declared once,
+    by 15 October, on <a href="{{ council_url }}" rel="noopener" target="_blank">the council's
+    site</a>: the nights, and how many people were over and under 18.
+  </p>
+  {% for y in years %}
+  <div class="detail-card" style="{{ 'border-left:3px solid var(--danger);' if y.over and y.late and not y.declared and y.stays }}">
+    <h3 style="margin-top:0;">{{ y.label }}{% if not y.over %} <span class="mini-status status-pending">so far</span>{% endif %}</h3>
+    <p style="margin:0 0 6px;">
+      <strong>{{ y.adult_nights }}</strong> adult-night{{ '' if y.adult_nights == 1 else 's' }} and
+      <strong>{{ y.exempt_nights }}</strong> under 18, over {{ y.stays }} stay{{ '' if y.stays == 1 else 's' }}:
+      <strong>{{ y.to_declare|money }}</strong> at {{ y.rate|money }} per adult per night.
+    </p>
+    {% if y.booking_com.party_unknown %}
+    <p class="field-hint">{{ y.booking_com.party_unknown|length }} Booking.com
+      stay{{ '' if y.booking_com.party_unknown|length == 1 else 's' }} not covered by a statement yet:
+      every guest on {{ 'it' if y.booking_com.party_unknown|length == 1 else 'them' }} is counted as an
+      adult until one is. Upload the latest on the
+      <a href="{{ url_for('channel_stays_page') }}#statement">Booking.com stays</a> page before you declare.</p>
+    {% endif %}
+    <p class="field-hint">
+      {% if y.declared %}
+        Declared {{ local_datetime_str(y.declared['declared_at']) }}{% if y.declared['declared_by'] %} by {{ y.declared['declared_by'] }}{% endif %}:
+        {{ y.declared['adult_nights'] }} adult-nights, {{ y.declared['amount']|money }}{% if y.declared['note'] %} ({{ y.declared['note'] }}){% endif %}.
+      {% elif not y.over %}
+        To declare once the year is over, by {{ y.due|date_short }}.
+      {% elif y.late %}
+        <strong style="color:var(--danger);">Not declared. It was due by {{ y.due|date_short }}.</strong>
+      {% else %}
+        Due by {{ y.due|date_short }}.
+      {% endif %}
+      <a href="{{ url_for('admin_city_tax', council_year=y.year_from) }}">Every stay</a> ·
+      <a href="{{ url_for('export_city_tax_csv', council_year=y.year_from) }}">The year as a file</a>
+    </p>
+    {% if y.over %}
+    <form method="post" action="{{ url_for('city_tax_declared', year_from=y.year_from) }}" class="field-row-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if y.declared %}
+      <input type="hidden" name="what" value="undo">
+      <button type="submit" class="btn-ghost">Not declared after all</button>
+      {% else %}
+      <input type="text" name="note" maxlength="200" placeholder="Reference from the council's site (optional)"
+             aria-label="Reference from the council's site">
+      <button type="submit" class="btn-mini">Declared</button>
+      {% endif %}
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if council %}
+<p class="upload-hint">Every stay in the council's year {{ council_label }}.
+  <a href="{{ url_for('admin_city_tax') }}">Back to weeks, months and years</a></p>
+{% else %}
 {% with endpoint = 'admin_city_tax' %}{% include "_period_selector.html" %}{% endwith %}
+{% endif %}
 
 {#
   Collected from the guest on the commune's behalf and handed over with a
@@ -57,6 +126,28 @@ so it is declared either way.
 {% endif %}
 </p>
 
+{% if working.booking_com.stays %}
+<div class="detail-card" style="max-width:840px;">
+  {# Booking.com's guests were missing from this return until 23 Nov 2026:
+     their stays are not bookings of the house's own. #}
+  <h3 style="margin-top:0;">{{ working.booking_com.stays }} of these stays were booked on Booking.com:
+    {{ working.booking_com.amount|money }}</h3>
+  <p class="field-hint" style="margin-top:0;">
+    The tax is owed on their nights like anyone else's. Nothing in the app charged it to them, so
+    their figure is the adult-nights at today's rate. If it is taken at the door, that happens
+    outside the app. How many were adults comes from Booking.com's reservations statement.
+  </p>
+  {% if working.booking_com.party_unknown %}
+  <p class="field-hint">
+    <strong>{{ working.booking_com.party_unknown|length }} not covered by a statement yet</strong>
+    ({% for r in working.booking_com.party_unknown %}{{ r.guest }}{% if not loop.last %}, {% endif %}{% endfor %}),
+    so every guest on them is counted as an adult until one is. Upload the latest one on the
+    <a href="{{ url_for('channel_stays_page') }}#statement">Booking.com stays</a> page before you file.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if not working.rows %}
 <div class="empty-state">Nobody stayed in this period.</div>
 {% else %}
@@ -75,7 +166,7 @@ so it is declared either way.
       <tr>
         <td>
           {{ r.guest }}
-          <span class="cell-note">{{ r.reference }}{% if not r.settled %} · unpaid{% endif %}</span>
+          <span class="cell-note">{{ r.reference }}{% if r.channel %} · {{ r.channel }}{% if not r.party_known %} · party not confirmed{% endif %}{% elif not r.settled %} · unpaid{% endif %}</span>
         </td>
         <td>
           {{ r.room }}
@@ -106,7 +197,7 @@ so it is declared either way.
 {% endif %}
 
 <p class="upload-hint" style="margin-top:12px;">
-  Amounts are apportioned from what each guest was actually charged, not
+  Amounts for the house's own bookings are apportioned from what each guest was actually charged, not
   recomputed at today's rate — if the commune raises the rate mid-year,
   recomputing would put a figure on the return that never appeared on anybody's
   bill. Cancelled stays are excluded: no nights were spent, so nothing is owed.

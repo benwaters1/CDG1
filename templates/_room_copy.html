@@ -16,14 +16,19 @@
     floor and ceiling intact, slate floor lifted and kept), and the owner's wallpaper (one Family Suite bedroom). The first
     sentence of each stands alone: the homepage cards show only that. -#}
 {% macro room_copy(name, fallback='') -%}
+{#- 23 Nov (owner: "they all need to say like luxury french linen, make them sound better - the flooring, etc"): every
+    bed in luxury French linen, and the floors where the house has said what they are (the Twin Room's old floorboards, the
+    King Room's slate) and, where it has not,
+    bespoke flooring (owner: "just say bespoke flooring"). The Marquis Suite's parquet and gilded mirror, read from its
+    photographs, came out again (owner: "just remove it"). -#}
 {#- 22 Oct (owner): each room's card paragraph as the owner wrote it. No bathroom is ever called "ensuite", and the Marquis Suite's walls are not mentioned anywhere. -#}
 {%- set RM_DESC = {
-  'The Twin Room':    'Two gilded beds beneath an old tapestry in the Chambre Jeanne d’Arc, looking out to the mountains. Once half of a much larger room, it was divided in 2021 and laid with old wooden floorboards. Your private bathroom is on the ground floor, there is a powder room on the bedroom landing, and breakfast is served downstairs each morning.',
-  'The King Room':   'A king bed in the Chambre Olympe de Gouges, one of the few rooms whose floor and ceiling survived. Before the restoration its hallway had caved in and the room could not be reached. Its original slate floor was lifted and kept safe while the room was brought back to life. It has mountain views and a private bathroom on the ground floor.',
-  'The King Suite':    'A king bed beneath a four-poster canopy, with a bath and a basin in the room itself and the mountains beyond the windows. Your private bathroom is on the ground floor.',
-  'The Marquis Suite':   'The château’s grandest bedroom: a gilded four-poster with an emperor bed, armchairs by the fireplace, and 70 m² to yourselves.',
-  'The Family Suite': 'Two bedrooms for a family, the Chambre Bleue and the Chambre des Fleurs, across 140 m². One of the two bedrooms has its original wallpaper, printed anew by the company that first made it, from its original templates. There are two double beds in one bedroom and three in the other, and children of eight and over are welcome.',
-  'The Twin Room (Ground Floor)': 'A queen bed and a double bed in a quiet room on the ground floor, though still reached by stairs. It has its own private bathroom right next door, and the mountains outside the window.'
+  'The Twin Room':    'Two gilded beds made up in luxury French linen, beneath an old tapestry in the Chambre Jeanne d’Arc, looking out to the mountains. Once half of a much larger room, it was divided in 2021 and laid with old wooden floorboards. Your private bathroom is on the ground floor, there is a powder room on the bedroom landing, and breakfast is served downstairs each morning.',
+  'The King Room':   'A king bed dressed in luxury French linen in the Chambre Olympe de Gouges, one of the few rooms whose floor and ceiling survived. Before the restoration its hallway had caved in and the room could not be reached. Its original slate floor was lifted and kept safe while the room was brought back to life. It has mountain views and a private bathroom on the ground floor.',
+  'The King Suite':    'A king bed in luxury French linen beneath the canopy of a wooden four-poster, with a bath and a basin in the room itself, bespoke flooring, and the mountains beyond the windows. Your private bathroom is on the ground floor.',
+  'The Marquis Suite':   'The château’s grandest bedroom: a gilded four-poster with an emperor bed made up in luxury French linen, armchairs drawn up to the fireplace, bespoke flooring, and 70 m² to yourselves.',
+  'The Family Suite': 'Two bedrooms for a family, the Chambre Bleue and the Chambre des Fleurs, across 140 m², with bespoke flooring and every bed made up in luxury French linen. One of the two bedrooms has its original wallpaper, printed anew by the company that first made it, from its original templates. There are two double beds in one bedroom and three in the other, and children of eight and over are welcome.',
+  'The Twin Room (Ground Floor)': 'A queen bed and a double bed, both in luxury French linen, in a quiet room on the ground floor, though still reached by stairs. It has bespoke flooring, its own private bathroom right next door, and the mountains outside the window.'
 } -%}
 {{- RM_DESC.get(name) or fallback -}}
 {%- endmacro %}
@@ -39,6 +44,17 @@
     Admin must be renamed in the same sitting (FOR-CODE 20). -#}
 {% macro room_name(db_name) -%}
 {{- db_name -}}
+{%- endmacro %}
+
+{#- 23 Nov 2026 (owner): the rooms are named after remarkable French women. A room's heading is its French title, and
+    the plain name -- the one Booking.com lists, and the key to every photograph and word in this file -- sits small
+    beneath it: "La Chambre Jeanne d'Arc" over "The Twin Room". room_title() and room_plain() are app globals reading
+    rooms.website_title (Admin > Rooms, "Title on the website"); a room with no title shows its name alone, with no
+    second line. The title is the house's own words in every language, so the translator leaves it alone. -#}
+{% macro room_heading(db_name, tag='h3', cls='') -%}
+<{{ tag }} translate="no" class="{{ cls }}">{{ room_title(db_name) }}</{{ tag }}>
+{%- set _plain = room_plain(db_name) %}{% if _plain %}
+<p class="g-room__plain">{{ _plain }}</p>{% endif %}
 {%- endmacro %}
 
 {# The English gloss, for the first mention on a page and for anywhere a

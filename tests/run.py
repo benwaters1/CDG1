@@ -25,6 +25,7 @@ SUITES = [
     "test_guest_import",
     "test_rg_waitlist_import",
     "test_booked_to_come_letter",
+    "test_campaign_news_address",
     "test_way_back_in",
     "test_access_levels",
     "test_booking_quote",
@@ -212,6 +213,8 @@ SUITES = [
     "test_whats_on",
     "test_whats_on_through_the_year",
     "test_whats_on_kept_up",
+    "test_stay_occasions",
+    "test_getting_here",
     "test_ateliers",
     "test_atelier_recap",
     "test_navigation",
@@ -246,6 +249,7 @@ SUITES = [
     "test_sick_note",
     "test_insurer_notice",
     "test_home_warnings",
+    "test_home_warning_clear",
     "test_waitlist_offer",
     "test_watch_tasks",
     "test_job_outcomes",
@@ -311,6 +315,7 @@ SUITES = [
     "test_filings",
     "test_discount_outcomes",
     "test_noindex_meta",
+    "test_structured_data",
     "test_privacy",
     "test_terms",
     "test_refunds",
@@ -519,6 +524,10 @@ SUITES = [
     "test_saved_views",
     "test_bookings_list",
     "test_booking_page",
+    # 24 Nov 2026: the room booking path, search to Pay & book (BRIEF-booking-flow-24-nov).
+    "test_booking_flow_24_nov",
+    # 24 Nov 2026: the room page a guest books from -- the form first, and Pay & book in sight, every state.
+    "test_book_form_first",
     "test_unreachable_code",
     "test_handover_check",
     "test_repair_handover",
@@ -586,6 +595,10 @@ SUITES = [
     "test_booking_com_multi_room",
     "test_booking_com_watch",
     "test_booking_com_statement",
+    "test_booking_com_in_returns",
+    "test_kitchen_logs",
+    "test_pool_book",
+    "test_city_tax_year",
     # Five rooms let a night, never six: the sixth room, z28 item 1.
     "test_rooms_let_a_night",
     # Brief of 17 October 2026: forms that post without a token, and the
@@ -593,6 +606,7 @@ SUITES = [
     "test_form_csrf_tokens",
     "test_house_inbox_delivery",
     "test_workshop_deposit_hold",
+    "test_workshop_started_again",
     "test_form_bot_guard",
     "test_bot_registrations_listed",
     "test_newsletter_signup",
@@ -623,6 +637,8 @@ SUITES = [
     # of their length, one newsletter form, the words and the photographs.
     "test_site_review_2",
     "test_public_pages_measured",
+    # 23 Nov 2026: a drawing beside every place on /whats-on, put in at the response (owner: "all the plain text is not good").
+    "test_nearby_art",
     # 9 November 2026: the photograph at the top of a page at the size it is shown.
     "test_hero_sizes",
     # 9 November 2026: each room's own words on its page, and its bathroom on the ground floor.
@@ -636,6 +652,24 @@ SUITES = [
     # 23 November 2026 (site audit): the heroes -- the event pages' navy art and its button, /history's postcard
     # and dates, and the currency control over a photograph.
     "test_heroes_audited",
+    # 23 November 2026: the come-back letters (a year on, before an anniversary) and the review
+    # invitation readied (owner: "yes to 2 just ready the email first", "4 yes we will do that").
+    "test_come_back_letters",
+    # 23 November 2026 (owner): an atelier on the dates a guest searched is offered, on /book, a room's page
+    # and its live quote, not only given as the reason every room says no.
+    "test_atelier_on_your_dates",
+    # 23 November 2026: /events/photoshoots opens on a shoot, says how a shoot works, and its enquiry
+    # arrives with Photography or film chosen.
+    "test_photoshoots",
+    "test_guest_letters",
+    "test_weddings_top",
+    "test_private_top",
+    # 24 Nov 2026: the private page is a private retreat; JBL (BRIEF-private-retreat-and-images, 1 and 2).
+    "test_private_retreat",
+    # 25 Nov 2026: the RetreatGuru private stay, brought in and holding the château (the same brief, 1b).
+    "test_private_stay_held",
+    # 23 November 2026: the photographs the owner will not have on the site, by what they show.
+    "test_photos_refused",
     # 9 November 2026: the address opens the map and sits under the home page's
     # hero, and every public page measured for its margins at three widths.
     "test_house_address",
@@ -653,6 +687,27 @@ SUITES = [
     # on a cp1252 console. Every log line goes through log_line, which never
     # raises, and app.py holds no print().
     "test_log_line",
+    # 23 November 2026, the owner's website brief: /press rebuilt, the old
+    # press archive redirected, the rooms' French titles, and /links.
+    "test_website_brief_2026_11_23",
+    # 24 November 2026, the owner's brief for /restoration: the painted beams
+    # and the frescoes in a section of their own, and the timeline to 2026.
+    "test_restoration_page",
+    # 24 November 2026: the old addresses to The History, the crest as the
+    # site's icon, and a sharp photograph at the top of /press.
+    "test_history_redirects_and_icon",
+    # 24 November 2026, the same brief, sections 6 to 11: weddings seat eighty inside and are all
+    # inclusive, the wedding quote, the event pages most important first, /facilities beside the
+    # grounds with cycling, and every description of a retreat ending open.
+    "test_wedding_inclusive",
+    "test_facilities_domaine",
+    "test_retreats_end_open",
+    # 23 November 2026, the owner's retreats brief: /workshops leads with what
+    # a guest does, the bathrooms honestly, and what is included before the price.
+    "test_retreats_page_sells",
+    # 24 November 2026, the owner's full review of the public site: the old words, the rooms' labels,
+    # /story said once, /restaurant as The Table, rows that line up, photographs first, phone tap targets.
+    "test_site_review_24_nov",
 ]
 
 

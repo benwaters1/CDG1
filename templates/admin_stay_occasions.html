@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Occasions at Gudanes{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Occasions at Gudanes</h1>
+  <a href="{{ url_for('whats_on_at_gudanes') }}" class="btn-mini" target="_blank" rel="noopener">View public page ↗</a>
+  <a href="{{ url_for('admin_stay_occasion_new') }}" class="btn-mini">+ New occasion</a>
+</div>
+
+<p style="max-width:52rem;color:#666;margin-bottom:1.5rem">
+  Stays sold around a date: Christmas, Easter, the Tour de France. Each is a run of nights at your price
+  for each room, shown on the home page and under What's On, At Gudanes. Not an event: the pages never
+  promise a party or a programme. A draft changes no price; only one on sale does, and only inside its nights.
+</p>
+
+{#- What the calendar, the school holidays, What's On and the news suggest. A clash greys one out. -#}
+<section class="detail-card" style="margin-bottom:1.5rem" id="suggested">
+  <h2 class="section-heading">Suggested</h2>
+  <p class="upload-hint">
+    {% if last_run %}Last looked {{ last_run['last_ran_at']|house_when }}{% if last_run['last_message'] %}: {{ last_run['last_message'] }}{% endif %}.
+    {% else %}Not looked yet. It runs each night, or from Automation.{% endif %}
+    Create drafts one at your usual rates plus €50 a night; Dismiss and it is never suggested again.
+  </p>
+  {% if suggestions %}
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Nights</th><th scope="col">What</th><th scope="col">Why</th><th scope="col"></th></tr></thead>
+    <tbody>
+    {% for s in suggestions %}
+      <tr{% if s.blocked %} data-clash="1" style="opacity:.55"{% endif %}>
+        <th scope="row">{{ date_range(s['first_night'], s['last_night']) }}</th>
+        <td><strong>{{ s['name'] }}</strong>{% if s['kind'] == 'guest_chef' %}<br><span class="mini-status status-pending">Guest chef</span>{% endif %}</td>
+        <td>{{ s['why'] }}
+          {% if s['source_url'] %}<br><a href="{{ s['source_url'] }}" target="_blank" rel="noopener" class="upload-hint">Source</a>{% endif %}
+          {% for c in s.clashes %}<br><span class="{{ 'wo-problem' if c.blocks else 'upload-hint' }}">{{ c.why }}</span>{% endfor %}</td>
+        <td style="white-space:nowrap">
+          {% if s.blocked %}<span class="upload-hint">Cannot go on sale</span>
+          {% else %}
+          <form method="post" action="{{ url_for('admin_stay_occasion_suggestion_create', sid=s['id']) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Create</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('admin_stay_occasion_suggestion_dismiss', sid=s['id']) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-text-danger">Dismiss</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty-state">Nothing waiting. New suggestions appear here as the calendar and the news turn them up.</p>
+  {% endif %}
+</section>
+
+<h2 class="section-heading">Your occasions</h2>
+{% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
+{% if lv.rows %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th scope="col">Nights</th><th scope="col">Occasion</th><th scope="col">From</th><th scope="col">Chef</th><th scope="col">State</th></tr></thead>
+  <tbody>
+  {% for o in lv.rows %}
+    <tr>
+      <th scope="row">{{ date_range(o['first_night'], o['last_night']) }}<br><span class="upload-hint">{{ o.nights }} night{{ '' if o.nights == 1 else 's' }}</span></th>
+      <td><a href="{{ url_for('admin_stay_occasion', occ_id=o['id']) }}"><strong>{{ o['name'] }}</strong></a>
+        {% if o['kind'] == 'guest_chef' %}<br><span class="upload-hint">Guest chef{% if o['chef_name'] %}: {{ o['chef_name'] }}{% endif %}</span>{% endif %}
+        {% for b in o.blocked %}<br><span class="wo-problem">{{ b }}</span>{% endfor %}</td>
+      <td>{% if o.from_price %}{{ o.from_price|money(0) }} a night{% else %}<span class="wo-problem">no price</span>{% endif %}</td>
+      <td>{{ o.chef_tag }}</td>
+      <td>{% if o.past %}<span class="upload-hint">Past</span>
+        {% elif o['status'] == 'live' %}<span class="mini-status status-confirmed">On sale</span>
+        {% elif o['status'] == 'draft' %}<span class="mini-status status-pending">Draft</span>
+        {% else %}<span class="upload-hint">Dismissed</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% elif lv.total %}
+<p class="empty-state">Nothing matches that.</p>
+{% else %}
+<p class="empty-state">No occasions yet. Create one from a suggestion above, or start a new one.</p>
+{% endif %}
+{% endblock %}

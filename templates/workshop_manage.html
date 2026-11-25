@@ -34,7 +34,7 @@
       <div><dt>Party size</dt><dd>{{ booking['party_size'] }}</dd></div>
       {% if booking['total_price'] %}<div><dt>Estimated total</dt><dd>€{{ '{:,.2f}'.format(booking['total_price']) }}</dd></div>{% endif %}
       <div><dt>Room arrangement</dt><dd>{{ booking['occupancy_type']|capitalize }}{% if booking['single_supplement'] %} <span class="g-hint">(private room, +€{{ '{:,.0f}'.format(booking['single_supplement']) }} per person)</span>{% endif %}</dd></div>
-      {% if booking['assigned_room_name'] %}<div><dt>Your room</dt><dd>{{ booking['assigned_room_name'] }}</dd></div>{% endif %}
+      {% if booking['assigned_room_name'] %}<div><dt>Your room</dt><dd translate="no">{{ room_title(booking['assigned_room_name']) }}</dd></div>{% endif %}
     </dl>
     <p class="g-hint" style="margin-top:var(--s4);"><a href="{{ url_for('workshop_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">Add to calendar (.ics)</a></p>
     {#- 16 Oct (owner): workshop guests can extend with nightly stays. extend_before / extend_after (the night before
@@ -42,7 +42,7 @@
     {% if (booking['status']|string|lower) not in ('cancelled', 'canceled') %}
     <div class="g-mb-note">
       <span class="g-mb-dt">Stay a little longer</span>
-      <p>Arrive a day early or stay on after the workshop, in the same rooms, at the nightly rate.
+      <p>Arrive a day early or stay on after the workshop, in the same rooms: booked here and paid online, at the nightly rate.
       {% if extend_before is defined and extend_before and extend_after is defined and extend_after %}
         <a href="{{ url_for('book_rooms', arrival=extend_before[0], departure=extend_before[1], party_size=booking['party_size']) }}">A night before</a>
         · <a href="{{ url_for('book_rooms', arrival=extend_after[0], departure=extend_after[1], party_size=booking['party_size']) }}">A night after</a>

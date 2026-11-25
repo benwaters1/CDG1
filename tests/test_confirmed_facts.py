@@ -110,6 +110,13 @@ def _cleanup():
     conn.close()
 
 
+def parse_qs_arrival(card, day):
+    """Whether the atelier card offers a stay arriving on `day`."""
+    if not day:
+        return False
+    return ("arrival=%s&" % day.isoformat()) in card.replace("&amp;", "&")
+
+
 def _atelier(start, days):
     conn = db()
     now = m.datetime.now(m.timezone.utc).isoformat()
@@ -189,28 +196,41 @@ def run():
     q = "/book?arrival=%s&departure=%s" % (start.isoformat(),
                                            (start + timedelta(days=1)).isoformat())
     page = anon.get(q).get_data(as_text=True)
-    # "an atelier" became "a workshop" site-wide on 1 October; the check is
-    # on the substance -- that the house is held, and by what -- not the noun.
+    # Since 23 November 2026 the refusal is a card offering the atelier itself
+    # (test_atelier_on_your_dates holds the card); the check here is still on
+    # the substance -- that the house is held, by what, and when it is free --
+    # not on the sentence that used to say it.
+    card = re.search(r'<aside class="g-onyour".*?</aside>', page, re.S)
+    card = card.group(0) if card else ""
+    conn = db()
+    row = conn.execute("SELECT start_date, end_date FROM workshop_sessions WHERE notes = ? "
+                       "ORDER BY start_date LIMIT 1", (TAG,)).fetchone()
+    conn.close()
+    dates = m.format_date_range(row["start_date"], row["end_date"]) if row else "?"
     s.check("the refusal names the atelier and its dates",
-            "holds the whole château" in page,     # "house" until handover z7
+            TAG + " atelier" in card and dates in card.replace("&amp;", "&"),
             detail="a blind \"no rooms free\" sends somebody away from a house "
                    "that is free the day after")
-    s.check("and says when the house is free again",
-            "free again from the day after" in page)
-    # Back to back: the next one arrives the day this one leaves, so the day
-    # after its last night is held too and "free again" would be false.
+    # The house is free from the morning the atelier's guests leave: the card
+    # offers a stay of the guest's own length from that day.
+    after = parse_qs_arrival(card, m.parse_date(row["end_date"]) if row else None)
+    s.check("and says when the house is free again", after,
+            detail="no stay offered from the day the atelier ends")
+    # Back to back: the next one arrives the day this one leaves, so that
+    # morning is held too and offering a stay from it would be false.
     _atelier(start + timedelta(days=2), days=2)
     page = anon.get(q).get_data(as_text=True)
+    card = re.search(r'<aside class="g-onyour".*?</aside>', page, re.S)
     s.check("but not when the day after is held too",
-            "free again from the day after" not in page,
-            detail="two ateliers back to back make that sentence a promise the "
+            card is not None and not parse_qs_arrival(card.group(0), m.parse_date(row["end_date"])),
+            detail="two ateliers back to back make that offer a promise the "
                    "house cannot keep")
     _cleanup()
     free = m.house_today() + timedelta(days=520)
     page = anon.get("/book?arrival=%s&departure=%s" % (
         free.isoformat(), (free + timedelta(days=1)).isoformat())).get_data(as_text=True)
     s.check("and says nothing about ateliers when none is the reason",
-            "an atelier holds the whole house" not in page)
+            'class="g-onyour"' not in page and "atelier has the château" not in page)
 
     s.section("A guest's own account lists their event enquiries")
     conn = db()
@@ -253,7 +273,8 @@ def run():
             detail=f"HTTP {r.status_code} — a press or general question should "
                    "not have to pick a month")
     s.check("it says what it is about first, and nothing about nights or guests nobody gave",
-            row and (row["notes"] or "").startswith("Private event.")
+            # 24 Nov 2026: the topic is "Private retreat" now (the private page is a private retreat).
+            row and (row["notes"] or "").startswith("Private retreat.")
             and "night" not in (row["notes"] or "") and "guest" not in (row["notes"] or ""),
             detail=f"{row['notes'] if row else None!r} -- a blank once arrived as one "
                    "night, then as 'length not decided' and two guests")

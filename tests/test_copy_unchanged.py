@@ -105,7 +105,71 @@ m = _harness.m
 # 13 Nov: moved to 2f463c9, the room picker (Answer Two Questions) taken off /book; it listed /book only.
 # 23 Nov: moved to 67e2599, how many a room sleeps as its own total (owner: "it sleeps up to 3 for the
 # ground floor"); it listed /, /book and /book/1, "Sleeps 3, up to 2 adults" for "Sleeps 2", and nothing else.
-COPY_BASE = "67e2599"
+# 23 Nov: moved to 68c905f, Les Bains du Couloubret off Things to Do Nearby (owner: "yes if its on there
+# twice"); it listed /whats-on only.
+# 23 Nov 2026: moved to 6c6e9da, the owner's website brief. Against 68c905f it listed /, /book,
+# /book/1 to /book/5 (each room headed by its French title over its plain name, which
+# the <title> of a room's page carries too) and /press (rebuilt, its captions shown on
+# purpose), and nothing else. Each was read.
+# 23 Nov 2026, later: moved to 310d694, the menu the owner asked to be easier to
+# follow. Against 6c6e9da every page differed in one place only, the menu's
+# Chateau group: The History before The Restoration, and the photograph's
+# "Under restoration since 2013" gone with it. Read on every page listed.
+# 23 Nov 2026, on main meanwhile: 1ad191a, the owner's chosen reviews, on purpose.
+# Merged: the base is the merge, which holds both sets, each read on its own side.
+# 23 Nov 2026, night: moved to 1d27227, the last of the Cowork bundle (retreat-questions.bundle) landed on main:
+# the retreats first on the home page, the search bars, the type and colour passes, the menu's Check dates, the
+# photoshoot page, and weddings and private events in the brochures' words. Against 4fd612f it listed /, /book,
+# /workshops, /events/weddings, /events/private and /events/photoshoots, and nothing else: the bundle's pages.
+# 23 Nov 2026, later: moved to cf9625d, "the house" made "the chateau" on the weddings, private events and photoshoot
+# pages (the second review's word list), and "House parties" became "A party of friends". Against 1d27227 it listed
+# /events/weddings, /events/private and /events/photoshoots, and nothing else. Was: "1d27227"
+# 23 Nov 2026, evening: moved to 265c4d9, check-out at 11am (owner). Against 4fd612f it
+# listed /book (Key Information's new "Arrival and departure" line) and /book/1 to
+# /book/5 (the times above Pay & book), and nothing else. Each was read.
+# 24 Nov 2026: merged with main at 9d00c13; the base is the merge. Against cf9625d it listed /book and
+# /book/1 to /book/5, the check-out lines above, and nothing else (What's On's drawings add no words).
+# 24 Nov 2026: moved to 6d92fc0, guests' own words from their thank-you letters (owner's brief): three on the home
+# page, three on /workshops, one on the weddings page, each signed with the season and the year; the weddings questions
+# say Les Gites de Beille and the note under its places to stay says we arrange them. Against cf9625d it listed /,
+# /workshops and /events/weddings, and nothing else. Was: "cf9625d"
+# 24 Nov 2026, later: merged with main at 96f5fe9; the base is the merge. Against 6d92fc0 it listed /book and
+# /book/1 to /book/5 (check-out at 11am) and nothing else.
+# 24 Nov 2026, evening: moved to 5b20f5a, the restoration page's own section for the painted beams and the frescoes
+# (owner's brief: "yes, they are 16th century hand painted"), its sentence out of What the Walls Gave Back, and the
+# timeline's 2018, 2019 and 2026. Against 96f5fe9 it listed /restoration (those words, and the three new captions) and
+# nothing else. Was: "96f5fe9"
+# 24 Nov 2026, night: moved to a4eb7a5, the same brief's sections 6 to 11: weddings seat eighty and are all inclusive,
+# the wedding quote, the event pages most important first, /facilities ("On a retreat", cycling), and every description
+# of a retreat ending open ("and much more"), the menu card's line on every page with it. Against 5b20f5a it listed the
+# menu card on every page; with that line put back for one run, /, /workshops, /events, /events/weddings,
+# /events/private, /facilities, the La vie de chateau card on /press, /story and /gallery, and the four retreats' own
+# pages, each at one of those changes, and nothing else. Was: "5b20f5a"
+# 24 Nov 2026, late: moved to f0e9feb, the retreats brief (/workshops made to sell, from 20d2ef0, 23 Nov) and the
+# site review of 24 Nov on top of a4eb7a5: workshop and the full experience out of the footer, newsletter and every
+# page that said them, lunch and dinner at the restaurants nearby, /story said once, /restaurant as The Table, the
+# Queen Room's line, the facts above the price, What is open next by date, the What's On fold, the retreats' alt
+# words and the wine in the lounge. Against a4eb7a5 it listed /, /book and /book/4 to /book/8, /contact, /events and
+# its three pages (the footer), /facilities, /gallery, /history, /press, /restaurant, /restoration, /story, /terms
+# (its description and the footer), /whats-on, /workshops and the four retreats' pages, and nothing else.
+# Was: "a4eb7a5"
+# 24 Nov 2026, late: moved to 46b6c34, the five branches merged in one (restoration 6 to 11, the retreats
+# page and the old addresses, Occasions and Getting Here, the booking path, the owner home's clearings) and
+# the fixes on top. Against a4eb7a5 it listed every public page, each first at the main menu's new What's On
+# dropdown (In the Ariège, At Gudanes: the occasions brief), and the room pages' "With the Room" lines.
+# Was: "a4eb7a5"
+# 24 Nov 2026, later still: moved to 2d3c474, the room page a guest books from with its form first (owner: "too much
+# scrolling" before the details): the room's words, its facts, the note on the walls and the gallery moved from above
+# the form to below it. Against 46b6c34 it listed /book/1 to /book/5 and nothing else, each the same words in a new
+# order (counted word for word, every room, with dates and without). Was: "46b6c34"
+# 24 Nov 2026, night: moved to e272bf9, the site review of 24 Nov merged with main at 9a971f7. Against 2d3c474
+# it listed the same pages as against a4eb7a5 above (the footer's label on every page, and each page the review
+# changed) and nothing else. Was: "2d3c474"
+# 25 Nov 2026: moved to e26d86d, BRIEF-private-retreat-and-images merged with main at bdd8e3c. Against e272bf9 it
+# listed every page (the menu's "Private Retreats" where it said "Private"), /events/private (now a private retreat),
+# /events/weddings (the JBL speakers), /contact (its topic "A private retreat"), /workshops (Groups lead to the
+# private retreat) and /gallery (its three sections), which is that brief. Was: "e272bf9"
+COPY_BASE = "e26d86d"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

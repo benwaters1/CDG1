@@ -445,7 +445,8 @@ def _paid_stay_that_could_not_confirm(s, room, arrival, departure):
         return
     to_guest = _held("to_address = ?", guest)
     s.check("the guest's 'Payment received' is held, not lost",
-            len(to_guest) == 1 and to_guest[0]["subject"] == f"Payment received — {room['name']}",
+            len(to_guest) == 1
+            and to_guest[0]["subject"] == f"Payment received — {m.room_title(room['name'])}",
             detail=[r["subject"] for r in to_guest] or "nothing held for the guest")
     s.check("held because the house is not writing to guests yet",
             bool(to_guest) and "not writing to guests" in (to_guest[0]["reason"] or ""),

@@ -18,6 +18,7 @@ import os
 import re
 import shutil
 from datetime import timedelta
+from urllib.parse import urlsplit
 
 from _harness import Suite
 import _harness
@@ -54,10 +55,16 @@ PAGES = {
     "/events": [
         ("three ways to take the château, each with an arched framed photograph", r'class="g-cadre g-cadre--arch[^"]*g-way__cadre"', 3),
         # (the château at night has a house copy, so its address on the page is the copy's, not IMG_4368)
-        ("the band of four: one photograph across the page, the château at night",
-         r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*" alt="The château lit at night', 1),
+        # 24 Nov 2026: the château at night opens /press now (its one home); the band is the gates in the snow.
+        ("the band of four: one photograph across the page, the gates in the snow",
+         r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*" alt="The gates in the snow', 1),
     ],
     "/events/weddings": [
+        # 23 Nov 2026: the long table, every candle lit, is the hero; the two opening sections each beside a photograph.
+        ("the long table as the hero", r'<section class="g-hero g-hero--wed">\s*<img[^>]*class="g-hero__img"', 1),
+        # 24 Nov 2026: All Inclusive stands between them now, so they are two sections, one photograph each.
+        ("the two opening sections, each beside a photograph",
+         r'<section class="g-sec g-wed-intro"><div class="g-wrap">\s*<div class="g-sp ">.*?<section class="g-sec g-wed-intro"><div class="g-wrap">\s*<div class="g-sp g-sp--flip ">', 1),
         ("the Marquis Suite: its words beside its photographs", r'<div class="g-sp g-sp--tuck', 1),
         ("the church: its words beside the ceremony", r'<div class="g-sp g-sp--flip g-sp--tuck', 1),
         ("Weddings at Gudanes: a collage of four", r'class="g-mos g-mos--lead g-mos--4 ', 1),
@@ -65,15 +72,14 @@ PAGES = {
         ("and all forty-five behind See all", r'See all 45 photos', 1),
     ],
     "/events/private": [
+        ("the long table by candlelight as the hero", r'<section class="g-hero g-hero--private">\s*<img[^>]*class="g-hero__img"', 1),
         ("A Gathering of Your Own: a collage, a slider, and the whole set behind See all",
          r'class="g-mos g-mos--lead g-mos--4 .*aria-label="A gathering of your own".*See all 18 photos', 1),
     ],
     "/events/photoshoots": [
         ("an uneven collage", r'class="g-mos g-mos--tall ', 1),
-        ("a room as it was found across the page", r'class="g-plein "', 1),
-        # 12 Nov (the second review, 3.3): the roof open to the mountains is /restoration's alone; this band is
-        # another room as it was found.
-        ("a room as found among them", r'fireplace-and-pram', 1),
+        # 23 Nov 2026 (owner): the band of a room as it was found (the fireplace and the old pram) is gone, and
+        # nothing as derelict takes its place; the page opens on a plate from the kitchen instead.
         ("and all thirteen behind See all", r'See all 13 photos', 1),
     ],
     "/restoration": [
@@ -105,8 +111,9 @@ PAGES = {
         ("the hot springs and the cave credited", r'Jeunamateur.*Traumrune', 1),
     ],
     "/press": [
-        ("The Pages Themselves: a fanned album", r'class="g-album g-album--3 g-rv g-album--fan"', 1),
-        ("and all six behind See all", r'See all 6 photos', 1),
+        # 23 Nov 2026 (owner's website brief, 1): the six pages in one captioned row, each opening the set.
+        ("The Pages Themselves: the six pages in one row", r'<figure class="g-print__p">', 6),
+        ("each with its caption", r'<figcaption class="g-print__cap">', 6),
     ],
     "/contact": [
         ("the band of four: one photograph across the page, down the drive", r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*down-the-drive', 1),
@@ -265,11 +272,19 @@ def _unnamed_retreats(s, client):
             except ValueError:
                 continue
             events += [e for e in (data if isinstance(data, list) else [data]) if isinstance(e, dict)]
+        # Compared by path, and held to being full addresses. Since 5fb947c the event data names each
+        # photograph on the house's own host, because Google reads image as a full address; the cards and
+        # dates on the page keep the bare path. The same photograph, either way -- so the path is what has to
+        # agree, and a bare path in the event data is wrong in itself.
         wrong = []
         for title, wid in mine.items():
-            want = list(dict.fromkeys([cards.get(title, ""), (dates.get(wid) or [""])[0].split("?", 1)[0]]))
+            want = list(dict.fromkeys(urlsplit(x).path for x in [cards.get(title, ""), (dates.get(wid) or [""])[0]]))
             for e in events:
-                if e.get("url", "").endswith("/workshops/%d" % wid) and e.get("image") != want:
+                if not e.get("url", "").endswith("/workshops/%d" % wid):
+                    continue
+                got = e.get("image") if isinstance(e.get("image"), list) else [e.get("image")]
+                if ([urlsplit(u or "").path for u in got] != want
+                        or not all(urlsplit(u or "").scheme in ("http", "https") for u in got)):
                     wrong.append(f"{title}: {e.get('image')}")
         s.check("the page's event data names each retreat's own photographs", not wrong
                 and any(e.get("url", "").endswith("/workshops/%d" % ids[0]) for e in events),

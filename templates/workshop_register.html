@@ -419,9 +419,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   <div class="g-plate">
     <div class="g-plate__row">
       <dl class="g-plate__l">
-        <div><dt>Included</dt><dd>Your room in the château, every meal and every glass, the classes (all optional), {% if _ex %}the outings, {% endif %}{% if _tx %}the journey from Toulouse, {% endif %}and a last-night banquet in the Salon de Musique: nothing to pay at the end</dd></div>
+        <div><dt>Included</dt><dd>Your room in the château, every meal and every glass, a wine tasting, the classes (all optional), {% if _ex %}the outings, {% endif %}{% if _tx %}the journey from Toulouse, {% endif %}and a last-night banquet in the Salon de Musique: nothing to pay at the end</dd></div>
         <div><dt>Not included</dt><dd>Flights, and whatever you buy at the brocantes</dd></div>
-        <div><dt>Transfers</dt><dd>{% if _tx %}From Toulouse on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
+        <div><dt>Transfers</dt><dd>{% if _tx %}From the Grand Hôtel de l’Opéra on Place du Capitole in Toulouse, at midday on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
         <div><dt>To hold a place</dt><dd>A deposit now. The balance closer to the date, or pay it yourself</dd></div>
         <div><dt>Children</dt><dd>Eight and over, and welcome at the table</dd></div>
         <div><dt>Sharing</dt><dd>Rooms are arranged for two{% if _solo %}. A room to yourself is €{{ '{:,.0f}'.format(supplement) }} more{% endif %}</dd></div>
@@ -433,7 +433,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 <!-- ============ THE CLOSE ============ -->
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
+  <img class="g-close__mark" width="62" height="62" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   {% if _private %}
   <h2 class="g-close__h">A question first?</h2>
   <p class="g-close__p">Write to us about anything on this stay before you register.</p>

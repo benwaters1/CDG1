@@ -126,7 +126,7 @@ def run():
     was_rate = room["price_per_night"]
     was_pct = _read(conn, "room_deposit_percent")
     was_days = _read(conn, "room_balance_due_days_before")
-    was_tax = _read(conn, "city_tax_per_adult_per_night")
+    was_tax = _read(conn, "tax_city_tax_per_adult_per_night")
     conn.execute("UPDATE rooms SET price_per_night = 200 WHERE id = ?", (room["id"],))
     conn.commit()
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (room["id"],)).fetchone()
@@ -135,7 +135,11 @@ def run():
     # which is most of why it survived.
     _setting(conn, "room_deposit_percent", "30")
     _setting(conn, "room_balance_due_days_before", "14")
-    _setting(conn, "city_tax_per_adult_per_night", "0.80")
+    # Under the name the app reads (tax_setting prefixes "tax_"). Until 23 Nov
+    # 2026 this wrote the bare name, which nothing reads, and passed only
+    # because the default happened to be 0.80 too; the default moving to
+    # 0.94 is what showed it.
+    _setting(conn, "tax_city_tax_per_adult_per_night", "0.80")
 
     sent = []
     was_email = m.send_email
@@ -399,7 +403,7 @@ def run():
                      (was_rate, room["id"]))
         for key, value in (("room_deposit_percent", was_pct),
                            ("room_balance_due_days_before", was_days),
-                           ("city_tax_per_adult_per_night", was_tax)):
+                           ("tax_city_tax_per_adult_per_night", was_tax)):
             if value is None:
                 conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
             else:

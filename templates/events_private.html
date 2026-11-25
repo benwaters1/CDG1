@@ -1,81 +1,173 @@
 {% extends "public_base.html" %}
 {% from '_illus.html' import illus %}
-{% block title %}Private Hire &amp; Celebrations{% endblock %}
-{% block description %}Private dinners, birthdays, anniversaries and family gatherings at Château de Gudanes. One party at a time, and the château is yours.{% endblock %}
+{#- 24 Nov 2026 (owner: "check the private stay page, it should be like a private workshop"; BRIEF-private-retreat-and-images,
+    1): the page sold a party venue. It sells a retreat now, for one party: the retreats' days, chefs, meals, wine and
+    outings, on the party's own dates, with nobody else in the château. A celebration can be the reason; the retreat is
+    what they come for. test_private_retreat holds it. -#}
+{% block title %}A Private Retreat{% endblock %}
+{% block title_fr %}Un séjour privé au château{% endblock %}
+{% block description %}La vie de château for your party alone: three to seven nights at Château de Gudanes, with the retreats’ chefs, meals, wine and outings on your own dates, and nobody else under the roof.{% endblock %}
+{% block description_fr %}La vie de château pour vous seuls : trois à sept nuits au château de Gudanes, avec les chefs, les repas, les vins et les sorties des séjours, à vos dates, et personne d’autre sous le toit.{% endblock %}
+{% block og_title %}A Private Retreat at Château de Gudanes{% endblock %}
+{% block og_desc %}La vie de château for your party alone: three to seven nights, with the retreats’ chefs, meals, wine and outings on your own dates, and nobody else under the roof.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=1200w{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Private', None)] %}
 {# Without this the page falls through to the default and offers a guest
    reading about weddings a bedroom -- the one thing the comment on that
    bar in public_base says it exists to avoid. #}
 {% set sticky_bar = 'events' %}
+{#- 23 Nov 2026: a photograph hero, so the header lies over it as on /events. -#}
+{% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
 {#- 9 Nov (the image layout brief, 4.5): the photographs through the picture components (_pictures.html, shown together
     on /design). Not one word changes. -#}
-{% from '_pictures.html' import mosaique, carrousel, see_all, pictures_script %}
+{% from '_pictures.html' import mosaique, carrousel, split, see_all, pictures_script %}
+{% from '_nearby_stays.html' import nearby_stays %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_proof.html' import credential, proof %}
 {% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 
-<section class="g-hero g-hero--short g-hero--art">
+{#- 23 Nov 2026 (owner: "same with private theirs massive ugly gaps", and of the weddings page, "lets use the info from
+    everything and the brochure and really make it good"): the page opened on a drawing of a glass on navy, then two
+    short sections with a medallion each and wide gaps between. It opens on the long table by candlelight now; its two
+    sections sit beside a photograph each, taken from the set behind See all; and it says what the private events
+    brochure says, in its words: the occasions, the table, a sample of the days, what is included, and the guests. -#}
+<section class="g-hero g-hero--private">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ url_for('static', filename='img/rk/long-table-candlelight.jpg') }}" style="object-position: center 50%" alt="The long table by candlelight">
   <div class="g-hero__wash"></div>
-  <div class="g-hero__art" aria-hidden="true">{{ illus('wine') }}</div>
-  <div class="g-wrap">
-    <p class="g-hero__eyebrow">Ariège · Private Hire</p>
-    <h1 class="g-hero__title">A Private Château for a Few Days</h1>
-    <p class="g-hero__lede">Birthdays, anniversaries, milestone dinners, and reasons that need no name.</p>
-    <p><a href="#enquire" class="g-btn g-btn--solid">Ask about private hire</a></p>
+  <div class="g-hero__in">
+    <p class="g-hero__eyebrow">Ariège · Private Retreats</p>
+    <h1 class="g-hero__title">A Private Retreat</h1>
+    <p class="g-hero__lede"><em lang="fr">La vie de château</em>, for your party alone: your dates, your people, and nobody else under the roof.</p>
+    <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Ask about your dates</a></p>
   </div>
 </section>
 
 <div class="g-wrap">{{ event_tabs('private') }}</div>
 
+<div class="g-wrap">{{ fact_strip([
+  {'mark':'key',        'n':'One',     'l':'Party at a time'},
+  {'mark':'house',      'n':'Fifteen', 'l':'Guests stay in the château'},
+  {'mark':'chandelier', 'n':'Three',   'l':'Nights or more'}
+]) }}</div>
 
-<section class="g-sec g-duo-sec"><div class="g-wrap">
-  {# 2 Oct: two short sections that sat one after another, each with a medallion, now side by side - nothing reworded #}
-  <div class="g-duo">
-    <div class="g-duo__i">
-      <div class="g-duo__ill" aria-hidden="true">{{ illus('wine') }}</div>
-      <p class="g-fr">Une fête privée <span class="g-fr__en">A private celebration</span></p>
-  <p class="g-eyebrow">Private Events</p>
-  <h2 class="g-place">Smaller Than a Wedding, Longer Than a Dinner</h2>
-  <p class="g-p g-intro">The whole château for a few days: a birthday, an anniversary or a gathering of your own, with up to fifteen guests staying.</p>
-    </div>
-    <div class="g-duo__i">
-      <div class="g-duo__ill" aria-hidden="true">{{ illus('key') }}</div>
+<section class="g-sec g-wed-intro"><div class="g-wrap">
+  {% call split([url_for('static', filename='img/xx/salon-floral-curtains.jpg'), 'A salon, the mountains through its windows', 'A salon, the mountains through its windows']) %}
   <p class="g-fr">Entre soi <span class="g-fr__en">Among your own</span></p>
-  <p class="g-eyebrow">Private Hire</p>
-  <h2 class="g-place">A Few Days of Your Own</h2>
-  <p class="g-p g-lede-first">For the birthdays and anniversaries that deserve more than a restaurant: up to fifteen of the people you choose, under one roof, and the evenings as long as you like.</p>
-    </div>
+  <p class="g-eyebrow">A Private Retreat</p>
+  <h2 class="g-place">Your Own Retreat</h2>
+  <p class="g-p g-intro">The retreats’ programme, for your party alone: three to seven nights, up to fifteen of you staying in the château, and the whole château yours.</p>
+  <p class="g-p">The same days the retreats have, with the same chefs, the meals and the wine, the outings and the restoration, on the dates you choose and with nobody else under the roof. A birthday or an anniversary may be the reason; what you come for is the retreat.</p>
+  {% endcall %}
+</div></section>
+
+{#- 24 Nov 2026 (the restoration brief, 9): All Inclusive comes third, as on the weddings page. And the same day
+    (BRIEF-private-retreat-and-images, 1): what it includes is what a retreat includes, drawn from the list the retreats
+    themselves use (_retreat_included.html), so the two can never say different things. Transfers are the one
+    difference: the retreats meet in Toulouse at eleven on the first day, which a private party will not share, so here
+    they can be arranged (owner, 13 Oct: at an additional charge). The photographs stay, without their captions, which
+    were a second list. -#}
+{% from '_retreat_included.html' import retreat_included %}
+<section class="g-sec g-sec--sand g-wed-us g-priv-incl"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('wine') }}</span>
+  <p class="g-fr">Tout compris <span class="g-fr__en">All inclusive</span></p>
+  <h2 class="g-place">All Inclusive</h2>
+  <p class="g-p g-intro">Everything a retreat includes, for every day of yours.</p>
+  {{ retreat_included('g-sow__list g-priv-incl__l') }}
+  <p class="g-p g-priv-incl__tx">Transfers from Toulouse can be arranged, at an additional charge.</p>
+  <div class="g-wedus">
+    <figure class="g-wedus__i"><img src="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }}" srcset="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }} 800w, {{ url_for('static', filename='img/life/asparagus-on-the-grill.jpg') }} 1600w" sizes="(min-width: 52rem) 33vw, 100vw" alt="White asparagus and sausage on the grill in the grounds" loading="lazy"></figure>
+    <figure class="g-wedus__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/075b6dc2-abff-45ee-99dc-241f6af1bf41/Screenshot+2023-04-25+at+2.42.47+pm.png?format=1000w" alt="Champagne, poured" loading="lazy"></figure>
+    <figure class="g-wedus__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7fabd381-88e6-481d-9380-00222dd920fa/Screenshot+2026-08-15+at+3.31.41+pm.png?format=1000w" alt="Flowers and candles on the table" loading="lazy"></figure>
   </div>
 </div></section>
 
+{#- "Choose Your Days": the retreats' themes, as a menu the party picks from. The French day names are the retreats' own
+    (_ws_copy.html: C_CUISINE, C_CHINER, S_RESTO), and so are the photographs (_retreat_layout.html: the day each one
+    stands for), so nothing here is new to the house; only Noël and L'été, which are seasons, not days, are named for
+    the season. -#}
+{%- set _CHOOSE = [
+  ('En cuisine', 'The kitchen', 'A cooking class with the château’s chefs, and the pastry kitchen with the pastry chef', '/static/img/xx/the-kitchen.jpg', 'The kitchen, its table laid with fresh produce'),
+  ('Chiner', 'The brocantes', 'Market day at Mirepoix, and the brocantes of the valley', '/static/img/retreats/mirepoix-arcades.jpg', 'Mirepoix under its old arcades'),
+  ('La restauration', 'The restoration', 'A morning with the restorers, among the painted beams', '/static/img/retreats/restoration-scaffold.jpg', 'Guests on the scaffold among the frescoes'),
+  ('Noël', 'In December', 'The gingerbread château with the pastry chef, Christmas baking, and the banquet in the Salon de Musique', '/static/img/retreats/gingerbread-under-lights.jpg', 'The gingerbread château under the lights'),
+  ('L’été', 'In summer', 'The river by canoe, the pool, and a film under the stars', '/static/img/retreats/film-under-the-stars.jpg', 'A film under the stars, on the château wall')] %}
+<section class="g-sec g-pdays-sec" aria-labelledby="choose-h"><div class="g-wrap">
+  <p class="g-fr">Vos journées <span class="g-fr__en">Your days</span></p>
+  <h2 class="g-place" id="choose-h">Choose Your Days</h2>
+  <p class="g-p g-intro">The retreats’ days, as a menu: choose the ones your party would like, and we shape the stay around them.</p>
+  <ul class="g-pdays">
+    {%- for fr, en, line, src, alt in _CHOOSE %}
+    <li class="g-pdays__i">
+      <figure class="g-pdays__ph">{{ pic(src, alt, sizes='(min-width: 64rem) 14rem, (min-width: 40rem) 12rem, 100vw', cls='g-pdays__img') }}</figure>
+      <div class="g-pdays__b">
+        <h3 class="g-pdays__fr" lang="fr">{{ fr }}</h3>
+        <p class="g-pdays__en">{{ en }}</p>
+        <p class="g-pdays__p">{{ line }}</p>
+      </div>
+    </li>
+    {%- endfor %}
+  </ul>
+</div></section>
+
+{#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 1): four days built from the retreats' own (_ws_copy.html), in their
+    words: the arrival, the kitchen and the market, the restoration and Foix with the banquet and dancing, and Au Revoir
+    with its picnic bag, kept from the sample stay. -#}
+<section class="g-sec g-sec--sand g-shoot-how g-wed-days"><div class="g-wrap">
+  <p class="g-fr">Un exemple <span class="g-fr__en">An example</span></p>
+  <h2 class="g-place">A Sample Private Retreat</h2>
+  <p class="g-p g-intro">Three nights, built from the retreats’ own days and shaped around your party. This is a sample only.</p>
+  <ol class="g-shootsteps">
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">I</b><h3 class="g-shootsteps__t">The Day of Arrival</h3><ul class="g-wed-days__l"><li>Welcome to the château with a glass of crémant, and your rooms</li><li>Leisure time: settle in and enjoy the château</li><li><em lang="fr">L’apéritif</em> in the Salon de Musique, then a candlelit welcome dinner</li></ul></li>
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">II</b><h3 class="g-shootsteps__t">The Kitchen and the Market</h3><ul class="g-wed-days__l"><li>A morning in the kitchen with the château’s chefs</li><li>Market day at Mirepoix, and the brocantes</li><li>A wine tasting, then dinner by candlelight</li></ul></li>
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">III</b><h3 class="g-shootsteps__t">The Restoration and Foix</h3><ul class="g-wed-days__l"><li>A morning with the restorers, among the painted beams</li><li>The castle at Foix, and lunch in the old town</li><li>The banquet in the Salon de Musique, then dancing</li></ul></li>
+    <li class="g-shootsteps__i"><b class="g-shootsteps__n" aria-hidden="true">IV</b><h3 class="g-shootsteps__t">Au Revoir</h3><ul class="g-wed-days__l"><li>A light breakfast before your departure</li><li>A little picnic bag each for your onward travels</li></ul></li>
+  </ol>
+</div></section>
+
+<section class="g-sec g-sec--sand g-occ-sec"><div class="g-wrap">
+  <p class="g-fr">Les occasions <span class="g-fr__en">The occasions</span></p>
+  {#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 1): "Whatever You Are Celebrating", lower down. It is why people
+      come, not what they buy. -#}
+  <h2 class="g-place">If There Is a Reason</h2>
+  <p class="g-p g-intro">The château is yours for the length of your stay, and no other party shares its roof.</p>
+  <ul class="g-occ">
+    <li class="g-occ__i"><h3 class="g-occ__t">Milestone birthdays</h3><p class="g-occ__p">A fortieth, a fiftieth, a seventieth: long dinners under the chandeliers and the whole château to yourselves.</p></li>
+    <li class="g-occ__i"><h3 class="g-occ__t">Anniversaries</h3><p class="g-occ__p">Return to the vows you made, with the people who were there.</p></li>
+    <li class="g-occ__i"><h3 class="g-occ__t">Family gatherings</h3><p class="g-occ__p">Three generations under one roof, with nobody cooking but us.</p></li>
+    <li class="g-occ__i"><h3 class="g-occ__t">Company retreats</h3><p class="g-occ__p">A leadership team, a board, a small team away: quiet salons to think in and a long table to talk at.</p></li>
+    <li class="g-occ__i"><h3 class="g-occ__t">A party of friends</h3><p class="g-occ__p">Friends, a few nights, and nothing to organise.</p></li>
+  </ul>
+</div></section>
 
 
-
-{# 1 Oct: ">A House Under Restoration<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
+<section class="g-sec g-wed-table"><div class="g-wrap">
+  {% call split([url_for('static', filename='img/more/fish-with-herbs.jpg'), 'Fish with herbs on a floral plate', 'Fish with herbs on a floral plate'], flip=True) %}
+  <p class="g-fr">La table <span class="g-fr__en">The table</span></p>
+  <p class="g-eyebrow">Every Meal, Cooked Here</p>
+  <h2 class="g-place">At the Château’s Tables</h2>
+  <p class="g-p g-intro">Breakfast, long lunches on the terrace, dinners by candlelight in the salons: every meal is cooked and served by us, at the château’s own tables.</p>
+  <p class="g-p">Menus follow the season and the markets of the valley, cooked at the château’s tables or on the grill in the grounds, and shaped with you before you arrive, down to the birthday cake. The bar is open to you and your guests throughout your stay, with the wines and sparkling of the south of France and choices without alcohol at every meal.</p>
+  {% endcall %}
+</div></section>
 
 <div class="g-wrap g-mark__wrap">{{ mark('candle') }}</div>
 
 <!-- ============ ENQUIRE ============ -->
 {# 6 Oct (owner: "more photo work ... the photos will make the website") - photographs from the original site #}
-{#- 13 Oct (owner): private stays typically include the meals, the drinks and the flowers; transport can be arranged, at an
-    additional charge. -#}
-<section class="g-sec g-wed-us"><div class="g-wrap">
-  <span class="g-hill" aria-hidden="true">{{ illus('wine') }}</span>
-  <p class="g-fr">Entre nos mains <span class="g-fr__en">In our hands</span></p>
-  <h2 class="g-place">What We Look After</h2>
-  <p class="g-p g-intro">We look after the meals, the drinks and the flowers, so the days are yours to enjoy. Transport from Toulouse can be arranged too, at an additional charge.</p>
-  <div class="g-wedus">
-    <figure class="g-wedus__i"><img src="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }}" srcset="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }} 800w, {{ url_for('static', filename='img/life/asparagus-on-the-grill.jpg') }} 1600w" sizes="(min-width: 52rem) 33vw, 100vw" alt="White asparagus and sausage on the grill in the grounds" loading="lazy">
-      <figcaption><b>The meals</b> Cooked by us, at the château’s tables or on the grill in the grounds.</figcaption></figure>
-    <figure class="g-wedus__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/075b6dc2-abff-45ee-99dc-241f6af1bf41/Screenshot+2023-04-25+at+2.42.47+pm.png?format=1000w" alt="Champagne, poured" loading="lazy">
-      <figcaption><b>The drinks</b> From the first glass of the evening to the last, poured by us.</figcaption></figure>
-    <figure class="g-wedus__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7fabd381-88e6-481d-9380-00222dd920fa/Screenshot+2026-08-15+at+3.31.41+pm.png?format=1000w" alt="Flowers and candles on the table" loading="lazy">
-      <figcaption><b>The flowers</b> Chosen at the markets and gathered from the gardens, for the tables and the rooms.</figcaption></figure>
+
+<section class="g-sec g-wed-fine g-wed-fine--two"><div class="g-wrap">
+  <p class="g-fr">Les détails <span class="g-fr__en">The details</span></p>
+  <h2 class="g-place">The Finer Details</h2>
+  <div class="g-wed-fine__cols">
+    <div class="g-wed-fine__c"><h3 class="g-wed-fine__h">Included</h3><ul><li>Exclusive use of the château, its gardens and grounds, from three nights</li><li>One party at a time, with nobody else under the roof</li><li>Fifteen guests staying in the château’s bedrooms and suites</li><li>Planning with the château team before you arrive</li><li>Breakfast, lunch and dinner, cooked and served by us</li><li>Wines, crémant and no-alcohol choices with every meal, and the bar</li><li>Flowers from the markets and the gardens, arranged by us</li><li>A historic tour of the château</li><li>The tea and coffee salon, the seasonal pool, tennis and pickleball, and wi-fi</li></ul></div>
+    <div class="g-wed-fine__c"><h3 class="g-wed-fine__h">Also possible, on request</h3><ul><li>Transport between Toulouse and the château</li><li>Musicians: string quartets, pianists and harpists</li><li>Further nights before or after your stay</li><li>Rooms for more guests at the places nearby</li></ul></div>
   </div>
 </div></section>
+
+{{ nearby_stays(heading='If More of Your Party Would Like to Come', intro='Fifteen guests stay at the château itself. Should more of your party wish to join you, three lovely places close by are run by friends of the château.', fr='Vos invités', fr_en='Your guests') }}
+
 <section class="g-sec g-sec--sand g-gallery-sec"><div class="g-wrap">
   <span class="g-hill" aria-hidden="true">{{ illus('wine') }}</span>
   <p class="g-fr">En images <span class="g-fr__en">In pictures</span></p>
@@ -90,9 +182,12 @@
 <section class="g-sec g-sec--sand" id="enquire"><div class="g-wrap">
   <p class="g-eyebrow">Tell Us</p>
   <h2 class="g-place">What Are You Marking?</h2>
-  <p class="g-p">Tell us the occasion, roughly when, and how many. We will come back with what the château can do and what it costs.</p>
-  <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
-  <p class="g-p">If your party would rather spend its days learning something, ask us about <a href="{{ url_for('workshops_public') }}">the retreats</a>: three to seven nights of <em lang="fr">la vie de château</em>, with the kitchen, the brocantes and the château around you.</p>
+  <p class="g-p">One party at a time. Tell us the occasion, your dates and how many of you there are, and you will receive a written quote and our terms.</p>
+  <p class="g-p">A deposit of half the total, paid by bank transfer, reserves your dates; the balance is due on a date agreed before your arrival. All amounts paid are non-refundable, so we kindly ask that you arrange travel insurance.</p>
+  {#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 1): to the Contact page's form with its topic chosen, "A private
+      retreat" (stored as private_event, as before, so earlier enquiries and the reports still match). The events form
+      it went to has no such topic. The line under it, "ask us about the retreats", went: this page is that now. -#}
+  <p class="g-p"><a href="{{ url_for('contact_page', topic='private_event') }}#write-to-us" class="g-btn g-btn--solid">Send an enquiry</a></p>
   <p class="g-limit"><span class="g-limit__k">One at a time</span> Only one event runs at the château at once.</p>
 </div></section>
 <div class="g-wrap">{{ proof(settings) }}</div>

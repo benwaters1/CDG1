@@ -274,6 +274,7 @@ def _read(page, html, found):
 # for.
 ID_TABLES = {
     "booking_id": ("bookings", "id"),
+    "occ_id": ("stay_occasions", "id"),
     "arrival_id": ("photo_inbox", "id"),
     "user_id": ("users", "id"),
     "order_id": ("pos_orders", "id"),
@@ -331,8 +332,17 @@ ENDPOINT_ARGS = {
     # The old Squarespace addresses that carry a name. Each is a redirect, so
     # the sweep reaches it and reads where it lands, not a page of its own.
     ("legacy_atelier_product", "slug"): "seven-starry-nights-2027",
+    # The owner may open any occasion's page, a draft included.
+    ("stay_occasion_page", "slug"): ("stay_occasions", "slug"),
     ("legacy_celebrations_portfolio_any", "_rest"): "dan-and-carl",
     ("legacy_chateau_ateliers_any", "_rest"): "category/2024",
+    # The old press archive (owner's website brief, 23 November 2026).
+    ("legacy_press_2_any", "_rest"): "moments-magazine",
+    # The Captain's Log, the videos and the shop, to The History and on (24 Nov 2026).
+    ("legacy_captains_log_any", "_rest"): "london-calling",
+    ("legacy_captains_log2_any", "_rest"): "2015/3/5/ground-floor-before-and-after",
+    ("legacy_chateau_videos_any", "_rest"): "christmas-2023",
+    ("legacy_boutique_any", "_rest"): "antique-champagne-bucket",
     ("legacy_letter_club_subscription_any", "_rest"):
         "p/seasonal-letter-subscription-from-chteau-de-gudanes",
     # A job page is only a MAINTENANCE task's (the rest of tasks is people's own

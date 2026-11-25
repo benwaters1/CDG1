@@ -1,0 +1,45 @@
+{% extends "public_base.html" %}
+{% set crumbs = [("What’s On", url_for('whats_on')), ("At Gudanes", url_for('whats_on_at_gudanes')), (occ['name'], None)] %}
+{% block title %}{{ occ['name'] }}{% endblock %}
+{% block description %}{{ occ['name'] }} at Château de Gudanes, {{ date_range(occ['first_night'], occ.departure) }}: a room and breakfast in a Class I monument in the Pyrénées.{% endblock %}
+{% block og_desc %}{{ occ['name'] }} at Château de Gudanes, {{ date_range(occ['first_night'], occ.departure) }}.{% endblock %}
+{% block content %}
+{#- One occasion (24 Nov 2026): the words the owner approved, the chef line exactly as the switch sets it, and the
+    two ways in. With the chef away nothing here mentions a meal beyond breakfast (test_stay_occasions). -#}
+{% if preview %}<p class="g-hint" style="text-align:center;padding:var(--s3);background:var(--sand-2)">A preview: not on sale, and not shown to guests.</p>{% endif %}
+<section class="g-sec"><div class="g-wrap g-occasion-page">
+  <p class="g-eyebrow">At Gudanes · {{ occ.nights }} night{{ '' if occ.nights == 1 else 's' }}</p>
+  <h1 class="g-place">{{ occ['name'] }}</h1>
+  <p class="g-lede">{{ date_range(occ['first_night'], occ.departure) }}{% if occ.from_price %} · from <span class="g-fig" data-eur="{{ occ.from_price|int }}">€{{ '{:,.0f}'.format(occ.from_price) }}</span> a night{% endif %}</p>
+  <figure style="margin:var(--s5) 0"><img src="{{ occ.photo_url }}" alt="{{ occ['name'] }} at Château de Gudanes" style="width:100%;max-height:28rem;object-fit:cover;border-radius:2px" loading="eager" decoding="async"></figure>
+  {% for para in (occ['description'] or '').split('\n') if para.strip() %}<p class="g-p">{{ para }}</p>{% endfor %}
+  <p class="g-p g-occasion__chef"><span class="g-occasion__tag">{{ occ.chef_tag }}</span> {{ occ.chef_line }}</p>
+
+  {% if occ.is_guest_chef %}
+  <div class="g-occasion__guest" style="margin-top:var(--s6)">
+    <p class="g-eyebrow">Guest chef in residence</p>
+    <h2 class="g-h2">{{ occ['chef_name'] or 'Our guest chef' }}</h2>
+    {% if occ['chef_photo'] %}<img src="{{ url_for('static', filename=occ['chef_photo']) }}" alt="Cooking by {{ occ['chef_name'] or 'our guest chef' }}" style="max-width:22rem;width:100%;border-radius:2px" loading="lazy">{% endif %}
+    {% for para in (occ['chef_bio'] or '').split('\n') if para.strip() %}<p class="g-p">{{ para }}</p>{% endfor %}
+    {% if occ['chef_link'] %}<p class="g-p"><a href="{{ occ['chef_link'] }}" rel="noopener">{{ occ['chef_name'] or 'The chef' }}’s own page</a></p>{% endif %}
+    {% if dinners %}
+    <p class="g-p">Dinner is served on {% for d in dinners %}{{ d|date_short }}{% if not loop.last %}{{ ' and ' if loop.revindex == 2 else ', ' }}{% endif %}{% endfor %}{% if occ['dinner_time'] %}, seated at {{ occ['dinner_time'] }}{% endif %}{% if occ['dinner_price'] %}, <span data-eur="{{ occ['dinner_price']|int }}">€{{ '{:,.0f}'.format(occ['dinner_price']) }}</span> per person{% endif %}{% if occ['dinner_covers'] %}, for {{ occ['dinner_covers'] }} guests an evening{% endif %}. {{ 'Open to guests from outside the château too.' if occ['outside_diners'] else 'For guests staying at the château.' }}</p>
+    {% endif %}
+    {% if menu %}
+    <div class="g-occasion__menu">
+      {% for day, dishes in menu|groupby('service_date') %}
+      <p class="g-eyebrow" style="margin-top:var(--s4)">{{ day|date_short }}</p>
+      <ul class="g-p" style="list-style:none;padding:0">{% for d in dishes %}<li><strong>{{ d['name'] }}</strong>{% if d['description'] %} — {{ d['description'] }}{% endif %}</li>{% endfor %}</ul>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <p class="g-p" style="margin-top:var(--s6)">
+    <a href="{{ url_for('book_rooms', arrival=occ['first_night'], departure=occ.departure) }}" class="g-btn g-btn--solid">Stay these nights</a>
+    {% if occ.is_guest_chef and dinners %}<a href="{{ url_for('restaurant_book', date=dinners[0]) }}" class="g-btn">Book dinner</a>{% endif %}
+  </p>
+  <p class="g-hint">Coming from abroad? <a href="{{ url_for('getting_here') }}">Getting here</a>: Paris, Toulouse and the last few miles. Every other date is on <a href="{{ url_for('whats_on_at_gudanes') }}">At Gudanes</a>.</p>
+</div></section>
+{% endblock %}

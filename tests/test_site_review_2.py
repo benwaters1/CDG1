@@ -105,7 +105,12 @@ def nav_mismatch(path, html):
 FORBIDDEN = re.compile(
     r"\b(house|grants?|funded|funding|renovat\w*|artisans?|conservators?|padel)\b|!", re.I)
 # Proper names that carry the letters, allowed by name and nowhere else.
-ALLOWED = ["House & Garden", "FIN!"]
+# And one sentence the owner wrote on 24 Nov 2026, after the rule ("its the house as it was, full of
+# life"), on the retreats and the home page: their own later words win for those words only.
+ALLOWED = ["House & Garden", "FIN!", "the house as it was, full of life"]
+# A guest's own words are quoted as they wrote them (owner, site review of 24 Nov 2026: "the only
+# ones are inside guests' quotes, which are verbatim and stay"). The rule is for the house's voice.
+GUEST_QUOTE = re.compile(r"(?is)<blockquote\b.*?</blockquote>")
 
 
 def forbidden_words(text):
@@ -241,7 +246,10 @@ def _run(s, anon):
     s.check("the reader finds each of them",
             len(forbidden_words("the house, a grant, privately funded, a renovation, an artisan, padel, lovely!")) == 7)
     s.check("and passes the two magazine titles", forbidden_words("House & Garden and FIN! Magazine") == [])
-    said = {p: forbidden_words(visible_text(h)) for p, h in pages.items()}
+    s.check("a guest's quoted words are theirs, and the house's around them are still read",
+            forbidden_words(visible_text(GUEST_QUOTE.sub(" ", "<p>Lovely</p><blockquote>Loved it!</blockquote>"))) == []
+            and len(forbidden_words(visible_text(GUEST_QUOTE.sub(" ", "<p>Lovely!</p><blockquote>Loved it</blockquote>")))) == 1)
+    said = {p: forbidden_words(visible_text(GUEST_QUOTE.sub(" ", h))) for p, h in pages.items()}
     said = {p: w for p, w in said.items() if w}
     s.check("no public page says them", not said, detail=str(said)[:800])
 
@@ -300,7 +308,11 @@ def _run(s, anon):
     gal = pages.get("/gallery", "")
     s.check("the reader leaves out what a template holds",
             page_imgs('<img alt="a" src="/1"><template><img alt="b" src="/2"></template>') == 1)
-    s.check("no more than forty photographs reach the page", 0 < page_imgs(gal) <= 40,
+    # 24 Nov 2026 (BRIEF-private-retreat-and-images, 3): forty-six. Two sections that showed no photograph at all now
+    # show what they are about: Rooms That No Longer Look Like This its three Then and Now pairs (six pictures), and
+    # The Work, As It Happens six of the work. Every other section still shows six and keeps the rest behind See all.
+    # Forty-seven with the photograph the site review of 24 Nov put at the top of the page.
+    s.check("no more than forty-seven photographs reach the page", 0 < page_imgs(gal) <= 47,
             detail=f"{page_imgs(gal)} images")
     s.check("and the rest wait behind See all", "<template data-lb-more>" in gal and "See all" in gal)
     # The pairs /restoration no longer shows, by their files: the kitchen, the bathrooms' room, its window,
@@ -409,7 +421,9 @@ def card_photos(html):
     """Each /book room card: its name, and the alt of every photograph in its slider, in order."""
     out = {}
     for card in ROOM_CARD.findall(html):
-        name = re.search(r'class="g-card__name">([^<]+)', card)
+        # By the room's own name: beneath its French title since 23 November 2026 (g-room__plain), else the heading.
+        name = (re.search(r'class="g-room__plain">([^<]+)', card)
+                or re.search(r'class="g-card__name">([^<]+)', card))
         out[name.group(1).strip() if name else "?"] = (re.findall(r'<img\b[^>]*\bsrc="([^"]*)"', card),
                                                        re.findall(r'<img\b[^>]*\balt="([^"]*)"', card))
     return out
@@ -425,8 +439,11 @@ def _book_cards(s, anon):
     marquis, family = cards.get("The Marquis Suite"), cards.get("The Family Suite")
     s.check("the Marquis Suite leads with the gold four-poster by the fireplace",
             bool(marquis) and "GudanesCookingintheKitchenStay59of925" in marquis[0][0], detail=str(marquis and marquis[0][:1]))
-    s.check("the Family Suite leads with the two chairs at the open windows",
-            bool(family) and "799483474" in family[0][0], detail=str(family and family[0][:1]))
+    # 24 Nov (site review, 5): a bedroom card leads with a bed. /book's header shows the suite's two beds side by side,
+    # so its card leads with the large bed, and the chairs at the open windows (11 Nov's lead) come second.
+    s.check("the Family Suite leads with a bed, the chairs at the open windows second",
+            bool(family) and len(family[0]) > 1 and "799432864" in family[0][0] and "799483474" in family[0][1],
+            detail=str(family and family[0][:2]))
     with m.app.test_request_context("/"):
         mod = m.app.jinja_env.get_template("_room_photos.html").module
         lists = {n: list(mod.ROOM_PHOTOS.get(n, [])) + list(mod.ROOM_EXTRA.get(n, [])) for n in cards}

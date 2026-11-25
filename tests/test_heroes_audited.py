@@ -1,6 +1,6 @@
 """The tops of the pages, as the 23 Nov 2026 audit of the live site found them.
 
-THE EVENT PAGES. Weddings, private events and photoshoots open on a navy hero
+THE EVENT PAGES. Weddings and private events (and photoshoots, until 23 Nov) open on a navy hero
 with drawn art (g-hero--art) rather than a photograph. The owner's second
 review made every filled button navy, in gudanes-pictures.css, which is read
 after gudanes.css -- so it beat the hero's own gilt rule at the same weight,
@@ -11,7 +11,7 @@ phone every hero is 88svh, there for a photograph: on navy art that was a
 screen of empty blue with the button under the sticky bar. All of it rendered
 and none of it errored; found on the live site in the 23 Nov audit.
 
-WHAT IS CHECKED. The three pages still open on the art hero with a filled
+WHAT IS CHECKED. The two pages still open on the art hero with a filled
 button; the stylesheet gives that button a light fill with navy words, from a
 rule that comes after the navy one it has to beat; the words have room below;
 and on a phone the hero is the height of its words with the art up top.
@@ -34,7 +34,13 @@ from _harness import Suite
 import _harness
 
 m = _harness.m
-PAGES = ("/events/weddings", "/events/private", "/events/photoshoots")
+# 23 Nov 2026, later (owner: "this is really not good"): /events/photoshoots opens on a photograph now, the
+# a shoot made here, in a photograph hero's own frame (.g-hero__in), so none of the navy art's faults can reach it.
+# 23 Nov 2026, later (owner: "theres no photo on top"): /events/weddings opens on the long table now; test_weddings_top
+# holds it. And /events/private, the same evening ("same with private"); test_private_top holds it. No page opens on
+# the art hero now; the rules below stay, for the one that next does.
+PAGES = ()
+PHOTO_PAGES = ("/events/photoshoots",)
 
 
 def _hex(value):
@@ -72,6 +78,13 @@ def run():
         hero = re.search(r'<section class="g-hero[^"]*\bg-hero--art\b[^"]*">(.*?)</section>', page, re.S)
         s.check(f"{path} opens on the art hero, with its filled button",
                 hero is not None and "g-btn--solid" in hero.group(1), detail="" if hero else "no art hero")
+    for path in PHOTO_PAGES:
+        page = client.get(path).get_data(as_text=True)
+        hero = re.search(r'<section class="g-hero[^"]*">(.*?)</section>', page, re.S)
+        body = hero.group(1) if hero else ""
+        s.check(f"{path} opens on a photograph, its words in the photograph hero's frame, with its filled button",
+                'class="g-hero__img"' in body and 'class="g-hero__in"' in body and "g-btn--solid" in body
+                and "g-hero--art" not in (hero.group(0)[:80] if hero else ""), detail=body[:200])
 
     s.section("The button on navy")
     tokens = dict(re.findall(r"--([a-z-]+):\s*(#[0-9A-Fa-f]{3,6})\b", base))
@@ -128,9 +141,20 @@ def run():
     s.check("the same dates are in both heroes the rule is for, /history's and the home page's",
             all(re.search(r'<section class="g-hero[^"]*">.*?class="g-hist-tag[^"]*"', page, re.S) for page in (history, home)))
 
-    s.section("The currency control over a photograph")
-    s.check("the header carries it, built beside Book by the page's script",
-            "sel.className = 'g-curtop__s';" in history and "document.querySelector('.g-top .g-booksel')" in history)
+    s.section("The header's selector over a photograph")
+    # 24 Nov 2026 (owner): "the language selector where the currency selector is and put the currency
+    # selector in the side bar". The header's selector, right of Book, is the language now, drawn by the
+    # template (no script to build it); the currency is the menu panel's alone.
+    with open(os.path.join(root, "templates", "public_base.html"), encoding="utf-8") as fh:
+        layout = fh.read()
+    top = layout[layout.index('<span class="g-booksel">'):layout.index("</header>")]
+    s.check("the header carries the language, right of Book",
+            '<span class="g-curtop g-langtop"><span class="g-lang"><select class="g-curtop__s"' in top
+            and top.index('class="g-booksel"') < top.index("g-langtop")
+            and "url_for('set_language', code=code)" in top)
+    s.check("and the currency is the side bar's alone",
+            'id="g-currency"' in layout and 'id="g-currency"' not in top
+            and "sel.className = 'g-curtop__s';" not in history)
     s.check("over a hero it turns white with the header's other words",
             re.search(r"body\.has-hero \.g-top:not\(\.is-solid\) \.g-curtop__s\{\s*color:\s*#fff;\s*\}", pics) is not None
             and "body.has-hero .g-top:not(.is-solid) .g-nav a{ color: #fff; }" in base)

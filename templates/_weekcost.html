@@ -24,7 +24,7 @@
         <label for="wk_room">Room</label>
         <select id="wk_room" data-wk-room>
           {% for r in rooms %}
-          <option value="{{ r['price_per_night']|int }}" data-max="{{ r['max_occupancy'] or 2 }}">{{ room_name(r['name']) }} — €{{ '%.0f'|format(r['price_per_night']) }}</option>
+          <option value="{{ r['price_per_night']|int }}" data-max="{{ r['max_occupancy'] or 2 }}">{{ room_title(r['name']) }} — €{{ '%.0f'|format(r['price_per_night']) }}</option>
           {% endfor %}
         </select>
       </p>

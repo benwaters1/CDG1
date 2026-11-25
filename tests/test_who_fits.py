@@ -160,6 +160,25 @@ def _checks(s, conn):
     s.section("The Twin Room (Ground Floor) sleeps three again (owner, 12 November)")
     # Live had it at two, so a party of three on a winter night found nothing and was waitlisted.
     gf = conn.execute("SELECT * FROM rooms WHERE name = 'The Twin Room (Ground Floor)'").fetchone()
+    # A database from before 17 October has no sixth room, and nothing will
+    # add one: init_db seeds rooms only into an EMPTY table, so a room deleted
+    # on purpose stays deleted. The house's own working copy is such a
+    # database (five rooms; live has six), and on it this read "the room is
+    # there to set" in red and skipped every check below -- the copy's age
+    # reported as a fault, and the fix of 12 November unchecked. So the room
+    # is put in for these checks as a fresh install has it, from the seed's
+    # own row, off sale, and taken out again afterwards.
+    seeded = None
+    if gf is None:
+        seed = next(r for r in m.DEFAULT_ROOMS if r["name"] == "The Twin Room (Ground Floor)")
+        cols = {c["name"] for c in conn.execute("PRAGMA table_info(rooms)")}
+        fields = {k: v for k, v in seed.items() if k in cols}
+        fields.update(active=0, export_token=f"tok-{TAG.lower()}-ground-floor")
+        seeded = conn.execute(
+            f"INSERT INTO rooms ({', '.join(fields)}) VALUES ({', '.join('?' * len(fields))})",
+            list(fields.values())).lastrowid
+        conn.commit()
+        gf = conn.execute("SELECT * FROM rooms WHERE id = ?", (seeded,)).fetchone()
     flag = conn.execute("SELECT value FROM app_settings WHERE key = 'gf_twin_sleeps_three_2026_11_12'").fetchone()
     if not s.check("the room is there to set", gf is not None):
         return
@@ -177,8 +196,13 @@ def _checks(s, conn):
                 and conn.execute("SELECT max_occupancy FROM rooms WHERE id = ?", (gf["id"],)).fetchone()[0] == 2)
         conn.execute("UPDATE rooms SET max_occupancy = 3, max_adults = 2, max_children = 2 WHERE id = ?", (gf["id"],))
         conn.commit()
+        # The room as it now stands, not `gf`: that is the row as it was read
+        # before any of this, and handed a room that slept two it said "Sleeps
+        # up to 2" whatever the database said now. A copy whose room already
+        # slept three hid it.
+        now = conn.execute("SELECT * FROM rooms WHERE id = ?", (gf["id"],)).fetchone()
         with m.app.test_request_context():
-            ok, why = m.room_offer(conn, gf, house_today() + timedelta(days=60),
+            ok, why = m.room_offer(conn, now, house_today() + timedelta(days=60),
                                    house_today() + timedelta(days=61), 3)
         s.check("so a party of three is not turned away by its size", why != "Sleeps up to 2", detail=str(why))
 
@@ -200,7 +224,9 @@ def _checks(s, conn):
             anon = m.app.test_client()
             stay = anon.get("/book").get_data(as_text=True)
             room_page = anon.get(f"/book/{gf['id']}").get_data(as_text=True)
-            at = stay.find('<h3 class="g-card__name">The Twin Room (Ground Floor)')
+            # Found by the card's own id: its heading is the room's French title
+            # since 23 November 2026, with this name small beneath it.
+            at = stay.find('id="room-%s"' % gf["id"])
             card = stay[at:at + 5000] if at != -1 else ""
             s.check("its card on Stay says it sleeps three", "Sleeps 3, up to 2 adults" in card)
             s.check("and so does its own page, in its facts", "<dt>Sleeps</dt><dd>3, up to 2 adults</dd>" in room_page)
@@ -209,8 +235,12 @@ def _checks(s, conn):
             conn.execute("UPDATE rooms SET active = ? WHERE id = ?", (was_active, gf["id"]))
             conn.commit()
     finally:
-        conn.execute("UPDATE rooms SET max_occupancy = ?, max_adults = ?, max_children = ? WHERE id = ?",
-                     (gf["max_occupancy"], gf["max_adults"], gf["max_children"], gf["id"]))
+        if seeded:
+            conn.execute("DELETE FROM bookings WHERE room_id = ?", (seeded,))
+            conn.execute("DELETE FROM rooms WHERE id = ?", (seeded,))
+        else:
+            conn.execute("UPDATE rooms SET max_occupancy = ?, max_adults = ?, max_children = ? WHERE id = ?",
+                         (gf["max_occupancy"], gf["max_adults"], gf["max_children"], gf["id"]))
         conn.execute("DELETE FROM app_settings WHERE key = 'gf_twin_sleeps_three_2026_11_12'")
         if flag:
             conn.execute("INSERT INTO app_settings (key, value) VALUES ('gf_twin_sleeps_three_2026_11_12', ?)",

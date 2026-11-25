@@ -1,0 +1,33 @@
+{#- AN ATELIER ON THE DATES A GUEST ASKED FOR (owner, 23 Nov 2026: "when someone enters dates but theres a
+    wrkshop on i want to point them there" -- "do a proper job of it though").
+
+    An atelier has the whole château, so on its nights every room says no. A guest told only that goes
+    elsewhere, on the very nights the house is offering more than a room. So the refusal names the atelier:
+    when, what it includes, what it costs, how many places it has, the way to take one, and the stays of the
+    guest's own length either side of it where a room can be had.
+
+    Drawn from ateliers_on_these_nights(), which offers a PUBLIC atelier only: a private stay is never named
+    here. /book draws it under the search, the room page under its price, and the room page's script draws
+    the same card from /api/quote as the dates change (book_room.html, drawOnYourDates). One card, three
+    places, the same words: test_atelier_on_your_dates holds them together. -#}
+{% macro atelier_on_your_dates(offers) %}
+{%- for o in offers %}
+<aside class="g-onyour" aria-labelledby="onyour-{{ o.session_id }}" data-onyour="{{ o.session_id }}">
+  <span class="g-onyour__pic">{{ pic(o.photo, o.title, sizes='(min-width: 48rem) 20rem, 92vw', cls='g-onyour__img') }}</span>
+  <div class="g-onyour__body">
+    <p class="g-onyour__k">On your dates</p>
+    <h3 class="g-onyour__t" id="onyour-{{ o.session_id }}">{{ o.title }}</h3>
+    <p class="g-onyour__when">{{ o.dates }}{% if o.nights_label %} · {{ o.nights_label }}{% endif %}</p>
+    <p class="g-onyour__p">{{ o.lead }}</p>
+    {% if o.included %}<p class="g-onyour__p">{{ o.included }}</p>{% endif %}
+    {% if o.price or o.places %}<p class="g-onyour__price">{{ o.price }}{% if o.price and o.places %} · {% endif %}{{ o.places }}</p>{% endif %}
+    <p class="g-onyour__acts">
+      {%- if o.register_url %}<a class="g-btn g-btn--solid" href="{{ o.register_url }}">Reserve a place</a>{% endif %}
+      <a class="g-btn" href="{{ o.page_url }}">{{ o.page_words }}</a>
+    </p>
+    {% if o.around %}<p class="g-onyour__or">Or a stay of your own, beside it:
+      {% for a in o.around %}<a href="{{ a.url }}">{{ a.words }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+  </div>
+</aside>
+{%- endfor %}
+{% endmacro %}

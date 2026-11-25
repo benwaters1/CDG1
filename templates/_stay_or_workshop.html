@@ -32,6 +32,8 @@
     breakfast, its lunch and dinner unavailable, with the restaurants nearby linked (eat_nearby), whatever the dining
     switch says (dm is still passed in, and no longer offers a stay dinner); a retreat keeps its gourmet chefs, and
     (owner, the same day) "every meal, and drinks included".
+    24 Nov (site review, 2): "unavailable" read as a refusal. Said as what the guest gets instead: lunch and dinner at
+    the restaurants nearby, which we are happy to book for you.
     test_bnb_comparisons holds all three. -#}
 {#- The restaurants nearby: a map search for restaurants centred on the pin at the gates (house_map_links), the words
     alone where no pin is set. -#}
@@ -50,7 +52,7 @@
       <h3 class="g-sow__t">Room and breakfast</h3>
       <ul class="g-sow__list">
         <li>Your room, and breakfast each morning</li>
-        <li>Lunch and dinner unavailable: {{ eat_nearby() }}</li>
+        <li>Lunch and dinner at the {{ eat_nearby() }}, which we are happy to book for you</li>
         <li>The pool, the tennis court and the gardens, table tennis, the lounge and board games, the terraces and a barbecue area</li>
         <li>At extra cost, if you wish: an airport transfer from Toulouse</li>
       </ul>
@@ -61,12 +63,8 @@
     <article class="g-sow__col g-sow__col--full{% if here == 'workshop' %} is-here{% endif %}">
       <p class="g-sow__k">A Retreat</p>
       <h3 class="g-sow__t"><em lang="fr">La vie de château</em></h3>
-      <ul class="g-sow__list">
-        <li>Your room in the château, and a small company to share it</li>
-        <li>The château’s gourmet chefs: every meal, and drinks included, from wine and cocktails to local sparkling wine</li>
-        <li>The kitchen, the markets and brocantes, Foix and the caves, the restoration</li>
-        <li>Long lunches, candlelit dinners, a night to dress for, and dancing</li>
-      </ul>
+      {#- 24 Nov 2026: what a retreat includes, from the one list the private retreat page draws too. -#}
+      {% from '_retreat_included.html' import retreat_included %}{{ retreat_included() }}
       <p class="g-sow__foot">Three to seven nights. <i>Nothing to pay at the end.</i></p>
       {% if here != 'workshop' %}<p class="g-sow__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the retreats</a></p>{% endif %}
     </article>
@@ -83,7 +81,7 @@
 <section class="g-sec g-sow g-vs-sec" id="compare" aria-labelledby="g-vs-h"><div class="g-wrap">
   <p class="g-eyebrow">Two ways to stay</p>
   <h2 class="g-place" id="g-vs-h">A Night, or <em lang="fr">la Vie de Château</em></h2>
-  <p class="g-p">A night's stay is a room and breakfast. A retreat gives you the château: its gourmet chefs, every meal, and drinks included, the brocantes, the restoration and the valley.</p>
+  <p class="g-p">A night's stay is a room and breakfast. A retreat gives you the château: its gourmet chefs, every meal, and drinks included, the brocantes, the restoration, the valley, and a great deal more.</p>
   <div class="g-vs__wrap">
   <table class="g-vs">
     <caption class="g-vh">What a night's stay and a retreat each include</caption>
@@ -95,7 +93,7 @@
     <tbody>
       <tr><th scope="row">Your room in the château</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">Breakfast</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
-      <tr><th scope="row">Lunch and dinner</th><td>Unavailable: {{ eat_nearby() }}</td><td class="g-vs__full">{{ Y|safe }} Every meal, and drinks included</td></tr>
+      <tr><th scope="row">Lunch and dinner</th><td>At {{ eat_nearby() }}; we book for you</td><td class="g-vs__full">{{ Y|safe }} Every meal, and drinks included</td></tr>
       <tr><th scope="row">Gourmet chefs on site</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">Drinks, alcoholic and non-alcoholic</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">A tour of the château and its restoration</th><td>An extra, &euro;50 per booking</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
@@ -126,7 +124,7 @@
   <p class="g-night__k">Before you book a night</p>
   <p class="g-night__t">A night here is a room and breakfast.</p>
   {% if bath %}<p class="g-night__p g-night__bath">Every room has a private bathroom of its own, on the ground floor &mdash; not in the room itself.</p>{% endif %}
-  <p class="g-night__p">Lunch and dinner are unavailable: there are {{ eat_nearby() }}. They come with the retreats, cooked by the château’s gourmet chefs over three to seven nights of <em lang="fr">la vie de château</em>.</p>
+  <p class="g-night__p">Lunch and dinner at the {{ eat_nearby() }}, which we are happy to book for you. On a retreat every meal is included, cooked by the château’s gourmet chefs over three to seven nights of <em lang="fr">la vie de château</em>.</p>
   <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the retreats</a></p>
 </aside>
 {% endmacro %}
@@ -136,7 +134,7 @@
 <aside class="g-night g-night--next" aria-label="The retreats">
   <p class="g-night__k">Next time</p>
   <p class="g-night__t"><em lang="fr">La vie de château</em></p>
-  <p class="g-night__p">Stay longer, for a retreat: three to seven nights of the kitchen, the markets and brocantes, and long candlelit dinners, with nothing to pay at the end.</p>
+  <p class="g-night__p">Stay longer, for a retreat: three to seven nights of the kitchen, the markets and brocantes, long candlelit dinners and much more, with nothing to pay at the end.</p>
   <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the retreats</a></p>
 </aside>
 {% endmacro %}

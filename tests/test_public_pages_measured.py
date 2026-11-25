@@ -15,7 +15,7 @@ cover.
 WHAT IS HELD
 
   - LENGTH, at 1400px wide. No public page over 9,000px, or 12,000 for
-    /gallery and /whats-on, whose length is their contents. Fails when a
+    /gallery and 13,500 for /whats-on, whose length is their contents. Fails when a
     section is added. The pages still over it after the owner's cuts are named
     in KNOWN_LONG, each with the height it may not grow past, and the list is
     checked both ways like COVERAGE_KNOWN_GAPS: a page that grows reds the run,
@@ -52,7 +52,20 @@ ROOT = _harness.ROOT
 DESK = 1400
 PHONES = (320, 375, 390)
 BUDGET = 9000
-LONG_BUDGET = {"/gallery": 12000, "/whats-on": 12000}
+# 23 Nov 2026: the home page 9,500. The owner would not have the rooms slide on a computer ("it looks shit"), so
+# every room's card is shown whole, the aerial and five rooms in two rows of three where there was one sliding row.
+# That row cost about 350px after the photographs were lowered and the facts set side by side.
+# 23 Nov 2026: /whats-on raised to 13,500. The owner asked for its plain text to have "illustrations and stuff" and
+# then "more images ... not just all in a row": a drawing beside each of its forty-odd entries, a second photograph
+# tucked over Towns, a pair beside Things to Do and a collage set into Outdoors took it from 11,567px to about 13,000.
+# 24 Nov 2026: 10,200, for three lines from guests' thank-you letters beside the Google three (owner's brief).
+# 24 Nov 2026, evening: 10,300. The five branches merged together put two links in every page's footer
+# (What's On at Gudanes, Getting Here: the occasions brief) and "and much more" on the retreats; measured 10,214.
+# 25 Nov 2026: /gallery 12,700. Rooms That No Longer Look Like This shows its Then and Now pairs and The Work, As It
+# Happens six photographs of the work (BRIEF-private-retreat-and-images, 3), and the site review put a photograph at
+# the top; measured 12,588. Every page also counts the engraving at its foot at its real height now: it has its own
+# size, so a box is kept for it before it arrives (it was never loaded here, and counted as almost nothing).
+LONG_BUDGET = {"/gallery": 12700, "/whats-on": 13500, "/": 10300}
 SHARP = 1.25
 TAP = 44
 SMALLEST = 12
@@ -65,14 +78,32 @@ SMALLEST = 12
 # address, with a room or a retreat by its kind, since the ids differ between
 # databases. Take a page off when it comes under the budget; the run says so.
 KNOWN_LONG = {
-    "/restoration": 15100,
-    "/events/weddings": 12700,
+    # 24 Nov: +200 for The Paintings, the section of their own the owner asked for (the painted beams and the
+    # frescoes, three photographs), and the timeline's three new years; measured 15,216.
+    # 25 Nov: +100, the engraving at the foot kept at its real height (see LONG_BUDGET); measured 15,377.
+    "/restoration": 15400,
+    # 23 Nov: 14,900, the brochure's facts the owner asked for ("lets use the info from everything and the brochure
+    # and really make it good"): the table, a sample of the days, what is included and what is on request.
+    # 24 Nov: +100, a couple's line from their thank-you letter above the enquiry.
+    "/events/weddings": 15000,
+    # 23 Nov: the same for private events ("same with private").
+    "/events/private": 11400,
     # 11 Nov: +600 for the bathrooms' own section, which the owner asked for ("they are a real feature").
-    "/book": 13100,
-    "/workshops": 11600,
+    # 23 Nov: +100 for each room's plain name, small beneath its French title (owner's website brief, 3).
+    # 23 Nov, later: +200 for the type pass (one size per rank of heading).
+    # 24 Nov: +200 for Key Information's "Arrival and departure" line (owner: check-out at 11am); measured 13,496.
+    "/book": 13600,
+    # 23 Nov, later: +100 for the same type pass.
+    # 24 Nov: +800, three retreat guests' lines from their thank-you letters (owner's brief).
+    # 24 Nov: +2,750 for the two sections the owner's retreats brief adds, What You'll Do and The Bathrooms
+    # ("i dont know why theyre not selling"; "have we got the bathrooms on the workshop page?"); measured 15,029.
+    "/workshops": 15400,   # 24 Nov evening, was 15,100: the footer's two new links; measured 15,125 merged.
+    # 25 Nov, was 15,300: the engraving at the foot at its real height (see LONG_BUDGET); measured 15,339.
+    # 24 Nov, late, was 15,200: fresh seed 15,222, house copy 15,125.
     "/workshops/<id>": 11900,
     "/history": 9900,
-    "/book/<id>": 9600,
+    # 24 Nov 2026: "/book/<id>" came off. The room page puts its form first, with the photograph beside the room's
+    # name rather than across the page over it (test_book_form_first): 8,727px, under the budget.
 }
 
 
@@ -269,12 +300,12 @@ def _run(s, browser, pages, workdir):
     for k, ceiling in KNOWN_LONG.items():
         if k in tallest and tallest[k] <= budget(k):
             mended.append("%s is %dpx now" % (k, tallest[k]))
-    s.check("no public page is over its budget (%d, or 12,000 for the gallery and What's On)" % BUDGET,
+    s.check("no public page is over its budget (%d, 12,000 for the gallery, 13,500 for What's On)" % BUDGET,
             not over, detail="; ".join(over))
     s.check("no page on the known-long list has grown", not grown, detail="; ".join(grown))
     s.check("no page on that list has come under the budget and is still on it", not mended,
             detail="take off KNOWN_LONG: " + "; ".join(mended))
-    s.check("the home page is under it, from seventeen screens", 0 < got.get("/", {}).get("h", 0) <= BUDGET,
+    s.check("the home page is under it, from seventeen screens", 0 < got.get("/", {}).get("h", 0) <= budget("/"),
             detail=str(got.get("/", {}).get("h")))
     s.check("and the gallery, from forty-one", 0 < got.get("/gallery", {}).get("h", 0) <= LONG_BUDGET["/gallery"],
             detail=str(got.get("/gallery", {}).get("h")))

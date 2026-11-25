@@ -695,6 +695,12 @@ body.staff-shell .stat-tile-icon-steel{ color:var(--steel); }
 .stat-tile-value{ font-family:'Playfair Display', serif; font-size:21px; font-weight:700; color:var(--chestnut-deep); line-height:1.15; white-space:nowrap; }
 body.staff-shell .stat-tile-value{ color:var(--ivory); font-family:'Inter',sans-serif; }
 .stat-tile-value-danger{ color:var(--danger) !important; }
+/* A figure written in words may break at its spaces. nowrap above keeps
+   "€1,234.50" whole, but a date the house writes day first in words, "23
+   November 2026", is wider at 21px than a 150px tile: on /admin/retention at
+   600px it ran out of the last tile and the page with it, one pixel past the
+   screen (test_text_stands_clear). */
+.stat-tile-value-words{ white-space:normal; }
 .stat-tile-sub{ font-size:12px; font-weight:500; color:var(--ink-soft); margin-left:3px; }
 /* Labels wrap rather than ellipse — "Confirmed room-nights" was rendering as
    "CONFIRMED ROOM…", which tells the reader nothing. Two lines is fine; a
@@ -2313,6 +2319,28 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   padding:11px 14px; margin-bottom:14px;
 }
 .pass-short-row{ font-size:14.5px; font-variant-numeric:tabular-nums; }
+/* The owner home's lines, each with its own Clear / Snooze. The text takes
+   the room and the two buttons sit at the right; on a phone they drop under
+   the sentence rather than squeezing it to a column of single words. */
+.oh-warn{ display:flex; align-items:flex-start; gap:10px; padding:3px 0; }
+.oh-warn + .oh-warn{ border-top:1px solid var(--parchment-line); padding-top:6px; }
+.oh-warn__text{ flex:1 1 auto; min-width:0; }
+.oh-warn__acts{ flex:0 0 auto; display:flex; gap:4px; margin:0; }
+.oh-warn__btn{ padding:4px 8px; font-size:12.5px; white-space:nowrap; color:var(--ink-soft); }
+.oh-warn--hidden .oh-warn__text{ color:var(--ink-soft); }
+.oh-warn__cleared{ display:flex; flex-direction:column; gap:4px; margin-top:6px;
+  padding-top:6px; border-top:1px dashed var(--parchment-line); }
+.oh-warn__show{ align-self:flex-start; }
+/* Every line cleared: still there, so the cleared ones are reachable, but
+   no longer red -- a red frame round "nothing new" is an alarm about nothing. */
+.pass-short.oh-warn--quiet{ border-color:var(--parchment-line); border-left-color:var(--parchment-line); }
+@media (max-width: 600px){
+  .oh-warn{ flex-direction:column; gap:2px; }
+  .oh-warn__acts{ align-self:flex-start; }
+}
+@media (pointer: coarse){
+  .oh-warn__btn{ min-height:44px; display:inline-flex; align-items:center; }
+}
 .pass{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
 .ticket{
   background:var(--surface); border:1px solid var(--parchment-line);
@@ -4305,3 +4333,85 @@ body.staff-shell .btn-mini.btn-mini-go:hover{ background:var(--success); border-
 .wo-look li{ margin:2px 0; }
 .wo-problem{ color:var(--rust); font-size:12.5px; }
 .wo-add{ display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin:0 0 6px; }
+
+/* ==========================================================================
+   FRIDGE READINGS, ALL AT ONCE, AND THE KITCHEN'S CLEANING (23 November 2026)
+   One row a unit: its name and band, a box big enough for a thumb, and the
+   box for what was done, which opens only once the number is out of range
+   (without the script it is simply always there). And a card a job, with a
+   Done button that can be pressed with wet hands.
+   ========================================================================== */
+.fridge-row{
+  display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:6px 12px;
+  align-items:center; padding:10px 0; border-bottom:1px solid var(--parchment-line);
+}
+.fridge-row__name{ font-weight:600; min-width:0; }
+.fridge-row__where{ font-weight:400; color:var(--ink-soft); }
+.fridge-row__hint{ display:block; font-weight:400; font-size:13px; color:var(--ink-soft); }
+.fridge-row__due{ color:var(--rust); }
+.fridge-row__entry{ display:flex; gap:6px; align-items:center; }
+/* Above the touch rule's 16px on purpose: this is the one box on the page. */
+.fridge-row input.fridge-row__c{
+  width:6.5em; font-size:22px; padding:8px 10px; text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+.fridge-row__minus{
+  min-width:44px; min-height:44px; font-size:22px; line-height:1; cursor:pointer;
+  color:var(--ink); background:var(--surface); border:1px solid var(--parchment-line);
+  border-radius:8px;
+}
+.fridge-row input.fridge-row__a{ grid-column:1 / -1; width:100%; }
+.js-fridge .fridge-row input.fridge-row__a{ display:none; }
+.js-fridge .fridge-row--out input.fridge-row__a{ display:block; }
+.fridge-row--out input.fridge-row__c{
+  border-color:var(--danger); background:var(--status-danger-bg);
+}
+.fridge-sweep__save{ margin-top:12px; min-height:48px; width:100%; justify-content:center; }
+@media (min-width: 700px){ .fridge-sweep__save{ width:auto; } }
+@media (max-width: 380px){
+  .fridge-row{ grid-template-columns:minmax(0, 1fr); }
+}
+.fridge-answer{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.fridge-answer input[type=text]{ flex:1 1 12em; min-width:0; }
+.fridge-unit-change{ margin-top:10px; }
+.fridge-unit-change form{ margin-top:8px; }
+
+.kitchen-job__head{
+  display:flex; gap:12px; align-items:flex-start; justify-content:space-between;
+  flex-wrap:wrap;
+}
+.kitchen-job__what{ margin:0 0 4px; }
+.kitchen-job__when{ margin:0; color:var(--ink-soft); }
+.kitchen-job__late{ color:var(--danger); }
+.kitchen-job--late{ border-left:3px solid var(--danger); }
+.kitchen-job__done{ min-height:48px; min-width:9em; justify-content:center; }
+.kitchen-job__more{ margin-top:10px; }
+.kitchen-job__more form{ margin-top:8px; }
+/* The wall is read from across the room, never typed on: what takes an entry
+   goes, as the cards that take one already do. */
+html.kw-wall .fridge-answer,
+html.kw-wall .fridge-unit-change,
+html.kw-wall .kitchen-job__more{ display:none !important; }
+
+/* The pool book's check: four readings side by side where there is room, one
+   above another on a phone, each big enough for a thumb. The box for what was
+   done opens once something is out of range (always there without the
+   script). */
+.pool-check__grid{
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px 14px;
+}
+.pool-check__field{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.pool-check__grid input[type=text], .pool-check__grid input[type=number]{
+  font-size:20px; padding:8px 10px; width:100%;
+}
+.pool-check__clear{
+  border:0; padding:0; margin:12px 0 0; display:flex; gap:16px; flex-wrap:wrap; align-items:center;
+}
+.pool-check__clear label{ display:inline-flex; gap:6px; align-items:center; min-height:44px; }
+.pool-check input.pool-check__action, .pool-check input[name=note]{ width:100%; margin-top:8px; }
+.js-pool input.pool-check__action{ display:none; }
+.js-pool.pool-check--out input.pool-check__action{ display:block; }
+.pool-check__grid input.pool-check--bad{
+  border-color:var(--danger); background:var(--status-danger-bg);
+}
+.pool-check__save{ margin-top:12px; min-height:48px; }

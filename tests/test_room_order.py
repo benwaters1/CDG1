@@ -80,12 +80,15 @@ def run():
     # the loose way first, and it did not notice the heading being swapped
     # back to the database name — because the alt text beside it still
     # carried the French one, so the string was "on the page" either way.
-    headings = re.findall(r'<h3 class="g-homeroom__name">(.*?)</h3>', html, re.S)
+    # A heading is the room's title on the website since 23 November 2026
+    # (La Chambre Jeanne d'Arc over The Twin Room), so it is checked against
+    # the titles: the name a guest is shown, with the plain name beneath it.
+    headings = re.findall(r'<h3[^>]*class="g-homeroom__name"[^>]*>(.*?)</h3>', html, re.S)
     headings = [h.strip() for h in headings]
     s.check("the room cards are headed by name at all", headings,
             detail="no room headings found — the selector this reads has moved, "
                    "and the two checks below would pass on an empty list")
-    wrong = [h for h in headings if h not in rooms]
+    wrong = [h for h in headings if h not in [m.room_title(r) for r in rooms]]
     s.check("every room card is headed by the name a guest is shown",
             not wrong, detail=f"{wrong} — the front page is using a name the "
                               "rest of the site does not")
@@ -160,35 +163,45 @@ def run():
             detail="; ".join(guessers[:4]) + " — put it in a column: "
                    "bathroom, bed_setup, outlook, size_sqm, floor")
 
-    s.section("The room picker sends you to the room it named")
-    # It shipped with the rooms written out by hand, ids and all -- 5, 4, 2,
-    # 1, 3 against real ids of 8, 6, 4, 5, 7. So it recommended the Emeraude
-    # and opened Les Deux Chambres, recommended the Levant and 404'd, and did
-    # that for all five. A copy of the database is a copy that goes wrong
-    # quietly, and this one went wrong in front of a guest choosing a room.
-    picker = anon.get("/book").get_data(as_text=True)
-    s.check("the picker is on the booking page", "var R=[" in picker,
-            detail="if this moves, the two checks below prove nothing")
-    if "var R=[" in picker:
-        block = picker[picker.index("var R=["):]
-        block = block[:block.index("];")]
-        pairs = _re.findall(r'n:"([^"]+)".*?url:"([^"]+)"', block, _re.S)
-        conn2 = db()
-        try:
-            by_id = {str(r["id"]): r["name"] for r in
-                     conn2.execute("SELECT id, name FROM rooms").fetchall()}
-        finally:
-            conn2.close()
-        s.check("it offers a room for every room the house lets",
-                len(pairs) == len(_order()), detail=f"{len(pairs)} offered")
-        wrong = []
-        for name, url in pairs:
-            named = name.encode().decode("unicode_escape")
-            landed = by_id.get(url.rstrip("/").split("/")[-1])
-            if landed != named:
-                wrong.append(f"{named} -> {url} ({landed or 'nothing'})")
-        s.check("and each link opens the room it just recommended", not wrong,
-                detail="; ".join(wrong)[:200])
+    s.section("Each room's card on Stay opens the room it names")
+    # The room picker (Answer Two Questions) shipped with the rooms written
+    # out by hand, ids and all -- 5, 4, 2, 1, 3 against real ids of 8, 6, 4,
+    # 5, 7. So it recommended the Emeraude and opened Les Deux Chambres,
+    # recommended the Levant and 404'd, and did that for all five. A copy of
+    # the database is a copy that goes wrong quietly, and this one went wrong
+    # in front of a guest choosing a room.
+    # The picker came off /book on 13 November 2026 (owner: "lets remove
+    # this", 2f463c9): the cards already say how many each room sleeps and
+    # the bed. The cards are now the only way from Stay to a room, so they
+    # are held to what the picker was: one for every room on sale, each named
+    # as the room is, and every link on it opening that room and no other.
+    import html as _html
+    stay = anon.get("/book").get_data(as_text=True)
+    s.check("the two-question picker stays off the booking page (owner, 13 November)",
+            "var R=[" not in stay and "data-pick" not in stay)
+    cards = _re.findall(r'<article\b[^>]*\bid="room-(\d+)"(.*?)</article>', stay, _re.S)
+    conn2 = db()
+    try:
+        by_id = {str(r["id"]): r["name"] for r in
+                 conn2.execute("SELECT id, name FROM rooms").fetchall()}
+    finally:
+        conn2.close()
+    s.check("there is a card for every room the house lets",
+            sorted(by_id.get(rid) for rid, _ in cards) == sorted(_order()),
+            detail=f"{[by_id.get(rid) for rid, _ in cards]} against {_order()} -- "
+                   "if there are none, the two checks below prove nothing")
+    misnamed, misled = [], []
+    for rid, body in cards:
+        named = _html.unescape((_re.findall(r'data-room-name="([^"]*)"', body) or [""])[0])
+        if named != m.room_title(by_id.get(rid)):
+            misnamed.append(f"room {rid} ({by_id.get(rid)}) carded as {named!r}")
+        opens = sorted(set(_re.findall(r'(?:href|data-room-url)="/book/(\d+)', body)))
+        if opens != [rid]:
+            misled.append(f"{by_id.get(rid)}'s card opens {opens or 'nothing'}")
+    s.check("each card is named as its room is", cards and not misnamed,
+            detail="; ".join(misnamed)[:200])
+    s.check("and every link on it opens that room, and no other", cards and not misled,
+            detail="; ".join(misled)[:200])
 
     s.section("The order is the one the owner asked for")
     # Suite, Double, King, Family Suite, Twin/Double — applied once as a
