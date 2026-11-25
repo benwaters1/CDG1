@@ -406,6 +406,43 @@
 </div>
 {% endif %}
 
+{#- DINNER AT GUDANES (25 Nov 2026): the dinners on this stay, and "Add dinner" for each dinner night of it not yet
+    added, up to the day before. On the bill and in the restaurant's book together, as when booking. -#}
+{% set _dl = dinner_letter|default({'booked': [], 'more': []}) %}
+{% if _dl.booked or _dl.more %}
+{% from '_menu_dialog.html' import menu_link %}
+<div class="g-mb-card" id="dinner-at-gudanes" style="margin-top:var(--s4);">
+  <h3>Dinner at Gudanes</h3>
+  {% if _dl.booked %}
+  <div class="g-mb-list">
+    {% for d in _dl.booked %}
+    <div class="g-mb-row">
+      <span class="g-mb-rowt">{{ d.words }} — {{ d.covers }} × €{{ '{:,.2f}'.format(d.price) }}</span>
+      <span class="mini-status status-{{ (d.table_status|string)|lower }}">{{ 'booked' if d.table_status == 'confirmed' else d.table_status }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% for n in _dl.more %}
+  <form method="post" class="g-mb-dinner" style="margin-top:var(--s3);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="add_dinner">
+    <input type="hidden" name="night" value="{{ n.date }}">
+    <p class="g-hint" style="margin:0 0 var(--s2)">{{ n.title }}, {{ n.words }}{% if n.time_words %}, {{ n.time_words }}{% endif %}, {{ n.price_words }}.{% if n.menu %} {{ menu_link(n.menu) }}{% endif %}</p>
+    <div class="g-row" style="align-items:flex-end">
+      <div>
+        <label for="mb_dinner_{{ n.date }}" class="g-mb-label">How many for dinner</label>
+        <input type="number" inputmode="numeric" id="mb_dinner_{{ n.date }}" name="covers" min="1" max="{{ [booking['party_size'] or n.left, n.left]|min }}" value="{{ [booking['party_size'] or 1, n.left]|min }}" required>
+      </div>
+      <div><button type="submit" class="g-btn g-btn--solid">Add dinner</button></div>
+    </div>
+  </form>
+  {% endfor %}
+  {% if _dl.more %}<p class="g-hint" style="margin-top:var(--s2)">It goes on your bill with the room. Dinner can be added up to the day before.</p>{% endif %}
+</div>
+{{ menu_dialog_once() }}
+{% endif %}
+
 {% if dinner_available and _dm == 'open' %}
 <div class="g-mb-card" id="dinner" style="margin-top:var(--s4);">
   <h3>Book dinner</h3>

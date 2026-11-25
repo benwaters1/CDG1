@@ -16,6 +16,7 @@
 </div></section>
 {% else %}
 {% from '_formkeep.html' import form_keep %}
+{% from '_menu_dialog.html' import menu_link %}
 
 
 
@@ -37,8 +38,9 @@
   {#- The guest chef's nights, named: the price, the seating and who they are for come from the occasion. -#}
   <div class="g-chefnights" style="margin:var(--s4) 0;padding:var(--s4);border:1px solid var(--rule, #d8cfbd)">
     {% for occ_name, nights in chef_nights|groupby('name') %}{% set n0 = nights[0] %}
-    <p class="g-eyebrow">Guest chef in residence{% if n0['chef_name'] %}: {{ n0['chef_name'] }}{% endif %}</p>
-    <p class="g-p" style="margin:0 0 var(--s2)">{{ occ_name }}: dinner on {% for n in nights %}<a href="{{ url_for('restaurant_book', date=n['dinner_date']) }}">{{ n['dinner_date']|date_short }}</a>{% if not loop.last %}{{ ' and ' if loop.revindex == 2 else ', ' }}{% endif %}{% endfor %}{% if n0['dinner_time'] %}, seated at {{ n0['dinner_time'] }}{% endif %}{% if n0['dinner_price'] %}, €{{ '{:,.0f}'.format(n0['dinner_price']) }} per person{% endif %}. {{ 'Open to everyone.' if n0['outside_diners'] else 'For guests staying at the château that night: use the email address on your booking.' }} <a href="{{ url_for('stay_occasion_page', slug=n0['slug']) }}">More about it</a></p>
+    {#- 25 Nov 2026: any occasion can serve dinner. A guest chef's is named as before; the house's own is Dinner at Gudanes. -#}
+    <p class="g-eyebrow">{% if n0['kind'] == 'guest_chef' %}Guest chef in residence{% if n0['chef_name'] %}: {{ n0['chef_name'] }}{% endif %}{% else %}Dinner at Gudanes{% endif %}</p>
+    <p class="g-p" style="margin:0 0 var(--s2)">{{ occ_name }}: dinner on {% for n in nights %}<a href="{{ url_for('restaurant_book', date=n['dinner_date']) }}">{{ n['dinner_date']|date_short }}</a>{% if not loop.last %}{{ ' and ' if loop.revindex == 2 else ', ' }}{% endif %}{% endfor %}{% if n0['dinner_time'] %}, seated at {{ n0['dinner_time'] }}{% endif %}{% if n0['dinner_price'] %}, €{{ '{:,.0f}'.format(n0['dinner_price']) }} per person{% endif %}. {{ 'Open to everyone.' if n0['outside_diners'] else 'For guests staying at the château that night: use the email address on your booking.' }} <a href="{{ url_for('stay_occasion_page', slug=n0['slug']) }}">More about it</a>{% set _m = menu_for(n0['slug'], n0['menu_file'], n0['dinner_date'] if n0['night_menu'] else none, nights|map(attribute='dinner_date')|list) %}{% if _m %} · {{ menu_link(_m) }}{% endif %}</p>
     {% endfor %}
     {% if _chef_only %}<p class="g-hint">La Table is otherwise closed, so only these evenings can be booked.</p>{% endif %}
   </div>
@@ -247,4 +249,5 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   el.addEventListener('input', check); check();
 })();
 </script>
+{% if chef_nights %}{{ menu_dialog_once() }}{% endif %}
 {% endblock %}

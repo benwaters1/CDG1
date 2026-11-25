@@ -205,6 +205,14 @@ FR = {
     "At Gudanes": "À Gudanes",
     "What’s On at Gudanes": "Que faire à Gudanes",
     "Getting Here": "Venir au château",
+    # Dinner at Gudanes and the home-page banner (25 Nov 2026).
+    "Dinner at Gudanes": "Dîner à Gudanes",
+    "Chef in residence": "Chef en résidence",
+    "Book your stay": "Réservez votre séjour",
+    "See the menu": "Voir le menu",
+    "Dinner from": "Dîner à partir de",
+    "a person": "par personne",
+    "wine included": "vin compris",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Vos dates",
@@ -1102,6 +1110,14 @@ ES = {
     "At Gudanes": "En Gudanes",
     "What’s On at Gudanes": "Qué hacer en Gudanes",
     "Getting Here": "Cómo llegar",
+    # Dinner at Gudanes and the home-page banner (25 Nov 2026).
+    "Dinner at Gudanes": "Cena en Gudanes",
+    "Chef in residence": "Chef residente",
+    "Book your stay": "Reserve su estancia",
+    "See the menu": "Ver el menú",
+    "Dinner from": "Cena desde",
+    "a person": "por persona",
+    "wine included": "vino incluido",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Sus fechas",

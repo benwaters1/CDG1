@@ -349,6 +349,32 @@ def run():
     s.check("the private stay's own page does not call four nights a week", "A week of" not in private_page,
             detail=private_page[private_page.find("A week"):][:80])
 
+    s.section("Cooking in the Cuisine: time in the kitchen every full day (owner, 25 Nov)")
+    # "add in more cooking classes, remove market with the chef ... it's on Sundays? ... there's hardly any cooking
+    # classes". The plan had the chef taking guests to market on the Saturday; the village market at Les Cabannes is
+    # a Sunday, Mirepoix the Monday. Drawn from the template with the 2027 dates, so it holds without the retreat
+    # being in the copy of the database.
+    with m.app.test_request_context("/"):
+        cooking = m.app.jinja_env.from_string(
+            "{% from '_ws_copy.html' import ws_journey %}{{ ws_journey(w, sittings=rows) }}").render(
+            w={"title": "Cooking in the Cuisine", "nights_label": "5 nights / 6 days"},
+            rows=[{"session": {"start_date": "2027-06-25", "end_date": "2027-06-30"}}])
+    days, section = journey(cooking)
+    s.check("six days, Friday to Wednesday", [d["kicker"] for d in days]
+            == [expected_heading(n, date(2027, 6, 25)) for n in range(1, 7)], detail=str([d["kicker"] for d in days]))
+    s.check("no market with the chef", not re.search(r"market with the chef\b", section, re.I),
+            detail=section[section.lower().find("market with"):][:80])
+    kitchen = re.compile(r"cooking class|pastry kitchen|chocolate-making", re.I)
+    s.check("every full day has its time in the kitchen",
+            len(days) == 6 and all(kitchen.search(" ".join(d["moments"])) for d in days[1:5]),
+            detail=" | ".join("; ".join(d["moments"]) for d in days[1:5]))
+    s.check("three of them cooking classes or the pastry kitchen, besides the chocolate",
+            sum(bool(re.search(r"cooking class|pastry kitchen", " ".join(d["moments"]), re.I)) for d in days) >= 3,
+            detail=" | ".join("; ".join(d["moments"]) for d in days))
+    marketing = [d["kicker"] for d in days if re.search(r"\bmarket\b", day_words(d), re.I)]
+    s.check("a market only on the Monday, Mirepoix's day", marketing and all("Monday" in k for k in marketing),
+            detail=str(marketing))
+
     s.section("A retreat set in winter that is not Noël")
     r = c.get("/workshops/%d" % winter_id)
     html = r.get_data(as_text=True)

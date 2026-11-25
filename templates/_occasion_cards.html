@@ -2,6 +2,9 @@
     /workshops (.g-sittings-grid, .g-sit) -- so a stay sold around a date looks exactly like a retreat's date.
     Photograph, name, dates, nights, "from €X a night" at the owner's price, the chef line as a small tag, and
     Check these dates, opening /book with the arrival and departure filled in. test_stay_occasions holds the markup. -#}
+{#- 25 Nov 2026 (Dinner at Gudanes): with dinner nights the tag reads "Dinner at Gudanes" and the meta line names the
+    night ("2 nights · Dinner at Gudanes on the Saturday"); "See the menu" opens the uploaded menu in the pop-up. -#}
+{% from '_menu_dialog.html' import menu_link %}
 {% macro occasion_cards(occasions) %}
 <div class="g-sittings-grid g-occasions">
   {% for o in occasions %}
@@ -11,7 +14,8 @@
     <div class="g-sit__b">
       <p class="g-sit__name"><a href="{{ url_for('stay_occasion_page', slug=o['slug']) }}">{{ o['name'] }}</a></p>
       <h3 class="g-sit__when">{{ date_range(o['first_night'], o.departure) }}</h3>
-      <p class="g-sit__meta">{{ o.nights }} night{{ '' if o.nights == 1 else 's' }} · <span class="g-occasion__tag">{{ o.chef_tag }}</span></p>
+      <p class="g-sit__meta">{{ o.nights }} night{{ '' if o.nights == 1 else 's' }} · <span class="g-occasion__tag">{{ o.chef_tag }}</span>{% if o.dinners %} {{ o.dinner_when }}{% endif %}</p>
+      {% if o.menu %}<p class="g-sit__meta g-occasion__menu">{{ menu_link(o.menu) }}</p>{% endif %}
       {% if o.from_price %}
       <p class="g-sit__rate">
         <span>from</span> <span class="g-fig" data-eur="{{ o.from_price|int }}">€{{ '{:,.0f}'.format(o.from_price) }}</span>
@@ -25,4 +29,5 @@
   </article>
   {% endfor %}
 </div>
+{% if occasions|selectattr('menu')|list %}{{ menu_dialog_once() }}{% endif %}
 {% endmacro %}

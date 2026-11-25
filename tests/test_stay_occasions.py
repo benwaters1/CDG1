@@ -530,7 +530,7 @@ def _run(s, oc, owner, conn):
          "zocc-token-1", "GUD-ZOCC1", now))
     conn.commit()
     with m.app.test_request_context("/"):
-        stayer_ok = m.guest_chef_refusal(conn, nights[0], "stayer.zocc@example.com")
+        stayer_ok = m.occasion_dinner_refusal(conn, nights[0], "stayer.zocc@example.com")
     s.check("a guest staying that night is let through", stayer_ok is None, detail=str(stayer_ok))
     r = oc.post("/restaurant/book", data=dict(form, guest_name=f"{TAG} Stayer",
                                               guest_email="stayer.zocc@example.com"),
@@ -539,7 +539,7 @@ def _run(s, oc, owner, conn):
             conn.execute("SELECT total_price FROM restaurant_bookings WHERE guest_name = ?",
                          (f"{TAG} Stayer",)).fetchone() is not None, response=r)
     with m.app.test_request_context("/"):
-        dinners = m.guest_chef_dinners_for_stay(conn, nights[0].isoformat(),
+        dinners = m.occasion_dinners_for_stay(conn, nights[0].isoformat(),
                                                 (nights[-1] + timedelta(days=1)).isoformat())
     s.check("the staying guest's confirmation offers the dinner nights",
             [d["dinner_date"] for d in dinners] == [nights[0].isoformat(), nights[1].isoformat()],

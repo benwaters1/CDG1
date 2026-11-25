@@ -110,10 +110,16 @@ FIELD = re.compile(r"<(input|select|textarea)\b([^>]*)>", re.S | re.I)
 # asks for, by a width and a file in static/img. No id, and no markup back;
 # test_picture_components is what proves it answers.
 #
-# Eleven now: export_report_csv, mirrored_photo, photo_at_size,
-# recover_owner_password, room_ics_feed, room_photo, set_language, site_photo,
-# sized_photo, social_photo_public and uploaded_file.
-NO_RULE = 11
+# And three for Dinner at Gudanes (25 Nov 2026): occasion_menu, occasion_menu_night
+# and occasion_banner_photo serve the owner's uploaded menu (a PDF or a picture)
+# and the banner's photograph, by an occasion's slug and a night. No id, and no
+# markup back; test_dinner_at_gudanes is what proves each of them answers.
+#
+# Fourteen now: export_report_csv, mirrored_photo, occasion_banner_photo,
+# occasion_menu, occasion_menu_night, photo_at_size, recover_owner_password,
+# room_ics_feed, room_photo, set_language, site_photo, sized_photo,
+# social_photo_public and uploaded_file.
+NO_RULE = 14
 
 # What the sweep fetched and could not read.
 #

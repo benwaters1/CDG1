@@ -1,0 +1,86 @@
+{#- DINNER AT GUDANES (owner, 25 Nov 2026): "have a clickable pop-up where I can upload a menu and it pops up".
+    menu_link(m) draws "See the menu" for a menu_for(...) dict, and nothing at all when there is no menu -- nothing
+    says "menu to come". menu_dialog() draws the one <dialog> a page needs and the script that fills it: a photograph
+    of the menu fills it, a PDF sits in an embedded viewer with "Open in a new tab" and "Download" for the phones
+    that will not show a PDF inline. Closes on the cross, the Escape key and a tap outside; focus goes back to the
+    link. Without script, or in a browser with no <dialog>, the link simply opens the menu. Sized to a 375px phone
+    with no sideways scroll (test_dinner_at_gudanes measures it in Chrome). -#}
+{% macro menu_link(m, label='See the menu', cls='g-menu-link') -%}
+{%- if m %}<a href="{{ m.url }}" class="{{ cls }}" data-menu-open data-menu-pdf="{{ 1 if m.pdf else 0 }}" data-menu-alt="{{ m.alt }}" data-menu-download="{{ m.download }}" target="_blank" rel="noopener">{{ label }}</a>{% endif -%}
+{%- endmacro %}
+
+{% macro menu_dialog() %}
+<dialog class="g-menudlg" id="g-menudlg" aria-labelledby="g-menudlg-t">
+  <div class="g-menudlg__in">
+    <div class="g-menudlg__bar">
+      <p class="g-menudlg__t" id="g-menudlg-t">The menu</p>
+      <button type="button" class="g-menudlg__x" aria-label="Close the menu">&times;</button>
+    </div>
+    <div class="g-menudlg__b"></div>
+    <p class="g-menudlg__acts" hidden><a class="g-menudlg__new" href="#" target="_blank" rel="noopener">Open in a new tab</a><a class="g-menudlg__dl" href="#" download>Download</a></p>
+  </div>
+</dialog>
+<style>
+.g-menu-link{white-space:nowrap}
+.g-menudlg{padding:0;border:0;background:transparent;max-width:none;max-height:none;width:100%;height:100%;margin:0;inset:0;overflow:hidden}
+.g-menudlg::backdrop{background:rgba(20,26,40,.72)}
+.g-menudlg__in{box-sizing:border-box;width:min(56rem,calc(100vw - 24px));max-height:calc(100dvh - 24px);margin:12px auto;background:#FBF8F2;color:#1C2833;display:flex;flex-direction:column;border-radius:2px;overflow:hidden}
+.g-menudlg__bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 8px 8px 16px;border-bottom:1px solid #E2D9C6}
+.g-menudlg__t{margin:0;font-size:.95rem;letter-spacing:.08em;text-transform:uppercase}
+.g-menudlg__x{min-width:44px;min-height:44px;border:0;background:transparent;font-size:1.75rem;line-height:1;cursor:pointer;color:inherit}
+.g-menudlg__b{flex:1 1 auto;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
+.g-menudlg__b img{display:block;width:100%;height:auto}
+.g-menudlg__b iframe{display:block;width:100%;height:min(75dvh,60rem);border:0;background:#fff}
+.g-menudlg__acts{display:flex;flex-wrap:wrap;gap:8px 20px;margin:0;padding:12px 16px;border-top:1px solid #E2D9C6}
+.g-menudlg__acts a{min-height:44px;display:inline-flex;align-items:center}
+</style>
+<script>
+(function(){
+  if (window.gMenuDialog) return;
+  window.gMenuDialog = true;
+  var dlg = document.getElementById('g-menudlg'), last = null;
+  if (!dlg || typeof dlg.showModal !== 'function') return;   /* no <dialog>: the link opens the menu */
+  var body = dlg.querySelector('.g-menudlg__b'), acts = dlg.querySelector('.g-menudlg__acts');
+  /* Focus goes back to the link the moment it closes -- by the cross, a tap outside or the Escape key (which the
+     browser closes itself, hence the close event too). */
+  function back(){
+    body.innerHTML = '';
+    if (!last) return;
+    /* Until the browser recalculates the page's style, everything outside a modal that has just closed is still
+       inert and refuses focus: reading a size makes it recalculate first. Asked again a moment later as well, in
+       case the browser hands focus back somewhere else as it closes. */
+    var link = last;
+    function go(){ void link.offsetWidth; if (document.activeElement !== link) link.focus(); }
+    go();
+    setTimeout(go, 0);
+  }
+  function shut(){ if (dlg.open) dlg.close(); back(); }
+  dlg.querySelector('.g-menudlg__x').addEventListener('click', shut);
+  /* A tap outside: the dialog itself is the dimmed area around the menu. */
+  dlg.addEventListener('click', function(e){ if (e.target === dlg) shut(); });
+  dlg.addEventListener('close', back);
+  document.addEventListener('click', function(e){
+    var a = e.target && e.target.closest ? e.target.closest('[data-menu-open]') : null;
+    if (!a) return;
+    e.preventDefault();
+    last = a;
+    var url = a.getAttribute('href'), pdf = a.getAttribute('data-menu-pdf') === '1',
+        alt = a.getAttribute('data-menu-alt') || 'The menu';
+    body.innerHTML = '';
+    if (pdf) {
+      var f = document.createElement('iframe'); f.src = url; f.title = alt; body.appendChild(f);
+    } else {
+      var i = document.createElement('img'); i.src = url; i.alt = alt; body.appendChild(i);
+    }
+    acts.hidden = !pdf;
+    acts.querySelector('.g-menudlg__new').href = url;
+    acts.querySelector('.g-menudlg__dl').href = a.getAttribute('data-menu-download') || url;
+    /* The link holds focus as the pop-up opens -- a tap does not give it focus -- so the browser's own return of
+       focus, when the dialog closes, comes back to it. */
+    try { a.focus({preventScroll: true}); } catch (err) { a.focus(); }
+    dlg.showModal();
+    dlg.querySelector('.g-menudlg__x').focus();
+  });
+})();
+</script>
+{% endmacro %}

@@ -88,10 +88,13 @@
 <form method="post" action="{{ url_for('send_campaign_template', template_id=template['id']) }}" class="detail-card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field-label">Who it goes to</label>
+  {#- An occasion's draft newsletter (25 Nov 2026) comes with its audience ticked: the newsletter list and past guests,
+      each person once. The owner can change it before sending. -#}
+  {%- set _pre = ((template['audience'] or '').split(',')) if 'audience' in template.keys() else [] %}
   <div style="display:flex; flex-wrap:wrap; gap:14px; margin-bottom:12px;">
     {% for key, label in segments.items() %}
     <label class="checkbox-row">
-      <input type="checkbox" name="segments" value="{{ key }}">
+      <input type="checkbox" name="segments" value="{{ key }}"{% if key in _pre %} checked{% endif %}>
       <span>{{ label }} <span class="upload-hint">({{ audience_counts[key] }})</span></span>
     </label>
     {% endfor %}

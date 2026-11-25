@@ -217,6 +217,7 @@ SUITES = [
     "test_whats_on_through_the_year",
     "test_whats_on_kept_up",
     "test_stay_occasions",
+    "test_dinner_at_gudanes",
     "test_retreat_celebrations",
     "test_getting_here",
     "test_ateliers",
@@ -403,6 +404,7 @@ SUITES = [
     "test_travelling_together",
     "test_weather",
     "test_weather_jobs",
+    "test_book_weather",
     "test_own_record",
     "test_utc_slices",
     "test_stamp_times",
@@ -640,6 +642,9 @@ SUITES = [
     # of their length, one newsletter form, the words and the photographs.
     "test_site_review_2",
     "test_public_pages_measured",
+    # 25 Nov 2026 (owner's screenshots): a tall photograph opened at the left of the screen, and a
+    # workshop guest's signature ran out through its card's frame. Measured in a browser.
+    "test_lightbox_and_signatures",
     # 23 Nov 2026: a drawing beside every place on /whats-on, put in at the response (owner: "all the plain text is not good").
     "test_nearby_art",
     # 9 November 2026: the photograph at the top of a page at the size it is shown.
