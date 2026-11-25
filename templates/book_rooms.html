@@ -32,7 +32,7 @@
 {% from '_weekcost.html' import week_cost %}
 {% from '_flexible.html' import flexible %}
 {% from '_availcal.html' import avail_cal %}
-{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath, room_bath_link, room_sleeps, room_heading %}
+{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath, room_bath_link, room_sleeps, room_heading, room_bath_where %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_compare_rooms.html' import compare_rooms %}
 
@@ -405,6 +405,38 @@
     bath for the King, Marquis and Family Suites; and the eight things it is made of. The brief's layout stays: the
     long bathroom large beside the words, the bath, a painted basin and the window beneath, and the points with a
     drawing each. #bathrooms is what the room cards' "Your own private bathroom" opens. -#}
+{#- The rooms side by side (site review 25 Nov 2026, 2.3). Every room page said "the comparison table is the quickest
+    way to see which suits" and linked to a table that was not there. Here it is, read from each room's own columns, as
+    the cards are: anything a room has not been given says nothing rather than guess. On a phone each room is a card and
+    each figure carries its heading (.g-rc__k). -#}
+{%- set _cmp = rooms|list %}
+{% if _cmp|length > 1 %}
+<section class="g-sec g-sec--tight" id="compare" aria-labelledby="compare-h"><div class="g-wrap">
+  <p class="g-fr">Les chambres <span class="g-fr__en">The rooms</span></p>
+  <h2 id="compare-h" class="g-place">The Rooms Side by Side</h2>
+  <div class="table-wrap">
+  <table class="g-rcmp">
+    <thead><tr><th scope="col">Room</th><th scope="col">Beds</th><th scope="col">Sleeps</th><th scope="col">Size</th><th scope="col">Bathroom</th><th scope="col">View</th><th scope="col">From, a night</th></tr></thead>
+    <tbody>
+    {%- for r in _cmp %}
+      {%- set _rn = room_name(r['name'])|trim %}
+      <tr>
+        <th scope="row"><a href="{{ url_for('book_room', room_id=r['id']) }}" translate="no">{{ room_title(r['name']) }}</a>{% if room_plain(r['name']) %}<span class="g-rcmp__plain">{{ room_plain(r['name']) }}</span>{% endif %}</th>
+        <td><span class="g-rc__k">Beds</span> {{ r['bed_setup'] or '' }}</td>
+        <td><span class="g-rc__k">Sleeps</span> {% if 'Family' in r['name'] and (r['max_children'] or 0)|int > 0 %}{{ r['max_adults'] }} adults, {{ r['max_children'] }} children{% elif r['max_adults'] or r['max_occupancy'] %}{{ room_sleeps(r) }}{% endif %}</td>
+        <td><span class="g-rc__k">Size</span> {% if r['size_sqm'] %}{{ r['size_sqm']|int }} m²{% endif %}</td>
+        <td><span class="g-rc__k">Bathroom</span> {% if (r['bathroom'] or '')|lower == 'private' %}Private, {{ room_bath_where(_rn) }}{% elif r['bathroom'] %}{{ r['bathroom']|capitalize }}{% endif %}</td>
+        <td><span class="g-rc__k">View</span> {% if r['outlook'] %}{% if _rn in ['The Marquis Suite', 'The Family Suite'] %}Mountains and the front{% else %}{{ r['outlook']|capitalize }}{% endif %}{% endif %}</td>
+        <td><span class="g-rc__k">From, a night</span> {% if r['price_per_night'] %}€{{ '{:,.0f}'.format(r['price_per_night']) }}{% endif %}</td>
+      </tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="g-hint">Every room includes breakfast. Prices are the standard rate; your dates may differ, and the room’s page shows the price for them.</p>
+</div></section>
+{% endif %}
+
 <section class="g-sec g-baths-sec" id="bathrooms" aria-labelledby="baths-h"><div class="g-wrap">
   <div class="g-baths__top">
     <header class="g-baths__head">

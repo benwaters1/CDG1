@@ -76,7 +76,8 @@ def run():
             para = key
             break
     s.check("there is prose on the page to work with", para is not None)
-    said = "CECI EST LA PHRASE TRADUITE, et rien d'autre ne doit bouger."
+    # A curled apostrophe, as the page is typeset (site review 25 Nov): a straight one is curled on the way out.
+    said = "CECI EST LA PHRASE TRADUITE, et rien d’autre ne doit bouger."
     # ONE ENTRY AND NOTHING ELSE, so the size check below measures this
     # substitution rather than this one plus whichever of the other 544 table
     # entries happen to appear on the page.

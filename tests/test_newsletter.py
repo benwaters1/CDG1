@@ -104,7 +104,8 @@ def run():
                     "Coming up" not in letter["body"]
                     and "Coming up" not in (letter["html"] or ""))
         s.check("the workshops it advertises are only the ones the public page offers",
-                all(w["url"].rstrip("/").split("/")[-1].isdigit() for w in on_offer))
+                # a public retreat's page is at its name since 25 Nov (/retreats/<name>); a private stay's never is
+                all("/retreats/" in w["url"] for w in on_offer), detail=str([w["url"] for w in on_offer][:3]))
 
         s.section("The form does not leak who is on the list")
         before = len(sent)

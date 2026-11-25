@@ -289,7 +289,10 @@
 {#- 24 Nov 2026 (site review, 7): the page about photographs opened on words alone. It opens on one now, as every
     other page does: guests on the restorers' scaffold, which is what the words beneath it say the record is. (The
     gallery may repeat a photograph another page draws large: test_site_review_2's one-home rule lets it.) -#}
-<section class="g-hero">
+{#- Site review 25 Nov (4.7): the title ran across the faces of the women on the scaffold, and there is no crop that
+    clears them (the one standing is already near the top edge). The photograph is shown whole and the title sits in a
+    band beneath it (.g-hero--below). -#}
+<section class="g-hero g-hero--below">
   <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ url_for('static', filename='img/retreats/restoration-scaffold.jpg') }}" alt="Guests on the restorers’ scaffold among the gilded panels">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">

@@ -92,7 +92,8 @@ KNOWN_LONG = {
     # 23 Nov: +100 for each room's plain name, small beneath its French title (owner's website brief, 3).
     # 23 Nov, later: +200 for the type pass (one size per rank of heading).
     # 24 Nov: +200 for Key Information's "Arrival and departure" line (owner: check-out at 11am); measured 13,496.
-    "/book": 13600,
+    # 25 Nov, site review (2.3): +500 for The Rooms Side by Side, the table the room pages had pointed at; measured 13,975.
+    "/book": 14100,
     # 23 Nov, later: +100 for the same type pass.
     # 24 Nov: +800, three retreat guests' lines from their thank-you letters (owner's brief).
     # 24 Nov: +2,750 for the two sections the owner's retreats brief adds, What You'll Do and The Bathrooms

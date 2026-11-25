@@ -453,7 +453,7 @@
     <button type="button" class="g-car__btn" data-car-next aria-label="Next room"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 4 8 8-8 8"/></svg></button>
   </div>
   </section>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Meet all {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} rooms</a></p>
+  <p style="margin-top:var(--s6); text-align:center">{#- site review 25 Nov (4.4): centred under the rooms -#}<a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Meet all {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} rooms</a></p>
 </div></section>
 {% endif %}
 

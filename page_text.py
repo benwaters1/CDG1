@@ -37,6 +37,9 @@ FR = {
     "See what it looks like first": "Voir à quoi cela ressemble",
     "Subscribe": "S'abonner",
     "Groups": "Groupes",
+    # -- Site review 25 Nov 2026: "Déjeuner et dîner à restaurants à proximité" -- the link that follows is
+    #    "restaurants à proximité", so the words before it need the article: aux. -----------------
+    "Lunch and dinner at the": "Déjeuner et dîner aux",
     # -- Site review 25 Nov 2026: the Family Suite's wallpaper, by name (owner: Antoinette Poisson
     #    made it as well as the bathrooms'). Written here so the French and Spanish pages change
     #    the same day as the English rather than waiting for the translation job. ----------------

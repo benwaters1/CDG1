@@ -65397,6 +65397,36 @@ WEATHER_WORDS = {
     95: "a thunderstorm", 96: "a thunderstorm", 99: "a thunderstorm",
 }
 
+# The same words in French and Spanish (site review 25 Nov 2026: "overcast" was
+# English on the French /book). Their own table, not translations.py: there
+# "clear" is the verb on a button ("effacer"), and the sky is not that.
+WEATHER_WORDS_IN = {
+    "fr": {"clear": "dégagé", "mostly clear": "plutôt dégagé", "some cloud": "quelques nuages",
+           "overcast": "couvert", "fog": "brouillard", "freezing fog": "brouillard givrant",
+           "light drizzle": "bruine légère", "drizzle": "bruine", "heavy drizzle": "forte bruine",
+           "light rain": "pluie légère", "rain": "pluie", "heavy rain": "forte pluie",
+           "freezing rain": "pluie verglaçante", "light snow": "neige légère", "snow": "neige",
+           "heavy snow": "fortes chutes de neige", "snow grains": "neige en grains", "showers": "averses",
+           "heavy showers": "fortes averses", "snow showers": "averses de neige",
+           "heavy snow showers": "fortes averses de neige", "a thunderstorm": "un orage",
+           "hard to say": "difficile à dire"},
+    "es": {"clear": "despejado", "mostly clear": "casi despejado", "some cloud": "algunas nubes",
+           "overcast": "cubierto", "fog": "niebla", "freezing fog": "niebla helada",
+           "light drizzle": "llovizna ligera", "drizzle": "llovizna", "heavy drizzle": "llovizna intensa",
+           "light rain": "lluvia ligera", "rain": "lluvia", "heavy rain": "lluvia intensa",
+           "freezing rain": "lluvia helada", "light snow": "nieve ligera", "snow": "nieve",
+           "heavy snow": "nevada intensa", "snow grains": "cinarra", "showers": "chubascos",
+           "heavy showers": "chubascos intensos", "snow showers": "chubascos de nieve",
+           "heavy snow showers": "chubascos de nieve intensos", "a thunderstorm": "una tormenta",
+           "hard to say": "difícil de decir"},
+}
+
+
+def weather_words(code):
+    """The sky for an Open-Meteo code, in the reader's language."""
+    word = WEATHER_WORDS.get(code, "hard to say")
+    return WEATHER_WORDS_IN.get(current_language(), {}).get(word, word)
+
 
 def fetch_weather(timeout=8):
     """Ask Open-Meteo what it is doing. Raises on anything unusable.
@@ -65538,7 +65568,7 @@ def weather_now(conn, *, max_age_minutes=WEATHER_MAX_AGE_MINUTES, now=None):
         # is fifteen degrees when that was yesterday afternoon.
         return None
     return {"c": snap.get("c"),
-            "words": WEATHER_WORDS.get(snap.get("code"), "hard to say"),
+            "words": weather_words(snap.get("code")),
             "minutes_old": int(age.total_seconds() // 60),
             # The house's clock at the reading (owner, 25 Nov 2026): "Right
             # now at the château · 8°C, overcast · 13:40". UTC would read an
@@ -65974,7 +66004,7 @@ def forecast_nights(conn, *, now=None):
         out[day] = {"iso": day.isoformat(), "dow": dow, "day": day.day, "mon": mon,
                     "high": weather_degrees(high),
                     "low": weather_degrees(low) if low is not None else None,
-                    "words": WEATHER_WORDS.get(code, "hard to say"),
+                    "words": weather_words(code),
                     "frost": low is not None and low <= 0,
                     "snow": code in SNOW_CODES,
                     "hot": high >= 28}
