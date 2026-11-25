@@ -28,6 +28,9 @@
   </div>
 </div>
 
+{#- 25 Nov 2026 (owner): two pages called Occasions. This one prepares for the guests' own; the other sells dates. -#}
+{% if stay_occasions_open %}<p class="upload-hint" style="margin-bottom:.5rem">Selling a date to guests? <a href="{{ url_for('admin_stay_occasions') }}">Stay occasions →</a></p>{% endif %}
+
 <p class="upload-hint">
   Each goes on the task list
   {% if board.days == 0 %}on the day they arrive{% else %}{{ board.days }} day{{ '' if board.days == 1 else 's' }} before they arrive{% endif %},

@@ -142,9 +142,11 @@ def run():
         {"c": 8, "code": 3, "at": (now - timedelta(minutes=12)).isoformat()}))
     body = anon.get("/book").get_data(as_text=True)
     # Scoped to the weather block. "as of" is an ordinary English phrase and
-    # a whole-page search for it is a search of the whole site's copy.
-    at = body.find("g-wx")
-    block = body[at:body.find("</div>", at)] if at >= 0 else ""
+    # a whole-page search for it is a search of the whole site's copy. On
+    # Stay the reading is the "Right now" row of the weather card since
+    # 25 Nov 2026 (test_book_weather has the card).
+    at = body.find("g-typwx__now")
+    block = body[at:body.find("</p>", at)] if at >= 0 else ""
     s.check("the block is there to check", bool(block.strip()))
     s.check("no age on a twelve-minute-old reading", "as of" not in block,
             detail="furniture on every page load")
