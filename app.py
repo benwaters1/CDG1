@@ -198,10 +198,6 @@ DB_PATH = os.environ.get("GUDANES_DB_PATH") or os.path.join(BASE_DIR, "gudanes_h
 DATA_DIR = os.path.dirname(os.path.abspath(DB_PATH)) or BASE_DIR
 UPLOAD_DIR = os.environ.get("GUDANES_UPLOAD_DIR") or os.path.join(DATA_DIR, "uploads")
 ROOM_PHOTO_DIR = os.environ.get("GUDANES_ROOM_PHOTO_DIR") or os.path.join(DATA_DIR, "room_photos")
-# An occasion's menu and banner photograph (Dinner at Gudanes, 25 Nov 2026):
-# on the volume beside the room photographs, never in git or the database.
-OCCASION_FILES_DIR = (os.environ.get("GUDANES_OCCASION_FILES_DIR")
-                      or os.path.join(DATA_DIR, "occasion_files"))
 ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "docx", "doc", "txt"}
 # Kept separate from the list above on purpose: a photograph upload has no
 # business accepting a .docx, and a document upload has none accepting a .heic.
@@ -771,6 +767,13 @@ def _load_dotenv():
 
 
 _load_dotenv()
+
+# An occasion's menu and banner photograph (Dinner at Gudanes, 25 Nov 2026):
+# on the volume beside the room photographs, never in git or the database.
+# Read after .env, as everything but the three data paths above it is
+# (test_camera_roll); the harness sets it in the real environment first.
+OCCASION_FILES_DIR = (os.environ.get("GUDANES_OCCASION_FILES_DIR")
+                      or os.path.join(DATA_DIR, "occasion_files"))
 
 # The card reader's shared secret, read AFTER .env has been loaded. Unset
 # means the machine door does not exist at all -- a 404, not a 401, because
@@ -55738,7 +55741,6 @@ def stay_occasion_page(slug):
     conn.close()
     return render_template("stay_occasion.html", occ=card, dinners=dinners, menu=menu,
                            night_menus=night_menus,
-                           dinner_title=occasion_dinner_title(occ),
                            dinner_time_words=clock_words(occ["dinner_time"]) if occ["dinner_time"] else "",
                            preview=occ["status"] != "live")
 
