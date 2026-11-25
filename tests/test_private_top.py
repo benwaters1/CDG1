@@ -57,7 +57,7 @@ def run():
                                       "A party of friends"], detail=str(occ))
     days = re.findall(r'<h3 class="g-shootsteps__t">([^<]*)</h3>', page)
     s.check("a sample private retreat of four days, from the retreats' own",
-            days == ["The Day of Arrival", "The Kitchen and the Market", "The Restoration and Foix", "Au Revoir"],
+            days == ["Arrival", "The Kitchen and the Market", "The Restoration and Foix", "Au Revoir"],
             detail=str(days))
     fine = re.search(r'<section class="g-sec g-wed-fine[^"]*">(.*?)</section>', page, re.S)
     fine = fine.group(1) if fine else ""
