@@ -26,7 +26,7 @@
    workshop in full with a sample day, then stay/arrival/inclusions. #}
 
 {#- 26 Oct (owner, the retreats copy deck, section 2): the page rewritten around one idea. People come to Gudanes for
-    France; a retreat is France at its most French, in a château built in 1741, very nearly lost and coming back to life.
+    France; a retreat is France at its most French, in a château begun in 1741, very nearly lost and coming back to life.
     It replaces the opening, the glance panel ("three for the brocantes, five for the kitchen..."), Why a Retreat,
     Choose Your Experience, A Small Group and the atelier gloss, all of which sold the earlier idea. The photographs are
     the owner's picks, the house's own copies (_retreat_photos.html); none is shown twice on the page. -#}
@@ -54,7 +54,7 @@
     not a course"). It says what it is. -#}
 <section class="g-sec"><div class="g-wrap">
   <p class="g-p g-lede-first">A few days of French château life: cooking classes with the château’s chefs, antiquing in the brocantes of the Ariège, the frescoes coming back from under the plaster, long candlelit dinners, and so much more besides. Take part in everything, or nothing at all.</p>
-  <p class="g-p">You stay within the château itself, with a small company of guests and no one else. Each retreat has its theme: the kitchen, Christmas, the brocantes, the old crafts, or simply a French summer. Around it, the château does what it was built to do.</p>
+  <p class="g-p">You stay within the château itself, with a small company of guests and no one else. Each retreat has its theme: the kitchen, Christmas, the brocantes, or simply a French summer. Around it, the château does what it was built to do.</p>
 </div></section>
 
 <!-- ============ WHAT YOU'LL DO ============ -->
@@ -327,7 +327,7 @@
   <p class="g-p" style="margin-top:calc(var(--s2)*-1)">Every date across the year, in one place. Choose a retreat above to narrow it.</p>
   {# The overbooking promise, moved here from The Year's Programme (removed: it listed these same dates a second time).
      Kept word for word; the write lock in workshop_register and workshop_manage, and test_no_overbooking, stand behind it. #}
-  <p class="g-p">Places are shown live. When a session reads as full, it is full &mdash; we do not overbook a château this size.</p>
+  <p class="g-p">Places are shown live. When a date reads as full, it is full: we do not overbook a château this size.</p>
 <div class="g-sittings-grid">
     {% for item in ns.rows|sort(attribute='r.session.start_date') %}
     {% set w = item.w %}{% set r = item.r %}
@@ -502,7 +502,7 @@
   ('Can I come on my own?',
    'Yes. You can share a room with another guest travelling on their own, or take a room to yourself for a supplement, shown on each retreat’s page.'),
   ('What if I need to cancel?',
-   'Retreats are non-refundable, but please write to us all the same: we look at every cancellation individually, and we can sometimes move you to another date instead. If we ever cancel a retreat, we return everything you have paid or offer you another date, as you prefer. The detail is in our <a href="' ~ url_for('terms_page') ~ '">terms</a>.'),
+   'Retreats are non-refundable, but please write to us all the same: we look at every cancellation individually, and we can sometimes move you to another date. If we ever cancel a retreat, we return everything you have paid or offer you another date, as you prefer. The detail is in our <a href="' ~ url_for('terms_page') ~ '">terms</a>.'),
   ('What if I need to change my dates?',
    'Write to us; we can sometimes move you to another date.'),
   ('Can the kitchen cater for my diet?',
@@ -565,10 +565,11 @@
   {# Restored. I had replaced this with a Google review about the table and the
      entertainment - the kind of review the note below says the page will not let
      stand in for a review of the work. The honest fallback fits the section. #}
-  <p class="g-limit"><span class="g-limit__k">Not yet</span> We have not gathered these properly. If you have done an atelier here and would write two sentences, <a href="{{ url_for('contact_page') }}">tell us</a> — it is worth more to the next person than anything we could write.</p>
+  <p class="g-limit"><span class="g-limit__k">Not yet</span> We have not gathered these properly. If you have been on a retreat here and would write two sentences, <a href="{{ url_for('contact_page') }}">tell us</a>: it is worth more to the next person than anything we could write.</p>
   {% endif %}
 
-  <p class="g-hint">Google reviews for the château cover the stay, the table and the retreats together. We would rather separate them than let a review of the breakfast stand in for a review of the work.</p>
+  {#- Site review 25 Nov: "We would rather separate them than let a review of the breakfast stand in for a review of the work" explained rather than said, and "the work" was unclear. -#}
+  <p class="g-hint">Google reviews for the château cover the stay, the table and the retreats together.</p>
 </div></section>
 {% endif %}
 

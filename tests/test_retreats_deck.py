@@ -49,9 +49,9 @@ DECK = {
     "noel": ("Four December days at home in the château: a gingerbread château to ice",
              "A French Christmas in a château, by the fire",
              "Four days in December as the château fills for Noël"),
-    "cooking": ("Five spring days with the château’s chefs and pastry chef",
+    "cooking": ("Five days of early summer with the château’s chefs and pastry chef",  # site review 25 Nov: 25-30 June
                 "French cooking, in the kitchens where it belongs",
-                "Five spring days in the kitchens of a château built in 1741"),
+                "Five days of early summer in the kitchens of a château begun in 1741"),
     "finds": ("Three days of chiner in the markets, brocantes and vide-greniers of the Ariège",
               "Chiner: the French art of the find",
               "Three days devoted to chiner, the French art of hunting"),

@@ -53,7 +53,7 @@
     <a href="{{ url_for('book_rooms', arrival=occ['first_night'], departure=occ.departure) }}" class="g-btn g-btn--solid">Stay these nights</a>
     {% if occ.is_guest_chef and dinners %}<a href="{{ url_for('restaurant_book', date=dinners[0]) }}" class="g-btn">Book dinner</a>{% endif %}
   </p>
-  <p class="g-hint">Coming from abroad? <a href="{{ url_for('getting_here') }}">Getting here</a>: Paris, Toulouse and the last few miles. Every other date is on <a href="{{ url_for('whats_on_at_gudanes') }}">At Gudanes</a>.</p>
+  <p class="g-hint">Coming from abroad? <a href="{{ url_for('getting_here') }}">Getting here</a>: Paris, Toulouse and the last few hundred metres. Every other date is on <a href="{{ url_for('whats_on_at_gudanes') }}">At Gudanes</a>.</p>
 </div></section>
 {% if occ.menu or night_menus %}{{ menu_dialog_once() }}{% endif %}
 {% endblock %}

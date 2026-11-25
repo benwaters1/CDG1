@@ -9231,6 +9231,7 @@ def init_db():
     correct_extra_wording(conn)
     correct_terms_la_table(conn)
     correct_terms_checkout_11am(conn)
+    correct_terms_site_review_25nov(conn)
     conn.commit()
 
     # The list a room is walked against, so the first person to open the page
@@ -9396,6 +9397,7 @@ def init_db():
     apply_extras_transfers_2026_10_18(conn)
     # The first five occasions, as drafts for the owner to confirm, once.
     seed_first_occasions(conn)
+    correct_occasion_house_words(conn)
     # The charcuterie board, never arranged on a Sunday, once.
     apply_extras_sunday_2026_10_19(conn)
     # The Booking.com stay that never arrived, on The Twin Room, once.
@@ -9701,6 +9703,7 @@ def init_db():
     # Lombrives opens on set days out of season (site review, 24 Nov), once.
     correct_whats_on_lombrives(conn)
     fix_ax_market_days(conn)
+    fix_ax_market_distance(conn)
     seed_whats_on_dates(conn)
     link_whats_on_sources(conn)
 
@@ -16446,7 +16449,7 @@ DEFAULT_WHATS_ON = [
     {"title": "Ax-les-Thermes Market",
      "description": "Mountain produce, and the thermal baths a short walk away "
                     "afterwards.",
-     "location": AX_MARKET_PLACE, "distance": "25 minutes", "weekday": 1,
+     "location": AX_MARKET_PLACE, "distance": "20 minutes", "weekday": 1,
      "start_time": "07:00", "end_time": "13:00"},
     {"title": "Foix Market",
      "description": "Friday, in the streets below the counts' castle. The "
@@ -16556,6 +16559,24 @@ def correct_whats_on_lombrives(conn):
                  (key, datetime.now(timezone.utc).isoformat()))
     conn.commit()
     return changed
+
+def fix_ax_market_distance(conn):
+    """The Ax market rows from "25 minutes" to "20 minutes", once.
+
+    Site review 25 Nov 2026 (owner's yes, "make the distances agree"): /whats-on
+    puts Ax-les-Thermes "about twenty minutes" away under Places, and its market
+    rows said 25. Only rows that still say exactly 25 minutes move; one the
+    owner has typed something else into is left as it is."""
+    key = "whats_on_ax_distance_25nov"
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
+        return 0
+    moved = conn.execute(
+        """UPDATE whats_on SET distance = '20 minutes'
+            WHERE title = 'Ax-les-Thermes Market' AND distance = '25 minutes'""").rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO NOTHING", (key, datetime.now(timezone.utc).isoformat()))
+    return moved
+
 
 def fix_ax_market_days(conn):
     """The Ax market on its real days, once per database. Returns what it did.
@@ -16816,6 +16837,66 @@ def correct_terms_checkout_11am(conn):
     return changed
 
 
+# Site review 25 Nov 2026 (owner's yes to 1.14 and 1.15, and section 3). The
+# stored terms said a balance could be paid "on the day" -- nothing is taken at
+# the door (payment policy, 8 Oct) -- offered to "move your dates instead",
+# which the owner ruled out on 15 Oct, called the retreats workshops fourteen
+# times under a heading "Dining and workshops", and carried four long dashes
+# in sentences. Same footing as the two edits above: once, and only where the
+# words still stand as shipped, matched across the stored line wraps. A
+# sentence the owner has rewritten by hand is his and is left alone.
+TERMS_SITE_REVIEW_25NOV = "terms_site_review_25nov_done"
+
+
+def _terms_phrase(words):
+    """A phrase as a pattern that matches it across the stored hard wraps."""
+    return re.compile(r"\s+".join(re.escape(w) for w in words.split()))
+
+
+TERMS_SITE_REVIEW_EDITS = (
+    (_terms_phrase("Others take a deposit, with the balance due either before arrival "
+                   "or on the day — whichever applies to your booking is stated clearly"),
+     "Others take a deposit, with the balance due before arrival. Which applies to "
+     "your booking is stated clearly"),
+    (_terms_phrase("we can sometimes move your dates instead."), "we can sometimes move your dates."),
+    (_terms_phrase("where we must — for example,"), "where we must: for example,"),
+    (_terms_phrase("outside our control — fire, flood,"), "outside our control, such as fire, flood,"),
+    (_terms_phrase("or an order of the authorities — we will offer"),
+     "or an order of the authorities, we will offer"),
+    (_terms_phrase("if something is wrong — almost everything"), "if something is wrong: almost everything"),
+    (_terms_phrase("5. Dining and workshops"), "5. Retreats and meals"),
+    (re.compile(r"\bWorkshops\b"), "Retreats"),
+    (re.compile(r"\bworkshops\b"), "retreats"),
+    (re.compile(r"\bworkshop\b"), "retreat"),
+)
+
+
+def site_review_terms(text):
+    """The terms with the 25 Nov edits applied; (text, how many changed)."""
+    changed = 0
+    for pattern, replacement in TERMS_SITE_REVIEW_EDITS:
+        text, n = pattern.subn(replacement, text)
+        changed += n
+    return text, changed
+
+
+def correct_terms_site_review_25nov(conn):
+    """Apply the site review's edits to the stored terms, once."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (TERMS_SITE_REVIEW_25NOV,)).fetchone():
+        return 0
+    row = conn.execute("SELECT value FROM app_settings WHERE key = 'terms_and_conditions'").fetchone()
+    changed = 0
+    if row and row["value"]:
+        text, changed = site_review_terms(row["value"].replace("\r\n", "\n"))
+        if changed:
+            conn.execute("UPDATE app_settings SET value = ? WHERE key = 'terms_and_conditions'", (text,))
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO NOTHING",
+                 (TERMS_SITE_REVIEW_25NOV, datetime.now(timezone.utc).isoformat()))
+    return changed
+
+
 def seed_added_extras(conn):
     """Put each ADDED_EXTRAS entry in, once per database. Returns how many."""
     cols = {c["name"] for c in conn.execute("PRAGMA table_info(extras)").fetchall()}
@@ -16938,7 +17019,7 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
                  'is summer, and from a recipe book written at Gudanes in the 1700s. '
                  'You will also spend a morning on the frescoes, because it is '
                  'difficult to eat in a room and not want to know how it was saved. '
-                 'And much more: the house as it was, full of life.',
+                 'And much more: the château as it was, full of life.',
   'itinerary': 'SEASONAL FRENCH COOKING — four hands-on classes with the château '
                'chefs, built around whatever the Ariège is giving that week\n'
                "THE 1700s COOKBOOK — historic dishes from the château's own recipe "
@@ -54925,7 +55006,7 @@ def create_stay_occasion(conn, *, name, first_night, last_night, why="", source_
 # Saveurs is held until its 2027 dates are published, for the reader to find.
 FIRST_OCCASIONS = [
     ("Christmas at Gudanes", "2026-12-23", "2026-12-25", "Christmas. The Noël retreat is 5 to 9 December, so no clash.", None,
-     "Spend Christmas in a château in the Pyrénées, with the mountains white above the valley and the house "
+     "Spend Christmas in a château in the Pyrénées, with the mountains white above the valley and the château "
      "dressed for the season. Three nights in one of the château's rooms, with breakfast each morning."),
     ("New Year at Gudanes", "2026-12-30", "2026-12-31",
      "New Year's Eve. A family has been quoted 28 December to 1 January for the interconnecting rooms (not on "
@@ -55012,6 +55093,27 @@ FIRST_SUGGESTIONS = [
     ("first-list:bastille:2027", "Bastille Day", "2027-07-13", "2027-07-14",
      "14 July, a Wednesday in 2027. Bastille Day 2028 is drafted instead.", None),
 ]
+
+
+# Site review 25 Nov 2026 (1.4, owner's yes): "château, not house". The Christmas
+# occasion's description was seeded as "the house dressed for the season"; a row
+# that still reads so is corrected once, and one the owner has rewritten is not.
+OCCASION_HOUSE_WORDS_25NOV = "occasion_house_words_25nov_done"
+
+
+def correct_occasion_house_words(conn):
+    """'the house dressed for the season' -> 'the château ...', once."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (OCCASION_HOUSE_WORDS_25NOV,)).fetchone():
+        return 0
+    cur = conn.execute(
+        """UPDATE stay_occasions
+              SET description = REPLACE(description, 'the house dressed for the season',
+                                        'the château dressed for the season')
+            WHERE description LIKE '%the house dressed for the season%'""")
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
+                 (OCCASION_HOUSE_WORDS_25NOV, datetime.now(timezone.utc).isoformat()))
+    return cur.rowcount
 
 
 def seed_first_occasions(conn):
@@ -59061,8 +59163,41 @@ def room_offer(conn, room, arrival, departure, party_size):
     return available, None
 
 
+# Site review 25 Nov 2026 (2.4). A room's "Book this room" link carried
+# name=&email=&phone= in its address, so the day those were filled -- the owner
+# booking a waitlisted guest from Admin, a link in a letter -- a guest's name,
+# email and telephone sat in the address bar, the browser's history and every
+# log between. They travel in the session now. A booking page reached WITH them
+# in the address keeps them in the session and answers with a redirect to the
+# same page without them, so they are in the address for one request, never on
+# a page that can be bookmarked, shared or sent on in a Referer.
+BOOKING_PREFILL_KEYS = ("name", "email", "phone")
+
+
+def booking_prefill_redirect():
+    """A redirect to this page minus name/email/phone, or None.
+
+    Non-empty values are kept in session["book_prefill"] first."""
+    if not any(k in request.args for k in BOOKING_PREFILL_KEYS):
+        return None
+    got = {k: (request.args.get(k) or "").strip()[:200] for k in BOOKING_PREFILL_KEYS}
+    if any(got.values()):
+        session["book_prefill"] = {k: v for k, v in got.items() if v}
+    rest = [(k, v) for k, v in request.args.items(multi=True) if k not in BOOKING_PREFILL_KEYS]
+    return redirect(request.path + (("?" + urlencode(rest)) if rest else ""), code=302)
+
+
+def booking_prefill():
+    """{name, email, phone} as kept by booking_prefill_redirect, or blanks."""
+    kept = session.get("book_prefill") or {}
+    return {k: kept.get(k, "") for k in BOOKING_PREFILL_KEYS}
+
+
 @app.route("/book")
 def book_rooms():
+    tidied = booking_prefill_redirect()
+    if tidied is not None:
+        return tidied
     conn = get_db()
     rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
 
@@ -59248,8 +59383,8 @@ def book_rooms():
         weather=weather, stay_wx=stay_wx,
         wx_nights=[n for d, n in sorted(wx_nights.items()) if d >= house_today()],
         dinner_notes=dinner_notes,
-        prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
-        prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
+        prefill_name=booking_prefill()["name"], prefill_email=booking_prefill()["email"],
+        prefill_phone=booking_prefill()["phone"], prefill_party_size=request.args.get("party_size", ""),
         **grid,
     )
 
@@ -59954,13 +60089,23 @@ def _profile_prefill_for_booking(conn):
 
 @app.route("/book/<int:room_id>", methods=["GET", "POST"])
 def book_room(room_id):
+    if request.method == "GET":
+        tidied = booking_prefill_redirect()
+        if tidied is not None:
+            return tidied
     conn = get_db()
     room = conn.execute("SELECT * FROM rooms WHERE id = ? AND active = 1", (room_id,)).fetchone()
     if not room:
-        # A room taken off the site, or a number that never was: the rooms,
-        # temporarily, as a gone retreat goes to the retreats (24 Nov 2026).
-        # A room comes back on sale by a tick, so nothing is handed on for good.
+        # A room taken off the site goes to the rooms, temporarily, as a gone
+        # retreat goes to the retreats (24 Nov 2026): a room comes back on sale
+        # by a tick, so nothing is handed on for good. A number that never was
+        # a room is not found (site review 25 Nov 2026, 2.5): /book/99 answered
+        # with the rooms and a 200, which tells a search engine there is a page
+        # there, and tells a guest who mistyped nothing at all.
+        ever = conn.execute("SELECT 1 FROM rooms WHERE id = ?", (room_id,)).fetchone()
         conn.close()
+        if not ever:
+            abort(404)
         return redirect(url_for("book_rooms"), code=302)
     # Only what a guest may add. guest_bookable is the flag that decides it
     # everywhere else, and this form did not ask -- so an item kept for the
@@ -60310,9 +60455,9 @@ def book_room(room_id):
 
     arrival_raw = request.args.get("arrival", "")
     departure_raw = request.args.get("departure", "")
-    prefill_name = request.args.get("name", "")
-    prefill_email = request.args.get("email", "")
-    prefill_phone = request.args.get("phone", "")
+    prefill_name = booking_prefill()["name"]
+    prefill_email = booking_prefill()["email"]
+    prefill_phone = booking_prefill()["phone"]
     prefill_party_size = request.args.get("party_size", "")
     prefill_under_18 = request.args.get("guests_under_18", "")
     prefill_requests = prefill_promo = ""
@@ -67300,6 +67445,22 @@ def workshop_balance_due_day(start_date, balance_due_on=None):
     return start_date - timedelta(days=WORKSHOP_BALANCE_DAYS)
 
 
+@app.template_global()
+def paid_in_full_now(start_date, balance_due_on=None):
+    """True when a sitting booked today is paid in full at registration.
+
+    Site review 25 Nov 2026 (1.6): Noël starts on 5 December, inside the
+    thirty days, so compute_workshop_payment_terms charges the whole price --
+    while its page said "To hold a place: A deposit. The balance is taken
+    closer to the date" and "A 10% deposit reserves your place". The pages ask
+    this, which reads the same due day the charge does, so the words and the
+    money cannot disagree."""
+    start = parse_date(start_date) if isinstance(start_date, str) else start_date
+    if not start:
+        return False
+    return house_today() > workshop_balance_due_day(start, balance_due_on)
+
+
 def compute_workshop_payment_terms(total_price, deposit_percent, start_date, balance_due_on=None):
     """A workshop registration is really a whole-château retreat package, so
     it follows the same deposit/balance convention as the real thing: a
@@ -72435,7 +72596,17 @@ def workshop_detail(workshop_id):
         f"SELECT * FROM workshops WHERE id = ? AND active = 1 AND {WORKSHOP_IS_PUBLIC}",
         (workshop_id,)).fetchone()
     if not workshop:
+        # Site review 25 Nov 2026 (2.5): /workshops/999 answered with the list
+        # and a 200. A public retreat that has been switched off still goes to
+        # the list, temporarily (the 24 Nov rule above); a number that was
+        # never a public retreat is not found -- and a private stay is answered
+        # exactly as one, so the numbers still tell nobody which are private.
+        was_public = conn.execute(
+            f"SELECT 1 FROM workshops WHERE id = ? AND {WORKSHOP_IS_PUBLIC}",
+            (workshop_id,)).fetchone()
         conn.close()
+        if not was_public:
+            abort(404)
         return redirect(url_for("workshops_public"), code=302)
     today = house_today()
     sessions = public_sittings(conn, workshop_id, today)
@@ -72463,13 +72634,22 @@ def workshop_detail(workshop_id):
     # list and order /book offers, so a room off sale is not shown here either.
     rooms = conn.execute(
         "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    # Site review 25 Nov 2026 (1.8): the page offered "a room to yourself for
+    # EUR 1,600 more; tell us when you register" while Noel's form, its rooms
+    # all taken, offered no such tick and said a solo guest shares. The page now
+    # asks what the form asks (workshop_solo_bookable, rooms left on the sitting),
+    # so it promises a single room only on dates that still have one.
+    solo_open = any(
+        workshop_solo_bookable(
+            workshop, max(bookable_room_count(conn) - session_rooms_used(conn, s["id"]), 0))
+        for s in sessions)
     conn.close()
     # Its dates for search engines, put on the page by structured_data_for_search:
     # the template arrives whole from the design side and carries none.
     g.structured_events = workshop_events_structured(
         workshop, session_rows, workshop_page_url(workshop), "")
     return render_template("workshop_detail.html", workshop=workshop,
-                           session_rows=session_rows, rooms=rooms)
+                           session_rows=session_rows, rooms=rooms, solo_open=solo_open)
 
 
 @app.route("/workshops/register/<int:session_id>", methods=["GET", "POST"])

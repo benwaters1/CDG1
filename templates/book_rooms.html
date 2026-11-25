@@ -253,7 +253,9 @@
         {%- set _wdates = searched and _rest %}
         {%- set _wstay = searched and _winter_room and not availability.get(room['id']) %}
         {% if _wstay %}<p class="g-card__season">Kept for the warmer months</p>{% endif %}
-        {% if room['price_per_night'] and not _wstay %}
+        {#- Site review 25 Nov (2.2): no total on a room these dates cannot have. The Marquis and Family suites read
+            "€1,320 for 3 nights" and then "Not available these dates", a price for something not on offer. -#}
+        {% if room['price_per_night'] and not _wstay and not (searched and not availability.get(room['id'])) %}
         {# When dates are set, lead with the total for the stay — the figure a
            guest is actually deciding on — and keep the nightly rate beneath. #}
         {% set _n = stay_nights | default(0) | int %}
@@ -326,7 +328,7 @@
         </ul>
         {% if searched %}
           {% if availability.get(room['id']) %}
-            <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=_party) }}">Book this room</a>
+            <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, party_size=_party) }}">Book this room</a>
           {% elif _wstay %}
             <div class="g-winter">
               <p class="g-winter__fr" lang="fr">Une suite pour la belle saison</p>
@@ -410,7 +412,7 @@
       <h2 id="baths-h" class="g-place">The Bathrooms</h2>
       <p class="g-baths__lede">Installed in 2019, and among the finest rooms in the château.</p>
       <p class="g-p g-baths__p">Because the château is a historic monument, bathrooms cannot be built into its bedrooms. Instead each room has its own private bathroom, and the bathrooms are together on the ground floor.</p>
-      <p class="g-p g-baths__p">The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath.</p>
+      <p class="g-p g-baths__p">The King Suite, the Marquis Suite and the Family Suite each have a larger bathroom, with a bath.</p>
     </header>
     {#- No captions: the owner took them off every photograph on 15 Oct; the alt says what each shows. -#}
     <figure class="g-baths__lead">{{ pic(BATH_PHOTOS[0][0], BATH_PHOTOS[0][1], sizes='(min-width: 56rem) 62vw, 100vw', cls='g-baths__img g-baths__img--lead') }}</figure>
@@ -420,14 +422,15 @@
     <figure class="g-baths__f">{{ pic(BATH_PHOTOS[_i][0], BATH_PHOTOS[_i][1], sizes='(min-width: 40rem) 33vw, 100vw', cls='g-baths__img') }}</figure>
     {%- endfor %}
   </div>
+  {#- Site review 25 Nov: "Luxury" once, not on three lines running; the linen and the toiletries as /workshops has them. -#}
   <ul class="g-baths__feat">
     {%- for _k, _label, _text in [
       ('wallpaper', 'The wallpaper', 'Bespoke, by Antoinette Poisson, made by hand in Paris'),
       ('parquet', 'The floors', 'Eighteenth-century terracotta tiles'),
       ('basin', 'The basins', 'Painted with custom artwork and the château’s logo'),
       ('tap', 'The fittings', 'Luxury fittings throughout'),
-      ('towels', 'The linen', 'Luxury linen'),
-      ('toiletries', 'For you', 'Luxury shampoo, conditioner and bath gel'),
+      ('towels', 'The linen', 'Fine linen'),
+      ('toiletries', 'For you', 'Shampoo, conditioner and bath gel'),
       ('heater', 'Warmth', 'Heaters'),
       ('mountains', 'The view', 'Mountain views')] %}
     <li class="g-baths__pt"><span class="g-baths__ill" aria-hidden="true">{{ illus(_k) }}</span>

@@ -274,7 +274,8 @@
                   <b>{{ e['name'] }}</b>
                   {% if e['description'] %}<span>{{ e['description'] }}</span>{% endif %}
                 </span>
-                <span class="g-fig">€{{ '{:,.2f}'.format(e['price']) }}</span>
+                {#- Site review 25 Nov (2.16): "€50.00" here and "€50" on /book; whole euros as /book prints them. -#}
+                <span class="g-fig">€{{ ('{:,.0f}' if (e['price']|float) == (e['price']|int) else '{:,.2f}').format(e['price']|float) }}</span>
               
                 {# The loop variable is e, and there is no 'notice' column: this
                    arrived as x['notice'] and undefined-on-a-Row is a 500, so
@@ -332,9 +333,12 @@
                    placeholder="A birthday, an anniversary&hellip;" value="{{ _occ or '' }}">
           </div>
           <p class="g-field">
-            <label for="special_requests" class="g-vh">Anything we should know (optional)</label>
-            <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, occasion, arrival time, questions...">{{ prefill_requests | default('') }}</textarea>
-              <span class="g-hint">Optional. You can add to this later from your reservation.</span>
+            {#- Site review 25 Nov (2.16): three ways of saying optional in one step ("optional", "(optional)", "Optional.").
+                One now, the label's, as every other field on the form has it; and the occasion is out of the
+                placeholder, since it has its own field just above. -#}
+            <label for="special_requests">Your note <span class="g-opt">optional</span></label>
+            <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, arrival time, questions...">{{ prefill_requests | default('') }}</textarea>
+              <span class="g-hint">You can add to this later from your reservation.</span>
           </p>
           <p class="g-field g-field--narrow">
             <label for="promo_code">Promo code <span class="g-opt">optional</span></label>

@@ -125,7 +125,7 @@ def run():
         # Either wording: "telephone when you leave Les Cabannes" in the drive
         # note, "telephone from Les Cabannes" under the map since 24 September.
         s.check("but still says how to actually get in",
-                re.search(r"(?i)telephone (?:when you leave|from) Les Cabannes", page)
+                re.search(r"(?i)telephone (?:when you leave|from|as you reach) Les Cabannes", page)
                 is not None,
                 detail="which is true whether or not anybody has measured "
                        "anything")

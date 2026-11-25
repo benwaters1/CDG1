@@ -59,13 +59,15 @@
     enlarged. Captions are hidden under photographs across the site (owner, 15 Oct); the brief asks for these, so the
     row shows its own (.g-print in gudanes.css). The scans are the old site's addresses, swapped for the house's own
     copies at the response (serve_our_own_photographs). -#}
+{#- Site review 25 Nov (2.10): three captions in a row read only "Harper’s Bazaar". Each page now says which it is,
+    in the feature's own order (page 3, then page 5), and Moments Magazine has its line. -#}
 {%- set PRINT = [
   ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/96d22cad-f1d0-4161-9d52-35e05531bd37/Screenshot+2026-08-13+at+12.02.00+am.png?format=1000w', 'Harper’s Bazaar, the opening pages of the feature', 'Harper’s Bazaar', 'A feature across several pages, photographed at the château.'],
-  ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0c3b9d82-1222-4d40-ac6a-6c749ad0dec6/HB0914_Chateau_Page_5.webp?format=1000w', 'Harper’s Bazaar, a page from the feature', 'Harper’s Bazaar', ''],
-  ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/258842ba-9d16-4b83-914a-be0738ba5f27/HB0914_Chateau_Page_3.webp?format=1000w', 'Harper’s Bazaar, another page from the feature', 'Harper’s Bazaar', ''],
+  ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/258842ba-9d16-4b83-914a-be0738ba5f27/HB0914_Chateau_Page_3.webp?format=1000w', 'Harper’s Bazaar, page three of the feature', 'Harper’s Bazaar', 'Page three of the feature.'],
+  ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0c3b9d82-1222-4d40-ac6a-6c749ad0dec6/HB0914_Chateau_Page_5.webp?format=1000w', 'Harper’s Bazaar, page five of the feature', 'Harper’s Bazaar', 'Page five of the feature.'],
   ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/654430d3-3cd9-47fb-a754-48bcda80cede/Screen%2BShot%2B2023-03-13%2Bat%2B11.24.14%2Bam.webp?format=1000w', 'Vogue Netherlands, the November issue', 'Vogue Netherlands', 'The November issue.'],
   ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/06f79bbe-6e4a-45d2-824b-e2d4013f0879/Screenshot+2026-08-13+at+12.02.27+am.png?format=1000w', 'The Australian Financial Review, the château and the work behind it', 'The Australian Financial Review', 'The château and the work behind it.'],
-  ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/99f9e48d-7ce9-4d3e-8cc4-878df9f72b20/Screenshot+2026-08-13+at+12.13.46+am.png?format=1000w', 'Moments Magazine', 'Moments Magazine', '']
+  ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/99f9e48d-7ce9-4d3e-8cc4-878df9f72b20/Screenshot+2026-08-13+at+12.13.46+am.png?format=1000w', 'Moments Magazine', 'Moments Magazine', 'A feature on the château.']
 ] %}
 <section class="g-sec g-sec--sand g-gallery-sec"><div class="g-wrap">
   <p class="g-fr">Dans la presse <span class="g-fr__en">In print</span></p>
@@ -78,17 +80,17 @@
     </figure>
     {%- endfor %}
   </div>
-  <div class="g-print__hint">Tap a page to read it larger.</div>
+  <div class="g-print__hint">Select a page to read it larger.</div>
 </div></section>
 
 {#- The stories that can be read today. A story with no address yet shows no button: a button that leads nowhere is
     worse than none. Each address answered 200 on 23 November 2026; test_press_page_2026_11_23 holds the list. -#}
+{#- Site review 25 Nov (2.10): Architectural Digest (2017) and House & Garden (December 2018) had no address, so
+    they were two stories here that could not be read. They are named under "Also in" until there is a link. -#}
 {%- set STORIES = [
   {'pub': 'Vogue', 'when': '2020', 'title': 'The château, past and present', 'line': 'In the spring of 2020, from an apartment in New York, a Vogue editor looked back on Gudanes as it was and as it is becoming.', 'href': 'https://www.vogue.com/slideshow/past-present-chateau-de-gudanes'},
   {'pub': 'Vogue', 'when': '2019', 'title': 'From Gudanes to Paris', 'line': 'Dôen brought its Fall 2019 collection to the château, and Vogue followed the journey from the Pyrénées to Paris.', 'href': 'https://www.vogue.com/slideshow/doen-chateau-de-gudanes-to-paris-travel-diary'},
   {'pub': 'Kinfolk', 'when': 'Issue 30', 'title': 'Home Tour', 'line': 'Words by Tristan Rutherford, photographs by Salva López: the château “coaxed back to life” by the family and the many hands who helped.', 'href': 'https://www.kinfolk.com/stories/home-tour-chateau-de-gudanes/'},
-  {'pub': 'Architectural Digest', 'when': '2017', 'title': 'Why This French Château Is Worthy of Its Own Instagram Account', 'line': 'The moment the restoration became a story followed around the world.', 'href': ''},
-  {'pub': 'House & Garden', 'when': 'December 2018', 'title': 'The family and the restoration', 'line': 'The family, and the progress of the restoration.', 'href': ''},
   {'pub': 'Home Beautiful', 'when': '2025', 'title': 'Inside the French fairytale château', 'line': 'Twelve years on, the gardens, the tunnel beneath the old fortress, and life by candlelight.', 'href': 'https://www.homebeautiful.com.au/renovation-ideas/chateau-de-gudanes-karina-craig-waters/'},
   {'pub': 'The Connexion', 'when': '2022', 'title': 'We wanted a small bolthole but bought a ruined French château', 'line': 'How a search for a farmhouse ended at the gates of Gudanes.', 'href': 'https://www.connexionfrance.com/news/photos-we-wanted-a-small-bolthole-but-bought-a-ruined-french-chateau/244599'}
 ] %}
@@ -111,7 +113,7 @@
 
 <section class="g-sec g-sec--tight"><div class="g-wrap g-wrap--narrow g-also">
   <p class="g-eyebrow">Also in</p>
-  <p class="g-p g-also__names" translate="no">Lonely Planet · Gourmet Traveller · Condé Nast Traveller · My Modern Met · Bob Vila · Suitcase · The Good Life France · Daily Mail</p>
+  <p class="g-p g-also__names" translate="no">Architectural Digest · House &amp; Garden · Lonely Planet · Gourmet Traveller · Condé Nast Traveller · My Modern Met · Bob Vila · Suitcase · The Good Life France · Daily Mail</p>
   <p class="g-p">In 2018 the château was also nominated for a Shorty Award for the community that follows it online.</p>
 </div></section>
 
@@ -126,7 +128,7 @@
 <section class="g-sec"><div class="g-wrap g-wrap--narrow">
   <p class="g-fr">Le livre <span class="g-fr__en">The book</span></p>
   <h2 class="g-place">The Book</h2>
-  <p class="g-p g-lede-first"><cite class="g-booktitle" translate="no">Château de Gudanes: A True Love Story Never Ends</cite> (2018) tells the story of the château, its past, present and future. Every copy sold goes towards the restoration.</p>
+  <p class="g-p g-lede-first"><cite class="g-booktitle" translate="no">Château de Gudanes: A True Love Story Never Ends</cite> (2018) tells the story of the château, its past, present and future.</p>{#- Site review 25 Nov (1.20): "Every copy sold goes towards the restoration" cut: funding wording, which the owner ruled out. -#}
 </div></section>
 
 <div class="g-wrap g-mark__wrap">{{ mark('facade') }}</div>
@@ -152,7 +154,7 @@
   <div class="g-key">
     <div class="g-key__i">
       <p class="g-key__k">Built</p>
-      <p class="g-key__v">1741</p>
+      <p class="g-key__v">Between 1741 and 1750</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Classified</p>
@@ -166,10 +168,8 @@
       <p class="g-key__k">Honour</p>
       <p class="g-key__v">Medal of Honour, Fondation Prince Louis de Polignac, 2016, presented by Prince Albert II of Monaco</p>
     </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Rooms</p>
-      <p class="g-key__v">About fifty-five</p>
-    </div>
+    {#- Site review 25 Nov (1.23): "Rooms: About fifty-five" sat directly above "Guest rooms", the side-by-side the owner
+        asked never to show (9 Oct). The guest rooms stay; the château's fifty-five rooms are on /events/photoshoots. -#}
     <div class="g-key__i">
       <p class="g-key__k">Guest rooms</p>
       <p class="g-key__v">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }}</p>
