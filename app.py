@@ -8667,6 +8667,34 @@ def init_db():
                 found_at TEXT NOT NULL,
                 decided_at TEXT,
                 decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL)"""),
+        # AN OCCASION'S PRICES, TO ENTER ON BOOKING.COM BY HAND (owner, 25 Nov
+        # 2026). Booking.com takes prices only from a certified channel
+        # manager, which costs more than a dozen changes a year are worth, so
+        # each change is a row here and a person types it into the extranet.
+        # kind 'occasion' carries an occasion's price; 'usual' puts nights
+        # back to the usual one. occasion_id has no foreign key and the name
+        # is kept beside it: a line putting a deleted occasion's nights back
+        # still needs to say whose nights they were. See sync_booking_prices.
+        ("channel_price_pushes", """CREATE TABLE IF NOT EXISTS channel_price_pushes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                occasion_id INTEGER,
+                occasion_name TEXT NOT NULL,
+                channel TEXT NOT NULL DEFAULT 'booking.com',
+                room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL DEFAULT 'occasion' CHECK(kind IN ('occasion','usual')),
+                first_night TEXT NOT NULL,
+                last_night TEXT NOT NULL,
+                price REAL NOT NULL,
+                previous_price REAL,
+                state TEXT NOT NULL DEFAULT 'to_do' CHECK(state IN ('to_do','done','cancelled')),
+                done_at TEXT,
+                done_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                note TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL)"""),
+        ("channel_price_pushes_state_idx",
+         "CREATE INDEX IF NOT EXISTS channel_price_pushes_state_idx "
+         "ON channel_price_pushes (channel, state, last_night)"),
         # A LINE ON THE OWNER HOME, CLEARED (24 November 2026). Keyed on a
         # fingerprint of the line -- its severity, title and count -- so a
         # cleared "8 guests with no fiche" is back the moment it is 9. Hides
@@ -10631,6 +10659,13 @@ OWNER_ONLY_AREAS = {
     # Booking.com's monthly statement, uploaded on the same page: commission
     # and payouts, the owner's money like the page it sits on.
     "upload_booking_com_statement": "management",
+    # An occasion's prices to enter on Booking.com by hand (25 Nov 2026): the
+    # house's pricing, and the data view the owner's assistant reads. Owner's.
+    "channel_booking_prices": "management",
+    "channel_booking_prices_json": "management",
+    "channel_booking_prices_done": "management",
+    "channel_booking_prices_undo": "management",
+    "channel_booking_names": "management",
     # One reservation, several rooms: grouping the rooms, taking one off.
     "group_channel_stay_rooms": "management",
     "remove_channel_stay_room": "management",
@@ -10806,6 +10841,7 @@ OWNER_MENU = [
         ("Booking.com", [
             _nav("management_booking_com", "Booking.com Messages", "bell"),
             _nav("channel_stays_page", "Booking.com Stays", "guests"),
+            _nav("channel_booking_prices", "Booking.com Prices", "receipt"),
         ]),
     ]),
     ("guestbook", "Guests", "guests", (), (), [
@@ -55710,6 +55746,12 @@ def admin_stay_occasion(occ_id):
         notes.append(("a newsletter is drafted" if drafted == "drafted" else
                       "its draft newsletter is updated")
                      + " under Emails, waiting for you to look it over and send it")
+    # On sale, off sale, a price or the dates changed: what Booking.com must be
+    # told by hand follows now, and so does the task that says so.
+    said = booking_prices_said(sync_booking_prices(conn, today))
+    refresh_booking_prices_task(conn, today)
+    if said:
+        notes.append(said)
     log_audit(conn, "stay_occasion_saved", target=v["name"], details=f"status {status}")
     conn.commit()
     conn.close()
@@ -55823,6 +55865,12 @@ def admin_stay_occasion_delete(occ_id):
     conn.execute("DELETE FROM stay_occasion_prices WHERE occasion_id = ?", (occ_id,))
     conn.execute("DELETE FROM stay_occasions WHERE id = ?", (occ_id,))
     conn.execute("UPDATE stay_occasion_suggestions SET occasion_id = NULL WHERE occasion_id = ?", (occ_id,))
+    # Its prices already entered on Booking.com go back to the usual ones; its
+    # lines not yet entered are cancelled.
+    said = booking_prices_said(sync_booking_prices(conn))
+    refresh_booking_prices_task(conn)
+    if said:
+        notes.append(said)
     log_audit(conn, "stay_occasion_deleted", target=occ["name"])
     conn.commit()
     conn.close()
@@ -55890,6 +55938,518 @@ def admin_stay_occasion_suggestion_dismiss(sid):
     conn.close()
     flash(f"Dismissed {s['name']}. It will not be suggested again.", "success")
     return redirect(url_for("admin_stay_occasions") + "#suggested")
+
+
+# --- Booking.com prices, entered by hand -----------------------------------------------
+#
+# BOOKING.COM TAKES PRICES ONLY FROM A CERTIFIED CHANNEL MANAGER (owner, 25 Nov
+# 2026). The cheapest is about €37 a month, more than a dozen price changes a
+# year are worth, and the iCal feed that already carries the house's
+# availability to Booking.com cannot carry a price. So the app prepares the
+# work and a person does the typing: every change an occasion makes to what a
+# room costs on a night is a line here, the owner's assistant enters the list
+# in the extranet under the owner's own sign-in once he has looked it over, and
+# each line is marked done. THE APP NEVER SIGNS IN TO BOOKING.COM AND HOLDS NO
+# BOOKING.COM PASSWORD: nothing in this section reaches the network.
+#
+# The lines are WORKED OUT, not appended. sync_booking_prices compares what the
+# house charges on each night to come (room_night_rate's answer: a live
+# occasion's price, or the usual one) with what Booking.com was last told (the
+# latest line marked done over that night), and makes the lines still to do
+# say exactly the difference. A line not yet done is rewritten or cancelled
+# freely, because nobody has typed it. A line done is never touched: it records
+# what Booking.com now shows, so a change after it is a new line.
+#
+# It carries the occasion's price as the owner set it. Should Booking.com one
+# day sell at that plus a margin, that is one setting applied where a line is
+# made, in booking_prices_wanted, and nowhere else.
+
+CHANNEL_BOOKING_COM = "booking.com"
+BOOKING_PRICES_TASK = "Booking.com prices to update"
+BOOKING_PRICE_STATES = {"to_do": "To do", "done": "Done", "cancelled": "Cancelled"}
+
+
+def _euros(value):
+    """A price to the cent, as lines are compared and stored."""
+    return None if value is None else round(float(value), 2)
+
+
+def booking_price_figure(value):
+    """A price as it is typed into the extranet's box: 320, or 320.50."""
+    v = _euros(value)
+    if v is None:
+        return ""
+    return str(int(v)) if v.is_integer() else f"{v:.2f}"
+
+
+def booking_prices_wanted(conn, today=None):
+    """What Booking.com should be told, night by night, from today on.
+
+    {(room_id, night_iso): {"kind", "occasion_id", "occasion_name", "price",
+    "previous_price"}} for each room-night on which what Booking.com was last
+    told differs from what the house charges. Two things make one:
+
+      - a live occasion prices the room that night, at a price Booking.com has
+        not been given. A night nobody has touched, at an occasion price EQUAL
+        to the usual one, needs nothing: Booking.com already sells it at that.
+      - nothing prices it any more, and Booking.com was given an occasion's
+        price for it: the night goes back to the usual price.
+
+    Only nights from today: a night gone cannot be sold, so is not worth typing.
+    """
+    today = today or house_today()
+    t_iso = today.isoformat()
+    rooms = {r["id"]: r for r in conn.execute("SELECT * FROM rooms")}
+
+    # What the house charges. Newest occasion wins where two overlap, which is
+    # live_occasion_price's own rule (and _go_live_problem keeps them apart).
+    charged = {}
+    for r in conn.execute(
+            """SELECT o.id, o.name, o.first_night, o.last_night, p.room_id, p.price
+                 FROM stay_occasions o JOIN stay_occasion_prices p ON p.occasion_id = o.id
+                WHERE o.status = 'live' AND o.last_night >= ? AND p.price > 0
+                ORDER BY o.id""", (t_iso,)):
+        if r["room_id"] in rooms:
+            for night in stay_occasion_nights(r):
+                if night >= today:
+                    charged[(r["room_id"], night.isoformat())] = r
+
+    # What Booking.com was last told: the latest line done over the night. A
+    # night put back to the usual price is Booking.com's own again (None).
+    told = {}
+    for r in conn.execute(
+            """SELECT * FROM channel_price_pushes
+                WHERE channel = ? AND state = 'done' AND last_night >= ?
+                ORDER BY done_at, id""", (CHANNEL_BOOKING_COM, t_iso)):
+        if r["room_id"] in rooms:
+            for night in stay_occasion_nights(r):
+                if night >= today:
+                    told[(r["room_id"], night.isoformat())] = r if r["kind"] == "occasion" else None
+
+    usual_at = {}
+
+    def usual(key):
+        if key not in usual_at:
+            usual_at[key] = _euros(usual_night_rate(conn, rooms[key[0]], parse_date(key[1])))
+        return usual_at[key]
+
+    wanted = {}
+    for key in set(charged) | {k for k, v in told.items() if v is not None}:
+        last = told.get(key)
+        on_it = _euros(last["price"]) if last is not None else None
+        if key in charged:
+            occ = charged[key]
+            price = _euros(occ["price"])
+            was = on_it if last is not None else usual(key)
+            if price == was:
+                continue
+            wanted[key] = {"kind": "occasion", "occasion_id": occ["id"], "occasion_name": occ["name"],
+                           "price": price, "previous_price": was}
+        else:
+            back_to = usual(key)
+            if back_to == on_it:
+                continue
+            wanted[key] = {"kind": "usual", "occasion_id": last["occasion_id"],
+                           "occasion_name": last["occasion_name"], "price": back_to,
+                           "previous_price": on_it}
+    return wanted
+
+
+def booking_prices_lines(wanted):
+    """The nights joined into lines: one per room per run of consecutive nights
+    that want the same thing. In the usual case that is one line per room, and
+    a room whose usual rate changes inside the occasion gets two."""
+    lines = []
+    for (room_id, night), w in sorted(wanted.items()):
+        same = (room_id, w["kind"], w["occasion_id"], w["price"], w["previous_price"])
+        last = lines[-1] if lines else None
+        if (last and last["same"] == same
+                and parse_date(last["last_night"]) + timedelta(days=1) == parse_date(night)):
+            last["last_night"] = night
+            continue
+        lines.append(dict(w, room_id=room_id, first_night=night, last_night=night, same=same))
+    return lines
+
+
+def _booking_price_cancel_reason(conn, row, today):
+    """Why a line nobody entered is no longer wanted, in the owner's words."""
+    if row["last_night"] < today.isoformat():
+        return "Its nights passed before it was entered."
+    occ = (conn.execute("SELECT id, status FROM stay_occasions WHERE id = ?",
+                        (row["occasion_id"],)).fetchone() if row["occasion_id"] else None)
+    if row["kind"] == "occasion":
+        if occ is None:
+            return "The occasion was deleted before this was entered."
+        if occ["status"] != "live":
+            return "The occasion was taken off sale before this was entered."
+        if not conn.execute("SELECT 1 FROM stay_occasion_prices WHERE occasion_id = ? AND room_id = ? "
+                            "AND price > 0", (occ["id"], row["room_id"])).fetchone():
+            return "The occasion no longer has a price of its own for this room."
+        return "Booking.com already has this price for those nights."
+    if occ is not None and occ["status"] == "live":
+        return "The occasion is on sale again, so its price stays."
+    return "Those nights are at the usual price already."
+
+
+def sync_booking_prices(conn, today=None):
+    """Make the lines still to do say exactly what booking_prices_wanted says.
+
+    A line already saying it is left alone, so its stamp holds and a Mark done
+    from a page opened earlier still counts. One for the same room, kind and
+    occasion is rewritten in place (dates moved, price changed before anybody
+    typed it). One no longer wanted is cancelled, with the reason. Anything left
+    over is a new line. Does not commit: the caller's change and this are one.
+    Returns {"made", "rewritten", "cancelled"}."""
+    today = today or house_today()
+    now = datetime.now(timezone.utc).isoformat()
+    lines = booking_prices_lines(booking_prices_wanted(conn, today))
+    open_rows = conn.execute(
+        """SELECT * FROM channel_price_pushes WHERE channel = ? AND state = 'to_do'
+            ORDER BY first_night, id""", (CHANNEL_BOOKING_COM,)).fetchall()
+
+    def says(x):
+        return (x["room_id"], x["kind"], x["occasion_id"], x["occasion_name"], x["first_night"],
+                x["last_night"], _euros(x["price"]), _euros(x["previous_price"]))
+
+    unmet = {}
+    for line in lines:
+        unmet.setdefault(says(line), []).append(line)
+    spare = {}
+    for r in open_rows:
+        if unmet.get(says(r)):
+            unmet[says(r)].pop()
+        else:
+            spare.setdefault((r["room_id"], r["kind"], r["occasion_id"]), []).append(r)
+
+    made = rewritten = cancelled = 0
+    for line in sorted((l for ls in unmet.values() for l in ls),
+                       key=lambda l: (l["room_id"], l["first_night"])):
+        bucket = spare.get((line["room_id"], line["kind"], line["occasion_id"]))
+        if bucket:
+            r = bucket.pop(0)
+            conn.execute(
+                """UPDATE channel_price_pushes SET occasion_name = ?, first_night = ?, last_night = ?,
+                       price = ?, previous_price = ?, note = NULL, updated_at = ? WHERE id = ?""",
+                (line["occasion_name"], line["first_night"], line["last_night"], line["price"],
+                 line["previous_price"], now, r["id"]))
+            rewritten += 1
+        else:
+            conn.execute(
+                """INSERT INTO channel_price_pushes (occasion_id, occasion_name, channel, room_id, kind,
+                       first_night, last_night, price, previous_price, state, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'to_do', ?, ?)""",
+                (line["occasion_id"], line["occasion_name"], CHANNEL_BOOKING_COM, line["room_id"],
+                 line["kind"], line["first_night"], line["last_night"], line["price"],
+                 line["previous_price"], now, now))
+            made += 1
+    for bucket in spare.values():
+        for r in bucket:
+            conn.execute("UPDATE channel_price_pushes SET state = 'cancelled', note = ?, updated_at = ? "
+                         "WHERE id = ?", (_booking_price_cancel_reason(conn, r, today), now, r["id"]))
+            cancelled += 1
+    return {"made": made, "rewritten": rewritten, "cancelled": cancelled}
+
+
+def booking_prices_said(result):
+    """What a save did to the Booking.com list, for the flash; None if nothing."""
+    bits = []
+    if result["made"]:
+        bits.append(f"{result['made']} price{'' if result['made'] == 1 else 's'} to enter")
+    if result["rewritten"]:
+        bits.append(f"{result['rewritten']} not yet entered changed to match")
+    if result["cancelled"]:
+        bits.append(f"{result['cancelled']} not yet entered no longer needed")
+    return ("Booking.com: " + ", ".join(bits) + ", on Booking.com Prices") if bits else None
+
+
+def booking_prices_rows(conn):
+    """Every line, with the room's two names and who marked it done."""
+    return [dict(r) for r in conn.execute(
+        """SELECT channel_price_pushes.*, rooms.name AS room_name,
+                  NULLIF(TRIM(COALESCE(rooms.channel_name, '')), '') AS booking_com_room,
+                  rooms.sort_order AS room_order, users.name AS done_by
+             FROM channel_price_pushes
+             JOIN rooms ON rooms.id = channel_price_pushes.room_id
+             LEFT JOIN users ON users.id = channel_price_pushes.done_by_user_id
+            WHERE channel_price_pushes.channel = ?
+            ORDER BY channel_price_pushes.first_night, rooms.sort_order, rooms.name,
+                     channel_price_pushes.id""",
+        (CHANNEL_BOOKING_COM,))]
+
+
+def booking_prices_by_occasion(rows):
+    """The lines grouped by the occasion they are for, in the order they came."""
+    groups, at = [], {}
+    for r in rows:
+        key = (r["occasion_id"], r["occasion_name"])
+        if key not in at:
+            at[key] = {"occasion_id": r["occasion_id"], "occasion_name": r["occasion_name"],
+                       "rows": [], "to_do": []}
+            groups.append(at[key])
+        at[key]["rows"].append(r)
+        if r["state"] == "to_do":
+            at[key]["to_do"].append(r)
+    return groups
+
+
+def booking_prices_copy_text(rows):
+    """The lines still to do as plain text, in the bulk edit's own order:
+    room, from, to, price. Read in one go by whoever is entering them."""
+    to_do = [r for r in rows if r["state"] == "to_do"]
+    if not to_do:
+        return ""
+    out = [f"Booking.com prices to update: {len(to_do)} line{'' if len(to_do) == 1 else 's'}. "
+           "Each line is room | from (first night) | to (last night, included) | price in euros."]
+    for g in booking_prices_by_occasion(to_do):
+        out += ["", g["occasion_name"]]
+        for r in g["rows"]:
+            out.append(" | ".join((
+                r["booking_com_room"] or f"{r['room_name']} (Booking.com name not given)",
+                format_date_human(r["first_night"]), format_date_human(r["last_night"]),
+                booking_price_figure(r["price"]))))
+    return "\n".join(out)
+
+
+def booking_prices_finding(conn, today=None):
+    """The watch task's finding while any line is to do, or None."""
+    today = today or house_today()
+    rows = [r for r in booking_prices_rows(conn) if r["state"] == "to_do"]
+    if not rows:
+        return None
+    names = []
+    for r in rows:
+        if r["occasion_name"] not in names:
+            names.append(r["occasion_name"])
+    missing = sorted({r["room_name"] for r in rows if not r["booking_com_room"]})
+    soonest = min(r["first_night"] for r in rows)
+    note = (f"{len(rows)} price{'' if len(rows) == 1 else 's'} to enter in the Booking.com extranet, "
+            f"for {'; '.join(names)}. The soonest night is {format_date_human(soonest)}.")
+    if missing:
+        note += ("\n\nBooking.com's name for " + ", ".join(missing) + " is not given yet. Add it on "
+                 "the price list, so whoever enters the prices finds the right room.")
+    note += "\n\nAccommodation → Booking.com Prices has the list to copy, and Mark done beside each line."
+    prio = "high" if soonest <= (today + timedelta(days=14)).isoformat() else "normal"
+    return ("booking_prices", BOOKING_PRICES_TASK, note, today.isoformat(), prio)
+
+
+def refresh_booking_prices_task(conn, today=None):
+    """Raise, restate or close the one task now, rather than at the morning's
+    run, in the same way that run does (generate_watch_tasks). Does not commit."""
+    today = today or house_today()
+    now = datetime.now(timezone.utc).isoformat()
+    found = booking_prices_finding(conn, today)
+    if not found:
+        conn.execute("UPDATE tasks SET status = 'done', completed_at = ? WHERE origin = ? AND title = ? "
+                     "AND status != 'done'", (now, WATCH_TASK_ORIGIN, BOOKING_PRICES_TASK))
+        return None
+    kind, title, note, due, prio = found
+    who = watch_task_assignees(conn).get(kind)
+    row = conn.execute(
+        """SELECT id, notes, priority, due_date, assigned_to_user_id FROM tasks
+            WHERE origin = ? AND title = ? AND status != 'done' ORDER BY id LIMIT 1""",
+        (WATCH_TASK_ORIGIN, title)).fetchone()
+    if row is None:
+        conn.execute(
+            """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                 status, origin, created_at)
+               VALUES (?, ?, ?, ?, ?, 'open', ?, ?)""",
+            (who, title, note, prio, due, WATCH_TASK_ORIGIN, now))
+    elif (row["assigned_to_user_id"], row["notes"], row["priority"], row["due_date"]) != (
+            who, note, prio, due):
+        conn.execute("UPDATE tasks SET assigned_to_user_id = ?, notes = ?, priority = ?, due_date = ? "
+                     "WHERE id = ?", (who, note, prio, due, row["id"]))
+    return found
+
+
+def _booking_prices_brought_up_to_date(conn):
+    """Every view of the list starts here, so what it shows is what is true now."""
+    today = house_today()
+    sync_booking_prices(conn, today)
+    refresh_booking_prices_task(conn, today)
+    conn.commit()
+    return today
+
+
+@app.route("/admin/channels/booking-prices")
+@owner_required
+def channel_booking_prices():
+    """The occasions' prices to enter in the Booking.com extranet, grouped by
+    occasion, with the list ready to copy and Mark done beside each line."""
+    conn = get_db()
+    today = _booking_prices_brought_up_to_date(conn)
+    rows = booking_prices_rows(conn)
+    rooms = conn.execute(
+        """SELECT id, name, channel_name FROM rooms
+            WHERE active = 1 OR id IN (SELECT room_id FROM channel_price_pushes WHERE state = 'to_do')
+            ORDER BY sort_order, name""").fetchall()
+    occasion_ids = {r["id"] for r in conn.execute("SELECT id FROM stay_occasions")}
+    conn.close()
+    lv = list_view(
+        rows, request.args, search=["room_name", "booking_com_room", "occasion_name"],
+        search_hint="Search by room or occasion",
+        facets=[facet("state", "Where it is", lambda r: r["state"], labels=BOOKING_PRICE_STATES,
+                      order=list(BOOKING_PRICE_STATES), default="to_do")],
+        sorts=[sort_option("nights", "Soonest nights first",
+                           lambda r: (r["first_night"], r["room_order"] or 0, r["room_name"]))],
+        default_sort="nights")
+    to_do = [r for r in rows if r["state"] == "to_do"]
+    return render_template(
+        "channel_booking_prices.html", lv=lv, groups=booking_prices_by_occasion(lv["rows"]),
+        to_do=to_do, copy_text=booking_prices_copy_text(rows), rooms=rooms,
+        missing=sorted({r["room_name"] for r in to_do if not r["booking_com_room"]}),
+        figure=booking_price_figure, occasion_ids=occasion_ids, today_iso=today.isoformat())
+
+
+@app.route("/admin/channels/booking-prices.json")
+@owner_required
+def channel_booking_prices_json():
+    """The same list for the owner's assistant to read without scraping the
+    page. Owner only, like the page: it is the house's pricing."""
+    conn = get_db()
+    _booking_prices_brought_up_to_date(conn)
+    rows = booking_prices_rows(conn)
+    conn.close()
+    to_do = [r for r in rows if r["state"] == "to_do"]
+    return jsonify({
+        "channel": CHANNEL_BOOKING_COM,
+        "currency": "EUR",
+        "nights": "first_night and last_night are both nights the price applies to",
+        "page": url_for("channel_booking_prices", _external=True),
+        "to_do": [{
+            "id": r["id"], "occasion": r["occasion_name"], "occasion_id": r["occasion_id"],
+            "kind": r["kind"], "booking_com_room": r["booking_com_room"],
+            "house_room": r["room_name"], "room_id": r["room_id"],
+            "first_night": r["first_night"], "last_night": r["last_night"],
+            "price": r["price"], "previous_price": r["previous_price"],
+            "updated_at": r["updated_at"]} for r in to_do],
+        "missing_booking_com_names": sorted({r["room_name"] for r in to_do
+                                             if not r["booking_com_room"]}),
+        "done_count": sum(1 for r in rows if r["state"] == "done"),
+    })
+
+
+def _booking_price_label(r):
+    return (f"{r['booking_com_room'] or r['room_name']}, "
+            f"{format_date_range(r['first_night'], r['last_night'])}")
+
+
+@app.route("/admin/channels/booking-prices/done", methods=["POST"])
+@owner_required
+def channel_booking_prices_done():
+    """Mark done one line, or every line of an occasion. Each line carries the
+    stamp it was drawn with: one rewritten since (the occasion changed while
+    the page was open) is refused and named, because what was typed into the
+    extranet is the old figure, not the one the line says now."""
+    ids = [int(x) for x in request.form.getlist("line") if x.isdigit()]
+    conn = get_db()
+    today = house_today()
+    sync_booking_prices(conn, today)
+    now = datetime.now(timezone.utc).isoformat()
+    user = current_user()
+    done, skipped, names = 0, [], []
+    for line_id in ids:
+        r = conn.execute(
+            """SELECT p.*, rooms.name AS room_name,
+                      NULLIF(TRIM(COALESCE(rooms.channel_name, '')), '') AS booking_com_room
+                 FROM channel_price_pushes p JOIN rooms ON rooms.id = p.room_id
+                WHERE p.id = ? AND p.channel = ?""", (line_id, CHANNEL_BOOKING_COM)).fetchone()
+        if r is None:
+            skipped.append((f"line {line_id}", "it is not on the list any more"))
+        elif r["state"] == "done":
+            skipped.append((_booking_price_label(r), "it was already marked done"))
+        elif r["state"] == "cancelled":
+            skipped.append((_booking_price_label(r),
+                            "it was cancelled since the page was opened: " + (r["note"] or "")))
+        elif r["updated_at"] != request.form.get(f"stamp_{line_id}"):
+            skipped.append((_booking_price_label(r),
+                            f"it changed since the page was opened and now says "
+                            f"€{booking_price_figure(r['price'])}: look at it again"))
+        else:
+            conn.execute("UPDATE channel_price_pushes SET state = 'done', done_at = ?, "
+                         "done_by_user_id = ?, updated_at = ? WHERE id = ?",
+                         (now, user["id"], now, line_id))
+            names.append(_booking_price_label(r) + f" at €{booking_price_figure(r['price'])}")
+            done += 1
+    sync_booking_prices(conn, today)
+    refresh_booking_prices_task(conn, today)
+    if done:
+        log_audit(conn, "booking_prices_done", target=CHANNEL_BOOKING_COM, details="; ".join(names))
+    conn.commit()
+    conn.close()
+    flash(*bulk_message("Ticked off", "price", done, skipped))
+    return redirect(url_for("channel_booking_prices"))
+
+
+@app.route("/admin/channels/booking-prices/<int:line_id>/undo", methods=["POST"])
+@owner_required
+def channel_booking_prices_undo(line_id):
+    """Marked done by mistake: back on the list. Not once a later line has been
+    entered over the same nights, since Booking.com shows that one now."""
+    conn = get_db()
+    today = house_today()
+    r = conn.execute(
+        """SELECT p.*, rooms.name AS room_name,
+                  NULLIF(TRIM(COALESCE(rooms.channel_name, '')), '') AS booking_com_room
+             FROM channel_price_pushes p JOIN rooms ON rooms.id = p.room_id
+            WHERE p.id = ? AND p.channel = ?""", (line_id, CHANNEL_BOOKING_COM)).fetchone()
+    problem = None
+    if r is None or r["state"] != "done":
+        problem = "That line is not marked done, so there is nothing to undo."
+    elif r["last_night"] < today.isoformat():
+        problem = "Its nights have passed, so it stays as it is."
+    elif conn.execute(
+            """SELECT 1 FROM channel_price_pushes WHERE channel = ? AND room_id = ? AND state = 'done'
+                 AND id != ? AND (done_at > ? OR (done_at = ? AND id > ?))
+                 AND first_night <= ? AND last_night >= ?""",
+            (CHANNEL_BOOKING_COM, r["room_id"], r["id"], r["done_at"], r["done_at"], r["id"],
+             r["last_night"], r["first_night"])).fetchone():
+        problem = ("A later line over the same nights is marked done, and that is the price "
+                   "Booking.com shows now.")
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return redirect(url_for("channel_booking_prices"))
+    conn.execute("UPDATE channel_price_pushes SET state = 'to_do', done_at = NULL, done_by_user_id = NULL, "
+                 "note = NULL, updated_at = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), line_id))
+    sync_booking_prices(conn, today)
+    refresh_booking_prices_task(conn, today)
+    log_audit(conn, "booking_prices_undone", target=CHANNEL_BOOKING_COM, details=_booking_price_label(r))
+    after = conn.execute("SELECT state, note FROM channel_price_pushes WHERE id = ?", (line_id,)).fetchone()
+    conn.commit()
+    conn.close()
+    if after["state"] == "to_do":
+        flash(f"{_booking_price_label(r)} is back on the list, not entered.", "success")
+    else:
+        flash(f"{_booking_price_label(r)} is not done, and no longer needed either: "
+              f"{after['note']}", "success")
+    return redirect(url_for("channel_booking_prices"))
+
+
+@app.route("/admin/channels/booking-names", methods=["POST"])
+@owner_required
+def channel_booking_names():
+    """Booking.com's name for each room: the extranet does not use the house's,
+    and whoever enters the prices needs it to find the right row. The same
+    field as Name on Booking.com on the room's own form; blank stores nothing."""
+    conn = get_db()
+    changed = []
+    for room in conn.execute("SELECT id, name, channel_name FROM rooms ORDER BY sort_order, name").fetchall():
+        key = f"booking_name_{room['id']}"
+        if key not in request.form:
+            continue
+        value = " ".join((request.form.get(key) or "").split())[:120] or None
+        if value != room["channel_name"]:
+            conn.execute("UPDATE rooms SET channel_name = ? WHERE id = ?", (value, room["id"]))
+            changed.append(f"{room['name']}: {value or 'not given'}")
+    if changed:
+        refresh_booking_prices_task(conn, house_today())
+        log_audit(conn, "booking_com_room_names", target=CHANNEL_BOOKING_COM, details="; ".join(changed))
+    conn.commit()
+    conn.close()
+    flash(f"Saved Booking.com's name for {len(changed)} room{'' if len(changed) == 1 else 's'}."
+          if changed else "Nothing changed.", "success")
+    return redirect(url_for("channel_booking_prices") + "#names")
 
 
 # --- The public pages ---------------------------------------------------------------
@@ -103009,6 +103569,7 @@ WATCH_TASK_KINDS = {
     "refund": "Money the house owes back, or a refund that needs deciding",
     "dispute": "A card payment disputed with the guest's bank",
     "booking_com": "A Booking.com guest waiting for an answer",
+    "booking_prices": "An occasion's prices to enter on Booking.com by hand",
     "door": "The front door lock needs attention",
     "letters": "A guest letter out of step with the house rules on payment",
     "sendcheck": "An Outlook the check on Send cannot run in",
@@ -106450,6 +107011,11 @@ def watch_task_findings(conn, today=None):
                       "\n\n".join(f"{title}. {detail}" for _lvl, title, detail in sync),
                       today.isoformat(),
                       "high" if any(lvl == "blocker" for lvl, _t, _d in sync) else "normal"))
+    # An occasion's prices to enter on Booking.com by hand: one task while any
+    # line is to do, closed by the last Mark done (refresh_booking_prices_task).
+    prices = booking_prices_finding(conn, today)
+    if prices:
+        found.append(prices)
 
     # The front door, when guests cannot open it from their phone or its
     # batteries are going. One task while that is true; it closes itself once
@@ -106717,6 +107283,9 @@ def generate_watch_tasks(conn, today=None):
     """
     today = today or house_today()
     now_iso = datetime.now(timezone.utc).isoformat()
+    # The Booking.com price lines are worked out before they are read: nights
+    # that have passed fall off, and a usual rate changed since is followed.
+    sync_booking_prices(conn, today)
     found, dropped = watch_task_findings(conn, today)
     wanted = {title: (kind, note, due, prio) for kind, title, note, due, prio in found}
     routing = watch_task_assignees(conn)
@@ -114460,6 +115029,12 @@ TASK_SUBJECTS = (
     ("restoration_work_id", "restoration_work_page", "work_id", "Open the work"),
 )
 
+# Watch tasks are keyed by title, and carry no column to open. One whose whole
+# subject is a page of its own: (the page, the words on the link).
+WATCH_TASK_PAGES = {
+    BOOKING_PRICES_TASK: ("channel_booking_prices", "Open the price list"),
+}
+
 
 def _whole_person(user):
     """The person's full row, when a caller holds only part of one.
@@ -114492,6 +115067,14 @@ def task_subject(task, user=None):
     if "origin" in keys and task["origin"] == OCCASION_TASK_ORIGIN:
         return {"words": "Open its checklist",
                 "url": url_for("occasions_page") + f"#task-{task['id']}"}
+    # A watch task whose whole subject is one page opens it.
+    if ("origin" in keys and task["origin"] == WATCH_TASK_ORIGIN
+            and task["title"] in WATCH_TASK_PAGES):
+        endpoint, words = WATCH_TASK_PAGES[task["title"]]
+        user = _whole_person(user or current_user())
+        if not user or not can_reach(user, endpoint):
+            return None
+        return {"words": words, "url": url_for(endpoint)}
     for column, endpoint, arg, words in TASK_SUBJECTS:
         key = task[column] if column in keys else None
         if not key:
