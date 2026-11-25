@@ -103,7 +103,7 @@ def _checks(s, conn):
             detail=reserve.group(1) if reserve else "no Reserve a place")
     about = re.search(r'href="([^"]+)">About the atelier<', card)
     s.check("and the way to read about it", about is not None
-            and urlsplit(about.group(1)).path == f"/workshops/{wid}")
+            and urlsplit(about.group(1)).path == m.retreat_path(wid))
     s.check("the reserve link opens the form", reserve is not None
             and anon.get(reserve.group(1)).status_code == 200)
     s.check("the bare reason is not said twice above it",

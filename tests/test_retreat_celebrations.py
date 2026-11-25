@@ -80,7 +80,7 @@ def _evening(client, occ_id, night, text):
 
 
 def _days(client, wid):
-    r = client.get(f"/workshops/{wid}")
+    r = client.get(m.retreat_path(wid))
     days, _section = journey(r.get_data(as_text=True))
     return r, days
 
@@ -184,7 +184,7 @@ def _run(s, oc, ec, emp, conn, made):
     s.section("What the owner types is drawn as text")
     typed = "Fish & chips <b>by the pool</b>, then a film"
     r = _evening(oc, occ_id, "2029-08-05", typed)
-    html = oc.get(f"/workshops/{wid}").get_data(as_text=True)
+    html = oc.get(m.retreat_path(wid)).get_data(as_text=True)
     s.check("an ampersand and a tag come out as typed, not as markup",
             "Fish &amp; chips &lt;b&gt;by the pool&lt;/b&gt;" in html and "<b>by the pool</b>" not in html,
             detail=html[html.find("Fish"):][:120])
@@ -216,7 +216,7 @@ def _run(s, oc, ec, emp, conn, made):
     page = visible_text(oc.get(f"/admin/stay-occasions/{win}").get_data(as_text=True))
     s.check("and so does the occasion's page", "its page does not show it" in page, detail=page[:300])
     s.check("which is true: the winter retreat draws no days at all",
-            _days(oc, wid3)[1] == [] and "galette" not in oc.get(f"/workshops/{wid3}").get_data(as_text=True))
+            _days(oc, wid3)[1] == [] and "galette" not in oc.get(m.retreat_path(wid3)).get_data(as_text=True))
 
     s.section("Emptied, the evening is the retreat's own again")
     r = _evening(oc, occ_id, "", "")

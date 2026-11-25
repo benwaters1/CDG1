@@ -188,7 +188,7 @@ def run():
     today = m.house_today()
     offer = [(w, sittings) for w, sittings in m.workshops_on_offer(conn, today)
              if not w["title"].startswith(TAG)]
-    pages = [(w["title"], "/workshops/%d" % w["id"], sittings, m.retreat_week(w, sittings)["nights"])
+    pages = [(w["title"], m.retreat_path(w["id"]), sittings, m.retreat_week(w, sittings)["nights"])
              for w, sittings in offer]
     private = conn.execute("SELECT * FROM workshops WHERE title LIKE ?", (f"{TAG} Four%",)).fetchone()
     private_sittings = m.public_sittings(conn, private["id"], today)
@@ -376,7 +376,7 @@ def run():
             detail=str(marketing))
 
     s.section("A retreat set in winter that is not Noël")
-    r = c.get("/workshops/%d" % winter_id)
+    r = c.get(m.retreat_path(winter_id))
     html = r.get_data(as_text=True)
     days, section = journey(html)
     s.check("the page answers", r.status_code == 200, detail=str(r.status_code))
@@ -386,7 +386,7 @@ def run():
             detail=f"{cold}: {section[:160]}")
 
     s.section("Dates on two weekdays")
-    r = c.get("/workshops/%d" % two_id)
+    r = c.get(m.retreat_path(two_id))
     days, _section = journey(r.get_data(as_text=True))
     s.check("the page answers, with its plan", r.status_code == 200 and len(days) == 4,
             detail=f"{r.status_code}, {len(days)} days")
@@ -404,7 +404,7 @@ def run():
                  "VALUES (?, '2028-06-25', '2028-06-30', 10, ?)", (later_id, now))
     conn.commit()
     conn.close()
-    r = c.get("/workshops/%d" % later_id)
+    r = c.get(m.retreat_path(later_id))
     days, section = journey(r.get_data(as_text=True))
     s.check("the page answers, with its six days", r.status_code == 200 and len(days) == 6,
             detail=f"{r.status_code}, {len(days)} days")

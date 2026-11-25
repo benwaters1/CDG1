@@ -59,7 +59,8 @@ def _the_last_nine(s, c):
                 detail=f"{r.status_code} {loc}")
     r = c.get("/bric-a-brac-away-stay-2026")
     s.check("the antiques retreat's 2026 page goes to it, or the list of retreats, for now",
-            r.status_code == 302 and "/workshops" in (r.headers.get("Location") or ""),
+            r.status_code == 302 and ("/workshops" in (r.headers.get("Location") or "")
+                                     or "/retreats/" in (r.headers.get("Location") or "")),
             detail=f"{r.status_code} {r.headers.get('Location')}")
     s.check("and to the same place as its autumn page",
             r.headers.get("Location") == c.get("/bric-a-brac-away-fall").headers.get("Location"))
@@ -98,7 +99,7 @@ def _the_last_nine(s, c):
             r.status_code == 404, detail=f"/workshops/{top}: {r.status_code} {r.headers.get('Location')}")
     s.check("there is a real retreat with dates to try", real is not None)
     if real:
-        r = c.get(f"/workshops/{real['id']}")
+        r = c.get(m.retreat_path(real['id']))
         s.check("and a real retreat still has its own page (200)", r.status_code == 200,
                 detail=f"/workshops/{real['id']}: {r.status_code} {r.headers.get('Location')}")
     r = c.get(f"/book/{gone_room}")
@@ -338,7 +339,7 @@ def _old_ateliers(s, c):
         slug = f"/chateau-ateliers/p/{TAG.lower()}-noel-lantern-weekend-atelier-2027-early-july"
         r = c.get(slug)
         s.check("matched on its name, whatever the year, month and accents",
-                (r.headers.get("Location") or "").endswith(f"/workshops/{wid}"),
+                (r.headers.get("Location") or "").endswith(m.retreat_path(wid)),
                 detail=f"{r.status_code} {r.headers.get('Location')}")
         s.check("and temporary, because the answer is read from data that changes",
                 r.status_code == 302, detail=str(r.status_code))

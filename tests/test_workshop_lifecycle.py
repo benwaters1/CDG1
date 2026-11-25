@@ -90,9 +90,9 @@ def run():
     s.check("and sends them to what is actually on",
             "/workshops" in r.headers.get("Location", ""),
             detail=f"went to {r.headers.get('Location')!r}")
-    s.check("while a live one still opens", pub.get(f"/workshops/{upcoming}").status_code == 200)
+    s.check("while a live one still opens", pub.get(m.retreat_path(upcoming)).status_code == 200)
     s.check("and an undated one opens too, so it can be read about",
-            pub.get(f"/workshops/{undated}").status_code == 200)
+            pub.get(m.retreat_path(undated)).status_code == 200)
 
     s.section("Nobody can register for dates that have passed")
     conn = db()

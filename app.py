@@ -1802,6 +1802,37 @@ from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
+# THE LANGUAGE IN THE ADDRESS (site review 25 Nov 2026). The public site was in
+# French or Spanish by a cookie, at the same address as the English, and its
+# hreflang tags pointed at ?lang=fr -- which robots.txt told Google not to fetch,
+# and whose canonical tag named the English address. So Google could index no
+# French or Spanish page at all. Now /fr/<page> and /es/<page> are those pages
+# in those languages. This only lifts the language off the front of the address
+# and leaves the rest to the app: every route stays exactly as written, url_for
+# is unchanged, and language_addresses_on_the_page (below current_language)
+# puts the language back on the links, the canonical tag and the alternates of
+# the page that goes out. Which pages have such addresses: LANGUAGE_PAGES.
+LANGUAGE_PATH_CODES = ("fr", "es")
+
+
+class LanguageInTheAddress:
+    def __init__(self, wsgi):
+        self.wsgi = wsgi
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO") or "/"
+        for code in LANGUAGE_PATH_CODES:
+            front = "/" + code
+            if path == front or path.startswith(front + "/"):
+                environ["gudanes.lang_path"] = code
+                environ["PATH_INFO"] = path[len(front):] or "/"
+                break
+        return self.wsgi(environ, start_response)
+
+
+app.wsgi_app = LanguageInTheAddress(app.wsgi_app)
+
+
 # A VERSION ON EVERY STYLESHEET AND SCRIPT ADDRESS, so a design change reaches
 # everybody at once. /static/gudanes.css was the same address before and after
 # every handover, and a returning visitor's browser, holding a copy it had no
@@ -7411,6 +7442,8 @@ def init_db():
         # atelier was before this, so nothing that exists changes. The
         # organiser is told of each registration if an address is set.
         ("workshop_private_token", "ALTER TABLE workshops ADD COLUMN private_token TEXT"),
+        # A public retreat's name in its address, /retreats/<slug> (site review 25 Nov 2026).
+        ("workshop_slug", "ALTER TABLE workshops ADD COLUMN slug TEXT"),
         ("workshop_organiser_name", "ALTER TABLE workshops ADD COLUMN organiser_name TEXT"),
         ("workshop_organiser_email", "ALTER TABLE workshops ADD COLUMN organiser_email TEXT"),
         # A fixed day the balance is due, where the owner has agreed one (Retreat
@@ -8501,6 +8534,12 @@ def init_db():
                 exempt_nights INTEGER,
                 amount REAL,
                 note TEXT)"""),
+        # Every name a retreat's address has had, so an old one still finds it
+        # (site review 25 Nov 2026; see RetreatConverter).
+        ("workshop_slugs", """CREATE TABLE IF NOT EXISTS workshop_slugs (
+                slug TEXT PRIMARY KEY,
+                workshop_id INTEGER NOT NULL REFERENCES workshops(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL)"""),
         # OCCASIONS AT GUDANES (24 November 2026): a named run of nights sold
         # as Stay the Night, at the owner's price per room. See
         # run_stay_occasions_job and room_night_rate. first_night and
@@ -9587,6 +9626,11 @@ def init_db():
         conn.commit()
         if off:
             log_line(f"{RETIRED_WORKSHOP_TITLE} taken off the site")
+
+    # Each public retreat's name in its address, once given and then kept
+    # (site review 25 Nov 2026): after the retreats above are in.
+    if backfill_workshop_slugs(conn):
+        conn.commit()
 
     moved, repriced = apply_workshop_deposit_percent(conn)
     if moved or repriced:
@@ -72542,6 +72586,113 @@ def private_stay(token):
         private_token=workshop["private_token"]))
 
 
+# THE RETREATS BY NAME (site review 25 Nov 2026, owner: "both"). The four
+# retreats lived at /workshops/7 to /workshops/10; a name in the address --
+# /retreats/cooking-in-the-cuisine -- tells a guest and a search engine what the
+# page is before it opens. Each public retreat is given its name once, from its
+# title, and KEEPS it: retitling a retreat does not move its page, because a
+# moved page loses what it had built up. Every name a retreat has had stays in
+# workshop_slugs, so an old address still finds it. workshop_page_url and every
+# url_for("workshop_detail", ...) write the name through this converter; the
+# number still works and moves for good (301) to the name.
+from werkzeug.routing import BaseConverter, ValidationError  # noqa: E402
+
+_RETREAT_SLUGS = {"at": 0.0, "current": {}, "by_slug": {}}
+RETREAT_SLUGS_TTL_SECONDS = 30
+
+
+def retreat_slug_text(title):
+    """'Antique & French Finds' -> 'antique-and-french-finds'."""
+    text = unicodedata.normalize("NFKD", title or "")
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"[^a-z0-9]+", "-", text.replace("&", " and ").lower()).strip("-")
+    return text[:60].strip("-") or "retreat"
+
+
+def ensure_workshop_slug(conn, workshop_id):
+    """A public retreat's name in the address, given once and then kept."""
+    row = conn.execute(
+        f"SELECT id, title, slug FROM workshops WHERE id = ? AND {WORKSHOP_IS_PUBLIC}",
+        (workshop_id,)).fetchone()
+    if not row:
+        return None
+    if row["slug"]:
+        return row["slug"]
+    base = retreat_slug_text(row["title"])
+    slug, n = base, 2
+    while (conn.execute("SELECT 1 FROM workshop_slugs WHERE slug = ? AND workshop_id != ?",
+                        (slug, workshop_id)).fetchone()
+           or conn.execute("SELECT 1 FROM workshops WHERE slug = ? AND id != ?",
+                           (slug, workshop_id)).fetchone()):
+        slug, n = f"{base}-{n}", n + 1
+    conn.execute("UPDATE workshops SET slug = ? WHERE id = ?", (slug, workshop_id))
+    conn.execute("INSERT INTO workshop_slugs (slug, workshop_id, created_at) VALUES (?, ?, ?) "
+                 "ON CONFLICT(slug) DO NOTHING",
+                 (slug, workshop_id, datetime.now(timezone.utc).isoformat()))
+    _RETREAT_SLUGS["at"] = 0.0
+    return slug
+
+
+def backfill_workshop_slugs(conn):
+    """Every public retreat without a name gets one. Returns how many."""
+    made = 0
+    for row in conn.execute(
+            f"SELECT id FROM workshops WHERE COALESCE(slug, '') = '' AND {WORKSHOP_IS_PUBLIC}").fetchall():
+        if ensure_workshop_slug(conn, row["id"]):
+            made += 1
+    return made
+
+
+def _retreat_slugs():
+    now = time.monotonic()
+    if _RETREAT_SLUGS["at"] and now - _RETREAT_SLUGS["at"] < RETREAT_SLUGS_TTL_SECONDS:
+        return _RETREAT_SLUGS
+    current, by_slug = {}, {}
+    try:
+        conn = get_db()
+        try:
+            current = {r["id"]: r["slug"] for r in conn.execute(
+                f"SELECT id, slug FROM workshops WHERE COALESCE(slug, '') != '' AND {WORKSHOP_IS_PUBLIC}")}
+            by_slug = {r["slug"]: r["workshop_id"] for r in conn.execute(
+                "SELECT slug, workshop_id FROM workshop_slugs")}
+            by_slug.update({s: i for i, s in current.items()})
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return _RETREAT_SLUGS
+    _RETREAT_SLUGS.update(at=now, current=current, by_slug=by_slug)
+    return _RETREAT_SLUGS
+
+
+def retreat_path(workshop_id):
+    """/retreats/<name> for a public retreat (its number while it has no name)."""
+    workshop_id = int(workshop_id)
+    return "/retreats/" + (_retreat_slugs()["current"].get(workshop_id) or str(workshop_id))
+
+
+class RetreatConverter(BaseConverter):
+    """/retreats/<name>: a retreat's name to its id, and back."""
+    regex = r"[a-z0-9][a-z0-9-]*"
+
+    def to_python(self, value):
+        if value.isdigit():
+            return int(value)
+        found = _retreat_slugs()["by_slug"].get(value)
+        if found is None:
+            raise ValidationError()
+        return found
+
+    def to_url(self, value):
+        try:
+            workshop_id = int(value)
+        except (TypeError, ValueError):
+            return str(value)
+        return _retreat_slugs()["current"].get(workshop_id) or str(workshop_id)
+
+
+app.url_map.converters["retreat"] = RetreatConverter
+
+
 @app.route("/workshops")
 def workshops_public():
     conn = get_db()
@@ -72583,6 +72734,7 @@ def workshops_public():
 
 
 @app.route("/workshops/<int:workshop_id>")
+@app.route("/retreats/<retreat:workshop_id>")
 def workshop_detail(workshop_id):
     conn = get_db()
     # A retreat that is not on the site -- deleted, switched off, or a number
@@ -72630,6 +72782,14 @@ def workshop_detail(workshop_id):
                   else f"{workshop['title']} has no dates coming up — here is what is.",
                   "error")
             return redirect(url_for("workshops_public"))
+    # Its page is at its name (site review 25 Nov 2026): /workshops/7, /retreats/7,
+    # and a name it no longer goes by, all move there for good. After the checks
+    # above, so a retreat that is over goes straight to the list in one step.
+    own = url_for("workshop_detail", workshop_id=workshop_id)
+    if request.path != own and request.method in ("GET", "HEAD"):
+        conn.close()
+        qs = request.query_string.decode("utf-8", "replace")
+        return redirect(own + (("?" + qs) if qs else ""), code=301)
     # The rooms, for Les Chambres (28 Oct, the image layout brief): the same
     # list and order /book offers, so a room off sale is not shown here either.
     rooms = conn.execute(
@@ -78500,6 +78660,16 @@ def current_language():
     if cached:
         return cached
     lang = None
+    # The address itself, /fr/... or /es/... (LanguageInTheAddress): a page
+    # whose address names a language is in that language, whoever reads it, and
+    # the reader stays in it for the pages that have no address of their own
+    # (a form, a guest's booking).
+    in_path = request.environ.get("gudanes.lang_path")
+    if in_path in translations.LANGUAGES:
+        if session.get("lang") != in_path:
+            session["lang"] = in_path
+        g._lang = in_path
+        return in_path
     asked = request.args.get("lang")
     if asked in translations.LANGUAGES:
         lang = asked
@@ -79217,6 +79387,195 @@ def service_worker():
     return response
 
 
+# ---------------------------------------------------------------------------
+# Addresses in French and Spanish (site review 25 Nov 2026). See
+# LanguageInTheAddress, where the language is lifted off the address.
+#
+# LANGUAGE_PAGES are the public pages a search engine should hold in each
+# language: the ones in the sitemap, the rooms, the retreats and the occasions.
+# A form, a guest's own booking or a staff page has no language address; at
+# /fr/... it is sent to its own address and keeps the language in the session.
+# ---------------------------------------------------------------------------
+LANGUAGE_PAGES = frozenset({
+    "dashboard", "book_rooms", "book_room", "workshops_public", "workshop_detail",
+    "restaurant_info", "events_info", "events_weddings", "events_private",
+    "events_photoshoots", "press", "story", "facilities_page", "restoration_page",
+    "history_page", "gallery_page", "contact_page", "whats_on", "whats_on_at_gudanes",
+    "stay_occasion_page", "getting_here", "terms_page", "privacy_page", "legal_page",
+    "social_page",
+})
+
+_LANGUAGE_PAGE_PATHS = {}
+
+
+def is_language_page_path(path):
+    """Whether a local path is one of LANGUAGE_PAGES (cached per path)."""
+    known = _LANGUAGE_PAGE_PATHS.get(path)
+    if known is not None:
+        return known
+    try:
+        endpoint, _args = app.url_map.bind("localhost").match(path, method="GET")
+    except Exception:
+        endpoint = None
+    answer = endpoint in LANGUAGE_PAGES
+    if len(_LANGUAGE_PAGE_PATHS) < 5000:
+        _LANGUAGE_PAGE_PATHS[path] = answer
+    return answer
+
+
+def _without_language(path):
+    for code in LANGUAGE_PATH_CODES:
+        front = "/" + code
+        if path == front or path.startswith(front + "/"):
+            return path[len(front):] or "/"
+    return path
+
+
+def language_address(url, code):
+    """`url` (a path or a full address on this site) at its address in `code`.
+
+    Only a LANGUAGE_PAGES page moves; anything else is returned as it was."""
+    parts = urlparse(url)
+    bare = _without_language(parts.path or "/")
+    if not is_language_page_path(bare):
+        return url
+    path = bare if code == "en" else "/" + code + (bare if bare != "/" else "/")
+    return parts._replace(path=path).geturl()
+
+
+def languages_offered():
+    """['en', 'fr', 'es'] when the site offers French and Spanish, else ['en'].
+
+    The owner's switch at /admin/languages. Off, nothing here changes a page:
+    no language addresses are written into it and nobody is sent to one."""
+    cached = g.get("_languages_offered") if has_request_context() else None
+    if cached is not None:
+        return cached
+    offered = ["en"]
+    try:
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = 'show_language_switcher'").fetchone()
+        finally:
+            conn.close()
+        if row and row["value"]:
+            offered = ["en"] + [c for c in LANGUAGE_PATH_CODES if c in translations.LANGUAGES]
+    except sqlite3.Error:
+        pass
+    if has_request_context():
+        g._languages_offered = offered
+    return offered
+
+
+def _origin_here():
+    return request.host_url.replace("http://", "https://", 1).rstrip("/")
+
+
+@app.before_request
+def language_address_for_this_page():
+    """Send a reader to the page's address in the language it will be read in.
+
+    - /fr/<a form or a booking> -> <the same address>, the language kept.
+    - <page>?lang=fr -> /fr/<page>, for good (301): the old alternates.
+    - <page> read in French or Spanish (a choice made, or the browser's own
+      language) -> /fr/<page>, for now (302), so a page's address and its
+      language always agree -- which is what lets a search engine index both.
+    Never on the staff address, never for anything but a GET or a HEAD."""
+    if request.method not in ("GET", "HEAD") or on_admin_host():
+        return None
+    endpoint = request.endpoint
+    in_path = request.environ.get("gudanes.lang_path")
+    if in_path and endpoint not in LANGUAGE_PAGES:
+        if endpoint is None or endpoint == "static":
+            return None
+        session["lang"] = in_path
+        return redirect(request.full_path.rstrip("?") if request.query_string else request.path, code=302)
+    if endpoint not in LANGUAGE_PAGES or in_path:
+        return None
+    if len(languages_offered()) < 2:
+        return None
+    asked = request.args.get("lang")
+    if asked in translations.LANGUAGES:
+        session["lang"] = asked
+        rest = [(k, v) for k, v in request.args.items(multi=True) if k != "lang"]
+        target = language_address(request.path, asked) + (("?" + urlencode(rest)) if rest else "")
+        return redirect(target, code=301)
+    reading = current_language()
+    if reading != "en" and reading in LANGUAGE_PATH_CODES:
+        target = language_address(request.path, reading)
+        if request.query_string:
+            target += "?" + request.query_string.decode("utf-8", "replace")
+        response = redirect(target, code=302)
+        response.headers["Vary"] = "Cookie, Accept-Language"
+        return response
+    return None
+
+
+_LINK_ATTR = re.compile(r'(\s(?:href|action)=")(/[^"]*)(")')
+_CANONICAL = re.compile(r'<link rel="canonical" href="[^"]*">')
+_ALTERNATE = re.compile(r'\s*<link rel="alternate" hreflang="[^"]*" href="[^"]*">')
+_OG_URL = re.compile(r'(<meta property="og:url" content=")[^"]*(">)')
+_OG_LOCALE = re.compile(r'(<meta property="og:locale" content=")[^"]*(">)')
+OG_LOCALES = {"en": "en_GB", "fr": "fr_FR", "es": "es_ES"}
+
+
+def _link_in(code):
+    def swap(match):
+        target = match.group(2)
+        if target.startswith("//"):
+            return match.group(0)
+        return match.group(1) + language_address(target, code) + match.group(3)
+    return swap
+
+
+@app.after_request
+def language_addresses_on_the_page(response):
+    """The page's links, canonical tag and alternates, in its language.
+
+    On the response, never in the templates: public_base.html and the pages
+    arrive whole from the design side, so anything written into them survives
+    one handover (the reason serve_our_own_photographs works this way)."""
+    if not has_request_context() or on_admin_host():
+        return response
+    offered = languages_offered()
+    if len(offered) < 2:
+        return response
+    in_path = request.environ.get("gudanes.lang_path")
+    # A redirect from a French page lands on the French page.
+    if in_path and response.status_code in (301, 302, 303, 307, 308):
+        where = response.headers.get("Location", "")
+        if where and not urlparse(where).netloc:
+            response.headers["Location"] = language_address(where, in_path)
+        return response
+    if response.direct_passthrough or not (response.content_type or "").startswith("text/html"):
+        return response
+    raw = response.get_data()
+    if _PUBLIC_BODY not in raw:
+        return response
+    body = raw.decode("utf-8", "replace")
+    lang = current_language()
+    if lang in LANGUAGE_PATH_CODES:
+        body = _LINK_ATTR.sub(_link_in(lang), body)
+    if request.endpoint in LANGUAGE_PAGES and response.status_code == 200:
+        origin = _origin_here()
+        here = request.path
+        own = origin + language_address(here, lang if in_path else "en")
+        tags = [f'<link rel="canonical" href="{own}">']
+        for code in offered:
+            tags.append(f'<link rel="alternate" hreflang="{code}" href="{origin}{language_address(here, code)}">')
+        tags.append(f'<link rel="alternate" hreflang="x-default" href="{origin}{language_address(here, "en")}">')
+        body = _ALTERNATE.sub("", body)
+        if _CANONICAL.search(body):
+            body = _CANONICAL.sub(lambda _m: "\n".join(tags), body, count=1)
+        else:
+            body = body.replace("</head>", "\n".join(tags) + "\n</head>", 1)
+        body = _OG_URL.sub(lambda m: m.group(1) + own + m.group(2), body, count=1)
+        body = _OG_LOCALE.sub(lambda m: m.group(1) + OG_LOCALES.get(lang, "en_GB") + m.group(2), body, count=1)
+    response.set_data(body.encode("utf-8"))
+    return response
+
+
 @app.route("/language/<code>")
 def set_language(code):
     """Switch language and return the reader to the page they were on.
@@ -79244,6 +79603,10 @@ def set_language(code):
     # the shape phishing wants.
     if urlparse(target).netloc and urlparse(target).netloc != request.host:
         target = url_for("dashboard")
+    # Back to the same page, at its address in the language chosen: /fr/book
+    # to /book for English, /book to /es/book for Spanish (site review 25 Nov).
+    if code in translations.LANGUAGES:
+        target = language_address(target, code)
     return redirect(target)
 
 
@@ -86077,6 +86440,7 @@ def new_workshop():
         new_id = cur.lastrowid
         if photo:
             log_audit(conn, "workshop_photo_set", target=str(new_id), details=title)
+        ensure_workshop_slug(conn, new_id)
         conn.commit()
         conn.close()
         flash(f"{title} added. Add its first sitting below.", "success")
@@ -86219,6 +86583,8 @@ def edit_workshop(workshop_id):
         if new_photo != old_photo:
             log_audit(conn, "workshop_photo_set" if new_photo else "workshop_photo_removed",
                       target=str(workshop_id), details=title)
+        # A retreat made public has a name in its address from now on (a no-op for one that has).
+        ensure_workshop_slug(conn, workshop_id)
         conn.commit()
         if old_photo and old_photo != new_photo:
             drop_workshop_photo_file(conn, old_photo)
@@ -134022,8 +134388,13 @@ def robots():
 
 @app.route("/sitemap.xml")
 def sitemap():
-    """The public pages, with each room and each atelier listed individually —
+    """The public pages, with each room, retreat and occasion listed on its own --
     those are what people actually search for.
+
+    Site review 25 Nov 2026: each page is listed at its address in every language
+    the site offers (/fr/..., /es/...), each with the full set of alternates, as
+    search engines ask; and the pages the review found missing are in: Getting
+    Here, At Gudanes, every live occasion, Privacy and Legal.
 
     Endpoints are looked up defensively: one renamed page should cost that
     page's line, not the whole sitemap.
@@ -134036,12 +134407,13 @@ def sitemap():
         ("facilities_page", "0.7"),
         ("restoration_page", "0.7"), ("history_page", "0.7"),
         ("gallery_page", "0.6"), ("contact_page", "0.6"),
-        ("whats_on", "0.5"), ("terms_page", "0.3"),
+        ("whats_on", "0.5"), ("whats_on_at_gudanes", "0.6"), ("getting_here", "0.6"),
+        ("terms_page", "0.3"), ("privacy_page", "0.2"), ("legal_page", "0.2"),
     ]
-    urls = []
+    paths = []
     for endpoint, priority in pages:
         try:
-            urls.append((url_for(endpoint, _external=True), priority))
+            paths.append((url_for(endpoint), priority))
         except Exception:
             continue
 
@@ -134050,7 +134422,7 @@ def sitemap():
     # it — neither table has such a column, so it would have raised on every
     # request rather than returning a sitemap missing a few lines.
     for r in conn.execute("SELECT id FROM rooms WHERE active = 1").fetchall():
-        urls.append((url_for("book_room", room_id=r["id"], _external=True), "0.8"))
+        paths.append((url_for("book_room", room_id=r["id"]), "0.8"))
     # Only ateliers with a date still ahead. A sitemap advertising a workshop
     # that finished in June is the same mistake the front page used to make.
     # A date still ahead that has been called off is not one: the page would
@@ -134061,13 +134433,38 @@ def sitemap():
                 WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
                   AND {SESSION_IS_LIVE} AND {WORKSHOP_IS_PUBLIC}""",
             (service_day_iso(),)).fetchall():
-        urls.append((url_for("workshop_detail", workshop_id=w["id"], _external=True), "0.8"))
+        paths.append((url_for("workshop_detail", workshop_id=w["id"]), "0.8"))
+    # The occasions a guest can see: live, and not over (stay_occasion_page's own rule).
+    for o in conn.execute(
+            "SELECT slug FROM stay_occasions WHERE status = 'live' AND last_night >= ? "
+            "AND COALESCE(slug, '') != '' ORDER BY first_night",
+            (house_today_iso(),)).fetchall():
+        paths.append((url_for("stay_occasion_page", slug=o["slug"]), "0.6"))
     conn.close()
 
+    origin = request.host_url.replace("http://", "https://", 1).rstrip("/")
+    offered = languages_offered()
+
+    def esc(text):
+        return text.replace("&", "&amp;")
+
     body = ['<?xml version="1.0" encoding="UTF-8"?>',
-            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
-    for loc, pri in urls:
-        body.append(f"  <url><loc>{loc.replace("&", "&amp;")}</loc><priority>{pri}</priority></url>")
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'
+            + (' xmlns:xhtml="http://www.w3.org/1999/xhtml">' if len(offered) > 1 else '>')]
+    seen = set()
+    for path, pri in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        versions = {code: origin + language_address(path, code) for code in offered}
+        for code in offered:
+            line = [f"  <url><loc>{esc(versions[code])}</loc><priority>{pri}</priority>"]
+            if len(offered) > 1:
+                for alt in offered:
+                    line.append(f'<xhtml:link rel="alternate" hreflang="{alt}" href="{esc(versions[alt])}"/>')
+                line.append(f'<xhtml:link rel="alternate" hreflang="x-default" href="{esc(versions["en"])}"/>')
+            line.append("</url>")
+            body.append("".join(line))
     body.append("</urlset>")
     return Response("\n".join(body), mimetype="application/xml")
 

@@ -730,12 +730,22 @@ def run():
     import page_text
     live = set()
     walked = 0
+    # The pages with no id in their address, and (site review 25 Nov) each room's own page:
+    # those are the pages that rank, and a room's paragraph lives only there.
+    addresses = []
     for rule in m.app.url_map.iter_rules():
         if rule.arguments or "GET" not in (rule.methods or ()):
             continue
         if rule.endpoint.startswith("static") or "webhook" in rule.endpoint:
             continue
-        r = anon.get(str(rule))
+        addresses.append(str(rule))
+    _conn = _harness.db()
+    try:
+        addresses += [f"/book/{r_['id']}" for r_ in _conn.execute("SELECT id FROM rooms WHERE active = 1")]
+    finally:
+        _conn.close()
+    for address in addresses:
+        r = anon.get(address)
         if r.status_code != 200:
             continue
         # Only pages. /favicon.ico and /apple-touch-icon.png answer at the root

@@ -137,7 +137,7 @@ def run():
 
     pages = {"/": c.get("/"), "/workshops": c.get("/workshops")}
     for w, _sittings in offer:
-        pages["/workshops/%d" % w["id"]] = c.get("/workshops/%d" % w["id"])
+        pages["/workshops/%d" % w["id"]] = c.get(m.retreat_path(w["id"]))
 
     s.section("The pages answer, and say none of what the deck ruled out")
     for path, r in pages.items():
@@ -428,7 +428,7 @@ def run():
     cooking = [w for w, _sittings in offer if kind_of(w["title"]) == "cooking"]
     if cooking:
         where = c.get("/5-nights").headers.get("Location") or ""
-        s.check("and /5-nights is the cooking retreat", where.endswith("/workshops/%d" % cooking[0]["id"]),
+        s.check("and /5-nights is the cooking retreat", where.endswith(m.retreat_path(cooking[0]["id"])),
                 detail=where)
 
     s.section("The Book menu and the stylesheet")

@@ -123,7 +123,7 @@ def _real_pages(s, pub, ec):
     if not s.check("there is an atelier with dates to come", row is not None,
                    detail="nothing to check the page against"):
         return
-    r = pub.get(f"/workshops/{row['id']}?lang=en", base_url=BASE)
+    r = pub.get(m.retreat_path(row['id']) + "?lang=en", base_url=BASE)
     html = r.get_data(as_text=True)
     events = [it for it in _items(_blocks(html)) if str(it.get("@type", "")).endswith("Event")]
     with m.app.test_request_context(base_url=BASE):

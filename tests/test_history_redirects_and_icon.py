@@ -57,7 +57,8 @@ def run():
                 detail=f"{r.status_code} {loc}")
     r = anon.get("/cookinginthecuisine")
     s.check("an old retreat offer goes to that retreat, or the list of them",
-            r.status_code == 302 and "/workshops" in r.headers.get("Location", ""),
+            r.status_code == 302 and ("/workshops" in r.headers.get("Location", "")
+                                     or "/retreats/" in r.headers.get("Location", "")),
             detail=f"{r.status_code} {r.headers.get('Location')}")
     r = anon.get("/captains-log?utm_source=pinterest")
     s.check("and keeps the campaign an old link carried",

@@ -173,7 +173,7 @@ def run():
 
     anon = m.app.test_client()
     # A retreat's own page, the one in the owner's screenshot: the first the retreats page links to.
-    found = re.findall(r'href="(/workshops/\d+)"', anon.get("/workshops").get_data(as_text=True))
+    found = re.findall(r'href="(/retreats/[a-z0-9-]+)"', anon.get("/workshops").get_data(as_text=True))
     if not s.check("the retreats page links to a retreat to open", found, detail="no /workshops/<id> link"):
         return s
     pages = []

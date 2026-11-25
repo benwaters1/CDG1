@@ -58,7 +58,7 @@ def run():
         row = next((r for r in rows if kind in r["title"]), None)
         if not s.check(f"{kind}: there is such a retreat to read", row is not None):
             continue
-        r = client.get(f"/workshops/{row['id']}")
+        r = client.get(m.retreat_path(row['id']))
         if not s.check(f"{kind}: the page loads", r.status_code == 200, detail=str(r.status_code)):
             continue
         page = r.get_data(as_text=True)

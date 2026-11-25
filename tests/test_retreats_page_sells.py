@@ -189,7 +189,7 @@ def run():
                 s.check(f"{title}: {mac} does not", "fresco" not in said and "painted beam" not in said,
                         detail=said[:200])
     for w in offer:
-        page = words(c.get("/workshops/%d" % w["id"]).get_data(as_text=True)).lower()
+        page = words(c.get(m.retreat_path(w["id"])).get_data(as_text=True)).lower()
         if kinds[w["title"]] in ("cooking", "starry"):
             s.check(f"{w['title']}: its own page names the painted beams", "painted beams" in page)
         elif kinds[w["title"]] in ("noel", "finds"):
@@ -297,7 +297,7 @@ def run():
     s.check("/workshops says where and when, in its questions and Key Information",
             seen.count(HOTEL) >= 2 and "midday on the first day" in seen, detail=str(seen.count(HOTEL)))
     for w in offer:
-        page = words(c.get("/workshops/%d" % w["id"]).get_data(as_text=True))
+        page = words(c.get(m.retreat_path(w["id"])).get_data(as_text=True))
         tx, _ex = flags(w)
         if tx:
             s.check(f"{w['title']}: its own page says the hotel, at midday", HOTEL in page and "midday" in page)

@@ -102,7 +102,7 @@ def run():
     conn.close()
     shown = 0
     for row in rows:
-        r = client.get(f"/workshops/{row['id']}")
+        r = client.get(m.retreat_path(row['id']))
         if r.status_code != 200:
             # A retreat with no date still to come sends its visitor back to /workshops: no page to read.
             continue
