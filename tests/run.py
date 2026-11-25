@@ -188,6 +188,9 @@ SUITES = [
     "test_promo_privacy",
     "test_promo_blast",
     "test_group_mail",
+    # 25 Nov 2026: Send Bulk Email in the menu, and written with fonts and sizes.
+    "test_bulk_email_formatting",
+    "test_group_letter_schedule",
     "test_letters_named",
     "test_delivery_reports",
     "test_terminal",
