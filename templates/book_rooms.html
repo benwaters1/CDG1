@@ -267,8 +267,8 @@
                figure, so printing both says nothing twice. Nights at different
                rates say the figure is an average, not what each night costs. #}
             {% if _n > 1 %}<span class="g-card__per">€{{ ('{:,.0f}' if _pn == (_pn|int) else '{:,.2f}').format(_pn) }} per room, a night{{ ' on average' if _rq and _rq.varies }}</span>{% endif %}
-            {#- 25 Nov: the nights an occasion priced, under the nightly figure ("includes 2 nights of Easter"). -#}
-            {% for _on in (occasion_nights.get(room['id'], []) if occasion_nights is defined else []) %}<span class="g-card__per g-card__occasion">{{ _on }}</span>{% endfor %}
+            {# 25 Nov: the nights an occasion priced, under the nightly figure ("includes 2 nights of Easter"). #}
+            {% for _on in (occasion_nights.get(room['id'], []) if occasion_nights is defined else []) %}<span class="g-card__per">{{ _on }}</span>{% endfor %}
           {% else %}
             {#- 15 Oct (owner): with dates chosen, the price for THOSE dates. Needs room_quotes {room_id: {'per_night':..}} from
                 book_rooms() (see z16 README); without it the card keeps the standard 'From' price. -#}

@@ -15,7 +15,8 @@
       {% if o.from_price %}
       <p class="g-sit__rate">
         <span>from</span> <span class="g-fig" data-eur="{{ o.from_price|int }}">€{{ '{:,.0f}'.format(o.from_price) }}</span>
-        {#- "a night", not "a night, room and breakfast" (25 Nov): the tag above already says room and breakfast. -#}
+        {# "a night", not "a night, room and breakfast" (25 Nov): the tag above already says room and breakfast.
+           No dashes on this comment: they would take the space out of "€320 a night". #}
         <span>a night</span>
       </p>
       {% endif %}

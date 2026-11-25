@@ -257,6 +257,13 @@ def _run(s, oc, owner, conn):
     twice = [c for c in cards if len(re.findall(r"breakfast", c, re.I)) > 1]
     s.check("and says it once: no card says breakfast twice", cards and not twice,
             detail=(twice[0][:200] if twice else f"{len(cards)} cards"))
+    # Read with tags taken out and nothing put in their place, as a browser joins inline text: a comment with
+    # dashes between the figure and "a night" once took the space out ("€330a night"), and visible_text, which
+    # puts a space for every tag, read it as fine.
+    rate = re.search(r'<p class="g-sit__rate">(.*?)</p>', card.group(0) if card else "", re.S)
+    flat = " ".join(re.sub(r"<[^>]+>", "", rate.group(1)).split()) if rate else ""
+    s.check("and its price reads 'from €N a night', spaces and all",
+            re.fullmatch(r"from €[\d,]+ a night", flat) is not None, detail=flat or "no price line")
     home_cards = [visible_text(c) for c in re.findall(r'<article class="g-sit g-occasion">.*?</article>',
                                                        m.app.test_client().get("/").get_data(as_text=True), re.S)]
     s.check("nor on the home page", home_cards
