@@ -86,8 +86,13 @@ def run():
     home = client.get("/").get_data(as_text=True)
     col = re.search(r'<article class="g-sow__col g-sow__col--full[^"]*">.*?<ul class="g-sow__list">(.*?)</ul>', home, re.S)
     theirs = [visible_text(x) for x in re.findall(r"<li\b[^>]*>(.*?)</li>", col.group(1), re.S)] if col else []
+    # Line for line but the first (site review 25 Nov): a retreat's guests have "a small company to share it",
+    # a private party is alone, so that one line is the party's own.
     s.check("All Inclusive lists what the retreat column on the home page lists, line for line",
-            items and items == theirs, detail=f"{items} / {theirs}")
+            items and items[1:] == theirs[1:] and len(items) == len(theirs), detail=f"{items} / {theirs}")
+    s.check("but its first line is the private party's", items and items[0] == "Your rooms in the château, for your party alone"
+            and theirs and theirs[0] == "Your room in the château, and a small company to share it",
+            detail=f"{items[:1]} / {theirs[:1]}")
     s.check("and ends open", items and items[-1].startswith("And much more"), detail=str(items[-1:]))
     src = open(m.os.path.join(_harness.ROOT, "templates", "_retreat_included.html"), encoding="utf-8").read()
     changed = src.replace("Foix and the caves", "Foix and the caves, and a line written for this check")

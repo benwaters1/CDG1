@@ -35,7 +35,9 @@
     <p class="g-field">
       <label for="fx_topic">What it is about<span class="g-req" aria-hidden="true">*</span></label>
       <select id="fx_topic" name="topic" required>
-        {%- set _topics = [('private_event', 'A private retreat'), ('wedding', 'A wedding'), ('photoshoot', 'A photoshoot or filming'), ('whole_chateau', 'The whole château, for a group'), ('other', 'Something else')] %}
+        {#- Site review 25 Nov (2.8, 2.9): "The whole château, for a group" is a private retreat, said twice; it went, so this
+            list is /events' list, word for word. CONTACT_TOPICS still names it for enquiries sent before. -#}
+        {%- set _topics = [('private_event', 'A private retreat'), ('wedding', 'A wedding'), ('photoshoot', 'A photoshoot or filming'), ('other', 'Something else')] %}
         <option value=""{{ '' if _topic in _topics|map(attribute=0)|list else ' selected' }} disabled>Choose one</option>
         {%- for _v, _w in _topics %}
         <option value="{{ _v }}"{{ ' selected' if _topic == _v }}>{{ _w }}</option>

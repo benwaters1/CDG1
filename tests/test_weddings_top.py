@@ -66,7 +66,7 @@ def run():
     # Every fact is one the room's card on /book already states, so the page claims nothing the house has not.
     # (The views are the room's own feature list, which lives in the database; the owner gave them on 14 Oct.)
     s.check("the size, the bed and the bath are what /book says", "70 m²" in book and "emperor bed" in book
-            and "The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath" in book)
+            and "The King Suite, the Marquis Suite and the Family Suite each have a larger bathroom, with a bath" in book)
 
     s.section("Nothing twice")
     shown = _visible(page)

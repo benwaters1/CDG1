@@ -29,7 +29,7 @@ m = _harness.m
 WORKSHOPS = {
     # 27 Oct (owner): the Immersive Artisan Workshops are off the site; Noël has a new card, without embroidery or candles.
     "Noël at Gudanes": "Four December days at home in the château: a gingerbread château to ice,",
-    "Cooking in the Cuisine": "Five spring days with the château’s chefs and pastry chef:",
+    "Cooking in the Cuisine": "Five days of early summer with the château’s chefs and pastry chef:",  # 25 Nov: it runs 25-30 June
     "Antique & French Finds": "Three days of chiner in the markets, brocantes and vide-greniers of the Ariège,",
     "Seven Starry Nights": "A week of French summer with everything:",
 }

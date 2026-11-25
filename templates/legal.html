@@ -15,13 +15,16 @@
 
   <dl class="g-facts-list">
     {% if company and company['legal_name'] %}
-    <div><dt>Publisher</dt><dd>{{ company['legal_name'] }}{% if company['legal_form'] %}, {{ company['legal_form'] }}{% if company['share_capital'] %} with a share capital of {{ company['share_capital'] }}{% endif %}{% endif %}, which operates Château de Gudanes</dd></div>
+    <div><dt>Publisher</dt><dd>{{ company['legal_name'] }}{% if company['legal_form'] %}, {{ company['legal_form'] }}{% if company['share_capital'] %}{% set _cap = company['share_capital']|trim %}{% if _cap.endswith('€') %}{% set _cap = '€' ~ (_cap[:-1]|trim) %}{% endif %} with a share capital of {{ _cap }}{% endif %}{% endif %}, which operates Château de Gudanes</dd></div>
     {% endif %}
     {% if company and company['registered_address'] %}
     <div><dt>Registered office</dt><dd>{{ company['registered_address'] }}</dd></div>
     {% endif %}
     {% if company and company['registration_number'] %}
-    <div><dt>Registration</dt><dd>RCS Foix {{ company['registration_number'] }}</dd></div>
+    {#- Site review 25 Nov: the fourteen-digit number is the SIRET, not the RCS number; the trade register line
+        below gives the RCS number (the SIREN, its first nine digits) correctly. -#}
+    {%- set _reg = (company['registration_number'] or '')|replace(' ', '') %}
+    <div><dt>{{ 'SIRET' if _reg|length == 14 else 'Registration' }}</dt><dd>{% if _reg|length == 14 %}{{ company['registration_number'] }}{% else %}RCS Foix {{ company['registration_number'] }}{% endif %}</dd></div>
     {% endif %}
     {# LCEN 6-III also asks for the trade-register entry: "RCS Foix" and the SIREN, which is the SIRET's first nine digits. #}
     {% if company and company['registration_office'] %}

@@ -819,15 +819,21 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 }
 .g-panel-overlay.is-open{ opacity: 1; visibility: visible; }
 
+/* Site review 25 Nov 2026 (2.1): the drawer slides in from the RIGHT, the side the
+   Menu button is on. It came from the left, so the hand that pressed Menu had to
+   cross the screen to use it. overflow-x is clipped as well as fixed at the
+   source (the hidden date fields, near the end of this file): a drawer that
+   scrolls sideways is never meant, whatever lands in it next. */
 .g-navwrap{
-  position: fixed; top: 0; left: 0; bottom: 0; z-index: 59;
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 59;
   width: min(24rem, 88vw); background: var(--sand);
-  transform: translateX(-100%); visibility: hidden;
+  transform: translateX(100%); visibility: hidden;
+  overflow-x: hidden;
   /* Closed, the drawer is off-screen but was still visibility:visible, so every
      control in it kept its place in the tab order — ten Tab presses through an
      invisible form. hidden takes it out; the delay lets the slide finish first. */
   transition: transform .3s ease, visibility 0s linear .3s;
-  overflow-y: auto; box-shadow: 20px 0 50px rgba(0,0,0,.12);
+  overflow-y: auto; box-shadow: -20px 0 50px rgba(0,0,0,.12);
   display: flex; flex-direction: column;
 }
 .g-navwrap.is-open{ transform: translateX(0); visibility: visible; transition-delay: 0s, 0s; }
@@ -12603,6 +12609,13 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g #g-mainnav .g-qbook__row{ flex-direction: column; gap: var(--s3); }
 .g #g-mainnav .g-qbook__f{ flex: 1 1 auto; width: 100%; }
 .g #g-mainnav .g-qbook__f input{ width: 100%; min-width: 0; font-size: 16px; }
+/* Site review 25 Nov (2.1): the rule above also caught the two native date fields
+   the range picker keeps underneath it. They are position:absolute, so "100%" was
+   the whole drawer measured from the field's own left edge, and they ran 65px past
+   the panel's right side -- the drawer's horizontal scrollbar. The field is now
+   their containing block and they are back to the 1px the picker gives them. */
+.g #g-mainnav .g-rp__f.is-rp{ position: relative; }
+.g #g-mainnav .g-rp__f.is-rp input[type="date"]{ width: 1px; min-width: 0; }
 
 /* =====================================================================
    23 Nov 2026 - CENTRED, AND CLOSER (owner: "whys so much of the site off
@@ -12628,4 +12641,74 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 @media (min-width: 64rem){
   .g .g-wscards:has(> .g-wscard:nth-child(4):last-child) > .g-wscard{
     flex-basis: calc((100% - var(--s5)) / 2); max-width: calc((100% - var(--s5)) / 2); }
+}
+
+/* Site review 25 Nov (2.17): the year over each group of occasions, when they run into a second year. */
+.g .g-occ-year{ margin: var(--s7) 0 var(--s4); }
+
+/* Site review 25 Nov (4.7): a hero whose photograph must not be written over (the gallery's guests on the
+   scaffold). The photograph in flow at its own height, the title in a navy band beneath it, no wash. */
+.g .g-hero.g-hero--below{ display: flex; flex-direction: column; min-height: 0; padding-top: 0; }
+.g .g-hero--below .g-hero__img{ position: static; width: 100%; height: clamp(320px, 62vh, 680px); object-fit: cover; object-position: 50% 32%; }
+.g .g-hero--below .g-hero__wash{ display: none; }
+.g .g-hero--below .g-hero__in{ position: static; max-width: none; padding: var(--s6) var(--s5) var(--s7); background: var(--blue-deep); }
+
+
+/* ==========================================================================
+   SITE REVIEW, 25 NOVEMBER 2026: section 4 (design)
+   ========================================================================== */
+/* 4.1 The header, folded: its links did not fit, so the Menu button carries them (script in public_base.html). */
+.g .g-top__in.is-folded > .g-nav{ display: none; }
+.g .g-top__in.is-folded > .g-navbtn{ display: inline-flex; }
+
+/* 4.2 Ways to Spend the Days: a landscape photograph in the wider column and the words beside it, rather than a tall
+   portrait with one line of text in the middle of a half-empty navy column. */
+@media (min-width: 52rem){
+  .g .g-plaisirs__panel{ grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); }
+  .g .g-plaisirs__img{ aspect-ratio: 4 / 3; }
+}
+
+/* 4.3 What Guests Say: each card its own height. Stretched to the tallest, two were mostly blank parchment. */
+.g section.rc-says .rc-grid{ align-items: start; }
+
+/* 4.5 A retreat's invitation: the words start under their heading. Centred beside a tall photograph they began
+   130px and more below it. */
+.g .g-h2--lead + .g-sp{ align-items: start; }
+
+/* 4.6 A day with no photograph of its own: its drawing is a small ornament in the card's corner, as on a phone,
+   rather than a 9rem column where a photograph would go -- which read as a picture that had not loaded. */
+@media (min-width: 40.01rem){
+  .g .g-journey__card:not(.g-journey__card--pic){ grid-template-columns: minmax(0, 1fr); }
+  .g .g-journey__card:not(.g-journey__card--pic) > .g-journey__ill{ position: absolute; top: var(--s4); right: var(--s4); width: 3.6rem; opacity: .7; }
+  .g .g-journey__card:not(.g-journey__card--pic) .g-journey__t{ padding-right: 4.2rem; }
+}
+
+/* 4.8 The Book panel: "Manage an existing booking" sat on the panel's bottom edge. */
+.g .g-bookmenu__opt--sm:last-child{ padding-bottom: var(--s5); }
+
+/* 4.10 The journey table on a phone: each journey is a card, each value led by its heading. The comparison
+   table's two-column phone layout split "From / To / How / How long" two by two, and nothing lined up. */
+.g .g-jt__k{ display: none; }
+@media (max-width: 44rem){
+  .g table.g-journey-times thead{ display: none; }
+  .g table.g-journey-times tr{ display: block; padding: var(--s3) 0; border-bottom: 1px solid rgba(115,86,45,.16); }
+  .g table.g-journey-times tbody th, .g table.g-journey-times tbody td{ display: block; width: auto; border: 0; padding: 2px var(--s3); }
+  .g table.g-journey-times tbody th{ font-weight: 600; }
+  .g .g-jt__k{ display: inline; font-family: var(--ui); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #73562d; margin-right: .4em; }
+}
+
+
+/* 2.3 The rooms side by side, on /book (site review 25 Nov 2026). */
+.g .g-rcmp{ width: 100%; border-collapse: collapse; font-size: 15px; margin-top: var(--s5); }
+.g .g-rcmp th, .g .g-rcmp td{ padding: var(--s3); border-bottom: 1px solid rgba(115,86,45,.16); text-align: left; vertical-align: top; line-height: 1.45; color: var(--ink); font-weight: 400; }
+.g .g-rcmp thead th{ font-family: var(--ui); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #73562d; border-bottom: 1px solid rgba(115,86,45,.35); }
+.g .g-rcmp tbody th a{ font-family: var(--display); font-size: 1.1rem; color: var(--blue-deep); text-decoration: none; }
+.g .g-rcmp tbody th a:hover{ text-decoration: underline; }
+.g .g-rcmp__plain{ display: block; font-size: 13px; color: var(--ink-soft); }
+.g .g-rc__k{ display: none; }
+@media (max-width: 44rem){
+  .g .g-rcmp thead{ display: none; }
+  .g .g-rcmp tr{ display: block; padding: var(--s3) 0; border-bottom: 1px solid rgba(115,86,45,.16); }
+  .g .g-rcmp tbody th, .g .g-rcmp td{ display: block; border: 0; padding: 2px var(--s3); }
+  .g .g-rc__k{ display: inline; font-family: var(--ui); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #73562d; margin-right: .4em; }
 }

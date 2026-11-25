@@ -475,7 +475,7 @@ window.houseDay = (function () {
         </a>{% endif %}
 
         {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-bookmenu__opt g-bookmenu__opt--sm">
-          {{ t('Dining only — a table at La Table') }}
+          {{ t('Dining only: a table at La Table') }}
         </a>{% endif %}
         <a href="{{ url_for('find_booking') }}" class="g-bookmenu__opt g-bookmenu__opt--sm">
           {{ t('Manage an existing booking') }}
@@ -577,7 +577,7 @@ window.houseDay = (function () {
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 5h16v12H8l-4 4z"/></svg>
       <b>Answered by a person</b>
-      <span>Every request is read at the château and answered by someone who knows the rooms — not by a booking engine.</span>
+      <span>Every request is read at the château and answered by someone who knows the rooms, not by a booking engine.</span>
     </li>
   </ul>
 </div></section>
@@ -801,6 +801,23 @@ window.houseDay = (function () {
   }
   sel.addEventListener('change', apply);
   apply();
+})();
+</script>
+<script>
+/* Site review 25 Nov 2026 (4.1): the header folds to its Menu button whenever its links do not fit beside the logo.
+   In French at 1,498px the links ran 76px past their space, over the logo ("SÉJOURNER" across "Château de Gudanes"),
+   and the next wording or the next language would do the same at another width: so it is measured, not guessed. */
+(function(){
+  var top=document.querySelector('.g-top__in'); if(!top) return;
+  var nav=top.querySelector(':scope > .g-nav'); if(!nav) return;
+  function fit(){
+    top.classList.remove('is-folded');
+    var links=nav.querySelectorAll(':scope > a, :scope > div > a'); if(!links.length) return;
+    var n=nav.getBoundingClientRect(); if(!n.width) return;
+    var f=links[0].getBoundingClientRect(), l=links[links.length-1].getBoundingClientRect();
+    if(f.left < n.left - 1 || l.right > n.right + 1) top.classList.add('is-folded');
+  }
+  fit(); addEventListener('resize', fit); if(document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
 })();
 </script>
 <script>

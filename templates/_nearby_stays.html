@@ -22,7 +22,9 @@
 } -%}
 {%- set PLACE_SITES = {'Maison Beaucoup': 'https://www.maison-beaucoup.fr/', 'Les Granges de Léo': 'https://www.lesgrangesdeleo.fr/'} -%}
 {% from '_illus.html' import illus %}
-{% macro nearby_stays(heading='Where Your Guests Stay', intro='', fr='À deux pas', fr_en='A few minutes away', note='Each is booked directly. Ask us, and we will gladly tell you which would suit your party.') -%}
+{#- who / day_end (site review 25 Nov): who walks up the drive, and at the end of what. A crew is not "your guests"
+    coming home "at the end of the night". -#}
+{% macro nearby_stays(heading='Where Your Guests Stay', intro='', fr='À deux pas', fr_en='A few minutes away', note='Each is booked directly. Ask us, and we will gladly tell you which would suit your party.', who='your guests', day_end='the night') -%}
 <section class="g-sec g-nearby"><div class="g-wrap">
   <span class="g-hill" aria-hidden="true">{{ illus('key') }}</span>
   <p class="g-fr">{{ fr }} <span class="g-fr__en">{{ fr_en }}</span></p>
@@ -30,7 +32,7 @@
   {% if intro %}<p class="g-p g-intro">{{ intro }}</p>{% endif %}
   <div class="g-nearby__grid">
     {%- for name, far, how, where, text in [
-      ('Les Gîtes de Beille', 'Next door', 'a walk up the château’s private drive', 'Les Cabannes, by the river', 'Villas at the foot of the drive, so your guests can walk up to the château and home again at the end of the night.'),
+      ('Les Gîtes de Beille', 'Next door', 'a walk up the château’s private drive', 'Les Cabannes, by the river', 'Villas at the foot of the drive, so ' ~ who ~ ' can walk up to the château and home again at the end of ' ~ day_end ~ '.'),
       ('Maison Beaucoup', 'About 1 km', 'two minutes by car', 'Les Cabannes, the village by the château', 'Three very large rooms in a fully restored nineteenth-century presbytery, with its own restaurant. Up to six guests.'),
       ('Les Granges de Léo', 'About 2 km', 'five minutes by car', 'Aston, a neighbouring village', 'Six wooden chalets of two bedrooms each, and three large houses of stone and wood, with a pool in summer.')
     ] %}

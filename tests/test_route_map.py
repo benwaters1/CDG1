@@ -120,7 +120,7 @@ def _run(s):
     s.check("no Google or Apple button", "maps.apple.com" not in page and "query=42" not in page)
     s.check("and no claim that a pin is the gates", "The pin is the gates" not in page)
     s.check("the way in is still said in words",
-            re.search(r"(?i)telephone (?:when you leave|from) Les Cabannes", page) is not None)
+            re.search(r"(?i)telephone (?:when you leave|from|as you reach) Les Cabannes", page) is not None)
 
     s.section("With the pin set, everything goes to it")
     _pin("42.8083", "1.6528")

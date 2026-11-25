@@ -186,7 +186,8 @@ def run():
         import html as _html
         said = " ".join(_html.unescape(f) for f in flashes(r)).lower()
         s.check("and the guest is told plainly, not shown a blank page",
-                "completed" in said and ("wasn't" in said or "not completed" in said),
+                # the page curls the apostrophe (site review 25 Nov): wasn’t
+                "completed" in said and ("wasn't" in said or "wasn’t" in said or "not completed" in said),
                 detail=f"{flashes(r)[:1]} — a guest whose card failed needs to "
                        "know, or they arrive believing they have paid")
 

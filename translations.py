@@ -126,7 +126,8 @@ FR = {
     "Stay": "Séjourner",
     "Stay Now": "Réserver un séjour",
     "Workshops": "Ateliers",
-    "Retreats": "Retraites",
+    # Site review 25 Nov: "Séjours", as the pages and "Séjours privés" say; "retraite" reads first as retirement.
+    "Retreats": "Séjours",
     "Weddings & Events": "Mariages et événements",
     "Weddings & Celebrations": "Mariages et célébrations",
     "Weddings": "Mariages",
@@ -330,7 +331,7 @@ FR = {
     "Save this link, or write down your reference code and the email you booked with — that's how you check in and manage this booking later.": "Conservez ce lien, ou notez votre code de réservation et l'adresse e-mail utilisée — c'est ainsi que vous ferez votre arrivée et gérerez cette réservation par la suite.",
     "Contact": "Contact",
     "A room, your own dates": "Une chambre, à vos dates",
-    "Dining only — a table at La Table": "Dîner seulement — une table à La Table",
+    "Dining only: a table at La Table": "Dîner seulement : une table à La Table",
     "Five rooms · from €{price} a night · breakfast included": "Cinq chambres · à partir de {price} € la nuit · petit-déjeuner compris",
     "Five rooms · breakfast included": "Cinq chambres · petit-déjeuner compris",
     # 17 Oct: a sixth room. The templates ask for "<count> rooms · ..." from house_rooms, so both are here.
@@ -361,6 +362,7 @@ FR = {
     "Find booking": "Retrouver la réservation",
     "Reference code": "Code de réservation",
     "Email you booked with": "E-mail utilisé pour réserver",
+    "Email you enquired with": "E-mail utilisé pour votre demande",
     "Thank you": "Merci",
     "Booking request received": "Demande de réservation reçue",
     "Add-ons": "Suppléments",
@@ -830,8 +832,8 @@ FR = {
     "Check-in from 3pm, check-out by 11am.": "Arrivée à partir de 15h, départ avant 11h.",
     "Check-in from 3pm, check-out by 11am. Later arrivals by arrangement.":
         "Arrivée à partir de 15h, départ avant 11h. Arrivée plus tardive sur demande.",
-    "Check-in from 3pm, check-out by 11am. Arriving earlier? Early check-in is on request — choose it above and we will do our best.":
-        "Arrivée à partir de 15h, départ avant 11h. Vous arrivez plus tôt ? L’arrivée anticipée est possible sur demande — choisissez-la ci-dessus et nous ferons de notre mieux.",
+    "Check-in from 3pm, check-out by 11am. Arriving earlier? Early check-in is on request: choose it above and we will do our best.":
+        "Arrivée à partir de 15h, départ avant 11h. Vous arrivez plus tôt ? L’arrivée anticipée est possible sur demande : choisissez-la ci-dessus et nous ferons de notre mieux.",
     "From 3pm · by 11am": "À partir de 15h · avant 11h",
     "Arrival is from 3pm and departure by 11am, unless your confirmation says otherwise. Tell us if you expect to arrive late so that someone can be there to meet you.":
         "L’arrivée se fait à partir de 15h et le départ avant 11h, sauf indication contraire dans votre confirmation. Prévenez-nous si vous pensez arriver tard, afin que quelqu’un soit là pour vous accueillir.",
@@ -938,7 +940,7 @@ FR = {
     "Down the river by canoe, long afternoons by the pool, and a film beneath the stars":
         "La descente de la rivière en canoë, de longs après-midi au bord de la piscine, et un film à la belle étoile",
     "Three nights from the retreats’ own days, shaped around your party. Every stay is drawn up with you.":
-        "Trois nuits tirées des journées des retraites, façonnées autour de votre groupe. Chaque séjour se compose avec vous.",
+        "Trois nuits tirées des journées des séjours, façonnées autour de votre groupe. Chaque séjour se compose avec vous.",
     "Welcomed with a glass of crémant, and shown to your rooms":
         "Accueillis avec une coupe de crémant, puis conduits à vos chambres",
     "A morning at the stove with the château’s chefs": "Une matinée aux fourneaux avec les chefs du château",
@@ -1235,7 +1237,7 @@ ES = {
     "Save this link, or write down your reference code and the email you booked with — that's how you check in and manage this booking later.": "Guarde este enlace, o anote su código de reserva y el correo electrónico que utilizó — así es como hará su entrada y gestionará esta reserva más adelante.",
     "Contact": "Contacto",
     "A room, your own dates": "Una habitación, en sus fechas",
-    "Dining only — a table at La Table": "Solo cena — una mesa en La Table",
+    "Dining only: a table at La Table": "Solo cena: una mesa en La Table",
     "Five rooms · from €{price} a night · breakfast included": "Cinco habitaciones · desde {price} € la noche · desayuno incluido",
     "Five rooms · breakfast included": "Cinco habitaciones · desayuno incluido",
     # 17 Oct: a sixth room (see FR).
@@ -1265,6 +1267,7 @@ ES = {
     "Find booking": "Buscar reserva",
     "Reference code": "Código de reserva",
     "Email you booked with": "Correo con el que reservó",
+    "Email you enquired with": "Correo con el que hizo su consulta",
     "Thank you": "Gracias",
     "Booking request received": "Solicitud de reserva recibida",
     "Add-ons": "Extras",
@@ -1628,7 +1631,7 @@ ES = {
     "Check-in from 3pm, check-out by 11am.": "Entrada a partir de las 15:00, salida antes de las 11:00.",
     "Check-in from 3pm, check-out by 11am. Later arrivals by arrangement.":
         "Entrada a partir de las 15:00, salida antes de las 11:00. Llegadas más tardías, previo acuerdo.",
-    "Check-in from 3pm, check-out by 11am. Arriving earlier? Early check-in is on request — choose it above and we will do our best.":
+    "Check-in from 3pm, check-out by 11am. Arriving earlier? Early check-in is on request: choose it above and we will do our best.":
         "Entrada a partir de las 15:00, salida antes de las 11:00. ¿Llega antes? La entrada anticipada es bajo petición: elíjala arriba y haremos lo posible.",
     "From 3pm · by 11am": "Desde las 15:00 · antes de las 11:00",
     "Arrival is from 3pm and departure by 11am, unless your confirmation says otherwise. Tell us if you expect to arrive late so that someone can be there to meet you.":

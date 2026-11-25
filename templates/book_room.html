@@ -12,12 +12,14 @@
 {% from '_pictures.html' import carrousel, medaillon, passe_partout, pictures_script %}
 {% set crumbs = [('Stay', url_for('book_rooms')), (room_title(room['name']), None)] %}
 {% block title %}Book {{ room_title(room['name']) }}{% if room_plain(room['name']) %}, {{ room_plain(room['name']) }}{% endif %}{% endblock %}
+{#- Site review 25 Nov: the French page's title was the English one. The room's own name is French already. -#}
+{% block title_fr %}Réserver {{ room_title(room['name']) }}{% endblock %}
 {# Named, and priced, per room. One template serves five bedrooms, so a
    fixed sentence here gave all five pages the same description -- which
    is the one line a search engine shows under the link, so five rooms
    competed against each other with identical copy. Falls back to the
    general sentence for a room with no rate on it yet. #}
-{% block description %}{{ room_title(room['name']) }}{% if room_plain(room['name']) %} ({{ room_plain(room['name']) }}){% endif %} at Château de Gudanes, a Class I monument under restoration in the Pyrénées.{% if room['max_occupancy'] %} {% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}For {{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Sleeps {{ room_sleeps(room) }}{% endif %}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Breakfast included.{% endblock %}
+{% block description %}{{ room_title(room['name']) }}{% if room_plain(room['name']) %} ({{ room_plain(room['name']) }}){% endif %} at Château de Gudanes, in the Pyrénées.{% if room['max_occupancy'] %} {% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}For {{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Sleeps {{ room_sleeps(room) }}{% endif %}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Breakfast included.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://cf.bstatic.com/xdata/images/hotel/max2048x2048/798764955.jpg?k=d8653db73b32b57205f0af9b550ee5ee521deae7ec1638ed4dafcc67057d01c9&amp;o={% endblock %}
 {% set sticky_bar = 'none' %}
@@ -219,13 +221,13 @@
                     the booking does not quietly lose it (z15, 15 Oct). -#}
                 {%- set _slots = [] %}{% for _h in range(check_in_hour, 22) %}{% set _ = _slots.append(clock_words(_h) ~ '-' ~ clock_words(_h + 1)) %}{% endfor %}
                 {%- if _eta and _eta not in [_early, 'After 10pm'] + _slots %}<option value="{{ _eta }}" selected>{{ _eta }}</option>{% endif %}
-                <option value="{{ _early }}" {{ 'selected' if _eta == _early }}>Before {{ check_in_at }} &mdash; early check-in, on request</option>
+                <option value="{{ _early }}" {{ 'selected' if _eta == _early }}>Before {{ check_in_at }}: early check-in, on request</option>
                 {%- for _slot in _slots %}
                 <option value="{{ _slot }}" {{ 'selected' if _eta == _slot }}>{{ _slot.split('-')[0] }} &ndash; {{ _slot.split('-')[1] }}</option>
                 {%- endfor %}
                 <option value="After 10pm" {{ 'selected' if _eta == 'After 10pm' }}>After 10pm</option>
               </select>
-              <span class="g-hint">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}. Arriving earlier? Early check-in is on request &mdash; choose it above and we will do our best.</span>
+              <span class="g-hint">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}. Arriving earlier? Early check-in is on request: choose it above and we will do our best.</span>
             </p>
           </div>
         </section>
@@ -274,7 +276,8 @@
                   <b>{{ e['name'] }}</b>
                   {% if e['description'] %}<span>{{ e['description'] }}</span>{% endif %}
                 </span>
-                <span class="g-fig">€{{ '{:,.2f}'.format(e['price']) }}</span>
+                {#- Site review 25 Nov (2.16): "€50.00" here and "€50" on /book; whole euros as /book prints them. -#}
+                <span class="g-fig">€{{ ('{:,.0f}' if (e['price']|float) == (e['price']|int) else '{:,.2f}').format(e['price']|float) }}</span>
               
                 {# The loop variable is e, and there is no 'notice' column: this
                    arrived as x['notice'] and undefined-on-a-Row is a 500, so
@@ -332,9 +335,12 @@
                    placeholder="A birthday, an anniversary&hellip;" value="{{ _occ or '' }}">
           </div>
           <p class="g-field">
-            <label for="special_requests" class="g-vh">Anything we should know (optional)</label>
-            <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, occasion, arrival time, questions...">{{ prefill_requests | default('') }}</textarea>
-              <span class="g-hint">Optional. You can add to this later from your reservation.</span>
+            {#- Site review 25 Nov (2.16): three ways of saying optional in one step ("optional", "(optional)", "Optional.").
+                One now, the label's, as every other field on the form has it; and the occasion is out of the
+                placeholder, since it has its own field just above. -#}
+            <label for="special_requests">Your note <span class="g-opt">optional</span></label>
+            <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, arrival time, questions...">{{ prefill_requests | default('') }}</textarea>
+              <span class="g-hint">You can add to this later from your reservation.</span>
           </p>
           <p class="g-field g-field--narrow">
             <label for="promo_code">Promo code <span class="g-opt">optional</span></label>
@@ -1093,7 +1099,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" width="62" height="62" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Not this room?</h2>
-  <p class="g-close__p">There are {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }}, and they are not alike. The <a href="{{ url_for('workshops_public') }}#compare">comparison table</a> is the quickest way to see which suits.</p>
+  <p class="g-close__p">There are {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }}, and they are not alike. The <a href="{{ url_for('book_rooms') }}#compare">rooms side by side</a> are the quickest way to see which suits.</p>{#- site review 25 Nov (2.3): it pointed at a table that was not there; it is on /book now -#}
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See every room</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us</a>

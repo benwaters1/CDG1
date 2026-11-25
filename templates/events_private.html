@@ -6,7 +6,8 @@
     what they come for. test_private_retreat holds it. -#}
 {% block title %}A Private Retreat{% endblock %}
 {% block title_fr %}Un séjour privé au château{% endblock %}
-{% block description %}La vie de château for your party alone: three to seven nights at Château de Gudanes, with the retreats’ chefs, meals, wine and outings on your own dates, and nobody else under the roof.{% endblock %}
+{#- Site review 25 Nov: descriptions over 160 characters are cut short by Google; this one is under. -#}
+{% block description %}La vie de château for your party alone: three to seven nights at Château de Gudanes on your dates, with the retreats’ chefs, meals, wine, outings and more.{% endblock %}
 {% block description_fr %}La vie de château pour vous seuls : trois à sept nuits au château de Gudanes, avec les chefs, les repas, les vins et les sorties des séjours, à vos dates, et personne d’autre sous le toit.{% endblock %}
 {% block og_title %}A Private Retreat at Château de Gudanes{% endblock %}
 {% block og_desc %}La vie de château for your party alone: three to seven nights, with the retreats’ chefs, meals, wine and outings on your own dates, and nobody else under the roof.{% endblock %}
@@ -74,7 +75,8 @@
   <p class="g-fr">Tout compris <span class="g-fr__en">All inclusive</span></p>
   <h2 class="g-place">All Inclusive</h2>
   <p class="g-p g-intro">Everything a retreat includes, for every day of yours.</p>
-  {{ retreat_included('g-sow__list g-priv-incl__l') }}
+  {#- private=True (site review 25 Nov): "a small company to share it" is the public retreats'; a private party is alone. -#}
+  {{ retreat_included('g-sow__list g-priv-incl__l', private=True) }}
   <p class="g-p g-priv-incl__tx">Transfers from Toulouse can be arranged, at an additional charge.</p>
   <div class="g-wedus">
     <figure class="g-wedus__i"><img src="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }}" srcset="{{ url_for('static', filename='img/life/asparagus-on-the-grill-800.jpg') }} 800w, {{ url_for('static', filename='img/life/asparagus-on-the-grill.jpg') }} 1600w" sizes="(min-width: 52rem) 33vw, 100vw" alt="White asparagus and sausage on the grill in the grounds" loading="lazy"></figure>
@@ -150,7 +152,7 @@
   <p class="g-eyebrow">Every Meal, Cooked Here</p>
   <h2 class="g-place">At the Château’s Tables</h2>
   <p class="g-p g-intro">Breakfast, long lunches on the terrace, dinners by candlelight in the salons: every meal is cooked and served by us, at the château’s own tables.</p>
-  <p class="g-p">Menus follow the season and the markets of the valley, cooked at the château’s tables or on the grill in the grounds, and shaped with you before you arrive, down to the birthday cake. The bar is open to you and your guests throughout your stay, with the wines and sparkling of the south of France and choices without alcohol at every meal.</p>
+  <p class="g-p">Menus follow the season and the markets of the valley, cooked in the château’s kitchens or on the grill in the grounds, and shaped with you before you arrive, down to the birthday cake. The bar is open to you and your guests throughout your stay, with the wines and sparkling of the south of France and choices without alcohol at every meal.</p>
   {% endcall %}
 </div></section>
 
@@ -163,7 +165,7 @@
   <p class="g-fr">Les détails <span class="g-fr__en">The details</span></p>
   <h2 class="g-place">The Finer Details</h2>
   <div class="g-wed-fine__cols">
-    <div class="g-wed-fine__c"><h3 class="g-wed-fine__h">Included</h3><ul><li>Exclusive use of the château, its gardens and grounds, from three nights</li><li>One party at a time, with nobody else under the roof</li><li>Fifteen guests staying in the château’s bedrooms and suites</li><li>Planning with the château team before you arrive</li><li>Breakfast, lunch and dinner, cooked and served by us</li><li>Wines, crémant and no-alcohol choices with every meal, and the bar</li><li>Flowers from the markets and the gardens, arranged by us</li><li>A historic tour of the château</li><li>The tea and coffee salon, the seasonal pool, tennis and pickleball, and wi-fi</li></ul></div>
+    <div class="g-wed-fine__c"><h3 class="g-wed-fine__h">Included</h3><ul><li>Exclusive use of the château, its gardens and grounds, from three nights</li><li>One party at a time, with nobody else under the roof</li><li>Fifteen guests staying in the château’s bedrooms and suites</li><li>Planning with the château team before you arrive</li><li>Breakfast, lunch and dinner, cooked and served by us</li><li>Wines, crémant and no-alcohol choices with every meal, and the bar</li><li>Flowers from the markets and the gardens, arranged by us</li><li>A historic tour of the château</li><li>The tea and coffee salon, the seasonal pool, tennis and pickleball, and Wi-Fi</li></ul></div>
     <div class="g-wed-fine__c"><h3 class="g-wed-fine__h">Also possible, on request</h3><ul><li>Transport between Toulouse and the château</li><li>Musicians: string quartets, pianists and harpists</li><li>Further nights before or after your stay</li><li>Rooms for more guests at the places nearby</li></ul></div>
   </div>
 </div></section>

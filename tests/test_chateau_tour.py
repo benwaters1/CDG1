@@ -171,7 +171,8 @@ def _the_rest(s, room, added):
     page = _guest().get(f"/book/{room['id']}?arrival={arrival.isoformat()}"
                         f"&departure={departure.isoformat()}").get_data(as_text=True)
     s.check("it is offered, at its price",
-            "A tour of the château" in page and "€50.00" in page)
+            # site review 25 Nov: whole euros, as /book prints an extra ("€50", not "€50.00")
+            "A tour of the château" in page and '<span class="g-fig">€50</span>' in page)
     s.check("and asks which day", f'name="extra_when_{tour["id"]}"' in page)
 
     s.section("Booked with a stay, it is on the booking once")

@@ -95,6 +95,8 @@ def nav_mismatch(path, html):
         target = re.sub(r"^https?://[^/]+", "", href.group(1)).split("#")[0].split("?")[0] or "/"
         marked = "is-here" in attrs
         ours = path == target or (target != "/" and path.startswith(target.rstrip("/") + "/"))
+        # A retreat's page is at its name since 25 Nov (/retreats/<name>); it belongs to the retreats' list.
+        ours = ours or (target == "/workshops" and path.startswith("/retreats/"))
         if marked and not ours:
             faults.append(f"marks {target}")
         if path == target and not marked:
@@ -107,7 +109,7 @@ FORBIDDEN = re.compile(
 # Proper names that carry the letters, allowed by name and nowhere else.
 # And one sentence the owner wrote on 24 Nov 2026, after the rule ("its the house as it was, full of
 # life"), on the retreats and the home page: their own later words win for those words only.
-ALLOWED = ["House & Garden", "FIN!", "the house as it was, full of life"]
+ALLOWED = ["House & Garden", "FIN!"]
 # A guest's own words are quoted as they wrote them (owner, site review of 24 Nov 2026: "the only
 # ones are inside guests' quotes, which are verbatim and stay"). The rule is for the house's voice.
 GUEST_QUOTE = re.compile(r"(?is)<blockquote\b.*?</blockquote>")
@@ -207,7 +209,7 @@ def _run(s, anon):
     s.check("the sitemap gives the public pages to read", len(pages) >= 20,
             detail=f"{len(pages)} pages")
     home = pages.get("/", "")
-    retreats = [p for p in pages if re.fullmatch(r"/workshops/\d+", p)]
+    retreats = [p for p in pages if re.fullmatch(r"/workshops/\d+|/retreats/[a-z0-9-]+", p)]
     rooms = [p for p in pages if re.fullmatch(r"/book/\d+", p)]
     s.check("and among them the home page, the retreats and the rooms",
             bool(home) and len(retreats) >= 3 and len(rooms) >= 3,
@@ -483,9 +485,11 @@ def _book_cards(s, anon):
     words = visible_text(sec)
     for fact in ("Installed in 2019", "historic monument", "together on the ground floor",
                  "Bespoke, by Antoinette Poisson, made by hand in Paris", "Eighteenth-century terracotta tiles",
-                 "Painted with custom artwork and the château’s logo", "Luxury fittings throughout", "Luxury linen",
-                 "Luxury shampoo, conditioner and bath gel", "Heaters", "Mountain views",
-                 "The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath"):
+                 "Painted with custom artwork and the château’s logo", "Luxury fittings throughout", "Fine linen",
+                 # Site review 25 Nov: "Luxury" once rather than on three lines running, and the
+                 # three suites' bathrooms in the plural -- "a larger bathroom" read as one shared by three.
+                 "Shampoo, conditioner and bath gel", "Heaters", "Mountain views",
+                 "The King Suite, the Marquis Suite and the Family Suite each have a larger bathroom, with a bath"):
         s.check(f"and says: {fact}", fact in words)
     cards = re.findall(r'<a class="g-tags__bath" href="#bathrooms">([^<]*)</a>', page)
     s.check("every room card's bathroom says it is your own, and opens the section",

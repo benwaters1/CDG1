@@ -5,7 +5,8 @@
 {% block title_fr %}Mariages{% endblock %}
 {% block description_fr %}Se marier dans un Monument Historique classé des Pyrénées : un mariage à la fois, tout compris, jusqu'à quatre-vingts convives à l'intérieur, davantage sous un chapiteau, quinze pour la nuit.{% endblock %}
 {% block title %}Weddings{% endblock %}
-{% block description %}Weddings at a Class I Historic Monument in the French Pyrénées: one at a time and all inclusive, up to eighty guests inside, more under a marquee, fifteen staying the night.{% endblock %}
+{#- Site review 25 Nov: descriptions over 160 characters are cut short by Google; this one is under. -#}
+{% block description %}Weddings at a Class I Historic Monument in the Pyrénées: one at a time, all inclusive, up to eighty guests inside, more under a marquee, fifteen staying.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=1200w{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Weddings', None)] %}
 {# Without this the page falls through to the default and offers a guest
@@ -275,7 +276,7 @@
     24 Nov 2026 (owner's brief): how many, what is included and the planner, as the brochure answers them. -#}
 {% from '_faq.html' import faq %}
 {{ faq([
-  ('How many guests can we invite?', 'The ceremony, dinner and dancing can all be held outdoors. Indoors, up to eighty: two adjoining salons hold around forty guests each, for the party or if the weather turns. Fifteen of you stay at the château.'),
+  ('How many guests can we invite?', 'Up to eighty indoors: two adjoining salons hold around forty guests each, for the party or if the weather turns. The ceremony, dinner and dancing can all be held outdoors. Fifteen of you stay at the château.'),
   ('Can our guests stay at the château?', 'Fifteen guests can stay the night in the château. For the rest of your party there are three places close by: Les Gîtes de Beille at the foot of the drive, Maison Beaucoup about a kilometre away, and Les Granges de Léo about two.'),
   ('What is included?', 'Your wedding is all inclusive, for every day of it: the château, our help planning, the flowers, every meal created with our gourmet chefs from local, seasonal produce, a barbecue on the terrace, local Ariégeois wine and crémant, and spirits at the bar.'),
   ('Who does the flowers?', 'We create them with you, from what is growing in the gardens and from the local market. For more bespoke bouquets and arrangements, we liaise with a local florist on your behalf.'),
@@ -292,7 +293,7 @@
   <p class="g-p">Dates are given one wedding at a time, and June goes first. Write to us with your dates, the size of your party and the budget you have in mind, and you will receive a written quote and our terms. We would love to show you around in person, and are happy to talk through the details on a call before you visit.</p>
   <p class="g-p">A deposit of half the total, paid by bank transfer, reserves your date; the balance is due on a date agreed before your arrival. All amounts paid are non-refundable, so we kindly ask that you arrange wedding and travel insurance.</p>
   <p class="g-p"><a href="{{ url_for('events_info', type='wedding') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
-  <p class="g-limit"><span class="g-limit__k">One at a time</span> Only one event runs at the château at once.</p>
+  {#- Site review 25 Nov: said in the FAQ above as well; once on a page. -#}
 </div></section>
 
 

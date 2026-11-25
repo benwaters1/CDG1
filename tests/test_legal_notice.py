@@ -23,6 +23,7 @@ WHAT IS CHECKED, and why:
   THE HOST IS NAMED IN FULL: name, address and telephone, which is what the
   article asks for, not a city.
 """
+import re
 from _harness import Suite, clients, db
 import _harness
 
@@ -76,9 +77,13 @@ def run():
         s.section("The publisher is the company that issues guest invoices")
         s.check("named", NAME in page)
         s.check("with its form and capital",
-                "SASU" in page and "share capital of 500 €" in page)
+                # €500 as the terms write it (site review 25 Nov: "500 €" here, "€500" in /terms)
+                "SASU" in page and "share capital of €500" in page)
         s.check("its SIRET and VAT number",
                 "106 121 783 00018" in page and "FR12106121783" in page)
+        s.check("and the fourteen digits are called the SIRET, not the RCS number (site review 25 Nov)",
+                re.search(r"<dt>SIRET</dt><dd>106 121 783 00018</dd>", page) is not None
+                and "RCS Foix 106 121 783 00018" not in page)
         s.check("and its trade-register entry",
                 "RCS Foix 106 121 783" in page,
                 detail="LCEN asks for the RCS number, not only the SIRET")

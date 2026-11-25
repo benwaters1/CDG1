@@ -18,7 +18,8 @@
       <input type="text" id="ref" name="reference_code" placeholder="{{ ref_prefix.event }}XXXXXX" value="{{ prefill_ref or (request.form.reference_code if request and request.form else '') }}" required autocomplete="off" spellcheck="false" autocapitalize="characters">
     </div>
     <div class="g-field">
-      <label for="em">{{ t('Email you booked with') }}</label>
+      {#- Site review 25 Nov (2.7): an event is enquired about, not booked. -#}
+      <label for="em">{{ t('Email you enquired with') }}</label>
       <input type="email" inputmode="email" id="em" name="email" value="{{ prefill_email or (request.form.email if request and request.form else '') }}" required autocomplete="email">
     </div>
     <button type="submit" class="g-btn g-btn--solid">{{ t('Find enquiry') }}</button>

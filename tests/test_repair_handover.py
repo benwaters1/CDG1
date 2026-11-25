@@ -259,7 +259,7 @@ def run():
         s.check("the arrival card is imported with context",
                 "import arrival_card with context" in r("templates/booking_confirmation.html"))
         s.check("the after-dark instruction is in the By car line",
-                "telephone when you leave Les Cabannes" in r("templates/contact.html"))
+                "telephone as you reach Les Cabannes" in r("templates/contact.html"))
         legal = r("templates/legal.html")
         s.check("the host is named in full", "548 Market St PMB 68956" in legal)
         s.check("and the RCS line sits above the VAT row",

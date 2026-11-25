@@ -1434,3 +1434,9 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-dateread{ display: block; padding: 4px 0 2px; font-family: var(--serif); font-size: 19px; line-height: 1.4; font-style: italic; color: var(--ink-2); }
 .g .g-dateread.is-set{ font-style: normal; color: var(--blue-deep); }
 .g .g-dateread[hidden]{ display: none; }
+
+/* Site review 25 Nov 2026 (4.9): nothing under 12px. The menu's "Check dates" was 11px and its "Arrival" and
+   "Departure" 10px; the photograph credits on What's On were 11px. In this file, the later of the two, so it holds. */
+.g #g-mainnav .g-qbook__h{ font-size: 12px; }
+.g #g-mainnav .g-qbook .g-rp__f > label, .g #g-mainnav .g-qbook__f > label{ font-size: 12px; }
+.g .g-credit, .g .g-credit a, .g .g-gallery figcaption .g-credit, .g .g-moment .g-credit, .g .g-rgrid .g-credit{ font-size: 12px; }

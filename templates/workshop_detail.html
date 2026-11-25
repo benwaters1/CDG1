@@ -86,7 +86,8 @@
   {#- 9 Nov, evening (owner's second review, 1 and 5): Is It for You? went, and its sentence -- "châteaux", not
       "houses" -- is the invitation's last line. -#}
   {% call split(RLP['open']) %}{#- 9 Nov, evening (owner's second review, 1 and 2.7): no gold frame, a plain photograph. -#}<p class="g-p">{{ ws_copy(workshop) }}</p>
-  <p class="g-p">If you love old châteaux, good food and the French way of taking time over things, yes.</p>{% endcall %}
+  {#- Site review 25 Nov (2.13): it ended "..., yes." -- the answer to "Is It for You?", a heading that went on 9 Nov. -#}
+  <p class="g-p">If you love old châteaux, good food and the French way of taking time over things, this retreat is for you.</p>{% endcall %}
 </div></section>
 {% endif %}
 
@@ -102,8 +103,9 @@
   <dl class="g-facts-list">
     {% if workshop['nights_label'] %}<div><dt>Length</dt><dd>{{ workshop['nights_label'] }}</dd></div>{% endif %}
     {%- set _inc = (workshop['inclusions'] or '')|trim -%}{%- set _basis = _inc if _inc.lower().startswith('per person') else '' -%}
-    {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '{:,.0f}'.format(workshop['price_per_person']) }} {% if _basis %}{{ (_basis|trim('.'))[:1]|lower }}{{ (_basis|trim('.'))[1:] }}{% else %}per person{% endif %}{% set _an = a_night(workshop) %}{% if _an %} ({{ _an }}){% endif %}: every meal and every glass, the classes{% if _ex %}, the outings{% endif %}{% if _tx %}, and the journey from Toulouse{% endif %}</dd></div>{% endif %}
-      <div><dt>Experience needed</dt><dd>None. Most people who come have never done it before</dd></div>
+    {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '{:,.0f}'.format(workshop['price_per_person']) }} {% if _basis %}{{ (_basis|trim('.'))[:1]|lower }}{{ (_basis|trim('.'))[1:] }}{% else %}per person{% endif %}{% set _an = a_night(workshop) %}{% if _an %} ({{ _an }}){% endif %}{#- Site review 25 Nov: without outings or transfers the line ended "..., the classes" and simply stopped. -#}{% set _got = ['every meal and every glass', 'the classes'] + (['the outings'] if _ex else []) + (['the journey from Toulouse'] if _tx else []) %}: {{ _got[:-1]|join(', ') }}, and {{ _got[-1] }}</dd></div>{% endif %}
+      {#- Site review 25 Nov: "never done IT before" meant nothing on Noël or Seven Starry Nights, which teach no one craft. -#}
+      <div><dt>Experience needed</dt><dd>None. The classes start from the beginning, and every one is optional</dd></div>
     <div><dt>Where you sleep</dt><dd>In the château itself, with fresh flowers in every room: bedrooms, not a nearby hotel</dd></div>
     <div><dt>Meals</dt><dd>A traditional French breakfast, luncheon and dinner each day, with desserts, prepared by the château’s chefs</dd></div>
     <div><dt>Drinks</dt><dd>A private selection of wines, sparkling wines, apéritifs and spirits with every meal, and the château’s own botanical syrups</dd></div>
@@ -112,7 +114,11 @@
     <div><dt>Transfers</dt><dd>{% if _tx %}From the Grand Hôtel de l’Opéra on Place du Capitole in Toulouse, at midday on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}. <a href="{{ url_for('getting_here') }}">Getting here</a></dd></div>
     {#- 10 Nov (owner): Noël has a morning at the village Christmas market, a walk away, so it no longer says "no outings". -#}
     {% if not _ex %}<div><dt>The days</dt><dd>{% if 'Noël' in workshop['title'] or 'Noel' in workshop['title'] or 'Christmas' in workshop['title'] %}Spent at the château, but for a walk to the village Christmas market: the making, the meals and the rooms{% else %}Spent at the château itself, with no outings to plan around: the making, the meals and the rooms{% endif %}</dd></div>{% endif %}
-    <div><dt>To hold a place</dt><dd>A deposit. The balance is taken closer to the date</dd></div>
+    {#- Site review 25 Nov (1.6): a retreat inside its balance window is paid in full, as compute_workshop_payment_terms
+        charges it; Noël (5 Dec) said "A deposit" here while the checkout took everything. paid_in_full_now asks the same
+        due day. -#}
+    {%- set _pf = namespace(all=session_rows|length > 0) %}{% for r in session_rows %}{% if not paid_in_full_now(r.session['start_date'], r.session['balance_due_on']) %}{% set _pf.all = false %}{% endif %}{% endfor %}
+    <div><dt>To hold a place</dt><dd>{% if _pf.all %}The full price, as you register: the retreat is less than a month away{% else %}A deposit. The balance is taken closer to the date{% endif %}</dd></div>
     <div><dt>Not included</dt><dd>{% if _ex %}Flights, and anything you buy at the brocantes{% else %}Flights, and the journey to the château{% endif %}</dd></div>
   </dl>
 </div></section>
@@ -246,7 +252,7 @@
   <span class="g-hill" aria-hidden="true">{{ illus('fourposter') }}</span>
   <p class="g-eyebrow">Guest Quarters</p>
   <h2 class="g-place">Les Chambres</h2>
-  <p class="g-p g-lede-first">The three bathrooms on the ground floor are shared between the retreat's guests; each room has lamps and power points. Prices are per person, sharing a room. {%- set _ss = workshop['single_supplement'] if workshop['single_supplement'] is defined else none %}{% if _ss and _ss > 0 %} Coming alone, you can share a room with another guest travelling solo, or have a room to yourself for €{{ '{:,.0f}'.format(_ss) }} more; tell us when you register.{% else %} Coming alone, write to us.{% endif %}</p>{#- 16 Oct (owner): a single supplement of 50% on Noël and the 2027 retreats (set in Admin, per workshop). -#}
+  <p class="g-p g-lede-first">The three bathrooms on the ground floor are shared between the retreat's guests; each room has lamps and power points. Prices are per person, sharing a room. {%- set _ss = workshop['single_supplement'] if workshop['single_supplement'] is defined else none %}{%- set _so = solo_open if solo_open is defined else true %}{% if _ss and _ss > 0 and _so %} Coming alone, you can share a room with another guest travelling solo, or have a room to yourself for €{{ '{:,.0f}'.format(_ss) }} more; choose it when you register.{% elif _ss and _ss > 0 %} Coming alone, you share a room with another guest travelling solo: every room on these dates is taken, so none is left to have to yourself.{% else %} Coming alone, write to us.{% endif %}</p>{#- 16 Oct (owner): a single supplement of 50% on Noël and the 2027 retreats (set in Admin, per workshop). -#}
   {#- 28 Oct (the brief, 4.1): the rooms, one photograph each, each opening its own page. The name is the link's label
       and the photograph's alt; no caption, since captions stay hidden (owner, 15 Oct). -#}
   {%- set _rooms = [] -%}
@@ -279,7 +285,7 @@
   {#- z30: a sitting can carry its own due date (compute_workshop_payment_terms charges by it). One date the
       dates all share is said here; otherwise each date says its own, on its card above. -#}
   {%- set _due = namespace(on=[], loose=0) %}{% for r in session_rows %}{% if not r.session['balance_due_on'] %}{% set _due.loose = _due.loose + 1 %}{% elif r.session['balance_due_on'] not in _due.on %}{% set _due.on = _due.on + [r.session['balance_due_on']] %}{% endif %}{% endfor %}
-  <p class="g-p" style="color:rgba(255,255,255,.88)">{% if workshop['deposit_percent'] %}A {{ workshop['deposit_percent'] }}% deposit reserves your place; {% else %}Your place is reserved at booking; {% endif %}{% if _due.on|length == 1 and not _due.loose %}the balance is due on {{ _due.on[0]|date_human }}, or in full if you are booking after that.{% elif _due.on %}the balance is due on the date shown with your dates, or {{ 'thirty' if _bd == 30 else _bd }} days before the stay where none is shown, and in full if you are booking after it.{% else %}the balance is due {{ 'thirty' if _bd == 30 else _bd }} days before the stay, or in full if you are booking within {{ 'thirty' if _bd == 30 else _bd }} days of it.{% endif %}</p>
+  <p class="g-p" style="color:rgba(255,255,255,.88)">{% if _pf.all %}These dates are less than a month away, so the full price is paid as you register.{% else %}{% if workshop['deposit_percent'] %}A {{ workshop['deposit_percent'] }}% deposit reserves your place; {% else %}Your place is reserved at booking; {% endif %}{% if _due.on|length == 1 and not _due.loose %}the balance is due on {{ _due.on[0]|date_human }}, or in full if you are booking after that.{% elif _due.on %}the balance is due on the date shown with your dates, or {{ 'thirty' if _bd == 30 else _bd }} days before the stay where none is shown, and in full if you are booking after it.{% else %}the balance is due {{ 'thirty' if _bd == 30 else _bd }} days before the stay, or in full if you are booking within {{ 'thirty' if _bd == 30 else _bd }} days of it.{% endif %}{% endif %}</p>
   {% endif %}
   <p class="g-p" style="color:rgba(255,255,255,.88)">Your place is confirmed as you register, and held from that moment. You will receive a reference code and a link to manage your registration and payment.</p>
   {% if session_rows %}
@@ -327,7 +333,8 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" width="62" height="62" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Hold your place</h2>
-  <p class="g-close__p">Your place is confirmed as you register, and held from that moment.</p>
+  {#- Site review 25 Nov (2.14): "Your place is confirmed as you register" stood here as well as in How It Works,
+      two blocks apart. How It Works keeps it, with the reference code and the link. -#}
   {# The close had no way to book: it offered Compare and Ask, and the dates were back at the top. #}
   <div class="g-close__acts">
       {% if session_rows %}<a href="#dates" class="g-btn g-btn--solid">Choose your dates</a>{% endif %}

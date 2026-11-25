@@ -24,7 +24,7 @@
     <p class="g-hero__eyebrow">Pyrénées · Within an Hour</p>
     {# 5 Oct (owner): named for the Ariège - promoting the area, which the commune will welcome (was "In the Valley", 24 Sept; "What's On" is a contraction - house rule: none). The address stays /whats-on. #}
     <h1 class="g-hero__title">{{ t("What’s On in the Ariège") }}</h1>
-    <p class="g-hero__lede">Markets, fairs, festivals and mountain days across the Ariège, all within an hour of the château.</p>
+    <p class="g-hero__lede">Markets, fairs, festivals and mountain days across the Ariège, most of them within an hour of the château.</p>
   
     <p class="g-hero__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
@@ -212,14 +212,8 @@
   {#- 23 Nov (owner: "more images ... display them assorted nicely"): the hills beside it, with the peaks tucked over. -#}
   {% call split([url_for('static', filename='img/retreats/mountain-walk.jpg'), 'Walking in the hills', ''], flip=True, cls='g-sp--few', tuck=[url_for('static', filename='img/views/clouds-over-the-peaks.jpg'), 'The mountains through an open window of the château']) %}
   <div class="g-key">
-    <div class="g-key__i">
-      <p class="g-key__k">On the river · about ten minutes</p>
-      <p class="g-key__v">Canoe, kayak or paddle-board on the Ariège with Waterploof, from the lake at Sinsat: with a guide or on your own, six or twelve kilometres downriver, and a minibus back. Every day from May to October</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Canyoning · Tarascon and Ax-les-Thermes</p>
-      <p class="g-key__v">Guided canyons with Wesh Canyon at Tarascon, or Adret Canyon&rsquo;s hot-water canyon, which meets in Ax and runs at Thu&egrave;s-entre-Valls in the Pyr&eacute;n&eacute;es-Orientales, more than an hour further on</p>
-    </div>
+    {#- Site review 25 Nov: the river and canyoning were each described here and again under Outdoors below (owner, 23
+        Nov, of another: "yes if its on there twice"). They are said once, below, with what was only said here. -#}
     <div class="g-key__i">
       <p class="g-key__k">Fly fishing · Larcat, a few minutes away</p>
       <p class="g-key__v">A day on the water with a guide from Hook A Lip</p>
@@ -248,7 +242,7 @@
   <h2 class="g-place">The Hot Springs</h2>
   {#- 9 Nov (the brief, 4.7): one photograph beside the place, sides alternating down the page. -#}
   {% call split([url_for('static', filename='img/retreats/bassin-des-ladres.jpg'), 'The hot-spring basin of the Bassin des Ladres in Ax-les-Thermes', '']) %}
-  <p class="g-p g-intro">Ax-les-Thermes has some sixty hot springs, the hottest in the Pyrenees, rising from the ground at over 70°C.</p>
+  <p class="g-p g-intro">Ax-les-Thermes has some sixty hot springs, the hottest in the Pyrénées, rising from the ground at over 70°C.</p>
   <div class="g-key">
     <div class="g-key__i">
       <p class="g-key__k">Les Bains du Couloubret · Ax-les-Thermes, about 20 minutes</p>
@@ -286,16 +280,16 @@
     <div class="g-key__i">
       <p class="g-key__k">Rock climbing · Lordat, 10–15 minutes · Calamès, 25 minutes</p>
       <p class="g-key__v">The valley is a climbers’ playground. The crag below Château de Lordat has about a hundred routes on pale, marble-like limestone. Calamès, near Tarascon, has more than two hundred routes, faces the sun and can be climbed all year. Beginners go out with a local guide.</p>
-      <p class="g-key__v g-key__links">Guides: Vertikarst ({{ site('https://www.vertikarst.fr/', 'vertikarst.fr') }}) · Caverne &amp; Canyon ({{ site('https://cavernecanyon.com/', 'cavernecanyon.com') }}) · Montcalm Aventure ({{ site('http://www.montcalmaventure.com/', 'montcalmaventure.com') }})</p>
+      <p class="g-key__v g-key__links">Guides: Vertikarst ({{ site('https://www.vertikarst.fr/', 'vertikarst.fr') }}) · Caverne &amp; Canyon ({{ site('https://cavernecanyon.com/', 'cavernecanyon.com') }}) · Montcalm Aventure ({{ site('https://www.montcalmaventure.com/', 'montcalmaventure.com') }})</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Via ferrata · Vicdessos, about 40 minutes</p>
       <p class="g-key__v">Ladders, cables and rope bridges on the cliffs above the Vicdessos valley. It is the only via ferrata in the Ariège, with an easy route from age seven and harder ones from fourteen. Kit is hired on site.</p>
-      <p class="g-key__v g-key__links">Montcalm Aventure · {{ site('http://www.montcalmaventure.com/', 'montcalmaventure.com') }}</p>
+      <p class="g-key__v g-key__links">Montcalm Aventure · {{ site('https://www.montcalmaventure.com/', 'montcalmaventure.com') }}</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Canyoning · Auzat and Orlu, 30–40 minutes</p>
-      <p class="g-key__v">Guided descents of the mountain gorges, with abseils, jumps and natural water slides. All the kit is provided, and there are trips for first-timers. Summer.</p>
+      <p class="g-key__v">Guided descents of the mountain gorges, with abseils, jumps and natural water slides. All the kit is provided, and there are trips for first-timers. Summer. Wesh Canyon guides from Tarascon too, and Adret Canyon&rsquo;s hot-water canyon meets in Ax and runs at Thu&egrave;s-entre-Valls, more than an hour further on.</p>
       <p class="g-key__v g-key__links">{{ site('https://www.vertikarst.fr/', 'vertikarst.fr') }} · {{ site('https://cavernecanyon.com/', 'cavernecanyon.com') }} · {{ site('https://acrobranche-ariege.com/', 'acrobranche-ariege.com') }}</p>
     </div>
     {#- 23 Nov (owner: "more images ... not just all in a row"): three photographs of the mountains as one collage,
@@ -306,8 +300,8 @@
       [url_for('static', filename='img/retreats/chateau-snowy-peaks.jpg'), 'The château below the snowy peaks', '']]) }}</div>
     <div class="g-key__i">
       <p class="g-key__k">Rafting, canoe and paddleboard · Bouan, 10–15 minutes</p>
-      <p class="g-key__v">Down the Ariège by raft, canoe or kayak, guided or on your own, with a minibus back; paddleboards on the lake below the Sinsat cliffs. May to October.</p>
-      <p class="g-key__v g-key__links">Waterploof · {{ site('http://waterploof.com/', 'waterploof.com') }}</p>
+      <p class="g-key__v">Down the Ariège by raft, canoe or kayak, guided or on your own, six or twelve kilometres downriver with a minibus back; paddleboards on the lake below the Sinsat cliffs. Every day, May to October.</p>
+      <p class="g-key__v g-key__links">Waterploof · {{ site('https://waterploof.com/', 'waterploof.com') }}</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Paragliding · above Foix or Vicdessos, about an hour</p>
@@ -409,7 +403,7 @@
   <div class="g-key">
     <div class="g-key__i">
       <p class="g-key__k">Getting there · about an hour</p>
-      <p class="g-key__v">Up the valley through Ax and Mérens, then over the pass to Pas de la Casa on the border. From there the road climbs over the Port d’Envalira, the highest road in the Pyrenees, or through the Envalira tunnel down to Andorra la Vella, about an hour and a half from the château. Bring a passport or ID card: Andorra is outside the EU. From November to May carry snow chains unless the car has winter tyres.</p>
+      <p class="g-key__v">Up the valley through Ax and Mérens, then over the pass to Pas de la Casa on the border. From there the road climbs over the Port d’Envalira, the highest road in the Pyrénées, or through the Envalira tunnel down to Andorra la Vella, about an hour and a half from the château. Bring a passport or ID card: Andorra is outside the EU. From November to May carry snow chains unless the car has winter tyres.</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Shopping</p>
@@ -421,7 +415,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Grandvalira</p>
-      <p class="g-key__v">The largest ski area in the Pyrenees, with 215 kilometres of runs. The Pas de la Casa side is about an hour from the château. Early December to early April.</p>
+      <p class="g-key__v">The largest ski area in the Pyrénées, with 215 kilometres of runs. The Pas de la Casa side is about an hour from the château. Early December to early April.</p>
       <p class="g-key__v g-key__links">{{ site('https://www.grandvalira.com/en', 'grandvalira.com') }}</p>
     </div>
     <div class="g-key__i">

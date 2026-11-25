@@ -77,6 +77,13 @@ SMALLEST = 12
 # pages' booking form, the history the brief says to leave alone. Keyed by
 # address, with a room or a retreat by its kind, since the ids differ between
 # databases. Take a page off when it comes under the budget; the run says so.
+# Photographs known to be drawn wider than their file, each with the reason, checked both ways (a listed one
+# that is sharp again reds the run, so the list cannot go stale). Site review 25 Nov 2026: /getting-here came
+# into the sitemap, so this suite read it for the first time. Its hero is a portrait file 1,068px wide drawn
+# across a 1,400px page; the house holds no larger photograph of the valley in landscape. The owner has been
+# told it wants one. The alt the probe reports, from its start.
+KNOWN_SOFT = {"/getting-here": "The Ari\u00e8ge valley below the ch\u00e2teau drawn"}
+
 KNOWN_LONG = {
     # 24 Nov: +200 for The Paintings, the section of their own the owner asked for (the painted beams and the
     # frescoes, three photographs), and the timeline's three new years; measured 15,216.
@@ -92,7 +99,8 @@ KNOWN_LONG = {
     # 23 Nov: +100 for each room's plain name, small beneath its French title (owner's website brief, 3).
     # 23 Nov, later: +200 for the type pass (one size per rank of heading).
     # 24 Nov: +200 for Key Information's "Arrival and departure" line (owner: check-out at 11am); measured 13,496.
-    "/book": 13600,
+    # 25 Nov, site review (2.3): +500 for The Rooms Side by Side, the table the room pages had pointed at; measured 13,975.
+    "/book": 14100,
     # 23 Nov, later: +100 for the same type pass.
     # 24 Nov: +800, three retreat guests' lines from their thank-you letters (owner's brief).
     # 24 Nov: +2,750 for the two sections the owner's retreats brief adds, What You'll Do and The Bathrooms
@@ -108,6 +116,9 @@ KNOWN_LONG = {
 
 
 def kind_of(path):
+    # A retreat's page is at its name since 25 Nov (/retreats/<name>); it is the same kind of page.
+    if re.fullmatch(r"/retreats/[a-z0-9-]+", path):
+        return "/workshops/<id>"
     return re.sub(r"/\d+$", "/<id>", path)
 
 
@@ -318,14 +329,20 @@ def _run(s, browser, pages, workdir):
             detail=str(soft_c.get("guess")))
     soft = {p: d["soft"] for p, d in got.items() if not p.startswith("control:") and d.get("soft")}
     guess = {p: d["guess"] for p, d in got.items() if not p.startswith("control:") and d.get("guess")}
-    s.check("no house photograph is drawn more than %.2f times its widest file" % SHARP, not soft,
-            detail=str(soft)[:600])
+    # KNOWN_SOFT, checked both ways like KNOWN_LONG: a listed photograph that is sharp again reds the run.
+    known_left = {p: [x for x in xs if not x.startswith(KNOWN_SOFT.get(p, "\0"))] for p, xs in soft.items()}
+    known_left = {p: xs for p, xs in known_left.items() if xs}
+    s.check("no house photograph is drawn more than %.2f times its widest file" % SHARP, not known_left,
+            detail=str(known_left)[:600])
+    mended = [p for p, alt in KNOWN_SOFT.items() if p in got and not any(x.startswith(alt) for x in soft.get(p, []))]
+    s.check("and every photograph on the known-soft list is still soft", not mended,
+            detail="take off KNOWN_SOFT: " + "; ".join(mended))
     s.check("every lazy house photograph asks for the width it is drawn at", not guess, detail=str(guess)[:600])
 
     # ---- on a phone ------------------------------------------------------
     wanted = ["/", "/book", "/workshops"]
     wanted += sorted(p for p in by_path if re.fullmatch(r"/book/\d+", p))[:1]
-    wanted += sorted(p for p in by_path if re.fullmatch(r"/workshops/\d+", p))[:1]
+    wanted += sorted(p for p in by_path if re.fullmatch(r"/workshops/\d+|/retreats/[a-z0-9-]+", p))[:1]
     phone_pages = [(p, by_path[p]) for p in wanted if p in by_path]
     s.section("On a phone, at %s px" % ", ".join(str(w) for w in PHONES))
     s.check("the five pages the brief names are there to measure", len(phone_pages) == 5,

@@ -165,7 +165,7 @@ from html import escape as html_escape, unescape as html_unescape
 from html.parser import HTMLParser
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    session, flash, send_from_directory, abort, jsonify,
+    session, flash, send_from_directory, send_file, abort, jsonify,
     # Aliased as well: stripe_success rebinds `session` to Stripe's own
     # object, so Flask's session needs a name that survives that.
     session as flask_session,
@@ -173,7 +173,7 @@ from flask import (
 )
 from flask.sessions import SecureCookieSessionInterface
 from flask_wtf.csrf import CSRFProtect, CSRFError
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash, safe_join
 from werkzeug.utils import secure_filename
 import stripe
 import anthropic
@@ -1802,6 +1802,37 @@ from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
+# THE LANGUAGE IN THE ADDRESS (site review 25 Nov 2026). The public site was in
+# French or Spanish by a cookie, at the same address as the English, and its
+# hreflang tags pointed at ?lang=fr -- which robots.txt told Google not to fetch,
+# and whose canonical tag named the English address. So Google could index no
+# French or Spanish page at all. Now /fr/<page> and /es/<page> are those pages
+# in those languages. This only lifts the language off the front of the address
+# and leaves the rest to the app: every route stays exactly as written, url_for
+# is unchanged, and language_addresses_on_the_page (below current_language)
+# puts the language back on the links, the canonical tag and the alternates of
+# the page that goes out. Which pages have such addresses: LANGUAGE_PAGES.
+LANGUAGE_PATH_CODES = ("fr", "es")
+
+
+class LanguageInTheAddress:
+    def __init__(self, wsgi):
+        self.wsgi = wsgi
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO") or "/"
+        for code in LANGUAGE_PATH_CODES:
+            front = "/" + code
+            if path == front or path.startswith(front + "/"):
+                environ["gudanes.lang_path"] = code
+                environ["PATH_INFO"] = path[len(front):] or "/"
+                break
+        return self.wsgi(environ, start_response)
+
+
+app.wsgi_app = LanguageInTheAddress(app.wsgi_app)
+
+
 # A VERSION ON EVERY STYLESHEET AND SCRIPT ADDRESS, so a design change reaches
 # everybody at once. /static/gudanes.css was the same address before and after
 # every handover, and a returning visitor's browser, holding a copy it had no
@@ -1846,6 +1877,32 @@ def stamp_static_addresses(endpoint, values):
         stamp = static_stamp(values.get("filename") or "")
         if stamp:
             values["v"] = stamp
+
+# WHAT A BROWSER MAY KEEP (site review 25 Nov 2026). Every file under /static
+# went out as "Cache-Control: no-cache", so a returning visitor asked again for
+# every photograph on every page -- 391 of them, 109 MB. A stylesheet or script
+# carries its own fingerprint in ?v= (stamp_static_addresses), so that address
+# can never change and is kept for a year. A photograph, a font or a film is
+# kept for thirty days and then checked by its ETag. The Outlook add-in's files
+# keep the rules they have for Outlook (ADDIN_KEEP_THROUGH_A_DEPLOY).
+STATIC_KEPT_TYPES = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".svg", ".ico",
+                     ".woff", ".woff2", ".ttf", ".mp4", ".webm")
+
+
+@app.after_request
+def static_files_kept(response):
+    if not has_request_context() or request.endpoint != "static":
+        return response
+    if response.status_code not in (200, 304):
+        return response
+    name = ((request.view_args or {}).get("filename") or "").lower()
+    if name.startswith("addin/"):
+        return response
+    if name.endswith(STAMPED_STATIC) and request.args.get("v"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif name.endswith(STATIC_KEPT_TYPES):
+        response.headers["Cache-Control"] = "public, max-age=2592000"
+    return response
 
 
 # IMPORTANT: this secret key is regenerated every time the app starts unless
@@ -7657,6 +7714,8 @@ def init_db():
         # atelier was before this, so nothing that exists changes. The
         # organiser is told of each registration if an address is set.
         ("workshop_private_token", "ALTER TABLE workshops ADD COLUMN private_token TEXT"),
+        # A public retreat's name in its address, /retreats/<slug> (site review 25 Nov 2026).
+        ("workshop_slug", "ALTER TABLE workshops ADD COLUMN slug TEXT"),
         ("workshop_organiser_name", "ALTER TABLE workshops ADD COLUMN organiser_name TEXT"),
         ("workshop_organiser_email", "ALTER TABLE workshops ADD COLUMN organiser_email TEXT"),
         # A fixed day the balance is due, where the owner has agreed one (Retreat
@@ -8747,6 +8806,12 @@ def init_db():
                 exempt_nights INTEGER,
                 amount REAL,
                 note TEXT)"""),
+        # Every name a retreat's address has had, so an old one still finds it
+        # (site review 25 Nov 2026; see RetreatConverter).
+        ("workshop_slugs", """CREATE TABLE IF NOT EXISTS workshop_slugs (
+                slug TEXT PRIMARY KEY,
+                workshop_id INTEGER NOT NULL REFERENCES workshops(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL)"""),
         # OCCASIONS AT GUDANES (24 November 2026): a named run of nights sold
         # as Stay the Night, at the owner's price per room. See
         # run_stay_occasions_job and room_night_rate. first_night and
@@ -9509,8 +9574,10 @@ def init_db():
     # Extras added to the catalogue since, once each. See ADDED_EXTRAS.
     seed_added_extras(conn)
     correct_extra_wording(conn)
+    correct_transfer_name(conn)
     correct_terms_la_table(conn)
     correct_terms_checkout_11am(conn)
+    correct_terms_site_review_25nov(conn)
     conn.commit()
 
     # The list a room is walked against, so the first person to open the page
@@ -9676,6 +9743,7 @@ def init_db():
     apply_extras_transfers_2026_10_18(conn)
     # The first five occasions, as drafts for the owner to confirm, once.
     seed_first_occasions(conn)
+    correct_occasion_house_words(conn)
     # The charcuterie board, never arranged on a Sunday, once.
     apply_extras_sunday_2026_10_19(conn)
     # The Booking.com stay that never arrived, on The Twin Room, once.
@@ -9866,6 +9934,11 @@ def init_db():
         if off:
             log_line(f"{RETIRED_WORKSHOP_TITLE} taken off the site")
 
+    # Each public retreat's name in its address, once given and then kept
+    # (site review 25 Nov 2026): after the retreats above are in.
+    if backfill_workshop_slugs(conn):
+        conn.commit()
+
     moved, repriced = apply_workshop_deposit_percent(conn)
     if moved or repriced:
         log_line(f"Workshop deposit set to {WORKSHOP_DEPOSIT_PERCENT}%: {moved} atelier(s), "
@@ -9981,6 +10054,7 @@ def init_db():
     # Lombrives opens on set days out of season (site review, 24 Nov), once.
     correct_whats_on_lombrives(conn)
     fix_ax_market_days(conn)
+    fix_ax_market_distance(conn)
     seed_whats_on_dates(conn)
     link_whats_on_sources(conn)
 
@@ -16734,7 +16808,7 @@ DEFAULT_WHATS_ON = [
     {"title": "Ax-les-Thermes Market",
      "description": "Mountain produce, and the thermal baths a short walk away "
                     "afterwards.",
-     "location": AX_MARKET_PLACE, "distance": "25 minutes", "weekday": 1,
+     "location": AX_MARKET_PLACE, "distance": "20 minutes", "weekday": 1,
      "start_time": "07:00", "end_time": "13:00"},
     {"title": "Foix Market",
      "description": "Friday, in the streets below the counts' castle. The "
@@ -16844,6 +16918,24 @@ def correct_whats_on_lombrives(conn):
                  (key, datetime.now(timezone.utc).isoformat()))
     conn.commit()
     return changed
+
+def fix_ax_market_distance(conn):
+    """The Ax market rows from "25 minutes" to "20 minutes", once.
+
+    Site review 25 Nov 2026 (owner's yes, "make the distances agree"): /whats-on
+    puts Ax-les-Thermes "about twenty minutes" away under Places, and its market
+    rows said 25. Only rows that still say exactly 25 minutes move; one the
+    owner has typed something else into is left as it is."""
+    key = "whats_on_ax_distance_25nov"
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
+        return 0
+    moved = conn.execute(
+        """UPDATE whats_on SET distance = '20 minutes'
+            WHERE title = 'Ax-les-Thermes Market' AND distance = '25 minutes'""").rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO NOTHING", (key, datetime.now(timezone.utc).isoformat()))
+    return moved
+
 
 def fix_ax_market_days(conn):
     """The Ax market on its real days, once per database. Returns what it did.
@@ -16962,7 +17054,7 @@ def correct_whats_on(conn):
 
 
 DEFAULT_EXTRAS = [
-    {"name": "Airport Transfer (Toulouse, up to 3 guests)", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1,
+    {"name": "Airport transfer from Toulouse, up to three guests", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1,
      "description": "Met at Toulouse-Blagnac and driven to the gates, up to three of you. The same on the way back, if you ask."},
 ]
 
@@ -17035,6 +17127,26 @@ def correct_extra_wording(conn):
     return changed
 
 
+# Site review 25 Nov 2026: "Airport Transfer (Toulouse, up to 3 guests)" was the one extra in title case with
+# brackets beside "Crémant & charcuterie board" and "A tour of the château". Renamed once, and only while the row
+# still carries the seed's name: one the owner has renamed is hers.
+EXTRA_TRANSFER_NAME_25NOV = "extras_transfer_name_25nov"
+TRANSFER_NAME_OLD = "Airport Transfer (Toulouse, up to 3 guests)"
+TRANSFER_NAME_NEW = "Airport transfer from Toulouse, up to three guests"
+
+
+def correct_transfer_name(conn):
+    """The airport transfer's name in sentence case, once."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (EXTRA_TRANSFER_NAME_25NOV,)).fetchone():
+        return 0
+    changed = conn.execute("UPDATE extras SET name = ? WHERE name = ?",
+                           (TRANSFER_NAME_NEW, TRANSFER_NAME_OLD)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
+                 (EXTRA_TRANSFER_NAME_25NOV, datetime.now(timezone.utc).isoformat()))
+    return changed
+
+
 # The owner's second review (9 Nov 2026, section 5): the terms still sold La
 # Table, which is not taking bookings -- a table "is a request", the refund when
 # one is declined, and the no-show rule. The terms are the owner's words, kept
@@ -17101,6 +17213,66 @@ def correct_terms_checkout_11am(conn):
     conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
                  "ON CONFLICT(key) DO NOTHING",
                  (TERMS_CHECKOUT_11AM, datetime.now(timezone.utc).isoformat()))
+    return changed
+
+
+# Site review 25 Nov 2026 (owner's yes to 1.14 and 1.15, and section 3). The
+# stored terms said a balance could be paid "on the day" -- nothing is taken at
+# the door (payment policy, 8 Oct) -- offered to "move your dates instead",
+# which the owner ruled out on 15 Oct, called the retreats workshops fourteen
+# times under a heading "Dining and workshops", and carried four long dashes
+# in sentences. Same footing as the two edits above: once, and only where the
+# words still stand as shipped, matched across the stored line wraps. A
+# sentence the owner has rewritten by hand is his and is left alone.
+TERMS_SITE_REVIEW_25NOV = "terms_site_review_25nov_done"
+
+
+def _terms_phrase(words):
+    """A phrase as a pattern that matches it across the stored hard wraps."""
+    return re.compile(r"\s+".join(re.escape(w) for w in words.split()))
+
+
+TERMS_SITE_REVIEW_EDITS = (
+    (_terms_phrase("Others take a deposit, with the balance due either before arrival "
+                   "or on the day — whichever applies to your booking is stated clearly"),
+     "Others take a deposit, with the balance due before arrival. Which applies to "
+     "your booking is stated clearly"),
+    (_terms_phrase("we can sometimes move your dates instead."), "we can sometimes move your dates."),
+    (_terms_phrase("where we must — for example,"), "where we must: for example,"),
+    (_terms_phrase("outside our control — fire, flood,"), "outside our control, such as fire, flood,"),
+    (_terms_phrase("or an order of the authorities — we will offer"),
+     "or an order of the authorities, we will offer"),
+    (_terms_phrase("if something is wrong — almost everything"), "if something is wrong: almost everything"),
+    (_terms_phrase("5. Dining and workshops"), "5. Retreats and meals"),
+    (re.compile(r"\bWorkshops\b"), "Retreats"),
+    (re.compile(r"\bworkshops\b"), "retreats"),
+    (re.compile(r"\bworkshop\b"), "retreat"),
+)
+
+
+def site_review_terms(text):
+    """The terms with the 25 Nov edits applied; (text, how many changed)."""
+    changed = 0
+    for pattern, replacement in TERMS_SITE_REVIEW_EDITS:
+        text, n = pattern.subn(replacement, text)
+        changed += n
+    return text, changed
+
+
+def correct_terms_site_review_25nov(conn):
+    """Apply the site review's edits to the stored terms, once."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (TERMS_SITE_REVIEW_25NOV,)).fetchone():
+        return 0
+    row = conn.execute("SELECT value FROM app_settings WHERE key = 'terms_and_conditions'").fetchone()
+    changed = 0
+    if row and row["value"]:
+        text, changed = site_review_terms(row["value"].replace("\r\n", "\n"))
+        if changed:
+            conn.execute("UPDATE app_settings SET value = ? WHERE key = 'terms_and_conditions'", (text,))
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO NOTHING",
+                 (TERMS_SITE_REVIEW_25NOV, datetime.now(timezone.utc).isoformat()))
     return changed
 
 
@@ -17226,7 +17398,7 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
                  'is summer, and from a recipe book written at Gudanes in the 1700s. '
                  'You will also spend a morning on the frescoes, because it is '
                  'difficult to eat in a room and not want to know how it was saved. '
-                 'And much more: the house as it was, full of life.',
+                 'And much more: the château as it was, full of life.',
   'itinerary': 'SEASONAL FRENCH COOKING — four hands-on classes with the château '
                'chefs, built around whatever the Ariège is giving that week\n'
                "THE 1700s COOKBOOK — historic dishes from the château's own recipe "
@@ -53529,7 +53701,7 @@ SCHOOL_HOLIDAYS_SOURCE = "https://data.education.gouv.fr/explore/dataset/fr-en-c
 
 # What the chef switch says, word for word, on the card, the occasion's page
 # and the booking page for its dates (owner's brief, 24 Nov 2026).
-CHEF_ON_SITE_LINE = ("The château's chef is in the house: lunch and dinner can be "
+CHEF_ON_SITE_LINE = ("The château’s chef is in the house: lunch and dinner can be "
                      "arranged, priced on request.")
 CHEF_OFF_SITE_LINE = ("Room and breakfast, with lovely restaurants close by, and we "
                       "are happy to help you book.")
@@ -55213,7 +55385,7 @@ def create_stay_occasion(conn, *, name, first_night, last_night, why="", source_
 # Saveurs is held until its 2027 dates are published, for the reader to find.
 FIRST_OCCASIONS = [
     ("Christmas at Gudanes", "2026-12-23", "2026-12-25", "Christmas. The Noël retreat is 5 to 9 December, so no clash.", None,
-     "Spend Christmas in a château in the Pyrénées, with the mountains white above the valley and the house "
+     "Spend Christmas in a château in the Pyrénées, with the mountains white above the valley and the château "
      "dressed for the season. Three nights in one of the château's rooms, with breakfast each morning."),
     ("New Year at Gudanes", "2026-12-30", "2026-12-31",
      "New Year's Eve. A family has been quoted 28 December to 1 January for the interconnecting rooms (not on "
@@ -55300,6 +55472,27 @@ FIRST_SUGGESTIONS = [
     ("first-list:bastille:2027", "Bastille Day", "2027-07-13", "2027-07-14",
      "14 July, a Wednesday in 2027. Bastille Day 2028 is drafted instead.", None),
 ]
+
+
+# Site review 25 Nov 2026 (1.4, owner's yes): "château, not house". The Christmas
+# occasion's description was seeded as "the house dressed for the season"; a row
+# that still reads so is corrected once, and one the owner has rewritten is not.
+OCCASION_HOUSE_WORDS_25NOV = "occasion_house_words_25nov_done"
+
+
+def correct_occasion_house_words(conn):
+    """'the house dressed for the season' -> 'the château ...', once."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (OCCASION_HOUSE_WORDS_25NOV,)).fetchone():
+        return 0
+    cur = conn.execute(
+        """UPDATE stay_occasions
+              SET description = REPLACE(description, 'the house dressed for the season',
+                                        'the château dressed for the season')
+            WHERE description LIKE '%the house dressed for the season%'""")
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
+                 (OCCASION_HOUSE_WORDS_25NOV, datetime.now(timezone.utc).isoformat()))
+    return cur.rowcount
 
 
 def seed_first_occasions(conn):
@@ -59873,8 +60066,41 @@ def room_offer(conn, room, arrival, departure, party_size):
     return available, None
 
 
+# Site review 25 Nov 2026 (2.4). A room's "Book this room" link carried
+# name=&email=&phone= in its address, so the day those were filled -- the owner
+# booking a waitlisted guest from Admin, a link in a letter -- a guest's name,
+# email and telephone sat in the address bar, the browser's history and every
+# log between. They travel in the session now. A booking page reached WITH them
+# in the address keeps them in the session and answers with a redirect to the
+# same page without them, so they are in the address for one request, never on
+# a page that can be bookmarked, shared or sent on in a Referer.
+BOOKING_PREFILL_KEYS = ("name", "email", "phone")
+
+
+def booking_prefill_redirect():
+    """A redirect to this page minus name/email/phone, or None.
+
+    Non-empty values are kept in session["book_prefill"] first."""
+    if not any(k in request.args for k in BOOKING_PREFILL_KEYS):
+        return None
+    got = {k: (request.args.get(k) or "").strip()[:200] for k in BOOKING_PREFILL_KEYS}
+    if any(got.values()):
+        session["book_prefill"] = {k: v for k, v in got.items() if v}
+    rest = [(k, v) for k, v in request.args.items(multi=True) if k not in BOOKING_PREFILL_KEYS]
+    return redirect(request.path + (("?" + urlencode(rest)) if rest else ""), code=302)
+
+
+def booking_prefill():
+    """{name, email, phone} as kept by booking_prefill_redirect, or blanks."""
+    kept = session.get("book_prefill") or {}
+    return {k: kept.get(k, "") for k in BOOKING_PREFILL_KEYS}
+
+
 @app.route("/book")
 def book_rooms():
+    tidied = booking_prefill_redirect()
+    if tidied is not None:
+        return tidied
     conn = get_db()
     rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
 
@@ -60060,8 +60286,7 @@ def book_rooms():
         weather=weather, stay_wx=stay_wx,
         wx_nights=[n for d, n in sorted(wx_nights.items()) if d >= house_today()],
         dinner_notes=dinner_notes,
-        prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
-        prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
+        prefill_party_size=request.args.get("party_size", ""),
         **grid,
     )
 
@@ -60766,13 +60991,23 @@ def _profile_prefill_for_booking(conn):
 
 @app.route("/book/<int:room_id>", methods=["GET", "POST"])
 def book_room(room_id):
+    if request.method == "GET":
+        tidied = booking_prefill_redirect()
+        if tidied is not None:
+            return tidied
     conn = get_db()
     room = conn.execute("SELECT * FROM rooms WHERE id = ? AND active = 1", (room_id,)).fetchone()
     if not room:
-        # A room taken off the site, or a number that never was: the rooms,
-        # temporarily, as a gone retreat goes to the retreats (24 Nov 2026).
-        # A room comes back on sale by a tick, so nothing is handed on for good.
+        # A room taken off the site goes to the rooms, temporarily, as a gone
+        # retreat goes to the retreats (24 Nov 2026): a room comes back on sale
+        # by a tick, so nothing is handed on for good. A number that never was
+        # a room is not found (site review 25 Nov 2026, 2.5): /book/99 answered
+        # with the rooms and a 200, which tells a search engine there is a page
+        # there, and tells a guest who mistyped nothing at all.
+        ever = conn.execute("SELECT 1 FROM rooms WHERE id = ?", (room_id,)).fetchone()
         conn.close()
+        if not ever:
+            abort(404)
         return redirect(url_for("book_rooms"), code=302)
     # Only what a guest may add. guest_bookable is the flag that decides it
     # everywhere else, and this form did not ask -- so an item kept for the
@@ -61122,9 +61357,9 @@ def book_room(room_id):
 
     arrival_raw = request.args.get("arrival", "")
     departure_raw = request.args.get("departure", "")
-    prefill_name = request.args.get("name", "")
-    prefill_email = request.args.get("email", "")
-    prefill_phone = request.args.get("phone", "")
+    prefill_name = booking_prefill()["name"]
+    prefill_email = booking_prefill()["email"]
+    prefill_phone = booking_prefill()["phone"]
     prefill_party_size = request.args.get("party_size", "")
     prefill_under_18 = request.args.get("guests_under_18", "")
     prefill_requests = prefill_promo = ""
@@ -62903,7 +63138,9 @@ def make_event_reference_code():
 # are words for a drop-down, not for a sentence: the letters said "hosting a
 # corporate", "your other" and "towards your corporate" (23 Nov 2026). A kind
 # the owner adds ("elopement") is a noun already and is said as written.
-EVENT_TYPE_WORDS = {"corporate": "corporate event", "other": "event"}
+# Site review 25 Nov 2026: /events' form calls a "corporate" enquiry "A private retreat", as the page it is
+# about does, so a letter says so too.
+EVENT_TYPE_WORDS = {"corporate": "private retreat", "other": "event"}
 
 
 def event_type_words(value):
@@ -65433,6 +65670,36 @@ WEATHER_WORDS = {
     95: "a thunderstorm", 96: "a thunderstorm", 99: "a thunderstorm",
 }
 
+# The same words in French and Spanish (site review 25 Nov 2026: "overcast" was
+# English on the French /book). Their own table, not translations.py: there
+# "clear" is the verb on a button ("effacer"), and the sky is not that.
+WEATHER_WORDS_IN = {
+    "fr": {"clear": "dégagé", "mostly clear": "plutôt dégagé", "some cloud": "quelques nuages",
+           "overcast": "couvert", "fog": "brouillard", "freezing fog": "brouillard givrant",
+           "light drizzle": "bruine légère", "drizzle": "bruine", "heavy drizzle": "forte bruine",
+           "light rain": "pluie légère", "rain": "pluie", "heavy rain": "forte pluie",
+           "freezing rain": "pluie verglaçante", "light snow": "neige légère", "snow": "neige",
+           "heavy snow": "fortes chutes de neige", "snow grains": "neige en grains", "showers": "averses",
+           "heavy showers": "fortes averses", "snow showers": "averses de neige",
+           "heavy snow showers": "fortes averses de neige", "a thunderstorm": "un orage",
+           "hard to say": "difficile à dire"},
+    "es": {"clear": "despejado", "mostly clear": "casi despejado", "some cloud": "algunas nubes",
+           "overcast": "cubierto", "fog": "niebla", "freezing fog": "niebla helada",
+           "light drizzle": "llovizna ligera", "drizzle": "llovizna", "heavy drizzle": "llovizna intensa",
+           "light rain": "lluvia ligera", "rain": "lluvia", "heavy rain": "lluvia intensa",
+           "freezing rain": "lluvia helada", "light snow": "nieve ligera", "snow": "nieve",
+           "heavy snow": "nevada intensa", "snow grains": "cinarra", "showers": "chubascos",
+           "heavy showers": "chubascos intensos", "snow showers": "chubascos de nieve",
+           "heavy snow showers": "chubascos de nieve intensos", "a thunderstorm": "una tormenta",
+           "hard to say": "difícil de decir"},
+}
+
+
+def weather_words(code):
+    """The sky for an Open-Meteo code, in the reader's language."""
+    word = WEATHER_WORDS.get(code, "hard to say")
+    return WEATHER_WORDS_IN.get(current_language(), {}).get(word, word)
+
 
 def fetch_weather(timeout=8):
     """Ask Open-Meteo what it is doing. Raises on anything unusable.
@@ -65574,7 +65841,7 @@ def weather_now(conn, *, max_age_minutes=WEATHER_MAX_AGE_MINUTES, now=None):
         # is fifteen degrees when that was yesterday afternoon.
         return None
     return {"c": snap.get("c"),
-            "words": WEATHER_WORDS.get(snap.get("code"), "hard to say"),
+            "words": weather_words(snap.get("code")),
             "minutes_old": int(age.total_seconds() // 60),
             # The house's clock at the reading (owner, 25 Nov 2026): "Right
             # now at the château · 8°C, overcast · 13:40". UTC would read an
@@ -66010,7 +66277,7 @@ def forecast_nights(conn, *, now=None):
         out[day] = {"iso": day.isoformat(), "dow": dow, "day": day.day, "mon": mon,
                     "high": weather_degrees(high),
                     "low": weather_degrees(low) if low is not None else None,
-                    "words": WEATHER_WORDS.get(code, "hard to say"),
+                    "words": weather_words(code),
                     "frost": low is not None and low <= 0,
                     "snow": code in SNOW_CODES,
                     "hot": high >= 28}
@@ -68110,6 +68377,22 @@ def workshop_balance_due_day(start_date, balance_due_on=None):
     if fixed:
         return fixed
     return start_date - timedelta(days=WORKSHOP_BALANCE_DAYS)
+
+
+@app.template_global()
+def paid_in_full_now(start_date, balance_due_on=None):
+    """True when a sitting booked today is paid in full at registration.
+
+    Site review 25 Nov 2026 (1.6): Noël starts on 5 December, inside the
+    thirty days, so compute_workshop_payment_terms charges the whole price --
+    while its page said "To hold a place: A deposit. The balance is taken
+    closer to the date" and "A 10% deposit reserves your place". The pages ask
+    this, which reads the same due day the charge does, so the words and the
+    money cannot disagree."""
+    start = parse_date(start_date) if isinstance(start_date, str) else start_date
+    if not start:
+        return False
+    return house_today() > workshop_balance_due_day(start, balance_due_on)
 
 
 def compute_workshop_payment_terms(total_price, deposit_percent, start_date, balance_due_on=None):
@@ -73193,6 +73476,113 @@ def private_stay(token):
         private_token=workshop["private_token"]))
 
 
+# THE RETREATS BY NAME (site review 25 Nov 2026, owner: "both"). The four
+# retreats lived at /workshops/7 to /workshops/10; a name in the address --
+# /retreats/cooking-in-the-cuisine -- tells a guest and a search engine what the
+# page is before it opens. Each public retreat is given its name once, from its
+# title, and KEEPS it: retitling a retreat does not move its page, because a
+# moved page loses what it had built up. Every name a retreat has had stays in
+# workshop_slugs, so an old address still finds it. workshop_page_url and every
+# url_for("workshop_detail", ...) write the name through this converter; the
+# number still works and moves for good (301) to the name.
+from werkzeug.routing import BaseConverter, ValidationError  # noqa: E402
+
+_RETREAT_SLUGS = {"at": 0.0, "current": {}, "by_slug": {}}
+RETREAT_SLUGS_TTL_SECONDS = 30
+
+
+def retreat_slug_text(title):
+    """'Antique & French Finds' -> 'antique-and-french-finds'."""
+    text = unicodedata.normalize("NFKD", title or "")
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"[^a-z0-9]+", "-", text.replace("&", " and ").lower()).strip("-")
+    return text[:60].strip("-") or "retreat"
+
+
+def ensure_workshop_slug(conn, workshop_id):
+    """A public retreat's name in the address, given once and then kept."""
+    row = conn.execute(
+        f"SELECT id, title, slug FROM workshops WHERE id = ? AND {WORKSHOP_IS_PUBLIC}",
+        (workshop_id,)).fetchone()
+    if not row:
+        return None
+    if row["slug"]:
+        return row["slug"]
+    base = retreat_slug_text(row["title"])
+    slug, n = base, 2
+    while (conn.execute("SELECT 1 FROM workshop_slugs WHERE slug = ? AND workshop_id != ?",
+                        (slug, workshop_id)).fetchone()
+           or conn.execute("SELECT 1 FROM workshops WHERE slug = ? AND id != ?",
+                           (slug, workshop_id)).fetchone()):
+        slug, n = f"{base}-{n}", n + 1
+    conn.execute("UPDATE workshops SET slug = ? WHERE id = ?", (slug, workshop_id))
+    conn.execute("INSERT INTO workshop_slugs (slug, workshop_id, created_at) VALUES (?, ?, ?) "
+                 "ON CONFLICT(slug) DO NOTHING",
+                 (slug, workshop_id, datetime.now(timezone.utc).isoformat()))
+    _RETREAT_SLUGS["at"] = 0.0
+    return slug
+
+
+def backfill_workshop_slugs(conn):
+    """Every public retreat without a name gets one. Returns how many."""
+    made = 0
+    for row in conn.execute(
+            f"SELECT id FROM workshops WHERE COALESCE(slug, '') = '' AND {WORKSHOP_IS_PUBLIC}").fetchall():
+        if ensure_workshop_slug(conn, row["id"]):
+            made += 1
+    return made
+
+
+def _retreat_slugs():
+    now = time.monotonic()
+    if _RETREAT_SLUGS["at"] and now - _RETREAT_SLUGS["at"] < RETREAT_SLUGS_TTL_SECONDS:
+        return _RETREAT_SLUGS
+    current, by_slug = {}, {}
+    try:
+        conn = get_db()
+        try:
+            current = {r["id"]: r["slug"] for r in conn.execute(
+                f"SELECT id, slug FROM workshops WHERE COALESCE(slug, '') != '' AND {WORKSHOP_IS_PUBLIC}")}
+            by_slug = {r["slug"]: r["workshop_id"] for r in conn.execute(
+                "SELECT slug, workshop_id FROM workshop_slugs")}
+            by_slug.update({s: i for i, s in current.items()})
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return _RETREAT_SLUGS
+    _RETREAT_SLUGS.update(at=now, current=current, by_slug=by_slug)
+    return _RETREAT_SLUGS
+
+
+def retreat_path(workshop_id):
+    """/retreats/<name> for a public retreat (its number while it has no name)."""
+    workshop_id = int(workshop_id)
+    return "/retreats/" + (_retreat_slugs()["current"].get(workshop_id) or str(workshop_id))
+
+
+class RetreatConverter(BaseConverter):
+    """/retreats/<name>: a retreat's name to its id, and back."""
+    regex = r"[a-z0-9][a-z0-9-]*"
+
+    def to_python(self, value):
+        if value.isdigit():
+            return int(value)
+        found = _retreat_slugs()["by_slug"].get(value)
+        if found is None:
+            raise ValidationError()
+        return found
+
+    def to_url(self, value):
+        try:
+            workshop_id = int(value)
+        except (TypeError, ValueError):
+            return str(value)
+        return _retreat_slugs()["current"].get(workshop_id) or str(workshop_id)
+
+
+app.url_map.converters["retreat"] = RetreatConverter
+
+
 @app.route("/workshops")
 def workshops_public():
     conn = get_db()
@@ -73234,6 +73624,7 @@ def workshops_public():
 
 
 @app.route("/workshops/<int:workshop_id>")
+@app.route("/retreats/<retreat:workshop_id>")
 def workshop_detail(workshop_id):
     conn = get_db()
     # A retreat that is not on the site -- deleted, switched off, or a number
@@ -73247,7 +73638,17 @@ def workshop_detail(workshop_id):
         f"SELECT * FROM workshops WHERE id = ? AND active = 1 AND {WORKSHOP_IS_PUBLIC}",
         (workshop_id,)).fetchone()
     if not workshop:
+        # Site review 25 Nov 2026 (2.5): /workshops/999 answered with the list
+        # and a 200. A public retreat that has been switched off still goes to
+        # the list, temporarily (the 24 Nov rule above); a number that was
+        # never a public retreat is not found -- and a private stay is answered
+        # exactly as one, so the numbers still tell nobody which are private.
+        was_public = conn.execute(
+            f"SELECT 1 FROM workshops WHERE id = ? AND {WORKSHOP_IS_PUBLIC}",
+            (workshop_id,)).fetchone()
         conn.close()
+        if not was_public:
+            abort(404)
         return redirect(url_for("workshops_public"), code=302)
     today = house_today()
     sessions = public_sittings(conn, workshop_id, today)
@@ -73271,17 +73672,34 @@ def workshop_detail(workshop_id):
                   else f"{workshop['title']} has no dates coming up — here is what is.",
                   "error")
             return redirect(url_for("workshops_public"))
+    # Its page is at its name (site review 25 Nov 2026): /workshops/7, /retreats/7,
+    # and a name it no longer goes by, all move there for good. After the checks
+    # above, so a retreat that is over goes straight to the list in one step.
+    own = retreat_path(workshop_id)
+    if request.path != own and request.method in ("GET", "HEAD"):
+        conn.close()
+        qs = request.query_string.decode("utf-8", "replace")
+        return redirect(own + (("?" + qs) if qs else ""), code=301)
     # The rooms, for Les Chambres (28 Oct, the image layout brief): the same
     # list and order /book offers, so a room off sale is not shown here either.
     rooms = conn.execute(
         "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    # Site review 25 Nov 2026 (1.8): the page offered "a room to yourself for
+    # EUR 1,600 more; tell us when you register" while Noel's form, its rooms
+    # all taken, offered no such tick and said a solo guest shares. The page now
+    # asks what the form asks (workshop_solo_bookable, rooms left on the sitting),
+    # so it promises a single room only on dates that still have one.
+    solo_open = any(
+        workshop_solo_bookable(
+            workshop, max(bookable_room_count(conn) - session_rooms_used(conn, s["id"]), 0))
+        for s in sessions)
     conn.close()
     # Its dates for search engines, put on the page by structured_data_for_search:
     # the template arrives whole from the design side and carries none.
     g.structured_events = workshop_events_structured(
         workshop, session_rows, workshop_page_url(workshop), "")
     return render_template("workshop_detail.html", workshop=workshop,
-                           session_rows=session_rows, rooms=rooms)
+                           session_rows=session_rows, rooms=rooms, solo_open=solo_open)
 
 
 @app.route("/workshops/register/<int:session_id>", methods=["GET", "POST"])
@@ -74243,11 +74661,63 @@ def mirrored_photo(filename):
     """
     if not re.fullmatch(r"[0-9a-f]{40}\.(jpg|png|webp|gif|avif)", filename or ""):
         abort(404)
-    resp = send_from_directory(MIRROR_DIR, filename)
+    slim = slim_photo_copy(os.path.join(MIRROR_DIR, filename))
+    resp = (send_file(slim, mimetype="image/jpeg") if slim
+            else send_from_directory(MIRROR_DIR, filename))
     # The filename is a hash of the source URL, so a different photograph is a
     # different name. Nothing served here is ever rewritten in place.
     resp.headers["Cache-Control"] = "public, max-age=2592000"
     return resp
+
+
+# A LIGHTER COPY OF A HEAVY PHOTOGRAPH (site review 25 Nov 2026). The review
+# found 23 photographs over 600 KB on the public pages -- two room photographs
+# at 1.5 and 1.3 MB, two mirrored ones at 1.4 and 1.2 -- out of 109 MB in all.
+# A room photograph is whatever the owner uploaded, and a mirrored one is the
+# old site's file byte for byte, so neither can be fixed in git. A JPEG or an
+# opaque PNG over SLIM_ABOVE_BYTES is served as a copy made once (at most
+# SLIM_MAX_WIDTH wide, quality 82, progressive) and kept on the volume beside
+# the sized pictures; the file uploaded is never touched. A copy that would
+# save less than a tenth is not made, and that answer is remembered too.
+SLIM_ABOVE_BYTES = 600 * 1024
+SLIM_MAX_WIDTH = 2400
+
+
+def slim_photo_copy(path):
+    """A lighter copy of a large photograph, made once and kept; or None."""
+    try:
+        st = os.stat(path)
+    except (OSError, TypeError, ValueError):
+        return None
+    if st.st_size <= SLIM_ABOVE_BYTES or not path.lower().endswith((".jpg", ".jpeg", ".png")):
+        return None
+    name = hashlib.sha1(f"{path}|{st.st_mtime_ns}|slim".encode()).hexdigest()
+    out = os.path.join(PIC_DIR, "slim", name + ".jpg")
+    if os.path.isfile(out):
+        return out
+    if os.path.isfile(out + ".none"):
+        return None
+    try:
+        from PIL import Image, ImageOps
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        tmp = out + f".{os.getpid()}.{threading.get_ident()}.tmp"
+        with Image.open(path) as im:
+            if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+                open(out + ".none", "w").close()        # a picture with see-through parts stays a PNG
+                return None
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            if im.size[0] > SLIM_MAX_WIDTH:
+                im = im.resize((SLIM_MAX_WIDTH, round(im.size[1] * SLIM_MAX_WIDTH / im.size[0])),
+                               Image.LANCZOS)
+            im.save(tmp, "JPEG", quality=82, optimize=True, progressive=True)
+        if os.path.getsize(tmp) > st.st_size * 0.9:
+            os.remove(tmp)
+            open(out + ".none", "w").close()
+            return None
+        os.replace(tmp, out)
+        return out
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -74424,6 +74894,77 @@ def pic_srcset(src, sizes="100vw"):
 app.jinja_env.globals["pic"] = pic
 app.jinja_env.globals["pic_srcset"] = pic_srcset
 app.jinja_env.globals["pic_size"] = pic_size
+
+
+# EVERY HOUSE PHOTOGRAPH AT ITS DRAWN SIZE (site review 25 Nov 2026). pic()
+# gives the picture components a WebP at each width, but an <img> a template
+# writes by hand went out as the full file whatever its size on screen -- the
+# Estate's hero, 2,600px and 2.1 MB, on a 390px phone. 109 MB across the site.
+# So at the response, as with the photographs themselves: an <img> on a public
+# page that names a picture the house holds and has no srcset is given pic()'s,
+# with sizes="auto" where it loads lazily (the browser then reads the width it
+# is drawn at) and the full width otherwise. Its src stays as it was, for any
+# browser that cannot read a srcset.
+_IMG_TAG = re.compile(r"<img\b[^>]*>", re.I)
+_IMG_SRC = re.compile(r'\ssrc="([^"]+)"')
+
+
+def held_picture_name(src):
+    """The /pic name for an image address the house holds, or None."""
+    src = (src or "").replace("&amp;", "&")
+    if src.startswith("/static/img/"):
+        rel = src[len("/static/img/"):].split("?", 1)[0]
+    elif src.startswith("/room-photos/"):
+        rel = "~r/" + src[len("/room-photos/"):].split("?", 1)[0]
+    elif src.startswith("/mirrored-photo/"):
+        rel = "~m/" + src[len("/mirrored-photo/"):].split("?", 1)[0]
+    elif src.startswith("https://"):
+        rel = _pic_held(src)
+    else:
+        return None
+    if not rel:
+        return None
+    path_form = rel if rel.startswith(("~m/", "~r/")) else "/static/img/" + rel
+    return rel if _pic_file(path_form) else None
+
+
+@app.after_request
+def pictures_at_their_size(response):
+    if not has_request_context() or response.direct_passthrough:
+        return response
+    if not (response.content_type or "").startswith("text/html") or response.status_code != 200:
+        return response
+    raw = response.get_data()
+    if _PUBLIC_BODY not in raw:
+        return response
+    body = raw.decode("utf-8", "replace")
+
+    def sized(match):
+        tag = match.group(0)
+        # A hero is size_the_heroes' to size, with its own rules for a hero.
+        if "srcset=" in tag or _HERO_IMG.match(tag):
+            return tag
+        found = _IMG_SRC.search(tag)
+        rel = held_picture_name(found.group(1)) if found else None
+        if not rel:
+            return tag
+        size = pic_size(rel if rel.startswith(("~m/", "~r/")) else "/static/img/" + rel)
+        if not size:
+            return tag
+        widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
+        if len(widths) < 2:
+            return tag
+        srcset = ", ".join(f"/pic/{x}/{rel} {x}w" for x in widths)
+        # A tag that already says how wide it is drawn keeps its own sizes (a second one is ignored).
+        sizes = "" if re.search(r"\ssizes=", tag) else (
+            ' sizes="auto, 100vw"' if 'loading="lazy"' in tag else ' sizes="100vw"')
+        end = "/>" if tag.endswith("/>") else ">"
+        return tag[:-len(end)].rstrip() + f' srcset="{srcset}"' + sizes + end
+
+    done = _IMG_TAG.sub(sized, body)
+    if done != body:
+        response.set_data(done.encode("utf-8"))
+    return response
 
 
 @app.route("/pic/<int:width>/<path:filename>")
@@ -75490,7 +76031,14 @@ def arrival_to_post(arrival_id):
 
 @app.route("/room-photos/<filename>")
 def room_photo(filename):
-    return send_from_directory(ROOM_PHOTO_DIR, filename)
+    # A heavy upload goes out as its lighter copy (slim_photo_copy, site review
+    # 25 Nov), and every room photograph is kept by the browser for a week.
+    found = safe_join(ROOM_PHOTO_DIR, filename)
+    slim = slim_photo_copy(found) if found else None
+    resp = (send_file(slim, mimetype="image/jpeg") if slim
+            else send_from_directory(ROOM_PHOTO_DIR, filename))
+    resp.headers["Cache-Control"] = "public, max-age=604800"
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -79132,6 +79680,16 @@ def current_language():
     if cached:
         return cached
     lang = None
+    # The address itself, /fr/... or /es/... (LanguageInTheAddress): a page
+    # whose address names a language is in that language, whoever reads it, and
+    # the reader stays in it for the pages that have no address of their own
+    # (a form, a guest's booking).
+    in_path = request.environ.get("gudanes.lang_path")
+    if in_path in translations.LANGUAGES:
+        if session.get("lang") != in_path:
+            session["lang"] = in_path
+        g._lang = in_path
+        return in_path
     asked = request.args.get("lang")
     if asked in translations.LANGUAGES:
         lang = asked
@@ -79744,6 +80302,123 @@ def purge_guest_page_translations(conn):
 _PUBLIC_BODY = b'<body class="g'
 
 
+# ---------------------------------------------------------------------------
+# TYPESETTING THE PUBLIC PAGE (site review 25 Nov 2026). Registered just before
+# translate_public_page, so it runs just AFTER it (Flask calls after_request
+# functions in reverse): the words are in their final language when this sees
+# them. Text nodes only -- never a tag, an attribute, a script, a style, a form
+# field or anything marked translate="no" (page_text_spans' own rules).
+#
+#   - Apostrophes are curly. The review found "Valentine's", "Mother's Day",
+#     "All Saints'", "a night's stay", "L'équitation" and seven more straight
+#     among curly ones. They came from templates, from stored occasion names,
+#     from code and from translations; done here, it is done for all of them,
+#     and for whatever arrives next.
+#   - On a French or Spanish page a figure is written the way that language
+#     writes it: 3 800 € and 3.800 €, not €3,800; décembre and diciembre, not
+#     December. "Dates and prices are still in English" was the review's first
+#     French finding.
+#   - On a French page the English gloss under a French heading goes: it is
+#     there to help an English reader with the French, and translated it printed
+#     the heading twice ("Votre chambre Votre chambre").
+# ---------------------------------------------------------------------------
+_STRAIGHT_INSIDE = re.compile(r"(?<=[^\W\d_])'(?=[^\W_])")
+_STRAIGHT_PLURAL = re.compile(r"(?<=[sS])'(?=[\s.,;:!?)\]]|$)")
+_EURO_FIGURE = re.compile(r"€\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?(?!\d)")
+_FR_GLOSS = re.compile(r'\s*<span class="g-fr__en">[^<]*</span>')
+_MONTHS_EN = ("January", "February", "March", "April", "May", "June", "July", "August",
+              "September", "October", "November", "December")
+_DAYS_EN = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+MONTH_NAMES = {
+    "fr": ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+           "septembre", "octobre", "novembre", "décembre"),
+    "es": ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+           "septiembre", "octubre", "noviembre", "diciembre"),
+}
+DAY_NAMES = {
+    "fr": ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"),
+    "es": ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"),
+}
+_MONTH_ALT = "|".join(_MONTHS_EN)
+# A month only beside a figure -- "5 December", "5 – 9 December 2026",
+# "December 2026" -- so an English word that happens to be a month name ("May
+# we...") in a sentence still waiting for its translation is never touched.
+_DATE_DAY_MONTH = re.compile(r"(?<!\w)(\d{1,2}(?:\s*[–-]\s*\d{1,2})?)(\s+)(" + _MONTH_ALT + r")\b")
+_DATE_MONTH_YEAR = re.compile(r"\b(" + _MONTH_ALT + r")(\s+)(\d{4})\b")
+_DATE_WEEKDAY = re.compile(r"\b(" + "|".join(_DAYS_EN) + r")(\s+)(?=\d{1,2}\b)")
+
+
+def typeset_text(text, lang):
+    """One text node, typeset for `lang`. Pure; the hook below applies it."""
+    out = text
+    if "'" in out or "&#39;" in out or "&#x27;" in out:
+        # An apostrophe Jinja escaped (&#39;) is the same character in a text node.
+        out = out.replace("&#39;", "'").replace("&#x27;", "'")
+        out = _STRAIGHT_PLURAL.sub("’", _STRAIGHT_INSIDE.sub("’", out))
+        if "'" in out:
+            out = out.replace("'", "&#39;")   # any left are put back as they came
+    if lang in MONTH_NAMES:
+        months = dict(zip(_MONTHS_EN, MONTH_NAMES[lang]))
+        days = dict(zip(_DAYS_EN, DAY_NAMES[lang]))
+        out = _DATE_DAY_MONTH.sub(lambda m: m.group(1) + m.group(2) + months[m.group(3)], out)
+        out = _DATE_MONTH_YEAR.sub(lambda m: months[m.group(1)] + m.group(2) + m.group(3), out)
+        out = _DATE_WEEKDAY.sub(lambda m: days[m.group(1)] + m.group(2), out)
+        sep = "\u202f" if lang == "fr" else "."
+
+        def euro(m):
+            digits = m.group(1).replace(",", "")
+            whole = f"{int(digits):,}".replace(",", sep) if len(digits) > 3 else digits
+            return whole + ("," + m.group(2) if m.group(2) else "") + "\u00a0€"
+        out = _EURO_FIGURE.sub(euro, out)
+    return out
+
+
+@app.after_request
+def typeset_public_page(response):
+    """Apostrophes, and in French or Spanish the figures and glosses. See above."""
+    if not has_request_context() or response.direct_passthrough:
+        return response
+    if not (response.content_type or "").startswith("text/html"):
+        return response
+    raw = response.get_data()
+    if _PUBLIC_BODY not in raw:
+        return response
+    body = raw.decode("utf-8", "replace")
+    lang = current_language()
+    if lang == "fr":
+        body = _FR_GLOSS.sub("", body)
+    done = typeset_html(body, lang)
+    if done != body:
+        response.set_data(done.encode("utf-8"))
+    elif lang == "fr":
+        response.set_data(body.encode("utf-8"))
+    return response
+
+
+# What typesetting never touches: a script, a style, a form field's text, code,
+# a drawing. Everything else between a ">" and the next "<" is a run of text.
+# One regex pass rather than page_text_spans' HTML parser: this runs on every
+# public page in every language, and the parser cost 30-40ms of a 350ms page
+# (measured on /book and /gallery, 25 Nov 2026) for the same answer.
+_TYPESET_SKIP = re.compile(r"<(script|style|textarea|pre|code|svg)\b.*?</\1\s*>", re.S | re.I)
+_TEXT_RUN = re.compile(r">([^<]+)<")
+
+
+def typeset_html(body, lang):
+    """typeset_text over every run of text in `body` that may be typeset."""
+    out, last = [], 0
+
+    def runs(chunk):
+        return _TEXT_RUN.sub(lambda m: ">" + typeset_text(m.group(1), lang) + "<", chunk)
+
+    for block in _TYPESET_SKIP.finditer(body):
+        out.append(runs(body[last:block.start()]))
+        out.append(block.group(0))
+        last = block.end()
+    out.append(runs(body[last:]))
+    return "".join(out)
+
+
 @app.after_request
 def translate_public_page(response):
     """Serve the public site in the language the reader chose.
@@ -79849,6 +80524,196 @@ def service_worker():
     return response
 
 
+# ---------------------------------------------------------------------------
+# Addresses in French and Spanish (site review 25 Nov 2026). See
+# LanguageInTheAddress, where the language is lifted off the address.
+#
+# LANGUAGE_PAGES are the public pages a search engine should hold in each
+# language: the ones in the sitemap, the rooms, the retreats and the occasions.
+# A form, a guest's own booking or a staff page has no language address; at
+# /fr/... it is sent to its own address and keeps the language in the session.
+# ---------------------------------------------------------------------------
+LANGUAGE_PAGES = frozenset({
+    "dashboard", "book_rooms", "book_room", "workshops_public", "workshop_detail",
+    "restaurant_info", "events_info", "events_weddings", "events_private",
+    "events_photoshoots", "press", "story", "facilities_page", "restoration_page",
+    "history_page", "gallery_page", "contact_page", "whats_on", "whats_on_at_gudanes",
+    "stay_occasion_page", "getting_here", "terms_page", "privacy_page", "legal_page",
+    "social_page",
+})
+
+_LANGUAGE_PAGE_PATHS = {}
+
+
+def is_language_page_path(path):
+    """Whether a local path is one of LANGUAGE_PAGES (cached per path)."""
+    known = _LANGUAGE_PAGE_PATHS.get(path)
+    if known is not None:
+        return known
+    try:
+        endpoint, _args = app.url_map.bind("localhost").match(path, method="GET")
+    except Exception:
+        endpoint = None
+    answer = endpoint in LANGUAGE_PAGES
+    if len(_LANGUAGE_PAGE_PATHS) < 5000:
+        _LANGUAGE_PAGE_PATHS[path] = answer
+    return answer
+
+
+def _without_language(path):
+    for code in LANGUAGE_PATH_CODES:
+        front = "/" + code
+        if path == front or path.startswith(front + "/"):
+            return path[len(front):] or "/"
+    return path
+
+
+def language_address(url, code):
+    """`url` (a path or a full address on this site) at its address in `code`.
+
+    Only a LANGUAGE_PAGES page moves; anything else is returned as it was."""
+    parts = urlparse(url)
+    bare = _without_language(parts.path or "/")
+    if not is_language_page_path(bare):
+        return url
+    path = bare if code == "en" else "/" + code + (bare if bare != "/" else "/")
+    return parts._replace(path=path).geturl()
+
+
+def languages_offered():
+    """['en', 'fr', 'es'] when the site offers French and Spanish, else ['en'].
+
+    The owner's switch at /admin/languages. Off, nothing here changes a page:
+    no language addresses are written into it and nobody is sent to one."""
+    cached = g.get("_languages_offered") if has_request_context() else None
+    if cached is not None:
+        return cached
+    offered = ["en"]
+    try:
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = 'show_language_switcher'").fetchone()
+        finally:
+            conn.close()
+        if row and row["value"]:
+            offered = ["en"] + [c for c in LANGUAGE_PATH_CODES if c in translations.LANGUAGES]
+    except sqlite3.Error:
+        pass
+    if has_request_context():
+        g._languages_offered = offered
+    return offered
+
+
+def _origin_here():
+    return request.host_url.replace("http://", "https://", 1).rstrip("/")
+
+
+@app.before_request
+def language_address_for_this_page():
+    """Send a reader to the page's address in the language it will be read in.
+
+    - /fr/<a form or a booking> -> <the same address>, the language kept.
+    - <page>?lang=fr -> /fr/<page>, for good (301): the old alternates.
+    - <page> read in French or Spanish (a choice made, or the browser's own
+      language) -> /fr/<page>, for now (302), so a page's address and its
+      language always agree -- which is what lets a search engine index both.
+    Never on the staff address, never for anything but a GET or a HEAD."""
+    if request.method not in ("GET", "HEAD") or on_admin_host():
+        return None
+    endpoint = request.endpoint
+    in_path = request.environ.get("gudanes.lang_path")
+    if in_path and endpoint not in LANGUAGE_PAGES:
+        if endpoint is None or endpoint == "static":
+            return None
+        session["lang"] = in_path
+        return redirect(request.full_path.rstrip("?") if request.query_string else request.path, code=302)
+    if endpoint not in LANGUAGE_PAGES or in_path:
+        return None
+    if len(languages_offered()) < 2:
+        return None
+    asked = request.args.get("lang")
+    if asked in translations.LANGUAGES:
+        session["lang"] = asked
+        rest = [(k, v) for k, v in request.args.items(multi=True) if k != "lang"]
+        target = language_address(request.path, asked) + (("?" + urlencode(rest)) if rest else "")
+        return redirect(target, code=301)
+    reading = current_language()
+    if reading != "en" and reading in LANGUAGE_PATH_CODES:
+        target = language_address(request.path, reading)
+        if request.query_string:
+            target += "?" + request.query_string.decode("utf-8", "replace")
+        response = redirect(target, code=302)
+        response.headers["Vary"] = "Cookie, Accept-Language"
+        return response
+    return None
+
+
+_LINK_ATTR = re.compile(r'(\s(?:href|action)=")(/[^"]*)(")')
+_CANONICAL = re.compile(r'<link rel="canonical" href="[^"]*">')
+_ALTERNATE = re.compile(r'\s*<link rel="alternate" hreflang="[^"]*" href="[^"]*">')
+_OG_URL = re.compile(r'(<meta property="og:url" content=")[^"]*(">)')
+_OG_LOCALE = re.compile(r'(<meta property="og:locale" content=")[^"]*(">)')
+OG_LOCALES = {"en": "en_GB", "fr": "fr_FR", "es": "es_ES"}
+
+
+def _link_in(code):
+    def swap(match):
+        target = match.group(2)
+        if target.startswith("//"):
+            return match.group(0)
+        return match.group(1) + language_address(target, code) + match.group(3)
+    return swap
+
+
+@app.after_request
+def language_addresses_on_the_page(response):
+    """The page's links, canonical tag and alternates, in its language.
+
+    On the response, never in the templates: public_base.html and the pages
+    arrive whole from the design side, so anything written into them survives
+    one handover (the reason serve_our_own_photographs works this way)."""
+    if not has_request_context() or on_admin_host():
+        return response
+    in_path = request.environ.get("gudanes.lang_path")
+    # A redirect from a French page lands on the French page.
+    if in_path and response.status_code in (301, 302, 303, 307, 308):
+        where = response.headers.get("Location", "")
+        if where and not urlparse(where).netloc and len(languages_offered()) > 1:
+            response.headers["Location"] = language_address(where, in_path)
+        return response
+    if response.direct_passthrough or not (response.content_type or "").startswith("text/html"):
+        return response
+    raw = response.get_data()
+    if _PUBLIC_BODY not in raw:
+        return response
+    # Asked only now, so a staff page or a file costs no lookup.
+    offered = languages_offered()
+    if len(offered) < 2:
+        return response
+    body = raw.decode("utf-8", "replace")
+    lang = current_language()
+    if lang in LANGUAGE_PATH_CODES:
+        body = _LINK_ATTR.sub(_link_in(lang), body)
+    if request.endpoint in LANGUAGE_PAGES and response.status_code == 200:
+        origin = _origin_here()
+        here = request.path
+        own = origin + language_address(here, lang if in_path else "en")
+        tags = [f'<link rel="canonical" href="{own}">']
+        for code in offered:
+            tags.append(f'<link rel="alternate" hreflang="{code}" href="{origin}{language_address(here, code)}">')
+        tags.append(f'<link rel="alternate" hreflang="x-default" href="{origin}{language_address(here, "en")}">')
+        body = _ALTERNATE.sub("", body)
+        if _CANONICAL.search(body):
+            body = _CANONICAL.sub(lambda _m: "\n".join(tags), body, count=1)
+        else:
+            body = body.replace("</head>", "\n".join(tags) + "\n</head>", 1)
+        body = _OG_URL.sub(lambda m: m.group(1) + own + m.group(2), body, count=1)
+        body = _OG_LOCALE.sub(lambda m: m.group(1) + OG_LOCALES.get(lang, "en_GB") + m.group(2), body, count=1)
+    response.set_data(body.encode("utf-8"))
+    return response
+
+
 @app.route("/language/<code>")
 def set_language(code):
     """Switch language and return the reader to the page they were on.
@@ -79876,6 +80741,10 @@ def set_language(code):
     # the shape phishing wants.
     if urlparse(target).netloc and urlparse(target).netloc != request.host:
         target = url_for("dashboard")
+    # Back to the same page, at its address in the language chosen: /fr/book
+    # to /book for English, /book to /es/book for Spanish (site review 25 Nov).
+    if code in translations.LANGUAGES:
+        target = language_address(target, code)
     return redirect(target)
 
 
@@ -86709,6 +87578,7 @@ def new_workshop():
         new_id = cur.lastrowid
         if photo:
             log_audit(conn, "workshop_photo_set", target=str(new_id), details=title)
+        ensure_workshop_slug(conn, new_id)
         conn.commit()
         conn.close()
         flash(f"{title} added. Add its first sitting below.", "success")
@@ -86851,6 +87721,8 @@ def edit_workshop(workshop_id):
         if new_photo != old_photo:
             log_audit(conn, "workshop_photo_set" if new_photo else "workshop_photo_removed",
                       target=str(workshop_id), details=title)
+        # A retreat made public has a name in its address from now on (a no-op for one that has).
+        ensure_workshop_slug(conn, workshop_id)
         conn.commit()
         if old_photo and old_photo != new_photo:
             drop_workshop_photo_file(conn, old_photo)
@@ -134524,7 +135396,13 @@ def send_to_the_house_address(response):
             return response
         if _PUBLIC_BODY not in response.get_data():
             return response
-    return redirect(_with_query(f"{home[0]}://{home[1]}{request.path}"), code=301)
+    # The path as it was asked for: /fr/book stays /fr/book on the house's address (LanguageInTheAddress
+    # took the language off request.path; site review 25 Nov 2026).
+    asked = request.path
+    in_path = request.environ.get("gudanes.lang_path")
+    if in_path:
+        asked = "/" + in_path + (asked if asked != "/" else "/")
+    return redirect(_with_query(f"{home[0]}://{home[1]}{asked}"), code=301)
 
 
 @app.errorhandler(404)
@@ -134677,8 +135555,13 @@ def robots():
 
 @app.route("/sitemap.xml")
 def sitemap():
-    """The public pages, with each room and each atelier listed individually —
+    """The public pages, with each room, retreat and occasion listed on its own --
     those are what people actually search for.
+
+    Site review 25 Nov 2026: each page is listed at its address in every language
+    the site offers (/fr/..., /es/...), each with the full set of alternates, as
+    search engines ask; and the pages the review found missing are in: Getting
+    Here, At Gudanes, every live occasion, Privacy and Legal.
 
     Endpoints are looked up defensively: one renamed page should cost that
     page's line, not the whole sitemap.
@@ -134691,12 +135574,13 @@ def sitemap():
         ("facilities_page", "0.7"),
         ("restoration_page", "0.7"), ("history_page", "0.7"),
         ("gallery_page", "0.6"), ("contact_page", "0.6"),
-        ("whats_on", "0.5"), ("terms_page", "0.3"),
+        ("whats_on", "0.5"), ("whats_on_at_gudanes", "0.6"), ("getting_here", "0.6"),
+        ("terms_page", "0.3"), ("privacy_page", "0.2"), ("legal_page", "0.2"),
     ]
-    urls = []
+    paths = []
     for endpoint, priority in pages:
         try:
-            urls.append((url_for(endpoint, _external=True), priority))
+            paths.append((url_for(endpoint), priority))
         except Exception:
             continue
 
@@ -134705,7 +135589,7 @@ def sitemap():
     # it — neither table has such a column, so it would have raised on every
     # request rather than returning a sitemap missing a few lines.
     for r in conn.execute("SELECT id FROM rooms WHERE active = 1").fetchall():
-        urls.append((url_for("book_room", room_id=r["id"], _external=True), "0.8"))
+        paths.append((url_for("book_room", room_id=r["id"]), "0.8"))
     # Only ateliers with a date still ahead. A sitemap advertising a workshop
     # that finished in June is the same mistake the front page used to make.
     # A date still ahead that has been called off is not one: the page would
@@ -134716,13 +135600,38 @@ def sitemap():
                 WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
                   AND {SESSION_IS_LIVE} AND {WORKSHOP_IS_PUBLIC}""",
             (service_day_iso(),)).fetchall():
-        urls.append((url_for("workshop_detail", workshop_id=w["id"], _external=True), "0.8"))
+        paths.append((url_for("workshop_detail", workshop_id=w["id"]), "0.8"))
+    # The occasions a guest can see: live, and not over (stay_occasion_page's own rule).
+    for o in conn.execute(
+            "SELECT slug FROM stay_occasions WHERE status = 'live' AND last_night >= ? "
+            "AND COALESCE(slug, '') != '' ORDER BY first_night",
+            (house_today_iso(),)).fetchall():
+        paths.append((url_for("stay_occasion_page", slug=o["slug"]), "0.6"))
     conn.close()
 
+    origin = request.host_url.replace("http://", "https://", 1).rstrip("/")
+    offered = languages_offered()
+
+    def esc(text):
+        return text.replace("&", "&amp;")
+
     body = ['<?xml version="1.0" encoding="UTF-8"?>',
-            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
-    for loc, pri in urls:
-        body.append(f"  <url><loc>{loc.replace("&", "&amp;")}</loc><priority>{pri}</priority></url>")
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'
+            + (' xmlns:xhtml="http://www.w3.org/1999/xhtml">' if len(offered) > 1 else '>')]
+    seen = set()
+    for path, pri in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        versions = {code: origin + language_address(path, code) for code in offered}
+        for code in offered:
+            line = [f"  <url><loc>{esc(versions[code])}</loc><priority>{pri}</priority>"]
+            if len(offered) > 1:
+                for alt in offered:
+                    line.append(f'<xhtml:link rel="alternate" hreflang="{alt}" href="{esc(versions[alt])}"/>')
+                line.append(f'<xhtml:link rel="alternate" hreflang="x-default" href="{esc(versions["en"])}"/>')
+            line.append("</url>")
+            body.append("".join(line))
     body.append("</urlset>")
     return Response("\n".join(body), mimetype="application/xml")
 

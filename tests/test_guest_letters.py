@@ -125,7 +125,10 @@ def run():
     s.check("the note under the places says we arrange them and the shuttle", WEDDINGS_NOTE in wed)
     s.check("and not that each is booked directly", BOOKED_DIRECTLY not in wed)
     shoot = flat(visible_text(pages["/events/photoshoots"].get_data(as_text=True)))
-    s.check("the photoshoot page keeps its own note", BOOKED_DIRECTLY in shoot and WEDDINGS_NOTE not in shoot)
+    # The crew's own words since the site review of 25 Nov ("which would suit the crew", not "your party").
+    s.check("the photoshoot page keeps its own note",
+            "Each is booked directly. Ask us, and we will gladly tell you which would suit the crew." in shoot
+            and WEDDINGS_NOTE not in shoot)
     return s
 
 

@@ -23,7 +23,7 @@
 {%- macro typical_weather(arrival_sel, departure_sel, now=none, stay=none, nights=none, drawn='') -%}
 {%- set NOTES = [('frost', 'Frost is forecast at night. Bring a layer more than you think.'),
                  ('snow', 'Snow is forecast. The drive may want care.'),
-                 ('hot', 'The thick walls do the work — it is cooler inside.')] -%}
+                 ('hot', 'The thick walls do the work: it is cooler inside.')] -%}
 {%- set H_ALL, H_FIRST, H_ONE = 'Forecast for your stay', 'Forecast for your first {n} nights', 'Forecast for your first night' -%}
 {%- if nights is none -%}
 <p class="g-typwx" data-typwx data-a="{{ arrival_sel }}" data-d="{{ departure_sel }}" aria-live="polite" hidden></p>
@@ -50,7 +50,7 @@
     {%- if _now.minutes_old >= 60 %} <span class="g-typwx__age">as of {{ (_now.minutes_old // 60) }} hour{{ '' if _now.minutes_old // 60 == 1 else 's' }} ago</span>{% endif %}
     {%- set _line -%}
       {%- if _now.c <= 0 %}Frost on the valley. Bring a layer more than you think.
-      {%- elif _now.c >= 28 %}The thick walls do the work &mdash; it is cooler inside.
+      {%- elif _now.c >= 28 %}The thick walls do the work: it is cooler inside.
       {%- elif 'snow' in _now.words %}Snow. The drive may want care.
       {%- elif 'rain' in _now.words or 'shower' in _now.words %}Rain off the mountain. The valley is loud with it.
       {%- endif %}

@@ -363,13 +363,13 @@ def run():
                 detail=f"HTTP {code}")
         s.check("with every date's register link",
                 all(_register_link(i) in body for i in (off_now, live_now, gone, live_far)))
-        code, body = _page(_public(), f"/workshops/{w_running}")
+        code, body = _page(_public(), m.retreat_path(w_running))
         s.check("the atelier's own page lists the date that will be called off",
                 code == 200 and _register_link(gone) in body, detail=f"HTTP {code}")
         code, _b = _page(_public(), f"/workshops/register/{off_now}")
         s.check("its register form opens", code == 200, detail=f"HTTP {code}")
         code, body = _page(_public(), "/sitemap.xml")
-        s.check("the sitemap lists the atelier", f"/workshops/{w_called}</loc>" in body)
+        s.check("the sitemap lists the atelier", m.retreat_path(w_called) + "</loc>" in body)
         code, body = _page(_public(), "/")
         s.check("the front page's next dates show it", OFF in body, detail=f"HTTP {code}")
         code, body = _page(_public(), f"/workshops/manage/{mover}")
@@ -510,7 +510,7 @@ def run():
         s.check("while the running atelier stays, with its running dates",
                 LIVE in body and _register_link(live_now) in body
                 and _register_link(live_far) in body)
-        code, body = _page(_public(), f"/workshops/{w_running}")
+        code, body = _page(_public(), m.retreat_path(w_running))
         s.check("its own page drops the called-off date",
                 code == 200 and _register_link(gone) not in body, detail=f"HTTP {code}")
         s.check("and keeps the ones running",
@@ -540,7 +540,7 @@ def run():
         r = _public().get(f"/workshops/register/{gone}", follow_redirects=True)
         body = r.get_data(as_text=True)
         s.check("an old link to a running atelier's called-off date lands on its running dates",
-                r.request.path == f"/workshops/{w_running}"
+                r.request.path == m.retreat_path(w_running)
                 and _register_link(live_now) in body, detail=f"landed on {r.request.path}")
         code, _b = _page(_public(), f"/workshops/register/{live_now}")
         s.check("a running date's register form still opens", code == 200,
@@ -574,8 +574,8 @@ def run():
                      (f"{TAG}-MOVER",))["session_id"] == live_far, detail=said)
         code, body = _page(_public(), "/sitemap.xml")
         s.check("the sitemap drops the called-off atelier",
-                f"/workshops/{w_called}</loc>" not in body)
-        s.check("and keeps the running one", f"/workshops/{w_running}</loc>" in body)
+                m.retreat_path(w_called) + "</loc>" not in body)
+        s.check("and keeps the running one", m.retreat_path(w_running) + "</loc>" in body)
         code, body = _page(_public(), "/")
         s.check("the front page's next dates drop it", OFF not in body, detail=f"HTTP {code}")
         s.check("and keep the running one", LIVE in body)

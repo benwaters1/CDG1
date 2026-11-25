@@ -254,7 +254,7 @@
     <p class="g-full__fr" lang="fr">L’art de vivre <span class="g-full__fren" lang="en">The art of living</span></p>
     <h2 class="g-full__h" id="full-h">La Vie de Château</h2>
     <p class="g-full__p">For two centuries Gudanes was a château of guests. Then, for decades, it fell silent. Now, for a few weeks each year, its doors open again to a small company who come to live France as the French have always lived it.</p>
-    <p class="g-full__p">Mornings begin with bread from the village <em lang="fr">boulangerie</em> and crêpes on the terrace. The days belong to the kitchen and the château’s chefs, to the markets and brocantes of the Ariège, to the castle at Foix, or to the restorers’ scaffold as a fresco returns to the light. Afternoons are for the pool, a glass of the region’s wine and a book from the library. Every evening ends <em lang="fr">à table</em>: the apéritif as the mountains turn blue, dinner of several courses by candlelight, and on the last night a banquet in the Salon de Musique, then dancing. And so much more: the house as it was, full of life.</p>
+    <p class="g-full__p">Mornings begin with bread from the village <em lang="fr">boulangerie</em> and crêpes on the terrace. The days belong to the kitchen and the château’s chefs, to the markets and brocantes of the Ariège, to the castle at Foix, or to the restorers’ scaffold as a fresco returns to the light. Afternoons are for the pool, a glass of the region’s wine and a book from the library. Every evening ends <em lang="fr">à table</em>: the apéritif as the mountains turn blue, dinner of several courses by candlelight, and on the last night a banquet in the Salon de Musique, then dancing. And so much more: the château as it was, full of life.</p>
     <p class="g-full__p">Guests arrive as strangers and leave as friends, and so many of them return.</p>
     <p class="g-full__btns">
       <a class="g-full__cta" href="{{ url_for('workshops_public') }}">Discover the retreats</a>
@@ -286,7 +286,7 @@
       {% endfor %}
     </ul>
     {#- 26 Oct (owner, the retreats deck 1e). -#}
-    <p class="g-full__note">Many of our guests return, some year after year, each time for a different retreat. In autumn 2026, every guest at the Autumn Atelier had stayed with us before.</p>
+    <p class="g-full__note">Many of our guests return, some year after year, each time for a different retreat. In autumn 2026, every guest on the autumn retreat had stayed with us before.</p>
     {% else %}
     <p class="g-full__k">Every retreat</p>
     <ul class="g-full__threads">
@@ -453,7 +453,7 @@
     <button type="button" class="g-car__btn" data-car-next aria-label="Next room"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 4 8 8-8 8"/></svg></button>
   </div>
   </section>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Meet all {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} rooms</a></p>
+  <p style="margin-top:var(--s6); text-align:center">{#- site review 25 Nov (4.4): centred under the rooms -#}<a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Meet all {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} rooms</a></p>
 </div></section>
 {% endif %}
 

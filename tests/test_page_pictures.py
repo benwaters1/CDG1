@@ -280,14 +280,14 @@ def _unnamed_retreats(s, client):
         for title, wid in mine.items():
             want = list(dict.fromkeys(urlsplit(x).path for x in [cards.get(title, ""), (dates.get(wid) or [""])[0]]))
             for e in events:
-                if not e.get("url", "").endswith("/workshops/%d" % wid):
+                if not e.get("url", "").endswith(m.retreat_path(wid)):
                     continue
                 got = e.get("image") if isinstance(e.get("image"), list) else [e.get("image")]
                 if ([urlsplit(u or "").path for u in got] != want
                         or not all(urlsplit(u or "").scheme in ("http", "https") for u in got)):
                     wrong.append(f"{title}: {e.get('image')}")
         s.check("the page's event data names each retreat's own photographs", not wrong
-                and any(e.get("url", "").endswith("/workshops/%d" % ids[0]) for e in events),
+                and any(e.get("url", "").endswith(m.retreat_path(ids[0])) for e in events),
                 detail="; ".join(wrong[:2]) or "no event for the retreat with its own photo")
     finally:
         m.ROOM_PHOTO_DIR = real_dir

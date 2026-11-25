@@ -135,34 +135,38 @@ def _press(s, anon):
 
     s.section("Selected stories: a button only where there is something to read")
     cards = re.findall(r'<li class="g-pstory">(.*?)</li>', html, re.S)
-    s.check("seven stories", len(cards) == 7, detail=str(len(cards)))
+    # Five since the site review of 25 Nov (2.10): Architectural Digest and House & Garden had no link to read,
+    # and are named under "Also in" until they do.
+    s.check("five stories, each one to read", len(cards) == 5, detail=str(len(cards)))
     hrefs = re.findall(r'<a class="g-btn g-btn--line" href="([^"]+)" target="_blank" rel="noopener">Read in',
                        html)
     s.check("five 'Read in' buttons, to the five addresses that answered", hrefs == STORY_LINKS,
             detail=str(hrefs))
     s.check("each opens in a new tab and says so to a screen reader",
             html.count("(opens in a new tab)") == 5)
+    # Site review 25 Nov 2026 (2.10): the two stories with no address stopped being stories that could not be
+    # read; they are named under "Also in" until somebody has their links.
     for title in ("Why This French Château Is Worthy of Its Own Instagram Account",
                   "The family and the restoration"):
         card = next((c for c in cards if title in c), "")
-        s.check(f"'{title}' has no address yet, so no button", card and "<a " not in card,
-                detail=card[:200])
+        s.check(f"'{title}' is no longer a story with nothing to read", not card, detail=card[:200])
     s.check("publication and year over each title",
-            "Vogue · 2020" in words and "Kinfolk · Issue 30" in words
-            and "House & Garden · December 2018" in words)
+            "Vogue · 2020" in words and "Kinfolk · Issue 30" in words)
 
     s.section("Also in, the Medal, the book and For Editors")
     s.check("the one line of other titles",
-            "Lonely Planet · Gourmet Traveller · Condé Nast Traveller · My Modern Met · Bob Vila "
-            "· Suitcase · The Good Life France · Daily Mail" in words)
+            "Architectural Digest · House & Garden · Lonely Planet · Gourmet Traveller · Condé Nast "
+            "Traveller · My Modern Met · Bob Vila · Suitcase · The Good Life France · Daily Mail" in words)
     s.check("and the Shorty Award",
             "In 2018 the château was also nominated for a Shorty Award for the community that "
             "follows it online." in words)
     s.check("the Medal of Honour in the brief's words", MEDAL in words)
-    s.check("the book, with every copy towards the restoration",
+    # Site review 25 Nov 2026 (1.20, owner's yes): "Every copy sold goes towards the restoration" is funding
+    # wording, which the owner ruled out, so the book's line stops at what it tells.
+    s.check("the book, without the funding line",
             "Château de Gudanes: A True Love Story Never Ends (2018) tells the story of the "
-            "château, its past, present and future. Every copy sold goes towards the restoration."
-            in words)
+            "château, its past, present and future." in words
+            and "Every copy sold" not in words)
     s.check("For Editors is as it was",
             'href="mailto:ariege@chateaugudanes.com"' in html
             and "usage is agreed in writing rather than assumed" in words)

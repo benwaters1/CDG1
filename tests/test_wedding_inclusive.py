@@ -174,7 +174,7 @@ def run():
             detail=got_p[2] if len(got_p) > 2 else "")
     s.check("What We Look After is not there by its old name", "What We Look After" not in visible_text(priv))
     # 24 Nov 2026, later: what it includes is the retreats' own list now (test_private_retreat holds it).
-    s.check("it says what a retreat includes", "And much more: the house as it was, full of life" in visible_text(priv))
+    s.check("it says what a retreat includes", "And much more: the château as it was, full of life" in visible_text(priv))
     s.check("the hero's Ask about your dates still lands", 'href="#enquire"' in priv and 'id="enquire"' in priv)
 
     s.section("7A. All Inclusive, in four groups")
@@ -222,7 +222,8 @@ def run():
     s.check("How Many, and Where: up to eighty", "Up to eighty" in wed_words
             and "in the two adjoining salons and the dining room, for up to eighty guests" in wed_words)
     s.check("the questions: eighty, two salons of around forty each",
-            "Indoors, up to eighty: two adjoining salons hold around forty guests each" in wed_words)
+            # the number first since the site review of 25 Nov: the question is how many
+            "Up to eighty indoors: two adjoining salons hold around forty guests each" in wed_words)
     s.check("what search shows says eighty", "up to eighty guests inside" in meta(wed, "description"),
             detail=meta(wed, "description"))
     fr_page = m.app.test_client().get("/events/weddings?lang=fr").get_data(as_text=True)
