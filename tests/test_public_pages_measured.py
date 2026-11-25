@@ -77,6 +77,13 @@ SMALLEST = 12
 # pages' booking form, the history the brief says to leave alone. Keyed by
 # address, with a room or a retreat by its kind, since the ids differ between
 # databases. Take a page off when it comes under the budget; the run says so.
+# Photographs known to be drawn wider than their file, each with the reason, checked both ways (a listed one
+# that is sharp again reds the run, so the list cannot go stale). Site review 25 Nov 2026: /getting-here came
+# into the sitemap, so this suite read it for the first time. Its hero is a portrait file 1,068px wide drawn
+# across a 1,400px page; the house holds no larger photograph of the valley in landscape. The owner has been
+# told it wants one. The alt the probe reports, from its start.
+KNOWN_SOFT = {"/getting-here": "The Ari\u00e8ge valley below the ch\u00e2teau drawn"}
+
 KNOWN_LONG = {
     # 24 Nov: +200 for The Paintings, the section of their own the owner asked for (the painted beams and the
     # frescoes, three photographs), and the timeline's three new years; measured 15,216.
@@ -322,8 +329,14 @@ def _run(s, browser, pages, workdir):
             detail=str(soft_c.get("guess")))
     soft = {p: d["soft"] for p, d in got.items() if not p.startswith("control:") and d.get("soft")}
     guess = {p: d["guess"] for p, d in got.items() if not p.startswith("control:") and d.get("guess")}
-    s.check("no house photograph is drawn more than %.2f times its widest file" % SHARP, not soft,
-            detail=str(soft)[:600])
+    # KNOWN_SOFT, checked both ways like KNOWN_LONG: a listed photograph that is sharp again reds the run.
+    known_left = {p: [x for x in xs if not x.startswith(KNOWN_SOFT.get(p, "\0"))] for p, xs in soft.items()}
+    known_left = {p: xs for p, xs in known_left.items() if xs}
+    s.check("no house photograph is drawn more than %.2f times its widest file" % SHARP, not known_left,
+            detail=str(known_left)[:600])
+    mended = [p for p, alt in KNOWN_SOFT.items() if p in got and not any(x.startswith(alt) for x in soft.get(p, []))]
+    s.check("and every photograph on the known-soft list is still soft", not mended,
+            detail="take off KNOWN_SOFT: " + "; ".join(mended))
     s.check("every lazy house photograph asks for the width it is drawn at", not guess, detail=str(guess)[:600])
 
     # ---- on a phone ------------------------------------------------------
