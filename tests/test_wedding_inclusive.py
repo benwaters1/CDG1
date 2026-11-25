@@ -57,14 +57,16 @@ WEDDING_ORDER = [
     "Questions Couples Ask",
     "Tell Us the Shape of It",
 ]
+# 24 Nov 2026, later (BRIEF-private-retreat-and-images, 1): the page became a private retreat. All Inclusive is still
+# third; A Few Days of Your Own went into Your Own Retreat; the occasions are "If There Is a Reason", lower down.
 PRIVATE_ORDER = [
-    "A Private Château for a Few Days",
-    "Smaller Than a Wedding, Longer Than a Dinner",
+    "A Private Retreat",
+    "Your Own Retreat",
     "All Inclusive",
-    "A Few Days of Your Own",
-    "Whatever You Are Celebrating",
+    "Choose Your Days",
+    "A Sample Private Retreat",
+    "If There Is a Reason",
     "At the Château’s Tables",
-    "A Sample Stay",
     "The Finer Details",
     "If More of Your Party Would Like to Come",
     "A Gathering of Your Own",
@@ -75,7 +77,9 @@ GROUPS = {
                          "No other event under the roof",
                          "Our help planning every part of your wedding, before you arrive and on the day",
                          "Flowers throughout, from the gardens and the local market, created with you",
-                         "A historic tour of the château"],
+                         "A historic tour of the château",
+                         # 24 Nov 2026 (BRIEF-private-retreat-and-images, 2): the speakers, as JBL.
+                         "Two large JBL speakers, connected, indoors or out"],
     "Your Guests": ["Fifteen of you staying in the château’s bedrooms and suites",
                     "Rooms nearby for the rest of your guests, arranged by us",
                     "Refreshments and flowers waiting in their rooms",
@@ -169,9 +173,9 @@ def run():
     s.check("All Inclusive is the third", len(got_p) > 2 and got_p[2] == "All Inclusive",
             detail=got_p[2] if len(got_p) > 2 else "")
     s.check("What We Look After is not there by its old name", "What We Look After" not in visible_text(priv))
-    s.check("its words are as they were",
-            "We look after the meals, the drinks and the flowers, so the days are yours to enjoy." in visible_text(priv))
-    s.check("the hero's Ask about private hire still lands", 'href="#enquire"' in priv and 'id="enquire"' in priv)
+    # 24 Nov 2026, later: what it includes is the retreats' own list now (test_private_retreat holds it).
+    s.check("it says what a retreat includes", "And much more: the house as it was, full of life" in visible_text(priv))
+    s.check("the hero's Ask about your dates still lands", 'href="#enquire"' in priv and 'id="enquire"' in priv)
 
     s.section("7A. All Inclusive, in four groups")
     incl = section(wed, "g-wed-incl")

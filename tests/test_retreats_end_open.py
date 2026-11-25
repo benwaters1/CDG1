@@ -76,8 +76,11 @@ def run():
         "/workshops each retreat's card": grab(html["/workshops"], r'<p class="g-p g-wscard__blurb">(.*?)</p>'),
         "/facilities the La vie de château card":
             [x for x in grab(html["/facilities"], r'<p class="g-three__d">(.*?)</p>') if "for a retreat" in x],
-        "/events/private the retreats": [x for x in grab(html["/events/private"], r'<p class="g-p">(.*?)</p>')
-                                         if "the retreats" in x],
+        # 24 Nov 2026 (BRIEF-private-retreat-and-images, 1): the page is a private retreat, and All Inclusive is the
+        # retreats' own list; its last line.
+        "/events/private All Inclusive, its last line":
+            [grab(ul, r"<li\b[^>]*>(.*?)</li>")[-1] for ul in
+             re.findall(r'<ul class="g-sow__list g-priv-incl__l">(.*?)</ul>', html["/events/private"], re.S)],
         "/social the retreats": [x for x in grab(html["/social"], r'<p class="g-p">(.*?)</p>') if "Retreats of" in x],
     }
     # What search engines show for /workshops: the page describes the retreats there too.

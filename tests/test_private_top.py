@@ -36,8 +36,9 @@ def run():
     # Negative control: put back the g-hero--art section with illus('wine'), and these go red.
     s.check("the hero is a photograph", 'class="g-hero__img"' in hero, detail=hero[:160])
     s.check("not the drawn art on navy", "g-hero--art" not in hero)
-    s.check("its words are the ones the art hero carried",
-            all(w in hero for w in ("A Private Château for a Few Days", "reasons that need no name", "Ask about private hire")))
+    # 24 Nov 2026 (BRIEF-private-retreat-and-images, 1): a private retreat (test_private_retreat).
+    s.check("its words are a private retreat's",
+            all(w in hero for w in ("A Private Retreat", "for your party alone", "Ask about your dates")))
     body = re.search(r'<body class="([^"]*)"', page)
     s.check("the header lies over it", body is not None and "has-hero" in body.group(1))
 
@@ -45,7 +46,8 @@ def run():
     # 24 Nov 2026 (owner: the order, most important first): All Inclusive comes between the two now, so each is a
     # section of its own, with its one photograph (test_wedding_inclusive holds the order).
     intros = re.findall(r'<section class="g-sec g-wed-intro">(.*?)</section>', page, re.S)
-    s.check("the two sections each sit beside a photograph", [i.count('class="g-sp__main"') for i in intros] == [1, 1],
+    # 24 Nov 2026, later: one now. A Few Days of Your Own said what Your Own Retreat says, and went.
+    s.check("the opening section sits beside a photograph", [i.count('class="g-sp__main"') for i in intros] == [1],
             detail=str([i.count('class="g-sp__main"') for i in intros]))
     s.check("the medallion pair is gone", "g-duo-sec" not in page)
 
@@ -54,7 +56,8 @@ def run():
     s.check("five occasions", occ == ["Milestone birthdays", "Anniversaries", "Family gatherings", "Company retreats",
                                       "A party of friends"], detail=str(occ))
     days = re.findall(r'<h3 class="g-shootsteps__t">([^<]*)</h3>', page)
-    s.check("a sample stay of four days", days == ["The Day of Arrival", "The Celebration", "The Day After", "Au Revoir"],
+    s.check("a sample private retreat of four days, from the retreats' own",
+            days == ["The Day of Arrival", "The Kitchen and the Market", "The Restoration and Foix", "Au Revoir"],
             detail=str(days))
     fine = re.search(r'<section class="g-sec g-wed-fine[^"]*">(.*?)</section>', page, re.S)
     fine = fine.group(1) if fine else ""
@@ -70,7 +73,8 @@ def run():
     s.section("Nothing twice")
     shown = _visible(page)
     for alt in ("The long table by candlelight", "A salon, the mountains through its windows",
-                "A terrace at night, strung with lights", "Fish with herbs on a floral plate"):
+                "Fish with herbs on a floral plate", "Mirepoix under its old arcades",
+                "Guests on the scaffold among the frescoes"):
         n = len(re.findall(r'<img\b[^>]*\salt="' + re.escape(alt), shown))
         s.check(f"{alt[:40]} drawn once", n == 1, detail=str(n))
     return s
