@@ -152,6 +152,20 @@ def _moves(s):
     r = c.get("/fr/no-such-page-here")
     s.check("a page that is not there is still not found under /fr/", r.status_code == 404, detail=str(r.status_code))
 
+    s.section("Once live, the language stays on the move to the house's address")
+    house, railway = "https://www.chateaugudanes.com", "https://gudanes-hr-production.up.railway.app"
+    was_live, was_base = m.SITE_IS_LIVE, m.PUBLIC_BASE_URL
+    try:
+        m.SITE_IS_LIVE, m.PUBLIC_BASE_URL = True, house
+        r = m.app.test_client().get("/fr/story", base_url=railway)
+        s.check("/fr/story on another address goes to /fr/story on the house's, not the English page",
+                r.status_code == 301 and r.headers.get("Location") == house + "/fr/story",
+                detail=f"{r.status_code} {r.headers.get('Location')}")
+        r = m.app.test_client().get("/es/", base_url=railway)
+        s.check("and /es/ to /es/", r.headers.get("Location") == house + "/es/", detail=str(r.headers.get("Location")))
+    finally:
+        m.SITE_IS_LIVE, m.PUBLIC_BASE_URL = was_live, was_base
+
 
 def _sitemap(s):
     s.section("The sitemap lists every language")

@@ -135143,7 +135143,13 @@ def send_to_the_house_address(response):
             return response
         if _PUBLIC_BODY not in response.get_data():
             return response
-    return redirect(_with_query(f"{home[0]}://{home[1]}{request.path}"), code=301)
+    # The path as it was asked for: /fr/book stays /fr/book on the house's address (LanguageInTheAddress
+    # took the language off request.path; site review 25 Nov 2026).
+    asked = request.path
+    in_path = request.environ.get("gudanes.lang_path")
+    if in_path:
+        asked = "/" + in_path + (asked if asked != "/" else "/")
+    return redirect(_with_query(f"{home[0]}://{home[1]}{asked}"), code=301)
 
 
 @app.errorhandler(404)
