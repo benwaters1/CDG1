@@ -173,7 +173,10 @@ m = _harness.m
 # e26d86d it listed /workshops/352 (Cooking in the Cuisine: day 2's heading and evening name L'Ariégeoise) and
 # nothing else; the cards' "a night" and the search results' occasion line need a live occasion or a search,
 # which this copy has neither of (test_stay_occasions holds them). Was: "e26d86d"
-COPY_BASE = "89a5af6"
+# 25 Nov 2026, evening: moved to 2f95473, BRIEF-itinerary-wording (the retreat days as an invitation, and Cooking
+# in the Cuisine's classes). Against 89a5af6 it listed /events/private (Choose Your Days and the sample private
+# retreat) and /workshops/351 to /workshops/354 (the four retreats' day-by-day), and nothing else. Was: "89a5af6"
+COPY_BASE = "2f95473"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
