@@ -49,6 +49,8 @@ FR = {
         'Deux chambres pour une famille, la Chambre Bleue et la Chambre des Fleurs, sur 140 m², avec des sols faits sur mesure et les montagnes aux fenêtres. Dans l’une d’elles, le papier peint d’origine est revenu, réimprimé par Antoinette Poisson, à Paris, d’après ses planches d’origine. Deux lits doubles dans une chambre et trois dans l’autre, chacun fait de linge français de luxe : de la place pour tous, et les enfants à partir de huit ans sont les bienvenus.',
     'Where large pieces of the original wallpaper were lost, it has been made again. In one of the Family Suite’s bedrooms, the original paper has been printed anew by Antoinette Poisson, in Paris, from its original templates. Smaller gaps are left bare, to keep the patina.':
         'Là où de grands morceaux du papier peint d’origine avaient disparu, il a été refait. Dans l’une des chambres de la Family Suite, le papier d’origine a été réimprimé par Antoinette Poisson, à Paris, d’après ses planches d’origine. Les petites lacunes restent nues, pour garder la patine.',
+    # 26 Nov 2026 (owner): the Then and Now pair is the room with the plates on the wall.
+    'The room with the plates on the wall': 'La pièce aux assiettes sur les murs',
 }
 
 ES = {
@@ -65,4 +67,6 @@ ES = {
         'Dos dormitorios para una familia, la Chambre Bleue y la Chambre des Fleurs, en 140 m², con suelos hechos a medida y las montañas en las ventanas. En uno de ellos ha vuelto el papel pintado original, reimpreso por Antoinette Poisson, en París, a partir de sus plantillas originales. Dos camas dobles en un dormitorio y tres en el otro, cada una vestida con lujosa ropa de cama francesa: sitio para todos, y los niños a partir de ocho años son bienvenidos.',
     'Where large pieces of the original wallpaper were lost, it has been made again. In one of the Family Suite’s bedrooms, the original paper has been printed anew by Antoinette Poisson, in Paris, from its original templates. Smaller gaps are left bare, to keep the patina.':
         'Donde se habían perdido grandes trozos del papel pintado original, se ha vuelto a hacer. En uno de los dormitorios de la Family Suite, el papel original ha sido reimpreso por Antoinette Poisson, en París, a partir de sus plantillas originales. Los huecos más pequeños se dejan al descubierto, para conservar la pátina.',
+    # 26 Nov 2026 (owner): the Then and Now pair is the room with the plates on the wall.
+    'The room with the plates on the wall': 'La sala de los platos en las paredes',
 }

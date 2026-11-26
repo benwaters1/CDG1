@@ -76,6 +76,13 @@
 
 /* ==== B. Le passe-partout =============================================== */
 .g .g-pp{ margin: var(--s6) 0; }
+
+/* A PAIR SIDE BY SIDE IS TWO OF A SIZE (owner, 26 Nov 2026: "size issue"). /restoration's wallpaper pairs a framed
+   photograph with one in a mount, and the frame is capped at 34rem and centred while the mount fills its column, so
+   the bedroom came out half the size of the old paper beside it. In a .g-pair each fills its column, flush to the top,
+   and both pictures are cut to the same 4:3. */
+.g .g-pair > .g-cadre, .g .g-pair > .g-pp{ max-width: none; margin: 0; }
+.g .g-pair .g-cadre__img, .g .g-pair .g-pp__mount img{ aspect-ratio: 4 / 3; object-fit: cover; }
 .g .g-pp__mount{
   padding: clamp(22px, 4vw, 48px);
   background: #F8F3E8;

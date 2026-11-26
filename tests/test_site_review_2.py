@@ -346,8 +346,9 @@ def _run(s, anon):
         table = str(macro(differ))
         short = visible_text(str(macro(same[:4])))
     s.check("every room open the same night is one sentence",
-            "All five rooms are open from 12 November." in one and "Up to 10 nights" not in one, detail=one)
-    s.check("but never \"all\" when a room is missing from the list", "All five" not in short, detail=short)
+            # 26 Nov 2026 (owner: "dont say 6"): all of them, without a number.
+            "All the rooms are open from 12 November." in one and "Up to 10 nights" not in one, detail=one)
+    s.check("but never \"all\" when a room is missing from the list", "All the rooms" not in short, detail=short)
     s.check("and the rows are drawn only when the rooms differ", table.count('class="g-nextf__i"') == 5)
 
     s.section("The reassurance band where a guest pays, and a line elsewhere")
