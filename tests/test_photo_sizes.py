@@ -257,6 +257,64 @@ def run():
         except OSError:
             pass
 
+    s.section("An edited photograph the size the editor really makes")
+    # Werkzeug 3.1 refuses any text field over 500 KB, and the editor's data
+    # URL is one: a 2048-pixel canvas at JPEG 0.9 is one to three megabytes of
+    # base64. The check above posts a 300-pixel square, which fits, so it went
+    # on passing while every real edited photograph got a 413. Noise, because
+    # a flat colour compresses to nothing and would fit too.
+    from PIL import Image
+    w, h = 1200, 900
+    noise = Image.frombytes("RGB", (w, h), os.urandom(w * h * 3))
+    buf = io.BytesIO()
+    noise.save(buf, "JPEG", quality=90)
+    big_url = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    s.check("the edited picture is over the 500 KB a text field is allowed",
+            len(big_url) > 500_000, detail=f"{len(big_url):,} characters")
+    posted = oc.post("/admin/photos", data={
+        "photo": (io.BytesIO(original), "grand-salon.jpg"),
+        "edited": big_url,
+        "alt_text": TAG + " big edit",
+    }, content_type="multipart/form-data")
+    conn = db()
+    row = conn.execute(
+        "SELECT * FROM social_posts WHERE alt_text = ? ORDER BY id DESC LIMIT 1",
+        (TAG + " big edit",)).fetchone()
+    conn.close()
+    s.check("and it is taken, not refused as too large",
+            posted.status_code != 413 and bool(row),
+            detail=f"HTTP {posted.status_code} - a 413 is FORM_FIELD_ROOM not "
+                   "reaching photo_intake, or reaching it after the CSRF check "
+                   "has already read the form")
+    if row:
+        conn = db()
+        conn.execute("DELETE FROM social_posts WHERE id = ?", (row["id"],))
+        conn.commit()
+        conn.close()
+        try:
+            os.remove(os.path.join(m.UPLOAD_DIR, row["image_filename"]))
+        except OSError:
+            pass
+    # And the limit itself still stands everywhere else: the room is for the
+    # one route that carries a picture in a field, not a hole in the defence.
+    # No email in it, so if the limit failed the route would only flash
+    # "Enter an email address" and write nothing. Multipart, because that is
+    # the parser the limit (and the flaw it answers) belongs to: Werkzeug
+    # reads a urlencoded body whole, bounded by MAX_CONTENT_LENGTH alone.
+    big_form = oc.post("/admin/emails/optout", data={"reason": "x" * 600_000},
+                       content_type="multipart/form-data")
+    s.check("while any other form with a field that size is still refused",
+            big_form.status_code == 413, detail=f"HTTP {big_form.status_code}")
+    # The suite runs with CSRF off, so the order cannot show in a request
+    # here. In production the CSRF check reads the form first, and a limit
+    # raised after that is raised too late.
+    hooks = [f.__name__ for f in m.app.before_request_funcs.get(None, [])]
+    room_at = (hooks.index("room_for_a_photograph_in_a_form_field")
+               if "room_for_a_photograph_in_a_form_field" in hooks else 10**6)
+    csrf_at = hooks.index("csrf_protect") if "csrf_protect" in hooks else -1
+    s.check("and the room is made before the CSRF check reads the form",
+            0 <= room_at < csrf_at, detail=f"hooks in order: {hooks[:6]}")
+
     s.section("A file that is not a photograph")
     try:
         m.photo_master(b"II*\x00 not really a raw file")
