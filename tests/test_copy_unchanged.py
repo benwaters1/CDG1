@@ -214,7 +214,9 @@ m = _harness.m
 # Was: "f33c8a2"
 # 26 Nov 2026, merged: the base is c6fc6f5, the merge holding the owner's photographs and Manage your booking,
 # each read on its own side. Was: "d057459"
-COPY_BASE = "c6fc6f5"
+# 26 Nov 2026: moved to 067a922, the owner's notes of that afternoon. Against c6fc6f5 it listed /restoration and
+# /gallery only: "The room with the plates on the wall" where "The bedrooms" stood in Then and Now. Was: "c6fc6f5"
+COPY_BASE = "067a922"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
