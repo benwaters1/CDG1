@@ -222,7 +222,11 @@ m = _harness.m
 # "The restoration as it happens" on every page; "A guided tour of the brocantes" on /workshops; "Bruce in the
 # hay meadow" on /facilities; "When a page goes wrong" on /privacy; "One price for the full château experience"
 # on the retreat pages; and the brocante tour in the Antique & French Finds title. Was: "067a922"
-COPY_BASE = "c3f0038"
+# 26 Nov 2026: moved to e56aec2, the dinner test fixes (BRIEF-dinner-test-fixes-26-nov-for-Claude-Code.md): the
+# Dinner at Gudanes panel on an occasion's page, the chef line beside a priced dinner, and /book's note when it is
+# opened from Book dinner. Against c3f0038 it listed nothing: an occasion's page and /book?dinner=1 are not among
+# the pages it reads. Was: "c3f0038"
+COPY_BASE = "e56aec2"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
