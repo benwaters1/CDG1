@@ -1170,7 +1170,7 @@ def _run(s, oc, ec, owner, emp, conn, room):
     def _probing(token, folder, since_iso, top=100, mailbox=None):
         m._GRAPH_ANSWER.error = None
         reads.append((mailbox, folder, _free_to_write()))
-        if mailbox == SECOND and folder == "sentitems":
+        if mailbox == SECOND and folder == "inbox":
             saved_by_then.append(_first_pass_saved())
         if mailbox == FIRST:
             return first_sent if folder == "sentitems" else first_inbox
@@ -1180,9 +1180,11 @@ def _run(s, oc, ec, owner, emp, conn, room):
                    fetch_graph_messages=_probing, MS_GRAPH_MAILBOXES=[]):
         report = m.run_email_inbox_scan_job(conn)
     ours = [r for r in reads if r[0] in (FIRST, SECOND)]
-    s.check("both inboxes are read, the first before the second",
-            [(mb, f) for mb, f, _ in ours] == [(FIRST, "sentitems"), (FIRST, "inbox"),
-                                               (SECOND, "sentitems"), (SECOND, "inbox")],
+    # Every inbox's Sent Items first, as one map for the scan (26 Nov 2026: a
+    # reply sent as one inbox is often kept in another's), then the inboxes.
+    s.check("every inbox's Sent Items first, then each inbox, the first before the second",
+            [(mb, f) for mb, f, _ in ours] == [(FIRST, "sentitems"), (SECOND, "sentitems"),
+                                               (FIRST, "inbox"), (SECOND, "inbox")],
             detail=str(ours))
     s.check("the database is free at the reads after an inbox that changed its flags",
             [w for mb, _, w in ours if mb == SECOND] == [True, True],
@@ -1190,7 +1192,7 @@ def _run(s, oc, ec, owner, emp, conn, room):
     s.check("and at every other Graph read in the scan",
             all(w for _, _, w in reads),
             detail=str([r for r in reads if not r[2]]))
-    s.check("because the first inbox's pass is saved before the second is asked for",
+    s.check("because the first inbox's pass is saved before the second inbox is asked for",
             saved_by_then == [True], detail=str(saved_by_then))
     flags = {r["graph_message_id"]: r for r in conn.execute(
         "SELECT * FROM email_flags WHERE graph_message_id LIKE ?", (f"{TAG}-scan-%",))}

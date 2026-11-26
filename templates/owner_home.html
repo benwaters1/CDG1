@@ -199,6 +199,64 @@
       </div>
       {% endif %}
 
+      {# Waiting for a reply (26 Nov 2026): the guests and enquirers waiting
+         longest, Booking.com's waiting guests with the days left of its
+         fortnight, and any inbox the last scan could not read, so a quiet
+         panel is never mistaken for nothing waiting. Never a receipt. Nothing
+         to tick: an answer sent takes a line off at the next scan. Not drawn
+         at all when there is nothing. #}
+      {% if not replies.empty %}
+      <div class="oh-sec__head oh-sec__head--replies" id="replies">
+        <h2 class="oh-h2">Waiting for a reply</h2>
+        <span class="oh-spacer"></span>
+        <a href="{{ url_for('admin_inbox_flags') }}" class="oh-link">Inbox Flags →</a>
+      </div>
+      <div class="oh-table" data-replies>
+        {% for u in replies.unread %}
+        <div class="oh-qrow" data-reply-unread>
+          <span class="oh-bar oh-bar--risk"></span>
+          <span class="oh-kind oh-kind--risk">Not read</span>
+          <span class="oh-item">
+            <b>{% if u.mailbox == 'every inbox' %}The inboxes are not being read{% else %}{{ u.mailbox }}{% if u.folder %} ({{ u.folder }}){% endif %} could not be read{% endif %}</b>
+            <em>{{ u.why }}{% if u.at %}, {{ local_datetime_str(u.at) }}{% endif %}. Nothing from {{ 'them' if u.mailbox == 'every inbox' else 'it' }} shows here until it is.</em>
+          </span>
+          <span class="oh-amount"></span>
+          <span class="oh-decide"><a href="{{ url_for('admin_inbox_flags') }}" class="oh-btn oh-btn--xs">Inbox Flags</a></span>
+        </div>
+        {% endfor %}
+        {% for g in replies.guests %}
+        <div class="oh-qrow" data-reply-guest>
+          <span class="oh-bar oh-bar--people"></span>
+          <span class="oh-kind oh-kind--people">{{ g.inbox }}</span>
+          <span class="oh-item">
+            <b>{{ g.name }}</b>
+            <em>{{ g.asked }}</em>
+          </span>
+          <span class="oh-amount" title="Waiting since it arrived">{{ g.waited }}</span>
+          <span class="oh-decide">{% if g.web_link %}<a href="{{ g.web_link }}" target="_blank" rel="noopener" class="oh-btn oh-btn--cream oh-btn--xs">Open in Outlook</a>{% else %}<a href="{{ url_for('admin_inbox_flags') }}" class="oh-btn oh-btn--xs">Inbox Flags</a>{% endif %}</span>
+        </div>
+        {% endfor %}
+        {% for b in replies.booking_com %}
+        <div class="oh-qrow" data-reply-booking-com>
+          <span class="oh-bar {{ 'oh-bar--risk' if b.urgent else 'oh-bar--people' }}"></span>
+          <span class="oh-kind {{ 'oh-kind--risk' if b.urgent else 'oh-kind--people' }}">Booking.com</span>
+          <span class="oh-item">
+            <b>{{ b.name }}</b>
+            <em>{{ b.asked }}</em>
+          </span>
+          <span class="oh-amount" title="Days left of the {{ reply_days }} Booking.com allows for an answer">{{ b.left }} day{{ '' if b.left == 1 else 's' }} left</span>
+          <span class="oh-decide"><a href="{{ url_for('management_booking_com') }}" class="oh-btn oh-btn--cream oh-btn--xs">Answer</a></span>
+        </div>
+        {% endfor %}
+        {% if replies.more %}
+        <div class="oh-tfoot">
+          <span>and {{ replies.more }} more waiting</span>
+          <a href="{{ url_for('admin_inbox_flags') }}" class="oh-link">See them all</a>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
       <!-- The day, in the order it happens -->
       <div class="oh-sec__head oh-sec__head--day">
         <h2 class="oh-h2">The day</h2>
@@ -211,14 +269,16 @@
       </div>
 
       <div class="oh-list">
-        {% if not day %}
+        {% if not day_view %}
         <p class="oh-empty">Nothing on today.</p>
         {% else %}
-        {% for r in day %}
+        {# The house's day, and the owner's own Outlook diary among it by time
+           (26 Nov 2026): time and subject only, opening Outlook. #}
+        {% for r in day_view %}
         {#- Every row opens what it is about (owner, 18 Oct: an enquiry's task "I can't click it or anything"). -#}
-        <a class="oh-drow{{ ' is-done' if r['done'] }}" href="{{ r['href'] or url_for('admin_calendar') }}" style="color:inherit; text-decoration:none;">
+        <a class="oh-drow{{ ' is-done' if r['done'] }}" href="{{ r['href'] or url_for('admin_calendar') }}"{% if r.get('outside') %} target="_blank" rel="noopener" data-diary{% endif %} style="color:inherit; text-decoration:none;">
           <span class="oh-mono oh-dtime">{{ r['time'] or '—' }}</span>
-          {% set kindcls = {"arrival":"oh-bar--arrival","departure":"oh-bar--departure","dinner":"oh-bar--dinner","task":"oh-bar--task"} %}
+          {% set kindcls = {"arrival":"oh-bar--arrival","departure":"oh-bar--departure","dinner":"oh-bar--dinner","task":"oh-bar--task","diary":"oh-bar--diary"} %}
           <span class="oh-bar {{ kindcls.get(r["kind"], "oh-bar--task") }}"></span>
           <span class="oh-dtitle">{{ r['title'] }}</span>
           <span class="oh-ddetail">{{ r['detail'] }}</span>
