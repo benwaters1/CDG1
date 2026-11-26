@@ -41025,6 +41025,28 @@ def purge_stale_access_needs(conn, today=None):
 FRIDGE_UNREAD_DAYS = 2
 
 
+def kitchen_in_use_since(conn, day):
+    """The day the kitchen's current run of service began, or None when nothing is on.
+
+    The fridges with gauges are switched on only for a retreat or an event
+    (owner, 26 November 2026), so a fridge nobody read is only a fault while
+    one is running: an atelier sitting the day falls in (start_date to
+    end_date, the departure day included -- breakfast is served), or a
+    confirmed event on its dates. Several at once: the earliest start.
+    """
+    iso = day.isoformat()
+    starts = [r["start_date"] for r in conn.execute(
+        f"""SELECT start_date FROM workshop_sessions
+             WHERE {SESSION_IS_LIVE} AND start_date <= ?
+               AND COALESCE(end_date, start_date) >= ?""", (iso, iso))]
+    starts += [r["preferred_date"] for r in conn.execute(
+        """SELECT preferred_date FROM event_inquiries
+            WHERE status = 'confirmed' AND preferred_date <= ?
+              AND COALESCE(end_date, preferred_date) >= ?""", (iso, iso))]
+    days = [parse_date(s) for s in starts if parse_date(s)]
+    return min(days) if days else None
+
+
 def parse_celsius(raw):
     """A temperature as somebody types it on a phone, or None.
 
@@ -41057,10 +41079,13 @@ def fridge_problems(conn, today=None):
 
     unanswered: (unit name, reading) for every reading out of its band in the
                 last fortnight with nothing written against it.
-    unread:     units in use with no reading for FRIDGE_UNREAD_DAYS days, each
-                {"unit", "last"} (the house's day of the last reading, or None).
-                A unit added today is not late yet: it is measured from when
-                it was added until its first reading.
+    unread:     WHILE A RETREAT OR AN EVENT IS ON (kitchen_in_use_since), units
+                with no reading for FRIDGE_UNREAD_DAYS days, each {"unit",
+                "last"} (the house's day of the last reading, or None). Counted
+                from the last reading or the day the retreat or event began,
+                whichever is later, so a fridge switched on for it is not late
+                the day it opens. Between them the fridges are off, and nothing
+                is asked.
 
     A unit switched off (not in use) is in neither. Both close themselves: a
     reading taken, or a word said, and it is gone.
@@ -41069,12 +41094,13 @@ def fridge_problems(conn, today=None):
     log = fridge_log(conn, today=today)
     unanswered = [(u["unit"]["name"], x["row"]) for u in log for x in u["unanswered"]]
     unread = []
-    for u in log:
+    in_use = kitchen_in_use_since(conn, today)
+    for u in (log if in_use else []):
         row = conn.execute("SELECT MAX(read_at) AS t FROM fridge_readings WHERE unit_id = ?",
                            (u["unit"]["id"],)).fetchone()
         last = house_date(row["t"]) if row and row["t"] else None
-        since = last or house_date(u["unit"]["created_at"])
-        if since and (today - since).days >= FRIDGE_UNREAD_DAYS:
+        since = max(d for d in (last, house_date(u["unit"]["created_at"]), in_use) if d)
+        if (today - since).days >= FRIDGE_UNREAD_DAYS:
             unread.append({"unit": u["unit"], "last": last})
     return {"unanswered": unanswered, "unread": unread}
 
@@ -43216,7 +43242,7 @@ def owner_home_warnings(conn, today):
     if fp["unread"]:
         n = len(fp["unread"])
         add("warn", f"{n} fridge{'' if n == 1 else 's'} not read for "
-            f"{FRIDGE_UNREAD_DAYS} days or more",
+            f"{FRIDGE_UNREAD_DAYS} days or more, with guests in for a retreat or event",
             "; ".join(u["unit"]["name"] + (f", last {format_date_human(u['last'].isoformat())}"
                                             if u["last"] else ", never read")
                       for u in fp["unread"][:4])
