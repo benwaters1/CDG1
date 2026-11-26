@@ -1504,7 +1504,11 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 /* 26 Nov 2026 (owner: "not these 2 photos take them down"): the two shower rooms came out of the bathrooms'
    second row, leaving two photographs in a row of four. A row of exactly two shares it, half each, rather
    than leaving half the row empty. Written for any row of two, on /book and /workshops alike. */
+/* Then (the same evening) not half each after all: both photographs in that row are upright, 3:4, and at half
+   the row's width each was drawn 576 by 691px, a row twice the height of the one above it, the basin on its
+   pedestal larger than the room. Cropping them wide would cut the pedestal in two. So a row of exactly two keeps
+   the size of every other photograph in the section, one column each, and sits in the middle two columns. */
 @media (min-width: 40rem){
-  .g .g-baths__row--4 > .g-baths__f:first-child:nth-last-child(2),
-  .g .g-baths__row--4 > .g-baths__f:first-child:nth-last-child(2) ~ .g-baths__f{ grid-column: span 2; }
+  .g .g-baths__row--4 > .g-baths__f:first-child:nth-last-child(2){ grid-column: 2; }
+  .g .g-baths__row--4 > .g-baths__f:first-child:nth-last-child(2) ~ .g-baths__f{ grid-column: 3; }
 }
