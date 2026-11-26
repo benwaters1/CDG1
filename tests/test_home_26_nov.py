@@ -153,6 +153,23 @@ def _checks(s, Image, img_dir, made):
     s.check("on every public page, not only the home page",
             'class="g-qbook g-qmanage"' in client.get("/book").get_data(as_text=True))
 
+    s.section("The foot of every page: the house's own drawing")
+    # The owner, 26 Nov 2026, with the artwork: "this is for the bottom".
+    foot = re.search(r'<div class="g-crest g-crest--foot">(.*?)</div>\s*<div class="g-wrap">',
+                     client.get("/contact").get_data(as_text=True), re.S)
+    foot = foot.group(1) if foot else ""
+    s.check("the footer draws the new artwork, at its own size",
+            "img/chateau-de-gudanes-crest.png" in foot and 'width="1200" height="841"' in foot
+            and "chateau_engraving.png" not in foot, detail=foot[:200])
+    s.check("still saying what the three dates were, and linking to the history",
+            'href="/history"' in foot and all(w in foot for w in ("The fortress", "The restoration")))
+    art = Image.open(os.path.join(img_dir, "chateau-de-gudanes-crest.png"))
+    s.check("drawn on nothing, so it sits on the band rather than in a box",
+            art.convert("RGBA").getpixel((2, 2))[3] == 0)
+    band = _last_rule(css, ".g .g-footer .g-crest--foot")
+    s.check("on a parchment band of its own, where its slate blue reads",
+            "background: #F6F1E7" in band, detail=band)
+
 
 if __name__ == "__main__":
     print(run().report())
