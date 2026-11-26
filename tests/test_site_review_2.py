@@ -321,7 +321,8 @@ def _run(s, anon):
     # show what they are about: Rooms That No Longer Look Like This its three Then and Now pairs (six pictures), and
     # The Work, As It Happens six of the work. Every other section still shows six and keeps the rest behind See all.
     # Forty-seven with the photograph the site review of 24 Nov put at the top of the page.
-    s.check("no more than forty-seven photographs reach the page", 0 < page_imgs(gal) <= 47,
+    # 26 Nov 2026: forty-eight, the Gold Suite on the open day of 2025, which the owner asked to have here.
+    s.check("no more than forty-eight photographs reach the page", 0 < page_imgs(gal) <= 48,
             detail=f"{page_imgs(gal)} images")
     s.check("and the rest wait behind See all", "<template data-lb-more>" in gal and "See all" in gal)
     # The pairs /restoration no longer shows, by their files: the kitchen, the bathrooms' room, its window,
