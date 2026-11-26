@@ -123,7 +123,7 @@ FR = {
     'Private': 'Privé',
     'Private Retreats': 'Séjours privés',
     # -- Navigation and shell -------------------------------------------
-    "Stay": "Séjourner",
+    "Stay": "Chambres",  # owner, 26 Nov 2026: not "Séjourner" beside "Séjours", the retreats
     "Stay Now": "Réserver un séjour",
     "Workshops": "Séjours",
     # Site review 25 Nov: "Séjours", as the pages and "Séjours privés" say; "retraite" reads first as retirement.

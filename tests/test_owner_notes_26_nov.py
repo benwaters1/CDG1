@@ -84,6 +84,17 @@ def _pair(s):
             and "g-cadre" in (pair.group(0)) and "g-pp" in pair.group(0))
 
 
+def _about_and_menu(s):
+    s.section("4. /about goes to the story, and the French menu says Chambres")
+    r = m.app.test_client().get("/about")
+    s.check("/about goes to /story", r.status_code in (301, 308) and r.headers.get("Location", "").rstrip("/").endswith("/story"),
+            detail=f"{r.status_code} {r.headers.get('Location')}")
+    html = m.app.test_client().get("/fr/").get_data(as_text=True)
+    nav = re.search(r'<nav class="g-nav".*?</nav>', html, re.S)
+    s.check("the French menu says Chambres, not Séjourner", nav and "Chambres" in nav.group(0)
+            and "Séjourner" not in nav.group(0))
+
+
 def run():
     s = Suite("The owner's notes of 26 November 2026")
     conn = db()
@@ -91,6 +102,7 @@ def run():
         _five(s, conn)
         _plates(s)
         _pair(s)
+        _about_and_menu(s)
     finally:
         conn.close()
     return s

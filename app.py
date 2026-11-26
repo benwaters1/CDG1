@@ -136108,7 +136108,7 @@ LEGACY_PATHS = [
     ("/food", "restaurant_info", True),
     ("/la-table", "restaurant_info", True),
     ("/the-chateau", "restoration_page", True),
-    ("/about", "restoration_page", True),
+    ("/about", "story", True),  # owner, 26 Nov 2026: the story page, as the switch brief had it
     # /history is a page of its own since handover z22 (history_page).
     # The house writes. If it ever publishes that writing at its own address,
     # a 301 cached in every returning reader's browser would be in the way.
