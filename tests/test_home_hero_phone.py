@@ -14,12 +14,23 @@ the whole estate in it, fading into the hero's own navy. The name sits in the
 fade; the dates, the motto and the two sentences under it sit on the navy.
 Wider screens keep the photograph behind the words, unchanged.
 
-WHAT IS MEASURED, in headless Chrome as a touch screen at 390, 375 and 320px
-(the plumbing of test_staff_header_on_a_phone):
+THE VIDEO. The phone had been given a still on 9 November, because the film
+cropped to a tall hero was a slice of wall. In the band it is 43% of the
+film's width -- the château at the end of the drive, the carriage, the gates
+-- so the same evening the owner asked for it back ("yes i want the video").
+A phone that will not play it (data saving, less motion, Low Power Mode) gets
+the still from the air instead, held to the same band.
 
-- the still is on the hero, held to the top: not stretched to cover it, not
-  tiled, and the band it fills is most of the first screen -- the
-  photograph is seen, not reduced to a strip;
+WHAT IS MEASURED, in headless Chrome as a touch screen at 390, 375 and 320px
+(the plumbing of test_staff_header_on_a_phone), twice: once with the film
+there to play, and once with play() refused as an iPhone in Low Power Mode
+refuses it, which is the still's path:
+
+- with the film there, it plays, and fills exactly the band;
+- with play refused, the still from the air is on the hero, held to the top:
+  not stretched to cover it, not tiled;
+- either way the band is most of the first screen -- the photograph is seen,
+  not reduced to a strip;
 - the wash is that same band, so the fade ends where the photograph does;
 - the eyebrow and the name start in the band's lower part, where the fade has
   darkened it, never over the bright top of the photograph;
@@ -35,6 +46,7 @@ words, so the change cannot leak onto a desk. No browser is a failure, not a
 skip; set GUDANES_CHROME.
 """
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -76,7 +88,13 @@ PROBE = r"""
       out.hero = {top: hr.top, h: hr.height, image: cs.backgroundImage,
                   size: cs.backgroundSize, repeat: cs.backgroundRepeat,
                   position: cs.backgroundPosition};
-      out.video = !!document.querySelector('.g-hero__video');
+      var v = document.querySelector('.g-hero__video');
+      out.video = !!v;
+      if (v) {
+        var vr = v.getBoundingClientRect();
+        out.film = {top: vr.top, bottom: vr.bottom, w: vr.width,
+                    playing: !v.paused && v.readyState >= 2 && v.currentTime > 0};
+      }
     }
     if (wash) { var wr = wash.getBoundingClientRect(); out.wash = {top: wr.top, bottom: wr.bottom}; }
     out.words = {
@@ -111,9 +129,22 @@ def run():
     page = page.replace(phone.PROBE, PROBE)
     s.check("the home hero is the one with the booking card", 'class="g-hbook"' in page)
 
-    files = [page, page.replace("</head>", OLD_LAYOUT + "</head>", 1)]
-    frames = [{"page": 0, "width": w, "control": False} for w in PHONES + (DESK,)]
-    frames += [{"page": 1, "width": w, "control": True} for w in PHONES]
+    # The film as the page names it, and two versions of the page, both with its real file: one where it can be
+    # played, and one where play() is refused before any of the page's scripts run, as Low Power Mode refuses it.
+    film = re.search(r'data-src="(/static/video/[^"]+)"', page)
+    if not s.check("the hero names its film", bool(film)):
+        return s
+    there = "file:///" + os.path.join(_harness.ROOT, "static", film.group(1)[len("/static/"):]).replace("\\", "/")
+    playable = page.replace(film.group(0), f'data-src="{there}"')
+    missing = playable.replace("<head>", "<head><script>HTMLMediaElement.prototype.play = function () {"
+                               " return Promise.reject(new DOMException('refused', 'NotAllowedError')); };"
+                               "</script>", 1)
+    s.check("the refusal goes in ahead of the page's scripts", missing.count("NotAllowedError") == 1
+            and missing.index("NotAllowedError") < missing.index("data-src="))
+    files = [missing, missing.replace("</head>", OLD_LAYOUT + "</head>", 1), playable]
+    frames = [{"page": 0, "width": w, "control": False, "film": False} for w in PHONES + (DESK,)]
+    frames += [{"page": 1, "width": w, "control": True, "film": False} for w in PHONES]
+    frames += [{"page": 2, "width": w, "control": False, "film": True} for w in PHONES]
 
     workdir = tempfile.mkdtemp(prefix="gudanes_homehero_")
     try:
@@ -185,10 +216,23 @@ def run():
                     d["words"].get("title") is not None and d["words"]["title"] < b,
                     detail=str(d["words"]))
             continue
-        s.section(f"At {w}px")
         t, b = band(d)
-        s.check("the video is not loaded on a phone; its still is on the hero",
-                not d.get("video") and "url(" in hero.get("image", ""), detail=str(hero))
+        if f["film"]:
+            s.section(f"At {w}px, with the film to play")
+            film_box = d.get("film") or {}
+            s.check("the film is there and playing", d.get("video") and film_box.get("playing"), detail=str(film_box))
+            s.check("it fills exactly the band, top to bottom and edge to edge",
+                    t is not None and abs(film_box.get("top", -99) - t) < 1
+                    and abs(film_box.get("bottom", -99) - b) < 1 and abs(film_box.get("w", 0) - d["vw"]) < 1,
+                    detail=f"film {film_box}, band {t}-{b}")
+            s.check("the photograph is most of the first screen, not a strip",
+                    t is not None and (b - t) >= 0.5 * d["vh"], detail=f"band {t}-{b} of {d['vh']}px")
+            bad = over_photo(d)
+            s.check("no word is printed over the bright part of the film", not bad, detail="; ".join(bad))
+            continue
+        s.section(f"At {w}px, a phone that will not play the film")
+        s.check("the still from the air is on the hero instead",
+                not d.get("video") and "from-the-air" in hero.get("image", ""), detail=str(hero))
         s.check("the still is held to the top of the hero, not stretched to cover it",
                 hero.get("size") not in ("cover", "", None) and hero.get("repeat") == "no-repeat"
                 and hero.get("position", "").split()[-1:] in (["0%"], ["0px"]), detail=str(hero))
