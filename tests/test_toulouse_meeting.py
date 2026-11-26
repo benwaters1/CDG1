@@ -173,9 +173,11 @@ def _checks(s, oc, ec, owner, conn):
 
     s.section("The guest says it on their own booking page")
     page = anon.get(f"/workshops/manage/{meet['manage_token']}").get_data(as_text=True)
+    # The public pages curl their apostrophes at the response (25 Nov), so the
+    # page is read with every kind of apostrophe made one.
+    plain = lambda h: _text(h).replace("&#39;", "'").replace("’", "'")
     s.check("an atelier that starts in Toulouse asks how they are getting there",
-            'id="getting-here"' in page and "Grand Hôtel de l&#39;Opéra" in page
-            or ('id="getting-here"' in page and "Grand Hôtel de l'Opéra" in page))
+            'id="getting-here"' in page and "Grand Hôtel de l'Opéra" in plain(page))
     s.check("one that starts at the château does not",
             'id="getting-here"' not in anon.get(f"/workshops/manage/{athome['manage_token']}")
             .get_data(as_text=True))
@@ -190,9 +192,8 @@ def _checks(s, oc, ec, owner, conn):
     s.check("and they go back to the same card", r.status_code == 302
             and r.headers["Location"].endswith("#getting-here"))
     s.check("the page then says what they told us",
-            "meeting us at the grand hôtel de l'opéra" in _text(
-                anon.get(f"/workshops/manage/{meet['manage_token']}").get_data(as_text=True))
-            .replace("&#39;", "'").lower())
+            "meeting us at the grand hôtel de l'opéra" in plain(
+                anon.get(f"/workshops/manage/{meet['manage_token']}").get_data(as_text=True)).lower())
     anon.post(f"/workshops/manage/{own['manage_token']}",
               data={"action": "travel", "travel_how": "by balloon"})
     s.check("anything but the two answers is refused, and nothing is written",
