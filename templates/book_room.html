@@ -2,7 +2,7 @@
 {% from '_illus.html' import illus %}
 {% from '_payment_safety.html' import payment_safety %}
 {% from '_country.html' import country_field %}
-{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO, BATH_PHOTOS, ROOM_EXTRA %}
+{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO, BATH_PHOTOS, ROOM_EXTRA, NO_CLAWFOOT_BATH %}
 {% from '_phone.html' import phone_field %}
 {% from '_occupancy.html' import party_fields with context %}
 {% from '_room_copy.html' import room_copy, room_name, room_note, room_bath_where, room_stairs, room_sleeps, room_heading %}
@@ -492,8 +492,10 @@
   {%- else %}{% set _gal = [['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/501a4947-d365-4a11-a83e-8affbc374e48/Screenshot+2026-08-12+at+3.38.55+pm.png?format=1000w', 'Walking up to the château at dusk', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w', 'Market produce on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w', 'The gardens, the mountains beyond', '']] %}{% endif %}
   {#- 11 Nov (owner's bathrooms brief): two of the bathrooms in the strip, not one -- the long bathroom under its
       chandelier, and the claw-foot bath. Every room's bathroom is one of these, so every room page shows them; the
-      medallion beside "Your bathroom" is the painted basin, so no photograph is on the page twice. -#}
-  {%- set _gal = _gal + [[BATH_PHOTOS[0][0], BATH_PHOTOS[0][1], ''], [BATH_PHOTOS[1][0], BATH_PHOTOS[1][1], '']] %}
+      medallion beside "Your bathroom" is the painted basin, so no photograph is on the page twice.
+      26 Nov (owner): not the claw-foot bath for the rooms in NO_CLAWFOOT_BATH (_room_photos.html). -#}
+  {%- set _gal = _gal + [[BATH_PHOTOS[0][0], BATH_PHOTOS[0][1], '']] %}
+  {%- if (_rn|trim) not in NO_CLAWFOOT_BATH %}{% set _gal = _gal + [[BATH_PHOTOS[1][0], BATH_PHOTOS[1][1], '']] %}{% endif %}
   <div class="g-roomgal-car">{{ carrousel(_gal, room_name(room['name'])|trim ~ ': photographs', thumbs=True, upto=1.25) }}</div>
   </div>{#- /g-room--family wrapper (15 Oct: taller Family Suite photographs) -#}
 

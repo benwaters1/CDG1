@@ -22,6 +22,9 @@
     (799432953), then the large blue bed (799432864), then 11 Nov's lead, the two chairs at the open windows. /book's
     header already shows the two beds and its card skips them, so there the card leads with the large bed and the
     windows come second. The windows are the suite's own room, not the salon: two beds show at the foot of the frame. -#}
+{#- 26 Nov (owner): the two beds side by side are now the floral bedroom's, under its new wallpaper, the owner's own
+    photograph (more/family-suite-two-beds.jpg). It replaces 799432953, the blue bedroom's two beds against the old
+    peeling paper, which is what 18 Oct's "the 2 beds in the room with wallpaper new" had been given for want of this. -#}
 {%- set ROOM_PHOTOS = {
   'The King Suite': [
     (url_for('static', filename='img/retreats/king-suite-four-poster.jpg'), 'The King Suite, the four-poster'),
@@ -42,7 +45,7 @@
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/903132506.jpg?k=811b8839a6591fedad373a4fdadbe663f017a838829239048e179d2c57106ff8&o=', 'The mirror above the fireplace in the Marquis Suite'),
   ],
   'The Family Suite': [
-    ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432953.jpg?k=bfe46237a062c76163feac464aa8a8aa65e4f2d55d0bebc5842f0b5f785c5fa6&o=', 'Two beds side by side in the second bedroom, Family Suite'),
+    (url_for('static', filename='img/more/family-suite-two-beds.jpg'), 'Two beds side by side under the new floral wallpaper, Family Suite'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432864.jpg?k=ebda5e5045693aab2c11f0a9b643d8bc01db6f0247640660e15f2125e1b1f41d&o=', 'The large bed in the Family Suite'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799483474.jpg?k=6048ecc7cc013b2674bb20fa1d9d081920cd74c9a993ca30522fd4be5416eb00&o=', 'Chairs and a table by the windows, Family Suite'),
     ('https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432918.jpg?k=92504ccbbb71665f6edb7454ec16d877018713a9f9e603dcb62aa3bb166f0a91&o=', 'The Family Suite'),
@@ -98,3 +101,7 @@
     first row. The fifth of the old ones (2) stays out: the same bath from almost the same place as another. -#}
 {%- set BATH_LEAD = 0 -%}
 {%- set BATH_ROWS = [(5, 6, 1), (7, 8, 3, 4)] -%}
+{#- 26 Nov (owner, pointing at the claw-foot bath against the blue floral wallpaper, BATH_PHOTOS[1]): "take this off for
+    the ground floor twin, the twin, the king". The room pages of these three show the long bathroom without it; the
+    Bathrooms section on /book, which is all of them, keeps it. -#}
+{%- set NO_CLAWFOOT_BATH = ['The Twin Room (Ground Floor)', 'The Twin Room', 'The King Room'] -%}

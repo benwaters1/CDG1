@@ -209,7 +209,10 @@ m = _harness.m
 # 26 Nov 2026: moved to 1bd764e, the owner's photographs from the to-add folder: captions on /restoration
 # ("Old timber, cleared out"), /workshops ("A morning class in the salon", "Before the three windows") and /story
 # ("At the gates"), and nothing else. Was: "f33c8a2"
-COPY_BASE = "1bd764e"
+# 26 Nov 2026: moved to the merge holding both that and Manage your booking in the menu under its dates (four
+# words on every public page: "Manage your booking", "Reference code", "Email you booked with", "Find booking").
+# Was: "f33c8a2"
+COPY_BASE = "d057459"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
