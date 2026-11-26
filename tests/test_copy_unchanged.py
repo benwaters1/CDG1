@@ -199,7 +199,9 @@ m = _harness.m
 # house, the distances, Noël paid in full, the press page, the terms, the privacy notice's dashes and words,
 # the wallpaper's maker, the rooms side by side on /book, Contact's title, the gallery's closing block, What's
 # On's river and canyoning said once, and the Harper's Bazaar captions. Each was read. Was: "ac7b87c"
-COPY_BASE = "442625b"
+# 26 Nov 2026: moved to 1c252fc, two captions on /restoration ("A new wall against the chateau", "Through the
+# rooms"), the owner's photographs. Against 442625b it listed /restoration's captions and nothing else. Was: "442625b"
+COPY_BASE = "1c252fc"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
