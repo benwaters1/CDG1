@@ -8187,7 +8187,11 @@ def init_db():
         # What Booking.com and the rest call this room. The house name is the
         # real one and stays in `name`; this is the alias staff have been
         # translating in their heads every time an arrival comes off a feed.
-        # Free text, never matched on -- a label for a person to read.
+        # It IS matched on since October: Booking.com's reservation emails and
+        # statements name the room as guests see it there, and that name finds
+        # the room (parse_booking_com_email, apply_booking_com_statement). The
+        # extranet's own name for the room is another field,
+        # booking_extranet_name, for whoever enters prices there.
         ("rooms_channel_name", "ALTER TABLE rooms ADD COLUMN channel_name TEXT"),
         # The room's title on the website (owner, 23 November 2026): the French
         # woman it is named after -- "La Chambre Jeanne d'Arc" -- with `name`,
@@ -8990,6 +8994,37 @@ def init_db():
          "ALTER TABLE stay_occasions ADD COLUMN retreat_evening TEXT"),
         ("stay_occasions_retreat_night",
          "ALTER TABLE stay_occasions ADD COLUMN retreat_night TEXT"),
+        # BOOKING.COM'S OWN PRICES FOR A ROOM (owner, 26 Nov 2026). The
+        # extranet sells each room at two rates, Non-Refundable and the
+        # Standard Rate (free cancellation until 3 days before), both above the
+        # house's own price, and an occasion raises each by what it adds on the
+        # house site. These are the two as the extranet shows them on a night
+        # nothing has touched; the owner edits them when he changes Booking.com.
+        # NULL is "not given", never zero. booking_extranet_name is the room's
+        # name in the extranet, which is not the name guests see there:
+        # channel_name is that one, and Booking.com's mail is matched on it.
+        ("rooms_booking_extranet_name",
+         "ALTER TABLE rooms ADD COLUMN booking_extranet_name TEXT"),
+        ("rooms_booking_nr_price", "ALTER TABLE rooms ADD COLUMN booking_nr_price REAL"),
+        ("rooms_booking_std_price", "ALTER TABLE rooms ADD COLUMN booking_std_price REAL"),
+        # And each line's two Booking.com prices, with the two they replace.
+        # uplift is what the line puts on Booking.com's usual price (0 for a
+        # line putting nights back); price and previous_price stay the HOUSE's
+        # figures, which is where the uplift comes from. A figure is NULL
+        # where the room's Booking.com price was not given: the line then
+        # says the uplift alone. See booking_prices_wanted.
+        ("channel_price_pushes_nr_price",
+         "ALTER TABLE channel_price_pushes ADD COLUMN nr_price REAL"),
+        ("channel_price_pushes_std_price",
+         "ALTER TABLE channel_price_pushes ADD COLUMN std_price REAL"),
+        ("channel_price_pushes_previous_nr_price",
+         "ALTER TABLE channel_price_pushes ADD COLUMN previous_nr_price REAL"),
+        ("channel_price_pushes_previous_std_price",
+         "ALTER TABLE channel_price_pushes ADD COLUMN previous_std_price REAL"),
+        ("channel_price_pushes_uplift",
+         "ALTER TABLE channel_price_pushes ADD COLUMN uplift REAL"),
+        ("channel_price_pushes_previous_uplift",
+         "ALTER TABLE channel_price_pushes ADD COLUMN previous_uplift REAL"),
     ):
         try:
             conn.execute(ddl)
@@ -9803,6 +9838,11 @@ def init_db():
     apply_room_occupancy_2026_10_18(conn)
     # And the Twin Room (Ground Floor) back to three, once (owner, 12 November).
     apply_ground_floor_twin_sleeps_three_2026_11_12(conn)
+    # Booking.com's own two prices and extranet name for each room, once, by
+    # the names of 16 October (owner, 26 November); and the uplift of every
+    # price line written before lines had one.
+    apply_booking_com_rooms_2026_11_26(conn)
+    backfill_booking_price_uplift(conn)
     # Every confirmed stay has a guest profile (19 October 2026). A repair
     # that runs at every start must never be what stops the house starting:
     # anything it cannot do is said in the log and left for the next start.
@@ -56257,13 +56297,108 @@ def admin_stay_occasion_suggestion_dismiss(sid):
 # freely, because nobody has typed it. A line done is never touched: it records
 # what Booking.com now shows, so a change after it is a new line.
 #
-# It carries the occasion's price as the owner set it. Should Booking.com one
-# day sell at that plus a margin, that is one setting applied where a line is
-# made, in booking_prices_wanted, and nowhere else.
+# BOOKING.COM'S PRICES, NOT THE HOUSE'S (owner, 26 Nov 2026). The first list
+# carried the occasion's price as the house charges it, and the extranet has
+# neither that figure nor one rate: each room sells there at two, the
+# Non-Refundable and the Standard Rate (free cancellation until 3 days before,
+# kept on purpose), both above the house's own price. The owner's rule of 25
+# Nov: on an occasion Booking.com goes up by the SAME AMOUNT the occasion adds
+# on the house site (its price less the house's usual), on both rates. So
+# Christmas at €320 in a €270 room is +€50, and the King Room's €290 and €330
+# on Booking.com become €340 and €380. Booking.com's two usual prices are on
+# the room (booking_nr_price, booking_std_price), typed by the owner; the
+# uplift is worked out here, in booking_prices_wanted, and nowhere else.
+#
+# The page cannot see what Booking.com charges on a given date. Where its own
+# price there is not the usual one (the summer is dearer), the line's uplift
+# is what to add to what is there, and the page says so.
 
 CHANNEL_BOOKING_COM = "booking.com"
 BOOKING_PRICES_TASK = "Booking.com prices to update"
 BOOKING_PRICE_STATES = {"to_do": "To do", "done": "Done", "cancelled": "Cancelled"}
+# The extranet's names for the two rate plans, as whoever enters the prices
+# will find them there.
+BOOKING_RATE_PLANS = (("nr", "Non-Refundable"), ("std", "Standard Rate"))
+BOOKING_STD_RATE_TERMS = "free cancellation until 3 days before"
+
+# Booking.com's rooms as the owner gave them on 26 November 2026: the house
+# name, the extranet's name, and its two usual prices (Non-Refundable,
+# Standard Rate). Written once, by a flag, and only where the room has none,
+# so a figure the owner has typed since is never put back.
+BOOKING_COM_ROOMS_2026_11_26 = [
+    ("The King Room", "King Room", 290, 330),
+    ("The Twin Room", "Twin Room", 290, 330),
+    ("The Twin Room (Ground Floor)", "Twin Room (Ground Floor)", 290, 330),
+    ("The King Suite", "King Suite", 375, 425),
+    ("The Marquis Suite", "Marquis Suite", 465, 530),
+    ("The Family Suite", "Family Suite", 610, 700),
+]
+
+
+def apply_booking_com_rooms_2026_11_26(conn):
+    """Once: each room's extranet name and Booking.com's two usual prices,
+    where it has none. A name two rooms answer to is left alone and logged,
+    rather than guessed. Returns how many rooms were given anything."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'booking_com_rooms_2026_11_26'").fetchone():
+        return 0
+    rows = conn.execute("SELECT id, name FROM rooms").fetchall()
+    ids = {}
+    for r in rows:
+        ids.setdefault(_room_key(r["name"]), []).append(r["id"])
+    changed = 0
+    for name, extranet, nr, std in BOOKING_COM_ROOMS_2026_11_26:
+        found = ids.get(_room_key(name), [])
+        if len(found) != 1:
+            if len(found) > 1:
+                log_line(f"[rooms] {len(found)} rooms are called {name!r}; no Booking.com prices given")
+            continue
+        changed += conn.execute(
+            """UPDATE rooms SET
+                   booking_extranet_name = COALESCE(NULLIF(TRIM(booking_extranet_name), ''), ?),
+                   booking_nr_price = COALESCE(NULLIF(booking_nr_price, 0), ?),
+                   booking_std_price = COALESCE(NULLIF(booking_std_price, 0), ?)
+                WHERE id = ? AND (TRIM(COALESCE(booking_extranet_name, '')) = ''
+                                  OR COALESCE(booking_nr_price, 0) = 0
+                                  OR COALESCE(booking_std_price, 0) = 0)""",
+            (extranet, nr, std, found[0])).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('booking_com_rooms_2026_11_26', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        log_line(f"[rooms] Booking.com's names and prices of 26 November: {changed} room(s)")
+    return changed
+
+
+def backfill_booking_price_uplift(conn):
+    """Give every line written before lines had an uplift its own: the
+    house's price on the line less the house's usual for the room on its first
+    night (0 for a line putting nights back). The 36 lines entered on 25-26
+    November listed the house's price only; they are taken as entered by the
+    owner's rule of 25 November (that uplift on both of Booking.com's
+    prices), so the same uplift counts as entered and they raise nothing new.
+    Their two Booking.com figures were never listed, so they stay unknown
+    (NULL) rather than made up. Every start, only where none is set. Returns
+    how many lines."""
+    rows = conn.execute(
+        """SELECT p.* FROM channel_price_pushes p
+             JOIN rooms ON rooms.id = p.room_id WHERE p.uplift IS NULL""").fetchall()
+    if not rows:
+        return 0
+    rooms = {r["id"]: r for r in conn.execute("SELECT * FROM rooms")}
+    for r in rows:
+        room, first = rooms[r["room_id"]], parse_date(r["first_night"])
+        usual = _euros(usual_night_rate(conn, room, first)) if first else None
+        up = 0.0 if r["kind"] == "usual" or usual is None else _euros(r["price"] - usual)
+        # What it replaced, on the same footing: the house's previous figure
+        # less the usual -- 0 where that was the usual, an occasion's uplift
+        # where it put an earlier occasion's nights back.
+        was = (None if r["previous_price"] is None or usual is None
+               else _euros(r["previous_price"] - usual))
+        conn.execute("UPDATE channel_price_pushes SET uplift = ?, previous_uplift = ? WHERE id = ?",
+                     (up, was, r["id"]))
+    conn.commit()
+    log_line(f"[booking.com] {len(rows)} price line(s) given the uplift they carried")
+    return len(rows)
 
 
 def _euros(value):
@@ -56279,18 +56414,58 @@ def booking_price_figure(value):
     return str(int(v)) if v.is_integer() else f"{v:.2f}"
 
 
+def booking_com_usual(room):
+    """Booking.com's own two prices for the room on a night nothing has
+    touched, {"nr", "std"}: as the owner typed them. None where not given."""
+    def given(v):
+        return _euros(v) if v else None
+    return {"nr": given(room["booking_nr_price"]), "std": given(room["booking_std_price"])}
+
+
+def _plus(base, amount):
+    return None if base is None or amount is None else _euros(base + amount)
+
+
+# What a line says, beyond its room, kind, occasion and nights: two lines are
+# the same line when all of these agree.
+BOOKING_LINE_FIGURES = ("price", "previous_price", "uplift", "previous_uplift", "nr_price",
+                        "std_price", "previous_nr_price", "previous_std_price")
+
+
+def _booking_state_met(wanted, told):
+    """Booking.com already shows what is wanted. The uplift must match, and
+    each figure too where both sides know it: a line entered while the room's
+    Booking.com price was not given (or before lines carried one) put the
+    uplift on whatever was there, so its unknown figure counts as met."""
+    if wanted["uplift"] != told["uplift"]:
+        return False
+    return all(wanted[k] is None or told[k] is None or wanted[k] == told[k] for k in ("nr", "std"))
+
+
 def booking_prices_wanted(conn, today=None):
     """What Booking.com should be told, night by night, from today on.
 
     {(room_id, night_iso): {"kind", "occasion_id", "occasion_name", "price",
-    "previous_price"}} for each room-night on which what Booking.com was last
-    told differs from what the house charges. Two things make one:
+    "previous_price", "uplift", "previous_uplift", "nr_price", "std_price",
+    "previous_nr_price", "previous_std_price"}} for each room-night on which
+    what Booking.com was last told differs from what it should show. Two
+    things make one:
 
-      - a live occasion prices the room that night, at a price Booking.com has
-        not been given. A night nobody has touched, at an occasion price EQUAL
-        to the usual one, needs nothing: Booking.com already sells it at that.
+      - a live occasion prices the room that night, and Booking.com has not
+        been given that occasion's uplift on its two prices. A night nobody
+        has touched, at an occasion price EQUAL to the usual one, needs
+        nothing: Booking.com already sells it at its own.
       - nothing prices it any more, and Booking.com was given an occasion's
-        price for it: the night goes back to the usual price.
+        uplift for it: the night goes back to Booking.com's usual prices.
+
+    The uplift is the house's: the occasion's price less what the house
+    charges for the room that night without it (usual_night_rate). Booking.com
+    gets it on each of its two rates, which the room carries. A change to
+    either -- the occasion, the house's usual, or Booking.com's own prices on
+    the room -- is a change to what is wanted, so a line not yet entered
+    follows it and a line entered is followed by a new one. price and
+    previous_price are the house's figures, kept to show where the uplift
+    comes from.
 
     Only nights from today: a night gone cannot be sold, so is not worth typing.
     """
@@ -56333,22 +56508,35 @@ def booking_prices_wanted(conn, today=None):
     wanted = {}
     for key in set(charged) | {k for k, v in told.items() if v is not None}:
         last = told.get(key)
-        on_it = _euros(last["price"]) if last is not None else None
+        bcom = booking_com_usual(rooms[key[0]])
+        if last is not None:
+            # What the last line entered over the night put there.
+            up = _euros(last["uplift"]) if last["uplift"] is not None else None
+            if up is None:      # not backfilled yet: worked out as the backfill would
+                up = _euros(_euros(last["price"]) - usual(key))
+            on_it = {"uplift": up, "nr": _euros(last["nr_price"]), "std": _euros(last["std_price"]),
+                     "price": _euros(last["price"])}
+        else:
+            on_it = {"uplift": 0.0, "nr": bcom["nr"], "std": bcom["std"], "price": usual(key)}
         if key in charged:
             occ = charged[key]
             price = _euros(occ["price"])
-            was = on_it if last is not None else usual(key)
-            if price == was:
+            up = _euros(price - usual(key))
+            want = {"uplift": up, "nr": _plus(bcom["nr"], up), "std": _plus(bcom["std"], up)}
+            if _booking_state_met(want, on_it):
                 continue
             wanted[key] = {"kind": "occasion", "occasion_id": occ["id"], "occasion_name": occ["name"],
-                           "price": price, "previous_price": was}
+                           "price": price}
         else:
-            back_to = usual(key)
-            if back_to == on_it:
+            want = {"uplift": 0.0, "nr": bcom["nr"], "std": bcom["std"]}
+            if _booking_state_met(want, on_it):
                 continue
             wanted[key] = {"kind": "usual", "occasion_id": last["occasion_id"],
-                           "occasion_name": last["occasion_name"], "price": back_to,
-                           "previous_price": on_it}
+                           "occasion_name": last["occasion_name"], "price": usual(key)}
+        wanted[key].update({
+            "previous_price": on_it["price"], "uplift": want["uplift"],
+            "previous_uplift": on_it["uplift"], "nr_price": want["nr"], "std_price": want["std"],
+            "previous_nr_price": on_it["nr"], "previous_std_price": on_it["std"]})
     return wanted
 
 
@@ -56358,7 +56546,7 @@ def booking_prices_lines(wanted):
     a room whose usual rate changes inside the occasion gets two."""
     lines = []
     for (room_id, night), w in sorted(wanted.items()):
-        same = (room_id, w["kind"], w["occasion_id"], w["price"], w["previous_price"])
+        same = (room_id, w["kind"], w["occasion_id"]) + tuple(w[k] for k in BOOKING_LINE_FIGURES)
         last = lines[-1] if lines else None
         if (last and last["same"] == same
                 and parse_date(last["last_night"]) + timedelta(days=1) == parse_date(night)):
@@ -56382,7 +56570,7 @@ def _booking_price_cancel_reason(conn, row, today):
         if not conn.execute("SELECT 1 FROM stay_occasion_prices WHERE occasion_id = ? AND room_id = ? "
                             "AND price > 0", (occ["id"], row["room_id"])).fetchone():
             return "The occasion no longer has a price of its own for this room."
-        return "Booking.com already has this price for those nights."
+        return "Booking.com already has these prices for those nights."
     if occ is not None and occ["status"] == "live":
         return "The occasion is on sale again, so its price stays."
     return "Those nights are at the usual price already."
@@ -56406,7 +56594,7 @@ def sync_booking_prices(conn, today=None):
 
     def says(x):
         return (x["room_id"], x["kind"], x["occasion_id"], x["occasion_name"], x["first_night"],
-                x["last_night"], _euros(x["price"]), _euros(x["previous_price"]))
+                x["last_night"]) + tuple(_euros(x[k]) for k in BOOKING_LINE_FIGURES)
 
     unmet = {}
     for line in lines:
@@ -56422,22 +56610,25 @@ def sync_booking_prices(conn, today=None):
     for line in sorted((l for ls in unmet.values() for l in ls),
                        key=lambda l: (l["room_id"], l["first_night"])):
         bucket = spare.get((line["room_id"], line["kind"], line["occasion_id"]))
+        figures = [line[k] for k in BOOKING_LINE_FIGURES]
         if bucket:
             r = bucket.pop(0)
             conn.execute(
-                """UPDATE channel_price_pushes SET occasion_name = ?, first_night = ?, last_night = ?,
-                       price = ?, previous_price = ?, note = NULL, updated_at = ? WHERE id = ?""",
-                (line["occasion_name"], line["first_night"], line["last_night"], line["price"],
-                 line["previous_price"], now, r["id"]))
+                f"""UPDATE channel_price_pushes SET occasion_name = ?, first_night = ?, last_night = ?,
+                       {', '.join(k + ' = ?' for k in BOOKING_LINE_FIGURES)},
+                       note = NULL, updated_at = ? WHERE id = ?""",
+                [line["occasion_name"], line["first_night"], line["last_night"]] + figures
+                + [now, r["id"]])
             rewritten += 1
         else:
             conn.execute(
-                """INSERT INTO channel_price_pushes (occasion_id, occasion_name, channel, room_id, kind,
-                       first_night, last_night, price, previous_price, state, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'to_do', ?, ?)""",
-                (line["occasion_id"], line["occasion_name"], CHANNEL_BOOKING_COM, line["room_id"],
-                 line["kind"], line["first_night"], line["last_night"], line["price"],
-                 line["previous_price"], now, now))
+                f"""INSERT INTO channel_price_pushes (occasion_id, occasion_name, channel, room_id, kind,
+                       first_night, last_night, {', '.join(BOOKING_LINE_FIGURES)},
+                       state, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, {', '.join('?' * len(BOOKING_LINE_FIGURES))},
+                           'to_do', ?, ?)""",
+                [line["occasion_id"], line["occasion_name"], CHANNEL_BOOKING_COM, line["room_id"],
+                 line["kind"], line["first_night"], line["last_night"]] + figures + [now, now])
             made += 1
     for bucket in spare.values():
         for r in bucket:
@@ -56459,11 +56650,52 @@ def booking_prices_said(result):
     return ("Booking.com: " + ", ".join(bits) + ", on Booking.com Prices") if bits else None
 
 
+def booking_amount_words(amount, euro="€"):
+    """+€50, −€20, as a change is written beside a price."""
+    a = _euros(amount)
+    if a is None:
+        return ""
+    return ("+" if a >= 0 else "−") + euro + booking_price_figure(abs(a))
+
+
+def booking_rate_words(figure, uplift, euro="€"):
+    """One Booking.com price as the line gives it: the figure where the room's
+    Booking.com price is known, and otherwise what to do to its usual one."""
+    if figure is not None:
+        return euro + booking_price_figure(figure)
+    if uplift is None:
+        return "—"
+    if not uplift:
+        return "the usual"
+    return "the usual " + booking_amount_words(uplift, euro)
+
+
+def _booking_line_dressed(r):
+    """A line with what the page, the copy block and the JSON all say about
+    it: the two rates, each new and replaced, and the change on each."""
+    r = dict(r)
+    up, was = r.get("uplift"), r.get("previous_uplift")
+    r["change"] = None if up is None or was is None else _euros(up - was)
+    r["rates"] = [{"key": key, "name": name,
+                   "price": r.get(f"{key}_price"), "was": r.get(f"previous_{key}_price"),
+                   "price_words": booking_rate_words(r.get(f"{key}_price"), up),
+                   "was_words": booking_rate_words(r.get(f"previous_{key}_price"), was)}
+                  for key, name in BOOKING_RATE_PLANS]
+    r["prices_said"] = ", ".join(f"{x['price_words']} {x['name']}" for x in r["rates"])
+    return r
+
+
 def booking_prices_rows(conn):
-    """Every line, with the room's two names and who marked it done."""
-    return [dict(r) for r in conn.execute(
+    """Every line, with the room's names, who marked it done, and its two
+    Booking.com rates dressed for reading (_booking_line_dressed).
+    booking_com_room is the EXTRANET's name for the room, which is where the
+    prices are typed; the name guests see on Booking.com (channel_name) is
+    another, and is what Booking.com's mail is matched on."""
+    return [_booking_line_dressed(r) for r in conn.execute(
         """SELECT channel_price_pushes.*, rooms.name AS room_name,
-                  NULLIF(TRIM(COALESCE(rooms.channel_name, '')), '') AS booking_com_room,
+                  NULLIF(TRIM(COALESCE(rooms.booking_extranet_name, '')), '') AS booking_com_room,
+                  NULLIF(TRIM(COALESCE(rooms.channel_name, '')), '') AS booking_com_guest_name,
+                  rooms.booking_nr_price AS room_nr_price, rooms.booking_std_price AS room_std_price,
                   rooms.sort_order AS room_order, users.name AS done_by
              FROM channel_price_pushes
              JOIN rooms ON rooms.id = channel_price_pushes.room_id
@@ -56472,6 +56704,19 @@ def booking_prices_rows(conn):
             ORDER BY channel_price_pushes.first_night, rooms.sort_order, rooms.name,
                      channel_price_pushes.id""",
         (CHANNEL_BOOKING_COM,))]
+
+
+def booking_prices_missing(rows):
+    """The rooms on lines still to do that lack what entering them needs:
+    {"names": [...], "prices": [...]}, house names, sorted."""
+    to_do = [r for r in rows if r["state"] == "to_do"]
+    return {"names": sorted({r["room_name"] for r in to_do if not r["booking_com_room"]}),
+            "prices": sorted({r["room_name"] for r in to_do
+                              if not r["room_nr_price"] or not r["room_std_price"]})}
+
+
+BOOKING_NOT_USUAL_HINT = ("If Booking.com's own price on these dates is not the usual one, "
+                          "add the same amount to what is there.")
 
 
 def booking_prices_by_occasion(rows):
@@ -56491,19 +56736,25 @@ def booking_prices_by_occasion(rows):
 
 def booking_prices_copy_text(rows):
     """The lines still to do as plain text, in the bulk edit's own order:
-    room, from, to, price. Read in one go by whoever is entering them."""
+    room, from, to, then the two rates and the change on each. Read in one go
+    by whoever is entering them."""
     to_do = [r for r in rows if r["state"] == "to_do"]
     if not to_do:
         return ""
+    plans = " | ".join(name for _key, name in BOOKING_RATE_PLANS)
     out = [f"Booking.com prices to update: {len(to_do)} line{'' if len(to_do) == 1 else 's'}. "
-           "Each line is room | from (first night) | to (last night, included) | price in euros."]
+           f"Each line is room | from (first night) | to (last night, included) | {plans} | "
+           "the change on each, in euros. The Standard Rate keeps its free cancellation."]
     for g in booking_prices_by_occasion(to_do):
         out += ["", g["occasion_name"]]
         for r in g["rows"]:
-            out.append(" | ".join((
-                r["booking_com_room"] or f"{r['room_name']} (Booking.com name not given)",
-                format_date_human(r["first_night"]), format_date_human(r["last_night"]),
-                booking_price_figure(r["price"]))))
+            out.append(" | ".join([
+                r["booking_com_room"] or f"{r['room_name']} (extranet name not given)",
+                format_date_human(r["first_night"]), format_date_human(r["last_night"])]
+                + [x["price_words"].replace("€", "") for x in r["rates"]]
+                + [booking_amount_words(r["change"], euro="")]))
+    out += ["", "If Booking.com's own price on these dates is not the usual one, add the same "
+                "amount (the change) to what is there."]
     return "\n".join(out)
 
 
@@ -56517,13 +56768,18 @@ def booking_prices_finding(conn, today=None):
     for r in rows:
         if r["occasion_name"] not in names:
             names.append(r["occasion_name"])
-    missing = sorted({r["room_name"] for r in rows if not r["booking_com_room"]})
+    missing = booking_prices_missing(rows)
     soonest = min(r["first_night"] for r in rows)
     note = (f"{len(rows)} price{'' if len(rows) == 1 else 's'} to enter in the Booking.com extranet, "
-            f"for {'; '.join(names)}. The soonest night is {format_date_human(soonest)}.")
-    if missing:
-        note += ("\n\nBooking.com's name for " + ", ".join(missing) + " is not given yet. Add it on "
-                 "the price list, so whoever enters the prices finds the right room.")
+            f"for {'; '.join(names)}. The soonest night is {format_date_human(soonest)}. "
+            "Each is a room's nights at its two rates, Non-Refundable and Standard Rate.")
+    if missing["names"]:
+        note += ("\n\nThe extranet's name for " + ", ".join(missing["names"]) + " is not given yet. "
+                 "Add it on the price list, so whoever enters the prices finds the right room.")
+    if missing["prices"]:
+        note += ("\n\nBooking.com's usual prices for " + ", ".join(missing["prices"]) + " are not "
+                 "given yet, so their lines say what to add rather than the price. Add them on the "
+                 "price list.")
     note += "\n\nAccommodation → Booking.com Prices has the list to copy, and Mark done beside each line."
     prio = "high" if soonest <= (today + timedelta(days=14)).isoformat() else "normal"
     return ("booking_prices", BOOKING_PRICES_TASK, note, today.isoformat(), prio)
@@ -56576,13 +56832,15 @@ def channel_booking_prices():
     today = _booking_prices_brought_up_to_date(conn)
     rows = booking_prices_rows(conn)
     rooms = conn.execute(
-        """SELECT id, name, channel_name FROM rooms
+        """SELECT id, name, channel_name, booking_extranet_name, booking_nr_price, booking_std_price
+             FROM rooms
             WHERE active = 1 OR id IN (SELECT room_id FROM channel_price_pushes WHERE state = 'to_do')
             ORDER BY sort_order, name""").fetchall()
     occasion_ids = {r["id"] for r in conn.execute("SELECT id FROM stay_occasions")}
     conn.close()
     lv = list_view(
-        rows, request.args, search=["room_name", "booking_com_room", "occasion_name"],
+        rows, request.args,
+        search=["room_name", "booking_com_room", "booking_com_guest_name", "occasion_name"],
         search_hint="Search by room or occasion",
         facets=[facet("state", "Where it is", lambda r: r["state"], labels=BOOKING_PRICE_STATES,
                       order=list(BOOKING_PRICE_STATES), default="to_do")],
@@ -56593,8 +56851,10 @@ def channel_booking_prices():
     return render_template(
         "channel_booking_prices.html", lv=lv, groups=booking_prices_by_occasion(lv["rows"]),
         to_do=to_do, copy_text=booking_prices_copy_text(rows), rooms=rooms,
-        missing=sorted({r["room_name"] for r in to_do if not r["booking_com_room"]}),
-        figure=booking_price_figure, occasion_ids=occasion_ids, today_iso=today.isoformat())
+        missing=booking_prices_missing(rows), rate_plans=BOOKING_RATE_PLANS,
+        std_terms=BOOKING_STD_RATE_TERMS, not_usual_hint=BOOKING_NOT_USUAL_HINT,
+        figure=booking_price_figure, amount=booking_amount_words, occasion_ids=occasion_ids,
+        today_iso=today.isoformat())
 
 
 @app.route("/admin/channels/booking-prices.json")
@@ -56607,20 +56867,32 @@ def channel_booking_prices_json():
     rows = booking_prices_rows(conn)
     conn.close()
     to_do = [r for r in rows if r["state"] == "to_do"]
+    missing = booking_prices_missing(rows)
+    # Two prices a line, one per rate plan, each with the one it replaces.
+    # There is no single "price" any more: the house's own figure is given
+    # as house_price, named so it is never typed into the extranet by mistake.
     return jsonify({
         "channel": CHANNEL_BOOKING_COM,
         "currency": "EUR",
-        "nights": "first_night and last_night are both nights the price applies to",
+        "nights": "first_night and last_night are both nights the prices apply to",
+        "rate_plans": {key: name for key, name in BOOKING_RATE_PLANS},
+        "standard_rate_terms": BOOKING_STD_RATE_TERMS,
+        "change": ("what the line adds to each of Booking.com's two prices (negative takes it "
+                   "off). " + BOOKING_NOT_USUAL_HINT),
         "page": url_for("channel_booking_prices", _external=True),
         "to_do": [{
             "id": r["id"], "occasion": r["occasion_name"], "occasion_id": r["occasion_id"],
             "kind": r["kind"], "booking_com_room": r["booking_com_room"],
+            "booking_com_guest_name": r["booking_com_guest_name"],
             "house_room": r["room_name"], "room_id": r["room_id"],
             "first_night": r["first_night"], "last_night": r["last_night"],
-            "price": r["price"], "previous_price": r["previous_price"],
+            "rates": {x["key"]: {"name": x["name"], "price": x["price"], "replaces": x["was"]}
+                      for x in r["rates"]},
+            "change": r["change"], "uplift_on_usual": r["uplift"],
+            "house_price": r["price"], "house_replaces": r["previous_price"],
             "updated_at": r["updated_at"]} for r in to_do],
-        "missing_booking_com_names": sorted({r["room_name"] for r in to_do
-                                             if not r["booking_com_room"]}),
+        "missing_booking_com_names": missing["names"],
+        "missing_booking_com_prices": missing["prices"],
         "done_count": sum(1 for r in rows if r["state"] == "done"),
     })
 
@@ -56628,6 +56900,16 @@ def channel_booking_prices_json():
 def _booking_price_label(r):
     return (f"{r['booking_com_room'] or r['room_name']}, "
             f"{format_date_range(r['first_night'], r['last_night'])}")
+
+
+def _booking_price_line(conn, line_id):
+    """One Booking.com line, named and dressed as the page shows it, or None."""
+    r = conn.execute(
+        """SELECT p.*, rooms.name AS room_name,
+                  NULLIF(TRIM(COALESCE(rooms.booking_extranet_name, '')), '') AS booking_com_room
+             FROM channel_price_pushes p JOIN rooms ON rooms.id = p.room_id
+            WHERE p.id = ? AND p.channel = ?""", (line_id, CHANNEL_BOOKING_COM)).fetchone()
+    return _booking_line_dressed(r) if r else None
 
 
 @app.route("/admin/channels/booking-prices/done", methods=["POST"])
@@ -56645,11 +56927,7 @@ def channel_booking_prices_done():
     user = current_user()
     done, skipped, names = 0, [], []
     for line_id in ids:
-        r = conn.execute(
-            """SELECT p.*, rooms.name AS room_name,
-                      NULLIF(TRIM(COALESCE(rooms.channel_name, '')), '') AS booking_com_room
-                 FROM channel_price_pushes p JOIN rooms ON rooms.id = p.room_id
-                WHERE p.id = ? AND p.channel = ?""", (line_id, CHANNEL_BOOKING_COM)).fetchone()
+        r = _booking_price_line(conn, line_id)
         if r is None:
             skipped.append((f"line {line_id}", "it is not on the list any more"))
         elif r["state"] == "done":
@@ -56660,12 +56938,12 @@ def channel_booking_prices_done():
         elif r["updated_at"] != request.form.get(f"stamp_{line_id}"):
             skipped.append((_booking_price_label(r),
                             f"it changed since the page was opened and now says "
-                            f"€{booking_price_figure(r['price'])}: look at it again"))
+                            f"{r['prices_said']}: look at it again"))
         else:
             conn.execute("UPDATE channel_price_pushes SET state = 'done', done_at = ?, "
                          "done_by_user_id = ?, updated_at = ? WHERE id = ?",
                          (now, user["id"], now, line_id))
-            names.append(_booking_price_label(r) + f" at €{booking_price_figure(r['price'])}")
+            names.append(_booking_price_label(r) + f" at {r['prices_said']}")
             done += 1
     sync_booking_prices(conn, today)
     refresh_booking_prices_task(conn, today)
@@ -56684,11 +56962,7 @@ def channel_booking_prices_undo(line_id):
     entered over the same nights, since Booking.com shows that one now."""
     conn = get_db()
     today = house_today()
-    r = conn.execute(
-        """SELECT p.*, rooms.name AS room_name,
-                  NULLIF(TRIM(COALESCE(rooms.channel_name, '')), '') AS booking_com_room
-             FROM channel_price_pushes p JOIN rooms ON rooms.id = p.room_id
-            WHERE p.id = ? AND p.channel = ?""", (line_id, CHANNEL_BOOKING_COM)).fetchone()
+    r = _booking_price_line(conn, line_id)
     problem = None
     if r is None or r["state"] != "done":
         problem = "That line is not marked done, so there is nothing to undo."
@@ -56723,29 +56997,73 @@ def channel_booking_prices_undo(line_id):
     return redirect(url_for("channel_booking_prices"))
 
 
+def booking_com_price_from_form(raw):
+    """A Booking.com price as typed: (value, problem). Blank is (None, None),
+    "not given"; a figure is euros to the cent; anything else is a problem."""
+    raw = (raw or "").strip().replace("€", "").replace(",", ".").replace(" ", "")
+    if not raw:
+        return None, None
+    try:
+        value = _euros(float(raw))
+    except ValueError:
+        return None, "is not a price"
+    if not (0 < value < 100000):
+        return None, "is not a price"
+    return value, None
+
+
 @app.route("/admin/channels/booking-names", methods=["POST"])
 @owner_required
 def channel_booking_names():
-    """Booking.com's name for each room: the extranet does not use the house's,
-    and whoever enters the prices needs it to find the right row. The same
-    field as Name on Booking.com on the room's own form; blank stores nothing."""
+    """Each room as the Booking.com extranet has it: its name there, and its
+    two usual prices, Non-Refundable and Standard Rate. Whoever enters the
+    prices needs the name to find the room's row, and every line's two
+    figures are built on the prices. The same fields as on the room's own
+    form. Blank stores nothing. NOT channel_name: that is the name guests see
+    on Booking.com, and its mail is matched on it."""
     conn = get_db()
-    changed = []
-    for room in conn.execute("SELECT id, name, channel_name FROM rooms ORDER BY sort_order, name").fetchall():
+    changed, refused = [], []
+    for room in conn.execute(
+            """SELECT id, name, booking_extranet_name, booking_nr_price, booking_std_price
+                 FROM rooms ORDER BY sort_order, name""").fetchall():
+        sets = {}
         key = f"booking_name_{room['id']}"
-        if key not in request.form:
-            continue
-        value = " ".join((request.form.get(key) or "").split())[:120] or None
-        if value != room["channel_name"]:
-            conn.execute("UPDATE rooms SET channel_name = ? WHERE id = ?", (value, room["id"]))
-            changed.append(f"{room['name']}: {value or 'not given'}")
+        if key in request.form:
+            value = " ".join((request.form.get(key) or "").split())[:120] or None
+            if value != room["booking_extranet_name"]:
+                sets["booking_extranet_name"] = value
+                changed.append(f"{room['name']}: name {value or 'not given'}")
+        for plan, name in BOOKING_RATE_PLANS:
+            key = f"booking_{plan}_{room['id']}"
+            if key not in request.form:
+                continue
+            value, problem = booking_com_price_from_form(request.form.get(key))
+            if problem:
+                refused.append((f"{room['name']}, {name}",
+                                f"“{(request.form.get(key) or '').strip()[:20]}” {problem}"))
+                continue
+            if value != _euros(room[f"booking_{plan}_price"]):
+                sets[f"booking_{plan}_price"] = value
+                changed.append(f"{room['name']}: {name} "
+                               f"{'€' + booking_price_figure(value) if value is not None else 'not given'}")
+        if sets:
+            conn.execute(f"UPDATE rooms SET {', '.join(k + ' = ?' for k in sets)} WHERE id = ?",
+                         list(sets.values()) + [room["id"]])
+    said = None
     if changed:
-        refresh_booking_prices_task(conn, house_today())
-        log_audit(conn, "booking_com_room_names", target=CHANNEL_BOOKING_COM, details="; ".join(changed))
+        today = house_today()
+        said = booking_prices_said(sync_booking_prices(conn, today))
+        refresh_booking_prices_task(conn, today)
+        log_audit(conn, "booking_com_rooms", target=CHANNEL_BOOKING_COM, details="; ".join(changed))
     conn.commit()
     conn.close()
-    flash(f"Saved Booking.com's name for {len(changed)} room{'' if len(changed) == 1 else 's'}."
-          if changed else "Nothing changed.", "success")
+    if refused:
+        flash(*bulk_message("Saved", "change", len(changed), refused))
+    else:
+        flash(f"Saved {len(changed)} change{'' if len(changed) == 1 else 's'} to Booking.com's rooms."
+              if changed else "Nothing changed.", "success")
+    if said:
+        flash(said, "success")
     return redirect(url_for("channel_booking_prices") + "#names")
 
 
@@ -77731,7 +78049,7 @@ def new_room():
 
         conn = get_db()
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM rooms").fetchone()["m"]
-        conn.execute(
+        cur = conn.execute(
             """INSERT INTO rooms (name, channel_name, website_title, website_label, description, max_occupancy, max_adults, max_children,
                price_per_night, min_nights, size_sqm, bed_setup, bathroom, outlook, floor,
                access_steps, access_car_metres, access_bathroom, access_notes,
@@ -77751,6 +78069,7 @@ def new_room():
              # hidden by hand (z28 item 3). workshop_room defaults to 0.
              secrets.token_urlsafe(20), max_order + 1, photo_filename, f["amenities"]),
         )
+        save_room_booking_fields(conn, cur.lastrowid, f)
         conn.commit()
         conn.close()
         flash(f"{f['name']} added.", "success")
@@ -77794,6 +78113,11 @@ def edit_room(room_id):
              f["access_notes"], active, photo_filename,
              f["amenities"], workshop_room, room_id),
         )
+        save_room_booking_fields(conn, room_id, f)
+        # The house's usual price and Booking.com's two feed every Booking.com
+        # line not yet entered: brought up to date now, and said.
+        booking_said = booking_prices_said(sync_booking_prices(conn))
+        refresh_booking_prices_task(conn)
 
         gallery_names = save_room_photos_multi(request.files.getlist("gallery_photos"))
         if gallery_names:
@@ -77810,6 +78134,8 @@ def edit_room(room_id):
         conn.commit()
         conn.close()
         flash("Room updated.", "success")
+        if booking_said:
+            flash(booking_said, "success")
         return redirect(url_for("admin_rooms"))
 
     gallery_photos = conn.execute(
@@ -129466,6 +129792,30 @@ def clean_room_amenities(text):
     return ", ".join(out) or None
 
 
+# A room field the form did not carry, or carried as nonsense: the save keeps
+# what the room has (room_columns_to_save).
+ROOM_FIELD_KEPT = object()
+
+
+def _room_booking_price(field):
+    """One of Booking.com's two prices off the room form: the figure, None
+    for blank (not given), or ROOM_FIELD_KEPT when absent or not a price."""
+    if field not in request.form:
+        return ROOM_FIELD_KEPT
+    value, problem = booking_com_price_from_form(request.form.get(field))
+    return ROOM_FIELD_KEPT if problem else value
+
+
+def save_room_booking_fields(conn, room_id, f):
+    """Write the room form's Booking.com fields it carried (the rest are kept,
+    or for a new room simply not given). Does not commit."""
+    sets = {k: f[k] for k in ("booking_extranet_name", "booking_nr_price", "booking_std_price")
+            if f[k] is not ROOM_FIELD_KEPT}
+    if sets:
+        conn.execute(f"UPDATE rooms SET {', '.join(k + ' = ?' for k in sets)} WHERE id = ?",
+                     list(sets.values()) + [room_id])
+
+
 def room_fields_from_form():
     """Everything the room form submits, normalised once so the new and edit
     paths cannot drift apart."""
@@ -129504,6 +129854,15 @@ def room_fields_from_form():
         # and must not render as an empty second line on every card.
         "channel_name": ((request.form.get("channel_name", "") or "").strip()
                          or None),
+        # The extranet's name and Booking.com's two usual prices (26 Nov).
+        # A form that does not carry one, or a price that is not a price,
+        # leaves it as it is (ROOM_FIELD_KEPT): a save that wiped them would
+        # rewrite every Booking.com line not yet entered.
+        "booking_extranet_name": (
+            (" ".join((request.form.get("booking_extranet_name", "") or "").split())[:120] or None)
+            if "booking_extranet_name" in request.form else ROOM_FIELD_KEPT),
+        "booking_nr_price": _room_booking_price("booking_nr_price"),
+        "booking_std_price": _room_booking_price("booking_std_price"),
         # The French title on the website. Blank means the website uses the
         # name, with no second line under it. One line of words: collapsed,
         # and kept to a length a card heading can carry.
