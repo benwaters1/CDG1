@@ -152,7 +152,8 @@ def dishes_in_days(html):
     return out
 
 
-HOME_ORDER = ["La Vie de Château", r"The \w+ Rooms", "A Night, or la Vie de Château",
+# "Choose Your Room" since 26 Nov 2026 (owner), where it said "The Six Rooms".
+HOME_ORDER = ["La Vie de Château", "Choose Your Room", "A Night, or la Vie de Château",
               "From Ruin, Room by Room", "Ways to Spend the Days", "What Guests Say",
               "Come and see it"]
 HOME_GONE = ["France at Its Most French", "Bienvenue", "The Estate from Above", "A Night at Gudanes",
@@ -299,7 +300,7 @@ def _run(s, anon):
 
     s.section("The home page is the owner's eight sections")
     s.check("the reader catches a section out of its place",
-            home_out_of_order("<h2>La Vie de Château</h2><h2>What Guests Say</h2><h2>The Six Rooms</h2>"
+            home_out_of_order("<h2>La Vie de Château</h2><h2>What Guests Say</h2><h2>Choose Your Room</h2>"
                               "<h2>A Night, or la Vie de Château</h2><h2>From Ruin, Room by Room</h2>"
                               "<h2>Ways to Spend the Days</h2><h2>Come and see it</h2>"
                               '<footer class="g-footer">') != [])
