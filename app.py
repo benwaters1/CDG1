@@ -128834,7 +128834,7 @@ AUTOMATION_SWITCHES = [
                 ("automation_email_scan_lookback_days", "Look back (days)", "days_back")),
      "needs": "graph"},
     {"key": "automation_owner_diary_enabled", "job": "owner_diary",
-     "runs": ("run_owner_diary_job",), "group": "house", "reaches": ("you",),
+     "runs": ("run_owner_diary_job",), "group": "house", "reaches": (),
      "label": "Your Outlook diary on the owner home",
      "what": "Every quarter of an hour, reads today's events from your own Outlook "
              "calendar (accounts@ unless the House calendar page names another) and "
