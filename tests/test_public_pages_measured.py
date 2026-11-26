@@ -89,7 +89,11 @@ KNOWN_LONG = {
     # frescoes, three photographs), and the timeline's three new years; measured 15,216.
     # 25 Nov: +100, the engraving at the foot kept at its real height (see LONG_BUDGET); measured 15,377.
     # 26 Nov 2026: +600, the new wall and the run of rooms, two prints the owner asked for ("the wall i want on").
-    "/restoration": 16000,
+    # 26 Nov 2026, later: +300. Those two prints were being drawn 150px tall, not upright: a lazy photograph with
+    # sizes="auto" is held to contain: size by Chrome, and the album had taken its aspect-ratio away (pic(ratio=True)
+    # now gives it back). At their real height, with the digger beside the old timber, a photograph the owner sent
+    # ("is this one"): measured 16,240.
+    "/restoration": 16300,
     # 23 Nov: 14,900, the brochure's facts the owner asked for ("lets use the info from everything and the brochure
     # and really make it good"): the table, a sample of the days, what is included and what is on request.
     # 24 Nov: +100, a couple's line from their thank-you letter above the enquiry.
@@ -110,7 +114,9 @@ KNOWN_LONG = {
     # ("i dont know why theyre not selling"; "have we got the bathrooms on the workshop page?"); measured 15,029.
     # 26 Nov 2026: a morning class and the pastries, two prints the owner sent.
     # 26 Nov 2026: the bathrooms in two rows, four more of the owner's photographs ("i want more bathroom photos").
-    "/workshops": 15900,   # 24 Nov evening, was 15,100: the footer's two new links; measured 15,125 merged.
+    # 26 Nov 2026, later: +300, the morning class drawn upright at last, not a 150px strip (the same fault as
+    # /restoration's prints above); measured 16,135.
+    "/workshops": 16200,   # 24 Nov evening, was 15,100: the footer's two new links; measured 15,125 merged.
     # 25 Nov, was 15,300: the engraving at the foot at its real height (see LONG_BUDGET); measured 15,339.
     # 24 Nov, late, was 15,200: fresh seed 15,222, house copy 15,125.
     "/workshops/<id>": 11900,

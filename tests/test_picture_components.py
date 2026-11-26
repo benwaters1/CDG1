@@ -179,6 +179,17 @@ def run():
     head = "{% from '_pictures.html' import album, mosaique, carrousel %}"
     out = _render(head + "{{ album(" + six + ") }}")
     s.check("the album takes three", len(_imgs(out)) == 3, detail=str(len(_imgs(out))))
+    # 26 Nov 2026: an album of upright prints (g-album--tall) drew every print 150px tall, live on /restoration
+    # and /workshops. A lazy photograph has sizes="auto", Chrome holds it to contain: size, and only an aspect-ratio
+    # gives it its height back -- the album had set "auto", which took the width/height attributes' ratio away.
+    tall = _render(head + "{{ album(" + six + ", cls='g-album--tall') }}")
+    s.check("an album of upright prints carries each file's own shape",
+            all(f"--pic-ratio: {w} / {h}" in t for t in _imgs(tall)) and len(_imgs(tall)) == 3, detail=tall[:300])
+    s.check("and only that album: the others keep their 4:3", "--pic-ratio" not in out)
+    css_all = io.open(CSS, encoding="utf-8").read()
+    s.check("the stylesheet draws them at that shape, not at auto (150px under sizes=auto)",
+            re.search(r"\.g-album--tall \.g-album__f img\{[^}]*aspect-ratio:\s*var\(--pic-ratio", css_all) is not None
+            and not re.search(r"\.g-album--tall \.g-album__f img\{[^}]*aspect-ratio:\s*auto", css_all))
     out = _render(head + "{{ mosaique(" + six + ") }}")
     s.check("the mosaic takes four", len(_imgs(out)) == 4, detail=str(len(_imgs(out))))
 

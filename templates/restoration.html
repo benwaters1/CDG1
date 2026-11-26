@@ -197,10 +197,14 @@
   {% endcall %}
   {#- 26 Nov 2026 (owner, of a side-by-side of the two: "the wall i want on, the corridor can be too but split
       them"): the new wall going up against the château, and the run of rooms with the green paint flaking, as two
-      prints. Kept upright (g-album--tall), the shape they were taken in, so neither loses its top or foot. -#}
+      prints. Kept upright (g-album--tall), the shape they were taken in, so neither loses its top or foot.
+      The same evening, the digger at the foot of the château, a photograph the owner sent in the chat: beside the
+      old timber, the two of the ground outside as a second row. The file is 515px wide, too small for The Work's
+      slider (736px there); a print here is 352px. -#}
   {{ album([[url_for('static', filename='img/found/new-wall-against-the-chateau.jpg'), 'A new wall of blocks going up against the château, stone laid along its foot', 'A new wall against the château'],
-            [url_for('static', filename='img/found/through-the-rooms-paint-flaking.jpg'), 'A run of rooms through open doors, green paint flaking from the wall beside them', 'Through the rooms'],
-            [url_for('static', filename='img/found/old-timber-cleared.jpg'), 'A great pile of old timber against the château wall, cement mixers beside it and the mountains behind', 'Old timber, cleared out']], cls='g-album--tall') }}
+            [url_for('static', filename='img/found/through-the-rooms-paint-flaking.jpg'), 'A run of rooms through open doors, green paint flaking from the wall beside them', 'Through the rooms']], cls='g-album--tall') }}
+  {{ album([[url_for('static', filename='img/found/old-timber-cleared.jpg'), 'A great pile of old timber against the château wall, cement mixers beside it and the mountains behind', 'Old timber, cleared out'],
+            [url_for('static', filename='img/found/digger-at-the-foot-of-the-chateau.jpg'), 'A digger cutting into the rubble at the foot of the château', 'The ground dug out at the foot of the château']], cls='g-album--tall g-album--ground') }}
 </div></section>
 <section class="g-sec g-before-sec" id="before"><div class="g-wrap">
   <span class="g-hill" aria-hidden="true">{{ illus('restoration') }}</span>

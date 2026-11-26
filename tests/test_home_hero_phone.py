@@ -34,8 +34,10 @@ refuses it, which is the still's path:
 - the wash is that same band, so the fade ends where the photograph does;
 - the eyebrow and the name start in the band's lower part, where the fade has
   darkened it, never over the bright top of the photograph;
-- the dates, the motto, the lede and the sentence after it are all below the
-  band, on the navy;
+- the dates, the motto and the lede are all below the band, on the navy
+  (the sentence that followed the lede is not drawn on a phone since the
+  home page on a phone, 26 Nov 2026: one sentence under the motto, so the
+  opening screen ends inside the first screen; test_home_on_a_phone holds it);
 - and the page is no wider than the screen.
 
 THE MEASURING IS CHECKED TOO. The same page is measured again with the old
@@ -185,7 +187,7 @@ def run():
                 bad.append(f"no {name}")
             elif words[name] < fade:
                 bad.append(f"the {name} at {words[name]:.0f}px, over the bright photograph above {fade:.0f}px")
-        for name in ("dates", "motto", "lede", "fact"):
+        for name in ("dates", "motto", "lede"):
             if words.get(name) is None:
                 bad.append(f"no {name}")
             elif words[name] < b - 2:

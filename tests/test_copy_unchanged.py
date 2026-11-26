@@ -231,14 +231,25 @@ m = _harness.m
 # "Across the far lawn" on the Seven Starry Nights page. Was: "c3f0038"
 # 26 Nov 2026, merged: the base is 723dfe8, the merge of the dinner test fixes with main, each side read on its
 # own (the dinner fixes changed nothing this reads). Was: "b5857b2"
-COPY_BASE = "723dfe8"
+# Moved to 79b7cdf (owner, 26 Nov, two photographs sent in the chat): "The ground dug out at the foot of the
+# château", the digger on /restoration, and "Photograph: Rémi Dargegen", the credit line under the red roadster
+# on /events/private. Was: "b5857b2"
+# 26 Nov 2026: moved to 4efbf39, the home page on a phone (BRIEF-home-on-a-phone-26-nov). Against 79b7cdf it listed
+# / alone: the phone's two cards under the address ("Retreats Three to seven nights, all inclusive" and "Stay the
+# night A room and breakfast, your own dates", the hero tabs' own lines) and "See every date" under the next dates,
+# none of them drawn from 600px up. Was: "79b7cdf"
+# 26 Nov 2026, merged again: the base is 4efbf39 for the second merge of the dinner test fixes with main, each
+# side read on its own (the dinner fixes changed nothing this reads). Moved to the merge itself in the commit
+# after it. Was: "723dfe8" on the dinner side, "4efbf39" on main
+COPY_BASE = "4efbf39"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
     "g-car__n": re.compile(r"\d+ / \d+"),
     "g-seeall__b": re.compile(r"See all( \d+)? photos"),
-    # A Wikimedia Commons photograph's licence asks for its credit to be seen.
-    "g-credit": re.compile(r"Photo .{1,60}, CC BY(-SA)? \d\.\d"),
+    # A Wikimedia Commons photograph's licence asks for its credit to be seen. 26 Nov 2026: and a photographer's
+    # name under their photograph (split(credit=...)), the red roadster on /events/private being Rémi Dargegen's.
+    "g-credit": re.compile(r"Photo .{1,60}, CC BY(-SA)? \d\.\d|Photograph: [^,]{1,60}"),
     # 9 Nov 2026 (owner): the house's address under the home page's hero, the
     # footer's own words, linked to the gates. test_house_address holds it.
     "g-where": re.compile(re.escape("%(street)s, %(locality)s, %(country)s" % m.HOUSE_PLACE)),
