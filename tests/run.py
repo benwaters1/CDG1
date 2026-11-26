@@ -725,6 +725,9 @@ SUITES = [
     # 26 November 2026, the owner's second sweep: the restaurant page off the site, Bruce alone, the
     # hero's third line, the naming rule (retreats, the full château experience), the brocante tour.
     "test_sweep_26_nov",
+    "test_home_26_nov",
+    # 26 November 2026 (owner): the claw-foot bath off the Twin, the King Room and the ground-floor Twin.
+    "test_room_page_bath",
 ]
 
 

@@ -87,6 +87,7 @@
 
 <form method="post" action="{{ url_for('send_campaign_template', template_id=template['id']) }}" class="detail-card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if attachment_note %}<p class="upload-hint" style="margin:0 0 12px">{{ attachment_note }}</p>{% endif %}
   <label class="field-label">Who it goes to</label>
   {#- An occasion's draft newsletter (25 Nov 2026) comes with its audience ticked: the newsletter list and past guests,
       each person once. The owner can change it before sending. -#}

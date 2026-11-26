@@ -152,7 +152,8 @@ def dishes_in_days(html):
     return out
 
 
-HOME_ORDER = ["La Vie de Château", r"The \w+ Rooms", "A Night, or la Vie de Château",
+# "Choose Your Room" since 26 Nov 2026 (owner), where it said "The Six Rooms".
+HOME_ORDER = ["La Vie de Château", "Choose Your Room", "A Night, or la Vie de Château",
               "From Ruin, Room by Room", "Ways to Spend the Days", "What Guests Say",
               "Come and see it"]
 HOME_GONE = ["France at Its Most French", "Bienvenue", "The Estate from Above", "A Night at Gudanes",
@@ -299,7 +300,7 @@ def _run(s, anon):
 
     s.section("The home page is the owner's eight sections")
     s.check("the reader catches a section out of its place",
-            home_out_of_order("<h2>La Vie de Château</h2><h2>What Guests Say</h2><h2>The Six Rooms</h2>"
+            home_out_of_order("<h2>La Vie de Château</h2><h2>What Guests Say</h2><h2>Choose Your Room</h2>"
                               "<h2>A Night, or la Vie de Château</h2><h2>From Ruin, Room by Room</h2>"
                               "<h2>Ways to Spend the Days</h2><h2>Come and see it</h2>"
                               '<footer class="g-footer">') != [])
@@ -322,7 +323,8 @@ def _run(s, anon):
     # show what they are about: Rooms That No Longer Look Like This its three Then and Now pairs (six pictures), and
     # The Work, As It Happens six of the work. Every other section still shows six and keeps the rest behind See all.
     # Forty-seven with the photograph the site review of 24 Nov put at the top of the page.
-    s.check("no more than forty-seven photographs reach the page", 0 < page_imgs(gal) <= 47,
+    # 26 Nov 2026: forty-eight, the Gold Suite on the open day of 2025, which the owner asked to have here.
+    s.check("no more than forty-eight photographs reach the page", 0 < page_imgs(gal) <= 48,
             detail=f"{page_imgs(gal)} images")
     s.check("and the rest wait behind See all", "<template data-lb-more>" in gal and "See all" in gal)
     # The pairs /restoration no longer shows, by their files: the kitchen, the bathrooms' room, its window,
@@ -481,7 +483,9 @@ def _book_cards(s, anon):
     s.check("one large photograph, the long bathroom", bool(lead) and lead.group(1) == "One of the ground-floor bathrooms",
             detail=str(lead and lead.group(1)))
     # Four of the five: the fifth is the same bath from almost the same place as another.
-    s.check("and three beneath it: four of them in all, each once", len(baths & set(shown)) >= 4 and len(shown) == 4,
+    # 26 Nov 2026 (owner: "i want more bathroom photos"): and four more of the owner's, eight in all.
+    s.check("and seven beneath it: eight in all, each once",
+            len(baths & set(shown)) >= 4 and len(shown) == 8 and len(set(shown)) == 8,
             detail=str(shown))
     points = re.findall(r'<li class="g-baths__pt">.*?<svg', sec, re.S)
     s.check("the owner's eight points, each with its drawing", len(points) == 8, detail=f"{len(points)}")

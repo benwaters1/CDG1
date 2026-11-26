@@ -432,11 +432,12 @@ def _see_through(s):
     os.makedirs(m.MIRROR_DIR, exist_ok=True)
     img.save(path, transparency=0)
     try:
-        s.check("its sizes have an address of their own", m.pic_address(480, "~m/" + name).endswith("?a"),
-                detail=m.pic_address(480, "~m/" + name))
+        # The same fix landed from another session the same day (b352e60): its pic_query marks every PNG's
+        # sizes "?a". This section holds the outcome either way: the size keeps its alpha, the address is new.
+        s.check("its sizes have an address of their own", m.pic_query("~m/" + name) == "?a")
         jpg = next((f for f in sorted(os.listdir(os.path.join(_harness.ROOT, "static", "img", "rk")))
                     if f.endswith(".jpg")), None)
-        s.check("which a photograph does not need", jpg and not m.pic_address(480, "rk/" + jpg).endswith("?a"))
+        s.check("which a photograph does not need", jpg and m.pic_query("rk/" + jpg) == "")
         r = m.app.test_client().get(f"/pic/480/~m/{name}?a")
         made = Image.open(io.BytesIO(r.get_data())) if r.status_code == 200 else None
         corner = made.convert("RGBA").getpixel((2, 2)) if made else None

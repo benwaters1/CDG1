@@ -45,11 +45,36 @@
         <input type="text" id="channel_name" name="channel_name"
                value="{{ room['channel_name'] or '' if room else '' }}"
                placeholder="Double Room with Mountain View">
-        <p class="field-hint">What the channels list this room as. Shown beside
-          the real name wherever staff see rooms, so an arrival off a feed does
-          not have to be translated from memory, and on Booking.com Prices, so
-          whoever enters an occasion's prices finds the right room. Give it even
-          where it is the same as the house name: blank reads as not given.</p>
+        <p class="field-hint">What guests see this room called on Booking.com and the
+          other channels. Shown beside the real name wherever staff see rooms, so an
+          arrival off a feed does not have to be translated from memory, and
+          Booking.com's reservation emails find the room by it. Give it even where it
+          is the same as the house name: blank reads as not given.</p>
+        {# 26 Nov 2026 (owner): the extranet's own name and Booking.com's two usual prices. Not the name above:
+           Booking.com's mail is matched on that one, and the extranet calls the rooms something else. #}
+        <label class="field-label" for="booking_extranet_name" style="margin-top:10px;">Name in the Booking.com extranet</label>
+        <input type="text" id="booking_extranet_name" name="booking_extranet_name" maxlength="120"
+               value="{{ room['booking_extranet_name'] or '' if room else '' }}"
+               placeholder="King Suite">
+        <div class="field-row-2" style="margin-top:10px;">
+          <div>
+            <label class="field-label" for="booking_nr_price">Booking.com Non-Refundable (€)</label>
+            <input type="number" id="booking_nr_price" name="booking_nr_price" min="0" step="0.01"
+                   value="{{ ('%.2f'|format(room['booking_nr_price'])).replace('.00', '') if room and room['booking_nr_price'] else '' }}"
+                   placeholder="290">
+          </div>
+          <div>
+            <label class="field-label" for="booking_std_price">Booking.com Standard Rate (€)</label>
+            <input type="number" id="booking_std_price" name="booking_std_price" min="0" step="0.01"
+                   value="{{ ('%.2f'|format(room['booking_std_price'])).replace('.00', '') if room and room['booking_std_price'] else '' }}"
+                   placeholder="330">
+          </div>
+        </div>
+        <p class="field-hint">The room's name where its prices are typed, and the two prices
+          Booking.com sells it at on a night nothing has changed: Non-Refundable, and the
+          Standard Rate, which keeps its free cancellation. An occasion adds to each
+          what it adds here, and Booking.com Prices lists the result. Change them when you
+          change Booking.com.</p>
       </div>
       <div>
         <label class="field-label" for="floor">Where it is</label>
