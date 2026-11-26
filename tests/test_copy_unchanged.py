@@ -228,7 +228,11 @@ m = _harness.m
 # Moved to 79b7cdf (owner, 26 Nov, two photographs sent in the chat): "The ground dug out at the foot of the
 # château", the digger on /restoration, and "Photograph: Rémi Dargegen", the credit line under the red roadster
 # on /events/private. Was: "b5857b2"
-COPY_BASE = "79b7cdf"
+# 26 Nov 2026: moved to 4efbf39, the home page on a phone (BRIEF-home-on-a-phone-26-nov). Against 79b7cdf it listed
+# / alone: the phone's two cards under the address ("Retreats Three to seven nights, all inclusive" and "Stay the
+# night A room and breakfast, your own dates", the hero tabs' own lines) and "See every date" under the next dates,
+# none of them drawn from 600px up. Was: "79b7cdf"
+COPY_BASE = "4efbf39"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

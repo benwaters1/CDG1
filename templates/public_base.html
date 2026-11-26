@@ -221,7 +221,9 @@ window.houseDay = (function () {
 <header class="g-top">
   <div class="g-top__in">
     <a href="/" class="g-logo" aria-label="Château de Gudanes" style="--logo-src:url('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w')">
-      <img loading="lazy" decoding="async" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w" alt="Château de Gudanes — Restoration">
+      {#- 26 Nov 2026 (the home page on a phone): the first picture on every page, so never lazy; and how wide it is
+          drawn (gudanes.css: 240px at most, 180px below 60rem), so the copy sent is for that and not for the screen. -#}
+      <img decoding="async" fetchpriority="high" sizes="(max-width: 60rem) 180px, 240px" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w" alt="Château de Gudanes — Restoration">
     </a>
 
 
