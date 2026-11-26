@@ -633,13 +633,22 @@
 /* 2.2  The FAQ answers in the body serif, like every other paragraph. */
 .g .g-faq-sec details p, .g .g-faq-sec dd, .g .g-faq__a{ font-family: var(--serif); }
 
-/* 2.3  The currency control: in the header strip, right of Book, small. */
+/* 2.3  The control in the header strip, right of Book, small. Since 24 Nov 2026 (owner) it is the LANGUAGE:
+        the currency moved to the menu panel. On a phone the strip has no room, so the panel's language row
+        shows there instead, and only there. */
 .g .g-curtop{ display: inline-flex; align-items: center; margin-left: var(--s2); }
 .g .g-curtop__s{ font-family: var(--serif); font-size: 13px; padding: 2px 4px; border: 1px solid currentColor;
   background: transparent; color: inherit; border-radius: 0; }
 .g .g-curtop__s option{ color: var(--ink); }
 .g .g-curbar{ display: none; }
 @media (max-width: 40rem){ .g .g-curtop{ display: none; } }
+.g .g-navwrap__prefs-row--lang{ display: none; }
+@media (max-width: 40rem){ .g .g-navwrap__prefs-row--lang{ display: flex; } }
+/* The header row has a fixed width (the wrap stops at 1216px), so a wider screen gives it no more room, and with
+   What's On a dropdown and the language beside Book its links ran under the wordmark ("Stay" hidden behind it,
+   measured 24 Nov 2026). The compact spacing the narrower screens already used, at every width. */
+.g .g-top .g-nav{ gap: 10px; }
+.g .g-top .g-nav a{ letter-spacing: .04em; }
 
 /* 6  The phone's booking bar waits for the hero's own date widget to scroll off:
    on the home page the two booking buttons sat an inch apart. Slid away, not
@@ -1140,3 +1149,307 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
   .g .g-hero .g-hbook__w{ height: 100%; grid-template-columns: 84px minmax(0, 1fr); }
   .g .g-hero .g-hbook__ph{ width: 84px; height: 100%; aspect-ratio: auto; overflow: hidden; }
 }
+
+/* ==== 23 Nov 2026: a drawing beside every place on /whats-on ==============
+   Owner: "i want illustrations and stuff on here and around, all the plain text is not good". Forty-odd places and
+   pastimes, each a small heading over a paragraph. draw_the_nearby_vignettes() in app.py puts a drawing at the head
+   of each entry at the response (the drawings are templates/_nearby_art.html); these are its rules. Each sits in a
+   gilt-ringed medallion to the left of its words, so the page gains a picture an entry and almost no length. */
+.g .g-key:has(> .g-key__i--drawn:nth-child(4):last-child){ grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr)); }
+/* The medallion floats at the head of the entry and the words run round it and on beneath it, the way a
+   drop-capital sits in an old guide: a picture to every entry for almost none of the page's length, which /whats-on
+   has little of to spare (test_public_pages_measured holds it to 12,000px). */
+.g .g-key__i--drawn{ display: flow-root; }
+.g .g-key__i--drawn > .g-key__art{ float: left; margin: 0 var(--s4, 16px) var(--s2, 8px) 0; }
+.g .g-key__art{
+  display: block; box-sizing: border-box; width: 3.5rem; height: 3.5rem; padding: .4rem; border-radius: 50%;
+  color: var(--gilt, #73562D);
+  background: radial-gradient(circle at 50% 38%, rgba(255,255,255,.75), rgba(255,255,255,0) 72%), rgba(198,166,110,.12);
+  box-shadow: inset 0 0 0 1px rgba(115,86,45,.30), 0 0 0 5px rgba(198,166,110,.07);
+  transition: transform .5s cubic-bezier(.2,.7,.2,1), box-shadow .5s;
+}
+.g .g-key__art .g-illus{ width: 100%; height: 100%; }
+.g .g-sec--sand .g-key__art{ background: radial-gradient(circle at 50% 38%, rgba(255,255,255,.9), rgba(255,255,255,.35) 72%); }
+.g .g-sec--dark .g-key__art, .g .g-sec--blue .g-key__art{ color: var(--gilt-on-dark, #C6A66E); background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(198,166,110,.4); }
+/* A turn of the medallion under the pointer, where there is one. */
+@media (hover: hover){
+  .g .g-key__i--drawn:hover .g-key__art{ transform: rotate(-4deg) scale(1.04); box-shadow: inset 0 0 0 1px rgba(115,86,45,.5), 0 0 0 6px rgba(198,166,110,.12); }
+}
+/* Drawn in, stroke by stroke, as it comes up the screen (the script is put in with the drawings). */
+.g .g-key__art.is-drawing [pathLength]{ stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1.6s cubic-bezier(.45,0,.2,1); }
+.g .g-key__art.is-drawing.is-drawn [pathLength]{ stroke-dashoffset: 0; }
+@media (prefers-reduced-motion: reduce){ .g .g-key__art, .g .g-key__art [pathLength]{ transition: none !important; stroke-dashoffset: 0 !important; } }
+@media print{ .g .g-key__art [pathLength]{ stroke-dashoffset: 0 !important; } .g .g-key__art{ box-shadow: none; background: none; } }
+@media (max-width: 600px){
+  .g .g-key__art{ width: 3rem; height: 3rem; padding: .3rem; box-shadow: inset 0 0 0 1px rgba(115,86,45,.30); }
+}
+/* Drawn at 96 and shown at a half or less, the house's 1.15 line went to a hair: thickened in the medallion. Larger
+   where a section has no photograph beside it, since there the drawing is the only picture; smaller in a photograph's
+   column, where the entries are short and the photograph already speaks. */
+.g .g-key__art .g-illus{ stroke-width: 2; }
+.g .g-key__i--drawn > .g-key__art{ width: 5rem; height: 5rem; padding: .55rem; margin-right: var(--s5, 24px); }
+.g .g-sp__text .g-key__i--drawn > .g-key__art{ width: 3.5rem; height: 3.5rem; padding: .4rem; margin-right: var(--s4, 16px); }
+.g .g-sp__text .g-key__art .g-illus{ stroke-width: 2.3; }
+@media (max-width: 600px){
+  .g .g-key__i--drawn > .g-key__art, .g .g-sp__text .g-key__i--drawn > .g-key__art{ width: 3.5rem; height: 3.5rem; padding: .35rem; margin-right: var(--s3, 12px); }
+  .g .g-key__art .g-illus{ stroke-width: 2.4; }
+}
+/* 23 Nov (owner: "more images and where they arent just all in a row like display them asorted nicely"). On /whats-on,
+   Outdoors and Adventure's collage sits in the grid of entries, two entries wide, so the photographs are among the
+   words. A phone gives it the whole width. */
+.g .g-key > .g-key__mos{ grid-column: span 2; min-width: 0; }
+@media (min-width: 52.01rem){
+.g .g-key > .g-key__mos .g-mos{ margin: 0; height: 100%; min-height: 20rem; grid-template-rows: 1fr 1fr; grid-auto-rows: auto; }
+/* The two small ones stepped, not squared off: the lower one sits in from the edge and down, over the large one's corner. */
+.g .g-key > .g-key__mos .g-mos__i:nth-child(3){ position: relative; left: -14%; top: 10%; box-shadow: 0 10px 28px rgba(20,30,50,.22); outline: 6px solid #fff; z-index: 1; }
+}
+@media (max-width: 52rem){ .g .g-key > .g-key__mos{ grid-column: 1 / -1; } .g .g-key > .g-key__mos .g-mos{ margin: 0; } }
+
+/* 24 Nov 2026 (owner: "its starting to get a bit long on that part so make sure the design is good and formatting"). The
+   weddings page's All Inclusive, the brochure's page of it: four groups side by side, each a photograph over a small-caps
+   heading and a short list, one thing to a line, in the finer details' gilt diamond; two by two below a wide screen,
+   and one column only on the narrowest phone. The photographs share one shape, so the four headings line up. */
+.g .g-wed-incl__grid{ display: grid; gap: var(--s6) var(--s5); margin-top: var(--s6); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 64rem){ .g .g-wed-incl__grid{ grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s6); } }
+@media (max-width: 22.4rem){ .g .g-wed-incl__grid{ grid-template-columns: minmax(0, 1fr); } }
+.g .g-wed-incl__g{ min-width: 0; }
+.g .g-wed-incl__ph{ margin: 0 0 var(--s4); }
+.g .g-wed-incl__ph img{ display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; background: var(--sand, #EDE4D3); }
+.g .g-wed-incl__h{ margin: 0 0 var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid rgba(176, 141, 87, .6); font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .16em; line-height: 1.4; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+.g .g-wed-incl__l{ list-style: none; margin: 0; padding: 0; }
+.g .g-wed-incl__l li{ position: relative; margin: 0; padding: 7px 0 7px 18px; font-size: 16px; line-height: 1.5; color: var(--ink-soft); text-wrap: pretty; }
+.g .g-wed-incl__l li::before{ content: ''; position: absolute; left: 0; top: 16px; width: 7px; height: 7px; transform: rotate(45deg); border: 1px solid var(--gilt, #B08D57); }
+@media (max-width: 40rem){
+  .g .g-wed-incl__l li{ font-size: 15px; padding-left: 15px; }
+  .g .g-wed-incl__l li::before{ width: 6px; height: 6px; top: 15px; }
+}
+.g .g-wed-fine__c li{ text-wrap: pretty; }
+
+/* 24 Nov 2026 (owner, of /facilities on a desktop: "fix the formatting here"). Le Domaine kept to the left half of a wide
+   screen with the right half empty, and the live weather line was centred under words that were not. The words sit
+   beside a photograph of the grounds now (split), and the weather is one quiet line at their left edge. */
+.g .g-domaine .g-sp{ margin: 0; }
+.g .g-domaine .g-wx{ max-width: none; margin: var(--s2) 0 var(--s4); text-align: left; }
+.g .g-domaine .g-wx__live{ justify-content: flex-start; gap: 2px 10px; font-size: 15px; }
+.g .g-domaine .g-wx__t{ font-family: var(--serif); font-size: 17px; }
+.g .g-domaine .g-wx__n{ flex-basis: auto; }
+.g .g-domaine__cta{ margin: var(--s6) 0 0; }
+/* Arranged for You: four cards to the row on a desk, two by two on a tablet, one column on a phone, each the height of
+   the tallest in its row. Scoped to the section: the room page and the booking form use .g-extras for other things. */
+.g .g-extras-sec .g-extras{ grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+@media (min-width: 40rem){ .g .g-extras-sec .g-extras{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 64rem){ .g .g-extras-sec .g-extras{ grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* 24 Nov 2026 (owner: "a retreat is not a list"): the A Retreat column ends on a line that leaves it open. */
+.g .g-sow__list li.g-sow__more{ font-style: italic; }
+/* 24 Nov 2026 (owner's brief: "Attribution shown under it, visibly"). The weddings page's guest line is a figure, and the
+   15 Oct rule that hides every caption under a photograph (gudanes.css) hid its signature with them: the quote stood
+   unsigned. A pull quote's caption is who said it, not a description of a photograph, so it shows. */
+.g main figure.g-pull figcaption{ display: block !important; margin-top: var(--s3); padding: 0; border: 0; }
+/* 24 Nov 2026 (BRIEF-private-retreat-and-images, 1): /events/private is a private retreat. All Inclusive draws the
+   retreats' own list (_retreat_included.html), larger here where it is the section and not a column of a comparison,
+   in two columns on a wide screen; then "Choose Your Days", the retreats' themes, a photograph each: five across on a
+   computer, the photograph beside the words on a tablet, one under the other on a phone. */
+.g .g-priv-incl__l{ max-width: 52rem; margin: var(--s5) 0 var(--s3); }
+.g .g-priv-incl__l li{ font-size: 18px; line-height: 1.55; }
+@media (min-width: 52rem){ .g .g-priv-incl__l{ columns: 2; column-gap: var(--s6); } .g .g-priv-incl__l li{ break-inside: avoid; } }
+.g .g-priv-incl__tx{ margin: 0 0 var(--s6); color: var(--ink-2); }
+.g .g-pdays{ list-style: none; margin: var(--s6) 0 0; padding: 0; display: grid; gap: var(--s6) var(--s5); grid-template-columns: minmax(0,1fr); }
+.g .g-pdays__i{ margin: 0; min-width: 0; }
+.g .g-pdays__ph{ margin: 0 0 var(--s3); aspect-ratio: 3 / 2; overflow: hidden; background: #EDE6D6; }
+.g .g-pdays__ph img{ display: block; width: 100%; height: 100%; object-fit: cover; }
+.g .g-pdays__fr{ margin: 0; font-family: var(--display); font-style: italic; font-weight: 400; font-size: 26px; line-height: 1.2; color: var(--blue-deep); }
+.g .g-pdays__en{ margin: 2px 0 var(--s2); font-family: var(--ui); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.g .g-pdays__p{ margin: 0; font-family: var(--serif); font-size: 17px; line-height: 1.5; color: var(--ink); }
+@media (min-width: 40rem) and (max-width: 63.99rem){
+  .g .g-pdays__i{ display: grid; grid-template-columns: 13rem minmax(0,1fr); gap: var(--s5); align-items: center; }
+  .g .g-pdays__ph{ margin: 0; }
+}
+@media (min-width: 64rem){ .g .g-pdays{ grid-template-columns: repeat(5, minmax(0,1fr)); } .g .g-pdays__ph{ aspect-ratio: 4 / 5; } }
+/* 24 Nov 2026 (BRIEF-private-retreat-and-images, 3): /gallery's The Work, As It Happens shows six photographs of the
+   work before its two buttons, cut to the gallery's own tile above it. */
+.g .g-work-now{ margin: var(--s5) 0 var(--s5); }
+.g .g-work-now img{ display: block; width: 100%; height: 16rem; object-fit: cover; }
+/* ==== 23 Nov 2026: /workshops, the owner's retreats brief ================
+   WHAT YOU'LL DO. The three the owner named (cooking, the brocantes, the restoration) lead, larger, with two photographs
+   side by side; the rest follow in a smaller row of one photograph each. One column on a phone, the photographs of a
+   leading three still in a pair. Here rather than gudanes.css, which arrives whole from the design side. */
+.g .g-todo{ list-style: none; margin: var(--s5) 0 0; padding: 0; display: grid; gap: var(--s5); grid-template-columns: minmax(0, 1fr); }
+.g .g-todo__i{ margin: 0; min-width: 0; }
+.g .g-todo__pics{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2); }
+.g .g-todo__f{ margin: 0; min-width: 0; }
+.g .g-todo__img{ display: block; width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; }
+.g .g-todo--more .g-todo__img{ aspect-ratio: 3 / 2; }
+.g .g-todo__h{ margin: var(--s3) 0 var(--s1, 4px); font-family: var(--display, var(--serif)); font-weight: 400; font-size: clamp(1.15rem, .6vw + 1rem, 1.35rem); line-height: 1.25; }
+.g .g-todo__i--lead .g-todo__h{ font-size: clamp(1.4rem, 1vw + 1.1rem, 1.85rem); }
+.g .g-todo__p{ margin: 0; font-size: 16px; line-height: 1.55; }
+.g .g-todo__on{ margin: var(--s2) 0 0; font-family: var(--ui); font-size: 13px; letter-spacing: .04em; line-height: 1.45; color: #73562d; }
+.g .g-todo__on a{ color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.g .g-todo .g-credit{ display: block; margin-top: 4px; }
+.g .g-todo .g-credit, .g .g-todo .g-credit a{ font-size: 12px; }   /* the Commons credit, at the phone's 12px floor */
+.g .g-todo--more{ margin-top: var(--s6, 3rem); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.18); }
+@media (min-width: 40rem){
+  .g .g-todo--more{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 60rem){
+  .g .g-todo--lead{ grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s6, 3rem) var(--s5); }
+  .g .g-todo--more{ grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s4); }
+}
+/* A retreat's card and its dates: what is included above the price, "10% reserves your place" beside it, and the
+   per-night figure last. Not .g-reserve: that is the header's Book button. */
+.g .g-wscard__foot .g-wscard__inc, .g .g-sit__inc{ margin: 0 0 var(--s2); font-family: var(--ui); font-size: 14px; letter-spacing: .04em; line-height: 1.45; color: #73562d; }
+.g .g-wscard__price:has(+ .g-toreserve), .g .g-sit__rate:has(+ .g-toreserve){ margin-bottom: 0; }
+.g .g-toreserve{ margin: 2px 0 var(--s4); font-family: var(--ui); font-size: 14.5px; font-weight: 600; line-height: 1.4; color: var(--ink); }
+.g .g-toreserve:has(+ .g-pernight){ margin-bottom: 0; }
+
+/* 24 Nov 2026 (site review, 6): the home page's room cards. The facts now come before the price, and the description
+   takes the slack, so the price and the button sit at the foot of every card and the prices line up across a row. */
+.g .g-car--cards .g-homeroom__b > .g-tags{ margin-top: var(--s4); }
+.g .g-car--cards .g-homeroom__b > .g-price{ margin-top: var(--s4); }
+/* 24 Nov 2026 (site review, 6): "Compare everything, side by side" was centred in a reading-width box, so under the
+   left card only; it is centred under both now. And the retreat column's open last line shares the class name
+   g-sow__more with that link, so it was centred too: it sits at the list's left edge like the lines above it. */
+.g .g-sow > .g-wrap > p.g-sow__more{ max-width: none; text-align: center; }
+.g .g-sow__list li.g-sow__more{ text-align: left; margin: 0; }
+/* From Ruin, Room by Room on the home page: each caption under its own photograph, the paragraph and the button
+   across the pair. One column on a phone, as the photographs are. */
+.g .g-homeresto__caps{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 var(--s4); }
+.g .g-homeresto__foot{ display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s3) var(--s6); margin-top: var(--s5); }
+.g .g-homeresto__foot .g-homeresto__p{ margin: 0; max-width: 46rem; flex: 1 1 24rem; }
+.g .g-homeresto__foot .g-homeresto__cta{ margin: 0; flex: none; }
+@media (min-width: 40rem){ .g .g-homeresto__caps{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* 24 Nov 2026 (site review, 6): La Vie de Château's two buttons on the home page, one above the other, did not share a
+   lettering: "Discover the retreats" in the house's sentence case, "THE STORY OF THE CHÂTEAU" in letter-spaced capitals.
+   The one face every other button has (above) left this link out; it has it now. */
+.g .g-full .g-full__link{ font-family: var(--serif) !important; font-size: 15px !important; font-weight: 500 !important;
+  letter-spacing: .02em !important; text-transform: none !important; }
+/* 24 Nov 2026 (site review, 6): /book's What is open next, one heading per date ("From Saturday 28 November", at 14px,
+   with the link that carries it) and the rooms open that night beneath it, a row each. */
+.g .g-nextf__g{ margin-top: var(--s4); }
+.g .g-nextf__gh{ display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s4);
+  margin: 0; padding: 0 0 var(--s2); border-bottom: 1px solid var(--line); }
+.g .g-nextf__gh .g-nextf__d{ font-size: 14px !important; }
+.g .g-nextf__g .g-nextf{ margin: 0 0 var(--s3); }
+.g .g-nextf__g .g-nextf__i{ grid-template-columns: minmax(10rem, 1fr) auto auto; }
+@media (max-width: 52rem){ .g .g-nextf__g .g-nextf__i{ grid-template-columns: 1fr; } }
+/* 24 Nov 2026 (site review, 6): on /book the live weather line was centred under a list set at the left; it sits at the
+   list's left edge, as one quiet line, as it does on /facilities. */
+.g .g-nextf-wrap ~ .g-wx, .g .g-typwx ~ .g-wx{ max-width: var(--m-read); margin-left: 0; margin-right: auto; text-align: left; }
+.g .g-nextf-wrap ~ .g-wx .g-wx__live, .g .g-typwx ~ .g-wx .g-wx__live{ justify-content: flex-start; }
+/* 24 Nov 2026 (site review, 6): /whats-on's fold as a control across the row, ruled like the rows above it: what it
+   holds on the left, "Show all" and a turning chevron on the right. */
+.g .g-agenda__more > summary{ list-style: none; justify-content: space-between; gap: var(--s4); padding: var(--s3) 0;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.g .g-agenda__more > summary::-webkit-details-marker{ display: none; }
+.g .g-agenda__moreb{ font-family: var(--serif); font-style: normal; font-size: 15px; letter-spacing: .02em;
+  color: var(--blue-deep, #14305F); white-space: nowrap; }
+.g .g-agenda__moreb::after{ content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 10px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-3px) rotate(45deg); transition: transform .2s ease; }
+.g .g-agenda__more[open] .g-agenda__moreb::after{ transform: translateY(1px) rotate(-135deg); }
+.g .g-agenda__more[open] .g-agenda__moreb{ font-size: 0; }
+.g .g-agenda__more[open] .g-agenda__moreb::after{ margin-left: 0; }
+/* 24 Nov 2026 (site review, 6): the weddings page's church. Its paragraph sat level with the foot of the photograph (or
+   halfway down it) and left a screen of empty space beside it; it starts level with the photograph's top, as the
+   page's other photograph-and-words pairs do. */
+.g .g-wed-church .g-sp{ align-items: start; }
+/* 24 Nov 2026 (site review, 8): two tap targets a thumb missed on a phone. "See N photographs" under the stays nearby on
+   the wedding, private and photoshoot pages was 108 by 28; it is at least 44 tall now. The arrows on /book's room
+   photographs are 44 by 44 at every width, as they already were below 600px. */
+.g .g-nearby__more{ display: flex; align-items: center; justify-content: center; width: fit-content; min-height: 44px; min-width: 44px; padding: 8px 14px; }
+.g .g-car--room .g-car__btn{ width: 44px; height: 44px; min-width: 44px; flex: none; }
+/* 24 Nov 2026 (site review, 8): the retreat dates on the home page's hero card ("5 – 9 DECEMBER 2026") are what a guest
+   is choosing by, and at 12px they were the smallest type on the site. 14px, still in the label's capitals. */
+.g .g-hero .g-hbook__w .g-hbook__d{ font-size: 14px; letter-spacing: .12em; }
+/* 24 Nov 2026 (booking-flow brief, 1): "Pay & book" is the one thing on the room page that takes the money, and the
+   navy filled button above made it navy on the navy booking panel, and on the navy bar at the foot of a phone: a line
+   of white words, not a button. On navy it is the home page's gold with navy words ("Discover the retreats"), the
+   full width of the panel and 48px at least. The two are measured against their panels in test_booking_flow_24_nov. */
+.g .g-dossier .g-submit, .g .g-bookbar .g-btn--solid{
+  background: var(--gilt-on-dark, #C6A66E); border-color: var(--gilt-on-dark, #C6A66E); color: var(--blue-deep);
+  min-height: 48px;
+}
+.g .g-dossier .g-submit{ width: 100%; display: flex; align-items: center; justify-content: center; }
+.g .g-dossier .g-submit:hover, .g .g-dossier .g-submit:focus-visible,
+.g .g-bookbar .g-btn--solid:hover, .g .g-bookbar .g-btn--solid:focus-visible{ background: #fff; border-color: #fff; color: var(--blue-deep); }
+/* 24 Nov 2026 (owner, on the room page a guest lands on from Book: "too much scrolling before they can enter their
+   details", and Pay & book "very hard to see"). PAY & BOOK IN EVERY STATE. The rules above make it the house's gold
+   with navy words (5.6:1, AA for text) on the navy panel and the navy bar. Here: the size of the one button that takes
+   the money, a focus ring a keyboard can see (the white of hover alone was the only sign before), a press, and the
+   moment it is sent -- the bar's button is disabled and says "Holding..." while the page goes, and the 0.65 opacity
+   every disabled submit gets took its words to 3.2:1, below AA, at the one moment the guest is reading it.
+   Measured, every state, in test_book_form_first. */
+.g .g-dossier .g-submit, .g .g-bookbar .g-btn--solid{
+  font-family: var(--serif); font-weight: 600; letter-spacing: .02em;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .3);
+}
+.g .g-dossier .g-submit{ min-height: 56px; font-size: 18px; }
+.g .g-dossier .g-submit:focus-visible, .g .g-bookbar .g-btn--solid:focus-visible{
+  outline: 3px solid var(--gilt-on-dark, #C6A66E); outline-offset: 3px;
+}
+.g .g-dossier .g-submit:active, .g .g-bookbar .g-btn--solid:active{ transform: translateY(1px); box-shadow: 0 2px 8px rgba(0, 0, 0, .3); }
+.g .g-dossier .g-submit[disabled], .g .g-bookbar .g-btn--solid[disabled]{
+  opacity: 1; cursor: progress; transform: none;
+  background: var(--gilt-on-dark, #C6A66E); border-color: var(--gilt-on-dark, #C6A66E); color: var(--blue-deep);
+}
+/* THE FORM FIRST (same day, same report). The room's photograph, its name and price, and the guest's dates open the
+   form's own column (.g-booktop); the form follows at once; the room's words, facts and gallery come after the form
+   (.g-roomabout). Being in the form's column, the booking panel -- the total and Pay & book -- runs beside it from the
+   top on a computer. The photograph is beside the name from 40rem and a short band over it on a phone, never a screen
+   of its own. The Family Suite's tall top photograph (.g-room--family .g-roomhero, 72vh) was for a page hero; this is
+   not one, so it is held to the same size here. */
+/* 25 Nov 2026 (owner: "there is a spacing issue"): the photograph was centred against the name beside it, so where the
+   name runs to two lines the photograph started well below "Votre chambre" and the booking panel. All three now
+   start on one line, the top of the form's column. */
+.g .g-booktop{ display: grid; gap: var(--s4); align-items: start; }
+.g .g-booktop .g-roomhero{
+  width: 100%; height: clamp(7.5rem, 32vw, 15rem); object-fit: cover; display: block;
+  background: var(--sand-2, #EDE5D6);
+}
+.g .g-booktop__t > :first-child{ margin-top: 0; }
+.g .g-booktop__t .g-display{ font-size: clamp(34px, 1.8vw + 22px, 50px); margin: 0 0 var(--s2); }
+.g .g-booktop__t .g-room__meta{ margin: var(--s3) 0 0; }
+.g .g-booktop .g-roomtop__dates{ margin: 0; padding: var(--s3) 14px; max-width: none; }
+.g .g-booktop .g-roomtop__dv{ margin-bottom: var(--s2); }
+/* the two temperatures on one line on a phone, as on a computer: they took a line each, and the form a line further down */
+.g .g-booktop .g-roomtop__dates .g-typwx{ margin-bottom: var(--s2); column-gap: 14px; }
+.g .g-booktop .g-roomtop__dates .g-typwx__v b{ font-size: 19px; }
+@media (min-width: 40rem){
+  .g .g-booktop{ grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); column-gap: var(--s5); row-gap: var(--s5); }
+  .g .g-booktop .g-roomhero{ height: auto; aspect-ratio: 4 / 3; }
+  .g .g-booktop .g-roomtop__dates{ grid-column: 1 / -1; padding: var(--s4) var(--s5); }
+}
+/* the night card follows the dates as the next part of the same column, not as a new section of the page */
+.g .g-cols > div > .g-booktop + .g-night{ margin-top: var(--s6) !important; }
+.g .g-roomabout{
+  margin-top: clamp(48px, 6vw, 88px); padding-top: clamp(32px, 4vw, 48px);
+  border-top: 1px solid var(--gilt-leaf, #B08D57);
+}
+.g .g-roomabout .g-room__words{ margin-top: 0; }
+/* 24 Nov 2026 (booking-flow brief, 6): on a room's form, once the calendar is up, the dates read above it as words and
+   the two date boxes step out of sight -- still in the form, still what it posts and what its check marks. */
+.g .g-datefields.is-read .g-field{ position: relative; }
+.g .g-datefields.is-read input[type="date"]{
+  position: absolute !important; width: 1px !important; height: 1px !important; min-height: 0 !important;
+  padding: 0 !important; margin: 0 !important; border: 0 !important; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+}
+.g .g-dateread{ display: block; padding: 4px 0 2px; font-family: var(--serif); font-size: 19px; line-height: 1.4; font-style: italic; color: var(--ink-2); }
+.g .g-dateread.is-set{ font-style: normal; color: var(--blue-deep); }
+.g .g-dateread[hidden]{ display: none; }
+
+/* Site review 25 Nov 2026 (4.9): nothing under 12px. The menu's "Check dates" was 11px and its "Arrival" and
+   "Departure" 10px; the photograph credits on What's On were 11px. In this file, the later of the two, so it holds. */
+.g #g-mainnav .g-qbook__h{ font-size: 12px; }
+.g #g-mainnav .g-qbook .g-rp__f > label, .g #g-mainnav .g-qbook__f > label{ font-size: 12px; }
+.g .g-credit, .g .g-credit a, .g .g-gallery figcaption .g-credit, .g .g-moment .g-credit, .g .g-rgrid .g-credit{ font-size: 12px; }
+
+/* 26 Nov 2026: an album of photographs taken upright (the restoration page's new wall and the run of rooms):
+   the prints keep their own shape rather than the album's 4:3, so neither is cropped. */
+.g .g-album--tall .g-album__f img{ aspect-ratio: 3 / 4; }
+/* Taken on a phone, about 470px across: two small prints side by side, never drawn wider than the file allows. */
+.g .g-album--tall{ display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s5); }
+.g .g-album--tall .g-album__p{ grid-column: auto; width: min(22rem, 100%); margin-top: 0; }
+.g .g-album--tall .g-album__p:nth-child(2){ margin-top: var(--s6); }
+
+/* 26 Nov 2026: the Gold Suite on an open day, on /gallery: one upright photograph, centred, with its line. */
+.g .g-open-day{ margin: var(--s7) auto 0; max-width: 26rem; }
+.g .g-open-day img{ width: 100%; height: auto; }
+.g .g-open-day__cap{ margin-top: var(--s3); font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.5; color: var(--ink-soft, #5b4a33); text-align: center; }

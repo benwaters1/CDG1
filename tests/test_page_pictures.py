@@ -55,13 +55,16 @@ PAGES = {
     "/events": [
         ("three ways to take the château, each with an arched framed photograph", r'class="g-cadre g-cadre--arch[^"]*g-way__cadre"', 3),
         # (the château at night has a house copy, so its address on the page is the copy's, not IMG_4368)
-        ("the band of four: one photograph across the page, the château at night",
-         r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*" alt="The château lit at night', 1),
+        # 24 Nov 2026: the château at night opens /press now (its one home); the band is the gates in the snow.
+        ("the band of four: one photograph across the page, the gates in the snow",
+         r'class="g-plein "[^>]*>\s*<div class="g-plein__f"><img src="[^"]*" alt="The gates in the snow', 1),
     ],
     "/events/weddings": [
         # 23 Nov 2026: the long table, every candle lit, is the hero; the two opening sections each beside a photograph.
         ("the long table as the hero", r'<section class="g-hero g-hero--wed">\s*<img[^>]*class="g-hero__img"', 1),
-        ("the two opening sections, each beside a photograph", r'<section class="g-sec g-wed-intro">.*?<div class="g-sp ">.*?<div class="g-sp g-sp--flip ">', 1),
+        # 24 Nov 2026: All Inclusive stands between them now, so they are two sections, one photograph each.
+        ("the two opening sections, each beside a photograph",
+         r'<section class="g-sec g-wed-intro"><div class="g-wrap">\s*<div class="g-sp ">.*?<section class="g-sec g-wed-intro"><div class="g-wrap">\s*<div class="g-sp g-sp--flip ">', 1),
         ("the Marquis Suite: its words beside its photographs", r'<div class="g-sp g-sp--tuck', 1),
         ("the church: its words beside the ceremony", r'<div class="g-sp g-sp--flip g-sp--tuck', 1),
         ("Weddings at Gudanes: a collage of four", r'class="g-mos g-mos--lead g-mos--4 ', 1),
@@ -277,14 +280,14 @@ def _unnamed_retreats(s, client):
         for title, wid in mine.items():
             want = list(dict.fromkeys(urlsplit(x).path for x in [cards.get(title, ""), (dates.get(wid) or [""])[0]]))
             for e in events:
-                if not e.get("url", "").endswith("/workshops/%d" % wid):
+                if not e.get("url", "").endswith(m.retreat_path(wid)):
                     continue
                 got = e.get("image") if isinstance(e.get("image"), list) else [e.get("image")]
                 if ([urlsplit(u or "").path for u in got] != want
                         or not all(urlsplit(u or "").scheme in ("http", "https") for u in got)):
                     wrong.append(f"{title}: {e.get('image')}")
         s.check("the page's event data names each retreat's own photographs", not wrong
-                and any(e.get("url", "").endswith("/workshops/%d" % ids[0]) for e in events),
+                and any(e.get("url", "").endswith(m.retreat_path(ids[0])) for e in events),
                 detail="; ".join(wrong[:2]) or "no event for the retreat with its own photo")
     finally:
         m.ROOM_PHOTO_DIR = real_dir

@@ -87,7 +87,11 @@ def _run(s, oc, conn):
     s.check("the letters that must carry the sentence are the ones test_confirmed_facts names",
             m.LETTERS_WITH_PAYMENT_LINE == {"room_confirmed", "room_balance_before",
                                             "room_balance_after", "workshop_confirmed",
-                                            "workshop_deposit_receipt", "workshop_balance_reminder"})
+                                            "workshop_deposit_receipt", "workshop_balance_reminder",
+                                            # 25 Nov 2026, the owner's yes to all
+                                            "room_payment_received", "workshop_payment_received",
+                                            "room_statement", "workshop_statement",
+                                            "room_share_request", "room_reserved"})
 
     s.section("With every letter as shipped, nothing is said")
     _restore_all_shipped(conn)

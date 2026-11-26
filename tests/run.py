@@ -188,6 +188,9 @@ SUITES = [
     "test_promo_privacy",
     "test_promo_blast",
     "test_group_mail",
+    # 25 Nov 2026: Send Bulk Email in the menu, and written with fonts and sizes.
+    "test_bulk_email_formatting",
+    "test_group_letter_schedule",
     "test_letters_named",
     "test_delivery_reports",
     "test_terminal",
@@ -213,6 +216,10 @@ SUITES = [
     "test_whats_on",
     "test_whats_on_through_the_year",
     "test_whats_on_kept_up",
+    "test_stay_occasions",
+    "test_dinner_at_gudanes",
+    "test_retreat_celebrations",
+    "test_getting_here",
     "test_ateliers",
     "test_atelier_recap",
     "test_navigation",
@@ -247,6 +254,7 @@ SUITES = [
     "test_sick_note",
     "test_insurer_notice",
     "test_home_warnings",
+    "test_home_warning_clear",
     "test_waitlist_offer",
     "test_watch_tasks",
     "test_job_outcomes",
@@ -312,6 +320,8 @@ SUITES = [
     "test_filings",
     "test_discount_outcomes",
     "test_noindex_meta",
+    "test_language_addresses",
+    "test_retreat_addresses",
     "test_structured_data",
     "test_privacy",
     "test_terms",
@@ -396,6 +406,7 @@ SUITES = [
     "test_travelling_together",
     "test_weather",
     "test_weather_jobs",
+    "test_book_weather",
     "test_own_record",
     "test_utc_slices",
     "test_stamp_times",
@@ -489,6 +500,7 @@ SUITES = [
     "test_html_email",
     "test_letters_drawn",
     "test_letter_design",
+    "test_letter_house_style",
     "test_mail_redirect",
     "test_not_live_yet",
     "test_guest_emails",
@@ -520,6 +532,10 @@ SUITES = [
     "test_saved_views",
     "test_bookings_list",
     "test_booking_page",
+    # 24 Nov 2026: the room booking path, search to Pay & book (BRIEF-booking-flow-24-nov).
+    "test_booking_flow_24_nov",
+    # 24 Nov 2026: the room page a guest books from -- the form first, and Pay & book in sight, every state.
+    "test_book_form_first",
     "test_unreachable_code",
     "test_handover_check",
     "test_repair_handover",
@@ -588,6 +604,9 @@ SUITES = [
     "test_booking_com_watch",
     "test_booking_com_statement",
     "test_booking_com_in_returns",
+    # An occasion's prices, entered on Booking.com by hand: the list, the
+    # task, and what changes after a line is entered (25 November 2026).
+    "test_booking_com_prices",
     "test_kitchen_logs",
     "test_pool_book",
     "test_city_tax_year",
@@ -598,6 +617,7 @@ SUITES = [
     "test_form_csrf_tokens",
     "test_house_inbox_delivery",
     "test_workshop_deposit_hold",
+    "test_workshop_started_again",
     "test_form_bot_guard",
     "test_bot_registrations_listed",
     "test_newsletter_signup",
@@ -628,6 +648,11 @@ SUITES = [
     # of their length, one newsletter form, the words and the photographs.
     "test_site_review_2",
     "test_public_pages_measured",
+    # 25 Nov 2026 (owner's screenshots): a tall photograph opened at the left of the screen, and a
+    # workshop guest's signature ran out through its card's frame. Measured in a browser.
+    "test_lightbox_and_signatures",
+    # 23 Nov 2026: a drawing beside every place on /whats-on, put in at the response (owner: "all the plain text is not good").
+    "test_nearby_art",
     # 9 November 2026: the photograph at the top of a page at the size it is shown.
     "test_hero_sizes",
     # 9 November 2026: each room's own words on its page, and its bathroom on the ground floor.
@@ -656,6 +681,10 @@ SUITES = [
     "test_guest_letters",
     "test_weddings_top",
     "test_private_top",
+    # 24 Nov 2026: the private page is a private retreat; JBL (BRIEF-private-retreat-and-images, 1 and 2).
+    "test_private_retreat",
+    # 25 Nov 2026: the RetreatGuru private stay, brought in and holding the château (the same brief, 1b).
+    "test_private_stay_held",
     # 23 November 2026: the photographs the owner will not have on the site, by what they show.
     "test_photos_refused",
     # 9 November 2026: the address opens the map and sits under the home page's
@@ -678,6 +707,27 @@ SUITES = [
     # 23 November 2026, the owner's website brief: /press rebuilt, the old
     # press archive redirected, the rooms' French titles, and /links.
     "test_website_brief_2026_11_23",
+    # 24 November 2026, the owner's brief for /restoration: the painted beams
+    # and the frescoes in a section of their own, and the timeline to 2026.
+    "test_restoration_page",
+    # 24 November 2026: the old addresses to The History, the crest as the
+    # site's icon, and a sharp photograph at the top of /press.
+    "test_history_redirects_and_icon",
+    # 24 November 2026, the same brief, sections 6 to 11: weddings seat eighty inside and are all
+    # inclusive, the wedding quote, the event pages most important first, /facilities beside the
+    # grounds with cycling, and every description of a retreat ending open.
+    "test_wedding_inclusive",
+    "test_facilities_domaine",
+    "test_retreats_end_open",
+    # 23 November 2026, the owner's retreats brief: /workshops leads with what
+    # a guest does, the bathrooms honestly, and what is included before the price.
+    "test_retreats_page_sells",
+    # 24 November 2026, the owner's full review of the public site: the old words, the rooms' labels,
+    # /story said once, /restaurant as The Table, rows that line up, photographs first, phone tap targets.
+    "test_site_review_24_nov",
+    "test_home_26_nov",
+    # 26 November 2026 (owner): the claw-foot bath off the Twin, the King Room and the ground-floor Twin.
+    "test_room_page_bath",
 ]
 
 

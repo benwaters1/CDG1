@@ -77,15 +77,17 @@
         {{ cadre([url_for('static', filename='img/weddings/church-pews-flowers.jpg'), 'Pews dressed with flowers for a wedding'], shape='arch', sizes='(min-width: 64rem) 22rem, 90vw', cls='g-way__cadre') }}
         <span class="g-way__ill" aria-hidden="true">{{ illus('rings') }}</span>
         <h3 class="g-h3" id="weddings">Weddings</h3>
-        <p class="g-p" >Up to forty guests inside the château and more under a marquee in the grounds, with fifteen staying the night. We look after the flowers, the meals and the drinks.</p>
+        {#- 24 Nov 2026 (owner): "yes we can have 80 inside", in the two adjoining salons; and weddings are all inclusive. -#}
+        <p class="g-p" >Up to eighty guests inside the château and more under a marquee in the grounds, with fifteen staying the night. All inclusive, for every day of your wedding.</p>
         <a class="g-way__cta" href="{{ url_for('events_weddings') }}">Marry in a Monument <span aria-hidden="true">&rarr;</span></a>
       </div>
       <div class="g-panel g-way">
         {{ cadre([url_for('static', filename='img/retreats/medieval-kitchen-table.jpg'), 'A long table by candlelight under the vaulted ceiling'], shape='arch', sizes='(min-width: 64rem) 22rem, 90vw', cls='g-way__cadre') }}
         <span class="g-way__ill" aria-hidden="true">{{ illus('wine') }}</span>
-        <h3 class="g-h3" id="celebrations">Celebrations</h3>
+        {#- Site review 25 Nov (2.9): "Celebrations" here, "Private Retreats" in the menu, for the one page it opens. -#}
+        <h3 class="g-h3" id="celebrations">Private Retreats</h3>
         <p class="g-p" >Birthdays, anniversaries, family gatherings and milestone dinners, with up to fifteen guests staying. We look after the meals, the drinks and the flowers.</p>
-        <a class="g-way__cta" href="{{ url_for('events_private') }}">A celebration of your own <span aria-hidden="true">&rarr;</span></a>
+        <a class="g-way__cta" href="{{ url_for('events_private') }}">A retreat of your own <span aria-hidden="true">&rarr;</span></a>
       </div>
       <div class="g-panel g-way">
         {{ cadre([url_for('static', filename='img/evoke/front-staircase.jpg'), 'The stone staircase, light from the tall windows'], shape='arch', sizes='(min-width: 64rem) 22rem, 90vw', cls='g-way__cadre') }}
@@ -126,16 +128,20 @@
         <p class="g-field">
           <label for="event_type">What kind of event?</label>
           <select id="event_type" name="event_type" required>
-            <option value="">— choose —</option>
+            <option value="">Choose one</option>
             {# If the route ever passes no types, a required select with only "choose" makes the enquiry unsendable. #}
             {#- 23 Nov 2026: a page that sends a reader here for one kind of event says which (?type=photoshoot from
                 /events/photoshoots), so the form opens with it chosen rather than asking again. -#}
-            {% for t in (event_types or ['wedding', 'photoshoot', 'corporate', 'other']) %}{% set EVENT_LABEL = {
-     'wedding': 'Wedding',
-     'photoshoot': 'Photography or film',
-     'corporate': 'Exclusive hire',
-     'other': 'Something else'
-   } %}<option value="{{ t }}"{% if request.args.get('type') == t %} selected{% endif %}>{{ EVENT_LABEL.get(t, t|capitalize) }}</option>{% endfor %}
+            {#- Site review 25 Nov (2.8, 2.9): the same list, in the same words and order, as the Contact page's form;
+                and one name for the private party, "a private retreat", as its page and the menu call it ("Exclusive
+                hire" here, "The whole château, for a group" there). The values are unchanged: enquiries already in
+                the database keep theirs. -#}
+            {%- set EVENT_LABEL = {'corporate': 'A private retreat', 'wedding': 'A wedding',
+                                   'photoshoot': 'A photoshoot or filming', 'other': 'Something else'} %}
+            {%- set EVENT_ORDER = ['corporate', 'wedding', 'photoshoot', 'other'] %}
+            {%- set _types = (event_types or ['wedding', 'photoshoot', 'corporate', 'other'])|list %}
+            {%- set _ordered = [] %}{% for t in EVENT_ORDER if t in _types %}{% set _ = _ordered.append(t) %}{% endfor %}{% for t in _types if t not in EVENT_ORDER %}{% set _ = _ordered.append(t) %}{% endfor %}
+            {% for t in _ordered %}<option value="{{ t }}"{% if request.args.get('type') == t %} selected{% endif %}>{{ EVENT_LABEL.get(t, t|capitalize) }}</option>{% endfor %}
           </select>
         </p>
         <p class="g-field">
@@ -175,7 +181,7 @@
         <button type="submit" class="g-btn g-submit">Send enquiry</button>
         {#- 9 Nov, evening (owner's second review, 4 and 5): What It Costs was a 355px section for one sentence; it is this line. -#}
         <p class="g-p g-ev-cost">Every event is priced on request. Tell us what you have in mind, and we will tell you what is possible.</p>
-        <p class="g-foot-note">This is an enquiry, not a booking — we will follow up to discuss availability, pricing and details. You will get a reference code and a link to check its status.</p>
+        <p class="g-foot-note">This is an enquiry, not a booking: we will follow up to discuss availability, pricing and details. You will get a reference code and a link to check its status.</p>
       </form>
     </div>
   </div>
@@ -184,7 +190,8 @@
 
 {#- 9 Nov (the brief, 4.5): the band of four as one photograph across the page.
     12 Nov 2026 (the second review, 3.3: one home per hero photograph; the gallery may repeat it): this is the château at night's one home; Seven Starry Nights shows its film under the stars. -#}
-{{ plein(['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1000w', 'The château lit at night, under the stars', '']) }}
+{#- 24 Nov 2026: the château at night went to open /press, its one home; the band is the gates in the snow. -#}
+{{ plein([url_for('static', filename='img/retreats/gate-in-snow.jpg'), 'The gates in the snow, the mountain behind', '']) }}
 
 {# 1 Oct: "Rooms in every state between ruin" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
@@ -236,7 +243,7 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
+  <img class="g-close__mark" width="62" height="62" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Tell us what you have in mind</h2>
   <p class="g-close__p">A wedding, a birthday, a shoot. Describe it and we will come back with what it would involve and what it would cost.</p>
   <div class="g-close__acts">

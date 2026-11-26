@@ -40,7 +40,7 @@
     {# Written from here, not Outlook: the app shows who it goes to first,
        leaves out anybody who asked not to be written to, and files the
        letter on each registration's history. #}
-    <a href="{{ url_for('workshop_session_email', session_id=panel.session_id) }}" class="btn-mini">Email everyone on this session</a>
+    <a href="{{ url_for('workshop_session_email', session_id=panel.session_id) }}" class="btn-mini">Send bulk email</a>
     <a href="{{ url_for('admin_workshop_session', session_id=panel.session_id) }}" class="btn-mini">The session at a glance</a>
     {% endif %}
     {% if panel.owed > 0.005 and can('workshop_session_statements') %}
@@ -152,6 +152,11 @@
       {#- The workshop's own questions, each under its own label. -#}
       {% for cr in custom_responses_by_booking.get(r['id'], []) %}<dt>{{ cr['label'] }}</dt><dd>{{ cr['value'] }}</dd>{% endfor %}
       <dt>Registered</dt><dd>{{ r['created_at']|house_day|date_short }}{% if r['decided_at'] %} <span class="upload-hint">· decided {{ r['decided_at']|house_day|date_short }}</span>{% endif %}</dd>
+      {#- An attempt they walked away from -- the card page left and the form
+          filled in again -- is named here rather than listed as a second
+          registration: it held a place, paid nothing and gave it back. -#}
+      {% if reg['attempts_left'] %}<dt>Also started</dt><dd>{% for e in reg['attempts_left'] %}{{ e['reference'] }}, {{ e['row']['created_at']|house_when }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='workshop_booking', record_id=e['id']) }}" class="small-link">What changed</a>{% endif %}{{ '; ' if not loop.last }}{% endfor %}
+        <span class="upload-hint">· left before paying, and the place given back. Not a second booking.</span></dd>{% endif %}
     </dl>
 
     {# A private room is not bookable on the public form — it is quoted per

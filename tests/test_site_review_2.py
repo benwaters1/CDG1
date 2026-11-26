@@ -95,6 +95,8 @@ def nav_mismatch(path, html):
         target = re.sub(r"^https?://[^/]+", "", href.group(1)).split("#")[0].split("?")[0] or "/"
         marked = "is-here" in attrs
         ours = path == target or (target != "/" and path.startswith(target.rstrip("/") + "/"))
+        # A retreat's page is at its name since 25 Nov (/retreats/<name>); it belongs to the retreats' list.
+        ours = ours or (target == "/workshops" and path.startswith("/retreats/"))
         if marked and not ours:
             faults.append(f"marks {target}")
         if path == target and not marked:
@@ -105,7 +107,12 @@ def nav_mismatch(path, html):
 FORBIDDEN = re.compile(
     r"\b(house|grants?|funded|funding|renovat\w*|artisans?|conservators?|padel)\b|!", re.I)
 # Proper names that carry the letters, allowed by name and nowhere else.
+# And one sentence the owner wrote on 24 Nov 2026, after the rule ("its the house as it was, full of
+# life"), on the retreats and the home page: their own later words win for those words only.
 ALLOWED = ["House & Garden", "FIN!"]
+# A guest's own words are quoted as they wrote them (owner, site review of 24 Nov 2026: "the only
+# ones are inside guests' quotes, which are verbatim and stay"). The rule is for the house's voice.
+GUEST_QUOTE = re.compile(r"(?is)<blockquote\b.*?</blockquote>")
 
 
 def forbidden_words(text):
@@ -125,7 +132,10 @@ DISH = re.compile(
 # Activities, which the owner keeps: a tasting is something you do that day. And one line the owner
 # approved by name for Noël after this brief was written (9 Nov, the retreat days read aloud,
 # test_retreat_days): carols and vin chaud by the fire. Nothing else of the kind.
-ACTIVITY = re.compile(r"(?i)a tasting of french wines|a wine tasting|wine tasting|carols and vin chaud by the fire")
+# 25 Nov (BRIEF-itinerary-wording): the same tasting, in the days' new words, "a tasting of the region's wines".
+# The tasting only: "a glass of the region's wine" on a day is still a drink, and still caught.
+ACTIVITY = re.compile(r"(?i)a tasting of french wines|a tasting of the region[’']s wines|a wine tasting|wine tasting"
+                      r"|carols and vin chaud by the fire")
 JOURNEY = re.compile(r'(?is)<ol class="g-journey">(.*?)</ol>\s*(?:<div class="g-journey__|</div></section>)')
 
 
@@ -142,7 +152,8 @@ def dishes_in_days(html):
     return out
 
 
-HOME_ORDER = ["La Vie de Château", r"The \w+ Rooms", "A Night, or la Vie de Château",
+# "Choose Your Room" since 26 Nov 2026 (owner), where it said "The Six Rooms".
+HOME_ORDER = ["La Vie de Château", "Choose Your Room", "A Night, or la Vie de Château",
               "From Ruin, Room by Room", "Ways to Spend the Days", "What Guests Say",
               "Come and see it"]
 HOME_GONE = ["France at Its Most French", "Bienvenue", "The Estate from Above", "A Night at Gudanes",
@@ -199,7 +210,7 @@ def _run(s, anon):
     s.check("the sitemap gives the public pages to read", len(pages) >= 20,
             detail=f"{len(pages)} pages")
     home = pages.get("/", "")
-    retreats = [p for p in pages if re.fullmatch(r"/workshops/\d+", p)]
+    retreats = [p for p in pages if re.fullmatch(r"/workshops/\d+|/retreats/[a-z0-9-]+", p)]
     rooms = [p for p in pages if re.fullmatch(r"/book/\d+", p)]
     s.check("and among them the home page, the retreats and the rooms",
             bool(home) and len(retreats) >= 3 and len(rooms) >= 3,
@@ -241,7 +252,10 @@ def _run(s, anon):
     s.check("the reader finds each of them",
             len(forbidden_words("the house, a grant, privately funded, a renovation, an artisan, padel, lovely!")) == 7)
     s.check("and passes the two magazine titles", forbidden_words("House & Garden and FIN! Magazine") == [])
-    said = {p: forbidden_words(visible_text(h)) for p, h in pages.items()}
+    s.check("a guest's quoted words are theirs, and the house's around them are still read",
+            forbidden_words(visible_text(GUEST_QUOTE.sub(" ", "<p>Lovely</p><blockquote>Loved it!</blockquote>"))) == []
+            and len(forbidden_words(visible_text(GUEST_QUOTE.sub(" ", "<p>Lovely!</p><blockquote>Loved it</blockquote>")))) == 1)
+    said = {p: forbidden_words(visible_text(GUEST_QUOTE.sub(" ", h))) for p, h in pages.items()}
     said = {p: w for p, w in said.items() if w}
     s.check("no public page says them", not said, detail=str(said)[:800])
 
@@ -252,6 +266,10 @@ def _run(s, anon):
     found = dishes_in_days(doctored)
     s.check("the reader finds the Kir and the cheeses, and lets the tasting be",
             found == ["day 2: 'Kir'", "day 2: 'cheeses'"], detail=str(found))
+    found = dishes_in_days('<ol class="g-journey"><li class="g-journey__d"><p>A tasting of the region’s wines.</p></li>'
+                           '<li class="g-journey__d"><p>A glass of the region’s wine on the terrace.</p></li></ol>'
+                           '</div></section>')
+    s.check("and lets the region's wines be tasted, but not poured", found == ["day 2: 'wine'"], detail=str(found))
     # A retreat has a written day-by-day when its title names one of the four plans (ws_kind in
     # _ws_copy.html); an atelier with any other title has none, and is not a failure of this rule.
     # So every planned retreat must show its days, and all four plans must be among those read --
@@ -282,7 +300,7 @@ def _run(s, anon):
 
     s.section("The home page is the owner's eight sections")
     s.check("the reader catches a section out of its place",
-            home_out_of_order("<h2>La Vie de Château</h2><h2>What Guests Say</h2><h2>The Six Rooms</h2>"
+            home_out_of_order("<h2>La Vie de Château</h2><h2>What Guests Say</h2><h2>Choose Your Room</h2>"
                               "<h2>A Night, or la Vie de Château</h2><h2>From Ruin, Room by Room</h2>"
                               "<h2>Ways to Spend the Days</h2><h2>Come and see it</h2>"
                               '<footer class="g-footer">') != [])
@@ -300,7 +318,12 @@ def _run(s, anon):
     gal = pages.get("/gallery", "")
     s.check("the reader leaves out what a template holds",
             page_imgs('<img alt="a" src="/1"><template><img alt="b" src="/2"></template>') == 1)
-    s.check("no more than forty photographs reach the page", 0 < page_imgs(gal) <= 40,
+    # 24 Nov 2026 (BRIEF-private-retreat-and-images, 3): forty-six. Two sections that showed no photograph at all now
+    # show what they are about: Rooms That No Longer Look Like This its three Then and Now pairs (six pictures), and
+    # The Work, As It Happens six of the work. Every other section still shows six and keeps the rest behind See all.
+    # Forty-seven with the photograph the site review of 24 Nov put at the top of the page.
+    # 26 Nov 2026: forty-eight, the Gold Suite on the open day of 2025, which the owner asked to have here.
+    s.check("no more than forty-eight photographs reach the page", 0 < page_imgs(gal) <= 48,
             detail=f"{page_imgs(gal)} images")
     s.check("and the rest wait behind See all", "<template data-lb-more>" in gal and "See all" in gal)
     # The pairs /restoration no longer shows, by their files: the kitchen, the bathrooms' room, its window,
@@ -427,8 +450,11 @@ def _book_cards(s, anon):
     marquis, family = cards.get("The Marquis Suite"), cards.get("The Family Suite")
     s.check("the Marquis Suite leads with the gold four-poster by the fireplace",
             bool(marquis) and "GudanesCookingintheKitchenStay59of925" in marquis[0][0], detail=str(marquis and marquis[0][:1]))
-    s.check("the Family Suite leads with the two chairs at the open windows",
-            bool(family) and "799483474" in family[0][0], detail=str(family and family[0][:1]))
+    # 24 Nov (site review, 5): a bedroom card leads with a bed. /book's header shows the suite's two beds side by side,
+    # so its card leads with the large bed, and the chairs at the open windows (11 Nov's lead) come second.
+    s.check("the Family Suite leads with a bed, the chairs at the open windows second",
+            bool(family) and len(family[0]) > 1 and "799432864" in family[0][0] and "799483474" in family[0][1],
+            detail=str(family and family[0][:2]))
     with m.app.test_request_context("/"):
         mod = m.app.jinja_env.get_template("_room_photos.html").module
         lists = {n: list(mod.ROOM_PHOTOS.get(n, [])) + list(mod.ROOM_EXTRA.get(n, [])) for n in cards}
@@ -461,9 +487,11 @@ def _book_cards(s, anon):
     words = visible_text(sec)
     for fact in ("Installed in 2019", "historic monument", "together on the ground floor",
                  "Bespoke, by Antoinette Poisson, made by hand in Paris", "Eighteenth-century terracotta tiles",
-                 "Painted with custom artwork and the château’s logo", "Luxury fittings throughout", "Luxury linen",
-                 "Luxury shampoo, conditioner and bath gel", "Heaters", "Mountain views",
-                 "The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath"):
+                 "Painted with custom artwork and the château’s logo", "Luxury fittings throughout", "Fine linen",
+                 # Site review 25 Nov: "Luxury" once rather than on three lines running, and the
+                 # three suites' bathrooms in the plural -- "a larger bathroom" read as one shared by three.
+                 "Shampoo, conditioner and bath gel", "Heaters", "Mountain views",
+                 "The King Suite, the Marquis Suite and the Family Suite each have a larger bathroom, with a bath"):
         s.check(f"and says: {fact}", fact in words)
     cards = re.findall(r'<a class="g-tags__bath" href="#bathrooms">([^<]*)</a>', page)
     s.check("every room card's bathroom says it is your own, and opens the section",

@@ -24,7 +24,7 @@
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
     {% if not session['cancelled_at'] %}<a href="{{ url_for('admin_workshop_registrations', session_id=session['id']) }}" class="btn-mini">+ Add somebody by hand</a>{% endif %}
     <a href="{{ url_for('workshop_register_print', session_id=session['id']) }}" class="small-link">Printable register</a>
-    <a href="{{ url_for('workshop_session_email', session_id=session['id']) }}" class="small-link">Write to the group</a>
+    <a href="{{ url_for('workshop_session_email', session_id=session['id']) }}" class="small-link">Send bulk email</a>
     <a href="{{ url_for('workshop_session_statements', session_id=session['id']) }}" class="small-link">Statements</a>
     <a href="{{ url_for('workshop_rooming', session_id=session['id']) }}" class="small-link">Rooming</a>
     <a href="{{ url_for('workshop_running_sheet', session_id=session['id']) }}" class="small-link">Running sheet</a>

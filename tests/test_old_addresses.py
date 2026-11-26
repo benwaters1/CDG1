@@ -27,12 +27,99 @@ WHAT THIS IS REALLY GUARDING, because "does /rooms redirect" is the easy half.
   permanently.
 """
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from _harness import Suite, clients
 
 import _harness
 
 m = _harness.m
+
+
+# Search Console, 24 Nov 2026 16:00: the nine of Google's 133 "Not found"
+# still answering 404 after 7429c7f (BRIEF-old-links-24-nov), and where each
+# must land. Permanent where an old page's ranking is worth handing on.
+LAST_NINE = {
+    "/5-four-seasons-at-the-chateau": ("/workshops", 301),
+    "/grand-chateaux-tour-2025": ("/workshops", 301),
+    "/stay-2": ("/book", 301),
+    "/chateau-letter-club-unlinked": ("/", 301),
+    "/photoshoot-and-film-shoot-terms-and-conditions": ("/terms", 302),
+    "/new-page-2": ("/", 302),
+    "/universal": ("/", 302),
+}
+
+
+def _the_last_nine(s, c):
+    s.section("The last addresses Google held as not found (24 Nov)")
+    for path, (where, code) in LAST_NINE.items():
+        r = c.get(path)
+        loc = urlparse(r.headers.get("Location") or "").path
+        s.check(f"{path} -> {where} ({code})", r.status_code == code and loc == where,
+                detail=f"{r.status_code} {loc}")
+    r = c.get("/bric-a-brac-away-stay-2026")
+    s.check("the antiques retreat's 2026 page goes to it, or the list of retreats, for now",
+            r.status_code == 302 and ("/workshops" in (r.headers.get("Location") or "")
+                                     or "/retreats/" in (r.headers.get("Location") or "")),
+            detail=f"{r.status_code} {r.headers.get('Location')}")
+    s.check("and to the same place as its autumn page",
+            r.headers.get("Location") == c.get("/bric-a-brac-away-fall").headers.get("Location"))
+
+    conn = _harness.db()
+    try:
+        # A real retreat with dates still to come: the one whose page must stay.
+        today = m.house_today()
+        real = next((w for w in conn.execute(
+            f"SELECT id FROM workshops WHERE active = 1 AND {m.WORKSHOP_IS_PUBLIC} ORDER BY id")
+            if m.public_sittings(conn, w["id"], today)), None)
+        room = conn.execute("SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+        top = conn.execute("SELECT COALESCE(MAX(id), 0) + 999 AS n FROM workshops").fetchone()["n"]
+        top_room = conn.execute("SELECT COALESCE(MAX(id), 0) + 999 AS n FROM rooms").fetchone()["n"]
+        # A retreat and a room that WERE on the site and have been switched off (site review
+        # 25 Nov: only these go to the list; a number that never was one is not found).
+        gone = conn.execute(
+            "INSERT INTO workshops (title, price_per_person, active, created_at) "
+            "VALUES ('Gone retreat (test)', 100, 0, '2026-01-01T00:00:00+00:00')"
+        ).lastrowid
+        gone_room = conn.execute(
+            "INSERT INTO rooms (name, price_per_night, active, export_token) "
+            "VALUES ('Gone room (test)', 100, 0, 'gone-room-test-token')"
+        ).lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+    r = c.get(f"/workshops/{gone}")
+    s.check("a retreat that was on the site and is switched off goes to the retreats, temporarily (302)",
+            r.status_code == 302
+            and (r.headers.get("Location") or "").split("?")[0].endswith("/workshops"),
+            detail=f"/workshops/{gone}: {r.status_code} {r.headers.get('Location')} -- an id is "
+                   "the house's to reuse, so a 301 would be wrong")
+    r = c.get(f"/workshops/{top}")
+    s.check("a number that was never a retreat is not found (404, site review 25 Nov, 2.5)",
+            r.status_code == 404, detail=f"/workshops/{top}: {r.status_code} {r.headers.get('Location')}")
+    s.check("there is a real retreat with dates to try", real is not None)
+    if real:
+        r = c.get(m.retreat_path(real['id']))
+        s.check("and a real retreat still has its own page (200)", r.status_code == 200,
+                detail=f"/workshops/{real['id']}: {r.status_code} {r.headers.get('Location')}")
+    r = c.get(f"/book/{gone_room}")
+    s.check("a room taken off the site goes to the rooms, temporarily (302)",
+            r.status_code == 302
+            and (r.headers.get("Location") or "").split("?")[0].endswith("/book"),
+            detail=f"/book/{gone_room}: {r.status_code} {r.headers.get('Location')}")
+    r = c.get(f"/book/{top_room}")
+    s.check("a number that was never a room is not found (404)", r.status_code == 404,
+            detail=f"/book/{top_room}: {r.status_code} {r.headers.get('Location')}")
+    conn = _harness.db()
+    try:
+        conn.execute("DELETE FROM workshops WHERE id = ?", (gone,))
+        conn.execute("DELETE FROM rooms WHERE id = ?", (gone_room,))
+        conn.commit()
+    finally:
+        conn.close()
+    if room:
+        s.check("and a room on sale still has its page",
+                c.get(f"/book/{room['id']}").status_code == 200)
 
 
 def run():
@@ -126,6 +213,8 @@ def run():
             c.get("/celebrations").status_code == 404,
             detail="a section covers what is beneath its own address, not "
                    "anything that starts with the same letters")
+
+    _the_last_nine(s, c)
 
     _the_squarespace_sitemap(s, c)
     _old_sections(s, c)
@@ -250,7 +339,7 @@ def _old_ateliers(s, c):
         slug = f"/chateau-ateliers/p/{TAG.lower()}-noel-lantern-weekend-atelier-2027-early-july"
         r = c.get(slug)
         s.check("matched on its name, whatever the year, month and accents",
-                (r.headers.get("Location") or "").endswith(f"/workshops/{wid}"),
+                (r.headers.get("Location") or "").endswith(m.retreat_path(wid)),
                 detail=f"{r.status_code} {r.headers.get('Location')}")
         s.check("and temporary, because the answer is read from data that changes",
                 r.status_code == 302, detail=str(r.status_code))

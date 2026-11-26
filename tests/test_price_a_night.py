@@ -104,7 +104,7 @@ def run():
         dated = visible_text(_card(page, f'<p class="g-sit__name">{TITLE}</p>'))
         s.check("so does the card for its dates", "about €930 a night" in dated, detail=dated[-200:])
 
-        code, own = _page(f"/workshops/{wid}")
+        code, own = _page(m.retreat_path(wid))
         s.check("its own page opens", code == 200, detail=f"HTTP {code}")
         dates = visible_text(_card(own, f'<p class="g-sit__name">{TITLE}</p>'))
         s.check("its dates card says about €930 a night", "about €930 a night" in dates, detail=dates[-200:])

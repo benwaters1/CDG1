@@ -89,10 +89,11 @@ def run():
         s.check("and one letter", len(letters) == 1, detail=str(len(letters)))
         _to, subject, body = letters[0] if letters else ("", "", "")
         s.check("the subject says what and who",
-                subject == "Someone wrote to us: private event — Zzcel Marchetti", detail=subject)
+                # 24 Nov 2026: private_event is "Private retreat" now; the enquiries before it still read.
+                subject == "Someone wrote to us: private retreat — Zzcel Marchetti", detail=subject)
         lines = body.split("\n")
         for want in ("Name: Zzcel Marchetti", f"Email: {TAG}.full@example.invalid",
-                     "About: Private event", "When: %s" % m.month_words(month), "Guests: 40",
+                     "About: Private retreat", "When: %s" % m.month_words(month), "Guests: 40",
                      "Their message:",
                      "A birthday dinner for my mother, forty of us, a Saturday if possible."):
             s.check(f"a line of its own: {want}", want in lines, detail=body)

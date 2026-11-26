@@ -236,7 +236,7 @@ def run():
     s.check("the stay panel pages were found", len(panel_pages) >= 2, detail=str(panel_pages))
     sitemap = anon.get("/sitemap.xml").get_data(as_text=True)
     s.check("the site map leaves it out", f"/workshops/{private['id']}<" not in sitemap
-            and "/p/" not in sitemap and f"/workshops/{public['id']}<" in sitemap,
+            and "/p/" not in sitemap and m.retreat_path(public['id']) + "<" in sitemap,
             detail=sitemap[-400:])
     whats_on = anon.get("/whats-on").get_data(as_text=True)
     s.check("What's On leaves it out", TITLE not in whats_on)
@@ -262,8 +262,15 @@ def run():
                     f"SELECT deposit_percent FROM workshops WHERE active = 1 AND {m.WORKSHOP_IS_PUBLIC}")),
             detail=str(deposit_shown))
     r = anon.get(f"/workshops/{private['id']}")
-    s.check("its numbered page is a plain 404, not a redirect to its link",
-            r.status_code == 404 and token not in r.get_data(as_text=True), detail=str(r.status_code))
+    # A number that never was is not found (site review 25 Nov 2026; it was a 302 to the list from
+    # 24 Nov), so a private one must get exactly that answer too -- anything different here would
+    # tell anybody counting which numbers are private.
+    nobody = anon.get("/workshops/987654321")
+    s.check("its numbered page answers as a number that never was, never with its link",
+            r.status_code == nobody.status_code == 404
+            and r.headers.get("Location") == nobody.headers.get("Location")
+            and token not in r.get_data(as_text=True) + (r.headers.get("Location") or ""),
+            detail=f"{r.status_code} {r.headers.get('Location')} / {nobody.status_code}")
 
     # ------------------------------------------------------------------
     s.section("The link, and only the link")
@@ -278,7 +285,7 @@ def run():
         live_page = anon.get(f"/p/{token}").get_data(as_text=True)
         s.check("and the meta is there when the site is live, not only while staging",
                 bool(NOINDEX.search(live_page)))
-        live_public = anon.get(f"/workshops/{public['id']}").get_data(as_text=True)
+        live_public = anon.get(m.retreat_path(public['id'])).get_data(as_text=True)
         s.check("while a public atelier's page stays indexable", not NOINDEX.search(live_public))
     finally:
         m.SITE_IS_LIVE = was_live
@@ -524,7 +531,7 @@ def run():
                 fam2["private_token"] is None and anon.get(f"/p/{fam['private_token']}").status_code == 404
                 and any("public again" in f for f in flashes(r)), detail=str(flashes(r)))
         s.check("and its numbered page answers again",
-                anon.get(f"/workshops/{fam['id']}").status_code in (200, 302))
+                anon.get(f"/workshops/{fam['id']}").status_code in (200, 301, 302))  # 301: to its name, since 25 Nov
     shown = oc.get("/admin/workshops/new").get_data(as_text=True)
     s.check("the form asks it in the owner's words",
             "Private: only people with the link can see and book it" in shown)

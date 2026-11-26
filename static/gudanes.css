@@ -463,6 +463,24 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-check__t b{ display: block; font-weight: 400; color: var(--blue-deep); }
 .g-check__t span{ font-size: 13px; color: var(--ink-faint); }
 
+/* Dinner at Gudanes (25 Nov 2026). The note under a room's price, in the house's quiet style: the night, the time
+   and the price, and "See the menu". Then a line a dinner night first in the extras: its words, how many for dinner,
+   the menu, and a refusal said on the line itself. */
+.g-dinnernote{ margin: var(--s3) 0 0; padding: var(--s2) 0 0; border-top: 1px solid var(--line); }
+.g-dinnernote__p{ margin: 0 0 var(--s1); font-size: 14px; line-height: 1.5; color: var(--ink-soft); }
+.g-card .g-dinnernote{ margin-top: var(--s2); }
+.g-menu-link{ color: var(--blue-deep); text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.g-extras--dinner{ margin-bottom: var(--s3); }
+.g-dinnerx{
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s2) var(--s3);
+  padding: var(--s3) var(--s4); background: var(--white); border: 1px solid var(--line);
+}
+.g-dinnerx__l{ min-width: 0; cursor: pointer; }
+.g-dinnerx__n{ display: inline-flex; align-items: center; gap: var(--s1); font-size: 14px; color: var(--ink-faint); }
+.g-dinnerx__n input{ width: 4.5rem; min-height: 44px; font-size: 16px; padding: 0 var(--s2); }
+.g-dinnerx__m, .g-dinnerx__why{ grid-column: 1 / -1; margin: 0; }
+.g-dinnerx__why{ color: var(--danger); }
+
 /* ---- Reservation summary ---------------------------------------------- */
 
 .g-dossier{ background: var(--blue-deep); color: #C9D4DF; padding: var(--s6); }
@@ -801,10 +819,16 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 }
 .g-panel-overlay.is-open{ opacity: 1; visibility: visible; }
 
+/* The drawer slides in from the LEFT. The site review of 25 Nov moved it to the
+   right, beside the Menu button; the owner, 26 Nov 2026: "the menu also pops up
+   on the right i want it on the left". overflow-x stays clipped as well as fixed
+   at the source (the hidden date fields, near the end of this file): a drawer
+   that scrolls sideways is never meant, whatever lands in it next. */
 .g-navwrap{
   position: fixed; top: 0; left: 0; bottom: 0; z-index: 59;
   width: min(24rem, 88vw); background: var(--sand);
   transform: translateX(-100%); visibility: hidden;
+  overflow-x: hidden;
   /* Closed, the drawer is off-screen but was still visibility:visible, so every
      control in it kept its place in the tab order — ten Tab presses through an
      invisible form. hidden takes it out; the delay lets the slide finish first. */
@@ -5407,12 +5431,30 @@ main img{ height: auto; }
 /* ==========================================================================
    LIGHTBOX
    ========================================================================== */
+/* 25 Nov 2026 (owner's screenshot): a portrait photograph opened hard against the
+   left edge, the arrows gone and the cross in the corner of the screen. The box
+   used to shrink to the photograph, and since 23 Nov the photograph is its own
+   full-size file: a box sizes to a picture's natural width, not the width it is
+   drawn at once max-height has scaled it, so a 2,000px file made the box 96vw
+   and the picture sat at its left, with the arrows 60px outside the screen.
+   Now the open box IS the screen, and the picture is centred in it, so its file
+   size cannot move anything. Clicking the dark around it still closes: that
+   click lands on the dialog itself. test_lightbox_and_signatures measures it. */
 .g-lb{
   border: 0; padding: 0; max-width: 96vw; max-height: 96vh; width: auto;
   background: transparent; overflow: visible;
 }
+.g-lb[open]{
+  position: fixed; inset: 0; margin: 0; box-sizing: border-box;
+  width: 100%; height: 100%; max-width: none; max-height: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 72px 76px 24px;
+}
 .g-lb::backdrop{ background: rgba(14,28,48,.92); }
-.g-lb__img{ display: block; max-width: 92vw; max-height: 82vh; width: auto; height: auto; }
+.g-lb__img{
+  display: block; flex: none; width: auto; height: auto;
+  max-width: 100%; max-height: calc(100vh - 140px); max-height: calc(100dvh - 140px);
+}
 .g-lb__cap{
   margin: var(--s3) 0 0; text-align: center; color: #E8E2D6;
   font-family: var(--ui); font-size: var(--t-ui); max-width: var(--m-wide);
@@ -5423,11 +5465,13 @@ main img{ height: auto; }
   border: 1px solid rgba(232,226,214,.4); background: rgba(14,28,48,.6);
   color: #fff; font-size: 26px; line-height: 1;
 }
-.g-lb__x{ top: -56px; right: 0; }
+.g-lb__x{ top: 12px; right: 16px; }
 .g-lb__nav{ top: 50%; transform: translateY(-50%); }
-.g-lb__nav--p{ left: -60px; }
-.g-lb__nav--n{ right: -60px; }
+.g-lb__nav--p{ left: 16px; }
+.g-lb__nav--n{ right: 16px; }
 @media (max-width: 52rem){
+  .g-lb[open]{ padding: 60px 8px 16px; }
+  .g-lb__img{ max-height: calc(100vh - 100px); max-height: calc(100dvh - 100px); }
   .g-lb__nav--p{ left: 4px; }
   .g-lb__nav--n{ right: 4px; }
   .g-lb__x{ top: 4px; right: 4px; }
@@ -10240,6 +10284,39 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
   color: var(--blue-deep); font-family: var(--ui); font-weight: 600; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; text-decoration: none !important; transition: background .2s, color .2s; }
 .g .g-full .g-full__cta:hover, .g .g-full .g-full__cta:focus-visible{ background: transparent; color: #fff; }
 .g .g-full .g-full__link{ color: #fff; font-family: var(--serif); font-style: italic; font-size: 18px; text-decoration: underline; text-decoration-color: var(--gilt-on-dark, #C6A66E); text-underline-offset: 5px; }
+
+/* =====================================================================
+   25 Nov 2026 (Dinner at Gudanes, 3b; owner: "like an advertisement"). The occasion the owner ticks, directly under
+   the video: a photograph on the left and the navy of La Pleine Expérience on the right, in its type and its gilt --
+   the line, the name in the display face, the dates large enough to read across a room, one sentence, the price,
+   Book your stay and See the menu. On a phone the photograph sits on top at 16:9 and the buttons go full width.
+   No new colour, no animation. Measured at 320 and 375px by test_dinner_at_gudanes.
+   ===================================================================== */
+.g .g-hband{ display: grid; background: var(--blue-deep); color: #fff; border-bottom: 1px solid var(--gilt-leaf); overflow: hidden; }
+@media (min-width: 48rem){ .g .g-hband{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 300px; max-height: 360px; } }
+.g .g-hband__ph{ display: block; aspect-ratio: 16 / 9; overflow: hidden; background: var(--blue-deep); }
+@media (min-width: 48rem){ .g .g-hband__ph{ aspect-ratio: auto; height: 100%; min-height: 300px; } }
+.g .g-hband__ph img{ display: block; width: 100%; height: 100%; object-fit: cover; }
+.g .g-hband__b{ min-width: 0; display: flex; flex-direction: column; justify-content: center;
+  padding: clamp(28px, 4vw, 48px) clamp(16px, 4vw, 56px); }
+.g .g-hband__k{ font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .2em; text-transform: uppercase;
+  color: var(--gilt-on-dark, #C6A66E); margin: 0 0 var(--s3); }
+.g .g-hband__h{ font-family: var(--display); font-weight: 400; font-size: clamp(30px, 2vw + 18px, 48px); line-height: 1.06;
+  margin: 0; color: #fff; overflow-wrap: anywhere; }
+.g .g-hband .g-hband__h a{ color: #fff; text-decoration: none; }
+.g .g-hband .g-hband__h a:hover, .g .g-hband .g-hband__h a:focus-visible{ text-decoration: underline; text-decoration-color: var(--gilt-on-dark, #C6A66E); text-underline-offset: 6px; }
+.g .g-hband__d{ font-family: var(--display); font-size: clamp(22px, 1vw + 16px, 30px); line-height: 1.2; color: #fff; margin: var(--s2) 0 0; }
+.g .g-hband__p{ font-family: var(--serif); font-size: 17px; line-height: 1.55; color: rgba(255,255,255,.88); margin: var(--s3) 0 0; max-width: 34rem; }
+.g .g-hband__price{ font-family: var(--serif); font-style: italic; font-size: 18px; color: #fff; margin: var(--s2) 0 0; }
+.g .g-hband__btns{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s5) 0 0; }
+.g .g-hband .g-hband__book, .g .g-hband .g-hband__menu{ display: inline-flex; align-items: center; justify-content: center;
+  min-height: 50px; padding: 0 var(--s6); font-family: var(--ui); font-weight: 600; font-size: 13px; letter-spacing: .14em;
+  text-transform: uppercase; text-align: center; text-decoration: none !important; transition: background .2s, color .2s, border-color .2s; }
+.g .g-hband .g-hband__book{ background: var(--gilt-on-dark, #C6A66E); border: 1px solid var(--gilt-on-dark, #C6A66E); color: var(--blue-deep); }
+.g .g-hband .g-hband__book:hover, .g .g-hband .g-hband__book:focus-visible{ background: transparent; color: #fff; }
+.g .g-hband .g-hband__menu{ background: transparent; border: 1px solid rgba(255,255,255,.7); color: #fff; }
+.g .g-hband .g-hband__menu:hover, .g .g-hband .g-hband__menu:focus-visible{ border-color: var(--gilt-on-dark, #C6A66E); }
+@media (max-width: 47.99rem){ .g .g-hband__btns > *{ flex: 1 1 100%; } }
 .g .g-full__k{ font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .16em; text-transform: uppercase; color: var(--gilt-on-dark, #C6A66E); margin: 0 0 var(--s3); }
 .g .g-full__list{ list-style: none; margin: 0; padding: 0; border-top: 1px solid rgba(198,166,110,.5); }
 .g .g-full__row{ border-bottom: 1px solid rgba(198,166,110,.5); }
@@ -10537,8 +10614,9 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 /* 2 Oct - the facilities as a compact strip (room page) */
 .g .g-fstrip{ list-style: none; margin: var(--s6) 0 0; padding: var(--s5) 0 0; border-top: 1px solid var(--gilt-leaf); display: grid; gap: var(--s4) var(--s3);
   grid-template-columns: repeat(3, minmax(0,1fr)); }
-@media (min-width: 48rem){ .g .g-fstrip{ grid-template-columns: repeat(5, minmax(0,1fr)); } }
-@media (min-width: 72rem){ .g .g-fstrip{ grid-template-columns: repeat(9, minmax(0,1fr)); } }
+/* 24 Nov 2026: twelve items on rows of three, four and six, so no row is left with one (it was five and nine, for ten). */
+@media (min-width: 48rem){ .g .g-fstrip{ grid-template-columns: repeat(4, minmax(0,1fr)); } }
+@media (min-width: 72rem){ .g .g-fstrip{ grid-template-columns: repeat(6, minmax(0,1fr)); } }
 .g .g-fstrip > .g-fstrip__i{ max-width: none; display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--s2); }
 .g .g-fstrip__ill{ display: block; width: 52px; color: var(--gilt); }
 .g .g-fstrip .g-fstrip__l{ font-family: var(--serif); font-size: var(--t-small) !important; line-height: 1.35; color: var(--ink-2); }
@@ -11199,6 +11277,22 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-wx__k{ font-size: 12px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
 .g .g-wx__t{ font-family: var(--display); font-size: 21px; color: var(--blue-deep); }
 .g .g-wx__n{ flex-basis: 100%; font-style: italic; }
+/* 25 Nov 2026 (owner: "we can do this a bit better") - Stay's weather as ONE card: the dates' weather (the forecast a
+   night at a time, or the month's averages), then "Right now at the château" under a rule, so the two can never be
+   read as the same thing. The rows carry the padding the plain box has on itself. */
+.g .g-typwx--card{ display: block; padding: 0; }
+.g .g-typwx--card > .g-typwx__row{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; margin: 0; padding: 12px 16px; }
+.g .g-typwx--card > .g-typwx__row[hidden]{ display: none; }
+.g .g-typwx--card > .g-typwx__row + .g-typwx__row:not([hidden]){ border-top: 1px solid rgba(115,86,45,.2); }
+.g .g-typwx--card > [data-typwx][hidden] + .g-typwx__now{ border-top: 0; }
+.g .g-typwx__nights{ flex-basis: 100%; display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.g .g-typwx__night{ display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; margin: 0; }
+.g .g-typwx__night .g-typwx__d{ min-width: 6.5em; font-weight: 500; color: var(--ink); }
+.g .g-typwx__night .g-typwx__f{ min-width: 0; overflow-wrap: anywhere; }
+.g .g-typwx__night b{ font-family: var(--display); font-weight: 400; font-size: 19px; color: var(--blue-deep); }
+.g .g-typwx__now .g-typwx__k{ flex-basis: auto; }
+.g .g-typwx__nv b{ font-family: var(--display); font-weight: 400; font-size: 21px; color: var(--blue-deep); }
+.g .g-typwx__at, .g .g-typwx__age{ color: var(--ink-2); }
 /* The room page's price, in the same voice as the cards */
 .g .g-room__meta{ font-family: var(--ui); font-size: 14.5px; color: var(--ink-2); }
 .g .g-room__meta .g-fig{ font-family: var(--display); font-weight: 400; font-size: clamp(27px, .6vw + 22px, 32px); color: var(--blue-deep); margin-right: .35rem; }
@@ -12319,12 +12413,16 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g section.rc-says .rc-mark{display:block;max-width:none;font-family:"Cormorant Garamond",Georgia,serif;font-size:88px;line-height:1;height:44px;margin:-6px 0 4px;color:#C5A24A;text-align:center}
 .g section.rc-says blockquote.rc-q{border:0;padding:0;margin:0 auto;max-width:22ch;text-align:center;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:29px;line-height:1.35;color:#14305f;background:none}
 .g section.rc-says blockquote.rc-q::before, .g section.rc-says blockquote.rc-q::after{content:none}
-.g section.rc-says figcaption.rc-sig{display:flex;align-items:center;justify-content:center;gap:12px;margin:30px 0 0;padding:0;border:0;white-space:nowrap;max-width:none;
+/* 25 Nov 2026 (owner's screenshot): the signature could not wrap, so "WORKSHOP GUEST, AUTUMN 2023" beside its seal
+   was wider than a card three to a row: it ran out through the gilt frame on the right and, being centred, put the
+   seal over the frame on the left. It wraps now, the label in two balanced lines beside the seal, and only when the
+   card is too narrow for one. test_lightbox_and_signatures measures the ink against the card. */
+.g section.rc-says figcaption.rc-sig{display:flex;align-items:center;justify-content:center;gap:12px;margin:30px 0 0;padding:0;border:0;max-width:none;
   font-family:"Cormorant Garamond",Georgia,serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#9A7B2E}
 /* The signature is not a photograph's description, so the 15 Oct rule that hides every figcaption in main (with
    !important) lets it through, as it does the wedding section's labels. */
 .g main section.rc-says figcaption.rc-sig{display:flex !important}
-.g section.rc-says .rc-sig .rc-sig__l{font-size:inherit;color:inherit}
+.g section.rc-says .rc-sig .rc-sig__l{font-size:inherit;color:inherit;min-width:0;text-align:left;text-wrap:balance}
 .g section.rc-says .rc-sig .g-seal{width:34px;height:34px;flex:none}
 .g section.rc-says .rc-reply{margin:22px auto 0;max-width:32ch;text-align:center}
 @media (max-width:640px){
@@ -12511,6 +12609,13 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g #g-mainnav .g-qbook__row{ flex-direction: column; gap: var(--s3); }
 .g #g-mainnav .g-qbook__f{ flex: 1 1 auto; width: 100%; }
 .g #g-mainnav .g-qbook__f input{ width: 100%; min-width: 0; font-size: 16px; }
+/* Site review 25 Nov (2.1): the rule above also caught the two native date fields
+   the range picker keeps underneath it. They are position:absolute, so "100%" was
+   the whole drawer measured from the field's own left edge, and they ran 65px past
+   the panel's right side -- the drawer's horizontal scrollbar. The field is now
+   their containing block and they are back to the 1px the picker gives them. */
+.g #g-mainnav .g-rp__f.is-rp{ position: relative; }
+.g #g-mainnav .g-rp__f.is-rp input[type="date"]{ width: 1px; min-width: 0; }
 
 /* =====================================================================
    23 Nov 2026 - CENTRED, AND CLOSER (owner: "whys so much of the site off
@@ -12537,3 +12642,97 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-wscards:has(> .g-wscard:nth-child(4):last-child) > .g-wscard{
     flex-basis: calc((100% - var(--s5)) / 2); max-width: calc((100% - var(--s5)) / 2); }
 }
+
+/* Site review 25 Nov (2.17): the year over each group of occasions, when they run into a second year. */
+.g .g-occ-year{ margin: var(--s7) 0 var(--s4); }
+
+/* Site review 25 Nov (4.7): a hero whose photograph must not be written over (the gallery's guests on the
+   scaffold). The photograph in flow at its own height, the title in a navy band beneath it, no wash. */
+.g .g-hero.g-hero--below{ display: flex; flex-direction: column; min-height: 0; padding-top: 0; }
+.g .g-hero--below .g-hero__img{ position: static; width: 100%; height: clamp(320px, 62vh, 680px); object-fit: cover; object-position: 50% 32%; }
+.g .g-hero--below .g-hero__wash{ display: none; }
+.g .g-hero--below .g-hero__in{ position: static; max-width: none; padding: var(--s6) var(--s5) var(--s7); background: var(--blue-deep); }
+
+
+/* ==========================================================================
+   SITE REVIEW, 25 NOVEMBER 2026: section 4 (design)
+   ========================================================================== */
+/* 4.1 The header, folded: its links did not fit, so the Menu button carries them (script in public_base.html). */
+.g .g-top__in.is-folded > .g-nav{ display: none; }
+.g .g-top__in.is-folded > .g-navbtn{ display: inline-flex; }
+
+/* 4.2 Ways to Spend the Days: a landscape photograph in the wider column and the words beside it, rather than a tall
+   portrait with one line of text in the middle of a half-empty navy column. */
+@media (min-width: 52rem){
+  .g .g-plaisirs__panel{ grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); }
+  .g .g-plaisirs__img{ aspect-ratio: 4 / 3; }
+}
+
+/* 4.3 What Guests Say: each card its own height. Stretched to the tallest, two were mostly blank parchment. */
+.g section.rc-says .rc-grid{ align-items: start; }
+
+/* 4.5 A retreat's invitation: the words start under their heading. Centred beside a tall photograph they began
+   130px and more below it. */
+.g .g-h2--lead + .g-sp{ align-items: start; }
+
+/* 4.6 A day with no photograph of its own: its drawing is a small ornament in the card's corner, as on a phone,
+   rather than a 9rem column where a photograph would go -- which read as a picture that had not loaded. */
+@media (min-width: 40.01rem){
+  .g .g-journey__card:not(.g-journey__card--pic){ grid-template-columns: minmax(0, 1fr); }
+  .g .g-journey__card:not(.g-journey__card--pic) > .g-journey__ill{ position: absolute; top: var(--s4); right: var(--s4); width: 3.6rem; opacity: .7; }
+  .g .g-journey__card:not(.g-journey__card--pic) .g-journey__t{ padding-right: 4.2rem; }
+}
+
+/* 4.8 The Book panel: "Manage an existing booking" sat on the panel's bottom edge. */
+.g .g-bookmenu__opt--sm:last-child{ padding-bottom: var(--s5); }
+
+/* 4.10 The journey table on a phone: each journey is a card, each value led by its heading. The comparison
+   table's two-column phone layout split "From / To / How / How long" two by two, and nothing lined up. */
+.g .g-jt__k{ display: none; }
+@media (max-width: 44rem){
+  .g table.g-journey-times thead{ display: none; }
+  .g table.g-journey-times tr{ display: block; padding: var(--s3) 0; border-bottom: 1px solid rgba(115,86,45,.16); }
+  .g table.g-journey-times tbody th, .g table.g-journey-times tbody td{ display: block; width: auto; border: 0; padding: 2px var(--s3); }
+  .g table.g-journey-times tbody th{ font-weight: 600; }
+  .g .g-jt__k{ display: inline; font-family: var(--ui); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #73562d; margin-right: .4em; }
+}
+
+
+/* 2.3 The rooms side by side, on /book (site review 25 Nov 2026). */
+.g .g-rcmp{ width: 100%; border-collapse: collapse; font-size: 15px; margin-top: var(--s5); }
+.g .g-rcmp th, .g .g-rcmp td{ padding: var(--s3); border-bottom: 1px solid rgba(115,86,45,.16); text-align: left; vertical-align: top; line-height: 1.45; color: var(--ink); font-weight: 400; }
+.g .g-rcmp thead th{ font-family: var(--ui); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #73562d; border-bottom: 1px solid rgba(115,86,45,.35); }
+.g .g-rcmp tbody th a{ font-family: var(--display); font-size: 1.1rem; color: var(--blue-deep); text-decoration: none; }
+.g .g-rcmp tbody th a:hover{ text-decoration: underline; }
+.g .g-rcmp__plain{ display: block; font-size: 13px; color: var(--ink-soft); }
+.g .g-rc__k{ display: none; }
+@media (max-width: 44rem){
+  .g .g-rcmp thead{ display: none; }
+  .g .g-rcmp tr{ display: block; padding: var(--s3) 0; border-bottom: 1px solid rgba(115,86,45,.16); }
+  .g .g-rcmp tbody th, .g .g-rcmp td{ display: block; border: 0; padding: 2px var(--s3); }
+  .g .g-rc__k{ display: inline; font-family: var(--ui); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #73562d; margin-right: .4em; }
+}
+
+
+/* ==========================================================================
+   26 NOVEMBER 2026 (owner: "its so dark")
+   ========================================================================== */
+/* The home hero: the photograph seen, not a navy veil over it. The wash was
+   28% navy at the top and 78% at the foot over a misty, grey film, which read
+   as dusk on a page about light and mountains. Lighter, and the words carry
+   their own soft shadow instead, so they still read on the palest frame. */
+.g .g-hero__wash{
+  background: linear-gradient(180deg,
+    rgba(14,28,48,.10) 0%,
+    rgba(14,28,48,0) 30%,
+    rgba(14,28,48,.22) 70%,
+    rgba(14,28,48,.50) 100%);
+}
+.g .g-hero__eyebrow, .g .g-hero__title, .g .g-hero__motto, .g .g-hero__fact,
+.g .g-hero .g-hist-tag--home a{
+  text-shadow: 0 1px 3px rgba(10,22,40,.45), 0 2px 18px rgba(10,22,40,.55);
+}
+
+/* Manage a booking, in the menu, under its dates (owner, 26 Nov 2026). */
+.g #g-mainnav .g-qmanage{ margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.22); }
+.g #g-mainnav .g-qmanage .g-qbook__go{ margin-top: var(--s3); }

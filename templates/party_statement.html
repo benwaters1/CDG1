@@ -14,7 +14,7 @@
   <h1>{{ party.party['name'] }}</h1>
   <div style="display:flex; gap:10px; align-items:center;">
     <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">All bookings</a>
-    {% if bills and can('party_email') %}<a href="{{ url_for('party_email', party_id=party.party['id']) }}" class="btn-ghost">Email everyone in this party</a>{% endif %}
+    {% if bills and can('party_email') %}<a href="{{ url_for('party_email', party_id=party.party['id']) }}" class="btn-ghost">Send bulk email</a>{% endif %}
     {% if party.owed > 0.005 and can('party_statements') %}<a href="{{ url_for('party_statements', party_id=party.party['id']) }}" class="btn-ghost">Send statements to everyone</a>{% endif %}
   </div>
 </div>

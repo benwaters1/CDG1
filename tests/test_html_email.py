@@ -140,7 +140,7 @@ def run():
                 "the pin below" not in blank,
                 detail="the sentence and the buttons stand or fall together")
         s.check("it tells them to telephone instead",
-                "talk you up the last few miles" in blank)
+                "talk you up the last few hundred metres" in blank)
         s.check("and still says not to search the address",
                 "Do not search the address" in blank,
                 detail="that is the actual advice, and it is true either way")

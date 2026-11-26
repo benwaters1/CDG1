@@ -1,13 +1,15 @@
 {% extends "public_base.html" %}
 {% from '_illus.html' import illus %}
-{% from '_ws_copy.html' import ws_lead, ws_copy with context %}
+{% from '_ws_copy.html' import ws_lead, ws_copy, ws_kind with context %}
 {% set sticky_bar = 'atelier' %}
 {% set crumbs = [('Retreats', None)] %}
-{% block title_fr %}Les Retraites : la vie de château{% endblock %}
-{% block description_fr %}Trois à sept nuits de vie de château à Gudanes : la cuisine et les chefs du château, les marchés et les brocantes de l’Ariège, châteaux et grottes, la restauration, et de longues soirées aux chandelles.{% endblock %}
-{% block title %}La Vie de Château: Retreats at Château de Gudanes{% endblock %}
-{% block description %}Three to seven nights of French country-house life at Château de Gudanes: the kitchen, the markets and brocantes of the Ariège, castles and caves, and long candlelit evenings.{% endblock %}
-{% block og_desc %}Three to seven nights of French country-house life at Château de Gudanes: the kitchen and the château’s chefs, the markets and brocantes of the Ariège, castles and caves, the restoration, and long candlelit evenings.{% endblock %}
+{% block title_fr %}Les séjours : la vie de château{% endblock %}
+{% block description_fr %}Trois à sept nuits de vie de château à Gudanes : la cuisine et les chefs du château, les marchés et les brocantes de l’Ariège, châteaux et grottes, la restauration, de longues soirées aux chandelles, et bien plus encore.{% endblock %}
+{#- Site review 25 Nov: it read "... Retreats at Château de Gudanes — Château de Gudanes"; the base adds the name. -#}
+{% block title %}La Vie de Château: Retreats{% endblock %}
+{#- Site review 25 Nov: descriptions over 160 characters are cut short by Google; this one is under. -#}
+{% block description %}Three to seven nights of château life at Gudanes: the kitchen, the markets and brocantes of the Ariège, castles and caves, candlelit evenings and much more.{% endblock %}
+{% block og_desc %}Three to seven nights of French country-house life at Château de Gudanes: the kitchen and the château’s chefs, the markets and brocantes of the Ariège, castles and caves, the restoration, long candlelit evenings and so much more.{% endblock %}
 {% block og_image %}{{ url_for('static', filename='img/retreats/guests-toasting.jpg', _external=True) }}{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
@@ -26,7 +28,7 @@
    workshop in full with a sample day, then stay/arrival/inclusions. #}
 
 {#- 26 Oct (owner, the retreats copy deck, section 2): the page rewritten around one idea. People come to Gudanes for
-    France; a retreat is France at its most French, in a château built in 1741, very nearly lost and coming back to life.
+    France; a retreat is France at its most French, in a château begun in 1741, very nearly lost and coming back to life.
     It replaces the opening, the glance panel ("three for the brocantes, five for the kitchen..."), Why a Retreat,
     Choose Your Experience, A Small Group and the atelier gloss, all of which sold the earlier idea. The photographs are
     the owner's picks, the house's own copies (_retreat_photos.html); none is shown twice on the page. -#}
@@ -41,16 +43,99 @@
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     {# No count of retreats anywhere (owner, 28 Sept: the programme is not fixed; they are added as she pleases). #}
-    <p class="g-hero__eyebrow" lang="fr">Les retraites</p>
+    <p class="g-hero__eyebrow" lang="fr">Les séjours</p>
     <h1 class="g-hero__title">La Vie de Château</h1>
-    <p class="g-hero__lede">A few days of French château life, in rooms brought back from ruin.</p>
+    {#- 23 Nov (owner's retreats brief, 1): the three that sell a retreat are named on the hero and in the opening line --
+        the cooking classes, the brocantes and the restoration. -#}
+    <p class="g-hero__lede">Cooking with the château’s chefs, antiquing in the brocantes, and the frescoes coming back to the light.</p>
     <p class="g-hero__cta"><a href="#dates" class="g-btn g-btn--solid">See every date</a> <a href="#compare" class="g-btn">Compare with a stay</a></p>
   </div>
 </section>
 
+{#- 23 Nov (owner's retreats brief, 3): the page opened on what a retreat is NOT ("This is not a hotel stay, and it is
+    not a course"). It says what it is. -#}
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-lede-first">This is not a hotel stay, and it is not a course. It is the life of a French château as it was meant to be lived: unhurried mornings, long lunches, the market and the brocante, the kitchen, the apéritif, and dinner that lasts the evening.</p>
-  <p class="g-p">You stay within the château itself, with a small company of guests and no one else. Each retreat has its theme: the kitchen, Christmas, the brocantes, the old crafts, or simply a French summer. Around it, the château does what it was built to do. Take part in everything, or nothing at all.</p>
+  <p class="g-p g-lede-first">A few days of French château life: cooking classes with the château’s chefs, antiquing in the brocantes of the Ariège, the frescoes coming back from under the plaster, long candlelit dinners, and so much more besides. Take part in everything, or nothing at all.</p>
+  <p class="g-p">You stay within the château itself, with a small company of guests and no one else. Each retreat has its theme: the kitchen, Christmas, the brocantes, or simply a French summer. Around it, the château does what it was built to do.</p>
+</div></section>
+
+<!-- ============ WHAT YOU'LL DO ============ -->
+{#- 23 Nov 2026 (owner's retreats brief, 1: "i dont know why theyre not selling", "have we got markets and cooking
+    classes and stuff?", "and restoration of 16th century fresco beams"). What a guest does was scattered across the
+    cards, one line of A Day at Gudanes and The Table; the restoration, the thing the château is known for, had one
+    phrase. Here it is in one place, high on the page. The three the owner named lead, larger, with two photographs
+    each (cooking, the brocantes and antiquing, the restoration); the rest follow, smaller, one photograph each.
+    All of it optional, and never hours of hands-on work: the themes are the draw, and guests also simply rest.
+    WHICH RETREAT. Each one says which retreats on offer include it, read from the retreats themselves (ws_kind), so a
+    retreat taken off sale drops out of the line. The restoration is Cooking in the Cuisine and Seven Starry Nights
+    only (owner, 23 Nov: "cooking and 7 night can both say it"); Noël and Antique & French Finds never imply it.
+    The kinds are the day plans' own (_ws_copy.html): Mirepoix's market on Cooking and Seven, not the three nights
+    (they do not go to Mirepoix) and not Noël (no outings in winter); the brocantes on all but Noël; Foix castle and
+    Lombrives on Cooking and Seven; the river and yoga on Seven. The pool and the evenings outdoors follow the season
+    (no pool on Cooking, too cold; none of it at Noël), so those say so. Photographs: none is shown anywhere else
+    on this page (test_page_pictures), nor drawn large on another (test_site_review_2: the brocante stalls are Antique &
+    French Finds', the woman at the medallion /restoration's), and none is a Commons photograph the deck took off.
+    test_retreats_page_sells holds the section. -#}
+{%- macro on_which(kinds) -%}
+{%- set _hit = [] -%}{%- set _all = namespace(v=(workshops|length > 0)) -%}
+{%- for _w in (workshops or []) -%}{%- if ws_kind(_w)|trim in kinds -%}{%- set _ = _hit.append(_w) -%}{%- else -%}{%- set _all.v = false -%}{%- endif -%}{%- endfor -%}
+{%- if _all.v -%}On every retreat
+{%- elif _hit -%}On {% for _w in _hit %}<a href="{{ workshop_page_url(_w) }}">{{ _w['title'] }}</a>{% if loop.revindex == 2 %} and {% elif not loop.last %}, {% endif %}{% endfor %}
+{%- else -%}On selected retreats{%- endif -%}
+{%- endmacro %}
+{#- What a retreat includes, for its card and its dates (owner's retreats brief, 3), as true for that retreat: the
+    transfers and the excursions are its own ticks (tx_flag / ex_flag; the four nights are spent at the château). -#}
+{%- macro ws_includes(w) -%}
+{%- set _t = tx_flag(w)|trim == 'yes' -%}{%- set _e = ex_flag(w)|trim == 'yes' -%}
+{#- 23 Nov (owner): "also include wine tasting for all 3 workshops"; Noël has one too (by the fire). -#}
+{%- if _t and _e -%}Every meal, the wine, a wine tasting, transfers and excursions
+{%- elif _t -%}Every meal, the wine, a wine tasting and transfers
+{%- elif _e -%}Every meal, the wine, a wine tasting and excursions
+{%- else -%}Every meal, the wine and a wine tasting, at the château{%- endif -%}
+{%- endmacro %}
+{%- set TODO_LEAD = [
+  ('cooking', 'Cooking with the chefs', 'French classics and recipes from the château’s eighteenth-century cookbook, at the stove with the château’s chefs and pastry chef.',
+   [('cooking-class-hands', 'The cooking class from above, hands at work'), ('pastry-chef', 'The pastry chef at work in the pastry kitchen')], ['noel', 'cooking', 'finds', 'starry']),
+  ('brocantes', 'The brocantes', '<em lang="fr">Chiner</em> in the brocantes and <em lang="fr">vide-greniers</em> of the Ariège, for old French linen, copper and faïence.',
+   [('brocante-plane-trees', 'A brocante under the plane trees, bunting overhead'), ('guests-with-finds', 'Guests with their finds from the brocante')], ['cooking', 'finds', 'starry']),
+  ('restoration', 'The restoration', 'Uncover the château’s Renaissance frescoes and its sixteenth-century painted beams with the restorers, brush in hand.',
+   [('guests-uncovering-fresco', 'Guests uncovering a fresco on the wall'), ('guest-at-a-fresco', 'A guest freeing a fresco from the plaster')], ['cooking', 'starry'])
+] -%}
+{%- set TODO_MORE = [
+  ('markets', 'The markets', 'Market day at Mirepoix under its medieval arcades: cheeses, charcuterie and the morning’s produce.', 'market-charcuterie', 'Charcuterie on a market stall', ['cooking', 'starry'], ''),
+  ('castles', 'Castles and caves', 'Foix castle above the town, and the great cave at Lombrives.', 'foix-castle', 'Foix castle above the town', ['cooking', 'starry'], ''),
+  ('mountains', 'The mountains and the river', 'A walk in the hills, the river, yoga in the grounds.', 'mountain-walk', 'A walk in the mountains', ['starry'], ''),
+  ('leisure', 'At leisure', 'The pool, the tennis court and the gardens, or enjoy a glass of wine in the lounge.', 'the-pool', 'The pool, the mountains beyond', [], 'The pool and the tennis court with the season'),
+  ('evenings', 'The evenings', 'The apéritif as the mountains turn blue, a film under the stars, and a last-night banquet with dancing.', 'dancing-in-pink', 'Dancing on the last night', [], 'The banquet on every retreat; the rest with the season')
+] -%}
+<section class="g-sec g-todo-sec" id="what-you-do" aria-labelledby="todo-h"><div class="g-wrap">
+  <p class="g-fr">Ce que vous ferez <span class="g-fr__en">What you will do</span></p>
+  <h2 id="todo-h" class="g-place">What You’ll Do</h2>
+  <p class="g-p g-lede-first">Three things above all: the château’s kitchen, the brocantes, and the restoration. Around them, the markets, the valley and the long evenings. All of it is optional, and there is always time simply to rest.</p>
+  <div class="g-todo g-todo--lead">
+    {%- for key, name, line, photos, kinds in TODO_LEAD %}
+    <article class="g-todo__i g-todo__i--lead" id="todo-{{ key }}">
+      <div class="g-todo__pics">
+        {%- for slug, alt in photos %}
+        <figure class="g-todo__f">{{ pic(rsrc(slug), alt, sizes='(min-width: 64rem) 16rem, 46vw', cls='g-todo__img') }}</figure>{{ rcredit(slug) }}
+        {%- endfor %}
+      </div>
+      <h3 class="g-todo__h">{{ name }}</h3>
+      <p class="g-todo__p">{{ line|safe }}</p>
+      <p class="g-todo__on">{{ on_which(kinds) }}</p>
+    </article>
+    {%- endfor %}
+  </div>
+  <ul class="g-todo g-todo--more">
+    {%- for key, name, line, slug, alt, kinds, season in TODO_MORE %}
+    <li class="g-todo__i" id="todo-{{ key }}">
+      <figure class="g-todo__f">{{ pic(rsrc(slug), alt, sizes='(min-width: 64rem) 13rem, 46vw', cls='g-todo__img') }}</figure>{{ rcredit(slug) }}
+      <h3 class="g-todo__h">{{ name }}</h3>
+      <p class="g-todo__p">{{ line|safe }}</p>
+      <p class="g-todo__on">{% if kinds %}{{ on_which(kinds) }}{% else %}{{ season }}{% endif %}</p>
+    </li>
+    {%- endfor %}
+  </ul>
 </div></section>
 
 
@@ -109,19 +194,23 @@
         {% if rows %}
         <p class="g-wscard__dates">{% for r in rows[:3] %}{{ r.session['start_date']|date_short }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
         {% endif %}
-        {# What this one includes beyond the house (owner, 1 Oct) - the page says "each workshop says", so each card does. #}
-        {%- set _ctx = tx_flag(w)|trim == 'yes' -%}{%- set _cex = ex_flag(w)|trim == 'yes' -%}
-        <p class="g-wscard__inc">{% if _ctx and _cex %}Transfers and excursions included{% elif not _ctx and not _cex %}Spent at the château{% elif _ctx %}Transfers included{% else %}Excursions included{% endif %}</p>
       </div>
       {#- 26 Oct (owner): each retreat's card line, from the deck. -#}
       <p class="g-p g-wscard__blurb">{{ ws_lead(w) }}</p>
       <div class="g-wscard__foot">
+        {#- 23 Nov (owner's retreats brief, 3 and 4): what is included first, then the price, then "10% reserves your
+            place" beside it. The cards led with the price and "about €800 a night" under it, which a guest read
+            against a room at €270 before seeing what the retreat includes. The per-night figure (owner, 23 Oct)
+            stays, below all three. What is included is this retreat's own (owner, 1 Oct). -#}
+        <p class="g-wscard__inc">{{ ws_includes(w) }}</p>
         {% if w['price_per_person'] %}
         {#- The figure is the Admin's, never typed into the words: the owner lowered every price on 26 Oct. -#}
         <p class="g-wscard__price">
           <span class="g-fig" data-eur="{{ w['price_per_person'] }}">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span>
           <span>per person · nothing to pay at the end</span>
         </p>
+        {%- set _rl = reserve_line(w, rows|map(attribute='session')|list) %}{% if _rl %}
+        <p class="g-toreserve">{{ _rl }}</p>{% endif %}
         {#- 23 Oct (owner): what it comes to a night, from the price and the nights (a_night in app.py). -#}
         {%- set _an = a_night(w) %}{% if _an %}
         <p class="g-pernight">{{ _an }}</p>{% endif %}
@@ -141,10 +230,11 @@
 <section class="g-sec g-day-sec"><div class="g-wrap">
   <p class="g-fr">Une journée à Gudanes <span class="g-fr__en">A day at Gudanes</span></p>
   <h2 class="g-place">A Day at Gudanes</h2>
+  {#- 23 Nov: the cooking class's photograph went to What You'll Do; the morning has the restorers' scaffold it names. -#}
   <ol class="g-day g-day--alt">
     {%- for slug, alt, fr, en, line in [
       ('crepe-cart', 'Crêpes made at the crêpe cart, in a red beret', 'Le petit-déjeuner', 'Breakfast', 'Bread and croissants from the village <em lang="fr">boulangerie</em>, coffee on the terrace, and on some mornings the crêpe cart.'),
-      ('cooking-class-hands', 'The cooking class from above, hands at work', 'La matinée', 'The morning', 'At the stove with the chefs, at the market with the producers, or on the restorers’ scaffold.'),
+      ('restoration-scaffold', 'Guests on the restorers’ scaffold among the gilded panels', 'La matinée', 'The morning', 'At the stove with the chefs, at the market with the producers, or on the restorers’ scaffold.'),
       ('long-lunch-outdoors', 'A long lunch outdoors, the mountains beyond', 'Le déjeuner', 'Lunch', 'A long table in the garden, or lunch out in the valley: Foix beneath its castle, or Ax-les-Thermes among the hot springs.'),
       ('sorbet-pouring', 'Wine poured over sorbet in a crystal coupe', 'L’après-midi', 'The afternoon', 'The pool and a glass of rosé, pétanque on the lawn, homemade ice cream, the library, or an easel and a box of watercolours. Or a brocante, or the great cave at Lombrives.'),
       ('pink-cocktails', 'Pink cocktails on a silver tray', 'L’apéritif', 'As the light goes', 'As the mountains turn blue: a Kir Royale, a Lillet tonic, the château’s own botanical syrups.'),
@@ -169,6 +259,48 @@
   <p class="g-p">Some meals are long and easy: platters passed down a table in the garden, the barbecue on the terrace, a kitchen supper of what you cooked that afternoon. Most evenings are an occasion. Several courses are served by candlelight, perhaps a fillet of beef, a ballotine of guinea fowl or the trout from next door, with the silver laid and flowers down the table. There is local sparkling wine as you arrive, the wines of France at every meal, an apéritif at dusk, and <i>nothing to pay at the end</i>.</p>
   {{ mosaique([[rsrc('trout-on-the-grill'), 'Trout from the farm next door, on the grill', 'Trout from next door'], [rsrc('plating-asparagus'), 'Plating asparagus, in a château apron', 'Plating the asparagus'], [rsrc('chateau-apron-plate'), 'Smiling, in a château apron, with a plate', 'From the kitchen'], [rsrc('red-beret-tart'), 'A tricolour tart, made in a red beret', 'A tricolour tart']]) }}
   {{ carrousel([[rsrc('roast-on-old-china'), 'A roast dish on old china', 'On old china'], [rsrc('plated-starter'), 'A starter with egg, the silver laid', 'The silver laid'], [rsrc('plated-spring-dish'), 'A spring dish, plated', 'A spring dish'], [rsrc('shared-dish'), 'Serving from a shared dish', 'From a shared dish'], [rsrc('chef-across-the-lawn'), 'The chef carrying a dish across the lawn', 'Across the lawn'], [rsrc('croquembouche'), 'A croquembouche, held up outdoors', 'A croquembouche']], 'The Table') }}
+</div></section>
+
+<!-- ============ LES SALLES DE BAINS ============ -->
+{#- 23 Nov 2026 (owner's retreats brief, 2: "have we got the bathrooms on the workshop page?"). The bathrooms had one
+    line in Key Information, which for a stay of this price read as a warning, while /book sold the same rooms in a
+    section of their own. This is /book's section (the owner's facts of 11 Nov, the photographs and the drawings),
+    said as it is for a retreat: beautiful first, then the fact -- three bathrooms on the ground floor, shared between
+    the group, because bathrooms cannot be built into the bedrooms of a classified monument. NEVER "your own private
+    bathroom" here: that is a night's stay, not a retreat. "Luxury" is the one word of /book's left out: on the
+    retreat pages it is kept for the owner's own line on Seven Starry Nights (the retreats deck, 26 Oct).
+    The powder room upstairs is book_room.html's fact. test_retreats_page_sells holds it. -#}
+{% from '_room_photos.html' import BATH_PHOTOS %}
+<section class="g-sec g-baths-sec" id="bathrooms" aria-labelledby="baths-h"><div class="g-wrap">
+  <div class="g-baths__top">
+    <header class="g-baths__head">
+      <p class="g-eyebrow">Les salles de bains</p>
+      <h2 id="baths-h" class="g-place">The Bathrooms</h2>
+      <p class="g-baths__lede">Installed in 2019, and among the finest rooms in the château.</p>
+      <p class="g-p g-baths__p">Wallpaper made by hand in Paris by Antoinette Poisson, eighteenth-century terracotta underfoot, basins painted with the château’s own artwork, and the mountains at the window.</p>
+      <p class="g-p g-baths__p">There are three, on the ground floor, shared between the group. The bedrooms are upstairs: the château is a classified historic monument, and bathrooms cannot be built into its bedrooms. Upstairs, in the vestibule, there is a powder room with a toilet and basin.</p>
+    </header>
+    <figure class="g-baths__lead">{{ pic(BATH_PHOTOS[0][0], BATH_PHOTOS[0][1], sizes='(min-width: 56rem) 62vw, 100vw', cls='g-baths__img g-baths__img--lead') }}</figure>
+  </div>
+  <div class="g-baths__row">
+    {%- for _i in (1, 3, 4) %}
+    <figure class="g-baths__f">{{ pic(BATH_PHOTOS[_i][0], BATH_PHOTOS[_i][1], sizes='(min-width: 40rem) 33vw, 100vw', cls='g-baths__img') }}</figure>
+    {%- endfor %}
+  </div>
+  <ul class="g-baths__feat">
+    {%- for _k, _label, _text in [
+      ('wallpaper', 'The wallpaper', 'Bespoke, by Antoinette Poisson, made by hand in Paris'),
+      ('parquet', 'The floors', 'Eighteenth-century terracotta tiles'),
+      ('basin', 'The basins', 'Painted with custom artwork and the château’s logo'),
+      ('tap', 'The fittings', 'The finest fittings throughout'),
+      ('towels', 'The linen', 'Fine linen'),
+      ('toiletries', 'For you', 'Shampoo, conditioner and bath gel'),
+      ('heater', 'Warmth', 'Heaters'),
+      ('mountains', 'The view', 'Mountain views')] %}
+    <li class="g-baths__pt"><span class="g-baths__ill" aria-hidden="true">{{ illus(_k) }}</span>
+      <span class="g-baths__k">{{ _label }}</span><span class="g-baths__t">{{ _text }}</span></li>
+    {%- endfor %}
+  </ul>
 </div></section>
 
 {#- 9 Nov, evening (owner's second review, 1): /workshops keeps the hero, the introduction, the retreats, A Day at Gudanes, The Table, When You Can Come, the comparison, Key Information, the questions and the close. The Art of the Find and its gold frame, The Evenings' polaroids and film strip, Be Part of It, The Valley, Why So Many Return and Everything Included went: the retreat pages carry the photographs. -#}
@@ -197,7 +329,7 @@
   <p class="g-p" style="margin-top:calc(var(--s2)*-1)">Every date across the year, in one place. Choose a retreat above to narrow it.</p>
   {# The overbooking promise, moved here from The Year's Programme (removed: it listed these same dates a second time).
      Kept word for word; the write lock in workshop_register and workshop_manage, and test_no_overbooking, stand behind it. #}
-  <p class="g-p">Places are shown live. When a session reads as full, it is full &mdash; we do not overbook a château this size.</p>
+  <p class="g-p">Places are shown live. When a date reads as full, it is full: we do not overbook a château this size.</p>
 <div class="g-sittings-grid">
     {% for item in ns.rows|sort(attribute='r.session.start_date') %}
     {% set w = item.w %}{% set r = item.r %}
@@ -214,11 +346,16 @@
         <h3 class="g-sit__when">{{ date_range(r.session['start_date'], r.session['end_date']) }}</h3>
         {% if w['nights_label'] %}<p class="g-sit__meta">{{ w['nights_label'] }}</p>{% endif %}
         {# 26 Oct (owner): no names of the team on the public pages, so the lead's name is no longer shown here. #}
+        {#- 23 Nov (owner's retreats brief, 3 and 4): as on the cards, what is included, the price, then what reserves
+            these dates: inside the balance window that is the whole amount (reserve_line). -#}
+        <p class="g-sit__inc">{{ ws_includes(w) }}</p>
         {% if w['price_per_person'] %}
         <p class="g-sit__rate">
           <span class="g-fig">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span>
           <span>per person · nothing to pay at the end</span>
         </p>
+        {%- set _rl = reserve_line(w, [r.session]) %}{% if _rl %}
+        <p class="g-toreserve">{{ _rl }}</p>{% endif %}
         {%- set _an = a_night(w, r.session) %}{% if _an %}
         <p class="g-pernight">{{ _an }}</p>{% endif %}
         {% endif %}
@@ -302,7 +439,8 @@
   <div class="g-key">
     <div class="g-key__i">
       <p class="g-key__k">Rooms</p>
-      <p class="g-key__v">Three bathrooms on the ground floor, shared between the group. Prices are per person, sharing a room</p>
+      {#- 23 Nov (owner's retreats brief, 2): the bathrooms have their own section now; this line points to it. -#}
+      <p class="g-key__v">Prices are per person, sharing a room. The bathrooms are on the ground floor, shared between the group: <a href="#bathrooms">see the bathrooms</a></p>
     </div>
     {# Put back after every handover since 1 October. The deposit and the balance are read
        from the workshops and from WORKSHOP_BALANCE_DAYS by the route, and inside the balance
@@ -334,12 +472,14 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Getting here</p>
-      <p class="g-key__v">Toulouse-Blagnac is an hour and three quarters away</p>
+      {#- 23 Nov 2026 (owner): "to start it have it meeting at the hotel grand opera in toulouse at midday" -- the
+          Grand Hôtel de l'Opéra, Place du Capitole (owner: "yes this is the hotel"). The retreats with transfers. -#}
+      <p class="g-key__v">On the retreats with transfers, we meet at midday on the first day at the Grand Hôtel de l’Opéra, on Place du Capitole in Toulouse. Otherwise, Toulouse-Blagnac is an hour and three quarters away</p>
     </div>
       <div class="g-key__i">
       <p class="g-key__k">Groups</p>
       {#- 12 Nov (owner): the private retreat's price taken off the site again. -#}
-      <p class="g-key__v">Groups can take the whole château for a private retreat, all-inclusive. <a href="{{ url_for('contact_page') }}">Ask us</a>.</p>
+      <p class="g-key__v">Groups can take the whole château for <a href="{{ url_for('events_private') }}">a private retreat</a>, all-inclusive.</p>
     </div>
   </div>
 </div></section>
@@ -364,13 +504,13 @@
   ('Can I come on my own?',
    'Yes. You can share a room with another guest travelling on their own, or take a room to yourself for a supplement, shown on each retreat’s page.'),
   ('What if I need to cancel?',
-   'Retreats are non-refundable, but please write to us all the same: we look at every cancellation individually, and we can sometimes move you to another date instead. If we ever cancel a retreat, we return everything you have paid or offer you another date, as you prefer. The detail is in our <a href="' ~ url_for('terms_page') ~ '">terms</a>.'),
+   'Retreats are non-refundable, but please write to us all the same: we look at every cancellation individually, and we can sometimes move you to another date. If we ever cancel a retreat, we return everything you have paid or offer you another date, as you prefer. The detail is in our <a href="' ~ url_for('terms_page') ~ '">terms</a>.'),
   ('What if I need to change my dates?',
    'Write to us; we can sometimes move you to another date.'),
   ('Can the kitchen cater for my diet?',
    'Yes. Tell us about allergies and dietary requirements when you register, and the chefs design them into the menu rather than working around them on the night. A château kitchen is not an allergen-free kitchen, so we cannot guarantee the absence of any ingredient.'),
   ('How do I get there?',
-   'On the three-, five- and seven-night retreats we meet in central Toulouse at 11am on the first day and drive up together, and bring you back on the last. On the retreats spent at the château, you make your own way: it is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station.'),
+   'On the three-, five- and seven-night retreats we meet at midday on the first day at the Grand Hôtel de l’Opéra, on Place du Capitole in Toulouse, and drive up together, and bring you back on the last. On the retreats spent at the château, you make your own way: it is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station.'),
   ('What should I pack?',
    'Something to dress up in for the last night, comfortable shoes for the markets and brocantes, and in summer a swimsuit for the pool. There is no lift, so pack lightly.'),
   ('How fit do I need to be?',
@@ -427,10 +567,11 @@
   {# Restored. I had replaced this with a Google review about the table and the
      entertainment - the kind of review the note below says the page will not let
      stand in for a review of the work. The honest fallback fits the section. #}
-  <p class="g-limit"><span class="g-limit__k">Not yet</span> We have not gathered these properly. If you have done an atelier here and would write two sentences, <a href="{{ url_for('contact_page') }}">tell us</a> — it is worth more to the next person than anything we could write.</p>
+  <p class="g-limit"><span class="g-limit__k">Not yet</span> We have not gathered these properly. If you have been on a retreat here and would write two sentences, <a href="{{ url_for('contact_page') }}">tell us</a>: it is worth more to the next person than anything we could write.</p>
   {% endif %}
 
-  <p class="g-hint">Google reviews for the château cover the stay, the table and the workshops together. We would rather separate them than let a review of the breakfast stand in for a review of the work.</p>
+  {#- Site review 25 Nov: "We would rather separate them than let a review of the breakfast stand in for a review of the work" explained rather than said, and "the work" was unclear. -#}
+  <p class="g-hint">Google reviews for the château cover the stay, the table and the retreats together.</p>
 </div></section>
 {% endif %}
 
@@ -463,7 +604,7 @@
 
 {# A second reviews block looped featured_reviews — the STAY reviews — under the atelier section that opens "Reviews from guests who stayed the night tell you about the beds; these are from people who spent four days at the workbench." Removed. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
+  <img class="g-close__mark" width="62" height="62" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Take a few days of it</h2>
   <p class="g-close__p">Each retreat is small, dated, and lived in the château itself.</p>
   <div class="g-close__acts">

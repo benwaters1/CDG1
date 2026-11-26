@@ -242,7 +242,7 @@ def run():
     r = pub.post(f"/book/manage/tok{TAG}3",
                  data={"action": "add_nights", "nights": "6"}, follow_redirects=True)
     s.check("extending into someone else's booking is refused",
-            any("can't extend" in f or "can&#39;t extend" in f for f in flashes(r)), r,
+            any("can't extend" in f or "can&#39;t extend" in f or "can’t extend" in f for f in flashes(r)), r,  # curled on the page since 25 Nov
             detail=f"{flashes(r)[:1]}")
     conn = db()
     unchanged = conn.execute("SELECT departure_date FROM bookings WHERE id = ?",

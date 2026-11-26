@@ -110,10 +110,16 @@ FIELD = re.compile(r"<(input|select|textarea)\b([^>]*)>", re.S | re.I)
 # asks for, by a width and a file in static/img. No id, and no markup back;
 # test_picture_components is what proves it answers.
 #
-# Eleven now: export_report_csv, mirrored_photo, photo_at_size,
-# recover_owner_password, room_ics_feed, room_photo, set_language, site_photo,
-# sized_photo, social_photo_public and uploaded_file.
-NO_RULE = 11
+# And three for Dinner at Gudanes (25 Nov 2026): occasion_menu, occasion_menu_night
+# and occasion_banner_photo serve the owner's uploaded menu (a PDF or a picture)
+# and the banner's photograph, by an occasion's slug and a night. No id, and no
+# markup back; test_dinner_at_gudanes is what proves each of them answers.
+#
+# Fourteen now: export_report_csv, mirrored_photo, occasion_banner_photo,
+# occasion_menu, occasion_menu_night, photo_at_size, recover_owner_password,
+# room_ics_feed, room_photo, set_language, site_photo, sized_photo,
+# social_photo_public and uploaded_file.
+NO_RULE = 14
 
 # What the sweep fetched and could not read.
 #
@@ -274,6 +280,7 @@ def _read(page, html, found):
 # for.
 ID_TABLES = {
     "booking_id": ("bookings", "id"),
+    "occ_id": ("stay_occasions", "id"),
     "arrival_id": ("photo_inbox", "id"),
     "user_id": ("users", "id"),
     "order_id": ("pos_orders", "id"),
@@ -331,10 +338,17 @@ ENDPOINT_ARGS = {
     # The old Squarespace addresses that carry a name. Each is a redirect, so
     # the sweep reaches it and reads where it lands, not a page of its own.
     ("legacy_atelier_product", "slug"): "seven-starry-nights-2027",
+    # The owner may open any occasion's page, a draft included.
+    ("stay_occasion_page", "slug"): ("stay_occasions", "slug"),
     ("legacy_celebrations_portfolio_any", "_rest"): "dan-and-carl",
     ("legacy_chateau_ateliers_any", "_rest"): "category/2024",
     # The old press archive (owner's website brief, 23 November 2026).
     ("legacy_press_2_any", "_rest"): "moments-magazine",
+    # The Captain's Log, the videos and the shop, to The History and on (24 Nov 2026).
+    ("legacy_captains_log_any", "_rest"): "london-calling",
+    ("legacy_captains_log2_any", "_rest"): "2015/3/5/ground-floor-before-and-after",
+    ("legacy_chateau_videos_any", "_rest"): "christmas-2023",
+    ("legacy_boutique_any", "_rest"): "antique-champagne-bucket",
     ("legacy_letter_club_subscription_any", "_rest"):
         "p/seasonal-letter-subscription-from-chteau-de-gudanes",
     # A job page is only a MAINTENANCE task's (the rest of tasks is people's own

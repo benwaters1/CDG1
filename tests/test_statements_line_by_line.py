@@ -414,5 +414,5 @@ def _run(s):
     s.section("The notice says so")
     notice = visible_text(anon.get("/privacy").get_data(as_text=True))
     s.check("what is kept of a card, and that nothing else is",
-            "the card's brand and last four digits" in notice
+            "the card’s brand and last four digits" in notice  # curled on the page since 25 Nov
             and "Nothing else about the card is kept" in notice)

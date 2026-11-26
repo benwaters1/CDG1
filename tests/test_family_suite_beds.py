@@ -19,7 +19,9 @@ import _harness
 
 m = _harness.m
 FLAG = "family_beds_2026_10_18"
-TWO_BEDS = "799432953.jpg"
+# 26 Nov: the owner's own photograph of the floral bedroom's two beds under the new paper,
+# in place of 799432953 (the blue bedroom's two beds, the old paper).
+TWO_BEDS = "family-suite-two-beds.jpg"
 
 
 def run():

@@ -418,7 +418,7 @@ def _checks(s, oc, conn):
             any("already on this booking" in f for f in flashes(again)),
             detail=str(flashes(again)))
     s.check("and a link to something not for sale says so",
-            any("isn't something we can add" in f for f in flashes(
+            any(("isn't something we can add" in f or "isn’t something we can add" in f) for f in flashes(
                 guest.get(f"{parts.path}?add={longer['id'] + 100000}"))))
     far = guest.get(f"{parts.path}?add={longer['id']}")
     s.check("as does one whose notice has run out",

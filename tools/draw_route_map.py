@@ -179,7 +179,7 @@ def draw():
         town("carcassonne", "Carcassonne", dx=-2, dy=-13, anchor="end",
              cls="g-rmap__city", r=4.5),
         town("andorra", "Andorra la Vella", dx=0, dy=20, anchor="middle"),
-        town("pasdelacase", "Pas de la Case", dx=8, dy=17),
+        town("pasdelacase", "Pas de la Casa", dx=8, dy=17),
         town("puigcerda", "Puigcerdà", dx=10, dy=5),
         town("cabannes", "Les Cabannes", dx=-14, dy=24, anchor="end",
              cls="g-rmap__town g-rmap__town--small", r=2.6),
@@ -200,7 +200,7 @@ def draw():
     <desc id="g-rmap-d">A map of the Ariège and the eastern Pyrenees. The château is in the
       valley above Tarascon, beside Les Cabannes. From Toulouse the A61, the A66 and the N20
       run south through Pamiers, Foix and Tarascon; from Carcassonne the road comes west by
-      Mirepoix to join it at Pamiers. From Andorra the road crosses at Pas de la Case and from
+      Mirepoix to join it at Pamiers. From Andorra the road crosses at Pas de la Casa and from
       Barcelona at Puigcerdà, and both come down the valley through Ax-les-Thermes. The
       railway from Toulouse follows the valley to Les Cabannes.</desc>
     <rect class="g-rmap__ground" x="0" y="0" width="600" height="{H}"/>

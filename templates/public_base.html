@@ -74,12 +74,13 @@
 <meta property="og:image:alt" content="{% block og_image_alt %}Château de Gudanes in the Ariège{% endblock %}">
 <meta property="og:locale" content="{{ 'fr_FR' if lang == 'fr' else 'en_GB' }}">
 <meta name="twitter:card" content="summary_large_image">
-{# A launch tab with a blank icon reads as unfinished. An SVG "G" in the house
-   navy carries until a real .ico/.png is dropped at these static paths. #}
-{# favicon.ico and apple-touch-icon.png taken out until the files exist: both
-   pointed at nothing in static/, so every page asked for two files and got
-   two 404s. Put them back beside the SVG when the crest is drawn as icons. #}
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2032%2032%27%3E%3Crect%20width=%2732%27%20height=%2732%27%20fill=%27%2314305f%27/%3E%3Ctext%20x=%2716%27%20y=%2722%27%20font-family=%27Georgia,serif%27%20font-size=%2720%27%20fill=%27%23e2d6c0%27%20text-anchor=%27middle%27%3EG%3C/text%3E%3C/svg%3E">
+{#- 24 Nov 2026 (owner: "the G crest", "not that black G"): the house's crest -- the G in its laurel under the
+    crown, from the logo, white on the house navy -- as the tab icon and the home-screen icon. It replaces the
+    plain lettered "G" drawn in SVG here, and /favicon.ico and /apple-touch-icon.png answer at the root (app.py,
+    house_icon): browsers ask there whatever the page says, 6,299 times in November, and got "not found". -#}
+<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon-32.png') }}" sizes="32x32">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
 <meta name="theme-color" content="#14305f">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 {# The font files come from gstatic, not googleapis; without this a phone opens that connection only after the font CSS arrives. #}
@@ -224,13 +225,21 @@ window.houseDay = (function () {
     </a>
 
 
-    {%- set NAV_OF = {"book_rooms": "book_rooms", "workshops_public": "workshops_public", "restaurant_info": "restaurant_info", "events_info": "events_info", "facilities_page": "facilities_page", "restoration_page": "restoration_page", "gallery_page": "gallery_page", "contact_page": "contact_page", "events_weddings": "events_info", "events_private": "events_info", "events_photoshoots": "events_info", "book_room": "book_rooms", "workshop_detail": "workshops_public", "workshop_register": "workshops_public", "restaurant_book": "restaurant_info"} -%}
+    {%- set NAV_OF = {"book_rooms": "book_rooms", "workshops_public": "workshops_public", "restaurant_info": "restaurant_info", "events_info": "events_info", "facilities_page": "facilities_page", "restoration_page": "restoration_page", "gallery_page": "gallery_page", "contact_page": "contact_page", "events_weddings": "events_info", "events_private": "events_info", "events_photoshoots": "events_info", "book_room": "book_rooms", "workshop_detail": "workshops_public", "workshop_register": "workshops_public", "restaurant_book": "restaurant_info", "whats_on_at_gudanes": "whats_on", "stay_occasion_page": "whats_on"} -%}
 {%- set NAV_HERE = NAV_OF.get(request.endpoint, request.endpoint) if request else "" -%}
 <nav class="g-nav" aria-label="{{ t('Main') }}">
       <a href="{{ url_for('book_rooms') }}"{% if NAV_HERE == 'book_rooms' %} class="is-here" aria-current="page"{% endif %}>{{ t('Stay') }}</a>
       {% if not _private_page %}<a href="{{ url_for('workshops_public') }}"{% if NAV_HERE == 'workshops_public' %} class="is-here" aria-current="page"{% endif %}>{{ t('Retreats') }}</a>{% endif %}
       {#- 15 Oct (owner): What's On in the top bar too. -#}
-      <a href="{{ url_for('whats_on') }}"{% if NAV_HERE == 'whats_on' %} class="is-here" aria-current="page"{% endif %}>{{ t("What’s On") }}</a>
+      {#- 24 Nov 2026 (owner): "split the whats on into the current page then a drop down with other events at
+          gudanes". A dropdown like Events: In the Ariège is the page as it was, At Gudanes the occasions. -#}
+      <div class="g-nav__has-sub">
+        <a href="{{ url_for('whats_on') }}"{% if NAV_HERE == 'whats_on' %} class="is-here" aria-current="page"{% endif %} aria-haspopup="true" aria-expanded="false">{{ t("What’s On") }}<span class="g-nav__caret" aria-hidden="true"></span></a>
+        <ul class="g-subnav">
+          <li><a href="{{ url_for('whats_on') }}"{% if request.endpoint == 'whats_on' %} class="is-here" aria-current="page"{% endif %}>{{ t('In the Ariège') }}</a></li>
+          <li><a href="{{ url_for('whats_on_at_gudanes') }}"{% if request.endpoint in ('whats_on_at_gudanes', 'stay_occasion_page') %} class="is-here" aria-current="page"{% endif %}>{{ t('At Gudanes') }}</a></li>
+        </ul>
+      </div>
       {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}"{% if NAV_HERE == 'restaurant_info' %} class="is-here" aria-current="page"{% endif %}>{{ t('Dining') }}</a>{% endif %}
       <div class="g-nav__has-sub">
         <a href="{{ url_for('events_info') }}"{% if NAV_HERE == 'events_info' %} class="is-here" aria-current="page"{% endif %} aria-haspopup="true" aria-expanded="false">{{ t('Events') }}<span class="g-nav__caret" aria-hidden="true"></span></a>
@@ -238,7 +247,7 @@ window.houseDay = (function () {
           {# Each link falls back to the events page until its route exists,
              so a missing endpoint cannot break the header site-wide. #}
           <li><a href="{{ url_for('events_weddings') }}"{% if request.endpoint == 'events_weddings' %} class="is-here" aria-current="page"{% endif %}>{{ t('Weddings') }}</a></li>
-          <li><a href="{{ url_for('events_private') }}"{% if request.endpoint == 'events_private' %} class="is-here" aria-current="page"{% endif %}>{{ t('Private') }}</a></li>
+          <li><a href="{{ url_for('events_private') }}"{% if request.endpoint == 'events_private' %} class="is-here" aria-current="page"{% endif %}>{{ t('Private Retreats') }}</a></li>
           <li><a href="{{ url_for('events_photoshoots') }}"{% if request.endpoint == 'events_photoshoots' %} class="is-here" aria-current="page"{% endif %}>{{ t('Photoshoots') }}</a></li>
         </ul>
       </div>
@@ -259,7 +268,7 @@ window.houseDay = (function () {
 
         {# Dates from anywhere. The panel is reachable at every width, so this
            is the shortest path to booking on any page of the site. #}
-        <form class="g-qbook" method="get" action="{{ url_for('book_rooms') }}">
+        <form class="g-qbook" method="get" action="{{ url_for('book_rooms') }}#results">
           <p class="g-qbook__h">{{ t('Check dates') }}</p>
           <div class="g-qbook__row">
             {#- 23 Nov (owner: "this could be better"): the two fields were the browser's own date boxes, reading
@@ -286,6 +295,24 @@ window.houseDay = (function () {
           <p class="g-qbook__n">{{ t((house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize ~ ' rooms · breakfast included') }}</p>
         </form>
 
+        {#- 26 Nov 2026 (owner: "i want manage booking field ... in the menu side bar", under the dates). Posts to
+            /book/manage, which takes any reference: a room's, a retreat's, a dinner's or an event's. -#}
+        <form class="g-qbook g-qmanage" method="post" action="{{ url_for('find_booking') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <p class="g-qbook__h">{{ t('Manage your booking') }}</p>
+          <div class="g-qbook__row">
+            <span class="g-qbook__f">
+              <label for="qm_ref">{{ t('Reference code') }}</label>
+              <input type="text" id="qm_ref" name="reference_code" placeholder="{{ ref_prefix.room }}XXXXXX" required autocomplete="off" spellcheck="false" autocapitalize="characters">
+            </span>
+            <span class="g-qbook__f">
+              <label for="qm_em">{{ t('Email you booked with') }}</label>
+              <input type="email" inputmode="email" id="qm_em" name="email" required autocomplete="email">
+            </span>
+          </div>
+          <button type="submit" class="g-btn g-qbook__go">{{ t('Find booking') }}</button>
+        </form>
+
         {#- 10 Oct (owner: "the side menus don't match up, there are duplicates - a full review"). Three groups that match the
             top bar: what you can book; the château itself (the restoration first - the owner wants it a highlight); and
             planning the visit. Was: "Stay" holding everything from Contact to the Ariège, six gallery anchors, "About &
@@ -304,6 +331,10 @@ window.houseDay = (function () {
         <a href="/whats-on" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
           {{ t("What’s On in the Ariège") }}
+        </a>
+        <a href="{{ url_for('whats_on_at_gudanes') }}" class="g-navwrap__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.3 6L12 16.4 6.6 19.4l1.3-6L3.4 9.3l6-.7z"/></svg>
+          {{ t("What’s On at Gudanes") }}
         </a>
         {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M8 9c0-1.5 1.5-3 4-3s4 1.5 4 3"/></svg>
@@ -346,6 +377,10 @@ window.houseDay = (function () {
         <div class="g-navwrap__divider"></div>
 
         <p class="g-navwrap__group">{{ t('Plan Your Visit') }}</p>
+        <a href="{{ url_for('getting_here') }}" class="g-navwrap__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M3 12h14M13 7l5 5-5 5"/><path d="M21 5v14"/></svg>
+          {{ t('Getting Here') }}
+        </a>
         <a href="/contact" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg>
           {{ t('Contact') }}
@@ -390,8 +425,11 @@ window.houseDay = (function () {
         {% set _show_lang = site.get('show_language_switcher') %}
         {% if _show_lang or fx_rates %}
         <div class="g-navwrap__prefs">
+          {#- 24 Nov 2026 (owner): "the language selector where the currency selector is and put the currency
+              selector in the side bar". The language is a selector in the header now; this row is for a phone,
+              where the header has no room for it (gudanes-pictures.css). The currency lives here only. -#}
           {% if _show_lang %}
-          <span class="g-navwrap__prefs-row">
+          <span class="g-navwrap__prefs-row g-navwrap__prefs-row--lang">
             <span class="g-navwrap__prefs-label">{{ t('Language') }}</span>
             <span class="g-lang">
               {% for code, label in languages.items() %}
@@ -448,20 +486,30 @@ window.houseDay = (function () {
           </span>
           <span class="g-bookmenu__txt">
             <b>{{ t('Retreats') }}</b>
-            <em>{{ t('Cooking, the brocantes and the restoration') }}</em>
+            <em>{{ t('Cooking, the brocantes, the restoration and more') }}</em>
             {#- 26 Oct (owner, the retreats deck 5). -#}
             <span class="g-bookmenu__meta">{{ t('Three to seven nights of') }} <em lang="fr">la vie de château</em></span>
           </span>
         </a>{% endif %}
 
         {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-bookmenu__opt g-bookmenu__opt--sm">
-          {{ t('Dining only — a table at La Table') }}
+          {{ t('Dining only: a table at La Table') }}
         </a>{% endif %}
         <a href="{{ url_for('find_booking') }}" class="g-bookmenu__opt g-bookmenu__opt--sm">
           {{ t('Manage an existing booking') }}
         </a>
       </div>
     </span>
+    {%- if site.get('show_language_switcher') %}
+    {#- The language, as a selector, right of Book: the place the currency selector had (owner, 24 Nov 2026).
+        Each option is the address that switches to it, so the page needs no script to know where to go. -#}
+    <span class="g-curtop g-langtop"><span class="g-lang"><select class="g-curtop__s" aria-label="{{ t('Language') }}"
+        onchange="if(this.value)location.href=this.value">
+      {%- for code, label in languages.items() %}
+      <option value="{{ url_for('set_language', code=code) }}"{% if code == lang %} selected{% endif %} lang="{{ code }}" label="{{ code|upper }}" aria-label="{{ label }}">{{ code|upper }}</option>
+      {%- endfor %}
+    </select></span></span>
+    {%- endif %}
   </div>
 </header>
 
@@ -537,7 +585,7 @@ window.houseDay = (function () {
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 6h16v14H4z"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
       <b>Clear at the point of booking</b>
-      <span>{% if _private_page %}A place on this stay holds with a deposit, and the balance is taken closer to the date.{% else %}A room is paid in full when you book it. A workshop holds with a deposit, and the balance is taken closer to the date.{% endif %}</span>
+      <span>{% if _private_page %}A place on this stay holds with a deposit, and the balance is taken closer to the date.{% else %}A room is paid in full when you book it. A retreat holds with a deposit, and the balance is taken closer to the date.{% endif %}</span>
     </li>
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>
@@ -547,7 +595,7 @@ window.houseDay = (function () {
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 5h16v12H8l-4 4z"/></svg>
       <b>Answered by a person</b>
-      <span>Every request is read at the château and answered by someone who knows the rooms — not by a booking engine.</span>
+      <span>Every request is read at the château and answered by someone who knows the rooms, not by a booking engine.</span>
     </li>
   </ul>
 </div></section>
@@ -555,7 +603,10 @@ window.houseDay = (function () {
 
 <footer class="g-footer">
   <div class="g-crest g-crest--foot">
-    <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/chateau_engraving.png') }}"
+    {#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 3): its own size, so a lazy picture has a box to be found in
+        before it arrives; without one it showed as a blank tile, and Safari can leave a sizeless lazy image unloaded.
+        The logo in each page's closing band has the same (62 by 62, as the stylesheet draws it). -#}
+    <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/chateau_engraving.png') }}" width="691" height="396"
          alt="Château de Gudanes, Château-Verdun, France">
     {#- 15 Oct (owner): "it has to say what these dates are, like a marketing tool" - the three dates of the house, each with
         what it was, under the engraving at the foot of every page, linking to the history. -#}
@@ -588,7 +639,7 @@ window.houseDay = (function () {
           <a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
           {# Two bare addresses gave a guest no way to tell which to write to. The
              contact page splits them; the footer now says so too. #}
-          <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a> <span class="g-footer__k">{{ t('workshops & events') }}</span><br>
+          <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a> <span class="g-footer__k">{{ t('retreats and events') }}</span><br>
           <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> <span class="g-footer__k">{{ t('general enquiries') }}</span>
           {%- if _dm == 'open' %}{% set _fw = when_text()|trim %}{% if _fw %}<br>
           <a href="{{ url_for('restaurant_info') }}">La Table</a> <span class="g-footer__k">{{ _fw }}</span>{% endif %}{% endif %}
@@ -616,6 +667,7 @@ window.houseDay = (function () {
           <li><a href="{{ url_for('book_rooms') }}">{{ t('Stay the Night') }}</a></li>
           {% if not _private_page %}<li><a href="{{ url_for('workshops_public') }}">{{ t('Retreats') }}</a></li>{% endif %}
           <li><a href="{{ url_for('whats_on') }}">{{ t("What’s On in the Ariège") }}</a></li>
+          <li><a href="{{ url_for('whats_on_at_gudanes') }}">{{ t("What’s On at Gudanes") }}</a></li>
           {% if _dm != 'hidden' %}<li><a href="{{ url_for('restaurant_info') }}">{{ t('Dining') }}</a></li>{% endif %}
           <li><a href="{{ url_for('facilities_page') }}">{{ t('The Estate') }}</a></li>
           <li><a href="{{ url_for('events_info') }}">{{ t('Weddings & Celebrations') }}</a></li>
@@ -634,6 +686,7 @@ window.houseDay = (function () {
         <h2>{{ t('Help') }}</h2>
         <ul>
           <li><a href="/contact">{{ t('Contact') }}</a></li>
+          <li><a href="{{ url_for('getting_here') }}">{{ t('Getting Here') }}</a></li>
           <li><a href="{{ url_for('find_booking') }}">{{ t('Manage a Booking') }}</a></li>
           <li><a href="{{ url_for('event_find') }}">{{ t('Find an Enquiry') }}</a></li>
           <li><a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a></li>
@@ -766,6 +819,23 @@ window.houseDay = (function () {
   }
   sel.addEventListener('change', apply);
   apply();
+})();
+</script>
+<script>
+/* Site review 25 Nov 2026 (4.1): the header folds to its Menu button whenever its links do not fit beside the logo.
+   In French at 1,498px the links ran 76px past their space, over the logo ("SÉJOURNER" across "Château de Gudanes"),
+   and the next wording or the next language would do the same at another width: so it is measured, not guessed. */
+(function(){
+  var top=document.querySelector('.g-top__in'); if(!top) return;
+  var nav=top.querySelector(':scope > .g-nav'); if(!nav) return;
+  function fit(){
+    top.classList.remove('is-folded');
+    var links=nav.querySelectorAll(':scope > a, :scope > div > a'); if(!links.length) return;
+    var n=nav.getBoundingClientRect(); if(!n.width) return;
+    var f=links[0].getBoundingClientRect(), l=links[links.length-1].getBoundingClientRect();
+    if(f.left < n.left - 1 || l.right > n.right + 1) top.classList.add('is-folded');
+  }
+  fit(); addEventListener('resize', fit); if(document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
 })();
 </script>
 <script>
@@ -1077,40 +1147,6 @@ window.houseDay = (function () {
 })();
 </script>
 
-<script>
-/* Currency control in the header strip, once. 9 Nov 2026, evening (owner's
-   second review, 2.3): it was placed beside the first price on the page, which
-   put "SHOW PRICES IN [EUR]" between a retreat's title and its price and under
-   the section headings of /book and /workshops -- a control in the middle of
-   the copy. It sits right of Book now, small, on every page that has rates;
-   the menu panel's control is the master and the two stay in step. Every price
-   marked data-eur follows either. */
-(function(){
-  var master = document.getElementById('g-currency');
-  var book = document.querySelector('.g-top .g-booksel');
-  if (!master || !book) return;
-
-  var bar = document.createElement('span');
-  bar.className = 'g-curtop';
-  var sel = document.createElement('select');
-  sel.className = 'g-curtop__s';
-  sel.setAttribute('aria-label', 'Show prices in');
-  master.querySelectorAll('option').forEach(function(o){
-    sel.appendChild(o.cloneNode(true));
-  });
-  sel.value = master.value;
-  bar.appendChild(sel);
-
-  /* Keep the two controls in step, whichever the guest uses. */
-  sel.addEventListener('change', function(){
-    master.value = sel.value;
-    master.dispatchEvent(new Event('change'));
-  });
-  master.addEventListener('change', function(){ sel.value = master.value; });
-
-  book.parentElement.insertBefore(bar, book.nextSibling);
-})();
-</script>
 
 <script>
 /* ============================================================
@@ -1188,18 +1224,22 @@ window.houseDay = (function () {
     return Math.round((end - start) / 864e5);
   }
 
+  /* "Fri 12 Mar": the day of the week as well (24 Nov 2026, booking-flow brief 3), as a guest says a stay. */
+  var WEEKDAY = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   function pretty(d){
     if(!d) return null;
-    return d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0,3);
+    return WEEKDAY[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0,3);
   }
+  /* The words the page drew for no date, in the page's language; this wrote "Add dates" in English over them. */
+  function blank(el){ return el.getAttribute('data-rp-blank') || 'Add dates'; }
 
   function paintFields(){
     var n = nights();
     var la = scope.querySelector('[data-rp-label=arrival]');
     var ld = scope.querySelector('[data-rp-label=departure]');
     var ln = scope.querySelector('[data-rp-nights]');
-    if (la) la.textContent = pretty(start) || 'Add dates';
-    if (ld) ld.textContent = pretty(end) || 'Add dates';
+    if (la) la.textContent = pretty(start) || blank(la);
+    if (ld) ld.textContent = pretty(end) || blank(ld);
     if (ln) ln.textContent = n ? (n + (n===1 ? ' night' : ' nights')) : '';
     aIn.value = start ? iso(start) : '';
     dIn.value = end ? iso(end) : '';
@@ -1373,7 +1413,18 @@ window.houseDay = (function () {
   window.addEventListener('resize', function(){ if(!panel.hidden && openAnchor) place(openAnchor); });
 
   takeOver();
-  paintFields();
+  /* EVERY FORM'S BAR SAYS ITS OWN DATES (24 Nov 2026, booking-flow brief 3). This painted only the pair it was bound to
+     at the top, the first on the page -- which since 23 Nov is the menu's quick dates, in the drawer, on every page. So
+     /book, opened for 12 to 14 March, showed the rooms free on those nights under a bar that still said "Add dates"
+     twice. Each form is painted from its own inputs; open() binds to the right one again whenever it is used. */
+  var painted = [];
+  fields.forEach(function(b){
+    var form = b.closest('form') || document;
+    if (painted.indexOf(form) > -1 || !bindTo(b)) return;
+    painted.push(form);
+    start = parse(aIn.value); end = parse(dIn.value);
+    paintFields();
+  });
 })();
 </script>
 

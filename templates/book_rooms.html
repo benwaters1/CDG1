@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_menu_dialog.html' import menu_link %}
 {% from '_guests.html' import guests_field %}
 {% from '_roomslides.html' import room_slides with context %}
 {#- 9 Nov (the image layout brief, 4.4): the photographs through the picture components (_pictures.html, shown together
@@ -31,7 +32,7 @@
 {% from '_weekcost.html' import week_cost %}
 {% from '_flexible.html' import flexible %}
 {% from '_availcal.html' import avail_cal %}
-{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath, room_bath_link, room_sleeps, room_heading %}
+{% from '_room_copy.html' import room_copy, room_name, room_note, room_bath, room_bath_link, room_sleeps, room_heading, room_bath_where %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_compare_rooms.html' import compare_rooms %}
 
@@ -59,8 +60,11 @@
 
 <section class="g-hero">
 {#- 18 Oct (owner): "use a photo of the 2 beds in the room with wallpaper new side by side, it's much nicer" - the Family
-    Suite's two beds side by side under the new wallpaper, in place of the blue bedroom with its peeling paper. -#}
-<img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" style="object-position: center 45%" src="https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432953.jpg?k=bfe46237a062c76163feac464aa8a8aa65e4f2d55d0bebc5842f0b5f785c5fa6&o=" alt="The Family Suite, two beds side by side under the new wallpaper">
+    Suite's two beds side by side under the new wallpaper, in place of the blue bedroom with its peeling paper.
+    26 Nov (owner): the photograph itself at last - the floral bedroom's two beds under the new paper, the owner's own
+    (more/family-suite-two-beds.jpg). Until then this was 799432953, the blue bedroom's two beds and the old paper. -#}
+{%- set _hero = url_for('static', filename='img/more/family-suite-two-beds.jpg') %}
+<img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" style="object-position: center 52%" src="{{ _hero }}"{{ pic_srcset(_hero, '100vw') }} alt="The Family Suite, two beds side by side under the new wallpaper">
 <div class="g-hero__wash"></div>
 <div class="g-hero__in">
   {#- 17 Oct: the room count, here and below, is the rooms table's (house_rooms) - five until The Twin Room (Ground Floor)
@@ -96,13 +100,22 @@
     which said the same in more words, went; so did the second paragraph, with "renovation" in it. -#}
 {% set _gf = namespace(on=false) %}{% for _r in rooms %}{% if ((_r['floor'] or '')|lower).startswith('ground') or 'Ground Floor' in _r['name'] %}{% set _gf.on = true %}{% endif %}{% endfor -%}
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room, breakfast and the lounge, with the pool, tennis and the grounds outside.</p>
+  <p class="g-p g-lede-first">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room and breakfast, with the pool, tennis and the grounds outside, or a glass of wine in the lounge.</p>
 </div></section>
 
 
+{#- 24 Nov 2026 (booking-flow brief, 4): ONE guest count for the page. The bar shows 2 when /book is opened with dates
+    and no party_size (the menu's quick dates have no guests box), but the room links carried party_size empty, so the
+    number the guest saw was dropped on the way to the form. The bar and every "Book this room" link read this; the
+    results line still names a count only when the search gave one, since that is what the rooms were asked for. -#}
+{%- set _party = prefill_party_size or 2 %}
 <!-- Availability. Replaces "BOOK IN" per card with a real search. -->
 <section class="g-book-bar" id="book"><div class="g-wrap">
-  <form method="get" class="g-search" aria-label="Check availability">
+  {#- 24 Nov 2026 (booking-flow brief, 2): the search opens on its results. It posted to /book with no anchor, so the
+      page came back at the top photograph and the guest scrolled past the hero and the introduction to see what was
+      free. A GET form keeps its action's #fragment, so the answer lands on #results (the line under "Rooms, Each Its
+      Own"); a search that went wrong has no #results, and the page stays at the top, where the flash says why. -#}
+  <form method="get" action="{{ url_for('book_rooms') }}#results" class="g-search" aria-label="Check availability">
     <div class="g-search__f"><label for="s_arrival">Arrival</label>
       <input type="date" id="s_arrival" name="arrival" value="{{ arrival }}">
       <button type="button" class="g-rp__btn" data-rp-open="arrival" hidden>
@@ -117,7 +130,7 @@
     {#- 23 Nov (owner: "the design isnt finished here either"): the bar drawn as the home page's card, with a
         minus and a plus for the guests (_guests.html). Styles in gudanes-pictures.css. -#}
     <div class="g-search__f g-search__f--n"><label for="s_party">Guests</label>
-      {{ guests_field('s_party', prefill_party_size or 2, 15) }}</div>
+      {{ guests_field('s_party', _party, 15) }}</div>
     <button type="submit" class="g-btn g-search__go">Check availability</button>
   </form>
   <p class="g-book-bar__note">
@@ -125,14 +138,17 @@
     Booked here, and confirmed the moment you pay.
     <a class="g-inline-link" href="{{ url_for('find_booking') }}">Manage an existing booking</a>
   </p>
-  {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#s_arrival', '#s_departure') }}
+  {#- 25 Nov 2026 (owner: "we can do this a bit better"): one card for the weather. What it is like right now at the
+      château, labelled as now, and what their dates will be like: the forecast for their nights when they are within a
+      fortnight, the month's averages when they are further off. The reading used to sit loose under the averages, so
+      "At the château 8°C overcast" read as March's weather. _typical_weather.html says how. -#}
+  {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#s_arrival', '#s_departure', now=weather, stay=stay_wx, nights=wx_nights or [], drawn=(arrival ~ '|' ~ departure) if stay_wx else '') }}
   {#- 9 Nov, evening (owner's second review, 1): the film strip under the bar went. -#}
   {#- 9 Nov, evening (owner's second review, 2.5): what is open next, under the dates it answers. One sentence when
       every room opens on the same night; the table only when they differ. -#}
   {% from '_availability_strip.html' import next_free as next_free_strip %}
   {{ next_free_strip(next_free) }}
-  {#- What it is doing at the château now, from the house's hourly reading (the owner asked for it on Stay). -#}
-  {% from '_weather_live.html' import weather_now %}{{ weather_now(weather) }}
+  {#- What it is doing at the château now is inside the weather card above (25 Nov 2026). -#}
 </div></section>
 
 <!-- ============ WHY THE WALLS STAY ============ -->
@@ -145,7 +161,7 @@
   <h2 id="rooms" class="g-place">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} Rooms, Each Its Own</h2>
   <p class="g-p g-lede-first">Each room is different, because the château is: its own shape, its own light, its own view of the valley and the mountains. All {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} share what matters most: antiques from the brocantes beside new pieces, a bathroom of your own on the ground floor, and walls left as the centuries made them.</p>
   {% if searched %}
-  <div class="g-searched" role="status">
+  <div class="g-searched" id="results" role="status">
     <p class="g-searched__dates">
       <strong>{{ arrival|date_short }}</strong> to <strong>{{ departure|date_short }}</strong>
       {#- The night count comes from the route now. It was worked out here, on
@@ -164,9 +180,17 @@
         {#- A blind refusal sends a guest away. When the reason is an atelier the
             route can say so by passing blocking_atelier (start_date, end_date);
             this renders nothing until it does. -#}
-        {%- if blocking_atelier and not ateliers %} — a workshop holds the whole château {{ date_range(blocking_atelier.start_date, blocking_atelier.end_date) }}; it is free again from the day after{% endif %}{%- endif %}</p>
+        {%- if blocking_atelier and not ateliers %} — a retreat holds the whole château {{ date_range(blocking_atelier.start_date, blocking_atelier.end_date) }}; it is free again from the day after{% endif %}{%- endif %}</p>
     <a href="{{ url_for('book_rooms') }}" class="g-searched__clear">Clear dates</a>
   </div>
+  {#- 25 Nov 2026: why the price is higher. The occasions these nights touch (book_rooms, from stay_occasions_on_stay,
+      the booking form's own reader), each with its own page; each card below says how many of its nights one
+      priced. test_stay_occasions holds it. -#}
+  {% if occasions_here is defined and occasions_here %}
+  {% for o in occasions_here %}
+  <p class="g-p g-searched__occasion">Your dates include <a href="{{ o.url }}">{{ o.name }}</a> ({{ date_range(o.first_night, o.departure) }}): those nights are priced for the occasion.</p>
+  {% endfor %}
+  {% endif %}
   {#- 23 Nov 2026 (owner): an atelier on these nights is offered, not just given as the reason. -#}
   {% if ateliers %}{% from '_atelier_on_your_dates.html' import atelier_on_your_dates with context %}{{ atelier_on_your_dates(ateliers) }}{% endif %}
   {% endif %}
@@ -217,7 +241,7 @@
       {%- for _s, _a in ROOM_PHOTOS.get(_nm, []) + ROOM_EXTRA.get(_nm, []) %}{% if _a == 'The view from your window' %}{% set _ = _tail.append((_s, _a)) %}{% endif %}{% endfor -%}
       {#- The bathrooms have their own section below the rooms, with every photograph of them; a photograph appears once
           on a page (test_page_pictures), so the cards end with the room's view. -#}
-      <div class="g-card__media">{{ room_carrousel(room_name(room['name'])|trim, _first|trim, room_name(room['name'])|trim, skip='799432953.jpg', tail=_tail) }}</div>{#- 9 Nov: skip the photograph the header shows (the Family Suite's two beds since 18 Oct; this still named the blue bedroom, so the same picture was on the page twice) -#}
+      <div class="g-card__media">{{ room_carrousel(room_name(room['name'])|trim, _first|trim, room_name(room['name'])|trim, skip='family-suite-two-beds.jpg', tail=_tail) }}</div>{#- 9 Nov: skip the photograph the header shows (the Family Suite's two beds since 18 Oct, the floral bedroom's since 26 Nov; this still named the blue bedroom once, so the same picture was on the page twice) -#}
       <div class="g-card__b">
         {{ emblem(room['name']) }}
         {{ room_heading(room['name'], cls='g-card__name') }}
@@ -232,7 +256,9 @@
         {%- set _wdates = searched and _rest %}
         {%- set _wstay = searched and _winter_room and not availability.get(room['id']) %}
         {% if _wstay %}<p class="g-card__season">Kept for the warmer months</p>{% endif %}
-        {% if room['price_per_night'] and not _wstay %}
+        {#- Site review 25 Nov (2.2): no total on a room these dates cannot have. The Marquis and Family suites read
+            "€1,320 for 3 nights" and then "Not available these dates", a price for something not on offer. -#}
+        {% if room['price_per_night'] and not _wstay and not (searched and not availability.get(room['id'])) %}
         {# When dates are set, lead with the total for the stay — the figure a
            guest is actually deciding on — and keep the nightly rate beneath. #}
         {% set _n = stay_nights | default(0) | int %}
@@ -250,6 +276,8 @@
                figure, so printing both says nothing twice. Nights at different
                rates say the figure is an average, not what each night costs. #}
             {% if _n > 1 %}<span class="g-card__per">€{{ ('{:,.0f}' if _pn == (_pn|int) else '{:,.2f}').format(_pn) }} per room, a night{{ ' on average' if _rq and _rq.varies }}</span>{% endif %}
+            {# 25 Nov: the nights an occasion priced, under the nightly figure ("includes 2 nights of Easter"). #}
+            {% for _on in (occasion_nights.get(room['id'], []) if occasion_nights is defined else []) %}<span class="g-card__per">{{ _on }}</span>{% endfor %}
           {% else %}
             {#- 15 Oct (owner): with dates chosen, the price for THOSE dates. Needs room_quotes {room_id: {'per_night':..}} from
                 book_rooms() (see z16 README); without it the card keeps the standard 'From' price. -#}
@@ -258,6 +286,11 @@
             {%- else %}<span class="g-price__k">From</span><b data-eur="{{ room['price_per_night']|int }}">€{{ '{:,.0f}'.format(room['price_per_night']) }}</b>{% endif %}
             <span>per room, a night · breakfast included</span>
           {%- endif %}</p>
+        {% endif %}
+        {#- Dinner at Gudanes (owner, 25 Nov 2026): the price above is the room's normal one; this says dinner is hosted on
+            a night of these dates, at what time and price, and that it is added in the extras. "See the menu" opens it. -#}
+        {% if searched and dinner_notes is defined and dinner_notes and availability.get(room['id']) %}
+        <div class="g-dinnernote">{% for n in dinner_notes %}<p class="g-dinnernote__p">{{ n.text }}{% if n.menu %} {{ menu_link(n.menu) }}{% endif %}</p>{% endfor %}</div>
         {% endif %}
         {# Prefer the written description. The database column holds imported
            listing copy — generic, and in one case factually wrong — so it is
@@ -298,7 +331,7 @@
         </ul>
         {% if searched %}
           {% if availability.get(room['id']) %}
-            <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}">Book this room</a>
+            <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, party_size=_party) }}">Book this room</a>
           {% elif _wstay %}
             <div class="g-winter">
               <p class="g-winter__fr" lang="fr">Une suite pour la belle saison</p>
@@ -375,6 +408,38 @@
     bath for the King, Marquis and Family Suites; and the eight things it is made of. The brief's layout stays: the
     long bathroom large beside the words, the bath, a painted basin and the window beneath, and the points with a
     drawing each. #bathrooms is what the room cards' "Your own private bathroom" opens. -#}
+{#- The rooms side by side (site review 25 Nov 2026, 2.3). Every room page said "the comparison table is the quickest
+    way to see which suits" and linked to a table that was not there. Here it is, read from each room's own columns, as
+    the cards are: anything a room has not been given says nothing rather than guess. On a phone each room is a card and
+    each figure carries its heading (.g-rc__k). -#}
+{%- set _cmp = rooms|list %}
+{% if _cmp|length > 1 %}
+<section class="g-sec g-sec--tight" id="compare" aria-labelledby="compare-h"><div class="g-wrap">
+  <p class="g-fr">Les chambres <span class="g-fr__en">The rooms</span></p>
+  <h2 id="compare-h" class="g-place">The Rooms Side by Side</h2>
+  <div class="table-wrap">
+  <table class="g-rcmp">
+    <thead><tr><th scope="col">Room</th><th scope="col">Beds</th><th scope="col">Sleeps</th><th scope="col">Size</th><th scope="col">Bathroom</th><th scope="col">View</th><th scope="col">From, a night</th></tr></thead>
+    <tbody>
+    {%- for r in _cmp %}
+      {%- set _rn = room_name(r['name'])|trim %}
+      <tr>
+        <th scope="row"><a href="{{ url_for('book_room', room_id=r['id']) }}" translate="no">{{ room_title(r['name']) }}</a>{% if room_plain(r['name']) %}<span class="g-rcmp__plain">{{ room_plain(r['name']) }}</span>{% endif %}</th>
+        <td><span class="g-rc__k">Beds</span> {{ r['bed_setup'] or '' }}</td>
+        <td><span class="g-rc__k">Sleeps</span> {% if 'Family' in r['name'] and (r['max_children'] or 0)|int > 0 %}{{ r['max_adults'] }} adults, {{ r['max_children'] }} children{% elif r['max_adults'] or r['max_occupancy'] %}{{ room_sleeps(r) }}{% endif %}</td>
+        <td><span class="g-rc__k">Size</span> {% if r['size_sqm'] %}{{ r['size_sqm']|int }} m²{% endif %}</td>
+        <td><span class="g-rc__k">Bathroom</span> {% if (r['bathroom'] or '')|lower == 'private' %}Private, {{ room_bath_where(_rn) }}{% elif r['bathroom'] %}{{ r['bathroom']|capitalize }}{% endif %}</td>
+        <td><span class="g-rc__k">View</span> {% if r['outlook'] %}{% if _rn in ['The Marquis Suite', 'The Family Suite'] %}Mountains and the front{% else %}{{ r['outlook']|capitalize }}{% endif %}{% endif %}</td>
+        <td><span class="g-rc__k">From, a night</span> {% if r['price_per_night'] %}€{{ '{:,.0f}'.format(r['price_per_night']) }}{% endif %}</td>
+      </tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="g-hint">Every room includes breakfast. Prices are the standard rate; your dates may differ, and the room’s page shows the price for them.</p>
+</div></section>
+{% endif %}
+
 <section class="g-sec g-baths-sec" id="bathrooms" aria-labelledby="baths-h"><div class="g-wrap">
   <div class="g-baths__top">
     <header class="g-baths__head">
@@ -382,7 +447,7 @@
       <h2 id="baths-h" class="g-place">The Bathrooms</h2>
       <p class="g-baths__lede">Installed in 2019, and among the finest rooms in the château.</p>
       <p class="g-p g-baths__p">Because the château is a historic monument, bathrooms cannot be built into its bedrooms. Instead each room has its own private bathroom, and the bathrooms are together on the ground floor.</p>
-      <p class="g-p g-baths__p">The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath.</p>
+      <p class="g-p g-baths__p">The King Suite, the Marquis Suite and the Family Suite each have a larger bathroom, with a bath.</p>
     </header>
     {#- No captions: the owner took them off every photograph on 15 Oct; the alt says what each shows. -#}
     <figure class="g-baths__lead">{{ pic(BATH_PHOTOS[0][0], BATH_PHOTOS[0][1], sizes='(min-width: 56rem) 62vw, 100vw', cls='g-baths__img g-baths__img--lead') }}</figure>
@@ -392,14 +457,15 @@
     <figure class="g-baths__f">{{ pic(BATH_PHOTOS[_i][0], BATH_PHOTOS[_i][1], sizes='(min-width: 40rem) 33vw, 100vw', cls='g-baths__img') }}</figure>
     {%- endfor %}
   </div>
+  {#- Site review 25 Nov: "Luxury" once, not on three lines running; the linen and the toiletries as /workshops has them. -#}
   <ul class="g-baths__feat">
     {%- for _k, _label, _text in [
       ('wallpaper', 'The wallpaper', 'Bespoke, by Antoinette Poisson, made by hand in Paris'),
       ('parquet', 'The floors', 'Eighteenth-century terracotta tiles'),
       ('basin', 'The basins', 'Painted with custom artwork and the château’s logo'),
       ('tap', 'The fittings', 'Luxury fittings throughout'),
-      ('towels', 'The linen', 'Luxury linen'),
-      ('toiletries', 'For you', 'Luxury shampoo, conditioner and bath gel'),
+      ('towels', 'The linen', 'Fine linen'),
+      ('toiletries', 'For you', 'Shampoo, conditioner and bath gel'),
       ('heater', 'Warmth', 'Heaters'),
       ('mountains', 'The view', 'Mountain views')] %}
     <li class="g-baths__pt"><span class="g-baths__ill" aria-hidden="true">{{ illus(_k) }}</span>
@@ -535,6 +601,11 @@
       <p class="g-key__k">Getting here</p>
       <p class="g-key__v">Toulouse-Blagnac is an hour and three quarters away; the station at Les Cabannes, three minutes by car. <a href="{{ url_for('whats_on') }}#skiing">Skiing at Ax 3 Domaines</a> is about half an hour; Andorra, about an hour</p>
     </div>
+    {#- 23 Nov 2026 (owner): the times, in his words. Read from CHECK_IN_TIME / CHECK_OUT_TIME, never typed. -#}
+    <div class="g-key__i">
+      <p class="g-key__k">Arrival and departure</p>
+      <p class="g-key__v">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}. Later arrivals by arrangement.</p>
+    </div>
     <div class="g-key__i">
       <p class="g-key__k">The stairs</p>
       <p class="g-key__v">No lift: the bedrooms are up the original staircase{% if _gf.on %}, and the one on the ground floor is reached by stairs too{% endif %}. Pack lightly</p>
@@ -591,6 +662,19 @@
       <blockquote class="g-say__q">Loved everything about the Château de Gudanes! Beautiful location, very peaceful and charming.</blockquote>
       <figcaption class="g-say__by">Cynthia · The Marquis Suite<span class="g-say__src">Booking.com, 10/10</span></figcaption>
     </figure>
+    {#- 24 Nov 2026: then the reviews the owner features in the app, once the guest has said yes. The feedback page
+        tells the owner a featured review goes on the booking page, and from 23 Nov nothing drew them: a guest's yes
+        put nothing on the site. Their own words, their first name, the stars they gave on the house's form, and
+        what the house said back. featured_room_reviews holds the consent rule; test_publish_consent watches it. -#}
+    {%- for r in featured_reviews or [] %}
+    <figure class="g-panel g-say" style="margin:0">
+      <blockquote class="g-say__q">{{ r['comment'] }}</blockquote>
+      <figcaption class="g-say__by">{{ (r['guest_name'] or 'A guest').split(' ')[0] }}{% if r['room_name'] %} · {{ r['room_name'] }}{% endif %}<span class="g-say__src">{{ '★' * (r['rating']|int) }}{{ '☆' * (5 - r['rating']|int) }}</span></figcaption>
+      {%- if r['reply'] %}
+      <p class="g-say__reply"><span class="g-say__reply-by">Château de Gudanes</span> {{ r['reply'] }}</p>
+      {%- endif %}
+    </figure>
+    {%- endfor %}
   </div>
 </div></section>
 
@@ -598,7 +682,7 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
+  <img class="g-close__mark" width="62" height="62" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Take a room</h2>
   {# The page already says this near the top; the close gets the two facts that decide it. #}
   <p class="g-close__p">Breakfast is included, and your dates are confirmed the moment you book.</p>
@@ -684,4 +768,5 @@
 </script>
 {{ lightbox() }}
 {{ pictures_script() }}
+{% if searched and dinner_notes is defined and dinner_notes %}{{ menu_dialog_once() }}{% endif %}
 {% endblock %}

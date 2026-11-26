@@ -10,7 +10,7 @@
 {% block content %}
 {#- 9 Nov (the image layout brief, 4.6): the photographs through the picture components (_pictures.html, shown together
     on /design). Not one word changes. -#}
-{% from '_pictures.html' import mosaique, carrousel, plein, album, see_all, pictures_script %}
+{% from '_pictures.html' import mosaique, carrousel, plein, album, see_all, split, pictures_script %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_animals.html' import animals, animals_note %}
 {% from '_stay_panel.html' import stay_panel with context %}
@@ -25,20 +25,29 @@
     <p class="g-hero__eyebrow">Ten Acres Above the Valley</p>
     {# The nav says "The Estate"; the page answered to "Facilities & Activities". The <title> keeps the search wording. #}
     <h1 class="g-hero__title">{{ t('The Estate') }}</h1>
-    <p class="g-hero__lede">The pool, the tennis court, the terraces and the gardens, with the mountains all around.</p>
+    {#- 23 Nov (owner): wherever the pool and the tennis court are, "or enjoy a glass of wine in the lounge". -#}
+    <p class="g-hero__lede">The pool, the tennis court, the terraces and the gardens, with the mountains all around; or enjoy a glass of wine in the lounge.</p>
     <p class="g-hero__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
 </section>
 
 <!-- ====================== AT THE CHÂTEAU ====================== -->
-<section class="g-sec"><div class="g-wrap">
+{#- 24 Nov 2026 (owner, with screenshots of this page on a desktop: "fix the formatting here"): on a wide screen everything
+    sat in the left half and the right half was empty, and the live weather line was centred under words that were not.
+    The words sit beside a photograph of the grounds now (the gardens from the air: the pool one is the home page's
+    phone hero, so not that), under them on a phone; the weather is one quiet line under the first paragraph, at the
+    words' left edge. "On a workshop" became "On a retreat": the site calls them retreats. -#}
+<section class="g-sec g-domaine"><div class="g-wrap">
+  {% call split([url_for('static', filename='img/rk/from-the-air-parterre.jpg'), 'The château above its terraced gardens, from the air', '']) %}
   <div class="g-vignette" aria-hidden="true">{{ illus('pool') }}</div>
-  <p class="g-eyebrow">The Grounds</p>
+  {#- 24 Nov 2026 (site review, 6): "The Grounds" here and again on Les jardins below, two sections with one name. -#}
+  <p class="g-eyebrow">The Estate</p>
   <h2 class="g-place">Le Domaine</h2>
   <p class="g-p g-lede-first">The château stands above the valley with the Pyrénées all around it: ten acres of gardens and grounds to wander, a pool for long afternoons and a court for whoever is keen. In winter the slopes are about half an hour away, and Andorra about an hour.</p>
   {% from '_weather_live.html' import weather_now %}{{ weather_now(weather) }}
-  <p class="g-p">On a workshop, the grounds are yours every afternoon, between the sessions and dinner.</p>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the full experience</a></p>
+  <p class="g-p">On a retreat, the grounds are yours every afternoon, between the cooking, the outings and dinner.</p>
+  <p class="g-domaine__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the retreats</a></p>
+  {% endcall %}
 </div></section>
 
 {{ facilities(_dm if _dm is defined else 'open', 'Yours While You Stay', 'The Facilities') }}
@@ -52,7 +61,12 @@
     {%- for kind, fr, en, line in [
       ('yoga', 'Le yoga', 'Yoga', 'A session at the château'),
       ('horse', "L'équitation", 'Horse riding', 'In the valley'),
-      ('hike', 'La randonnée', 'A guided hike', 'Into the mountains')] %}{#- 9 Nov, evening (owner's second review, 3.4 and 5): skiing is a line inside What's On, not an extra. -#}
+      ('hike', 'La randonnée', 'A guided hike', 'Into the mountains'),
+      ('cycle', 'Le vélo', 'Cycling', 'Up the Tour de France climb to Plateau de Beille')] %}{#- 9 Nov, evening (owner's second review, 3.4 and 5): skiing is a line inside What's On, not an extra.
+      24 Nov 2026 (owner: "then also add cycling"): three cards filled two thirds of the row and left a hole; cycling makes
+      four. The climb to Plateau de Beille starts at Les Cabannes, at the foot of the drive, and has been a Tour de France
+      summit finish several times, most recently in 2024; the card keeps to its one line. On request, at an extra cost,
+      like the others: no price, no named supplier. -#}
     <li class="g-extras__i">
       <div class="g-extras__ill" aria-hidden="true">{{ illus(kind) }}</div>
       <p class="g-extras__fr" lang="fr">{{ fr }}</p>

@@ -58,7 +58,7 @@ def run():
     for old, words in ATELIERS.items():
         r = anon.get(old)
         want = [t["id"] for t in titles if m._name_words(words) <= m._name_words(t["title"])]
-        target = (f"/workshops/{want[0]}" if len(want) == 1 else "/workshops")
+        target = (m.retreat_path(want[0]) if len(want) == 1 else "/workshops")
         s.check(f"{old} is a 302 to {target}",
                 r.status_code == 302 and _path(r.headers.get("Location", "")) == target,
                 detail=f"{r.status_code} {r.headers.get('Location')}; {len(want)} match(es)")

@@ -7,6 +7,7 @@
 {% block description %}Château de Gudanes photographed through its restoration: see it for yourself, then come for the experience.{% endblock %}
 {% block og_desc %}Château de Gudanes photographed through its restoration.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1200w{% endblock %}
+{% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
 {#- 9 Nov (the image layout brief, 4.7): the photographs through the picture components (_pictures.html, shown together
     on /design). Not one word changes. -#}
@@ -14,6 +15,7 @@
 {% from '_stay_panel.html' import stay_panel with context %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_beforeafter.html' import before_after, before_after_script %}
+{% from '_then_and_now.html' import THEN_NOW %}
 {% from '_marks.html' import mark %}
 {% from '_animals.html' import animals_note %}
 {# `galleries` comes from gallery_page(): a list of
@@ -43,6 +45,9 @@
   {'url': 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/97532472-ef1c-439c-bc1e-da09f3d43046/Before+The+Work+-+Windows.jpg?format=1500w', 'caption': 'The windows before the work, the panes broken'},
   {'url': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/f42741a3-9246-4608-8c8d-fd0408104b5c/Kitchen+2.JPG?format=1500w', 'caption': 'A kitchen window now, blossom on the sill'}
 ] %}
+{#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 3): The Restoration Story opened on the drive under a storm sky
+    and the gates, neither of them the restoration; they are under the grounds now, and the section opens on the
+    château as it was found. The early postcard comes after the ruin, before the work begins. -#}
 {% set FALLBACK = {
   'inside': [
     {'url': url_for('static', filename='img/retreats/king-suite-four-poster.jpg'), 'caption': 'The King Suite, the four-poster'},
@@ -131,12 +136,11 @@
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587892891915-NZ0CL0Q7H20GV9705G6V/Gates%2BIn%2BSnow.jpg?format=1500w", 'caption': 'The gates in snow'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1500w", 'caption': 'At night'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aa7e337d-6a3c-437b-9b9f-a128c57f849e/Screenshot+2026-07-31+at+2.08.26+pm.png?format=1500w", 'caption': 'The late sun'},
-    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7a36c33c-f53e-4ea3-976b-14191b0cbdc5/Screenshot%2B2026-08-15%2Bat%2B3.08.35%2Bpm.png?format=1500w", 'caption': 'Summer'}
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7a36c33c-f53e-4ea3-976b-14191b0cbdc5/Screenshot%2B2026-08-15%2Bat%2B3.08.35%2Bpm.png?format=1500w", 'caption': 'Summer'},
+    {'url': url_for('static', filename='img/found/drive-under-a-storm-sky.jpg'), 'caption': 'The drive under a storm sky'},
+    {'url': url_for('static', filename='img/found/through-the-gates.jpg'), 'caption': 'Through the gates'}
   ],
   'restoration': [
-    {'url': url_for('static', filename='img/history/postcard-chateau-de-gudannes.jpg'), 'caption': 'An early postcard'},
-    {'url': url_for('static', filename='img/found/drive-under-a-storm-sky.jpg'), 'caption': 'The drive under a storm sky'},
-    {'url': url_for('static', filename='img/found/through-the-gates.jpg'), 'caption': 'Through the gates'},
     {'url': url_for('static', filename='img/found/mountains-through-the-roof.jpg'), 'caption': 'The mountains, through a broken window under the roof'},
     {'url': url_for('static', filename='img/found/roof-open-to-the-sky.jpg'), 'caption': 'The roof, open to the sky'},
     {'url': url_for('static', filename='img/found/double-doors.jpg'), 'caption': 'Double doors, as they were found'},
@@ -164,6 +168,7 @@
     {'url': url_for('static', filename='img/found/collapsed-floor-window.jpg'), 'caption': 'A collapsed floor beneath a tall window'},
     {'url': url_for('static', filename='img/found/camp-kitchen.jpg'), 'caption': 'The holiday-camp kitchen, as it was left'},
     {'url': url_for('static', filename='img/found/camp-kitchen-beams.jpg'), 'caption': 'The old camp kitchen, under fallen beams'},
+    {'url': url_for('static', filename='img/history/postcard-chateau-de-gudannes.jpg'), 'caption': 'An early postcard'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/b7a07599-6d24-4085-bb8d-b669d04c7bb1/unspecified-3+2.jpg?format=1500w", 'caption': 'The work begins'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d07f91bb-54cb-444c-9ae0-db4eab3d9b47/Gudanes-+the+work+begins+%2812+of+7%29.jpg?format=1500w", 'caption': 'The first workers'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2d44af9c-cd2c-472d-ae18-ac16cebd285f/Screen+Shot+2019-04-16+at+8.35.01+am.png?format=1500w", 'caption': 'At a window'},
@@ -281,13 +286,26 @@
   ]
 } %}
 
+{#- 24 Nov 2026 (site review, 7): the page about photographs opened on words alone. It opens on one now, as every
+    other page does: guests on the restorers' scaffold, which is what the words beneath it say the record is. (The
+    gallery may repeat a photograph another page draws large: test_site_review_2's one-home rule lets it.) -#}
+{#- Site review 25 Nov (4.7): the title ran across the faces of the women on the scaffold, and there is no crop that
+    clears them (the one standing is already near the top edge). The photograph is shown whole and the title sits in a
+    band beneath it (.g-hero--below). -#}
+<section class="g-hero g-hero--below">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ url_for('static', filename='img/retreats/restoration-scaffold.jpg') }}" alt="Guests on the restorers’ scaffold among the gilded panels">
+  <div class="g-hero__wash"></div>
+  <div class="g-hero__in">
+    <p class="g-hero__eyebrow">The Record · Since 2013</p>
+    <h1 class="g-hero__title">The Château, as It Is</h1>
+  </div>
+</section>
+
 <section class="g-sec g-sec--tight">
   <div class="g-wrap">
     <p class="g-fr">Ni retouché, ni rangé <span class="g-fr__en">Neither retouched nor tidied</span></p>
-    <p class="g-eyebrow">The Record · Since 2013</p>
-    <h1 class="g-pagehead">The château, as it is</h1>
   <p class="g-p g-intro">Photographs taken across the seasons, mostly by guests and by the family, over a decade of work.</p>
-  <p class="g-p">There is no styling here. Rooms are photographed as they are on the day — some restored, some with the plaster still open and the scaffolding up. That is the point of the record.</p>
+  <p class="g-p">There is no styling here. Rooms are photographed as they are on the day: some restored, some with the plaster still open and the scaffolding up. That is the point of the record.</p>
 
 
     {# A larger-type lede stood here, after the body copy, restating it ("No styling ... as they
@@ -310,6 +328,9 @@
       {% set shown = gal['images'] or FALLBACK.get(gal['slug'], []) %}
       {#- 9 Nov, evening (owner's second review, 1): the before-and-afters /restoration no longer shows live here. -#}
       {% if gal['slug'] == 'restoration' %}{% set _have = shown|map(attribute='url')|map('replace', '?format=1000w', '')|map('replace', '?format=1500w', '')|list %}{% set _more = [] %}{% for _p in RESTO_PAIRS %}{% if (_p['url'].split('?')[0]) not in _have %}{% set _ = _more.append(_p) %}{% endif %}{% endfor %}{% set shown = shown + _more %}{% endif %}
+      {#- 24 Nov 2026: the Then and Now pairs are shown below, in Rooms That No Longer Look Like This, so The Restoration
+          Story leaves them out rather than show the same photograph twice on one page. -#}
+      {%- if gal['slug'] == 'restoration' %}{% set _tn = [] %}{% for _c, _b, _n in THEN_NOW %}{% set _ = _tn.extend([_b[0].split('?')[0], _n[0].split('?')[0]]) %}{% endfor %}{% set _kept = [] %}{% for _i in shown %}{% if _i['url'].split('?')[0] not in _tn %}{% set _ = _kept.append(_i) %}{% endif %}{% endfor %}{% set shown = _kept %}{% endif %}
       {% if shown %}
       {#- 9 Nov, evening (owner's second review, 1): 244 photographs in one 27,000px block, every one lazy but every one
           in the document. Each section shows six -- two rows of three, so no row ends on one photograph -- and keeps
@@ -392,17 +413,21 @@
   <h2 class="g-place">Rooms That No Longer Look Like This</h2>
 
   <p class="g-p g-lede-first">Photographs taken since 2013, of rooms in states that have gone and will not come back. A wall opened, a floor lifted, a ceiling before it was consolidated. Once a room is restored, that version of it exists only here.</p>
-  <p class="g-p">It is the reason the record was kept at all. It is also, unexpectedly, the most useful thing on this site for anyone scouting a location — the same room can be seen stripped to stone and restored, which is a choice no other building can offer.</p>
+  {#- Site review 25 Nov: "It is also, unexpectedly, the most useful thing on this site for anyone scouting a location" cut. -#}
+  <p class="g-p">It is the reason the record was kept at all. For a location scout, the same room can be seen stripped to stone and restored.</p>
+  {#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 3): a section about before and after showed none. The Then and Now
+      pairs /restoration has, from the one partial both pages draw. -#}
+  {% from '_then_and_now.html' import then_and_now %}{{ then_and_now() }}
 
   <div class="g-grid g-grid--2">
     <div class="g-panel">
-      <h3 class="g-h3">For anyone reading along</h3>
+      <h3 class="g-h3">For anyone following the restoration</h3>
       <p class="g-p">The archive tells the whole story: the château room by room, as it was found and as it comes back.</p>
       
     </div>
     <div class="g-panel">
       <h3 class="g-h3">For location scouts</h3>
-      <p class="g-p">Tell us the condition you need and we will send what we have of it — bare stone, open plaster, part-restored, or fully restored. Usage is agreed in writing before a shoot, not after.</p>
+      <p class="g-p">Tell us the condition you need and we will send what we have of it: bare stone, open plaster, part-restored, or fully restored. Usage is agreed in writing before a shoot, not after.</p>
       <p class="g-p"><a href="{{ url_for('events_photoshoots') }}" class="g-btn">Shoot here</a></p>
     </div>
   </div>
@@ -431,6 +456,30 @@
   <p class="g-eyebrow">Before It Reaches Here</p>
   <h2 class="g-place">The Work, As It Happens</h2>
   <p class="g-p g-lede-first">Instagram shows the work as it happens, often the same week. This page keeps a selection; Instagram has the rest.</p>
+  {#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 3): two buttons and nothing to look at. Six photographs of the work
+      first, the newest the site holds: the site keeps no dates for them, so the order is the date each was put online,
+      which the address it was copied from carries (static/img/retreats/SOURCES.txt): two of 2026, then 2020, 2017,
+      and two of 2015. Not the guests on the scaffold (2016): since the site review it opens this page. Captioned for
+      what each shows; no faces are named. -#}
+  {%- set _WORK = [
+    ('/static/img/retreats/restorer-painted-wall.jpg', 'A man cleaning a painted wall with his fingertips, a cloth in his other hand'),
+    ('/static/img/retreats/guest-painting.jpg', 'Painting a pattern of leaves and birds onto a beam, before the old painted walls'),
+    ('/static/img/retreats/fresco-uncovered-by-hand.jpg', 'A woman beside a ladder, a brush to a painted medallion'),
+    ('/static/img/retreats/guest-at-a-fresco.jpg', 'A woman scraping back the plaster from a painted wall, panels of green and pink beneath'),
+    ('/static/img/retreats/uncovering-fresco.jpg', 'A man scraping back the plaster of a wall, old colour coming through beneath'),
+    ('/static/img/retreats/guests-uncovering-fresco.jpg', 'Two people lifting old layers from a panelled wall, a painted pattern beneath')] %}
+  <div class="g-grid g-grid--3 g-grid--gal g-work-now">
+    {%- for src, alt in _WORK %}
+    <figure style="margin:0;">{{ pic(src, alt, sizes='(min-width: 64rem) 30vw, 50vw', cls='g-work-now__img') }}</figure>
+    {%- endfor %}
+  </div>
+  {#- 26 Nov 2026 (owner: "this is the gold suite it shows the size of the room, dont use it as a room photo tho ...
+      put it somewhere, in the gallery"): the Gold Suite on the open day of 7 August 2025, about sixty visitors
+      through the château. Here for the size of the room with people in it, not on the room's own page. -#}
+  <figure class="g-open-day">
+    {{ pic('/static/img/visits/gold-suite-open-day-2025.jpg', 'Visitors walking round the four-poster bed in the Gold Suite on an open day', sizes='(min-width: 64rem) 26rem, 90vw') }}
+    <figcaption class="g-open-day__cap">The Gold Suite on the open day of August 2025, with some sixty visitors through the château.</figcaption>
+  </figure>
   <p class="g-p">
     <a href="https://www.instagram.com/chateaugudanes/" class="g-btn g-btn--solid" rel="me noopener">Instagram</a>
     <a href="https://www.facebook.com/chateaudegudanes/" class="g-btn" rel="me noopener">Facebook</a>
@@ -450,14 +499,8 @@
 <!-- ============ THE JOURNAL ============ -->
 {# The newsletter form was only in the menu panel. This is the same route,
    placed where a reader who has just finished the page will see it. #}
-{# After the photographs, a way to be there (owner, 1 Oct: keep promoting the workshops). #}
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('chateau') }}</div>
-  <p class="g-eyebrow">Be here</p>
-  <h2 class="g-place">See It for Yourself</h2>
-  <p class="g-p">A night in one of the {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} guest rooms, or a retreat: three to seven nights of <em lang="fr">la vie de château</em>, with a small company sharing the château.</p>
-  <p style="display:flex;flex-wrap:wrap;align-items:center;gap:var(--s3);margin-top:var(--s5)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the retreats</a> <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a></p>
-</div></section>
+{#- Site review 25 Nov (2.15): "See It for Yourself" stood straight after the stay panel ("Two ways to stay"), two
+    closing blocks in a row offering the same two things. The stay panel, the one every page shares, stays. -#}
 {#- 9 Nov, evening (owner's second review, 2.4): one newsletter form on a page, the footer's. This page's Follow the Restoration block went. -#}
 
 <div class="g-wrap g-mark__wrap">{{ mark('vine') }}</div>

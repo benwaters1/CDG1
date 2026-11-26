@@ -273,7 +273,8 @@ def run():
             detail=f"HTTP {r.status_code} — a press or general question should "
                    "not have to pick a month")
     s.check("it says what it is about first, and nothing about nights or guests nobody gave",
-            row and (row["notes"] or "").startswith("Private event.")
+            # 24 Nov 2026: the topic is "Private retreat" now (the private page is a private retreat).
+            row and (row["notes"] or "").startswith("Private retreat.")
             and "night" not in (row["notes"] or "") and "guest" not in (row["notes"] or ""),
             detail=f"{row['notes'] if row else None!r} -- a blank once arrived as one "
                    "night, then as 'length not decided' and two guests")
@@ -336,10 +337,15 @@ def run():
     # Both ways in one check: the sentence quietly going missing from the
     # letters it protects is the same kind of silent failure as it appearing
     # where it is false.
+    # 25 Nov 2026 (owner, "yes to all"): every stay or atelier letter that
+    # takes or acknowledges money, so the payments, statements, a share of the
+    # bill and the reserved room too.
     MONEY_LETTERS_THAT_WARN = {
         "room_confirmed", "room_balance_before", "room_balance_after",
         "workshop_confirmed", "workshop_deposit_receipt",
-        "workshop_balance_reminder"}
+        "workshop_balance_reminder",
+        "room_payment_received", "workshop_payment_received", "room_statement",
+        "workshop_statement", "room_share_request", "room_reserved"}
     bodies = {k: b for k, _l, _s, b in m.DEFAULT_EMAIL_TEMPLATES}
     warns = {k for k, b in bodies.items() if m.PAYMENT_SAFETY_LINE in b}
     s.check("no event letter promises the house never asks for a transfer",

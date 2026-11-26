@@ -151,7 +151,7 @@ def _run(s, oc, ec, anon, scratch):
         src = m.url_for("room_photo", filename=name)
     listing = anon.get("/workshops").get_data(as_text=True)
     s.check("its card on /workshops", _card(listing, title) == src, detail=repr(_card(listing, title)))
-    own = anon.get("/workshops/%d" % wid).get_data(as_text=True)
+    own = anon.get(m.retreat_path(wid)).get_data(as_text=True)
     s.check("and the top of its own page", _hero(own) == src, detail=repr(_hero(own)))
     served = anon.get(src)
     s.check("served to anybody, as the photograph stored",
@@ -248,7 +248,7 @@ def _run(s, oc, ec, anon, scratch):
     card = _card(listing, title) or ""
     s.check("its card goes back to the house's photographs", card and "/room-photos/" not in card,
             detail=repr(card))
-    own = anon.get("/workshops/%d" % wid).get_data(as_text=True)
+    own = anon.get(m.retreat_path(wid)).get_data(as_text=True)
     s.check("and so does the top of its page", _hero(own) and "/room-photos/" not in _hero(own),
             detail=repr(_hero(own)))
 

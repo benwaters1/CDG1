@@ -15,7 +15,7 @@ cover.
 WHAT IS HELD
 
   - LENGTH, at 1400px wide. No public page over 9,000px, or 12,000 for
-    /gallery and /whats-on, whose length is their contents. Fails when a
+    /gallery and 13,500 for /whats-on, whose length is their contents. Fails when a
     section is added. The pages still over it after the owner's cuts are named
     in KNOWN_LONG, each with the height it may not grow past, and the list is
     checked both ways like COVERAGE_KNOWN_GAPS: a page that grows reds the run,
@@ -55,8 +55,17 @@ BUDGET = 9000
 # 23 Nov 2026: the home page 9,500. The owner would not have the rooms slide on a computer ("it looks shit"), so
 # every room's card is shown whole, the aerial and five rooms in two rows of three where there was one sliding row.
 # That row cost about 350px after the photographs were lowered and the facts set side by side.
+# 23 Nov 2026: /whats-on raised to 13,500. The owner asked for its plain text to have "illustrations and stuff" and
+# then "more images ... not just all in a row": a drawing beside each of its forty-odd entries, a second photograph
+# tucked over Towns, a pair beside Things to Do and a collage set into Outdoors took it from 11,567px to about 13,000.
 # 24 Nov 2026: 10,200, for three lines from guests' thank-you letters beside the Google three (owner's brief).
-LONG_BUDGET = {"/gallery": 12000, "/whats-on": 12000, "/": 10200}
+# 24 Nov 2026, evening: 10,300. The five branches merged together put two links in every page's footer
+# (What's On at Gudanes, Getting Here: the occasions brief) and "and much more" on the retreats; measured 10,214.
+# 25 Nov 2026: /gallery 12,700. Rooms That No Longer Look Like This shows its Then and Now pairs and The Work, As It
+# Happens six photographs of the work (BRIEF-private-retreat-and-images, 3), and the site review put a photograph at
+# the top; measured 12,588. Every page also counts the engraving at its foot at its real height now: it has its own
+# size, so a box is kept for it before it arrives (it was never loaded here, and counted as almost nothing).
+LONG_BUDGET = {"/gallery": 12700, "/whats-on": 13500, "/": 10300}
 SHARP = 1.25
 TAP = 44
 SMALLEST = 12
@@ -68,8 +77,19 @@ SMALLEST = 12
 # pages' booking form, the history the brief says to leave alone. Keyed by
 # address, with a room or a retreat by its kind, since the ids differ between
 # databases. Take a page off when it comes under the budget; the run says so.
+# Photographs known to be drawn wider than their file, each with the reason, checked both ways (a listed one
+# that is sharp again reds the run, so the list cannot go stale). Site review 25 Nov 2026: /getting-here came
+# into the sitemap, so this suite read it for the first time. Its hero is a portrait file 1,068px wide drawn
+# across a 1,400px page; the house holds no larger photograph of the valley in landscape. The owner has been
+# told it wants one. The alt the probe reports, from its start.
+KNOWN_SOFT = {"/getting-here": "The Ari\u00e8ge valley below the ch\u00e2teau drawn"}
+
 KNOWN_LONG = {
-    "/restoration": 15100,
+    # 24 Nov: +200 for The Paintings, the section of their own the owner asked for (the painted beams and the
+    # frescoes, three photographs), and the timeline's three new years; measured 15,216.
+    # 25 Nov: +100, the engraving at the foot kept at its real height (see LONG_BUDGET); measured 15,377.
+    # 26 Nov 2026: +600, the new wall and the run of rooms, two prints the owner asked for ("the wall i want on").
+    "/restoration": 16000,
     # 23 Nov: 14,900, the brochure's facts the owner asked for ("lets use the info from everything and the brochure
     # and really make it good"): the table, a sample of the days, what is included and what is on request.
     # 24 Nov: +100, a couple's line from their thank-you letter above the enquiry.
@@ -79,17 +99,27 @@ KNOWN_LONG = {
     # 11 Nov: +600 for the bathrooms' own section, which the owner asked for ("they are a real feature").
     # 23 Nov: +100 for each room's plain name, small beneath its French title (owner's website brief, 3).
     # 23 Nov, later: +200 for the type pass (one size per rank of heading).
-    "/book": 13400,
+    # 24 Nov: +200 for Key Information's "Arrival and departure" line (owner: check-out at 11am); measured 13,496.
+    # 25 Nov, site review (2.3): +500 for The Rooms Side by Side, the table the room pages had pointed at; measured 13,975.
+    "/book": 14100,
     # 23 Nov, later: +100 for the same type pass.
     # 24 Nov: +800, three retreat guests' lines from their thank-you letters (owner's brief).
-    "/workshops": 12500,
+    # 24 Nov: +2,750 for the two sections the owner's retreats brief adds, What You'll Do and The Bathrooms
+    # ("i dont know why theyre not selling"; "have we got the bathrooms on the workshop page?"); measured 15,029.
+    "/workshops": 15400,   # 24 Nov evening, was 15,100: the footer's two new links; measured 15,125 merged.
+    # 25 Nov, was 15,300: the engraving at the foot at its real height (see LONG_BUDGET); measured 15,339.
+    # 24 Nov, late, was 15,200: fresh seed 15,222, house copy 15,125.
     "/workshops/<id>": 11900,
     "/history": 9900,
-    "/book/<id>": 9600,
+    # 24 Nov 2026: "/book/<id>" came off. The room page puts its form first, with the photograph beside the room's
+    # name rather than across the page over it (test_book_form_first): 8,727px, under the budget.
 }
 
 
 def kind_of(path):
+    # A retreat's page is at its name since 25 Nov (/retreats/<name>); it is the same kind of page.
+    if re.fullmatch(r"/retreats/[a-z0-9-]+", path):
+        return "/workshops/<id>"
     return re.sub(r"/\d+$", "/<id>", path)
 
 
@@ -282,7 +312,7 @@ def _run(s, browser, pages, workdir):
     for k, ceiling in KNOWN_LONG.items():
         if k in tallest and tallest[k] <= budget(k):
             mended.append("%s is %dpx now" % (k, tallest[k]))
-    s.check("no public page is over its budget (%d, or 12,000 for the gallery and What's On)" % BUDGET,
+    s.check("no public page is over its budget (%d, 12,000 for the gallery, 13,500 for What's On)" % BUDGET,
             not over, detail="; ".join(over))
     s.check("no page on the known-long list has grown", not grown, detail="; ".join(grown))
     s.check("no page on that list has come under the budget and is still on it", not mended,
@@ -300,14 +330,20 @@ def _run(s, browser, pages, workdir):
             detail=str(soft_c.get("guess")))
     soft = {p: d["soft"] for p, d in got.items() if not p.startswith("control:") and d.get("soft")}
     guess = {p: d["guess"] for p, d in got.items() if not p.startswith("control:") and d.get("guess")}
-    s.check("no house photograph is drawn more than %.2f times its widest file" % SHARP, not soft,
-            detail=str(soft)[:600])
+    # KNOWN_SOFT, checked both ways like KNOWN_LONG: a listed photograph that is sharp again reds the run.
+    known_left = {p: [x for x in xs if not x.startswith(KNOWN_SOFT.get(p, "\0"))] for p, xs in soft.items()}
+    known_left = {p: xs for p, xs in known_left.items() if xs}
+    s.check("no house photograph is drawn more than %.2f times its widest file" % SHARP, not known_left,
+            detail=str(known_left)[:600])
+    mended = [p for p, alt in KNOWN_SOFT.items() if p in got and not any(x.startswith(alt) for x in soft.get(p, []))]
+    s.check("and every photograph on the known-soft list is still soft", not mended,
+            detail="take off KNOWN_SOFT: " + "; ".join(mended))
     s.check("every lazy house photograph asks for the width it is drawn at", not guess, detail=str(guess)[:600])
 
     # ---- on a phone ------------------------------------------------------
     wanted = ["/", "/book", "/workshops"]
     wanted += sorted(p for p in by_path if re.fullmatch(r"/book/\d+", p))[:1]
-    wanted += sorted(p for p in by_path if re.fullmatch(r"/workshops/\d+", p))[:1]
+    wanted += sorted(p for p in by_path if re.fullmatch(r"/workshops/\d+|/retreats/[a-z0-9-]+", p))[:1]
     phone_pages = [(p, by_path[p]) for p in wanted if p in by_path]
     s.section("On a phone, at %s px" % ", ".join(str(w) for w in PHONES))
     s.check("the five pages the brief names are there to measure", len(phone_pages) == 5,

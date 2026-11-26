@@ -2,7 +2,7 @@
 {% from '_illus.html' import illus %}
 {% from '_payment_safety.html' import payment_safety %}
 {% from '_country.html' import country_field %}
-{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO, BATH_PHOTOS, ROOM_EXTRA %}
+{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO, BATH_PHOTOS, ROOM_EXTRA, NO_CLAWFOOT_BATH %}
 {% from '_phone.html' import phone_field %}
 {% from '_occupancy.html' import party_fields with context %}
 {% from '_room_copy.html' import room_copy, room_name, room_note, room_bath_where, room_stairs, room_sleeps, room_heading %}
@@ -12,12 +12,14 @@
 {% from '_pictures.html' import carrousel, medaillon, passe_partout, pictures_script %}
 {% set crumbs = [('Stay', url_for('book_rooms')), (room_title(room['name']), None)] %}
 {% block title %}Book {{ room_title(room['name']) }}{% if room_plain(room['name']) %}, {{ room_plain(room['name']) }}{% endif %}{% endblock %}
+{#- Site review 25 Nov: the French page's title was the English one. The room's own name is French already. -#}
+{% block title_fr %}Réserver {{ room_title(room['name']) }}{% endblock %}
 {# Named, and priced, per room. One template serves five bedrooms, so a
    fixed sentence here gave all five pages the same description -- which
    is the one line a search engine shows under the link, so five rooms
    competed against each other with identical copy. Falls back to the
    general sentence for a room with no rate on it yet. #}
-{% block description %}{{ room_title(room['name']) }}{% if room_plain(room['name']) %} ({{ room_plain(room['name']) }}){% endif %} at Château de Gudanes, a Class I monument under restoration in the Pyrénées.{% if room['max_occupancy'] %} {% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}For {{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Sleeps {{ room_sleeps(room) }}{% endif %}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Breakfast included.{% endblock %}
+{% block description %}{{ room_title(room['name']) }}{% if room_plain(room['name']) %} ({{ room_plain(room['name']) }}){% endif %} at Château de Gudanes, in the Pyrénées.{% if room['max_occupancy'] %} {% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}For {{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Sleeps {{ room_sleeps(room) }}{% endif %}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Breakfast included.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://cf.bstatic.com/xdata/images/hotel/max2048x2048/798764955.jpg?k=d8653db73b32b57205f0af9b550ee5ee521deae7ec1638ed4dafcc67057d01c9&amp;o={% endblock %}
 {% set sticky_bar = 'none' %}
@@ -25,6 +27,7 @@
 {% from '_before.html' import terms_upfront %}
 {% from '_animals.html' import animals, animals_note %}
 {% from '_formkeep.html' import form_keep %}
+{% from '_menu_dialog.html' import menu_link %}
 
 
 
@@ -45,114 +48,73 @@
     'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7a36c33c-f53e-4ea3-976b-14191b0cbdc5/Screenshot%2B2026-08-15%2Bat%2B3.08.35%2Bpm.png?format=1500w'
   ] %}
   {%- set _is_family = room_name(room['name']) == 'The Family Suite' %}
-  <div class="{{ 'g-room--family' if _is_family }}">
-  {#- 9 Nov, evening (owner's second review, 3.1): the band across the top is wide and short, and a portrait cropped to
-      it is a smear of fabric (the King Suite's four-poster, 901 by 1600, drawn 1168 by 371). The room's first
-      landscape photograph takes the band; the gallery below leaves out whichever one it took. -#}
-  {%- set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}
-  {%- set _hero = namespace(src='') %}
-  {%- if room['photo_filename'] %}{% set _hero.src = url_for('room_photo', filename=room['photo_filename']) %}
-  {%- elif _rp %}{% for _s, _a in _rp %}{% if not _hero.src %}{% set _sz = pic_size(_s) %}{% if not _sz or _sz[0] > _sz[1] %}{% set _hero.src = _s %}{% endif %}{% endif %}{% endfor %}{% if not _hero.src %}{% set _hero.src = _rp[0][0] %}{% endif %}
-  {%- else %}{% set _hero.src = ROOM_FALLBACKS[room['id'] % 3] %}{% endif %}
-  <img loading="eager" fetchpriority="high" decoding="async" class="g-roomhero"
-       src="{{ _hero.src }}"
-       alt="{{ room_title(room['name']) }}">
-
-  <div style="padding:clamp(1.25rem,4vw,2rem) 0 0;">
-    <p class="g-fr">Votre chambre <span class="g-fr__en">Your room</span></p>
-    {{ room_heading(room['name'], tag='h1', cls='g-display') }}
-    <p class="g-room__meta">
-      {#- 15 Oct (owner): the top price said the standard rate while the booking card priced the chosen dates. With dates it is
-          now the quote's own nightly figure, and the date script below keeps it in step. -#}
-      {%- set _q = initial_quote if (initial_quote is defined and initial_quote and initial_quote.available and initial_quote.per_night) else none %}
-      {%- set _pn = _q.per_night if _q else room['price_per_night'] %}
-      {% if room['price_per_night'] %}<span class="g-fig" id="room_top_price" data-base="{{ room['price_per_night'] }}" data-eur="{{ _pn }}">€{{ ('{:,.0f}' if (_pn|float) == (_pn|int) else '{:,.2f}').format(_pn|float) }}</span> <span id="room_top_label">{{ 'per room, a night for your dates' if _q else 'per room, a night' }}</span>, room and breakfast{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
-    {#- 10 Oct (owner: "when you click dates and book a room it still has select dates at the top - you have to scroll to see
-        your entered dates"). The chosen dates, under the price, and the way on to the form that already holds them. -#}
-    {%- if arrival and departure %}
-    <div class="g-roomtop__dates">
-      <p class="g-roomtop__dk">{{ t('Your dates') }}</p>
-      <p class="g-roomtop__dv">{{ date_range(arrival, departure) }}</p>
-      {#- 10 Oct (owner: "no average temperature shows up when selecting dates"): the same ten-year averages as the Stay
-          page, for the month they arrive, following the form's fields if the dates are changed. -#}
-      {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#arrival_date', '#departure_date') }}
-      <p class="g-roomtop__da"><a href="#book" class="g-btn g-btn--solid">{{ t('Continue to book') }}</a><a href="#book" class="g-link">{{ t('Change dates') }}</a></p>
-    </div>
-    {%- endif %}
-    {# The arithmetic a guest would otherwise do in their head, and the deposit
-       split they would otherwise meet for the first time at the payment step.
-       deposit_shown is None when the amount genuinely depends on the booking,
-       and the macro says so rather than quoting a figure that changes -- the
-       sketch defaults to 30% on a house whose room deposit is zero. Lost to a
-       handover four rounds running now. #}
-    {# The room's own facts, as on the Stay cards: the page a guest pays from showed none of them. #}
-    {%- set _rn = room_name(room['name']) %}
-    {%- set _bl = room['bed_setup'] or ('Twin beds' if ('Twin' in _rn or 'Tilleul' in _rn) else ('Queen bed' if ('Queen' in _rn or 'Cerise' in _rn) else ('King bed' if ('King' in _rn or 'Levant' in _rn) else ('Emperor bed' if ('Gold' in _rn or 'Émeraude' in _rn) else ('Two bedrooms' if ('Family' in _rn or 'Deux' in _rn) else ''))))) %}
-    {# 5 Oct (owner: "it should all be tidied up how it's displayed ... at the top it has 1 night then under it has the
-       calendar with 2 selected"). The tags, a second nights-and-total calculator that ignored the form's dates, and
-       three bathroom sentences became one table; the form and its summary card are the only price. #}
-    {%- set _private = (room['bathroom'] or 'private')|lower == 'private' %}
-    {#- 9 Nov (owner: "room words is important"): the room's own lines, romantic and true (_room_words.html), before the
-        facts it leaves to the table. -#}
-    {%- set _words = room_words(room_name(room['name'])|trim)|trim %}
-    {% if _words %}<p class="g-p g-intro g-room__words">{{ _words }}</p>{% endif %}
-    <dl class="g-glance">
-      <div><dt>Sleeps</dt><dd>{% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}{{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}{{ room_sleeps(room) }}{% endif %}</dd></div>
-      {% if _bl %}<div><dt>The bed</dt><dd>{{ _bl }}</dd></div>{% endif %}
-      {% if _rn == 'The King Suite' %}<div><dt>In the room</dt><dd>A bath and a basin of its own</dd></div>{% endif %}
-      {#- 17 Oct: where the bathroom is comes from _room_copy (next door for The Twin Room (Ground Floor)); the upstairs
-          powder room is only worth saying to a room upstairs. -#}
-      {%- set _bw = room_bath_where(_rn)|trim %}
-      <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ medaillon([BATH_PHOTOS[3][0], BATH_PHOTOS[3][1]], side='right', cls='g-med--sm') }}{{ 'Private, and yours alone, ' if _private else '' }}{{ _bw }}<a class="g-glance__more" href="{{ url_for('book_rooms') }}#bathrooms">See the bathrooms</a>{% if _bw != 'next door' %}<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span>{% endif %}</dd></div>
-      <div><dt>Check-in / out</dt><dd>From {{ check_in_at }} &middot; by {{ check_out_at }}<span class="g-glance__sub">Early check-in on request</span></dd></div>
-      <div><dt>Breakfast</dt><dd>Included</dd></div>
-      <div><dt>Stairs</dt><dd>{{ room_stairs(_rn) }}</dd></div>
-    </dl>
-    <p class="g-room__note">Walls left as the centuries made them &mdash; under Class I protection, they stay that way. Within them, antiques from the brocantes sit beside what has to be new: the beds and the bathrooms.</p>
-    {% if not (arrival and departure) %}<p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Choose your dates</a></p>{% endif %}
-  </div>
-
-  {#- 6 Oct (owner: "make sure the bedroom ones are correct and they show them well"): every photograph of the room, not
-      three - its Booking.com ones, the château's own of the same room, one of the ground-floor bathrooms - in a grid
-      sized to the count (three across when it divides by three, two when it divides by two) so none sits alone. -#}
-  {%- set _rn = room_name(room['name']) -%}
-  {%- set _rg0 = ((ROOM_PHOTOS.get(_rn, [])|rejectattr(0, 'equalto', _hero.src)|list) + ROOM_EXTRA.get(_rn, [])) if ROOM_PHOTOS.get(_rn) else [] -%}
-  {#- the bathroom photograph joins unless it would leave one photograph alone on its row -#}
-  {#- 12 Oct: the bathrooms are part of every room (each on the ground floor), so one to three of their photographs always join the
-      room's own, filling the grid to a multiple of three. -#}
-  {%- set _need = (3 - (_rg0|length % 3)) if (_rg0|length % 3) else 3 -%}
-  {%- set _rg = (_rg0 + BATH_PHOTOS[:_need]) if _rg0 else _rg0 -%}
-  {%- set _rgn = (gallery_photos|length) if gallery_photos else (_rg|length if _rg else 4) -%}
-  {#- 9 Nov: the room's own photographs (an uploaded set first, else its Booking.com ones and the château's own of it),
-      without the bathrooms that used to pad the grid out to a row of three: one of those sits by the bathroom now. -#}
-  {%- if gallery_photos %}{% set _gal = [] %}{% for p in gallery_photos %}{% set _ = _gal.append([url_for('room_photo', filename=p['filename']), room_name(room['name'])|trim, '']) %}{% endfor %}
-  {%- elif _rg0 %}{% set _gal = [] %}{% for _u, _a in _rg0 %}{% set _ = _gal.append([_u, _a, '']) %}{% endfor %}
-  {%- else %}{% set _gal = [['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/501a4947-d365-4a11-a83e-8affbc374e48/Screenshot+2026-08-12+at+3.38.55+pm.png?format=1000w', 'Walking up to the château at dusk', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w', 'Market produce on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w', 'The gardens, the mountains beyond', '']] %}{% endif %}
-  {#- 11 Nov (owner's bathrooms brief): two of the bathrooms in the strip, not one -- the long bathroom under its
-      chandelier, and the claw-foot bath. Every room's bathroom is one of these, so every room page shows them; the
-      medallion beside "Your bathroom" is the painted basin, so no photograph is on the page twice. -#}
-  {%- set _gal = _gal + [[BATH_PHOTOS[0][0], BATH_PHOTOS[0][1], ''], [BATH_PHOTOS[1][0], BATH_PHOTOS[1][1], '']] %}
-  <div class="g-roomgal-car">{{ carrousel(_gal, room_name(room['name'])|trim ~ ': photographs', thumbs=True, upto=1.25) }}</div>
-  </div>{#- /g-room--family wrapper (15 Oct: taller Family Suite photographs) -#}
-
-  {# Gated on the database description, so the written copy - meant to replace that field - never showed when it was empty. #}
-  {%- set _rcopy = room_copy(room['name'], room['description'] or '')|trim %}
-  {# (the room's one-line description repeated the bed and bathroom - shown in the table above) #}
-
-  {% if room['amenities'] %}
-  <ul class="g-tags">{% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}</ul>
-  {% endif %}
 
   {% from '_stay_or_workshop.html' import night_notice %}
-  <form id="book-form" method="post" class="g-form-full" style="margin-top:clamp(1.5rem,4vw,2.5rem);">
+  <form id="book-form" method="post" class="g-form-full">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {{ bot_guard() }}{# a field only scripts fill, and when the form was drawn: bot_guard_refusal #}
 
     <div class="g-cols">
       <div>
+        {#- 24 Nov 2026 (owner: a guest who pressed Book met the room's facts, a paragraph and a photograph the width of
+            the screen before a single field, and Pay & book was hard to see). THE FORM COMES FIRST. What a guest needs
+            to start is the top of the form's own column: the room's photograph, its name and price, and their dates.
+            Inside the form, so on a computer the booking panel -- the total and Pay & book -- runs beside it from the
+            top of the page, as a booking page's summary does; on a phone the bar at the foot carries both. The
+            photograph sits beside the name from 40rem, as a short band over it on a phone. The room's own words, its
+            facts and every photograph follow the form (g-roomabout), so nothing is lost. Measured in a browser by
+            test_book_form_first. -#}
+        <div class="g-booktop">
+        {#- 9 Nov, evening (owner's second review, 3.1): the band across the top is wide and short, and a portrait cropped to
+            it is a smear of fabric (the King Suite's four-poster, 901 by 1600, drawn 1168 by 371). The room's first
+            landscape photograph takes the band; the gallery below leaves out whichever one it took. -#}
+        {%- set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}
+        {%- set _hero = namespace(src='') %}
+        {%- if room['photo_filename'] %}{% set _hero.src = url_for('room_photo', filename=room['photo_filename']) %}
+        {%- elif _rp %}{% for _s, _a in _rp %}{% if not _hero.src %}{% set _sz = pic_size(_s) %}{% if not _sz or _sz[0] > _sz[1] %}{% set _hero.src = _s %}{% endif %}{% endif %}{% endfor %}{% if not _hero.src %}{% set _hero.src = _rp[0][0] %}{% endif %}
+        {%- else %}{% set _hero.src = ROOM_FALLBACKS[room['id'] % 3] %}{% endif %}
+        {#- sizes: as wide as it is drawn (beside the name from 40rem, in the form's column from 64rem), so a phone or a
+            computer fetches the size it shows, not a full-width file; size_hero adds the srcset and keeps these sizes. -#}
+        <img loading="eager" fetchpriority="high" decoding="async" class="g-roomhero"
+             src="{{ _hero.src }}"
+             sizes="(min-width: 64rem) 18rem, (min-width: 40rem) 38vw, calc(100vw - 32px)"
+             alt="{{ room_title(room['name']) }}">
+
+        <div class="g-booktop__t">
+          <p class="g-fr">Votre chambre <span class="g-fr__en">Your room</span></p>
+          {{ room_heading(room['name'], tag='h1', cls='g-display') }}
+          <p class="g-room__meta">
+            {#- 15 Oct (owner): the top price said the standard rate while the booking card priced the chosen dates. With dates it is
+                now the quote's own nightly figure, and the date script below keeps it in step. -#}
+            {%- set _q = initial_quote if (initial_quote is defined and initial_quote and initial_quote.available and initial_quote.per_night) else none %}
+            {%- set _pn = _q.per_night if _q else room['price_per_night'] %}
+            {% if room['price_per_night'] %}<span class="g-fig" id="room_top_price" data-base="{{ room['price_per_night'] }}" data-eur="{{ _pn }}">€{{ ('{:,.0f}' if (_pn|float) == (_pn|int) else '{:,.2f}').format(_pn|float) }}</span> <span id="room_top_label">{{ 'per room, a night for your dates' if _q else 'per room, a night' }}</span>, room and breakfast{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
+          {#- DINNER AT GUDANES (owner, 25 Nov 2026): "it displays the normal price, along with a note that dinner will be
+              hosted, and says the price". The room's price above never includes dinner; this says the nights, the time
+              and the price, and that it is added in the extras. Kept current by the quote script as the dates change. -#}
+          {%- set _dnotes = dinner_notes | default([]) %}
+          <div class="g-dinnernote" id="dinner_note" aria-live="polite"{% if not _dnotes %} hidden{% endif %}>
+            {%- for n in _dnotes %}<p class="g-dinnernote__p">{{ n.text }}{% if n.menu %} {{ menu_link(n.menu) }}{% endif %}</p>{% endfor -%}
+          </div>
+        </div>{#- /g-booktop__t -#}
+        {#- 10 Oct (owner: "when you click dates and book a room it still has select dates at the top - you have to scroll to see
+            your entered dates"). The chosen dates, under the price, and the way on to the form that already holds them. -#}
+        {%- if arrival and departure %}
+        <div class="g-roomtop__dates">
+          <p class="g-roomtop__dk">{{ t('Your dates') }}</p>
+          <p class="g-roomtop__dv">{{ date_range(arrival, departure) }}</p>
+          {#- 10 Oct (owner: "no average temperature shows up when selecting dates"): the same ten-year averages as the Stay
+              page, for the month they arrive, following the form's fields if the dates are changed. -#}
+          {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#arrival_date', '#departure_date') }}
+          {#- 24 Nov 2026: links now, not a filled navy button. The form is the next thing on the page, and a second filled
+              button in the first screen stood against Pay & book, the one that takes the money. -#}
+          <p class="g-roomtop__da"><a href="#book" class="g-link">{{ t('Continue to book') }}</a><a href="#book" class="g-link">{{ t('Change dates') }}</a></p>
+        </div>
+        {%- endif %}
+        </div>{#- /g-booktop -#}
         {#- 5 Oct: the night card sat alone above the form with half the page empty beside it; it now opens the form's
-            column, so the booking card sits beside it from the start. -#}
-        {{ night_notice(dm=_dm) }}
+            column (under the room's name since 24 Nov 2026), so the booking card sits beside it from the start. -#}
+        {{ night_notice(dm=_dm, dinner=(dinner_notes | default([])) | length > 0) }}
 
         <section class="g-step">
           <h2 id="book" class="g-step__h"><span class="g-num">01</span> Your dates</h2>
@@ -170,14 +132,21 @@
   </p>
 </div>
 {% endif %}
-          <div class="g-row">
+          {#- 24 Nov 2026 (booking-flow brief, 6): ONE way to choose the dates. The two date boxes and a full calendar under
+              them did the same thing, a screen and a half on a phone before "Who is coming". The calendar stays, because it
+              shows what is taken; once it is up (it needs the nights taken, from the server) the boxes step out of sight
+              and the dates read above it as words. The boxes stay in the form: they are what it posts, what the page's
+              own check marks "This one is needed." under, and all there is with no script, or no answer about the nights. -#}
+          <div class="g-row g-datefields" data-datefields>
             <p class="g-field">
               <label for="arrival_date">Arrival<span class="g-req" aria-hidden="true">*</span></label>
               <input type="date" id="arrival_date" name="arrival_date" value="{{ arrival }}" required>
+              <span class="g-dateread" data-dateread="arrival_date" hidden>Choose on the calendar</span>
             </p>
             <p class="g-field">
               <label for="departure_date">Departure<span class="g-req" aria-hidden="true">*</span></label>
               <input type="date" id="departure_date" name="departure_date" value="{{ departure }}" required>
+              <span class="g-dateread" data-dateread="departure_date" hidden>Choose on the calendar</span>
               <span class="g-hint" id="nights_hint" aria-live="polite"></span>
             </p>
           </div>
@@ -239,7 +208,7 @@
           <div class="g-stack g-stack--arrive">
             {#- 5 Oct (owner): an estimated arrival time, with check-in and check-out stated and early check-in on request.
                 Saved in bookings.estimated_arrival_time. The times are read from CHECK_IN_TIME and
-                CHECK_OUT_TIME in app.py, never typed (3pm and 10am, owner, 15 Oct); the hourly
+                CHECK_OUT_TIME in app.py, never typed (3pm and 10am, owner, 15 Oct; 11am out from 23 Nov); the hourly
                 choices start at check-in, so they move with it. -#}
             <p class="g-field g-eta">
               <label for="estimated_arrival_time">Estimated arrival time<span class="g-req" aria-hidden="true">*</span></label>
@@ -252,29 +221,50 @@
                     the booking does not quietly lose it (z15, 15 Oct). -#}
                 {%- set _slots = [] %}{% for _h in range(check_in_hour, 22) %}{% set _ = _slots.append(clock_words(_h) ~ '-' ~ clock_words(_h + 1)) %}{% endfor %}
                 {%- if _eta and _eta not in [_early, 'After 10pm'] + _slots %}<option value="{{ _eta }}" selected>{{ _eta }}</option>{% endif %}
-                <option value="{{ _early }}" {{ 'selected' if _eta == _early }}>Before {{ check_in_at }} &mdash; early check-in, on request</option>
+                <option value="{{ _early }}" {{ 'selected' if _eta == _early }}>Before {{ check_in_at }}: early check-in, on request</option>
                 {%- for _slot in _slots %}
                 <option value="{{ _slot }}" {{ 'selected' if _eta == _slot }}>{{ _slot.split('-')[0] }} &ndash; {{ _slot.split('-')[1] }}</option>
                 {%- endfor %}
                 <option value="After 10pm" {{ 'selected' if _eta == 'After 10pm' }}>After 10pm</option>
               </select>
-              <span class="g-hint">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}. Arriving earlier? Early check-in is on request &mdash; choose it above and we will do our best.</span>
+              <span class="g-hint">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}. Arriving earlier? Early check-in is on request: choose it above and we will do our best.</span>
             </p>
           </div>
         </section>
 
-        {% if extras %}
+        {#- Dinner at Gudanes nights in the dates make this step even where the catalogue offers nothing; the script
+            shows it when changed dates bring one in. -#}
+        {%- set _dinners = dinner_offer | default([]) %}
+        {%- set _xstep = extras or _dinners %}
         {# What these dates are too soon for, from the quote the page was drawn
            with. The script keeps it current as the dates change. #}
         {% set too_soon_ids = (initial_quote.too_soon | map(attribute='id') | list) if initial_quote else [] %}
-        <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+        <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true" data-extras-fleur{% if not _xstep %} hidden{% endif %}>
   <path d="M0 13h38"/><path d="M82 13h38"/>
   <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
-<section class="g-step">
+<section class="g-step" id="extras_step"{% if not _xstep %} hidden{% endif %}>
           <h2 class="g-step__h"><span class="g-num">03</span> Add to your stay</h2>
+          {#- DINNER AT GUDANES: one line a dinner night of the stay, first in the list -- "Dinner at Gudanes, Saturday
+              27 March, 7.30pm — €65 a person", how many for dinner (0 up to the party), and the menu. On the bill, in
+              the total, the phone bar and the card payment as its own line. Redrawn by the quote script when the dates
+              change. -#}
+          {%- set _picked = prefill_dinners | default({}) %}
+          <ul class="g-extras g-extras--dinner" id="dinner_extras"{% if not _dinners %} hidden{% endif %}>
+            {% for n in _dinners %}
+            <li class="g-dinnerx" data-dinner="{{ n.date }}" data-price="{{ n.price }}" data-left="{{ n.left }}" data-short="{{ n.short }}">
+              <label class="g-dinnerx__l" for="dinner_{{ n.date }}">
+                <span class="g-check__t"><b>{{ n.title }}, {{ n.words }}{% if n.time_words %}, {{ n.time_words }}{% endif %}</b> <span>{{ n.price_words }}</span></span>
+              </label>
+              <span class="g-dinnerx__n"><input type="number" inputmode="numeric" id="dinner_{{ n.date }}" name="dinner_{{ n.date }}" min="0" max="{{ n.left }}" value="{{ _picked.get(n.date, 0) }}" aria-describedby="dinner_why_{{ n.date }}"> <span>for dinner</span></span>
+              {% if n.menu %}<span class="g-dinnerx__m">{{ menu_link(n.menu) }}</span>{% endif %}
+              <span class="g-hint g-dinnerx__why" id="dinner_why_{{ n.date }}" hidden></span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% if extras %}
           <ul class="g-extras">
             {% for e in extras %}
             <li>
@@ -286,7 +276,8 @@
                   <b>{{ e['name'] }}</b>
                   {% if e['description'] %}<span>{{ e['description'] }}</span>{% endif %}
                 </span>
-                <span class="g-fig">€{{ '{:,.2f}'.format(e['price']) }}</span>
+                {#- Site review 25 Nov (2.16): "€50.00" here and "€50" on /book; whole euros as /book prints them. -#}
+                <span class="g-fig">€{{ ('{:,.0f}' if (e['price']|float) == (e['price']|int) else '{:,.2f}').format(e['price']|float) }}</span>
               
                 {# The loop variable is e, and there is no 'notice' column: this
                    arrived as x['notice'] and undefined-on-a-Row is a 500, so
@@ -321,9 +312,9 @@
             </li>
             {% endfor %}
           </ul>
-          <p class="g-hint">Anything you tick here is added to your total.</p>
+          {% endif %}
+          <p class="g-hint">Anything you add here is added to your total.</p>
         </section>
-        {% endif %}
 
         {# The fleur sits BETWEEN steps, as on the restaurant and atelier forms. Inside this
            step it stacked the ornament, the hairline connector and the top padding, so
@@ -335,7 +326,7 @@
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
         <section class="g-step">
-          <h2 class="g-step__h"><span class="g-num">{{ '04' if extras else '03' }}</span> Anything we should know</h2>
+          <h2 class="g-step__h"><span class="g-num">{{ '04' if _xstep else '03' }}</span> Anything we should know</h2>
           {#- 5 Oct (owner): "Celebrating something?" - as on the workshop form. Stored in bookings.special_occasion. -#}
           {%- set _occ = (prefill_guest or {}).get('special_occasion') or (request.form.get('special_occasion') if request.method == 'POST' else '') -%}
           <div class="g-field g-occasion">
@@ -344,9 +335,12 @@
                    placeholder="A birthday, an anniversary&hellip;" value="{{ _occ or '' }}">
           </div>
           <p class="g-field">
-            <label for="special_requests" class="g-vh">Anything we should know (optional)</label>
-            <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, occasion, arrival time, questions...">{{ prefill_requests | default('') }}</textarea>
-              <span class="g-hint">Optional. You can add to this later from your reservation.</span>
+            {#- Site review 25 Nov (2.16): three ways of saying optional in one step ("optional", "(optional)", "Optional.").
+                One now, the label's, as every other field on the form has it; and the occasion is out of the
+                placeholder, since it has its own field just above. -#}
+            <label for="special_requests">Your note <span class="g-opt">optional</span></label>
+            <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, arrival time, questions...">{{ prefill_requests | default('') }}</textarea>
+              <span class="g-hint">You can add to this later from your reservation.</span>
           </p>
           <p class="g-field g-field--narrow">
             <label for="promo_code">Promo code <span class="g-opt">optional</span></label>
@@ -395,6 +389,8 @@
               <span class="g-fig" id="quote_total">{{ '€%.2f'|format(initial_quote.total) if initial_quote and initial_quote.available }}</span>
             </p>
             <p class="g-hint" id="quote_note">{%- if initial_quote and initial_quote.available and initial_quote.per_night %}€{{ '{:,.2f}'.format(initial_quote.per_night) }} a night average.{%- endif %}</p>
+            {%- set _occs = (initial_quote.occasions if initial_quote and initial_quote.available and initial_quote.occasions else []) %}
+            <p class="g-hint g-quote-occasions" id="quote_occasions"{% if not _occs %} hidden{% endif %}>{% for o in _occs %}{{ o.name }}: {{ o.chef_line }}{% if not loop.last %} {% endif %}{% endfor %}</p>
           </div>
           {#- 23 Nov 2026 (owner: "when someone enters dates but theres a wrkshop on i want to point them there"): the
               atelier on these nights, offered under the price box. Drawn here when the page opens with dates or comes
@@ -405,6 +401,8 @@
           {# 1 Oct (owner): no tick box - the line says it, as hotel sites do. The agreement is still sent, so the server check holds. #}
           <input type="hidden" name="agree_terms" value="on">
           <p class="g-hint g-terms-line" style="margin:0 0 var(--s3)">By booking, you agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">terms and conditions</a>.</p>
+          {#- 23 Nov 2026 (owner): the times where the guest pays, so they are seen before paying. From CHECK_IN_TIME / CHECK_OUT_TIME. -#}
+          <p class="g-foot-note g-times-line"><strong>Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}.</strong></p>
 
           {% if stripe_enabled and room['price_per_night'] %}
           <p class="g-foot-note"><strong>Non-refundable.</strong> Payments are not refunded if you cancel.</p>
@@ -438,6 +436,77 @@
       </aside>
     </div>
   </form>
+
+  {#- 24 Nov 2026: THE ROOM ITSELF, after the form (see g-booktop above): its own words, its facts, the note on the walls,
+      and every photograph, as they stood above the form until today, in the same order. A region named after the
+      room, so a screen reader can find it without a heading the page never had. -#}
+  <section class="g-roomabout" aria-label="{{ room_title(room['name']) }}">
+  <div class="{{ 'g-room--family' if _is_family }}">
+    {# The arithmetic a guest would otherwise do in their head, and the deposit
+       split they would otherwise meet for the first time at the payment step.
+       deposit_shown is None when the amount genuinely depends on the booking,
+       and the macro says so rather than quoting a figure that changes -- the
+       sketch defaults to 30% on a house whose room deposit is zero. Lost to a
+       handover four rounds running now. #}
+    {# The room's own facts, as on the Stay cards: the page a guest pays from showed none of them. #}
+    {%- set _rn = room_name(room['name']) %}
+    {%- set _bl = room['bed_setup'] or ('Twin beds' if ('Twin' in _rn or 'Tilleul' in _rn) else ('Queen bed' if ('Queen' in _rn or 'Cerise' in _rn) else ('King bed' if ('King' in _rn or 'Levant' in _rn) else ('Emperor bed' if ('Gold' in _rn or 'Émeraude' in _rn) else ('Two bedrooms' if ('Family' in _rn or 'Deux' in _rn) else ''))))) %}
+    {# 5 Oct (owner: "it should all be tidied up how it's displayed ... at the top it has 1 night then under it has the
+       calendar with 2 selected"). The tags, a second nights-and-total calculator that ignored the form's dates, and
+       three bathroom sentences became one table; the form and its summary card are the only price. #}
+    {%- set _private = (room['bathroom'] or 'private')|lower == 'private' %}
+    {#- 9 Nov (owner: "room words is important"): the room's own lines, romantic and true (_room_words.html), before the
+        facts it leaves to the table. -#}
+    {%- set _words = room_words(room_name(room['name'])|trim)|trim %}
+    {% if _words %}<p class="g-p g-intro g-room__words">{{ _words }}</p>{% endif %}
+    <dl class="g-glance">
+      <div><dt>Sleeps</dt><dd>{% if 'Family' in room['name'] and (room['max_children'] or 0)|int > 0 %}{{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}{{ room_sleeps(room) }}{% endif %}</dd></div>
+      {% if _bl %}<div><dt>The bed</dt><dd>{{ _bl }}</dd></div>{% endif %}
+      {% if _rn == 'The King Suite' %}<div><dt>In the room</dt><dd>A bath and a basin of its own</dd></div>{% endif %}
+      {#- 17 Oct: where the bathroom is comes from _room_copy (next door for The Twin Room (Ground Floor)); the upstairs
+          powder room is only worth saying to a room upstairs. -#}
+      {%- set _bw = room_bath_where(_rn)|trim %}
+      <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ medaillon([BATH_PHOTOS[3][0], BATH_PHOTOS[3][1]], side='right', cls='g-med--sm') }}{{ 'Private, and yours alone, ' if _private else '' }}{{ _bw }}<a class="g-glance__more" href="{{ url_for('book_rooms') }}#bathrooms">See the bathrooms</a>{% if _bw != 'next door' %}<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span>{% endif %}</dd></div>
+      <div><dt>Check-in / out</dt><dd>From {{ check_in_at }} &middot; by {{ check_out_at }}<span class="g-glance__sub">Early check-in on request</span></dd></div>
+      <div><dt>Breakfast</dt><dd>Included</dd></div>
+      <div><dt>Stairs</dt><dd>{{ room_stairs(_rn) }}</dd></div>
+    </dl>
+    <p class="g-room__note">Walls left as the centuries made them &mdash; under Class I protection, they stay that way. Within them, antiques from the brocantes sit beside what has to be new: the beds and the bathrooms.</p>
+    {% if not (arrival and departure) %}<p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Choose your dates</a></p>{% endif %}
+
+  {#- 6 Oct (owner: "make sure the bedroom ones are correct and they show them well"): every photograph of the room, not
+      three - its Booking.com ones, the château's own of the same room, one of the ground-floor bathrooms - in a grid
+      sized to the count (three across when it divides by three, two when it divides by two) so none sits alone. -#}
+  {%- set _rn = room_name(room['name']) -%}
+  {%- set _rg0 = ((ROOM_PHOTOS.get(_rn, [])|rejectattr(0, 'equalto', _hero.src)|list) + ROOM_EXTRA.get(_rn, [])) if ROOM_PHOTOS.get(_rn) else [] -%}
+  {#- the bathroom photograph joins unless it would leave one photograph alone on its row -#}
+  {#- 12 Oct: the bathrooms are part of every room (each on the ground floor), so one to three of their photographs always join the
+      room's own, filling the grid to a multiple of three. -#}
+  {%- set _need = (3 - (_rg0|length % 3)) if (_rg0|length % 3) else 3 -%}
+  {%- set _rg = (_rg0 + BATH_PHOTOS[:_need]) if _rg0 else _rg0 -%}
+  {%- set _rgn = (gallery_photos|length) if gallery_photos else (_rg|length if _rg else 4) -%}
+  {#- 9 Nov: the room's own photographs (an uploaded set first, else its Booking.com ones and the château's own of it),
+      without the bathrooms that used to pad the grid out to a row of three: one of those sits by the bathroom now. -#}
+  {%- if gallery_photos %}{% set _gal = [] %}{% for p in gallery_photos %}{% set _ = _gal.append([url_for('room_photo', filename=p['filename']), room_name(room['name'])|trim, '']) %}{% endfor %}
+  {%- elif _rg0 %}{% set _gal = [] %}{% for _u, _a in _rg0 %}{% set _ = _gal.append([_u, _a, '']) %}{% endfor %}
+  {%- else %}{% set _gal = [['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/501a4947-d365-4a11-a83e-8affbc374e48/Screenshot+2026-08-12+at+3.38.55+pm.png?format=1000w', 'Walking up to the château at dusk', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w', 'Market produce on the table', ''], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w', 'The gardens, the mountains beyond', '']] %}{% endif %}
+  {#- 11 Nov (owner's bathrooms brief): two of the bathrooms in the strip, not one -- the long bathroom under its
+      chandelier, and the claw-foot bath. Every room's bathroom is one of these, so every room page shows them; the
+      medallion beside "Your bathroom" is the painted basin, so no photograph is on the page twice.
+      26 Nov (owner): not the claw-foot bath for the rooms in NO_CLAWFOOT_BATH (_room_photos.html). -#}
+  {%- set _gal = _gal + [[BATH_PHOTOS[0][0], BATH_PHOTOS[0][1], '']] %}
+  {%- if (_rn|trim) not in NO_CLAWFOOT_BATH %}{% set _gal = _gal + [[BATH_PHOTOS[1][0], BATH_PHOTOS[1][1], '']] %}{% endif %}
+  <div class="g-roomgal-car">{{ carrousel(_gal, room_name(room['name'])|trim ~ ': photographs', thumbs=True, upto=1.25) }}</div>
+  </div>{#- /g-room--family wrapper (15 Oct: taller Family Suite photographs) -#}
+
+  {# Gated on the database description, so the written copy - meant to replace that field - never showed when it was empty. #}
+  {%- set _rcopy = room_copy(room['name'], room['description'] or '')|trim %}
+  {# (the room's one-line description repeated the bed and bathroom - shown in the table above) #}
+
+  {% if room['amenities'] %}
+  <ul class="g-tags">{% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}</ul>
+  {% endif %}
+  </section>
 </div>
 
 <script>
@@ -512,6 +581,18 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
       el.textContent = src.value;
     });
     var nEl=document.querySelector('[data-nights]'); if(nEl) nEl.textContent = nt===null?'—':nt;
+    /* The dates as words above the calendar, once it has taken over (booking-flow brief, 6). */
+    f.querySelectorAll('[data-dateread]').forEach(function(el){
+      var src = f.querySelector('#' + el.getAttribute('data-dateread'));
+      var v = src && src.value ? src.value.split('-') : null;
+      if (!v || v.length !== 3) { el.textContent = 'Choose on the calendar'; el.classList.remove('is-set'); return; }
+      /* "Sat 21 November 2026", spelt out here: a browser's own en-GB puts a comma after the day, and some do not. */
+      var d = new Date(+v[0], +v[1] - 1, +v[2]);
+      el.textContent = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()] + ' ' + d.getDate() + ' '
+        + ['January','February','March','April','May','June','July','August','September','October','November','December'][d.getMonth()]
+        + ' ' + d.getFullYear();
+      el.classList.add('is-set');
+    });
   }
   [arrive,depart,party].forEach(function(el){ el.addEventListener('change',sync); el.addEventListener('input',sync); });
 
@@ -639,6 +720,16 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         taken = data.unavailable || {};
         if (arrive.value) { cursor = parse(arrive.value); cursor.setDate(1); }
         wrap.hidden = false;
+        /* The calendar is the way to choose now: the boxes step out of sight (still posted, still checked, and focused
+           by the page's own check when one is empty, so its "This one is needed." shows under the words), and are left
+           out of the tab order, since the days are the buttons to use. */
+        var row = f.querySelector('[data-datefields]');
+        if (row) {
+          row.classList.add('is-read');
+          [arrive, depart].forEach(function(el){ el.classList.add('g-vh'); el.tabIndex = -1; });
+          row.querySelectorAll('[data-dateread]').forEach(function(el){ el.hidden = false; });
+          sync();
+        }
         render();
       })
       .catch(function(){ /* leave the plain date fields working */ });
@@ -680,6 +771,66 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
       card.appendChild(pic); card.appendChild(body); holder.appendChild(card);
     });
   }
+  /* DINNER AT GUDANES (25 Nov 2026): the dinner nights of the dates chosen, redrawn from the quote when the dates
+     change (keeping what was typed for a night still offered), each refusal said on its own line ("4 places left
+     that night"), and the note at the top kept to the same nights. Text through textContent only. */
+  function menuLink(m){
+    var a=document.createElement('a'); a.href=m.url; a.className='g-menu-link'; a.textContent='See the menu';
+    a.setAttribute('data-menu-open',''); a.setAttribute('data-menu-pdf', m.pdf?'1':'0');
+    a.setAttribute('data-menu-alt', m.alt||''); a.setAttribute('data-menu-download', m.download||m.url);
+    a.target='_blank'; a.rel='noopener'; return a;
+  }
+  function drawDinners(offer, problems, notes){
+    var list=document.getElementById('dinner_extras'), step=document.getElementById('extras_step');
+    var fleur=document.querySelector('[data-extras-fleur]'), top=document.getElementById('dinner_note');
+    if(!list) return;
+    var had={};
+    list.querySelectorAll('li[data-dinner]').forEach(function(li){
+      var i=li.querySelector('input'); had[li.getAttribute('data-dinner')]=i?i.value:'0'; });
+    var same=offer.length===Object.keys(had).length && offer.every(function(n){ return n.date in had; });
+    if(!same){
+      list.innerHTML='';
+      offer.forEach(function(n){
+        var li=document.createElement('li'); li.className='g-dinnerx';
+        li.setAttribute('data-dinner',n.date); li.setAttribute('data-price',n.price);
+        li.setAttribute('data-left',n.left); li.setAttribute('data-short',n.short);
+        var l=document.createElement('label'); l.className='g-dinnerx__l'; l.htmlFor='dinner_'+n.date;
+        var t=document.createElement('span'); t.className='g-check__t';
+        var b=document.createElement('b'); b.textContent=n.title+', '+n.words+(n.time_words?', '+n.time_words:'');
+        var p=document.createElement('span'); p.textContent=n.price_words;
+        t.appendChild(b); t.appendChild(document.createTextNode(' ')); t.appendChild(p); l.appendChild(t);
+        var box=document.createElement('span'); box.className='g-dinnerx__n';
+        var i=document.createElement('input'); i.type='number'; i.inputMode='numeric'; i.id='dinner_'+n.date;
+        i.name='dinner_'+n.date; i.min='0'; i.max=String(n.left); i.value=had[n.date]||'0';
+        i.setAttribute('aria-describedby','dinner_why_'+n.date);
+        i.addEventListener('change',refreshQuote);
+        box.appendChild(i); box.appendChild(document.createTextNode(' for dinner'));
+        li.appendChild(l); li.appendChild(box);
+        if(n.menu){ var m=document.createElement('span'); m.className='g-dinnerx__m'; m.appendChild(menuLink(n.menu)); li.appendChild(m); }
+        var why=document.createElement('span'); why.className='g-hint g-dinnerx__why'; why.id='dinner_why_'+n.date; why.hidden=true;
+        li.appendChild(why);
+        list.appendChild(li);
+      });
+    }
+    list.hidden=!offer.length;
+    var any=offer.length || f.querySelector('[name="extras"]');
+    if(step) step.hidden=!any; if(fleur) fleur.hidden=!any;
+    var size=Number(party.value)||0;
+    list.querySelectorAll('li[data-dinner]').forEach(function(li){
+      var d=li.getAttribute('data-dinner'), why=li.querySelector('.g-dinnerx__why'), i=li.querySelector('input');
+      if(i){ var left=Number(li.getAttribute('data-left'))||0; i.max=String(size?Math.min(size,left):left); }
+      if(why){ why.textContent=problems[d]||''; why.hidden=!problems[d]; }
+    });
+    if(top){
+      top.innerHTML='';
+      notes.forEach(function(n){
+        var p=document.createElement('p'); p.className='g-dinnernote__p'; p.textContent=n.text;
+        if(n.menu){ p.appendChild(document.createTextNode(' ')); p.appendChild(menuLink(n.menu)); }
+        top.appendChild(p);
+      });
+      top.hidden=!notes.length;
+    }
+  }
   // WHEN, for the extras that ask: the days of the stay, filled in from the
   // dates as they are chosen, and each box shown only while its extra is ticked.
   function isoDay(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
@@ -715,7 +866,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
      is further down the page than this script, so it is looked up each time. */
   function barTotal(x){
     var b=document.querySelector('[data-bar-total]');
-    if(b) b.textContent = x==null ? 'Choose dates' : '€'+Math.round(x).toLocaleString('en-GB');
+    /* To the cent, as the box above says it and as Stripe will charge (24 Nov 2026, booking-flow brief 7): rounded,
+       the bar said €544 under a summary of €543.76. */
+    if(b) b.textContent = x==null ? 'Choose dates' : money(x);
   }
   function refreshQuote(){
     fillWhen();
@@ -732,6 +885,8 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     var promo=document.getElementById('promo_code');
     if(promo&&promo.value.trim()) q.set('promo',promo.value.trim());
     f.querySelectorAll('[name="extras"]:checked').forEach(function(cb){ q.append('extras',cb.value); });
+    /* Dinner at Gudanes: how many for each dinner night. */
+    f.querySelectorAll('input[name^="dinner_2"]').forEach(function(i){ if(Number(i.value)>0) q.append(i.name,i.value); });
     clearTimeout(pending);
     pending=setTimeout(function(){
       fetch('{{ url_for("api_quote") }}?'+q.toString())
@@ -748,6 +903,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
             else { cb.disabled=false; if(hint) hint.hidden=true; }
           });
           fillWhen();
+          drawDinners(d.available ? (d.dinner_offer||[]) : [], d.dinner_problems||{}, d.available ? (d.dinner_note||[]) : []);
           box.hidden=false;
           var reason=document.getElementById('quote_reason');
           var lines=document.getElementById('quote_lines');
@@ -771,6 +927,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
           barTotal(d.total);
           totalRow.hidden=false;
           note.textContent=d.per_night?money(d.per_night)+' a night average.':'';
+          /* Occasions at Gudanes: the occasion's own chef line, word for word, for nights inside one. */
+          var occ=document.getElementById('quote_occasions');
+          if(occ){ occ.textContent=(d.occasions||[]).map(function(o){ return o.name+': '+o.chef_line; }).join(' '); occ.hidden=!(d.occasions||[]).length; }
           topPrice(d.per_night||null);
         })
         .catch(function(){});
@@ -790,6 +949,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   f.querySelectorAll('[name="adults"],[name="guests_under_18"]').forEach(function(el){
     el.addEventListener('change',refreshQuote); });
   f.querySelectorAll('[name="extras"]').forEach(function(cb){ cb.addEventListener('change',refreshQuote); });
+  f.querySelectorAll('input[name^="dinner_2"]').forEach(function(i){ i.addEventListener('change',refreshQuote); });
   var applyBtn=document.getElementById('promo_apply_btn');
   if(applyBtn) applyBtn.addEventListener('click',refreshQuote);
 
@@ -816,7 +976,6 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     var ms = new Date(d) - new Date(a); return ms > 0 ? Math.round(ms / 86400000) : 0; }
   function num(t){ return Number(String(t || '').replace(/[^0-9.]/g, '')); }
   function eur2(x){ return '€' + x.toFixed(2); }
-  function eur0(x){ return '€' + Math.round(x).toLocaleString('en-GB'); }
   function paint(){
     var mine = lines.querySelector('[data-tax-line]'); if (mine) mine.remove();
     var theirs = [].some.call(lines.querySelectorAll('dt'), function(dt){ return /tax/i.test(dt.textContent); });
@@ -836,7 +995,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     row.appendChild(dt); row.appendChild(dd); lines.appendChild(row);
     var shown = eur2(base + tax); tot.textContent = shown; tot.setAttribute('data-shown', shown);
     /* The bar is further down the page than this script, so it is found when painting. */
-    var bar = document.querySelector('[data-bar-total]'); if (bar) bar.textContent = eur0(base + tax);
+    var bar = document.querySelector('[data-bar-total]'); if (bar) bar.textContent = shown;
   }
   /* The quote script rebuilds the lines, then writes the total, in the same task; an observer
      runs after both. The guest-count and date fields repaint without waiting for a refresh. */
@@ -940,9 +1099,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
    animals note now live in What Happens Next. #}
 
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
+  <img class="g-close__mark" width="62" height="62" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Not this room?</h2>
-  <p class="g-close__p">There are {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }}, and they are not alike. The <a href="{{ url_for('workshops_public') }}#compare">comparison table</a> is the quickest way to see which suits.</p>
+  <p class="g-close__p">There are {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }}, and they are not alike. The <a href="{{ url_for('book_rooms') }}#compare">rooms side by side</a> are the quickest way to see which suits.</p>{#- site review 25 Nov (2.3): it pointed at a table that was not there; it is on /book now -#}
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See every room</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us</a>
@@ -962,7 +1121,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 <div class="g-bookbar" role="region" aria-label="Your booking">
   <span class="g-bookbar__sum">
-    <span class="g-bookbar__t" data-bar-total>{% if initial_quote and initial_quote.total %}€{{ '{:,.0f}'.format(initial_quote.total) }}{% else %}Choose dates{% endif %}</span>
+    <span class="g-bookbar__t" data-bar-total>{% if initial_quote and initial_quote.total %}{{ '€%.2f'|format(initial_quote.total) }}{% else %}Choose dates{% endif %}</span>
     <span class="g-bookbar__n" data-bar-note translate="no">{{ room_title(room['name']) }}</span>
   </span>
   {# Says what the form's own button says. It read "Hold these dates" in every case, so a paying guest saw "Pay & book" in the form and "Hold these dates" in the bar on the same screen. #}
@@ -1033,6 +1192,13 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         var nm=l && l.querySelector('.g-addons__n');
         return nm ? nm.textContent.trim() : (l ? l.textContent.trim().split('€')[0].trim() : ''); })
       .filter(Boolean);
+    /* Dinner at Gudanes, as the summary says it: "Dinner at Gudanes, Sat 27 March × 2". */
+    var dinnerSum=0;
+    f.querySelectorAll('li[data-dinner]').forEach(function(li){
+      var i=li.querySelector('input'), c=Number(i&&i.value||0);
+      if(c>0){ picked.push('Dinner at Gudanes, '+li.getAttribute('data-short')+' × '+c);
+               dinnerSum+=c*Number(li.getAttribute('data-price')||0); }
+    });
     var row=box.querySelector('[data-rv-extras-row]');
     if(picked.length){ row.hidden=false; box.querySelector('[data-rv-extras]').textContent=picked.join(', '); }
     else row.hidden=true;
@@ -1053,7 +1219,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     /* A second taxe de séjour block stood here, defaulting to €1.65 and writing into the first
        row's cell, so the visible row stayed at a dash and the total quietly used 1.65. */
 
-    var total = RATE * n + tax;
+    var total = RATE * n + tax + dinnerSum;
     box.querySelector('[data-rv-total]').textContent = n ? eur(total) : '—';
     box.querySelector('[data-rv-dep]').textContent   = n ? eur(RATE*n*PCT/100) : '—';
   }
@@ -1075,4 +1241,5 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 })();
 </script>
 {{ pictures_script() }}
+{{ menu_dialog_once() }}
 {% endblock %}

@@ -199,7 +199,7 @@ def run():
     # it goes to first and leaves out anybody who asked not to be written to.
     # Who exactly it reaches is test_group_mail's to pin.
     s.check("everyone coming can be written to at once, from the app",
-            "/email\"" in page and "Email everyone on this session" in page
+            "/email\"" in page and "Send bulk email" in page
             and "mailto:?bcc=" not in page)
     s.check("it links to its printable register",
             f"/admin/workshops/sessions/{soon}/register" in page)

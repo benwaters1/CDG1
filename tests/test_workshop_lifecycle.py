@@ -90,9 +90,9 @@ def run():
     s.check("and sends them to what is actually on",
             "/workshops" in r.headers.get("Location", ""),
             detail=f"went to {r.headers.get('Location')!r}")
-    s.check("while a live one still opens", pub.get(f"/workshops/{upcoming}").status_code == 200)
+    s.check("while a live one still opens", pub.get(m.retreat_path(upcoming)).status_code == 200)
     s.check("and an undated one opens too, so it can be read about",
-            pub.get(f"/workshops/{undated}").status_code == 200)
+            pub.get(m.retreat_path(undated)).status_code == 200)
 
     s.section("Nobody can register for dates that have passed")
     conn = db()
@@ -148,8 +148,12 @@ def run():
     conn.close()
     page = pub.get("/workshops").get_data(as_text=True)
     s.check("an inactive workshop is off the page", f"{TAG} Running Soon" not in page)
-    s.check("and its own page 404s rather than selling it",
-            pub.get(f"/workshops/{upcoming}").status_code == 404)
+    # 24 Nov 2026 (old-links brief): a 302 to the list, never its own page.
+    off = pub.get(f"/workshops/{upcoming}")
+    s.check("and its own page sends the guest to the list rather than selling it",
+            off.status_code == 302
+            and off.headers.get("Location", "").split("?")[0].endswith("/workshops"),
+            detail=f"{off.status_code} {off.headers.get('Location')}")
     conn = db()
     still = conn.execute("SELECT COUNT(*) AS c FROM workshops WHERE id = ?",
                          (upcoming,)).fetchone()["c"]

@@ -73,6 +73,10 @@ os.environ["GUDANES_UPLOAD_DIR"] = SCRATCH_UPLOADS
 # nothing where the salon used to be.
 SCRATCH_MIRROR = tempfile.mkdtemp(prefix="gudanes_test_mirror_")
 os.environ["GUDANES_MIRROR_DIR"] = SCRATCH_MIRROR
+# An occasion's menus and banner photographs (Dinner at Gudanes, 25 Nov 2026):
+# the menus suites upload go here, never beside the house's real ones.
+SCRATCH_OCCASION_FILES = tempfile.mkdtemp(prefix="gudanes_test_occasion_files_")
+os.environ["GUDANES_OCCASION_FILES_DIR"] = SCRATCH_OCCASION_FILES
 # Never let a test reach the payment provider, whatever is in .env.
 for _k in ("STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET"):
     os.environ.pop(_k, None)
@@ -90,6 +94,7 @@ def _cleanup():
     # under the system temp folder either way.
     shutil.rmtree(SCRATCH_UPLOADS, ignore_errors=True)
     shutil.rmtree(SCRATCH_MIRROR, ignore_errors=True)
+    shutil.rmtree(SCRATCH_OCCASION_FILES, ignore_errors=True)
 
 
 import app as m  # noqa: E402  — must follow the env setup above
@@ -186,6 +191,9 @@ m.WHATSAPP_FROM_NUMBER = ""
 m.sms_provider_send = _refuse(
     "the SMS provider",
     "every message costs money; stand in for sms_provider_send in the test")
+# Kept first, as the forecast is below: a suite can read what the real one
+# would send -- its payload, its attachments -- with urlopen stood in under it.
+REAL_SEND_EMAIL_VIA_RESEND = m.send_email_via_resend
 m.send_email_via_resend = _refuse(
     "Resend", "mock send_email, or let it fall through to the held outbox")
 
@@ -568,6 +576,11 @@ assert m.DB_PATH == SCRATCH_DB, (
 assert m.UPLOAD_DIR == SCRATCH_UPLOADS, (
     f"tests would have written uploads into {m.UPLOAD_DIR} — refusing. "
     "The GUDANES_UPLOAD_DIR override in app.py is missing or was overwritten."
+)
+
+assert m.OCCASION_FILES_DIR == SCRATCH_OCCASION_FILES, (
+    f"tests would have written menus into {m.OCCASION_FILES_DIR} — refusing. "
+    "The GUDANES_OCCASION_FILES_DIR override in app.py is missing or was overwritten."
 )
 
 assert m.MIRROR_DIR == SCRATCH_MIRROR, (

@@ -121,11 +121,13 @@ FR = {
     'Terrace': 'Terrasse',
     'Bar': 'Bar',
     'Private': 'Privé',
+    'Private Retreats': 'Séjours privés',
     # -- Navigation and shell -------------------------------------------
     "Stay": "Séjourner",
     "Stay Now": "Réserver un séjour",
     "Workshops": "Ateliers",
-    "Retreats": "Retraites",
+    # Site review 25 Nov: "Séjours", as the pages and "Séjours privés" say; "retraite" reads first as retirement.
+    "Retreats": "Séjours",
     "Weddings & Events": "Mariages et événements",
     "Weddings & Celebrations": "Mariages et célébrations",
     "Weddings": "Mariages",
@@ -152,7 +154,7 @@ FR = {
     "Menu": "Menu",
     "Close menu": "Fermer le menu",
     "Subscribe to our newsletter": "Abonnez-vous à notre lettre d'information",
-    "The restoration, the rooms as they open, and the workshop dates. No more than a few times a year; unsubscribe in one click.": "La restauration, les chambres à mesure qu'elles ouvrent, et les dates des ateliers. Quelques fois par an, pas davantage ; désabonnement en un clic.",
+    "The restoration, the rooms as they open, and the retreat dates. No more than a few times a year; unsubscribe in one click.": "La restauration, les chambres à mesure qu'elles ouvrent, et les dates des séjours. Quelques fois par an, pas davantage ; désabonnement en un clic.",
     "Subscribe": "S'abonner",
     "Email": "E-mail",
     "Email address": "Adresse e-mail",
@@ -200,6 +202,18 @@ FR = {
     # The top bar's short name for What's On in the Ariège (z22).
     "What’s On": "Que faire",
     "In the Ariège": "En Ariège",
+    # Occasions at Gudanes and Getting Here (24 Nov 2026).
+    "At Gudanes": "À Gudanes",
+    "What’s On at Gudanes": "Que faire à Gudanes",
+    "Getting Here": "Venir au château",
+    # Dinner at Gudanes and the home-page banner (25 Nov 2026).
+    "Dinner at Gudanes": "Dîner à Gudanes",
+    "Chef in residence": "Chef en résidence",
+    "Book your stay": "Réservez votre séjour",
+    "See the menu": "Voir le menu",
+    "Dinner from": "Dîner à partir de",
+    "a person": "par personne",
+    "wine included": "vin compris",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Vos dates",
@@ -263,14 +277,18 @@ FR = {
     # -- The guest's own account -----------------------------------------
     "Your château account": "Votre compte château",
     "Your stays": "Vos séjours",
-    "Your workshops": "Vos ateliers",
+    # Retreat, not workshop: the owner, 25 Nov 2026. "Retraite", as the
+    # retreat days say it -- "séjour" is already the guest's stay.
+    "Your retreats": "Vos retraites",
+    "Retreat": "Retraite",
+    "The retreats": "Les retraites",
     "Your dinners": "Vos dîners",
     "Your account": "Votre compte",
     # The guest's statement of account.
     "Your statement": "Votre relevé",
     "Nothing charged or paid yet.": "Rien n'a encore été facturé ni payé.",
     "Pay for this stay": "Régler ce séjour",
-    "Pay for this workshop": "Régler cet atelier",
+    "Pay for this retreat": "Régler cette retraite",
     "Pay towards this event": "Régler une partie de cet événement",
     "Back to your account": "Retour à votre compte",
     "Print": "Imprimer",
@@ -317,7 +335,7 @@ FR = {
     "Save this link, or write down your reference code and the email you booked with — that's how you check in and manage this booking later.": "Conservez ce lien, ou notez votre code de réservation et l'adresse e-mail utilisée — c'est ainsi que vous ferez votre arrivée et gérerez cette réservation par la suite.",
     "Contact": "Contact",
     "A room, your own dates": "Une chambre, à vos dates",
-    "Dining only — a table at La Table": "Dîner seulement — une table à La Table",
+    "Dining only: a table at La Table": "Dîner seulement : une table à La Table",
     "Five rooms · from €{price} a night · breakfast included": "Cinq chambres · à partir de {price} € la nuit · petit-déjeuner compris",
     "Five rooms · breakfast included": "Cinq chambres · petit-déjeuner compris",
     # 17 Oct: a sixth room. The templates ask for "<count> rooms · ..." from house_rooms, so both are here.
@@ -326,7 +344,7 @@ FR = {
     "Six rooms · from €{price} a night · breakfast included": "Six chambres · à partir de {price} € la nuit · petit-déjeuner compris",
     "A room and breakfast, your own dates": "Une chambre et le petit-déjeuner, à vos dates",
     "Five rooms · from one night": "Cinq chambres · dès une nuit",
-    "Cooking, the brocantes and the restoration": "La cuisine, les brocantes et la restauration",
+    "Cooking, the brocantes, the restoration and more": "La cuisine, les brocantes, la restauration et bien plus encore",
     # 26 Oct: the Book menu's retreats line, its French words left in French (the deck, section 5).
     "Three to seven nights of": "Trois à sept nuits de",
     "Three to seven nights · full board · itinerary included": "De trois à sept nuits · pension complète · programme compris",
@@ -348,6 +366,7 @@ FR = {
     "Find booking": "Retrouver la réservation",
     "Reference code": "Code de réservation",
     "Email you booked with": "E-mail utilisé pour réserver",
+    "Email you enquired with": "E-mail utilisé pour votre demande",
     "Thank you": "Merci",
     "Booking request received": "Demande de réservation reçue",
     "Add-ons": "Suppléments",
@@ -757,7 +776,7 @@ FR = {
     'The ateliers': 'Les ateliers',
     'Your events': 'Vos événements',
     'stays &amp; general': 'séjours et questions générales',
-    'workshops & events': 'ateliers et événements',
+    'retreats and events': 'séjours et événements',
     'For now, the château is open only to its guests.': "Pour l'instant, le château n'est ouvert qu'à ses hôtes.",
     # Handover q, 7 October: new English on the nav and the
     # booking pages. t() falls back silently, so without these a
@@ -810,6 +829,128 @@ FR = {
     "See everything you have with us": "Voir tout ce que vous avez chez nous",
     "Under restoration since 2013": "En restauration depuis 2013",
     "What’s On in the Ariège": "Que faire en Ariège",
+    # 23 Nov 2026 (owner): check-out moved to 11am. Every sentence that carries the
+    # times, written here so French never falls back to English while the page
+    # memory catches up. Times as house_guide_clock writes them in French: 15h, 11h.
+    "Arrival and departure": "Arrivée et départ",
+    "Check-in from 3pm, check-out by 11am.": "Arrivée à partir de 15h, départ avant 11h.",
+    "Check-in from 3pm, check-out by 11am. Later arrivals by arrangement.":
+        "Arrivée à partir de 15h, départ avant 11h. Arrivée plus tardive sur demande.",
+    "Check-in from 3pm, check-out by 11am. Arriving earlier? Early check-in is on request: choose it above and we will do our best.":
+        "Arrivée à partir de 15h, départ avant 11h. Vous arrivez plus tôt ? L’arrivée anticipée est possible sur demande : choisissez-la ci-dessus et nous ferons de notre mieux.",
+    "From 3pm · by 11am": "À partir de 15h · avant 11h",
+    "Arrival is from 3pm and departure by 11am, unless your confirmation says otherwise. Tell us if you expect to arrive late so that someone can be there to meet you.":
+        "L’arrivée se fait à partir de 15h et le départ avant 11h, sauf indication contraire dans votre confirmation. Prévenez-nous si vous pensez arriver tard, afin que quelqu’un soit là pour vous accueillir.",
+    # 25 Nov 2026 (owner): L'Ariégeoise, the evening it takes on Cooking in the
+    # Cuisine (_ws_copy.html, OCC). The page translator reads text between tags,
+    # so the line is three pieces round the race's name, which stays as it is.
+    # The day's English heading is the gloss under its French one and is left
+    # alone, as page_text.py leaves every gloss.
+    "The evening of": "Le soir de",
+    ": a barbecue, then a film under the stars": " : un barbecue, puis un film à la belle étoile",
+    # 25 Nov: "the farewell banquet" on a last night (BRIEF-itinerary-wording), for
+    # L'Ariégeoise and the Fête de la Musique, and an occasion the owner wrote.
+    ": the farewell banquet in the Salon de Musique, then dancing": " : le banquet d’adieu dans le Salon de Musique, puis on danse",
+    "Bastille Day: the farewell banquet in the Salon de Musique, then dancing":
+        "Le 14 Juillet : le banquet d’adieu dans le Salon de Musique, puis on danse",
+    # 25 Nov 2026 (owner: "The itinerary is good, but the wording is not elegant
+    # and marketing enough"; BRIEF-itinerary-wording). Every new line of the
+    # retreats' days (_ws_copy.html) and of /events/private, written here so
+    # neither waits on the translation job, in the house's register: vous, no
+    # exclamation. "The afternoon is yours" is one phrase everywhere. Each key is
+    # one text node: a line with italics in it is the words either side of them.
+    "The afternoon is yours": "L’après-midi est à vous",
+    "Collected at midday from the Grand Hôtel de l’Opéra, Toulouse, and driven into the Pyrénées, to luncheon in the garden":
+        "On vient vous chercher à midi au Grand Hôtel de l’Opéra, à Toulouse, pour vous conduire dans les Pyrénées, jusqu’au déjeuner au jardin",
+    "The afternoon to settle in, and to wander the château and its grounds":
+        "L’après-midi pour vous installer, et flâner dans le château et son parc",
+    "as the mountains turn blue, then dinner": "à l’heure où les montagnes bleuissent, puis le dîner",
+    "as the mountains turn blue, then dinner by candlelight":
+        "à l’heure où les montagnes bleuissent, puis le dîner aux chandelles",
+    "as the mountains turn blue, then the welcome dinner by candlelight":
+        "à l’heure où les montagnes bleuissent, puis le dîner de bienvenue aux chandelles",
+    ", then the welcome dinner by candlelight": ", puis le dîner de bienvenue aux chandelles",
+    "A last, unhurried breakfast, then the drive back to Toulouse at eleven":
+        "Un dernier petit-déjeuner, sans hâte, puis le retour vers Toulouse à onze heures",
+    "A last, unhurried breakfast, and the journey home": "Un dernier petit-déjeuner, sans hâte, puis le voyage du retour",
+    # Cooking in the Cuisine, 25 Nov (owner): a class every full day and no Saturday market with the chef.
+    "The classics of the French table, in a cooking class with the château’s chefs":
+        "Les classiques de la table française, lors d’un cours de cuisine avec les chefs du château",
+    "Back from Mirepoix, a cooking class with the château’s chefs, from the morning’s market":
+        "De retour de Mirepoix, un cours de cuisine avec les chefs du château, autour du marché du matin",
+    "An afternoon of chocolate-making in the pastry kitchen": "Un après-midi à travailler le chocolat, en pâtisserie",
+    "Uncovering the frescoes with the restorers, or the afternoon to yourself":
+        "Dégager les fresques aux côtés des restaurateurs, ou l’après-midi rien qu’à vous",
+    "A barbecue in the grounds, then a film beneath the stars": "Un barbecue dans le parc, puis un film à la belle étoile",
+    "The pastry kitchen, at the elbow of the pastry chef": "La pâtisserie, aux côtés du chef pâtissier",
+    "Lunch in the old town of Foix, then the castle above its rooftops":
+        "Déjeuner dans la vieille ville de Foix, puis le château qui domine ses toits",
+    "A tasting of the region’s wines, then dinner in the village of Les Cabannes":
+        "Une dégustation des vins de la région, puis le dîner au village des Cabannes",
+    "Mirepoix on market day, beneath its medieval arcades, then the brocantes":
+        "Mirepoix un jour de marché, sous ses arcades médiévales, puis les brocantes",
+    "Dinner in the village of Les Cabannes": "Le dîner au village des Cabannes",
+    "Into the vast cave at Lombrives, then lunch in Ax-les-Thermes":
+        "Dans l’immense grotte de Lombrives, puis le déjeuner à Ax-les-Thermes",
+    "Chocolate-making, or the afternoon to yourself": "L’atelier chocolat, ou l’après-midi rien qu’à vous",
+    "The farewell banquet in the Salon de Musique, then dancing": "Le banquet d’adieu dans le Salon de Musique, puis on danse",
+    "Morning yoga, then the château and its restoration, room by room":
+        "Le yoga du matin, puis le château et sa restauration, pièce par pièce",
+    "The pastry kitchen with the pastry chef, or the afternoon to yourself":
+        "La pâtisserie avec le chef pâtissier, ou l’après-midi rien qu’à vous",
+    "A morning beside the restorers, as the frescoes and painted beams return to the light":
+        "Une matinée aux côtés des restaurateurs, tandis que les fresques et les poutres peintes reviennent à la lumière",
+    "Down the river by canoe, or the afternoon to yourself": "La descente de la rivière en canoë, ou l’après-midi rien qu’à vous",
+    "Dinner by candlelight at the château": "Le dîner aux chandelles au château",
+    "A cooking class with the château’s chefs": "Un cours de cuisine avec les chefs du château",
+    "Supper of everything you made, then games at the table":
+        "Un souper de tout ce que vous avez préparé, puis des jeux autour de la table",
+    "The castle at Foix, and lunch in the old town below it":
+        "Le château de Foix, et le déjeuner dans la vieille ville, à ses pieds",
+    "The château through its antiques, and the stories behind them":
+        "Le château à travers ses antiquités, et les histoires qu’elles racontent",
+    "Out early to the brocantes and the dealers, while the best pieces are still on the tables":
+        "Tôt le matin, chez les brocanteurs et les marchands, quand les plus belles pièces sont encore sur les tables",
+    "Supper, with the day’s finds laid out on the table": "Le souper, avec les trouvailles du jour étalées sur la table",
+    # "A village <em>vide-grenier</em>, where ...": the French word stays in its
+    # italics, so the words round it carry the French order.
+    "A village": "Un village et son",
+    ", where whole attics come out onto the street": ", où des greniers entiers se vident dans la rue",
+    "Lunch in Foix, then a cooking class or the afternoon to yourself":
+        "Déjeuner à Foix, puis un cours de cuisine ou l’après-midi rien qu’à vous",
+    "A cooking class with the château’s chefs, or the afternoon to yourself":
+        "Un cours de cuisine avec les chefs du château, ou l’après-midi rien qu’à vous",
+    "A tasting of the region’s wines, then dinner by candlelight":
+        "Une dégustation des vins de la région, puis le dîner aux chandelles",
+    "The morning given to the retreat’s own sessions": "La matinée consacrée aux séances de la retraite",
+    "The final session": "La dernière séance",
+    "The afternoon to settle in, with the château dressed for Christmas":
+        "L’après-midi pour vous installer, dans un château paré pour Noël",
+    "The château and its restoration, room by room": "Le château et sa restauration, pièce par pièce",
+    "The gingerbread château, built with the pastry chef": "Le château en pain d’épices, construit avec le chef pâtissier",
+    "A tasting of the region’s wines by the fire, then a Christmas film":
+        "Une dégustation des vins de la région au coin du feu, puis un film de Noël",
+    "The grounds,": "Le parc,",
+    ", or a hand in dressing the tree": ", ou un coup de main pour décorer le sapin",
+    # /events/private: Choose Your Days, and A Sample Private Retreat.
+    "A morning at the stove with the château’s chefs, and an afternoon in the pastry kitchen":
+        "Une matinée aux fourneaux avec les chefs du château, et un après-midi en pâtisserie",
+    "Mirepoix on market day, beneath its medieval arcades, and the brocantes of the valley":
+        "Mirepoix un jour de marché, sous ses arcades médiévales, et les brocantes de la vallée",
+    "A morning beside the restorers, as the painted beams return to the light":
+        "Une matinée aux côtés des restaurateurs, tandis que les poutres peintes reviennent à la lumière",
+    "The gingerbread château, Christmas baking, and the Christmas banquet in the Salon de Musique":
+        "Le château en pain d’épices, les pâtisseries de Noël, et le banquet de Noël dans le Salon de Musique",
+    "Down the river by canoe, long afternoons by the pool, and a film beneath the stars":
+        "La descente de la rivière en canoë, de longs après-midi au bord de la piscine, et un film à la belle étoile",
+    "Three nights from the retreats’ own days, shaped around your party. Every stay is drawn up with you.":
+        "Trois nuits tirées des journées des séjours, façonnées autour de votre groupe. Chaque séjour se compose avec vous.",
+    "Welcomed with a glass of crémant, and shown to your rooms":
+        "Accueillis avec une coupe de crémant, puis conduits à vos chambres",
+    "A morning at the stove with the château’s chefs": "Une matinée aux fourneaux avec les chefs du château",
+    "A last, unhurried breakfast": "Un dernier petit-déjeuner, sans hâte",
+    "A picnic bag each, packed by the kitchen, for the journey onward":
+        "Un panier pique-nique pour chacun, préparé par la cuisine, pour la suite du voyage",
 }
 
 ES = {
@@ -899,6 +1040,7 @@ ES = {
     'Terrace': 'Terraza',
     'Bar': 'Barra',
     'Private': 'Privado',
+    'Private Retreats': 'Retiros privados',
     # -- Navigation and shell -------------------------------------------
     "Stay": "Alojarse",
     "Stay Now": "Reservar estancia",
@@ -929,7 +1071,7 @@ ES = {
     "Menu": "Menú",
     "Close menu": "Cerrar menú",
     "Subscribe to our newsletter": "Suscríbase a nuestro boletín",
-    "The restoration, the rooms as they open, and the workshop dates. No more than a few times a year; unsubscribe in one click.": "La restauración, las habitaciones a medida que se abren y las fechas de los talleres. Unas pocas veces al año; se da de baja con un clic.",
+    "The restoration, the rooms as they open, and the retreat dates. No more than a few times a year; unsubscribe in one click.": "La restauración, las habitaciones a medida que se abren y las fechas de los retiros. Unas pocas veces al año; se da de baja con un clic.",
     "Subscribe": "Suscribirse",
     "Email": "Correo electrónico",
     "Email address": "Dirección de correo electrónico",
@@ -971,6 +1113,17 @@ ES = {
     "The History": "La historia",
     "What’s On": "Qué hacer",
     "In the Ariège": "En el Ariège",
+    "At Gudanes": "En Gudanes",
+    "What’s On at Gudanes": "Qué hacer en Gudanes",
+    "Getting Here": "Cómo llegar",
+    # Dinner at Gudanes and the home-page banner (25 Nov 2026).
+    "Dinner at Gudanes": "Cena en Gudanes",
+    "Chef in residence": "Chef residente",
+    "Book your stay": "Reserve su estancia",
+    "See the menu": "Ver el menú",
+    "Dinner from": "Cena desde",
+    "a person": "por persona",
+    "wine included": "vino incluido",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Sus fechas",
@@ -1034,14 +1187,18 @@ ES = {
     # -- The guest's own account -----------------------------------------
     "Your château account": "Su cuenta del château",
     "Your stays": "Sus estancias",
-    "Your workshops": "Sus talleres",
+    # Retreat, not workshop: the owner, 25 Nov 2026. "Retiro", as the retreat
+    # days say it.
+    "Your retreats": "Sus retiros",
+    "Retreat": "Retiro",
+    "The retreats": "Los retiros",
     "Your dinners": "Sus cenas",
     "Your account": "Su cuenta",
     # The guest's statement of account.
     "Your statement": "Su estado de cuenta",
     "Nothing charged or paid yet.": "Todavía no se ha cobrado ni pagado nada.",
     "Pay for this stay": "Pagar esta estancia",
-    "Pay for this workshop": "Pagar este taller",
+    "Pay for this retreat": "Pagar este retiro",
     "Pay towards this event": "Pagar una parte de este evento",
     "Back to your account": "Volver a su cuenta",
     "Print": "Imprimir",
@@ -1088,7 +1245,7 @@ ES = {
     "Save this link, or write down your reference code and the email you booked with — that's how you check in and manage this booking later.": "Guarde este enlace, o anote su código de reserva y el correo electrónico que utilizó — así es como hará su entrada y gestionará esta reserva más adelante.",
     "Contact": "Contacto",
     "A room, your own dates": "Una habitación, en sus fechas",
-    "Dining only — a table at La Table": "Solo cena — una mesa en La Table",
+    "Dining only: a table at La Table": "Solo cena: una mesa en La Table",
     "Five rooms · from €{price} a night · breakfast included": "Cinco habitaciones · desde {price} € la noche · desayuno incluido",
     "Five rooms · breakfast included": "Cinco habitaciones · desayuno incluido",
     # 17 Oct: a sixth room (see FR).
@@ -1097,7 +1254,7 @@ ES = {
     "Six rooms · from €{price} a night · breakfast included": "Seis habitaciones · desde {price} € la noche · desayuno incluido",
     "A room and breakfast, your own dates": "Habitación y desayuno, en sus fechas",
     "Five rooms · from one night": "Cinco habitaciones · desde una noche",
-    "Cooking, the brocantes and the restoration": "La cocina, las brocantes y la restauración",
+    "Cooking, the brocantes, the restoration and more": "La cocina, las brocantes, la restauración y mucho más",
     "Three to seven nights of": "De tres a siete noches de",
     "Three to seven nights · full board · itinerary included": "De tres a siete noches · pensión completa · programa incluido",
     "Fixed dates, a small group": "Fechas fijas, en grupo reducido",
@@ -1118,6 +1275,7 @@ ES = {
     "Find booking": "Buscar reserva",
     "Reference code": "Código de reserva",
     "Email you booked with": "Correo con el que reservó",
+    "Email you enquired with": "Correo con el que hizo su consulta",
     "Thank you": "Gracias",
     "Booking request received": "Solicitud de reserva recibida",
     "Add-ons": "Extras",
@@ -1431,7 +1589,7 @@ ES = {
     'The ateliers': 'Los talleres',
     'Your events': 'Sus eventos',
     'stays &amp; general': 'estancias y consultas generales',
-    'workshops & events': 'talleres y eventos',
+    'retreats and events': 'retiros y eventos',
     'For now, the château is open only to its guests.': 'Por ahora, el castillo solo está abierto a sus huéspedes.',
     # Handover q, 7 October. See the note on the French table.
     'Ask to move your dates': 'Solicitar un cambio de fechas',
@@ -1475,6 +1633,118 @@ ES = {
     "See everything you have with us": "Ver todo lo que tiene con nosotros",
     "Under restoration since 2013": "En restauración desde 2013",
     "What’s On in the Ariège": "Qué hacer en Ariège",
+    # 23 Nov 2026 (owner): check-out moved to 11am; the sentences that carry the
+    # times. Times as house_guide_clock writes them in Spanish: 15:00, 11:00.
+    "Arrival and departure": "Llegada y salida",
+    "Check-in from 3pm, check-out by 11am.": "Entrada a partir de las 15:00, salida antes de las 11:00.",
+    "Check-in from 3pm, check-out by 11am. Later arrivals by arrangement.":
+        "Entrada a partir de las 15:00, salida antes de las 11:00. Llegadas más tardías, previo acuerdo.",
+    "Check-in from 3pm, check-out by 11am. Arriving earlier? Early check-in is on request: choose it above and we will do our best.":
+        "Entrada a partir de las 15:00, salida antes de las 11:00. ¿Llega antes? La entrada anticipada es bajo petición: elíjala arriba y haremos lo posible.",
+    "From 3pm · by 11am": "Desde las 15:00 · antes de las 11:00",
+    "Arrival is from 3pm and departure by 11am, unless your confirmation says otherwise. Tell us if you expect to arrive late so that someone can be there to meet you.":
+        "La llegada es a partir de las 15:00 y la salida antes de las 11:00, salvo que su confirmación indique otra cosa. Avísenos si prevé llegar tarde, para que alguien pueda recibirle.",
+    # 25 Nov 2026 (owner): L'Ariégeoise on Cooking in the Cuisine; see the French.
+    "The evening of": "La noche de",
+    ": a barbecue, then a film under the stars": ": una barbacoa y luego una película bajo las estrellas",
+    # 25 Nov: "the farewell banquet" on a last night; see the French.
+    ": the farewell banquet in the Salon de Musique, then dancing": ": el banquete de despedida en el Salon de Musique y luego baile",
+    "Bastille Day: the farewell banquet in the Salon de Musique, then dancing":
+        "El 14 de julio: el banquete de despedida en el Salon de Musique y luego baile",
+    # 25 Nov 2026: the retreats' days and /events/private in their new words
+    # (BRIEF-itinerary-wording); see the French. Usted, as the rest of the table.
+    "The afternoon is yours": "La tarde es suya",
+    "Collected at midday from the Grand Hôtel de l’Opéra, Toulouse, and driven into the Pyrénées, to luncheon in the garden":
+        "Le recogemos a mediodía en el Grand Hôtel de l’Opéra, en Toulouse, y le llevamos a los Pirineos, a almorzar en el jardín",
+    "The afternoon to settle in, and to wander the château and its grounds":
+        "La tarde para instalarse y recorrer el castillo y sus jardines",
+    "as the mountains turn blue, then dinner": "mientras las montañas se tiñen de azul, y luego la cena",
+    "as the mountains turn blue, then dinner by candlelight":
+        "mientras las montañas se tiñen de azul, y luego la cena a la luz de las velas",
+    "as the mountains turn blue, then the welcome dinner by candlelight":
+        "mientras las montañas se tiñen de azul, y luego la cena de bienvenida a la luz de las velas",
+    ", then the welcome dinner by candlelight": ", y luego la cena de bienvenida a la luz de las velas",
+    "A last, unhurried breakfast, then the drive back to Toulouse at eleven":
+        "Un último desayuno sin prisas y, a las once, el regreso a Toulouse",
+    "A last, unhurried breakfast, and the journey home": "Un último desayuno sin prisas, y el viaje de vuelta a casa",
+    "The classics of the French table, in a cooking class with the château’s chefs":
+        "Los clásicos de la mesa francesa, en una clase de cocina con los chefs del castillo",
+    "Back from Mirepoix, a cooking class with the château’s chefs, from the morning’s market":
+        "De vuelta de Mirepoix, una clase de cocina con los chefs del castillo, con lo comprado en el mercado",
+    "An afternoon of chocolate-making in the pastry kitchen": "Una tarde de chocolate en el obrador de pastelería",
+    "Uncovering the frescoes with the restorers, or the afternoon to yourself":
+        "Descubrir los frescos junto a los restauradores, o la tarde para usted",
+    "A barbecue in the grounds, then a film beneath the stars":
+        "Una barbacoa en los jardines y luego una película bajo las estrellas",
+    "The pastry kitchen, at the elbow of the pastry chef": "El obrador de pastelería, codo con codo con el chef pastelero",
+    "Lunch in the old town of Foix, then the castle above its rooftops":
+        "Almuerzo en el casco antiguo de Foix y, después, el castillo que domina sus tejados",
+    "A tasting of the region’s wines, then dinner in the village of Les Cabannes":
+        "Una cata de vinos de la región y luego la cena en el pueblo de Les Cabannes",
+    "Mirepoix on market day, beneath its medieval arcades, then the brocantes":
+        "Mirepoix en día de mercado, bajo sus soportales medievales, y luego las brocantes",
+    "Dinner in the village of Les Cabannes": "La cena en el pueblo de Les Cabannes",
+    "Into the vast cave at Lombrives, then lunch in Ax-les-Thermes":
+        "La inmensa cueva de Lombrives y luego el almuerzo en Ax-les-Thermes",
+    "Chocolate-making, or the afternoon to yourself": "El taller de chocolate, o la tarde para usted",
+    "The farewell banquet in the Salon de Musique, then dancing":
+        "El banquete de despedida en el Salon de Musique y luego baile",
+    "Morning yoga, then the château and its restoration, room by room":
+        "Yoga por la mañana y luego el castillo y su restauración, sala por sala",
+    "The pastry kitchen with the pastry chef, or the afternoon to yourself":
+        "El obrador con el chef pastelero, o la tarde para usted",
+    "A morning beside the restorers, as the frescoes and painted beams return to the light":
+        "Una mañana junto a los restauradores, mientras los frescos y las vigas pintadas vuelven a la luz",
+    "Down the river by canoe, or the afternoon to yourself": "Río abajo en canoa, o la tarde para usted",
+    "Dinner by candlelight at the château": "La cena a la luz de las velas en el castillo",
+    "A cooking class with the château’s chefs": "Una clase de cocina con los chefs del castillo",
+    "Supper of everything you made, then games at the table":
+        "Una cena con todo lo que ha preparado y luego juegos alrededor de la mesa",
+    "The castle at Foix, and lunch in the old town below it":
+        "El castillo de Foix, y el almuerzo en el casco antiguo, a sus pies",
+    "The château through its antiques, and the stories behind them":
+        "El castillo a través de sus antigüedades, y las historias que esconden",
+    "Out early to the brocantes and the dealers, while the best pieces are still on the tables":
+        "Temprano, a las brocantes y a los anticuarios, cuando las mejores piezas aún están sobre las mesas",
+    "Supper, with the day’s finds laid out on the table": "La cena, con los hallazgos del día dispuestos sobre la mesa",
+    "A village": "Un pueblo y su",
+    ", where whole attics come out onto the street": ", donde desvanes enteros salen a la calle",
+    "Lunch in Foix, then a cooking class or the afternoon to yourself":
+        "Almuerzo en Foix y luego una clase de cocina o la tarde para usted",
+    "A cooking class with the château’s chefs, or the afternoon to yourself":
+        "Una clase de cocina con los chefs del castillo, o la tarde para usted",
+    "A tasting of the region’s wines, then dinner by candlelight":
+        "Una cata de vinos de la región y luego la cena a la luz de las velas",
+    "The morning given to the retreat’s own sessions": "La mañana dedicada a las sesiones del propio retiro",
+    "The final session": "La última sesión",
+    "The afternoon to settle in, with the château dressed for Christmas":
+        "La tarde para instalarse, con el castillo vestido para la Navidad",
+    "The château and its restoration, room by room": "El castillo y su restauración, sala por sala",
+    "The gingerbread château, built with the pastry chef":
+        "El castillo de pan de jengibre, construido con el chef pastelero",
+    "A tasting of the region’s wines by the fire, then a Christmas film":
+        "Una cata de vinos de la región junto al fuego y luego una película navideña",
+    "The grounds,": "Los jardines,",
+    ", or a hand in dressing the tree": ", o echar una mano para decorar el árbol",
+    # /events/private: Choose Your Days, and A Sample Private Retreat.
+    "A morning at the stove with the château’s chefs, and an afternoon in the pastry kitchen":
+        "Una mañana entre fogones con los chefs del castillo, y una tarde en el obrador de pastelería",
+    "Mirepoix on market day, beneath its medieval arcades, and the brocantes of the valley":
+        "Mirepoix en día de mercado, bajo sus soportales medievales, y las brocantes del valle",
+    "A morning beside the restorers, as the painted beams return to the light":
+        "Una mañana junto a los restauradores, mientras las vigas pintadas vuelven a la luz",
+    "The gingerbread château, Christmas baking, and the Christmas banquet in the Salon de Musique":
+        "El castillo de pan de jengibre, la repostería navideña y el banquete de Navidad en el Salon de Musique",
+    "Down the river by canoe, long afternoons by the pool, and a film beneath the stars":
+        "Río abajo en canoa, largas tardes junto a la piscina y una película bajo las estrellas",
+    "Three nights from the retreats’ own days, shaped around your party. Every stay is drawn up with you.":
+        "Tres noches tomadas de los días de los retiros, a la medida de su grupo. Cada estancia se diseña con usted.",
+    "Welcomed with a glass of crémant, and shown to your rooms":
+        "Recibidos con una copa de crémant y acompañados a sus habitaciones",
+    "A morning at the stove with the château’s chefs": "Una mañana entre fogones con los chefs del castillo",
+    "A last, unhurried breakfast": "Un último desayuno sin prisas",
+    "A picnic bag each, packed by the kitchen, for the journey onward":
+        "Una bolsa de pícnic para cada uno, preparada por la cocina, para el resto del viaje",
 }
 
 # The public pages' own prose, kept in its own file because it is 1,900

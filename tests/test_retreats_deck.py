@@ -49,9 +49,9 @@ DECK = {
     "noel": ("Four December days at home in the château: a gingerbread château to ice",
              "A French Christmas in a château, by the fire",
              "Four days in December as the château fills for Noël"),
-    "cooking": ("Five spring days with the château’s chefs and pastry chef",
+    "cooking": ("Five days of early summer with the château’s chefs and pastry chef",  # site review 25 Nov: 25-30 June
                 "French cooking, in the kitchens where it belongs",
-                "Five spring days in the kitchens of a château built in 1741"),
+                "Five days of early summer in the kitchens of a château begun in 1741"),
     "finds": ("Three days of chiner in the markets, brocantes and vide-greniers of the Ariège",
               "Chiner: the French art of the find",
               "Three days devoted to chiner, the French art of hunting"),
@@ -137,7 +137,7 @@ def run():
 
     pages = {"/": c.get("/"), "/workshops": c.get("/workshops")}
     for w, _sittings in offer:
-        pages["/workshops/%d" % w["id"]] = c.get("/workshops/%d" % w["id"])
+        pages["/workshops/%d" % w["id"]] = c.get(m.retreat_path(w["id"]))
 
     s.section("The pages answer, and say none of what the deck ruled out")
     for path, r in pages.items():
@@ -162,7 +162,8 @@ def run():
     # for the retreats became the Retreats tab, open first, with the next dates in it. The old line only
     # comes back when no date is on sale.
     for line in ["Retreats Three to seven nights, all inclusive",
-                 "Every meal, the wine and the château’s chefs, with nothing to pay at the end.",
+                 # 24 Nov 2026 (owner: a retreat is not a list): "and much more".
+                 "Every meal, the wine, the château’s chefs and much more, with nothing to pay at the end.",
                  "For two centuries Gudanes was a château of guests.",
                  "Guests arrive as strangers and leave as friends, and so many of them return.",
                  "Many of our guests return, some year after year, each time for a different retreat.",
@@ -184,9 +185,12 @@ def run():
 
     s.section("/workshops")
     ws = words(pages["/workshops"].get_data(as_text=True))
-    for line in ["Les retraites", "La Vie de Château",
-                 "A few days of French château life, in rooms brought back from ruin.",
-                 "This is not a hotel stay, and it is not a course.",
+    # 24 Nov 2026 (site review, 9): the hero's eyebrow is "Les séjours"; "Les retraites" reads first as pensions in French.
+    for line in ["Les séjours", "La Vie de Château",
+                 # 23 Nov 2026 (owner's retreats brief): the hero and the opening name what a guest does, and the
+                 # page no longer opens on what a retreat is not. test_retreats_page_sells holds the rest.
+                 "Cooking with the château’s chefs, antiquing in the brocantes, and the frescoes coming back to the light.",
+                 "A few days of French château life: cooking classes with the château’s chefs",
                  "Une journée à Gudanes", "Le petit-déjeuner", "Le dîner",
                  "In France, the table is the point of the day",
                  "the great cave at Lombrives"]:
@@ -251,16 +255,17 @@ def run():
             if len(days) == 5:
                 s.check("Noël: day one, a welcome glass by the fire", "a welcome glass by the fire" in days[0],
                         detail=days[0][:160])
+                # 25 Nov (owner: "not elegant and marketing enough"): the same days in new words, test_retreat_days.
                 s.check("Noël: day two is the château, and Christmas baking with the pastry chef",
-                        "Le château" in days[1] and "A tour of the château and its restoration" in days[1]
+                        "Le château" in days[1] and "The château and its restoration, room by room" in days[1]
                         and "Christmas baking with the pastry chef" in days[1] and "oga" not in days[1],
                         detail=days[1][:160])
                 s.check("Noël: day three is the gingerbread château, then a tasting and a film by the fire",
-                        "Le pain d’épices" in days[2] and "The gingerbread château, with the pastry chef" in days[2]
-                        and "A wine tasting by the fire, then a Christmas film" in days[2],
+                        "Le pain d’épices" in days[2] and "The gingerbread château, built with the pastry chef" in days[2]
+                        and "A tasting of the region’s wines by the fire, then a Christmas film" in days[2],
                         detail=days[2][:160])
                 s.check("Noël: the last day, the tree to help dress, chocolate-making, and the Christmas banquet",
-                        "help dress the tree" in days[3] and "Chocolate-making with the chefs" in days[3]
+                        "a hand in dressing the tree" in days[3] and "Chocolate-making with the chefs" in days[3]
                         and "The Christmas banquet in the Salon de Musique, then dancing" in days[3],
                         detail=days[3][:160])
             s.check("Noël: no outings", not re.search(r"\bFoix\b|Lombrives|Ax-les-Thermes|Mirepoix|transfer from Toulouse",
@@ -387,8 +392,9 @@ def run():
     # The Autumn Atelier is over (owner, 27 Oct): "this autumn" goes stale in December, the year does not.
     # /workshops said it in Why So Many Return, which went on 9 Nov; the home page keeps the line.
     page = words(shown["/"])
-    s.check("/: the Autumn Atelier line carries its year",
-            "In autumn 2026, every guest at the Autumn Atelier" in page and "This autumn, every guest" not in page)
+    # Site review 25 Nov: "the autumn retreat", not "the Autumn Atelier" (the site calls them retreats).
+    s.check("/: the autumn retreat line carries its year",
+            "In autumn 2026, every guest on the autumn retreat" in page and "This autumn, every guest" not in page)
     s.check("/workshops: and nowhere says 'this autumn'", "This autumn, every guest" not in words(shown["/workshops"]))
 
     # 27 Oct (owner): "no card, no page, no date". Switched off once at start-up, not deleted:
@@ -403,8 +409,11 @@ def run():
             detail=", ".join("#%d active=%s" % (r["id"], r["active"]) for r in gone))
     for r in gone:
         page = c.get("/workshops/%d" % r["id"])
-        s.check(f"its page (/workshops/{r['id']}) is gone, not a redirect naming it", page.status_code == 404,
-                detail=str(page.status_code))
+        # 24 Nov 2026 (old-links brief): a gone retreat goes to the list, 302.
+        s.check(f"its page (/workshops/{r['id']}) is gone: the list, not a redirect naming it",
+                page.status_code == 302
+                and page.headers.get("Location", "").split("?")[0].endswith("/workshops"),
+                detail=f"{page.status_code} {page.headers.get('Location')}")
     for path, html in shown.items():
         s.check(f"{path}: no card, no date, no name", not re.search(r"Immersive|Artisan Workshops", html),
                 detail=path)
@@ -420,7 +429,7 @@ def run():
     cooking = [w for w, _sittings in offer if kind_of(w["title"]) == "cooking"]
     if cooking:
         where = c.get("/5-nights").headers.get("Location") or ""
-        s.check("and /5-nights is the cooking retreat", where.endswith("/workshops/%d" % cooking[0]["id"]),
+        s.check("and /5-nights is the cooking retreat", where.endswith(m.retreat_path(cooking[0]["id"])),
                 detail=where)
 
     s.section("The Book menu and the stylesheet")

@@ -94,7 +94,8 @@ def run():
              JOIN workshop_sessions ON workshop_sessions.workshop_id = workshops.id
             WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?""",
         (m.service_day_iso(),)).fetchone()["c"]
-    ws = len([l for l in locs if "/workshops/" in l])
+    # At its name since 25 Nov (/retreats/<name>), and once: in English, the address the count is of.
+    ws = len([l for l in locs if "/retreats/" in l and "/fr/" not in l and "/es/" not in l])
     s.check(f"{ahead} atelier(s) with a date to come", ws == ahead, detail=f"{ws} listed")
 
     s.section("Every entry is usable")

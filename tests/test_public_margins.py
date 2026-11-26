@@ -546,7 +546,8 @@ def run():
         # reassurance band, so both faults can be put back and seen. (The home
         # page was the control until 9 Nov 2026, when the owner's second review
         # kept the reassurance band for the pages a guest pays from.)
-        control = [p for p in pages if re.fullmatch(r"/workshops/\d+", p[0])][:1] or pages[:1]
+        # (At its name since 25 Nov, /retreats/<name>.)
+        control = [p for p in pages if re.fullmatch(r"/workshops/\d+|/retreats/[a-z0-9-]+", p[0])][:1] or pages[:1]
         doctored = [("control:" + control[0][0],
                      control[0][1].replace("</head>", OLD_FAULTS + "</head>", 1))]
 

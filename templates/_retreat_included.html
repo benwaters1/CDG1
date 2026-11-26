@@ -1,0 +1,22 @@
+{#- WHAT A RETREAT INCLUDES, written once (24 Nov 2026, BRIEF-private-retreat-and-images, 1).
+
+    The owner: the private page "should be like a private workshop". A private retreat is the retreats' programme for
+    one party, so what it includes is what a retreat includes -- and a second list written for the private page would
+    sooner or later say something different from the first. Both draw this one: the retreat column of "A Night, or la
+    Vie de Château" (_stay_or_workshop.html, on /book, /workshops and the home page) and All Inclusive on
+    /events/private. test_private_retreat changes a line here and watches both pages follow.
+
+    The last line keeps the list open (the restoration brief, 11): the lines are examples of the house as it was, full
+    of life, not all of it. Transfers are not here: a retreat's fixed 11am meeting in Toulouse is its own, and a private
+    party's are "can be arranged", said on its page.
+
+    retreat_included(cls): the <ul>, with the list's class for where it is drawn. -#}
+{% macro retreat_included(cls='g-sow__list', private=False) -%}
+<ul class="{{ cls }}">
+        <li>{% if private %}Your rooms in the château, for your party alone{% else %}Your room in the château, and a small company to share it{% endif %}</li>
+        <li>The château’s gourmet chefs: every meal, and drinks included, from wine and cocktails to local sparkling wine</li>
+        <li>The kitchen, the markets and brocantes, Foix and the caves, the restoration</li>
+        <li>Long lunches, candlelit dinners, a night to dress for, and dancing</li>
+        <li class="g-sow__more">And much more: the château as it was, full of life</li>{#- Site review 25 Nov (1.4): château, not house. -#}
+      </ul>
+{%- endmacro %}

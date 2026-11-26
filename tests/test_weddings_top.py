@@ -44,10 +44,12 @@ def run():
             detail=body.group(1) if body else "no body class")
 
     s.section("The two opening sections, each beside a photograph")
-    intro = re.search(r'<section class="g-sec g-wed-intro">(.*?)</section>', page, re.S)
-    intro = intro.group(1) if intro else ""
-    s.check("two photographs beside them", intro.count('class="g-sp__main"') == 2,
-            detail=str(intro.count('class="g-sp__main"')))
+    # 24 Nov 2026 (owner: the order, most important first): All Inclusive comes between the two now, so each is a
+    # section of its own, with its one photograph (test_wedding_inclusive holds the order).
+    intros = re.findall(r'<section class="g-sec g-wed-intro">(.*?)</section>', page, re.S)
+    intro = "".join(intros)
+    s.check("two sections, a photograph beside each", [i.count('class="g-sp__main"') for i in intros] == [1, 1],
+            detail=str([i.count('class="g-sp__main"') for i in intros]))
     for words in ("For the days of your wedding, the château and its grounds are yours alone.",
                   "The setting asks for little decoration: old stone, candlelight, and the valley at every window."):
         s.check(f"and keeps its words: {words[:40]}...", words in intro)
@@ -64,7 +66,7 @@ def run():
     # Every fact is one the room's card on /book already states, so the page claims nothing the house has not.
     # (The views are the room's own feature list, which lives in the database; the owner gave them on 14 Oct.)
     s.check("the size, the bed and the bath are what /book says", "70 m²" in book and "emperor bed" in book
-            and "The King Suite, the Marquis Suite and the Family Suite have the use of a larger bathroom, with a bath" in book)
+            and "The King Suite, the Marquis Suite and the Family Suite each have a larger bathroom, with a bath" in book)
 
     s.section("Nothing twice")
     shown = _visible(page)

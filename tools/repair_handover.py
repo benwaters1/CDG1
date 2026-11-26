@@ -1576,8 +1576,11 @@ def repair_arrival_card_context():
     return 1
 
 
-AFTER_DARK = ("The last four kilometres climb and are unlit: if you are arriving after dark, "
-              "telephone when you leave Les Cabannes and someone will meet you at the gates")
+# Site review 25 Nov 2026: one figure for the last stretch (a few hundred metres, as Contact and Getting Here
+# say) and one moment to telephone ("as you reach Les Cabannes", as Getting Here and the guest letter say). It read
+# "the last four kilometres" and "when you leave", so a handover could put the disagreement back.
+AFTER_DARK = ("The last stretch from Les Cabannes climbs and is unlit: if you are arriving after dark, "
+              "telephone as you reach Les Cabannes and someone will meet you at the gates")
 
 
 def repair_after_dark_line():
@@ -1585,7 +1588,7 @@ def repair_after_dark_line():
     its map. The design's own sentence for it, in the By car line."""
     rel = "templates/contact.html"
     src = _read(rel)
-    if "telephone when you leave Les Cabannes" in src:
+    if "telephone as you reach Les Cabannes" in src or "telephone when you leave Les Cabannes" in src:
         return 0
     old = "The last stretch climbs; take it slowly after dark</p>"
     if old in src:

@@ -1,0 +1,33 @@
+{% extends "public_base.html" %}
+{% from '_occasion_cards.html' import occasion_cards with context %}
+{% set crumbs = [("What’s On", url_for('whats_on')), ("At Gudanes", None)] %}
+{% block title %}Occasions at Gudanes{% endblock %}
+{% block description %}Christmas, Easter, the Tour de France in the Pyrénées: dates worth a stay at Château de Gudanes, with a room and breakfast at a price set for the occasion.{% endblock %}
+{% block og_desc %}Dates worth a stay at Château de Gudanes, with a room and breakfast at a price set for the occasion.{% endblock %}
+{% block content %}
+{#- 24 Nov 2026 (owner): "split the whats on into the current page then a drop down with other events at
+    gudanes". Every upcoming occasion, in the retreats' grid. Stays sold around a date, never events: nothing
+    here promises a party or a programme. -#}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">À Gudanes <span class="g-fr__en">At Gudanes</span></p>
+  <h1 class="g-place">Occasions at Gudanes</h1>
+  <p class="g-p g-lede-first">Some dates are worth planning a journey around. For these, the château keeps its rooms for guests who want to spend them here, with breakfast each morning and the valley at the door.</p>
+  {% if occasions %}
+  {#- Site review 25 Nov (2.17): "Bastille Day, 13-16 July 2028" sat at the end of the 2027 dates and read as a
+      mistake. Over more than one year the dates are grouped under their year; within one, as they were. -#}
+  {%- set _by_year = {} %}{% for o in occasions %}{% set _ = _by_year.setdefault(o['first_night'][:4], []).append(o) %}{% endfor %}
+  {%- if _by_year|length > 1 %}
+  {%- for _y in _by_year|sort %}
+  <h2 class="g-h3 g-occ-year">{{ _y }}</h2>
+  {{ occasion_cards(_by_year[_y]) }}
+  {%- endfor %}
+  {%- else %}
+  {{ occasion_cards(occasions) }}
+  {%- endif %}
+  <p class="g-hint" style="margin-top:var(--s5)">Prices are per room, a night, in euros; other currencies shown are approximate. Coming from abroad? <a href="{{ url_for('getting_here') }}">Getting here</a>, by train, air and car.</p>
+  {% else %}
+  <p class="g-p">The next dates are being chosen. In the meantime every room can be booked for any night it is free.</p>
+  <p class="g-p"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('whats_on') }}" class="g-btn">What’s On in the Ariège</a></p>
+  {% endif %}
+</div></section>
+{% endblock %}

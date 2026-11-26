@@ -10,7 +10,7 @@
 {"@context":"https://schema.org","@type":"Article","headline":"The History of Château de Gudanes",
  "about":{"@type":"LandmarksOrHistoricalBuildings","name":"Château de Gudanes",
   "address":{"@type":"PostalAddress","streetAddress":"2 Route de Beille","addressLocality":"Château-Verdun","postalCode":"09310","addressCountry":"FR"}},
- "description":"From a fort first recorded in 1213 to a château built in 1741 to designs by Ange-Jacques Gabriel, and its restoration since 2013."}
+ "description":"From a fort first recorded in 1213 to a château begun in 1741 to designs by Ange-Jacques Gabriel, and its restoration since 2013."}
 </script>
 {% endblock %}
 {% block title_fr %}L&rsquo;histoire{% endblock %}
@@ -213,7 +213,7 @@
       <p class="g-fr">Le retour <span class="g-fr__en">The return</span></p>
       <h2 class="g-place">What the Walls Kept</h2>
       <p class="g-p">Much of the original interior had survived: carved woodwork, stained glass, gilt-framed mirrors and ornamental plaster. As the work has gone on, the château has given up its secrets: a fresco hidden behind wallpaper, two towers of the medieval fort that the family had thought long gone, and, through a hole three metres deep in a floor, a forgotten part of the cellars, perhaps a safe passage in the Second World War.</p>
-      <p class="g-p">The restoration goes on, room by room, as a Class I Historic Monument, with {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} guest rooms open and the workshops.</p>
+      <p class="g-p">The restoration goes on, room by room, as a Class I Historic Monument, with {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} guest rooms open and the retreats.</p>
       <p class="g-hist__cta">
         <a href="{{ url_for('restoration_page') }}" class="g-btn g-btn--solid">The restoration</a>
         <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a>

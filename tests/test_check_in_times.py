@@ -3,7 +3,8 @@
 The booking pages, the printed stay and the guest timeline said check-in from
 2pm and check-out by 11am, and so does Booking.com. The booking terms -- the
 thing a guest actually agrees to -- said "Arrival is from 4pm". 2pm was right
-then; on 15 October 2026 the owner moved it to 3pm in and 10am out (z15).
+then; on 15 October 2026 the owner moved it to 3pm in and 10am out (z15), and on
+23 November 2026 check-out to 11am.
 Each page had "2pm" typed into it, seven times over, so nothing could notice
 one of them disagreeing.
 
@@ -109,7 +110,8 @@ def run():
     s = Suite("check_in_times")
     oc, _ec, _owner, _emp = clients()
     conn = db()
-    put_back = keep_rows(conn, "app_settings", "key = 'terms_and_conditions'")
+    put_back = keep_rows(conn, "app_settings",
+                         "key IN ('terms_and_conditions', 'terms_checkout_11am_done')")
     try:
         _checks(s, oc, conn)
     finally:
@@ -125,7 +127,7 @@ def _checks(s, oc, conn):
     s.section("One value, in code")
     s.check("check-in is 3pm", m.CHECK_IN_TIME == "15:00" and m.CHECK_IN_WORDS == "3pm",
             detail=f"{m.CHECK_IN_TIME} / {m.CHECK_IN_WORDS}")
-    s.check("check-out is 10am", m.CHECK_OUT_TIME == "10:00" and m.CHECK_OUT_WORDS == "10am",
+    s.check("check-out is 11am", m.CHECK_OUT_TIME == "11:00" and m.CHECK_OUT_WORDS == "11am",
             detail=f"{m.CHECK_OUT_TIME} / {m.CHECK_OUT_WORDS}")
     s.check("written the way the house writes a time",
             [m.clock_words(x) for x in ("14:00", "11:00", "16:30", "12:00", "00:00", 21)]
@@ -155,8 +157,8 @@ def _checks(s, oc, conn):
     if room is not None:
         url = f"/book/{room['id']}"
         page = oc.get(url).get_data(as_text=True)
-        s.check("the room page says from 3pm, by 10am",
-                "From 3pm &middot; by 10am" in page or "From 3pm · by 10am" in page,
+        s.check("the room page says from 3pm, by 11am",
+                "From 3pm &middot; by 11am" in page or "From 3pm · by 11am" in page,
                 detail=url)
         s.check("and offers early check-in before 3pm",
                 "Before 3pm (early check-in requested)" in page and 'value="3pm-4pm"' in page
@@ -192,20 +194,20 @@ def _checks(s, oc, conn):
     pages = ("/", "/contact", "/book")
     for url in pages:
         found = _lodgings(guest.get(url).get_data(as_text=True))
-        s.check(f"{url}: every LodgingBusiness and Hotel says check-in 15:00, check-out 10:00",
+        s.check(f"{url}: every LodgingBusiness and Hotel says check-in 15:00, check-out 11:00",
                 found and all(x.get("checkinTime") == m.CHECK_IN_TIME
                               and x.get("checkoutTime") == m.CHECK_OUT_TIME for x in found),
                 detail=str([(x.get("@type"), x.get("checkinTime"), x.get("checkoutTime"))
                             for x in found]))
     was = (m.app.jinja_env.globals["check_in_time"], m.app.jinja_env.globals["check_out_time"])
-    m.app.jinja_env.globals["check_in_time"], m.app.jinja_env.globals["check_out_time"] = "16:00", "11:00"
+    m.app.jinja_env.globals["check_in_time"], m.app.jinja_env.globals["check_out_time"] = "16:00", "12:00"
     try:
         moved = [x for u in pages for x in _lodgings(guest.get(u).get_data(as_text=True))]
     finally:
         m.app.jinja_env.globals["check_in_time"], m.app.jinja_env.globals["check_out_time"] = was
     s.check("change the value and the structured data follows, on every page",
             len(moved) >= len(pages)
-            and all(x.get("checkinTime") == "16:00" and x.get("checkoutTime") == "11:00"
+            and all(x.get("checkinTime") == "16:00" and x.get("checkoutTime") == "12:00"
                     for x in moved), detail=str([x.get("checkinTime") for x in moved]))
     s.check("the reader finds a LodgingBusiness when there is one, and only then",
             _lodging('<script type="application/ld+json">{"@type":"LodgingBusiness","checkinTime":"9"}</script>')
@@ -233,7 +235,7 @@ def _checks(s, oc, conn):
     s.check("and nothing rewrote the terms", stored == four)
 
     s.section("Both wrong, both named")
-    _set_terms(conn, four.replace("departure by 10am", "departure by 11am"))
+    _set_terms(conn, four.replace("departure by 11am", "departure by 10am"))
     home = _home(conn)
     s.check("arrival and departure", home and home[0]["title"]
             == "The booking terms give a different arrival and departure times",
@@ -252,8 +254,42 @@ def _checks(s, oc, conn):
     s.check("16:00 and 16h", said("Check-in from 16:00") == [("arrival", "4pm", "3pm")]
             and said("Check-in from 16h") == [("arrival", "4pm", "3pm")])
     s.check("a departure written 10.30am", said("departure by 10.30am")
-            == [("departure", "10.30am", "10am")])
+            == [("departure", "10.30am", "11am")])
     s.check("the right times in other spellings are not a clash",
-            said("Check-in from 15h00, check-out until 10:00") == [])
+            said("Check-in from 15h00, check-out until 11:00") == [])
     s.check("a bare number is not a time",
             said("If you leave before 3 nights are up, we charge for them.") == [])
+
+    s.section("The stored terms move to 11am, once (owner, 23 Nov 2026)")
+    old = m.DEFAULT_TERMS.replace("departure by 11am", "departure by 10am")
+    s.check("the test text really says 10am", "departure by 10am" in old and old != m.DEFAULT_TERMS)
+
+    def _run_once(text):
+        _set_terms(conn, text)
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (m.TERMS_CHECKOUT_11AM,))
+        changed = m.correct_terms_checkout_11am(conn)
+        conn.commit()
+        return changed, conn.execute("SELECT value FROM app_settings WHERE key = 'terms_and_conditions'"
+                                     ).fetchone()["value"]
+
+    changed, now = _run_once(old)
+    s.check("section 6's sentence says 11am", changed == 1 and "departure by 11am" in now
+            and "departure by 10am" not in now, detail=str(changed))
+    s.check("and nothing else in the terms moved", now == old.replace("departure by 10am", "departure by 11am"))
+    s.check("the owner home is quiet afterwards", _home(conn) == [], detail=str(_home(conn)))
+    wrapped = old.replace("Arrival is from 3pm and departure by 10am", "Arrival is from 3pm and\n  departure by 10am")
+    changed, now = _run_once(wrapped)
+    s.check("found across a line break, the break kept", changed == 1
+            and "Arrival is from 3pm and\n  departure by 11am" in now)
+    _set_terms(conn, old)
+    s.check("only once: a 10am written back by hand afterwards stays",
+            m.correct_terms_checkout_11am(conn) == 0
+            and "departure by 10am" in conn.execute(
+                "SELECT value FROM app_settings WHERE key = 'terms_and_conditions'").fetchone()["value"])
+    changed, now = _run_once("Arrival is from 4pm and departure by 10am.")
+    s.check("a sentence the owner wrote differently is left to him", changed == 0
+            and now == "Arrival is from 4pm and departure by 10am.")
+    s.check("the house guide, the calendar and the letters read the same value",
+            m.CHECK_OUT_WORDS == "11am" and m.HOUSE_CALENDAR_CHECK_OUT == "11:00"
+            and "Leaving: 17 October 2026, by 11am" in m.SAMPLE_MERGE_VALUES["stay_details"],
+            detail=m.SAMPLE_MERGE_VALUES["stay_details"][:90])

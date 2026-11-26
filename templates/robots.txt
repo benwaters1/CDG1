@@ -12,6 +12,7 @@ Disallow: /workshop/manage
 Disallow: /account/
 Disallow: /open
 Disallow: /*?token=
-Disallow: /*?lang=          {# the alternates are declared in hreflang, not crawled twice #}
+{#- Site review 25 Nov 2026: ?lang= is no longer disallowed. Those addresses now move for good to /fr/... and
+    /es/..., and a search engine has to be allowed to fetch one to see that it has moved. -#}
 
 Sitemap: {{ url_for('sitemap', _external=True) if 'sitemap' in url_map else request.url_root ~ 'sitemap.xml' }}
