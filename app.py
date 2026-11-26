@@ -2335,7 +2335,19 @@ def count_page_view(response):
 CSP_REPORT_ONLY = ("script-src 'self' 'nonce-{nonce}' https://challenges.cloudflare.com "
                    "https://static.cloudflareinsights.com https://appsforoffice.microsoft.com; "
                    "object-src 'none'; base-uri 'self'; report-uri /csp-report")
-_SCRIPT_OPEN = re.compile(r"<script(?![^>]*\snonce=)(?=[\s>])", re.I)
+_SCRIPT_OPEN = re.compile(r"<script(?=[\s>])([^>]*)>", re.I)
+# Data, not code: a browser never runs these, so the policy does not apply and the tag is left exactly as written
+# (search engines and the house's own checks read the JSON-LD by it).
+_SCRIPT_DATA_TYPE = re.compile(r"""\stype\s*=\s*["']?application/(?:ld\+)?json""", re.I)
+
+
+def _nonce_script(nonce):
+    def mark(match):
+        attrs = match.group(1)
+        if " nonce=" in attrs or _SCRIPT_DATA_TYPE.search(attrs):
+            return match.group(0)
+        return f'<script nonce="{nonce}"{attrs}>'
+    return mark
 CSP_REPORT_ROWS_MAX = 500
 
 
@@ -2376,7 +2388,7 @@ def set_security_headers(response):
                 and not response.direct_passthrough):
             nonce = secrets.token_urlsafe(16)
             body = response.get_data(as_text=True)
-            marked = _SCRIPT_OPEN.sub(f'<script nonce="{nonce}"', body)
+            marked = _SCRIPT_OPEN.sub(_nonce_script(nonce), body)
             if marked != body:
                 response.set_data(marked)
             response.headers.setdefault("Content-Security-Policy-Report-Only",
@@ -10961,6 +10973,7 @@ NAV_AREAS = {
         "admin_terms", "audit_log", "record_history_page",
         "mail_log", "mail_log_letter", "export_mail_log_csv",
         "changes_log", "export_changes_log_csv",
+        "site_errors_page",
         "delete_company_document",
         "delete_insurance_policy", "delete_vendor",
         "download_company_document", "edit_company_document", "edit_insurance_policy",
@@ -11460,6 +11473,7 @@ OWNER_MENU = [
             _nav("audit_log", "Audit Log", "eye"),
             _nav("mail_log", "Mail Log", "eye", ("mail_log_letter",)),
             _nav("changes_log", "Changes Log", "eye"),
+            _nav("site_errors_page", "Site Errors", "eye"),
         ]),
     ]),
 ]
@@ -49663,6 +49677,8 @@ PALETTE_PAGES = [
     ("Audit log", "audit_log", "who did what history"),
     ("Changes log", "changes_log",
      "changes changed edited who changed field before after history log"),
+    ("Site errors: pages that failed", "site_errors_page",
+     "errors error failed failure broken crash 500 went wrong bug script policy csp report"),
     ("Mail log", "mail_log",
      "emails letters sent delivered held bounced did not go outbox email log who was written to"),
     ("Terms & conditions", "admin_terms", "legal policy"),

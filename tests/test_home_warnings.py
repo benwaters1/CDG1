@@ -250,6 +250,10 @@ def _run(s, oc, conn, now, today):
         "SELECT id FROM ota_reservations WHERE statement_at IS NULL")]
     conn.execute("UPDATE ota_reservations SET statement_at = ? WHERE statement_at IS NULL",
                  (datetime.now(timezone.utc).isoformat(),))
+    # A page that failed earlier in the run -- a suite that breaks one on purpose -- is a real warning, and this
+    # asks about a house with nothing wrong: the record is set aside while it does, and put back after.
+    put_back_errors = _harness.keep_rows(conn, "site_errors", "1 = 1")
+    conn.execute("DELETE FROM site_errors")
     conn.commit()
     real_checks = m.readiness_checks
     # **kwargs: the caller passes include_slow=False now, and a stand-in
@@ -260,6 +264,7 @@ def _run(s, oc, conn, now, today):
     finally:
         m.readiness_checks = real_checks
         put_back_letters()
+        put_back_errors()
         put_back_terms()
         put_back_addin()
         put_back_suggestions()

@@ -203,7 +203,7 @@ def run():
         varied = " ".join(m.app.test_client().get("/workshops")
                           .get_data(as_text=True).split())
         s.check("and the page says so rather than picking one",
-                "It depends on the workshop" in varied,
+                "It depends on the retreat" in varied,
                 detail="a guest shown 30% who is charged 55% has been told a "
                        "wrong figure about their own money")
         s.check("without printing either number as though it were the rule",

@@ -152,7 +152,9 @@ def run():
 
     s.section("While La Table is not serving (23 Nov)")
     # Live: /restaurant said "Not Serving at the Moment" in its heading and "Dine at La Table" in the bar below it.
-    for mode in ("closed", "hidden"):
+    # Closed only, since 26 Nov 2026: switched off, the page is not found at all (owner, second sweep 1.24;
+    # test_sweep_26_nov holds that), so there is no bar on it to read.
+    for mode in ("closed",):
         _dining(conn, mode)
         r = anon.get(_url("restaurant_info", conn))
         bar = html_mod.unescape(_bar(r.get_data(as_text=True)))

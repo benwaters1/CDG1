@@ -655,8 +655,11 @@ def _script_policy(s, conn):
         body = r.get_data(as_text=True)
         ro = r.headers.get("Content-Security-Policy-Report-Only", "")
         nonce = re.search(r"'nonce-([A-Za-z0-9_\-]+)'", ro)
-        tags = re.findall(r"<script\b[^>]*>", body, re.I)
+        is_data = re.compile(r"""type=["']?application/(ld\+)?json""", re.I)
+        tags = [t for t in re.findall(r"<script\b[^>]*>", body, re.I) if not is_data.search(t)]
         bare = [t for t in tags if not nonce or f'nonce="{nonce.group(1)}"' not in t]
+        data = [t for t in re.findall(r"<script\b[^>]*>", body, re.I) if is_data.search(t)]
+        s.check(f"{path}: data blocks (JSON-LD) are left exactly as written", all("nonce=" not in t for t in data))
         s.check(f"{path}: the report-only policy names script-src, Turnstile and the visitor count",
                 "script-src 'self'" in ro and "https://challenges.cloudflare.com" in ro
                 and "https://static.cloudflareinsights.com" in ro and "report-uri /csp-report" in ro, detail=ro[:200])

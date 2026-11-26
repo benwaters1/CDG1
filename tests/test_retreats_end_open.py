@@ -72,7 +72,7 @@ def run():
                                    if "A few days of French château life" in x],
         "/workshops a retreat gives you the château":
             [x for x in grab(html["/workshops"], r'<p class="g-p">(.*?)</p>') if x.startswith("A night’s stay is")
-             or x.startswith("A night's stay is")],
+             or x.startswith("A night's stay is") or x.startswith("A night: a room and breakfast")],
         "/workshops each retreat's card": grab(html["/workshops"], r'<p class="g-p g-wscard__blurb">(.*?)</p>'),
         "/facilities the La vie de château card":
             [x for x in grab(html["/facilities"], r'<p class="g-three__d">(.*?)</p>') if "for a retreat" in x],
