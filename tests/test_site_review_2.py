@@ -346,8 +346,9 @@ def _run(s, anon):
         table = str(macro(differ))
         short = visible_text(str(macro(same[:4])))
     s.check("every room open the same night is one sentence",
-            "All five rooms are open from 12 November." in one and "Up to 10 nights" not in one, detail=one)
-    s.check("but never \"all\" when a room is missing from the list", "All five" not in short, detail=short)
+            # 26 Nov 2026 (owner: "dont say 6"): all of them, without a number.
+            "All the rooms are open from 12 November." in one and "Up to 10 nights" not in one, detail=one)
+    s.check("but never \"all\" when a room is missing from the list", "All the rooms" not in short, detail=short)
     s.check("and the rows are drawn only when the rooms differ", table.count('class="g-nextf__i"') == 5)
 
     s.section("The reassurance band where a guest pays, and a line elsewhere")
@@ -480,7 +481,9 @@ def _book_cards(s, anon):
     s.check("one large photograph, the long bathroom", bool(lead) and lead.group(1) == "One of the ground-floor bathrooms",
             detail=str(lead and lead.group(1)))
     # Four of the five: the fifth is the same bath from almost the same place as another.
-    s.check("and three beneath it: four of them in all, each once", len(baths & set(shown)) >= 4 and len(shown) == 4,
+    # 26 Nov 2026 (owner: "i want more bathroom photos"): and four more of the owner's, eight in all.
+    s.check("and seven beneath it: eight in all, each once",
+            len(baths & set(shown)) >= 4 and len(shown) == 8 and len(set(shown)) == 8,
             detail=str(shown))
     points = re.findall(r'<li class="g-baths__pt">.*?<svg', sec, re.S)
     s.check("the owner's eight points, each with its drawing", len(points) == 8, detail=f"{len(points)}")

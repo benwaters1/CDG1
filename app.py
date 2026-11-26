@@ -60715,11 +60715,8 @@ def book_rooms():
     dinner_notes = dinner_for_form(conn, arrival, departure)[1] if searched else []
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
-    # Computed before the connection closes. Only when nobody has searched:
-    # somebody who has just been told their dates are taken does not want a
-    # second list of dates that are not theirs, they want to change one of
-    # their own.
-    next_free = next_free_nights(conn) if not searched else []
+    # What is open next (next_free_nights) was drawn under the dates until
+    # 26 November 2026, when the owner had it taken off the page.
     # A cached reading or None. Never a network call from a page render: a
     # render that can block on somebody else's network is one that eventually
     # does, and this is the booking page.
@@ -60758,7 +60755,7 @@ def book_rooms():
         resting=resting,
         stay_nights=stay_nights, room_quotes=room_quotes,
         occasions_here=occasions_here, occasion_nights=occasion_nights,
-        nothing_available=nothing_available, next_free=next_free,
+        nothing_available=nothing_available,
         blocking_atelier=blocking_atelier, ateliers=ateliers,
         weather=weather, stay_wx=stay_wx,
         wx_nights=[n for d, n in sorted(wx_nights.items()) if d >= house_today()],
@@ -67269,6 +67266,14 @@ def house_room_facts_cached():
         conn.close()
 
 
+# THE HOUSE IS SPOKEN OF AS FIVE GUEST ROOMS, at most (owner, 26 Nov 2026: "dont
+# say 6", and, asked, "say five"). Six rooms are on sale since the ground-floor
+# room went on, and the count in words followed it to "six" on every page and in
+# every letter that names it. The word stops at five; the count itself, which
+# the booking pages use to say "the other five", is the real one.
+ROOM_COUNT_SAID_AT_MOST = 5
+
+
 def house_room_facts(conn):
     """How many rooms the house lets, and what the cheapest one costs.
 
@@ -67292,7 +67297,8 @@ def house_room_facts(conn):
     cheapest = row["cheapest"]
     return {
         "count": count,
-        "count_word": ROOM_COUNT_WORDS.get(count, str(count)),
+        "count_word": ROOM_COUNT_WORDS.get(min(count, ROOM_COUNT_SAID_AT_MOST),
+                                           str(min(count, ROOM_COUNT_SAID_AT_MOST))),
         # None rather than nought when no room carries a price. A page saying
         # "from EUR0 a night" is worse than one that does not mention a price
         # at all, and this is the line guests read first.

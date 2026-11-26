@@ -181,17 +181,15 @@ def _run():
         s.check(f"{r['room_name']}: the dates offered really are available",
                 ok, detail=str(why))
 
-    s.section("On the page")
+    s.section("Not on the booking page")
     anon = m.app.test_client()
     body = anon.get("/book").get_data(as_text=True)
-    # Under the dates since the owner's second review (9 Nov): one sentence when every room opens the
-    # same night, the rows when they differ -- as here.
-    s.check("the strip is on the booking page", "What is open next" in body or "rooms are open from" in body)
-    s.check("with a room on it", TAG + " Easy" in body)
-    s.check("and a link that carries the date",
-            f'arrival={runs[TAG + " Easy"]["date_iso"]}' in body,
-            detail="a list of dates you then have to retype is the guess "
-                   "again with extra steps")
+    # Taken off /book on 26 November 2026 (owner: "i wanted this removed"). /book arrives whole from
+    # the design side, so this is what says so if a handover draws it again.
+    s.check("What is open next is not on /book, though a room has nights free",
+            runs.get(TAG + " Easy") and "What is open next" not in body
+            and "rooms are open from" not in body and 'class="g-nextf' not in body,
+            detail="the owner had it removed on 26 November 2026")
 
     s.section("Once somebody has searched, it goes")
     searched = anon.get(

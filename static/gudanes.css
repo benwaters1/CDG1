@@ -12713,6 +12713,13 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-rc__k{ display: inline; font-family: var(--ui); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #73562d; margin-right: .4em; }
 }
 
+/* 26 Nov 2026: the bathrooms in rows of four (eight beneath the lead): two across on a phone, four from 40rem. */
+.g .g-baths__row--4{ grid-template-columns: repeat(2, minmax(0, 1fr)); margin: var(--s3) 0 0; }
+.g .g-baths__row--4:last-of-type{ margin-bottom: var(--s6); }
+@media (min-width: 40rem){ .g .g-baths__row--4{ grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.g .g-baths__f--wide{ grid-column: 1 / -1; }
+.g .g-baths__f--wide .g-baths__img{ aspect-ratio: auto; height: 100%; }
+@media (min-width: 40rem){ .g .g-baths__f--wide{ grid-column: span 2; } }
 
 /* ==========================================================================
    26 NOVEMBER 2026 (owner: "its so dark")
@@ -12736,3 +12743,29 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 /* Manage a booking, in the menu, under its dates (owner, 26 Nov 2026). */
 .g #g-mainnav .g-qmanage{ margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.22); }
 .g #g-mainnav .g-qmanage .g-qbook__go{ margin-top: var(--s3); }
+
+
+/* THE FOOT OF EVERY PAGE (owner, 26 Nov 2026: "this is for the bottom"). The house's drawing of its façade, its dates
+   and its name, in slate blue: on a parchment band of its own at the top of the footer, where it reads as drawn,
+   rather than on the navy, where it would not. The line saying what the three dates are stays under it. */
+.g .g-footer .g-crest--foot{
+  background: #F6F1E7; margin: calc(-1 * var(--s7)) 0 var(--s5);
+  padding: var(--s5) var(--s5) var(--s5);
+}
+.g .g-footer .g-crest--foot img{ width: 100%; max-width: min(26rem, 100%); min-height: 0; opacity: 1; }
+/* The drawing already carries the three dates, so what they were is one line under it, not the dates again in
+   large figures: the same words, linking to the history, at the height the old engraving's footer had. */
+.g .g-footer .g-crest--foot .g-crest__dates{ margin-top: var(--s3); }
+.g .g-footer .g-crest--foot .g-crest__lead{ display: none; }
+.g .g-footer .g-crest--foot .g-crest__row{ display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 0; }
+.g .g-footer .g-crest--foot .g-crest__date{ display: inline-flex; flex-direction: row; align-items: baseline; gap: .45em; padding: 0 var(--s4); }
+.g .g-footer .g-crest--foot .g-crest__date b{ font-size: 1.15rem; letter-spacing: .06em; }
+.g .g-footer .g-crest--foot .g-crest__date em{ margin-top: 0; font-size: 12px; max-width: none; line-height: 1.4; }
+.g .g-footer .g-crest--foot .g-crest__dates{ color: var(--blue-deep); }
+.g .g-footer .g-crest--foot .g-crest__lead{ color: #73562D; }
+.g .g-footer .g-crest--foot .g-crest__date b{ color: #4F6886; }
+.g .g-footer .g-crest--foot .g-crest__date em{ color: #4A5563; }
+.g .g-footer .g-crest--foot .g-crest__date + .g-crest__date{ border-left-color: rgba(79,104,134,.35); }
+.g .g-footer .g-crest--foot .g-crest__dates:hover b,
+.g .g-footer .g-crest--foot .g-crest__dates:focus-visible b{ color: var(--blue-deep); }
+.g .g-footer .g-crest--foot .g-crest__dates:focus-visible{ outline-color: #4F6886; }

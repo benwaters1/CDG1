@@ -145,8 +145,10 @@ def run():
     s.section("The house knows both facts")
     s.check("it counts the rooms it lets", facts["count"] > 0,
             detail=str(facts))
-    s.check("and says the count in words, because the prose does",
-            facts["count_word"] == WORD.get(facts["count"], str(facts["count"])),
+    # In words, and never past five (owner, 26 Nov 2026: "dont say 6", then "say five").
+    said = min(facts["count"], m.ROOM_COUNT_SAID_AT_MOST)
+    s.check("and says the count in words, because the prose does, five at most",
+            facts["count_word"] == WORD.get(said, str(said)),
             detail=str(facts["count_word"]))
     s.check("with the cheapest room's price",
             facts["from_price"] is not None and facts["from_price"] > 0,
@@ -374,10 +376,13 @@ def run():
         conn.execute("DELETE FROM rooms WHERE export_token = 'zz-one-more-token'")
         conn.commit()
     s.check("the house counts it", more["count"] == facts["count"] + 1, detail=str(more))
-    s.check("and every claim on the pages now says so",
-            len(said_more) >= 8 and all(n == more["count"] for _u, n in said_more),
+    # Never past five (owner, 26 Nov 2026: "dont say 6", then "say five"): the claims follow the count up to five
+    # and stop there, so a sixth room on sale leaves them at five.
+    said_count = min(more["count"], m.ROOM_COUNT_SAID_AT_MOST)
+    s.check("and every claim on the pages now says so, five at most",
+            len(said_more) >= 8 and all(n == said_count for _u, n in said_more),
             detail="; ".join(f"{u} says {n}" for u, n in said_more
-                             if n != more["count"])[:300] or f"{len(said_more)} claim(s)")
+                             if n != said_count)[:300] or f"{len(said_more)} claim(s)")
     s.check("and they go back when it comes off sale",
             m.house_room_facts(conn) == facts
             and all(n == facts["count"] for _u, n in served_claims()[0]))
