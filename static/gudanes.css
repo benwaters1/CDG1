@@ -819,21 +819,21 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 }
 .g-panel-overlay.is-open{ opacity: 1; visibility: visible; }
 
-/* Site review 25 Nov 2026 (2.1): the drawer slides in from the RIGHT, the side the
-   Menu button is on. It came from the left, so the hand that pressed Menu had to
-   cross the screen to use it. overflow-x is clipped as well as fixed at the
-   source (the hidden date fields, near the end of this file): a drawer that
-   scrolls sideways is never meant, whatever lands in it next. */
+/* The drawer slides in from the LEFT. The site review of 25 Nov moved it to the
+   right, beside the Menu button; the owner, 26 Nov 2026: "the menu also pops up
+   on the right i want it on the left". overflow-x stays clipped as well as fixed
+   at the source (the hidden date fields, near the end of this file): a drawer
+   that scrolls sideways is never meant, whatever lands in it next. */
 .g-navwrap{
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 59;
+  position: fixed; top: 0; left: 0; bottom: 0; z-index: 59;
   width: min(24rem, 88vw); background: var(--sand);
-  transform: translateX(100%); visibility: hidden;
+  transform: translateX(-100%); visibility: hidden;
   overflow-x: hidden;
   /* Closed, the drawer is off-screen but was still visibility:visible, so every
      control in it kept its place in the tab order — ten Tab presses through an
      invisible form. hidden takes it out; the delay lets the slide finish first. */
   transition: transform .3s ease, visibility 0s linear .3s;
-  overflow-y: auto; box-shadow: -20px 0 50px rgba(0,0,0,.12);
+  overflow-y: auto; box-shadow: 20px 0 50px rgba(0,0,0,.12);
   display: flex; flex-direction: column;
 }
 .g-navwrap.is-open{ transform: translateX(0); visibility: visible; transition-delay: 0s, 0s; }
@@ -12712,3 +12712,27 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-rcmp tbody th, .g .g-rcmp td{ display: block; border: 0; padding: 2px var(--s3); }
   .g .g-rc__k{ display: inline; font-family: var(--ui); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #73562d; margin-right: .4em; }
 }
+
+
+/* ==========================================================================
+   26 NOVEMBER 2026 (owner: "its so dark")
+   ========================================================================== */
+/* The home hero: the photograph seen, not a navy veil over it. The wash was
+   28% navy at the top and 78% at the foot over a misty, grey film, which read
+   as dusk on a page about light and mountains. Lighter, and the words carry
+   their own soft shadow instead, so they still read on the palest frame. */
+.g .g-hero__wash{
+  background: linear-gradient(180deg,
+    rgba(14,28,48,.10) 0%,
+    rgba(14,28,48,0) 30%,
+    rgba(14,28,48,.22) 70%,
+    rgba(14,28,48,.50) 100%);
+}
+.g .g-hero__eyebrow, .g .g-hero__title, .g .g-hero__motto, .g .g-hero__fact,
+.g .g-hero .g-hist-tag--home a{
+  text-shadow: 0 1px 3px rgba(10,22,40,.45), 0 2px 18px rgba(10,22,40,.55);
+}
+
+/* Manage a booking, in the menu, under its dates (owner, 26 Nov 2026). */
+.g #g-mainnav .g-qmanage{ margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.22); }
+.g #g-mainnav .g-qmanage .g-qbook__go{ margin-top: var(--s3); }

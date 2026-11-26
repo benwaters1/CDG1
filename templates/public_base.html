@@ -295,6 +295,24 @@ window.houseDay = (function () {
           <p class="g-qbook__n">{{ t((house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize ~ ' rooms · breakfast included') }}</p>
         </form>
 
+        {#- 26 Nov 2026 (owner: "i want manage booking field ... in the menu side bar", under the dates). Posts to
+            /book/manage, which takes any reference: a room's, a retreat's, a dinner's or an event's. -#}
+        <form class="g-qbook g-qmanage" method="post" action="{{ url_for('find_booking') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <p class="g-qbook__h">{{ t('Manage your booking') }}</p>
+          <div class="g-qbook__row">
+            <span class="g-qbook__f">
+              <label for="qm_ref">{{ t('Reference code') }}</label>
+              <input type="text" id="qm_ref" name="reference_code" placeholder="{{ ref_prefix.room }}XXXXXX" required autocomplete="off" spellcheck="false" autocapitalize="characters">
+            </span>
+            <span class="g-qbook__f">
+              <label for="qm_em">{{ t('Email you booked with') }}</label>
+              <input type="email" inputmode="email" id="qm_em" name="email" required autocomplete="email">
+            </span>
+          </div>
+          <button type="submit" class="g-btn g-qbook__go">{{ t('Find booking') }}</button>
+        </form>
+
         {#- 10 Oct (owner: "the side menus don't match up, there are duplicates - a full review"). Three groups that match the
             top bar: what you can book; the château itself (the restoration first - the owner wants it a highlight); and
             planning the visit. Was: "Stay" holding everything from Contact to the Ariège, six gallery anchors, "About &
