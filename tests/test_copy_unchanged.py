@@ -222,7 +222,10 @@ m = _harness.m
 # "The restoration as it happens" on every page; "A guided tour of the brocantes" on /workshops; "Bruce in the
 # hay meadow" on /facilities; "When a page goes wrong" on /privacy; "One price for the full château experience"
 # on the retreat pages; and the brocante tour in the Antique & French Finds title. Was: "067a922"
-COPY_BASE = "c3f0038"
+# Moved to b5857b2 (owner, 26 Nov, the photo review's safe fixes): two new captions only, travelling with
+# their replacement photographs -- "Gabriel's façade" on /history for "Gabriel's façade, above the roses", and
+# "Across the far lawn" on the Seven Starry Nights page. Was: "c3f0038"
+COPY_BASE = "b5857b2"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
