@@ -137,6 +137,7 @@ import hmac
 import calendar
 import inspect
 import hashlib
+import traceback
 import json
 import secrets
 import string
@@ -169,7 +170,7 @@ from flask import (
     # Aliased as well: stripe_success rebinds `session` to Stripe's own
     # object, so Flask's session needs a name that survives that.
     session as flask_session,
-    has_request_context, g, Response, get_template_attribute,
+    has_request_context, g, Response, get_template_attribute, got_request_exception,
 )
 from flask.sessions import SecureCookieSessionInterface
 from flask_wtf.csrf import CSRFProtect, CSRFError
@@ -8984,6 +8985,21 @@ def init_db():
          "ALTER TABLE stay_occasions ADD COLUMN retreat_evening TEXT"),
         ("stay_occasions_retreat_night",
          "ALTER TABLE stay_occasions ADD COLUMN retreat_night TEXT"),
+        # A page or a loop that failed, one row per place and kind of fault
+        # (note_site_error). Second sweep, 26 Nov 2026, B2.2.
+        ("site_errors_table",
+         """CREATE TABLE IF NOT EXISTS site_errors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fingerprint TEXT NOT NULL UNIQUE,
+                kind TEXT NOT NULL,
+                place TEXT NOT NULL,
+                error_type TEXT NOT NULL,
+                in_function TEXT,
+                message TEXT,
+                traceback TEXT,
+                first_at TEXT NOT NULL,
+                last_at TEXT NOT NULL,
+                times INTEGER NOT NULL DEFAULT 1)"""),
     ):
         try:
             conn.execute(ddl)
@@ -42133,6 +42149,20 @@ def owner_home_warnings(conn, today):
     for fault in house_inbox_delivery_faults(conn):
         add("blocker", f"Mail to {fault['address']} is not arriving",
             house_inbox_fault_sentence(fault), 1, "mail_log", q=fault["address"])
+
+    # A PAGE THAT FAILED THIS WEEK (second sweep, 26 Nov 2026). A blocker when
+    # it is money's: a payment page or Stripe's own call to the site.
+    try:
+        failed = site_errors_recent(conn)
+    except sqlite3.Error:
+        failed = []
+    if failed:
+        said = "; ".join(f"{r['place']}: {r['error_type']}, {r['times']} time{'' if r['times'] == 1 else 's'}"
+                         for r in failed[:3])
+        add("blocker" if any(r["urgent"] for r in failed) else "warn",
+            f"{len(failed)} page{'' if len(failed) == 1 else 's'} failed this week",
+            said + (f", and {len(failed) - 3} more" if len(failed) > 3 else "")
+            + ". Each is on Site errors, with what it said.", len(failed), "site_errors_page")
 
     # A GROUP LETTER SET FOR LATER THAT LEFT SOMEBODY OUT. Nobody is watching
     # the page when it goes, so what it could not do is said here, for the
@@ -104117,6 +104147,7 @@ WATCH_TASK_KINDS = {
     "kitchen": "Kitchen cleaning due, or a fridge out of range or not read",
     "pool": "The pool's water out of range, or not checked in season",
     "newsletter": "An occasion's newsletter drafted and waiting for you to send it",
+    "site_error": "A page of the site that keeps failing, or a payment page that failed",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -107799,6 +107830,24 @@ def watch_task_findings(conn, today=None):
                       # The coming Monday, or today when it is one.
                       (today + timedelta(days=(7 - today.weekday()) % 7)).isoformat(),
                       "normal"))
+
+    # A PAGE THAT KEEPS FAILING, or a payment page that failed once (second
+    # sweep, 26 Nov 2026). Titled by the place, which is stable; the count and
+    # the time are in the note. Gone a week after the fault stops.
+    failing_pages = []
+    try:
+        recent_faults = site_errors_recent(conn)
+    except sqlite3.Error:
+        recent_faults = []
+    for r in recent_faults:
+        if r["times"] < 2 and not r["urgent"]:
+            continue
+        failing_pages.append((
+            "site_error", f"A page is failing: {r['place']}",
+            f"{r['error_type']} in {r['in_function'] or 'the page'}: {r['message'] or '(no message)'}. "
+            f"{r['times']} time{'' if r['times'] == 1 else 's'}, last {r['when']}.\n\nAdmin → Site errors.",
+            today.isoformat(), "high" if r["urgent"] else "normal"))
+    found.extend(take("site_error", failing_pages))
 
     return found, dropped
 
@@ -114785,6 +114834,7 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_change_log(conn))
     cleared.update(purge_booking_com_mail(conn))
     cleared.update(purge_door_openings(conn))
+    cleared.update(purge_site_errors(conn))
     # The only one of these holding an identifier for people who never became
     # guests at all -- somebody who opened the availability calendar and left.
     cleared.update(purge_submission_log(conn))
@@ -125856,6 +125906,7 @@ def house_calendar_loop():
             house_calendar_tick()
         except Exception as e:
             log_line(f"[calendar] tick failed: {e}")
+            note_site_error("loop", "the house calendar loop", e)
         time.sleep(HOUSE_CALENDAR_POLL_SECONDS)
 
 
@@ -126655,6 +126706,7 @@ def automation_loop():
             automation_tick()
         except Exception as e:
             log_line(f"[automation] tick failed: {e}")
+            note_site_error("loop", "the automation loop", e)
         time.sleep(AUTOMATION_TICK_SECONDS)
 
 
@@ -135716,6 +135768,134 @@ def own_plain_pages():
             r.rule for r in app.url_map.iter_rules()
             if not r.arguments and "GET" in (r.methods or ()) and r.rule != "/")
     return _OWN_PLAIN_PAGES
+
+
+# ---------------------------------------------------------------------------
+# WHEN A PAGE FAILS, THE HOUSE HEARS OF IT (second sweep, 26 Nov 2026, B2.2).
+#
+# A page that raised was answered with the 500 page, and its traceback went to
+# the Railway console, which nobody reads. On a site that takes payments that
+# means a webhook or a booking form can fail for a week and the first anybody
+# knows is a guest writing in. The automation jobs already wrote their failures
+# down (record_job_run); pages and the background loops did not.
+#
+# So every unhandled failure is written to site_errors, one row per place and
+# kind of fault, counted: the same KeyError in the same view a hundred times is
+# one line saying a hundred, not a hundred lines. The place is the route as it
+# is written ("/book/manage/<token>"), never the address asked for, which can
+# hold a guest's key. The message and the traceback go through redact_secrets.
+# It reaches the owner the house's way: a warning on the owner home and a task
+# that closes itself a week after the fault stops (owner_home_warnings,
+# watch_task_findings), and the page Admin -> Site errors. Kept ninety days from
+# the last time it happened (purge_site_errors), as the privacy notice says.
+# A third-party service would need an account in the house's name; this needs
+# nothing, and the day one is wanted it can be added beside it.
+# ---------------------------------------------------------------------------
+SITE_ERROR_KEEP_DAYS = 90
+SITE_ERROR_WINDOW_DAYS = 7
+# Where one failure is enough to raise a task: money and the payment provider's calls.
+SITE_ERROR_URGENT = re.compile(r"stripe|webhook|checkout|pay|refund|deposit|balance", re.I)
+
+
+def _site_error_function(exc):
+    """The innermost function of ours the fault passed through, by name.
+
+    By name and not by line, so an edit higher up the file does not split one
+    fault into two rows."""
+    frames = traceback.extract_tb(exc.__traceback__) if exc.__traceback__ else []
+    here = os.path.abspath(__file__)
+    ours = [f for f in frames if os.path.abspath(f.filename) == here]
+    frame = (ours or frames or [None])[-1]
+    return frame.name if frame else None
+
+
+def note_site_error(kind, place, exc):
+    """Write a failure down, with any earlier one like it. Never raises."""
+    try:
+        error_type = type(exc).__name__
+        function = _site_error_function(exc)
+        fingerprint = hashlib.sha1(
+            f"{kind}|{place}|{error_type}|{function}".encode("utf-8")).hexdigest()
+        message = redact_secrets(str(exc))[:300]
+        told = redact_secrets("".join(
+            traceback.format_exception(type(exc), exc, exc.__traceback__)))[-4000:]
+        now = datetime.now(timezone.utc).isoformat()
+        conn = get_db()
+        try:
+            conn.execute(
+                """INSERT INTO site_errors (fingerprint, kind, place, error_type, in_function,
+                       message, traceback, first_at, last_at, times)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                   ON CONFLICT(fingerprint) DO UPDATE SET last_at = excluded.last_at,
+                       times = site_errors.times + 1, message = excluded.message,
+                       traceback = excluded.traceback""",
+                (fingerprint, kind, place[:200], error_type, function, message, told, now, now))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:                      # pragma: no cover - last resort
+        log_line(f"[a failure could not be written down] {type(e).__name__}: {e}")
+
+
+def _note_request_failure(sender, exception, **extra):
+    rule = request.url_rule.rule if request.url_rule is not None else "(no page)"
+    note_site_error("page", f"{request.method} {rule}", exception)
+
+
+got_request_exception.connect(_note_request_failure, app)
+
+
+def site_errors_recent(conn, days=SITE_ERROR_WINDOW_DAYS):
+    """The faults that happened in the last `days`, newest first, with the house's words on each."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM site_errors WHERE last_at >= ? ORDER BY last_at DESC", (since,))]
+    for r in rows:
+        r["when"] = local_datetime_str(r["last_at"])
+        r["urgent"] = bool(SITE_ERROR_URGENT.search(r["place"] or ""))
+    return rows
+
+
+def purge_site_errors(conn):
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=SITE_ERROR_KEEP_DAYS)).isoformat()
+    return {"site errors": conn.execute("DELETE FROM site_errors WHERE last_at < ?", (cutoff,)).rowcount}
+
+
+def site_error_rows(conn):
+    rows = [dict(r) for r in conn.execute("SELECT * FROM site_errors ORDER BY last_at DESC")]
+    week = (datetime.now(timezone.utc) - timedelta(days=SITE_ERROR_WINDOW_DAYS)).isoformat()
+    for r in rows:
+        r["when"] = local_datetime_str(r["last_at"])
+        r["first"] = local_datetime_str(r["first_at"])
+        r["period"] = "This week" if r["last_at"] >= week else "Earlier"
+        r["kind_words"] = {"page": "A page", "loop": "A background loop"}.get(r["kind"], r["kind"])
+    return rows
+
+
+@app.route("/admin/site-errors")
+@owner_required
+def site_errors_page():
+    """Every page or loop that failed in the last ninety days, grouped and counted."""
+    conn = get_db()
+    purge_site_errors(conn)
+    conn.commit()
+    lv = list_view(
+        site_error_rows(conn), request.args,
+        search=["place", "error_type", "in_function", "message"],
+        search_hint="Search the page, the kind of fault, or what it said",
+        facets=[
+            facet("when", "When", lambda r: r["period"], order=["This week", "Earlier"]),
+            facet("kind", "Where", lambda r: r["kind_words"], order=["A page", "A background loop"]),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first", lambda r: r["last_at"], reverse=True),
+            sort_option("most", "Most often first", lambda r: r["times"], reverse=True),
+        ],
+        default_sort="recent",
+    )
+    conn.close()
+    return render_template("admin_site_errors.html", lv=lv, rows=lv["rows"],
+                           keep_days=SITE_ERROR_KEEP_DAYS)
 
 
 @app.errorhandler(500)

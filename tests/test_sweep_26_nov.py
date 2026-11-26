@@ -502,6 +502,96 @@ def _small_things(s):
     s.check("and the English row keeps --wrap", 'html[lang="en"] .g-top__in' not in css)
 
 
+def _site_errors(s, conn):
+    s.section("B2.2 A page that fails is written down, and the owner hears of it")
+    from _harness import clients
+    oc, ec, _owner, _emp = clients()
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("ZZSWEEP broke with key sk-ABCDEFGHIJKLMNOPQRST in hand")
+
+    def ask(endpoint, path):
+        was = m.app.view_functions[endpoint]
+        m.app.view_functions[endpoint] = boom
+        try:
+            try:
+                status = m.app.test_client().get(path).status_code
+            except RuntimeError:
+                status = "raised"
+        finally:
+            m.app.view_functions[endpoint] = was
+        return status
+
+    conn.execute("DELETE FROM site_errors")
+    conn.commit()
+    try:
+        status = ask("press", "/press")
+        rows = [dict(r) for r in conn.execute("SELECT * FROM site_errors")]
+        s.check("the failure is written down", len(rows) == 1 and rows[0]["place"] == "GET /press"
+                and rows[0]["error_type"] == "RuntimeError" and rows[0]["in_function"] == "boom",
+                detail=f"{status}: {rows}"[:300])
+        s.check("with any key in it taken out", rows and "sk-ABCDEFGHIJKLMNOPQRST" not in
+                (rows[0]["message"] or "") + (rows[0]["traceback"] or ""), detail=rows[0]["message"] if rows else "")
+        ask("press", "/press")
+        rows = [dict(r) for r in conn.execute("SELECT * FROM site_errors")]
+        s.check("the same fault again is counted, not written twice", len(rows) == 1 and rows[0]["times"] == 2,
+                detail=str([(r["place"], r["times"]) for r in rows]))
+        ask("manage_booking", "/book/manage/ZZSECRETTOKEN123")
+        row = conn.execute("SELECT * FROM site_errors WHERE place LIKE '%manage%'").fetchone()
+        s.check("a guest's page is named by its route, never the key in its address",
+                row is not None and "<" in row["place"] and "ZZSECRETTOKEN123" not in " ".join(
+                    str(v) for v in dict(row).values()), detail=row["place"] if row else "not written")
+        try:
+            raise ValueError("ZZSWEEP the loop fell over")
+        except ValueError as e:
+            m.note_site_error("loop", "the automation loop", e)
+        s.check("and so is a background loop that fell over",
+                conn.execute("SELECT 1 FROM site_errors WHERE kind = 'loop'").fetchone() is not None)
+
+        with m.app.test_request_context("/"):
+            warned = [w for w in m.owner_home_warnings(conn, m.house_today()) if "failed this week" in w["title"]]
+        s.check("the owner home says so, linking to the page", warned and warned[0]["count"] == 3
+                and warned[0]["href"].endswith("/admin/site-errors"), detail=str(warned)[:300])
+        s.check("as a warning, while none of it is money's", warned and warned[0]["severity"] == "warn")
+        with m.app.test_request_context("/"):
+            found, _dropped = m.watch_task_findings(conn, m.house_today())
+        titles = [t for kind, t, *_rest in found if kind == "site_error"]
+        s.check("the one that keeps failing becomes a task; the ones seen once do not",
+                titles == ["A page is failing: GET /press"], detail=str(titles))
+        conn.execute("UPDATE site_errors SET place = 'POST /stripe/webhook' WHERE place LIKE '%manage%'")
+        conn.commit()
+        with m.app.test_request_context("/"):
+            warned = [w for w in m.owner_home_warnings(conn, m.house_today()) if "failed this week" in w["title"]]
+            found, _dropped = m.watch_task_findings(conn, m.house_today())
+        s.check("a payment's failure is a blocker, and a task the first time",
+                warned and warned[0]["severity"] == "blocker"
+                and "A page is failing: POST /stripe/webhook" in [t for k, t, *_r in found if k == "site_error"])
+
+        page = oc.get("/admin/site-errors")
+        text = _flat(visible_text(page.get_data(as_text=True)))
+        s.check("the owner's page lists them", page.status_code == 200 and "GET /press" in text
+                and "RuntimeError in boom" in text, detail=text[:200])
+        s.check("and nobody else's", ec.get("/admin/site-errors").status_code in (302, 403))
+        s.check("the Automation page points to it", "/admin/site-errors" in oc.get("/admin/automation").get_data(as_text=True))
+
+        conn.execute("UPDATE site_errors SET last_at = '2026-01-01T00:00:00+00:00'")
+        conn.commit()
+        with m.app.test_request_context("/"):
+            quiet = [w for w in m.owner_home_warnings(conn, m.house_today()) if "failed this week" in w["title"]]
+            found, _dropped = m.watch_task_findings(conn, m.house_today())
+        s.check("a week after the fault stops, the home is quiet and the task gone",
+                not quiet and not [t for k, t, *_r in found if k == "site_error"])
+        s.check("and ninety days after, it is deleted, by the daily retention pass",
+                m.purge_site_errors(conn)["site errors"] == 3
+                and "purge_site_errors" in __import__("inspect").getsource(m.run_health_notes_purge_job))
+        notice = _flat(visible_text(m.app.test_client().get("/privacy").get_data(as_text=True)))
+        s.check("which is what the privacy notice says", "deleted ninety days after the fault last happened" in notice
+                and m.SITE_ERROR_KEEP_DAYS == 90)
+    finally:
+        conn.execute("DELETE FROM site_errors")
+        conn.commit()
+
+
 def run():
     s = Suite("The site's second sweep, 26 November 2026")
     anon = m.app.test_client()
@@ -520,6 +610,7 @@ def run():
         _see_through(s)
         _figures(s)
         _small_things(s)
+        _site_errors(s, conn)
     finally:
         _setting(conn, "dining_mode", was_dm)
         conn.close()

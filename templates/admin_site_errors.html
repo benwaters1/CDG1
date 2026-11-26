@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Site Errors{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Site errors</h1>
+  <a href="{{ url_for('admin_automation') }}" class="btn-mini">Automation</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every time a page of the site, or one of the loops that run in the background, failed instead of
+  answering: grouped by the page and the kind of fault, and counted. A guest who met one saw the
+  "something went wrong" page. The automation jobs keep their own record on the Automation page.
+  Kept {{ keep_days }} days from the last time it happened.
+</p>
+
+{% include "_list_toolbar.html" %}
+
+{% if not rows %}
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that. <a href="{{ url_for('site_errors_page') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      Nothing has failed.
+    {% endif %}
+  </div>
+{% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Last</th><th>Where</th><th>What went wrong</th><th>Times</th><th>Details</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.when }}{% if r.times > 1 %}<br><span class="cell-note">first {{ r.first }}</span>{% endif %}</td>
+          <td>{{ r.place }}<br><span class="cell-note">{{ r.kind_words }}</span></td>
+          <td>{{ r.error_type }}{% if r.in_function %} in {{ r.in_function|replace('_', ' ') }}{% endif %}{% if r.message %}<br><span class="cell-note">{{ r.message }}</span>{% endif %}</td>
+          <td>{{ r.times }}</td>
+          <td>
+            <details>
+              <summary>The trace</summary>
+              <pre class="cell-note" style="white-space:pre-wrap; max-width:60ch;">{{ r.traceback }}</pre>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+{% endblock %}

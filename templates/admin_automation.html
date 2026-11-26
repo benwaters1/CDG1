@@ -8,6 +8,8 @@
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">Everything the house does on its own, grouped
   by who it reaches. Each one is safe to run more than once: Run now never does anything twice.</p>
+<p class="upload-hint">A page of the site that failed, or one of the background loops, is written down on
+  <a href="{{ url_for('site_errors_page') }}">Site errors</a>.</p>
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 
