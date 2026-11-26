@@ -64,7 +64,7 @@ PAGES = {
         ("the long table as the hero", r'<section class="g-hero g-hero--wed">\s*<img[^>]*class="g-hero__img"', 1),
         # 24 Nov 2026: All Inclusive stands between them now, so they are two sections, one photograph each.
         ("the two opening sections, each beside a photograph",
-         r'<section class="g-sec g-wed-intro"><div class="g-wrap">\s*<div class="g-sp ">.*?<section class="g-sec g-wed-intro"><div class="g-wrap">\s*<div class="g-sp g-sp--flip ">', 1),
+         r'<section class="g-sec g-wed-intro"><div class="g-wrap">\s*<div class="g-sp( g-sp--framed)? ">.*?<section class="g-sec g-wed-intro"><div class="g-wrap">\s*<div class="g-sp g-sp--flip ">', 1),
         ("the Marquis Suite: its words beside its photographs", r'<div class="g-sp g-sp--tuck', 1),
         ("the church: its words beside the ceremony", r'<div class="g-sp g-sp--flip g-sp--tuck', 1),
         ("Weddings at Gudanes: a collage of four", r'class="g-mos g-mos--lead g-mos--4 ', 1),

@@ -728,6 +728,8 @@ SUITES = [
     "test_home_26_nov",
     # 26 November 2026 (owner): the claw-foot bath off the Twin, the King Room and the ground-floor Twin.
     "test_room_page_bath",
+    # 26 November 2026 (owner): five guest rooms said, the room with the plates on the wall, the wallpaper pair.
+    "test_owner_notes_26_nov",
 ]
 
 

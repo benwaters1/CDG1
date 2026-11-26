@@ -59,6 +59,9 @@ NOT_HERE = {
     "unsubscribe.html": "one address's unsubscribe, behind the link in its letter",
     "door.html": "a guest's door code, behind the link in their letter",
     "find_booking.html": "looks a booking up; keeps nothing",
+    # By template and endpoint: the menu on every public page holds this one lookup (26 Nov 2026), and a
+    # form that KEEPS something added to the base template must still be checked.
+    "public_base.html -> find_booking": "the menu's Manage your booking: looks a booking up; keeps nothing",
     "event_find.html": "looks an event up; keeps nothing",
     "restaurant_find.html": "looks a table up; keeps nothing",
     "workshop_find.html": "looks an atelier booking up; keeps nothing",
@@ -354,7 +357,8 @@ def _run(s):
                     continue
             public.append((name, ep))
     unaccounted = sorted({(n, ep) for n, ep in public
-                          if (n, ep) not in checked and n not in NOT_HERE})
+                          if (n, ep) not in checked and n not in NOT_HERE
+                          and f"{n} -> {ep}" not in NOT_HERE})
     s.check("each one is checked below, or named with the reason it is not",
             not unaccounted, detail="; ".join(f"{n} -> {ep}" for n, ep in unaccounted))
     missing = [label for label, t, e, *_r in FORMS

@@ -214,13 +214,9 @@ m = _harness.m
 # Was: "f33c8a2"
 # 26 Nov 2026, merged: the base is c6fc6f5, the merge holding the owner's photographs and Manage your booking,
 # each read on its own side. Was: "d057459"
-# 26 Nov 2026: moved to 4439e84, the second sweep (BRIEF-sweep-and-code-review-26-nov.md) merged with main.
-# Against c6fc6f5 it listed, and nothing else: the hero's third line on /; "Retreat guest" under the six
-# testimonials; "Experience the château" for "Discover the retreats" on every page that had it; the newsletter's
-# "The restoration as it happens" on every page; "A guided tour of the brocantes" on /workshops; "Bruce in the
-# hay meadow" on /facilities; "When a page goes wrong" on /privacy; "One price for the full château experience"
-# on the retreat pages; and the brocante tour in the Antique & French Finds title. Was: "c6fc6f5"
-COPY_BASE = "4439e84"
+# 26 Nov 2026: moved to 067a922, the owner's notes of that afternoon. Against c6fc6f5 it listed /restoration and
+# /gallery only: "The room with the plates on the wall" where "The bedrooms" stood in Then and Now. Was: "c6fc6f5"
+COPY_BASE = "067a922"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

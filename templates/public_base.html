@@ -303,7 +303,7 @@ window.houseDay = (function () {
           <div class="g-qbook__row">
             <span class="g-qbook__f">
               <label for="qm_ref">{{ t('Reference code') }}</label>
-              <input type="text" id="qm_ref" name="reference_code" placeholder="{{ ref_prefix.room }}XXXXXX" required autocomplete="off" spellcheck="false" autocapitalize="characters">
+              <input type="text" id="qm_ref" name="reference_code" required autocomplete="off" spellcheck="false" autocapitalize="characters">
             </span>
             <span class="g-qbook__f">
               <label for="qm_em">{{ t('Email you booked with') }}</label>
@@ -606,8 +606,10 @@ window.houseDay = (function () {
     {#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 3): its own size, so a lazy picture has a box to be found in
         before it arrives; without one it showed as a blank tile, and Safari can leave a sizeless lazy image unloaded.
         The logo in each page's closing band has the same (62 by 62, as the stylesheet draws it). -#}
-    <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/chateau_engraving.png') }}" width="691" height="396"
-         alt="Château de Gudanes, Château-Verdun, France">
+    {#- 26 Nov 2026 (owner: "this is for the bottom"): the house's own drawing, the façade with its three dates and
+        its name, in its slate blue on a parchment band of its own -- on the navy it was drawn for neither. -#}
+    <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/chateau-de-gudanes-crest.png') }}" width="1200" height="841"
+         alt="Château de Gudanes, 1213, 1741, 2013: Château-Verdun, Ariège, France">
     {#- 15 Oct (owner): "it has to say what these dates are, like a marketing tool" - the three dates of the house, each with
         what it was, under the engraving at the foot of every page, linking to the history. -#}
     <a class="g-crest__dates" href="/history">

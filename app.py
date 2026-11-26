@@ -67358,6 +67358,14 @@ def house_room_facts_cached():
         conn.close()
 
 
+# THE HOUSE IS SPOKEN OF AS FIVE GUEST ROOMS, at most (owner, 26 Nov 2026: "dont
+# say 6", and, asked, "say five"). Six rooms are on sale since the ground-floor
+# room went on, and the count in words followed it to "six" on every page and in
+# every letter that names it. The word stops at five; the count itself, which
+# the booking pages use to say "the other five", is the real one.
+ROOM_COUNT_SAID_AT_MOST = 5
+
+
 def house_room_facts(conn):
     """How many rooms the house lets, and what the cheapest one costs.
 
@@ -67381,7 +67389,8 @@ def house_room_facts(conn):
     cheapest = row["cheapest"]
     return {
         "count": count,
-        "count_word": ROOM_COUNT_WORDS.get(count, str(count)),
+        "count_word": ROOM_COUNT_WORDS.get(min(count, ROOM_COUNT_SAID_AT_MOST),
+                                           str(min(count, ROOM_COUNT_SAID_AT_MOST))),
         # None rather than nought when no room carries a price. A page saying
         # "from EUR0 a night" is worse than one that does not mention a price
         # at all, and this is the line guests read first.

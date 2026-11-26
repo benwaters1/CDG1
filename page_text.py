@@ -79,6 +79,8 @@ FR = {
     'A three-day brocante tour of the markets, brocantes and':
         'Un circuit des brocantes de trois jours, par les marchés, les brocantes et les',
     'A guided tour of the brocantes and': 'Un circuit guidé des brocantes et des',
+    # 26 Nov 2026 (owner): the Then and Now pair is the room with the plates on the wall.
+    'The room with the plates on the wall': 'La pièce aux assiettes sur les murs',
 }
 
 ES = {
@@ -123,4 +125,6 @@ ES = {
     'A three-day brocante tour of the markets, brocantes and':
         'Una ruta de brocantes de tres días por los mercados, las brocantes y los',
     'A guided tour of the brocantes and': 'Una ruta guiada por las brocantes y los',
+    # 26 Nov 2026 (owner): the Then and Now pair is the room with the plates on the wall.
+    'The room with the plates on the wall': 'La sala de los platos en las paredes',
 }
