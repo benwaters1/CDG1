@@ -270,7 +270,7 @@
     bathroom" here: that is a night's stay, not a retreat. "Luxury" is the one word of /book's left out: on the
     retreat pages it is kept for the owner's own line on Seven Starry Nights (the retreats deck, 26 Oct).
     The powder room upstairs is book_room.html's fact. test_retreats_page_sells holds it. -#}
-{% from '_room_photos.html' import BATH_PHOTOS %}
+{% from '_room_photos.html' import BATH_PHOTOS, BATH_LEAD, BATH_ROWS %}
 <section class="g-sec g-baths-sec" id="bathrooms" aria-labelledby="baths-h"><div class="g-wrap">
   <div class="g-baths__top">
     <header class="g-baths__head">
@@ -280,13 +280,16 @@
       <p class="g-p g-baths__p">Wallpaper made by hand in Paris by Antoinette Poisson, eighteenth-century terracotta underfoot, basins painted with the château’s own artwork, and the mountains at the window.</p>
       <p class="g-p g-baths__p">There are three, on the ground floor, shared between the group. The bedrooms are upstairs: the château is a classified historic monument, and bathrooms cannot be built into its bedrooms. Upstairs, in the vestibule, there is a powder room with a toilet and basin.</p>
     </header>
-    <figure class="g-baths__lead">{{ pic(BATH_PHOTOS[0][0], BATH_PHOTOS[0][1], sizes='(min-width: 56rem) 62vw, 100vw', cls='g-baths__img g-baths__img--lead') }}</figure>
+    <figure class="g-baths__lead">{{ pic(BATH_PHOTOS[BATH_LEAD][0], BATH_PHOTOS[BATH_LEAD][1], sizes='(min-width: 56rem) 62vw, 100vw', cls='g-baths__img g-baths__img--lead') }}</figure>
   </div>
-  <div class="g-baths__row">
-    {%- for _i in (1, 3, 4) %}
-    <figure class="g-baths__f">{{ pic(BATH_PHOTOS[_i][0], BATH_PHOTOS[_i][1], sizes='(min-width: 40rem) 33vw, 100vw', cls='g-baths__img') }}</figure>
+  {#- 26 Nov 2026 (owner: "i want more bathroom photos"): two rows of four where there was one of three. -#}
+  {%- for _row in BATH_ROWS %}
+  <div class="g-baths__row g-baths__row--4">
+    {%- for _i in _row %}
+    <figure class="g-baths__f{{ ' g-baths__f--wide' if _i == 5 else '' }}">{{ pic(BATH_PHOTOS[_i][0], BATH_PHOTOS[_i][1], sizes='(min-width: 40rem) 50vw, 100vw' if _i == 5 else '(min-width: 40rem) 25vw, 50vw', cls='g-baths__img') }}</figure>
     {%- endfor %}
   </div>
+  {%- endfor %}
   <ul class="g-baths__feat">
     {%- for _k, _label, _text in [
       ('wallpaper', 'The wallpaper', 'Bespoke, by Antoinette Poisson, made by hand in Paris'),

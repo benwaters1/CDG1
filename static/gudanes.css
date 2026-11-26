@@ -12712,3 +12712,11 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-rcmp tbody th, .g .g-rcmp td{ display: block; border: 0; padding: 2px var(--s3); }
   .g .g-rc__k{ display: inline; font-family: var(--ui); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #73562d; margin-right: .4em; }
 }
+
+/* 26 Nov 2026: the bathrooms in rows of four (eight beneath the lead): two across on a phone, four from 40rem. */
+.g .g-baths__row--4{ grid-template-columns: repeat(2, minmax(0, 1fr)); margin: var(--s3) 0 0; }
+.g .g-baths__row--4:last-of-type{ margin-bottom: var(--s6); }
+@media (min-width: 40rem){ .g .g-baths__row--4{ grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.g .g-baths__f--wide{ grid-column: 1 / -1; }
+.g .g-baths__f--wide .g-baths__img{ aspect-ratio: auto; height: 100%; }
+@media (min-width: 40rem){ .g .g-baths__f--wide{ grid-column: span 2; } }
