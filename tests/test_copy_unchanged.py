@@ -206,7 +206,7 @@ m = _harness.m
 # 26 Nov 2026: moved to the merge of main with b352e60, which put Manage your booking in the menu under its
 # dates (four words on every public page: "Manage your booking", "Reference code", "Email you booked with", "Find
 # booking"). Was: "cfb1bdb"
-COPY_BASE = "MERGEBASE"
+COPY_BASE = "a559169"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
