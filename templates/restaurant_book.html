@@ -218,7 +218,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   <p class="g-close__p">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms in the château itself, and dinner is a short walk from your room.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See the rooms</a>
-      <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">About La Table</a>
+      {% if (setting(site, 'dining_mode') or 'open')|lower|trim != 'hidden' %}<a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">About La Table</a>{% endif %}
   </div>
 </div></section>
 

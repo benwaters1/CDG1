@@ -1181,30 +1181,25 @@ registered office is at Château de Gudanes, Gudanes, 09310 Château-Verdun,
 France. References to "we" and "the château" mean that company.
 
 2. Making a booking
-A room or a workshop place booked on this website is confirmed as it is
-booked: a room as soon as your payment goes through, a workshop place as
+A room or a retreat place booked on this website is confirmed as it is
+booked: a room as soon as your payment goes through, a retreat place as
 you register. You will receive a confirmation by email with your reference
 code, which is also how you find and manage your booking at any time.
-
-La Table is not taking bookings at present.
 
 Bookings made through another website, such as Booking.com, are confirmed
 by that website, on its own terms.
 
-We reserve the right to cancel a confirmed booking where we must — for
-example, if the château cannot safely receive guests on your dates. If we
+We reserve the right to cancel a confirmed booking where we must: for example, if the château cannot safely receive guests on your dates. If we
 cancel, we will tell you as soon as we can and refund in full what you have
 paid us.
 
 3. Prices, payment and the tourist tax
 - Prices are in euros and include French VAT where it applies.
-- Some bookings are paid in full when you book. Others take a deposit, with
-  the balance due either before arrival or on the day — whichever applies
-  to your booking is stated clearly when you book and repeated in your
+- Some bookings are paid in full when you book. Others take a deposit, with the balance due before arrival. Which applies to your booking is stated clearly when you book and repeated in your
   confirmation.
-- Workshops take a deposit when you register, and the balance is due 30
-  days before the workshop begins. If you register within those 30 days,
-  the full amount is due at once. The deposit is stated on the workshop
+- Retreats take a deposit when you register, and the balance is due 30
+  days before the retreat begins. If you register within those 30 days,
+  the full amount is due at once. The deposit is stated on the retreat
   page and in your confirmation.
 - Where a balance is due before arrival and is not paid by the date given,
   we may release the booking and treat it as cancelled by you.
@@ -1218,7 +1213,7 @@ paid us.
 - Bookings are non-refundable. Once confirmed and paid for, we do not offer
   a refund as a matter of course if you cancel or do not arrive.
 - Please write to us all the same. We look at every cancellation
-  individually, and we can sometimes move your dates instead. Any refund we
+  individually, and we can sometimes move your dates. Any refund we
   do make is at our discretion: a gesture of goodwill rather than an
   entitlement, and not a precedent for any other booking.
 - If we cancel a confirmed booking, anything already paid is refunded in full.
@@ -1226,12 +1221,12 @@ paid us.
   website's cancellation terms apply instead of these, and any refund is
   arranged through it rather than with us.
 
-5. Dining and workshops
-- If we cancel a workshop for any reason, you are refunded in full or
+5. Retreats and meals
+- If we cancel a retreat for any reason, you are refunded in full or
   offered a place on another date, as you prefer.
-- What each workshop includes is set out on its page and in your
+- What each retreat includes is set out on its page and in your
   confirmation. Transfers and excursions are included only where a
-  workshop says so.
+  retreat says so.
 - Tell us about allergies and dietary requirements when you book. We will
   do our best, but a château kitchen is not an allergen-free environment
   and we cannot guarantee the absence of any ingredient.
@@ -1273,21 +1268,21 @@ anything else that cannot lawfully be limited.
   room and the areas open to guests, including sharing them on your own
   personal social media.
 - Commercial photography and filming are not permitted during a nightly
-  stay or a workshop. That includes influencer and content-creator shoots,
+  stay or a retreat. That includes influencer and content-creator shoots,
   whether or not you are paid or gifted anything, and any shoot for a
   brand, business, client or publication; advertising; paid or sponsored
   content; stock imagery; portfolio work offered for sale or hire; and any
   shoot using hired crew, models, or professional lighting or equipment.
-  Booking a room or a workshop place does not give permission to work
+  Booking a room or a retreat place does not give permission to work
   here.
 - Commercial shoots are booked separately, agreed with us in writing in
   advance and charged at our location rate. Write to us to arrange one.
-- If commercial work takes place during a stay or a workshop without our
+- If commercial work takes place during a stay or a retreat without our
   written agreement, we may stop it and ask those involved to leave
   without a refund, and we may charge our location fee for the use of the
   château together with any other costs it causes us.
 - The name Château de Gudanes, our logos, our photographs, films and
-  written content, and the content of our workshops (recipes, methods and
+  written content, and the content of our retreats (recipes, methods and
   teaching materials) are our intellectual property. They may not be
   copied or used for any commercial purpose without our written
   permission.
@@ -1295,14 +1290,13 @@ anything else that cannot lawfully be limited.
   purpose, in advertising, or in any way that suggests the château
   endorses or is associated with a product, service or business, without
   our written permission.
-- We sometimes photograph the château, its events and its workshops. If
+- We sometimes photograph the château, its events and its retreats. If
   you would prefer not to appear in anything we publish, tell us and we
   will respect that.
 
 10. Events outside our control
-If we cannot honour a booking because of something genuinely outside our
-control — fire, flood, severe weather, utility failure, illness affecting
-the household, or an order of the authorities — we will offer you
+If we cannot honour a booking because of something genuinely outside our control, such as fire, flood, severe weather, utility failure, illness affecting
+the household, or an order of the authorities, we will offer you
 alternative dates or a full refund. We are not otherwise liable for costs
 you incur, such as travel booked separately.
 
@@ -1312,7 +1306,7 @@ is set out in our privacy notice at chateaugudanes.com/privacy. You may ask
 us what we hold about you, and ask us to correct or delete it.
 
 12. Complaints, and the law that applies
-Please tell us at the time if something is wrong — almost everything is
+Please tell us at the time if something is wrong: almost everything is
 fixable while you are still here. If it is not, write to us at
 reservations@chateaugudanes.com. These terms are governed by French law, and the
 French courts have jurisdiction. Under French law you are entitled to take
@@ -9602,6 +9596,7 @@ def init_db():
     correct_terms_la_table(conn)
     correct_terms_checkout_11am(conn)
     correct_terms_site_review_25nov(conn)
+    correct_terms_sweep_26nov(conn)
     conn.commit()
 
     # The list a room is walked against, so the first person to open the page
@@ -17297,6 +17292,32 @@ def correct_terms_site_review_25nov(conn):
     conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
                  "ON CONFLICT(key) DO NOTHING",
                  (TERMS_SITE_REVIEW_25NOV, datetime.now(timezone.utc).isoformat()))
+    return changed
+
+
+# Second sweep, 26 Nov 2026 (owner, 1.24): the restaurant page is not public, so
+# the terms no longer mention La Table at all. Its one remaining sentence in
+# section 2 goes, with the blank line after it. Same footing as the edits
+# above: once, and only where the sentence still stands as shipped.
+TERMS_SWEEP_26NOV = "terms_sweep_26nov_done"
+_TERMS_LA_TABLE_LINE = re.compile(
+    r"La\s+Table\s+is\s+not\s+taking\s+bookings\s+at\s+present\.[ \t]*\n(?:[ \t]*\n)?")
+
+
+def correct_terms_sweep_26nov(conn):
+    """Take the La Table sentence out of the stored terms, once."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (TERMS_SWEEP_26NOV,)).fetchone():
+        return 0
+    row = conn.execute("SELECT value FROM app_settings WHERE key = 'terms_and_conditions'").fetchone()
+    changed = 0
+    if row and row["value"]:
+        text, changed = _TERMS_LA_TABLE_LINE.subn("", row["value"].replace("\r\n", "\n"))
+        if changed:
+            conn.execute("UPDATE app_settings SET value = ? WHERE key = 'terms_and_conditions'", (text,))
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO NOTHING",
+                 (TERMS_SWEEP_26NOV, datetime.now(timezone.utc).isoformat()))
     return changed
 
 
@@ -67901,7 +67922,17 @@ def create_restaurant_booking_from_stripe_session(conn, session):
 def restaurant_info():
     conn = get_db()
     settings = get_restaurant_settings(conn)
+    mode = dining_mode(conn)
     conn.close()
+    # 26 Nov 2026 (owner, second sweep 1.24): the restaurant page is not to be
+    # public. With dining switched off it is not found, in every language
+    # (/fr/restaurant and /es/restaurant are this route), it leaves the
+    # sitemap, and nothing on the site links to it (every link to it is
+    # behind the same switch). The 24 Nov "The Table" version of the page,
+    # breakfast and the restaurants nearby, is what this replaces. Closed for
+    # the season still shows the page with its notice; open shows it in full.
+    if mode == "hidden":
+        abort(404)
     # The public page stopped listing dishes in the 1 October handover: the
     # menu changes with what the valley gives, and a list that has to be kept
     # in step by hand is a list that is wrong by the weekend. The menu itself
@@ -135604,6 +135635,11 @@ def sitemap():
         ("whats_on", "0.5"), ("whats_on_at_gudanes", "0.6"), ("getting_here", "0.6"),
         ("terms_page", "0.3"), ("privacy_page", "0.2"), ("legal_page", "0.2"),
     ]
+    conn = get_db()
+    # Not a page while dining is switched off: restaurant_info answers 404 then
+    # (owner, 26 Nov), and a sitemap must not list an address that is not found.
+    if dining_mode(conn) == "hidden":
+        pages = [p for p in pages if p[0] != "restaurant_info"]
     paths = []
     for endpoint, priority in pages:
         try:
@@ -135611,7 +135647,6 @@ def sitemap():
         except Exception:
             continue
 
-    conn = get_db()
     # `active`, not `is_active`. SEO_FILES.md uses the latter and says to check
     # it — neither table has such a column, so it would have raised on every
     # request rather than returning a sitemap missing a few lines.

@@ -10,8 +10,9 @@ What it found, and what this holds:
 2. "Lunch and dinner unavailable" read as a refusal. It says what the guest gets: lunch and dinner at the
    restaurants nearby, which we are happy to book for you.
 3. /story said the Waters family bought the château in 2013 three times. Once now, under a photograph.
-4. /restaurant, while the table is not serving, said "Not Serving at the Moment" at a public address. It is The
-   Table: breakfast, how the retreats eat, and the restaurants nearby; nothing offers a meal beyond breakfast.
+4. /restaurant, while the table is not serving, said "Not Serving at the Moment" at a public address. It was The
+   Table until 26 Nov, when the owner took the page off the site: it is not found while dining is off
+   (test_sweep_26_nov).
 5. Two rooms printed "The Twin Room" under their titles. La Chambre Marie Curie is a queen and a double: its line
    is "The Queen Room (ground floor)" (owner, 24 Nov), a field in Admin > Rooms, and its name -- the key Booking.com
    and the rates use -- is untouched.
@@ -140,21 +141,15 @@ def _story(s, anon):
 
 
 def _restaurant(s, anon, conn):
-    s.section("4. /restaurant is The Table while it is not serving")
+    # SUPERSEDED 26 Nov (owner, second sweep 1.24): the restaurant page is not to be public at all. While the
+    # table is switched off /restaurant is not found, in every language, rather than The Table this section
+    # used to read. test_sweep_26_nov holds that; this keeps only the half of item 4 that still stands: no
+    # public address says "Not Serving at the Moment".
+    s.section("4. /restaurant no longer says Not Serving at the Moment")
     _setting(conn, "dining_mode", "hidden")
     r = anon.get("/restaurant")
-    html = r.get_data(as_text=True)
-    text = _flat(visible_text(html))
-    s.check("it answers, and is not a dead end", r.status_code == 200 and "Not Serving" not in html
-            and "not taking reservations" not in text, detail=str(r.status_code))
-    s.check("it says what breakfast is, how the retreats eat, and the restaurants nearby",
-            "Breakfast is included with every stay" in text and "On a retreat every meal is included" in text
-            and "restaurants nearby, which we are happy to book for you" in text, detail=text[:300])
-    s.check("and offers no meal at the château beyond breakfast to a night's stay",
-            not re.search(r"Reserve a table|Dinner can be booked|dinner on the nights", text), detail=text[:300])
-    s.check("it opens on a photograph", _photo_before_heading(html))
-    s.check("and its search description is about the table as it is",
-            "the restaurants nearby that we book for guests" in html)
+    s.check("while the table is switched off it is not found, rather than a dead end", r.status_code == 404
+            and "Not Serving" not in r.get_data(as_text=True), detail=str(r.status_code))
 
 
 def _room_labels(s, anon, conn):

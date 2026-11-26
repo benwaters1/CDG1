@@ -1,6 +1,6 @@
 {% extends "public_base.html" %}
 {% set sticky_bar = 'none' %}
-{% set crumbs = [('La Table', url_for('restaurant_info')), ('Reservations', None)] %}
+{% set crumbs = [('La Table', url_for('restaurant_info') if (setting(site, 'dining_mode') or 'open')|lower|trim != 'hidden' else None), ('Reservations', None)] %}
 {% block title %}La Table — not yet taking reservations{% endblock %}
 {% block description %}La Table at Château de Gudanes is not open for online reservations yet. Write to us and we will tell you when it is.{% endblock %}
 {% block robots %}noindex{% endblock %}
@@ -26,7 +26,8 @@
   </p>
   <p class="g-p">
     <a href="{{ url_for('contact_page') }}" class="g-btn g-btn--solid">Write to us</a>
-    <a href="{{ url_for('restaurant_info') }}" class="g-btn">About La Table</a>
+    {# The dining page is not found while dining is switched off (26 Nov). #}
+    {% if (setting(site, 'dining_mode') or 'open')|lower|trim != 'hidden' %}<a href="{{ url_for('restaurant_info') }}" class="g-btn">About La Table</a>{% endif %}
     <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a>
   </p>
 </div></section>

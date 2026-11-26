@@ -722,6 +722,9 @@ SUITES = [
     # 24 November 2026, the owner's full review of the public site: the old words, the rooms' labels,
     # /story said once, /restaurant as The Table, rows that line up, photographs first, phone tap targets.
     "test_site_review_24_nov",
+    # 26 November 2026, the owner's second sweep: the restaurant page off the site, Bruce alone, the
+    # hero's third line, the naming rule (retreats, the full château experience), the brocante tour.
+    "test_sweep_26_nov",
 ]
 
 

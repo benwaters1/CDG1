@@ -307,8 +307,9 @@ def _run(s, anon):
             detail=f"{home_out_of_order(home)} in {home_headings(home)}")
     s.check("with nothing between them that the owner took out",
             not [g for g in HOME_GONE if g in home], detail=str([g for g in HOME_GONE if g in home]))
+    # The line under it changed on 26 Nov (owner, second sweep 1.26); the motto did not.
     s.check("under the line the owner chose", "Where History Becomes Home" in home
-            and "A restoration followed the world over, and an invitation extended quietly." in home)
+            and "A restoration followed the world over, and a château to experience as it returns to life." in home)
     s.check("and not the one that replaced it", "Where History Comes Back to Life" not in home)
     s.check("the estate from the air is the rooms' first slide",
             re.search(r'g-homeroom--aerial g-car__s"[^>]*aria-label="1 / ', home) is not None)
@@ -358,7 +359,9 @@ def _run(s, anon):
 
     s.section("The terms stop selling La Table")
     terms = visible_text(pages.get("/terms", ""))
-    s.check("/terms says La Table is not taking bookings", "La Table is not taking bookings at present." in terms)
+    # 26 Nov (owner, second sweep 1.24): the one line left about La Table went too, with the page
+    # (test_sweep_26_nov). The 9 Nov correction below still writes it, and the 26 Nov one takes it out.
+    s.check("/terms no longer says La Table is not taking bookings", "not taking bookings" not in terms)
     s.check("and has no table request or no-show rule",
             "A table at La Table is a request" not in terms and "no-shows" not in terms)
     conn = db()
