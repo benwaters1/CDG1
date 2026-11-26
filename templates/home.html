@@ -11,7 +11,8 @@
 {% block description %}A French château experience in the Pyrénées: a Class I Historic Monument under restoration, open to guests for a night or a retreat.{% endblock %}
 {% block og_desc %}An eighteenth-century Class I Historic Monument in the Ariège, still under restoration and open to guests. Rooms, dinner, and retreats.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w{% endblock %}
-{% block bodyclass %} has-hero hero--full{% endblock %}
+{#- g-home (26 Nov 2026, the home page on a phone): the phone layout's rules in gudanes.css are this page's alone. -#}
+{% block bodyclass %} has-hero hero--full g-home{% endblock %}
 {% block content %}
 {% from '_proof.html' import credential, proof %}
 {% from '_stay_panel.html' import stay_panel with context %}
@@ -224,11 +225,13 @@
     the video, like a banner saying chef in residence and the dates" ... "like an advertisement"). The occasion the owner
     ticks, from home_banner_occasion(): live, and only until its last dinner night (or last night) has passed; two
     ticked, the soonest. Not one giant link: the photograph and the name go to the occasion's page, and the two buttons
-    are buttons. test_dinner_at_gudanes holds it. -#}
+    are buttons. test_dinner_at_gudanes holds it.
+    26 Nov 2026 (the home page on a phone): its photograph loads lazily. It is never in the first screen, on a phone
+    or a desk (the hero fills that), and a lazy photograph that close is fetched as the first scroll begins. -#}
 {% if home_banner is defined and home_banner %}{% set hb = home_banner %}
 {% from '_menu_dialog.html' import menu_link %}
 <section class="g-hband" aria-labelledby="hband-h">
-  <a class="g-hband__ph" href="{{ hb.page_url }}" aria-label="{{ t(hb.headline) }}, {{ date_range(hb.first_night, hb.departure) }}"><img src="{{ hb.photo }}" alt="{{ hb.alt }}" loading="eager" decoding="async"></a>
+  <a class="g-hband__ph" href="{{ hb.page_url }}" aria-label="{{ t(hb.headline) }}, {{ date_range(hb.first_night, hb.departure) }}"><img src="{{ hb.photo }}" alt="{{ hb.alt }}" loading="lazy" decoding="async"></a>
   <div class="g-hband__b">
     <p class="g-hband__k">{{ t(hb.eyebrow) }}</p>
     <h2 class="g-hband__h" id="hband-h"><a href="{{ hb.page_url }}">{{ t(hb.headline) }}</a></h2>
@@ -251,6 +254,23 @@
     address further up". Everything else the brief did to this page stands. -#}
 {% from '_house_address.html' import house_address with context %}
 <p class="g-where"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" focusable="false"><path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.3"/></svg>{{ house_address() }}</p>
+
+{#- 26 Nov 2026 (owner: "I don't like the homepage on the mobile"; BRIEF-home-on-a-phone). On a phone the same
+    choice was put three times -- the hero's two tabs, La Vie de Château's two buttons, then A Night, or la Vie de
+    Château -- three screens of one question. Under 600px it is asked once, here: two picture cards, each opening its
+    booking. The hero's card, La Vie de Château's words and the comparison are not drawn on a phone (gudanes.css, THE
+    HOME PAGE ON A PHONE); from 600px up this is not drawn and the page is as it was. The tabs' own two lines. Neither
+    photograph is on any other page drawn large (test_site_review_2), nor anywhere else on this one. -#}
+<section class="g-twoways" aria-label="Retreats, or stay the night">
+  <a class="g-twoways__c" href="{{ url_for('workshops_public') }}#dates">
+    {{ pic(url_for('static', filename='img/retreats/candlelit-dinner-salon.jpg'), 'The long table laid in the salon, lit by candles', sizes='(max-width: 599px) calc(100vw - 32px), 1px', cls='g-twoways__img', pos='50% 60%') }}
+    <span class="g-twoways__b"><b class="g-twoways__t">Retreats</b> <i class="g-twoways__s">Three to seven nights, all inclusive</i></span>
+  </a>
+  <a class="g-twoways__c" href="{{ url_for('book_rooms') }}">
+    {{ pic(url_for('static', filename='img/more/blue-bedroom.jpg'), 'A bedroom with a window on the mountains', sizes='(max-width: 599px) calc(100vw - 32px), 1px', cls='g-twoways__img', pos='50% 62%') }}
+    <span class="g-twoways__b"><b class="g-twoways__t">Stay the night</b> <i class="g-twoways__s">A room and breakfast, your own dates</i></span>
+  </a>
+</section>
 
 <!-- ============ LA PLEINE EXPÉRIENCE - the château in full, under the calendar (2 Oct) ============ -->
 <section class="g-full" aria-labelledby="full-h"><div class="g-wrap g-full__in">
@@ -292,6 +312,9 @@
       </a></li>
       {% endfor %}
     </ul>
+    {#- 26 Nov 2026 (the home page on a phone): on a phone these three are the retreat list, and the hero's "See
+        every date" comes down to them. Not drawn from 600px up, where the hero's card still has it. -#}
+    <p class="g-full__every"><a href="{{ url_for('workshops_public') }}#dates">See every date</a></p>
     {#- 26 Oct (owner, the retreats deck 1e). -#}
     <p class="g-full__note">Many of our guests return, some year after year, each time for a different retreat. In autumn 2026, every guest on the autumn retreat had stayed with us before.</p>
     {% else %}
@@ -560,6 +583,38 @@
     </figure>
     {%- endfor %}
   </div>
+  <script>
+  /* 26 Nov 2026 (the home page on a phone): six quotes took three thousand pixels, one to a screen. Under 600px
+     they are a row to swipe, one at a time with the next peeking in (gudanes.css); these dots under them say which
+     one is showing and go to any of them. From 600px up the dots are not drawn and the cards stand in their grid. */
+  (function () {
+    var grid = document.currentScript.previousElementSibling;
+    if (!grid || !grid.classList.contains('rc-grid')) return;
+    var cards = [].slice.call(grid.querySelectorAll('.rc-card'));
+    if (cards.length < 2) return;
+    function at(c) { return c.getBoundingClientRect().left - grid.getBoundingClientRect().left + grid.scrollLeft; }
+    var dots = document.createElement('div');
+    dots.className = 'rc-dots';
+    cards.forEach(function (c, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'rc-dot';
+      b.setAttribute('aria-label', 'Quote ' + (i + 1) + ' of ' + cards.length);
+      b.addEventListener('click', function () { grid.scrollTo({left: at(c), behavior: 'smooth'}); });
+      dots.appendChild(b);
+    });
+    grid.parentNode.insertBefore(dots, grid.nextSibling);
+    var queued = false;
+    function mark() {
+      queued = false;
+      var best = 0, gap = Infinity;
+      cards.forEach(function (c, i) { var d = Math.abs(at(c) - grid.scrollLeft); if (d < gap) { gap = d; best = i; } });
+      [].forEach.call(dots.children, function (b, i) { b.setAttribute('aria-current', i === best ? 'true' : 'false'); });
+    }
+    grid.addEventListener('scroll', function () { if (!queued) { queued = true; requestAnimationFrame(mark); } }, {passive: true});
+    mark();
+  })();
+  </script>
   {#- The figures the owner supplies (Management, proof figures): nothing is drawn until there is one. -#}
   <div class="g-wrap">{{ proof(settings) }}</div>
 

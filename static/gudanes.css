@@ -12816,3 +12816,132 @@ html[lang="fr"] .g-top__in, html[lang="es"] .g-top__in{ max-width: max(var(--wra
     padding-top: calc(60vh - 7.5rem); padding-top: calc(max(60svh, 22rem) - 7.5rem);
   }
 }
+
+/* THE HOME PAGE ON A PHONE (owner, 26 Nov 2026: "I don't like the homepage on the mobile"; BRIEF-home-on-a-phone).
+   Measured at 375 x 812 it was fifteen screens long, and three of them asked one question: the hero's two tabs, then
+   La Vie de Château's two buttons, then A Night, or la Vie de Château. Six quotes took three thousand pixels. Under
+   600px the page now goes: the opening screen; the address; the choice, asked once, as two picture cards; the next
+   three dates; the rooms to swipe; the restoration in one photograph; Ways to Spend the Days; the quotes to swipe;
+   Come and see it. What a phone does not draw is still in the page for a wider screen, where nothing here applies.
+   test_home_on_a_phone measures it in headless Chrome: under 6,000px at 375, nothing wider than the screen at 320,
+   and every photograph's chosen copy at least twice its drawn width on a 2x screen. */
+.g .g-twoways, .g .g-full__every, .g .rc-dots{ display: none; }
+@media (max-width: 599px){
+  /* The opening screen: the photograph, the name, the dates, the motto and one sentence. The card under them is
+     the choice the next section asks, and the second sentence says again what the dates and the place already do. */
+  .g.g-home .g-hero .g-hbook,
+  .g.g-home .g-hero .g-herosearch,
+  .g.g-home .g-hero .g-hero__alt,
+  .g.g-home .g-hero .g-hero__fact{ display: none; }
+  /* ...and it ends inside the first screen, with the address under it the last line of that screen. */
+  .g.g-home .g-hero{ padding-bottom: 8px; }
+  .g.g-home .g-hero .g-hero__in{ padding-bottom: 24px; }
+
+  /* The choice: two cards, each its own photograph, its name and its one line, each opening its booking. */
+  .g.g-home .g-twoways{ display: grid; gap: 14px; padding: 20px 16px 28px; background: var(--sand, #F6F1E7); }
+  .g.g-home .g-twoways__c{
+    display: block; position: relative; overflow: hidden; background: #fff; color: var(--blue-deep, #14305F);
+    border: 1px solid rgba(176,141,87,.55); border-radius: 2px; text-decoration: none !important;
+    box-shadow: 0 14px 30px -22px rgba(20,48,95,.55);
+  }
+  .g.g-home .g-twoways__img{ display: block; width: 100%; height: auto; aspect-ratio: 2 / 1; object-fit: cover; background: #E9E1D0; }
+  .g.g-home .g-twoways__b{ display: block; position: relative; padding: 12px 52px 14px 16px; }
+  .g.g-home .g-twoways__t{
+    display: block; font-family: var(--display); font-weight: 500; font-size: 27px; line-height: 1.1;
+    color: var(--blue-deep, #14305F);
+  }
+  .g.g-home .g-twoways__s{ display: block; margin-top: 3px; font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.35; color: #3E5272; }
+  .g.g-home .g-twoways__b::after{
+    content: "\2192"; position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+    font-family: var(--display); font-size: 26px; line-height: 1; color: var(--gilt, #73562D);
+  }
+  .g.g-home .g-twoways__c:focus-visible{ outline: 2px solid var(--blue-deep, #14305F); outline-offset: 3px; }
+
+  /* The next dates: La Vie de Château's list, without the words beside it (the choice above says them), and with
+     the hero's "See every date" brought down under it. Each row as the hero's card had it: the name, the dates,
+     the nights and the price; the retreat's own line and its price a night are on its page, a tap away. */
+  .g.g-home .g-full{ padding: 30px 0 32px; }
+  .g.g-home .g-full__in{ gap: 0; }
+  .g.g-home .g-full__copy, .g.g-home .g-full__note,
+  .g.g-home .g-full__hook, .g.g-home .g-full__night{ display: none; }
+  .g.g-home .g-full .g-full__row a.g-full__has-ph{ grid-template-columns: 72px minmax(0, 1fr) auto; column-gap: 14px; row-gap: 1px; padding: 14px 0; }
+  .g.g-home .g-full__ph{ width: 72px; padding: 3px; }
+  .g.g-home .g-full .g-full__d{ font-size: 21px !important; }
+  .g.g-home .g-full .g-full__m{ font-size: 14px !important; line-height: 1.4; }
+  .g.g-home .g-full__every{ display: block; margin: 18px 0 0; max-width: none; }
+  .g.g-home .g-full .g-full__every a{
+    display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 20px;
+    background: var(--gilt-on-dark, #C6A66E); color: var(--blue-deep, #14305F); text-decoration: none !important;
+    font-family: var(--ui); font-weight: 600; font-size: 13px; letter-spacing: .14em; text-transform: uppercase;
+  }
+
+  /* The rooms: one card and the edge of the next, each its photograph, its name, its price and Check dates. The
+     estate from the air does not open them on a phone: the row is rooms, the brief's "not six stacked cards" but
+     each one a room, and the same photograph is the opening screen's wherever the film will not play. The counter
+     and arrows go with it, since a card cut at the edge says swipe. */
+  .g.g-home .g-sec:has(.g-car--cards){ padding: 30px 0 32px; }
+  .g.g-home .g-sec:has(.g-car--cards) .g-fleur{ display: none; }
+  .g.g-home .g-car--cards{ margin: 18px 0 0; }
+  .g.g-home .g-car--cards .g-homeroom--aerial,
+  .g.g-home .g-car--cards .g-car__bar,
+  .g.g-home .g-car--cards .g-homeroom .g-emblem,
+  .g.g-home .g-car--cards .g-homeroom .g-p,
+  .g.g-home .g-car--cards .g-homeroom .g-tags{ display: none; }
+  .g.g-home .g-car--cards .g-car__track{ grid-auto-columns: 84%; gap: 12px; }
+  .g.g-home .g-car--cards .g-homeroom__b{ padding-top: 12px; padding-bottom: 16px; }
+  .g.g-home .g-car--cards .g-homeroom .g-price{ margin: 8px 0 12px; padding-top: 8px; }
+  /* "From €280" on one line, what it is for under it. */
+  .g.g-home .g-car--cards .g-homeroom .g-price__k{ flex-basis: auto; }
+  .g.g-home .g-car--cards .g-homeroom .g-price__u{ flex-basis: 100%; font-size: 13.5px; }
+  .g.g-home .g-sec:has(.g-car--cards) .g-wrap > p:last-child{ margin-top: 22px !important; }
+
+  /* A Night, or la Vie de Château: the choice above, asked once. */
+  .g.g-home .g-sow{ display: none; }
+
+  /* From ruin, room by room: one photograph, the before with the horse; one paragraph; the way in to the rest. */
+  .g.g-home .g-homeresto{ padding: 30px 0 32px; }
+  .g.g-home .g-homeresto__pair{ margin-top: 18px; }
+  .g.g-home .g-homeresto__pair > .g-homeresto__f:nth-child(2),
+  .g.g-home .g-homeresto__caps{ display: none; }
+  .g.g-home .g-homeresto__foot{ margin-top: 16px; }
+
+  /* Ways to Spend the Days keeps its tabs: it fits one screen. */
+  .g.g-home .g-plaisirs{ padding: 30px 0 32px; }
+  .g.g-home .g-plaisirs__h{ margin-bottom: 18px; }
+  .g.g-home .g-plaisirs.is-tabbed .g-plaisirs__tabs{ margin-bottom: 18px; }
+  .g.g-home .g-plaisirs__img{ aspect-ratio: 2 / 1; }
+  .g.g-home .g-plaisirs__panel{ gap: 16px; }
+  .g.g-home .g-plaisirs__p{ margin-bottom: 8px; font-size: 21px; }
+
+  /* What guests say: a row to swipe, one quote and the edge of the next, dots under them. The gilt frame and the
+     oval stay, smaller; the oval hangs half above its card, in room the row keeps for it. */
+  .g.g-home section.rc-says{ padding: 30px 0 30px; }
+  .g.g-home section.rc-says .rc-head{ margin-bottom: 0; }
+  .g.g-home section.rc-says .rc-crest{ width: 160px; height: 32px; margin-bottom: 4px; }
+  .g.g-home section.rc-says .rc-rule{ margin-top: 10px; }
+  .g.g-home section.rc-says .rc-grid{
+    display: grid; grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: 84%; gap: 12px;
+    max-width: none; margin: 0; padding: 66px 0 2px; align-items: stretch;
+    overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
+  }
+  .g.g-home section.rc-says .rc-grid::-webkit-scrollbar{ display: none; }
+  .g.g-home section.rc-says .rc-card{ margin: 0; padding: 62px 20px 24px; scroll-snap-align: start; min-width: 0; }
+  .g.g-home section.rc-says .rc-med{ width: 84px; height: 106px; transform: translate(-50%, -50%); }
+  .g.g-home section.rc-says .rc-med::after{ inset: -8px; border-width: 2px; }
+  .g.g-home section.rc-says .rc-oval{ border-width: 2px; }
+  .g.g-home section.rc-says .rc-bow{ width: 48px; height: 26px; top: -22px; }
+  .g.g-home section.rc-says .rc-corner{ width: 42px; height: 42px; }
+  .g.g-home section.rc-says .rc-mark{ font-size: 60px; height: 28px; margin: 0 0 2px; }
+  .g.g-home section.rc-says blockquote.rc-q{ font-size: 21px; line-height: 1.32; }
+  .g.g-home section.rc-says figcaption.rc-sig{ margin-top: 14px; }
+  .g.g-home section.rc-says .rc-dots{ display: flex; justify-content: center; gap: 2px; margin: 10px 0 0; }
+  .g.g-home section.rc-says .rc-dot{
+    display: grid; place-items: center; width: 30px; height: 30px; min-width: 0; min-height: 0; padding: 0;
+    background: none; border: 0; border-radius: 50%; cursor: pointer;
+  }
+  .g.g-home section.rc-says .rc-dot::before{
+    content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1px solid #B08D57; background: transparent;
+  }
+  .g.g-home section.rc-says .rc-dot[aria-current="true"]::before{ background: #B08D57; }
+  .g.g-home section.rc-says .rc-dot:focus-visible{ outline: 2px solid var(--blue-deep, #14305F); outline-offset: 0; }
+}
