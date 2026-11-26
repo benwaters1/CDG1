@@ -30,12 +30,12 @@
 {%- set _days = _shown|map(attribute='date')|unique|list %}
 {%- set _rooms = _shown|map(attribute='room_name')|unique|list %}
 {%- set _count = house_rooms.count if house_rooms and house_rooms.count else 0 %}
-{%- set _all = house_rooms.count_word if house_rooms and house_rooms.count_word else (_rooms|length) %}
 <div class="g-nextf-wrap">
 {#- "All" only when it is all of them: next_free_nights gives one run per room, so a room with nothing free in the
     horizon is simply missing, and one date across the rest would otherwise read as every room. -#}
 {% if _days|length == 1 and _rooms|length == _count %}
-  <p class="g-nextf__one">All {{ _all }} rooms are open from <a href="{{ url_for('book_rooms') }}?arrival={{ _shown[0]['date_iso'] }}#book">{{ _days[0] }}</a>.</p>
+  {#- 26 Nov 2026 (owner: "dont say 6"): all of them, without a number, which the count word no longer gives past five. -#}
+  <p class="g-nextf__one">All the rooms are open from <a href="{{ url_for('book_rooms') }}?arrival={{ _shown[0]['date_iso'] }}#book">{{ _days[0] }}</a>.</p>
 {% else %}
   <p class="g-nextf__h">What is open next</p>
   {#- 24 Nov 2026 (site review, 6): five rows that all began "28 November" read like a mistake. The date is said once,
