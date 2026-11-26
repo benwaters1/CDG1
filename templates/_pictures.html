@@ -51,7 +51,7 @@
 <div class="g-album g-album--{{ photos[:3]|length }} g-rv {{ cls }}">
   {%- for p in photos[:3] %}
   <figure class="g-album__p">
-    <div class="g-album__f">{{ pic(p[0], p[1], sizes='(min-width: 64rem) 26vw, 80vw') }}</div>
+    <div class="g-album__f">{{ pic(p[0], p[1], sizes='(min-width: 64rem) 26vw, 80vw', ratio=('g-album--tall' in cls)) }}</div>
     {{- _cap(p, 'g-album__hand') }}
   </figure>
   {%- endfor %}
@@ -157,7 +157,9 @@
     one corner. The default way to illustrate a paragraph. frame='arch' (or
     'oval', 'rect') hangs the photograph in the gilt frame instead.
         {% call split(photo, flip=True, tuck=other) %} ...the words... {% endcall %} -#}
-{% macro split(p, flip=False, tuck=None, cls='', frame='') -%}
+{#- credit: a photographer's name, shown under the photograph as a credit line (26 Nov 2026). Not a caption:
+    captions stay hidden on the site (owner, 15 Oct), and a credit is the photographer's due, not a description. -#}
+{% macro split(p, flip=False, tuck=None, cls='', frame='', credit='') -%}
 <div class="g-sp{% if flip %} g-sp--flip{% endif %}{% if tuck %} g-sp--tuck{% endif %}{% if frame %} g-sp--framed{% endif %} {{ cls }}">
   <div class="g-sp__text">{{ caller() }}</div>
   <div class="g-sp__media g-rv">
@@ -166,6 +168,7 @@
     <figure class="g-sp__main">{{ pic(p[0], p[1], sizes='(min-width: 64rem) 45vw, 100vw') }}{{ _cap(p) }}</figure>
     {%- endif %}
     {%- if tuck %}<figure class="g-sp__tuck">{{ pic(tuck[0], tuck[1], sizes='(min-width: 64rem) 16vw, 40vw') }}</figure>{% endif %}
+    {%- if credit %}<p class="g-credit g-sp__credit">{{ credit }}</p>{% endif %}
   </div>
 </div>
 {%- endmacro %}
