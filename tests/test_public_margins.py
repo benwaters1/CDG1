@@ -621,9 +621,12 @@ def run():
                            % (where["top"], where["vh"], where["footT"] or 0))
         s.section("The home page, shorter on a phone")
         desk_home = [d for d in real if d["page"] == "/" and d["asked"] == DESK]
+        # 26 Nov 2026 (the home page on a phone): La Vie de Château's words gave way on a phone to the
+        # Retreats card under the address, which says them, so the 9 Nov fold went with them. None of the
+        # words drawn, and no Read more left behind with nothing to open. test_home_on_a_phone holds the card.
         fold = home[0].get("fold") if home else None
-        s.check("La Vie de Château shows its first paragraph, and Read more for the rest",
-                bool(fold) and fold["more"] and fold["shown"] == 1 and fold["all"] > 1,
+        s.check("on a phone La Vie de Château's words give way to the Retreats card, with no Read more",
+                bool(fold) and not fold["more"] and fold["shown"] == 0 and fold["all"] > 1,
                 detail=str(fold))
         dfold = desk_home[0].get("fold") if desk_home else None
         s.check("and on a desk all of it, with nothing to press",

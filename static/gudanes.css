@@ -12194,17 +12194,9 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-assure__grid span{ font-size: 14px; }
   /* The photographs of the half-and-half sections, lower. */
   .g .g-half__img{ aspect-ratio: 2 / 1; }
-  /* La Vie de Château: its first paragraph, and the rest one tap away.
-     home.html adds the button; with no script everything shows. */
-  .g .g-full__copy.is-folded .g-full__p ~ .g-full__p{ display: none; }
+  /* La Vie de Château's "Read more" fold was here. Since the home page on a
+     phone (26 Nov 2026) its words are not drawn below 600px at all. */
 }
-.g .g-full__more{
-  display: inline-flex; align-items: center; min-height: 44px; margin: var(--s2) 0 0; padding: 0;
-  background: none; border: 0; cursor: pointer;
-  font-family: var(--ui); font-size: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--gold-lit); text-decoration: underline; text-underline-offset: 4px;
-}
-.g .g-full__more:hover, .g .g-full__more:focus-visible{ color: #fff; }
 
 /* ==========================================================================
    9 NOVEMBER 2026, EVENING -- THE OWNER'S SECOND REVIEW OF THE SITE
@@ -12937,9 +12929,11 @@ html[lang="fr"] .g-top__in, html[lang="es"] .g-top__in{ max-width: max(var(--wra
   .g.g-home section.rc-says .rc-mark{ font-size: 60px; height: 28px; margin: 0 0 2px; }
   .g.g-home section.rc-says blockquote.rc-q{ font-size: 21px; line-height: 1.32; }
   .g.g-home section.rc-says figcaption.rc-sig{ margin-top: 14px; }
-  .g.g-home section.rc-says .rc-dots{ display: flex; justify-content: center; gap: 2px; margin: 10px 0 0; }
+  /* Each dot is a 44px button with an 8px circle drawn in it, like every other thing a thumb taps
+     here: six of them make 264px, inside a 320px phone. */
+  .g.g-home section.rc-says .rc-dots{ display: flex; justify-content: center; gap: 0; margin: 3px 0 0; }
   .g.g-home section.rc-says .rc-dot{
-    display: grid; place-items: center; width: 30px; height: 30px; min-width: 0; min-height: 0; padding: 0;
+    display: grid; place-items: center; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0;
     background: none; border: 0; border-radius: 50%; cursor: pointer;
   }
   .g.g-home section.rc-says .rc-dot::before{
