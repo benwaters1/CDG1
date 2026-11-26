@@ -60580,11 +60580,8 @@ def book_rooms():
     dinner_notes = dinner_for_form(conn, arrival, departure)[1] if searched else []
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
-    # Computed before the connection closes. Only when nobody has searched:
-    # somebody who has just been told their dates are taken does not want a
-    # second list of dates that are not theirs, they want to change one of
-    # their own.
-    next_free = next_free_nights(conn) if not searched else []
+    # What is open next (next_free_nights) was drawn under the dates until
+    # 26 November 2026, when the owner had it taken off the page.
     # A cached reading or None. Never a network call from a page render: a
     # render that can block on somebody else's network is one that eventually
     # does, and this is the booking page.
@@ -60623,7 +60620,7 @@ def book_rooms():
         resting=resting,
         stay_nights=stay_nights, room_quotes=room_quotes,
         occasions_here=occasions_here, occasion_nights=occasion_nights,
-        nothing_available=nothing_available, next_free=next_free,
+        nothing_available=nothing_available,
         blocking_atelier=blocking_atelier, ateliers=ateliers,
         weather=weather, stay_wx=stay_wx,
         wx_nights=[n for d, n in sorted(wx_nights.items()) if d >= house_today()],

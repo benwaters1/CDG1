@@ -144,10 +144,7 @@
       "At the château 8°C overcast" read as March's weather. _typical_weather.html says how. -#}
   {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#s_arrival', '#s_departure', now=weather, stay=stay_wx, nights=wx_nights or [], drawn=(arrival ~ '|' ~ departure) if stay_wx else '') }}
   {#- 9 Nov, evening (owner's second review, 1): the film strip under the bar went. -#}
-  {#- 9 Nov, evening (owner's second review, 2.5): what is open next, under the dates it answers. One sentence when
-      every room opens on the same night; the table only when they differ. -#}
-  {% from '_availability_strip.html' import next_free as next_free_strip %}
-  {{ next_free_strip(next_free) }}
+  {# 26 Nov 2026 (owner: "i wanted this removed"): What is open next is no longer drawn here. #}
   {#- What it is doing at the château now is inside the weather card above (25 Nov 2026). -#}
 </div></section>
 
