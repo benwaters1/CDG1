@@ -199,7 +199,14 @@ m = _harness.m
 # house, the distances, Noël paid in full, the press page, the terms, the privacy notice's dashes and words,
 # the wallpaper's maker, the rooms side by side on /book, Contact's title, the gallery's closing block, What's
 # On's river and canyoning said once, and the Harper's Bazaar captions. Each was read. Was: "ac7b87c"
-COPY_BASE = "b352e60"
+# 26 Nov 2026: moved to 1c252fc, two captions on /restoration ("A new wall against the chateau", "Through the
+# rooms"), the owner's photographs. Against 442625b it listed /restoration's captions and nothing else. Was: "442625b"
+# 26 Nov 2026: moved to cfb1bdb, a caption on /gallery for the Gold Suite on the open day of August 2025.
+# Against 1c252fc it listed that caption and nothing else. Was: "1c252fc"
+# 26 Nov 2026: moved to the merge of main with b352e60, which put Manage your booking in the menu under its
+# dates (four words on every public page: "Manage your booking", "Reference code", "Email you booked with", "Find
+# booking"). Was: "cfb1bdb"
+COPY_BASE = "MERGEBASE"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
