@@ -251,7 +251,7 @@
               27 March, 7.30pm — €65 a person", how many for dinner (0 up to the party), and the menu. On the bill, in
               the total, the phone bar and the card payment as its own line. Redrawn by the quote script when the dates
               change. -#}
-          {%- set _picked = prefill_dinners | default({}) %}
+          {%- set _picked = prefill_dinners | default({}) %}{% set _dnotes_typed = prefill_dinner_notes | default({}) %}
           <ul class="g-extras g-extras--dinner" id="dinner_extras"{% if not _dinners %} hidden{% endif %}>
             {% for n in _dinners %}
             <li class="g-dinnerx" data-dinner="{{ n.date }}" data-price="{{ n.price }}" data-left="{{ n.left }}" data-short="{{ n.short }}">
@@ -261,6 +261,13 @@
               <span class="g-dinnerx__n"><input type="number" inputmode="numeric" id="dinner_{{ n.date }}" name="dinner_{{ n.date }}" min="0" max="{{ n.left }}" value="{{ _picked.get(n.date, 0) }}" aria-describedby="dinner_why_{{ n.date }}"> <span>for dinner</span></span>
               {% if n.menu %}<span class="g-dinnerx__m">{{ menu_link(n.menu) }}</span>{% endif %}
               <span class="g-hint g-dinnerx__why" id="dinner_why_{{ n.date }}" hidden></span>
+              {#- What the kitchen should know for that dinner: allergies, a vegetarian, a birthday. Kept on the table in
+                  the restaurant's book, and deleted once the dinner is over, as the privacy notice says. -#}
+              <p class="g-field g-dinnerx__note" data-dinner-note>
+                <label for="dinner_note_{{ n.date }}">Allergies or anything the kitchen should know <span class="g-opt">optional</span></label>
+                <input type="text" id="dinner_note_{{ n.date }}" name="dinner_note_{{ n.date }}" maxlength="300"
+                       placeholder="e.g. one vegetarian, a nut allergy" value="{{ _dnotes_typed.get(n.date, '') }}">
+              </p>
             </li>
             {% endfor %}
           </ul>
@@ -784,9 +791,10 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     var list=document.getElementById('dinner_extras'), step=document.getElementById('extras_step');
     var fleur=document.querySelector('[data-extras-fleur]'), top=document.getElementById('dinner_note');
     if(!list) return;
-    var had={};
+    var had={}, said={};
     list.querySelectorAll('li[data-dinner]').forEach(function(li){
-      var i=li.querySelector('input'); had[li.getAttribute('data-dinner')]=i?i.value:'0'; });
+      var i=li.querySelector('input[name^="dinner_2"]'), t=li.querySelector('input[name^="dinner_note_"]');
+      had[li.getAttribute('data-dinner')]=i?i.value:'0'; said[li.getAttribute('data-dinner')]=t?t.value:''; });
     var same=offer.length===Object.keys(had).length && offer.every(function(n){ return n.date in had; });
     if(!same){
       list.innerHTML='';
@@ -809,6 +817,12 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         if(n.menu){ var m=document.createElement('span'); m.className='g-dinnerx__m'; m.appendChild(menuLink(n.menu)); li.appendChild(m); }
         var why=document.createElement('span'); why.className='g-hint g-dinnerx__why'; why.id='dinner_why_'+n.date; why.hidden=true;
         li.appendChild(why);
+        var np=document.createElement('p'); np.className='g-field g-dinnerx__note'; np.setAttribute('data-dinner-note','');
+        var nl=document.createElement('label'); nl.htmlFor='dinner_note_'+n.date; nl.textContent='Allergies or anything the kitchen should know ';
+        var opt=document.createElement('span'); opt.className='g-opt'; opt.textContent='optional'; nl.appendChild(opt);
+        var ni=document.createElement('input'); ni.type='text'; ni.id='dinner_note_'+n.date; ni.name='dinner_note_'+n.date;
+        ni.maxLength=300; ni.placeholder='e.g. one vegetarian, a nut allergy'; ni.value=said[n.date]||'';
+        np.appendChild(nl); np.appendChild(ni); li.appendChild(np);
         list.appendChild(li);
       });
     }
@@ -817,7 +831,8 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     if(step) step.hidden=!any; if(fleur) fleur.hidden=!any;
     var size=Number(party.value)||0;
     list.querySelectorAll('li[data-dinner]').forEach(function(li){
-      var d=li.getAttribute('data-dinner'), why=li.querySelector('.g-dinnerx__why'), i=li.querySelector('input');
+      var d=li.getAttribute('data-dinner'), why=li.querySelector('.g-dinnerx__why'), i=li.querySelector('input[name^="dinner_2"]');
+      var note=li.querySelector('[data-dinner-note]'); if(note) note.hidden=!(i&&Number(i.value)>0);
       if(i){ var left=Number(li.getAttribute('data-left'))||0; i.max=String(size?Math.min(size,left):left); }
       if(why){ why.textContent=problems[d]||''; why.hidden=!problems[d]; }
     });
@@ -1195,7 +1210,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     /* Dinner at Gudanes, as the summary says it: "Dinner at Gudanes, Sat 27 March × 2". */
     var dinnerSum=0;
     f.querySelectorAll('li[data-dinner]').forEach(function(li){
-      var i=li.querySelector('input'), c=Number(i&&i.value||0);
+      var i=li.querySelector('input[name^="dinner_2"]'), c=Number(i&&i.value||0);
       if(c>0){ picked.push('Dinner at Gudanes, '+li.getAttribute('data-short')+' × '+c);
                dinnerSum+=c*Number(li.getAttribute('data-price')||0); }
     });

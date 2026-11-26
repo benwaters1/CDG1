@@ -478,7 +478,8 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-dinnerx__l{ min-width: 0; cursor: pointer; }
 .g-dinnerx__n{ display: inline-flex; align-items: center; gap: var(--s1); font-size: 14px; color: var(--ink-faint); }
 .g-dinnerx__n input{ width: 4.5rem; min-height: 44px; font-size: 16px; padding: 0 var(--s2); }
-.g-dinnerx__m, .g-dinnerx__why{ grid-column: 1 / -1; margin: 0; }
+.g-dinnerx__m, .g-dinnerx__why, .g-dinnerx__note{ grid-column: 1 / -1; margin: 0; }
+.g-dinnerx__note input{ width: 100%; min-height: 44px; font-size: 16px; }
 .g-dinnerx__why{ color: var(--danger); }
 
 /* ---- Reservation summary ---------------------------------------------- */
