@@ -75887,13 +75887,20 @@ def pic_size(src):
     return size
 
 
-def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upto=None):
+def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upto=None, ratio=False):
     """One <img>, the way every picture component draws it.
 
     upto: never drawn wider than this many times the file's own width
     (9 Nov 2026, the owner's second review, 3.1). A room's gallery is 1168px
     wide and some of its photographs are 531px files: drawn at full width they
     are soft, so they are drawn at the most their file will stand, centred.
+
+    ratio: carry the file's own shape as --pic-ratio, for a component that
+    keeps each photograph the shape it was taken in (26 Nov 2026). A lazy
+    photograph has sizes="auto", and for that Chrome sets contain: size
+    (!important, in its own stylesheet): with no aspect-ratio the picture
+    is 150px tall whatever its file. The upright prints on /restoration were
+    strips of 352 by 150, live, until this.
     """
     from markupsafe import Markup, escape
     rel = (src[len("/static/img/"):] if src.startswith("/static/img/")
@@ -75928,6 +75935,8 @@ def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upt
         style.append(f"object-position: {escape(pos)}")
     if upto and size:
         style.append(f"max-width: {int(w * upto)}px; margin-inline: auto")
+    if ratio and w and h:
+        style.append(f"--pic-ratio: {int(w)} / {int(h)}")
     if style:
         attrs.append('style="' + '; '.join(style) + '"')
     return Markup("<img " + " ".join(attrs) + ">")

@@ -225,14 +225,18 @@ m = _harness.m
 # Moved to b5857b2 (owner, 26 Nov, the photo review's safe fixes): two new captions only, travelling with
 # their replacement photographs -- "Gabriel's façade" on /history for "Gabriel's façade, above the roses", and
 # "Across the far lawn" on the Seven Starry Nights page. Was: "c3f0038"
-COPY_BASE = "b5857b2"
+# Moved to 79b7cdf (owner, 26 Nov, two photographs sent in the chat): "The ground dug out at the foot of the
+# château", the digger on /restoration, and "Photograph: Rémi Dargegen", the credit line under the red roadster
+# on /events/private. Was: "b5857b2"
+COPY_BASE = "79b7cdf"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
     "g-car__n": re.compile(r"\d+ / \d+"),
     "g-seeall__b": re.compile(r"See all( \d+)? photos"),
-    # A Wikimedia Commons photograph's licence asks for its credit to be seen.
-    "g-credit": re.compile(r"Photo .{1,60}, CC BY(-SA)? \d\.\d"),
+    # A Wikimedia Commons photograph's licence asks for its credit to be seen. 26 Nov 2026: and a photographer's
+    # name under their photograph (split(credit=...)), the red roadster on /events/private being Rémi Dargegen's.
+    "g-credit": re.compile(r"Photo .{1,60}, CC BY(-SA)? \d\.\d|Photograph: [^,]{1,60}"),
     # 9 Nov 2026 (owner): the house's address under the home page's hero, the
     # footer's own words, linked to the gates. test_house_address holds it.
     "g-where": re.compile(re.escape("%(street)s, %(locality)s, %(country)s" % m.HOUSE_PLACE)),
