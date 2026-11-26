@@ -64,6 +64,7 @@
         <select id="add_occ" name="occupancy_type">
           <option value="double">Double (shared)</option>
           <option value="triple">Triple</option>
+          <option value="quad">Four to a room</option>
           <option value="solo">Solo (private room)</option>
         </select></div>
       <div class="register-field"><label class="field-label" for="add_diet">Dietary</label>
@@ -172,6 +173,7 @@
           <select aria-label="Arrangement" name="occupancy_type">
             <option value="double" {{ 'selected' if r['occupancy_type'] == 'double' }}>Double (shared)</option>
             <option value="triple" {{ 'selected' if r['occupancy_type'] == 'triple' }}>Triple</option>
+            <option value="quad" {{ 'selected' if r['occupancy_type'] == 'quad' }}>Four to a room</option>
             <option value="solo" {{ 'selected' if r['occupancy_type'] == 'solo' }}>Solo (private room)</option>
           </select>
         </div>

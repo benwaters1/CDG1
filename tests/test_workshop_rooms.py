@@ -90,7 +90,11 @@ def run():
     conn.close()
     s.check("nothing objects to an unused room", clash is None, detail=f"got {clash!r}")
 
-    s.section("The same room cannot go to two attendees")
+    # Until 26 Nov 2026 a room took one registration, full stop. The owner:
+    # "for the workshops allow up to 4 in a room" -- so a room now takes
+    # registrations up to what it sleeps on a workshop. A1 is a party of two in
+    # a room that sleeps two: full. Sharing below that is test_workshop_four.
+    s.section("A full room cannot take another attendee")
     conn = db()
     conn.execute("UPDATE workshop_bookings SET assigned_room_id = ? WHERE id = ?", (room_a, first))
     conn.commit()
@@ -98,8 +102,8 @@ def run():
     other_free = m.workshop_room_conflict(conn, room_b, start, end, sid)
     conn.close()
     s.check("a room already given out is refused", clash is not None, detail=f"got {clash!r}")
-    s.check("and it says which kind of clash it is",
-            clash and "another attendee" in clash, detail=f"got {clash!r}")
+    s.check("and it says which kind of clash it is: how many it sleeps, and who is in it",
+            clash and "sleeps 2 on a workshop" in clash and "A1" in clash, detail=f"got {clash!r}")
     s.check("a different room is still free", other_free is None, detail=f"got {other_free!r}")
 
     s.section("Re-saving the same attendee's own room is not a clash with itself")

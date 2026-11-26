@@ -13,7 +13,8 @@
 <section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
   <p class="g-eyebrow">Château de Gudanes</p>
   <h1 class="g-display g-display--page" >{{ t('Find My Booking') }}</h1>
-  <p class="g-p">Your reference code was on the confirmation email, and on the page you saw after booking.</p>
+  {#- 26 Nov 2026: every kind of booking is found here, by its prefix (find_guest_booking). -#}
+  <p class="g-p">Your reference code was on the confirmation email, and on the page you saw after booking. It starts {{ ref_prefix.room }} for a room, {{ ref_prefix.workshop }} for a retreat, {{ ref_prefix.restaurant }} for dinner or {{ ref_prefix.event }} for an event, and every one of them is found here.</p>
 
   <form method="post" class="g-form-full g-framed" style="margin-top:var(--s6)">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -1500,3 +1500,11 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 /* The box is the field, so the box shows where the typing goes. */
 .g #g-mainnav .g-qmanage .g-qbook__f:focus-within{ box-shadow: inset 0 0 0 2px rgba(20,48,95,.35); }
 .g #g-mainnav .g-qmanage .g-qbook__f input:focus{ outline: none; }
+
+/* 26 Nov 2026 (owner: "not these 2 photos take them down"): the two shower rooms came out of the bathrooms'
+   second row, leaving two photographs in a row of four. A row of exactly two shares it, half each, rather
+   than leaving half the row empty. Written for any row of two, on /book and /workshops alike. */
+@media (min-width: 40rem){
+  .g .g-baths__row--4 > .g-baths__f:first-child:nth-last-child(2),
+  .g .g-baths__row--4 > .g-baths__f:first-child:nth-last-child(2) ~ .g-baths__f{ grid-column: span 2; }
+}

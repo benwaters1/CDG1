@@ -288,6 +288,11 @@
       <input type="checkbox" name="workshop_room" {{ 'checked' if room['workshop_room'] }}>
       <span>A workshop may use it — even if it is not sold by the night</span>
     </label>
+    {#- 26 Nov 2026 (owner): a group on a workshop shares more than a nightly stay does. -#}
+    <label style="display:block; margin-top:10px;">On a workshop it sleeps
+      <input type="number" name="workshop_sleeps" min="1" max="{{ workshop_room_most }}" value="{{ room['workshop_sleeps'] or '' }}" style="width:5em; margin-left:6px;">
+      <span class="upload-hint">Up to {{ workshop_room_most }}. Leave empty to use the number it sleeps by the night{% if room['max_occupancy'] %} ({{ [room['max_occupancy'], workshop_room_most]|min }}){% endif %}.</span>
+    </label>
   </section>
   {% endif %}
 

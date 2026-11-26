@@ -92,15 +92,15 @@
   ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503062603-2KFI7H38VBDWSPTOMLIB/IMG_0977.jpg?format=1500w', 'A hand-painted basin on the reclaimed terracotta'),
   ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503973363-BORNI4RB6JAHAQXXA46X/IMG_1144.JPG?format=1500w', 'A bathroom window open onto the mountains'),
   (url_for('static', filename='img/bathrooms/blue-bathroom-whole.jpg'), 'The blue bathroom: wallpaper of blue roses, a claw-foot bath, a glass shower and a gilt mirror'),
-  (url_for('static', filename='img/bathrooms/basin-with-the-monogram.jpg'), 'A basin painted with flowers and the château’s crowned G'),
-  (url_for('static', filename='img/bathrooms/shower-and-desk-at-the-window.jpg'), 'A glass shower, and a writing table at the window with the mountains beyond'),
-  (url_for('static', filename='img/bathrooms/washstand-by-the-window.jpg'), 'A marble washstand by a tall window, a walk-in shower behind')
+  (url_for('static', filename='img/bathrooms/basin-with-the-monogram.jpg'), 'A basin painted with flowers and the château’s crowned G')
 ] -%}
+{#- 26 Nov (owner, of the two shower rooms with a washstand at the window: "not these 2 photos take them down"). Gone from
+    the list and from static/img/bathrooms, so nothing can put them back by index. -#}
 {#- Which photograph leads the bathrooms, and the rest beneath it in rows of four. -#}
 {#- The long bathroom leads (owner, 11 Nov); the whole of the blue bathroom is wide, so it takes two places in the
     first row. The fifth of the old ones (2) stays out: the same bath from almost the same place as another. -#}
 {%- set BATH_LEAD = 0 -%}
-{%- set BATH_ROWS = [(5, 6, 1), (7, 8, 3, 4)] -%}
+{%- set BATH_ROWS = [(5, 6, 1), (3, 4)] -%}
 {#- 26 Nov (owner, pointing at the claw-foot bath against the blue floral wallpaper, BATH_PHOTOS[1]): "take this off for
     the ground floor twin, the twin, the king". The room pages of these three show the long bathroom without it; the
     Bathrooms section on /book, which is all of them, keeps it. -#}

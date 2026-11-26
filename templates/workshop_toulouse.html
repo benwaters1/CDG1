@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{#- THE TOULOUSE MEETING (owner, 24 Nov 2026). One sitting of an atelier that
+    starts at midday at the Grand Hôtel de l'Opéra: who is meeting the house
+    there and when they get in, who is making their own way, who has not said,
+    and the car. Drawn from toulouse_meeting(); test_toulouse_meeting holds it. -#}
+{% set s = m.session %}
+{% block title %}Toulouse meeting — {{ s['title'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>The Toulouse meeting</h1>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_workshop_session', session_id=s['id']) }}" class="btn-mini">The sitting</a>
+    <a href="{{ url_for('workshop_rooming', session_id=s['id']) }}" class="small-link">Rooming</a>
+    <a href="{{ url_for('all_transfers') }}" class="small-link">All transfers</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  {{ s['title'] }} · {{ m.start.isoformat()|date_short }} at {{ at }}, the {{ place }}, {{ address }}{% if s['cancelled_at'] %} · <strong>called off</strong>{% endif %}
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('guests', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ m.count.meet }}</span><span class="stat-tile-label">Meeting us at the hotel{% if m.count.unsaid %} · up to {{ m.count.meet + m.count.unsaid }} if those who have not said come too{% endif %}</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('rooms', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ m.count.direct }}</span><span class="stat-tile-label">Making their own way</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('shield', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ m.count.unsaid }}</span><span class="stat-tile-label">Not said yet{% if m.waiting %} · {{ m.waiting }} more not yet confirmed, not counted{% endif %}</span></span>
+  </div>
+</div>
+
+{% macro people(rows, show_asked=False) %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Who</th><th>People</th><th>Phone</th><th>Getting there</th><th>Put down</th></tr></thead>
+    <tbody>
+      {% for x in rows %}{% set b = x.booking %}
+      <tr>
+        <th scope="row">{{ b['guest_name'] }}{% if x.with %}<br><span class="pay-disclaimer">with {{ x.with|join(', ') }}</span>{% endif %}</th>
+        <td>{{ x.people }}</td>
+        <td>{% if b['guest_phone'] %}<a href="tel:{{ b['guest_phone'] }}">{{ b['guest_phone'] }}</a>{% else %}—{% endif %}</td>
+        <td>{{ b['travel_detail'] or '—' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('set_workshop_travel', session_id=s['id']) }}" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="booking_id" value="{{ b['id'] }}">
+            <select name="travel_how" aria-label="How {{ b['guest_name'] }} is getting there">
+              <option value="">—</option>
+              {% for k, words in travel_how.items() %}<option value="{{ k }}" {{ 'selected' if b['travel_how'] == k }}>{{ 'Meeting us' if k == 'meet' else 'Own way' }}</option>{% endfor %}
+            </select>
+            <input type="text" name="travel_detail" value="{{ b['travel_detail'] or '' }}" maxlength="200" placeholder="Train or flight, and when" aria-label="How and when, for {{ b['guest_name'] }}">
+            <button type="submit" class="btn-mini">Save</button>
+          </form>
+          {% if b['travel_told_at'] %}<span class="pay-disclaimer">Said {{ b['travel_told_at']|house_day|date_short }}{% if b['travel_told_by'] %}, {{ b['travel_told_by'] }}{% endif %}</span>
+          {% elif show_asked and b['travel_asked_at'] %}<span class="pay-disclaimer">Asked {{ b['travel_asked_at']|house_day|date_short }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+<div class="detail-card">
+  <h2 class="section-heading">Meeting us at the hotel, at {{ at }}</h2>
+  {% if m.groups.meet %}{{ people(m.groups.meet) }}{% else %}<p class="pay-disclaimer">Nobody has said yet that they are meeting us there.</p>{% endif %}
+</div>
+
+<div class="detail-card">
+  <h2 class="section-heading">Not said yet</h2>
+  {% if m.groups.unsaid %}
+  <p class="pay-disclaimer" style="margin-top:-6px;">They can say on their own booking page{% if ask_days %}; with its switch on under Automation, each is asked by email {{ ask_days }} days ahead{% endif %}. Somebody who rings or writes can be put down here.</p>
+  {{ people(m.groups.unsaid, show_asked=True) }}
+  {% else %}<p class="pay-disclaimer">Everybody has said.</p>{% endif %}
+</div>
+
+<div class="detail-card">
+  <h2 class="section-heading">Making their own way to the château</h2>
+  {% if m.groups.direct %}{{ people(m.groups.direct) }}{% else %}<p class="pay-disclaimer">Nobody.</p>{% endif %}
+</div>
+
+<div class="detail-card">
+  <h2 class="section-heading">The car</h2>
+  {% if m.drives %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>When</th><th>Which way</th><th>Vehicle</th><th>Driver</th></tr></thead>
+      <tbody>
+        {% for d in m.drives %}
+        <tr>
+          <th scope="row">{{ local_datetime_str(d['scheduled_at']) }}</th>
+          <td>{{ 'From the hotel' if d['direction'] == 'pickup' else 'Back to Toulouse' }}</td>
+          <td><a href="{{ url_for('vehicle_transfers_page', vehicle_id=d['vehicle_id']) }}">{{ d['vehicle_name'] }}</a></td>
+          <td>{{ d['driver_name'] or 'Nobody yet' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% if not m.pickup %}
+  {% if vehicles %}
+  <form method="post" action="{{ url_for('book_toulouse_drive', session_id=s['id']) }}" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Vehicle<br><select name="vehicle_id" required><option value="">—</option>{% for v in vehicles %}<option value="{{ v['id'] }}">{{ v['name'] }}</option>{% endfor %}</select></label>
+    <label>Driver<br><select name="driver_user_id"><option value="">Not decided</option>{% for u in drivers %}<option value="{{ u['id'] }}">{{ u['name'] }}</option>{% endfor %}</select></label>
+    <label>Back to Toulouse on {{ m.end.isoformat()|date_short }}, leaving at<br><input type="time" name="return_time" placeholder="10:30"></label>
+    <button type="submit" class="btn-mini">Book the drive from the hotel at {{ at }}</button>
+  </form>
+  <p class="pay-disclaimer">Leave the time blank to book only the drive up. Each run goes on the vehicle's own list and on All transfers.</p>
+  {% else %}
+  <p class="pay-disclaimer">There is no vehicle on the road to book. Add one under Management → Vehicles.</p>
+  {% endif %}
+  {% endif %}
+</div>
+
+{% endblock %}

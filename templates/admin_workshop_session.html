@@ -28,6 +28,7 @@
     <a href="{{ url_for('workshop_session_statements', session_id=session['id']) }}" class="small-link">Statements</a>
     <a href="{{ url_for('workshop_rooming', session_id=session['id']) }}" class="small-link">Rooming</a>
     <a href="{{ url_for('workshop_running_sheet', session_id=session['id']) }}" class="small-link">Running sheet</a>
+    {% if meets_in_toulouse %}<a href="{{ url_for('workshop_toulouse', session_id=session['id']) }}" class="small-link">Toulouse meeting</a>{% endif %}
     <a href="{{ url_for('admin_workshops') }}" class="small-link">All workshops</a>
   </div>
 </div>

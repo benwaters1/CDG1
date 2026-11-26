@@ -93,7 +93,7 @@
     <div class="doc-row" style="align-items:flex-start;">
       <span style="flex:1;">
         <b>{{ room['name'] }}</b>
-        <span class="upload-hint">sleeps {{ room['max_occupancy'] }}</span>
+        <span class="upload-hint">sleeps {{ plan.sleeps[room['id']] }} on a workshop</span>
         {% if not occupants %}
         <div class="upload-hint" style="margin-top:2px;">Empty.</div>
         {% else %}
