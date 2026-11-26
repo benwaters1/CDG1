@@ -199,7 +199,7 @@ m = _harness.m
 # house, the distances, Noël paid in full, the press page, the terms, the privacy notice's dashes and words,
 # the wallpaper's maker, the rooms side by side on /book, Contact's title, the gallery's closing block, What's
 # On's river and canyoning said once, and the Harper's Bazaar captions. Each was read. Was: "ac7b87c"
-COPY_BASE = "442625b"
+COPY_BASE = "b352e60"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
