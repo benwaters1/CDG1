@@ -35,7 +35,8 @@ def run():
     hero = hero.group(0) if hero else ""
     # Negative control: put back the g-hero--art section with illus('rings'), and these go red.
     s.check("the hero is a photograph", 'class="g-hero__img"' in hero, detail=hero[:160])
-    s.check("of the long table, candles lit", 'alt="The long table, every candle lit"' in hero)
+    # 26 Nov 2026 (owner: "its just plates, we need one with the flowers"): the table with roses at every place.
+    s.check("of a table dressed with flowers", 'alt="A wedding table dressed with roses and greenery at every place' in hero)
     s.check("not the drawn art on navy", "g-hero--art" not in hero)
     s.check("its words are the ones the art hero carried",
             all(w in hero for w in ("Marry in a Monument", "Not a wing, not an afternoon", "Ask about a date")))
@@ -48,7 +49,9 @@ def run():
     # section of its own, with its one photograph (test_wedding_inclusive holds the order).
     intros = re.findall(r'<section class="g-sec g-wed-intro">(.*?)</section>', page, re.S)
     intro = "".join(intros)
-    s.check("two sections, a photograph beside each", [i.count('class="g-sp__main"') for i in intros] == [1, 1],
+    # 26 Nov 2026: the first is the bride at the gates, framed (a small file: a frame draws it at its own width).
+    s.check("two sections, a photograph beside each",
+            [i.count('class="g-sp__main"') + i.count('class="g-cadre ') for i in intros] == [1, 1],
             detail=str([i.count('class="g-sp__main"') for i in intros]))
     for words in ("For the days of your wedding, the château and its grounds are yours alone.",
                   "The setting asks for little decoration: old stone, candlelight, and the valley at every window."):
@@ -70,7 +73,7 @@ def run():
 
     s.section("Nothing twice")
     shown = _visible(page)
-    for alt in ("The long table, every candle lit", "A bride at the window, the mountains beyond",
+    for alt in ("A wedding table dressed with roses and greenery at every place", "A bride at the window, the mountains beyond",
                 "The cake among the flowers and the candles"):
         n = len(re.findall(r'<img\b[^>]*\salt="' + re.escape(alt), shown))
         s.check(f"{alt[:40]} drawn once", n == 1, detail=str(n))
