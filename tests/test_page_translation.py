@@ -288,7 +288,7 @@ def run():
     french_already = conn.execute(
         """SELECT COUNT(*) c FROM page_translations
            WHERE lang='fr' AND source_text IN (?, ?)""",
-        ("Séjourner", "Séances photo")).fetchone()["c"]
+        ("Chambres", "Séances photo")).fetchone()["c"]
     s.check("text that is already French is not asked for again",
             french_already == 0,
             detail="otherwise the job translates French into French")

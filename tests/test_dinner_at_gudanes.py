@@ -217,13 +217,22 @@ def _run(s, oc, owner, conn):
             detail=f"{occ['dinner_covers']} covers at {occ['dinner_time']}")
 
     live = dict(status="live", serve_dinner="1", dinner_price="65", dinner_covers="6",
-                dinner_time="19:30", wine_included="1", dinner_nights_shown="1",
+                dinner_time="19:30", wine_included="1", wine_share="15", dinner_nights_shown="1",
                 **{f"dinner_{n2.isoformat()}": "1"})
     r = oc.post(f"/admin/stay-occasions/{oid}",
                 data=_form(name, n1, n2, **dict(live, **{f"dinner_{(n1 - timedelta(days=3)).isoformat()}": "1"})),
                 follow_redirects=True)
     s.check("a dinner night outside the occasion is refused",
             any("own nights" in f and "must be one of" in f for f in flashes(r)), response=r)
+    r = oc.post(f"/admin/stay-occasions/{oid}", data=_form(name, n1, n2, **dict(live, wine_share="")),
+                follow_redirects=True)
+    s.check("with wine included, it does not go on sale until the wine's share is said, for the VAT",
+            _occ(conn, name)["status"] == "draft"
+            and any("price a person is the wine" in f for f in flashes(r)), response=r)
+    r = oc.post(f"/admin/stay-occasions/{oid}", data=_form(name, n1, n2, **dict(live, wine_share="65")),
+                follow_redirects=True)
+    s.check("and the share must be less than the price", any("must be less than" in f for f in flashes(r)),
+            response=r)
     r = oc.post(f"/admin/stay-occasions/{oid}", data=_form(name, n1, n2, **live), follow_redirects=True)
     occ = _occ(conn, oid and name)
     s.check("with no room prices typed, it still goes on sale: the rooms stay at their usual rate",
@@ -323,7 +332,7 @@ def _run(s, oc, owner, conn):
         "party_size": "2", "adults": "2", "guests_under_18": "0", "agree_terms": "on",
         "guest_address": "1 Rue du Château", "guest_city": "Foix", "guest_postcode": "09000",
         "guest_country": "France", "estimated_arrival_time": "After 10pm",
-        f"dinner_{n2.isoformat()}": "2"}
+        f"dinner_{n2.isoformat()}": "2", f"dinner_note_{n2.isoformat()}": "One vegetarian, one nut allergy"}
     s.section("Covers past the night's limit are refused, with the number left")
     conn.execute("UPDATE stay_occasions SET dinner_covers = 1 WHERE id = ?", (oid,))
     conn.commit()
@@ -356,6 +365,8 @@ def _run(s, oc, owner, conn):
     meta = made.get("metadata") or {}
     s.check("the dinners ride through the card page as charged",
             meta.get("dinners") == f"{n2.isoformat()}:2:65.00", detail=str(meta.get("dinners")))
+    s.check("and so does what the kitchen should know, night by night",
+            meta.get(f"dinner_note_{n2.isoformat()}") == "One vegetarian, one nut allergy", detail=str(meta))
     back = guest.get(f"/book/{rid}").get_data(as_text=True)
     bar = re.search(r"data-bar-total>([^<]+)<", back)
     s.check("coming back from the card page, the phone bar says the same total",
@@ -391,6 +402,22 @@ def _run(s, oc, owner, conn):
             table is not None and table["status"] == "confirmed" and table["party_size"] == 2
             and table["booking_id"] == stay["id"] and table["dinner_date"] == n2.isoformat(),
             detail=str(table and dict(table)))
+    s.check("the kitchen's note is on the table, where the kitchen reads it",
+            table and table["dietary_notes"] == "One vegetarian, one nut allergy")
+    s.check("and not on the bill, which the privacy purge does not clear",
+            line and "vegetarian" not in (line["notes"] or "") and "vegetarian" not in line["name"])
+    with m.app.test_request_context("/"):
+        parts = m.extra_vat_parts(conn, line)
+    food, wine = float(m.tax_rate(conn, "vat_food")), float(m.tax_rate(conn, "vat_alcohol"))
+    s.check("for the VAT, the food at its rate and the wine's share at the wine's, cover by cover",
+            sorted(parts) == sorted([(100.0, food), (30.0, wine)]), detail=str(parts))
+    with m.app.test_request_context("/"):
+        purged = m.purge_health_notes(conn, today=n2 + timedelta(days=1))
+    s.check("once the dinner is over, the note is deleted with the others (the privacy notice)",
+            purged["restaurant_bookings"] >= 1
+            and conn.execute("SELECT dietary_notes FROM restaurant_bookings WHERE id = ?",
+                             (table["id"],)).fetchone()["dietary_notes"] is None)
+    conn.rollback()
     bill = m.booking_bill(conn, stay["id"])
     s.check("the bill counts it once, inside what was paid",
             bill and abs(bill["owed"]) < 0.005
@@ -422,15 +449,29 @@ def _run(s, oc, owner, conn):
             and f"{words2} — 2 × €65.00" in htmllib.unescape(mb))
     s.check("and the night not added offers Add dinner", 'value="add_dinner"' in mb
             and f'name="night" value="{n1.isoformat()}"' in mb)
-    with _Letters():
+    with _Letters(), _Card() as card_machine:
         r = anon.post(f"/book/manage/{token}", data={"action": "add_dinner", "night": n1.isoformat(),
-                                                    "covers": "2"}, follow_redirects=True)
+                                                    "covers": "2", "dinner_note": "No shellfish"})
+    asked_for = card_machine.sessions[-1] if card_machine.sessions else {}
+    item = (asked_for.get("line_items") or [{}])[0]
+    s.check("added from the stay's page, it goes straight to the card page",
+            r.status_code == 303 and "checkout.example.invalid" in (r.headers.get("Location") or ""),
+            detail=f"{r.status_code} {r.headers.get('Location')}")
+    s.check("for exactly that dinner, named on the card page",
+            item.get("price_data", {}).get("unit_amount") == 13000
+            and item["price_data"]["product_data"]["name"].startswith(f"Dinner at Gudanes, {m.dinner_night_short(n1.isoformat())}"),
+            detail=str(item))
     added = conn.execute("""SELECT booking_extras.*, restaurant_bookings.status AS t FROM booking_extras
                               JOIN restaurant_bookings ON restaurant_bookings.booking_extra_id = booking_extras.id
                              WHERE booking_extras.booking_id = ? AND booking_extras.scheduled_for = ?""",
                          (stay["id"], n1.isoformat())).fetchone()
     s.check("added, it is a line and a table together",
             added is not None and added["quantity"] == 2 and added["t"] == "confirmed", response=r)
+    s.check("with its note for the kitchen on the table",
+            conn.execute("SELECT dietary_notes FROM restaurant_bookings WHERE booking_extra_id = ?",
+                         (added["id"],)).fetchone()["dietary_notes"] == "No shellfish")
+    mb2 = htmllib.unescape(anon.get(f"/book/manage/{token}").get_data(as_text=True))
+    s.check("and the stay's page shows it with the note", "For the kitchen: No shellfish" in mb2)
     with _Letters():
         r = anon.post(f"/book/manage/{token}", data={"action": "add_dinner", "night": n1.isoformat(),
                                                     "covers": "2"}, follow_redirects=True)
@@ -719,12 +760,23 @@ def _run(s, oc, owner, conn):
     s.check("a task for the owner: the newsletter ready to approve",
             title and title.startswith("Newsletter updated, ready to approve: "), detail=str(title))
     s.check("and a line on the owner home", any("ready to approve" in w["title"] for w in warn))
-    with _Letters() as letters, m.app.test_request_context("/"):
-        m.send_campaign(conn, tmpl, {"owner.zdin@example.invalid": "The Owner"}, owner["id"], as_test=True)
-    test_letter = letters.sent[-1] if letters.sent else {}
+    # Through the real send_email, with only the provider stood in, so what is
+    # checked is the letter as it would leave the house.
+    went = {}
+
+    def _provider(to, subject, body, *a, **kw):
+        went.update(subject=subject, html=kw.get("html") or "")
+        return True, None
+    saved = (m.resend_enabled, m.send_email_via_resend)
+    m.resend_enabled, m.send_email_via_resend = (lambda: True), _provider
+    try:
+        with m.app.test_request_context("/"):
+            m.send_campaign(conn, tmpl, {"owner.zdin@example.invalid": "The Owner"}, owner["id"], as_test=True)
+    finally:
+        m.resend_enabled, m.send_email_via_resend = saved
     s.check("the owner's test letter draws the menu picture and the button",
-            "/menu" in test_letter.get("html", "") and "<img" in test_letter.get("html", "")
-            and "Book your stay" in test_letter.get("html", ""), detail=test_letter.get("subject", ""))
+            "/menu" in went.get("html", "") and "<img" in went.get("html", "")
+            and "Book your stay" in went.get("html", ""), detail=went.get("subject", ""))
     s.check("a test to the owner does not count as sent", not m.occasion_newsletter_sent(conn, tmpl["id"]))
     conn.execute("""INSERT INTO campaign_sends (template_id, template_name, recipient_email, subject, status,
                         created_at) VALUES (?, ?, 'someone.zdin@example.invalid', ?, 'sent', ?)""",
@@ -830,6 +882,35 @@ def _run(s, oc, owner, conn):
         m.send_held_letter(conn, held)
     s.check("and carries it when it is sent from Held Email",
             letters.sent and letters.sent[-1]["attachments"] == files)
+
+    # Held with its pictures, it is drawn with them when it goes later.
+    with m.app.test_request_context("/"):
+        pics = m.campaign_pictures(conn, tmpl["id"])
+    plain = "\n".join(f"{p['alt']}: {p['src']}" for p in pics)
+    held_id = m.queue_undelivered("held.zdin@example.invalid", "Held pictures", "Words\n\n" + plain + "\n\nMore",
+                                  None, None, "the suite's own hold",
+                                  pictures={"photos": pics, "plain": plain})
+    held = conn.execute("SELECT * FROM email_outbox WHERE id = ?", (held_id,)).fetchone()
+    s.check("a held newsletter keeps its pictures", held and json.loads(held["pictures"] or "null")
+            == {"photos": pics, "plain": plain}, detail=str(held and held["pictures"]))
+    drawn = {}
+
+    def _resend(to, subject, body, *a, **kw):
+        drawn["html"] = kw.get("html") or ""
+        return True, None
+    saved = (m.resend_enabled, m.send_email_via_resend)
+    m.resend_enabled, m.send_email_via_resend = (lambda: True), _resend
+    try:
+        with m.app.test_request_context("/"):
+            m.send_held_letter(conn, held)
+    finally:
+        m.resend_enabled, m.send_email_via_resend = saved
+    s.check("sent later from Held Email, it is drawn with the photograph and the menu, not their addresses",
+            pics and all(f'src="{p["src"]}"' in drawn.get("html", "") for p in pics)
+            and plain.split("\n")[0] not in drawn.get("html", ""), detail=drawn.get("html", "")[:200])
+    conn.execute("DELETE FROM email_outbox WHERE id = ?", (held_id,))
+    conn.execute("DELETE FROM mail_log WHERE outbox_id = ?", (held_id,))
+    conn.commit()
     conn.execute("DELETE FROM email_outbox WHERE id = ?", (held_id,))
     conn.execute("DELETE FROM mail_log WHERE outbox_id = ?", (held_id,))
     conn.commit()

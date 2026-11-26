@@ -478,7 +478,8 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-dinnerx__l{ min-width: 0; cursor: pointer; }
 .g-dinnerx__n{ display: inline-flex; align-items: center; gap: var(--s1); font-size: 14px; color: var(--ink-faint); }
 .g-dinnerx__n input{ width: 4.5rem; min-height: 44px; font-size: 16px; padding: 0 var(--s2); }
-.g-dinnerx__m, .g-dinnerx__why{ grid-column: 1 / -1; margin: 0; }
+.g-dinnerx__m, .g-dinnerx__why, .g-dinnerx__note{ grid-column: 1 / -1; margin: 0; }
+.g-dinnerx__note input{ width: 100%; min-height: 44px; font-size: 16px; }
 .g-dinnerx__why{ color: var(--danger); }
 
 /* ---- Reservation summary ---------------------------------------------- */
@@ -12788,8 +12789,9 @@ html[lang="fr"] .g-top__in, html[lang="es"] .g-top__in{ max-width: max(var(--wra
    navy, the name sits in that fade, and every line after it is on the navy, where it reads at once. Wider
    screens, where the words have room beside the building, are unchanged. */
 @media (max-width: 599px){
-  /* On a phone the video is never loaded: the script under the page paints its still on the hero itself, inline,
-     sized to cover the whole hero. Held here to the band (hence !important), the navy below it. */
+  /* The video plays in the band (26 Nov: "yes i want the video"). A phone that will not play it gets the still
+     from the air, which the script under the page paints on the hero itself, inline, sized to cover the whole
+     hero. Held here to the band (hence !important), the navy below it. */
   .g .g-hero:has(.g-hbook){
     background-color: var(--blue-deep) !important; background-repeat: no-repeat !important;
     background-position: 50% 0 !important;
@@ -12803,8 +12805,9 @@ html[lang="fr"] .g-top__in, html[lang="es"] .g-top__in{ max-width: max(var(--wra
   .g .g-hero:has(.g-hbook) .g-hero__video{ object-fit: cover; object-position: 50% 45%; }
   .g .g-hero:has(.g-hbook) .g-hero__wash{
     background: linear-gradient(180deg,
-      rgba(14,28,48,.34) 0%,
-      rgba(14,28,48,0) 17%,
+      rgba(14,28,48,.48) 0%,
+      rgba(14,28,48,.12) 14%,
+      rgba(14,28,48,0) 24%,
       rgba(20,48,95,0) 50%,
       rgba(20,48,95,.72) 78%,
       #14305F 96%);

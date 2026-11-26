@@ -241,7 +241,8 @@
   <p class="g-fr">Les eaux chaudes <span class="g-fr__en">The hot springs</span></p>
   <h2 class="g-place">The Hot Springs</h2>
   {#- 9 Nov (the brief, 4.7): one photograph beside the place, sides alternating down the page. -#}
-  {% call split([url_for('static', filename='img/retreats/bassin-des-ladres.jpg'), 'The hot-spring basin of the Bassin des Ladres in Ax-les-Thermes', '']) %}
+  {#- 26 Nov (owner, the photo review): the Bassin des Ladres photograph showed the basin empty; the section stands on its words until there is a better one. -#}
+  <div class="g-sp__text">
   <p class="g-p g-intro">Ax-les-Thermes has some sixty hot springs, the hottest in the Pyrénées, rising from the ground at over 70°C.</p>
   <div class="g-key">
     <div class="g-key__i">
@@ -268,8 +269,7 @@
       <p class="g-key__v">See <a href="#andorra">Andorra</a>, below.</p>
     </div>
   </div>
-  {% endcall %}
-  <p class="g-car__credits">{{ rcredit('bassin-des-ladres', new_tab=True) }}</p>
+  </div>
 </div></section>
 
 <!-- ============ OUTDOORS AND ADVENTURE ============ -->

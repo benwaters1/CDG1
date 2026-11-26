@@ -9035,6 +9035,13 @@ def init_db():
         # says "wine included" while this is on (25 Nov 2026, on by default).
         ("stay_occasions_wine_included",
          "ALTER TABLE stay_occasions ADD COLUMN wine_included INTEGER NOT NULL DEFAULT 1"),
+        # How much of the dinner's price a person is the wine (26 Nov 2026):
+        # food is taxed at vat_food and wine at vat_alcohol, so a dinner with
+        # wine is two pieces on the VAT working, as the extras' split allows.
+        ("stay_occasions_wine_share", "ALTER TABLE stay_occasions ADD COLUMN wine_share REAL"),
+        # A held letter's pictures (26 Nov 2026): an occasion's newsletter held
+        # in the outbox is drawn again with its photograph and menu when sent.
+        ("email_outbox_pictures", "ALTER TABLE email_outbox ADD COLUMN pictures TEXT"),
         # A dinner added in a stay's extras is a line on the stay's bill AND a
         # table in the restaurant's book, so the kitchen counts it. This ties
         # the table to its line: cancelling one cancels the other.
@@ -15093,8 +15100,11 @@ def financial_trend(conn, months, today=None):
                   FROM bookings WHERE status = 'confirmed'
                     AND arrival_date >= ? AND arrival_date < ? GROUP BY m""",
                (s_iso, e_iso), "revenue")
+    # A Dinner at Gudanes table added with a stay is inside that stay's
+    # total_price above: counted there, not twice.
     accumulate("""SELECT strftime('%Y-%m', dinner_date) AS m, SUM(total_price) AS total
                   FROM restaurant_bookings WHERE status = 'confirmed'
+                    AND booking_extra_id IS NULL
                     AND dinner_date >= ? AND dinner_date < ? GROUP BY m""",
                (s_iso, e_iso), "revenue")
     accumulate("""SELECT strftime('%Y-%m', workshop_sessions.start_date) AS m,
@@ -25468,7 +25478,7 @@ def stripe_payment_label(what, start=None, end=None, *, reference=None, kind=Non
     }
 
 
-def start_booking_stripe_payment(conn, booking_id, amount=None):
+def start_booking_stripe_payment(conn, booking_id, amount=None, label=None):
     """Checkout URL for what is owed on a stay, or for part of it. None if not.
 
     Workshop guests have been able to settle online since the start; room
@@ -25518,6 +25528,7 @@ def start_booking_stripe_payment(conn, booking_id, amount=None):
                 "price_data": {
                     "currency": "eur",
                     "product_data": {"name": (
+                        f"{label} ({booking['reference_code']})" if label else
                         f"{booking['room_name']} ({booking['reference_code']})"
                         + (" — part payment" if part else ""))},
                     "unit_amount": int(round(charge * 100)),
@@ -34932,10 +34943,15 @@ def send_held_letter(conn, row):
                                                      and row["attachments"]) else None
     except ValueError:
         carried = None
+    try:
+        drawn = json.loads(row["pictures"]) if ("pictures" in row.keys() and row["pictures"]) else None
+    except ValueError:
+        drawn = None
     ok = send_email(row["to_address"], row["subject"], row["body"],
                     row["ics_content"], row["ics_filename"], keep=False, report=why,
                     log=False, **({"sender": sent_as} if sent_as else {}),
                     **({"attachments": carried} if carried else {}),
+                    **({"pictures": drawn} if drawn else {}),
                     despite_switch="a held letter somebody chose to send from Held Email")
     now = datetime.now(timezone.utc).isoformat()
     if ok:
@@ -36465,8 +36481,9 @@ def file_held_letters(letters):
             for letter in letters:
                 letter.id = conn.execute(
                     """INSERT INTO email_outbox (to_address, subject, body, ics_content,
-                       ics_filename, reason, last_error, created_at, sender, attachments)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", letter.values).lastrowid
+                       ics_filename, reason, last_error, created_at, sender, attachments,
+                       pictures)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", letter.values).lastrowid
             conn.commit()
         finally:
             conn.close()
@@ -36478,7 +36495,7 @@ def file_held_letters(letters):
 
 
 def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None,
-                      sender=None, attachments=None):
+                      sender=None, attachments=None, pictures=None):
     """Keep a message that could not be sent, so it can go out later.
 
     Deliberately on a connection of its own, with everything swallowed: this
@@ -36505,7 +36522,8 @@ def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reas
     """
     letter = HeldLetter((to_address, subject, body, ics_content, ics_filename, reason,
                          error, datetime.now(timezone.utc).isoformat(), sender,
-                         json.dumps(attachments) if attachments else None))
+                         json.dumps(attachments) if attachments else None,
+                         json.dumps(pictures) if pictures else None))
     if has_request_context() and request_holds_a_write():
         g.setdefault("_held_letters", []).append(letter)
         return letter
@@ -36941,7 +36959,7 @@ def letter_label(template_key, sent_by=None):
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                keep=True, html=None, report=None, area=None, about=None,
                template_key=None, sent_by=None, log=True, despite_switch=None, sender=None,
-               attachments=None):
+               attachments=None, pictures=None):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything that must not be queued: a credential -- a
@@ -36991,7 +37009,15 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # own notices to itself stay plain: they are read in Outlook as work.
     if html is None and (body or "").strip() and to_address \
             and writes_outside_the_house(to_address):
-        html = letter_html(subject, body, key=template_key) or None
+        # PICTURES: {photos, plain} -- the photographs a letter draws where the
+        # lines `plain` stand in its words (an occasion's newsletter). Kept
+        # with a held letter, so it is drawn the same when it goes later.
+        if pictures and pictures.get("photos") and pictures.get("plain") \
+                and pictures["plain"] in body:
+            html = letter_html(subject, body.replace(pictures["plain"], letter_slot("photos")),
+                               key=template_key, photos=pictures["photos"]) or None
+        else:
+            html = letter_html(subject, body, key=template_key) or None
     if MAIL_REDIRECT_TO and to_address:
         # Named in the subject, so a test inbox with forty letters in it is
         # still readable -- "which of these was the one to the Dutch couple"
@@ -37072,7 +37098,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             return False
         outbox_id = queue_undelivered(to_address, subject, body, ics_content,
                                       ics_filename, why, sender=sender,
-                                      attachments=attachments)
+                                      attachments=attachments, pictures=pictures)
         keep_guest_message(to_address, subject, body, outbox_id=outbox_id,
                            failure=why, **filed)
         return False
@@ -37102,7 +37128,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         if keep:
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                                      "provider rejected it", why or "Resend API call failed",
-                                     sender=sender, attachments=attachments)
+                                     sender=sender, attachments=attachments, pictures=pictures)
             keep_guest_message(to_address, subject, body, outbox_id=held,
                                failure=why or "the provider refused it", **filed)
         elif log:
@@ -37116,7 +37142,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         if keep:
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                                      "no email provider configured", sender=sender,
-                                     attachments=attachments)
+                                     attachments=attachments, pictures=pictures)
             keep_guest_message(to_address, subject, body, outbox_id=held,
                                failure="no email provider configured", **filed)
         elif log:
@@ -37174,7 +37200,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             report["why"] = "The mail server refused it: %s" % (e,)
         if keep:
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                                     "send failed", str(e), attachments=attachments)
+                                     "send failed", str(e), attachments=attachments, pictures=pictures)
             keep_guest_message(to_address, subject, body, outbox_id=held,
                                failure=f"the mail server refused it: {e}", **filed)
         elif log:
@@ -37652,7 +37678,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                                     (new_row["id"],)).fetchone()
             for d in dinners:
                 add_dinner_to_stay(conn, stay_row, d["date"], d["covers"], d["price"],
-                                   in_booking_total=True)
+                                   in_booking_total=True, note=d.get("note"))
     conn.commit()
     if record_payment and new_row:
         record_payment(conn, new_row["id"])
@@ -37862,7 +37888,8 @@ def create_booking_from_stripe_session(conn, session):
         # When they want the things that ask, carried through the card page.
         extra_details=unpack_extra_details(meta.get("extra_when", "")),
         # Dinner at Gudanes, as charged.
-        dinners=unpack_dinner_choices(meta.get("dinners", "")),
+        dinners=[dict(d, note=meta.get(f"dinner_note_{d['date']}", ""))
+                 for d in unpack_dinner_choices(meta.get("dinners", ""))],
         # The reference the payment in Stripe was labelled with.
         reference_code=(meta.get("reference_code") or "").strip() or None,
         record_payment=card_payment_recorder(session),
@@ -55247,6 +55274,20 @@ def dinner_for_form(conn, arrival, departure):
             [{"text": d["text"], "menu": d["menu"]} for d in dinner_note(offer)])
 
 
+DINNER_NOTE_MAX = 300
+
+
+def read_dinner_notes(form):
+    """{night: what the kitchen should know} from dinner_note_YYYY-MM-DD."""
+    out = {}
+    for key in form.keys():
+        if key.startswith("dinner_note_2") and parse_date(key[len("dinner_note_"):]):
+            text = " ".join((form.get(key) or "").split())[:DINNER_NOTE_MAX]
+            if text:
+                out[key[len("dinner_note_"):]] = text
+    return out
+
+
 def read_dinner_choices(form):
     """{night: covers} from a form's dinner boxes (dinner_YYYY-MM-DD)."""
     out = {}
@@ -55340,7 +55381,7 @@ def dinner_extra_row(conn):
 
 
 def add_dinner_to_stay(conn, booking, night, covers, price, *, in_booking_total=False,
-                       user_id=None, added_by=None):
+                       user_id=None, added_by=None, note=None):
     """A dinner night on a stay: the line on its bill AND the table in the
     restaurant's book, written together and tied together, so the covers
     forecast, the kitchen's list and the calendar count it. Returns the
@@ -55354,19 +55395,31 @@ def add_dinner_to_stay(conn, booking, night, covers, price, *, in_booking_total=
         conn, "room", booking["id"], extra, covers, unit_price=round(float(price), 2),
         notes=" — ".join(x for x in (night, added_by) if x), user_id=user_id,
         scheduled_for=night, in_booking_total=in_booking_total)
-    conn.execute("UPDATE booking_extras SET name = ? WHERE id = ?",
-                 (f"{DINNER_AT_GUDANES}, {dinner_night_short(night)}", line_id))
+    # Food at its rate; with wine included, the wine's share a person at the
+    # alcohol rate (extra_vat_parts splits a line by these, per cover).
+    occ = occasion_dinner_night(conn, night)
+    wine = (float(occ["wine_share"]) if occ is not None and occ["wine_included"]
+            and occ["wine_share"] else None)
+    conn.execute(
+        """UPDATE booking_extras SET name = ?, vat_rate = ?, vat_part_amount = ?,
+                  vat_part_rate = ? WHERE id = ?""",
+        (f"{DINNER_AT_GUDANES}, {dinner_night_short(night)}",
+         float(tax_rate(conn, "vat_food") or 10), min(wine, float(price)) if wine else None,
+         float(tax_rate(conn, "vat_alcohol") or 20) if wine else None, line_id))
     confirmed = (booking["status"] or "") == "confirmed"
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO restaurant_bookings
                (reference_code, manage_token, guest_name, guest_email, guest_phone, party_size,
-                dinner_date, total_price, booking_id, booking_extra_id, payment_status,
-                status, created_at, decided_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                dinner_date, dietary_notes, total_price, booking_id, booking_extra_id,
+                payment_status, status, created_at, decided_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (make_restaurant_reference_code(), secrets.token_urlsafe(24), booking["guest_name"],
          booking["guest_email"], booking["guest_phone"] if "guest_phone" in keys else None,
-         covers, night, round(float(price) * covers, 2), booking["id"], line_id,
+         # The kitchen's note goes on the TABLE, which the health-notes purge
+         # clears once the dinner is over (privacy notice), never on the bill.
+         covers, night, (note or "").strip()[:DINNER_NOTE_MAX] or None,
+         round(float(price) * covers, 2), booking["id"], line_id,
          "paid" if ("payment_status" in keys and booking["payment_status"] == "paid") else "unpaid",
          "confirmed" if confirmed else "pending", now, now if confirmed else None))
     return line_id
@@ -55411,7 +55464,8 @@ def stay_dinner_lines(conn, booking_id):
     return [dict(r) for r in conn.execute(
         """SELECT booking_extras.id AS line_id, booking_extras.scheduled_for AS date,
                   booking_extras.quantity AS covers, booking_extras.unit_price AS price,
-                  restaurant_bookings.status AS table_status
+                  restaurant_bookings.status AS table_status,
+                  restaurant_bookings.dietary_notes AS note
              FROM restaurant_bookings
              JOIN booking_extras ON booking_extras.id = restaurant_bookings.booking_extra_id
             WHERE restaurant_bookings.booking_id = ? AND booking_extras.status != 'cancelled'
@@ -56123,9 +56177,10 @@ def _occasion_form_values(form, rooms, occ=None):
         "home_banner": 1 if form.get("home_banner") in ("1", "on", "yes") else 0,
         "home_banner_text": (form.get("home_banner_text") or "").strip()[:80],
         "confirm_dinner_price": form.get("confirm_dinner_price") == "1",
-        # On unless the form drew the box and it came back unticked.
-        "wine_included": 1 if (form.get("wine_included") in ("1", "on", "yes")
-                               or form.get("dinner_section_shown") != "1") else 0,
+        # Only as ticked on a form that drew the box (ticked there by
+        # default): it says "wine included" to guests, and asks the wine's
+        # share for the VAT, so it is never assumed.
+        "wine_included": 1 if form.get("wine_included") in ("1", "on", "yes") else 0,
     }
     if v["kind"] == "guest_chef":
         v["chef_on_site"] = 1
@@ -56139,6 +56194,7 @@ def _occasion_form_values(form, rooms, occ=None):
             return None
     v["dinner_covers"] = number("dinner_covers", int)
     v["dinner_price"] = number("dinner_price")
+    v["wine_share"] = number("wine_share")
     v["prices"] = {r["id"]: number(f"price_{r['id']}") for r in rooms}
     v["dinners"] = sorted(k[len("dinner_"):] for k in form if k.startswith("dinner_2"))
     a, b = parse_date(v["first_night"]), parse_date(v["last_night"])
@@ -56166,6 +56222,8 @@ def _occasion_form_values(form, rooms, occ=None):
         error = "The chef's link should start with https://."
     elif v["dinner_asked"] and not v["dinner_price"]:
         error = "Dinner at Gudanes needs a price a person."
+    elif v["wine_share"] and v["dinner_price"] and v["wine_share"] >= v["dinner_price"]:
+        error = "The wine's share must be less than the dinner's price a person."
     elif v["dinner_time"] and not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", v["dinner_time"]):
         error = "Give the dinner time as hours and minutes, for example 19:30."
     elif (v["dinner_on"] and not moved and a and b
@@ -56205,6 +56263,10 @@ def _go_live_problem(conn, occ, today):
         return "Set a price for at least one room."
     if dinners and not occ["dinner_price"]:
         return "Set the price a person for dinner."
+    if dinners and occ["wine_included"] and not occ["wine_share"]:
+        return ("Say how much of the dinner's price a person is the wine: the food is taxed at "
+                f"{float(tax_rate(conn, 'vat_food')):g}% and the wine at "
+                f"{float(tax_rate(conn, 'vat_alcohol')):g}%.")
     if occ["kind"] == "guest_chef":
         if not occ["chef_name"]:
             return "Name the guest chef."
@@ -56265,7 +56327,9 @@ def _render_occasion_form(conn, occ, values=None, confirm_write=None, price_clas
         night_menus=night_menus, price_clash=price_clash,
         covers=covers, who=who, uplift=STAY_OCCASION_UPLIFT, chef_on=CHEF_ON_SITE_LINE,
         chef_off=CHEF_OFF_SITE_LINE, confirm_write=confirm_write,
-        banner_default=occasion_banner_default(occ), dining=dining_mode(conn))
+        banner_default=occasion_banner_default(occ), dining=dining_mode(conn),
+        vat_food=f'{float(tax_rate(conn, "vat_food")):g}',
+        vat_alcohol=f'{float(tax_rate(conn, "vat_alcohol")):g}')
 
 
 _BLANK_OCCASION = {"id": None, "name": "", "slug": "", "first_night": "", "last_night": "",
@@ -56275,7 +56339,8 @@ _BLANK_OCCASION = {"id": None, "name": "", "slug": "", "first_night": "", "last_
                    "chef_link": "", "dinner_time": "20:00", "dinner_covers": None,
                    "dinner_price": None, "outside_diners": 0, "menu_file": None, "menu_name": None,
                    "home_banner": 0, "home_banner_text": "", "banner_file": None,
-                   "wine_included": 1, "retreat_evening": None, "retreat_night": None}
+                   "wine_included": 1, "wine_share": None, "retreat_evening": None,
+                   "retreat_night": None}
 
 
 def occasion_banner_default(occ):
@@ -56397,10 +56462,10 @@ def _save_occasion_dinner(conn, occ_id, v, uploads, form, notes):
         gone.append(occ["banner_file"])
         conn.execute("UPDATE stay_occasions SET banner_file = NULL WHERE id = ?", (occ_id,))
     occ = conn.execute("SELECT * FROM stay_occasions WHERE id = ?", (occ_id,)).fetchone()
-    conn.execute("UPDATE stay_occasions SET home_banner = ?, home_banner_text = ?, wine_included = ? "
-                 "WHERE id = ?",
+    conn.execute("UPDATE stay_occasions SET home_banner = ?, home_banner_text = ?, wine_included = ?, "
+                 "wine_share = ? WHERE id = ?",
                  (v["home_banner"], v["home_banner_text"] or occasion_banner_default(occ),
-                  v["wine_included"], occ_id))
+                  v["wine_included"], v["wine_share"] if v["wine_included"] else None, occ_id))
     return [g for g in gone if g]
 
 
@@ -61816,6 +61881,7 @@ def book_room_prefill(form=None, conn=None):
                                if k.startswith("extra_note_")},
         # Dinner at Gudanes: what they asked for, and what the dates offer.
         "prefill_dinners": read_dinner_choices(form) if form else {},
+        "prefill_dinner_notes": read_dinner_notes(form) if form else {},
         "dinner_offer": [], "dinner_notes": [],
     }
     _a, _d = parse_date(field("arrival_date")), parse_date(field("departure_date"))
@@ -61942,6 +62008,7 @@ def book_room(room_id):
         # Dinner at Gudanes, asked for in the extras: {night: covers}.
         wanted_dinners = read_dinner_choices(request.form)
         chosen_dinners, dinner_problems = [], {}
+        dinner_notes_asked = read_dinner_notes(request.form)
         # Notice, and WHEN, for what they ticked -- only once there are dates
         # to measure either against.
         too_soon, extra_details, when_error = [], {}, None
@@ -61949,6 +62016,8 @@ def book_room(room_id):
             chosen_dinners, dinner_problems = price_dinner_choices(
                 conn, arrival, departure, party_size_raw.isdigit() and int(party_size_raw) or None,
                 wanted_dinners)
+            for d in chosen_dinners:
+                d["note"] = dinner_notes_asked.get(d["date"], "")
             too_soon = [e for e in chosen_extras if extra_too_soon(e, arrival)]
             for e in chosen_extras:
                 if not e["ask_when"]:
@@ -62158,6 +62227,10 @@ def book_room(room_id):
                         # night:covers:price, so the webhook writes what was charged.
                         **({"dinners": pack_dinner_choices(chosen_dinners)}
                            if chosen_dinners else {}),
+                        # What the kitchen should know, a key a night (each
+                        # metadata value holds 500 characters).
+                        **{f"dinner_note_{d['date']}": d["note"][:490]
+                           for d in chosen_dinners if d.get("note")},
                         **({"extra_when": pack_extra_details(extra_details)}
                            if extra_details else {}),
                         "promo_code": promo_code if discount_amount else "",
@@ -62208,6 +62281,7 @@ def book_room(room_id):
                 "promo_code": promo_code,
                 "extras": sorted(e["id"] for e in chosen_extras),
                 "dinners": {d["date"]: d["covers"] for d in chosen_dinners},
+                "dinner_notes": {d["date"]: d["note"] for d in chosen_dinners if d.get("note")},
                 "extra_when": {str(k): request.form.get(f"extra_when_{k}", "")
                                for k in extra_details},
                 "extra_note": {str(k): (request.form.get(f"extra_note_{k}", "")
@@ -62236,7 +62310,7 @@ def book_room(room_id):
     prefill_under_18 = request.args.get("guests_under_18", "")
     prefill_requests = prefill_promo = ""
     prefill_extras = set()
-    prefill_dinners = {}
+    prefill_dinners, prefill_dinner_notes = {}, {}
     prefill_extra_when, prefill_extra_note = {}, {}
 
     # Coming back from an abandoned card payment. What they typed was put in
@@ -62265,6 +62339,7 @@ def book_room(room_id):
         prefill_promo = stashed.get("promo_code", "")
         prefill_extras = set(stashed.get("extras", []))
         prefill_dinners = stashed.get("dinners") or {}
+        prefill_dinner_notes = stashed.get("dinner_notes") or {}
         prefill_extra_when = stashed.get("extra_when") or {}
         prefill_extra_note = stashed.get("extra_note") or {}
         prefill_guest = stashed.get("guest_details") or {}
@@ -62303,7 +62378,7 @@ def book_room(room_id):
         prefill_extras=prefill_extras, initial_quote=initial_quote,
         prefill_extra_when=prefill_extra_when, prefill_extra_note=prefill_extra_note,
         deposit_shown=deposit_shown, prefill_guest=prefill_guest,
-        prefill_dinners=prefill_dinners,
+        prefill_dinners=prefill_dinners, prefill_dinner_notes=prefill_dinner_notes,
         dinner_offer=(initial_quote or {}).get("dinner_offer") or [],
         dinner_notes=(initial_quote or {}).get("dinner_note") or [],
     )
@@ -63673,6 +63748,7 @@ def manage_booking(manage_token):
         lines, problems = price_dinner_choices(
             conn, parse_date(booking["arrival_date"]), parse_date(booking["departure_date"]),
             booking["party_size"], {night: covers} if covers > 0 else {})
+        pay_for = None
         if night in have:
             flash(f"{DINNER_AT_GUDANES} on {dinner_nights_words([night])} is already on your stay. "
                   "To change how many are coming, write to us.", "error")
@@ -63683,7 +63759,8 @@ def manage_booking(manage_token):
         else:
             d = lines[0]
             add_dinner_to_stay(conn, booking, d["date"], d["covers"], d["price"],
-                               added_by="Added by the guest")
+                               added_by="Added by the guest",
+                               note=" ".join((request.form.get("dinner_note") or "").split()))
             log_audit(conn, "guest_added_dinner", target=booking["reference_code"],
                       details=f"{d['covers']} x {DINNER_AT_GUDANES}, {d['date']}")
             # Commit before sending: the outbox fallback writes on its own
@@ -63697,9 +63774,22 @@ def manage_booking(manage_token):
                     f"{format_date_human(d['date'])} for {d['covers']} "
                     f"({money(d['amount'])}) to their {booking['room_name']} stay. It is on "
                     f"their bill and in the restaurant's book.\n\n— Château de Gudanes")
+            # A stay is paid online, in advance (payment policy, 8 Oct 2026):
+            # the dinner is paid for there and then, by card, for exactly its
+            # price. Left at the card page, it stays on the bill like any other
+            # amount owed, and the page's own Pay button settles it.
+            pay_for = d
             flash(f"{DINNER_AT_GUDANES} on {dinner_nights_words([d['date']])} for {d['covers']} "
-                  f"is added. It is on your bill.", "success")
+                  f"is added to your stay.", "success")
         conn.commit()
+        if pay_for:
+            card = start_booking_stripe_payment(
+                conn, booking["id"], amount=pay_for["amount"],
+                label=f"{DINNER_AT_GUDANES}, {dinner_night_short(pay_for['date'])}, "
+                      f"{pay_for['covers']} × {money(pay_for['price'])}")
+            if card:
+                conn.close()
+                return redirect(card, code=303)
         conn.close()
         return redirect(url_for("manage_booking", manage_token=manage_token) + "#dinner-at-gudanes")
 
@@ -72783,8 +72873,9 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
     # An occasion's newsletter (3c) draws the photograph and an image menu
     # where {{menu_pictures}} stands; the plain text gives their addresses.
     pictures = campaign_pictures(conn, letter.get("template_id"))
+    plain_pictures = "\n".join(f"{p['alt']}: {p['src']}" for p in pictures)
     if pictures:
-        context.setdefault("menu_pictures", "\n".join(f"{p['alt']}: {p['src']}" for p in pictures))
+        context.setdefault("menu_pictures", plain_pictures)
     subject, body = render_campaign(letter["subject"], letter["body"], context)
     # Every marketing message carries its own unsubscribe key, and the row that
     # holds it is written and COMMITTED BEFORE the send: the link in the email
@@ -72795,13 +72886,6 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
     unsub_token = unsub_token or secrets.token_urlsafe(24)
     footer = campaign_unsubscribe_footer(conn, unsub_token)
     body = body + footer
-    drawn = None
-    if pictures:
-        _s, drawn_body = render_campaign(letter["subject"], letter["body"],
-                                         dict(context, menu_pictures=letter_slot("photos")))
-        drawn = letter_html(subject, drawn_body + footer,
-                            key="campaign:" + (letter["template_name"] or ""),
-                            photos=pictures) or None
     row_id = conn.execute(
         """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
            recipient_name, subject, status, detail, dedupe_key, sent_by_user_id,
@@ -72816,7 +72900,9 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
         files, _note = campaign_attachments(conn, letter.get("template_id"))
         ok = send_email(email, subject, body, area=letter.get("area"), report=report,
                         template_key="campaign:" + (letter["template_name"] or ""),
-                        sender=RESEND_CAMPAIGN_FROM, html=drawn,
+                        sender=RESEND_CAMPAIGN_FROM,
+                        **({"pictures": {"photos": pictures, "plain": plain_pictures}}
+                           if pictures and plain_pictures in body else {}),
                         **({"attachments": files} if files else {}))
         status = ("test" if as_test else "sent") if ok is not False else "failed"
         # NOT SENT IS NOT FAILED. With no provider, or Write to guests off,
@@ -137013,7 +137099,7 @@ LEGACY_PATHS = [
     ("/food", "restaurant_info", True),
     ("/la-table", "restaurant_info", True),
     ("/the-chateau", "restoration_page", True),
-    ("/about", "restoration_page", True),
+    ("/about", "story", True),  # owner, 26 Nov 2026: the story page, as the switch brief had it
     # /history is a page of its own since handover z22 (history_page).
     # The house writes. If it ever publishes that writing at its own address,
     # a 301 cached in every returning reader's browser would be in the way.

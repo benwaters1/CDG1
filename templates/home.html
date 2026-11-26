@@ -46,10 +46,14 @@
     var slow = c.saveData || /(^|-)(2g|3g)$/.test(c.effectiveType || "");
     var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     /* 9 Nov 2026, evening (owner's second review, 3.5): under 600px the loop showed a slice of wall, its first
-       frame a white blur the white logo vanished into. A phone gets the estate from the air, still, instead. */
+       frame a white blur the white logo vanished into, so a phone got the estate from the air, still, instead.
+       26 Nov 2026 (owner: "yes i want the video"): a phone plays it again. The hero on a phone is now a band
+       across the top (gudanes.css, THE HOME HERO ON A PHONE), which shows 43% of the film's width rather than a
+       fifth: the chateau at the end of the drive, the carriage, the gates. The still from the air is kept for a
+       phone that will not play it (data saving, less motion, Low Power Mode): see still() under the page. */
     var narrow = window.matchMedia && window.matchMedia("(max-width: 599px)").matches;
-    if (narrow) v.setAttribute("poster", v.getAttribute("data-phone-still"));
-    if (slow || calm || narrow) { v.setAttribute("data-still", "1"); return; }
+    if (narrow && (slow || calm)) v.setAttribute("poster", v.getAttribute("data-phone-still"));
+    if (slow || calm) { v.setAttribute("data-still", "1"); return; }
     var s = document.createElement("source"); s.src = v.getAttribute("data-src"); s.type = "video/mp4";
     v.appendChild(s); v.muted = true; v.autoplay = true; v.load();
     var p = v.play(); if (p && p.catch) p.catch(function(){});
@@ -601,7 +605,10 @@
   function still(){
     if (v.dataset.fellBack) return;
     v.dataset.fellBack = '1';
-    var poster = v.getAttribute('poster');
+    /* On a phone the still is the estate from the air (data-phone-still), which fills the band better than
+       the film's first frame of mist. */
+    var phone = window.matchMedia && window.matchMedia('(max-width: 599px)').matches;
+    var poster = (phone && v.getAttribute('data-phone-still')) || v.getAttribute('poster');
     if (poster){
       var hero = v.closest('.g-hero');
       if (hero) hero.style.backgroundImage = 'url("' + poster + '")';
