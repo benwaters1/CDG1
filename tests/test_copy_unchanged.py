@@ -203,7 +203,10 @@ m = _harness.m
 # rooms"), the owner's photographs. Against 442625b it listed /restoration's captions and nothing else. Was: "442625b"
 # 26 Nov 2026: moved to cfb1bdb, a caption on /gallery for the Gold Suite on the open day of August 2025.
 # Against 1c252fc it listed that caption and nothing else. Was: "1c252fc"
-COPY_BASE = "cfb1bdb"
+# 26 Nov 2026: moved to f33c8a2, the home page's rooms in the owner's words ("Choose Your Room"). Against cfb1bdb
+# it listed / alone: "Choose Your Room" and its line where "The Five Rooms" and "Room and breakfast. Each is
+# different, because the château is." stood. Was: "cfb1bdb"
+COPY_BASE = "f33c8a2"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
