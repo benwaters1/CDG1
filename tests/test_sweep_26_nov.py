@@ -624,6 +624,28 @@ def _secret_key(s):
     shutil.rmtree(scratch, ignore_errors=True)
 
 
+def _back_addresses(s, conn):
+    s.section("B2.4 A form's 'back' only ever goes back to this site")
+    lb = m.local_back
+    for bad in ("https://evil.example/x", "//evil.example/x", "/\\evil.example", "javascript:alert(1)",
+                "/ok\r\nSet-Cookie: x=1", "evil.example", ""):
+        s.check(f"refused: {bad!r}", lb(bad, "/fallback") == "/fallback")
+    s.check("kept: a path on this site, with its query", lb("/admin/arrivals?day=2026-12-01", "/f")
+            == "/admin/arrivals?day=2026-12-01")
+    from _harness import clients
+    oc, _ec, _o, _e = clients()
+    booking = conn.execute("SELECT id FROM bookings ORDER BY id DESC LIMIT 1").fetchone()
+    if not booking:
+        s.check("there is a booking to try it on", False)
+        return
+    for back, lands in (("https://evil.example/after", "/admin/arrivals"), ("//evil.example", "/admin/arrivals"),
+                        ("/admin/arrivals?from=desk", "/admin/arrivals?from=desk")):
+        r = oc.post(f"/admin/bookings/{booking['id']}/access-code", data={"value": "", "back": back})
+        where = re.sub(r"^https?://[^/]+", "", r.headers.get("Location", ""))
+        s.check(f"an access-code form sent back to {back!r} lands on {lands}", r.status_code in (302, 303)
+                and where.startswith(lands) and "evil" not in r.headers.get("Location", ""), detail=r.headers.get("Location"))
+
+
 def run():
     s = Suite("The site's second sweep, 26 November 2026")
     anon = m.app.test_client()
@@ -644,6 +666,7 @@ def run():
         _small_things(s)
         _site_errors(s, conn)
         _secret_key(s)
+        _back_addresses(s, conn)
     finally:
         _setting(conn, "dining_mode", was_dm)
         conn.close()

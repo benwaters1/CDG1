@@ -79102,6 +79102,24 @@ def admin_bookings():
 # already uses, so nothing here is a second way of doing anything.
 # ---------------------------------------------------------------------------
 
+def local_back(value, fallback):
+    """`value` when it is an address on this site, `fallback` when it is anything else.
+
+    For a "back" that arrives in a form (second sweep, 26 Nov 2026, B2.4). A
+    form can say anything, and redirect() goes wherever it is told, so a
+    crafted form could have sent somebody on staff to another site after a
+    save. Only a path is taken: one "/" and then not a second, which a
+    browser reads as another site ("//evil.example"), nor a backslash, which
+    some browsers read as a slash, nor a line break, which would split the
+    header. Anything else goes to the page the route would have gone to anyway.
+    """
+    v = (value or "").strip()
+    if (v.startswith("/") and not v.startswith("//") and "\\" not in v
+            and not any(c in v for c in "\r\n\t") and not urlparse(v).netloc):
+        return v
+    return fallback
+
+
 def booking_return(booking_id):
     """Where an action on a stay goes back to: the stay's own page when it was
     pressed there, the list otherwise."""
@@ -83155,7 +83173,7 @@ def register_passport_seen(kind, fiche_id):
     conn.commit()
     conn.close()
     flash("Noted: the passport was seen. Nothing of it is kept.", "success")
-    return redirect(request.form.get("back") or url_for("police_register_page"))
+    return redirect(local_back(request.form.get("back"), url_for("police_register_page")))
 
 
 @app.route("/admin/register/<kind>/<int:fiche_id>/sign", methods=["GET", "POST"])
@@ -117901,7 +117919,7 @@ def issue_access_code(booking_id):
     if not value:
         conn.close()
         flash("Nothing to record — put in the code or which key it was.", "error")
-        return redirect(request.form.get("back") or url_for("arrivals_sheet_page"))
+        return redirect(local_back(request.form.get("back"), url_for("arrivals_sheet_page")))
     kind = (request.form.get("kind", "") or "code").strip()
     if kind not in ("code", "key"):
         kind = "code"
@@ -117922,7 +117940,7 @@ def issue_access_code(booking_id):
     flash(f"Recorded. It is cleared automatically {ACCESS_CODE_KEEP_DAYS} days "
           "after they leave — a code kept afterwards is a way in, not a record.",
           "success")
-    return redirect(request.form.get("back") or url_for("arrivals_sheet_page"))
+    return redirect(local_back(request.form.get("back"), url_for("arrivals_sheet_page")))
 
 
 @app.route("/admin/access-code/<int:code_id>/back", methods=["POST"])
@@ -117940,7 +117958,7 @@ def access_code_returned(code_id):
     conn.commit()
     conn.close()
     flash("Marked as back.", "success")
-    return redirect(request.form.get("back") or url_for("arrivals_sheet_page"))
+    return redirect(local_back(request.form.get("back"), url_for("arrivals_sheet_page")))
 
 
 @app.route("/admin/today-sheet")
