@@ -241,7 +241,9 @@ m = _harness.m
 # 26 Nov 2026, merged again: the base is 4efbf39 for the second merge of the dinner test fixes with main, each
 # side read on its own (the dinner fixes changed nothing this reads). Moved to the merge itself in the commit
 # after it. Was: "723dfe8" on the dinner side, "4efbf39" on main
-COPY_BASE = "4efbf39"
+# 27 Nov 2026: moved to 35b8726, the dinner test fixes merged with main (the inbox on the owner home on top, which
+# changes nothing this reads). Against 4efbf39 it listed nothing. Was: "4efbf39"
+COPY_BASE = "35b8726"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
