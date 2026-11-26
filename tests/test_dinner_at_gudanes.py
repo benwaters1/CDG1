@@ -102,7 +102,8 @@ class _Letters:
         self._was = m.send_email
 
         def _record(to, subject, body, *a, **kw):
-            self.sent.append({"to": to, "subject": subject, "body": body, "html": kw.get("html") or ""})
+            self.sent.append({"to": to, "subject": subject, "body": body, "html": kw.get("html") or "",
+                              "attachments": kw.get("attachments")})
             return True
         m.send_email = _record
         return self
@@ -738,6 +739,116 @@ def _run(s, oc, owner, conn):
     s.check("and once sent, a change to the occasion does not touch it", "€80" not in after_send["body"])
 
     # ------------------------------------------------------------------
+    s.section("The newsletter carries the PDF menu (owner, 26 Nov: \"yes, attach it\")")
+    r = oc.post(f"/admin/stay-occasions/{oid}", data=dict(_form(name, n1, n2, **dict(
+                news, dinner_price="80", confirm_dinner_price="1")),
+                menu=(io.BytesIO(_pdf()), "Menu.pdf")), content_type="multipart/form-data",
+                follow_redirects=True)
+    files, note = m.campaign_attachments(conn, tmpl["id"])
+    s.check("an occasion's newsletter carries its PDF menu, named for the occasion",
+            len(files) == 1 and files[0]["filename"] == f"{name} - menu.pdf"
+            and files[0]["mime"] == "application/pdf" and os.path.exists(files[0]["path"]), detail=str(files))
+    s.check("the campaign's page says so before anything is sent",
+            "attached to every letter" in note
+            and "attached to every letter" in oc.get(f"/admin/emails/{tmpl['id']}").get_data(as_text=True))
+    with _Letters() as letters, m.app.test_request_context("/"):
+        m.send_campaign(conn, tmpl, {"owner.zdin@example.invalid": "The Owner"}, owner["id"], as_test=True)
+    sent_with = (letters.sent[-1] if letters.sent else {}).get("attachments")
+    s.check("every letter is handed the menu to carry", sent_with == files, detail=str(sent_with))
+    other_tmpl = conn.execute("SELECT id FROM campaign_templates WHERE occasion_id IS NULL LIMIT 1").fetchone()
+    s.check("and any other campaign carries nothing",
+            not other_tmpl or m.campaign_attachments(conn, other_tmpl["id"]) == ([], ""))
+
+    # Both transports put it on the letter.
+    asked = {}
+
+    class _Answer:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+        def read(self):
+            return b'{"id": "zdin-resend"}'
+
+    def _post(req, timeout=None):
+        asked["payload"] = json.loads(req.data.decode("utf-8"))
+        return _Answer()
+    was_open = m.urlopen
+    m.urlopen = _post
+    try:
+        ok, _why = _harness.REAL_SEND_EMAIL_VIA_RESEND("reader.zdin@example.invalid", "Menu", "Words",
+                                                       attachments=files)
+    finally:
+        m.urlopen = was_open
+    att = ((asked.get("payload") or {}).get("attachments") or [{}])[0]
+    import base64
+    s.check("through Resend: the PDF itself, by name and type",
+            ok and att.get("filename") == f"{name} - menu.pdf" and att.get("content_type") == "application/pdf"
+            and base64.b64decode(att.get("content") or "").startswith(b"%PDF"), detail=str({k: str(v)[:40] for k, v in att.items()}))
+
+    class _Smtp:
+        def __init__(self, *_a, **_kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+        def starttls(self, **_kw):
+            pass
+
+        def login(self, *_a):
+            pass
+
+        def send_message(self, msg):
+            asked["smtp"] = msg
+    saved = (m.resend_enabled, m.email_enabled, m.smtplib.SMTP)
+    m.resend_enabled, m.email_enabled, m.smtplib.SMTP = (lambda: False), (lambda: True), _Smtp
+    try:
+        m.send_email("reader.zdin@example.invalid", "Menu", "Words", keep=False, log=False,
+                     despite_switch="the suite's own test of the transport", attachments=files)
+    finally:
+        m.resend_enabled, m.email_enabled, m.smtplib.SMTP = saved
+    parts = [part for part in asked["smtp"].iter_attachments()] if asked.get("smtp") else []
+    s.check("through the mail server: the PDF itself, by name and type",
+            len(parts) == 1 and parts[0].get_filename() == f"{name} - menu.pdf"
+            and parts[0].get_content_type() == "application/pdf"
+            and parts[0].get_content().startswith(b"%PDF"), detail=str([p.get_filename() for p in parts]))
+
+    # Held, it keeps the menu to carry -- as a reference, not a copy -- and takes it when sent.
+    held_id = m.queue_undelivered("held.zdin@example.invalid", "Held menu", "Words", None, None,
+                                  "the suite's own hold", attachments=files)
+    held = conn.execute("SELECT * FROM email_outbox WHERE id = ?", (held_id,)).fetchone()
+    s.check("a held letter keeps what it carries, as a reference to the file",
+            held and json.loads(held["attachments"] or "null") == files
+            and "%PDF" not in (held["attachments"] or ""), detail=str(held and held["attachments"]))
+    with _Letters() as letters, m.app.test_request_context("/"):
+        m.send_held_letter(conn, held)
+    s.check("and carries it when it is sent from Held Email",
+            letters.sent and letters.sent[-1]["attachments"] == files)
+    conn.execute("DELETE FROM email_outbox WHERE id = ?", (held_id,))
+    conn.execute("DELETE FROM mail_log WHERE outbox_id = ?", (held_id,))
+    conn.commit()
+
+    # Too large to send to a whole list: linked, and said.
+    big = f"menu-zdin-big{oid}.pdf"
+    with open(os.path.join(m.OCCASION_FILES_DIR, big), "wb") as fh:
+        fh.write(_pdf() + b"0" * (6 * 1024 * 1024))
+    was_menu = _occ(conn, name)["menu_file"]
+    conn.execute("UPDATE stay_occasions SET menu_file = ? WHERE id = ?", (big, oid))
+    conn.commit()
+    files_big, note_big = m.campaign_attachments(conn, tmpl["id"])
+    s.check("a menu over the limit is linked, not attached, and the page says why",
+            files_big == [] and "too large to attach" in note_big, detail=note_big)
+    conn.execute("UPDATE stay_occasions SET menu_file = ? WHERE id = ?", (was_menu, oid))
+    conn.commit()
+    m.remove_occasion_file(big)
+
+    # ------------------------------------------------------------------
     _browser(s, anon, conn, oid, name, occ_page)
 
 
@@ -843,21 +954,24 @@ def _browser(s, anon, conn, oid, name, occ_page):
             detail="set GUDANES_CHROME; a check that could not run is not a pass")
     if not browser:
         return
-    picture = anon.get(occ_page).get_data(as_text=True)
-    home = anon.get("/").get_data(as_text=True)
-    pdf_page = picture
     occ = conn.execute("SELECT * FROM stay_occasions WHERE id = ?", (oid,)).fetchone()
-    # The same page with the PDF menu, written straight to the occasion for the length of one render.
+    # The page with a picture menu and with a PDF one, each written straight to the occasion for the
+    # length of its render, whatever the sections above left it holding.
     was = occ["menu_file"]
-    name_pdf = f"menu-zdin{oid}.pdf"
-    with open(os.path.join(m.OCCASION_FILES_DIR, name_pdf), "wb") as fh:
-        fh.write(_pdf())
-    conn.execute("UPDATE stay_occasions SET menu_file = ? WHERE id = ?", (name_pdf, oid))
-    conn.commit()
-    pdf_page = anon.get(occ_page).get_data(as_text=True)
-    conn.execute("UPDATE stay_occasions SET menu_file = ? WHERE id = ?", (was, oid))
-    conn.commit()
-    m.remove_occasion_file(name_pdf)
+    drawn = {}
+    for kind, data in (("png", _png()), ("pdf", _pdf())):
+        fname = f"menu-zdin{oid}.{kind}"
+        with open(os.path.join(m.OCCASION_FILES_DIR, fname), "wb") as fh:
+            fh.write(data)
+        conn.execute("UPDATE stay_occasions SET menu_file = ? WHERE id = ?", (fname, oid))
+        conn.commit()
+        drawn[kind] = anon.get(occ_page).get_data(as_text=True)
+        if kind == "png":
+            home = anon.get("/").get_data(as_text=True)
+        conn.execute("UPDATE stay_occasions SET menu_file = ? WHERE id = ?", (was, oid))
+        conn.commit()
+        m.remove_occasion_file(fname)
+    picture, pdf_page = drawn["png"], drawn["pdf"]
     pages = [("menu-image-375", "menu", 375, picture), ("menu-pdf-375", "menu", 375, pdf_page),
              ("home-320", "home", 320, home), ("home-375", "home", 375, home)]
     # One page to a run: frames side by side pass focus between them as their dialogs open, and which one is
