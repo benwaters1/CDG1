@@ -2318,6 +2318,27 @@ def count_page_view(response):
     return response
 
 
+# A STRICTER SCRIPT POLICY, MEASURED BEFORE IT IS ENFORCED (second sweep,
+# 26 Nov 2026, B2.5). The policy above names no script-src, so a script that
+# found its way into a page would run. This one does, in report-only mode: the
+# browser runs everything as before and tells /csp-report what it WOULD have
+# blocked. The templates carry about a hundred and fifty inline <script> blocks,
+# and they arrive whole from the design side, so each script tag is given this
+# response's nonce here, at the response, as the photographs and the admin bar
+# are -- never in the templates, where it would last one handover. What still
+# reports is what enforcing it would break: chiefly the inline onclick="..."
+# handlers, which no nonce can cover. The three hosts are the only scripts the
+# pages load from elsewhere: Turnstile, Cloudflare's visitor count, and Office
+# (the add-in's pages, which take neither policy). Stripe is a page of its own
+# (Checkout), not a script here. When the reports are down to nothing, the
+# header's name loses "-Report-Only" and it is enforced.
+CSP_REPORT_ONLY = ("script-src 'self' 'nonce-{nonce}' https://challenges.cloudflare.com "
+                   "https://static.cloudflareinsights.com https://appsforoffice.microsoft.com; "
+                   "object-src 'none'; base-uri 'self'; report-uri /csp-report")
+_SCRIPT_OPEN = re.compile(r"<script(?![^>]*\snonce=)(?=[\s>])", re.I)
+CSP_REPORT_ROWS_MAX = 500
+
+
 @app.after_request
 def set_security_headers(response):
     """Response hardening, set in the app so it travels with the code.
@@ -2325,7 +2346,10 @@ def set_security_headers(response):
     Deliberately NOT a full Content-Security-Policy: the templates carry 52
     inline <script> blocks and 1,525 inline style attributes, so a script-src
     or style-src rule would need a nonce through all 207 of them. The three
-    directives here need none of that and still close real holes.
+    directives here need none of that and still close real holes. A script-src
+    is now sent beside it in report-only mode, with a nonce put on every script
+    tag at the response (CSP_REPORT_ONLY, 26 Nov 2026): measured first, enforced
+    once what it reports is gone.
 
     form-action NAMES STRIPE, and without it nobody can pay. Every checkout
     is a form POST answered with a 303 to Stripe's hosted page, and a browser
@@ -2345,6 +2369,18 @@ def set_security_headers(response):
             "Content-Security-Policy",
             "frame-ancestors 'none'; base-uri 'self'; "
             "form-action 'self' https://checkout.stripe.com")
+        # The stricter policy, reported and not enforced (CSP_REPORT_ONLY). Every
+        # hook that rewrites the page has run by now, so the admin bar's script
+        # and the photographs' are in the body and get the nonce too.
+        if ((response.content_type or "").startswith("text/html")
+                and not response.direct_passthrough):
+            nonce = secrets.token_urlsafe(16)
+            body = response.get_data(as_text=True)
+            marked = _SCRIPT_OPEN.sub(f'<script nonce="{nonce}"', body)
+            if marked != body:
+                response.set_data(marked)
+            response.headers.setdefault("Content-Security-Policy-Report-Only",
+                                        CSP_REPORT_ONLY.format(nonce=nonce))
 
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
 
@@ -9020,6 +9056,17 @@ def init_db():
          "ALTER TABLE stay_occasions ADD COLUMN retreat_evening TEXT"),
         ("stay_occasions_retreat_night",
          "ALTER TABLE stay_occasions ADD COLUMN retreat_night TEXT"),
+        # What the report-only script policy would have blocked (csp_report).
+        ("csp_reports_table",
+         """CREATE TABLE IF NOT EXISTS csp_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fingerprint TEXT NOT NULL UNIQUE,
+                directive TEXT NOT NULL,
+                blocked TEXT NOT NULL,
+                page TEXT NOT NULL,
+                first_at TEXT NOT NULL,
+                last_at TEXT NOT NULL,
+                times INTEGER NOT NULL DEFAULT 1)"""),
         # A page or a loop that failed, one row per place and kind of fault
         # (note_site_error). Second sweep, 26 Nov 2026, B2.2.
         ("site_errors_table",
@@ -114872,6 +114919,7 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_booking_com_mail(conn))
     cleared.update(purge_door_openings(conn))
     cleared.update(purge_site_errors(conn))
+    cleared.update(purge_csp_reports(conn))
     # The only one of these holding an identifier for people who never became
     # guests at all -- somebody who opened the availability calendar and left.
     cleared.update(purge_submission_log(conn))
@@ -135915,7 +135963,10 @@ def site_errors_page():
     """Every page or loop that failed in the last ninety days, grouped and counted."""
     conn = get_db()
     purge_site_errors(conn)
+    purge_csp_reports(conn)
     conn.commit()
+    csp = [dict(r, when=local_datetime_str(r["last_at"])) for r in conn.execute(
+        "SELECT * FROM csp_reports ORDER BY times DESC, last_at DESC LIMIT 200")]
     lv = list_view(
         site_error_rows(conn), request.args,
         search=["place", "error_type", "in_function", "message"],
@@ -135932,7 +135983,86 @@ def site_errors_page():
     )
     conn.close()
     return render_template("admin_site_errors.html", lv=lv, rows=lv["rows"],
-                           keep_days=SITE_ERROR_KEEP_DAYS)
+                           keep_days=SITE_ERROR_KEEP_DAYS, csp=csp)
+
+
+def _csp_page(address):
+    """The route a reported page is, written as the route is ("/book/<int:room_id>"):
+    never the address, which for a guest's own page carries their key."""
+    path = urlparse(address or "").path or ""
+    path = re.sub(r"^/(?:fr|es)(?=/|$)", "", path) or "/"
+    try:
+        rule, _args = app.url_map.bind("localhost").match(path, method="GET", return_rule=True)
+        return rule.rule
+    except Exception:
+        return "(not a page here)"
+
+
+def note_csp_report(report):
+    """One violation the browser reported, grouped with any like it. Returns whether it was kept."""
+    if not isinstance(report, dict):
+        return False
+    directive = str(report.get("effective-directive") or report.get("violated-directive")
+                    or report.get("effectiveDirective") or "").split(" ")[0][:40]
+    raw = str(report.get("blocked-uri") or report.get("blockedURL") or "")
+    if raw.startswith(("http://", "https://")):
+        bits = urlparse(raw)
+        blocked = f"{bits.scheme}://{bits.netloc}"[:120]
+    else:
+        blocked = (raw or "inline")[:20]
+    page = _csp_page(report.get("document-uri") or report.get("documentURL"))
+    if not directive:
+        return False
+    fingerprint = hashlib.sha1(f"{directive}|{blocked}|{page}".encode("utf-8")).hexdigest()
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_db()
+    try:
+        known = conn.execute("SELECT 1 FROM csp_reports WHERE fingerprint = ?", (fingerprint,)).fetchone()
+        if not known and conn.execute("SELECT COUNT(*) FROM csp_reports").fetchone()[0] >= CSP_REPORT_ROWS_MAX:
+            return False
+        conn.execute(
+            """INSERT INTO csp_reports (fingerprint, directive, blocked, page, first_at, last_at, times)
+               VALUES (?, ?, ?, ?, ?, ?, 1)
+               ON CONFLICT(fingerprint) DO UPDATE SET last_at = excluded.last_at,
+                   times = csp_reports.times + 1""",
+            (fingerprint, directive, blocked, page, now, now))
+        conn.commit()
+    finally:
+        conn.close()
+    return True
+
+
+@app.route("/csp-report", methods=["POST"])
+@csrf.exempt
+def csp_report():
+    """Where a browser says what the report-only policy would have blocked.
+
+    Exempt from CSRF because the browser sends it, with no form and no token,
+    and it can change nothing but a count: at most 16 KB is read, only the
+    directive, the blocked host and the page's route are kept, and no more
+    than CSP_REPORT_ROWS_MAX kinds are ever held. Nothing about the visitor --
+    no address, no full URL -- is written down."""
+    try:
+        data = json.loads(request.stream.read(16384).decode("utf-8", "replace") or "null")
+    except ValueError:
+        return ("", 204)
+    reports = []
+    if isinstance(data, dict):
+        reports.append(data.get("csp-report"))
+    elif isinstance(data, list):          # the Reporting API's shape: [{"type": ..., "body": {...}}]
+        reports.extend((item or {}).get("body") for item in data[:20] if isinstance(item, dict))
+    for report in reports:
+        try:
+            note_csp_report(report)
+        except sqlite3.Error as e:
+            log_line(f"[csp report not kept] {e}")
+    return ("", 204)
+
+
+def purge_csp_reports(conn):
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=SITE_ERROR_KEEP_DAYS)).isoformat()
+    return {"script policy reports": conn.execute(
+        "DELETE FROM csp_reports WHERE last_at < ?", (cutoff,)).rowcount}
 
 
 @app.errorhandler(500)

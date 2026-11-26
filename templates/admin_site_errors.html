@@ -46,4 +46,26 @@
     </table>
   </div>
 {% endif %}
+
+<h2 class="section-heading">What a stricter script policy would block</h2>
+<p class="pay-disclaimer">
+  Browsers are sent a stricter rule about which scripts may run, in report-only mode: nothing is blocked,
+  and each browser says here what it would have refused. While this list has entries, enforcing the rule
+  would break those pages. Only the kind of script, where it came from and which page are kept, never who
+  was visiting. Kept {{ keep_days }} days.
+</p>
+{% if not csp %}
+  <div class="empty-state">No browser has reported anything.</div>
+{% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Page</th><th>Would block</th><th>Rule</th><th>Times</th><th>Last</th></tr></thead>
+      <tbody>
+        {% for c in csp %}
+        <tr><td>{{ c.page }}</td><td>{{ c.blocked }}</td><td>{{ c.directive }}</td><td>{{ c.times }}</td><td>{{ c.when }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
 {% endblock %}

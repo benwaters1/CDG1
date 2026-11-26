@@ -646,6 +646,65 @@ def _back_addresses(s, conn):
                 and where.startswith(lands) and "evil" not in r.headers.get("Location", ""), detail=r.headers.get("Location"))
 
 
+def _script_policy(s, conn):
+    s.section("B2.5 A script-src, reported before it is enforced")
+    import json as _json
+    for path in ("/book", "/", "/fr/workshops"):
+        r = m.app.test_client().get(path)
+        body = r.get_data(as_text=True)
+        ro = r.headers.get("Content-Security-Policy-Report-Only", "")
+        nonce = re.search(r"'nonce-([A-Za-z0-9_\-]+)'", ro)
+        tags = re.findall(r"<script\b[^>]*>", body, re.I)
+        bare = [t for t in tags if not nonce or f'nonce="{nonce.group(1)}"' not in t]
+        s.check(f"{path}: the report-only policy names script-src, Turnstile and the visitor count",
+                "script-src 'self'" in ro and "https://challenges.cloudflare.com" in ro
+                and "https://static.cloudflareinsights.com" in ro and "report-uri /csp-report" in ro, detail=ro[:200])
+        s.check(f"{path}: every script tag carries this response's nonce", tags and not bare,
+                detail=f"{len(bare)} of {len(tags)} without it: {bare[:1]}")
+        s.check(f"{path}: and the enforced policy is as it was",
+                r.headers.get("Content-Security-Policy") == "frame-ancestors 'none'; base-uri 'self'; "
+                "form-action 'self' https://checkout.stripe.com")
+    a = m.app.test_client().get("/book").headers.get("Content-Security-Policy-Report-Only", "")
+    b = m.app.test_client().get("/book").headers.get("Content-Security-Policy-Report-Only", "")
+    s.check("a new nonce for every page served", a and b and a != b)
+
+    conn.execute("DELETE FROM csp_reports")
+    conn.commit()
+    anon = m.app.test_client()
+    room = conn.execute("SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    report = {"csp-report": {"document-uri": f"https://www.chateaugudanes.com/fr/book/{room['id']}?ZZTOKEN=secret",
+                             "effective-directive": "script-src-elem",
+                             "blocked-uri": "https://evil.example/x.js?ZZTOKEN=secret"}}
+    for _ in range(2):
+        r = anon.post("/csp-report", data=_json.dumps(report), content_type="application/csp-report")
+    rows = [dict(x) for x in conn.execute("SELECT * FROM csp_reports")]
+    s.check("a browser's report is taken without a form or a token", r.status_code == 204)
+    s.check("kept as the page's route, the blocked host and the rule, counted",
+            len(rows) == 1 and rows[0]["page"] == "/book/<int:room_id>" and rows[0]["blocked"] == "https://evil.example"
+            and rows[0]["directive"] == "script-src-elem" and rows[0]["times"] == 2, detail=str(rows)[:300])
+    s.check("and nothing of the address it came from", rows and "ZZTOKEN" not in str(rows))
+    anon.post("/csp-report", data=_json.dumps([{"type": "csp-violation", "body": {
+        "documentURL": "https://www.chateaugudanes.com/workshops", "effectiveDirective": "script-src-attr",
+        "blockedURL": "inline"}}]), content_type="application/reports+json")
+    s.check("the newer Reporting API's shape is read too", conn.execute(
+        "SELECT 1 FROM csp_reports WHERE page = '/workshops' AND blocked = 'inline'").fetchone() is not None)
+    r = anon.post("/csp-report", data="not json at all", content_type="application/csp-report")
+    s.check("and nonsense is answered and dropped", r.status_code == 204 and conn.execute(
+        "SELECT COUNT(*) FROM csp_reports").fetchone()[0] == 2)
+    from _harness import clients
+    oc, _ec, _o, _e = clients()
+    text = _flat(visible_text(oc.get("/admin/site-errors").get_data(as_text=True)))
+    s.check("the owner reads them on Site errors", "What a stricter script policy would block" in text
+            and "https://evil.example" in text and "/book/<int:room_id>" in text)
+    conn.execute("UPDATE csp_reports SET last_at = '2026-01-01T00:00:00+00:00'")
+    conn.commit()
+    s.check("kept ninety days, by the daily retention pass",
+            m.purge_csp_reports(conn)["script policy reports"] == 2
+            and "purge_csp_reports" in __import__("inspect").getsource(m.run_health_notes_purge_job))
+    conn.execute("DELETE FROM csp_reports")
+    conn.commit()
+
+
 def run():
     s = Suite("The site's second sweep, 26 November 2026")
     anon = m.app.test_client()
@@ -667,6 +726,7 @@ def run():
         _site_errors(s, conn)
         _secret_key(s)
         _back_addresses(s, conn)
+        _script_policy(s, conn)
     finally:
         _setting(conn, "dining_mode", was_dm)
         conn.close()
