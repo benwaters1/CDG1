@@ -485,8 +485,10 @@ def _book_cards(s, anon):
             detail=str(lead and lead.group(1)))
     # Four of the five: the fifth is the same bath from almost the same place as another.
     # 26 Nov 2026 (owner: "i want more bathroom photos"): and four more of the owner's, eight in all.
-    s.check("and seven beneath it: eight in all, each once",
-            len(baths & set(shown)) >= 4 and len(shown) == 8 and len(set(shown)) == 8,
+    # Then (owner, the same day: "not these 2 photos take them down") the two shower rooms with a washstand at
+    # the window came off again (be80671): six in all.
+    s.check("and five beneath it: six in all, each once",
+            len(baths & set(shown)) >= 4 and len(shown) == 6 and len(set(shown)) == 6,
             detail=str(shown))
     points = re.findall(r'<li class="g-baths__pt">.*?<svg', sec, re.S)
     s.check("the owner's eight points, each with its drawing", len(points) == 8, detail=f"{len(points)}")
