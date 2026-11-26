@@ -27,7 +27,9 @@
     château opened on a drawing of two rings on navy. It opens on the long table now, every candle lit, moved up
     from the collage below so it shows once; the words are the ones the art hero carried. -#}
 <section class="g-hero g-hero--wed">
-  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ url_for('static', filename='img/weddings/long-table-candlelit.jpg') }}" style="object-position: center 55%" alt="The long table, every candle lit">
+  {#- 26 Nov 2026 (owner, of the long table: "change this photo, its just plates, we need one with the flowers"): the
+      table dressed with roses and greenery at every place, candles lit. -#}
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ url_for('static', filename='img/weddings/roses-at-each-place.jpg') }}" style="object-position: center 45%" alt="A wedding table dressed with roses and greenery at every place, the candles lit">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Ariège · One At A Time</p>
@@ -58,7 +60,9 @@
     couple in the formal garden and with the mountains behind -- all agreed to their use. They stay; nothing needs
     swapping for a photograph without faces. -#}
 <section class="g-sec g-wed-intro"><div class="g-wrap">
-  {% call split([url_for('static', filename='img/weddings/bride-at-the-window.jpg'), 'A bride at the window, the mountains beyond', 'A bride at the window, the mountains beyond']) %}
+  {#- 26 Nov 2026 (owner, of the bride at the gates: "its a good one i want it on the page"): she opens the page, beside
+      its first words; the bride at the window, which stood here, takes her place lower down. -#}
+  {% call split([url_for('static', filename='img/weddings/bride-at-the-gates.jpg'), 'A bride in a white gown at the open iron gates, the château at the end of the drive', ''], frame='arch') %}
   <p class="g-fr">Le château entier <span class="g-fr__en">The whole château</span></p>
   <p class="g-eyebrow">Weddings</p>
   <h2 class="g-place">The Whole Château, Not a Room In It</h2>
@@ -246,7 +250,7 @@
 <section class="g-sec g-sec--tight"><div class="g-wrap">
   {#- 26 Nov 2026 (owner: "wedding"): a bride at the gates, the château at the end of the drive. -#}
   <figure class="g-print">
-    {{ pic(url_for('static', filename='img/weddings/bride-at-the-gates.jpg'), 'A bride in a white gown at the open iron gates, the château at the end of the drive', sizes='(min-width: 64rem) 24rem, 90vw') }}
+    {{ pic(url_for('static', filename='img/weddings/bride-at-the-window.jpg'), 'A bride at the window, the mountains beyond', sizes='(min-width: 64rem) 24rem, 90vw') }}
   </figure>
   <figure class="g-pull g-pull--alone">
     <blockquote><p>I’ve found a lot of delight watching virtually as subsequent guests enjoyed the chateau, knowing how magical the experience is to be there with you all.</p></blockquote>
