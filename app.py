@@ -2022,6 +2022,30 @@ def bare_domain_goes_to_www():
     return redirect(_with_query(f"{home[0]}://{home[1]}{request.path}"), code=code)
 
 
+# ROOM FOR A PHOTOGRAPH IN A FORM FIELD, and only where one is expected.
+#
+# Werkzeug 3.1 holds every text field of a form to 500 KB (MAX_FORM_MEMORY_SIZE)
+# and answers anything bigger with a 413. That limit is most of what the
+# upgrade is for -- a form that can make the server hold an unbounded field in
+# memory is the denial-of-service it closes -- so it stays the default. But the
+# photo intake's editor posts the picture it drew as a JPEG data URL in a
+# hidden field, up to 2048 pixels on the long side: one to three megabytes of
+# text. Under the default every edited photograph would be refused, and the
+# test that posted a 300-pixel square would have stayed green. So the routes
+# that carry a picture in a field get the whole-upload allowance, set here,
+# ahead of the CSRF check, because that check is what first reads the form.
+# The drawn signature is the next largest field, capped at 200,000 characters
+# by SIGNATURE_MAX_CHARS, so it fits the default.
+FORM_FIELD_ROOM = {"photo_intake": MAX_UPLOAD_MB * 1024 * 1024}
+
+
+@app.before_request
+def room_for_a_photograph_in_a_form_field():
+    room = FORM_FIELD_ROOM.get(request.endpoint)
+    if room:
+        request.max_form_memory_size = room
+
+
 csrf = CSRFProtect(app)
 
 
