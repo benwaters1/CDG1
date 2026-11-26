@@ -7529,6 +7529,11 @@ def init_db():
         # already, because they all filter on active.
         ("rooms_workshop_room", "ALTER TABLE rooms ADD COLUMN "
                                 "workshop_room INTEGER NOT NULL DEFAULT 0"),
+        # How many a workshop may put in the room (owner, 26 Nov 2026: "for
+        # the workshops allow up to 4 in a room ... it is different than
+        # nightly stays and groups like to stay together"). Empty: the room's
+        # nightly figure, never more than WORKSHOP_ROOM_MOST.
+        ("rooms_workshop_sleeps", "ALTER TABLE rooms ADD COLUMN workshop_sleeps INTEGER"),
         # Spend that buys something lasting rather than something used up.
         # Default 0, so nothing already recorded is reclassified by a
         # migration -- an expense becomes capital because somebody said so.
@@ -64696,7 +64701,28 @@ def parse_money(raw):
 # can set solo on a booking by hand, which is how one arranged over the phone
 # gets recorded.
 PUBLIC_OCCUPANCY_TYPES = ("double", "triple")
-ALL_OCCUPANCY_TYPES = ("solo", "double", "triple")
+# 'quad' (26 Nov 2026): four friends in one room, set by the house. Like
+# triple, no supplement: the published price is for a shared room.
+ALL_OCCUPANCY_TYPES = ("solo", "double", "triple", "quad")
+# The most people one room takes on a workshop, whatever a room's figure says.
+WORKSHOP_ROOM_MOST = 4
+app.jinja_env.globals["workshop_room_most"] = WORKSHOP_ROOM_MOST
+# How many to a room each arrangement means, for counting rooms.
+PER_ROOM = {"double": 2, "triple": 3, "quad": 4}
+
+
+def workshop_room_sleeps(room):
+    """How many a workshop may put in this room: its own workshop figure where
+    the owner has set one, else its nightly one, and never more than
+    WORKSHOP_ROOM_MOST. A nightly stay is two adults in most rooms; a group on
+    a course will happily take every bed in the Family Suite."""
+    keys = room.keys()
+    own = room["workshop_sleeps"] if "workshop_sleeps" in keys else None
+    try:
+        sleeps = int(own) if own else int(room["max_occupancy"] or 0)
+    except (TypeError, ValueError):
+        sleeps = 0
+    return max(0, min(WORKSHOP_ROOM_MOST, sleeps))
 
 
 def workshop_solo_bookable(workshop, rooms_left):
@@ -64759,7 +64785,7 @@ def rooms_needed(occupancy_type, party_size):
         return 0
     if occupancy_type == "solo":
         return party
-    per_room = 3 if occupancy_type == "triple" else 2
+    per_room = PER_ROOM.get(occupancy_type, 2)
     return -(-party // per_room)          # ceiling division
 
 
@@ -64803,6 +64829,7 @@ def rooming_plan(conn, session_id):
               AND workshop_bookings.status IN ('pending', 'confirmed')
             ORDER BY workshop_bookings.guest_name""", (session_id,)).fetchall()
     rooms = workshop_rooms(conn)
+    sleeps = {r["id"]: workshop_room_sleeps(r) for r in rooms}
 
     by_room, unassigned = {}, []
     for p in people:
@@ -64851,7 +64878,7 @@ def rooming_plan(conn, session_id):
 
     for room_id, occupants in by_room.items():
         heads = sum(_room_party(o) for o in occupants)
-        cap = occupants[0]["max_occupancy"] or 0
+        cap = sleeps.get(room_id, 0)
         if cap and heads > cap:
             problems.append({
                 "kind": "overfull", "who": occupants[0],
@@ -64864,9 +64891,9 @@ def rooming_plan(conn, session_id):
                 "detail": f"{solo[0]['guest_name']} paid for a room alone and "
                           f"is sharing {solo[0]['room_name']}"})
 
-    beds = sum(r["max_occupancy"] or 0 for r in rooms)
+    beds = sum(sleeps.values())
     heads = sum(_room_party(p) for p in people)
-    return {"people": people, "rooms": rooms, "by_room": by_room,
+    return {"people": people, "rooms": rooms, "by_room": by_room, "sleeps": sleeps,
             "unassigned": unassigned, "problems": problems,
             "beds": beds, "heads": heads,
             "rooms_needed": session_rooms_used(conn, session_id)}
@@ -64890,7 +64917,7 @@ def propose_rooming(conn, session_id):
     rooms = {r["id"]: r for r in plan["rooms"]}
 
     def free(room_id):
-        return (rooms[room_id]["max_occupancy"] or 0) - taken.get(room_id, 0)
+        return plan["sleeps"].get(room_id, 0) - taken.get(room_id, 0)
 
     def place(people_here, why):
         need = sum(_room_party(p) for p in people_here)
@@ -72385,6 +72412,9 @@ def edit_room(room_id):
         f = room_fields_from_form()
         active = 1 if request.form.get("active") == "on" else 0
         workshop_room = 1 if request.form.get("workshop_room") == "on" else 0
+        raw_sleeps = (request.form.get("workshop_sleeps") or "").strip()
+        workshop_sleeps = (min(int(raw_sleeps), WORKSHOP_ROOM_MOST)
+                           if raw_sleeps.isdigit() and int(raw_sleeps) > 0 else None)
 
         photo_filename = save_room_photo(request.files.get("photo"))
         if photo_filename is False:
@@ -72399,13 +72429,13 @@ def edit_room(room_id):
                price_per_night=?, min_nights=?, size_sqm=?, bed_setup=?, bathroom=?, outlook=?,
                floor=?, access_steps=?, access_car_metres=?, access_bathroom=?,
                access_notes=?, active=?, photo_filename=?, amenities=?,
-               workshop_room=? WHERE id=?""",
+               workshop_room=?, workshop_sleeps=? WHERE id=?""",
             (f["name"], f["channel_name"], f["website_title"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
              f["access_steps"], f["access_car_metres"], f["access_bathroom"],
              f["access_notes"], active, photo_filename,
-             f["amenities"], workshop_room, room_id),
+             f["amenities"], workshop_room, workshop_sleeps, room_id),
         )
 
         gallery_names = save_room_photos_multi(request.files.getlist("gallery_photos"))
@@ -85417,7 +85447,8 @@ def instructor_sheet(conn, token):
     }
 
 
-def workshop_room_conflict(conn, room_id, session_start, session_end, session_id, exclude_registration_id=None):
+def workshop_room_conflict(conn, room_id, session_start, session_end, session_id,
+                           exclude_registration_id=None, party_size=1, occupancy_type="double"):
     """Real conflicts for housing a workshop attendee in room_id for
     session_start..session_end (both inclusive nights). Deliberately does
     NOT reuse is_range_available — that function's workshop-blocks-every-
@@ -85435,14 +85466,33 @@ def workshop_room_conflict(conn, room_id, session_start, session_end, session_id
     if overlapping_booking:
         return "That room already has a guest booking during this session."
 
-    query = """SELECT id FROM workshop_bookings
+    # SHARING (26 Nov 2026). This refused anybody into a room that already had
+    # one registration in it, so three friends who booked separately could
+    # never be put together. Now a room takes registrations up to what it
+    # sleeps on a workshop, and a room somebody paid to have alone is theirs.
+    query = """SELECT id, guest_name, party_size, occupancy_type FROM workshop_bookings
                WHERE session_id = ? AND assigned_room_id = ? AND status IN ('pending','confirmed')"""
     params = [session_id, room_id]
     if exclude_registration_id:
         query += " AND id != ?"
         params.append(exclude_registration_id)
-    if conn.execute(query, params).fetchone():
-        return "That room is already assigned to another attendee in this session."
+    already = conn.execute(query, params).fetchall()
+    if not already:
+        return None
+    alone = next((o for o in already if o["occupancy_type"] == "solo"), None)
+    if alone:
+        return f"{alone['guest_name']} paid to have that room to themselves."
+    if occupancy_type == "solo":
+        return "This guest paid for a room to themselves, and that one already has somebody in it."
+    room = conn.execute("SELECT * FROM rooms WHERE id = ?", (room_id,)).fetchone()
+    sleeps = workshop_room_sleeps(room) if room else 0
+    heads = sum(_room_party(o) for o in already) + max(int(party_size or 1), 1)
+    if heads > sleeps:
+        return (f"That room sleeps {sleeps} on a workshop and would have {heads}: "
+                + ", ".join(o["guest_name"] for o in already) + " are in it already."
+                if len(already) > 1 else
+                f"That room sleeps {sleeps} on a workshop and would have {heads}: "
+                f"{already[0]['guest_name']} is in it already.")
     return None
 
 
@@ -85467,13 +85517,15 @@ def assign_workshop_room(registration_id):
         if not room:
             conn.close()
             abort(404)
-        if room["max_occupancy"] < booking["party_size"]:
+        sleeps = workshop_room_sleeps(room)
+        if sleeps < booking["party_size"]:
             conn.close()
-            flash(f"{room['name']} sleeps up to {room['max_occupancy']} — this booking is a party of {booking['party_size']}.", "error")
+            flash(f"{room['name']} sleeps up to {sleeps} on a workshop — this booking is a party of {booking['party_size']}.", "error")
             return redirect(workshop_return())
         conflict = workshop_room_conflict(
             conn, room_id, parse_date(booking["start_date"]), parse_date(booking["end_date"]),
             booking["session_id"], exclude_registration_id=registration_id,
+            party_size=booking["party_size"], occupancy_type=booking["occupancy_type"],
         )
         if conflict:
             conn.close()

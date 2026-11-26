@@ -649,6 +649,7 @@ SUITES = [
     "test_atelier_on_your_dates",
     "test_toulouse_meeting",
     "test_any_reference",
+    "test_workshop_four",
     # 23 November 2026: /events/photoshoots opens on a shoot, says how a shoot works, and its enquiry
     # arrives with Photography or film chosen.
     "test_photoshoots",
