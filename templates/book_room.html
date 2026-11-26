@@ -263,7 +263,7 @@
               <span class="g-hint g-dinnerx__why" id="dinner_why_{{ n.date }}" hidden></span>
               {#- What the kitchen should know for that dinner: allergies, a vegetarian, a birthday. Kept on the table in
                   the restaurant's book, and deleted once the dinner is over, as the privacy notice says. -#}
-              <p class="g-field g-dinnerx__note" data-dinner-note>
+              <p class="g-field g-dinnerx__note" data-dinner-note{% if not _picked.get(n.date) %} hidden{% endif %}>
                 <label for="dinner_note_{{ n.date }}">Allergies or anything the kitchen should know <span class="g-opt">optional</span></label>
                 <input type="text" id="dinner_note_{{ n.date }}" name="dinner_note_{{ n.date }}" maxlength="300"
                        placeholder="e.g. one vegetarian, a nut allergy" value="{{ _dnotes_typed.get(n.date, '') }}">
@@ -823,6 +823,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         var ni=document.createElement('input'); ni.type='text'; ni.id='dinner_note_'+n.date; ni.name='dinner_note_'+n.date;
         ni.maxLength=300; ni.placeholder='e.g. one vegetarian, a nut allergy'; ni.value=said[n.date]||'';
         np.appendChild(nl); np.appendChild(ni); li.appendChild(np);
+        np.hidden=!(Number(i.value)>0);
         list.appendChild(li);
       });
     }
@@ -965,6 +966,12 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     el.addEventListener('change',refreshQuote); });
   f.querySelectorAll('[name="extras"]').forEach(function(cb){ cb.addEventListener('change',refreshQuote); });
   f.querySelectorAll('input[name^="dinner_2"]').forEach(function(i){ i.addEventListener('change',refreshQuote); });
+  /* The kitchen's note shows as soon as somebody is down for dinner, before the price comes back. */
+  f.addEventListener('input', function(e){
+    var i=e.target; if(!i.name || i.name.indexOf('dinner_2')!==0) return;
+    var note=i.closest('li') && i.closest('li').querySelector('[data-dinner-note]');
+    if(note) note.hidden=!(Number(i.value)>0);
+  });
   var applyBtn=document.getElementById('promo_apply_btn');
   if(applyBtn) applyBtn.addEventListener('click',refreshQuote);
 
