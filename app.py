@@ -10806,6 +10806,8 @@ NAV_AREAS = {
         "update_mailbox_routing",
         # The senders Inbox Flags never waits on a reply from.
         "save_inbox_never_flag", "never_flag_sender",
+        # Who wrote a flag, moved by hand where the app guessed wrong.
+        "set_email_flag_kind",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         
@@ -11012,6 +11014,8 @@ NAV_AREAS = {
         "admin_house_calendar", "admin_house_calendar_sync", "admin_house_calendar_share",
         "admin_house_calendar_shared_by_hand",
         "admin_house_calendar_feed_link", "admin_house_calendar_areas",
+        # Whose Outlook diary goes on the owner home's day.
+        "admin_house_calendar_diary",
         "admin_house_dates_add", "admin_house_dates_delete",
         "admin_readiness", "admin_photo_mirror", "fetch_photo_mirror",
         "photo_intake", "uploaded_file", "photo_at_size",
