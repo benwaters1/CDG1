@@ -1448,3 +1448,8 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-album--tall{ display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s5); }
 .g .g-album--tall .g-album__p{ grid-column: auto; width: min(22rem, 100%); margin-top: 0; }
 .g .g-album--tall .g-album__p:nth-child(2){ margin-top: var(--s6); }
+
+/* 26 Nov 2026: the Gold Suite on an open day, on /gallery: one upright photograph, centred, with its line. */
+.g .g-open-day{ margin: var(--s7) auto 0; max-width: 26rem; }
+.g .g-open-day img{ width: 100%; height: auto; }
+.g .g-open-day__cap{ margin-top: var(--s3); font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.5; color: var(--ink-soft, #5b4a33); text-align: center; }
