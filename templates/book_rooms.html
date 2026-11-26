@@ -60,8 +60,11 @@
 
 <section class="g-hero">
 {#- 18 Oct (owner): "use a photo of the 2 beds in the room with wallpaper new side by side, it's much nicer" - the Family
-    Suite's two beds side by side under the new wallpaper, in place of the blue bedroom with its peeling paper. -#}
-<img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" style="object-position: center 45%" src="https://cf.bstatic.com/xdata/images/hotel/max2048x2048/799432953.jpg?k=bfe46237a062c76163feac464aa8a8aa65e4f2d55d0bebc5842f0b5f785c5fa6&o=" alt="The Family Suite, two beds side by side under the new wallpaper">
+    Suite's two beds side by side under the new wallpaper, in place of the blue bedroom with its peeling paper.
+    26 Nov (owner): the photograph itself at last - the floral bedroom's two beds under the new paper, the owner's own
+    (more/family-suite-two-beds.jpg). Until then this was 799432953, the blue bedroom's two beds and the old paper. -#}
+{%- set _hero = url_for('static', filename='img/more/family-suite-two-beds.jpg') %}
+<img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" style="object-position: center 52%" src="{{ _hero }}"{{ pic_srcset(_hero, '100vw') }} alt="The Family Suite, two beds side by side under the new wallpaper">
 <div class="g-hero__wash"></div>
 <div class="g-hero__in">
   {#- 17 Oct: the room count, here and below, is the rooms table's (house_rooms) - five until The Twin Room (Ground Floor)
@@ -238,7 +241,7 @@
       {%- for _s, _a in ROOM_PHOTOS.get(_nm, []) + ROOM_EXTRA.get(_nm, []) %}{% if _a == 'The view from your window' %}{% set _ = _tail.append((_s, _a)) %}{% endif %}{% endfor -%}
       {#- The bathrooms have their own section below the rooms, with every photograph of them; a photograph appears once
           on a page (test_page_pictures), so the cards end with the room's view. -#}
-      <div class="g-card__media">{{ room_carrousel(room_name(room['name'])|trim, _first|trim, room_name(room['name'])|trim, skip='799432953.jpg', tail=_tail) }}</div>{#- 9 Nov: skip the photograph the header shows (the Family Suite's two beds since 18 Oct; this still named the blue bedroom, so the same picture was on the page twice) -#}
+      <div class="g-card__media">{{ room_carrousel(room_name(room['name'])|trim, _first|trim, room_name(room['name'])|trim, skip='family-suite-two-beds.jpg', tail=_tail) }}</div>{#- 9 Nov: skip the photograph the header shows (the Family Suite's two beds since 18 Oct, the floral bedroom's since 26 Nov; this still named the blue bedroom once, so the same picture was on the page twice) -#}
       <div class="g-card__b">
         {{ emblem(room['name']) }}
         {{ room_heading(room['name'], cls='g-card__name') }}

@@ -75279,7 +75279,7 @@ def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upt
     if size:
         widths = [x for x in PIC_WIDTHS if x < w] + [w]
         attrs.append('srcset="' + ", ".join(
-            f"/pic/{x}/{escape(rel)} {x}w" for x in widths) + '"')
+            f"/pic/{x}/{escape(rel)}{pic_query(rel)} {x}w" for x in widths) + '"')
         # 9 Nov 2026, evening (owner's second review, 3.1): "auto" first, for a lazy photograph.
         # Each component guessed its own width in `sizes`, and many guessed low -- a
         # retreat photograph said 389px and was drawn at 686, so the browser took the
@@ -75377,7 +75377,7 @@ def pictures_at_their_size(response):
         widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
         if len(widths) < 2:
             return tag
-        srcset = ", ".join(f"/pic/{x}/{rel} {x}w" for x in widths)
+        srcset = ", ".join(f"/pic/{x}/{rel}{pic_query(rel)} {x}w" for x in widths)
         # A tag that already says how wide it is drawn keeps its own sizes (a second one is ignored).
         sizes = "" if re.search(r"\ssizes=", tag) else (
             ' sizes="auto, 100vw"' if 'loading="lazy"' in tag else ' sizes="100vw"')
@@ -75388,6 +75388,13 @@ def pictures_at_their_size(response):
     if done != body:
         response.set_data(done.encode("utf-8"))
     return response
+
+
+def pic_query(rel):
+    """What a sized PNG's address ends in. Its copies were made with a black
+    background until 26 Nov 2026 and browsers keep a picture for thirty days,
+    so a PNG's address changes once; the query is not read, only seen."""
+    return "?a" if rel.lower().endswith(".png") else ""
 
 
 @app.route("/pic/<int:width>/<path:filename>")
@@ -75406,15 +75413,23 @@ def sized_photo(width, filename):
             or (width not in PIC_WIDTHS and width != size[0])):
         abort(404)
     stamp = os.stat(path).st_mtime_ns
-    name = hashlib.sha1(f"{filename}|{stamp}|{width}".encode()).hexdigest() + ".webp"
+    # "|alpha" (26 Nov 2026): every copy made before then of a picture with a
+    # clear background had it filled in black -- the logo in a black box at
+    # the top of every page -- so those copies are made again, not reused.
+    name = hashlib.sha1(f"{filename}|{stamp}|{width}|alpha".encode()).hexdigest() + ".webp"
     out = os.path.join(PIC_DIR, name)
     if not os.path.isfile(out):
         from PIL import Image, ImageOps
         os.makedirs(PIC_DIR, exist_ok=True)
         with Image.open(path) as im:
             im = ImageOps.exif_transpose(im)
+            # A clear background stays clear. Only RGBA was kept: the logo is
+            # greyscale with an alpha channel (LA), and a palette PNG carries
+            # its transparency in info, so both were flattened to RGB, which
+            # paints the clear part black.
             if im.mode not in ("RGB", "RGBA"):
-                im = im.convert("RGB")
+                clear = im.mode in ("LA", "PA", "La") or "transparency" in im.info
+                im = im.convert("RGBA" if clear else "RGB")
             if width < im.size[0]:
                 im = im.resize((width, round(im.size[1] * width / im.size[0])),
                                Image.LANCZOS)
@@ -75482,7 +75497,7 @@ def size_hero(tag):
     if not size:
         return tag
     widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
-    srcset = ", ".join(f"/pic/{x}/{html_escape(rel)} {x}w" for x in widths)
+    srcset = ", ".join(f"/pic/{x}/{html_escape(rel)}{pic_query(rel)} {x}w" for x in widths)
     close = "/>" if tag.endswith("/>") else ">"
     # A tag that says how wide it is drawn keeps its own sizes: the room page's photograph sits in a 24rem column beside
     # the room's name (24 Nov 2026), and "100vw" sent a phone and a computer the full-width file for it. A second sizes

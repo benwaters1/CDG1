@@ -206,7 +206,10 @@ m = _harness.m
 # 26 Nov 2026: moved to f33c8a2, the home page's rooms in the owner's words ("Choose Your Room"). Against cfb1bdb
 # it listed / alone: "Choose Your Room" and its line where "The Five Rooms" and "Room and breakfast. Each is
 # different, because the château is." stood. Was: "cfb1bdb"
-COPY_BASE = "f33c8a2"
+# 26 Nov 2026: moved to the merge holding both that and Manage your booking in the menu under its dates (four
+# words on every public page: "Manage your booking", "Reference code", "Email you booked with", "Find booking").
+# Was: "f33c8a2"
+COPY_BASE = "d057459"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
