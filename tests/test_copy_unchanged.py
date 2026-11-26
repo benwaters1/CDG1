@@ -229,9 +229,9 @@ m = _harness.m
 # Moved to b5857b2 (owner, 26 Nov, the photo review's safe fixes): two new captions only, travelling with
 # their replacement photographs -- "Gabriel's façade" on /history for "Gabriel's façade, above the roses", and
 # "Across the far lawn" on the Seven Starry Nights page. Was: "c3f0038"
-# 26 Nov 2026, merged: the base is b5857b2 for the merge of the dinner test fixes with main, each side read on
-# its own (the dinner fixes changed nothing this reads). Moved to the merge itself in the commit after it.
-COPY_BASE = "b5857b2"
+# 26 Nov 2026, merged: the base is 723dfe8, the merge of the dinner test fixes with main, each side read on its
+# own (the dinner fixes changed nothing this reads). Was: "b5857b2"
+COPY_BASE = "723dfe8"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
