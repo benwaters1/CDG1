@@ -62361,6 +62361,11 @@ def find_guest_booking(conn, raw_reference, email="", surname=""):
     email = (email or "").strip().casefold()
     ok = bool(email) and any(email == (row[c] or "").strip().casefold()
                              for c in cfg["emails"] if c in keys)
+    # A place brought across from RetreatGuru with no address of its own (Tess,
+    # 15 Oct) has it written in the notes; there, a whole address in them counts.
+    if (not ok and email and kind == "workshop" and not (row["guest_email"] or "").strip()
+            and email in re.findall(r"[\w.+'-]+@[\w-]+(?:\.[\w-]+)+", (row["notes"] or "").casefold())):
+        ok = True
     if not ok and (surname or "").strip():
         names = [row[c] for c in cfg["names"] if c in keys]
         if kind == "workshop":

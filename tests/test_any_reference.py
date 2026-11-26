@@ -150,6 +150,22 @@ def _checks(s, conn):
     s.check("the page says every reference is found there, by its prefix",
             all(p in page for p in m.REFERENCE_PREFIXES.values()), detail=page[:0])
 
+    s.section("A place brought across with its address only in the notes")
+    conn.execute(
+        """INSERT INTO workshop_bookings (session_id, reference_code, manage_token, guest_name,
+               guest_email, party_size, status, notes, created_at)
+           VALUES (?, ?, ?, ?, '', 1, 'confirmed', ?, ?)""",
+        (sid, _ref("workshop", "TE55AA"), tokens["workshop"] + "tess", f"Tess Moore {TAG}",
+         "Brought across from RetreatGuru. Email Tess.ZZREF@example.invalid.", now))
+    conn.commit()
+    r = _post("/book/manage", refs["workshop"][:4] + "TE55AA", email="tess.zzref@example.invalid")
+    s.check("her address in the notes opens it", _lands(r) == f"/workshops/manage/{tokens['workshop']}tess",
+            detail=f"{r.status_code} {r.headers.get('Location')}")
+    r = _post("/book/manage", refs["workshop"][:4] + "TE55AA", email="zzref@example.invalid")
+    s.check("but not a piece of it", _lands(r) == "")
+    r = _post("/book/manage", refs["workshop"], email="tess.zzref@example.invalid")
+    s.check("nor anybody else's place, whose own address is on it", _lands(r) == "")
+
     s.section("Every kind, from every find page")
     for find in ("/book/manage", "/workshops/find", "/restaurant/find", "/events/find"):
         for kind in refs:
