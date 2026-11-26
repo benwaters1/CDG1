@@ -384,8 +384,12 @@
      rooms. The eyebrow alone. #}
   <p class="g-eyebrow">Stay the Night</p>
   {#- 9 Oct (owner's rule): never a hint that more rooms will open - "Opened One at a Time" removed -#}
-  <h2 class="g-place">The {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} Rooms</h2>
-  <p class="g-p">Room and breakfast. Each is different, because the château is.</p>
+  {#- 26 Nov 2026 (owner): the heading and the line in the owner's own words, in place of "The Six Rooms" and "Room and
+      breakfast. Each is different, because the château is." "Pyrénées" as the site spells it. "No more than five
+      rooms of guests at a time" is the chambres d'hôtes ceiling; the booking gate holds the house's own lower limit
+      (MAX_ROOMS_LET_PER_NIGHT), so the sentence stays true under it. -#}
+  <h2 class="g-place">Choose Your Room</h2>
+  <p class="g-p">Each room has its own character, and every one looks out over the Pyrénées. We take no more than five rooms of guests at a time. Breakfast is included every morning.</p>
 
   {#- 28 Oct (the brief, 4.2): the rooms as a slider of their cards, one photograph each (the rest are on each room's
       own page), the next card peeking in. The cards' words are as they were. -#}
