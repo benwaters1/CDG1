@@ -5,13 +5,17 @@
     here, the two pages show the same pairs and the slider is written once. The script runs once however many times
     the macro is called on a page.
 
-    then_and_now(): the three pairs, as /restoration has had them since 12 Nov. -#}
+    then_and_now(): the three pairs, as /restoration has had them since 12 Nov.
+
+    26 Nov 2026 (owner, not for the first time): the second "before" is the room with all the plates on the wall,
+    not a bedroom, so its "now" is that room's own wall of plates (rk/china-dresser.jpg), not the King Room. /gallery
+    drops that photograph from its grid, so it does not show twice there. -#}
 {#- THEN_NOW: (caption, [before, its alt], [now, its alt]). The addresses are written out whole, so the photo mirror
     can read them here (hotlinked_urls). /gallery leaves these photographs out of The Restoration Story, so none
     shows twice on that page. -#}
 {%- set THEN_NOW = [
   ('The kitchen', ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2b9c1192-bf9a-40a9-8913-4bc98c8a43c7/Screenshot+2026-07-20+at+3.41.43+pm.png?format=1500w', 'The kitchen before the work, the floor gone'], ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a/Screenshot+2026-07-20+at+2.33.25+pm.png?format=1500w', 'The kitchen now']),
-  ('The bedrooms', ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1500w', 'A bedroom before the work'], ['https://cf.bstatic.com/xdata/images/hotel/max2048x2048/798764955.jpg?k=d8653db73b32b57205f0af9b550ee5ee521deae7ec1638ed4dafcc67057d01c9&o=', 'The King Room now']),
+  ('The room with the plates on the wall', ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1500w', 'The room before the work, its floor gone'], ['/static/img/rk/china-dresser.jpg', 'The same room now, its walls lined with plates']),
   ('The vestibule and the staircase', ['https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/598861b7-9f24-4244-8420-468734c135e5/Before+The+Work+-+Vestibule+Ceiling.JPG?format=1500w', 'The vestibule ceiling before the work'], ['https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582048556502-Y4CQSLCRE46OVEXBQUES/Grand+Vestibule+-+Wider+Angle.jpg?format=1500w', 'The grand vestibule now, the staircase and the arches'])] -%}
 {% macro then_and_now() %}
 <div class="g-tn g-tn--three">
