@@ -12836,6 +12836,9 @@ html[lang="fr"] .g-top__in, html[lang="es"] .g-top__in{ max-width: max(var(--wra
   /* ...and it ends inside the first screen, with the address under it the last line of that screen. */
   .g.g-home .g-hero{ padding-bottom: 8px; }
   .g.g-home .g-hero .g-hero__in{ padding-bottom: 24px; }
+  /* The film's pause button sat in the hero's bottom corner, which is now the end of the lede: on its last word.
+     It goes to the foot of the film's own band, at the right, clear of the name centred beneath it. */
+  .g.g-home .g-hero .g-hero__pause{ bottom: auto; right: 14px; top: calc(60vh - 58px); top: calc(max(60svh, 22rem) - 58px); }
 
   /* The choice: two cards, each its own photograph, its name and its one line, each opening its booking. */
   .g.g-home .g-twoways{ display: grid; gap: 14px; padding: 20px 16px 28px; background: var(--sand, #F6F1E7); }

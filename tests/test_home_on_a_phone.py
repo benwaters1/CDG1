@@ -144,6 +144,19 @@ PROBE = r"""
     });
     var hero = document.querySelector('.g-hero');
     out.heroBottom = hero ? box(hero).top + box(hero).h : null;
+    /* The film's pause button and the words it must not cover. */
+    var pause = document.querySelector('.g-hero__pause');
+    out.pause = drawn(pause) ? box(pause) : null;
+    out.heroWords = [].filter.call(document.querySelectorAll(
+      '.g-hero__eyebrow, .g-hero__title, .g-hist-tag--home, .g-hero__motto, .g-hero__lede, .g-hero__fact'), drawn)
+      .map(function (el) {
+        /* the words themselves, not the paragraph's full width: a range round the text */
+        var rg = document.createRange(); rg.selectNodeContents(el);
+        return [].map.call(rg.getClientRects(), function (r) {
+          return {cls: String(el.className), top: Math.round(r.top + scrollY), left: Math.round(r.left),
+                  w: Math.round(r.width), h: Math.round(r.height)};
+        });
+      }).reduce(function (a, b) { return a.concat(b); }, []);
     [['hbook', '.g-hero .g-hbook'], ['fact', '.g-hero__fact'], ['lede', '.g-hero__lede'], ['twoways', '.g-twoways'],
      ['fullCopy', '.g-full__copy'], ['fullSide', '.g-full__side'], ['every', '.g-full__every'], ['sow', '.g-sow'],
      ['aerial', '.g-homeroom--aerial'], ['carBar', '.g-car--cards .g-car__bar'], ['dots', '.rc-dots'],
@@ -480,6 +493,16 @@ def run():
     s.check("the opening screen ends inside the first screen", d["heroBottom"] is not None and d["heroBottom"] <= SCREEN_H,
             detail=f"the hero ends at {d['heroBottom']}px")
     s.check("one sentence under the motto, not two", show["lede"] and not show["fact"], detail=str(show))
+    for w in PHONES:
+        dw = real.get(w)
+        if not dw or not dw["pause"]:
+            continue
+        p = dw["pause"]
+        hit = [r["cls"] for r in dw["heroWords"]
+               if min(p["left"] + p["w"], r["left"] + r["w"]) - max(p["left"], r["left"]) > 0.5
+               and min(p["top"] + p["h"], r["top"] + r["h"]) - max(p["top"], r["top"]) > 0.5]
+        s.check(f"at {w}px the film's pause button covers no word of the hero", not hit,
+                detail=f"the button at {p}, over {sorted(set(hit))}")
     s.check("the hero's Retreats / Stay the night card is not drawn", not show["hbook"])
     s.check("nor La Vie de Château's words, nor A Night, or la Vie de Château: the choice is asked once",
             not show["fullCopy"] and not show["sow"], detail=str(show))
