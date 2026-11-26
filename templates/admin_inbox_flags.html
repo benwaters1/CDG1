@@ -7,10 +7,21 @@
   <h1>Inbox Flags</h1>
   <a href="{{ url_for('admin_automation') }}" class="btn-mini">Automation settings</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">{% if mailboxes %}Scans {{ mailboxes|length }} inbox{{ '' if mailboxes|length == 1 else 'es' }}{% else %}No inbox is being watched yet. Once one is, this scans it{% endif %} for messages that haven't had a reply within the configured window, or that quote a price or dates that don't match what's actually on file. Never flagged: newsletters and mailing lists, anything sent automatically, the app's own mail, mail between the house's own inboxes, and the senders on the never-flag list below. One email that reached several inboxes is one flag. This is a nudge to go look, not a guaranteed read of every email — always check the actual message before acting on a conflict shown here.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">{% if mailboxes %}Scans {{ mailboxes|length }} inbox{{ '' if mailboxes|length == 1 else 'es' }}{% else %}No inbox is being watched yet. Once one is, this scans it{% endif %} for messages that haven't had a reply within the configured window, or that quote a price or dates that don't match what's actually on file. Never flagged: newsletters and mailing lists, anything sent automatically, the app's own mail, mail between the house's own inboxes, and the senders on the never-flag list below. One email that reached several inboxes is one flag, and a reply sent from any of the house's inboxes answers it. Each flag says who wrote it: a guest or an enquiry, a partner or the press, or everything else (receipts, statements, deliveries, banks, services). The list opens on guests and enquiries, waiting longest first; only those are escalated. This is a nudge to go look, not a guaranteed read of every email — always check the actual message before acting on a conflict shown here.</p>
 
 {% if tidy %}
 <p class="upload-hint">On {{ local_datetime_str(tidy.at) }}, when these rules came in: {{ tidy.words }}</p>
+{% endif %}
+{% if sent_as.note %}
+<p class="upload-hint" data-sent-everywhere>On {{ local_datetime_str(sent_as.note.at) }}, the first scan to read every inbox's Sent Items, back to {{ local_datetime_str(sent_as.note.since) }}: closed {{ sent_as.note.answered }} answered since.</p>
+{% endif %}
+{% if sent_as.state and sent_as.state.unread %}
+<div class="flash flash-error" style="margin-bottom:14px;" data-unread-mailboxes>
+  <strong>The last scan, {{ local_datetime_str(sent_as.state.at) }}, could not read
+  {% for u in sent_as.state.unread %}{{ u.mailbox }} ({{ u.folder }}){{ ', ' if not loop.last }}{% endfor %}.</strong>
+  Nothing from {{ 'it' if sent_as.state.unread|length == 1 else 'them' }} is flagged or closed until it can be read again, so a quiet list here is not "nothing waiting".
+  <ul style="margin:6px 0 0 18px;">{% for u in sent_as.state.unread %}<li>{{ u.mailbox }}: {{ u.why }}</li>{% endfor %}</ul>
+</div>
 {% endif %}
 
 {% if not graph_enabled %}
@@ -27,17 +38,41 @@
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('bell', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.open_count or 0 }}</span><span class="stat-tile-label">Open flags</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.open_count or 0 }}</span><span class="stat-tile-label">Guests and enquiries open</span></span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-danger">{{ icon('bell', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.unanswered_count or 0 }}</span><span class="stat-tile-label">Unanswered too long</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.unanswered_count or 0 }}</span><span class="stat-tile-label">Waiting on a reply</span></span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-danger">{{ icon('financial', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.conflict_count or 0 }}</span><span class="stat-tile-label">Pricing / availability conflicts</span></span>
   </div>
 </div>
+{% if counts.rest_count %}
+<p class="upload-hint" style="margin-top:-6px;">And {{ counts.rest_count }} open from partners, the press and everything else (receipts, statements, deliveries, banks, services), counted apart and never escalated: under “Who wrote” below.</p>
+{% endif %}
+
+{% if graph_enabled and (sent_as.people or (sent_as.state and sent_as.state.sent_as)) %}
+<details class="refund-box" style="margin-bottom:18px;" data-sent-as{{ ' open' if sent_as.people }}>
+  <summary>Replies sent as a shared inbox</summary>
+  <p class="upload-hint">A reply written as one of the house's inboxes from somebody's own mailbox (Send As, or Send on Behalf) is kept in that person's own Sent Items, not the inbox's. Every inbox's Sent Items are read, and a reply in any of them counts for an email in any other. A mailbox that is somebody's own is not read.</p>
+  {% if sent_as.state and sent_as.state.sent_as %}
+  <p class="upload-hint"><strong>Found on the last scan:</strong>
+    {% for as_box, where in sent_as.state.sent_as|dictsort %}{% for kept, n in where|dictsort %}{{ n }} sent as {{ as_box }} and kept in {{ kept }}'s Sent Items{{ '; ' if not loop.last }}{% endfor %}{{ '; ' if not loop.last }}{% endfor %}. These count.</p>
+  {% endif %}
+  {% if sent_as.people %}
+  <p class="upload-hint"><strong>Not read, each being somebody's own mailbox:</strong>
+    {% for p in sent_as.people %}{{ p.name }} ({{ p.address }}){{ ', ' if not loop.last }}{% endfor %}.
+    A reply any of them sends as a shared inbox is not seen here, and the guest stays flagged, unless that inbox keeps a copy of what is sent as it.</p>
+  {% endif %}
+  {% if sent_as.commands %}
+  <p class="upload-hint">To make each shared inbox keep that copy in its own Sent Items, run this once in Exchange Online PowerShell (<code>Connect-ExchangeOnline</code> first, signed in as an administrator). The app does not run it. Run again, it changes nothing.</p>
+  <pre style="white-space:pre-wrap; font-size:12px;" data-copy-commands>{% for c in sent_as.commands %}{{ c }}
+{% endfor %}</pre>
+  {% endif %}
+</details>
+{% endif %}
 
 {% if mailboxes %}
 
@@ -178,6 +213,9 @@
     {% if f['preview'] %}<p class="upload-hint">{{ f['preview'] }}</p>{% endif %}
 
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin:8px 0;">
+      {% set k = kind_of(f) %}
+      <span class="mini-status {{ 'status-confirmed' if k == 'guest' else ('status-upcoming' if k == 'partner' else 'status-past') }}"
+            title="{{ f['sender_kind_why'] or '' }}">{{ sender_kinds[k] }}{% if f['sender_kind_why'] %}: {{ f['sender_kind_why'] }}{% endif %}{% if f['kind_set_by'] %} ({{ f['kind_set_by'] }}){% endif %}</span>
       {% if f['unanswered'] %}<span class="mini-status status-declined">Unanswered</span>{% endif %}
       {% if f['price_conflict'] %}<span class="mini-status status-declined">Pricing conflict</span>{% endif %}
       {% if f['availability_conflict'] %}<span class="mini-status status-declined">Availability conflict</span>{% endif %}
@@ -227,6 +265,14 @@
           {% endfor %}
         </select>
         <button type="submit" class="btn-mini">Set</button>
+      </form>
+      <form method="post" action="{{ url_for('set_email_flag_kind', flag_id=f['id']) }}" style="display:flex; gap:4px; align-items:center;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="back" value="{{ request.full_path }}">
+        <select name="kind" style="width:auto;" aria-label="Who wrote this, from {{ f['from_address'] or 'unknown sender' }}">
+          {% for key, label in sender_kinds.items() %}<option value="{{ key }}" {{ 'selected' if key == k }}>{{ label }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn-mini">Move</button>
       </form>
       {% endif %}
     </div>

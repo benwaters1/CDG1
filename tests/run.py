@@ -733,6 +733,12 @@ SUITES = [
     "test_room_page_bath",
     # 26 November 2026 (owner): five guest rooms said, the room with the plates on the wall, the wallpaper pair.
     "test_owner_notes_26_nov",
+    # 26 November 2026, Microsoft 365 on the owner home: a reply kept in any inbox's Sent Items answers
+    # an email in any other; who wrote each flag, guests first; "Waiting for a reply" on the owner home.
+    "test_inbox_replies_everywhere",
+    "test_waiting_for_a_reply",
+    # And the owner's own Outlook diary among the house's day, time and subject only.
+    "test_owner_diary_on_the_day",
 ]
 
 
