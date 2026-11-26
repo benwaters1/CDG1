@@ -212,7 +212,9 @@ m = _harness.m
 # 26 Nov 2026: moved to the merge holding both that and Manage your booking in the menu under its dates (four
 # words on every public page: "Manage your booking", "Reference code", "Email you booked with", "Find booking").
 # Was: "f33c8a2"
-COPY_BASE = "d057459"
+# 26 Nov 2026, merged: the base is c6fc6f5, the merge holding the owner's photographs and Manage your booking,
+# each read on its own side. Was: "d057459"
+COPY_BASE = "c6fc6f5"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
