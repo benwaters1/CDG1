@@ -88,7 +88,8 @@ KNOWN_LONG = {
     # 24 Nov: +200 for The Paintings, the section of their own the owner asked for (the painted beams and the
     # frescoes, three photographs), and the timeline's three new years; measured 15,216.
     # 25 Nov: +100, the engraving at the foot kept at its real height (see LONG_BUDGET); measured 15,377.
-    "/restoration": 15400,
+    # 26 Nov 2026: +600, the new wall and the run of rooms, two prints the owner asked for ("the wall i want on").
+    "/restoration": 16000,
     # 23 Nov: 14,900, the brochure's facts the owner asked for ("lets use the info from everything and the brochure
     # and really make it good"): the table, a sample of the days, what is included and what is on request.
     # 24 Nov: +100, a couple's line from their thank-you letter above the enquiry.
