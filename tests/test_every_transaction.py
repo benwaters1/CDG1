@@ -221,8 +221,10 @@ def _run(s):
     lines = list(csv.DictReader(io.StringIO(exported)))
     s.check("the export is the view: the same rows, the same sums",
             len(lines) == 4 and round(sum(float(r["paid"] or 0) for r in lines), 2) == 1830.0
-            and {r["for"] for r in lines} == {"Stay", "Workshop", "Event"},
-            detail=f"{len(lines)} rows: {[r['reference'] for r in lines]}")
+            # "Retreat": STATEMENT_KINDS, as the guest's statement says it (25 Nov 2026).
+            and {r["for"] for r in lines} == {"Stay", "Retreat", "Event"},
+            detail=f"{len(lines)} rows: {[r['reference'] for r in lines]} "
+                   f"for {sorted({r['for'] for r in lines})}")
 
     s.section("The period is the period")
     s.check("last month's payment is not in this month",

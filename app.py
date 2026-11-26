@@ -104854,7 +104854,10 @@ def guest_record(conn, guest_id):
     }
 
 
-STATEMENT_KINDS = {"room": "Stay", "workshop": "Workshop", "event": "Event",
+# What each line of a guest's statement is, as the guest reads it on their
+# page, in the emailed statement and the CSV. "Retreat", not "Workshop": the
+# owner's answer of 25 November 2026, carried to the guest's own pages.
+STATEMENT_KINDS = {"room": "Stay", "workshop": "Retreat", "event": "Event",
                    "restaurant": "Dinner"}
 
 

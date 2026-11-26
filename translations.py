@@ -277,14 +277,18 @@ FR = {
     # -- The guest's own account -----------------------------------------
     "Your château account": "Votre compte château",
     "Your stays": "Vos séjours",
-    "Your workshops": "Vos ateliers",
+    # Retreat, not workshop: the owner, 25 Nov 2026. "Retraite", as the
+    # retreat days say it -- "séjour" is already the guest's stay.
+    "Your retreats": "Vos retraites",
+    "Retreat": "Retraite",
+    "The retreats": "Les retraites",
     "Your dinners": "Vos dîners",
     "Your account": "Votre compte",
     # The guest's statement of account.
     "Your statement": "Votre relevé",
     "Nothing charged or paid yet.": "Rien n'a encore été facturé ni payé.",
     "Pay for this stay": "Régler ce séjour",
-    "Pay for this workshop": "Régler cet atelier",
+    "Pay for this retreat": "Régler cette retraite",
     "Pay towards this event": "Régler une partie de cet événement",
     "Back to your account": "Retour à votre compte",
     "Print": "Imprimer",
@@ -1183,14 +1187,18 @@ ES = {
     # -- The guest's own account -----------------------------------------
     "Your château account": "Su cuenta del château",
     "Your stays": "Sus estancias",
-    "Your workshops": "Sus talleres",
+    # Retreat, not workshop: the owner, 25 Nov 2026. "Retiro", as the retreat
+    # days say it.
+    "Your retreats": "Sus retiros",
+    "Retreat": "Retiro",
+    "The retreats": "Los retiros",
     "Your dinners": "Sus cenas",
     "Your account": "Su cuenta",
     # The guest's statement of account.
     "Your statement": "Su estado de cuenta",
     "Nothing charged or paid yet.": "Todavía no se ha cobrado ni pagado nada.",
     "Pay for this stay": "Pagar esta estancia",
-    "Pay for this workshop": "Pagar este taller",
+    "Pay for this retreat": "Pagar este retiro",
     "Pay towards this event": "Pagar una parte de este evento",
     "Back to your account": "Volver a su cuenta",
     "Print": "Imprimir",

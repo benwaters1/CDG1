@@ -19,7 +19,7 @@
   <div class="g-mb-card">
     <p class="g-p">{{ t('Nothing booked at the moment.') }}</p>
     {# An account with nothing in it should point at the thing to put in it. #}
-    <p style="margin-top:var(--s4)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">{{ t('Stay the night') }}</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">{{ t('The ateliers') }}</a></p>
+    <p style="margin-top:var(--s4)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">{{ t('Stay the night') }}</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">{{ t('The retreats') }}</a></p>
     <p class="g-hint">Anything you book from now on will appear here.</p>
   </div>
   {% endif %}
@@ -45,11 +45,11 @@
   {% endif %}
 
   {% if ateliers %}
-  <h2 class="section-heading">{{ t('Your workshops') }}</h2>
+  <h2 class="section-heading">{{ t('Your retreats') }}</h2>
   {% for reg in ateliers %}
   <div class="g-mb-card" style="margin-bottom:var(--s3);">
     <dl class="g-facts-list">
-      <div><dt>Workshop</dt><dd>{{ reg['workshop_title'] }}</dd></div>
+      <div><dt>{{ t('Retreat') }}</dt><dd>{{ reg['workshop_title'] }}</dd></div>
       <div><dt>{{ t('Dates') }}</dt><dd>{{ reg['start_date']|date_short }}{% if reg['end_date'] != reg['start_date'] %} → {{ reg['end_date']|date_short }}{%- endif %}</dd></div>
       <div><dt>{{ t('Reference') }}</dt><dd>{{ reg['reference_code'] }}</dd></div>
       <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ (reg['status']|string)|lower }}">{{ reg['status'] }}</span></dd></div>

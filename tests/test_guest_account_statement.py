@@ -292,11 +292,13 @@ def _run(s, oc, ec, sent):
     s.check("and is not for search engines", 'name="robots" content="noindex' in body)
     s.check("it says where to pay what is still owed",
             f"/book/manage/{owing['manage_token']}" in body or owing["manage_token"] in body)
-    # The site says workshop in English now, and so does what a guest keeps.
+    # The site says retreat, and so does what a guest keeps: the owner's
+    # answer of 25 November 2026 (it said workshop before, atelier before that).
     # (The atelier in this suite is called "... Atelier" by its own title.)
     words = visible_text(body)
-    s.check("and calls an atelier a workshop, as the site now does",
-            "Pay for this workshop" in words and f"Workshop · {TAG}W" in words
+    s.check("and calls a retreat a retreat, as the site does",
+            "Pay for this retreat" in words and f"Retreat · {TAG}W" in words
+            and "Pay for this workshop" not in words and "Workshop · " not in words
             and "Pay for this atelier" not in words and "Atelier · " not in words,
             detail=words[:400])
     with m.app.test_request_context("/"):

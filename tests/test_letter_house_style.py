@@ -691,6 +691,24 @@ def _retreat(s):
     s.check("the welcome's button reads 'All the retreats'", "All the retreats" in labels,
             detail=labels)
 
+    # The guest's own pages, which the confirmation points to ("on your
+    # page"): the words they show and the words they hand to t() to translate.
+    seen = []
+    for name in ("guest_portal.html", "guest_portal_statement.html"):
+        with open(os.path.join(ROOT, "templates", name), encoding="utf-8") as fh:
+            src = re.sub(r"\{#.*?#\}", " ", fh.read(), flags=re.S)
+        said = re.findall(r"""\bt\(\s*['"]([^'"]+)['"]""", src)
+        said.append(re.sub(r"\{\{.*?\}\}|\{%.*?%\}|<[^>]*>", " ", src, flags=re.S))
+        seen += [f"{name}: {w}" for text in said for w in GUEST_WORKSHOP.findall(text)]
+    s.check("the guest's own page and statement say retreat too", not seen, detail=seen)
+    s.check("   and so does each line of their statement, wherever it is read",
+            m.STATEMENT_KINDS["workshop"] == "Retreat", detail=m.STATEMENT_KINDS)
+    import translations
+    gaps = [f"{lang}: {k}" for lang, table in (("fr", translations.FR), ("es", translations.ES))
+            for k in ("Your retreats", "Retreat", "The retreats", "Pay for this retreat")
+            if k not in table]
+    s.check("   in French and Spanish as well, not falling back to English", not gaps, detail=gaps)
+
     conn = _harness.db()
     restore = _harness.keep_rows(conn, "email_templates", "template_key = ?",
                                  ("newsletter_welcome",))
