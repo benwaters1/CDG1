@@ -12712,3 +12712,14 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-rcmp tbody th, .g .g-rcmp td{ display: block; border: 0; padding: 2px var(--s3); }
   .g .g-rc__k{ display: inline; font-family: var(--ui); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #73562d; margin-right: .4em; }
 }
+
+/* ==========================================================================
+   SECOND SWEEP, 26 NOVEMBER 2026 (A3): the full menu in French and Spanish
+   ========================================================================== */
+/* The header folds to its Menu button whenever its links do not fit (25 Nov, 4.1, the script in public_base.html).
+   The header's row is capped at --wrap, 1,216px, on any screen, and the French and Spanish links need about 70px and
+   15px more than that row leaves them: so on a desktop of any width those two languages never had the full menu,
+   which the owner asked to keep beside the Menu button (26 Nov). Measured on the live site at 1,498px: at 1,320px the
+   French links fit with 35px to spare. The row may run that far in those two languages only; the fold is still the
+   answer on a laptop too narrow for it. */
+html[lang="fr"] .g-top__in, html[lang="es"] .g-top__in{ max-width: max(var(--wrap), 1320px); }

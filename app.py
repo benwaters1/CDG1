@@ -80210,6 +80210,70 @@ def _translated_values(lang, table, remembered):
     return values
 
 
+# DATES AND PRICES IN THE READER'S LANGUAGE (second sweep, 26 Nov 2026, item 5).
+# The French pages read "5 – 9 December 2026" and "€3,800": the sentences went
+# into French and the figures stayed English, because the dates and prices are
+# drawn by filters that know one language, and a price on its own in a <span>
+# is no sentence for the tables to hold. Done here, on the response, with the
+# words: every text node of a French or Spanish page, translated or not, has its
+# dates and euro amounts written the way that language writes them. French:
+# "5 – 9 décembre 2026", "1er décembre", "3 800 €" (a narrow no-break space in
+# the thousands, a no-break space before the sign, a comma for the cents).
+# Spanish: "5 – 9 de diciembre de 2026", "3.800 €". Attributes are untouched,
+# as the translator has always left them; so is anything inside translate="no".
+_EN_MONTHS = ("January", "February", "March", "April", "May", "June", "July",
+              "August", "September", "October", "November", "December")
+_EN_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+FIGURE_WORDS = {
+    "fr": {"months": ("janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+                      "août", "septembre", "octobre", "novembre", "décembre"),
+           "days": ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")},
+    "es": {"months": ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                      "agosto", "septiembre", "octubre", "noviembre", "diciembre"),
+           "days": ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")},
+}
+_FIG_MONTH = "|".join(_EN_MONTHS)
+_FIG_DATE = re.compile(
+    r"\b(?:(" + "|".join(_EN_WEEKDAYS) + r"),?\s+)?(\d{1,2})(\s*[–—-]\s*\d{1,2})?\s+("
+    + _FIG_MONTH + r")\b(?:,?\s+(\d{4})\b)?")
+_FIG_MONTH_YEAR = re.compile(r"\b(" + _FIG_MONTH + r")\s+(\d{4})\b")
+_FIG_EURO = re.compile(r"€\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?![\d,.]*\d)")
+
+
+def localise_figures(text, lang):
+    """`text` with its English dates and euro amounts written the way `lang` writes them."""
+    words = FIGURE_WORDS.get(lang)
+    if not words or not text:
+        return text
+
+    def month(name):
+        return words["months"][_EN_MONTHS.index(name)]
+
+    def date(m):
+        weekday, day, run, name, year = m.groups()
+        out = words["days"][_EN_WEEKDAYS.index(weekday)] + " " if weekday else ""
+        if lang == "fr":
+            out += ("1er" if day == "1" and not run else day) + (run or "") + " " + month(name)
+            return out + (" " + year if year else "")
+        out += day + (run or "") + " de " + month(name)
+        return out + (" de " + year if year else "")
+
+    def month_year(m):
+        return month(m.group(1)) + (" " if lang == "fr" else " de ") + m.group(2)
+
+    def euro(m):
+        whole = m.group(1).replace(",", "")
+        grouped = "{:,}".format(int(whole)).replace(",", "\u202f" if lang == "fr" else ".")
+        cents = m.group(2)
+        return grouped + ("," + cents.ljust(2, "0") if cents else "") + "\u00a0€"
+
+    if not any(w in text for w in _EN_MONTHS) and "€" not in text:
+        return text
+    text = _FIG_DATE.sub(date, text)
+    text = _FIG_MONTH_YEAR.sub(month_year, text)
+    return _FIG_EURO.sub(euro, text)
+
+
 def translate_page(html_text, lang, ours_only=False):
     """One rendered page, with every sentence there is a translation for.
 
@@ -80245,7 +80309,14 @@ def translate_page(html_text, lang, ours_only=False):
         if not said or said == key:
             if key not in already and worth_translating(key):
                 missing.append(key)
-            continue
+            # The figures go into the reader's language even where the words
+            # have not: a date or a price on its own is most of what is left.
+            figures = localise_figures(text, lang)
+            if figures == text:
+                continue
+            said = figures.strip()
+        else:
+            said = localise_figures(said, lang)
         raw = html_text[start:end]
         # Only the words are replaced. The whitespace around them is the
         # template's own layout — dropping it closes up the space between two

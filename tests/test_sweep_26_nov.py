@@ -458,6 +458,50 @@ def _see_through(s):
             pass
 
 
+_EN_FIGURE = re.compile(r"€\s?\d|\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|"
+                        r"November|December)\b|\b(?:January|February|March|April|May|June|July|August|September|"
+                        r"October|November|December)\s+\d{4}")
+
+
+def _figures(s):
+    s.section("5 Dates and prices the way French and Spanish write them")
+    f = m.localise_figures
+    s.check("French dates", f("Friday 1 January 2027", "fr") == "vendredi 1er janvier 2027"
+            and f("5 – 9 December 2026", "fr") == "5 – 9 décembre 2026", detail=f("5 – 9 December 2026", "fr"))
+    s.check("Spanish dates", f("5 – 9 December 2026", "es") == "5 – 9 de diciembre de 2026"
+            and f("December 2026", "es") == "diciembre de 2026")
+    s.check("French prices", f("€3,800", "fr") == "3 800 €" and f("€0.94", "fr") == "0,94 €")
+    s.check("Spanish prices", f("€3,800", "es") == "3.800 €")
+    s.check("English is left as it is", f("€3,800 on 5 December 2026", "en") == "€3,800 on 5 December 2026")
+    for path in ("/fr/workshops", "/es/workshops", "/fr/"):
+        html = m.app.test_client().get(path).get_data(as_text=True)
+        spans = [m.translation_key(n) for _a, _b, n in m.page_text_spans(html)]
+        left = [x for x in spans if _EN_FIGURE.search(x)]
+        s.check(f"{path}: no English date or price left", not left, detail=str(left[:3]))
+        s.check(f"{path}: and the dates are there, in its words", any(
+            ("décembre" if "/fr" in path else "diciembre") in x for x in spans))
+    html = m.app.test_client().get("/workshops").get_data(as_text=True)
+    s.check("/workshops in English keeps €3,800 and December",
+            re.search(r"€\d,\d{3}", html) is not None and "December" in html)
+
+
+def _small_things(s):
+    s.section("A2 and A3: the press description, and the French and Spanish menu")
+    html = m.app.test_client().get("/press").get_data(as_text=True)
+    desc = re.search(r'<meta name="description" content="([^"]*)"', html)
+    import html as htmllib
+    said = htmllib.unescape(desc.group(1)) if desc else ""
+    s.check("/press's description is within 160 characters", 0 < len(said) <= 160, detail=f"{len(said)}: {said}")
+    # Measured in a browser on the live site, 26 Nov: at 1,498px the French links needed 69px more than a 1,216px
+    # row left them, so the header folded on every desktop; at 1,320px they fit with 35px to spare. What this can
+    # check without a browser is that the rule is there, for both languages, and not for English.
+    css = open(os.path.join(_harness.ROOT, "static", "gudanes.css"), encoding="utf-8").read()
+    rule = re.search(r'html\[lang="fr"\] \.g-top__in, html\[lang="es"\] \.g-top__in\{ max-width: max\(var\(--wrap\), (\d+)px\); \}',
+                     css)
+    s.check("the French and Spanish header row may run to 1,320px", rule is not None and int(rule.group(1)) >= 1320)
+    s.check("and the English row keeps --wrap", 'html[lang="en"] .g-top__in' not in css)
+
+
 def run():
     s = Suite("The site's second sweep, 26 November 2026")
     anon = m.app.test_client()
@@ -474,6 +518,8 @@ def run():
         _footer(s)
         _winter_rest(s, conn)
         _see_through(s)
+        _figures(s)
+        _small_things(s)
     finally:
         _setting(conn, "dining_mode", was_dm)
         conn.close()
