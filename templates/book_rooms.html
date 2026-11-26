@@ -172,7 +172,7 @@
     <p class="g-searched__count">
       {% set free = availability.values()|select|list|length %}
       {% if free %}{{ free }} of {{ rooms|length }} room{{ '' if rooms|length == 1 else 's' }} available
-      {% elif ateliers %}An atelier has the château on these dates
+      {% elif ateliers %}A retreat has the château on these dates
       {% else %}No rooms free on these dates
         {#- A blind refusal sends a guest away. When the reason is an atelier the
             route can say so by passing blocking_atelier (start_date, end_date);

@@ -46,7 +46,7 @@
   <p class="g-p g-lede-first">The château stands above the valley with the Pyrénées all around it: ten acres of gardens and grounds to wander, a pool for long afternoons and a court for whoever is keen. In winter the slopes are about half an hour away, and Andorra about an hour.</p>
   {% from '_weather_live.html' import weather_now %}{{ weather_now(weather) }}
   <p class="g-p">On a retreat, the grounds are yours every afternoon, between the cooking, the outings and dinner.</p>
-  <p class="g-domaine__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the retreats</a></p>
+  <p class="g-domaine__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Experience the château</a></p>
   {% endcall %}
 </div></section>
 
@@ -59,7 +59,7 @@
   <p class="g-p g-intro">Arranged on request, at an extra cost. Ask when you book, or from your booking page.</p>
   <ul class="g-extras">
     {%- for kind, fr, en, line in [
-      ('yoga', 'Le yoga', 'Yoga', 'A session at the château'),
+      ('yoga', 'Le yoga', 'Yoga', 'A class at the château'),
       ('horse', "L'équitation", 'Horse riding', 'In the valley'),
       ('hike', 'La randonnée', 'A guided hike', 'Into the mountains'),
       ('cycle', 'Le vélo', 'Cycling', 'Up the Tour de France climb to Plateau de Beille')] %}{#- 9 Nov, evening (owner's second review, 3.4 and 5): skiing is a line inside What's On, not an extra.

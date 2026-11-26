@@ -254,11 +254,13 @@
     {#- 26 Oct (owner, the retreats deck 1b): in place of "Experience the Château in Full". -#}
     <p class="g-full__fr" lang="fr">L’art de vivre <span class="g-full__fren" lang="en">The art of living</span></p>
     <h2 class="g-full__h" id="full-h">La Vie de Château</h2>
+    {#- 26 Nov (owner, the naming rule): the retreats' standing descriptor, under their heading. -#}
+    <p class="g-full__p"><em>The full château experience.</em></p>
     <p class="g-full__p">For two centuries Gudanes was a château of guests. Then, for decades, it fell silent. Now, for a few weeks each year, its doors open again to a small company who come to live France as the French have always lived it.</p>
     <p class="g-full__p">Mornings begin with bread from the village <em lang="fr">boulangerie</em> and crêpes on the terrace. The days belong to the kitchen and the château’s chefs, to the markets and brocantes of the Ariège, to the castle at Foix, or to the restorers’ scaffold as a fresco returns to the light. Afternoons are for the pool, a glass of the region’s wine and a book from the library. Every evening ends <em lang="fr">à table</em>: the apéritif as the mountains turn blue, dinner of several courses by candlelight, and on the last night a banquet in the Salon de Musique, then dancing. And so much more: the château as it was, full of life.</p>
     <p class="g-full__p">Guests arrive as strangers and leave as friends, and so many of them return.</p>
     <p class="g-full__btns">
-      <a class="g-full__cta" href="{{ url_for('workshops_public') }}">Discover the retreats</a>
+      <a class="g-full__cta" href="{{ url_for('workshops_public') }}">Experience the château</a>
       <a class="g-full__link" href="{{ url_for('restoration_page') }}#monument">The story of the château</a>
     </p>
   </div>
@@ -526,11 +528,11 @@
     {'img': url_for('static', filename='img/rk/corner-in-the-mist.jpg'), 'alt': 'A corner of the château, the mountains in mist behind',
      'quote': 'Been following for years, finally got to visit. A bucket-list place to see. Beautiful.', 'by': 'David W., on Google'},
     {'img': url_for('static', filename='img/retreats/chef-from-the-garden.jpg'), 'alt': 'The chef coming in from the garden',
-     'quote': 'Several times every day, I witnessed magic being performed in the Chateau kitchen, at the table, and the hours in between.', 'by': 'Workshop guest, summer 2024'},
+     'quote': 'Several times every day, I witnessed magic being performed in the Chateau kitchen, at the table, and the hours in between.', 'by': 'Retreat guest, summer 2024'},
     {'img': url_for('static', filename='img/retreats/guests-round-the-table.jpg'), 'alt': 'Guests round the table',
-     'quote': 'We truly felt like royalty, but more importantly, like family.', 'by': 'Workshop guest, autumn 2023'},
+     'quote': 'We truly felt like royalty, but more importantly, like family.', 'by': 'Retreat guest, autumn 2023'},
     {'img': url_for('static', filename='img/retreats/croquembouche.jpg'), 'alt': 'A croquembouche',
-     'quote': 'Nothing we ate in Paris compared to the meals and desserts.', 'by': 'Workshop guest, autumn 2023'}] %}
+     'quote': 'Nothing we ate in Paris compared to the meals and desserts.', 'by': 'Retreat guest, autumn 2023'}] %}
   {%- set CORNER = '<svg class="rc-corner %s" viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10L34 10M10 10L32.2 19.2M10 10L27 27M10 10L19.2 32.2M10 10L10 34" stroke-width=".7"/><path d="M34 10Q38.4 15.7 32.2 19.2Q34.1 26.1 27 27Q26.1 34.1 19.2 32.2Q15.7 38.4 10 34"/><path d="M34 10C46 6 57 12 53 19C50 23 45 19 48 16"/><path d="M10 34C6 46 12 57 19 53C23 50 19 45 16 48"/><path d="M53 19C56 22 60 22 63 20" stroke-width=".7"/><path d="M19 53C22 56 22 60 20 63" stroke-width=".7"/></g><circle cx="10" cy="10" r="2.2" fill="currentColor"/></svg>' %}
   <div class="rc-grid">
     {%- for q in says %}
@@ -579,7 +581,7 @@
   <p class="g-close__p g-close__wed"><a href="{{ url_for('events_weddings') }}">For a wedding or a gathering, the whole château is yours</a></p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Discover the retreats</a>
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Experience the château</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us anything</a>
   </div>
 </div></section>

@@ -96,7 +96,7 @@ def run():
             first = on_offer[0]
             s.check("the workshops on offer are in it, as cards with their dates",
                     first["title"] in (letter["html"] or "") and first["when"] in (letter["html"] or "")
-                    and "See the workshop" in (letter["html"] or ""))
+                    and "See the retreat" in (letter["html"] or ""))
             s.check("and listed in the plain text with their links",
                     first["title"] in letter["body"] and first["url"] in letter["body"])
         else:

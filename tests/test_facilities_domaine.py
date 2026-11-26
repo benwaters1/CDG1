@@ -105,7 +105,7 @@ def run():
     s.check("'On a workshop' nowhere on the page", "On a workshop" not in words)
     s.check("On a retreat, between the cooking, the outings and dinner",
             "On a retreat, the grounds are yours every afternoon, between the cooking, the outings and dinner." in words)
-    s.check("the button says Discover the retreats", "Discover the retreats" in words
+    s.check("the button says Experience the château", "Experience the château" in words
             and "Discover the full experience" not in words)
 
     s.section("Arranged for You: four, cycling the fourth")

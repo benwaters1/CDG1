@@ -52,9 +52,10 @@ DECK = {
     "cooking": ("Five days of early summer with the château’s chefs and pastry chef",  # site review 25 Nov: 25-30 June
                 "French cooking, in the kitchens where it belongs",
                 "Five days of early summer in the kitchens of a château begun in 1741"),
-    "finds": ("Three days of chiner in the markets, brocantes and vide-greniers of the Ariège",
+    # 26 Nov (owner, C2): a brocante tour, said in its card line and its opening paragraph.
+    "finds": ("A three-day brocante tour of the markets, brocantes and vide-greniers of the Ariège",
               "Chiner: the French art of the find",
-              "Three days devoted to chiner, the French art of hunting"),
+              "A three-day brocante tour from the château, devoted to chiner: the French art of hunting"),
     "starry": ("A week of French summer with everything",
                "A French summer, from first light to the last dance",
                "A week of long, golden days in the Pyrénées"),
@@ -168,7 +169,7 @@ def run():
                  "Guests arrive as strangers and leave as friends, and so many of them return.",
                  "Many of our guests return, some year after year, each time for a different retreat.",
                  "A Retreat La vie de château",
-                 "Three to seven nights. Nothing to pay at the end.",
+                 "The full château experience, over three to seven nights. Nothing to pay at the end.",
                  "On a retreat the kitchen never rests",
                  "New floors, new bathrooms and good French beds"]:
         s.check(f"says '{line[:60]}'", line in home)

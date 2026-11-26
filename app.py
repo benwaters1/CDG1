@@ -119127,15 +119127,15 @@ TRANSLATION_SCHEMA = {
 
 TRANSLATION_SYSTEM = (
     "You translate the website of Chateau de Gudanes, an eighteenth-century "
-    "chateau in the Ariege in the French Pyrenees. It takes guests, runs a "
-    "restaurant and holds workshops, while being restored under French "
+    "chateau in the Ariege in the French Pyrenees. It takes guests and holds "
+    "retreats of three to seven nights, while being restored under French "
     "heritage law.\n\n"
     "Rules, in order of importance:\n"
     "1. Translate the meaning, not the words. This is a real house writing in "
     "its own voice: plain, exact, unhurried, never marketing language. Match "
     "that register in the target language.\n"
-    "2. NEVER translate proper nouns. Chateau de Gudanes, La Table, Chateau "
-    "Ateliers, Monuments Historiques, place names (Ariege, Chateau-Verdun, Ax-"
+    "2. NEVER translate proper nouns. Chateau de Gudanes, La Table, "
+    "Monuments Historiques, place names (Ariege, Chateau-Verdun, Ax-"
     "les-Thermes, Lombrives), personal names. Set leave_alone true and return "
     "the source unchanged for a string that is ONLY a proper noun, a postal "
     "address, an email address, a telephone number or a reference code.\n"
@@ -119147,7 +119147,15 @@ TRANSLATION_SYSTEM = (
     "5. Keep the punctuation the source uses, including the typographic "
     "quotes and dashes, and keep any leading or trailing symbols.\n"
     "6. Return one entry for every source line you are given, with `source` "
-    "copied back exactly. Never merge, split or reorder them."
+    "copied back exactly. Never merge, split or reorder them.\n"
+    "7. The house's own words for what it offers. A retreat (the house's "
+    "stays of three to seven nights) is in French 'un sejour', plural "
+    "'les sejours', and NEVER 'une retraite' (which first means retirement) "
+    "or 'un atelier'; in Spanish 'un retiro', never 'un taller'. Never call "
+    "one a session ('seance', 'sesion'). 'The full chateau experience' is "
+    "'l'experience complete du chateau' in French and 'la experiencia "
+    "completa del castillo' in Spanish, and belongs to the retreats only. "
+    "Write the accents the target language uses."
 )
 
 
@@ -119217,6 +119225,44 @@ def redact_secrets(text):
     return re.sub(r"\b[A-Za-z0-9_\-]{32,}\b", "[redacted]", out)
 
 
+# THE NAMING RULE IN WHAT THE JOB HAS ALREADY WRITTEN (owner, 26 Nov 2026). A
+# retreat is "un séjour" in French and "un retiro" in Spanish; never "retraite",
+# "atelier" or "taller". The hand-written tables say so, and rule 7 above tells
+# the model, but the sentences it translated before are stored and served as
+# they are. So once, every machine translation using an old word goes back to
+# 'wanted', and the job translates it again under the new rule over its next
+# runs (the page shows English for those sentences meanwhile, as for any new
+# one). A translation a person approved is theirs and is never touched, which
+# is the rule of the table. "Atelier" in its craft sense is redone too and comes
+# back as itself where the model judges it right.
+TRANSLATIONS_NAMING_26NOV = "translations_naming_26nov_done"
+OLD_RETREAT_WORDS = {
+    "fr": re.compile(r"\b(?:retraites?|ateliers?)\b", re.I),
+    "es": re.compile(r"\btaller(?:es)?\b", re.I),
+}
+
+
+def requeue_old_retreat_words(conn):
+    """Send the machine translations that use an old word back to the job, once."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (TRANSLATIONS_NAMING_26NOV,)).fetchone():
+        return 0
+    doomed = []
+    for lang, pattern in OLD_RETREAT_WORDS.items():
+        for row in conn.execute(
+                """SELECT id, translated FROM page_translations
+                   WHERE lang = ? AND status = 'machine' AND translated IS NOT NULL""", (lang,)):
+            if pattern.search(row["translated"]):
+                doomed.append((row["id"],))
+    conn.executemany(
+        """UPDATE page_translations SET status = 'wanted', translated = NULL, translated_at = NULL
+           WHERE id = ? AND status = 'machine'""", doomed)
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
+                 (TRANSLATIONS_NAMING_26NOV, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return len(doomed)
+
+
 def run_page_translation_job(conn, limit=None):
     """Translate what the public pages have asked for and nobody has written.
 
@@ -119229,6 +119275,9 @@ def run_page_translation_job(conn, limit=None):
     purge_guest_page_translations(conn)
     if not claude_configured():
         return "no model provider configured"
+    # Only once a model is there to redo them, so a sentence is never left in
+    # English with nobody to translate it again.
+    requeue_old_retreat_words(conn)
     budget = limit or TRANSLATION_MAX_PER_RUN
     rows = conn.execute(
         """SELECT source_text, lang FROM page_translations

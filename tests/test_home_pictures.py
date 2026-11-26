@@ -111,7 +111,7 @@ def run():
     # else: no name the page made up, and no stars.
     sigs = re.findall(r'<span class="rc-sig__l">([^<]*)</span>', says)
     ok_sig = re.compile(r"^(A guest of the château|[A-Z][a-z]+( [A-Z]\.)?, on Google|"
-                        r"Workshop guest, (spring|summer|autumn|winter) \d{4})$")
+                        r"Retreat guest, (spring|summer|autumn|winter) \d{4})$")
     s.check("signed as the owner chose: the Google reviewer, a retreat guest by season, or a guest of the château; no stars",
             len(sigs) == quotes and all(ok_sig.match(x.strip()) for x in sigs)
             and "★" not in says and "&#9733;" not in says,

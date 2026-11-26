@@ -109,8 +109,8 @@ def _checks(s, conn):
             and anon.get(reserve.group(1)).status_code == 200)
     s.check("the bare reason is not said twice above it",
             "a workshop holds the whole château" not in _text(page))
-    s.check("the search line says an atelier has the château, not that no rooms are free",
-            "An atelier has the château on these dates" in _text(page) and "No rooms free" not in _text(page))
+    s.check("the search line says a retreat has the château, not that no rooms are free",
+            "A retreat has the château on these dates" in _text(page) and "No rooms free" not in _text(page))
     import os
     with open(os.path.join(m.app.root_path, "static", "gudanes.css"), encoding="utf-8") as fh:
         sheet = fh.read()

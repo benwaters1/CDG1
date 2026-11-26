@@ -54,6 +54,31 @@ FR = {
     'A restoration followed the world over, and a château to experience as it returns to life.':
         'Une restauration suivie dans le monde entier, et un château à vivre tandis qu’il renaît.',
     'Bruce in the hay meadow': 'Bruce dans la prairie de fauche',
+    # The naming rule (owner, 26 Nov): a retreat is "un séjour", never "une retraite" or "un atelier", and the
+    # standing descriptor is "l’expérience complète du château". A night is never called that.
+    'Experience the château': 'Vivre le château',
+    'The full château experience.': 'L’expérience complète du château.',
+    'The full château experience, three to seven nights at a time.':
+        'L’expérience complète du château, de trois à sept nuits.',
+    'The full château experience, over three to seven nights.':
+        'L’expérience complète du château, sur trois à sept nuits.',
+    'A night: a room and breakfast. A retreat: the full château experience, with its gourmet chefs, every meal, and drinks included, the brocantes, the restoration, the valley, and a great deal more.':
+        'Une nuit : une chambre et le petit-déjeuner. Un séjour : l’expérience complète du château, avec ses chefs gastronomiques, chaque repas, boissons comprises, les brocantes, la restauration, la vallée, et bien plus encore.',
+    'Everything you have booked with us — stays, dinners, retreats — in one place. Tell us your email and we will send you a link. No password to remember.':
+        'Tout ce que vous avez réservé chez nous — nuits, dîners, séjours — au même endroit. Indiquez votre adresse e-mail et nous vous enverrons un lien. Aucun mot de passe à retenir.',
+    'The retreats are held in the middle of this work, not around it —':
+        'Les séjours ont lieu au cœur de ce chantier, pas autour —',
+    'A class at the château': 'Un cours au château',
+    'the retreats, where you work on the building yourself': 'les séjours, où l’on travaille soi-même au bâtiment',
+    'Retreat guest, summer 2024': 'Hôte d’un séjour, été 2024',
+    'Retreat guest, autumn 2023': 'Hôte d’un séjour, automne 2023',
+    # C2, Antique & French Finds: "un circuit des brocantes" (owner, 26 Nov). The words around <em>chiner</em>
+    # and <em>vide-greniers</em> are separate runs of text, so each run has its own line.
+    'A brocante and antiques tour: three days of': 'Un circuit des brocantes et des antiquaires : trois jours à',
+    ', the art of the find': ', l’art de la trouvaille',
+    'A three-day brocante tour of the markets, brocantes and':
+        'Un circuit des brocantes de trois jours, par les marchés, les brocantes et les',
+    'A guided tour of the brocantes and': 'Un circuit guidé des brocantes et des',
 }
 
 ES = {
@@ -74,4 +99,28 @@ ES = {
     'A restoration followed the world over, and a château to experience as it returns to life.':
         'Una restauración seguida en todo el mundo, y un castillo que vivir mientras vuelve a la vida.',
     'Bruce in the hay meadow': 'Bruce en el prado de siega',
+    # The naming rule (owner, 26 Nov): a retreat is "un retiro", never "un taller", and the standing descriptor is
+    # "la experiencia completa del castillo". A night is never called that.
+    'Experience the château': 'Vivir el castillo',
+    'The full château experience.': 'La experiencia completa del castillo.',
+    'The full château experience, three to seven nights at a time.':
+        'La experiencia completa del castillo, de tres a siete noches.',
+    'The full château experience, over three to seven nights.':
+        'La experiencia completa del castillo, durante tres a siete noches.',
+    'A night: a room and breakfast. A retreat: the full château experience, with its gourmet chefs, every meal, and drinks included, the brocantes, the restoration, the valley, and a great deal more.':
+        'Una noche: una habitación y el desayuno. Un retiro: la experiencia completa del castillo, con sus chefs gastronómicos, cada comida, bebidas incluidas, las brocantes, la restauración, el valle y mucho más.',
+    'Everything you have booked with us — stays, dinners, retreats — in one place. Tell us your email and we will send you a link. No password to remember.':
+        'Todo lo que ha reservado con nosotros — estancias, cenas, retiros — en un solo lugar. Indíquenos su correo electrónico y le enviaremos un enlace. Sin contraseña que recordar.',
+    'The retreats are held in the middle of this work, not around it —':
+        'Los retiros se celebran en medio de estas obras, no a su alrededor —',
+    'A class at the château': 'Una clase en el castillo',
+    'the retreats, where you work on the building yourself': 'los retiros, donde uno mismo trabaja en el edificio',
+    'Retreat guest, summer 2024': 'Huésped de un retiro, verano de 2024',
+    'Retreat guest, autumn 2023': 'Huésped de un retiro, otoño de 2023',
+    # C2, Antique & French Finds: a brocante tour.
+    'A brocante and antiques tour: three days of': 'Una ruta de brocantes y anticuarios: tres días de',
+    ', the art of the find': ', el arte del hallazgo',
+    'A three-day brocante tour of the markets, brocantes and':
+        'Una ruta de brocantes de tres días por los mercados, las brocantes y los',
+    'A guided tour of the brocantes and': 'Una ruta guiada por las brocantes y los',
 }

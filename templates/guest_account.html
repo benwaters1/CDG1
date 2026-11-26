@@ -136,7 +136,7 @@
   <!-- ---------------- workshops ---------------- -->
   {% if data.workshops %}
   <hr class="g-rule--double">
-  <h2 class="section-heading">Workshops</h2>
+  <h2 class="section-heading">Retreats</h2>
   {% for w in data.workshops %}
   {% set upcoming = (w['end_date'] or w['start_date']) >= today %}
   <div class="account-card {{ 'is-past' if not upcoming }}">

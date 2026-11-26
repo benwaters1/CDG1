@@ -30,16 +30,16 @@ NAMES = ("Laura", "Millie", "Darcie", "Cody", "Rebecca", "Ken")
 LETTERS = {
     "/": [
         ("Several times every day, I witnessed magic being performed in the Chateau kitchen, at the table, "
-         "and the hours in between.", "Workshop guest, summer 2024"),
-        ("We truly felt like royalty, but more importantly, like family.", "Workshop guest, autumn 2023"),
-        ("Nothing we ate in Paris compared to the meals and desserts.", "Workshop guest, autumn 2023"),
+         "and the hours in between.", "Retreat guest, summer 2024"),
+        ("We truly felt like royalty, but more importantly, like family.", "Retreat guest, autumn 2023"),
+        ("Nothing we ate in Paris compared to the meals and desserts.", "Retreat guest, autumn 2023"),
     ],
     "/workshops": [
         ("From stunning arrival to tearful farewell, I felt I was a member of your family’s elegant household, "
-         "an honored guest.", "Workshop guest, summer 2024"),
+         "an honored guest.", "Retreat guest, summer 2024"),
         ("We had an absolutely wonderful experience and have told so many about how much magic the Chateau "
-         "boasts. Can’t wait to come back again.", "Workshop guest, autumn 2023"),
-        ("The château is truly in a magical location.", "Workshop guest, autumn 2023"),
+         "boasts. Can’t wait to come back again.", "Retreat guest, autumn 2023"),
+        ("The château is truly in a magical location.", "Retreat guest, autumn 2023"),
     ],
     "/events/weddings": [
         # 24 Nov 2026 (owner, of "We are still dreaming of being at the Chateau with everyone.": "this doesnt seem
@@ -96,7 +96,7 @@ def run():
                     detail=flat(visible_text(page))[:0] or "not found together")
     # Negative control: a line not on the page is not found.
     s.check("a line that is not there is not found",
-            not signed(pages["/"].get_data(as_text=True), "We never wrote this line.", "Workshop guest, summer 2024"))
+            not signed(pages["/"].get_data(as_text=True), "We never wrote this line.", "Retreat guest, summer 2024"))
 
     s.section("No names")
     said = {}

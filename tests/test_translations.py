@@ -59,7 +59,8 @@ def run():
             translations.translate("Workshops", "en") == "Workshops")
     s.check("empty input does not raise", translations.translate("", "fr") == "")
     s.check("a known string is genuinely translated",
-            translations.translate("Workshops", "fr") == "Ateliers",
+            # A retreat is "un séjour" in French, never "atelier" (owner, 26 Nov 2026).
+            translations.translate("Workshops", "fr") == "Séjours",
             detail=f"got {translations.translate('Workshops', 'fr')!r}")
 
     s.section("Choosing a language")

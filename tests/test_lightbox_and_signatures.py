@@ -270,8 +270,8 @@ def run():
     s.check("the home page has its six signed cards at every width",
             len(home) == len(WIDTHS) and all(len(d["sigs"]) == 6 for d in home),
             detail=str([len(d["sigs"]) for d in home]))
-    s.check("and one of them is a workshop guest's, the long one",
-            home and all(any("Workshop guest" in g["by"] for g in d["sigs"]) for d in home))
+    s.check("and one of them is a retreat guest's, the long one",
+            home and all(any("Retreat guest" in g["by"] for g in d["sigs"]) for d in home))
     for name in LIGHTBOXES:
         lb = [d for f, d in real if f["name"] == name]
         s.check(f"{name} opens its lightbox at every width, on both pictures",

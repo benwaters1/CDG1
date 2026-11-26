@@ -96,7 +96,7 @@
 {%- set TODO_LEAD = [
   ('cooking', 'Cooking with the chefs', 'French classics and recipes from the château’s eighteenth-century cookbook, at the stove with the château’s chefs and pastry chef.',
    [('cooking-class-hands', 'The cooking class from above, hands at work'), ('pastry-chef', 'The pastry chef at work in the pastry kitchen')], ['noel', 'cooking', 'finds', 'starry']),
-  ('brocantes', 'The brocantes', '<em lang="fr">Chiner</em> in the brocantes and <em lang="fr">vide-greniers</em> of the Ariège, for old French linen, copper and faïence.',
+  ('brocantes', 'The brocantes', 'A guided tour of the brocantes and <em lang="fr">vide-greniers</em> of the Ariège, for old French linen, copper and faïence.',
    [('brocante-plane-trees', 'A brocante under the plane trees, bunting overhead'), ('guests-with-finds', 'Guests with their finds from the brocante')], ['cooking', 'finds', 'starry']),
   ('restoration', 'The restoration', 'Uncover the château’s Renaissance frescoes and its sixteenth-century painted beams with the restorers, brush in hand.',
    [('guests-uncovering-fresco', 'Guests uncovering a fresco on the wall'), ('guest-at-a-fresco', 'A guest freeing a fresco from the plaster')], ['cooking', 'starry'])
@@ -143,6 +143,8 @@
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
   <span class="g-hill" aria-hidden="true">{{ illus('atelier') }}</span>
   <h2 class="g-place">The Retreats</h2>
+  {#- 26 Nov (owner, the naming rule): the standing descriptor, under the Retreats heading every time it appears. -#}
+  <p class="g-p g-lede-first">The full château experience, three to seven nights at a time.</p>
   {#- 9 Nov: the two photographs each retreat shows, settled here once: [0] on its card, [1] on its dates below, and
       both in the page's event data. First, a photo uploaded for the retreat (workshops.photo_filename), served by
       room_photo like every other upload a public page shows. Then the photographs of the retreat its title names.
@@ -448,7 +450,7 @@
        weeks out has told a guest one figure and charged another. #}
     <div class="g-key__i">
       <p class="g-key__k">To reserve</p>
-      <p class="g-key__v">{% if deposit_pct %}{{ deposit_pct }}% to reserve; the balance {{ balance_days }} days before.{% else %}It depends on the workshop &mdash; the figure is on the session you choose.{% endif %}{% if balance_days %} Booking inside {{ balance_days }} days? The whole amount is due then, not a deposit.{% endif %}</p>
+      <p class="g-key__v">{% if deposit_pct %}{{ deposit_pct }}% to reserve; the balance {{ balance_days }} days before.{% else %}It depends on the retreat &mdash; the figure is on the dates you choose.{% endif %}{% if balance_days %} Booking inside {{ balance_days }} days? The whole amount is due then, not a deposit.{% endif %}</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">The stairs</p>
@@ -535,9 +537,9 @@
     exclamation mark, which the second review keeps off the public pages). NO NAMES, the owner's instruction: the season
     and the year only. test_guest_letters holds it. -#}
 {%- set GUEST_LETTERS = [
-  ('From stunning arrival to tearful farewell, I felt I was a member of your family’s elegant household, an honored guest.', 'Workshop guest, summer 2024'),
-  ('We had an absolutely wonderful experience and have told so many about how much magic the Chateau boasts. Can’t wait to come back again.', 'Workshop guest, autumn 2023'),
-  ('The château is truly in a magical location.', 'Workshop guest, autumn 2023')] %}
+  ('From stunning arrival to tearful farewell, I felt I was a member of your family’s elegant household, an honored guest.', 'Retreat guest, summer 2024'),
+  ('We had an absolutely wonderful experience and have told so many about how much magic the Chateau boasts. Can’t wait to come back again.', 'Retreat guest, autumn 2023'),
+  ('The château is truly in a magical location.', 'Retreat guest, autumn 2023')] %}
 {% if GUEST_LETTERS or (atelier_reviews or [])|selectattr('text')|list %}
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">From the Retreats</p>

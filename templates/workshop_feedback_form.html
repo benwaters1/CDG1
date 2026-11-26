@@ -5,13 +5,13 @@
 
 <section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
 <div class="page-head">
-  <h1>How was {{ booking['title'] or 'your workshop' }}?</h1>
+  <h1>How was {{ booking['title'] or 'your retreat' }}?</h1>
 </div>
 
 {% if too_early %}
-  <div class="empty-state">This link opens once the workshop has ended — we would love to hear from you after {{ booking['end_date']|date_short }}.</div>
+  <div class="empty-state">This link opens once the retreat has ended — we would love to hear from you after {{ booking['end_date']|date_short }}.</div>
 {% elif already_submitted %}
-  <div class="empty-state">You have already sent feedback for this workshop — thank you!</div>
+  <div class="empty-state">You have already sent feedback for this retreat — thank you!</div>
 {% else %}
   <div class="g-mb-card" style="max-width:520px;">
     <p class="g-p" style="margin-top:0;">{{ booking['guest_name'] }}, thank you for coming. Two minutes here genuinely changes what we do next — we read every one, and the programme is still being shaped by what guests tell us.</p>

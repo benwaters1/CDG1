@@ -101,7 +101,8 @@ def _old_words_everywhere(s, anon, conn):
     s.check("none says workshop (bar \"Workshop guest\"), the full experience, or unavailable", not seen,
             detail=str(seen)[:900])
     home = anon.get("/").get_data(as_text=True)
-    s.check("the guests' attribution stays as the owner chose it", "Workshop guest" in home)
+    # 26 Nov (owner, the naming rule): "Retreat guest, summer 2024", not "Workshop guest".
+    s.check("the guests' attribution is the owner's of 26 Nov", "Retreat guest" in home and "Workshop guest" not in home)
     s.check("the footer's label is retreats and events", "retreats and events" in home)
     s.check("so is its French and Spanish", m.translations.FR.get("retreats and events") == "séjours et événements"
             and m.translations.ES.get("retreats and events") == "retiros y eventos")
@@ -136,7 +137,8 @@ def _story(s, anon):
             all(x in text for x in ("classified as a ruin", "500 tonnes", "Prince Louis de Polignac",
                                     "Prince Albert II of Monaco", "family château, not a hotel",
                                     "every decision about the walls")))
-    s.check("one pair of buttons, not two", text.count("Discover the retreats") == 1, detail=str(text.count("Discover")))
+    s.check("one pair of buttons, not two", text.count("Experience the château") == 1,
+            detail=str(text.count("Experience the château")))
     s.check("and a photograph at the top", _photo_before_heading(html))
 
 

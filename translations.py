@@ -39,7 +39,7 @@ FR = {
     "See the rooms": "Voir les chambres",
     "Stay a night first": "Séjournez une nuit",
     "Your email": "Votre adresse e-mail",
-    "Workshops & Retreats": "Ateliers & retraites",
+    "Workshops & Retreats": "Séjours",
     "Dine at La Table": "Dîner à La Table",
     "Enquire": "Se renseigner",
     "Reserve": "Réserver",
@@ -125,7 +125,7 @@ FR = {
     # -- Navigation and shell -------------------------------------------
     "Stay": "Séjourner",
     "Stay Now": "Réserver un séjour",
-    "Workshops": "Ateliers",
+    "Workshops": "Séjours",
     # Site review 25 Nov: "Séjours", as the pages and "Séjours privés" say; "retraite" reads first as retirement.
     "Retreats": "Séjours",
     "Weddings & Events": "Mariages et événements",
@@ -276,19 +276,21 @@ FR = {
 
     # -- The guest's own account -----------------------------------------
     "Your château account": "Votre compte château",
-    "Your stays": "Vos séjours",
-    # Retreat, not workshop: the owner, 25 Nov 2026. "Retraite", as the
-    # retreat days say it -- "séjour" is already the guest's stay.
-    "Your retreats": "Vos retraites",
-    "Retreat": "Retraite",
-    "The retreats": "Les retraites",
+    # Retreat, not workshop: the owner, 25 Nov 2026. In French a retreat is
+    # "un séjour", never "une retraite", which first means retirement (the
+    # owner, 26 Nov). So the room bookings on the same page are the nights.
+    "Your stays": "Vos nuits au château",
+    "Your retreats": "Vos séjours",
+    "Retreat": "Séjour",
+    "Your retreat": "Votre séjour",
+    "The retreats": "Les séjours",
     "Your dinners": "Vos dîners",
     "Your account": "Votre compte",
     # The guest's statement of account.
     "Your statement": "Votre relevé",
     "Nothing charged or paid yet.": "Rien n'a encore été facturé ni payé.",
-    "Pay for this stay": "Régler ce séjour",
-    "Pay for this retreat": "Régler cette retraite",
+    "Pay for this stay": "Régler cette réservation",
+    "Pay for this retreat": "Régler ce séjour",
     "Pay towards this event": "Régler une partie de cet événement",
     "Back to your account": "Retour à votre compte",
     "Print": "Imprimer",
@@ -309,7 +311,7 @@ FR = {
     "We have your request. It will be done within a month.":
         "Nous avons bien reçu votre demande. Elle sera traitée sous un mois.",
     "Your booking": "Votre réservation",
-    "Your workshop": "Votre atelier",
+    "Your workshop": "Votre séjour",
     "Your table": "Votre table",
     "Your enquiry": "Votre demande",
     "Nothing booked at the moment.": "Aucune réservation pour le moment.",
@@ -753,12 +755,12 @@ FR = {
     'Unsubscribe': 'Se désabonner',
     'Unsubscribe in one click.': 'Désabonnement en un clic.',
     'Update': 'Mettre à jour',
-    'View this workshop': 'Voir cet atelier',
+    'View this workshop': 'Voir ce séjour',
     'Wedding': 'Mariage',
     'What can we arrange for you?': 'Que pouvons-nous organiser pour vous ?',
     'What kind of event?': 'Quel type de réception ?',
     'Where to Begin': 'Par où commencer',
-    'Workshop': 'Atelier',
+    'Workshop': 'Séjour',
     'Write to us': 'Écrivez-nous',
     'Yes': 'Oui',
     'Your past stays': 'Vos séjours précédents',
@@ -773,7 +775,7 @@ FR = {
     'Let us know roughly when to expect you, so someone is there to meet you.': "Dites-nous à peu près quand vous arriverez, afin que quelqu'un soit là pour vous accueillir.",
     'Manage this enquiry': 'Gérer cette demande',
     'Occasion': 'Occasion',
-    'The ateliers': 'Les ateliers',
+    'The ateliers': 'Les séjours',
     'Your events': 'Vos événements',
     'stays &amp; general': 'séjours et questions générales',
     'retreats and events': 'séjours et événements',
@@ -892,7 +894,7 @@ FR = {
     "Dinner in the village of Les Cabannes": "Le dîner au village des Cabannes",
     "Into the vast cave at Lombrives, then lunch in Ax-les-Thermes":
         "Dans l’immense grotte de Lombrives, puis le déjeuner à Ax-les-Thermes",
-    "Chocolate-making, or the afternoon to yourself": "L’atelier chocolat, ou l’après-midi rien qu’à vous",
+    "Chocolate-making, or the afternoon to yourself": "La fabrication du chocolat, ou l’après-midi rien qu’à vous",
     "The farewell banquet in the Salon de Musique, then dancing": "Le banquet d’adieu dans le Salon de Musique, puis on danse",
     "Morning yoga, then the château and its restoration, room by room":
         "Le yoga du matin, puis le château et sa restauration, pièce par pièce",
@@ -922,8 +924,8 @@ FR = {
         "Un cours de cuisine avec les chefs du château, ou l’après-midi rien qu’à vous",
     "A tasting of the region’s wines, then dinner by candlelight":
         "Une dégustation des vins de la région, puis le dîner aux chandelles",
-    "The morning given to the retreat’s own sessions": "La matinée consacrée aux séances de la retraite",
-    "The final session": "La dernière séance",
+    "The morning given to the retreat’s own theme": "La matinée consacrée au thème du séjour",
+    "A last morning on the retreat’s theme": "Une dernière matinée sur le thème du séjour",
     "The afternoon to settle in, with the château dressed for Christmas":
         "L’après-midi pour vous installer, dans un château paré pour Noël",
     "The château and its restoration, room by room": "Le château et sa restauration, pièce par pièce",
@@ -951,6 +953,49 @@ FR = {
     "A last, unhurried breakfast": "Un dernier petit-déjeuner, sans hâte",
     "A picnic bag each, packed by the kitchen, for the journey onward":
         "Un panier pique-nique pour chacun, préparé par la cuisine, pour la suite du voyage",
+    # -- Second sweep, 26 Nov 2026: the naming rule and the brocante tour, on the pages with an id in
+    #    their address (a retreat's own page, a guest's own pages) and the 404 page, which the
+    #    page_text.py staleness check does not walk. --------------------------------------------
+    'The full château experience, three to seven nights':
+        'L’expérience complète du château, de trois à sept nuits',
+    'One price for the full château experience: every meal, the chefs, the brocantes, the restoration, and everything below. A night’s stay is a room and breakfast.':
+        'Un seul prix pour l’expérience complète du château : chaque repas, les chefs, les brocantes, la restauration, et tout ce qui suit. Une nuit, c’est une chambre et le petit-déjeuner.',
+    'One price for the full château experience: every meal, the chefs, the restoration, and everything below. A night’s stay is a room and breakfast.':
+        'Un seul prix pour l’expérience complète du château : chaque repas, les chefs, la restauration, et tout ce qui suit. Une nuit, c’est une chambre et le petit-déjeuner.',
+    'The classes: the retreat’s own theme, the kitchen, morning yoga and more, all optional':
+        'Les cours : le thème propre au séjour, la cuisine, le yoga du matin et plus encore, tout est facultatif',
+    'A traditional French breakfast, then the morning’s class or outing':
+        'Un petit-déjeuner traditionnel français, puis le cours ou la sortie du matin',
+    'The classes and outings: the brocantes, the kitchen or the restoration':
+        'Les cours et les sorties : les brocantes, la cuisine ou la restauration',
+    'While a retreat runs, the château takes no other guests. Not a floor, not a wing — the building, the gardens, the pool, the salons and the kitchen, for the length of your stay.':
+        'Le temps d’un séjour, le château ne reçoit personne d’autre. Pas un étage, pas une aile — le bâtiment, les jardins, la piscine, les salons et la cuisine, pour toute la durée de votre venue.',
+    'A retreat rather than a stay':
+        'Un séjour plutôt qu’une simple nuit',
+    'A retreat has the château on these dates':
+        'Un séjour occupe le château à ces dates',
+    "Everything charged, paid and given back, across every stay, retreat, event and dinner deposit, with a running balance. Each booking's own bill is the authority; this adds them up, booking by booking.":
+        'Tout ce qui a été facturé, payé et remboursé, pour chaque nuit, séjour, événement et acompte de dîner, avec un solde courant. La facture de chaque réservation fait foi ; cette page les additionne, réservation par réservation.',
+    'Anything you would like to add — a table for dinner, a place on a retreat — is on':
+        'Tout ce que vous souhaitez ajouter — une table pour le dîner, une place sur un séjour — se trouve sur',
+    'You will still receive emails about your own bookings — confirmations, changes and anything to do with a stay, a dinner or a retreat you have reserved.':
+        'Vous recevrez toujours les e-mails concernant vos propres réservations — confirmations, modifications et tout ce qui touche à une nuit, un dîner ou un séjour que vous avez réservé.',
+    'You have already sent feedback for this retreat — thank you!':
+        'Vous nous avez déjà envoyé votre avis sur ce séjour — merci !',
+    'Arrive a day early or stay on after the retreat, in the same rooms: booked here and paid online, at the nightly rate.':
+        'Arrivez un jour plus tôt ou restez après le séjour, dans les mêmes chambres : réservé ici et payé en ligne, au tarif de la nuit.',
+    'Move to other dates':
+        'Changer de dates',
+    'Registrations are non-refundable, deposit included. Write to us before you cancel — we can usually move you to other dates instead.':
+        'Les inscriptions ne sont pas remboursables, acompte compris. Écrivez-nous avant d’annuler — nous pouvons généralement vous proposer d’autres dates.',
+    'A Brocante Tour & Château Retreat':
+        'Un circuit des brocantes et un séjour au château',
+    'Antique & French Finds · A Brocante Tour & Château Retreat — Château de Gudanes':
+        'Antique & French Finds · Un circuit des brocantes et un séjour au château — Château de Gudanes',
+    'A three-day brocante tour from the château, devoted to':
+        'Un circuit des brocantes de trois jours au départ du château, pour',
+    ': the French art of hunting, unhurried, for beautiful old things. Go out to the antique markets, the hidden dealers and the village':
+        ' : l’art français de dénicher, sans se presser, les beaux objets anciens. Partez vers les marchés d’antiquités, les marchands cachés et les',
 }
 
 ES = {
@@ -958,7 +1003,7 @@ ES = {
     "See the rooms": "Ver las habitaciones",
     "Stay a night first": "Quédese una noche",
     "Your email": "Su correo electrónico",
-    "Workshops & Retreats": "Talleres y retiros",
+    "Workshops & Retreats": "Retiros",
     "Dine at La Table": "Comer en La Table",
     "Enquire": "Consultar",
     "Reserve": "Reservar",
@@ -1044,7 +1089,7 @@ ES = {
     # -- Navigation and shell -------------------------------------------
     "Stay": "Alojarse",
     "Stay Now": "Reservar estancia",
-    "Workshops": "Talleres",
+    "Workshops": "Retiros",
     "Retreats": "Retiros",
     "Weddings & Events": "Bodas y eventos",
     "Weddings & Celebrations": "Bodas y celebraciones",
@@ -1219,7 +1264,8 @@ ES = {
     "We have your request. It will be done within a month.":
         "Hemos recibido su solicitud. Se atenderá en el plazo de un mes.",
     "Your booking": "Su reserva",
-    "Your workshop": "Su taller",
+    "Your workshop": "Su retiro",
+    "Your retreat": "Su retiro",
     "Your table": "Su mesa",
     "Your enquiry": "Su solicitud",
     "Nothing booked at the moment.": "No hay reservas por el momento.",
@@ -1586,7 +1632,7 @@ ES = {
     'Manage this enquiry': 'Gestionar esta solicitud',
     'Occasion': 'Ocasión',
     'Stay the night': 'Pasar la noche',
-    'The ateliers': 'Los talleres',
+    'The ateliers': 'Los retiros',
     'Your events': 'Sus eventos',
     'stays &amp; general': 'estancias y consultas generales',
     'retreats and events': 'retiros y eventos',
@@ -1686,7 +1732,7 @@ ES = {
     "Dinner in the village of Les Cabannes": "La cena en el pueblo de Les Cabannes",
     "Into the vast cave at Lombrives, then lunch in Ax-les-Thermes":
         "La inmensa cueva de Lombrives y luego el almuerzo en Ax-les-Thermes",
-    "Chocolate-making, or the afternoon to yourself": "El taller de chocolate, o la tarde para usted",
+    "Chocolate-making, or the afternoon to yourself": "Hacer chocolate, o la tarde para usted",
     "The farewell banquet in the Salon de Musique, then dancing":
         "El banquete de despedida en el Salon de Musique y luego baile",
     "Morning yoga, then the château and its restoration, room by room":
@@ -1715,8 +1761,8 @@ ES = {
         "Una clase de cocina con los chefs del castillo, o la tarde para usted",
     "A tasting of the region’s wines, then dinner by candlelight":
         "Una cata de vinos de la región y luego la cena a la luz de las velas",
-    "The morning given to the retreat’s own sessions": "La mañana dedicada a las sesiones del propio retiro",
-    "The final session": "La última sesión",
+    "The morning given to the retreat’s own theme": "La mañana dedicada al tema del retiro",
+    "A last morning on the retreat’s theme": "Una última mañana sobre el tema del retiro",
     "The afternoon to settle in, with the château dressed for Christmas":
         "La tarde para instalarse, con el castillo vestido para la Navidad",
     "The château and its restoration, room by room": "El castillo y su restauración, sala por sala",
@@ -1745,6 +1791,49 @@ ES = {
     "A last, unhurried breakfast": "Un último desayuno sin prisas",
     "A picnic bag each, packed by the kitchen, for the journey onward":
         "Una bolsa de pícnic para cada uno, preparada por la cocina, para el resto del viaje",
+    # -- Second sweep, 26 Nov 2026: the naming rule and the brocante tour, on the pages with an id in
+    #    their address (a retreat's own page, a guest's own pages) and the 404 page, which the
+    #    page_text.py staleness check does not walk. --------------------------------------------
+    'The full château experience, three to seven nights':
+        'La experiencia completa del castillo, de tres a siete noches',
+    'One price for the full château experience: every meal, the chefs, the brocantes, the restoration, and everything below. A night’s stay is a room and breakfast.':
+        'Un solo precio para la experiencia completa del castillo: cada comida, los chefs, las brocantes, la restauración y todo lo que sigue. Una noche es una habitación y el desayuno.',
+    'One price for the full château experience: every meal, the chefs, the restoration, and everything below. A night’s stay is a room and breakfast.':
+        'Un solo precio para la experiencia completa del castillo: cada comida, los chefs, la restauración y todo lo que sigue. Una noche es una habitación y el desayuno.',
+    'The classes: the retreat’s own theme, the kitchen, morning yoga and more, all optional':
+        'Las clases: el tema propio del retiro, la cocina, el yoga matinal y más, todo opcional',
+    'A traditional French breakfast, then the morning’s class or outing':
+        'Un desayuno tradicional francés y, después, la clase o la salida de la mañana',
+    'The classes and outings: the brocantes, the kitchen or the restoration':
+        'Las clases y las salidas: las brocantes, la cocina o la restauración',
+    'While a retreat runs, the château takes no other guests. Not a floor, not a wing — the building, the gardens, the pool, the salons and the kitchen, for the length of your stay.':
+        'Mientras dura un retiro, el castillo no recibe a otros huéspedes. Ni una planta ni un ala — el edificio, los jardines, la piscina, los salones y la cocina, durante toda su estancia.',
+    'A retreat rather than a stay':
+        'Un retiro en lugar de una estancia',
+    'A retreat has the château on these dates':
+        'Un retiro ocupa el castillo en estas fechas',
+    "Everything charged, paid and given back, across every stay, retreat, event and dinner deposit, with a running balance. Each booking's own bill is the authority; this adds them up, booking by booking.":
+        'Todo lo cobrado, pagado y devuelto, en cada estancia, retiro, evento y depósito de cena, con un saldo acumulado. La factura de cada reserva es la referencia; aquí se suman, reserva por reserva.',
+    'Anything you would like to add — a table for dinner, a place on a retreat — is on':
+        'Todo lo que quiera añadir — una mesa para cenar, una plaza en un retiro — está en',
+    'You will still receive emails about your own bookings — confirmations, changes and anything to do with a stay, a dinner or a retreat you have reserved.':
+        'Seguirá recibiendo los correos sobre sus propias reservas — confirmaciones, cambios y todo lo relacionado con una estancia, una cena o un retiro que haya reservado.',
+    'You have already sent feedback for this retreat — thank you!':
+        'Ya nos ha enviado su opinión sobre este retiro — ¡gracias!',
+    'Arrive a day early or stay on after the retreat, in the same rooms: booked here and paid online, at the nightly rate.':
+        'Llegue un día antes o quédese después del retiro, en las mismas habitaciones: se reserva aquí y se paga en línea, a la tarifa por noche.',
+    'Move to other dates':
+        'Cambiar de fechas',
+    'Registrations are non-refundable, deposit included. Write to us before you cancel — we can usually move you to other dates instead.':
+        'Las inscripciones no son reembolsables, depósito incluido. Escríbanos antes de cancelar — normalmente podemos pasarle a otras fechas.',
+    'A Brocante Tour & Château Retreat':
+        'Una ruta de brocantes y un retiro en el castillo',
+    'Antique & French Finds · A Brocante Tour & Château Retreat — Château de Gudanes':
+        'Antique & French Finds · Una ruta de brocantes y un retiro en el castillo — Château de Gudanes',
+    'A three-day brocante tour from the château, devoted to':
+        'Una ruta de brocantes de tres días desde el castillo, dedicada a',
+    ': the French art of hunting, unhurried, for beautiful old things. Go out to the antique markets, the hidden dealers and the village':
+        ': el arte francés de buscar, sin prisa, objetos antiguos hermosos. Vaya a los mercados de antigüedades, a los anticuarios escondidos y a los',
 }
 
 # The public pages' own prose, kept in its own file because it is 1,900
