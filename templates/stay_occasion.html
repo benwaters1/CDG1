@@ -14,7 +14,9 @@
   <p class="g-lede">{{ date_range(occ['first_night'], occ.departure) }}{% if occ.from_price %} · from <span class="g-fig" data-eur="{{ occ.from_price|int }}">€{{ '{:,.0f}'.format(occ.from_price) }}</span> a night{% endif %}</p>
   <figure style="margin:var(--s5) 0"><img src="{{ occ.photo_url }}" alt="{{ occ['name'] }} at Château de Gudanes" style="width:100%;max-height:28rem;object-fit:cover;border-radius:2px" loading="eager" decoding="async"></figure>
   {% for para in (occ['description'] or '').split('\n') if para.strip() %}<p class="g-p">{{ para }}</p>{% endfor %}
-  <p class="g-p g-occasion__chef"><span class="g-occasion__tag">{{ occ.chef_tag }}</span> {{ occ.chef_line }}</p>
+  {#- Second sweep, 26 Nov (2.12): the tag printed "Room and breakfast" and the owner's line, word for word, began with the
+      same three words. The line says it, so the tag is left off where it would only repeat it. #}
+  <p class="g-p g-occasion__chef">{% if not (occ.chef_line or '').startswith(occ.chef_tag or '') %}<span class="g-occasion__tag">{{ occ.chef_tag }}</span> {% endif %}{{ occ.chef_line }}</p>
 
   {#- DINNER AT GUDANES (owner, 25 Nov 2026): the nights, the time and the price, and that it is added when the room is
       booked. What is cooked is in the uploaded menu, never in words written here. A one-night occasion is a Dinner at

@@ -327,6 +327,137 @@ def _brocante_tour(s, anon, conn):
             and "Brocante Tour" not in fr_seen and "brocante tour" not in fr_seen, detail=fr_seen[:200])
 
 
+def _occasion_label(s, conn):
+    s.section("2.12 An occasion page says Room and breakfast once")
+    # One of its own, live and ahead: the local copy holds none, and the house's thirteen are not this test's.
+    from datetime import timedelta
+    today, now = m.house_today(), "2026-11-26T09:00:00+00:00"
+    made = conn.execute(
+        """INSERT INTO stay_occasions (name, slug, first_night, last_night, status, kind, created_at, updated_at)
+           VALUES ('ZZSWEEP Occasion', 'zzsweep-occasion', ?, ?, 'live', 'stay', ?, ?)""",
+        ((today + timedelta(days=200)).isoformat(), (today + timedelta(days=202)).isoformat(), now, now)).lastrowid
+    room = conn.execute("SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    conn.execute("INSERT INTO stay_occasion_prices (occasion_id, room_id, price) VALUES (?, ?, 300)", (made, room["id"]))
+    conn.commit()
+    occ = conn.execute("SELECT id, slug, chef_on_site FROM stay_occasions WHERE id = ?", (made,)).fetchone()
+    try:
+        conn.execute("UPDATE stay_occasions SET chef_on_site = 0 WHERE id = ?", (occ["id"],))
+        conn.commit()
+        with m.app.test_request_context("/"):
+            path = m.url_for("stay_occasion_page", slug=occ["slug"])
+        text = _flat(visible_text(m.app.test_client().get(path).get_data(as_text=True)))
+        s.check("with the chef away, the owner's line is there", m.CHEF_OFF_SITE_LINE in text, detail=path)
+        s.check("and the label is not printed in front of it again", "Room and breakfast Room and breakfast" not in text)
+        conn.execute("UPDATE stay_occasions SET chef_on_site = 1 WHERE id = ?", (occ["id"],))
+        conn.commit()
+        text = _flat(visible_text(m.app.test_client().get(path).get_data(as_text=True)))
+        s.check("with the chef in, the label still leads its line", "Chef in the house " + m.CHEF_ON_SITE_LINE in text)
+    finally:
+        conn.execute("DELETE FROM stay_occasion_prices WHERE occasion_id = ?", (made,))
+        conn.execute("DELETE FROM stay_occasions WHERE id = ?", (made,))
+        conn.commit()
+
+
+def _footer(s):
+    s.section("1.21 The newsletter promises no more rooms")
+    for path, line in (("/", "The restoration as it happens, and the retreat dates."),
+                       ("/fr/", "La restauration au fil des travaux, et les dates des séjours."),
+                       ("/es/", "La restauración a medida que avanza y las fechas de los retiros.")):
+        html = m.app.test_client().get(path).get_data(as_text=True)
+        s.check(f"{path}: {line[:40]}...", line in html and "as they open" not in html
+                and "à mesure qu'elles ouvrent" not in html)
+
+
+def _winter_rest(s, conn):
+    s.section("2.2 The winter rest is said as one")
+    rooms = [r["id"] for r in conn.execute("SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 3")]
+    year = m.house_today().year + 1
+    start, end = f"{year}-12-01", f"{year + 1}-02-15"
+    put_back = _harness.keep_rows(conn, "app_settings", "key = ?", (m.WINTER_REST_AS_SEASON_26NOV,))
+    made_blocks, made_season = [], None
+    try:
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (m.WINTER_REST_AS_SEASON_26NOV,))
+        now = "2026-11-26T09:00:00+00:00"
+        made_season = conn.execute(
+            "INSERT INTO room_seasons (name, start_md, end_md, room_ids, display_mode, note, reason, created_at) "
+            "VALUES ('ZZSWEEP winter', '12-01', '02-15', ?, 'booked', NULL, 'too large to heat', ?)",
+            (str(rooms[0]), now)).lastrowid
+        for rid, a, b, reason, season in ((rooms[0], start, end, "too large to heat", made_season),
+                                          (rooms[1], f"{year}-12-20", f"{year + 1}-01-03", "family", None),
+                                          (rooms[2], start, end, "Booking.com stay", None)):
+            made_blocks.append(conn.execute(
+                "INSERT INTO room_blocks (room_id, start_date, end_date, reason, created_at, display_mode, season_id) "
+                "VALUES (?, ?, ?, ?, ?, 'booked', ?)", (rid, a, b, reason, now, season)).lastrowid)
+        conn.commit()
+        s.check("the winter's closure is changed, and only it", m.show_winter_rest_as_season(conn) == 1)
+        conn.commit()
+        got = {r["id"]: (r["display_mode"], r["note"]) for r in conn.execute(
+            f"SELECT id, display_mode, note FROM room_blocks WHERE id IN ({','.join('?' * len(made_blocks))})",
+            made_blocks)}
+        mode, note = got[made_blocks[0]]
+        s.check("closed for the season, with the date it reopens", mode == "season" and note and "reopens on 15 Feb"
+                in note, detail=str(got[made_blocks[0]]))
+        s.check("a family Christmas and a channel's stay still show as booked",
+                got[made_blocks[1]][0] == "booked" and got[made_blocks[2]][0] == "booked", detail=str(got))
+        s.check("and the saved season puts it on that way next year",
+                conn.execute("SELECT display_mode FROM room_seasons WHERE id = ?", (made_season,)).fetchone()[0] == "season")
+        page = m.app.test_client().get(f"/book?arrival={year}-12-08&departure={year}-12-11&party_size=2")
+        text = _flat(visible_text(page.get_data(as_text=True)))
+        s.check("a winter search says the suite rests, in its own words", note in text and "belle saison" in text,
+                detail=text[:200])
+        conn.execute("UPDATE room_blocks SET display_mode = 'booked' WHERE id = ?", (made_blocks[0],))
+        conn.commit()
+        s.check("and it runs once: a closure put back to booked by hand stays booked",
+                m.show_winter_rest_as_season(conn) == 0)
+    finally:
+        if made_blocks:
+            conn.execute(f"DELETE FROM room_blocks WHERE id IN ({','.join('?' * len(made_blocks))})", made_blocks)
+        if made_season:
+            conn.execute("DELETE FROM room_seasons WHERE id = ?", (made_season,))
+        conn.commit()
+        put_back()
+
+
+def _see_through(s):
+    s.section("A3 The logo keeps its transparency at every size")
+    import io
+    from PIL import Image
+    name = "e" * 40 + ".png"
+    path = os.path.join(m.MIRROR_DIR, name)
+    # The wordmark's own kind of file: a palette PNG with one colour marked transparent, white letters on it.
+    img = Image.new("P", (900, 240), 0)
+    img.putpalette([0, 0, 0, 255, 255, 255] + [0] * (254 * 3))
+    img.paste(1, (300, 80, 600, 160))
+    img.info["transparency"] = 0
+    os.makedirs(m.MIRROR_DIR, exist_ok=True)
+    img.save(path, transparency=0)
+    try:
+        s.check("its sizes have an address of their own", m.pic_address(480, "~m/" + name).endswith("?a"),
+                detail=m.pic_address(480, "~m/" + name))
+        jpg = next((f for f in sorted(os.listdir(os.path.join(_harness.ROOT, "static", "img", "rk")))
+                    if f.endswith(".jpg")), None)
+        s.check("which a photograph does not need", jpg and not m.pic_address(480, "rk/" + jpg).endswith("?a"))
+        r = m.app.test_client().get(f"/pic/480/~m/{name}?a")
+        made = Image.open(io.BytesIO(r.get_data())) if r.status_code == 200 else None
+        corner = made.convert("RGBA").getpixel((2, 2)) if made else None
+        middle = made.convert("RGBA").getpixel((240, 64)) if made else None
+        s.check("the size made keeps the see-through corner see-through", made is not None and made.mode == "RGBA"
+                and corner[3] == 0, detail=f"HTTP {r.status_code}, {made.mode if made else '-'}, corner {corner}")
+        s.check("and the letters white", middle is not None and middle[3] == 255 and min(middle[:3]) > 200,
+                detail=str(middle))
+        with m.app.test_request_context("/"):
+            page = m.app.response_class(
+                '<!doctype html><body class="g"><a class="g-logo"><img loading="lazy" src="/mirrored-photo/'
+                + name + '" alt="Château de Gudanes"></a></body>', mimetype="text/html")
+            done = m.pictures_at_their_size(page).get_data(as_text=True)
+        s.check("and the masthead's srcset asks for those sizes", f"/pic/480/~m/{name}?a 480w" in done, detail=done[-300:])
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 def run():
     s = Suite("The site's second sweep, 26 November 2026")
     anon = m.app.test_client()
@@ -339,6 +470,10 @@ def run():
         _hero(s, anon)
         _naming_rule(s, anon, conn)
         _brocante_tour(s, anon, conn)
+        _occasion_label(s, conn)
+        _footer(s)
+        _winter_rest(s, conn)
+        _see_through(s)
     finally:
         _setting(conn, "dining_mode", was_dm)
         conn.close()

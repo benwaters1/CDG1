@@ -108,7 +108,8 @@ def _old_words_everywhere(s, anon, conn):
             and m.translations.ES.get("retreats and events") == "retiros y eventos")
     s.check("and the newsletter's line has both", all(
         "retreat dates" in k and "séjours" in m.translations.FR[k] and "retiros" in m.translations.ES[k]
-        for k in m.translations.FR if k.startswith("The restoration, the rooms as they open")))
+        for k in m.translations.FR if k.startswith("The restoration as it happens"))
+        and any(k.startswith("The restoration as it happens") for k in m.translations.FR))
     s.check("/workshops' French eyebrow is not \"Les retraites\" (pensions, first)",
             "Les retraites" not in anon.get("/workshops").get_data(as_text=True))
 

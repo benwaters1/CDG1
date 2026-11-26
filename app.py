@@ -9597,6 +9597,7 @@ def init_db():
     correct_terms_checkout_11am(conn)
     correct_terms_site_review_25nov(conn)
     correct_terms_sweep_26nov(conn)
+    show_winter_rest_as_season(conn)
     conn.commit()
 
     # The list a room is walked against, so the first person to open the page
@@ -17318,6 +17319,57 @@ def correct_terms_sweep_26nov(conn):
     conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
                  "ON CONFLICT(key) DO NOTHING",
                  (TERMS_SWEEP_26NOV, datetime.now(timezone.utc).isoformat()))
+    return changed
+
+
+# Second sweep, 26 Nov 2026 (2.2, and the owner's 16 Oct "option A"). A winter
+# search showed the two suites as "Not available these dates · next free from
+# 15 February 2027", with no word of the winter rest. The winter box and the
+# reopening line are drawn for a closure kept "Closed for the season"; a saved
+# season is "Shown as booked" unless somebody changes it, which is the schema's
+# default, and that is what the suites' winter closure had. So once, a house
+# closure that is plainly the winter rest is shown as one: a saved season that
+# starts in November, December or January and ends by March, the closures it
+# put on, and any other closure of six weeks or more across the new year.
+# A channel's stay and a short closure (a family Christmas) are left as they
+# are; and the line is the room's own reopening date where none was written.
+WINTER_REST_AS_SEASON_26NOV = "winter_rest_as_season_26nov_done"
+WINTER_REST_LEAST_NIGHTS = 42
+
+
+def _winter_months(start_md, end_md):
+    return (start_md or "")[:2] in ("11", "12", "01") and (end_md or "")[:2] in ("01", "02", "03")
+
+
+def show_winter_rest_as_season(conn):
+    """The winter rest shown as a closure for the season, once. Returns how many closures changed."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                    (WINTER_REST_AS_SEASON_26NOV,)).fetchone():
+        return 0
+    winter_seasons = [r["id"] for r in conn.execute(
+        "SELECT id, start_md, end_md FROM room_seasons WHERE display_mode = 'booked'")
+        if _winter_months(r["start_md"], r["end_md"])]
+    conn.executemany("UPDATE room_seasons SET display_mode = 'season' WHERE id = ?",
+                     [(i,) for i in winter_seasons])
+    changed = 0
+    for r in conn.execute(
+            """SELECT room_blocks.id, room_blocks.start_date, room_blocks.end_date, room_blocks.note,
+                      room_blocks.reason, room_blocks.season_id, rooms.name AS room_name
+                 FROM room_blocks JOIN rooms ON rooms.id = room_blocks.room_id
+                WHERE room_blocks.display_mode = 'booked' AND room_blocks.end_date > ?""",
+            (house_today_iso(),)).fetchall():
+        start, end = parse_date(r["start_date"]), parse_date(r["end_date"])
+        if not (start and end) or (r["reason"] or "").lower().startswith("booking.com"):
+            continue
+        long_winter = ((end - start).days >= WINTER_REST_LEAST_NIGHTS
+                       and _winter_months(r["start_date"][5:], r["end_date"][5:]))
+        if r["season_id"] not in winter_seasons and not long_winter:
+            continue
+        conn.execute("UPDATE room_blocks SET display_mode = 'season', note = ? WHERE id = ?",
+                     ((r["note"] or "").strip() or default_closure_note(r["room_name"], r["end_date"]), r["id"]))
+        changed += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
+                 (WINTER_REST_AS_SEASON_26NOV, datetime.now(timezone.utc).isoformat()))
     return changed
 
 
@@ -74793,6 +74845,7 @@ def slim_photo_copy(path):
 PIC_WIDTHS = (480, 800, 1200, 1600, 2400)
 PIC_DIR = os.path.join(MIRROR_DIR, "sized")
 _PIC_SIZE = {}
+_PIC_ALPHA = {}
 _PIC_SIZE_LOCK = threading.Lock()
 
 
@@ -74885,11 +74938,41 @@ def pic_size(src):
         from PIL import Image, ImageOps
         with Image.open(path) as im:
             size = ImageOps.exif_transpose(im).size
+            alpha = _has_alpha(im)
     except Exception:
-        size = None
+        size, alpha = None, False
     with _PIC_SIZE_LOCK:
         _PIC_SIZE[key] = size
+        _PIC_ALPHA[key] = alpha
     return size
+
+
+def _has_alpha(im):
+    """Whether a picture has see-through parts: an alpha channel, or a palette with a transparent colour."""
+    return im.mode in ("RGBA", "LA", "PA") or "transparency" in im.info
+
+
+# A PICTURE WITH SEE-THROUGH PARTS KEEPS THEM (second sweep, 26 Nov 2026, A3).
+# The logo is a white wordmark on a transparent PNG with a palette. The sizes
+# were made by converting anything not RGB to RGB, which turns the transparent
+# colour black, so wherever the browser took a size from the srcset the masthead
+# drew the wordmark in a black box over the hero photograph. The reviewer saw it
+# on /fr/; it was every page whose browser chose a size. Two halves: the size
+# is made with its alpha, under a new stored name so the black copy on the
+# volume is not served again; and its address carries "?a", because a browser
+# keeps a size for thirty days and would otherwise go on drawing the black one.
+def pic_address(width, rel):
+    """The /pic address of one size of a house picture."""
+    src = rel if rel.startswith(("~m/", "~r/")) else "/static/img/" + rel
+    pic_size(src)
+    path = _pic_file(src)
+    try:
+        key = (path, os.stat(path).st_mtime_ns) if path else None
+    except OSError:
+        key = None
+    with _PIC_SIZE_LOCK:
+        alpha = bool(key and _PIC_ALPHA.get(key))
+    return f"/pic/{width}/{rel}" + ("?a" if alpha else "")
 
 
 def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upto=None):
@@ -74911,7 +74994,7 @@ def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upt
     if size:
         widths = [x for x in PIC_WIDTHS if x < w] + [w]
         attrs.append('srcset="' + ", ".join(
-            f"/pic/{x}/{escape(rel)} {x}w" for x in widths) + '"')
+            f"{escape(pic_address(x, rel))} {x}w" for x in widths) + '"')
         # 9 Nov 2026, evening (owner's second review, 3.1): "auto" first, for a lazy photograph.
         # Each component guessed its own width in `sizes`, and many guessed low -- a
         # retreat photograph said 389px and was drawn at 686, so the browser took the
@@ -75009,7 +75092,7 @@ def pictures_at_their_size(response):
         widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
         if len(widths) < 2:
             return tag
-        srcset = ", ".join(f"/pic/{x}/{rel} {x}w" for x in widths)
+        srcset = ", ".join(f"{pic_address(x, rel)} {x}w" for x in widths)
         # A tag that already says how wide it is drawn keeps its own sizes (a second one is ignored).
         sizes = "" if re.search(r"\ssizes=", tag) else (
             ' sizes="auto, 100vw"' if 'loading="lazy"' in tag else ' sizes="100vw"')
@@ -75038,15 +75121,18 @@ def sized_photo(width, filename):
             or (width not in PIC_WIDTHS and width != size[0])):
         abort(404)
     stamp = os.stat(path).st_mtime_ns
-    name = hashlib.sha1(f"{filename}|{stamp}|{width}".encode()).hexdigest() + ".webp"
+    # "|alpha" (26 Nov 2026): every size made before kept no transparency, so
+    # the stored names change once and each is made again, see pic_address.
+    name = hashlib.sha1(f"{filename}|{stamp}|{width}|alpha".encode()).hexdigest() + ".webp"
     out = os.path.join(PIC_DIR, name)
     if not os.path.isfile(out):
         from PIL import Image, ImageOps
         os.makedirs(PIC_DIR, exist_ok=True)
         with Image.open(path) as im:
+            alpha = _has_alpha(im)
             im = ImageOps.exif_transpose(im)
-            if im.mode not in ("RGB", "RGBA"):
-                im = im.convert("RGB")
+            if im.mode not in ("RGB", "RGBA") or (alpha and im.mode != "RGBA"):
+                im = im.convert("RGBA" if alpha else "RGB")
             if width < im.size[0]:
                 im = im.resize((width, round(im.size[1] * width / im.size[0])),
                                Image.LANCZOS)
@@ -75114,7 +75200,7 @@ def size_hero(tag):
     if not size:
         return tag
     widths = [x for x in PIC_WIDTHS if x < size[0]] + [size[0]]
-    srcset = ", ".join(f"/pic/{x}/{html_escape(rel)} {x}w" for x in widths)
+    srcset = ", ".join(f"{html_escape(pic_address(x, rel))} {x}w" for x in widths)
     close = "/>" if tag.endswith("/>") else ">"
     # A tag that says how wide it is drawn keeps its own sizes: the room page's photograph sits in a 24rem column beside
     # the room's name (24 Nov 2026), and "100vw" sent a phone and a computer the full-width file for it. A second sizes
