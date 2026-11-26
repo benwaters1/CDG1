@@ -517,6 +517,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     # until the owner has read it. See run_birthday_letter_job.
     "automation_birthday_letter_enabled": "0",
     "automation_birthday_letter_days_before": "30",
+    # OFF (24 Nov 2026): asking atelier guests, a week ahead, how they are
+    # getting to the Toulouse meeting. See run_workshop_travel_ask_job.
+    "automation_workshop_travel_ask_enabled": "0",
     "automation_backup_interval_hours": "24",
     "automation_social_schedule_enabled": "1",
     # OFF until somebody turns it on. The switch is the last thing between a
@@ -2542,6 +2545,15 @@ DEFAULT_EMAIL_TEMPLATES = [
      "in the Pyrenees, breakfast in the morning, the mountains all around \u2014 we "
      "would be delighted to have you:\n{book_url}\n\nAnd if you already have plans, "
      "we wish you a very happy birthday.\n\n\u2014 Ch\u00e2teau de Gudanes"),
+    ("workshop_travel_ask", "Workshop: How they are getting to Toulouse",
+     "Getting to {workshop_title}",
+     "Hi {guest_name},\n\n{workshop_title} begins on {start_day}. We meet at midday "
+     "that day at the Grand H\u00f4tel de l'Op\u00e9ra, on Place du Capitole in "
+     "Toulouse, and drive up to the ch\u00e2teau together.\n\nSo that we know who to "
+     "look out for, would you tell us how you are getting there: the train or flight "
+     "you are coming in on and when it arrives, or that you are making your own way "
+     "to the ch\u00e2teau? It takes a minute, on your booking page:\n{manage_url}"
+     "\n\n\u2014 Ch\u00e2teau de Gudanes"),
     ("room_feedback_request", "Rooms: How was your stay?",
      "How was your stay at Ch\u00e2teau de Gudanes?",
      "Hi {guest_name},\n\nWe hope the ch\u00e2teau treated you well. If you have a "
@@ -8380,6 +8392,27 @@ def init_db():
         # at most once a year whatever runs twice. The token is their way to
         # stop them, read by the same unsubscribe page as a campaign's.
         ("come_back_letters", COME_BACK_LETTERS_TABLE),
+        # THE TOULOUSE MEETING (24 Nov 2026). For a place on an atelier that
+        # starts in Toulouse: whether they meet the house there ('meet') or
+        # make their own way to the chateau ('direct'), the train or flight
+        # and its time in their own words, when and by whom it was said, and
+        # when they were asked (the week-ahead letter goes once).
+        ("workshop_bookings_travel_how",
+         "ALTER TABLE workshop_bookings ADD COLUMN travel_how TEXT "
+         "CHECK(travel_how IN ('meet','direct'))"),
+        ("workshop_bookings_travel_detail",
+         "ALTER TABLE workshop_bookings ADD COLUMN travel_detail TEXT"),
+        ("workshop_bookings_travel_told_at",
+         "ALTER TABLE workshop_bookings ADD COLUMN travel_told_at TEXT"),
+        ("workshop_bookings_travel_told_by",
+         "ALTER TABLE workshop_bookings ADD COLUMN travel_told_by TEXT"),
+        ("workshop_bookings_travel_asked_at",
+         "ALTER TABLE workshop_bookings ADD COLUMN travel_asked_at TEXT"),
+        # The drive booked from a sitting's run sheet, so the sheet knows a
+        # car is booked and the same drive is not booked twice.
+        ("vehicle_transfers_workshop_session",
+         "ALTER TABLE vehicle_transfers ADD COLUMN workshop_session_id INTEGER "
+         "REFERENCES workshop_sessions(id) ON DELETE SET NULL"),
         # THE KITCHEN'S CLEANING, KEPT (23 November 2026). cleaning_rounds
         # holds only when each job was LAST done, and the question the chef
         # or an inspector asks is when it was done before that. One row each
@@ -10160,6 +10193,8 @@ NAV_AREAS = {
         "consume_workshop_materials", "delete_workshop_custom_field", "edit_workshop_session", "mark_workshop_balance_paid",
         "mark_workshop_deposit_paid", "new_workshop_custom_field", "remove_workshop_material", "set_workshop_occupancy",
         "toggle_workshop_do_not_email", "workshop_rooming", "admin_workshop_session",
+        # The Toulouse meeting's run sheet (24 Nov 2026).
+        "workshop_toulouse", "set_workshop_travel", "book_toulouse_drive",
         # The register's own: printing it, adding somebody by hand, moving or
         # correcting a registration.
         "workshop_register_print", "add_workshop_registration",
@@ -33393,6 +33428,7 @@ LETTER_TRIGGERS = {
     'review_invitation': ('Sent by the daily job to a guest whose stay feedback was glowing, once, 2 or more days after they gave it (only once a review page link is set). Also sent when staff press Ask for a review on a feedback entry.'),
     'room_year_on': ('Sent between 09:00 and 12:00, once a year at most to an address, to a guest whose stay a year ago is coming round within the days set under Automation (30 as shipped), unless they are booked to come again. Needs its Automation switch on.'),
     'guest_anniversary_ahead': ('Sent between 09:00 and 12:00, once a year, to a guest whose profile carries an anniversary falling within the days set under Automation (30 as shipped), unless they are booked to stay around it. Needs its Automation switch on.'),
+    'workshop_travel_ask': ('Sent between 09:00 and 12:00, once, to each confirmed guest on an atelier that starts with the Toulouse meeting who has not said how they are getting there, in the week before it begins. Needs its Automation switch on.'),
     'guest_birthday_ahead': ('Sent between 09:00 and 12:00, once a year, to a guest whose profile carries a birthday falling within the days set under Automation (30 as shipped), unless they are booked to stay around it or had another of these letters in the last six weeks. Needs its Automation switch on.'),
     'room_feedback_request': ('Sent by the daily job 3 days after departure to a confirmed stay with no feedback. Also sent at once when staff check a stay out at the desk. Once per stay.'),
     'workshop_feedback_request': ('Sent by the daily job once per confirmed registration, on or after the day after the atelier ends.'),
@@ -41101,6 +41137,21 @@ def owner_home_warnings(conn, today):
         add("warn", "The police register has gaps",
             "; ".join(parts) + ". French law wants a signed fiche for each foreign guest "
             "on arrival.", missing + unsigned, "police_register_page")
+
+    # THE TOULOUSE MEETING, in the week before an atelier that starts there:
+    # guests who have not said how they are getting to it, and no car booked.
+    # It closes itself -- an answer, a car, or the day going by.
+    for s in toulouse_sittings(conn, today, today + timedelta(days=TOULOUSE_ASK_DAYS)):
+        tm = toulouse_meeting(conn, s["id"])
+        unsaid = tm["count"]["unsaid"]
+        parts = ([f"{counted(unsaid, 'guest')} not said how they are getting there"]
+                 if unsaid else []) + ([] if tm["pickup"] else ["no car booked for it"])
+        if parts:
+            soon = (tm["start"] - today).days <= 2
+            add("warn" if soon else "watch",
+                f"The Toulouse meeting for {s['title']}, {format_date_human(s['start_date'])}",
+                "; ".join(parts).capitalize() + f". Midday at the {TOULOUSE_MEETING_PLACE}.",
+                unsaid + (0 if tm["pickup"] else 1), "workshop_toulouse", session_id=s["id"])
 
     # A guest said the stay was poor and nobody has answered. It closes
     # itself: replying or marking it read takes it off this list, which is
@@ -65335,6 +65386,7 @@ EMAIL_TEMPLATE_TAGS = {
     "room_year_on": ("book_url", "guest_name", "room_name", "stay_month"),
     "guest_anniversary_ahead": ("anniversary_date", "book_url", "guest_name"),
     "guest_birthday_ahead": ("birthday_date", "book_url", "guest_name"),
+    "workshop_travel_ask": ("guest_name", "manage_url", "start_day", "workshop_title"),
     "room_feedback_request": ("feedback_url", "guest_name", "room_name"),
     "room_waitlist_opening": ("book_url", "desired_arrival", "desired_departure", "name"),
     "workshop_moved": ("included_note", "balance_amount", "balance_due_date", "balance_line",
@@ -65473,6 +65525,7 @@ REQUIRED_MERGE_TAGS = {
     "room_year_on": {"book_url": "it is how they come back"},
     "guest_anniversary_ahead": {"book_url": "it is how they come for it"},
     "guest_birthday_ahead": {"book_url": "it is how they come for it"},
+    "workshop_travel_ask": {"manage_url": "it is where they tell us"},
     "event_quote": {"quote_url": "it is where they read and accept the quote"},
     "room_waitlist_opening": {"book_url": "it is how they take the room"},
     "restaurant_waitlist_opening": {"book_url": "it is how they take the table"},
@@ -65753,7 +65806,8 @@ _LETTER_EYEBROWS = {
     "Payments": tuple(k for k in MONEY_LETTERS if not k.startswith("code:")),
     "Workshops": ("workshop_registration_received", "workshop_confirmed",
                   "workshop_declined", "workshop_cancelled", "workshop_moved",
-                  "workshop_waitlist_opening", "workshop_not_running"),
+                  "workshop_waitlist_opening", "workshop_not_running",
+                  "workshop_travel_ask"),
     "Dinner": ("restaurant_reservation_received", "restaurant_confirmed",
                "restaurant_declined", "restaurant_cancelled",
                "restaurant_waitlist_opening"),
@@ -68865,6 +68919,7 @@ def workshop_manage(manage_token):
     booking = conn.execute(
         """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date,
                workshops.title, workshops.private_token IS NOT NULL AS is_private,
+               workshops.transfers_included,
                rooms.name AS assigned_room_name FROM workshop_bookings
            JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            JOIN workshops ON workshops.id = workshop_sessions.workshop_id
@@ -68896,6 +68951,26 @@ def workshop_manage(manage_token):
             flash("Your registration has been cancelled.", "success")
         conn.close()
         return redirect(url_for("workshop_manage", manage_token=manage_token))
+
+    if request.method == "POST" and request.form.get("action") == "travel":
+        # How they are getting to the Toulouse meeting (24 Nov 2026). Only
+        # where the page offers it: an atelier that starts in Toulouse, a
+        # place still coming, before the day.
+        card = travel_card(booking)
+        travel, problem = read_travel(request.form) if card else (None, None)
+        if not card:
+            flash("There is nothing to tell us about getting here for this booking.", "error")
+        elif problem:
+            flash(problem, "error")
+        else:
+            record_travel(conn, booking["id"], travel, "the guest")
+            conn.commit()
+            flash(f"Thank you. We will meet you at the {TOULOUSE_MEETING_PLACE}, "
+                  f"{TOULOUSE_MEETING_ADDRESS}, at midday on {card['day']}."
+                  if travel["how"] == "meet" else
+                  "Thank you. We will expect you at the château.", "success")
+        conn.close()
+        return redirect(url_for("workshop_manage", manage_token=manage_token) + "#getting-here")
 
     if request.method == "POST" and request.form.get("action") == "autocharge":
         # A guest saying "don't take it automatically, I'll pay it myself".
@@ -69058,6 +69133,7 @@ def workshop_manage(manage_token):
         balance_due=balance_due, total_charged=total_charged, total_paid=total_paid,
         other_sessions=other_sessions,
         extend_before=extend_before, extend_after=extend_after, checkin=checkin,
+        travel=travel_card(booking), travel_how=TRAVEL_HOW,
     )
 
 
@@ -81997,6 +82073,108 @@ def workshop_rooming(session_id):
                            plan=proposal["plan"], proposal=proposal)
 
 
+@app.route("/admin/workshops/sessions/<int:session_id>/toulouse")
+@owner_required
+def workshop_toulouse(session_id):
+    """The Toulouse meeting for one sitting: who is meeting the house at the
+    hotel and when they get in, who is making their own way, who has not said,
+    and the car (24 Nov 2026)."""
+    conn = get_db()
+    meeting = toulouse_meeting(conn, session_id)
+    if not meeting:
+        conn.close()
+        abort(404)
+    vehicles = conn.execute("SELECT id, name FROM vehicles WHERE COALESCE(off_road, 0) = 0 "
+                            "ORDER BY name").fetchall()
+    drivers = conn.execute("SELECT id, name FROM users WHERE status = 'active' "
+                           "ORDER BY name").fetchall()
+    conn.close()
+    return render_template("workshop_toulouse.html", m=meeting, vehicles=vehicles,
+                           drivers=drivers, travel_how=TRAVEL_HOW,
+                           place=TOULOUSE_MEETING_PLACE, address=TOULOUSE_MEETING_ADDRESS,
+                           at=TOULOUSE_MEETING_TIME, ask_days=TOULOUSE_ASK_DAYS)
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/toulouse/travel", methods=["POST"])
+@owner_required
+def set_workshop_travel(session_id):
+    """Put down what a guest said on the telephone, or by email."""
+    conn = get_db()
+    raw = request.form.get("booking_id", "")
+    b = conn.execute("SELECT id, guest_name FROM workshop_bookings WHERE id = ? AND session_id = ?",
+                     (int(raw) if raw.isdigit() else 0, session_id)).fetchone()
+    if not b or not toulouse_meeting(conn, session_id):
+        conn.close()
+        abort(404)
+    travel, problem = read_travel(request.form)
+    if problem:
+        flash(f"{b['guest_name']}: choose Meeting us or Own way.", "error")
+    else:
+        user = current_user()
+        record_travel(conn, b["id"], travel, user["name"] if user else "the house")
+        conn.commit()
+        flash(f"{b['guest_name']}: {TRAVEL_HOW[travel['how']].lower()}.", "success")
+    conn.close()
+    return redirect(url_for("workshop_toulouse", session_id=session_id))
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/toulouse/book", methods=["POST"])
+@owner_required
+def book_toulouse_drive(session_id):
+    """Book the drive up from the hotel at midday on the first day, and if a
+    time is given the drive back on the last, as runs on the vehicle's own
+    list. Once: a second press would put two cars at the hotel."""
+    conn = get_db()
+    meeting = toulouse_meeting(conn, session_id)
+    if not meeting:
+        conn.close()
+        abort(404)
+    back = redirect(url_for("workshop_toulouse", session_id=session_id))
+    raw_vehicle, raw_driver = request.form.get("vehicle_id", ""), request.form.get("driver_user_id", "")
+    vehicle = conn.execute("SELECT id, name FROM vehicles WHERE id = ?",
+                           (int(raw_vehicle) if raw_vehicle.isdigit() else 0,)).fetchone()
+    back_at = (request.form.get("return_time") or "").strip()
+    problem = None
+    if meeting["pickup"]:
+        problem = ("The drive from the hotel is already booked. Delete it on the vehicle's "
+                   "transfers page first to book a different one.")
+    elif not vehicle:
+        problem = "Choose the vehicle."
+    elif back_at and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", back_at):
+        problem = "The time of the drive back could not be read: write it as 10:30."
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return back
+    s, now = meeting["session"], datetime.now(timezone.utc).isoformat()
+    driver = int(raw_driver) if raw_driver.isdigit() else None
+    seats = meeting["count"]["meet"]
+    runs = [("pickup", meeting["start"], TOULOUSE_MEETING_TIME,
+             f"{s['title']}: {counted(seats, 'guest')} meeting in Toulouse",
+             f"{TOULOUSE_MEETING_PLACE}, {TOULOUSE_MEETING_ADDRESS}, at "
+             f"{TOULOUSE_MEETING_TIME}. Who is coming, and when they get in, is on the "
+             "sitting's Toulouse meeting page.")]
+    if back_at:
+        runs.append(("dropoff", meeting["end"], back_at,
+                     f"{s['title']}: back to Toulouse",
+                     f"Back to the {TOULOUSE_MEETING_PLACE}, {TOULOUSE_MEETING_ADDRESS}."))
+    for direction, day, at, who, notes in runs:
+        conn.execute(
+            """INSERT INTO vehicle_transfers (vehicle_id, guest_name, direction, scheduled_at,
+                       driver_user_id, notes, transfer_type, created_at, workshop_session_id)
+               VALUES (?, ?, ?, ?, ?, ?, 'atelier', ?, ?)""",
+            (vehicle["id"], who, direction,
+             local_datetime_input_to_utc_iso(f"{day.isoformat()}T{at}"), driver, notes, now,
+             session_id))
+    conn.commit()
+    conn.close()
+    flash(f"Booked: {vehicle['name']} at the {TOULOUSE_MEETING_PLACE} at "
+          f"{TOULOUSE_MEETING_TIME} on {format_date_human(meeting['start'].isoformat())}"
+          + (f", and back at {back_at} on {format_date_human(meeting['end'].isoformat())}"
+             if back_at else "") + ".", "success")
+    return back
+
+
 @app.route("/admin/workshops/sessions/<int:session_id>/rooming/apply",
            methods=["POST"])
 @owner_required
@@ -83826,7 +84004,8 @@ def admin_workshop_session(session_id):
                            standing=standing, registered_ever=registered_ever,
                            recap=recap, recap_letter=recap_letter,
                            recap_people=RECAP_PEOPLE, photo_answers=PHOTO_CONSENT,
-                           recap_most=RECAP_MOST_PHOTOS)
+                           recap_most=RECAP_MOST_PHOTOS,
+                           meets_in_toulouse=bool(programme["transfers_included"]))
 
 
 def workshop_register_view(conn, args, today=None):
@@ -97515,6 +97694,7 @@ WATCH_TASK_KINDS = {
     "whats_on": "What's On: events found to look at, or dates nothing has confirmed",
     "kitchen": "Kitchen cleaning due, or a fridge out of range or not read",
     "pool": "The pool's water out of range, or not checked in season",
+    "toulouse": "An atelier's Toulouse meeting: who is coming, and the car",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -101106,6 +101286,32 @@ def watch_task_findings(conn, today=None):
             today.isoformat(), "normal"))
     found.extend(take("kitchen", kitchen))
 
+    # THE TOULOUSE MEETING (24 Nov 2026): the run sheet, due the day before an
+    # atelier that starts in Toulouse, raised a week out so a car can still be
+    # found. Titled by the atelier and its day, so it is rewritten as answers
+    # come in rather than raised again, and it closes once the day has gone.
+    meetings = []
+    for s in toulouse_sittings(conn, today, today + timedelta(days=TOULOUSE_ASK_DAYS)):
+        tm = toulouse_meeting(conn, s["id"])
+        c = tm["count"]
+        unsaid = [x["booking"]["guest_name"] for x in tm["groups"]["unsaid"]]
+        lines = [f"{counted(c['meet'], 'guest')} meeting us at the {TOULOUSE_MEETING_PLACE}, "
+                 f"{TOULOUSE_MEETING_ADDRESS}, at midday",
+                 f"{counted(c['direct'], 'guest')} making their own way to the château"]
+        if unsaid:
+            lines.append(f"Not said yet: {', '.join(unsaid)}")
+        if tm["waiting"]:
+            lines.append(f"{counted(tm['waiting'], 'place')} not yet confirmed, not counted")
+        lines.append(f"Car: {tm['pickup']['vehicle_name']}" if tm["pickup"]
+                     else "No car booked yet")
+        meetings.append((
+            "toulouse", f"The Toulouse meeting for {s['title']}, {format_date_human(s['start_date'])}",
+            ". ".join(lines) + ".\n\nThe run sheet, with who gets in when: the sitting's page, "
+            "Toulouse meeting.",
+            max(today, tm["start"] - timedelta(days=1)).isoformat(),
+            "high" if (unsaid or not tm["pickup"]) else "normal"))
+    found.extend(take("toulouse", meetings))
+
     # THE TAXE DE SEJOUR TO DECLARE, on its due day, until it is marked
     # declared on the taxe de séjour page.
     owed = city_tax_to_declare(conn, today)
@@ -103629,6 +103835,7 @@ TEMPLATE_STAGES = [
     ("extras_offer", "Before the stay"),
     ("year_on", "A year on"), ("anniversary", "Before their anniversary"),
     ("birthday", "Before their birthday"),
+    ("travel_ask", "Before arrival"),
     ("feedback", "After the stay"), ("recap", "After the stay"),
     ("review", "After the stay"), ("newsletter", "Signing up"),
     ("checkin", "Before arrival"),
@@ -103712,6 +103919,11 @@ EMAIL_TEMPLATE_INFO = {
                                 "a guest's anniversary — while that is switched on",
                                 "The guest on the profile. Never to somebody already staying "
                                 "around it, nor anybody who asked not to be written to"),
+    "workshop_travel_ask": ("A week before an atelier that starts with the Toulouse "
+                            "meeting, while Ask atelier guests how they are getting to "
+                            "Toulouse is switched on",
+                            "Each confirmed guest who has not said how they are coming, "
+                            "once. Never to anybody who asked not to be emailed"),
     "guest_birthday_ahead": ("Once a year, ahead of a birthday on a guest's profile — as "
                              "many days before it as you set under Automation, Write before "
                              "a guest's birthday — while that is switched on",
@@ -113556,6 +113768,186 @@ def run_guest_day_letter(conn, kind, days_before=None, today=None):
     return come_back_summary(sent, held, skipped, nobody)
 
 
+# ---------------------------------------------------------------------------
+# THE TOULOUSE MEETING (owner, 24 Nov 2026: "1 only", of five back-end ideas).
+# An atelier with transfers (workshops.transfers_included) starts at midday on
+# its first day at the Grand Hotel de l'Opera, Place du Capitole, and the
+# house drives everybody up. So the house has to know, for every place,
+# whether they are meeting it there or making their own way to the chateau --
+# and, coming by train or plane, when they get in. The guest says so on their
+# own booking page; somebody who rang is put down from the run sheet.
+#
+# A week ahead, anybody who has said nothing is asked once (a letter on its
+# own Automation switch, held like every guest letter until approved), and the
+# owner's home page names the sitting until everybody has answered and a car
+# is booked. The run sheet is a task due the day before, so it is on the
+# calendar. Every one of those closes itself: an answer, a car, or the day
+# going by takes it off.
+# ---------------------------------------------------------------------------
+TOULOUSE_MEETING_PLACE = "Grand Hôtel de l'Opéra"
+TOULOUSE_MEETING_ADDRESS = "Place du Capitole, Toulouse"
+TOULOUSE_MEETING_TIME = "12:00"
+# How far ahead the house asks, warns and puts the run sheet on the calendar.
+TOULOUSE_ASK_DAYS = 7
+TRAVEL_HOW = {"meet": "Meeting us at the Grand Hôtel de l'Opéra",
+              "direct": "Making their own way to the château"}
+TRAVEL_DETAIL_LIMIT = 200
+TRAVEL_ASK_KEY = "workshop_travel_ask"
+TRAVEL_ASK_SWITCH = "automation_workshop_travel_ask_enabled"
+
+
+def toulouse_sittings(conn, first, last):
+    """Sittings, not called off, of an atelier that starts in Toulouse,
+    beginning on a day from `first` to `last`."""
+    return conn.execute(
+        f"""SELECT workshop_sessions.*, workshops.title
+              FROM workshop_sessions
+              JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+             WHERE COALESCE(workshops.transfers_included, 0) = 1 AND {SESSION_IS_LIVE}
+               AND workshop_sessions.start_date >= ? AND workshop_sessions.start_date <= ?
+             ORDER BY workshop_sessions.start_date, workshop_sessions.id""",
+        (first.isoformat(), last.isoformat())).fetchall()
+
+
+def toulouse_meeting(conn, session_id):
+    """Everything a sitting's run sheet says, or None if it has no meeting.
+
+    Confirmed places only are counted: a request still waiting on the owner,
+    or a deposit not yet in, may never come, and a car sized for them is a car
+    with empty seats. They are counted apart, as `waiting`, so nobody is a
+    surprise."""
+    s = conn.execute(
+        """SELECT workshop_sessions.*, workshops.title, workshops.transfers_included
+             FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.id = ?""", (session_id,)).fetchone()
+    if not s or not s["transfers_included"]:
+        return None
+    others = {}
+    for g in conn.execute(
+            """SELECT workshop_booking_id, guest_name FROM workshop_booking_guests
+                WHERE workshop_booking_id IN (SELECT id FROM workshop_bookings
+                                               WHERE session_id = ?)
+                ORDER BY is_lead DESC, id""", (session_id,)).fetchall():
+        others.setdefault(g["workshop_booking_id"], []).append(g["guest_name"])
+    groups = {"meet": [], "direct": [], "unsaid": []}
+    waiting = 0
+    for b in conn.execute(
+            """SELECT * FROM workshop_bookings WHERE session_id = ?
+                  AND status IN ('pending', 'confirmed')
+                ORDER BY guest_name COLLATE NOCASE, id""", (session_id,)).fetchall():
+        people = max(1, int(b["party_size"] or 1))
+        if b["status"] != "confirmed":
+            waiting += people
+            continue
+        groups[b["travel_how"] if b["travel_how"] in TRAVEL_HOW else "unsaid"].append({
+            "booking": b, "people": people,
+            "with": [n for n in others.get(b["id"], []) if n and n != b["guest_name"]]})
+    count = {k: sum(x["people"] for x in v) for k, v in groups.items()}
+    drives = conn.execute(
+        """SELECT vehicle_transfers.*, vehicles.name AS vehicle_name,
+                  users.name AS driver_name
+             FROM vehicle_transfers
+             JOIN vehicles ON vehicles.id = vehicle_transfers.vehicle_id
+             LEFT JOIN users ON users.id = vehicle_transfers.driver_user_id
+            WHERE vehicle_transfers.workshop_session_id = ?
+            ORDER BY vehicle_transfers.scheduled_at""", (session_id,)).fetchall()
+    return {"session": s, "groups": groups, "count": count, "waiting": waiting,
+            "start": parse_date(s["start_date"]),
+            "end": parse_date(s["end_date"]) or parse_date(s["start_date"]),
+            "drives": drives,
+            "pickup": next((d for d in drives if d["direction"] == "pickup"), None)}
+
+
+def read_travel(form):
+    """How a place is getting there, from a form: ({how, detail}, None) or
+    (None, the problem)."""
+    how = (form.get("travel_how") or "").strip()
+    if how not in TRAVEL_HOW:
+        return None, ("Please say whether you are meeting us in Toulouse or making "
+                      "your own way to the château.")
+    detail = " ".join((form.get("travel_detail") or "").split())[:TRAVEL_DETAIL_LIMIT]
+    return {"how": how, "detail": detail or None}, None
+
+
+def record_travel(conn, booking_id, travel, by):
+    """Write it down. `by` is 'the guest' or the name of whoever took the call.
+    The caller commits."""
+    conn.execute(
+        """UPDATE workshop_bookings SET travel_how = ?, travel_detail = ?,
+                  travel_told_at = ?, travel_told_by = ? WHERE id = ?""",
+        (travel["how"], travel["detail"], datetime.now(timezone.utc).isoformat(), by,
+         booking_id))
+
+
+def travel_card(booking, today=None):
+    """What the guest's booking page shows under Getting here, or None.
+
+    Only on an atelier that starts in Toulouse, for a place that is still
+    coming, before the day it starts."""
+    keys = booking.keys()
+    if ("transfers_included" not in keys or not booking["transfers_included"]
+            or booking["status"] not in ("pending", "confirmed")):
+        return None
+    if (booking["start_date"] or "") < (today or house_today()).isoformat():
+        return None
+    return {"day": format_date_human(booking["start_date"]),
+            "place": TOULOUSE_MEETING_PLACE, "address": TOULOUSE_MEETING_ADDRESS,
+            "said": TRAVEL_HOW.get(booking["travel_how"] or "")}
+
+
+def run_workshop_travel_ask_job(conn, today=None):
+    """Ask, once, each confirmed guest on an atelier starting in Toulouse within
+    the week who has not said how they are getting there.
+
+    Nothing at all, and nobody stamped, while the letter would be held: asked
+    a week late is not asked. Stamped and committed before the send, like
+    every letter here, so a second run asks nobody twice."""
+    if get_automation_settings(conn).get(TRAVEL_ASK_SWITCH) != "1":
+        raise JobNotSetUp("it is switched off")
+    if not guest_mail_live():
+        raise JobNotSetUp("Write to guests is off, so nobody was asked")
+    held = guest_letter_held_why(TRAVEL_ASK_KEY)
+    if held:
+        raise JobNotSetUp(f"Guest emails would hold “{EMAIL_TEMPLATE_LABELS[TRAVEL_ASK_KEY]}” "
+                          f"({held}), so nobody was asked; it goes once it is approved there")
+    day = today or house_today()
+    asked, not_emailed = [], 0
+    for s in toulouse_sittings(conn, day + timedelta(days=1),
+                               day + timedelta(days=TOULOUSE_ASK_DAYS)):
+        for b in conn.execute(
+                """SELECT workshop_bookings.*, workshop_sessions.start_date,
+                          workshop_sessions.end_date, workshops.title
+                     FROM workshop_bookings
+                     JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                     JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                    WHERE workshop_bookings.session_id = ?
+                      AND workshop_bookings.status = 'confirmed'
+                      AND workshop_bookings.travel_how IS NULL
+                      AND workshop_bookings.travel_asked_at IS NULL
+                    ORDER BY workshop_bookings.id""", (s["id"],)).fetchall():
+            if b["do_not_email"] or not (b["guest_email"] or "").strip():
+                not_emailed += 1
+                continue
+            conn.execute("UPDATE workshop_bookings SET travel_asked_at = ? WHERE id = ?",
+                         (datetime.now(timezone.utc).isoformat(), b["id"]))
+            conn.commit()
+            send_workshop_email(conn, b, TRAVEL_ASK_KEY, {
+                "guest_name": b["guest_name"],
+                "workshop_title": b["title"],
+                "start_day": format_date_human(b["start_date"]),
+                "manage_url": external_url("workshop_manage",
+                                           manage_token=b["manage_token"]) + "#getting-here",
+            })
+            asked.append(b["guest_name"])
+    out = (f"asked {counted(len(asked), 'guest')} how they are getting to Toulouse"
+           if asked else "nobody to ask")
+    if not_emailed:
+        out += (f"; {counted(not_emailed, 'guest')} not asked, having no address or "
+                "having asked not to be emailed: ring them")
+    return out
+
+
 def run_workshop_balance_reminder_job(conn, days_before):
     """Remind each registration once, `days_before` its money is due.
 
@@ -119714,6 +120106,10 @@ AUTOMATION_JOBS = [
      run_anniversary_letter_job),
     ("birthday_letter", "automation_birthday_letter_enabled", None, 24 * 3600,
      run_birthday_letter_job),
+    # Asking atelier guests how they are getting to the Toulouse meeting, a
+    # week out (24 Nov 2026). Daily; each place is stamped once asked.
+    ("workshop_travel_ask", "automation_workshop_travel_ask_enabled", None, 24 * 3600,
+     run_workshop_travel_ask_job),
     # The letter with the online check-in link. Daily, in the morning (see
     # JOB_HOURS); each stay is stamped, so a run twice sends nothing twice.
     ("checkin_letter", "automation_checkin_letter_enabled", None, 24 * 3600,
@@ -119790,6 +120186,7 @@ JOB_HOURS = {
     "year_on": (9, 12),
     "anniversary_letter": (9, 12),
     "birthday_letter": (9, 12),
+    "workshop_travel_ask": (9, 12),
     # The letter with the online check-in link: a morning letter, from nine
     # to noon on the house's clock, which is what its label says.
     "checkin_letter": (9, 12),
@@ -120115,6 +120512,16 @@ AUTOMATION_SWITCHES = [
              "first.",
      "fields": (("automation_birthday_letter_days_before",
                  "Days before the birthday", "days"),)},
+    {"key": "automation_workshop_travel_ask_enabled", "job": "workshop_travel_ask",
+     "runs": ("run_workshop_travel_ask_job",), "group": "guests", "reaches": ("guests",),
+     "letters": ("workshop_travel_ask",),
+     "label": "Ask atelier guests how they are getting to Toulouse",
+     "what": "In the week before an atelier that starts with the midday meeting at the "
+             "Grand Hôtel de l'Opéra, emails each confirmed guest who has not said how "
+             "they are getting there, once, between 9am and noon, with the link to tell "
+             "us on their booking page. Anybody it cannot email is named so you can ring "
+             "them. Nothing while Guest emails would hold it: approve the letter there "
+             "first."},
     {"key": "automation_checkin_letter_enabled", "job": "checkin_letter",
      "runs": ("run_checkin_letter_job",), "group": "guests", "reaches": ("guests",),
      "letters": ("room_checkin_before", "workshop_checkin_before"),
@@ -122938,6 +123345,7 @@ TRANSFER_TYPES = {
     "restaurant": "Restaurant / evening out",
     "medical": "Medical",
     "supplies": "Supplies run",
+    "atelier": "Atelier: the Toulouse meeting",
     "other": "Other",
 }
 

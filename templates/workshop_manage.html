@@ -116,6 +116,32 @@
   </div>
   {% endif %}
 
+  {% if travel %}
+  {#- THE TOULOUSE MEETING (owner, 24 Nov 2026): an atelier that starts at midday
+      at the Grand Hôtel de l'Opéra. What they say here is on the sitting's run
+      sheet (workshop_toulouse.html), which is how the house knows who to look out
+      for and how many seats the drive up needs. -#}
+  <div class="g-mb-card" id="getting-here" style="margin-top:var(--s3);">
+    <h3>Getting here</h3>
+    <p class="g-hint">We meet at midday on {{ travel.day }} at the {{ travel.place }}, on {{ travel.address }}, and drive up to the château together.{% if travel.said %} You have told us: {{ travel.said|lower }}{% if booking['travel_detail'] %} ({{ booking['travel_detail'] }}){% endif %}.{% else %} So that we know who to look out for, please tell us how you are coming.{% endif %}</p>
+    <form method="post" style="margin-top:var(--s2)">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="travel">
+      <label class="g-check">
+        <input type="radio" name="travel_how" value="meet" required {{ 'checked' if booking['travel_how'] == 'meet' }}>
+        <span class="g-check__t"><b>I will meet you in Toulouse</b> at midday</span>
+      </label>
+      <label class="g-check">
+        <input type="radio" name="travel_how" value="direct" {{ 'checked' if booking['travel_how'] == 'direct' }}>
+        <span class="g-check__t"><b>I am making my own way to the château</b></span>
+      </label>
+      <label class="g-mb-label" for="travel_detail" style="margin-top:var(--s3)">How you are getting there, and when you arrive</label>
+      <input id="travel_detail" name="travel_detail" maxlength="200" value="{{ booking['travel_detail'] or '' }}" placeholder="e.g. a train into Matabiau, 10:40">
+      <button type="submit" class="g-btn" style="margin-top:var(--s3)">Save</button>
+    </form>
+  </div>
+  {% endif %}
+
   {% if other_sessions %}
   <div class="g-mb-card" style="margin-top:var(--s3);">
     <h3>Move to a different date</h3>

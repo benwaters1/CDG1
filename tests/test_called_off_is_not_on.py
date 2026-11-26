@@ -386,7 +386,11 @@ def run():
         s.check("on the owner's home", risk_before >= 2 and mats_before >= 2,
                 detail=f"{risk_before} short, {mats_before} without materials: {said}")
         _ask(m.generate_watch_tasks, today)
-        raised = _watch_tasks(OFF)
+        # The atelier has transfers, so each sitting a week out also has its
+        # Toulouse meeting run sheet as a task (test_toulouse_meeting); counted
+        # here are the ones about being short.
+        raised = {t: st for t, st in _watch_tasks(OFF).items()
+                  if not t.startswith("The Toulouse meeting")}
         s.check("and as tasks, one for each",
                 sum(1 for st in raised.values() if st != "done") == 2, detail=f"{raised}")
 
@@ -599,7 +603,8 @@ def run():
         s.check("naming the called-off atelier nowhere", OFF not in said + said_m,
                 detail=said + said_m)
         _ask(m.generate_watch_tasks, today)
-        tasks = _watch_tasks(OFF)
+        tasks = {t: st for t, st in _watch_tasks(OFF).items()
+                 if not t.startswith("The Toulouse meeting")}
         # Every one CLOSED, not just the ones raised before. With nought
         # confirmed after the call-off, a reader that still counted it would
         # close "2 of 6 needed" and open "0 of 6 needed" -- a task that looks

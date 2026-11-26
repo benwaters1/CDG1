@@ -245,6 +245,26 @@ def _run(s, oc, conn, now, today):
     conn.execute("UPDATE ota_reservations SET statement_at = ? WHERE statement_at IS NULL",
                  (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
+    # The Toulouse meeting, settled: a seeded atelier with transfers starting
+    # this week has nobody answered and no car (test_toulouse_meeting proves
+    # the line). Put down as answered and given a car, then taken back.
+    tls = [r["id"] for s_ in m.toulouse_sittings(conn, today, today + timedelta(days=m.TOULOUSE_ASK_DAYS))
+           for r in conn.execute("SELECT id FROM workshop_bookings WHERE session_id = ? "
+                                 "AND travel_how IS NULL", (s_["id"],)).fetchall()]
+    conn.executemany("UPDATE workshop_bookings SET travel_how = 'direct' WHERE id = ?",
+                     [(i,) for i in tls])
+    van = conn.execute("SELECT id FROM vehicles LIMIT 1").fetchone()
+    made_van = None
+    if not van:
+        made_van = conn.execute("INSERT INTO vehicles (name, created_at) VALUES ('ZZHW van', ?)",
+                                (datetime.now(timezone.utc).isoformat(),)).lastrowid
+    drives = [conn.execute(
+        """INSERT INTO vehicle_transfers (vehicle_id, guest_name, direction, scheduled_at, created_at,
+               workshop_session_id) VALUES (?, 'ZZHW', 'pickup', ?, ?, ?)""",
+        (van["id"] if van else made_van, s_["start_date"] + "T11:00:00+00:00",
+         datetime.now(timezone.utc).isoformat(), s_["id"])).lastrowid
+        for s_ in m.toulouse_sittings(conn, today, today + timedelta(days=m.TOULOUSE_ASK_DAYS))]
+    conn.commit()
     real_checks = m.readiness_checks
     # **kwargs: the caller passes include_slow=False now, and a stand-in
     # that cannot take it turns this into a crash rather than a check.
@@ -261,6 +281,11 @@ def _run(s, oc, conn, now, today):
         conn.execute("DELETE FROM booking_com_statements WHERE id = ?", (statement_id,))
         conn.executemany("UPDATE ota_reservations SET statement_at = NULL WHERE id = ?",
                          [(i,) for i in waiting_ids])
+        conn.executemany("UPDATE workshop_bookings SET travel_how = NULL WHERE id = ?",
+                         [(i,) for i in tls])
+        conn.executemany("DELETE FROM vehicle_transfers WHERE id = ?", [(i,) for i in drives])
+        if made_van:
+            conn.execute("DELETE FROM vehicles WHERE id = ?", (made_van,))
         conn.commit()
     for row in held_before:
         conn.execute("UPDATE email_outbox SET created_at = ? WHERE id = ?",
