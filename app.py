@@ -57369,66 +57369,136 @@ def stripe_webhook():
     return jsonify(received=True), 200
 
 
-@app.route("/book/manage", methods=["GET", "POST"])
-def find_booking():
+# ---------------------------------------------------------------------------
+# ANY REFERENCE, ON ANY FIND PAGE (26 Nov 2026). Every "Manage your booking"
+# link on the site opens /book/manage, and that page looked among ROOM
+# bookings only. A guest on an atelier holds a WRK- reference, so Belinda Down,
+# with a confirmed place and the confirmation in her hand, was told "No
+# booking found" -- and a guest is not to know there are four find pages, one
+# per kind. Now each of the four takes any reference: the prefix says which
+# kind it is (REFERENCE_PREFIXES), and the guest lands on that booking's page.
+#
+# The reference is the credential, with the address or the surname as the
+# second detail, as before; the address is matched however it is capitalised
+# (it was matched exactly on three of the pages, so "Bindi.Down@..." against
+# the address as stored failed), and a stay's payer or second contact may use
+# theirs, since both are written to about it.
+# ---------------------------------------------------------------------------
+BOOKING_LOOKUPS = {
+    "room": {"table": "bookings", "page": "manage_booking",
+             "emails": ("guest_email", "booked_by_email", "second_contact_email"),
+             "names": ("guest_name", "booked_by_name", "second_contact_name")},
+    "workshop": {"table": "workshop_bookings", "page": "workshop_manage",
+                 "emails": ("guest_email",), "names": ("guest_name",)},
+    "restaurant": {"table": "restaurant_bookings", "page": "restaurant_manage",
+                   "emails": ("guest_email",), "names": ("guest_name",)},
+    "event": {"table": "event_inquiries", "page": "event_manage",
+              "emails": ("contact_email",), "names": ("contact_name",)},
+}
+REFERENCE_NOT_OURS = ("That reference does not look like one of ours. Each starts with "
+                      + ", ".join(REFERENCE_PREFIXES.values())
+                      + " and six letters and numbers: the one on your confirmation email.")
+
+
+def normalise_reference(raw):
+    """A reference as the house writes it, from however it was typed: capitals,
+    no spaces, any kind of dash, and the dash put back if it was left out
+    ("wrk tfm3i5" is WRK-TFM3I5)."""
+    s = re.sub(r"\s+", "", raw or "").upper()
+    s = re.sub("[\u2010-\u2015\u2212_.]", "-", s)
+    for prefix in REFERENCE_PREFIXES.values():
+        bare = prefix.rstrip("-")
+        if s.startswith(bare) and not s.startswith(prefix):
+            return prefix + s[len(bare):].lstrip("-")
+    return s
+
+
+def reference_kind(reference):
+    """'room', 'workshop', 'restaurant' or 'event', from the prefix; or None."""
+    for kind, prefix in REFERENCE_PREFIXES.items():
+        if (reference or "").startswith(prefix):
+            return kind
+    return None
+
+
+def _surname_in(surname, name):
+    """Whether `surname` is a whole word, or run of words, in `name`, however
+    either is capitalised or accented in case (casefold, not SQLite's
+    ASCII-only LOWER). A whole word, so one letter opens nothing."""
+    words = lambda v: re.sub(r"[\s\-]+", " ", (v or "").casefold()).strip()
+    s, n = words(surname), words(name)
+    return len(s) >= 2 and f" {s} " in f" {n} "
+
+
+def find_guest_booking(conn, raw_reference, email="", surname=""):
+    """(kind, manage URL) for the booking this reference opens with the
+    address or surname given; (None, why) when it does not."""
+    reference = normalise_reference(raw_reference)
+    kind = reference_kind(reference)
+    nothing = (None, "No booking found with that reference and those details.")
+    # The prefix says where to look. A reference with none of the four (one
+    # brought across from elsewhere, or typed from an old card) is looked for
+    # among every kind before it is called not ours.
+    row = None
+    for k in ([kind] if kind else list(BOOKING_LOOKUPS)):
+        row = conn.execute(f"SELECT * FROM {BOOKING_LOOKUPS[k]['table']} "
+                           "WHERE reference_code = ?", (reference,)).fetchone()
+        if row:
+            kind = k
+            break
+    if not row:
+        return nothing if kind else (None, REFERENCE_NOT_OURS)
+    cfg = BOOKING_LOOKUPS[kind]
+    keys = row.keys()
+    email = (email or "").strip().casefold()
+    ok = bool(email) and any(email == (row[c] or "").strip().casefold()
+                             for c in cfg["emails"] if c in keys)
+    if not ok and (surname or "").strip():
+        names = [row[c] for c in cfg["names"] if c in keys]
+        if kind == "workshop":
+            # Anybody named on the place: the friend booked in with them
+            # holds the same confirmation.
+            names += [r["guest_name"] for r in conn.execute(
+                "SELECT guest_name FROM workshop_booking_guests WHERE workshop_booking_id = ?",
+                (row["id"],)).fetchall()]
+        ok = any(_surname_in(surname, n) for n in names)
+    if not ok:
+        return nothing
+    return kind, url_for(cfg["page"], manage_token=row["manage_token"])
+
+
+def find_page(rate_key, template):
+    """The four find pages, one answer: any kind of reference, from any of them."""
     if request.method == "POST":
         conn = get_db()
-        if rate_limited(conn, "find_booking", BOOKING_RATE_LIMIT_PER_HOUR):
+        if rate_limited(conn, rate_key, BOOKING_RATE_LIMIT_PER_HOUR):
             conn.commit()
             conn.close()
-            flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("find_booking.html")
+            flash("Too many attempts from this connection — please try again in a bit, "
+                  "or contact the château directly.", "error")
+            return render_template(template)
         conn.commit()
-        reference_code = request.form.get("reference_code", "").strip().upper()
-        email = request.form.get("email", "").strip().lower()
-        surname = request.form.get("surname", "").strip().casefold()
-
-        # Either the address on the booking, or the surname.
-        #
-        # It used to be the address only, and a walk-in has none: reception
-        # books somebody in at the door, they never give an email, and there is
-        # then no route by which that guest can see their own bill, get an
-        # account link, or pay online. The booking exists and its owner cannot
-        # reach it.
-        #
-        # The reference IS the credential either way — GUD- plus six characters
-        # from secrets.choice, about two billion of them — and this route is
-        # rate-limited per hour. A surname is no weaker a second factor than an
-        # email address, which is not secret either; both rest on the reference
-        # being unguessable. What is NOT allowed is the reference on its own.
-        booking = None
-        if reference_code and email:
-            booking = conn.execute(
-                "SELECT manage_token FROM bookings WHERE reference_code = ? "
-                "AND LOWER(guest_email) = ?", (reference_code, email)).fetchone()
-        if not booking and reference_code and surname:
-            # Matched in Python, not in SQL.
-            #
-            # SQLite's LOWER and its LIKE are both ASCII-only, so a surname
-            # typed in capitals with an accent does not match one stored in
-            # title case: BÉATRICE against Béatrice fails, and so does
-            # ROUVIÈRE against Rouvière. French forms are routinely filled
-            # in capitals — it is the convention on their own identity
-            # documents — so that is not an edge case here, it is how a good
-            # proportion of guests will type it. casefold in Python gets it
-            # right for any alphabet.
-            #
-            # Fetched by reference first, which is effectively unique, so
-            # this is one row rather than a scan.
-            row = conn.execute(
-                "SELECT manage_token, guest_name FROM bookings "
-                "WHERE reference_code = ?", (reference_code,)).fetchone()
-            if row and surname in (row["guest_name"] or "").casefold():
-                booking = row
-        conn.close()
-        if booking:
-            return redirect(url_for("manage_booking", manage_token=booking["manage_token"]))
-        if not reference_code or not (email or surname):
+        reference = request.form.get("reference_code", "")
+        email = request.form.get("email", "")
+        surname = request.form.get("surname", "")
+        if not reference.strip() or not (email.strip() or surname.strip()):
+            conn.close()
             flash("Enter your reference and either the email on the booking or "
                   "the surname it is under.", "error")
-        else:
-            flash("No booking found with that reference and those details.", "error")
-    return render_template("find_booking.html")
+            return render_template(template)
+        kind, where = find_guest_booking(conn, reference, email, surname)
+        conn.close()
+        if kind:
+            return redirect(where)
+        flash(where, "error")
+    return render_template(template)
+
+
+@app.route("/book/manage", methods=["GET", "POST"])
+def find_booking():
+    """Find any booking from its reference: the page every "Manage your booking"
+    link opens. See find_guest_booking."""
+    return find_page("find_booking", "find_booking.html")
 
 
 @app.route("/admin/bookings/<int:booking_id>/card")
@@ -58907,25 +58977,8 @@ def event_confirmation(manage_token):
 
 @app.route("/events/find", methods=["GET", "POST"])
 def event_find():
-    if request.method == "POST":
-        conn = get_db()
-        if rate_limited(conn, "event_find", BOOKING_RATE_LIMIT_PER_HOUR):
-            conn.commit()
-            conn.close()
-            flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("event_find.html")
-        conn.commit()
-        reference_code = request.form.get("reference_code", "").strip().upper()
-        email = request.form.get("email", "").strip().lower()
-        inquiry = conn.execute(
-            "SELECT manage_token FROM event_inquiries WHERE reference_code = ? AND contact_email = ?",
-            (reference_code, email),
-        ).fetchone()
-        conn.close()
-        if inquiry:
-            return redirect(url_for("event_manage", manage_token=inquiry["manage_token"]))
-        flash("No inquiry found with that reference and email.", "error")
-    return render_template("event_find.html")
+    """Any reference finds its booking here too (find_guest_booking)."""
+    return find_page("event_find", "event_find.html")
 
 
 @app.route("/events/manage/<manage_token>", methods=["GET", "POST"])
@@ -63326,25 +63379,8 @@ def restaurant_stripe_cancel():
 
 @app.route("/restaurant/find", methods=["GET", "POST"])
 def restaurant_find():
-    if request.method == "POST":
-        conn = get_db()
-        if rate_limited(conn, "restaurant_find", BOOKING_RATE_LIMIT_PER_HOUR):
-            conn.commit()
-            conn.close()
-            flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("restaurant_find.html")
-        conn.commit()
-        reference_code = request.form.get("reference_code", "").strip().upper()
-        email = request.form.get("email", "").strip().lower()
-        booking = conn.execute(
-            "SELECT manage_token FROM restaurant_bookings WHERE reference_code = ? AND guest_email = ?",
-            (reference_code, email),
-        ).fetchone()
-        conn.close()
-        if booking:
-            return redirect(url_for("restaurant_manage", manage_token=booking["manage_token"]))
-        flash("No reservation found with that reference and email.", "error")
-    return render_template("restaurant_find.html")
+    """Any reference finds its booking here too (find_guest_booking)."""
+    return find_page("restaurant_find", "restaurant_find.html")
 
 
 @app.route("/restaurant/manage/<manage_token>", methods=["GET", "POST"])
@@ -68868,25 +68904,8 @@ def workshop_confirmation(manage_token):
 
 @app.route("/workshops/find", methods=["GET", "POST"])
 def workshop_find():
-    if request.method == "POST":
-        conn = get_db()
-        if rate_limited(conn, "workshop_find", BOOKING_RATE_LIMIT_PER_HOUR):
-            conn.commit()
-            conn.close()
-            flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("workshop_find.html")
-        conn.commit()
-        reference_code = request.form.get("reference_code", "").strip().upper()
-        email = request.form.get("email", "").strip().lower()
-        booking = conn.execute(
-            "SELECT manage_token FROM workshop_bookings WHERE reference_code = ? AND guest_email = ?",
-            (reference_code, email),
-        ).fetchone()
-        conn.close()
-        if booking:
-            return redirect(url_for("workshop_manage", manage_token=booking["manage_token"]))
-        flash("No registration found with that reference and email.", "error")
-    return render_template("workshop_find.html")
+    """Any reference finds its booking here too (find_guest_booking)."""
+    return find_page("workshop_find", "workshop_find.html")
 
 
 @app.route("/workshops/manage/<manage_token>/statement")
