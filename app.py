@@ -2648,7 +2648,7 @@ DEFAULT_EMAIL_TEMPLATES = [
      "Toulouse, and drive up to the ch\u00e2teau together.\n\nSo that we know who to "
      "look out for, would you tell us how you are getting there: the train or flight "
      "you are coming in on and when it arrives, or that you are making your own way "
-     "to the ch\u00e2teau? It takes a minute, on your booking page:\n{manage_url}"
+     "to the ch\u00e2teau? It takes a minute.\n\nTell us on your booking page:\n{manage_url}"
      "\n\n\u2014 Ch\u00e2teau de Gudanes"),
     ("room_feedback_request", "Rooms: How was your stay?",
      "How was your stay at Ch\u00e2teau de Gudanes?",
