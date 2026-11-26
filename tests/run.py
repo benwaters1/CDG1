@@ -723,6 +723,8 @@ SUITES = [
     # /story said once, /restaurant as The Table, rows that line up, photographs first, phone tap targets.
     "test_site_review_24_nov",
     "test_home_26_nov",
+    # 26 November 2026 (owner): the claw-foot bath off the Twin, the King Room and the ground-floor Twin.
+    "test_room_page_bath",
 ]
 
 
