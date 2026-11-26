@@ -544,6 +544,10 @@
   <h2 class="g-place">What Retreat Guests Say</h2>
   <p class="g-p">From guests who spent a few days at the château on a retreat.</p>
 
+  {#- 26 Nov 2026 (owner: "workshop", of each): a morning class in the salon, seen through its doorway, and the
+      pastries laid before the three tall windows. Two prints, each no wider than its small file allows. -#}
+  {{ album([[url_for('static', filename='img/retreats/yoga-through-the-doorway.jpg'), 'A morning class on mats in the salon, seen through its doorway, the mountains through the window beyond', 'A morning class in the salon'],
+            [url_for('static', filename='img/retreats/pastries-before-the-windows.jpg'), 'Plates of pastries and fruit laid out before three tall windows, the mountains through the open one', 'Before the three windows']], cls='g-album--tall') }}
   {% set _ar = (atelier_reviews or [])|selectattr('text')|list %}
   {% if _ar or GUEST_LETTERS %}
   <div class="g-grid g-grid--2">

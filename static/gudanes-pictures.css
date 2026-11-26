@@ -1443,7 +1443,7 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 
 /* 26 Nov 2026: an album of photographs taken upright (the restoration page's new wall and the run of rooms):
    the prints keep their own shape rather than the album's 4:3, so neither is cropped. */
-.g .g-album--tall .g-album__f img{ aspect-ratio: 3 / 4; }
+.g .g-album--tall .g-album__f img{ aspect-ratio: auto; height: auto; }
 /* Taken on a phone, about 470px across: two small prints side by side, never drawn wider than the file allows. */
 .g .g-album--tall{ display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s5); }
 .g .g-album--tall .g-album__p{ grid-column: auto; width: min(22rem, 100%); margin-top: 0; }
@@ -1453,3 +1453,8 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-open-day{ margin: var(--s7) auto 0; max-width: 26rem; }
 .g .g-open-day img{ width: 100%; height: auto; }
 .g .g-open-day__cap{ margin-top: var(--s3); font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.5; color: var(--ink-soft, #5b4a33); text-align: center; }
+
+/* 26 Nov 2026: one small print on its own (the bride at the gates, on /events/weddings), centred, never wider
+   than its 387px file allows. */
+.g .g-print{ margin: 0 auto var(--s6); max-width: 24rem; }
+.g .g-print img{ width: 100%; height: auto; }

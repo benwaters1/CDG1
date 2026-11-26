@@ -93,7 +93,8 @@ KNOWN_LONG = {
     # 23 Nov: 14,900, the brochure's facts the owner asked for ("lets use the info from everything and the brochure
     # and really make it good"): the table, a sample of the days, what is included and what is on request.
     # 24 Nov: +100, a couple's line from their thank-you letter above the enquiry.
-    "/events/weddings": 15000,
+    # 26 Nov 2026: the bride at the gates, the owner's photograph.
+    "/events/weddings": 15600,
     # 23 Nov: the same for private events ("same with private").
     "/events/private": 11400,
     # 11 Nov: +600 for the bathrooms' own section, which the owner asked for ("they are a real feature").
@@ -106,7 +107,8 @@ KNOWN_LONG = {
     # 24 Nov: +800, three retreat guests' lines from their thank-you letters (owner's brief).
     # 24 Nov: +2,750 for the two sections the owner's retreats brief adds, What You'll Do and The Bathrooms
     # ("i dont know why theyre not selling"; "have we got the bathrooms on the workshop page?"); measured 15,029.
-    "/workshops": 15400,   # 24 Nov evening, was 15,100: the footer's two new links; measured 15,125 merged.
+    # 26 Nov 2026: a morning class and the pastries, two prints the owner sent.
+    "/workshops": 15700,   # 24 Nov evening, was 15,100: the footer's two new links; measured 15,125 merged.
     # 25 Nov, was 15,300: the engraving at the foot at its real height (see LONG_BUDGET); measured 15,339.
     # 24 Nov, late, was 15,200: fresh seed 15,222, house copy 15,125.
     "/workshops/<id>": 11900,
