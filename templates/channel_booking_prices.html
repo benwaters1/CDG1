@@ -3,7 +3,9 @@
 {% block content %}
 
 {# Booking.com takes prices only from a certified channel manager, so an occasion's prices are entered there by hand
-   (owner, 25 Nov 2026). The app never signs in to Booking.com: this page is the list, and the ticks. #}
+   (owner, 25 Nov 2026). The app never signs in to Booking.com: this page is the list, and the ticks. Each line gives
+   Booking.com's two rates, not the house's price (owner, 26 Nov): its usual Non-Refundable and Standard Rate, each
+   with the amount the occasion adds on the house site. #}
 <div class="page-head">
   <h1>Booking.com prices</h1>
   <a href="{{ url_for('channel_booking_prices_json') }}" class="btn-mini">The list as data</a>
@@ -12,17 +14,20 @@
 
 <p style="max-width:52rem;color:#666;margin-bottom:1.5rem">
   Booking.com takes prices only from a channel manager, so the prices your occasions set are entered in its extranet
-  by hand. Each line here is one to enter: a room, its nights (the first and the last both included) and the price.
-  Once it is in, press Mark done. A line not yet done follows the occasion if you change it; a line done stays as it
-  was entered, and any change after it is a new line. Nothing here signs in to Booking.com.
+  by hand. Booking.com sells each room at two rates, Non-Refundable and the Standard Rate ({{ std_terms }}), both
+  above the house's own price. On an occasion each goes up by the amount the occasion adds on the house site. Each
+  line here is one to enter: a room, its nights (the first and the last both included) and its two new prices.
+  Once it is in, press Mark done. A line not yet done follows the occasion if you change it, and Booking.com's usual
+  prices if you change those below; a line done stays as it was entered, and any change after it is a new line.
+  Nothing here signs in to Booking.com.
 </p>
 
 {% if to_do %}
 <section class="detail-card" style="margin-bottom:1.5rem" id="copy">
   <h2 class="section-heading">To copy</h2>
-  <p class="upload-hint" style="margin-top:-6px;">The lines still to do, in the order the extranet's bulk edit asks for them: room, from, to, price.</p>
+  <p class="upload-hint" style="margin-top:-6px;">The lines still to do, in the order the extranet's bulk edit asks for them: room, from, to, then {% for key, name in rate_plans %}{{ name }}{{ ', ' if not loop.last else '' }}{% endfor %} and the change on each.</p>
   <label class="field-label" for="copy-text">{{ to_do|length }} line{{ '' if to_do|length == 1 else 's' }} to enter</label>
-  <textarea id="copy-text" readonly rows="{{ [to_do|length + (groups|length * 2) + 2, 18]|min }}" style="font-family:monospace;width:100%" data-copy-text>{{ copy_text }}</textarea>
+  <textarea id="copy-text" readonly rows="{{ [to_do|length + (groups|length * 2) + 4, 20]|min }}" style="font-family:monospace;width:100%" data-copy-text>{{ copy_text }}</textarea>
   <button type="button" class="btn-mini" data-copy-button style="margin-top:8px">Copy</button>
 </section>
 <script>
@@ -40,10 +45,16 @@
 </script>
 {% endif %}
 
-{% if missing %}
+{% if missing.names %}
 <p class="wo-problem" style="margin-bottom:1rem">
-  Booking.com's name for {{ missing|join(', ') }} is not given yet. Add it <a href="#names">below</a>, so whoever
-  enters the prices finds the right room.
+  The extranet's name for {{ missing.names|join(', ') }} is not given yet. Add it <a href="#names">below</a>, so
+  whoever enters the prices finds the right room.
+</p>
+{% endif %}
+{% if missing.prices %}
+<p class="wo-problem" style="margin-bottom:1rem">
+  Booking.com's usual prices for {{ missing.prices|join(', ') }} are not given yet, so their lines say what to add
+  rather than the price. Add them <a href="#names">below</a>.
 </p>
 {% endif %}
 
@@ -68,19 +79,26 @@
   {# phone-cards: on a phone each line is a card with Mark done on it, not a button past the edge of a table. #}
   <table class="data-table phone-cards">
     <thead><tr>
-      <th scope="col">Room on Booking.com</th><th scope="col">Nights</th><th scope="col">New price</th>
-      <th scope="col">It replaces</th><th scope="col">Where it is</th><th scope="col"></th>
+      <th scope="col">Room in the extranet</th><th scope="col">Nights</th>
+      {% for key, name in rate_plans %}<th scope="col">{{ name }}</th>{% endfor %}
+      <th scope="col">Where it is</th><th scope="col"></th>
     </tr></thead>
     <tbody>
     {% for r in g.rows %}
       <tr id="line-{{ r.id }}">
         <th scope="row">
           {% if r.booking_com_room %}{{ r.booking_com_room }}<br><span class="upload-hint">{{ r.room_name }}</span>
-          {% else %}{{ r.room_name }}<br><span class="wo-problem">Booking.com name not given</span>{% endif %}
+          {% else %}{{ r.room_name }}<br><span class="wo-problem">Extranet name not given</span>{% endif %}
         </th>
-        <td data-label="Nights"><span>{{ date_range(r.first_night, r.last_night) }}</span></td>
-        <td data-label="New price"><div><strong>€{{ figure(r.price) }}</strong>{% if r.kind == 'usual' %}<br><span class="upload-hint">back to the usual price</span>{% endif %}</div></td>
-        <td data-label="It replaces"><span>{% if r.previous_price is not none %}€{{ figure(r.previous_price) }}{% else %}—{% endif %}</span></td>
+        <td data-label="Nights"><div>
+          <span>{{ date_range(r.first_night, r.last_night) }}</span>
+          {% if r.kind == 'usual' %}<br><span class="upload-hint">back to the usual prices{% if r.change %}, {{ amount(r.change) }} on each{% endif %}</span>
+          {% elif r.change %}<br><span class="upload-hint">{{ amount(r.change) }} on each rate{% if r.previous_price is not none and r.previous_price != r.price %}, as the house goes from €{{ figure(r.previous_price) }} to €{{ figure(r.price) }}{% endif %}</span>
+          {% elif r.change == 0 %}<br><span class="upload-hint">the same {{ amount(r.uplift) }}, on Booking.com's new usual prices</span>{% endif %}
+        </div></td>
+        {% for x in r.rates %}
+        <td data-label="{{ x.name }}"><div><strong>{{ x.price_words }}</strong><br><span class="upload-hint">replaces {{ x.was_words }}</span></div></td>
+        {% endfor %}
         <td data-label="Where it is"><div>
           {% if r.state == 'to_do' %}<span class="mini-status status-pending">to do</span>
           {% elif r.state == 'done' %}<span class="mini-status status-confirmed">done</span>
@@ -109,6 +127,7 @@
     </tbody>
   </table>
   </div>
+  {% if g.to_do %}<p class="upload-hint" style="margin:8px 0 0" data-not-usual>{{ not_usual_hint }}{% if g.to_do|selectattr('change')|selectattr('change', 'lt', 0)|list %} Where a line goes down, take it off.{% endif %}</p>{% endif %}
 </section>
 {% endfor %}
 {% elif lv.total %}
@@ -118,26 +137,34 @@
 {% endif %}
 
 <section class="detail-card" style="margin-top:1.5rem" id="names">
-  <h2 class="section-heading">Booking.com's names for the rooms</h2>
-  <p class="upload-hint" style="margin-top:-6px;">The extranet lists the rooms under its own names, not the house's. The same field as Name on Booking.com on each room's page.</p>
+  <h2 class="section-heading">The rooms in the Booking.com extranet</h2>
+  <p class="upload-hint" style="margin-top:-6px;">Each room's name in the extranet, which is not the house's and not the one guests see there, and the two prices Booking.com sells it at on a night nothing has changed. Change the prices here when you change them on Booking.com: every line not yet done follows. The same fields as on each room's page.</p>
   <form method="post" action="{{ url_for('channel_booking_names') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="table-wrap">
     <table class="data-table phone-cards">
-      <thead><tr><th scope="col">Room</th><th scope="col">Its name on Booking.com</th></tr></thead>
+      <thead><tr><th scope="col">Room</th><th scope="col">Its name in the extranet</th>
+        {% for key, name in rate_plans %}<th scope="col">{{ name }} (€)</th>{% endfor %}</tr></thead>
       <tbody>
       {% for room in rooms %}
         <tr>
-          <th scope="row"><label for="booking-name-{{ room['id'] }}">{{ room['name'] }}</label></th>
-          <td><input type="text" id="booking-name-{{ room['id'] }}" name="booking_name_{{ room['id'] }}" maxlength="120"
-                     aria-label="{{ room['name'] }} on Booking.com"
-                     value="{{ room['channel_name'] or '' }}" placeholder="Not given"></td>
+          <th scope="row"><label for="booking-name-{{ room['id'] }}">{{ room['name'] }}</label>
+            {% if room['channel_name'] %}<br><span class="upload-hint">guests see {{ room['channel_name'] }}</span>{% endif %}</th>
+          <td data-label="Name in the extranet"><input type="text" id="booking-name-{{ room['id'] }}" name="booking_name_{{ room['id'] }}" maxlength="120"
+                     aria-label="{{ room['name'] }} in the extranet"
+                     value="{{ room['booking_extranet_name'] or '' }}" placeholder="Not given"></td>
+          {% for key, name in rate_plans %}
+          {% set v = room['booking_' ~ key ~ '_price'] %}
+          <td data-label="{{ name }} (€)"><input type="text" inputmode="decimal" name="booking_{{ key }}_{{ room['id'] }}"
+                     aria-label="{{ room['name'] }}, {{ name }} on Booking.com, in euros"
+                     value="{{ figure(v) if v else '' }}" placeholder="Not given"></td>
+          {% endfor %}
         </tr>
       {% endfor %}
       </tbody>
     </table>
     </div>
-    <button type="submit" class="btn-mini" style="margin-top:8px">Save the names</button>
+    <button type="submit" class="btn-mini" style="margin-top:8px">Save the rooms</button>
   </form>
 </section>
 
