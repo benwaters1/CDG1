@@ -29,6 +29,7 @@ What this holds:
 No suite reaches a real site or the assistant: the pages and the answers are
 handed in here.
 """
+import inspect
 import re
 from datetime import timedelta
 
@@ -287,6 +288,39 @@ def _run(s, oc, owner, conn):
     s.check("a description offering dinner is refused while the chef is away",
             "Dinner is served" not in (_occasion(conn, name)["description"] or "")
             and any("chef is not in the house" in f for f in flashes(r)), response=r)
+    # Live test, 26 Nov 2026: the writer had guests "wandering the rooms, reading by a fire". No fire has been lit
+    # (fire copy on hold), and a night is the room, breakfast and the lounge, not the run of the house (5 Oct).
+    # Each phrase on its own, through the owner's form AND the writer, so neither check rides on the other.
+    for words, why in (("Come for the week, and read by a fire in the salon.", "No fire has been lit"),
+                       ("Evenings by the great fireplace, the valley dark outside.", "No fire has been lit"),
+                       ("A log fire, a book and the mountains.", "No fire has been lit"),
+                       ("Spend the stay wandering the rooms of the château.", "not the run of the château"),
+                       ("Guests are free to roam its old halls after breakfast.", "not the run of the château"),
+                       ("The house to yourselves for the weekend.", "not the run of the château")):
+        r = oc.post(f"/admin/stay-occasions/{occ['id']}",
+                    data=_form(dict(occ), {room["id"]: usual + 77}, status="live", description=words),
+                    follow_redirects=True)
+        s.check(f"the owner's form refuses “{words[:44]}…”, saying why",
+                (_occasion(conn, name)["description"] or "") != words
+                and any(why in f for f in flashes(r)), response=r)
+        written = m.stay_occasion_write(dict(occ, chef_on_site=1), ask=lambda _o, w=words: w)
+        s.check(f"and the writer throws it away for the plain words: “{words[:40]}…”",
+                written == m.fallback_occasion_description(dict(occ, chef_on_site=1)), detail=written)
+    live_test = ("A long weekend at the château in November, wandering the rooms, reading by a fire and walking "
+                 "the valley in the cold, clear air.")
+    s.check("the description written for the live test is refused, fire and wandering both",
+            m._FIRE_WORDS.search(live_test) and m._ROAMING_WORDS.search(live_test)
+            and m.stay_occasion_words_problem(live_test, True) is not None,
+            detail=str(m.stay_occasion_words_problem(live_test, True)))
+    for fine in ("Walk the valley and explore the village below the château.",
+                 "The rooms brought back from ruin, with breakfast each morning.",
+                 "Wander the mountain paths, then come back to the quiet of your room."):
+        s.check(f"and words about the valley, the village or the room are not: “{fine[:44]}…”",
+                m.stay_occasion_words_problem(fine, True) is None,
+                detail=str(m.stay_occasion_words_problem(fine, True)))
+    s.check("the writer is told both rules before it writes",
+            "Never mention a fire" in inspect.getsource(m.stay_occasion_description_ask)
+            and "never have guests wander, roam or explore" in inspect.getsource(m.stay_occasion_description_ask))
     r = oc.post(f"/admin/stay-occasions/{occ['id']}",
                 data=_form(dict(occ), {room["id"]: usual + 77}, status="live", chef_on_site="1"),
                 follow_redirects=True)
