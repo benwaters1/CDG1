@@ -191,6 +191,9 @@ m.WHATSAPP_FROM_NUMBER = ""
 m.sms_provider_send = _refuse(
     "the SMS provider",
     "every message costs money; stand in for sms_provider_send in the test")
+# Kept first, as the forecast is below: a suite can read what the real one
+# would send -- its payload, its attachments -- with urlopen stood in under it.
+REAL_SEND_EMAIL_VIA_RESEND = m.send_email_via_resend
 m.send_email_via_resend = _refuse(
     "Resend", "mock send_email, or let it fall through to the held outbox")
 

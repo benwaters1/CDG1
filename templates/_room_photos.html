@@ -83,10 +83,25 @@
 {#- 12 Oct (owner: "more bathroom photos"): the bathrooms as finished in 2019, from the old site's bathrooms page
     (vicente-yuste-2air, Before & After - The Château Bathrooms). The room page shows one to three of these. -#}
 {#- 26 Oct (owner, the Booking.com photo swaps): the bath under the floral tiles, full size, as Booking.com shows it. -#}
+{#- 26 Nov 2026 (owner: "i want more bathroom photos"): four more, the whole of the blue bathroom first, which leads
+      the bathrooms on /book and /workshops (BATH_LEAD). Appended, so every index other pages use stays as it was. -#}
 {%- set BATH_PHOTOS = [
   BATH_PHOTO,
   (url_for('static', filename='img/retreats/bath-floral-tiles.jpg'), 'A claw-foot bath against the floral wallpaper'),
   ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583504973197-GYZ22GF1PB0L7P92T7RV/Screen+Shot+2020-03-06+at+10.23.55+pm.png?format=1500w', 'A bathroom papered in blue, the claw-foot bath on the old terracotta'),
   ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503062603-2KFI7H38VBDWSPTOMLIB/IMG_0977.jpg?format=1500w', 'A hand-painted basin on the reclaimed terracotta'),
-  ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503973363-BORNI4RB6JAHAQXXA46X/IMG_1144.JPG?format=1500w', 'A bathroom window open onto the mountains')
+  ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503973363-BORNI4RB6JAHAQXXA46X/IMG_1144.JPG?format=1500w', 'A bathroom window open onto the mountains'),
+  (url_for('static', filename='img/bathrooms/blue-bathroom-whole.jpg'), 'The blue bathroom: wallpaper of blue roses, a claw-foot bath, a glass shower and a gilt mirror'),
+  (url_for('static', filename='img/bathrooms/basin-with-the-monogram.jpg'), 'A basin painted with flowers and the château’s crowned G'),
+  (url_for('static', filename='img/bathrooms/shower-and-desk-at-the-window.jpg'), 'A glass shower, and a writing table at the window with the mountains beyond'),
+  (url_for('static', filename='img/bathrooms/washstand-by-the-window.jpg'), 'A marble washstand by a tall window, a walk-in shower behind')
 ] -%}
+{#- Which photograph leads the bathrooms, and the rest beneath it in rows of four. -#}
+{#- The long bathroom leads (owner, 11 Nov); the whole of the blue bathroom is wide, so it takes two places in the
+    first row. The fifth of the old ones (2) stays out: the same bath from almost the same place as another. -#}
+{%- set BATH_LEAD = 0 -%}
+{%- set BATH_ROWS = [(5, 6, 1), (7, 8, 3, 4)] -%}
+{#- 26 Nov (owner, pointing at the claw-foot bath against the blue floral wallpaper, BATH_PHOTOS[1]): "take this off for
+    the ground floor twin, the twin, the king". The room pages of these three show the long bathroom without it; the
+    Bathrooms section on /book, which is all of them, keeps it. -#}
+{%- set NO_CLAWFOOT_BATH = ['The Twin Room (Ground Floor)', 'The Twin Room', 'The King Room'] -%}

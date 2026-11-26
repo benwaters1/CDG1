@@ -7,7 +7,7 @@
 {% from '_room_pictures.html' import room_carrousel with context %}
 {% from '_pictures.html' import mosaique, carrousel, bande, plein, see_all, pictures_script %}
 {% from '_chipicons.html' import ci %}
-{% from '_room_photos.html' import ROOM_PHOTOS, ROOM_EXTRA, BATH_PHOTO, BATH_PHOTOS, ROOM_STANDIN %}
+{% from '_room_photos.html' import ROOM_PHOTOS, ROOM_EXTRA, BATH_PHOTO, BATH_PHOTOS, BATH_LEAD, BATH_ROWS, ROOM_STANDIN %}
 {% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {% from '_facilities.html' import facilities with context %}
 {% from '_illus.html' import illus %}
@@ -447,13 +447,16 @@
       <p class="g-p g-baths__p">The King Suite, the Marquis Suite and the Family Suite each have a larger bathroom, with a bath.</p>
     </header>
     {#- No captions: the owner took them off every photograph on 15 Oct; the alt says what each shows. -#}
-    <figure class="g-baths__lead">{{ pic(BATH_PHOTOS[0][0], BATH_PHOTOS[0][1], sizes='(min-width: 56rem) 62vw, 100vw', cls='g-baths__img g-baths__img--lead') }}</figure>
+    <figure class="g-baths__lead">{{ pic(BATH_PHOTOS[BATH_LEAD][0], BATH_PHOTOS[BATH_LEAD][1], sizes='(min-width: 56rem) 62vw, 100vw', cls='g-baths__img g-baths__img--lead') }}</figure>
   </div>
-  <div class="g-baths__row">
-    {%- for _i in (1, 3, 4) %}
-    <figure class="g-baths__f">{{ pic(BATH_PHOTOS[_i][0], BATH_PHOTOS[_i][1], sizes='(min-width: 40rem) 33vw, 100vw', cls='g-baths__img') }}</figure>
+  {#- 26 Nov 2026 (owner: "i want more bathroom photos"): two rows of four where there was one of three. -#}
+  {%- for _row in BATH_ROWS %}
+  <div class="g-baths__row g-baths__row--4">
+    {%- for _i in _row %}
+    <figure class="g-baths__f{{ ' g-baths__f--wide' if _i == 5 else '' }}">{{ pic(BATH_PHOTOS[_i][0], BATH_PHOTOS[_i][1], sizes='(min-width: 40rem) 50vw, 100vw' if _i == 5 else '(min-width: 40rem) 25vw, 50vw', cls='g-baths__img') }}</figure>
     {%- endfor %}
   </div>
+  {%- endfor %}
   {#- Site review 25 Nov: "Luxury" once, not on three lines running; the linen and the toiletries as /workshops has them. -#}
   <ul class="g-baths__feat">
     {%- for _k, _label, _text in [

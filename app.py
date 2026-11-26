@@ -8241,6 +8241,11 @@ def init_db():
         # campaign, from the news subdomain -- so sending it later sends it as
         # it was written rather than from the address booking mail relies on.
         ("email_outbox_sender", "ALTER TABLE email_outbox ADD COLUMN sender TEXT"),
+        # The files a held letter carries (an occasion's PDF menu on its
+        # newsletter, 26 Nov 2026): JSON [{filename, path, mime}], references
+        # to files on the volume rather than their bytes -- a newsletter held
+        # for 25,000 people must not keep 25,000 copies of a menu.
+        ("email_outbox_attachments", "ALTER TABLE email_outbox ADD COLUMN attachments TEXT"),
         # A letter to a group set to go later (25 Nov 2026, owner: "add schedule
         # to write to the group for workshops"). Who it goes to is worked out
         # when it goes, not when it was set: the list on the day is the list.
@@ -32999,9 +33004,12 @@ def edit_campaign_template(template_id):
             WHERE campaign_sends.template_id = ?
             ORDER BY campaign_sends.created_at DESC LIMIT 20""",
         (template_id,)).fetchall()
+    # What every letter carries: an occasion's newsletter attaches its PDF menu.
+    _files, attachment_note = campaign_attachments(conn, template_id)
     conn.close()
     return render_template(
         "admin_email_edit.html", template=template, areas=CAMPAIGN_AREAS, tags=tags,
+        attachment_note=attachment_note,
         campaign_sender=RESEND_CAMPAIGN_FROM if resend_enabled() else None,
         booking_sender=RESEND_FROM if resend_enabled() else SMTP_FROM,
         segments=segments, audience_counts=audience_counts,
@@ -34672,9 +34680,16 @@ def send_held_letter(conn, row):
     # From whoever it was written as: a campaign held goes from the news
     # address it was meant for, not the one booking mail relies on.
     sent_as = row["sender"] if "sender" in row.keys() else None
+    # And with what it carried: an occasion's menu on its newsletter.
+    try:
+        carried = json.loads(row["attachments"]) if ("attachments" in row.keys()
+                                                     and row["attachments"]) else None
+    except ValueError:
+        carried = None
     ok = send_email(row["to_address"], row["subject"], row["body"],
                     row["ics_content"], row["ics_filename"], keep=False, report=why,
                     log=False, **({"sender": sent_as} if sent_as else {}),
+                    **({"attachments": carried} if carried else {}),
                     despite_switch="a held letter somebody chose to send from Held Email")
     now = datetime.now(timezone.utc).isoformat()
     if ok:
@@ -35809,8 +35824,27 @@ def resend_refusal(exc):
 _RESEND_RECEIPT = threading.local()
 
 
+def letter_files(attachments):
+    """[(filename, bytes, mime)] for the files a letter carries, read now.
+
+    A letter is given REFERENCES ({filename, path, mime}) and reads them as it
+    goes, so the outbox keeps the reference and not the bytes. One that is no
+    longer there -- a menu replaced while a newsletter was held -- is left off
+    and said in the log; the letter still goes, with its link."""
+    out = []
+    for a in attachments or ():
+        try:
+            with open(a["path"], "rb") as fh:
+                out.append((a.get("filename") or os.path.basename(a["path"]), fh.read(),
+                            a.get("mime") or "application/octet-stream"))
+        except (OSError, KeyError, TypeError) as e:
+            log_line(f"[email attachment left off] {a!r}: {e}")
+    return out
+
+
 def send_email_via_resend(to_address, subject, body, ics_content=None,
-                          ics_filename=None, html=None, reply_to=None, sender=None):
+                          ics_filename=None, html=None, reply_to=None, sender=None,
+                          attachments=None):
     """Resend's HTTP API — plain urllib, no extra dependency (matches how
     the rest of this file makes outbound HTTP calls, e.g. fetch_ical_ranges).
 
@@ -35831,6 +35865,10 @@ def send_email_via_resend(to_address, subject, body, ics_content=None,
             "filename": ics_filename or "booking.ics",
             "content": base64.b64encode(ics_content.encode("utf-8")).decode("ascii"),
         }]
+    for name, data, mime in letter_files(attachments):
+        payload.setdefault("attachments", []).append({
+            "filename": name, "content": base64.b64encode(data).decode("ascii"),
+            "content_type": mime})
     try:
         req = Request(
             "https://api.resend.com/emails",
@@ -36181,8 +36219,8 @@ def file_held_letters(letters):
             for letter in letters:
                 letter.id = conn.execute(
                     """INSERT INTO email_outbox (to_address, subject, body, ics_content,
-                       ics_filename, reason, last_error, created_at, sender)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", letter.values).lastrowid
+                       ics_filename, reason, last_error, created_at, sender, attachments)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", letter.values).lastrowid
             conn.commit()
         finally:
             conn.close()
@@ -36194,7 +36232,7 @@ def file_held_letters(letters):
 
 
 def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None,
-                      sender=None):
+                      sender=None, attachments=None):
     """Keep a message that could not be sent, so it can go out later.
 
     Deliberately on a connection of its own, with everything swallowed: this
@@ -36220,7 +36258,8 @@ def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reas
     written after it, so the record of the letter still points at its row.
     """
     letter = HeldLetter((to_address, subject, body, ics_content, ics_filename, reason,
-                         error, datetime.now(timezone.utc).isoformat(), sender))
+                         error, datetime.now(timezone.utc).isoformat(), sender,
+                         json.dumps(attachments) if attachments else None))
     if has_request_context() and request_holds_a_write():
         g.setdefault("_held_letters", []).append(letter)
         return letter
@@ -36655,7 +36694,8 @@ def letter_label(template_key, sent_by=None):
 
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                keep=True, html=None, report=None, area=None, about=None,
-               template_key=None, sent_by=None, log=True, despite_switch=None, sender=None):
+               template_key=None, sent_by=None, log=True, despite_switch=None, sender=None,
+               attachments=None):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything that must not be queued: a credential -- a
@@ -36785,7 +36825,8 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                                    failure=why, **filed)
             return False
         outbox_id = queue_undelivered(to_address, subject, body, ics_content,
-                                      ics_filename, why, sender=sender)
+                                      ics_filename, why, sender=sender,
+                                      attachments=attachments)
         keep_guest_message(to_address, subject, body, outbox_id=outbox_id,
                            failure=why, **filed)
         return False
@@ -36797,7 +36838,8 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         went, why = send_email_via_resend(to_address, subject, body, ics_content,
                                           ics_filename, html=html,
                                           reply_to=reply_to_header_for(area),
-                                          **({"sender": sender} if sender else {}))
+                                          **({"sender": sender} if sender else {}),
+                                          **({"attachments": attachments} if attachments else {}))
         if went:
             provider_id = getattr(_RESEND_RECEIPT, "id", None)
             filed["provider_id"] = provider_id
@@ -36814,7 +36856,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         if keep:
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                                      "provider rejected it", why or "Resend API call failed",
-                                     sender=sender)
+                                     sender=sender, attachments=attachments)
             keep_guest_message(to_address, subject, body, outbox_id=held,
                                failure=why or "the provider refused it", **filed)
         elif log:
@@ -36827,7 +36869,8 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             report["why"] = "No email provider is configured."
         if keep:
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                                     "no email provider configured", sender=sender)
+                                     "no email provider configured", sender=sender,
+                                     attachments=attachments)
             keep_guest_message(to_address, subject, body, outbox_id=held,
                                failure="no email provider configured", **filed)
         elif log:
@@ -36864,6 +36907,10 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                 ics_content.encode("utf-8"), maintype="text", subtype="calendar",
                 filename=ics_filename or "booking.ics",
             )
+        for name, data, mime in letter_files(attachments):
+            main, _, sub = mime.partition("/")
+            msg.add_attachment(data, maintype=main or "application",
+                               subtype=sub or "octet-stream", filename=name)
         context = ssl.create_default_context()
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
             server.starttls(context=context)
@@ -36881,7 +36928,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             report["why"] = "The mail server refused it: %s" % (e,)
         if keep:
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                                     "send failed", str(e))
+                                     "send failed", str(e), attachments=attachments)
             keep_guest_message(to_address, subject, body, outbox_id=held,
                                failure=f"the mail server refused it: {e}", **filed)
         elif log:
@@ -55237,6 +55284,38 @@ def occasion_newsletters_waiting(conn, today=None):
             ORDER BY stay_occasions.first_night""", (t,))]
 
 
+# A newsletter goes to the whole list. Past this a menu is linked, not
+# attached: a large file sent to thousands is how a sender's letters start
+# landing in spam, and some mailboxes refuse it outright.
+NEWSLETTER_ATTACHMENT_MAX_MB = 5
+
+
+def campaign_attachments(conn, template_id):
+    """(files, note) for an occasion's newsletter: its PDF menu as an
+    attachment [{filename, path, mime}], and a line saying what is attached or
+    why it is not. ([], "") for any other campaign, or with no PDF menu."""
+    if not template_id:
+        return [], ""
+    row = conn.execute(
+        """SELECT stay_occasions.name, stay_occasions.menu_file FROM campaign_templates
+             JOIN stay_occasions ON stay_occasions.id = campaign_templates.occasion_id
+            WHERE campaign_templates.id = ?""", (template_id,)).fetchone()
+    if not row or not occasion_file_is_pdf(row["menu_file"]):
+        return [], ""
+    path = os.path.join(OCCASION_FILES_DIR, row["menu_file"])
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return [], "The menu's PDF is missing, so it is neither attached nor linked to anything that answers."
+    mb = size / (1024 * 1024)
+    if mb > NEWSLETTER_ATTACHMENT_MAX_MB:
+        return [], (f"The menu's PDF is {mb:.1f} MB, too large to attach to a newsletter "
+                    f"(at most {NEWSLETTER_ATTACHMENT_MAX_MB} MB), so it is linked from See the menu.")
+    name = re.sub(r'[\\/:*?"<>|]+', " ", row["name"]).strip() or "Gudanes"
+    return ([{"filename": f"{name} - menu.pdf", "path": path, "mime": "application/pdf"}],
+            f"The menu's PDF ({max(mb, 0.1):.1f} MB) is attached to every letter, and linked from See the menu.")
+
+
 def campaign_pictures(conn, template_id):
     """The pictures an occasion's draft newsletter draws, or [] for any other
     campaign."""
@@ -72195,9 +72274,11 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
     conn.commit()
     report = {}
     try:
+        files, _note = campaign_attachments(conn, letter.get("template_id"))
         ok = send_email(email, subject, body, area=letter.get("area"), report=report,
                         template_key="campaign:" + (letter["template_name"] or ""),
-                        sender=RESEND_CAMPAIGN_FROM, html=drawn)
+                        sender=RESEND_CAMPAIGN_FROM, html=drawn,
+                        **({"attachments": files} if files else {}))
         status = ("test" if as_test else "sent") if ok is not False else "failed"
         # NOT SENT IS NOT FAILED. With no provider, or Write to guests off,
         # the letter is kept and goes when it can -- and the page said
