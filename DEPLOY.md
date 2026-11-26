@@ -21,8 +21,10 @@ you a working private URL. Everything after that is optional and can wait.
    - `GUDANES_DB_PATH` = `/data/gudanes_hr.db` — puts the database, uploads
      and room photos on the volume.
    - `FLASK_SECRET_KEY` = a 64-character random string. Generate one with
-     `python -c "import secrets; print(secrets.token_hex(32))"`. Without it
-     everyone is signed out on every restart.
+     `python -c "import secrets; print(secrets.token_hex(32))"`. Without it,
+     or with the command pasted in place of its output, the app refuses to
+     start and says so in the deploy log (since 26 Nov 2026; before then it
+     signed everyone out on every restart, silently).
 5. **Get the first password out of the logs.** On its first boot the app
    creates the owner account and prints a generated password to the deploy log
    — *Deployments → View logs*, look for `FIRST RUN`. There is no email

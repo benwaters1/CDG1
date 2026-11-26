@@ -592,6 +592,38 @@ def _site_errors(s, conn):
         conn.commit()
 
 
+def _secret_key(s):
+    s.section("B2.3 Production does not start without a proper session key")
+    import subprocess
+    import sys
+    import tempfile
+    scratch = tempfile.mkdtemp(prefix="zzsweep-key-")
+    db_path = os.path.join(scratch, "never.db")
+    base = {k: v for k, v in os.environ.items()
+            if not k.startswith(("STRIPE", "PENNYLANE", "RESEND", "SMTP", "MS_GRAPH", "ANTHROPIC"))}
+    # Every one of these set, if only to nothing: a variable already in the environment is never read
+    # from .env, so the main checkout's own .env cannot slip a key back in.
+    base.update({"GUDANES_DB_PATH": db_path, "GUDANES_NO_AUTOMATION": "1", "GUDANES_MIRROR_DIR": scratch,
+                 "STRIPE_SECRET_KEY": "", "PENNYLANE_API_TOKEN": "", "RESEND_API_KEY": "", "SMTP_HOST": "",
+                 "PYTHONIOENCODING": "utf-8"})
+    for label, key in (("with none", ""), ("with the command pasted in", "python -c 'import secrets'"),
+                       ("with one too short to be safe", "abc123")):
+        env = dict(base, FLASK_SECRET_KEY=key)
+        run = subprocess.run([sys.executable, "-c", "import wsgi"], cwd=_harness.ROOT, env=env,
+                             capture_output=True, text=True, encoding="utf-8", timeout=180)
+        said = (run.stderr or "") + (run.stdout or "")
+        s.check(f"{label}: it refuses, and says why", run.returncode != 0 and "Refusing to start" in said
+                and "FLASK_SECRET_KEY" in said, detail=said.strip().splitlines()[-1][:200] if said.strip() else "")
+        s.check(f"{label}: before it has made a database", not os.path.exists(db_path))
+    src = open(os.path.join(_harness.ROOT, "wsgi.py"), encoding="utf-8").read()
+    s.check("the check comes before init_db and the background work",
+            src.index("secret_key_problem(") < src.index("init_db()") < src.index("start_background_work()"))
+    s.check("a proper key is no problem", m.secret_key_problem("a" * 64) is None)
+    s.check("and the go-live checklist reads the same words", m.secret_key_problem("").startswith("NOT set."))
+    import shutil
+    shutil.rmtree(scratch, ignore_errors=True)
+
+
 def run():
     s = Suite("The site's second sweep, 26 November 2026")
     anon = m.app.test_client()
@@ -611,6 +643,7 @@ def run():
         _figures(s)
         _small_things(s)
         _site_errors(s, conn)
+        _secret_key(s)
     finally:
         _setting(conn, "dining_mode", was_dm)
         conn.close()

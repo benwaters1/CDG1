@@ -1903,8 +1903,43 @@ def static_files_kept(response):
 # IMPORTANT: this secret key is regenerated every time the app starts unless
 # you set a real one via the FLASK_SECRET_KEY environment variable. Set that
 # in your real deployment so logged-in sessions survive restarts. See
-# DEPLOY.md for exactly how.
+# DEPLOY.md for exactly how. The random fallback is for `python app.py` and
+# the test suite only: wsgi.py, which is what gunicorn serves in production,
+# refuses to start without a proper key (secret_key_problem, below).
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
+
+
+def secret_key_problem(raw):
+    """Why `raw` will not do as the session key, in a sentence; None when it will.
+
+    Presence is not enough. The instruction for this variable is "run this
+    command and paste the result", and pasting the command itself is an easy
+    slip that looks completely fine: sessions persist, logins survive a
+    restart, nothing errors. But the value is then a string anybody can guess,
+    and a guessable session key means forged cookies -- worse than no key at
+    all, because it fails silently instead of loudly.
+
+    Read by the go-live checklist, and by wsgi.py before production starts
+    (second sweep, 26 Nov 2026, B2.3): a missing key there was a random one per
+    deploy, so every deploy silently signed out the staff and lost the guests'
+    part-filled bookings, and nothing said why.
+    """
+    raw = raw or ""
+    looks_like_command = any(
+        marker in raw.lower()
+        for marker in ("python", "secrets.", "print(", "$(", "token_hex", "openssl"))
+    if not raw:
+        return ("NOT set. A new key is generated every start, so everyone is "
+                "logged out each time the app restarts, and 'remember me' never works.")
+    if looks_like_command:
+        return ("Set to what looks like the COMMAND that generates a key, not the "
+                "key itself. Run it in a terminal and paste its output — a 64-character "
+                "hex string. As it stands the value is guessable, so session cookies "
+                "can be forged.")
+    if len(raw) < 32:
+        return (f"Only {len(raw)} characters. Use at least 32 — "
+                "`python -c \"import secrets; print(secrets.token_hex(32))\"`.")
+    return None
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 DEBUG_MODE = os.environ.get("FLASK_DEBUG", "0") == "1"
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
@@ -113763,25 +113798,9 @@ def readiness_checks(conn, *, include_slow=True):
     # restart, nothing errors. But the value is then a string anybody can
     # guess, and a guessable session key means forged cookies — worse than no
     # key at all, because it fails silently instead of loudly.
-    raw_secret = os.environ.get("FLASK_SECRET_KEY") or ""
-    looks_like_command = any(
-        marker in raw_secret.lower()
-        for marker in ("python", "secrets.", "print(", "$(", "token_hex", "openssl"))
-    too_short = 0 < len(raw_secret) < 32
-    secret_ok = bool(raw_secret) and not looks_like_command and not too_short
-    if not raw_secret:
-        secret_detail = ("NOT set. A new key is generated every start, so everyone is "
-                         "logged out each time the app restarts, and 'remember me' never works.")
-    elif looks_like_command:
-        secret_detail = ("Set to what looks like the COMMAND that generates a key, not the "
-                         "key itself. Run it in a terminal and paste its output — a 64-character "
-                         "hex string. As it stands the value is guessable, so session cookies "
-                         "can be forged.")
-    elif too_short:
-        secret_detail = (f"Only {len(raw_secret)} characters. Use at least 32 — "
-                         "`python -c \"import secrets; print(secrets.token_hex(32))\"`.")
-    else:
-        secret_detail = "Set — logins survive a restart."
+    secret_problem = secret_key_problem(os.environ.get("FLASK_SECRET_KEY") or "")
+    secret_ok = secret_problem is None
+    secret_detail = secret_problem or "Set — logins survive a restart."
     add("blocker", "Core", "Session secret key", secret_ok, secret_detail)
 
     add("blocker", "Core", "Debug mode off", not DEBUG_MODE,

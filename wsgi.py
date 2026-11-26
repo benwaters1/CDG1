@@ -13,7 +13,18 @@ the test suite imports it.
 """
 import os
 
-from app import app, init_db, start_background_work
+from app import app, init_db, start_background_work, secret_key_problem
+
+# NO SESSION KEY, NO START (second sweep, 26 Nov 2026, B2.3). Without
+# FLASK_SECRET_KEY app.py makes a random key, which is right for `python app.py`
+# and the tests, and wrong here: every deploy would sign out every member of
+# staff and lose every guest's part-filled booking, and nothing would say why.
+# So production stops before it serves anything, with the reason in the deploy
+# log. Checked before init_db, so a refused start has touched nothing. DEPLOY.md says how to make a key.
+_key_problem = secret_key_problem(os.environ.get("FLASK_SECRET_KEY") or "")
+if _key_problem:
+    raise SystemExit("Refusing to start: the session key FLASK_SECRET_KEY is " + _key_problem[0].lower()
+                     + _key_problem[1:] + " Set it in Railway's variables (DEPLOY.md, step 4) and deploy again.")
 
 # Idempotent: creates the schema on a fresh volume and applies any pending
 # migrations on an existing one. Must finish before the first request.
