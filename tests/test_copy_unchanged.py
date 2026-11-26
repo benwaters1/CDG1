@@ -226,7 +226,12 @@ m = _harness.m
 # Dinner at Gudanes panel on an occasion's page, the chef line beside a priced dinner, and /book's note when it is
 # opened from Book dinner. Against c3f0038 it listed nothing: an occasion's page and /book?dinner=1 are not among
 # the pages it reads. Was: "c3f0038"
-COPY_BASE = "e56aec2"
+# Moved to b5857b2 (owner, 26 Nov, the photo review's safe fixes): two new captions only, travelling with
+# their replacement photographs -- "Gabriel's façade" on /history for "Gabriel's façade, above the roses", and
+# "Across the far lawn" on the Seven Starry Nights page. Was: "c3f0038"
+# 26 Nov 2026, merged: the base is b5857b2 for the merge of the dinner test fixes with main, each side read on
+# its own (the dinner fixes changed nothing this reads). Moved to the merge itself in the commit after it.
+COPY_BASE = "b5857b2"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
