@@ -36895,6 +36895,7 @@ LETTERS_IN_CODE = {
     "manage_booking": "To the house: a guest changed their stay",
     "restaurant_manage": "To the house: a guest changed their dinner",
     "workshop_manage": "To the house: a guest changed their atelier place",
+    "tell_house_of_guest_details": "To the house: a guest changed their roommate, notes or occasion",
     "event_manage": "To the house: an event enquiry changed",
     "event_quote": "To the house: a quote accepted",
     "submit_event_inquiry": "To the house: an event enquiry",
