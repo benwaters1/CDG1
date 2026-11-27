@@ -410,8 +410,14 @@ def _run(s, oc, conn):
     # ------------------------------------------------------------------
     s.section("The newsletter uses the built menu")
     subject, body, fingerprint, _b = m.occasion_newsletter_parts(conn, occ)
-    s.check("the courses are in the letter, in English", "On the menu:" in body
-            and f"Main course: {HOUSE[2][2]}" in body and f"Starter: {HOUSE[1][2]}" in body)
+    with m.app.test_request_context("/"):
+        pics = m.occasion_newsletter_pictures(conn, occ)
+    # The menu is drawn in the letter as a picture since 27 Nov (test_dinner_menu_render); its courses are the
+    # picture's words, so they are in the letter whether or not the mail app shows pictures.
+    drawn = next((p for p in pics if p["src"].endswith(f"/whats-on/at-gudanes/{slug}/menu.jpg")), None)
+    s.check("the courses are in the letter, in English", "{{menu_pictures}}" in body and drawn
+            and f"Main course: {HOUSE[2][2]}" in drawn["alt"] and f"Starter: {HOUSE[1][2]}" in drawn["alt"],
+            detail=drawn)
     s.check("and See the menu opens the page", "See the menu:" in body and f"/whats-on/at-gudanes/{slug}/menu" in body)
     conn.execute("UPDATE dinner_menus SET updated_at = '2099-01-01T00:00:00+00:00' WHERE id = ?", (menu["id"],))
     s.check("a change to the menu redrafts it", m.occasion_newsletter_parts(conn, occ)[2] != fingerprint)
