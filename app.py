@@ -2090,6 +2090,17 @@ csrf = CSRFProtect(app)
 # reports because it looks like the add-in was never installed.
 FRAMEABLE_PATH_PREFIX = "/outlook-addin/"
 
+# The policy every other response carries (set_security_headers), and its one
+# variant: a file the house's OWN pages draw inside an iframe -- an occasion's
+# menu in its "See the menu" pop-up. Under frame-ancestors 'none' and DENY the
+# pop-up opened on Chrome's broken-page icon while "Open in a new tab" and
+# "Download" worked, so nothing errored and the menu was simply not there (live
+# test, 26 Nov 2026). The menu routes set these themselves, and the hook's
+# setdefault leaves them; everything else stays DENY.
+HOUSE_CSP = ("frame-ancestors 'none'; base-uri 'self'; "
+             "form-action 'self' https://checkout.stripe.com")
+HOUSE_CSP_FRAMED_BY_OURS = HOUSE_CSP.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+
 
 # ---------------------------------------------------------------------------
 # Website analytics: counted by the house, without a cookie, without keeping
@@ -2382,10 +2393,7 @@ def set_security_headers(response):
     """
     if not request.path.startswith(FRAMEABLE_PATH_PREFIX):
         response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault(
-            "Content-Security-Policy",
-            "frame-ancestors 'none'; base-uri 'self'; "
-            "form-action 'self' https://checkout.stripe.com")
+        response.headers.setdefault("Content-Security-Policy", HOUSE_CSP)
         # The stricter policy, reported and not enforced (CSP_REPORT_ONLY). Every
         # hook that rewrites the page has run by now, so the admin bar's script
         # and the photographs' are in the body and get the nonce too.
@@ -54255,6 +54263,12 @@ CHEF_ON_SITE_LINE = ("The château’s chef is in the house: lunch and dinner ca
                      "arranged, priced on request.")
 CHEF_OFF_SITE_LINE = ("Room and breakfast, with lovely restaurants close by, and we "
                       "are happy to help you book.")
+# The chef in the house AND a dinner served: the line must not offer dinner on
+# request right beside a dinner with its price. The live test of 26 Nov 2026
+# read "lunch and dinner can be arranged, priced on request", then "Dinner is
+# hosted at the château ... €95 a person". The dinner panel says the dinner;
+# this line says only what is left to arrange (owner's brief, 26 Nov).
+CHEF_ON_SITE_DINNER_LINE = "The château’s chef is in the house; lunch can be arranged on request."
 CHEF_ON_TAG, CHEF_OFF_TAG = "Chef in the house", "Room and breakfast"
 
 # With the chef away, nothing on the page may offer a meal at the château
@@ -54262,6 +54276,32 @@ CHEF_ON_TAG, CHEF_OFF_TAG = "Chef in the house", "Room and breakfast"
 # is refused with the reason, rather than shown to a guest who then asks for it.
 _MEAL_WORDS = re.compile(r"\b(lunch|lunches|dinner|dinners|supper|suppers|meals?|chef|chefs|"
                          r"déjeuner|dîner|dejeuner|diner|banquet|feast|à table|a table)\b", re.I)
+
+# Two more things an occasion's words may never say (owner, live test of 26
+# Nov 2026, where the writer had guests "wandering the rooms, reading by a
+# fire"). No FIRE: none has been lit yet and fire copy is on hold, so no fire,
+# fireside, log fire or hearth, and no fireplace (written about, one is always
+# burning). And no ROAMING THE HOUSE: a night here is the room, breakfast and
+# the lounge, not the run of the château (owner, 5 Oct) -- so nobody wanders,
+# roams or explores the rooms, the halls or the house. The valley, the
+# village and the mountains are theirs to wander.
+_FIRE_WORDS = re.compile(
+    r"\b(fires?|fireside|firesides|firelight|firelit|fireplaces?|hearths?|embers|"
+    r"log[- ]?fires?|log[- ]?burners?|wood[- ]?burn(?:er|ers|ing)|wood[- ]?fires?|"
+    r"open fires?|crackling|cheminées?|coin du feu|feu de bois)\b", re.I)
+_HOUSE_NOUNS = (r"(?:rooms?|house|château|chateau|castle|halls?|hallways?|corridors?|salons?|"
+                r"staircases?|stairs|galleries|gallery|floors|interiors?|library|drawing[- ]rooms?)")
+_ROAMING_WORDS = re.compile(
+    r"\b(?:wander|wanders|wandering|wandered|roam|roams|roaming|roamed|explore|explores|exploring|"
+    r"explored|ramble|rambles|rambling|stroll|strolls|strolling|potter|pottering|amble|ambling|"
+    r"drift|drifting|meander|meandering)\b"
+    r"(?:\s+(?:through|around|round|about|along|across|into|in|among|amongst|down|up|over|between|"
+    r"from|of)){0,2}\s+(?:the|its|our|their|every|each|all)\s+"
+    r"(?:(?!and\b|or\b)[^\s,.;]+\s+){0,2}?" + _HOUSE_NOUNS + r"\b"
+    r"|\bthe run of the (?:house|château|chateau|place)\b"
+    r"|\bfrom room to room\b"
+    r"|\b(?:the )?(?:house|château|chateau) (?:all )?to (?:yourself|yourselves)\b"
+    r"|\bfree to (?:wander|roam|explore)\b", re.I)
 
 # The house voice of the public pages: no contractions, no exclamation marks.
 _CONTRACTION = re.compile(r"\b\w+'(s|t|re|ve|ll|d|m)\b|\b\w+’(s|t|re|ve|ll|d|m)\b", re.I)
@@ -54916,8 +54956,16 @@ def stay_occasion_suggestions_open(conn, today=None):
 
 # --- Words --------------------------------------------------------------------
 
-def chef_line(occ):
-    return CHEF_ON_SITE_LINE if occ["chef_on_site"] else CHEF_OFF_SITE_LINE
+def chef_line(occ, conn=None, dinners=None):
+    """What the chef switch says to a guest. With dinner nights on the occasion
+    -- a Dinner at Gudanes evening or a guest chef's -- never "dinner ...
+    priced on request", because the page beside it prices the dinner. Pass
+    `dinners` when they are already read; otherwise they are looked up."""
+    if not occ["chef_on_site"]:
+        return CHEF_OFF_SITE_LINE
+    if dinners is None:
+        dinners = stay_occasion_dinners(occ, conn) if occ["id"] else []
+    return CHEF_ON_SITE_DINNER_LINE if dinners else CHEF_ON_SITE_LINE
 
 
 def stay_occasion_words_problem(text, chef_on_site):
@@ -54927,6 +54975,16 @@ def stay_occasion_words_problem(text, chef_on_site):
                 "mention lunch, dinner or a chef: guests would ask for a meal the château "
                 "is not serving. Breakfast is fine. The line about restaurants close by is "
                 "added on its own.")
+    fire = _FIRE_WORDS.search(text or "")
+    if fire:
+        return (f"The description mentions “{fire.group(0)}”. No fire has been lit at the "
+                "château yet, so the pages say nothing about fires, fireplaces or firesides "
+                "for now.")
+    roam = _ROAMING_WORDS.search(text or "")
+    if roam:
+        return (f"The description says “{roam.group(0)}”. A night here is the room, breakfast "
+                "and the lounge, not the run of the château, so the words must not have guests "
+                "wandering or exploring the house. The valley and the village are fine.")
     if "!" in (text or ""):
         return "The public pages use no exclamation marks."
     return None
@@ -54973,7 +55031,11 @@ def stay_occasion_description_ask(occ):
                 "sentences, plain and warm, with no contractions and no exclamation marks. "
                 "This is a stay sold around a date, not an event: never promise a party, "
                 "fireworks, a programme, a meal or anything the château does not provide. "
-                "Do not mention food, meals or a chef at all; a separate line covers that."),
+                "Do not mention food, meals or a chef at all; a separate line covers that. "
+                "Never mention a fire, a fireplace, a hearth or a fireside: no fire is lit. "
+                "A night is the guest's room, breakfast and the lounge, not the run of the "
+                "house: never have guests wander, roam or explore the rooms, halls or "
+                "château. The valley, the village and the mountains are fine."),
         messages=[{"role": "user", "content": json.dumps({
             "name": occ["name"], "first_night": occ["first_night"],
             "last_night": occ["last_night"], "why_these_dates": occ["why"] or ""})}],
@@ -55537,11 +55599,11 @@ def stay_occasion_card(conn, r):
     d["from_price"] = stay_occasion_from_price(conn, r)
     d["photo_url"] = stay_occasion_photo_url(r["photo"])
     d["chef_tag"] = CHEF_ON_TAG if r["chef_on_site"] else CHEF_OFF_TAG
-    d["chef_line"] = chef_line(r)
     d["is_guest_chef"] = r["kind"] == "guest_chef"
     # DINNER AT GUDANES (25 Nov 2026): an occasion with dinner nights says so
     # in its tag, and its meta line names the night.
     d["dinners"] = stay_occasion_dinners(r, conn)
+    d["chef_line"] = chef_line(r, dinners=d["dinners"])
     d["dinner_when"] = occasion_dinner_when(r, d["dinners"])
     if d["dinners"]:
         d["chef_tag"] = DINNER_AT_GUDANES
@@ -55801,7 +55863,7 @@ def stay_occasions_on_stay(conn, arrival, departure):
     chef_line, url}]."""
     if not (arrival and departure) or departure <= arrival:
         return []
-    return [{"name": r["name"], "chef_line": chef_line(r),
+    return [{"name": r["name"], "chef_line": chef_line(r, conn),
              "url": url_for("stay_occasion_page", slug=r["slug"]),
              "first_night": r["first_night"], "departure": stay_occasion_departure(r),
              # Whether it prices a room at all: a Dinner at Gudanes occasion
@@ -56352,7 +56414,7 @@ def _render_occasion_form(conn, occ, values=None, confirm_write=None, price_clas
                          "covers": (rs["capacity"] if rs and rs["capacity"] else 20)},
         night_menus=night_menus, price_clash=price_clash,
         covers=covers, who=who, uplift=STAY_OCCASION_UPLIFT, chef_on=CHEF_ON_SITE_LINE,
-        chef_off=CHEF_OFF_SITE_LINE, confirm_write=confirm_write,
+        chef_on_dinner=CHEF_ON_SITE_DINNER_LINE, chef_off=CHEF_OFF_SITE_LINE, confirm_write=confirm_write,
         banner_default=occasion_banner_default(occ), dining=dining_mode(conn),
         vat_food=f'{float(tax_rate(conn, "vat_food")):g}',
         vat_alcohol=f'{float(tax_rate(conn, "vat_alcohol")):g}')
@@ -57733,14 +57795,60 @@ def stay_occasion_page(slug):
     conn.close()
     return render_template("stay_occasion.html", occ=card, dinners=dinners, menu=menu,
                            night_menus=night_menus,
+                           panel=(occasion_dinner_panel(occ, dinners)
+                                  if dinners and not card["is_guest_chef"] else None),
                            dinner_time_words=clock_words(occ["dinner_time"]) if occ["dinner_time"] else "",
                            preview=occ["status"] != "live")
 
 
-def _occasion_file_response(slug, pick):
+# The dinner panel's photograph when the occasion has no banner of its own: a
+# long table lit with tall candles (owner's brief, 26 Nov 2026). Portrait, so
+# it fills the panel's side column without being cut to a sliver.
+DINNER_PANEL_PHOTO = "img/dining/long-table-tall-candles.jpg"
+
+
+def occasion_dinner_panel(occ, dinners, today=None):
+    """What the Dinner at Gudanes panel on an occasion's page needs beyond the
+    occasion itself (owner, 26 Nov 2026: "where's the price of the dinner ...
+    it should say stay these nights and book dinner"):
+
+      photo, photo_alt -- the occasion's banner photograph if it has one, else
+                          a dining one;
+      stay             -- /book on the occasion's dates, as before;
+      book_dinner      -- the same, with ?dinner=1 so the room form arrives with
+                          the dinner added for the party (book_room reads it
+                          once). When the dinner is open to diners not staying,
+                          the restaurant's booking for the soonest dinner night
+                          still to come instead;
+      outside          -- whether to say it is open to them."""
+    today_iso = (today or house_today()).isoformat()
+    departure = stay_occasion_departure(occ)
+    if occ["outside_diners"]:
+        ahead = [d for d in dinners if d > today_iso] or dinners[-1:]
+        book = url_for("restaurant_book", date=ahead[0])
+    else:
+        book = url_for("book_rooms", arrival=occ["first_night"], departure=departure, dinner=1)
+    banner = occ["banner_file"] if "banner_file" in occ.keys() else None
+    return {
+        "photo": (url_for("occasion_banner_photo", slug=occ["slug"]) if banner
+                  else url_for("static", filename=DINNER_PANEL_PHOTO)),
+        "photo_alt": (f"{occ['name']} at Château de Gudanes" if banner
+                      else "A long table at the château, lit with tall candles"),
+        "stay": url_for("book_rooms", arrival=occ["first_night"], departure=departure),
+        "book_dinner": book,
+        "outside": bool(occ["outside_diners"]),
+    }
+
+
+def _occasion_file_response(slug, pick, framed_by_ours=False):
     """An occasion's menu or banner, for a LIVE occasion whose nights have not
     passed (the owner may look at a draft's). Anything else is a 404: a
-    dismissed or past occasion's menu is not on the site."""
+    dismissed or past occasion's menu is not on the site.
+
+    framed_by_ours: the menu, which the occasion page shows inside its own
+    pop-up's iframe, so it may be framed by the house's pages and nobody
+    else's (HOUSE_CSP_FRAMED_BY_OURS). The banner is only ever an <img>, so it
+    keeps DENY like every other response."""
     conn = get_db()
     occ = conn.execute("SELECT * FROM stay_occasions WHERE slug = ?", (slug,)).fetchone()
     user = current_user()
@@ -57760,13 +57868,16 @@ def _occasion_file_response(slug, pick):
         download_name=f"{occ['name']} - menu.{ext}" if download else None)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Cache-Control"] = "public, max-age=300"
+    if framed_by_ours:
+        resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+        resp.headers["Content-Security-Policy"] = HOUSE_CSP_FRAMED_BY_OURS
     return resp
 
 
 @app.route("/whats-on/at-gudanes/<slug>/menu")
 def occasion_menu(slug):
     """The menu the owner uploaded for an occasion's dinner."""
-    return _occasion_file_response(slug, lambda conn, occ: occ["menu_file"])
+    return _occasion_file_response(slug, lambda conn, occ: occ["menu_file"], framed_by_ours=True)
 
 
 @app.route("/whats-on/at-gudanes/<slug>/menu/<night>")
@@ -57776,7 +57887,7 @@ def occasion_menu_night(slug, night):
         row = conn.execute("SELECT menu_file FROM stay_occasion_dinners WHERE occasion_id = ? "
                            "AND dinner_date = ?", (occ["id"], night)).fetchone()
         return row["menu_file"] if row else None
-    return _occasion_file_response(slug, pick)
+    return _occasion_file_response(slug, pick, framed_by_ours=True)
 
 
 @app.route("/whats-on/at-gudanes/<slug>/banner")
@@ -62382,6 +62493,24 @@ def book_room(room_id):
             party_size=int(prefill_party_size) if prefill_party_size.isdigit() else None,
             guests_under_18=int(prefill_under_18) if prefill_under_18.isdigit() else 0,
             dinners=prefill_dinners)
+        # "Book dinner" on an occasion's page (owner, 26 Nov 2026: "it should
+        # say stay these nights and book dinner"): the guest arrives with Dinner
+        # at Gudanes already added for the whole party on every dinner night of
+        # the dates, as far as the night has places. Read once, from the link
+        # (?dinner=1, which /book passes on), and only when nothing else has
+        # filled the boxes: the form posts the numbers themselves, so a guest
+        # who takes dinner off is not handed it back, and a stashed return trip
+        # keeps what was typed.
+        if request.args.get("dinner") == "1" and not prefill_dinners:
+            party = int(prefill_party_size) if prefill_party_size.isdigit() else 2
+            prefill_dinners = {n["date"]: min(party, n["left"])
+                               for n in initial_quote.get("dinner_offer") or [] if n["left"] > 0}
+            if prefill_dinners:
+                initial_quote = build_stay_quote(
+                    conn, room, arrival_d, departure_d,
+                    party_size=int(prefill_party_size) if prefill_party_size.isdigit() else None,
+                    guests_under_18=int(prefill_under_18) if prefill_under_18.isdigit() else 0,
+                    dinners=prefill_dinners)
     # AND WHAT THE PROFILE ALREADY KNOWS, in the blanks only. This is the
     # first render -- the one a guest actually sees -- so filling it here is
     # the whole point; the error paths below were never the moment that

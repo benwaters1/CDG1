@@ -104,7 +104,7 @@
       <span class="field-label">Will the chef be on site?</span>
       <label class="checkbox-row"><input type="radio" name="chef_on_site" value="1"{% if o['chef_on_site'] %} checked{% endif %}> <span>Yes</span></label>
       <label class="checkbox-row"><input type="radio" name="chef_on_site" value="0"{% if not o['chef_on_site'] %} checked{% endif %}> <span>No</span></label>
-      <p class="upload-hint" id="chef-line">Guests read: “{{ chef_on if o['chef_on_site'] else chef_off }}”</p>
+      <p class="upload-hint" id="chef-line">Guests read: “{{ (chef_on_dinner if dinner_on else chef_on) if o['chef_on_site'] else chef_off }}”</p>
     </div>
     {% if editing %}
     <div>
@@ -288,7 +288,14 @@
      Dinner's own fields show once Serve dinner is ticked; without script they are always there. */
   var kind = document.getElementById('so_kind'), gc = document.getElementById('guest-chef');
   var serve = document.getElementById('so_serve'), body = document.getElementById('so_dinner_body');
-  function showDinner(){ if(body && serve) body.hidden = !serve.checked; }
+  /* What guests read follows the chef switch AND Serve dinner: with a dinner served, the line offers lunch only. */
+  var line = document.getElementById('chef-line');
+  function showLine(){
+    var on = document.querySelector('input[name="chef_on_site"]:checked'), dining = serve && serve.checked;
+    if(line) line.textContent = 'Guests read: “' + (on && on.value === '1' || dining
+      ? (dining ? {{ chef_on_dinner|tojson }} : {{ chef_on|tojson }}) : {{ chef_off|tojson }}) + '”';
+  }
+  function showDinner(){ if(body && serve) body.hidden = !serve.checked; showLine(); }
   function showChef(){
     if(gc && kind) gc.hidden = kind.value !== 'guest_chef';
     if(serve && kind && kind.value === 'guest_chef'){ serve.checked = true; showDinner(); }
@@ -299,9 +306,7 @@
   function showShare(){ if(wine && share) share.hidden = !wine.checked; }
   if(wine){ wine.addEventListener('change', showShare); showShare(); }
   if(kind){ kind.addEventListener('change', showChef); showChef(); }
-  var line = document.getElementById('chef-line');
-  document.querySelectorAll('input[name="chef_on_site"]').forEach(function(r){ r.addEventListener('change', function(){
-    line.textContent = 'Guests read: “' + (r.value === '1' ? {{ chef_on|tojson }} : {{ chef_off|tojson }}) + '”'; }); });
+  document.querySelectorAll('input[name="chef_on_site"]').forEach(function(r){ r.addEventListener('change', showLine); });
 })();
 </script>
 {% endblock %}

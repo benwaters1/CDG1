@@ -16,17 +16,43 @@
   {% for para in (occ['description'] or '').split('\n') if para.strip() %}<p class="g-p">{{ para }}</p>{% endfor %}
   {#- Second sweep, 26 Nov (2.12): the tag printed "Room and breakfast" and the owner's line, word for word, began with the
       same three words. The line says it, so the tag is left off where it would only repeat it. #}
-  <p class="g-p g-occasion__chef">{% if not (occ.chef_line or '').startswith(occ.chef_tag or '') %}<span class="g-occasion__tag">{{ occ.chef_tag }}</span> {% endif %}{{ occ.chef_line }}</p>
-
-  {#- DINNER AT GUDANES (owner, 25 Nov 2026): the nights, the time and the price, and that it is added when the room is
-      booked. What is cooked is in the uploaded menu, never in words written here. A one-night occasion is a Dinner at
-      Gudanes evening of its own. -#}
-  {% if dinners and not occ.is_guest_chef %}
-  <div class="g-occasion__dinner" style="margin-top:var(--s6)">
-    <p class="g-eyebrow">Dinner at Gudanes</p>
-    <p class="g-p">Dinner is hosted at the château on {{ dinner_nights_words(dinners) }}{% if dinner_time_words %}, {{ dinner_time_words }}{% endif %}{% if occ['dinner_price'] %}, {{ dinner_price_words(occ['dinner_price'], occ['wine_included']) }}{% endif %}. Add it in the extras when you book your room{{ ', or book a table on its own' if occ['outside_diners'] else '' }}.{% if occ.menu %} {{ menu_link(occ.menu) }}{% endif %}</p>
-    {% for night, m in night_menus|dictsort %}<p class="g-p" style="margin-top:0">{{ dinner_nights_words([night]) }}: {{ menu_link(m) }}</p>{% endfor %}
+  {#- Live test, 26 Nov: the "Dinner at Gudanes" label ran straight into the line, in one sentence. The label is a line of
+      its own now, and where the dinner panel below carries the same words as its heading, it is left off here. #}
+  <div class="g-occasion__chef">
+    {% if not panel and not (occ.chef_line or '').startswith(occ.chef_tag or '') %}<p class="g-occasion__label">{{ occ.chef_tag }}</p>{% endif %}
+    <p class="g-p">{{ occ.chef_line }}</p>
   </div>
+
+  {#- DINNER AT GUDANES, AS A PANEL (owner, 26 Nov 2026: "the design can be a lot better, where's the price of the dinner,
+      view menu isn't right, it should say stay these nights and book dinner"; "I don't like it being just text"). The
+      occasion cards' frame, a photograph beside the dinner, the nights in full, the time, the price set large, and the
+      two ways in side by side: Stay these nights, and Book dinner, which lands on the rooms with the dinner already in
+      the basket (?dinner=1, read once by the room form) -- or, when the dinner is open to diners not staying, on the
+      restaurant's booking for the night. The menu is a quiet link under the buttons. What is cooked is in the uploaded
+      menu, never in words written here. A guest chef keeps the section below. -#}
+  {% if panel %}
+  <section class="g-dinpanel" aria-labelledby="dinpanel-h">
+    <figure class="g-dinpanel__ph"><img src="{{ panel.photo }}" alt="{{ panel.photo_alt }}" loading="lazy" decoding="async"></figure>
+    <div class="g-dinpanel__b">
+      <h2 class="g-dinpanel__h" id="dinpanel-h">Dinner at Gudanes</h2>
+      <p class="g-dinpanel__when">{{ dinner_nights_words(dinners) }}{% if dinner_time_words %}<span class="g-dinpanel__time">{{ dinner_time_words }}</span>{% endif %}</p>
+      {% if occ['dinner_price'] %}{% set _dp = occ['dinner_price']|float %}
+      <p class="g-dinpanel__price"><span class="g-fig" data-eur="{{ _dp|int if _dp == _dp|int else _dp }}">€{{ '{:,.0f}'.format(_dp) if _dp == _dp|int else '{:,.2f}'.format(_dp) }}</span> <span class="g-dinpanel__u">a person</span></p>
+      {% if occ['wine_included'] %}<p class="g-dinpanel__wine">Wine included</p>{% endif %}
+      {% endif %}
+      {% if panel.outside %}<p class="g-dinpanel__who">Open to guests from outside the château too.</p>{% endif %}
+      <p class="g-dinpanel__btns">
+        <a href="{{ panel.stay }}" class="g-btn g-btn--solid">Stay these nights</a>
+        <a href="{{ panel.book_dinner }}" class="g-btn">Book dinner</a>
+      </p>
+      {% if occ.menu or night_menus %}
+      <div class="g-dinpanel__menus">
+        {% if occ.menu %}<p>{{ menu_link(occ.menu) }}</p>{% endif %}
+        {% for night, m in night_menus|dictsort %}<p>{{ dinner_nights_words([night]) }}: {{ menu_link(m) }}</p>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </section>
   {% endif %}
 
   {% if occ.is_guest_chef %}
@@ -51,10 +77,12 @@
   </div>
   {% endif %}
 
+  {% if not panel %}{#- the panel carries both buttons where there is one #}
   <p class="g-p" style="margin-top:var(--s6)">
     <a href="{{ url_for('book_rooms', arrival=occ['first_night'], departure=occ.departure) }}" class="g-btn g-btn--solid">Stay these nights</a>
     {% if occ.is_guest_chef and dinners %}<a href="{{ url_for('restaurant_book', date=dinners[0]) }}" class="g-btn">Book dinner</a>{% endif %}
   </p>
+  {% endif %}
   <p class="g-hint">Coming from abroad? <a href="{{ url_for('getting_here') }}">Getting here</a>: Paris, Toulouse and the last few hundred metres. Every other date is on <a href="{{ url_for('whats_on_at_gudanes') }}">At Gudanes</a>.</p>
 </div></section>
 {% if occ.menu or night_menus %}{{ menu_dialog_once() }}{% endif %}

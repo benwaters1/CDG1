@@ -10415,7 +10415,7 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
    own colour), and the facilities in an ornamental frame.
    ===================================================================== */
 .g .g-journey__card, .g .g-journey__free, .g .g-wscard, .g .g-three__i, .g .g-mb-card, .g .g-conf, .g .g-sit,
-.g .g-sow__grid > *, .g .g-facil > .g-facil__i{
+.g .g-sow__grid > *, .g .g-facil > .g-facil__i, .g .g-dinpanel{
   background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg %3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(34 0) scale(-1 1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(0 34) scale(1 -1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(34 34) scale(-1 -1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: 6px 6px, calc(100% - 6px) 6px, 6px calc(100% - 6px), calc(100% - 6px) calc(100% - 6px);
   background-size: 30px 30px; }
@@ -12942,3 +12942,43 @@ html[lang="fr"] .g-top__in, html[lang="es"] .g-top__in{ max-width: max(var(--wra
   .g.g-home section.rc-says .rc-dot[aria-current="true"]::before{ background: #B08D57; }
   .g.g-home section.rc-says .rc-dot:focus-visible{ outline: 2px solid var(--blue-deep, #14305F); outline-offset: 0; }
 }
+
+
+/* DINNER AT GUDANES, AS A PANEL (owner, 26 Nov 2026: "the design can be a lot better, where's the price of the dinner",
+   "I don't like it being just text"). On an occasion's page: the occasion cards' frame -- parchment, the gilt rule over
+   the top, the flourished corners (in the list above) -- with a second rule inside, as the plates have it. The
+   photograph on one side and the dinner on the other: the nights, the time, the price set large, the two buttons side by
+   side, the menu a quiet link under them. On a phone the photograph goes above and the buttons stack full width. */
+.g .g-dinpanel{ position: relative; display: grid; margin: var(--s7) 0 0; background-color: var(--white);
+  border: 1px solid var(--line); border-top: 2px solid var(--gilt); }
+.g .g-dinpanel::before{ content: ""; position: absolute; inset: 6px; border: 1px solid var(--gilt-leaf); opacity: .45;
+  pointer-events: none; }
+.g .g-dinpanel__ph{ margin: 0; min-width: 0; padding: 14px 14px 0; }
+.g .g-dinpanel__ph img{ display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; }
+.g .g-dinpanel__b{ min-width: 0; padding: var(--s5) clamp(20px, 4vw, 44px) var(--s6); display: flex;
+  flex-direction: column; justify-content: center; }
+.g .g-dinpanel__h{ font-family: var(--display); font-style: italic; font-weight: 400; font-size: var(--t-h2);
+  line-height: 1.1; color: var(--blue-deep); margin: 0 0 var(--s4); }
+.g .g-dinpanel__when{ margin: 0; font-family: var(--serif); font-size: 19px; line-height: 1.45; color: var(--blue-deep); }
+.g .g-dinpanel__time{ display: block; font-size: 17px; color: var(--ink-soft); }
+.g .g-dinpanel__price{ margin: var(--s5) 0 0; font-family: var(--serif); color: var(--blue-deep); line-height: 1; }
+.g .g-dinpanel__price .g-fig{ font-family: var(--display); font-weight: 400; font-size: clamp(40px, 2.4vw + 26px, 58px);
+  line-height: 1; color: var(--blue-deep); }
+.g .g-dinpanel__u{ font-size: 18px; color: var(--ink-soft); }
+.g .g-dinpanel__wine{ margin: var(--s3) 0 0; font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
+.g .g-dinpanel__who{ margin: var(--s4) 0 0; font-size: 16px; line-height: 1.5; color: var(--ink-soft); }
+.g .g-dinpanel__btns{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s6) 0 0; }
+.g .g-dinpanel__btns .g-btn{ flex: 1 1 100%; min-width: 0; margin: 0; }   /* a sibling rule gave the second a 12px top margin */
+.g .g-dinpanel__menus{ margin: var(--s4) 0 0; font-size: 16px; color: var(--blue-deep); }
+.g .g-dinpanel__menus p{ margin: var(--s2) 0 0; }
+@media (min-width: 48rem){
+  .g .g-dinpanel{ grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); }
+  .g .g-dinpanel__ph{ padding: 14px 0 14px 14px; }
+  .g .g-dinpanel__ph img{ aspect-ratio: auto; height: 100%; min-height: 22rem; }
+  .g .g-dinpanel__btns .g-btn{ flex: 1 1 11rem; }
+}
+/* The label over the chef line, on a line of its own (it ran into the sentence: live test, 26 Nov 2026). */
+.g .g-occasion__chef{ margin-top: var(--s5); }
+.g .g-occasion__label{ margin: 0 0 var(--s2); font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
