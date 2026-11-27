@@ -43,7 +43,9 @@
         sheet, rather than as two rows among fourteen in The stay. -#}
     {{ flags(occasion=b['special_occasion'], prep=occasion_prep,
              show_prep=(b['status'] == 'confirmed' and (b['departure_date'] or '') >= today_iso),
-             dietary=b['dietary_notes'], diet_hint='deleted once the stay is over') }}
+             dietary=stay_flag.get('dietary') or b['dietary_notes'], diet_hint='deleted once the stay is over',
+             access=stay_flag.get('access', '')) }}
+    {% if stay_flag.get('vip') %}<p style="margin:4px 0 0;"><span class="mini-status status-confirmed">VIP</span></p>{% endif %}
     {#- 18 Oct: a room reserved for a guest from Add a booking, waiting on them. -#}
     {% if b['reserved_until'] and b['status'] == 'pending' %}
     <p class="pay-disclaimer" style="margin-top:6px;">

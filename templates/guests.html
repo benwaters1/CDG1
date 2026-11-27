@@ -138,7 +138,7 @@
             may carry a date in its own form). -#}
         {%- if g['notes'] %}<span class="gu-line upload-hint manual-body">{{ g['notes'] }}</span>{% endif -%}
         <span class="gu-acts">
-          {%- if g['email'] %}<a href="{{ url_for('guest_booking_history', email=g['email']) }}" class="small-link">Stays</a>{% endif -%}
+          {%- if g['email'] %}{% if can('guest_booking_history') %}<a href="{{ url_for('guest_booking_history', email=g['email']) }}" class="small-link">Stays</a>{% endif %}{% endif -%}
           {%- if user['role'] == 'owner' %} <a href="{{ url_for('edit_guest', guest_id=g['id']) }}" class="small-link">Edit</a>{% endif -%}
         </span>
       </td>

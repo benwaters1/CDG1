@@ -7,16 +7,17 @@
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
   Today's continental breakfast checklist — resets every morning.
-  {% if guest_count %}{{ guest_count }} guest{{ '' if guest_count == 1 else 's' }} across {{ occupied_today }} room{{ '' if occupied_today == 1 else 's' }} today.{% else %}No guests in residence today.{% endif %}
+  {% if guest_count %}This morning: {{ guest_count }} guest{{ '' if guest_count == 1 else 's' }} in {{ occupied_today }} room{{ '' if occupied_today == 1 else 's' }}.{% else %}Nobody slept here last night, so nobody is at breakfast.{% endif %}
 </p>
 
 {% if guest_notes %}
 <div class="expense-card" style="border-color:var(--gold);">
-  <div class="expense-head"><strong>Guest notes today</strong></div>
+  <div class="expense-head"><strong>At the table this morning</strong></div>
   {% for g in guest_notes %}
-  <div class="mini-row">
-    <span class="mini-name">{{ g['name'] }}</span>
-    <span class="upload-hint">{{ g['notes'] }}</span>
+  <div class="mini-row" style="flex-direction:column; align-items:flex-start; gap:2px;">
+    <span class="mini-name">{{ g['name'] }}{% if g['vip'] %} ★{% endif %} <span class="upload-hint">· {{ g['room_name'] }}</span></span>
+    {% if g['dietary'] %}<span class="owed-flag"><strong>Cannot eat:</strong> {{ g['dietary'] }}</span>{% endif %}
+    {% if g['requests'] %}<span class="upload-hint">They asked: {{ g['requests'] }}</span>{% endif %}
   </div>
   {% endfor %}
 </div>

@@ -5,7 +5,7 @@
 <div class="page-head">
   <h1>Same-day changeovers</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <a href="{{ url_for('admin_calendar') }}" class="btn-ghost">Booking calendar</a>
+    {% if can('admin_calendar') %}<a href="{{ url_for('admin_calendar') }}" class="btn-ghost">Booking calendar</a>{% endif %}
     <a href="{{ url_for('export_turnarounds_csv') }}" class="btn-ghost">Export CSV</a>
   </div>
 </div>

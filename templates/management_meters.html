@@ -4,7 +4,7 @@
 
 <div class="page-head">
   <h1>Meter readings</h1>
-  <a href="{{ url_for('management_recurring_costs') }}" class="btn-ghost">Recurring costs</a>
+  {% if can('management_recurring_costs') %}<a href="{{ url_for('management_recurring_costs') }}" class="btn-ghost">Recurring costs</a>{% endif %}
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">

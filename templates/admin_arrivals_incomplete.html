@@ -5,7 +5,7 @@
 <div class="page-head">
   <h1>Arrivals we cannot prepare for</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">Bookings</a>
+    {% if can('admin_bookings') %}<a href="{{ url_for('admin_bookings') }}" class="btn-ghost">Bookings</a>{% endif %}
   </div>
 </div>
 
@@ -50,7 +50,7 @@
         <td data-label="Arriving">{{ r.arrival|date_short }}</td>
         <td class="num" data-label="Days away">{% if r.days_away is not none %}{{ r.days_away }}{% else %}&mdash;{% endif %}</td>
         <td data-label="Missing">{{ r.missing|join(', ') }}</td>
-        <td><a href="{{ url_for('edit_booking', booking_id=r.id) }}" class="btn-mini">Fix</a></td>
+        <td>{% if can('edit_booking') %}<a href="{{ url_for('edit_booking', booking_id=r.id) }}" class="btn-mini">Fix</a>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

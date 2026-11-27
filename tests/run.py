@@ -764,6 +764,8 @@ SUITES = [
     # And the figures and buttons the house acts on: timesheets, workshop statements, bulk
     # approvals, the till under a card, fridges, room checks, names, the desk, money ahead.
     "test_what_the_house_relies_on",
+    # And where staff can get to, and what a guest cannot eat on every page that matters.
+    "test_reach_and_allergies",
 ]
 
 

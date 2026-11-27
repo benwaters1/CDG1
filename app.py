@@ -11429,8 +11429,9 @@ OWNER_MENU = [
         ("Bookings", [
             _nav("admin_bookings", "Bookings", "bookings",
                  ("confirm_booking", "decline_booking", "checkout_booking", "edit_booking",
-                  "admin_booking")),
-            _nav("admin_calendar", "Booking Calendar", "calendar"),
+                  "admin_booking", "management_cancellations")),
+            _nav("admin_calendar", "Booking Calendar", "calendar",
+                 ("empty_nights_page", "fill_a_gap_page")),
             _nav("front_desk", "Front Desk", "bookings", ("check_in_booking",), phone=True),
             _nav("arrivals_sheet_page", "Arrivals", "calendar", phone=True),
             _nav("admin_rooms", "Rooms", "rooms", ("new_room", "edit_room")),
@@ -11456,13 +11457,14 @@ OWNER_MENU = [
         ]),
         ("Booking.com", [
             _nav("management_booking_com", "Booking.com Messages", "bell"),
-            _nav("channel_stays_page", "Booking.com Stays", "guests"),
+            _nav("channel_stays_page", "Booking.com Stays", "guests",
+                 ("channel_stay_page", "save_channel_stay_details")),
             _nav("channel_booking_prices", "Booking.com Prices", "receipt"),
         ]),
     ]),
     ("guestbook", "Guests", "guests", (), (), [
         (None, [
-            _nav("guests", "Guest List", "guests", ("new_guest", "edit_guest")),
+            _nav("guests", "Guest List", "guests", ("new_guest", "edit_guest", "data_requests")),
             _nav("admin_feedback", "Guest Feedback", "contacts"),
             _nav("guest_dates", "Dates Worth Knowing", "calendar"),
             _nav("import_guests", "Import Guests", "guests"),
@@ -11479,16 +11481,25 @@ OWNER_MENU = [
             _nav("restaurant_covers", "Covers Ahead", "restaurant"),
         ]),
         ("Kitchen", [
+            # The back-end review of 27 November 2026 found the kitchen's own
+            # screen, the allergy sheet and the standing menu in no menu at
+            # all: /chef and /chef/shopping linked only to each other, and the
+            # staff, who have no search box, reached the allergy sheet only
+            # through the link in an email.
+            _nav("chef_screen", "The Kitchen", "restaurant", ("chef_shopping_page",)),
+            _nav("kitchen_dietary", "What They Cannot Eat", "restaurant", ("kitchen_day_sheet",)),
+            _nav("admin_restaurant_menu", "The Menu", "receipt",
+                 ("menu_day", "menu_history", "menu_template_sheet", "admin_drink_packages")),
             _nav("admin_dinner_menus", "Dinner Menus", "restaurant",
                  ("admin_dinner_menu", "admin_dinner_menu_new", "admin_dinner_night")),
             _nav("kitchen_prep", "Prep List", "restaurant"),
             _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
             _nav("kitchen_cleaning", "Kitchen Cleaning", "wrench"),
-            _nav("admin_stock", "Stock", "shopping"),
+            _nav("admin_stock", "Stock", "shopping", ("management_buying",)),
         ]),
         ("Planning and set-up", [
             _nav("dinner_covers_page", "Covers Forecast", "restaurant"),
-            _nav("admin_extras", "Extras & Menu", "receipt"),
+            _nav("admin_extras", "Booking Extras", "receipt"),
             _nav("admin_terminal", "Card Reader", "receipt"),
             _nav("admin_restaurant_settings", "Restaurant Settings", "management"),
         ]),
@@ -11546,7 +11557,7 @@ OWNER_MENU = [
         ]),
         ("HR", [
             _nav("admin_hr_notes", "Ask HR", "contacts", (), "open_hr_notes_count"),
-            _nav("admin_hr", "HR & Compliance", "approvals"),
+            _nav("admin_hr", "HR & Compliance", "approvals", ("exit_interviews",)),
             _nav("admin_compliance", "Role Compliance", "shield"),
             _nav("admin_incidents", "Incidents", "wrench"),
             _nav("admin_payroll", "Payroll Pack", "financial"),
@@ -11563,13 +11574,17 @@ OWNER_MENU = [
             _nav("plan_map", "Map of the Grounds", "pin",
                  ("maintenance_job", "maintenance_check")),
             _nav("report_problem", "Report a Problem", "pin", phone=True),
+            # Ramonage, the boiler, the extinguishers: the most "upkeep" page
+            # there is was in no menu (27 Nov 2026).
+            _nav("maintenance_page", "Upkeep Schedule", "wrench"),
+            _nav("weather_jobs_page", "Weather Jobs", "wrench", ("road_notices_page",)),
             _nav("manage_plans", "Plans", "folder", ("place_on_plan",)),
             _nav("pool_book_page", "Pool Book", "wrench", ("answer_pool_reading",)),
         ]),
         ("What the house owns", [
             _nav("admin_assets", "Asset Register", "building"),
             _nav("management_vehicles", "Vehicles", "car"),
-            _nav("admin_access", "Keys & Access", "lock"),
+            _nav("admin_access", "Keys & Access", "lock", ("still_out_page",)),
             _nav("management_meters", "Meter Readings", "building"),
             _nav("room_access_page", "What The House Can Manage", "rooms"),
         ]),
@@ -11597,10 +11612,13 @@ OWNER_MENU = [
         ("The website", [
             _nav("website_analytics", "Website Visitors", "eye"),
             _nav("admin_gallery", "Public Gallery", "folder"),
-            _nav("admin_images", "Site Photographs", "folder"),
+            _nav("admin_images", "Site Photographs", "folder", ("site_photographs",)),
             _nav("admin_photo_mirror", "Photo Mirror", "folder"),
             _nav("admin_languages", "Languages", "megaphone"),
             _nav("admin_promo_codes", "Promo Codes", "receipt"),
+            _nav("admin_whats_on", "What's On", "calendar"),
+            _nav("management_social", "Social Media", "megaphone",
+                 ("social_plans", "connect_social_accounts")),
         ]),
     ]),
     # Grouped by what somebody opening Financial is asking. Unchanged in the
@@ -11610,6 +11628,9 @@ OWNER_MENU = [
             _nav("admin_approvals", "Approvals", "approvals", (), "pending_approvals_count",
                  phone=True),
             _nav("expenses", "Expenses & Invoices", "receipt", ("decide_expense",)),
+            # Staff are told a claim "needs approving before it is paid", and
+            # the owner's menu had no way to it (27 Nov 2026).
+            _nav("mileage", "Mileage", "car"),
             _nav("admin_refunds", "Refunds", "receipt"),
         ]),
         ("Owed to the house", [
@@ -11629,11 +11650,16 @@ OWNER_MENU = [
         ]),
         ("The books", [
             _nav("management_financials", "Financials", "financial"),
+            # The only forward look at the bank, in and out, and in no menu:
+            # reached by search or from its two sibling pages (27 Nov 2026).
+            _nav("money_ahead_page", "Money Ahead", "financial"),
             _nav("admin_transactions", "Transactions", "receipt"),
             _nav("management_cash_banking", "Cash Banking", "financial"),
             _nav("admin_reports", "Reports", "financial", ("admin_report",)),
             _nav("management_break_even", "Break-even", "financial"),
             _nav("admin_tax", "Tax", "financial"),
+            _nav("admin_city_tax", "Taxe de Séjour", "financial"),
+            _nav("admin_vat", "VAT Collected", "financial"),
             _nav("management_bank_details", "Bank Details", "financial"),
         ]),
     ]),
@@ -11644,11 +11670,13 @@ OWNER_MENU = [
             _nav("admin_overview", "Overview", "eye", ("admin_overview_status",)),
         ]),
         ("Settings", [
-            _nav("management", "All Settings", "management"),
+            _nav("management", "All Settings", "management",
+                 ("admin_deposit_rules", "admin_terms", "admin_house_calendar",
+                  "admin_outlook_addin", "admin_retention")),
             _nav("admin_automation", "Automation", "repeat"),
             _nav("admin_access_levels", "Access Levels", "lock",
                  ("save_access_preset", "assign_access_preset")),
-            _nav("management_company_info", "Company & Insurance", "building"),
+            _nav("management_company_info", "Company & Insurance", "building", ("new_company",)),
             _nav("management_vault", "Vault", "lock"),
         ]),
         ("Records", [
@@ -11657,7 +11685,7 @@ OWNER_MENU = [
             _nav("meetings_page", "Meetings", "calendar", ("meeting_page",)),
             _nav("restoration_record", "Restoration Record", "wrench",
                  ("restoration_work_page",)),
-            _nav("camera_roll", "Camera Roll", "camera"),
+            _nav("camera_roll", "Camera Roll", "camera", ("photo_intake", "photo_tray")),
             _nav("vendors", "Vendors", "contacts"),
         ]),
         ("Bringing things in", [
@@ -11691,6 +11719,8 @@ STAFF_MENU = [
             _nav("pos_home", "Till", "receipt", ("pos_order", "pos_kitchen"), phone=True),
             _nav("restaurant_covers", "Covers Ahead", "restaurant"),
             _nav("restaurant_tables", "Tables", "restaurant"),
+            _nav("chef_screen", "The Kitchen", "restaurant", ("chef_shopping_page",)),
+            _nav("kitchen_dietary", "What They Cannot Eat", "restaurant"),
             _nav("kitchen_prep", "Prep List", "restaurant", ("prep_item_done",)),
             _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
             _nav("kitchen_cleaning", "Kitchen Cleaning", "wrench"),
@@ -16870,6 +16900,8 @@ def channel_stays(conn, blocks=True):
                 # nothing rather than left out, so a list reading them finds None.
                 "guest_email": None, "special_requests": None, "estimated_arrival_time": None,
                 "arrival_prepped_at": None, "checked_out_at": None,
+                # Typed on the stay's page from the guest's messages.
+                "dietary_notes": r["dietary_notes"] if "dietary_notes" in r.keys() else None,
             })
             first = False
     if blocks:
@@ -16957,10 +16989,11 @@ def stays_with_status(conn, today, statuses=("confirmed",), channels=True):
                    bookings.special_requests, bookings.reference_code,
                    bookings.status, rooms.name AS room_name, bookings.room_id,
                    guests.id AS profile_id, guests.notes AS profile_notes,
-                   guests.dietary_notes, guests.vip
+                   guests.dietary_notes, guests.vip,
+                   bookings.dietary_notes AS stay_dietary
             FROM bookings
             JOIN rooms ON rooms.id = bookings.room_id
-            LEFT JOIN guests ON guests.id = bookings.linked_guest_id
+            LEFT JOIN guests ON guests.id = {BOOKING_PROFILE_SQL}
             WHERE bookings.status IN ({placeholders})
             ORDER BY bookings.arrival_date, bookings.guest_name""",
         tuple(statuses),
@@ -16987,13 +17020,15 @@ def stays_with_status(conn, today, statuses=("confirmed",), channels=True):
             line for line in (r["profile_notes"] or "").splitlines()
             if not line.strip().startswith("[Former register entry:")
         ).strip() or None
-        note_parts = [p for p in (r["special_requests"], profile_notes, r["dietary_notes"]) if p]
+        dietary = cannot_eat(r["stay_dietary"], r["dietary_notes"])
+        note_parts = [p for p in (r["special_requests"], profile_notes, dietary) if p]
         stays.append({
             "booking_id": r["booking_id"], "profile_id": r["profile_id"],
             "name": r["name"], "email": r["email"], "room_name": r["room_name"],
             "arrival_date": r["arrival_date"], "departure_date": r["departure_date"],
             "party_size": r["party_size"], "reference_code": r["reference_code"],
             "notes": " · ".join(note_parts) or None, "vip": bool(r["vip"]),
+            "dietary": dietary or None, "requests": r["special_requests"] or None,
             "stay_status": status, "stay_status_label": label,
             "room_id": r["room_id"], "channel": None, "ota_reservation_id": None,
         })
@@ -17015,6 +17050,9 @@ def stays_with_status(conn, today, statuses=("confirmed",), channels=True):
                 "arrival_date": st["arrival_date"], "departure_date": st["departure_date"],
                 "party_size": st["party_size"], "reference_code": st["reference_code"],
                 "notes": None, "vip": False,
+                # What a Booking.com guest told the house they cannot eat, typed
+                # on the stay's own page: it reached no list before.
+                "dietary": cannot_eat(st.get("dietary_notes")) or None, "requests": None,
                 "stay_status": status, "stay_status_label": label,
                 "room_id": st["room_id"], "channel": st["channel"],
                 "ota_reservation_id": st["ota_reservation_id"],
@@ -17071,6 +17109,52 @@ def photo_declines(conn, today=None):
             "asked_at": profile["photo_consent_at"],
             "booking_id": b["booking_id"],
         })
+    return out
+
+
+# A STAY'S GUEST PROFILE: the one it is linked to, or else the profile with
+# its email. The Arrivals sheet has matched on email for months; the Front
+# Desk, the booking page, Breakfast, the kitchen's screen and the allergy sheet
+# went through the link alone. So on 22 October Isabelle Dufresne's "No nuts -
+# a real allergy" was on the Arrivals sheet and nowhere a cook or the person at
+# the door would read it (back-end review, 27 November 2026).
+BOOKING_PROFILE_SQL = (
+    "COALESCE(bookings.linked_guest_id, (SELECT gp.id FROM guests gp"
+    " WHERE TRIM(COALESCE(gp.email, '')) != ''"
+    " AND LOWER(TRIM(gp.email)) = LOWER(TRIM(bookings.guest_email))"
+    " AND gp.merged_into_id IS NULL ORDER BY gp.id DESC LIMIT 1))")
+
+
+def cannot_eat(*notes):
+    """Every dietary note said once, in the order given, joined."""
+    out = []
+    for n in notes:
+        n = " ".join(str(n or "").split())
+        if n and n.lower() not in (o.lower() for o in out):
+            out.append(n)
+    return " · ".join(out)
+
+
+def stay_flags(conn, booking_ids):
+    """{booking_id: {"dietary", "vip", "access"}}: what a stay's guest cannot
+    eat (the booking's own note from online check-in first, then the profile's),
+    whether they are a VIP and what they need to get about -- read the way the
+    Arrivals sheet reads it."""
+    ids = [int(i) for i in booking_ids if i]
+    if not ids:
+        return {}
+    marks = ",".join("?" * len(ids))
+    out = {}
+    for r in conn.execute(
+            f"""SELECT bookings.id, bookings.dietary_notes AS stay_dietary,
+                       guests.dietary_notes AS profile_dietary, guests.vip,
+                       guests.access_needs
+                  FROM bookings
+                  LEFT JOIN guests ON guests.id = {BOOKING_PROFILE_SQL}
+                 WHERE bookings.id IN ({marks})""", ids).fetchall():
+        out[r["id"]] = {"dietary": cannot_eat(r["stay_dietary"], r["profile_dietary"]),
+                        "vip": bool(r["vip"]),
+                        "access": " ".join((r["access_needs"] or "").split())}
     return out
 
 
@@ -23359,9 +23443,10 @@ def pass_service(conn, day=None):
     # together. Both are read, because the profile is where the dietary note
     # lives and the booking is where the name the chef will hear comes from.
     for r in conn.execute(
-        """SELECT bookings.id AS booking_id, bookings.linked_guest_id AS guest_id,
+        f"""SELECT bookings.id AS booking_id, guests.id AS guest_id,
                   COALESCE(guests.name, bookings.guest_name) AS name,
                   guests.dietary_notes, guests.preferences, guests.vip,
+                  bookings.dietary_notes AS stay_dietary,
                   guests.notes, guests.birthday, guests.anniversary,
                   bookings.arrival_date AS arrive,
                   bookings.departure_date AS depart,
@@ -23369,7 +23454,7 @@ def pass_service(conn, day=None):
                   bookings.special_requests,
                   rooms.name AS room_name
              FROM bookings
-             LEFT JOIN guests ON guests.id = bookings.linked_guest_id
+             LEFT JOIN guests ON guests.id = {BOOKING_PROFILE_SQL}
              LEFT JOIN rooms ON rooms.id = bookings.room_id
             WHERE bookings.status = 'confirmed'
               AND bookings.arrival_date <= ?
@@ -23393,7 +23478,13 @@ def pass_service(conn, day=None):
             WHERE restaurant_bookings.status = 'confirmed'
               AND restaurant_bookings.dinner_date = ?""", (iso,)).fetchall():
         if r["booking_id"]:
-            continue          # already on the list above, with their room
+            # Already on the list above, with their room -- and what was
+            # written on the table ("No nuts") goes with them, rather than
+            # being dropped with the duplicate row.
+            for p in people:
+                if p.get("booking_id") == r["booking_id"] and p.get("staying"):
+                    p["table_dietary"] = r["dietary_notes"]
+            continue
         people.append(dict(r, staying=0, last_night=0,
                            arrive=None, depart=None, room_name=None))
 
@@ -23432,7 +23523,8 @@ def pass_service(conn, day=None):
         out.append({
             "id": gid or 0,
             "name": (p.get("name") or "").strip() or "A guest",
-            "dietary_notes": (p.get("dietary_notes") or "").strip(),
+            "dietary_notes": cannot_eat(p.get("stay_dietary"), p.get("dietary_notes"),
+                                        p.get("table_dietary")),
             "preferences": (p.get("preferences") or "").strip(),
             "vip": p.get("vip") or 0,
             "notes": (p.get("notes") or "").strip(),
@@ -29800,13 +29892,13 @@ def dietary_sheet(conn, on_day=None):
 
     # Sleeping here tonight. Departure day is checkout, so they are not.
     for r in conn.execute(
-        """SELECT bookings.guest_name, bookings.party_size, bookings.reference_code,
+        f"""SELECT bookings.guest_name, bookings.party_size, bookings.reference_code,
                   bookings.special_requests, bookings.dietary_notes AS stay_notes,
                   rooms.name AS room_name,
                   guests.dietary_notes AS profile_notes, guests.name AS profile_name
              FROM bookings
              LEFT JOIN rooms ON rooms.id = bookings.room_id
-             LEFT JOIN guests ON guests.id = bookings.linked_guest_id
+             LEFT JOIN guests ON guests.id = {BOOKING_PROFILE_SQL}
             WHERE bookings.status = 'confirmed'
               AND bookings.arrival_date <= ? AND bookings.departure_date > ?
             ORDER BY bookings.guest_name""", (iso, iso)).fetchall():
@@ -51808,16 +51900,22 @@ def breakfast():
             "SELECT item_id FROM breakfast_checklist_log WHERE checklist_date = ?", (today.isoformat(),)
         ).fetchall()
     }
-    guests_here = guests_in_residence(conn, today)
+    # WHO IS AT BREAKFAST THIS MORNING: whoever slept here last night -- in
+    # before today, and not gone yet. It counted the stays covering TONIGHT,
+    # so it said "8 guests across 3 rooms" over a table of four: the guests
+    # arriving this afternoon in, the couple leaving after breakfast out. And
+    # its notes were their room requests (a travel cot, flowers) while the
+    # nut allergy was nowhere (back-end review, 27 November 2026).
+    iso = today.isoformat()
+    guests_here = [s for s in stays_with_status(conn, today)
+                   if (s["arrival_date"] or "") < iso <= (s["departure_date"] or "")]
     # `or 1` so a booking with no party size still counts as one person here --
     # this used to be `or 0`, silently under-reporting the breakfast headcount.
     guest_count = sum(g["party_size"] or 1 for g in guests_here)
-    guest_notes = [g for g in guests_here if g["notes"]]
-    occupied_today = occupied_rooms_by_date(conn, today, today + timedelta(days=1)).get(today.isoformat(), 0)
-    # occupied_rooms_by_date is the house's own sold nights, which is right for
-    # the accounts and short by every Booking.com room at the breakfast table.
-    # The guests counted above include those; so do the rooms.
-    occupied_today += sum(1 for g in guests_here if g.get("channel"))
+    guest_notes = sorted(
+        [g for g in guests_here if g.get("dietary") or g.get("requests")],
+        key=lambda g: (not g.get("dietary"), g["room_name"] or ""))
+    occupied_today = len({(g["room_id"], g["room_name"]) for g in guests_here})
     conn.close()
     by_category = {}
     for i in items:
@@ -82650,6 +82748,9 @@ def admin_booking(booking_id):
                              (booking["guest_email"].strip(),)).fetchone()
         usual_arrival = (known["usual_arrival_time"] or "") if known else ""
     occasion_prep = occasion_states(conn, [booking_id]).get(booking_id)
+    # What they cannot eat and whether they are a VIP, by the link or the
+    # email, as the Arrivals sheet reads it: this page showed neither.
+    stay_flag = stay_flags(conn, [booking_id]).get(booking_id, {})
     conn.close()
 
     if not arrival or not departure:
@@ -82684,6 +82785,7 @@ def admin_booking(booking_id):
         group=group, where=where, today_iso=today.isoformat(),
         decline_reasons=DECLINE_REASONS, cancel_reasons=CANCEL_REASONS,
         dinners=dinners, usual_arrival=usual_arrival, occasion_prep=occasion_prep,
+        stay_flag=stay_flag,
     )
 
 
@@ -121471,6 +121573,14 @@ def front_desk_day(conn, today=None):
         st["owed"] = round(bill["owed"], 2) if bill else 0.0
     for ch in channel:
         ch["owed"] = 0.0
+    # The desk is where somebody is checked in, so it says what they cannot
+    # eat and whether they are a VIP: it read only the booking's own note.
+    flags = stay_flags(conn, [st["id"] for st in stays])
+    for st in stays:
+        f = flags.get(st["id"], {})
+        st["cannot_eat"], st["vip"] = f.get("dietary", ""), f.get("vip", False)
+    for ch in channel:
+        ch["cannot_eat"], ch["vip"] = cannot_eat(ch.get("dietary_notes")), False
     arriving = [x for x in everyone if x["arrival_date"] == iso]
     leaving = [x for x in everyone if x["departure_date"] == iso]
     staying = [x for x in everyone if x["arrival_date"] < iso < x["departure_date"]]

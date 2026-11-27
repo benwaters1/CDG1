@@ -4,7 +4,7 @@
 
 <div class="page-head">
   <h1>Cleaning round</h1>
-  <a href="{{ url_for('admin_tasks') }}" class="btn-ghost">Tasks</a>
+  {% if can('admin_tasks') %}<a href="{{ url_for('admin_tasks') }}" class="btn-ghost">Tasks</a>{% endif %}
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
