@@ -9253,6 +9253,7 @@ def init_db():
     link_held_letters(conn)
     backfill_consent_history(conn)
     redact_stored_links(conn)
+    scrub_quoted_dinner_notes(conn)
     incident_times_to_utc(conn)
     prep_notes_in_words(conn)
 
@@ -13348,6 +13349,9 @@ GUEST_AUDIT_ACTIONS = frozenset({
     # Their unpaid hold on an atelier, given back because they filled the
     # form in again (release_own_earlier_holds).
     "workshop_hold_released_by_guest",
+    # Their roommate, dietary or medical notes or occasion, changed on their
+    # own registration page (workshop_manage, action "details").
+    "workshop_details_changed_by_guest",
 })
 
 
@@ -36736,6 +36740,32 @@ def redact_stored_links(conn):
     return changed
 
 
+# The dinner-changed notice used to end its list with the guest's note in full
+# ("- dietary notes now: no shellfish"), and the mail log and the outbox keep
+# the house's letters two years. The note itself runs to the "Total now" line
+# that always followed it, over as many lines as the guest typed.
+_QUOTED_DINNER_NOTE = re.compile(r"- dietary notes now: .*?(?=\n\nTotal now )", re.S)
+QUOTED_DINNER_NOTE_KEPT_AS = ("- Dietary notes: changed. What they said is not kept "
+                              "in this copy.")
+
+
+def scrub_quoted_dinner_notes(conn):
+    """Take the guest's dietary note out of the dinner-changed notices already
+    kept. At startup; finds nothing once the old copies are through it."""
+    changed = 0
+    for table in ("mail_log", "email_outbox"):
+        for r in conn.execute(
+                f"SELECT id, body FROM {table} WHERE subject LIKE 'Dinner reservation changed%' "
+                "AND body LIKE '%- dietary notes now: %'").fetchall():
+            body = _QUOTED_DINNER_NOTE.sub(QUOTED_DINNER_NOTE_KEPT_AS, r["body"])
+            if body != r["body"]:
+                conn.execute(f"UPDATE {table} SET body = ? WHERE id = ?", (body, r["id"]))
+                changed += 1
+    if changed:
+        conn.commit()
+    return changed
+
+
 # What became of a letter's words, for the mail log. Where they are is where
 # they may be: a guest's letter is read from their correspondence rather than
 # kept twice, the house's own letters are kept here, and two kinds are never
@@ -36907,6 +36937,7 @@ LETTERS_IN_CODE = {
     "manage_booking": "To the house: a guest changed their stay",
     "restaurant_manage": "To the house: a guest changed their dinner",
     "workshop_manage": "To the house: a guest changed their atelier place",
+    "tell_house_of_guest_details": "To the house: a guest changed their roommate, notes or occasion",
     "event_manage": "To the house: an event enquiry changed",
     "event_quote": "To the house: a quote accepted",
     "submit_event_inquiry": "To the house: an event enquiry",
@@ -69287,8 +69318,15 @@ def restaurant_manage(manage_token):
             changes = []
             if party_size != was_party:
                 changes.append(f"party of {was_party} → {party_size}")
+            # Named, never quoted: the note is deleted once the dinner is over,
+            # and a copy of this letter would keep it two years. The kitchen's
+            # list for the night is where the privacy notice says it is read.
             if dietary != was_dietary:
-                changes.append(f"dietary notes now: {dietary or '(none)'}")
+                changes.append(health_note_line(
+                    "Dietary notes", was_dietary, dietary,
+                    "on the kitchen's dietary list for that night")
+                    + "\n  " + house_url_for("kitchen_dietary", date=booking["dinner_date"],
+                                             _external=True))
             paid_note = ""
             if booking["payment_status"] == "paid" and party_size != was_party:
                 paid_note = ("\n\nThey have already paid. The total has been "
@@ -75087,6 +75125,138 @@ def workshop_statement(manage_token):
                            company=company)
 
 
+# What a retreat guest can put right on their own page (27 Nov 2026): the four
+# things they told us when they registered, with the same length limits the
+# registration form and the staff edit use, and what the house's email calls
+# each one. Their name, email and party stay with the house: the email is
+# what the booking is filed under, and a different party is a different price.
+RETREAT_OWN_DETAILS = (
+    ("requested_roommate", 200, "Travelling with"),
+    ("dietary_notes", 500, "Dietary notes"),
+    ("medical_notes", 500, "Medical notes"),
+    ("special_occasion", 200, "Celebrating"),
+)
+
+# Named in the house's email and notice when they change, never quoted. The
+# house keeps its own letters for two years (the mail log) and a push goes
+# through a browser company's servers, while the privacy notice promises these
+# notes are deleted once the retreat is over (purge_health_notes). An email
+# that quoted them would keep them long after.
+WORKSHOP_HEALTH_DETAILS = frozenset({"dietary_notes", "medical_notes"})
+
+
+def workshop_details_open(booking, today=None):
+    """Whether a retreat guest can still change their own details.
+
+    Only for a place that is still coming (pending or confirmed), and only
+    before the retreat begins. Once they are here they tell us in person, and
+    the kitchen has already planned. And once it is over the notes are
+    deleted, which a form left open would undo.
+    """
+    if (booking["status"] or "").lower() not in ("pending", "confirmed"):
+        return False
+    start = parse_date(booking["start_date"])
+    return bool(start) and (today or house_today()) < start
+
+
+def write_workshop_details(conn, reg, fields):
+    """Write a registration's own details, and do what follows from them.
+
+    The staff edit and the guest's own page both save through this, so what
+    follows a change happens whichever of them made it: the lead's name
+    follows a corrected name onto the party list, and the occasion's task is
+    rewritten, or closed if the occasion was emptied. Before this was shared,
+    that follow-up lived only in the staff route.
+
+    `fields` maps column to new value (None for empty). Returns the columns
+    whose value changed. Does not commit.
+    """
+    changed = [k for k, v in fields.items() if (reg[k] or None) != (v or None)]
+    if changed:
+        conn.execute(
+            "UPDATE workshop_bookings SET {} WHERE id = ?".format(
+                ", ".join(f"{k} = ?" for k in fields)),
+            (*(v or None for v in fields.values()), reg["id"]))
+    if "guest_name" in changed:
+        conn.execute("UPDATE workshop_booking_guests SET guest_name = ? "
+                     "WHERE workshop_booking_id = ? AND is_lead = 1",
+                     (fields["guest_name"], reg["id"]))
+    follow_occasion_of(conn, workshop_booking_id=reg["id"])
+    return changed
+
+
+def health_note_line(label, was, now, where):
+    """One line telling the house a health note moved, without what it says.
+
+    The privacy notice promises a dietary or medical note goes when the booking
+    is over, and the house keeps its own letters two years (and its mailbox
+    for ever), so a notice that quotes the note outlives the promise. Every
+    notice to the house about a guest changing one says it through here:
+    whether it was added, changed or taken off, and where to read it.
+    """
+    was, now = (was or "").strip(), (now or "").strip()
+    what = "taken off" if not now else ("added" if not was else "changed")
+    return f"{label}: {what}. Read them {where}; they are not written into emails."
+
+
+def guest_details_changes(booking, fields, changed):
+    """The lines the house is told, one per field the guest changed.
+
+    The roommate and the occasion are quoted, with what they said before,
+    because the rooming and the occasion's task are planned from them. A
+    health note says only that it was added, changed or taken off.
+    """
+    lines = []
+    for key, _cap, label in RETREAT_OWN_DETAILS:
+        if key not in changed:
+            continue
+        was, now = (booking[key] or "").strip(), (fields[key] or "").strip()
+        if key in WORKSHOP_HEALTH_DETAILS:
+            lines.append(health_note_line(label, was, now, "on the registration"))
+        elif not now:
+            lines.append(f"{label}: taken off (was \"{was}\")")
+        elif not was:
+            lines.append(f"{label}: \"{now}\"")
+        else:
+            lines.append(f"{label}: \"{now}\" (was \"{was}\")")
+    if "requested_roommate" in changed and booking["assigned_room_name"]:
+        lines.append(f"Their room is already settled ({room_title(booking['assigned_room_name'])}). "
+                     "Look at the rooming if they now want to share with somebody else.")
+    return lines
+
+
+def tell_house_of_guest_details(conn, booking, fields, changed):
+    """The house's email and bell when a guest changes their own details.
+
+    Called after the change is committed: a letter or a push sent with a write
+    still open holds every other writer until it comes back.
+    """
+    lines = guest_details_changes(booking, fields, changed)
+    if not lines:
+        return
+    when = format_date_short(booking["start_date"])
+    link = house_url_for("admin_workshop_registrations", session_id=booking["session_id"],
+                         _external=True)
+    owner_to = house_address_for(conn, "workshops")
+    if owner_to:
+        send_email(
+            owner_to,
+            f"Retreat details changed — {booking['reference_code']}",
+            f"{booking['guest_name']} changed their details for {booking['title']} "
+            f"({when}) on their own page:\n\n"
+            + "\n".join(f"- {line}" for line in lines)
+            + f"\n\nThe registrations: {link}",
+        )
+    owner = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
+    if owner:
+        send_notification(
+            conn, owner["id"], "guest_request",
+            f"{booking['guest_name']} changed their details for {booking['title']}",
+            body="; ".join(label for key, _cap, label in RETREAT_OWN_DETAILS
+                           if key in changed) + " changed",
+            link=url_for("admin_workshop_registrations", session_id=booking["session_id"]))
+
+
 @app.route("/workshops/manage/<manage_token>", methods=["GET", "POST"])
 def workshop_manage(manage_token):
     conn = get_db()
@@ -75145,6 +75315,40 @@ def workshop_manage(manage_token):
                   "Thank you. We will expect you at the château.", "success")
         conn.close()
         return redirect(url_for("workshop_manage", manage_token=manage_token) + "#getting-here")
+
+    if request.method == "POST" and request.form.get("action") == "details":
+        # Their own details, put right by them (owner, 27 Nov 2026). The page
+        # showed who they are travelling with, their dietary and medical notes
+        # and what they are celebrating, and gave them no way to change any of
+        # it: a new allergy or a misspelt roommate meant writing in and
+        # waiting for somebody to retype it. The house is told what changed,
+        # as the restaurant page tells it.
+        #
+        # Back to the top of the page, not to the form: the message saying it
+        # saved is drawn up there, and the details it saved sit just below it.
+        back = url_for("workshop_manage", manage_token=manage_token)
+        if not workshop_details_open(booking):
+            conn.close()
+            flash("These can no longer be changed here. If something has changed, "
+                  "please tell us when you arrive, or write to us.", "error")
+            return redirect(back)
+        fields = {key: (request.form.get(key) or "").strip()[:cap] or None
+                  for key, cap, _label in RETREAT_OWN_DETAILS}
+        changed = write_workshop_details(conn, booking, fields)
+        if changed:
+            # That they changed, not to what: the trail outlives the notes.
+            log_audit(conn, "workshop_details_changed_by_guest",
+                      target=booking["reference_code"],
+                      details=", ".join(label.lower() for key, _cap, label
+                                        in RETREAT_OWN_DETAILS if key in changed)
+                      + " changed")
+        conn.commit()
+        if changed:
+            tell_house_of_guest_details(conn, booking, fields, changed)
+        conn.close()
+        flash("Saved. We have let the château know." if changed else "Nothing had changed.",
+              "success")
+        return redirect(back)
 
     if request.method == "POST" and request.form.get("action") == "autocharge":
         # A guest saying "don't take it automatically, I'll pay it myself".
@@ -75308,6 +75512,7 @@ def workshop_manage(manage_token):
         other_sessions=other_sessions,
         extend_before=extend_before, extend_after=extend_after, checkin=checkin,
         travel=travel_card(booking), travel_how=TRAVEL_HOW,
+        details_open=workshop_details_open(booking),
     )
 
 
@@ -92370,13 +92575,8 @@ def edit_workshop_registration(registration_id):
         conn.close()
         flash(error, "error")
         return redirect(back)
-    changed = [k for k, v in fields.items() if (reg[k] or None) != (v or None)]
-    conn.execute(
-        "UPDATE workshop_bookings SET {} WHERE id = ?".format(
-            ", ".join(f"{k} = ?" for k in fields)),
-        (*fields.values(), registration_id))
-    if party_size != reg["party_size"]:
-        changed.append("party_size")
+    party_changed = party_size != reg["party_size"]
+    if party_changed:
         workshop = conn.execute("SELECT * FROM workshops WHERE id = ?",
                                 (reg["workshop_id"],)).fetchone()
         subtotal, _supplement = workshop_subtotal(workshop, party_size, reg["occupancy_type"] or "double")
@@ -92386,16 +92586,15 @@ def edit_workshop_registration(registration_id):
                      (party_size, registration_id))
         reprice_workshop_registration(conn, registration_id, total_price=total_price,
                                       start_date=reg["start_date"])
-    # The lead's name is the first of the party; a corrected name corrects it.
-    if "guest_name" in changed:
-        conn.execute("UPDATE workshop_booking_guests SET guest_name = ? "
-                     "WHERE workshop_booking_id = ? AND is_lead = 1",
-                     (fields["guest_name"], registration_id))
+    # The lead's name on the party and the occasion's task follow from here,
+    # as they do when the guest changes their own (workshop_manage). After the
+    # party size, which the occasion's task names ("2 guests").
+    changed = write_workshop_details(conn, reg, fields)
+    if party_changed:
+        changed.append("party_size")
     if changed:
         log_audit(conn, "workshop_registration_edited", target=reg["reference_code"],
                   details=", ".join(changed))
-    # The occasion's task follows the words: rewritten, or closed if emptied.
-    follow_occasion_of(conn, workshop_booking_id=registration_id)
     conn.commit()
     conn.close()
     flash(f"{reg['reference_code']} saved." if changed else "Nothing had changed.", "success")

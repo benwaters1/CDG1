@@ -11173,6 +11173,16 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-cancel-fold > summary::after{ content: "›"; display: inline-block; color: var(--gilt); transition: transform .2s ease; }
 .g .g-cancel-fold[open] > summary::after{ content: "›"; transform: rotate(90deg); }
 .g .g-cancel-fold .btn-text-danger{ font-size: 15px; text-decoration: underline; text-underline-offset: 3px; }
+
+/* 27 Nov - RETREAT PAGE: the guest's own details, changed by them. Folded under what they told us, opened by a real link, the form inside it at the card's width */
+.g .g-details-fold{ margin-top: var(--s4); }
+.g .g-details-fold > summary{ cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: .45rem; min-height: 44px; font-family: var(--ui); font-size: 16px; color: var(--blue-deep); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
+.g .g-details-fold > summary::-webkit-details-marker{ display: none; }
+.g .g-details-fold > summary::after{ content: "›"; display: inline-block; color: var(--gilt); transition: transform .2s ease; }
+.g .g-details-fold[open] > summary::after{ transform: rotate(90deg); }
+.g .g-details-fold form{ margin-top: var(--s3); }
+.g .g-details-fold .g-field{ margin-bottom: var(--s4); }
+.g .g-details-fold input, .g .g-details-fold textarea{ width: 100%; max-width: 100%; }
 .g .g-mb-end{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s5); margin-top: var(--s6); }
 .g .g-mb-end .g-link{ font-size: 16px; }
 .g .g-mb-end{ margin-top: var(--s4); }
@@ -12982,3 +12992,58 @@ html[lang="fr"] .g-top__in, html[lang="es"] .g-top__in{ max-width: max(var(--wra
 .g .g-occasion__chef{ margin-top: var(--s5); }
 .g .g-occasion__label{ margin: 0 0 var(--s2); font-family: var(--ui); font-size: 13px; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
+
+/* ==========================================================================
+   THE FOOTER ON A PHONE (owner, 27 Nov 2026: yes to a shorter footer on a phone). The home page on a phone came to
+   7,104px at 375, and 1,955 of it was the footer -- the same 1,955 under every public page. Nothing in it goes: every
+   link, the address, the newsletter and the house's drawing are all still there. What changes is what a phone draws
+   before anybody asks for it.
+   - Visit and Help were twelve and seven links at 45px apiece, side by side, 579px. Below 600px each heading is a
+     button over its own list, shut until pressed (public_base.html makes the buttons, and takes them away again if
+     the screen widens). With no script every list shows, as it always has.
+   - The newsletter's field and its Subscribe button share one row instead of stacking.
+   - The drawing is drawn at 13.5rem rather than the phone's whole width, on a tighter band.
+   test_footer_on_a_phone measures it on five pages, presses the buttons, and holds the lot.
+   ========================================================================== */
+@media (max-width: 599px){
+  .g .g-footer .g-crest--foot{ padding: var(--s4) var(--s4) var(--s4); margin-bottom: var(--s5); }
+  .g .g-footer .g-crest--foot img{ max-width: 13.5rem; }
+  .g .g-footer .g-crest--foot .g-crest__dates{ margin-top: var(--s2); }
+  /* The three dates wrap to a line each at this width, and the rule between them was left at the start of the
+     second and third lines. Stacked, centred, with no rule: the same three lines, set as a list. */
+  .g .g-footer .g-crest--foot .g-crest__row{ flex-direction: column; align-items: center; gap: 2px; }
+  .g .g-footer .g-crest--foot .g-crest__date,
+  .g .g-footer .g-crest--foot .g-crest__date + .g-crest__date{ border-left: 0; padding: 0; }
+
+  /* One column that may be narrower than its contents would like: a field's natural width (about twenty letters)
+     otherwise held the whole block at 338px, past the edge of a 320px phone. */
+  .g .g-news--footer{ grid-template-columns: minmax(0, 1fr); gap: var(--s3); padding-bottom: var(--s5); margin-bottom: var(--s5); }
+  .g .g-news--footer h2{ margin: 0; }
+  .g .g-news--footer .g-news__form{ flex-wrap: nowrap; gap: var(--s2); }
+  .g .g-news--footer .g-news__form input[type="email"]{ flex: 1 1 0; width: 0; min-width: 0; }
+  .g .g-news--footer .g-btn--solid{ width: auto; flex: 0 0 auto; padding: 0 var(--s4); }
+
+  .g .g-footer__grid{ row-gap: var(--s5); }
+  /* Visit and Help: the heading is the button, the list under it shut until it is pressed. */
+  .g .g-footer__grid > .is-shut > ul{ display: none; }
+  .g .g-footer__grid > div > h2:has(> .g-footer__tog){ margin: 0; }
+  .g .g-footer .g-footer__tog{
+    display: flex; align-items: center; justify-content: space-between; gap: var(--s2);
+    width: 100%; min-height: 48px; margin: 0; padding: 0;
+    background: none; border: 0; border-top: 1px solid rgba(196,160,106,.32); border-bottom: 1px solid rgba(196,160,106,.32);
+    font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; text-align: left; cursor: pointer;
+  }
+  .g .g-footer .g-footer__tog::after{
+    content: ""; flex: 0 0 auto; width: 7px; height: 7px; margin: 0 4px 4px 0;
+    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg);
+    transition: transform .2s ease;
+  }
+  .g .g-footer .g-footer__tog[aria-expanded="true"]::after{ transform: rotate(-135deg); margin-bottom: -2px; }
+  .g .g-footer .g-footer__tog:focus-visible{ outline: 2px solid var(--gilt-leaf); outline-offset: 2px; }
+  .g .g-footer__grid > div:not(.is-shut) > h2 > .g-footer__tog{ margin-bottom: var(--s2); }
+
+  .g .g-footer__base{ margin-top: var(--s5); padding-top: var(--s4); gap: var(--s3); }
+}
+@media (max-width: 599px) and (prefers-reduced-motion: reduce){
+  .g .g-footer .g-footer__tog::after{ transition: none; }
+}

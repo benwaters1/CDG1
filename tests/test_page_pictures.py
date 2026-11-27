@@ -108,7 +108,11 @@ PAGES = {
         # 9 Nov (owner): Andorra had none the house held; Sant Joan de Caselles, from Commons, credited under it.
         ("Andorra: Sant Joan de Caselles beside it, its photographer credited",
          r'id="andorra".*?retreats/sant-joan-de-caselles\.jpg.*?<p class="g-car__credits"><small class="g-credit">Photo <a [^>]*>Pierre Bona</a>, <a [^>]*>CC BY-SA 3\.0</a>.*?id="close-by"', 1),
-        ("the hot springs and the cave credited", r'Jeunamateur.*Traumrune', 1),
+        # Was "the hot springs and the cave credited". The photo review (owner, 26 Nov 2026, b5857b2) took the
+        # Bassin des Ladres photograph off this page and its credit went with it, so this asked for a credit under
+        # a picture that is no longer there. The cave at Lombrives stays, and so does its photographer's credit.
+        ("the cave at Lombrives beside it, its photographer credited",
+         r'retreats/lombrives-cave-mouth\.jpg.*?<p class="g-car__credits"><small class="g-credit">Photo <a [^>]*>Traumrune</a>, <a [^>]*>CC BY-SA 3\.0</a>', 1),
     ],
     "/press": [
         # 23 Nov 2026 (owner's website brief, 1): the six pages in one captioned row, each opening the set.

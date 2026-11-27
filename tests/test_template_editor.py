@@ -49,6 +49,8 @@ MAY_WRITE_IN_CODE = {
     "manage_booking": "notices to the owner when a guest changes their own booking",
     "restaurant_manage": "notices to the owner",
     "workshop_manage": "notices to the owner",
+    "tell_house_of_guest_details": "a notice to the retreat inbox that a guest changed their "
+                                   "own roommate, notes or occasion (workshop_manage)",
     "event_manage": "notices to the owner",
     "submit_event_inquiry": "a notice to the owner",
     "event_quote": "a notice to the owner that a quote was accepted",

@@ -712,6 +712,56 @@ window.houseDay = (function () {
     </div>
 </div>
 </footer>
+{# 27 Nov 2026 (the footer on a phone): below 600px Visit and Help each become a button over its own list, shut until
+   pressed, so a phone is not handed nineteen links nobody asked for (579px of every page). Built here, taken down
+   again if the screen widens past 600px (a phone turned on its side); with no script every list shows, as it always
+   has. gudanes.css draws it; test_footer_on_a_phone holds it. #}
+<script>
+(function () {
+  var grid = document.querySelector('.g-footer__grid');
+  if (!grid || !window.matchMedia) return;
+  var mq = window.matchMedia('(max-width: 599px)');
+  var cols = [].filter.call(grid.children, function (c) {
+    var h = c.firstElementChild;
+    return h && h.tagName === 'H2' && c.querySelector('ul');
+  });
+  function build() {
+    cols.forEach(function (col, i) {
+      var h = col.firstElementChild, ul = col.querySelector('ul');
+      if (h.querySelector('.g-footer__tog')) return;
+      if (!ul.id) ul.id = 'g-footer-list-' + (i + 1);
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'g-footer__tog';
+      b.setAttribute('aria-expanded', 'false');
+      b.setAttribute('aria-controls', ul.id);
+      while (h.firstChild) b.appendChild(h.firstChild);
+      h.appendChild(b);
+      col.classList.add('is-shut');
+      b.addEventListener('click', function () {
+        var opening = col.classList.contains('is-shut');
+        col.classList.toggle('is-shut', !opening);
+        b.setAttribute('aria-expanded', opening ? 'true' : 'false');
+      });
+    });
+  }
+  function unbuild() {
+    cols.forEach(function (col) {
+      var h = col.firstElementChild, b = h.querySelector('.g-footer__tog');
+      if (!b) return;
+      while (b.firstChild) h.insertBefore(b.firstChild, b);
+      h.removeChild(b);
+      col.classList.remove('is-shut');
+    });
+  }
+  function fit() { if (mq.matches) build(); else unbuild(); }
+  fit();
+  /* On the window's resize, not the media query's own change event: a media query list that nothing else holds is
+     tidied away by the browser with its listener, and then it stops answering (it answered the first turn of a phone
+     and not the second). build and unbuild do nothing when there is nothing to do, so this is cheap to repeat. */
+  window.addEventListener('resize', fit);
+})();
+</script>
 <script>
 /* 9 Nov 2026, evening (owner's second review, 3.1): sizes="auto" for a browser that does not know it yet. The
    house's photographs say "auto, <a guess>"; where auto is not understood the guess is used, and the guesses ran
