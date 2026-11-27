@@ -172,6 +172,7 @@
   </div>
   {% endif %}
 
+  {% if fridge_settings_allowed() %}
   <details class="fridge-unit-change">
     <summary>Change its range, or switch it off</summary>
     <form method="post" action="{{ url_for('fridge_unit_change', unit_id=u.unit['id']) }}">
@@ -195,6 +196,7 @@
         reminders; everything read from it is kept.</span>
     </form>
   </details>
+  {% endif %}
 </div>
 {% endfor %}
 

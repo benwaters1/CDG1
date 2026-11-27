@@ -35,8 +35,8 @@
   </a>
   <a class="stat-tile" href="#rooms">
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('rooms', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ d.let_tonight }} of {{ d.rooms|length }}</span>
-      <span class="stat-tile-label">Rooms let tonight · {{ d.free_tonight }} free</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ d.let_tonight }} of {{ max_rooms_let }}</span>
+      <span class="stat-tile-label">Rooms let tonight · {% if d.house_full %}the house is full{% else %}{{ d.free_tonight }} still to sell{% endif %}</span></span>
   </a>
   <a class="stat-tile" href="#collect">
     <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if d.owed else 'stat-tile-icon-success' }}">{{ icon('receipt', 19) }}</span>

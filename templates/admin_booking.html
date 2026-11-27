@@ -60,6 +60,17 @@
     {% endif %}
   </div>
   <div class="bk-head-actions">
+    {# Arrival day: the thing this page is opened for. Only the Front Desk
+       could check anybody in, so the booking's own page, open in front of
+       the person at the door, had no way to say they had arrived. #}
+    {% if b['status'] == 'confirmed' and b['arrival_date'] == today_iso
+          and not b['checked_in_at'] and not b['no_show_at'] %}
+    <form method="post" action="{{ url_for('check_in_booking', booking_id=b['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
+      <button type="submit" class="btn-primary">Check in</button>
+    </form>
+    {% if bill.owed > 0.005 %}<a href="#take-payment" class="btn-mini">Take payment · {{ bill.owed|money }}</a>{% endif %}
+    {% endif %}
     {% if b['status'] == 'pending' %}
     <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
@@ -118,7 +129,7 @@
   <div class="stat-tile"><span class="stat-tile-body">
     {% if bill.called_off %}<span class="stat-tile-value{{ ' owed-flag' if bill.to_give_back }}">{{ (bill.to_give_back or bill.kept)|money }}</span><span class="stat-tile-label">{{ 'To give back' if bill.to_give_back else 'Kept' }}</span>
     {% elif bill.overpaid %}<span class="stat-tile-value">{{ bill.overpaid|money }}</span><span class="stat-tile-label">In credit</span>
-    {% else %}<span class="stat-tile-value{{ ' owed-flag' if bill.owed }}">{{ bill.owed|money }}</span><span class="stat-tile-label">Balance due{% if bill.balance_due_date and bill.owed %} by {{ bill.balance_due_date|date_short }}{% endif %}</span>{% endif %}
+    {% else %}<span class="stat-tile-value{{ ' owed-flag' if bill.owed }}">{{ bill.owed|money }}</span><span class="stat-tile-label">{% if bill.balance_overdue and bill.owed %}Overdue since {{ bill.balance_due_date|date_short }}{% else %}Balance due{% if bill.balance_due_date and bill.owed %} by {{ bill.balance_due_date|date_short }}{% endif %}{% endif %}</span>{% endif %}
   </span></div>
 </div>
 
@@ -545,13 +556,13 @@
 
     {% if b['guest_email'] %}
     <details class="bk-fold" id="write" {{ 'open' if not messages }}>
-      <summary><strong>Write to {{ b['guest_name'].split(' ')[0] }}</strong></summary>
+      <summary><strong>Write to {{ b['guest_name']|greeting }}</strong></summary>
       <form method="post" action="{{ url_for('write_about_booking', booking_id=b['id']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label class="field-label" for="write-subject">Subject</label>
         <input id="write-subject" type="text" name="subject" maxlength="200" required value="Your stay at Château de Gudanes — {{ b['reference_code'] }}">
         <label class="field-label" for="write-body">Letter</label>
-        <textarea id="write-body" name="body" rows="7" required>Dear {{ b['guest_name'].split(' ')[0] }},
+        <textarea id="write-body" name="body" rows="7" required>Dear {{ b['guest_name']|greeting }},
 
 </textarea>
         <p class="upload-hint">Goes to {{ b['guest_email'] }}{% if b['second_contact_email'] or b['booked_by_email'] %} and whoever they asked us to copy{% endif %}, and is kept here.</p>
@@ -675,9 +686,12 @@
     {% endif %}
     {% if b['checked_out_at'] %}
     <p class="bk-ok">✓ Checked out {{ b['checked_out_at']|house_day|date_short }} — turnover assigned.</p>
-    {% elif b['arrival_date'] <= today_iso and not b['no_show_at'] %}
+    {% elif (b['checked_in_at'] or b['arrival_date'] < today_iso) and not b['no_show_at'] %}
+    {# Not on the arrival day before they are in: it offered "Guest checked
+       out" to a family whose flight had not landed. #}
     {% set on_shift = scheduled.get(today_iso, []) %}
-    <form method="post" action="{{ url_for('checkout_booking', booking_id=b['id']) }}" class="bk-inline-form">
+    <form method="post" action="{{ url_for('checkout_booking', booking_id=b['id']) }}" class="bk-inline-form"
+          {% if bill.owed > 0.005 %}onsubmit="return confirm('{{ bill.owed|money }} is still owed on this stay. Check out anyway?');"{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
       <select name="assigned_to_user_id" required aria-label="Who turns the room over">
         <option value="">Turn the room over — who?</option>

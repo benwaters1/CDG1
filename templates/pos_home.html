@@ -85,7 +85,7 @@
         {% endif %}
         <span class="till-tile__meta">
           {{ tile.order['covers'] }} cover{{ '' if tile.order['covers'] == 1 else 's' }}
-          {%- if live and live.sitting_minutes is not none %} · {{ live.sitting_minutes }} min{% endif %}
+          {%- if live and live.sitting_minutes is not none %} · {{ live.sitting_minutes|minutes }}{% endif %}
           {%- if live and live.state %} · {{ service_states.get(live.state, live.state) }}{% endif %}
         </span>
       </a>
@@ -128,7 +128,7 @@
     {% if x.unsent %}<span class="till-tile__flag is-unsent">{{ x.unsent }} not sent to the kitchen</span>{% endif %}
     <span class="till-tile__meta">
       {{ x.order['covers'] }} cover{{ '' if x.order['covers'] == 1 else 's' }}
-      {%- if x.sitting_minutes is not none %} · {{ x.sitting_minutes }} min{% endif %}
+      {%- if x.sitting_minutes is not none %} · {{ x.sitting_minutes|minutes }}{% endif %}
     </span>
   </a>
   {% endfor %}

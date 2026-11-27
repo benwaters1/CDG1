@@ -761,6 +761,9 @@ SUITES = [
     # 27 November 2026, the back-end review: the pages staff open first, on a day with people in it
     # -- Home's clock button and checklist, Today's words, hours in minutes, taken leave, links, phones.
     "test_staff_start_pages",
+    # And the figures and buttons the house acts on: timesheets, workshop statements, bulk
+    # approvals, the till under a card, fridges, room checks, names, the desk, money ahead.
+    "test_what_the_house_relies_on",
 ]
 
 

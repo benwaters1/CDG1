@@ -1146,6 +1146,12 @@ body.staff-shell .manual-section h3{ color:var(--ivory); font-family:'Inter',san
 .auto-ran, .auto-how{ display:block; }
 .auto-when{ font-variant-numeric:tabular-nums; }
 .auto-savebar{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin:6px 0 24px; }
+/* In reach from anywhere down a page that is thirteen thousand pixels tall on
+   a phone: the only Save was at the very bottom. */
+.auto-savebar{ position:sticky; bottom:0; z-index:5; background:var(--surface, #fff);
+  padding:10px 12px; border-top:1px solid var(--parchment-line); }
+.auto-savebar.is-dirty{ box-shadow:0 -4px 14px rgba(0,0,0,.08); }
+.auto-savebar.is-dirty #auto-unsaved{ color:var(--danger); font-weight:600; }
 @media (max-width:720px){
   .auto-row{ grid-template-columns:minmax(0,1fr); }
   .auto-status{ margin-left:25px; }
@@ -1273,7 +1279,11 @@ body.staff-shell .cal-month-label{ font-family:'Inter',sans-serif; font-weight:7
 .cal-cell-shift{ background:var(--cal-shift-bg); }
 .cal-cell-leave{ background:var(--cal-leave-bg); }
 /* Today is a soft column wash rather than a hard 2px outline box. */
-.cal-today{ background:rgba(184,133,62,0.10); }
+/* Today is outlined, not filled: the fill came after .cal-cell-shift and took the
+   blue "Working" off every cell in the column, leaving a beige next to the time-off
+   colour -- so on the team calendar everybody at work today looked off (27 Nov). */
+.cal-today{ box-shadow:inset 2px 0 0 var(--gold), inset -2px 0 0 var(--gold); }
+.cal-table th.cal-today{ background:rgba(184,133,62,0.10); }
 .cal-table th.cal-today{ color:var(--gold-on-warn); }
 .cal-table th.cal-today .cal-dom{ color:var(--gold-on-warn); }
 

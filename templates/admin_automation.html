@@ -142,10 +142,12 @@
             <span class="muted">Last worked: {{ local_datetime_str(run['last_ok_at'], unknown='not recorded') }}</span>
           {% endif %}
         </span>
-        <button type="submit" class="btn-mini" formnovalidate
+        <button type="submit" class="btn-mini auto-run-now" formnovalidate
                 formaction="{{ url_for('run_automation_job_now', job_name=e.job) }}">Run now</button>
         {% else %}
-        <span class="auto-ran muted">Not a timed job: it happens when a place frees up.</span>
+        {# Its own reason: this one sentence was printed under every switch that
+           is not a timer, the recap reminder and the guest replies included. #}
+        <span class="auto-ran muted">Not a timed job: {{ e.when or 'it happens when something calls for it' }}.</span>
         {% endif %}
       </div>
     </div>
@@ -153,10 +155,35 @@
   </section>
   {% endfor %}
 
-  <div class="auto-savebar">
+  <div class="auto-savebar" id="auto-savebar">
     <button type="submit" class="btn-primary">Save every switch</button>
-    <span class="upload-hint">A box left unticked is switched off when you save.</span>
+    <span class="upload-hint" id="auto-unsaved">A box left unticked is switched off when you save.</span>
   </div>
 </form>
+<script>
+// Run now posts the whole form to the job, which runs on the SAVED switches
+// and reloads the page -- so ticks changed and not saved were thrown away
+// without a word. Said before it happens instead (back-end review, 27 Nov).
+(function () {
+  var form = document.getElementById('automation-form');
+  if (!form) return;
+  var dirty = false;
+  form.addEventListener('change', function (e) {
+    if (e.target.classList.contains('auto-run-now')) return;
+    dirty = true;
+    document.getElementById('auto-unsaved').textContent =
+      'You have changes that are not saved yet.';
+    document.getElementById('auto-savebar').classList.add('is-dirty');
+  });
+  form.querySelectorAll('.auto-run-now').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      if (dirty && !confirm('You have changed switches without saving. Run now does not ' +
+                            'save them, and they will be lost. Run it anyway?')) {
+        e.preventDefault();
+      }
+    });
+  });
+})();
+</script>
 
 {% endblock %}

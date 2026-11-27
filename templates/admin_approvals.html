@@ -42,8 +42,8 @@
     <p class="upload-hint">{{ "Your own, so the owner decides it." if why == 'own' else "The owner's to decide: " ~ r['employee_name'] ~ " can reach more of the app than you can." }}</p>
     {% else %}
     <div class="expense-actions">
-      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
-      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><input type="hidden" name="next" value="approvals"><button type="submit" class="btn-mini">Approve</button></form>
+      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="declined"><input type="hidden" name="next" value="approvals"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
     </div>
     {% endif %}
     {% elif item['kind'] == 'correction' %}
@@ -72,9 +72,16 @@
     {% else %}
     <div class="expense-head">
       <div>
-        <input type="checkbox" name="items" value="expense:{{ r['id'] }}" form="bulk-approve-form" class="bulk-check" style="margin-right:8px;">
+        <input type="checkbox" name="items" value="expense:{{ r['id'] }}" form="bulk-approve-form" class="bulk-check" style="margin-right:8px;"
+               aria-label="Select {{ r['vendor_name'] or r['submitter_name'] or 'this expense' }}, {{ r['amount']|money }}">
         <span class="mini-status status-pending" style="margin-right:8px;">{{ 'Invoice' if r['kind'] == 'supplier_invoice' else 'Expense claim' }}</span>
+        {# A staff claim says who is out of pocket: "Total station — €61.20"
+           never said it was Marie's money. #}
+        {% if r['kind'] == 'staff_expense' and r['submitter_name'] %}
+        <strong>{{ r['submitter_name'] }}</strong>{% if r['vendor_name'] %} · {{ r['vendor_name'] }}{% endif %} — {{ r['amount']|money }}
+        {% else %}
         <strong>{{ r['vendor_name'] or r['submitter_name'] or 'Former employee' }}</strong> — {{ r['amount']|money }}
+        {% endif %}
       </div>
     </div>
     <p class="manual-body">{{ r['description'] }}</p>
@@ -84,8 +91,8 @@
       {% if is_viewable(r['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_expense_file', expense_id=r['id']) }}', '{{ (r['vendor_name'] or r['submitter_name'] or '')|e }}')">View</button>{% endif %}
       <a href="{{ url_for('download_expense_file', expense_id=r['id']) }}" class="small-link" style="color:var(--steel);">Download</a>
       {% endif %}
-      <form method="post" action="{{ url_for('decide_expense', expense_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
-      <form method="post" action="{{ url_for('decide_expense', expense_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
+      <form method="post" action="{{ url_for('decide_expense', expense_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><input type="hidden" name="next" value="approvals"><button type="submit" class="btn-mini">Approve</button></form>
+      <form method="post" action="{{ url_for('decide_expense', expense_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="rejected"><input type="hidden" name="next" value="approvals"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
     </div>
     {% endif %}
   </div>
