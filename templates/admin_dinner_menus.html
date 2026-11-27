@@ -34,6 +34,7 @@
       <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=m.id, kind='a4') }}" target="_blank" rel="noopener">A4</a>
       <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=m.id, kind='a3') }}" target="_blank" rel="noopener">A3</a>
       <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=m.id, kind='allergens') }}" target="_blank" rel="noopener">Allergens</a>
+      <a class="btn-mini" href="{{ url_for('admin_dinner_menu_pdf', menu_id=m.id) }}">PDF</a>
       <form method="post" action="{{ url_for('admin_dinner_menu_duplicate', menu_id=m.id) }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-mini" type="submit">Duplicate</button></form>
       <form method="post" action="{{ url_for('admin_dinner_menu_archive', menu_id=m.id) }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-mini" type="submit">{{ 'Restore' if m.status == 'archived' else 'Archive' }}</button></form>
       {% if not m.uses %}<form method="post" action="{{ url_for('admin_dinner_menu_delete', menu_id=m.id) }}" style="display:inline" onsubmit="return confirm('Delete {{ m.name|e }}? Its dishes stay in the library.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-mini" type="submit">Delete</button></form>{% endif %}

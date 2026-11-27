@@ -67,6 +67,7 @@
   <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=v.id, kind='a4') }}" target="_blank" rel="noopener">Print A4</a>
   <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=v.id, kind='a3') }}" target="_blank" rel="noopener">Print A3 board</a>
   <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=v.id, kind='allergens') }}" target="_blank" rel="noopener">Allergen sheet</a>
+  <a class="btn-mini" href="{{ url_for('admin_dinner_menu_pdf', menu_id=v.id) }}">Download PDF</a>
   <form method="post" action="{{ url_for('admin_dinner_menu_duplicate', menu_id=v.id) }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-mini" type="submit">Duplicate</button></form>
   {% endif %}
 </div>

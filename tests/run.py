@@ -223,6 +223,7 @@ SUITES = [
     "test_dinner_guest_paths",
     "test_dinner_costing",
     "test_dinner_till",
+    "test_dinner_menu_render",
     "test_retreat_celebrations",
     "test_getting_here",
     "test_ateliers",

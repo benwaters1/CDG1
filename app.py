@@ -11023,6 +11023,7 @@ NAV_AREAS = {
         "admin_dinner_menus", "admin_dinner_menu_new", "admin_dinner_menu",
         "admin_dinner_menu_duplicate", "admin_dinner_menu_archive", "admin_dinner_menu_delete",
         "admin_dinner_menu_preview", "admin_dinner_menu_english", "admin_dinner_menu_print",
+        "admin_dinner_menu_pdf",
         "admin_dinner_night",
         "new_extra", "new_menu_day", "new_menu_item", "new_restaurant_rate_override",
         "new_restaurant_shift", "print_menu_day", "publish_menu_day", "read_menu_upload",
@@ -56299,6 +56300,283 @@ def dinner_menu_for_night(conn, day_iso):
     return ref[1] if ref and ref[0] == "built" else None
 
 
+# --- The built menu drawn on the server: a picture and a PDF (27 Nov 2026) -------
+#
+# Owner, 27 Nov 2026: yes to a server-side renderer, so the newsletter can carry
+# the menu itself -- a picture in the letter, the A4 menu attached as a PDF --
+# where it had only its words and a link. Drawn with Pillow (already the app's
+# image library, nothing new to install on Railway) and the menu's own fonts,
+# committed under static/fonts/menu (SIL Open Font License, licences beside
+# them): EB Garamond, Cormorant Garamond and Pinyon Script, as the printed menu
+# and dinner_menu_card.html use. The A4 layout of the house's printed menu, its
+# sizes in millimetres and points (Menus/menu.py); a long menu is set smaller
+# until it fits the page rather than running off it.
+
+MENU_INK = (0x60, 0x44, 0x1D)
+MENU_PAPER = (0xF3, 0xEE, 0xE5)
+MENU_FONT_FILES = {
+    "ebg": "EBGaramond.ttf", "ebg_i": "EBGaramond-Italic.ttf",
+    "corm": "CormorantGaramond.ttf", "corm_i": "CormorantGaramond-Italic.ttf",
+    "script": "PinyonScript-Regular.ttf",
+}
+_MENU_FONT_CACHE = {}
+
+
+def _menu_font(key, px, variation=None):
+    """One of the menu's fonts at a size in pixels, a variable font set to the
+    weight asked ('Medium', 'Light'...)."""
+    from PIL import ImageFont
+    px = max(int(round(px)), 6)
+    k = (key, px, variation)
+    if k not in _MENU_FONT_CACHE:
+        font = ImageFont.truetype(os.path.join(app.static_folder, "fonts", "menu", MENU_FONT_FILES[key]), px)
+        if variation:
+            try:
+                font.set_variation_by_name(variation)
+            except Exception:
+                pass
+        _MENU_FONT_CACHE[k] = font
+    return _MENU_FONT_CACHE[k]
+
+
+def _menu_mix(alpha):
+    """The ink at an opacity, laid on the paper (the printed menu's .85, .9)."""
+    return tuple(int(round(i * alpha + p * (1 - alpha))) for i, p in zip(MENU_INK, MENU_PAPER))
+
+
+def _menu_text_width(font, text, tracking=0.0):
+    if not tracking:
+        return font.getlength(text)
+    return sum(font.getlength(ch) for ch in text) + tracking * max(len(text) - 1, 0)
+
+
+def _menu_wrap(font, text, width, tracking=0.0):
+    """The words of `text` in lines no wider than `width`."""
+    lines, line = [], ""
+    for word in (text or "").split():
+        trial = (line + " " + word) if line else word
+        if line and _menu_text_width(font, trial, tracking) > width:
+            lines.append(line)
+            line = word
+        else:
+            line = trial
+    if line:
+        lines.append(line)
+    return lines or [""]
+
+
+def _menu_blocks(view, s, px, mm, pt):
+    """The menu as blocks to set, top to bottom: (kind, data). `s` scales the
+    type; px/mm/pt turn the printed menu's units into pixels."""
+    P = lambda v: pt(v * s)  # noqa: E731 -- a point size, scaled
+    M = lambda v: mm(v * s)  # noqa: E731
+    ebg, ebg_m, ebg_i = (lambda v: _menu_font("ebg", P(v))), (lambda v: _menu_font("ebg", P(v), "Medium")), \
+        (lambda v: _menu_font("ebg_i", P(v)))
+    corm, corm_i = (lambda v: _menu_font("corm", P(v), "Light")), (lambda v: _menu_font("corm_i", P(v), "Light Italic"))
+    soft, softer = _menu_mix(.9), _menu_mix(.85)
+    head = [
+        ("text", dict(text="1213 · 1741 · 2013", font=ebg(8), tracking=P(8) * .3, gap_after=M(2))),
+        ("facade", dict(width=M(46), gap_after=M(1.5))),
+        ("text", dict(text="CHÂTEAU DE GUDANES", font=ebg_m(7.6), tracking=P(7.6) * .32, gap_after=M(2.5))),
+        ("text", dict(text="Dîner à Gudanes", font=_menu_font("script", P(34)), line=1.05, gap_after=M(.5))),
+        ("text", dict(text="Dinner at Gudanes", font=corm_i(14), gap_after=M(2.5))),
+    ]
+    if view.get("price_fr"):
+        head += [("text", dict(text=f"Menu · {view['price_fr']}", font=corm(17), gap_after=M(1))),
+                 ("text", dict(text=("PAR PERSONNE" + (", VINS COMPRIS" if view["wine"] else "") + " · A PERSON"
+                                     + (", WINE INCLUDED" if view["wine"] else "")),
+                               font=ebg_m(6.6), tracking=P(6.6) * .28, gap_after=M(2)))]
+    if view.get("nights_fr") or view.get("time_fr"):
+        fr = " · ".join(x for x in ((view.get("nights_fr") or "").capitalize(), view.get("time_fr")) if x)
+        en = ", ".join(x for x in (view.get("nights_en"), view.get("time_en")) if x)
+        head += [("text", dict(text=fr, font=ebg(8.4), gap_after=M(.4))),
+                 ("text", dict(text=en, font=ebg_i(8.4), color=soft, gap_after=M(0)))]
+    head.append(("rule", dict(width=M(62), before=M(3), after=M(4.2), top=pt(.9 * s), gap=pt(2.1 * s),
+                              bottom=pt(.45 * s))))
+    courses = []
+    for c in view["courses"]:
+        block = [("text", dict(text=(c["course_fr"] or "").upper(), font=ebg_m(7), tracking=P(7) * .3,
+                               gap_after=M(1.1)))]
+        dish = c["dish_fr"] + (" (fait maison)" if view.get("some_fait_maison") and c.get("fait_maison") else "")
+        block.append(("text", dict(text=dish, font=corm(14.6), line=1.15, gap_after=M(.6))))
+        if c.get("dish_en"):
+            block.append(("text", dict(text=c["dish_en"], font=ebg_i(9.6), line=1.35, gap_after=M(0))))
+        if c.get("wine_fr"):
+            block.append(("text", dict(text=c["wine_line"], font=ebg_i(7.8), color=soft, diamond=True,
+                                       before=M(1), gap_after=M(0))))
+        if c.get("origin_line_fr"):
+            o = c["origin_line_fr"] + (f"  ·  {c['origin_line_en']}" if c.get("origin_line_en") else "")
+            block.append(("text", dict(text=o, font=ebg_i(7), color=softer, before=M(.8), gap_after=M(0))))
+        block.append(("space", dict(h=M(3.3))))
+        courses += block
+    tail = []
+    if view.get("wine") and view.get("has_wine"):
+        tail += [("text", dict(text="Le vin est compris, choisi pour chaque plat", font=corm_i(16), gap_after=M(1))),
+                 ("text", dict(text="WINE IS INCLUDED, CHOSEN FOR EACH COURSE", font=ebg_m(7),
+                               tracking=P(7) * .3, gap_after=M(5)))]
+    tail.append(("text", dict(text="Please tell us of any allergies or dietary needs, and the kitchen will gladly adapt.",
+                              font=ebg_i(8), gap_after=M(0))))
+    if view.get("all_fait_maison"):
+        tail.append(("text", dict(text="Every dish is made here, from raw ingredients · tous nos plats sont faits maison.",
+                                  font=ebg_i(8), color=soft, before=M(.8), gap_after=M(0))))
+    return head, courses, tail
+
+
+def _menu_measure(blocks, width, facade):
+    """How tall these blocks set, in pixels, at this width."""
+    h = 0.0
+    for kind, d in blocks:
+        if kind == "text":
+            asc, desc = d["font"].getmetrics()
+            lines = _menu_wrap(d["font"], d["text"], width, d.get("tracking", 0))
+            h += d.get("before", 0) + len(lines) * (asc + desc) * d.get("line", 1.2) + d.get("gap_after", 0)
+        elif kind == "facade":
+            h += d["width"] * facade.height / facade.width + d["gap_after"]
+        elif kind == "rule":
+            h += d["before"] + d["top"] + d["gap"] + d["bottom"] + d["after"]
+        elif kind == "space":
+            h += d["h"]
+    return h
+
+
+def _menu_set(draw, img, blocks, x0, width, y, facade):
+    """Set the blocks from y down, each line centred in the column. Returns
+    where it stopped."""
+    from PIL import Image
+    for kind, d in blocks:
+        if kind == "text":
+            font, tracking = d["font"], d.get("tracking", 0)
+            asc, desc = font.getmetrics()
+            lh = (asc + desc) * d.get("line", 1.2)
+            y += d.get("before", 0)
+            for line in _menu_wrap(font, d["text"], width, tracking):
+                w = _menu_text_width(font, line, tracking)
+                x = x0 + (width - w) / 2
+                top = y + (lh - (asc + desc)) / 2
+                if d.get("diamond"):
+                    # The printed menu's diamond before a wine, drawn: the
+                    # fonts have no ◆.
+                    r = max(asc * .18, 2)
+                    cx, cy = x - r * 3.2, top + asc * .62
+                    draw.polygon([(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)], fill=d.get("color", MENU_INK))
+                if tracking:
+                    for ch in line:
+                        draw.text((x, top), ch, font=font, fill=d.get("color", MENU_INK))
+                        x += font.getlength(ch) + tracking
+                else:
+                    draw.text((x, top), line, font=font, fill=d.get("color", MENU_INK))
+                y += lh
+            y += d.get("gap_after", 0)
+        elif kind == "facade":
+            w = int(d["width"])
+            h = int(w * facade.height / facade.width)
+            pic = facade.resize((w, h), Image.LANCZOS)
+            img.paste(pic, (int(x0 + (width - w) / 2), int(y)), pic)
+            y += h + d["gap_after"]
+        elif kind == "rule":
+            y += d["before"]
+            left = x0 + (width - d["width"]) / 2
+            draw.rectangle([left, y, left + d["width"], y + d["top"]], fill=MENU_INK)
+            y += d["top"] + d["gap"]
+            draw.rectangle([left, y, left + d["width"], y + d["bottom"]], fill=MENU_INK)
+            y += d["bottom"] + d["after"]
+        elif kind == "space":
+            y += d["h"]
+    return y
+
+
+def render_dinner_menu(view, dpi=150):
+    """The menu on an A4 page, as an RGB image: the house's frame, corners,
+    façade and background, the courses set as the printed menu sets them. A
+    menu too long for the page at full size is set smaller, step by step,
+    until it fits; one that still would not is set at the smallest and
+    clipped by nothing -- the page grows (never on the house's own menus)."""
+    from PIL import Image, ImageDraw
+    px_per_mm = dpi / 25.4
+    mm = lambda v: v * px_per_mm  # noqa: E731
+    pt = lambda v: v * dpi / 72  # noqa: E731
+    W, H = int(round(mm(210))), int(round(mm(297)))
+    static = app.static_folder
+    facade = Image.open(os.path.join(static, "img", "menu", "facade.png")).convert("RGBA")
+    left, right, top, bottom = mm(24), mm(24), mm(19), mm(17)
+    width = W - left - right
+    scale = 1.0
+    while True:
+        head, courses, tail = _menu_blocks(view, scale, None, mm, pt)
+        need = (_menu_measure(head, width, facade) + _menu_measure(courses, width, facade)
+                + _menu_measure(tail, width, facade) + mm(4))
+        if need <= H - top - bottom or scale <= .62:
+            break
+        scale = round(scale - .04, 2)
+    page_h = max(H, int(need + top + bottom))
+    img = Image.new("RGB", (W, page_h), MENU_PAPER)
+    try:
+        bg = Image.open(os.path.join(static, "img", "menu", "tufted.jpg")).convert("RGB")
+        ratio = max(W / bg.width, page_h / bg.height)
+        bg = bg.resize((int(bg.width * ratio) + 1, int(bg.height * ratio) + 1), Image.LANCZOS)
+        bg = bg.crop(((bg.width - W) // 2, (bg.height - page_h) // 2,
+                      (bg.width - W) // 2 + W, (bg.height - page_h) // 2 + page_h))
+        img = Image.blend(bg, Image.new("RGB", (W, page_h), MENU_PAPER), .38)
+    except OSError:
+        pass
+    draw = ImageDraw.Draw(img)
+    for inset, lw in ((6.5, .72), (7.77, .95)):
+        a, w = mm(inset), max(pt(lw), 1)
+        draw.rectangle([a, a, W - a, page_h - a], outline=MENU_INK, width=int(round(w)))
+    for k, (x, y) in {"tl": (4.38, 4.43), "tr": (210 - 4.38 - 18.97, 4.43),
+                      "bl": (4.38, None), "br": (210 - 4.38 - 18.97, None)}.items():
+        c = Image.open(os.path.join(static, "img", "menu", f"corner-{k}.png")).convert("RGBA")
+        cw, ch = int(mm(18.97)), int(mm(19.64))
+        c = c.resize((cw, ch), Image.LANCZOS)
+        cy = int(mm(y)) if y is not None else int(page_h - mm(4.43) - ch)
+        img.paste(c, (int(mm(x)), cy), c)
+    y = _menu_set(draw, img, head, left, width, top, facade)
+    _menu_set(draw, img, courses, left, width, y, facade)
+    tail_h = _menu_measure(tail, width, facade)
+    _menu_set(draw, img, tail, left, width, page_h - bottom - tail_h, facade)
+    return img
+
+
+def dinner_menu_rendering(conn, occ, refresh=False):
+    """(picture path, PDF path) for an occasion's built menu, drawn once and
+    kept beside the occasion's files until the menu, the price, the wine, the
+    time or the nights change -- then drawn again and the old pair removed.
+    None when the occasion's menu is not a built one, or the drawing fails
+    (the newsletter then keeps the menu's words and its link)."""
+    ref = occasion_menu_ref(occ)
+    if not ref or ref[0] != "built":
+        return None
+    nights = stay_occasion_dinners(occ, conn)
+    view = dinner_menu_view(conn, ref[1], occ=occ, nights=nights)
+    if view is None:
+        return None
+    key = hashlib.sha1(json.dumps([ref[1], view["menu"].get("updated_at"), view["price"], view["wine"],
+                                   view["time"], nights, len(view["courses"])],
+                                  default=str).encode()).hexdigest()[:12]
+    stem = f"menu-drawn-{occ['id']}-{key}"
+    # The picture a JPEG (a letter's image, about a fifth of a PNG's weight);
+    # the PDF the A4 page at 200 dots an inch, to print.
+    png = os.path.join(OCCASION_FILES_DIR, stem + ".jpg")
+    pdf = os.path.join(OCCASION_FILES_DIR, stem + ".pdf")
+    if refresh or not (os.path.exists(png) and os.path.exists(pdf)):
+        try:
+            os.makedirs(OCCASION_FILES_DIR, exist_ok=True)
+            img = render_dinner_menu(view, dpi=150)
+            img.save(png + ".part", "JPEG", quality=84, optimize=True, progressive=True)
+            os.replace(png + ".part", png)
+            render_dinner_menu(view, dpi=200).save(pdf + ".part", "PDF", resolution=200, quality=88,
+                                                   title=f"{view['menu']['name']} · Château de Gudanes")
+            os.replace(pdf + ".part", pdf)
+        except Exception as e:
+            log_line(f"[menus] the menu for occasion {occ['id']} was not drawn: {e}")
+            return None
+        # The pair drawn before this one, from an older menu or price, goes.
+        for name in os.listdir(OCCASION_FILES_DIR):
+            if name.startswith(f"menu-drawn-{occ['id']}-") and not name.startswith(stem):
+                remove_occasion_file(name)
+    return png, pdf
+
+
 def dinner_menu_clashes(view, note):
     """What one table said it cannot eat, read against a built menu: [{course,
     dish, why}]. parse_dietary is the till's own reader, so the kitchen sheet
@@ -56467,9 +56745,12 @@ def occasion_newsletter_parts(conn, occ):
     if ref and ref[0] == "built":
         view = dinner_menu_view(conn, ref[1], occ=occ)
         if view:
-            menu_lines = "On the menu:\n" + "\n".join(
-                f"{c.get('course_en') or c['course_fr']}: {c.get('dish_en') or c['dish_fr']}"
-                for c in view["courses"])
+            # Drawn as a picture where it can be (its courses then in the
+            # picture's words); listed here only when it could not be drawn.
+            if not occasion_newsletter_has_drawn_menu(conn, occ):
+                menu_lines = "On the menu:\n" + "\n".join(
+                    f"{c.get('course_en') or c['course_fr']}: {c.get('dish_en') or c['dish_fr']}"
+                    for c in view["courses"])
             menu_print = view["menu"].get("updated_at") or ""
     price_bits = []
     if dinners and occ["dinner_price"]:
@@ -56514,7 +56795,26 @@ def occasion_newsletter_pictures(conn, occ):
             out.append({"src": public_link("occasion_menu", slug=occ["slug"]),
                         "alt": f"The menu for {DINNER_AT_GUDANES}"
                                + (f", {dinner_nights_words(nights)}" if nights else "")})
+        # A menu built in the app, drawn on the server (27 Nov 2026): the
+        # picture in the letter, its courses in the words a mail app shows
+        # when it shows no pictures. Drawn here first, so a letter never
+        # points at a picture that could not be made.
+        ref = occasion_menu_ref(occ)
+        if ref and ref[0] == "built" and dinner_menu_rendering(conn, occ):
+            nights = stay_occasion_dinners(occ, conn)
+            view = dinner_menu_view(conn, ref[1], occ=occ, nights=nights)
+            courses = "; ".join(f"{c.get('course_en') or c['course_fr']}: {c.get('dish_en') or c['dish_fr']}"
+                                for c in view["courses"])
+            out.append({"src": public_link("occasion_menu_picture", slug=occ["slug"]),
+                        "alt": f"The menu for {DINNER_AT_GUDANES}"
+                               + (f", {dinner_nights_words(nights)}" if nights else "") + f". {courses}"})
     return out
+
+
+def occasion_newsletter_has_drawn_menu(conn, occ):
+    """Whether the newsletter draws the built menu as a picture (and so need
+    not also list its courses in words)."""
+    return any("/menu.jpg" in p["src"] for p in occasion_newsletter_pictures(conn, occ))
 
 
 def occasion_newsletter_sent(conn, template_id):
@@ -56597,9 +56897,23 @@ def campaign_attachments(conn, template_id):
              JOIN stay_occasions ON stay_occasions.id = campaign_templates.occasion_id
             WHERE campaign_templates.id = ?""", (template_id,)).fetchone()
     if row and row["dinner_menu_id"]:
-        # A built menu has no file to attach: it is written into the letter
-        # and opens in the house style from See the menu.
-        return [], "The menu is written into the letter, and See the menu opens it in the house style."
+        # A built menu, drawn on the server as the A4 menu (27 Nov 2026), is
+        # attached as a PDF and shown in the letter as a picture.
+        occ = conn.execute("""SELECT stay_occasions.* FROM campaign_templates
+                                JOIN stay_occasions ON stay_occasions.id = campaign_templates.occasion_id
+                               WHERE campaign_templates.id = ?""", (template_id,)).fetchone()
+        drawn = dinner_menu_rendering(conn, occ) if occ is not None else None
+        if not drawn:
+            return [], ("The menu could not be drawn as a PDF, so it is written into the letter and "
+                        "See the menu opens it in the house style.")
+        mb = os.path.getsize(drawn[1]) / (1024 * 1024)
+        name = re.sub(r'[\\/:*?"<>|]+', " ", row["name"]).strip() or "Gudanes"
+        if mb > NEWSLETTER_ATTACHMENT_MAX_MB:
+            return [], (f"The menu's PDF is {mb:.1f} MB, too large to attach to a newsletter, so it is "
+                        "shown in the letter and linked from See the menu.")
+        return ([{"filename": f"{name} - menu.pdf", "path": drawn[1], "mime": "application/pdf"}],
+                f"The menu, drawn from the one built in the app, is attached as a PDF ({max(mb, 0.1):.1f} MB) "
+                "and shown in the letter.")
     if not row or not occasion_file_is_pdf(row["menu_file"]):
         return [], ""
     path = os.path.join(OCCASION_FILES_DIR, row["menu_file"])
@@ -58140,6 +58454,24 @@ def admin_dinner_menu_english():
     return jsonify(out)
 
 
+@app.route("/admin/menus/<int:menu_id>/menu.pdf")
+@owner_required
+def admin_dinner_menu_pdf(menu_id):
+    """The menu drawn on the server as an A4 PDF, at its own price: a file to
+    send to the printer or a guest, made without the browser's print box."""
+    conn = get_db()
+    view = dinner_menu_view(conn, menu_id)
+    conn.close()
+    if view is None:
+        abort(404)
+    buf = io.BytesIO()
+    render_dinner_menu(view, dpi=200).save(buf, "PDF", resolution=200, quality=88,
+                                           title=f"{view['menu']['name']} · Château de Gudanes")
+    buf.seek(0)
+    name = re.sub(r'[\\/:*?"<>|]+', " ", view["menu"]["name"]).strip() or "Menu"
+    return send_file(buf, mimetype="application/pdf", as_attachment=True, download_name=f"{name}.pdf")
+
+
 @app.route("/admin/menus/<int:menu_id>/print/<kind>")
 @owner_required
 def admin_dinner_menu_print(menu_id, kind):
@@ -59296,6 +59628,42 @@ def occasion_menu(slug):
 def occasion_menu_night(slug, night):
     """One night's own menu, where the nights differ."""
     return _occasion_menu_response(slug, night)
+
+
+def _occasion_menu_drawn(slug, which):
+    """The occasion's built menu drawn on the server: 'picture' (a JPEG, the
+    newsletter's image) or 'pdf' (the A4 menu, to print or attach). The same
+    rule as the menu's page for who may see it."""
+    conn = get_db()
+    occ = conn.execute("SELECT * FROM stay_occasions WHERE slug = ?", (slug,)).fetchone()
+    user = current_user()
+    owner = bool(user and user["role"] == "owner")
+    if not occ or not (owner or (occ["status"] == "live" and occ["last_night"] >= house_today_iso())):
+        conn.close()
+        abort(404)
+    drawn = dinner_menu_rendering(conn, occ)
+    conn.close()
+    if not drawn:
+        abort(404)
+    path = drawn[0] if which == "picture" else drawn[1]
+    resp = send_file(path, mimetype="image/jpeg" if which == "picture" else "application/pdf",
+                     as_attachment=which == "pdf" and request.args.get("download") == "1",
+                     download_name=f"{occ['name']} - menu.pdf" if which == "pdf" else None)
+    resp.headers["Cache-Control"] = "public, max-age=300"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
+
+@app.route("/whats-on/at-gudanes/<slug>/menu.jpg")
+def occasion_menu_picture(slug):
+    """The built menu as a picture, for the newsletter."""
+    return _occasion_menu_drawn(slug, "picture")
+
+
+@app.route("/whats-on/at-gudanes/<slug>/menu.pdf")
+def occasion_menu_pdf(slug):
+    """The built menu as an A4 PDF."""
+    return _occasion_menu_drawn(slug, "pdf")
 
 
 @app.route("/whats-on/at-gudanes/<slug>/banner")
