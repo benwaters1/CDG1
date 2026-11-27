@@ -417,7 +417,7 @@
   <div class="g-mb-list">
     {% for d in _dl.booked %}
     <div class="g-mb-row">
-      <span class="g-mb-rowt">{{ d.words }} — {{ d.covers }} × €{{ '{:,.2f}'.format(d.price) }}</span>
+      <span class="g-mb-rowt">{{ d.words }} — {{ d.covers }} × €{{ '{:,.2f}'.format(d.price) }}{% if d.note %}<br><span class="g-hint">For the kitchen: {{ d.note }}</span>{% endif %}</span>
       <span class="mini-status status-{{ (d.table_status|string)|lower }}">{{ 'booked' if d.table_status == 'confirmed' else d.table_status }}</span>
     </div>
     {% endfor %}
@@ -434,11 +434,13 @@
         <label for="mb_dinner_{{ n.date }}" class="g-mb-label">How many for dinner</label>
         <input type="number" inputmode="numeric" id="mb_dinner_{{ n.date }}" name="covers" min="1" max="{{ [booking['party_size'] or n.left, n.left]|min }}" value="{{ [booking['party_size'] or 1, n.left]|min }}" required>
       </div>
-      <div><button type="submit" class="g-btn g-btn--solid">Add dinner</button></div>
+      <div><button type="submit" class="g-btn g-btn--solid">{{ 'Add and pay' if stripe_enabled else 'Add dinner' }}</button></div>
     </div>
+    <label for="mb_dinner_note_{{ n.date }}" class="g-mb-label" style="margin-top:var(--s2); display:block;">Allergies or anything the kitchen should know <span class="g-opt">optional</span></label>
+    <input type="text" id="mb_dinner_note_{{ n.date }}" name="dinner_note" maxlength="300" placeholder="e.g. one vegetarian, a nut allergy">
   </form>
   {% endfor %}
-  {% if _dl.more %}<p class="g-hint" style="margin-top:var(--s2)">It goes on your bill with the room. Dinner can be added up to the day before.</p>{% endif %}
+  {% if _dl.more %}<p class="g-hint" style="margin-top:var(--s2)">{{ 'Paid by card when you add it, like the room.' if stripe_enabled else 'It goes on your bill with the room.' }} Dinner can be added up to the day before.</p>{% endif %}
 </div>
 {{ menu_dialog_once() }}
 {% endif %}

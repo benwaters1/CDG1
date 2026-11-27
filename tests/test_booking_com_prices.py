@@ -35,6 +35,15 @@ And since the follow-up of 26 Nov 2026 (the owner, against the real extranet):
     from the price list and from the room's own form.
   - A room whose Booking.com prices are not given still gets its line, saying
     what to add, and the page asks for the prices.
+
+And since the owner read "the usual +€50" as describing the €50 (26 Nov 2026):
+
+  - Every line shows the price to type, in euros, on both rates, with the
+    room's Booking.com price on other nights beneath it -- never "the usual".
+  - A line marked done before the room's Booking.com prices were given has its
+    figures worked out from them now, marked "worked out after it was entered".
+  - Each line says where its amount comes from: "+€50 because Christmas is
+    €320 against the house's €270". Nothing calls the €50 a rule or a default.
   - The extranet's name for a room is its own field. channel_name, the name
     guests see on Booking.com and the one its mail is matched on, is never
     written by the price list.
@@ -44,6 +53,7 @@ And since the follow-up of 26 Nov 2026 (the owner, against the real extranet):
 No suite reaches Booking.com: nothing in this feature can.
 """
 import json
+import re
 from datetime import timedelta
 
 from _harness import Suite, clients, db, flashes, free_window, keep_rows, secrets_token, visible_text
@@ -230,7 +240,7 @@ def _run(s, oc, ec, owner, conn):
                 "2 prices to enter" in task["notes"] and name1 in task["notes"], detail=task["notes"])
         s.check("and the room with no extranet name yet, and not the one with",
                 QUEEN in task["notes"] and KING not in task["notes"], detail=task["notes"])
-        s.check("and asks for its Booking.com prices", "usual prices for " + QUEEN in task["notes"],
+        s.check("and asks for its Booking.com prices", "prices for " + QUEEN in task["notes"],
                 detail=task["notes"])
         with m.app.test_request_context("/"):
             subject = m.task_subject(task, owner_row)
@@ -263,16 +273,19 @@ def _run(s, oc, ec, owner, conn):
     s.check("a column for each rate plan", "Non-Refundable" in text and "Standard Rate" in text)
     s.check("the King Room's line shows €340 and €380",
             "€340" in text and "€380" in text, detail=text[text.find(KING_EXTRANET):][:400])
-    s.check("each with the one it replaces", "replaces €290" in text and "replaces €330" in text)
-    s.check("and the change on each, where it comes from",
-            "+€50 on each rate, as the house goes from €270 to €320" in text)
-    s.check("the room with no Booking.com prices says what to add",
-            "the usual +€60" in text, detail=text[text.find(QUEEN):][:300])
+    s.check("each with the room's Booking.com price on other nights beneath it",
+            "€290 on other nights" in text and "€330 on other nights" in text,
+            detail=text[text.find(KING_EXTRANET):][:400])
+    s.check("and where the amount comes from",
+            f"+€50 because {name1} is €320 against the house's €270" in text,
+            detail=text[text.find(name1):][:600])
+    s.check("the room with no Booking.com prices says what to add, with no figure made up",
+            "+€60 on Booking.com's price for this room" in text, detail=text[text.find(QUEEN):][:300])
     s.check("and the page asks for its prices",
-            f"Booking.com's usual prices for {QUEEN} are not given yet" in text)
-    s.check("under the table, what to do where Booking.com's own price is not the usual one",
-            "If Booking.com's own price on these dates is not the usual one, add the same amount "
-            "to what is there." in text)
+            f"Booking.com's prices for {QUEEN} on other nights are not given yet" in text)
+    s.check("under the table, what to do where Booking.com already charges something else",
+            "Where Booking.com already charges something else on these dates (the summer is dearer), "
+            "add the same amount to what is there instead." in text)
     s.check("the Standard Rate is described with its free cancellation, and nothing says to remove it",
             "free cancellation until 3 days before" in text
             and not any(w in text.lower() for w in ("remove the standard", "drop the standard",
@@ -286,13 +299,15 @@ def _run(s, oc, ec, owner, conn):
     s.check("and names the two rates in its heading",
             "Non-Refundable | Standard Rate" in copy, detail=copy[:300])
     s.check("with the room that has no name flagged, not dropped, saying what to add",
-            f"{QUEEN} (extranet name not given)" in copy and "the usual +60 | the usual +60 | +60" in copy,
+            f"{QUEEN} (extranet name not given)" in copy and "not given, +60 | not given, +60 | +60" in copy,
             detail=copy[:500])
     s.check("the house's €320 is not offered as a price to type",
             " | 320" not in copy, detail=copy[:500])
     s.check("and ends with what to do on a date at another price",
             "add the same amount (the change) to what is there" in copy)
     s.check("and no line for the room at its usual price", TWIN not in copy)
+    # While a room's Booking.com prices are missing, as well as at the end.
+    _nothing_says_the_usual(s, oc, conn, "a room's prices not given")
     s.check("Mark done beside each line, and for the whole occasion",
             html.count(">Mark done</button>") >= 2 and "Mark all 2 done" in html)
 
@@ -307,9 +322,11 @@ def _run(s, oc, ec, owner, conn):
     s.check("each with its extranet room and nights",
             kj.get("booking_com_room") == KING_EXTRANET and kj.get("first_night") == a1.isoformat()
             and kj.get("last_night") == b1.isoformat(), detail=str(kj))
-    s.check("and both of Booking.com's rates, each with the one it replaces",
-            kj.get("rates") == {"nr": {"name": "Non-Refundable", "price": 340, "replaces": BCOM_NR},
-                                "std": {"name": "Standard Rate", "price": 380, "replaces": BCOM_STD}},
+    s.check("and both of Booking.com's rates, each with the one it replaces and its price on other nights",
+            kj.get("rates") == {"nr": {"name": "Non-Refundable", "price": 340, "replaces": BCOM_NR,
+                                       "on_other_nights": BCOM_NR},
+                                "std": {"name": "Standard Rate", "price": 380, "replaces": BCOM_STD,
+                                        "on_other_nights": BCOM_STD}},
             detail=str(kj.get("rates")))
     s.check("and the change on each", kj.get("change") == 50, detail=str(kj.get("change")))
     s.check("with no bare 'price' to type by mistake: the house's is named as the house's",
@@ -317,9 +334,10 @@ def _run(s, oc, ec, owner, conn):
             detail=str(kj))
     s.check("the guest-facing name is given apart, as what guests see",
             kj.get("booking_com_guest_name") == KING_ON_BCOM, detail=str(kj))
-    s.check("the rate plans and the rule are stated",
+    s.check("the rate plans and where the change comes from are stated",
             data.get("rate_plans") == {"nr": "Non-Refundable", "std": "Standard Rate"}
-            and "not the usual one" in (data.get("change") or "")
+            and "already charges something else" in (data.get("change") or "")
+            and kj.get("because") == f"+€50 because {name1} is €320 against the house's €270"
             and "free cancellation" in (data.get("standard_rate_terms") or ""), detail=str(data)[:300])
     qj = next((x for x in ours if x["house_room"] == QUEEN), {})
     s.check("and the missing name and prices said as missing, not as the house's",
@@ -454,8 +472,9 @@ def _run(s, oc, ec, owner, conn):
             len(todo) == 1 and _rates(todo[0]) == (375, 415, 370, 410) and todo[0]["uplift"] == 80,
             detail=str([dict(x) for x in todo]))
     page = visible_text(oc.get("/admin/channels/booking-prices").get_data(as_text=True))
-    s.check("and the page says why: the same uplift on Booking.com's new usual prices",
-            "the same +€80, on Booking.com's new usual prices" in page)
+    s.check("and the page says why: the same amount, on the room's new Booking.com prices",
+            f"+€80 because {name1} is €350 against the house's €270, on Booking.com's new prices "
+            "for the room" in page, detail=page[page.find(name1):][:600])
     oc.post("/admin/channels/booking-names",
             data={f"booking_nr_{king['id']}": "290", f"booking_std_{king['id']}": "330"})
     s.check("put back as it was, the line is no longer needed",
@@ -477,8 +496,9 @@ def _run(s, oc, ec, owner, conn):
             and back[0]["previous_uplift"] == 60 and _rates(back[0]) == (None, None, None, None),
             detail=str([dict(x) for x in back]))
     page = visible_text(oc.get("/admin/channels/booking-prices").get_data(as_text=True))
-    s.check("the page says the change on each, and to take it off where the price is not the usual",
-            "back to the usual prices, −€80 on each" in page and "Where a line goes down, take it off." in page,
+    s.check("the page says the change on each, and to take it off where the price is something else",
+            f"Back to Booking.com's own prices: {name1} no longer prices these nights, −€80 on each" in page
+            and "Where a line goes down, take it off." in page,
             detail=page[page.find(name1):][:600])
     s.check("so the task is back", _task(conn) is not None)
     _mark_done(oc, _lines(conn, king["id"], "to_do") + _lines(conn, queen["id"], "to_do"))
@@ -604,9 +624,23 @@ def _run(s, oc, ec, owner, conn):
     s.check("and the list asks for nothing more on those nights",
             not [x for x in _lines(conn, king["id"], "to_do") if x["occasion_id"] == occ5["id"]],
             detail=str([dict(x) for x in _lines(conn, king["id"], "to_do")]))
-    done_page = visible_text(oc.get("/admin/channels/booking-prices?state=done").get_data(as_text=True))
-    s.check("on the page it reads as the usual plus €50 on each rate, with no figure made up",
-            "the usual +€50" in done_page)
+    done_html = oc.get("/admin/channels/booking-prices?state=done").get_data(as_text=True)
+    row = done_html.split(f'id="line-{line[0]["id"]}"', 1)[-1].split("</tr>", 1)[0]
+    row_text = visible_text(row)
+    s.check("on the page it shows euro figures, worked out from the room's Booking.com prices now",
+            "€340" in row_text and "€380" in row_text and "€290 on other nights" in row_text,
+            detail=row_text[:400])
+    s.check("marked as worked out after it was entered, so nobody takes it for a record",
+            "worked out after it was entered" in row_text and "data-worked-out" in row, detail=row_text[:400])
+    s.check("and says where the €50 comes from",
+            f"+€50 because {TAG} Christmas is €320 against the house's €270" in row_text, detail=row_text[:400])
+    stored = conn.execute("SELECT nr_price, std_price FROM channel_price_pushes WHERE id = ?",
+                          (line[0]["id"],)).fetchone()
+    s.check("while the line itself still records nothing it was not given",
+            tuple(stored) == (None, None), detail=str(tuple(stored)))
+
+    s.section("No page under /admin/channels says \"the usual\", or calls the €50 a rule")
+    _nothing_says_the_usual(s, oc, conn, "every line entered")
 
     s.section("A line whose nights pass before it is entered falls off")
     gone_a, gone_b = today - timedelta(days=5), today - timedelta(days=3)
@@ -623,6 +657,33 @@ def _run(s, oc, ec, owner, conn):
                        (TAG + " Long Ago",)).fetchone()
     s.check("it is cancelled, and says its nights passed",
             old["state"] == "cancelled" and "passed" in (old["note"] or ""), detail=dict(old))
+
+
+def _nothing_says_the_usual(s, oc, conn, when):
+    """Every page under /admin/channels, the JSON and the task, read for
+    "the usual" and for the €50 called a rule, a default or a standard."""
+    with m.app.test_request_context("/"):
+        paths = sorted(r.rule for r in m.app.url_map.iter_rules()
+                       if r.rule.startswith("/admin/channels") and "GET" in r.methods and not r.arguments)
+    s.check(f"the pages are found ({when})", "/admin/channels/booking-prices" in paths, detail=str(paths))
+    said = {}
+    for path in paths:
+        for q in ("", "?state=all", "?state=done", "?state=cancelled"):
+            body = oc.get(path + q).get_data(as_text=True)
+            # The page's own words: the staff menu around it has "Standard Weeks".
+            said[path + q] = (body if path.endswith(".json") else
+                              visible_text(body.split('<main class="page">', 1)[-1].split("</main>", 1)[0]))
+    task = conn.execute("SELECT notes FROM tasks WHERE origin = ? AND title = ? ORDER BY id DESC LIMIT 1",
+                        (m.WATCH_TASK_ORIGIN, TASK)).fetchone()
+    if task:
+        said["the task"] = task["notes"] or ""
+    usual = [k for k, v in said.items() if "the usual" in v.lower()]
+    s.check(f"none says \"the usual\" ({when})", not usual, detail=str(usual))
+    ruled = [k for k, v in said.items()
+             if re.search(r"\b(rules?|defaults?)\b", v, re.I) or re.search(r"\bstandard\b(?! rate)", v, re.I)]
+    s.check(f"and none calls it a rule, a default or a standard ({when}; the Standard Rate is a rate's name)",
+            not ruled, detail=str([(k, re.findall(r".{30}\b(?:rules?|defaults?|standard)\b(?! rate).{30}",
+                                                   said[k], re.I)[:2]) for k in ruled]))
 
 
 def _the_rooms_of_26_november(s, conn):

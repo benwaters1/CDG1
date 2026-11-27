@@ -231,6 +231,37 @@
   </form>
 </div>
 
+<h2 class="section-heading" id="diary">Your own diary on the owner home</h2>
+<div class="detail-card" data-diary-setup>
+  <p class="manual-body wraps">The owner home's <em>The day</em> is the house's day. Your own meetings can go among it: the time and the subject of each of today's events in one Outlook calendar, read every quarter of an hour. Never who is invited or what is written in them, and a private appointment shows only as one. It is read by the mail reader's app, not this calendar's, and only reads.</p>
+  {% set ds = diary.state %}
+  {% if not diary.mailbox %}
+  <p class="upload-hint"><strong>Off.</strong> No calendar is named, so the owner home shows the house's day only.</p>
+  {% elif not diary.connected %}
+  <p class="upload-hint"><strong>Not yet.</strong> The mailboxes are not connected to the app, so nothing is read.</p>
+  {% elif not ds or ds.mailbox != diary.mailbox %}
+  <p class="upload-hint"><strong>Not read yet.</strong> {{ diary.mailbox }}'s calendar is read at the next quarter of an hour, or when you save below.</p>
+  {% elif ds.denied %}
+  <p class="wo-problem" data-diary-denied><strong>Microsoft refused</strong>, {{ local_datetime_str(ds.at) }}: {{ ds.error }}. The mail reader's app does not have <code>Calendars.Read</code> yet, so nothing shows on the owner home. The steps are below.</p>
+  {% elif ds.error %}
+  <p class="wo-problem"><strong>Not read</strong>, {{ local_datetime_str(ds.at) }}: {{ ds.error }}.</p>
+  {% else %}
+  <p class="upload-hint" data-diary-ok><strong>Reading {{ ds.mailbox }}'s calendar.</strong> {{ ds.events|length }} event{{ '' if ds.events|length == 1 else 's' }} today, read {{ local_datetime_str(ds.at) }}.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('admin_house_calendar_diary') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-label" for="diary-mailbox">Whose calendar</label>
+    <input type="email" id="diary-mailbox" name="mailbox" value="{{ diary.mailbox }}" maxlength="200" placeholder="Leave blank for none">
+    <button type="submit" class="btn-mini">Save and read now</button>
+  </form>
+  <p class="field-hint">It must be one of the mailboxes the mail reader reads{% if diary.reader_boxes %} ({{ diary.reader_boxes|join(', ') }}){% endif %}: its access policy allows those and no others.</p>
+  <ol class="manual-body wraps">
+    <li><strong>The permission, once.</strong> Entra admin centre → App registrations → the mail reader's app (<em>Chateau de Gudanes - inbox reader</em>) → API permissions → Add a permission → Microsoft Graph → Application permissions → <code>Calendars.Read</code> → Add permissions, then <em>Grant admin consent</em>.</li>
+    <li><strong>Nothing else.</strong> Its application access policy already limits it to the mailboxes it reads, so it can read those calendars and no others. This calendar's own app and its policy are not touched.</li>
+    <li><strong>Check it.</strong> Come back here and press <em>Save and read now</em>. It can take a few minutes after consent before Microsoft allows it.</li>
+  </ol>
+</div>
+
 <h2 class="section-heading">Setting it up in Microsoft 365</h2>
 <div class="detail-card">
   <p class="manual-body wraps">The calendar is written by its <strong>own</strong> app registration, not the mail reader's. An Exchange application access policy limits an app to a set of mailboxes for every permission it holds, so giving the mail reader calendar access would let it write into all the inboxes it reads. A second app, limited to one mailbox, can write the house calendar and nothing else.</p>

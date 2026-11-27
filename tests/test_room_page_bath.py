@@ -11,7 +11,7 @@ every bathroom in the house rather than one room's, keeps it too.
 Checked on the alt as well as the file name, so the photograph cannot come back
 under another address (the photo mirror, a resized copy) without this noticing.
 """
-from _harness import Suite, db, keep_rows
+from _harness import Suite, db
 import _harness
 
 m = _harness.m
@@ -37,7 +37,19 @@ def run():
     conn = db()
     names = WITHOUT + WITH
     marks = ",".join("?" * len(names))
-    put_back = keep_rows(conn, "rooms", f"name IN ({marks})", names)
+    # Only `active` is changed, so only `active` is put back. keep_rows would
+    # delete the rooms and insert them again, and a room is not a row that can
+    # be deleted: bookings refuse it, and its photographs and prices go with it
+    # (ON DELETE CASCADE). On a database with a booking in one of these rooms
+    # the put-back failed with its write still open, and every suite after
+    # this one found the database locked.
+    was_active = [(r["active"], r["id"]) for r in conn.execute(
+        f"SELECT id, active FROM rooms WHERE name IN ({marks})", names)]
+
+    def put_back():
+        conn.executemany("UPDATE rooms SET active = ? WHERE id = ?", was_active)
+        conn.commit()
+
     try:
         rooms = {r["name"]: r["id"] for r in conn.execute(
             f"SELECT id, name FROM rooms WHERE name IN ({marks})", names)}

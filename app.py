@@ -453,6 +453,8 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_waitlist_autonotify_enabled": "1",
     "automation_workshop_feedback_enabled": "1",
     "automation_email_scan_enabled": "1",
+    # ON: it reads nothing until Calendars.Read is granted, and says so.
+    "automation_owner_diary_enabled": "1",
     "automation_hr_escalation_enabled": "1",
     "automation_campaign_triggers_enabled": "1",
     # ON: a campaign somebody pressed Send on goes out through this, a little
@@ -6575,6 +6577,14 @@ def init_db():
         # or '' for neither. NULL is "not read yet". Kept so no message is
         # asked for its headers twice (11 Nov 2026).
         ("email_flags_header_verdict", "ALTER TABLE email_flags ADD COLUMN header_verdict TEXT"),
+        # WHO WROTE IT (26 Nov 2026): 'guest' (a guest or an enquiry),
+        # 'partner' (a partner or the press) or 'other' (receipts, statements,
+        # deliveries, banks...). Worked out again on every scan from what the
+        # app knows, unless a person set it (sender_kind_by_user_id), and why
+        # in a few words. NULL is read as a guest: never hidden by default.
+        ("email_flags_sender_kind", "ALTER TABLE email_flags ADD COLUMN sender_kind TEXT"),
+        ("email_flags_sender_kind_why", "ALTER TABLE email_flags ADD COLUMN sender_kind_why TEXT"),
+        ("email_flags_sender_kind_by", "ALTER TABLE email_flags ADD COLUMN sender_kind_by_user_id INTEGER"),
         # `guests` became a per-person profile rather than a per-stay register
         # (see the drop-column migration below for why).
         ("guests_email", "ALTER TABLE guests ADD COLUMN email TEXT"),
@@ -9025,6 +9035,13 @@ def init_db():
         # says "wine included" while this is on (25 Nov 2026, on by default).
         ("stay_occasions_wine_included",
          "ALTER TABLE stay_occasions ADD COLUMN wine_included INTEGER NOT NULL DEFAULT 1"),
+        # How much of the dinner's price a person is the wine (26 Nov 2026):
+        # food is taxed at vat_food and wine at vat_alcohol, so a dinner with
+        # wine is two pieces on the VAT working, as the extras' split allows.
+        ("stay_occasions_wine_share", "ALTER TABLE stay_occasions ADD COLUMN wine_share REAL"),
+        # A held letter's pictures (26 Nov 2026): an occasion's newsletter held
+        # in the outbox is drawn again with its photograph and menu when sent.
+        ("email_outbox_pictures", "ALTER TABLE email_outbox ADD COLUMN pictures TEXT"),
         # A dinner added in a stay's extras is a line on the stay's bill AND a
         # table in the restaurant's book, so the kitchen counts it. This ties
         # the table to its line: cancelling one cancels the other.
@@ -9982,6 +9999,8 @@ def init_db():
     # sales pitches set aside: on every boot, and only where nothing is set.
     tidy_contact_enquiries(conn)
     tidy_inbox_flags_once(conn)
+    # Who wrote each flag, for any not yet given a kind (26 Nov 2026).
+    classify_inbox_flags_on_start(conn)
     # Who fits each room, as Booking.com has it -- by the names of 16 October,
     # so after them.
     apply_room_occupancy_2026_10_18(conn)
@@ -10794,6 +10813,8 @@ NAV_AREAS = {
         "update_mailbox_routing",
         # The senders Inbox Flags never waits on a reply from.
         "save_inbox_never_flag", "never_flag_sender",
+        # Who wrote a flag, moved by hand where the app guessed wrong.
+        "set_email_flag_kind",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         
@@ -11000,6 +11021,8 @@ NAV_AREAS = {
         "admin_house_calendar", "admin_house_calendar_sync", "admin_house_calendar_share",
         "admin_house_calendar_shared_by_hand",
         "admin_house_calendar_feed_link", "admin_house_calendar_areas",
+        # Whose Outlook diary goes on the owner home's day.
+        "admin_house_calendar_diary",
         "admin_house_dates_add", "admin_house_dates_delete",
         "admin_readiness", "admin_photo_mirror", "fetch_photo_mirror",
         "photo_intake", "uploaded_file", "photo_at_size",
@@ -15077,8 +15100,11 @@ def financial_trend(conn, months, today=None):
                   FROM bookings WHERE status = 'confirmed'
                     AND arrival_date >= ? AND arrival_date < ? GROUP BY m""",
                (s_iso, e_iso), "revenue")
+    # A Dinner at Gudanes table added with a stay is inside that stay's
+    # total_price above: counted there, not twice.
     accumulate("""SELECT strftime('%Y-%m', dinner_date) AS m, SUM(total_price) AS total
                   FROM restaurant_bookings WHERE status = 'confirmed'
+                    AND booking_extra_id IS NULL
                     AND dinner_date >= ? AND dinner_date < ? GROUP BY m""",
                (s_iso, e_iso), "revenue")
     accumulate("""SELECT strftime('%Y-%m', workshop_sessions.start_date) AS m,
@@ -16474,7 +16500,10 @@ def management_overview(conn, period, today):
         "SELECT COUNT(*) AS c FROM vehicle_maintenance WHERE status = 'open'"
     ).fetchone()["c"]
     flags = conn.execute(
-        "SELECT COUNT(*) AS c FROM email_flags WHERE status = 'open'"
+        # Guests and enquiries: what is waiting on a reply (26 Nov 2026). The
+        # receipts and statements are on the page, a chip away.
+        "SELECT COUNT(*) AS c FROM email_flags WHERE status = 'open' "
+        "AND COALESCE(sender_kind, 'guest') = 'guest'"
     ).fetchone()["c"]
     recurring = conn.execute(
         "SELECT COALESCE(SUM(CASE WHEN frequency = 'annual' THEN amount / 12.0"
@@ -16494,7 +16523,7 @@ def management_overview(conn, period, today):
                       hint="within 60 days"),
         overview_cell("Vehicles needing attention", vehicles_due, alert=vehicles_due),
         overview_cell("Open vehicle faults", vehicle_faults, alert=vehicle_faults),
-        overview_cell("Open inbox flags", flags, alert=flags),
+        overview_cell("Guests waiting on a reply", flags, alert=flags),
         overview_cell("Recurring costs", euro(recurring), sub="/mo"),
     ]
 
@@ -21889,10 +21918,11 @@ def build_office_display_queues(conn, today):
     })
 
     inbox = conn.execute(
-        "SELECT subject, from_name FROM email_flags WHERE status = 'open' ORDER BY received_at DESC"
+        "SELECT subject, from_name FROM email_flags WHERE status = 'open' "
+        "AND COALESCE(sender_kind, 'guest') = 'guest' ORDER BY received_at DESC"
     ).fetchall()
     queues.append({
-        "key": "inbox", "label": "Inbox flags", "link": url_for("admin_inbox_flags"),
+        "key": "inbox", "label": "Inbox flags: guests", "link": url_for("admin_inbox_flags"),
         "count": len(inbox),
         "preview": [f"{r['from_name'] or 'Unknown'} — {r['subject'] or '(no subject)'}" for r in inbox[:4]],
     })
@@ -25448,7 +25478,7 @@ def stripe_payment_label(what, start=None, end=None, *, reference=None, kind=Non
     }
 
 
-def start_booking_stripe_payment(conn, booking_id, amount=None):
+def start_booking_stripe_payment(conn, booking_id, amount=None, label=None):
     """Checkout URL for what is owed on a stay, or for part of it. None if not.
 
     Workshop guests have been able to settle online since the start; room
@@ -25498,6 +25528,7 @@ def start_booking_stripe_payment(conn, booking_id, amount=None):
                 "price_data": {
                     "currency": "eur",
                     "product_data": {"name": (
+                        f"{label} ({booking['reference_code']})" if label else
                         f"{booking['room_name']} ({booking['reference_code']})"
                         + (" — part payment" if part else ""))},
                     "unit_amount": int(round(charge * 100)),
@@ -34912,10 +34943,15 @@ def send_held_letter(conn, row):
                                                      and row["attachments"]) else None
     except ValueError:
         carried = None
+    try:
+        drawn = json.loads(row["pictures"]) if ("pictures" in row.keys() and row["pictures"]) else None
+    except ValueError:
+        drawn = None
     ok = send_email(row["to_address"], row["subject"], row["body"],
                     row["ics_content"], row["ics_filename"], keep=False, report=why,
                     log=False, **({"sender": sent_as} if sent_as else {}),
                     **({"attachments": carried} if carried else {}),
+                    **({"pictures": drawn} if drawn else {}),
                     despite_switch="a held letter somebody chose to send from Held Email")
     now = datetime.now(timezone.utc).isoformat()
     if ok:
@@ -36445,8 +36481,9 @@ def file_held_letters(letters):
             for letter in letters:
                 letter.id = conn.execute(
                     """INSERT INTO email_outbox (to_address, subject, body, ics_content,
-                       ics_filename, reason, last_error, created_at, sender, attachments)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", letter.values).lastrowid
+                       ics_filename, reason, last_error, created_at, sender, attachments,
+                       pictures)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", letter.values).lastrowid
             conn.commit()
         finally:
             conn.close()
@@ -36458,7 +36495,7 @@ def file_held_letters(letters):
 
 
 def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None,
-                      sender=None, attachments=None):
+                      sender=None, attachments=None, pictures=None):
     """Keep a message that could not be sent, so it can go out later.
 
     Deliberately on a connection of its own, with everything swallowed: this
@@ -36485,7 +36522,8 @@ def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reas
     """
     letter = HeldLetter((to_address, subject, body, ics_content, ics_filename, reason,
                          error, datetime.now(timezone.utc).isoformat(), sender,
-                         json.dumps(attachments) if attachments else None))
+                         json.dumps(attachments) if attachments else None,
+                         json.dumps(pictures) if pictures else None))
     if has_request_context() and request_holds_a_write():
         g.setdefault("_held_letters", []).append(letter)
         return letter
@@ -36921,7 +36959,7 @@ def letter_label(template_key, sent_by=None):
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                keep=True, html=None, report=None, area=None, about=None,
                template_key=None, sent_by=None, log=True, despite_switch=None, sender=None,
-               attachments=None):
+               attachments=None, pictures=None):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything that must not be queued: a credential -- a
@@ -36971,7 +37009,15 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # own notices to itself stay plain: they are read in Outlook as work.
     if html is None and (body or "").strip() and to_address \
             and writes_outside_the_house(to_address):
-        html = letter_html(subject, body, key=template_key) or None
+        # PICTURES: {photos, plain} -- the photographs a letter draws where the
+        # lines `plain` stand in its words (an occasion's newsletter). Kept
+        # with a held letter, so it is drawn the same when it goes later.
+        if pictures and pictures.get("photos") and pictures.get("plain") \
+                and pictures["plain"] in body:
+            html = letter_html(subject, body.replace(pictures["plain"], letter_slot("photos")),
+                               key=template_key, photos=pictures["photos"]) or None
+        else:
+            html = letter_html(subject, body, key=template_key) or None
     if MAIL_REDIRECT_TO and to_address:
         # Named in the subject, so a test inbox with forty letters in it is
         # still readable -- "which of these was the one to the Dutch couple"
@@ -37052,7 +37098,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             return False
         outbox_id = queue_undelivered(to_address, subject, body, ics_content,
                                       ics_filename, why, sender=sender,
-                                      attachments=attachments)
+                                      attachments=attachments, pictures=pictures)
         keep_guest_message(to_address, subject, body, outbox_id=outbox_id,
                            failure=why, **filed)
         return False
@@ -37082,7 +37128,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         if keep:
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                                      "provider rejected it", why or "Resend API call failed",
-                                     sender=sender, attachments=attachments)
+                                     sender=sender, attachments=attachments, pictures=pictures)
             keep_guest_message(to_address, subject, body, outbox_id=held,
                                failure=why or "the provider refused it", **filed)
         elif log:
@@ -37096,7 +37142,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         if keep:
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                                      "no email provider configured", sender=sender,
-                                     attachments=attachments)
+                                     attachments=attachments, pictures=pictures)
             keep_guest_message(to_address, subject, body, outbox_id=held,
                                failure="no email provider configured", **filed)
         elif log:
@@ -37154,7 +37200,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             report["why"] = "The mail server refused it: %s" % (e,)
         if keep:
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                                     "send failed", str(e), attachments=attachments)
+                                     "send failed", str(e), attachments=attachments, pictures=pictures)
             keep_guest_message(to_address, subject, body, outbox_id=held,
                                failure=f"the mail server refused it: {e}", **filed)
         elif log:
@@ -37632,7 +37678,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                                     (new_row["id"],)).fetchone()
             for d in dinners:
                 add_dinner_to_stay(conn, stay_row, d["date"], d["covers"], d["price"],
-                                   in_booking_total=True)
+                                   in_booking_total=True, note=d.get("note"))
     conn.commit()
     if record_payment and new_row:
         record_payment(conn, new_row["id"])
@@ -37842,7 +37888,8 @@ def create_booking_from_stripe_session(conn, session):
         # When they want the things that ask, carried through the card page.
         extra_details=unpack_extra_details(meta.get("extra_when", "")),
         # Dinner at Gudanes, as charged.
-        dinners=unpack_dinner_choices(meta.get("dinners", "")),
+        dinners=[dict(d, note=meta.get(f"dinner_note_{d['date']}", ""))
+                 for d in unpack_dinner_choices(meta.get("dinners", ""))],
         # The reference the payment in Stripe was labelled with.
         reference_code=(meta.get("reference_code") or "").strip() or None,
         record_payment=card_payment_recorder(session),
@@ -39595,7 +39642,8 @@ def inject_user():
                 "SELECT COUNT(*) FROM event_inquiries WHERE status = 'new'"
             ).fetchone()[0]
             open_email_flags_count = conn.execute(
-                "SELECT COUNT(*) FROM email_flags WHERE status = 'open'"
+                "SELECT COUNT(*) FROM email_flags WHERE status = 'open' "
+                "AND COALESCE(sender_kind, 'guest') = 'guest'"
             ).fetchone()[0]
         conn.close()
     return {
@@ -42179,6 +42227,97 @@ def owner_queue_totals(conn, today):
     return row["n"] or 0, row["v"] or 0.0, row["old"] or 0
 
 
+# How many guests "Waiting for a reply" names before "and N more".
+OWNER_HOME_REPLIES_SHOWN = 5
+# A subject that says nothing of what was asked; the email's first words do.
+_SAYS_NOTHING = re.compile(
+    r"^(hello|hi|bonjour|bonsoir|hola|enquiry|inquiry|question|demande|request|information|"
+    r"informations|info|contact|message|(no subject)|sans objet|re|fw|fwd)?[\s!.,:-]*$", re.I)
+
+
+def asked_in_a_few_words(subject, preview, words=8):
+    """What an email asks, in a few words: its subject without Re:/Fw:, or
+    its first words where the subject says nothing ("Hello", "Enquiry")."""
+    s = (subject or "").strip()
+    while True:
+        cut = re.sub(r"^(re|fw|fwd|tr|aw|wg|rv|sv|antw)\s*:\s*", "", s, flags=re.I)
+        if cut == s:
+            break
+        s = cut
+    if _SAYS_NOTHING.match(s):
+        s = " ".join((preview or "").split())
+    parts = s.split()
+    return " ".join(parts[:words]) + ("…" if len(parts) > words else "") if parts else "(nothing written)"
+
+
+def _waited_short(hours):
+    if hours is None:
+        return ""
+    if hours < 48:
+        return f"{max(1, int(hours))} h"
+    return f"{int(hours // 24)} days"
+
+
+def owner_home_replies(conn, now=None):
+    """"Waiting for a reply" on the owner home (26 Nov 2026): the guests and
+    enquirers waiting longest, the Booking.com guests with the days left of
+    Booking.com's fortnight, and any inbox the last scan could not read.
+
+    Nothing from everything else -- a receipt is never here. And nothing to
+    tick: an email answered leaves on the next scan, a Booking.com message
+    answered or past its fortnight leaves too, and an inbox read again takes
+    its line with it. Empty, the panel is not drawn at all."""
+    now = now or datetime.now(timezone.utc)
+    labels = {r["mailbox"].lower(): (r["label"] or r["mailbox"].split("@")[0])
+              for r in conn.execute("SELECT mailbox, label FROM mailbox_routing").fetchall()}
+    rows = conn.execute(
+        """SELECT * FROM email_flags
+            WHERE status = 'open' AND unanswered = 1 AND COALESCE(sender_kind, 'guest') = 'guest'
+            ORDER BY received_at, id""").fetchall()
+    guests = []
+    for r in rows[:OWNER_HOME_REPLIES_SHOWN]:
+        got = parse_datetime_iso(r["received_at"])
+        hours = (now - got).total_seconds() / 3600 if got else None
+        mb = (r["mailbox"] or "").lower()
+        guests.append({
+            "id": r["id"], "name": r["from_name"] or r["from_address"] or "Somebody",
+            "address": r["from_address"], "asked": asked_in_a_few_words(r["subject"], r["preview"]),
+            "inbox": labels.get(mb, mb.split("@")[0] if mb else "inbox"),
+            "waited": _waited_short(hours), "web_link": r["web_link"],
+        })
+    bcom = []
+    for r in booking_com_waiting(conn, now=now):
+        got = parse_datetime_iso(r["received_at"])
+        days = int((now - got).total_seconds() // 86400) if got else 0
+        left = max(0, BOOKING_COM_REPLY_DAYS - days)
+        bcom.append({"id": r["id"], "name": r["guest_name"] or "A guest",
+                     # What the guest wrote: Booking.com's own subject is
+                     # "We received this message from ..." every time.
+                     "asked": asked_in_a_few_words(r["message_text"] or r["subject"], r["subject"]),
+                     "left": left, "urgent": left <= 3})
+    unread = []
+    state = inbox_scan_state(conn) if graph_enabled() else None
+    if state:
+        for u in state.get("unread") or []:
+            unread.append({"mailbox": u.get("mailbox"), "folder": u.get("folder") or "",
+                           "why": u.get("why") or "", "at": state.get("at")})
+        last = parse_datetime_iso(state.get("at"))
+        if last and now - last > timedelta(hours=INBOX_SCAN_STALE_HOURS):
+            unread.append({"mailbox": "every inbox", "folder": "", "at": state.get("at"),
+                           "why": "the scan has not run since"})
+    elif graph_enabled():
+        unread.append({"mailbox": "every inbox", "folder": "", "at": None,
+                       "why": "no scan has read them yet"})
+    return {"guests": guests, "more": max(0, len(rows) - len(guests)), "total": len(rows),
+            "booking_com": bcom, "unread": unread,
+            "empty": not (guests or bcom or unread)}
+
+
+# The inbox scan runs every quarter of an hour; three hours without one is a
+# scan that is not running, and the panel says so rather than look quiet.
+INBOX_SCAN_STALE_HOURS = 3
+
+
 def owner_home_queue(conn):
     """Everything waiting on the owner, as one ordered list.
 
@@ -43031,6 +43170,10 @@ def owner_home_warnings(conn, today):
             ", ".join(r["guest_name"] or "a guest" for r in written[:4])
             + (f" and {len(written) - 4} more" if len(written) > 4 else ""),
             len(written), "management_booking_com")
+        # The owner home says this under "Waiting for a reply", each guest
+        # with the days left; the daily summary and the assistant still read
+        # it here.
+        out[-1]["in_reply_panel"] = True
 
     # The front door, from the last half-hourly check: a guest cannot open it
     # from their phone, or its batteries are going. Quiet when it is well.
@@ -44153,8 +44296,12 @@ def staff_dashboard():
         # The lines the owner has cleared are held back, and only from this
         # panel; the greeting counts what is shown, so it never says "two
         # things need looking at" over an empty panel.
+        # Booking.com's waiting guests are said under "Waiting for a reply",
+        # each with the days left, so not twice on the one page.
         warnings, warnings_hidden = split_cleared_warnings(
-            conn, owner_home_warnings(conn, today), today)
+            conn, [w for w in owner_home_warnings(conn, today) if not w.get("in_reply_panel")],
+            today)
+        replies = owner_home_replies(conn)
         hour = datetime.now(timezone.utc).hour
         greeting = ("Good morning" if hour < 12 else
                     "Good afternoon" if hour < 18 else "Good evening")
@@ -44174,6 +44321,10 @@ def staff_dashboard():
             word = "needs" if n == 1 else "need"
             bits.append(f"{n} thing {word} looking at" if n == 1
                         else f"{n} things {word} looking at")
+        waiting_n = replies["total"] + len(replies["booking_com"])
+        if waiting_n:
+            bits.append(f"{waiting_n} guest{'' if waiting_n == 1 else 's'} "
+                        f"{'is' if waiting_n == 1 else 'are'} waiting for a reply")
         occ_now = sum(1 for g in owner_home_guests(conn, today) for _ in [1])
         rooms_n = conn.execute(
             "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
@@ -44199,12 +44350,17 @@ def staff_dashboard():
             next_up=owner_home_next_up(conn, today, day_rows),
             queue=queue, warnings=warnings, warnings_hidden=warnings_hidden,
             show_cleared=request.args.get("cleared") == "1",
-            snooze_days=HOME_WARNING_SNOOZE_DAYS,
+            snooze_days=HOME_WARNING_SNOOZE_DAYS, replies=replies,
+            reply_days=BOOKING_COM_REPLY_DAYS,
             queue_money=[q for q in queue if q["tone"] == "money"],
             queue_people=[q for q in queue if q["tone"] != "money"],
             bulk_count=sum(1 for q in queue if q["bulk_eligible"]),
             day=day_rows,
             day_done=sum(1 for r in day_rows if r["done"]),
+            # The owner's own diary, in among the house's day by time, but not
+            # in its count: a meeting is not something the house has to do.
+            day_view=sorted(day_rows + owner_home_diary(conn, today),
+                            key=lambda r: (r["time"] == "", r["time"])),
             # revenue_budget_pct is gone: one line across six months was
             # the visual form of the bug this replaced, and each bar now
             # carries its own mark. The legend still names this month's
@@ -55144,6 +55300,20 @@ def dinner_for_form(conn, arrival, departure):
             [{"text": d["text"], "menu": d["menu"]} for d in dinner_note(offer)])
 
 
+DINNER_NOTE_MAX = 300
+
+
+def read_dinner_notes(form):
+    """{night: what the kitchen should know} from dinner_note_YYYY-MM-DD."""
+    out = {}
+    for key in form.keys():
+        if key.startswith("dinner_note_2") and parse_date(key[len("dinner_note_"):]):
+            text = " ".join((form.get(key) or "").split())[:DINNER_NOTE_MAX]
+            if text:
+                out[key[len("dinner_note_"):]] = text
+    return out
+
+
 def read_dinner_choices(form):
     """{night: covers} from a form's dinner boxes (dinner_YYYY-MM-DD)."""
     out = {}
@@ -55237,7 +55407,7 @@ def dinner_extra_row(conn):
 
 
 def add_dinner_to_stay(conn, booking, night, covers, price, *, in_booking_total=False,
-                       user_id=None, added_by=None):
+                       user_id=None, added_by=None, note=None):
     """A dinner night on a stay: the line on its bill AND the table in the
     restaurant's book, written together and tied together, so the covers
     forecast, the kitchen's list and the calendar count it. Returns the
@@ -55251,19 +55421,31 @@ def add_dinner_to_stay(conn, booking, night, covers, price, *, in_booking_total=
         conn, "room", booking["id"], extra, covers, unit_price=round(float(price), 2),
         notes=" — ".join(x for x in (night, added_by) if x), user_id=user_id,
         scheduled_for=night, in_booking_total=in_booking_total)
-    conn.execute("UPDATE booking_extras SET name = ? WHERE id = ?",
-                 (f"{DINNER_AT_GUDANES}, {dinner_night_short(night)}", line_id))
+    # Food at its rate; with wine included, the wine's share a person at the
+    # alcohol rate (extra_vat_parts splits a line by these, per cover).
+    occ = occasion_dinner_night(conn, night)
+    wine = (float(occ["wine_share"]) if occ is not None and occ["wine_included"]
+            and occ["wine_share"] else None)
+    conn.execute(
+        """UPDATE booking_extras SET name = ?, vat_rate = ?, vat_part_amount = ?,
+                  vat_part_rate = ? WHERE id = ?""",
+        (f"{DINNER_AT_GUDANES}, {dinner_night_short(night)}",
+         float(tax_rate(conn, "vat_food") or 10), min(wine, float(price)) if wine else None,
+         float(tax_rate(conn, "vat_alcohol") or 20) if wine else None, line_id))
     confirmed = (booking["status"] or "") == "confirmed"
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO restaurant_bookings
                (reference_code, manage_token, guest_name, guest_email, guest_phone, party_size,
-                dinner_date, total_price, booking_id, booking_extra_id, payment_status,
-                status, created_at, decided_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                dinner_date, dietary_notes, total_price, booking_id, booking_extra_id,
+                payment_status, status, created_at, decided_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (make_restaurant_reference_code(), secrets.token_urlsafe(24), booking["guest_name"],
          booking["guest_email"], booking["guest_phone"] if "guest_phone" in keys else None,
-         covers, night, round(float(price) * covers, 2), booking["id"], line_id,
+         # The kitchen's note goes on the TABLE, which the health-notes purge
+         # clears once the dinner is over (privacy notice), never on the bill.
+         covers, night, (note or "").strip()[:DINNER_NOTE_MAX] or None,
+         round(float(price) * covers, 2), booking["id"], line_id,
          "paid" if ("payment_status" in keys and booking["payment_status"] == "paid") else "unpaid",
          "confirmed" if confirmed else "pending", now, now if confirmed else None))
     return line_id
@@ -55308,7 +55490,8 @@ def stay_dinner_lines(conn, booking_id):
     return [dict(r) for r in conn.execute(
         """SELECT booking_extras.id AS line_id, booking_extras.scheduled_for AS date,
                   booking_extras.quantity AS covers, booking_extras.unit_price AS price,
-                  restaurant_bookings.status AS table_status
+                  restaurant_bookings.status AS table_status,
+                  restaurant_bookings.dietary_notes AS note
              FROM restaurant_bookings
              JOIN booking_extras ON booking_extras.id = restaurant_bookings.booking_extra_id
             WHERE restaurant_bookings.booking_id = ? AND booking_extras.status != 'cancelled'
@@ -56020,9 +56203,10 @@ def _occasion_form_values(form, rooms, occ=None):
         "home_banner": 1 if form.get("home_banner") in ("1", "on", "yes") else 0,
         "home_banner_text": (form.get("home_banner_text") or "").strip()[:80],
         "confirm_dinner_price": form.get("confirm_dinner_price") == "1",
-        # On unless the form drew the box and it came back unticked.
-        "wine_included": 1 if (form.get("wine_included") in ("1", "on", "yes")
-                               or form.get("dinner_section_shown") != "1") else 0,
+        # Only as ticked on a form that drew the box (ticked there by
+        # default): it says "wine included" to guests, and asks the wine's
+        # share for the VAT, so it is never assumed.
+        "wine_included": 1 if form.get("wine_included") in ("1", "on", "yes") else 0,
     }
     if v["kind"] == "guest_chef":
         v["chef_on_site"] = 1
@@ -56036,6 +56220,7 @@ def _occasion_form_values(form, rooms, occ=None):
             return None
     v["dinner_covers"] = number("dinner_covers", int)
     v["dinner_price"] = number("dinner_price")
+    v["wine_share"] = number("wine_share")
     v["prices"] = {r["id"]: number(f"price_{r['id']}") for r in rooms}
     v["dinners"] = sorted(k[len("dinner_"):] for k in form if k.startswith("dinner_2"))
     a, b = parse_date(v["first_night"]), parse_date(v["last_night"])
@@ -56063,6 +56248,8 @@ def _occasion_form_values(form, rooms, occ=None):
         error = "The chef's link should start with https://."
     elif v["dinner_asked"] and not v["dinner_price"]:
         error = "Dinner at Gudanes needs a price a person."
+    elif v["wine_share"] and v["dinner_price"] and v["wine_share"] >= v["dinner_price"]:
+        error = "The wine's share must be less than the dinner's price a person."
     elif v["dinner_time"] and not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", v["dinner_time"]):
         error = "Give the dinner time as hours and minutes, for example 19:30."
     elif (v["dinner_on"] and not moved and a and b
@@ -56102,6 +56289,10 @@ def _go_live_problem(conn, occ, today):
         return "Set a price for at least one room."
     if dinners and not occ["dinner_price"]:
         return "Set the price a person for dinner."
+    if dinners and occ["wine_included"] and not occ["wine_share"]:
+        return ("Say how much of the dinner's price a person is the wine: the food is taxed at "
+                f"{float(tax_rate(conn, 'vat_food')):g}% and the wine at "
+                f"{float(tax_rate(conn, 'vat_alcohol')):g}%.")
     if occ["kind"] == "guest_chef":
         if not occ["chef_name"]:
             return "Name the guest chef."
@@ -56162,7 +56353,9 @@ def _render_occasion_form(conn, occ, values=None, confirm_write=None, price_clas
         night_menus=night_menus, price_clash=price_clash,
         covers=covers, who=who, uplift=STAY_OCCASION_UPLIFT, chef_on=CHEF_ON_SITE_LINE,
         chef_off=CHEF_OFF_SITE_LINE, confirm_write=confirm_write,
-        banner_default=occasion_banner_default(occ), dining=dining_mode(conn))
+        banner_default=occasion_banner_default(occ), dining=dining_mode(conn),
+        vat_food=f'{float(tax_rate(conn, "vat_food")):g}',
+        vat_alcohol=f'{float(tax_rate(conn, "vat_alcohol")):g}')
 
 
 _BLANK_OCCASION = {"id": None, "name": "", "slug": "", "first_night": "", "last_night": "",
@@ -56172,7 +56365,8 @@ _BLANK_OCCASION = {"id": None, "name": "", "slug": "", "first_night": "", "last_
                    "chef_link": "", "dinner_time": "20:00", "dinner_covers": None,
                    "dinner_price": None, "outside_diners": 0, "menu_file": None, "menu_name": None,
                    "home_banner": 0, "home_banner_text": "", "banner_file": None,
-                   "wine_included": 1, "retreat_evening": None, "retreat_night": None}
+                   "wine_included": 1, "wine_share": None, "retreat_evening": None,
+                   "retreat_night": None}
 
 
 def occasion_banner_default(occ):
@@ -56294,10 +56488,10 @@ def _save_occasion_dinner(conn, occ_id, v, uploads, form, notes):
         gone.append(occ["banner_file"])
         conn.execute("UPDATE stay_occasions SET banner_file = NULL WHERE id = ?", (occ_id,))
     occ = conn.execute("SELECT * FROM stay_occasions WHERE id = ?", (occ_id,)).fetchone()
-    conn.execute("UPDATE stay_occasions SET home_banner = ?, home_banner_text = ?, wine_included = ? "
-                 "WHERE id = ?",
+    conn.execute("UPDATE stay_occasions SET home_banner = ?, home_banner_text = ?, wine_included = ?, "
+                 "wine_share = ? WHERE id = ?",
                  (v["home_banner"], v["home_banner_text"] or occasion_banner_default(occ),
-                  v["wine_included"], occ_id))
+                  v["wine_included"], v["wine_share"] if v["wine_included"] else None, occ_id))
     return [g for g in gone if g]
 
 
@@ -56663,17 +56857,25 @@ def admin_stay_occasion_suggestion_dismiss(sid):
 # carried the occasion's price as the house charges it, and the extranet has
 # neither that figure nor one rate: each room sells there at two, the
 # Non-Refundable and the Standard Rate (free cancellation until 3 days before,
-# kept on purpose), both above the house's own price. The owner's rule of 25
+# kept on purpose), both above the house's own price. As the owner asked on 25
 # Nov: on an occasion Booking.com goes up by the SAME AMOUNT the occasion adds
-# on the house site (its price less the house's usual), on both rates. So
-# Christmas at €320 in a €270 room is +€50, and the King Room's €290 and €330
-# on Booking.com become €340 and €380. Booking.com's two usual prices are on
-# the room (booking_nr_price, booking_std_price), typed by the owner; the
-# uplift is worked out here, in booking_prices_wanted, and nowhere else.
+# on the house site (its price less the house's own for the night), on both
+# rates. That amount is whatever the occasion adds today -- Christmas at €320
+# in a €270 room adds €50 for now, and when either price changes, so does it.
+# The King Room's €290 and €330 on Booking.com become €340 and €380. The
+# room's two Booking.com prices on other nights are on the room
+# (booking_nr_price, booking_std_price), typed by the owner; the uplift is
+# worked out here, in booking_prices_wanted, and nowhere else.
 #
-# The page cannot see what Booking.com charges on a given date. Where its own
-# price there is not the usual one (the summer is dearer), the line's uplift
-# is what to add to what is there, and the page says so.
+# SAID IN EUROS (owner, 26 Nov 2026). The lines read "the usual +€50", and
+# the owner took "usual" for a word about the €50, which it never was. Every
+# line now gives the price to type, with the room's Booking.com price on other
+# nights beneath it, and says where its amount comes from
+# (booking_line_because). No line says "usual".
+#
+# The page cannot see what Booking.com charges on a given date. Where it
+# already charges something else (the summer is dearer), the line's amount is
+# what to add to what is there, and the page says so.
 
 CHANNEL_BOOKING_COM = "booking.com"
 BOOKING_PRICES_TASK = "Booking.com prices to update"
@@ -56735,12 +56937,13 @@ def backfill_booking_price_uplift(conn):
     """Give every line written before lines had an uplift its own: the
     house's price on the line less the house's usual for the room on its first
     night (0 for a line putting nights back). The 36 lines entered on 25-26
-    November listed the house's price only; they are taken as entered by the
-    owner's rule of 25 November (that uplift on both of Booking.com's
+    November listed the house's price only; they are taken as entered the way
+    the owner asked on 25 November (that uplift on both of Booking.com's
     prices), so the same uplift counts as entered and they raise nothing new.
     Their two Booking.com figures were never listed, so they stay unknown
-    (NULL) rather than made up. Every start, only where none is set. Returns
-    how many lines."""
+    (NULL) rather than made up -- the page works them out from the room's
+    prices and says it did (_booking_line_dressed). Every start, only where
+    none is set. Returns how many lines."""
     rows = conn.execute(
         """SELECT p.* FROM channel_price_pushes p
              JOIN rooms ON rooms.id = p.room_id WHERE p.uplift IS NULL""").fetchall()
@@ -56935,7 +57138,7 @@ def _booking_price_cancel_reason(conn, row, today):
         return "Booking.com already has these prices for those nights."
     if occ is not None and occ["status"] == "live":
         return "The occasion is on sale again, so its price stays."
-    return "Those nights are at the usual price already."
+    return "Those nights are back at Booking.com's own prices already."
 
 
 def sync_booking_prices(conn, today=None):
@@ -57021,29 +57224,85 @@ def booking_amount_words(amount, euro="€"):
 
 
 def booking_rate_words(figure, uplift, euro="€"):
-    """One Booking.com price as the line gives it: the figure where the room's
-    Booking.com price is known, and otherwise what to do to its usual one."""
+    """One Booking.com price as the copy block gives it: the figure to type,
+    in euros. Where the room's Booking.com price is not given there is no
+    figure, and it says so and what to add -- never "the usual"."""
     if figure is not None:
         return euro + booking_price_figure(figure)
     if uplift is None:
         return "—"
-    if not uplift:
-        return "the usual"
-    return "the usual " + booking_amount_words(uplift, euro)
+    return "not given" + (f", {booking_amount_words(uplift, euro)}" if uplift else "")
+
+
+def booking_line_because(r):
+    """Where a line's amount comes from, in a sentence: "+€50 because
+    Christmas at Gudanes is €320 against the house's €270". The amount is
+    what the occasion adds today and nothing more, so the sentence names the
+    two prices it comes from rather than calling it anything."""
+    up, change = r.get("uplift"), r.get("change")
+    name = r.get("occasion_name") or "the occasion"
+    if r.get("kind") == "usual":
+        out = f"Back to Booking.com's own prices: {name} no longer prices these nights"
+        return out + (f", {booking_amount_words(change)} on each" if change else "")
+    if up is None or r.get("price") is None:
+        return ""
+    house = _euros(r["price"] - up)
+    out = (f"{booking_amount_words(up)} because {name} is €{booking_price_figure(r['price'])} "
+           f"against the house's €{booking_price_figure(house)}")
+    if change == 0:
+        out += ", on Booking.com's new prices for the room"
+    elif change is not None and change != up:
+        out += f", {booking_amount_words(change)} on what is there now"
+    return out
 
 
 def _booking_line_dressed(r):
     """A line with what the page, the copy block and the JSON all say about
-    it: the two rates, each new and replaced, and the change on each."""
+    it: the two rates, each IN EUROS with the room's Booking.com price on
+    other nights beneath it, the change on each, and where the amount comes
+    from (booking_line_because).
+
+    A line marked done before the room's Booking.com prices were given has no
+    figures of its own (the 36 of 25-26 November). Its figures are worked out
+    from the room's prices now and shown marked as such -- never stored, since
+    they are not a record of what was typed."""
     r = dict(r)
     up, was = r.get("uplift"), r.get("previous_uplift")
     r["change"] = None if up is None or was is None else _euros(up - was)
-    r["rates"] = [{"key": key, "name": name,
-                   "price": r.get(f"{key}_price"), "was": r.get(f"previous_{key}_price"),
-                   "price_words": booking_rate_words(r.get(f"{key}_price"), up),
-                   "was_words": booking_rate_words(r.get(f"previous_{key}_price"), was)}
-                  for key, name in BOOKING_RATE_PLANS]
-    r["prices_said"] = ", ".join(f"{x['price_words']} {x['name']}" for x in r["rates"])
+    usual = r.get("kind") == "usual"
+    rates = []
+    for key, name in BOOKING_RATE_PLANS:
+        price, before = _euros(r.get(f"{key}_price")), _euros(r.get(f"previous_{key}_price"))
+        room_price = _euros(r.get(f"room_{key}_price")) or None
+        worked_out = False
+        if price is None and r.get("state") == "done" and room_price and up is not None:
+            price, worked_out = _plus(room_price, up), True
+        base = _plus(price, -up) if price is not None and up is not None else None
+        beneath = []
+        if price is not None:
+            words, said = "€" + booking_price_figure(price), f"€{booking_price_figure(price)} {name}"
+            if usual:
+                beneath.append("Booking.com's own price for the room")
+            elif base is not None:
+                beneath.append(f"€{booking_price_figure(base)} on other nights")
+            if before is not None and before != price and before != base:
+                beneath.append(f"€{booking_price_figure(before)} there now")
+        elif usual:
+            words, said = "Not given", f"{name} back to Booking.com's own price"
+            beneath.append("Booking.com's own price for this room"
+                           + (f", {booking_amount_words(r['change'])}" if r["change"] else ""))
+        elif up is not None:
+            words, said = "Not given", f"{booking_amount_words(up)} on {name}"
+            beneath.append(f"{booking_amount_words(up)} on Booking.com's price for this room")
+        else:
+            words, said = "—", f"{name} not known"
+        rates.append({"key": key, "name": name, "price": price if not worked_out else None,
+                      "shown": price, "was": before, "base": base, "worked_out": worked_out,
+                      "price_words": words, "beneath": beneath, "said": said,
+                      "copy": booking_rate_words(price, up, euro="")})
+    r["rates"] = rates
+    r["prices_said"] = ", ".join(x["said"] for x in rates)
+    r["why"] = booking_line_because(r)
     return r
 
 
@@ -57077,8 +57336,8 @@ def booking_prices_missing(rows):
                               if not r["room_nr_price"] or not r["room_std_price"]})}
 
 
-BOOKING_NOT_USUAL_HINT = ("If Booking.com's own price on these dates is not the usual one, "
-                          "add the same amount to what is there.")
+BOOKING_OTHER_PRICE_HINT = ("Where Booking.com already charges something else on these dates "
+                            "(the summer is dearer), add the same amount to what is there instead.")
 
 
 def booking_prices_by_occasion(rows):
@@ -57113,10 +57372,10 @@ def booking_prices_copy_text(rows):
             out.append(" | ".join([
                 r["booking_com_room"] or f"{r['room_name']} (extranet name not given)",
                 format_date_human(r["first_night"]), format_date_human(r["last_night"])]
-                + [x["price_words"].replace("€", "") for x in r["rates"]]
+                + [x["copy"] for x in r["rates"]]
                 + [booking_amount_words(r["change"], euro="")]))
-    out += ["", "If Booking.com's own price on these dates is not the usual one, add the same "
-                "amount (the change) to what is there."]
+    out += ["", "Where Booking.com already charges something else on these dates, add the same "
+                "amount (the change) to what is there instead."]
     return "\n".join(out)
 
 
@@ -57139,9 +57398,9 @@ def booking_prices_finding(conn, today=None):
         note += ("\n\nThe extranet's name for " + ", ".join(missing["names"]) + " is not given yet. "
                  "Add it on the price list, so whoever enters the prices finds the right room.")
     if missing["prices"]:
-        note += ("\n\nBooking.com's usual prices for " + ", ".join(missing["prices"]) + " are not "
-                 "given yet, so their lines say what to add rather than the price. Add them on the "
-                 "price list.")
+        note += ("\n\nBooking.com's prices for " + ", ".join(missing["prices"]) + " on other nights "
+                 "are not given yet, so their lines can say only what to add, not the price to enter. "
+                 "Add them on the price list.")
     note += "\n\nAccommodation → Booking.com Prices has the list to copy, and Mark done beside each line."
     prio = "high" if soonest <= (today + timedelta(days=14)).isoformat() else "normal"
     return ("booking_prices", BOOKING_PRICES_TASK, note, today.isoformat(), prio)
@@ -57214,7 +57473,7 @@ def channel_booking_prices():
         "channel_booking_prices.html", lv=lv, groups=booking_prices_by_occasion(lv["rows"]),
         to_do=to_do, copy_text=booking_prices_copy_text(rows), rooms=rooms,
         missing=booking_prices_missing(rows), rate_plans=BOOKING_RATE_PLANS,
-        std_terms=BOOKING_STD_RATE_TERMS, not_usual_hint=BOOKING_NOT_USUAL_HINT,
+        std_terms=BOOKING_STD_RATE_TERMS, other_price_hint=BOOKING_OTHER_PRICE_HINT,
         figure=booking_price_figure, amount=booking_amount_words, occasion_ids=occasion_ids,
         today_iso=today.isoformat())
 
@@ -57240,7 +57499,7 @@ def channel_booking_prices_json():
         "rate_plans": {key: name for key, name in BOOKING_RATE_PLANS},
         "standard_rate_terms": BOOKING_STD_RATE_TERMS,
         "change": ("what the line adds to each of Booking.com's two prices (negative takes it "
-                   "off). " + BOOKING_NOT_USUAL_HINT),
+                   "off). " + BOOKING_OTHER_PRICE_HINT),
         "page": url_for("channel_booking_prices", _external=True),
         "to_do": [{
             "id": r["id"], "occasion": r["occasion_name"], "occasion_id": r["occasion_id"],
@@ -57248,9 +57507,12 @@ def channel_booking_prices_json():
             "booking_com_guest_name": r["booking_com_guest_name"],
             "house_room": r["room_name"], "room_id": r["room_id"],
             "first_night": r["first_night"], "last_night": r["last_night"],
-            "rates": {x["key"]: {"name": x["name"], "price": x["price"], "replaces": x["was"]}
+            "rates": {x["key"]: {"name": x["name"], "price": x["price"], "replaces": x["was"],
+                                 "on_other_nights": x["base"]}
                       for x in r["rates"]},
-            "change": r["change"], "uplift_on_usual": r["uplift"],
+            # The key keeps its name for the assistant that reads it; what it
+            # is, is said in "because".
+            "change": r["change"], "uplift_on_usual": r["uplift"], "because": r["why"],
             "house_price": r["price"], "house_replaces": r["previous_price"],
             "updated_at": r["updated_at"]} for r in to_do],
         "missing_booking_com_names": missing["names"],
@@ -61645,6 +61907,7 @@ def book_room_prefill(form=None, conn=None):
                                if k.startswith("extra_note_")},
         # Dinner at Gudanes: what they asked for, and what the dates offer.
         "prefill_dinners": read_dinner_choices(form) if form else {},
+        "prefill_dinner_notes": read_dinner_notes(form) if form else {},
         "dinner_offer": [], "dinner_notes": [],
     }
     _a, _d = parse_date(field("arrival_date")), parse_date(field("departure_date"))
@@ -61771,6 +62034,7 @@ def book_room(room_id):
         # Dinner at Gudanes, asked for in the extras: {night: covers}.
         wanted_dinners = read_dinner_choices(request.form)
         chosen_dinners, dinner_problems = [], {}
+        dinner_notes_asked = read_dinner_notes(request.form)
         # Notice, and WHEN, for what they ticked -- only once there are dates
         # to measure either against.
         too_soon, extra_details, when_error = [], {}, None
@@ -61778,6 +62042,8 @@ def book_room(room_id):
             chosen_dinners, dinner_problems = price_dinner_choices(
                 conn, arrival, departure, party_size_raw.isdigit() and int(party_size_raw) or None,
                 wanted_dinners)
+            for d in chosen_dinners:
+                d["note"] = dinner_notes_asked.get(d["date"], "")
             too_soon = [e for e in chosen_extras if extra_too_soon(e, arrival)]
             for e in chosen_extras:
                 if not e["ask_when"]:
@@ -61987,6 +62253,10 @@ def book_room(room_id):
                         # night:covers:price, so the webhook writes what was charged.
                         **({"dinners": pack_dinner_choices(chosen_dinners)}
                            if chosen_dinners else {}),
+                        # What the kitchen should know, a key a night (each
+                        # metadata value holds 500 characters).
+                        **{f"dinner_note_{d['date']}": d["note"][:490]
+                           for d in chosen_dinners if d.get("note")},
                         **({"extra_when": pack_extra_details(extra_details)}
                            if extra_details else {}),
                         "promo_code": promo_code if discount_amount else "",
@@ -62037,6 +62307,7 @@ def book_room(room_id):
                 "promo_code": promo_code,
                 "extras": sorted(e["id"] for e in chosen_extras),
                 "dinners": {d["date"]: d["covers"] for d in chosen_dinners},
+                "dinner_notes": {d["date"]: d["note"] for d in chosen_dinners if d.get("note")},
                 "extra_when": {str(k): request.form.get(f"extra_when_{k}", "")
                                for k in extra_details},
                 "extra_note": {str(k): (request.form.get(f"extra_note_{k}", "")
@@ -62065,7 +62336,7 @@ def book_room(room_id):
     prefill_under_18 = request.args.get("guests_under_18", "")
     prefill_requests = prefill_promo = ""
     prefill_extras = set()
-    prefill_dinners = {}
+    prefill_dinners, prefill_dinner_notes = {}, {}
     prefill_extra_when, prefill_extra_note = {}, {}
 
     # Coming back from an abandoned card payment. What they typed was put in
@@ -62094,6 +62365,7 @@ def book_room(room_id):
         prefill_promo = stashed.get("promo_code", "")
         prefill_extras = set(stashed.get("extras", []))
         prefill_dinners = stashed.get("dinners") or {}
+        prefill_dinner_notes = stashed.get("dinner_notes") or {}
         prefill_extra_when = stashed.get("extra_when") or {}
         prefill_extra_note = stashed.get("extra_note") or {}
         prefill_guest = stashed.get("guest_details") or {}
@@ -62132,7 +62404,7 @@ def book_room(room_id):
         prefill_extras=prefill_extras, initial_quote=initial_quote,
         prefill_extra_when=prefill_extra_when, prefill_extra_note=prefill_extra_note,
         deposit_shown=deposit_shown, prefill_guest=prefill_guest,
-        prefill_dinners=prefill_dinners,
+        prefill_dinners=prefill_dinners, prefill_dinner_notes=prefill_dinner_notes,
         dinner_offer=(initial_quote or {}).get("dinner_offer") or [],
         dinner_notes=(initial_quote or {}).get("dinner_note") or [],
     )
@@ -63502,6 +63774,7 @@ def manage_booking(manage_token):
         lines, problems = price_dinner_choices(
             conn, parse_date(booking["arrival_date"]), parse_date(booking["departure_date"]),
             booking["party_size"], {night: covers} if covers > 0 else {})
+        pay_for = None
         if night in have:
             flash(f"{DINNER_AT_GUDANES} on {dinner_nights_words([night])} is already on your stay. "
                   "To change how many are coming, write to us.", "error")
@@ -63512,7 +63785,8 @@ def manage_booking(manage_token):
         else:
             d = lines[0]
             add_dinner_to_stay(conn, booking, d["date"], d["covers"], d["price"],
-                               added_by="Added by the guest")
+                               added_by="Added by the guest",
+                               note=" ".join((request.form.get("dinner_note") or "").split()))
             log_audit(conn, "guest_added_dinner", target=booking["reference_code"],
                       details=f"{d['covers']} x {DINNER_AT_GUDANES}, {d['date']}")
             # Commit before sending: the outbox fallback writes on its own
@@ -63526,9 +63800,22 @@ def manage_booking(manage_token):
                     f"{format_date_human(d['date'])} for {d['covers']} "
                     f"({money(d['amount'])}) to their {booking['room_name']} stay. It is on "
                     f"their bill and in the restaurant's book.\n\n— Château de Gudanes")
+            # A stay is paid online, in advance (payment policy, 8 Oct 2026):
+            # the dinner is paid for there and then, by card, for exactly its
+            # price. Left at the card page, it stays on the bill like any other
+            # amount owed, and the page's own Pay button settles it.
+            pay_for = d
             flash(f"{DINNER_AT_GUDANES} on {dinner_nights_words([d['date']])} for {d['covers']} "
-                  f"is added. It is on your bill.", "success")
+                  f"is added to your stay.", "success")
         conn.commit()
+        if pay_for:
+            card = start_booking_stripe_payment(
+                conn, booking["id"], amount=pay_for["amount"],
+                label=f"{DINNER_AT_GUDANES}, {dinner_night_short(pay_for['date'])}, "
+                      f"{pay_for['covers']} × {money(pay_for['price'])}")
+            if card:
+                conn.close()
+                return redirect(card, code=303)
         conn.close()
         return redirect(url_for("manage_booking", manage_token=manage_token) + "#dinner-at-gudanes")
 
@@ -72612,8 +72899,9 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
     # An occasion's newsletter (3c) draws the photograph and an image menu
     # where {{menu_pictures}} stands; the plain text gives their addresses.
     pictures = campaign_pictures(conn, letter.get("template_id"))
+    plain_pictures = "\n".join(f"{p['alt']}: {p['src']}" for p in pictures)
     if pictures:
-        context.setdefault("menu_pictures", "\n".join(f"{p['alt']}: {p['src']}" for p in pictures))
+        context.setdefault("menu_pictures", plain_pictures)
     subject, body = render_campaign(letter["subject"], letter["body"], context)
     # Every marketing message carries its own unsubscribe key, and the row that
     # holds it is written and COMMITTED BEFORE the send: the link in the email
@@ -72624,13 +72912,6 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
     unsub_token = unsub_token or secrets.token_urlsafe(24)
     footer = campaign_unsubscribe_footer(conn, unsub_token)
     body = body + footer
-    drawn = None
-    if pictures:
-        _s, drawn_body = render_campaign(letter["subject"], letter["body"],
-                                         dict(context, menu_pictures=letter_slot("photos")))
-        drawn = letter_html(subject, drawn_body + footer,
-                            key="campaign:" + (letter["template_name"] or ""),
-                            photos=pictures) or None
     row_id = conn.execute(
         """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
            recipient_name, subject, status, detail, dedupe_key, sent_by_user_id,
@@ -72645,7 +72926,9 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
         files, _note = campaign_attachments(conn, letter.get("template_id"))
         ok = send_email(email, subject, body, area=letter.get("area"), report=report,
                         template_key="campaign:" + (letter["template_name"] or ""),
-                        sender=RESEND_CAMPAIGN_FROM, html=drawn,
+                        sender=RESEND_CAMPAIGN_FROM,
+                        **({"pictures": {"photos": pictures, "plain": plain_pictures}}
+                           if pictures and plain_pictures in body else {}),
                         **({"attachments": files} if files else {}))
         status = ("test" if as_test else "sent") if ok is not False else "failed"
         # NOT SENT IS NOT FAILED. With no provider, or Write to guests off,
@@ -75630,13 +75913,20 @@ def pic_size(src):
     return size
 
 
-def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upto=None):
+def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upto=None, ratio=False):
     """One <img>, the way every picture component draws it.
 
     upto: never drawn wider than this many times the file's own width
     (9 Nov 2026, the owner's second review, 3.1). A room's gallery is 1168px
     wide and some of its photographs are 531px files: drawn at full width they
     are soft, so they are drawn at the most their file will stand, centred.
+
+    ratio: carry the file's own shape as --pic-ratio, for a component that
+    keeps each photograph the shape it was taken in (26 Nov 2026). A lazy
+    photograph has sizes="auto", and for that Chrome sets contain: size
+    (!important, in its own stylesheet): with no aspect-ratio the picture
+    is 150px tall whatever its file. The upright prints on /restoration were
+    strips of 352 by 150, live, until this.
     """
     from markupsafe import Markup, escape
     rel = (src[len("/static/img/"):] if src.startswith("/static/img/")
@@ -75671,6 +75961,8 @@ def pic(src, alt, sizes="100vw", cls="", hero=False, pos="", w=None, h=None, upt
         style.append(f"object-position: {escape(pos)}")
     if upto and size:
         style.append(f"max-width: {int(w * upto)}px; margin-inline: auto")
+    if ratio and w and h:
+        style.append(f"--pic-ratio: {int(w)} / {int(h)}")
     if style:
         attrs.append('style="' + '; '.join(style) + '"')
     return Markup("<img " + " ".join(attrs) + ">")
@@ -118921,6 +119213,14 @@ def graph_last_error():
     return getattr(_GRAPH_ANSWER, "error", None)
 
 
+# The two headers a reply carries, as the extended properties a sent item
+# keeps them under: In-Reply-To (PidTagInReplyToId) and References
+# (PidTagInternetReferences).
+SENT_REPLY_PROPS = ("String 0x1042", "String 0x1039")
+# Pages of a mailbox's Sent Items read per scan, `top` each.
+INBOX_SENT_PAGES = 5
+
+
 def fetch_graph_messages(token, folder, since_iso, top=100, mailbox=None):
     """Every message in the given well-known folder ('inbox' or 'sentitems')
     of one mailbox, on/after since_iso, newest first. Only pulls the fields
@@ -118941,20 +119241,59 @@ def fetch_graph_messages(token, folder, since_iso, top=100, mailbox=None):
     # Auto-Submitted are how a mailing or a machine says what it is.
     fields = "id,conversationId,receivedDateTime,sentDateTime,from,subject,bodyPreview,webLink"
     _GRAPH_ANSWER.without_headers = None
+    _GRAPH_ANSWER.sent_cut = None
 
-    def listing(select):
-        return graph_get(
-            f"/users/{mailbox}/mailFolders/{folder}/messages", token,
-            params={
-                "$select": select,
-                "$filter": f"{date_field} ge {since_iso}",
-                "$orderby": f"{date_field} desc",
-                "$top": str(top),
-            },
-        )
+    def listing(select, expand=None):
+        params = {
+            "$select": select,
+            "$filter": f"{date_field} ge {since_iso}",
+            "$orderby": f"{date_field} desc",
+            "$top": str(top),
+        }
+        if expand:
+            params["$expand"] = expand
+        return graph_get(f"/users/{mailbox}/mailFolders/{folder}/messages", token, params=params)
     if folder == "sentitems":
-        body = listing(fields)
-        return body.get("value", []) if body else []
+        # WHAT EACH SENT EMAIL ANSWERS (26 Nov 2026). Its recipients, so a
+        # forward from one of the house's inboxes to another is not taken for
+        # an answer, and its In-Reply-To and References: a reply written in
+        # one mailbox to a copy delivered to another can carry a conversation
+        # of its own, and only the guest's Message-ID joins the two. A sent
+        # item keeps those two headers as extended properties; Microsoft
+        # seldom returns a sent item's internetMessageHeaders.
+        select = fields + ",toRecipients,ccRecipients,bccRecipients"
+        expand = ("singleValueExtendedProperties($filter="
+                  + " or ".join(f"id eq '{p}'" for p in SENT_REPLY_PROPS) + ")")
+        body = listing(select, expand)
+        if body is None:
+            # Asked plainly, the sent items still answer by conversation, and
+            # the scan says what it could not ask for.
+            why = graph_last_error()
+            body = listing(select)
+            if body is not None:
+                _GRAPH_ANSWER.without_headers = why or "no answer"
+        if body is None:
+            return []
+        out = list(body.get("value", []))
+        # A busy mailbox sends more than one listing holds in a fortnight
+        # (the owner's own, which keeps every reply sent as another inbox), and
+        # a reply cut off the end is a guest flagged for ever. Followed for a
+        # few pages, and said when there were more.
+        pages = 1
+        while body and body.get("@odata.nextLink") and pages < INBOX_SENT_PAGES:
+            link = body["@odata.nextLink"]
+            if not link.startswith(GRAPH_BASE_URL):
+                break
+            body = graph_get(link[len(GRAPH_BASE_URL):], token)
+            if body is None:
+                _GRAPH_ANSWER.sent_cut = graph_last_error() or "no answer"
+                _GRAPH_ANSWER.error = None
+                break
+            out.extend(body.get("value", []))
+            pages += 1
+        if body and body.get("@odata.nextLink"):
+            _GRAPH_ANSWER.sent_cut = f"only the newest {len(out)} were read"
+        return out
     body = listing(fields + ",internetMessageId,internetMessageHeaders")
     if body is None:
         # Every message's headers make the listing several times the size. If
@@ -119085,10 +119424,13 @@ def escalate_stale_flags(conn):
         for r in conn.execute("SELECT mailbox, escalate_hours FROM mailbox_routing").fetchall()
     }
     escalated = 0
+    # Guests and enquiries only (26 Nov 2026): a Nespresso invoice is never
+    # escalated, and nor is a press request -- the page has those a chip away.
     for f in conn.execute(
         """SELECT email_flags.*, users.name AS assigned_to_name FROM email_flags
            LEFT JOIN users ON users.id = email_flags.assigned_to_user_id
-           WHERE email_flags.status = 'open' AND email_flags.escalated_at IS NULL"""
+           WHERE email_flags.status = 'open' AND email_flags.escalated_at IS NULL
+             AND COALESCE(email_flags.sender_kind, 'guest') = 'guest'"""
     ).fetchall():
         hours = thresholds.get(f["mailbox"], 48)
         received = parse_datetime_iso(f["received_at"])
@@ -119266,6 +119608,351 @@ def inbox_closed_words(closed):
                        if n)
     words, _category = bulk_message("Closed", "flag", sum(closed.values()), [], detail=detail)
     return words
+
+
+# The first scan to read every inbox's Sent Items (26 Nov 2026) reads back to
+# the oldest open flag, once, and keeps what it closed here for the page.
+INBOX_SENT_EVERYWHERE_KEY = "inbox_flags_sent_everywhere_20261126"
+# How far back that one pass may go, at most.
+INBOX_DEEP_PASS_DAYS = 120
+# What the last scan could and could not read (JSON), for the owner home.
+INBOX_SCAN_STATE_KEY = "inbox_scan_state"
+
+
+def sent_reply_refs(sent):
+    """The Message-IDs a sent email answers -- its In-Reply-To and its
+    References -- lower case, from the extended properties a sent item keeps
+    them under, or from its headers where Microsoft sent those."""
+    raw = []
+    wanted = {p.lower() for p in SENT_REPLY_PROPS}
+    for prop in sent.get("singleValueExtendedProperties") or []:
+        if (prop.get("id") or "").strip().lower() in wanted:
+            raw.append(prop.get("value") or "")
+    for name in ("in-reply-to", "references"):
+        raw.append(_message_header(sent, name) or "")
+    return {ref.lower() for ref in re.findall(r"<[^<>\s]+>", " ".join(raw))}
+
+
+def sent_is_an_answer(sent, house):
+    """Whether a sent email can be an answer to somebody: not when every
+    recipient is one of the house's own inboxes -- a forward to a colleague,
+    "can you take this one?", is not the guest answered. One whose recipients
+    Microsoft did not say is taken as an answer, as it always was."""
+    to = [((r.get("emailAddress") or {}).get("address") or "").strip().lower()
+          for key in ("toRecipients", "ccRecipients", "bccRecipients")
+          for r in (sent.get(key) or [])]
+    to = [a for a in to if "@" in a]
+    return not to or any(sender_not_waiting(a, [], house) not in ("own", "internal") for a in to)
+
+
+class InboxReplies:
+    """Every email the house's inboxes sent in a scan's window, as one map for
+    the scan: the latest in each conversation, and the latest answering each
+    Message-ID, whichever inbox's Sent Items keeps it. And, counted for the
+    page, the emails sent AS one inbox and kept in another's Sent Items: the
+    reason the map is one map."""
+
+    def __init__(self, house, mailboxes):
+        self.house = house
+        self.mailboxes = {(mb or "").strip().lower() for mb in mailboxes}
+        self.by_conversation = {}
+        self.by_reference = {}
+        self.sent_as = {}
+
+    def add(self, mailbox, sent_items):
+        kept = (mailbox or "").strip().lower()
+        for sent in sent_items or []:
+            at = sent.get("sentDateTime")
+            if not at or not sent_is_an_answer(sent, self.house):
+                continue
+            frm = (((sent.get("from") or {}).get("emailAddress") or {}).get("address") or "").strip().lower()
+            if frm and frm != kept and frm in self.mailboxes:
+                where = self.sent_as.setdefault(frm, {})
+                where[kept] = where.get(kept, 0) + 1
+            conv = sent.get("conversationId")
+            if conv and (conv not in self.by_conversation
+                         or at > self.by_conversation[conv]["sentDateTime"]):
+                self.by_conversation[conv] = sent
+            for ref in sent_reply_refs(sent):
+                if ref not in self.by_reference or at > self.by_reference[ref]["sentDateTime"]:
+                    self.by_reference[ref] = sent
+
+    def last_for(self, conversation_id, internet_message_id):
+        """(when, the sent email) for the latest the house sent in this
+        conversation or in answer to this email, or (None, None)."""
+        found = []
+        if conversation_id and conversation_id in self.by_conversation:
+            found.append(self.by_conversation[conversation_id])
+        ref = (internet_message_id or "").strip().lower()
+        if ref and ref in self.by_reference:
+            found.append(self.by_reference[ref])
+        if not found:
+            return None, None
+        best = max(found, key=lambda s: s["sentDateTime"])
+        return best["sentDateTime"], best
+
+
+def inbox_scan_state(conn):
+    """What the last scan of the inboxes could read: {"at", "unread": [{"mailbox",
+    "why", "folder"}], "read", "sent_as", "notes"}, or None before any scan."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (INBOX_SCAN_STATE_KEY,)).fetchone()
+    try:
+        return json.loads(row["value"]) if row and row["value"] else None
+    except ValueError:
+        return None
+
+
+def inbox_sent_everywhere_note(conn):
+    """What the first scan to read every inbox's Sent Items closed, for a
+    month after it: {"at", "answered", "since"}, or None."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (INBOX_SENT_EVERYWHERE_KEY,)).fetchone()
+    try:
+        note = json.loads(row["value"]) if row and row["value"] else None
+    except ValueError:
+        return None
+    when = parse_datetime_iso((note or {}).get("at"))
+    if not when or datetime.now(timezone.utc) - when > timedelta(days=30):
+        return None
+    return note
+
+
+def inbox_people_not_read(conn, mailboxes):
+    """The house's people whose own mailboxes the reader does not read: a
+    reply any of them sends AS one of the house's inboxes is kept in their
+    own Sent Items, out of sight, unless that inbox keeps a copy. From the
+    dashboard's users -- their Microsoft 365 address, or their sign-in
+    address where it is the house's. [{"name", "address"}]."""
+    read = {(mb or "").strip().lower() for mb in mailboxes}
+    domains = set(addin_house_domains())
+    out, seen = [], set()
+    for u in conn.execute("SELECT name, email, m365_upn FROM users WHERE status = 'active' "
+                          "ORDER BY name").fetchall():
+        address = (u["m365_upn"] or "").strip().lower()
+        if not address:
+            email = (u["email"] or "").strip().lower()
+            if "@" in email and email.rsplit("@", 1)[1] in domains:
+                address = email
+        if address and address not in read and address not in seen:
+            seen.add(address)
+            out.append({"name": u["name"], "address": address})
+    return out
+
+
+def inbox_copy_commands(conn, mailboxes):
+    """The one-off Exchange fix, for the owner to run: each of the house's
+    shared inboxes keeps a copy of what is sent as it, in its own Sent Items,
+    where the reader can see it. Not for an address that is somebody's own
+    sign-in."""
+    personal = set()
+    for u in conn.execute("SELECT email, m365_upn FROM users WHERE status = 'active'").fetchall():
+        for a in (u["email"], u["m365_upn"]):
+            if a and a.strip():
+                personal.add(a.strip().lower())
+    boxes = list(dict.fromkeys(
+        [(mb or "").strip().lower() for mb in mailboxes] + [booking_com_mailbox(conn) or ""]))
+    return [f"Set-Mailbox {mb} -MessageCopyForSentAsEnabled $true -MessageCopyForSendOnBehalfEnabled $true"
+            for mb in boxes if mb and mb not in personal]
+
+
+# WHO WROTE IT (26 Nov 2026). Of the fifty on the first page of Inbox Flags,
+# about a dozen were people who want to stay or work with the house; the rest
+# were a Qatar Airways statement, Temu deliveries, Nespresso invoices, an EDF
+# notice, PayPal's "You've got money", Black Friday mailings, SFR debt letters
+# and AdobeSign requests, several with no List-Unsubscribe for the rules to
+# see. So every flag says who wrote it, and the page opens on the first kind.
+INBOX_SENDER_KINDS = {
+    "guest": "Guest or enquiry",
+    "partner": "Partner or press",
+    "other": "Everything else",
+}
+# Where the app already knows an address: (table, column, what it says).
+INBOX_KNOWN_GUESTS = (
+    ("guests", "email", "a guest on file"),
+    ("bookings", "guest_email", "a room booked"),
+    ("restaurant_bookings", "guest_email", "a table booked"),
+    ("workshop_bookings", "guest_email", "an atelier booked"),
+    ("event_inquiries", "contact_email", "an event enquiry"),
+    ("waitlist_entries", "email", "on a waiting list"),
+    ("restaurant_waitlist", "email", "on a waiting list"),
+    ("workshop_waitlist", "email", "on a waiting list"),
+    ("workshops", "organiser_email", "organises a stay here"),
+    ("ota_reservations", "guest_email", "a Booking.com booking"),
+)
+INBOX_KNOWN_PARTNERS = (
+    ("vendors", "email", "a supplier on file"),
+    ("event_suppliers", "contact", "a supplier at an event"),
+)
+# An address no person writes from.
+_KIND_OTHER_LOCAL = re.compile(
+    r"^(billing|invoices?|factur\w*|comptabilit\w*|statements?|releves?|service-?clients?|"
+    r"serviceclients?|customer-?(service|care|support)|support|orders?|commandes?|shipping|"
+    r"deliver(y|ies)|livraisons?|expeditions?|recouvrement|relances?|contentieux|payments?|"
+    r"paiements?|banque|bank|alerts?|alertes?|marketing|promos?|promotions?|offres?|deals|"
+    r"sales|ventes?|accounts?|comptes?|membership|members|loyalty|fidelite|rewards?|"
+    r"echosign|adobesign|docusign|dse|mail|email|e-mail)([._+-].*)?$")
+# Shops, banks, carriers, utilities, airlines, signature services and the
+# like: a domain with any of these as one of its names.
+_KIND_SERVICE_NAMES = frozenset((
+    "paypal", "temu", "amazon", "aliexpress", "shein", "nespresso", "edf", "engie",
+    "totalenergies", "veolia", "suez", "bouyguestelecom", "sfr", "orange-business",
+    "adobesign", "adobe", "echosign", "docusign", "yousign", "qatarairways", "airfrance",
+    "klm", "easyjet", "ryanair", "vueling", "sncf", "ouigo", "ups", "dhl", "fedex", "laposte",
+    "colissimo", "chronopost", "dpd", "gls", "mondialrelay", "relaiscolis", "cdiscount", "fnac",
+    "darty", "boulanger", "leroymerlin", "castorama", "ikea", "manomano", "zalando", "vinted",
+    "leboncoin", "ebay", "etsy", "google", "microsoft", "facebookmail", "linkedin",
+    "revolut", "qonto", "shine", "credit-agricole", "ca-languedoc", "ca-pyrenees-gascogne",
+    "bnpparibas", "societegenerale", "lcl", "banquepopulaire", "caisse-epargne",
+    "labanquepostale", "boursorama", "hellobank", "n26", "sumup", "pennylane", "urssaf",
+    "impots", "dgfip", "ameli", "caf", "francetravail", "ovh", "gandi", "ionos", "godaddy",
+    "squarespace", "wix", "shopify", "mailchimp", "sendinblue", "brevo", "hubspot", "canva",
+    "dropbox", "zoom", "slack", "notion", "weglot", "free-mobile", "freemobile", "basic-fit",
+    "decathlon", "carrefour", "auchan", "leclerc", "intermarche", "metro", "promocash",
+))
+_KIND_OTHER_WORDS = re.compile(
+    r"\b(invoices?|factures?|receipts?|re[çc]u de paiement|payment (received|confirmation|due|"
+    r"failed|reminder)|paiement|pr[ée]l[èe]vements?|direct debit|statements?|relev[ée]s?|"
+    r"your order|votre commande|order confirm\w*|commande (n[°o]|confirm\w*)|shipped|"
+    r"exp[ée]di[ée]e?s?|out for delivery|delivered|livr[ée]e?s?|livraisons?|colis|parcels?|"
+    r"tracking|suivi de (votre |la )?(commande|livraison|colis)|subscriptions?|abonnements?|"
+    r"renewal|renouvellement|password|mot de passe|verification code|code de v[ée]rification|"
+    r"signature request|please sign|[àa] signer|e-?signature|docusign|adobe ?sign|"
+    r"black friday|cyber monday|soldes|promos?|% off|offre sp[ée]ciale|offre exclusive|"
+    r"newsletter|webinar|unsubscribe|d[ée]sabonner|you'?ve got money|you received|"
+    r"vous avez re[çc]u|money request|mise en demeure|recouvrement|impay[ée]s?|cr[ée]ances?|"
+    r"[ée]ch[ée]ance|r[ée]siliation|your account|votre compte|security alert|"
+    r"alerte de s[ée]curit[ée])\b")
+_KIND_PARTNER_WORDS = re.compile(
+    r"\b(press|presse|journalists?|journaliste|magazines?|editor|editorial|"
+    r"r[ée]dact(ion|eur|rice)|articles?|interview|podcast|reportage|collaboration|collab|"
+    r"partnership|partenariat|influencers?|influenceu?se|bloggers?|blogueu?se|sponsor\w*|"
+    r"media kit|kit m[ée]dia|tournage|filming|location scout|rep[ée]rage|affiliat\w*|"
+    r"travel agen(t|cy)|tour operator|agence de voyages?)\b")
+_KIND_GUEST_WORDS = re.compile(
+    r"\b(stay|stays|staying|nights?|rooms?|suites?|book|booking|reserv\w*|r[ée]serv\w*|"
+    r"availab\w*|disponib\w*|dates?|weddings?|marriage|elope\w*|mariage|noces|boda|"
+    r"retreats?|retraite|retiro|ateliers?|workshops?|taller|prices?|pricing|rates?|tarifs?|"
+    r"prix|precio|tarifa|quote|devis|presupuesto|how much|combien|cu[áa]nto|honeymoon|"
+    r"lune de miel|anniversary|anniversaire|aniversario|birthday|celebrat\w*|c[ée]l[ée]br\w*|"
+    r"events?|[ée]v[ée]nements?|evento|party|f[êe]te|fiesta|venue|reception|r[ée]ception|"
+    r"s[ée]jour|estancia|nuits?|noches?|chambres?|habitaci[óo]n\w*|visit|visite|visita|"
+    r"holidays?|vacances|vacaciones|vacation|trip|voyage|viaje|dinner|d[îi]ner|cena|lunch|"
+    r"d[ée]jeuner|breakfast|guests|invit[ée]s|people|personnes|personas|adults|adultes|"
+    r"children|enfants|ni[ñn]os|arriv\w*|check-?in|photoshoot|group|groupe|grupo|"
+    r"privatis\w*|exclusive use)\b")
+
+
+def _kind_service_domain(domain):
+    names = set(domain.split("."))
+    return bool(names & _KIND_SERVICE_NAMES) or any(
+        n in domain for n in ("credit-agricole", "caisse-epargne", "orange-business"))
+
+
+def _known_addresses(conn, addresses, sources):
+    """{address: what it is} for those of `addresses` the app has in `sources`."""
+    wanted = sorted({a for a in addresses if a and "@" in a})
+    found = {}
+    for i in range(0, len(wanted), 400):
+        chunk = wanted[i:i + 400]
+        marks = ",".join("?" * len(chunk))
+        for table, column, said in sources:
+            try:
+                for r in conn.execute(f"SELECT DISTINCT LOWER(TRIM({column})) AS a FROM {table} "
+                                      f"WHERE LOWER(TRIM({column})) IN ({marks})", chunk):
+                    found.setdefault(r["a"], said)
+            except sqlite3.OperationalError:
+                continue
+    return found
+
+
+def inbox_sender_kind(flag, known_guests, known_partners, partner_domains, never, house):
+    """(kind, why) for one flag: who wrote it, as a key of INBOX_SENDER_KINDS,
+    and why in a few words. What the app already knows first -- a guest, an
+    enquiry or a booking; a supplier; the house, the app and the never-flag
+    list -- then the address, then the words."""
+    address = (flag["from_address"] or "").strip().lower()
+    local, _, domain = address.partition("@")
+    if address in known_guests:
+        return "guest", known_guests[address]
+    if address in known_partners:
+        return "partner", known_partners[address]
+    reason = sender_not_waiting(address, never, house)
+    if reason:
+        return "other", INBOX_CLOSE_REASONS[reason][1]
+    verdict = flag["header_verdict"] if "header_verdict" in flag.keys() else None
+    if verdict in ("mailing", "machine"):
+        return "other", INBOX_CLOSE_REASONS[verdict][1]
+    public = domain in PUBLIC_MAIL_DOMAINS
+    if domain and not public and _under(domain, partner_domains):
+        return "partner", "the company of a supplier on file"
+    if local and _KIND_OTHER_LOCAL.match(local):
+        return "other", "a service address, not a person's"
+    if domain and not public and _kind_service_domain(domain):
+        return "other", "a shop, bank, carrier or other service"
+    text = f"{flag['subject'] or ''} {flag['preview'] or ''}".lower()
+    if not public:
+        hit = _KIND_OTHER_WORDS.search(text)
+        if hit:
+            return "other", f"reads as a receipt, statement or notice (“{hit.group(0)}”)"
+    hit = _KIND_PARTNER_WORDS.search(text)
+    if hit:
+        return "partner", f"mentions “{hit.group(0)}”"
+    hit = _KIND_GUEST_WORDS.search(text)
+    if hit:
+        return "guest", f"asks about “{hit.group(0)}”"
+    if public or not domain:
+        return "guest", "a person writing from their own address"
+    return "other", "a company, about nothing the house offers"
+
+
+def inbox_sender_kinds(conn, flags):
+    """{flag id: (kind, why)} for many flags at once: the app's own records
+    are asked once per table for every sender together."""
+    addresses = [(f["from_address"] or "").strip().lower() for f in flags]
+    guests = _known_addresses(conn, addresses, INBOX_KNOWN_GUESTS)
+    partners = _known_addresses(conn, addresses, INBOX_KNOWN_PARTNERS)
+    partner_domains = set()
+    try:
+        for r in conn.execute("SELECT LOWER(TRIM(email)) AS e FROM vendors WHERE email LIKE '%@%'"):
+            domain = r["e"].rsplit("@", 1)[1]
+            if domain not in PUBLIC_MAIL_DOMAINS:
+                partner_domains.add(domain)
+    except sqlite3.OperationalError:
+        pass
+    never, house = inbox_never_flag_entries(conn), inbox_house_senders()
+    return {f["id"]: inbox_sender_kind(f, guests, partners, partner_domains, never, house)
+            for f in flags}
+
+
+def refresh_inbox_flag_kinds(conn, where="status = 'open'", args=()):
+    """Work out again who wrote each flag `where` picks, and write down any
+    that changed -- a sender who has since booked is a guest now. Never one a
+    person set. Does not commit. Returns how many changed."""
+    rows = conn.execute(f"SELECT * FROM email_flags WHERE ({where}) "
+                        "AND sender_kind_by_user_id IS NULL", args).fetchall()
+    changed = 0
+    by_id = {r["id"]: r for r in rows}
+    for fid, (kind, why) in inbox_sender_kinds(conn, rows).items():
+        row = by_id[fid]
+        if (row["sender_kind"], row["sender_kind_why"]) != (kind, why):
+            conn.execute("UPDATE email_flags SET sender_kind = ?, sender_kind_why = ? WHERE id = ?",
+                         (kind, why, fid))
+            changed += 1
+    return changed
+
+
+def classify_inbox_flags_on_start(conn):
+    """Every flag not yet given a kind gets one, open or closed: on the deploy
+    of 26 Nov 2026 that is all of them, and after it none. Never allowed to
+    stop the app starting."""
+    try:
+        if conn.execute("SELECT 1 FROM email_flags WHERE sender_kind IS NULL LIMIT 1").fetchone():
+            refresh_inbox_flag_kinds(conn, where="sender_kind IS NULL")
+            conn.commit()
+    except Exception as e:
+        conn.rollback()
+        log_line(f"[inbox flags] kinds not worked out on start: {type(e).__name__}: {e}")
 
 
 def close_flags_the_rules_would_not_raise(conn, now_iso=None):
@@ -122417,59 +123104,98 @@ def run_email_inbox_scan_job(conn):
     def flag_row(where, args):
         return conn.execute(f"SELECT * FROM email_flags WHERE {where}", args).fetchone()
 
-    # One inbox per business area, so scan each in turn. The sent-items reply
-    # map is per mailbox: a reply from one inbox is matched against that
-    # inbox's copy of the conversation.
     booking_com_box = booking_com_mailbox(conn)
     unread, read_boxes, left_to_booking_com = [], 0, False
+    unread_boxes = []           # [{"mailbox", "why", "folder"}], for the owner home and the page
     no_headers = []
     headers_asked = headers_left = 0
     # What Microsoft actually sent, counted for the report: on 11 Nov 2026 the
     # newsletters stayed open and nothing said why. Header names only, never
     # their values.
     heard = {"listed": 0, "listed_with": 0, "mailing": 0, "asked_failed": None}
+    # Booking.com's mailbox is read by its own job, into its own page: an
+    # automated notice is not an email waiting on somebody's reply.
+    to_read = []
     for mb in mailboxes:
-        mailbox = mb["mailbox"]
-        # Booking.com's mailbox is read by its own job, into its own page:
-        # an automated notice is not an email waiting on somebody's reply.
-        if booking_com_box and mailbox.lower() == booking_com_box:
+        if booking_com_box and mb["mailbox"].lower() == booking_com_box:
             left_to_booking_com = True
+        else:
+            to_read.append(mb)
+
+    # EVERY INBOX'S SENT ITEMS, ONE MAP FOR THE SCAN (26 Nov 2026). A reply
+    # written as experience@ by somebody in their own mailbox is kept in THAT
+    # mailbox's Sent Items -- Exchange's default for Send As and Send on
+    # Behalf -- not in experience@'s. Read per inbox, every such reply was
+    # invisible: Lou Steiner's wedding enquiry of 16 Nov stayed "Unanswered"
+    # with two replies to it sitting in accounts@'s Sent Items, and 203 flags
+    # were open against 35 resolved. So every inbox's Sent Items are read
+    # first, with nothing written, and a sent email answers an inbox email in
+    # whichever inbox either is kept: same conversation, or its In-Reply-To /
+    # References carry the email's own Message-ID. A forward between the
+    # house's own inboxes is not an answer.
+    #
+    # The first scan after this came in reads back to the oldest open flag,
+    # once, so the replies already sent to the backlog are found too.
+    deep = not conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                            (INBOX_SENT_EVERYWHERE_KEY,)).fetchone()
+    sent_since = since_iso
+    if deep:
+        oldest = conn.execute("SELECT MIN(received_at) AS r FROM email_flags "
+                              "WHERE status = 'open'").fetchone()["r"]
+        oldest_dt = parse_datetime_iso(oldest) if oldest else None
+        if oldest_dt and oldest_dt < now - timedelta(days=lookback_days):
+            floor = now - timedelta(days=INBOX_DEEP_PASS_DAYS)
+            sent_since = max(oldest_dt, floor).strftime("%Y-%m-%dT%H:%M:%SZ")
+    replies = InboxReplies(inbox_house_senders(), [mb["mailbox"] for mb in to_read])
+    sent_unread = set()
+    sent_notes = []
+    # Saved before Microsoft is asked anything: nothing may be held open
+    # through a Graph read (see below).
+    conn.commit()
+    for mb in to_read:
+        mailbox = mb["mailbox"]
+        # A folder that could not be read is SKIPPED AND NAMED, never read as
+        # empty. Unread sent items read as "no replies", which would flag every
+        # email in the inbox as unanswered; an unread inbox read as nothing to
+        # do, and the job said it had scanned the mailbox.
+        sent_items = fetch_graph_messages(token, "sentitems", sent_since,
+                                          top=1000 if deep else 200, mailbox=mailbox)
+        if graph_last_error():
+            sent_unread.add(mailbox)
+            unread.append(f"{mailbox} ({graph_last_error()})")
+            unread_boxes.append({"mailbox": mailbox, "why": graph_last_error(),
+                                 "folder": "Sent Items"})
+            continue
+        if getattr(_GRAPH_ANSWER, "without_headers", None):
+            sent_notes.append(f"{mailbox}'s Sent Items read by conversation only "
+                              f"({_GRAPH_ANSWER.without_headers})")
+        if getattr(_GRAPH_ANSWER, "sent_cut", None):
+            sent_notes.append(f"{mailbox}'s Sent Items: {_GRAPH_ANSWER.sent_cut}")
+        replies.add(mailbox, sent_items)
+    _GRAPH_ANSWER.error = None
+
+    # Then one inbox per business area, in turn.
+    for mb in to_read:
+        mailbox = mb["mailbox"]
+        if mailbox in sent_unread:
             continue
         # Resolved per scan, not per config: for an inbox set to follow the
         # rota this is whoever is clocked in right now, skipping anyone on
         # leave or recorded absent.
         default_user_id = resolve_inbox_owner(conn, mb)
-        # conversationId -> latest sent message, for both the "was this answered
-        # in time" check and re-running the conflict guesser against what the
-        # reply itself actually says (a reply can quote a stale price even when
-        # the guest's own message never mentioned one).
-        reply_map = {}
-        reply_by_conversation = {}
         # Saved before Microsoft is asked anything, not once after the last
         # mailbox. The inbox before this one rewrote every flag it still holds
         # and cleared the answered ones; left open, those writes held SQLite's
-        # one write lock through this inbox's two Graph reads -- up to fifteen
+        # one write lock through this inbox's Graph reads -- up to fifteen
         # seconds each, five inboxes -- and the till, a clock-in or a guest
         # booking anywhere in the house waited five and failed "database is
         # locked". The photo mirror was this same fault.
         conn.commit()
-        # A folder that could not be read is SKIPPED AND NAMED, never read as
-        # empty. Unread sent items read as "no replies", which would flag every
-        # email in the inbox as unanswered; an unread inbox read as nothing to
-        # do, and the job said it had scanned the mailbox.
-        sent_items = fetch_graph_messages(token, "sentitems", since_iso, top=200, mailbox=mailbox)
-        if graph_last_error():
-            unread.append(f"{mailbox} ({graph_last_error()})")
-            continue
-        for sent in sent_items:
-            conv_id, sent_at = sent.get("conversationId"), sent.get("sentDateTime")
-            if conv_id and sent_at and (conv_id not in reply_map or sent_at > reply_map[conv_id]):
-                reply_map[conv_id] = sent_at
-                reply_by_conversation[conv_id] = sent
         _GRAPH_ANSWER.without_headers = None
         inbox_messages = fetch_graph_messages(token, "inbox", since_iso, top=200, mailbox=mailbox)
         if graph_last_error():
             unread.append(f"{mailbox} ({graph_last_error()})")
+            unread_boxes.append({"mailbox": mailbox, "why": graph_last_error(), "folder": "Inbox"})
             continue
         read_boxes += 1
         if getattr(_GRAPH_ANSWER, "without_headers", None):
@@ -122492,7 +123218,7 @@ def run_email_inbox_scan_job(conn):
             if not mid or not got_at or msg.get("internetMessageHeaders"):
                 continue
             frm = ((msg.get("from") or {}).get("emailAddress") or {}).get("address", "")
-            last = reply_map.get(msg.get("conversationId"))
+            last, _sent = replies.last_for(msg.get("conversationId"), msg.get("internetMessageId"))
             waited = now - datetime.fromisoformat(got_at.replace("Z", "+00:00"))
             if (sender_not_waiting(frm, never, house) or (last and last > got_at)
                     or waited <= timedelta(hours=unanswered_hours)):
@@ -122582,7 +123308,9 @@ def run_email_inbox_scan_job(conn):
                 continue
 
             conv_id = msg.get("conversationId")
-            last_reply = reply_map.get(conv_id)
+            # The latest email the house sent in this conversation, or in
+            # answer to this email, from whichever inbox's Sent Items holds it.
+            last_reply, reply = replies.last_for(conv_id, internet_id)
             # When a reply went out AFTER this message arrived, that's the
             # first response -- recorded once so response-time stats reflect
             # the guest's actual wait, not how fast a flag was ticked off.
@@ -122603,7 +123331,6 @@ def run_email_inbox_scan_job(conn):
             # carry the previous verdict forward so a real finding doesn't get
             # silently cleared on the very next scan just because there was
             # nothing new to re-derive it from.
-            reply = reply_by_conversation.get(conv_id)
             already_checked_reply_id = existing["last_reply_checked_id"] if existing else None
             if reply and reply.get("id") != already_checked_reply_id:
                 reply_conflict = guess_email_conflict(
@@ -122709,6 +123436,26 @@ def run_email_inbox_scan_job(conn):
         if row and row["status"] == "open":
             close(row["id"], "answered" if v["first_reply_at"] else
                   ("mentions" if v["mentions"] else "cleared"))
+    # An open flag no inbox listed this scan -- older than the window, or its
+    # inbox unreadable today -- answered by an email any inbox sent: its wait
+    # is over. Nothing else about it changes; one still holding a wrong price
+    # stays open for that.
+    met = {v["flag_id"] for v in verdicts.values() if v.get("flag_id")}
+    for row in conn.execute("SELECT * FROM email_flags WHERE status = 'open' AND unanswered = 1").fetchall():
+        if row["id"] in met:
+            continue
+        last, _sent = replies.last_for(row["conversation_id"], row["internet_message_id"])
+        if not (last and row["received_at"] and last > row["received_at"]):
+            continue
+        conn.execute("UPDATE email_flags SET unanswered = 0, first_reply_at = COALESCE(first_reply_at, ?), "
+                     "updated_at = ? WHERE id = ?", (last, now_iso, row["id"]))
+        if not (row["price_conflict"] or row["availability_conflict"] or row["reply_price_conflict"]
+                or row["reply_availability_conflict"]):
+            close(row["id"], "answered")
+    # Who wrote each open one: a guest or an enquiry, a partner or the press,
+    # or everything else. Before anybody is told of a new one, so a receipt
+    # never pops up on a screen.
+    refresh_inbox_flag_kinds(conn)
     # A brand-new flag, not just an update to one already on the board —
     # this is the "pops up on your screen" half of the triage board,
     # reusing the same notification/web-push path task assignments use.
@@ -122718,7 +123465,8 @@ def run_email_inbox_scan_job(conn):
     for flag_id, user_id, label, what, subject, sender in raised_new:
         row = flag_row("id = ?", (flag_id,))
         notify_user_id = user_id or (owner_row["id"] if owner_row else None)
-        if row and row["status"] == "open" and notify_user_id:
+        if (row and row["status"] == "open" and notify_user_id
+                and (row["sender_kind"] or "guest") != "other"):
             send_notification(
                 conn, notify_user_id, "inbox_flag_new",
                 f"[{label}] Flagged {what}: {subject or '(no subject)'}",
@@ -122730,9 +123478,32 @@ def run_email_inbox_scan_job(conn):
     rechecked = recheck_older_flags(conn, token, never, house, closed, now_iso)
     escalated = escalate_stale_flags(conn)
     flagged = sum(1 for v in verdicts.values() if v.get("raise_it"))
+    # What the scan could read, kept for the owner home and the Inbox Flags
+    # page: silence there must never be mistaken for "nothing waiting".
+    conn.execute(
+        "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+        (INBOX_SCAN_STATE_KEY, json.dumps({
+            "at": now_iso, "unread": unread_boxes,
+            "read": [mb["mailbox"] for mb in to_read if mb["mailbox"] not in sent_unread
+                     and mb["mailbox"] not in {u["mailbox"] for u in unread_boxes}],
+            "sent_as": replies.sent_as, "notes": sent_notes})))
+    if deep and not sent_unread:
+        # Once, and only when every inbox's Sent Items were read: what the
+        # first scan to read them all closed, for the page to say.
+        conn.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
+                     (INBOX_SENT_EVERYWHERE_KEY, json.dumps({
+                         "at": now_iso, "answered": closed.get("answered", 0),
+                         "since": sent_since})))
+    conn.commit()
     tail = f", {escalated} escalated" if escalated else ""
     if closed:
         tail += "; " + inbox_closed_words(closed)
+    if replies.sent_as:
+        tail += "; replies sent as one inbox and kept in another's Sent Items: " + "; ".join(
+            f"{n} as {as_box} in {kept}" for as_box, where in sorted(replies.sent_as.items())
+            for kept, n in sorted(where.items()))
+    if sent_notes:
+        tail += "; " + "; ".join(sent_notes)
     if rechecked["unread"]:
         tail += (f"; {rechecked['unread']} older flag(s) could not be read again "
                  "and wait for the next scan")
@@ -127134,6 +127905,170 @@ def house_calendar_problem(conn):
     return None
 
 
+# THE OWNER'S OWN DIARY ON "THE DAY" (26 Nov 2026). The owner home's day was
+# the house's -- arrivals, dinner, tasks -- and not the owner's own meetings.
+# Read by the MAIL READER's app, with Calendars.Read added to it: its
+# application access policy already limits it to the mailboxes it reads, and
+# reading is all it does. The house calendar keeps its own app, limited to
+# house@, which this does not touch. Time and subject only: no attendees, no
+# body, and a private appointment is said to be one. Off when the permission
+# is missing, and the House calendar page says how to add it.
+OWNER_DIARY_KEY = "owner_diary_mailbox"
+OWNER_DIARY_CACHE_KEY = "owner_diary_today"
+OWNER_DIARY_DEFAULT = PUBLIC_CONTACT["accounts"]
+OWNER_DIARY_CALENDAR_LINK = "https://outlook.office.com/calendar/view/day"
+
+
+def owner_diary_mailbox(conn):
+    """Which mailbox's diary goes on the owner home: accounts@ unless the
+    owner names another, and none at all if the setting is blank."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (OWNER_DIARY_KEY,)).fetchone()
+    if row is None or row["value"] is None:
+        return OWNER_DIARY_DEFAULT
+    return row["value"].strip().lower()
+
+
+def owner_diary_state(conn):
+    """What the last read of the diary found: {"day", "at", "mailbox",
+    "events": [{"start", "end", "all_day", "subject"}], "error", "denied"},
+    or None before any read."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (OWNER_DIARY_CACHE_KEY,)).fetchone()
+    try:
+        return json.loads(row["value"]) if row and row["value"] else None
+    except ValueError:
+        return None
+
+
+def _graph_utc(value):
+    """A Graph dateTime asked for in UTC ("2026-11-26T09:00:00.0000000"), as
+    an aware moment."""
+    try:
+        return datetime.fromisoformat((value or "")[:19]).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def read_owner_diary(conn, today=None):
+    """Read today's events from the named mailbox's calendar, keep time and
+    subject only, and remember what Microsoft said. Returns the state kept.
+    Nothing is held open while Microsoft is asked."""
+    today = today or house_today()
+    mailbox = owner_diary_mailbox(conn)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    state = {"day": today.isoformat(), "at": now_iso, "mailbox": mailbox, "events": [],
+             "error": None, "denied": False}
+    if not mailbox:
+        state["error"] = "no mailbox is named"
+    elif not graph_enabled():
+        state["error"] = "Microsoft 365 is not connected"
+    else:
+        token = get_graph_token()
+        if not token:
+            state["error"] = "could not get a Microsoft token"
+        else:
+            start, end = house_day_window(today)
+            conn.commit()
+            body = graph_get(
+                f"/users/{mailbox}/calendarView", token,
+                params={"startDateTime": start, "endDateTime": end,
+                        "$select": "subject,start,end,isAllDay,isCancelled,sensitivity",
+                        "$orderby": "start/dateTime", "$top": "50"},
+                headers={"Prefer": 'outlook.timezone="UTC"'})
+            if body is None:
+                why = graph_last_error() or "no answer"
+                _GRAPH_ANSWER.error = None
+                state["error"] = why
+                state["denied"] = any(w in why for w in ("403", "AccessDenied", "Forbidden"))
+            else:
+                for ev in body.get("value", []):
+                    if ev.get("isCancelled"):
+                        continue
+                    begins = _graph_utc((ev.get("start") or {}).get("dateTime"))
+                    ends = _graph_utc((ev.get("end") or {}).get("dateTime"))
+                    private = (ev.get("sensitivity") or "").lower() in ("private", "confidential")
+                    state["events"].append({
+                        "start": begins.isoformat() if begins else None,
+                        "end": ends.isoformat() if ends else None,
+                        "all_day": bool(ev.get("isAllDay")),
+                        "subject": ("Private appointment" if private
+                                    else ((ev.get("subject") or "").strip() or "(no subject)")[:120])})
+    conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                 (OWNER_DIARY_CACHE_KEY, json.dumps(state)))
+    conn.commit()
+    return state
+
+
+def run_owner_diary_job(conn):
+    """Every quarter of an hour: today's diary for the owner home."""
+    if not graph_enabled():
+        raise JobNotSetUp("Microsoft Graph not configured")
+    if not owner_diary_mailbox(conn):
+        raise JobNotSetUp("no mailbox named for the diary on the House calendar page")
+    state = read_owner_diary(conn)
+    if state["denied"]:
+        raise JobNotSetUp("the mail reader's app has no Calendars.Read: the House calendar page "
+                          f"says how to add it ({state['error']})")
+    if state["error"]:
+        return f"could not read {state['mailbox']}'s calendar: {state['error']}"
+    n = len(state["events"])
+    return f"{n} event{'' if n == 1 else 's'} today in {state['mailbox']}'s calendar"
+
+
+def owner_home_diary(conn, today, now=None):
+    """Today's events from the owner's diary as rows of "The day": time and
+    subject, nothing else. Nothing when the read failed, is not today's, or
+    the diary is off."""
+    now = now or datetime.now(timezone.utc)
+    state = owner_diary_state(conn)
+    if (not state or state.get("error") or state.get("day") != today.isoformat()
+            or not owner_diary_mailbox(conn) or state.get("mailbox") != owner_diary_mailbox(conn)):
+        return []
+    rows = []
+    for ev in state.get("events") or []:
+        begins, ends = parse_datetime_iso(ev.get("start")), parse_datetime_iso(ev.get("end"))
+        if ev.get("all_day") or not begins:
+            when, detail = "", "All day, in your Outlook"
+        else:
+            when = begins.astimezone(LOCAL_TZ).strftime("%H:%M")
+            detail = (f"Until {ends.astimezone(LOCAL_TZ).strftime('%H:%M')}, in your Outlook"
+                      if ends else "In your Outlook")
+        rows.append({"time": when, "kind": "diary", "title": ev.get("subject") or "(no subject)",
+                     "detail": detail, "assignee": None,
+                     "done": bool(ends and ends <= now and not ev.get("all_day")),
+                     "href": OWNER_DIARY_CALENDAR_LINK, "outside": True})
+    return rows
+
+
+@app.route("/admin/house-calendar/diary", methods=["POST"])
+@owner_required
+def admin_house_calendar_diary():
+    """Name the mailbox whose diary goes on the owner home (blank: none), and
+    read it now, so the page says at once whether Microsoft allows it."""
+    raw = (request.form.get("mailbox") or "").strip().lower()
+    if raw and not EMAIL_RE.match(raw):
+        flash(f"“{raw}” is not an email address. Nothing was changed.", "error")
+        return redirect(url_for("admin_house_calendar", _anchor="diary"))
+    conn = get_db()
+    conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", (OWNER_DIARY_KEY, raw))
+    log_audit(conn, "owner_diary_mailbox", target=raw or "(none)")
+    conn.commit()
+    if not raw:
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (OWNER_DIARY_CACHE_KEY,))
+        conn.commit()
+        conn.close()
+        flash("Your diary is off the owner home.", "success")
+        return redirect(url_for("admin_house_calendar", _anchor="diary"))
+    state = read_owner_diary(conn)
+    conn.close()
+    if state["error"]:
+        flash(f"Saved, but {raw}'s calendar could not be read: {state['error']}.", "error")
+    else:
+        n = len(state["events"])
+        flash(f"Reading {raw}'s calendar: {n} event{'' if n == 1 else 's'} today.", "success")
+    return redirect(url_for("admin_house_calendar", _anchor="diary"))
+
+
 @app.route("/admin/house-calendar")
 @owner_required
 def admin_house_calendar():
@@ -127151,6 +128086,8 @@ def admin_house_calendar():
     start, end = house_calendar_window()
     preview = house_calendar_items(conn, house_today(), house_today() + timedelta(days=14), areas)
     dates_ahead, dates_past = house_dates_list(conn)
+    diary = {"mailbox": owner_diary_mailbox(conn), "state": owner_diary_state(conn),
+             "connected": graph_enabled(), "reader_boxes": list(MS_GRAPH_MAILBOXES)}
     conn.close()
     feeds = None
     if token:
@@ -127164,7 +128101,7 @@ def admin_house_calendar():
                            share_command=house_calendar_share_command(),
                            poll=HOUSE_CALENDAR_POLL_SECONDS,
                            dates_ahead=dates_ahead, dates_past=dates_past,
-                           dates_on="dates" in areas)
+                           dates_on="dates" in areas, diary=diary)
 
 
 @app.route("/admin/house-calendar/sync", methods=["POST"])
@@ -127408,6 +128345,8 @@ AUTOMATION_JOBS = [
     ("ical_sync", "automation_ical_sync_enabled", "automation_ical_sync_interval_hours", None, run_ical_sync_job),
     ("workshop_feedback_request", "automation_workshop_feedback_enabled", None, 24 * 3600, run_workshop_feedback_request_job),
     ("email_inbox_scan", "automation_email_scan_enabled", None, 900, run_email_inbox_scan_job),
+    # Every quarter of an hour: the owner's own diary for "The day".
+    ("owner_diary", "automation_owner_diary_enabled", None, 900, run_owner_diary_job),
     ("hr_escalation", "automation_hr_escalation_enabled", None, 21600, run_hr_escalation_job),
     # Every five minutes. A post scheduled for 10:00 that goes out at 10:04
     # is fine; one that waits for the hourly run is not what "scheduled"
@@ -128015,6 +128954,15 @@ AUTOMATION_SWITCHES = [
                  "hours"),
                 ("automation_email_scan_lookback_days", "Look back (days)", "days_back")),
      "needs": "graph"},
+    {"key": "automation_owner_diary_enabled", "job": "owner_diary",
+     "runs": ("run_owner_diary_job",), "group": "house", "reaches": (),
+     "label": "Your Outlook diary on the owner home",
+     "what": "Every quarter of an hour, reads today's events from your own Outlook "
+             "calendar (accounts@ unless the House calendar page names another) and "
+             "puts their times and subjects under The day. Never who is invited or "
+             "what is written in them. Nothing until the mail reader's app has "
+             "Calendars.Read; the House calendar page says how.",
+     "needs": "graph"},
     {"key": "automation_booking_com_mail_enabled", "job": "booking_com_mail",
      "runs": ("run_booking_com_mail_job",), "group": "guests", "reaches": ("guests", "you"),
      "label": "Read Booking.com's email into the site",
@@ -128334,6 +129282,13 @@ def inbox_flag_kind(flag):
     return "unanswered"
 
 
+def inbox_flag_sender_kind(flag):
+    """Who wrote a flag, as a key of INBOX_SENDER_KINDS. One not yet worked
+    out is a guest: never hidden by default."""
+    kind = flag["sender_kind"] if "sender_kind" in flag.keys() else None
+    return kind if kind in INBOX_SENDER_KINDS else "guest"
+
+
 def inbox_flags_tidy_note(conn):
     """What the one-off tidy of 10 Nov 2026 closed, for a month after it."""
     done = conn.execute("SELECT value FROM app_settings WHERE key = ?",
@@ -128369,10 +129324,12 @@ def admin_inbox_flags():
         # anonymous -- so a message resolved in error looks exactly like one
         # answered properly.
         "SELECT email_flags.*, users.name AS assigned_to_name, "
-        "closer.name AS resolved_by, "
+        "closer.name AS resolved_by, mover.name AS kind_set_by, "
         "mailbox_routing.label AS mailbox_label FROM email_flags "
         "LEFT JOIN users ON users.id = email_flags.assigned_to_user_id "
         "LEFT JOIN users AS closer ON closer.id = email_flags.resolved_by_user_id "
+        # Who said who wrote it, where the app's guess was moved by hand.
+        "LEFT JOIN users AS mover ON mover.id = email_flags.sender_kind_by_user_id "
         "LEFT JOIN mailbox_routing ON mailbox_routing.mailbox = email_flags.mailbox "
         "ORDER BY email_flags.received_at DESC"
     )
@@ -128391,6 +129348,11 @@ def admin_inbox_flags():
                   order=["open", "resolved", "dismissed"],
                   labels={"open": "Open", "resolved": "Resolved", "dismissed": "Dismissed"},
                   default="open"),
+            # Guests first, the rest after (26 Nov 2026): the page opens on
+            # the people who want to stay or work with the house, and the
+            # receipts and statements are a chip away.
+            facet("from", "Who wrote", inbox_flag_sender_kind, order=list(INBOX_SENDER_KINDS),
+                  labels=INBOX_SENDER_KINDS, default="guest"),
             # One reason each. A message both unanswered and quoting the wrong
             # price goes under the price: that is the one that costs money.
             facet("kind", "Why", inbox_flag_kind, order=list(INBOX_FLAG_KINDS),
@@ -128400,21 +129362,24 @@ def admin_inbox_flags():
             facet("who", "Who has it", lambda f: f["assigned_to_name"] or "Nobody"),
         ],
         sorts=[
+            sort_option("oldest", "Waiting longest", lambda f: f["received_at"] or ""),
             sort_option("recent", "Newest first", lambda f: f["received_at"] or "",
                         reverse=True),
-            sort_option("oldest", "Waiting longest", lambda f: f["received_at"] or ""),
         ],
-        default_sort="recent",
+        default_sort="oldest",
     )
     lv = list_page(lv, request.args)
     flags = lv["rows"]
+    # The tiles count guests and enquiries, as the badge does: what is
+    # waiting on a reply. The rest are counted beside them, not in them.
     counts = conn.execute(
         """SELECT
-             SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count,
-             SUM(CASE WHEN status = 'open' AND unanswered = 1 THEN 1 ELSE 0 END) AS unanswered_count,
-             SUM(CASE WHEN status = 'open' AND (price_conflict = 1 OR availability_conflict = 1
-                 OR reply_price_conflict = 1 OR reply_availability_conflict = 1) THEN 1 ELSE 0 END) AS conflict_count
-           FROM email_flags"""
+             SUM(CASE WHEN status = 'open' AND g THEN 1 ELSE 0 END) AS open_count,
+             SUM(CASE WHEN status = 'open' AND g AND unanswered = 1 THEN 1 ELSE 0 END) AS unanswered_count,
+             SUM(CASE WHEN status = 'open' AND g AND (price_conflict = 1 OR availability_conflict = 1
+                 OR reply_price_conflict = 1 OR reply_availability_conflict = 1) THEN 1 ELSE 0 END) AS conflict_count,
+             SUM(CASE WHEN status = 'open' AND NOT g THEN 1 ELSE 0 END) AS rest_count
+           FROM (SELECT *, COALESCE(sender_kind, 'guest') = 'guest' AS g FROM email_flags)"""
     ).fetchone()
     employees = conn.execute("SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
     duplicates = cross_inbox_duplicates(conn)
@@ -128423,6 +129388,11 @@ def admin_inbox_flags():
     never_flag = inbox_never_flag_text(conn)
     tidy = inbox_flags_tidy_note(conn)
     labels = {mb["mailbox"].lower(): mb["label"] or mb["mailbox"] for mb in mailboxes}
+    boxes = [mb["mailbox"] for mb in mailboxes]
+    sent_as = {
+        "state": inbox_scan_state(conn), "note": inbox_sent_everywhere_note(conn),
+        "people": inbox_people_not_read(conn, boxes), "commands": inbox_copy_commands(conn, boxes),
+    }
     conn.close()
     return render_template(
         "admin_inbox_flags.html", flags=flags, lv=lv,
@@ -128430,7 +129400,8 @@ def admin_inbox_flags():
         mailboxes=mailboxes,
         duplicates=duplicates, response_stats=response_stats, guest_context=guest_context,
         mailbox=MS_GRAPH_MAILBOX, never_flag=never_flag, tidy=tidy,
-        inbox_labels=labels, inbox_list=inbox_list,
+        inbox_labels=labels, inbox_list=inbox_list, sent_as=sent_as,
+        sender_kinds=INBOX_SENDER_KINDS, kind_of=inbox_flag_sender_kind,
         closed_says={k: v[1] for k, v in INBOX_CLOSE_REASONS.items()},
         never_flag_default=never_flag.strip() == INBOX_NEVER_FLAG_DEFAULT.strip(),
     )
@@ -128603,6 +129574,35 @@ def never_flag_sender(flag_id):
     conn.close()
     flash(f"{address} is never flagged now." + (" " + inbox_closed_words(closed) if closed else ""),
           "success")
+    return redirect(inbox_flags_back())
+
+
+@app.route("/admin/inbox-flags/<int:flag_id>/kind", methods=["POST"])
+@owner_required
+def set_email_flag_kind(flag_id):
+    """Say who wrote it, where the app guessed wrong: a guest it took for a
+    shop, or a statement it took for a guest. Kept on the flag -- the scan
+    never works one out again once a person has said."""
+    conn = get_db()
+    flag = conn.execute("SELECT * FROM email_flags WHERE id = ?", (flag_id,)).fetchone()
+    if not flag:
+        conn.close()
+        abort(404)
+    kind = request.form.get("kind") or ""
+    if kind not in INBOX_SENDER_KINDS:
+        conn.close()
+        flash("That is not one of the kinds a flag can be.", "error")
+        return redirect(inbox_flags_back())
+    user = current_user()
+    conn.execute("UPDATE email_flags SET sender_kind = ?, sender_kind_why = ?, sender_kind_by_user_id = ?, "
+                 "updated_at = ? WHERE id = ?",
+                 (kind, "set by hand", user["id"], datetime.now(timezone.utc).isoformat(),
+                  flag_id))
+    log_audit(conn, "inbox_flag_kind_set", target=str(flag_id), details=kind)
+    conn.commit()
+    conn.close()
+    flash(f"{flag['from_name'] or flag['from_address'] or 'That flag'} is under "
+          f"“{INBOX_SENDER_KINDS[kind]}” now.", "success")
     return redirect(inbox_flags_back())
 
 

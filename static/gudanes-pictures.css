@@ -1449,8 +1449,10 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
 .g .g-credit, .g .g-credit a, .g .g-gallery figcaption .g-credit, .g .g-moment .g-credit, .g .g-rgrid .g-credit{ font-size: 12px; }
 
 /* 26 Nov 2026: an album of photographs taken upright (the restoration page's new wall and the run of rooms):
-   the prints keep their own shape rather than the album's 4:3, so neither is cropped. */
-.g .g-album--tall .g-album__f img{ aspect-ratio: auto; height: auto; }
+   the prints keep their own shape rather than the album's 4:3, so neither is cropped. The shape is the file's own,
+   from pic(ratio=True): "auto" here drew every one 150px tall, as Chrome holds a lazy picture with sizes="auto"
+   to contain: size and only an aspect-ratio gives it back its height (fixed the same evening). */
+.g .g-album--tall .g-album__f img{ aspect-ratio: var(--pic-ratio, auto); height: auto; }
 /* Taken on a phone, about 470px across: two small prints side by side, never drawn wider than the file allows. */
 .g .g-album--tall{ display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s5); }
 .g .g-album--tall .g-album__p{ grid-column: auto; width: min(22rem, 100%); margin-top: 0; }
@@ -1512,3 +1514,22 @@ body.has-hero .g-top:not(.is-solid) .g-curtop__s{ color: #fff; }
   .g .g-baths__row--4 > .g-baths__f:first-child:nth-last-child(2){ grid-column: 2; }
   .g .g-baths__row--4 > .g-baths__f:first-child:nth-last-child(2) ~ .g-baths__f{ grid-column: 3; }
 }
+
+/* Private events, 26 Nov 2026: the occasions beside the red roadster, the owner's photograph. It sits at the top
+   of its column, not floating in the middle, and has no margin of its own: the section's padding is the space
+   around it. The file is 452px wide, so it is never drawn wider than 28rem (448px) and stays sharp. Beside the
+   words from 56rem, in a column of 24rem; the occasions keep their two columns once there is room for them
+   (75rem), so the page is no longer than it was (measured: +4px at 1400). */
+.g .g-sp--occ{ align-items: start; margin: 0; }
+.g .g-sp--occ .g-sp__main{ max-width: 28rem; margin-right: 0; margin-left: 0; }
+@media (min-width: 56rem){ .g .g-sp--occ{ grid-template-columns: minmax(0, 1fr) 24rem; } }
+.g .g-sp--occ .g-occ{ grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 75rem){ .g .g-sp--occ .g-occ{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* A photographer's credit under a split's photograph (split(credit=...)): a credit line, not a caption, so the
+   captions stay hidden as the owner asked (15 Oct). */
+.g .g-sp__credit{ margin: var(--s2) 0 0; font-size: 12px; line-height: 1.4; color: var(--ink-2); }
+.g .g-sp--occ .g-sp__credit{ max-width: 28rem; }
+
+/* The restoration page, 26 Nov 2026: the prints in two rows, the wall and the rooms, then the timber and the
+   digger. The second row follows the first closely, as one set. */
+.g .g-album--tall + .g-album--ground{ margin-top: calc(-1 * var(--s4)); }

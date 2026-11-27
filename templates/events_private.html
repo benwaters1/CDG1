@@ -134,6 +134,10 @@
   <p class="g-fr">Les occasions <span class="g-fr__en">The occasions</span></p>
   {#- 24 Nov 2026 (BRIEF-private-retreat-and-images, 1): "Whatever You Are Celebrating", lower down. It is why people
       come, not what they buy. -#}
+  {#- 26 Nov 2026 (owner, of a photograph sent in the chat: "put this one on priate events"): the red roadster on the
+      road below the château, beside the occasions. Upright, as it was taken. The photograph is Rémi Dargegen's, and
+      his name is on it, so a credit line under it says so: the crop takes his name off the foot of the picture. -#}
+  {% call split([url_for('static', filename='img/history/red-roadster-below-the-chateau.jpg'), 'A red open-top car on the road below the château, two people in it', ''], cls='g-sp--occ', credit='Photograph: Rémi Dargegen') %}
   <h2 class="g-place">If There Is a Reason</h2>
   <p class="g-p g-intro">The château is yours for the length of your stay, and no other party shares its roof.</p>
   <ul class="g-occ">
@@ -143,6 +147,7 @@
     <li class="g-occ__i"><h3 class="g-occ__t">Company retreats</h3><p class="g-occ__p">A leadership team, a board, a small team away: quiet salons to think in and a long table to talk at.</p></li>
     <li class="g-occ__i"><h3 class="g-occ__t">A party of friends</h3><p class="g-occ__p">Friends, a few nights, and nothing to organise.</p></li>
   </ul>
+  {% endcall %}
 </div></section>
 
 

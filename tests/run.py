@@ -732,10 +732,19 @@ SUITES = [
     # 26 November 2026 (owner, of the home page on an iPhone: "this doesnt look very good"): on a phone the
     # photograph is a band across the top and the words sit on the navy below it, not on the château's stone.
     "test_home_hero_phone",
+    # 26 November 2026 (owner: "I don't like the homepage on the mobile"): fifteen screens to six and a little,
+    # the one choice asked once, the rooms and the quotes to swipe, every photograph's copy twice its drawn width.
+    "test_home_on_a_phone",
     # 26 November 2026 (owner): the claw-foot bath off the Twin, the King Room and the ground-floor Twin.
     "test_room_page_bath",
     # 26 November 2026 (owner): five guest rooms said, the room with the plates on the wall, the wallpaper pair.
     "test_owner_notes_26_nov",
+    # 26 November 2026, Microsoft 365 on the owner home: a reply kept in any inbox's Sent Items answers
+    # an email in any other; who wrote each flag, guests first; "Waiting for a reply" on the owner home.
+    "test_inbox_replies_everywhere",
+    "test_waiting_for_a_reply",
+    # And the owner's own Outlook diary among the house's day, time and subject only.
+    "test_owner_diary_on_the_day",
 ]
 
 
