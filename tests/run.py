@@ -65,6 +65,7 @@ SUITES = [
     "test_mail_log",
     "test_changes_log",
     "test_website_analytics",
+    "test_booking_attribution",
     "test_workshop_rooms",
     "test_workshop_included",
     "test_workshop_photo",

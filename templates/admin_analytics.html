@@ -76,6 +76,43 @@
 </div>
 {% else %}<p class="empty-state">Nothing was booked through the site in {{ period.label }}.</p>{% endif %}
 
+{# What those bookings were worth, by where their visit came from. Read off the
+   bookings themselves (website_bookings), not off the visits: a request that was
+   declined is counted above as a booking and is worth nothing here. #}
+{% macro worth_table(rows, first) %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>{{ first }}</th><th class="num">Booked</th><th class="num">Confirmed</th><th class="num">Worth</th></tr></thead>
+    <tbody>
+      {% for name, t in rows %}
+      <tr{{ ' class="muted"'|safe if name == 'Not known' }}><th scope="row"><a href="{{ url_for('website_bookings_page', period=period.period, date=period.anchor_iso, source=name if first == 'Source' else None, q=name.split(' / ')[-1] if first != 'Source' else None) }}">{{ name }}</a></th>
+        <td class="num">{{ t.bookings }}</td><td class="num">{{ t.confirmed }}</td><td class="num">{{ t.worth|money(0) }}</td></tr>
+      {% endfor %}
+    </tbody>
+    {% if first == 'Source' %}
+    <tfoot><tr><th scope="row">All of them</th><td class="num">{{ booked.total.bookings }}</td><td class="num">{{ booked.total.confirmed }}</td><td class="num">{{ booked.total.worth|money(0) }}</td></tr></tfoot>
+    {% endif %}
+  </table>
+</div>
+{% endmacro %}
+
+<h2 class="section-heading">What the site's bookings were worth</h2>
+<p class="pay-disclaimer">
+  Each booking made on the site carries where the visit it was made in came from, and its worth is its
+  confirmed price: VAT in, taxe de séjour not, and nothing for a request that was declined or cancelled.
+  {% if booked_before.total.bookings %}In the period before: {{ booked_before.total.bookings }} booked, worth {{ booked_before.total.worth|money(0) }}.{% endif %}
+  <a href="{{ url_for('website_bookings_page', period=period.period, date=period.anchor_iso) }}">Every booking, one by one</a>.
+</p>
+{% if booked.total.bookings %}
+{{ worth_table(booked.sources, "Source") }}
+{% if booked.campaigns %}
+<h3 class="section-heading">By campaign</h3>
+{{ worth_table(booked.campaigns, "Source / medium / campaign") }}
+{% else %}
+<p class="upload-hint">No booking came from a tagged link in {{ period.label }}. Links to the site in newsletters and Facebook posts are tagged as they go out; a link anywhere else can be tagged by adding ?utm_source=…&amp;utm_campaign=… to it.</p>
+{% endif %}
+{% else %}<p class="empty-state">Nothing was booked on the site in {{ period.label }}.</p>{% endif %}
+
 <h2 class="section-heading">The pages they read</h2>
 {% if s.pages %}
 <div class="table-wrap">
