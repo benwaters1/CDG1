@@ -20425,9 +20425,10 @@ def _availability_picture(conn, *, fresh=False):
 
     is_range_available used to ask six questions per call and three of them
     took no parameters at all -- the workshops running, the events confirmed,
-    the dates provisionally held. next_free_nights calls it once per room per
-    day, so the public booking page asked those three seventy times each and
-    got the same answer seventy times. 476 queries; six distinct.
+    the dates provisionally held. What is open next (on /book until 26 Nov
+    2026) called it once per room per day, so the public booking page asked
+    those three seventy times each and got the same answer seventy times.
+    476 queries; six distinct.
 
     Held on `g`, so it lives exactly as long as one request. That is the
     right lifetime: a booking taken by somebody else mid-request cannot make
@@ -61314,8 +61315,9 @@ def book_rooms():
     dinner_notes = dinner_for_form(conn, arrival, departure)[1] if searched else []
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
-    # What is open next (next_free_nights) was drawn under the dates until
-    # 26 November 2026, when the owner had it taken off the page.
+    # What is open next was drawn under the dates until 26 November 2026, when
+    # the owner had it taken off the page; the code that worked it out went on
+    # 27 November.
     # A cached reading or None. Never a network call from a page render: a
     # render that can block on somebody else's network is one that eventually
     # does, and this is the booking page.
