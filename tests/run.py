@@ -219,6 +219,7 @@ SUITES = [
     "test_whats_on_through_the_year",
     "test_whats_on_kept_up",
     "test_stay_occasions",
+    "test_occasion_map_photo",
     "test_dinner_at_gudanes",
     "test_dinner_menu_builder",
     "test_dinner_guest_paths",

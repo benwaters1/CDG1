@@ -13061,3 +13061,11 @@ html[lang="fr"] .g-top__in, html[lang="es"] .g-top__in{ max-width: max(var(--wra
 .g .g-occasion__dinmark{ background: var(--parchment, #F3ECDD); color: var(--blue-deep); border-bottom: 2px solid var(--gilt);
   letter-spacing: .08em; }
 .g .g-occasion__dinmark [data-eur]{ letter-spacing: .02em; }
+
+/* A PICTURE WITH WORDS ON IT, DRAWN WHOLE (27 Nov 2026: the owner's map of the château against the 2027 Tour de
+   France). Wherever an occasion's photograph goes - its card, the home page's band, its own page - the map is
+   contained on the sand, a shade off its own paper, never cropped to fill the frame: on a phone the card's
+   thumbnail showed a quarter of its width. !important because the rules that crop are many: .g-sit__img is
+   cover in five places, one of them four classes deep (a lone card). STAY_OCCASION_WHOLE_PHOTOS in app.py
+   names the pictures; test_occasion_map_photo measures them in Chrome. */
+.g img.g-occasion__whole{ object-fit: contain !important; object-position: center !important; background: var(--sand) !important; }

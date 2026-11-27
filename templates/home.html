@@ -231,7 +231,7 @@
 {% if home_banner is defined and home_banner %}{% set hb = home_banner %}
 {% from '_menu_dialog.html' import menu_link %}
 <section class="g-hband" aria-labelledby="hband-h">
-  <a class="g-hband__ph" href="{{ hb.page_url }}" aria-label="{{ t(hb.headline) }}, {{ date_range(hb.first_night, hb.departure) }}"><img src="{{ hb.photo }}" alt="{{ hb.alt }}" loading="lazy" decoding="async"></a>
+  <a class="g-hband__ph" href="{{ hb.page_url }}" aria-label="{{ t(hb.headline) }}, {{ date_range(hb.first_night, hb.departure) }}"><img src="{{ hb.photo }}"{% if hb.photo_whole %} class="g-occasion__whole"{% endif %} alt="{{ hb.alt }}" loading="lazy" decoding="async"></a>
   <div class="g-hband__b">
     <p class="g-hband__k">{{ t(hb.eyebrow) }}</p>
     <h2 class="g-hband__h" id="hband-h"><a href="{{ hb.page_url }}">{{ t(hb.headline) }}</a></h2>
