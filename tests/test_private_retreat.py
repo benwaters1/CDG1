@@ -206,16 +206,27 @@ def run():
             gal.count("if (window.__gThenNow)") == 1 and resto.count("if (window.__gThenNow)") == 1)
     work = part("The Work, As It Happens", r"</section>")
     before_buttons = work.split("instagram.com")[0]
+    # 26 Nov 2026: the Gold Suite on the open day went in under the six (owner: "put it somewhere, in the
+    # gallery"), a photograph of its own with its own caption, not one of the work. So the six are counted in
+    # their grid, and the open day is checked to be the only other photograph before the buttons.
+    grid = re.search(r'<div class="g-grid[^"]*\bg-work-now\b[^"]*">(.*?)</div>', before_buttons, re.S)
+    grid = grid.group(1) if grid else ""
     s.check("The Work, As It Happens shows six photographs before its buttons",
-            len(re.findall(r"<img\b", before_buttons)) == 6, detail=str(len(re.findall(r"<img\b", before_buttons))))
+            len(re.findall(r"<img\b", grid)) == 6, detail=str(len(re.findall(r"<img\b", grid))))
+    others = re.findall(r"<img\b", before_buttons.replace(grid, ""))
+    s.check("and the only other one there is the open day in the Gold Suite",
+            len(others) == 1 and "gold-suite-open-day" in before_buttons, detail=str(len(others)))
     s.check("each described", all(len(a) > 12 for a in re.findall(r'<img\b[^>]*\salt="([^"]*)"', before_buttons)))
 
-    s.section("3. The logo and the engraving have a size before they arrive")
+    # 26 Nov 2026 (owner, of the artwork: "this is for the bottom"): the house's own drawing of its facade replaced
+    # the engraving at the foot of every page (e68b168). It is the one held to a size before it arrives now.
+    s.section("3. The logo and the drawing at the foot have a size before they arrive")
     for path in ("/", "/events", "/book"):
         other = client.get(path).get_data(as_text=True)
-        engr = re.search(r'<img\b[^>]*chateau_engraving\.png[^>]*>', other)
-        s.check(f"{path}: the engraving at the foot", engr and 'width="691"' in engr.group(0) and 'height="396"' in engr.group(0),
+        engr = re.search(r'<img\b[^>]*chateau-de-gudanes-crest\.png[^>]*>', other)
+        s.check(f"{path}: the drawing at the foot", engr and 'width="1200"' in engr.group(0) and 'height="841"' in engr.group(0),
                 detail=engr.group(0)[:160] if engr else "none")
+        s.check(f"{path}: and not the old engraving", "chateau_engraving.png" not in other)
         marks = re.findall(r'<img class="g-close__mark"[^>]*>', other)
         s.check(f"{path}: the logo in the closing band", marks and all('width="62" height="62"' in t for t in marks),
                 detail=str([t[:80] for t in marks]))
