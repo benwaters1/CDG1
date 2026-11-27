@@ -287,7 +287,11 @@ def run():
         floor = visible_text(_main(oc.get("/pos").get_data(as_text=True)))
         s.check("a party that has paid is not booked in tonight, not seated",
                 f"{TAG} Paid And Gone" not in floor, detail=floor[:200])
-        day_page = oc.get(f"/pos/day?date={iso}").get_data(as_text=True)
+        # Tomorrow's page: today may already be closed by an earlier suite, and
+        # a closed day shows its frozen figures. A tab from today is open
+        # "through" tomorrow just the same.
+        day_page = oc.get(f"/pos/day?date={(today + timedelta(days=1)).isoformat()}"
+                          ).get_data(as_text=True)
         s.check("cash up names the tab still open, before anybody counts the drawer",
                 "Still open:" in day_page and "ZZ2" in visible_text(_main(day_page)))
         order_page = oc.get(f"/pos/{empty_tab}").get_data(as_text=True)
@@ -331,8 +335,8 @@ def run():
         u = conn.execute("SELECT active FROM fridge_units WHERE id = ?", (unit,)).fetchone()
         conn.close()
         s.check("not even the owner, while a breach is unanswered", u["active"] == 1)
-        s.check("and the controls are not drawn for an employee",
-                "Change its range, or switch it off" not in ec.get("/kitchen/fridges").get_data(as_text=True))
+        s.check("and the band's controls are not drawn for an employee",
+                'name="what" value="range"' not in ec.get("/kitchen/fridges").get_data(as_text=True))
 
         s.section("Room checks: the list is the owner's")
         ec.post("/admin/room-checks", data={"what": "standard", "line": f"{TAG} a line"})

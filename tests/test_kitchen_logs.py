@@ -271,11 +271,18 @@ def _fridges(s, oc, ec, conn):
     conn.commit()
 
     s.section("A unit's range")
-    r = ec.post_follow(f"/kitchen/fridges/unit/{fridge}", data={"what": "range", "min_c": "6",
+    # The owner's to move (back-end review, 27 November 2026): a band widened
+    # by whoever takes the readings made a breach vanish from every list.
+    refused = ec.post(f"/kitchen/fridges/unit/{fridge}", data={"what": "range", "min_c": "0",
+                                                              "max_c": "9"})
+    row = conn.execute("SELECT min_c, max_c FROM fridge_units WHERE id = ?", (fridge,)).fetchone()
+    s.check("whoever takes the readings cannot move the band",
+            refused.status_code in (302, 303) and row["max_c"] != 9.0, detail=str(dict(row)))
+    r = oc.post_follow(f"/kitchen/fridges/unit/{fridge}", data={"what": "range", "min_c": "6",
                                                           "max_c": "2"})
     s.check("colder than it is warm is refused", "Swap them over" in
             " ".join(flashes(r)))
-    ec.post(f"/kitchen/fridges/unit/{fridge}", data={"what": "range", "min_c": "1",
+    oc.post(f"/kitchen/fridges/unit/{fridge}", data={"what": "range", "min_c": "1",
                                                       "max_c": "4"})
     row = conn.execute("SELECT min_c, max_c FROM fridge_units WHERE id = ?", (fridge,)).fetchone()
     s.check("a range is saved", (row["min_c"], row["max_c"]) == (1.0, 4.0))

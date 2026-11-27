@@ -1146,12 +1146,9 @@ body.staff-shell .manual-section h3{ color:var(--ivory); font-family:'Inter',san
 .auto-ran, .auto-how{ display:block; }
 .auto-when{ font-variant-numeric:tabular-nums; }
 .auto-savebar{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin:6px 0 24px; }
-/* In reach from anywhere down a page that is thirteen thousand pixels tall on
-   a phone: the only Save was at the very bottom. */
-.auto-savebar{ position:sticky; bottom:0; z-index:5; background:var(--surface, #fff);
-  padding:10px 12px; border-top:1px solid var(--parchment-line); }
-.auto-savebar.is-dirty{ box-shadow:0 -4px 14px rgba(0,0,0,.08); }
-.auto-savebar.is-dirty #auto-unsaved{ color:var(--danger); font-weight:600; }
+/* Save at the top as well as the bottom of a page thirteen thousand pixels
+   tall on a phone. Not a sticky bar: one would sit over the switches it saves. */
+.auto-savebar.is-dirty .auto-unsaved{ color:var(--danger); font-weight:600; }
 @media (max-width:720px){
   .auto-row{ grid-template-columns:minmax(0,1fr); }
   .auto-status{ margin-left:25px; }

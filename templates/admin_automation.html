@@ -19,6 +19,12 @@
 <form method="post" action="{{ url_for('update_automation_settings') }}" id="automation-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+  {# The same Save at the top: the only one was at the foot of the page. #}
+  <div class="auto-savebar">
+    <button type="submit" class="btn-primary">Save every switch</button>
+    <span class="upload-hint auto-unsaved">A box left unticked is switched off when you save.</span>
+  </div>
+
   {# ONE SWITCH for every letter and text to anybody outside the house, held
      at the two doors they all go through -- send_email and send_sms -- so no
      job escapes it, including one written next month. #}
@@ -157,7 +163,7 @@
 
   <div class="auto-savebar" id="auto-savebar">
     <button type="submit" class="btn-primary">Save every switch</button>
-    <span class="upload-hint" id="auto-unsaved">A box left unticked is switched off when you save.</span>
+    <span class="upload-hint auto-unsaved">A box left unticked is switched off when you save.</span>
   </div>
 </form>
 <script>
@@ -171,9 +177,12 @@
   form.addEventListener('change', function (e) {
     if (e.target.classList.contains('auto-run-now')) return;
     dirty = true;
-    document.getElementById('auto-unsaved').textContent =
-      'You have changes that are not saved yet.';
-    document.getElementById('auto-savebar').classList.add('is-dirty');
+    document.querySelectorAll('.auto-unsaved').forEach(function (el) {
+      el.textContent = 'You have changes that are not saved yet.';
+    });
+    document.querySelectorAll('.auto-savebar').forEach(function (el) {
+      el.classList.add('is-dirty');
+    });
   });
   form.querySelectorAll('.auto-run-now').forEach(function (btn) {
     btn.addEventListener('click', function (e) {

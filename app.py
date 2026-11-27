@@ -101195,15 +101195,17 @@ def fridge_unit_change(unit_id):
         conn.close()
         abort(404)
     what = request.form.get("what", "")
-    # Whoever runs the kitchen, not whoever is taking the readings. Every
-    # reading is judged against the unit's band as it stands now, so widening
-    # the band to 0-8 made this morning's 7.8 vanish from the tile, the owner's
-    # home and the task list, and switching the unit off did the same -- and
-    # either was one tap for anybody signed in (back-end review, 27 Nov 2026).
-    if what in ("off", "range") and not fridge_settings_allowed(current_user()):
+    # The band is whoever runs the kitchen's, not whoever is taking the
+    # readings. Every reading is judged against the band as it stands now, so
+    # widening it to 0-8 made this morning's 7.8 vanish from the tile, the
+    # owner's home and the task list -- one tap for anybody signed in. A unit
+    # emptied for the winter can still be switched off by the kitchen, but not
+    # while a reading is out of range with nothing said (back-end review,
+    # 27 November 2026).
+    if what == "range" and not fridge_settings_allowed(current_user()):
         conn.close()
-        flash("Only the owner, or whoever runs the restaurant, changes a fridge's range "
-              "or switches one off. Say what you found beside the reading instead.", "error")
+        flash("Only the owner, or whoever runs the restaurant, changes a fridge's range. "
+              "Say what you found beside the reading instead.", "error")
         return redirect(url_for("kitchen_fridges"))
     if what == "off" and fridge_unanswered_breaches(conn, unit):
         conn.close()
@@ -120552,7 +120554,7 @@ def my_leave():
     ahead = sorted([r for r in requests_ if (r["end_date"] or "") >= today.isoformat()],
                    key=lambda r: r["start_date"] or "")
     past = [r for r in requests_ if (r["end_date"] or "") < today.isoformat()]
-    return render_template("my_leave.html", requests=requests_, ahead=ahead, past=past,
+    return render_template("my_leave.html", ahead=ahead, past=past,
                            leave=leave, today=today)
 
 

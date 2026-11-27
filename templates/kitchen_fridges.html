@@ -172,9 +172,10 @@
   </div>
   {% endif %}
 
-  {% if fridge_settings_allowed() %}
+  {% set may_band = fridge_settings_allowed() %}
   <details class="fridge-unit-change">
-    <summary>Change its range, or switch it off</summary>
+    <summary>{{ 'Change its range, or switch it off' if may_band else 'Not in use? Switch it off' }}</summary>
+    {% if may_band %}
     <form method="post" action="{{ url_for('fridge_unit_change', unit_id=u.unit['id']) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="what" value="range">
@@ -188,6 +189,7 @@
       </div>
       <button type="submit" class="btn-mini">Save the range</button>
     </form>
+    {% endif %}
     <form method="post" action="{{ url_for('fridge_unit_change', unit_id=u.unit['id']) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="what" value="off">
@@ -196,7 +198,6 @@
         reminders; everything read from it is kept.</span>
     </form>
   </details>
-  {% endif %}
 </div>
 {% endfor %}
 
