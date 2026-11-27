@@ -26,7 +26,7 @@
     {% endif %}
     <p class="bk-chips">
       <span class="mini-status status-{{ b['status'] }}">{{ b['status'] }}</span>
-      {% if where %}<span class="mini-status {{ 'status-onshift' if where == 'Here now' else 'status-declined' if where == 'Did not arrive' else 'status-past' if where == 'Gone' else 'status-upcoming' }}">{{ where }}</span>{% endif %}
+      {% if where %}<span class="mini-status {{ 'status-onshift' if where in ('Here now', 'Leaving today') else 'status-declined' if where == 'Did not arrive' else 'status-past' if where == 'Gone' else 'status-upcoming' }}">{{ where }}</span>{% endif %}
       {#- A cancelled or declined stay owes nothing (26 October 2026): what it
           holds is kept, or the guest's to give back, and never "owed". -#}
       {% if bill.to_give_back %}<span class="mini-status status-overdue">{{ bill.to_give_back|money }} to give back</span>

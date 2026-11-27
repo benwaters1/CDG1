@@ -51,8 +51,9 @@ def _foot_total(html):
     return mt.group(1) if mt else None
 
 
-def _band(html, label):
-    """One figure from the overview band, by the label under it."""
+def _band(html, label, whole=False):
+    """One figure from the overview band, by the label under it -- its first
+    word, or all of it for a figure in two words ("12h 30m")."""
     # Tempered so a match cannot run on from one cell into the next.
     mt = re.search(r'<div class="overview-value">((?:(?!overview-value).)*?)</div>\s*'
                    r'<div class="overview-label">' + re.escape(label) + r"</div>",
@@ -60,7 +61,20 @@ def _band(html, label):
     if not mt:
         return None
     words = visible_text(mt.group(1)).split()
+    if whole:
+        return " ".join(words)
     return words[0] if words else ""
+
+
+def _hours(text):
+    """Hours from how the page says them: "4h 30m" -> 4.5, "8h" -> 8, "45m" -> 0.75.
+
+    Hours and minutes since the back-end review of 27 November 2026: "8.12h"
+    read as 8h 12m for a shift of 8h 07m."""
+    import re as _re
+    h = _re.search(r"(\d+)h", text or "")
+    mins = _re.search(r"(\d+)m\b", text or "")
+    return (int(h.group(1)) if h else 0) + (int(mins.group(1)) / 60 if mins else 0)
 
 
 def _rows(html):
@@ -75,7 +89,7 @@ def _rows(html):
 
 
 def _summed(rows):
-    return round(sum(float(h) for _s, _f, h in rows if h not in ("", "—")), 2)
+    return round(sum(_hours(h) for _s, _f, h in rows if h not in ("", "—")), 2)
 
 
 def _cleanup():
@@ -184,7 +198,7 @@ def run():
     s.check("each shift is a row, net of its break",
             # In the one spelling for hours (14 October 2026): the rows said
             # 4.50 and 8.00 over a band and a foot that said 12.5.
-            sorted(h for _s, _f, h in rows) == ["4.5", "8"],
+            sorted(h for _s, _f, h in rows) == ["4h 30m", "8h"],
             detail=f"rows read {rows} -- a 30 minute break was not taken off")
     s.check("and the band has a cell for the hours", _band(html, "Hours") is not None,
             detail="no overview cell labelled Hours")
@@ -203,10 +217,10 @@ def run():
             detail="an employee with no wage recorded was shown €0.00, which "
                    "reads as 'you earned nothing'")
     s.check("the foot row is the total of the rows above it",
-            _foot_total(html) == "12.5" and _summed(rows) == 12.5,
+            _foot_total(html) == "12h 30m" and _summed(rows) == 12.5,
             detail=f"foot row reads {_foot_total(html)!r} under rows of {rows}")
-    s.check("the band says the same hours", _band(html, "Hours") == "12.5",
-            detail=f"band reads {_band(html, 'Hours')!r}")
+    s.check("the band says the same hours", _band(html, "Hours", whole=True) == "12h 30m",
+            detail=f"band reads {_band(html, 'Hours', whole=True)!r}")
     s.check("and counts both shifts", _band(html, "Shifts") == "2",
             detail=f"band reads {_band(html, 'Shifts')!r}")
     s.check("only the money is missing", _band(html, "At your rate") == "—",
@@ -240,8 +254,8 @@ def run():
             detail=f"band reads {_band(html, 'At your rate')!r}")
     s.check("and it says the figure is gross", "gross" in html.lower())
     s.check("the hours did not move when the rate arrived",
-            _foot_total(html) == "12.5" and _band(html, "Hours") == "12.5",
-            detail=f"foot {_foot_total(html)!r}, band {_band(html, 'Hours')!r}")
+            _foot_total(html) == "12h 30m" and _band(html, "Hours", whole=True) == "12h 30m",
+            detail=f"foot {_foot_total(html)!r}, band {_band(html, 'Hours', whole=True)!r}")
     s.check("and it no longer says there is no rate",
             "no rate on file" not in html.lower(),
             detail="the rate is on file and the page still said it was not")
@@ -284,7 +298,7 @@ def run():
     s.section("A clocking that cannot be right is flagged, not hidden")
     _open_shift(emp["id"], when + timedelta(days=3))
     html = ec.get("/hours/mine").get_data(as_text=True)
-    s.check("an open shift is called out", "still open" in html.lower(),
+    s.check("an open shift is called out", "never clocked out" in html.lower(),
             detail="a shift with no clock-out silently made the total wrong")
     s.check("and the page says it needs a look", "needs a look" in html.lower()
             or "need a look" in html.lower(), detail="nothing told them to check it")
@@ -297,8 +311,8 @@ def run():
             TAG + " Other" not in html,
             detail="one employee could read another's hours")
     s.check("and their hours are not in the total",
-            _foot_total(html) == "12.5" and _band(html, "Hours") == "12.5",
-            detail=f"foot {_foot_total(html)!r}, band {_band(html, 'Hours')!r} -- "
+            _foot_total(html) == "12h 30m" and _band(html, "Hours", whole=True) == "12h 30m",
+            detail=f"foot {_foot_total(html)!r}, band {_band(html, 'Hours', whole=True)!r} -- "
                    "somebody else's 9 hours reached this person's total")
     s.check("nor their shift in the rows", len(_rows(html)) == 3,
             detail=f"{_rows(html)} -- two shifts and the open one are this person's")
@@ -369,7 +383,7 @@ def run():
             "no rate on file" not in paid.lower() and "60.00" in paid,
             detail="the other's missing wage was announced on this page")
     s.check("and the one without is",
-            "no rate on file" in bare.lower() and _foot_total(bare) == "7",
+            "no rate on file" in bare.lower() and _foot_total(bare) == "7h",
             detail=f"foot {_foot_total(bare)!r}")
 
     s.section("The owner's own clocked time adds up too")
@@ -387,13 +401,13 @@ def run():
         html = oc.get("/hours/mine").get_data(as_text=True)
         rows = _rows(html)
         foot = _foot_total(html)
-        s.check("their shift is on the page", any(h == "4" for _s, _f, h in rows),
+        s.check("their shift is on the page", any(h == "4h" for _s, _f, h in rows),
                 detail=str(rows[:6]))
         # The sum, not a fixed figure: other suites clock the shared owner in
         # and out, so the rows are whatever they are. Rows and total are now
         # to the same places, so they agree to the rounding of a sum.
         s.check("and the foot row is the sum of the rows, not 0.0",
-                foot is not None and abs(float(foot) - _summed(rows)) < 0.011,
+                foot is not None and abs(_hours(foot) - _summed(rows)) < 0.02,
                 detail=f"foot {foot!r} under rows summing to {_summed(rows)}")
     finally:
         conn = db()

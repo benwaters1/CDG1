@@ -331,7 +331,10 @@ def _run(s, oc, ec, owner, conn):
     s.check("on the sheet itself", "1 more room whose number is not known" in sheet_text, detail=sheet_text[:300])
 
     def _counts(text):
-        got = re.search(r"(\d+) guests? across (\d+) rooms? today", text)
+        # Tomorrow's line: the guests sleeping here tonight, which is what
+        # this counted when the page called it "today" (back-end review, 27 Nov:
+        # this morning's table is its own line now).
+        got = re.search(r"Tomorrow: (\d+) guests? across (\d+) rooms?", text)
         return (int(got.group(1)), int(got.group(2))) if got else (0, 0)
     before, after = _counts(base_breakfast), _counts(visible_text(oc.get("/breakfast").get_data(as_text=True)))
     s.check("breakfast counts them, and their rooms",

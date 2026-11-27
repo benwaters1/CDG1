@@ -65,7 +65,7 @@
     <div class="doc-row" style="align-items:flex-start;">
       <span style="flex:1;">
         <b>{{ r['staff_name'] or r['person_name'] }}</b>
-        <span class="upload-hint">{{ r['held_on'] }}</span>
+        <span class="upload-hint">{{ r['held_on']|date_short }}</span>
         {% if r['why_leaving'] %}<div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Why</span>{{ r['why_leaving'] }}</div>{% endif %}
         {% if r['what_worked'] %}<div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Worked</span>{{ r['what_worked'] }}</div>{% endif %}
         {% if r['what_did_not'] %}<div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Did not</span>{{ r['what_did_not'] }}</div>{% endif %}

@@ -208,7 +208,7 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
         {% if menu['status'] != 'published' %}
         <form method="post" action="{{ url_for('delete_menu_dish', dish_id=d['id']) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="doc-delete">×</button>
+          <button type="submit" class="doc-delete" aria-label="Take {{ d['name'] }} off the card">Take off</button>
         </form>
         {% endif %}
       </div>

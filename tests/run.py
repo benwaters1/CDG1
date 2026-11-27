@@ -767,6 +767,8 @@ SUITES = [
     "test_what_the_house_relies_on",
     # And where staff can get to, and what a guest cannot eat on every page that matters.
     "test_reach_and_allergies",
+    # And the small things said wrong: here now, breakfast's two counts, bare x buttons, words.
+    "test_said_plainly",
 ]
 
 

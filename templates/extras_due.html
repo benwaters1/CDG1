@@ -69,7 +69,7 @@
     <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
       {% if r.needs_arranging and not r.arranged %}
       <details class="refund-box" style="margin:0;">
-        <summary>Arranged</summary>
+        <summary>Mark arranged&hellip;</summary>
         <form method="post" action="{{ url_for('mark_extra_arranged', line_id=l['id']) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <label class="field-label" for="arranged-note-{{ l['id'] }}">A note for whoever hands it over</label>

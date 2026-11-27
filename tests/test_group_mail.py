@@ -142,7 +142,7 @@ def run():
 
     sid = _session()
     a = _reg(sid, "A")                                  # owes, emailable
-    b = _reg(sid, "B", status="pending")                # owes, emailable
+    b = _reg(sid, "B", status="pending")                # emailable; not billed until accepted
     c = _reg(sid, "C", do_not_email=1)                  # asked not to be emailed
     d = _reg(sid, "D", email="")                        # no address
     _reg(sid, "E", status="cancelled")                  # not on the session
@@ -234,8 +234,12 @@ def run():
     s.section("Statements: only whoever owes, through the one function")
     with _Mail() as rec:
         html = oc.get(statements_url).get_data(as_text=True)
-        s.check("the count comes first", "4 statements to send" in html,
-                detail="A, B, F and G owe and can be written to")
+        # B is still waiting on the house: a statement would tell them they owe
+        # before anybody has said yes (back-end review, 27 November 2026).
+        s.check("the count comes first", "3 statements to send" in html,
+                detail="A, F and G owe and can be written to")
+        s.check("a registration still waiting on the house is left out, and says why",
+                f"{TAG} B: {m.GROUP_NOT_ACCEPTED}" in html)
         s.check("whoever owes nothing is left out, and says so",
                 f"{TAG} H: {m.GROUP_NOTHING_OWING}" in html)
         s.check("and nothing went by looking", not rec.calls)
@@ -249,7 +253,7 @@ def run():
 
         m.send_statement = counting
         try:
-            r = oc.post(statements_url, data={"action": "send", "expect": "4"},
+            r = oc.post(statements_url, data={"action": "send", "expect": "3"},
                         follow_redirects=True)
             bulk = list(counted)
             oc.post(one_url, follow_redirects=True)
@@ -262,13 +266,13 @@ def run():
         s.check("and so does the button on one registration", single == [a], detail=str(single))
         statements = [c_ for c_ in rec.calls if "statement" in c_["subject"].lower()]
         s.check("each is the statement letter, with the statement beneath and what is owed",
-                len(statements) == 5 and all("Still to pay" in c_["body"] for c_ in statements),
+                len(statements) == 4 and all("Still to pay" in c_["body"] for c_ in statements),
                 detail=str([c_["subject"] for c_ in rec.calls]))
         s.check("from the atelier inbox", all(c_.get("area") == "workshops" for c_ in statements))
         said = " ".join(flashes(r))
         s.check("and the reasons for the rest are named",
                 f"{TAG} H" in said and m.GROUP_NOTHING_OWING in said
-                and f"{TAG} C" in said, detail=said)
+                and f"{TAG} C" in said and f"{TAG} B" in said, detail=said)
 
     s.section("A party of rooms: the same two, from the party's page")
     pid, (owes, paid) = _party()

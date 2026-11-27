@@ -40,13 +40,14 @@
         <div class="profile-avatar">{{ person['name']|initials }}</div>
         <div class="profile-card-name">{{ person['name'] }}</div>
         <div class="profile-card-role">{{ person['job_role'] or 'No role set' }}</div>
-        {% if user['role'] != 'owner' and person['phone'] %}<div class="upload-hint">{{ person['phone'] }}</div>{% endif %}
+        {% if user['role'] != 'owner' and person['phone'] %}<div class="upload-hint"><a href="tel:{{ person['phone']|replace(' ', '') }}">{{ person['phone'] }}</a></div>{% endif %}
         {% if person['id'] in on_shift_ids %}<div class="profile-card-status status-onshift">{{ t('on shift') }}</div>{% endif %}
         {% if user['role'] == 'owner' %}<div class="profile-card-status status-{{ person['status'] }}">{{ person['status'] }}</div>{% endif %}
         {% if not person['account_claimed'] %}<div class="profile-card-status" style="background:var(--gold-soft);color:var(--chestnut-deep);">{{ t('invite pending') }}</div>{% endif %}
       {% if can_open_profile %}</a>{% else %}</div>{% endif %}
       {% if user['role'] == 'owner' %}
-      <form method="post" action="{{ url_for('toggle_employee_status', user_id=person['id']) }}" style="margin-top:10px; width:100%;">
+      <form method="post" action="{{ url_for('toggle_employee_status', user_id=person['id']) }}" style="margin-top:10px; width:100%;"
+            {% if person['status'] == 'active' %}onsubmit="return confirm('Mark {{ person['name']|e }} inactive? They can no longer sign in.');"{% endif %}>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-mini" style="width:100%;">{{ 'Mark inactive' if person['status']=='active' else 'Mark active' }}</button>
       </form>

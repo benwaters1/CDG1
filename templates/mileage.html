@@ -66,7 +66,8 @@
                       style="background:none;border:0;cursor:pointer;color:var(--steel);">Decline</button>
             </form>
             {% else %}
-            {{ c['status'] }}
+            {{ {'pending': 'Waiting for approval', 'approved': 'Approved', 'declined': 'Declined',
+                'paid': 'Paid'}.get(c['status'], c['status']) }}
             {# Who decided it. A journey approved by nobody in particular is a
                payment nobody can be asked about. #}
             {% if c['decided_by'] %}<span class="upload-hint">by {{ c['decided_by'] }}</span>{% endif %}

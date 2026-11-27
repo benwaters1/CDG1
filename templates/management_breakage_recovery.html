@@ -45,7 +45,7 @@
 
 {% if data.undecided %}
 <p class="field-hint" style="max-width:760px;">
-  {{ data.undecided }} breakage{{ '' if data.undecided == 1 else 's' }} have no decision recorded
+  {{ counted(data.undecided, 'breakage') }} {{ 'has' if data.undecided == 1 else 'have' }} no decision recorded
   yet, so they sit in the written-off total until somebody makes one.
 </p>
 {% endif %}

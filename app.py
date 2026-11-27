@@ -17158,6 +17158,56 @@ def stay_flags(conn, booking_ids):
     return out
 
 
+def stay_is_here(stay, today_iso):
+    """Whether a stay's guest is in the house now.
+
+    Not "do its dates cover today": at ten in the morning that put HERE NOW on
+    a family whose flight had not landed, and took the badge off a guest still
+    at breakfast on the day she leaves (back-end review, 27 November 2026).
+    In before today and not checked out -- the day they leave included -- or
+    checked in today. A Booking.com stay carries no check-in, so its dates
+    answer."""
+    def get(key):
+        try:
+            return stay[key]
+        except (KeyError, IndexError, TypeError):
+            return None
+    arrive, leave = get("arrival_date") or "", get("departure_date") or ""
+    if not arrive or not leave or get("checked_out_at") or get("no_show_at"):
+        return False
+    if leave < today_iso:
+        return False
+    if arrive < today_iso:
+        return True
+    if arrive == today_iso:
+        try:
+            return bool(stay["checked_in_at"])
+        except (KeyError, IndexError, TypeError):
+            return leave > today_iso
+    return False
+
+
+app.jinja_env.globals["stay_is_here"] = stay_is_here
+
+
+def without_register_lines(text):
+    """A profile note without the "[Former register entry: ...]" lines the
+    5 August migration folded in. stays_with_status already leaves them out;
+    the guest list printed them, ISO dates and all, under To know."""
+    return "\n".join(line for line in str(text or "").splitlines()
+                     if not line.strip().startswith("[Former register entry:")).strip()
+
+
+app.jinja_env.filters["without_register_lines"] = without_register_lines
+
+
+def first_upper(text):
+    """Capital first letter, the rest exactly as written. str.capitalize()
+    lower-cases the rest, which turns SIRET and TVA into "siret" and "tva"."""
+    text = str(text or "")
+    return text[:1].upper() + text[1:]
+
+
 def guests_in_residence(conn, today):
     """Just the stays covering today -- the common case for every 'who's here'
     panel across the app."""
@@ -25148,6 +25198,7 @@ def extras_due(conn, today=None):
     for line in conn.execute(
             """SELECT booking_extras.*, bookings.guest_name, bookings.reference_code,
                       bookings.arrival_date, bookings.departure_date,
+                      bookings.checked_in_at, bookings.checked_out_at,
                       bookings.status AS booking_status, bookings.guest_phone,
                       bookings.party_size, bookings.transfer_flight_number,
                       bookings.transfer_arrival_time,
@@ -25189,8 +25240,7 @@ def extras_due(conn, today=None):
             "when": when,
             "overdue": bool(when) and when < today_iso,
             "today": when == today_iso,
-            "in_house": (line["arrival_date"] or "") <= today_iso
-                        < (line["departure_date"] or ""),
+            "in_house": stay_is_here(line, today_iso),
             "transfer": transfer,
             "needs_arranging": needs_arranging,
             "arranged": arranged,
@@ -49008,16 +49058,25 @@ def pos_day():
 
 
 def pos_tabs_open_through(conn, on):
-    """The tabs still open from service day `on` or before, oldest first.
+    """The tabs still open from service day `on` or before, oldest first:
+    [{"id", "table_label", "opened_at", "day"}].
 
-    By the service day the tab belongs to, not date(opened_at): that is the
-    UTC date, so a tab opened between midnight and two in the morning here was
-    filed under the day before and missed (back-end review, 27 Nov 2026)."""
-    return conn.execute(
-        """SELECT id, table_label, opened_at, COALESCE(service_date, date(opened_at)) AS day
-             FROM pos_orders
-            WHERE status = 'open' AND COALESCE(service_date, date(opened_at)) <= ?
-            ORDER BY opened_at""", (on.isoformat(),)).fetchall()
+    By the service day the tab belongs to, not the UTC day of the moment it
+    was opened: a tab opened between midnight and two in the morning here was
+    filed under the day before and missed (back-end review, 27 Nov 2026). A tab
+    from before service_date was stored is placed by its moment against the
+    end of that service day."""
+    _start, end = service_day_window(on)
+    out = []
+    for r in conn.execute(
+            """SELECT id, table_label, opened_at, service_date FROM pos_orders
+                WHERE status = 'open'
+                  AND (service_date <= ? OR (service_date IS NULL AND opened_at < ?))
+                ORDER BY opened_at""", (on.isoformat(), end)).fetchall():
+        out.append({"id": r["id"], "table_label": r["table_label"],
+                    "opened_at": r["opened_at"],
+                    "day": r["service_date"] or service_day_iso(r["opened_at"])})
+    return out
 
 
 
@@ -51916,6 +51975,11 @@ def breakfast():
         [g for g in guests_here if g.get("dietary") or g.get("requests")],
         key=lambda g: (not g.get("dietary"), g["room_name"] or ""))
     occupied_today = len({(g["room_id"], g["room_name"]) for g in guests_here})
+    # And tomorrow's, for the shopping: everybody sleeping here tonight, a
+    # Booking.com party of no stated size counted as one.
+    tonight = guests_in_residence(conn, today)
+    tomorrow_count = sum(g["party_size"] or 1 for g in tonight)
+    tomorrow_rooms = len({(g["room_id"], g["room_name"]) for g in tonight})
     conn.close()
     by_category = {}
     for i in items:
@@ -51923,6 +51987,7 @@ def breakfast():
     return render_template(
         "breakfast.html", by_category=by_category, checked_today=checked_today,
         guest_count=guest_count, occupied_today=occupied_today, guest_notes=guest_notes,
+        tomorrow_count=tomorrow_count, tomorrow_rooms=tomorrow_rooms,
     )
 
 
@@ -82791,8 +82856,12 @@ def admin_booking(booking_id):
         where = None
     elif booking["no_show_at"]:
         where = "Did not arrive"
-    elif booking["checked_out_at"] or departure <= today:
+    elif booking["checked_out_at"] or departure < today:
         where = "Gone"
+    elif departure == today:
+        where = "Leaving today"
+    elif arrival == today and not booking["checked_in_at"]:
+        where = "Arriving today"
     elif arrival <= today:
         where = "Here now"
     elif arrival == today + timedelta(days=1):
@@ -117808,7 +117877,7 @@ def readiness_checks(conn, *, include_slow=True):
     add("warn", "Legal", "What a receipt has to carry", not missing_identity,
         "Legal name, SIRET, TVA number, form, capital and RCS are all on file."
         if not missing_identity else
-        f"{', '.join(missing_identity).capitalize()} not set. Till receipts and "
+        f"{first_upper(', '.join(missing_identity))} not set. Till receipts and "
         "guest statements both print a VAT breakdown, and both say on the "
         "document itself that the numbers are missing — a guest forwards a "
         "statement to whoever pays them. Management, Company info.")
@@ -121666,7 +121735,7 @@ def front_desk_day(conn, today=None):
     if house_full:
         for r in by_room:
             if r["state"] == "Free tonight":
-                r["state"] = "Empty, not for sale tonight"
+                r["state"] = "Not for sale tonight"
     tomorrow_count = conn.execute(
         "SELECT COUNT(*) FROM bookings WHERE status = 'confirmed' AND arrival_date = ?",
         (tomorrow,)).fetchone()[0] + conn.execute(

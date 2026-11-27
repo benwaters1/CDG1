@@ -67,7 +67,7 @@
           {% for word in e.reach_words %}
           <span class="mini-status {{ 'status-declined' if word == 'Writes to guests' or word == 'Takes money' or word == 'Publishes' else 'status-upcoming' }}">{{ word }}</span>
           {% else %}
-          <span class="mini-status status-inactive">Writes to nobody</span>
+          <span class="mini-status status-past">Writes to nobody</span>
           {% endfor %}
         </div>
         <p class="upload-hint auto-what">{{ e.what }}</p>

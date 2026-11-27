@@ -78,7 +78,6 @@ MAY_WRITE_IN_CODE = {
     # staff, not guests
     "apply_expense_decision": "to a member of staff",
     "decide_shift_swap": "to a member of staff",
-    "bulk_approve_queue": "to a member of staff",
     "apply_leave_decision": "to a member of staff",
     # keys to an account: an edit that dropped the code or link locks them out
     "forgot_password": "carries a one-time sign-in code",

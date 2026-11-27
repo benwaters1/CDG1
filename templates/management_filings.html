@@ -72,7 +72,7 @@
                   onsubmit="return confirm('Take this off the calendar? What was filed against it is kept.');"
                   style="display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="doc-delete">×</button>
+              <button type="submit" class="doc-delete" aria-label="Take this filing off the calendar">Take off</button>
             </form>
           </td>
         </tr>
