@@ -82,6 +82,41 @@
     {% endif %}
     {% endfor %}
     {% endif %}
+    {# Their own details, changed by them (27 Nov 2026) -- keep this fold when a
+       new version of this page arrives. The route takes action "details" with
+       these four names, until the retreat begins (details_open). #}
+    {% if details_open %}
+    {% set _any_said = booking['requested_roommate'] or booking['dietary_notes'] or booking['medical_notes'] or booking['special_occasion'] %}
+    <details class="g-details-fold" id="your-details">
+      <summary>{{ 'Change these details' if _any_said else 'Add dietary needs, health notes, a roommate or an occasion' }}</summary>
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="details">
+        <div class="g-field">
+          <label for="d_requested_roommate">Travelling with another guest who has booked?</label>
+          <input type="text" id="d_requested_roommate" name="requested_roommate" maxlength="200"
+                 value="{{ booking['requested_roommate'] or '' }}" placeholder="Their name, and we will put you together">
+        </div>
+        <div class="g-field">
+          <label for="d_dietary_notes">Dietary requirements</label>
+          <textarea id="d_dietary_notes" name="dietary_notes" rows="2" maxlength="500"
+                    placeholder="Allergies, preferences">{{ booking['dietary_notes'] or '' }}</textarea>
+        </div>
+        <div class="g-field">
+          <label for="d_medical_notes">Any pre-existing health conditions</label>
+          <textarea id="d_medical_notes" name="medical_notes" rows="2" maxlength="500"
+                    placeholder="Anything our team should be aware of">{{ booking['medical_notes'] or '' }}</textarea>
+        </div>
+        <div class="g-field">
+          <label for="d_special_occasion">Celebrating something?</label>
+          <input type="text" id="d_special_occasion" name="special_occasion" maxlength="200"
+                 value="{{ booking['special_occasion'] or '' }}" placeholder="A birthday, an anniversary&hellip;">
+        </div>
+        <p class="g-hint">We are told as soon as you save. You can change these until the retreat begins; after that, tell us when you arrive.</p>
+        <button type="submit" class="g-btn g-btn--solid">Save these changes</button>
+      </form>
+    </details>
+    {% endif %}
   </div>
 
   {# Online check-in -- keep this line when a new version of this page arrives. #}

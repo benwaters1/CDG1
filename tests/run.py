@@ -44,6 +44,7 @@ SUITES = [
     "test_retreatguru_import",
     "test_rg_second_run",
     "test_workshop_register",
+    "test_workshop_guest_details",
     "test_lists_open_on_now",
     "test_owed_everywhere",
     "test_customer_record",
@@ -309,6 +310,7 @@ SUITES = [
     "test_payment_landing",
     "test_room_order",
     "test_guest_amendments",
+    "test_dinner_dietary_notice",
     "test_room_balance_reminder",
     "test_extras_offer_letter",
     "test_my_hours",
@@ -736,6 +738,9 @@ SUITES = [
     # 26 November 2026 (owner: "I don't like the homepage on the mobile"): fifteen screens to six and a little,
     # the one choice asked once, the rooms and the quotes to swipe, every photograph's copy twice its drawn width.
     "test_home_on_a_phone",
+    # 27 November 2026 (owner: yes to a shorter footer on a phone): Visit and Help each a button over its list
+    # below 600px, the newsletter on one row, the drawing smaller; 1,955px to about 1,224 on every page.
+    "test_footer_on_a_phone",
     # 26 November 2026 (owner): the claw-foot bath off the Twin, the King Room and the ground-floor Twin.
     "test_room_page_bath",
     # 26 November 2026 (owner): five guest rooms said, the room with the plates on the wall, the wallpaper pair.
