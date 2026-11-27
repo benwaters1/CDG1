@@ -419,9 +419,20 @@
     <div class="g-mb-row">
       <span class="g-mb-rowt">{{ d.words }} — {{ d.covers }} × €{{ '{:,.2f}'.format(d.price) }}{% if d.note %}<br><span class="g-hint">For the kitchen: {{ d.note }}</span>{% endif %}</span>
       <span class="mini-status status-{{ (d.table_status|string)|lower }}">{{ 'booked' if d.table_status == 'confirmed' else d.table_status }}</span>
+      {#- 27 Nov 2026 (§2.5): taken off up to the evening before. Never refunded by itself: the house's rule is said
+          before the button, and anything paid over becomes the owner's call. -#}
+      {% if d.removable %}
+      <form method="post" class="g-mb-remove" style="margin:0" onsubmit="return confirm('Take {{ d.words }} off your stay? {{ dinner_remove_rule|e }}')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="remove_dinner">
+        <input type="hidden" name="line_id" value="{{ d.line_id }}">
+        <button type="submit" class="g-btn g-btn--sm">Take it off</button>
+      </form>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
+  {% if _dl.booked|selectattr('removable')|list %}<p class="g-hint" style="margin-top:var(--s2)">A dinner can be taken off up to the evening before. {{ dinner_remove_rule }}</p>{% endif %}
   {% endif %}
   {% for n in _dl.more %}
   <form method="post" class="g-mb-dinner" style="margin-top:var(--s3);">

@@ -553,6 +553,8 @@ def _run(s, oc, owner, conn):
     chef, r = _make(oc, conn, gname, nights[0], nights[-1], {room["id"]: usual + 40},
                     kind="guest_chef", status="live", chef_name=f"{TAG} Marie", dinner_time="19:30",
                     dinner_covers="8", dinner_price="95",
+                    # A dinner goes on sale only with a menu (27 Nov 2026).
+                    menu_choice_shown="1", dinner_menu_id=str(_harness.standing_menu(conn)),
                     **{f"dinner_{nights[0].isoformat()}": "1", f"dinner_{nights[1].isoformat()}": "1"})
     s.check("a guest-chef occasion goes on sale", chef and chef["status"] == "live", response=r)
     s.check("with the chef switch set to yes by itself", chef and chef["chef_on_site"] == 1)

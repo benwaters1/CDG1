@@ -399,7 +399,8 @@
       <p class="g-hint">Only about these dates. No newsletter unless you ask for one.</p>
     </div>
 {% endif %}
-  {% from '_stay_or_workshop.html' import night_notice %}{{ night_notice(dm=_dm) }}
+  {#- 27 Nov 2026 (§2.4): on dates with a dinner night the notice says the house's dinner, not the restaurants nearby. -#}
+  {% from '_stay_or_workshop.html' import night_notice %}{{ night_notice(dm=_dm, dinner=(dinner_served|default(''))|length > 0) }}
 </div></section>
 
 {#- The bathrooms. 11 Nov 2026 (owner): "why isnt there a section on the bathrooms ... the bathrooms are a real
@@ -497,7 +498,7 @@
 {# The commonest reason a luxury booking is abandoned is not knowing what the
    number covers. Both columns, stated before anyone reaches a payment page.
    Every line below is checked against what the app actually does. #}
-{{ facilities(_dm, breakfast_photo=['/static/img/more/breakfast-table-bruce.jpg', 'Breakfast laid in the kitchen: croissants, cherries, juices and homemade jams, with Bruce by the window.']) }}
+{{ facilities(_dm, breakfast_photo=['/static/img/more/breakfast-table-bruce.jpg', 'Breakfast laid in the kitchen: croissants, cherries, juices and homemade jams, with Bruce by the window.'], dinner_served=dinner_served|default('')) }}
 {#- 9 Nov, evening (owner's second review, 1): A Night, or la Vie de Château is on the home page and /workshops; not here. -#}
 
 <section class="g-sec" id="extras"><div class="g-wrap">
@@ -551,6 +552,8 @@
 {% from '_faq.html' import faq %}
 {{ faq([
   ('Are meals and drinks included?',
+   ('Breakfast is. ' ~ dinner_served ~ ', added when you book your room. Lunch and drinks are not part of a stay; Les Cabannes, just down the hill, has good places to eat.')
+   if dinner_served|default('') else
    'Breakfast is. Lunch, dinner and drinks are not part of a stay; Les Cabannes, just down the hill, has good places to eat.'),
   ('When do I pay?',
    'When you book. Your room is confirmed as soon as the payment goes through.'),
@@ -634,7 +637,9 @@
     {#- 9 Nov, evening (owner's second review, 1): Dinner Nearby and Days Out, a line each. -#}
     <div class="g-key__i">
       <p class="g-key__k">Dinner</p>
-      <p class="g-key__v">Les Cabannes is just down the hill, about 500 metres away. <a href="{{ url_for('whats_on') }}#dinner-nearby">Where to eat</a></p>
+      {#- 27 Nov 2026 (§2.4): on dates with a dinner night, the house's dinner, said with its nights, time and price. -#}
+      {% if dinner_served|default('') %}<p class="g-key__v g-key__dinner">{{ dinner_served }} &mdash; add it below.</p>
+      {% else %}<p class="g-key__v">Les Cabannes is just down the hill, about 500 metres away. <a href="{{ url_for('whats_on') }}#dinner-nearby">Where to eat</a></p>{% endif %}
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Days out</p>

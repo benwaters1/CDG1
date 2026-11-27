@@ -6,7 +6,7 @@
     link. Without script, or in a browser with no <dialog>, the link simply opens the menu. Sized to a 375px phone
     with no sideways scroll (test_dinner_at_gudanes measures it in Chrome). -#}
 {% macro menu_link(m, label='See the menu', cls='g-menu-link') -%}
-{%- if m %}<a href="{{ m.url }}" class="{{ cls }}" data-menu-open data-menu-pdf="{{ 1 if m.pdf else 0 }}" data-menu-alt="{{ m.alt }}" data-menu-download="{{ m.download }}" target="_blank" rel="noopener">{{ label }}</a>{% endif -%}
+{%- if m %}<a href="{{ m.url }}" class="{{ cls }}" data-menu-open data-menu-pdf="{{ 1 if m.pdf else 0 }}" data-menu-kind="{{ m.kind or ('pdf' if m.pdf else 'image') }}" data-menu-alt="{{ m.alt }}" data-menu-download="{{ m.download }}" target="_blank" rel="noopener">{{ label }}</a>{% endif -%}
 {%- endmacro %}
 
 {% macro menu_dialog() %}
@@ -31,6 +31,8 @@
 .g-menudlg__b{flex:1 1 auto;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
 .g-menudlg__b img{display:block;width:100%;height:auto}
 .g-menudlg__b iframe{display:block;width:100%;height:min(75dvh,60rem);border:0;background:#fff}
+.g-menudlg--page .g-menudlg__in{width:min(46rem,calc(100vw - 24px))}
+.g-menudlg--page .g-menudlg__b iframe{height:calc(100dvh - 140px);background:#F3EEE5}
 .g-menudlg__acts{display:flex;flex-wrap:wrap;gap:8px 20px;margin:0;padding:12px 16px;border-top:1px solid #E2D9C6}
 .g-menudlg__acts a{min-height:44px;display:inline-flex;align-items:center}
 </style>
@@ -65,16 +67,25 @@
     e.preventDefault();
     last = a;
     var url = a.getAttribute('href'), pdf = a.getAttribute('data-menu-pdf') === '1',
+        kind = a.getAttribute('data-menu-kind') || (pdf ? 'pdf' : 'image'),
         alt = a.getAttribute('data-menu-alt') || 'The menu';
     body.innerHTML = '';
-    if (pdf) {
-      var f = document.createElement('iframe'); f.src = url; f.title = alt; body.appendChild(f);
+    /* A menu built in the app is a page in the house style: framed at a reading width with nothing of a PDF
+       viewer's toolbar, and Print rather than Download. */
+    dlg.classList.toggle('g-menudlg--page', kind === 'html');
+    if (kind === 'html' || pdf) {
+      var f = document.createElement('iframe');
+      f.src = kind === 'html' ? url + (url.indexOf('?') < 0 ? '?' : '&') + 'embed=1' : url;
+      f.title = alt; body.appendChild(f);
     } else {
       var i = document.createElement('img'); i.src = url; i.alt = alt; body.appendChild(i);
     }
-    acts.hidden = !pdf;
+    acts.hidden = kind === 'image';
     acts.querySelector('.g-menudlg__new').href = url;
-    acts.querySelector('.g-menudlg__dl').href = a.getAttribute('data-menu-download') || url;
+    var dl = acts.querySelector('.g-menudlg__dl');
+    dl.href = a.getAttribute('data-menu-download') || url;
+    if (kind === 'html') { dl.removeAttribute('download'); dl.target = '_blank'; dl.textContent = 'Print'; }
+    else { dl.setAttribute('download', ''); dl.removeAttribute('target'); dl.textContent = 'Download'; }
     /* The link holds focus as the pop-up opens -- a tap does not give it focus -- so the browser's own return of
        focus, when the dialog closes, comes back to it. */
     try { a.focus({preventScroll: true}); } catch (err) { a.focus(); }

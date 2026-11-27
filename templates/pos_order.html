@@ -595,6 +595,18 @@
          reader, and the guest's tap was then recorded nowhere. #}
       <p class="upload-hint" id="reader-waiting-note">{{ reader_waiting }}</p>
       {% else %}
+      {#- A staying guest's table (27 Nov 2026): what they had beyond the dinner paid with their stay goes on their room
+          by default -- first, and named -- or they pay at the table below. -#}
+      {%- set _stay = (in_house|selectattr('id', 'equalto', order['room_booking_id'])|first) if order['room_booking_id'] else none %}
+      {% if _stay %}
+      <form method="post" action="{{ url_for('pos_take_payment_route', order_id=order['id']) }}" style="margin-bottom:12px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="method" value="room">
+        <input type="hidden" name="room_booking_id" value="{{ _stay['id'] }}">
+        <button type="submit" class="btn-primary" style="width:100%;">Charge €{{ '%.2f'|format(bill.outstanding) }} to {{ _stay['guest_name'] }}’s room</button>
+        <p class="upload-hint">Staying with us ({{ _stay['reference_code'] }}): it goes on their bill, each item a line of its own. Or they pay at the table below.</p>
+      </form>
+      {% endif %}
       <form method="post" action="{{ url_for('pos_take_payment_route', order_id=order['id']) }}"
             class="till-pay-part">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -626,7 +638,7 @@
         <select id="pos_order-room-booking-id" name="room_booking_id" required>
           <option value="">— which guest —</option>
           {% for b in in_house %}
-          <option value="{{ b['id'] }}">{{ b['guest_name'] }} — {{ b['reference_code'] }}</option>
+          <option value="{{ b['id'] }}"{% if b['id'] == order['room_booking_id'] %} selected{% endif %}>{{ b['guest_name'] }} — {{ b['reference_code'] }}</option>
           {% endfor %}
         </select>
         <button type="submit" class="btn-mini" style="margin-top:8px;">Charge €{{ '%.2f'|format(bill.outstanding) }} to the room</button>

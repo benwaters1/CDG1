@@ -124,6 +124,12 @@
 {# The average was already worked out and never shown. It is the figure that
    says whether a quiet night was fewer tables or smaller ones, which the
    total on its own cannot. It divides the total above, so the two agree. #}
+{#- Dinners paid before the table sat down (27 Nov 2026): fed tonight, paid with the stay or online, so counted here
+    and NOT in the takings above -- their money was counted when it was paid. -#}
+{% if report.prepaid_covers %}
+<p class="upload-hint" id="prepaid-covers"><strong>{{ report.prepaid_covers }} cover{{ '' if report.prepaid_covers == 1 else 's' }} of Dinner at Gudanes prepaid</strong>
+  ({{ report.prepaid_value|money }}), with their stays or online: served tonight, not in the takings above.</p>
+{% endif %}
 {% if report.tabs %}
 <p class="upload-hint">{{ report.tabs }} tab{{ '' if report.tabs == 1 else 's' }},
   averaging {{ report.average_per_tab|money }} taken each — a quiet night is

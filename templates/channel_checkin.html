@@ -21,6 +21,22 @@
   {% if stay['checkin_done_at'] %}
   <p>Thank you — you are checked in. Your room will be ready for you{% if stay['estimated_arrival_time'] %}, and we expect you {{ stay['estimated_arrival_time'] }}{% endif %}.</p>
   <p class="g-hint">If anything changes, write to us through Booking.com and we will see it.</p>
+  {#- DINNER AT GUDANES (27 Nov 2026): Booking.com sells the room only, so the house's dinner on these nights is
+      offered here once they have checked in, booked and paid on the restaurant's page with their details in. -#}
+  {% set _od = ota_dinners|default({'booked': [], 'more': []}) %}
+  {% if _od.booked or _od.more %}
+  {% from '_menu_dialog.html' import menu_link %}
+  <div class="g-panel" id="dinner-at-gudanes" style="margin-top:var(--s5)">
+    <h2 class="g-h3" style="margin-top:0">Dinner at Gudanes</h2>
+    {% for d in _od.booked %}<p class="g-p" style="margin:var(--s2) 0">{{ d.words }}: dinner for {{ d.party_size }}, {{ 'booked' if d.status == 'confirmed' else 'waiting for the château' }}.</p>{% endfor %}
+    {% for n in _od.more %}
+    <p class="g-p" style="margin:var(--s3) 0 var(--s2)">{{ n.title }} is served on {{ n.words }}{% if n.time_words %}, {{ n.time_words }}{% endif %}, {{ n.price_words }}.{% if n.menu %} {{ menu_link(n.menu) }}{% endif %}</p>
+    <p style="margin:0"><a class="g-btn g-btn--solid" href="{{ n.book }}">Book dinner on {{ n.short }}</a></p>
+    {% endfor %}
+    {% if _od.more %}<p class="g-hint" style="margin-top:var(--s3)">Paid by card when you book it. Dinner can be booked up to the day before.</p>{% endif %}
+  </div>
+  {{ menu_dialog_once() }}
+  {% endif %}
   {% else %}
   <p>So that your room is ready, and for the register French law asks a guest house to keep, please fill this in. It takes two minutes.</p>
 

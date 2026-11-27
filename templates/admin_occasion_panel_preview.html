@@ -1,0 +1,25 @@
+<!doctype html>
+{#- The Dinner at Gudanes panel for the owner's preview on the occasion's form (brief of 27 Nov 2026, §5: "a preview of
+    the guest panel exactly as it will show"): the same macro the occasion's page draws, under the public stylesheet, in
+    a frame on the form. From what is saved. -#}
+{% from '_dinner_panel.html' import dinner_panel %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Preview · Dinner at Gudanes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='gudanes.css') }}">
+<style>body{ margin:0; } .g-wrap{ padding:0 16px 24px; } .g .g-dinpanel{ margin-top:16px; }</style>
+</head>
+<body class="g">
+<div class="g-wrap">
+{% if panel %}{{ dinner_panel(occ, panel, dinners, dinner_time_words, night_menus) }}
+{% else %}<p class="g-p" style="padding:16px 0">No panel: {{ 'a guest chef has the section of their own' if occ.is_guest_chef else 'no dinner night is saved yet' }}.</p>{% endif %}
+</div>
+{% if occ.menu or night_menus %}{{ menu_dialog_once() }}{% endif %}
+</body>
+</html>
