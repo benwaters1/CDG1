@@ -75072,7 +75072,7 @@ def workshop_statement(manage_token):
 # registration form and the staff edit use, and what the house's email calls
 # each one. Their name, email and party stay with the house: the email is
 # what the booking is filed under, and a different party is a different price.
-WORKSHOP_GUEST_DETAILS = (
+RETREAT_OWN_DETAILS = (
     ("requested_roommate", 200, "Travelling with"),
     ("dietary_notes", 500, "Dietary notes"),
     ("medical_notes", 500, "Medical notes"),
@@ -75135,7 +75135,7 @@ def guest_details_changes(booking, fields, changed):
     health note says only that it was added, changed or taken off.
     """
     lines = []
-    for key, _cap, label in WORKSHOP_GUEST_DETAILS:
+    for key, _cap, label in RETREAT_OWN_DETAILS:
         if key not in changed:
             continue
         was, now = (booking[key] or "").strip(), (fields[key] or "").strip()
@@ -75182,7 +75182,7 @@ def tell_house_of_guest_details(conn, booking, fields, changed):
         send_notification(
             conn, owner["id"], "guest_request",
             f"{booking['guest_name']} changed their details for {booking['title']}",
-            body="; ".join(label for key, _cap, label in WORKSHOP_GUEST_DETAILS
+            body="; ".join(label for key, _cap, label in RETREAT_OWN_DETAILS
                            if key in changed) + " changed",
             link=url_for("admin_workshop_registrations", session_id=booking["session_id"]))
 
@@ -75263,14 +75263,14 @@ def workshop_manage(manage_token):
                   "please tell us when you arrive, or write to us.", "error")
             return redirect(back)
         fields = {key: (request.form.get(key) or "").strip()[:cap] or None
-                  for key, cap, _label in WORKSHOP_GUEST_DETAILS}
+                  for key, cap, _label in RETREAT_OWN_DETAILS}
         changed = write_workshop_details(conn, booking, fields)
         if changed:
             # That they changed, not to what: the trail outlives the notes.
             log_audit(conn, "workshop_details_changed_by_guest",
                       target=booking["reference_code"],
                       details=", ".join(label.lower() for key, _cap, label
-                                        in WORKSHOP_GUEST_DETAILS if key in changed)
+                                        in RETREAT_OWN_DETAILS if key in changed)
                       + " changed")
         conn.commit()
         if changed:
