@@ -9345,6 +9345,7 @@ def init_db():
     backfill_consent_history(conn)
     redact_stored_links(conn)
     scrub_quoted_dinner_notes(conn)
+    scrub_assistant_health_answers(conn)
     incident_times_to_utc(conn)
     prep_notes_in_words(conn)
 
@@ -70394,7 +70395,10 @@ def restaurant_email_context(booking, refund_note=""):
         "dinner_date": format_date_human(booking["dinner_date"]),
         "party_size": booking["party_size"],
         "reference_code": booking["reference_code"],
-        "dietary_line": f"\nDietary notes: {booking['dietary_notes']}" if booking["dietary_notes"] else "",
+        # On one line, so the kept copy can lose it exactly once the dinner is
+        # over (scrub_dinner_letters): a note's end is the line's end.
+        "dietary_line": (f"\nDietary notes: {note_on_one_line(booking['dietary_notes'])}"
+                         if (booking["dietary_notes"] or "").strip() else ""),
         "price_block": ("\n" + "\n".join(price_lines)) if price_lines else "",
         "refund_note": refund_note,
         "manage_url": url_for("restaurant_manage", manage_token=booking["manage_token"], _external=True),
@@ -72023,7 +72027,10 @@ def morning_digest(conn, today=None):
     if dinners:
         lines.append(f"Dinner ({len(dinners)} booking(s), {covers} cover(s)):")
         for d in dinners:
-            note = f" — {d['dietary_notes']}" if (d["dietary_notes"] or "").strip() else ""
+            # One line per dinner, so the copy kept of this summary can lose the
+            # note exactly once the dinner is over (scrub_morning_summaries).
+            note = (f" — {note_on_one_line(d['dietary_notes'])}"
+                    if (d["dietary_notes"] or "").strip() else "")
             lines.append(f"  {d['guest_name']}, {d['party_size'] or 1}{note}")
         lines.append("")
     if warnings:
@@ -117728,6 +117735,130 @@ HEALTH_NOTE_FIELDS = [
 ]
 
 
+def note_on_one_line(text):
+    """A guest's note on a single line, its own lines joined by '; '.
+
+    A letter that quotes a note writes it this way, so the end of the note is
+    the end of the line and the copy kept of the letter can lose exactly the
+    note, and nothing after it, once the booking is over.
+    """
+    return "; ".join(part.strip() for part in (text or "").splitlines() if part.strip())
+
+
+# What a kept copy says where a dinner's note was. Neither begins the way the
+# note's own line does, so a copy that has been through is not picked up again.
+LETTER_NOTE_KEPT_AS = "Dietary notes — deleted once the dinner was over."
+SUMMARY_NOTE_KEPT_AS = " — a dietary note, deleted once the dinner was over"
+_LETTER_DIETARY_LINE = re.compile(r"Dietary notes: [^\n]*")
+
+
+def without_dinner_note(body, note=None):
+    """A dinner letter's kept copy, without the note it quoted.
+
+    The note as it is on the booking comes out first, written either way, which
+    catches a note of several lines written before letters put it on one. Then
+    whatever is left on a "Dietary notes:" line, which catches a note the guest
+    changed after the letter went.
+    """
+    if not body:
+        return body
+    for said in {(note or "").strip(), note_on_one_line(note)} - {""}:
+        body = body.replace(f"Dietary notes: {said}", LETTER_NOTE_KEPT_AS)
+    return _LETTER_DIETARY_LINE.sub(LETTER_NOTE_KEPT_AS, body)
+
+
+def without_summary_notes(body, notes=()):
+    """A morning summary's kept copy, with each dinner's note taken off its line.
+
+    The notes of that day's dinners come out first, written either way. Then
+    every line in the Dinner list is cut at its note, and a line inside the list
+    that does not start like a dinner (the rest of a note written over several,
+    before summaries put it on one) goes with the note it belonged to.
+    """
+    if not body:
+        return body
+    for note in notes:
+        for said in {(note or "").strip(), note_on_one_line(note)} - {""}:
+            body = body.replace(f" — {said}", SUMMARY_NOTE_KEPT_AS)
+    out, in_dinner = [], False
+    for line in body.split("\n"):
+        if line.startswith("Dinner ("):
+            in_dinner = True
+        elif in_dinner and not line.strip():
+            in_dinner = False
+        elif in_dinner:
+            if not line.startswith("  "):
+                continue
+            who, sep, _note = line.partition(" — ")
+            line = who + (SUMMARY_NOTE_KEPT_AS if sep else "")
+        out.append(line)
+    return "\n".join(out)
+
+
+def scrub_dinner_letters(conn, today):
+    """Take a dinner's note out of the copies kept of its letters, once it is over.
+
+    The guest's letters about a table (received, confirmed, declined, cancelled)
+    quote their note, which is right while the dinner is coming. But a copy is
+    kept two years, in their correspondence and, for a held letter, the outbox,
+    and the privacy notice says the note goes when the booking is over. Run by
+    purge_health_notes BEFORE it clears the notes, while they can still be
+    matched word for word.
+    """
+    iso = today.isoformat()
+    changed = 0
+    for table, rows in (
+            ("guest_messages", conn.execute(
+                """SELECT gm.id, gm.body, rb.dietary_notes FROM guest_messages gm
+                     JOIN restaurant_bookings rb ON rb.id = gm.about_id
+                    WHERE gm.about_category = 'restaurant' AND rb.dinner_date < ?
+                      AND gm.body LIKE '%Dietary notes: %'""", (iso,)).fetchall()),
+            ("email_outbox", conn.execute(
+                """SELECT eo.id, eo.body, rb.dietary_notes FROM email_outbox eo
+                     JOIN guest_messages gm ON gm.outbox_id = eo.id
+                     JOIN restaurant_bookings rb ON rb.id = gm.about_id
+                    WHERE gm.about_category = 'restaurant' AND rb.dinner_date < ?
+                      AND eo.body LIKE '%Dietary notes: %'""", (iso,)).fetchall())):
+        for r in rows:
+            body = without_dinner_note(r["body"], r["dietary_notes"])
+            if body != r["body"]:
+                conn.execute(f"UPDATE {table} SET body = ? WHERE id = ?", (body, r["id"]))
+                changed += 1
+    return changed
+
+
+def scrub_morning_summaries(conn, today):
+    """Take the dinners' notes out of the copies kept of earlier mornings' summaries.
+
+    The morning summary quotes each dinner's note, which is the point of it on
+    the day. Its copy is kept two years in the mail log (and the outbox, if it
+    could not go), so every summary from a day before today loses them. Run by
+    purge_health_notes before it clears the notes.
+    """
+    changed = 0
+    rows = conn.execute(
+        """SELECT 'mail_log' AS tbl, id, body, created_at FROM mail_log
+            WHERE template_key = 'code:run_morning_digest_job' AND body LIKE '%Dinner (%'
+           UNION ALL
+           SELECT 'email_outbox', eo.id, eo.body, eo.created_at FROM email_outbox eo
+             JOIN mail_log ml ON ml.outbox_id = eo.id
+            WHERE ml.template_key = 'code:run_morning_digest_job'
+              AND eo.body LIKE '%Dinner (%'""").fetchall()
+    for r in rows:
+        day = house_date(r["created_at"])
+        if not day or day >= today:
+            continue
+        notes = [n["dietary_notes"] for n in conn.execute(
+            "SELECT dietary_notes FROM restaurant_bookings WHERE dinner_date = ? "
+            "AND dietary_notes IS NOT NULL AND TRIM(dietary_notes) != ''",
+            (day.isoformat(),))]
+        body = without_summary_notes(r["body"], notes)
+        if body != r["body"]:
+            conn.execute(f"UPDATE {r['tbl']} SET body = ? WHERE id = ?", (body, r["id"]))
+            changed += 1
+    return changed
+
+
 def purge_health_notes(conn, today=None):
     """Clear dietary and medical notes once the thing they were for has passed.
 
@@ -117741,6 +117872,11 @@ def purge_health_notes(conn, today=None):
     today = today or house_today()
     iso = today.isoformat()
     cleared = {}
+
+    # The copies kept of the letters that quoted a dinner's note, FIRST: they
+    # are matched against the note itself, which the next statement clears.
+    cleared["dinner_letters"] = scrub_dinner_letters(conn, today)
+    cleared["morning_summaries"] = scrub_morning_summaries(conn, today)
 
     n = conn.execute(
         """UPDATE restaurant_bookings SET dietary_notes = NULL
@@ -136956,8 +137092,9 @@ ASSISTANT_TOOLS = [
         "name": "arrivals",
         "description": (
             "Who is arriving and leaving on a given day, with the room, the "
-            "party size, what time they said they would get here, anything "
-            "they cannot eat, whether it is their first stay or their sixth, "
+            "party size, what time they said they would get here, whether "
+            "they have a dietary note (never the note itself: health notes "
+            "are not sent here), whether it is their first stay or their sixth, "
             "and anything still missing from the booking. This is what the "
             "breakfast sheet is printed from. Defaults to today."),
         "input_schema": {
@@ -136979,7 +137116,8 @@ ASSISTANT_TOOLS = [
         "name": "find_guest",
         "description": (
             "Look a person up by name or email: how many times they have "
-            "stayed, when they were last here, what they cannot eat, how they "
+            "stayed, when they were last here, whether they keep a dietary note "
+            "(never the note itself: health notes are not sent here), how they "
             "like to arrive, and any standing note about them. A stay still to "
             "come is reported as booked, never as a stay made. Use this before "
             "saying anything about a particular guest."),
@@ -136995,10 +137133,13 @@ ASSISTANT_TOOLS = [
         "name": "kitchen",
         "description": (
             "What the kitchen needs for one day's service: how many are "
-            "eating, and every single person with something they cannot eat, "
-            "gathered from the stays, the table reservations and the atelier "
-            "places alike. Use this for any question about dinner, covers, "
-            "allergies or what the chef needs to know. Defaults to today."),
+            "eating, and who has something they cannot eat, gathered from the "
+            "stays, the table reservations and the atelier places alike. It "
+            "names them and links the kitchen's list, where the notes are read: "
+            "the notes themselves are health data and are never sent here, so "
+            "point to the list rather than guessing what they say. Use this for "
+            "any question about dinner, covers, allergies or what the chef "
+            "needs to know. Defaults to today."),
         "input_schema": {
             "type": "object",
             "properties": {"day": {
@@ -137149,10 +137290,12 @@ ASSISTANT_SYSTEM = (
     "1. LOOK BEFORE YOU ANSWER. You have tools that read the house's real "
     "figures. Use them rather than guessing, and never state a number, a name "
     "or a date you have not read from a tool in this conversation.\n"
-    "1a. A DIETARY NOTE AND A CAUTION ARE REPEATED WORD FOR WORD, never "
-    "paraphrased and never left out of a summary. Somebody could be allergic, "
-    "and a standing instruction about a guest exists because the house meant "
-    "it.\n"
+    "1a. A CAUTION IS REPEATED WORD FOR WORD, never paraphrased and never "
+    "left out of a summary: a standing instruction about a guest exists "
+    "because the house meant it. A DIETARY NOTE IS NEVER SENT TO YOU, because "
+    "it is health data. When a tool says somebody has one, say so every time, "
+    "never guess what it says, and send the owner to the kitchen's list to "
+    "read it. Somebody could be allergic.\n"
     "2. Be brief. This is read standing up with a coffee. Short sentences, no "
     "headings, no bullet lists unless you are genuinely listing things, and "
     "no restating the question back.\n"
@@ -137254,6 +137397,37 @@ def assistant_messages_for_model(rows):
     return merged
 
 
+# What the assistant is told in place of a guest's dietary note. Its answers go
+# to Anthropic, and the privacy notice says nothing about anybody's health does.
+ASSISTANT_NOTE_KEPT = ("has a dietary note (on the kitchen's list; health notes "
+                       "are not sent to the assistant)")
+ASSISTANT_ANSWER_TAKEN_OUT = (
+    "This answer held guests' dietary notes and has been taken out: health notes "
+    "are not sent to the assistant. Ask again for one without them.")
+
+
+def scrub_assistant_health_answers(conn):
+    """Take the dietary notes out of the assistant's earlier answers. At startup.
+
+    Its kitchen, arrivals and guest lookups used to quote what people cannot
+    eat, and every answer is kept with the conversation and sent back with each
+    new thing the owner says, so an old one went to Anthropic again every turn.
+    Such an answer is replaced whole: a lookup is cheap to ask again, and
+    cutting a note out of free text is how a piece of one gets left behind.
+    Finds nothing once the old answers are through it.
+    """
+    n = conn.execute(
+        """UPDATE assistant_messages SET content = ?
+            WHERE role = 'tool' AND content IS NOT NULL
+              AND ((tool_name IN ('arrivals', 'find_guest') AND content LIKE '%CANNOT EAT:%')
+                OR (tool_name = 'kitchen' AND content LIKE '% cover(s)): %'
+                    AND content NOT LIKE '% cover(s)): has a note%'))""",
+        (ASSISTANT_ANSWER_TAKEN_OUT,)).rowcount
+    if n:
+        conn.commit()
+    return n
+
+
 def assistant_read_tool(conn, user, name, args):
     """Run one of the tools that only looks. Returns text for the model.
 
@@ -137311,7 +137485,7 @@ def assistant_read_tool(conn, user, name, args):
             if r["arrival_time"]:
                 bits.append(f"at {r['arrival_time']}")
             if r["dietary"]:
-                bits.append(f"CANNOT EAT: {r['dietary']}")
+                bits.append(ASSISTANT_NOTE_KEPT)
             if r["requests"]:
                 bits.append(f"asked: {r['requests']}")
             if r["extras"]:
@@ -137386,7 +137560,7 @@ def assistant_read_tool(conn, user, name, args):
                             + (f", {len(split['ahead'])} stays booked in all"
                                if len(split["ahead"]) > 1 else ""))
             if (g["dietary_notes"] or "").strip():
-                bits.append(f"CANNOT EAT: {g['dietary_notes'].strip()}")
+                bits.append(ASSISTANT_NOTE_KEPT)
             if (g["usual_arrival_time"] or "").strip():
                 bits.append(f"usually arrives {g['usual_arrival_time'].strip()}")
             if (g["caution"] or "").strip():
@@ -137404,15 +137578,19 @@ def assistant_read_tool(conn, user, name, args):
         lines = [f"{day.isoformat()}: {sheet['covers']} cover(s). "
                  f"{sheet['with_notes']} person(s) with something they cannot "
                  f"eat, covering {sheet['flagged_covers']} of them."]
+        # NAMED, NEVER SENT. The kitchen's list gives each note in the words
+        # the guest used, because somebody was going to be served the thing
+        # they told us about. This answer goes to Anthropic, and the privacy
+        # notice says nothing about anybody's health does, so it says who has
+        # a note and where to read it, and the words stay on the list.
         for person in sheet["people"]:
             if not person["notes"]:
                 continue
-            # VERBATIM. The whole reason this sheet exists is that somebody
-            # was going to be served the thing they told us about, so the
-            # words they used are the words that come back.
             lines.append(f"{person['who']} ({person['kind']}, "
-                         f"{person['where']}, {person['covers']} cover(s)): "
-                         + " | ".join(person["notes"]))
+                         f"{person['where']}, {person['covers']} cover(s)): has a note")
+        if sheet["with_notes"]:
+            lines.append("What the notes say is on the kitchen's list: "
+                         + external_url("kitchen_dietary", date=day.isoformat()))
         if sheet["silent"]:
             # Said out loud, because "nobody has a note" and "nobody was asked"
             # look identical on a screen and only one of them is safe.
