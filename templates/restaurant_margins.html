@@ -56,7 +56,7 @@
               {{ ing['stock_name'] }}{% if ing['unit_cost'] is none %} &mdash; no cost on file{% endif %}
               <form method="post" action="{{ url_for('remove_dish_ingredient', row_id=ing['id']) }}" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="doc-delete" style="font-size:11px;">&times;</button>
+                <button type="submit" class="doc-delete" style="font-size:11px;" aria-label="Take this ingredient off">&times;</button>
               </form>
             </span>
             {% endfor %}

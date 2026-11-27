@@ -4,7 +4,7 @@
 <div class="page-head">
   <h1>How long guests wait for an answer</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <a href="{{ url_for('admin_feedback') }}" class="btn-ghost">All feedback</a>
+    {% if can('admin_feedback') %}<a href="{{ url_for('admin_feedback') }}" class="btn-ghost">All feedback</a>{% endif %}
   </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">

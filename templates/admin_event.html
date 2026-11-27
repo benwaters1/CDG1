@@ -102,7 +102,7 @@
                      ~ (' No price is agreed yet, so no deposit can be asked for: put one on it under Money first if you can.' if not event['quoted_price'] else '')
                      ~ (' It has no date yet.' if not event['preferred_date'] else '')) }}
         {{ to_status('declined', 'Decline', 'btn-mini btn-mini-danger',
-                     'Decline? ' ~ ('They are written to to say so.' if event['contact_email'] else '')) }}
+                     'Decline? ' ~ ('We will write to tell them.' if event['contact_email'] else '')) }}
       {% endif %}
       {% if event['status'] == 'confirmed' %}
         {{ to_status('cancelled', 'Call it off', 'btn-mini btn-mini-danger',

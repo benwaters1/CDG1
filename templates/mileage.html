@@ -47,7 +47,7 @@
         {% for c in claims %}
         <tr>
           {% if is_owner %}<td>{{ c['who'] or '—' }}</td>{% endif %}
-          <td>{{ c['travelled_on'] }}</td>
+          <td>{{ c['travelled_on']|date_short }}</td>
           <th scope="row">
             {{ c['from_place'] or '?' }} &rarr; {{ c['to_place'] or '?' }}
             {% if c['reason'] %}<span class="upload-hint">{{ c['reason'] }}</span>{% endif %}
@@ -66,7 +66,8 @@
                       style="background:none;border:0;cursor:pointer;color:var(--steel);">Decline</button>
             </form>
             {% else %}
-            {{ c['status'] }}
+            {{ {'pending': 'Waiting for approval', 'approved': 'Approved', 'declined': 'Declined',
+                'paid': 'Paid'}.get(c['status'], c['status']) }}
             {# Who decided it. A journey approved by nobody in particular is a
                payment nobody can be asked about. #}
             {% if c['decided_by'] %}<span class="upload-hint">by {{ c['decided_by'] }}</span>{% endif %}

@@ -93,6 +93,12 @@
   </form>
   {% endif %}
 </div>
+{% if user['role'] != 'owner' and (not my_ack or not my_ack.current) %}
+<form method="post" action="{{ url_for('acknowledge_manual') }}" style="margin:18px 0;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn-primary">{{ t("I've read this") if not my_ack else t("I've read the update") }}</button>
+</form>
+{% endif %}
 
 <script>
 function toggleEdit(id){

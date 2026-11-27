@@ -4,7 +4,7 @@
 
 <div class="page-head">
   <h1>Automation</h1>
-  <a href="{{ url_for('management') }}" class="btn-mini">Back to Management</a>
+  <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel); align-self:center;">← All settings</a>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">Everything the house does on its own, grouped
   by who it reaches. Each one is safe to run more than once: Run now never does anything twice.</p>
@@ -18,6 +18,12 @@
    cannot sit inside another and a row's controls belong together. #}
 <form method="post" action="{{ url_for('update_automation_settings') }}" id="automation-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  {# The same Save at the top: the only one was at the foot of the page. #}
+  <div class="auto-savebar">
+    <button type="submit" class="btn-primary">Save every switch</button>
+    <span class="upload-hint auto-unsaved">A box left unticked is switched off when you save.</span>
+  </div>
 
   {# ONE SWITCH for every letter and text to anybody outside the house, held
      at the two doors they all go through -- send_email and send_sms -- so no
@@ -67,7 +73,7 @@
           {% for word in e.reach_words %}
           <span class="mini-status {{ 'status-declined' if word == 'Writes to guests' or word == 'Takes money' or word == 'Publishes' else 'status-upcoming' }}">{{ word }}</span>
           {% else %}
-          <span class="mini-status status-inactive">Writes to nobody</span>
+          <span class="mini-status status-past">Writes to nobody</span>
           {% endfor %}
         </div>
         <p class="upload-hint auto-what">{{ e.what }}</p>
@@ -142,10 +148,12 @@
             <span class="muted">Last worked: {{ local_datetime_str(run['last_ok_at'], unknown='not recorded') }}</span>
           {% endif %}
         </span>
-        <button type="submit" class="btn-mini" formnovalidate
+        <button type="submit" class="btn-mini auto-run-now" formnovalidate
                 formaction="{{ url_for('run_automation_job_now', job_name=e.job) }}">Run now</button>
         {% else %}
-        <span class="auto-ran muted">Not a timed job: it happens when a place frees up.</span>
+        {# Its own reason: this one sentence was printed under every switch that
+           is not a timer, the recap reminder and the guest replies included. #}
+        <span class="auto-ran muted">Not a timed job: {{ e.when or 'it happens when something calls for it' }}.</span>
         {% endif %}
       </div>
     </div>
@@ -153,10 +161,38 @@
   </section>
   {% endfor %}
 
-  <div class="auto-savebar">
+  <div class="auto-savebar" id="auto-savebar">
     <button type="submit" class="btn-primary">Save every switch</button>
-    <span class="upload-hint">A box left unticked is switched off when you save.</span>
+    <span class="upload-hint auto-unsaved">A box left unticked is switched off when you save.</span>
   </div>
 </form>
+<script>
+// Run now posts the whole form to the job, which runs on the SAVED switches
+// and reloads the page -- so ticks changed and not saved were thrown away
+// without a word. Said before it happens instead (back-end review, 27 Nov).
+(function () {
+  var form = document.getElementById('automation-form');
+  if (!form) return;
+  var dirty = false;
+  form.addEventListener('change', function (e) {
+    if (e.target.classList.contains('auto-run-now')) return;
+    dirty = true;
+    document.querySelectorAll('.auto-unsaved').forEach(function (el) {
+      el.textContent = 'You have changes that are not saved yet.';
+    });
+    document.querySelectorAll('.auto-savebar').forEach(function (el) {
+      el.classList.add('is-dirty');
+    });
+  });
+  form.querySelectorAll('.auto-run-now').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      if (dirty && !confirm('You have changed switches without saving. Run now does not ' +
+                            'save them, and they will be lost. Run it anyway?')) {
+        e.preventDefault();
+      }
+    });
+  });
+})();
+</script>
 
 {% endblock %}

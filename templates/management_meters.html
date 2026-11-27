@@ -4,7 +4,7 @@
 
 <div class="page-head">
   <h1>Meter readings</h1>
-  <a href="{{ url_for('management_recurring_costs') }}" class="btn-ghost">Recurring costs</a>
+  {% if can('management_recurring_costs') %}<a href="{{ url_for('management_recurring_costs') }}" class="btn-ghost">Recurring costs</a>{% endif %}
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
@@ -52,14 +52,14 @@
       <tbody>
         {% for e in history[name] %}
         <tr>
-          <th scope="row">{{ e.row['read_on'] }}</th>
-          <td class="num">{{ '%g'|format(e.row['reading']) }}</td>
-          <td class="num">{% if e.used is not none %}{{ '%g'|format(e.used) }}{% else %}&mdash;{% endif %}</td>
+          <th scope="row">{{ e.row['read_on']|date_short }}</th>
+          <td class="num">{{ e.row['reading']|qty(3) }}</td>
+          <td class="num">{% if e.used is not none %}{{ e.used|qty(3) }}{% else %}&mdash;{% endif %}</td>
           <td class="num">
             {# Per day, because readings are never taken evenly and a bare
                difference between a fortnight and a quarter is not a
                comparison. #}
-            {% if e.per_day is not none %}{{ '%g'|format(e.per_day) }}{% else %}&mdash;{% endif %}
+            {% if e.per_day is not none %}{{ e.per_day|qty(2) }}{% else %}&mdash;{% endif %}
           </td>
           <td>{{ e.row['note'] or '' }}</td>
         </tr>

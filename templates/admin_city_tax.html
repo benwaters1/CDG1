@@ -130,7 +130,7 @@ so it is declared either way.
 <div class="detail-card" style="max-width:840px;">
   {# Booking.com's guests were missing from this return until 23 Nov 2026:
      their stays are not bookings of the house's own. #}
-  <h3 style="margin-top:0;">{{ working.booking_com.stays }} of these stays were booked on Booking.com:
+  <h3 style="margin-top:0;">{{ working.booking_com.stays }} of these stays {{ 'was' if working.booking_com.stays == 1 else 'were' }} booked on Booking.com:
     {{ working.booking_com.amount|money }}</h3>
   <p class="field-hint" style="margin-top:0;">
     The tax is owed on their nights like anyone else's. Nothing in the app charged it to them, so

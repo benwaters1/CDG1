@@ -52,13 +52,25 @@
 {% if not closure and user['role'] == 'owner' %}
 <form method="post" action="{{ url_for('pos_close_day') }}" class="detail-card"
       style="max-width:640px;"
-      onsubmit="return confirm('Close {{ on.isoformat() }} off? The figures are fixed after this.');">
+      onsubmit="return confirm('Close {{ on.isoformat()|date_short }} off? The figures are fixed after this.');">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="date" value="{{ on.isoformat() }}">
   <h3 style="margin-top:0;">Close the day</h3>
   <p class="upload-hint" style="margin-top:0;">
     Freezes the totals so they cannot change afterwards. Every tab has to be settled first.
   </p>
+  {% if still_open %}
+  {# Named here, before the count, rather than refused after it: the page
+     said only "every tab has to be settled", and the refusal named nobody. #}
+  <div class="flash flash-error" style="margin:0 0 12px;">
+    <strong>Still open:</strong>
+    {% for tab in still_open %}
+      <a href="{{ url_for('pos_order', order_id=tab['id']) }}">{{ tab['table_label'] or 'a table' }}</a>
+      <span class="upload-hint">since {{ tab['day']|date_short }}</span>{{ ',' if not loop.last }}
+    {% endfor %}
+    &mdash; settle each, or close an empty one, then come back.
+  </div>
+  {% endif %}
   {#
     Counting the drawer. Without this the closure recorded what the till THOUGHT
     it had taken and never asked what was actually there, so a short night was
@@ -87,7 +99,7 @@
     <input type="checkbox" name="confirm" value="yes"> Yes, close today even though service may not be over
   </label>
   {% endif %}
-  <button type="submit" class="btn-primary" style="margin-top:0;">Close {{ on.strftime('%d %B') }}</button>
+  <button type="submit" class="btn-primary" style="margin-top:0;" {{ 'disabled' if still_open }}>Close {{ on.strftime('%d %B') }}</button>
 </form>
 {% endif %}
 

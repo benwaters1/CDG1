@@ -20,9 +20,12 @@
   <h2 class="section-heading">Leave a note</h2>
   <textarea aria-label="Anything the next shift would want to know" name="body" rows="4" style="width:100%;"
             placeholder="Anything the next shift would want to know"></textarea>
-  <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
-    <input type="date" name="for_date" value="{{ today }}">
-    <button type="submit" class="btn-mini">Leave it</button>
+  <div style="display:flex; gap:10px; align-items:flex-end; margin-top:8px; flex-wrap:wrap;">
+    <div>
+      <label class="field-label" for="handover-day">For which day</label>
+      <input id="handover-day" type="date" name="for_date" value="{{ today }}">
+    </div>
+    <button type="submit" class="btn-mini">Leave the note</button>
   </div>
 </form>
 
@@ -45,7 +48,7 @@
          recorded rather than assumed. #}
       <form method="post" action="{{ url_for('mark_handover_read', note_id=n.note['id']) }}" style="display:inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="small-link" style="background:none;border:0;cursor:pointer;color:var(--steel);">Read it</button>
+        <button type="submit" class="btn-mini">Mark as read</button>
       </form>
       {% else %}
       <span class="upload-hint">you have read this</span>

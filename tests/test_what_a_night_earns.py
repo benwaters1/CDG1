@@ -316,7 +316,7 @@ def run():
                 r'<div class="overview-label">(.*?)</div>\s*'
                 r'(?:<div class="overview-hint">(.*?)</div>)?', page, re.S)}
     s.check("and their own page says one stay of three nights",
-            band.get("Stays") == ("1", "3 night(s)"),
+            band.get("Stays") == ("1", "3 nights"),  # counted(), not "night(s)" (27 Nov 2026)
             detail=str(band.get("Stays")))
 
     s.section("The page")

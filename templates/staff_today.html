@@ -8,8 +8,10 @@
     {# The big-icon screen the home-screen app opens on, for somebody using the
        site in a phone's browser who has not added it to their home screen. #}
     <a href="{{ url_for('phone_home') }}" class="small-link">{{ t('Home screen') }}</a>
-    {#- Their own list is below the rooms and the guests, on purpose (the
-        rooms decide whether somebody has to run). One tap down to it. -#}
+    {# Their own list is below the rooms and the guests, on purpose (the
+       rooms decide whether somebody has to run). One tap down to it. A plain
+       comment, not one with dashes: a dash comment here ate the space between
+       the two links, and a phone read "Home screenMy list · 19". #}
     {% if open_count %}<a href="#my-list" class="small-link">{{ t('My list') }} · {{ open_count }}</a>{% endif %}
     {% if clocked_in %}
       <form method="post" action="{{ url_for('clock_out_action') }}" style="display:inline;">
@@ -155,7 +157,9 @@
         {% if g.detail.dietary %}
         <p><span class="guest-detail-label">{{ t('Dietary') }}</span> {{ g.detail.dietary }}</p>
         {% endif %}
-        {% if g.detail.requests %}
+        {# Not again when the line on the card already says it in full: the
+           card printed a family's request, and opened, printed it a second time. #}
+        {% if g.detail.requests and g.detail.requests.split()|join(' ') != g.highlight %}
         <p><span class="guest-detail-label">{{ t('Asked for') }}</span> {{ g.detail.requests }}</p>
         {% endif %}
         {% if g.detail.notes %}

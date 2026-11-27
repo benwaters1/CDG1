@@ -284,6 +284,16 @@
 
       {% if not bill.live %}
       <div class="empty-state">Nothing ordered yet.</div>
+      {% if order['status'] == 'open' %}
+      {# The way out for a table opened by mistake: every other control on
+         this page waits for something to be on the tab. #}
+      <form method="post" action="{{ url_for('pos_close_empty', order_id=order['id']) }}"
+            onsubmit="return confirm('Close {{ order['table_label']|e }}? Nothing was ordered on it.');"
+            style="margin:8px 0 14px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-ghost">Close this table &mdash; nothing was ordered</button>
+      </form>
+      {% endif %}
       {% else %}
       {% for course, lines_in in by_course.items() %}
       <div class="till-course-block">

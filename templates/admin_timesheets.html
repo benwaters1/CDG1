@@ -56,7 +56,7 @@
       <tr>
         <th scope="row">{{ t.name }}</th>
         <td class="num">{{ t.shifts }}</td>
-        <td class="num">{{ '%.2f'|format(t.hours) }}</td>
+        <td class="num">{{ t.hours|hours }}</td>
         <td>{% if t.estimated_cost is not none %}≈ {{ t.estimated_cost|money }} estimated
             {% elif t.pay_rate %}{{ t.pay_rate }}{% if t.pay_type %} · {{ t.pay_type }}{% endif %}
             {% else %}<span class="muted">none</span>{% endif %}</td>
@@ -80,23 +80,24 @@
 {% else %}
   <div class="task-list">
     {% for e in rows %}
-    <div class="task-row {{ 'task-overdue' if e.state != 'Fine' }}">
+    <div class="task-row {{ 'task-overdue' if e.to_fix }}">
       <span class="task-title" style="flex:0 1 11rem;">{{ e['user_name'] }}</span>
       <span class="upload-hint" style="flex:1 1 14rem;">
         {{ local_datetime_str(e['clock_in_at']) }} →
-        {% if e['clock_out_at'] %}{{ local_time_str(e['clock_out_at']) }}{% else %}<strong>still clocked in</strong>{% endif %}
+        {% if e['clock_out_at'] %}{{ local_time_str(e['clock_out_at']) }}{% elif e.state == 'At work now' %}now{% else %}<strong>never clocked out</strong>{% endif %}
       </span>
       <span class="upload-hint">
-        {% if e.state == 'Fine' %}{{ '%.2f'|format(e.hours) }}h
+        {% if e.state == 'Fine' %}{{ e.hours|hours }}
+        {% elif e.state == 'At work now' %}<span class="mini-status status-onshift">at work now</span>
         {% else %}<span class="mini-status {{ 'status-declined' if e.state == 'Ends before it starts' else 'status-pending' }}">{{ e.state|lower }}</span>{% endif %}
         {% if not e.in_window %}<span class="mini-status status-inactive">earlier</span>{% endif %}
       </span>
     </div>
-    {% set why = acts_on(e['user_id']) if e.state != 'Fine' else none %}
+    {% set why = acts_on(e['user_id']) if e.to_fix else none %}
     {% if why %}
     {# repair_time_entry refuses it, so the fix is not offered. #}
     <p class="upload-hint" style="margin:-4px 0 10px;">{{ "Your own hours, so the owner corrects them." if why == 'own' else "The owner's to correct: " ~ e['user_name'] ~ " can reach more of the app than you can." }}</p>
-    {% elif e.state != 'Fine' %}
+    {% elif e.to_fix %}
     {# Excluded from every hours total, so it cannot quietly distort pay or
        the labour cost -- but it stays here, and fixable, until it is dealt with. #}
     <details class="refund-box" style="margin:-4px 0 10px;">

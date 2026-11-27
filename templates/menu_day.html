@@ -19,6 +19,16 @@
   <a href="{{ url_for('admin_restaurant_menu') }}">standing list</a> ({{ standing }} item{{ '' if standing == 1 else 's' }})
   and appear automatically under whatever is on.
 </p>
+{% if not standing %}
+{# Said before Publish, not found at the till: with nothing ticked "every
+   night, whatever the card", a published card leaves no wine on the till. #}
+<div class="flash flash-error" style="margin-bottom:14px;">
+  <strong>Nothing on the standing list stays on the till under a card.</strong>
+  Once this card is published the till sells only its dishes &mdash; no wine, no drinks, no
+  coffee. Tick <em>Every night, whatever the card</em> on them on the
+  <a href="{{ url_for('admin_restaurant_menu') }}">standing list</a> first.
+</div>
+{% endif %}
 
 {% if not menu %}
   <div class="empty-state" style="margin-bottom:18px;">
@@ -198,7 +208,7 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
         {% if menu['status'] != 'published' %}
         <form method="post" action="{{ url_for('delete_menu_dish', dish_id=d['id']) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="doc-delete">×</button>
+          <button type="submit" class="doc-delete" aria-label="Take {{ d['name'] }} off the card">Take off</button>
         </form>
         {% endif %}
       </div>

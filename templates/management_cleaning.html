@@ -4,7 +4,7 @@
 
 <div class="page-head">
   <h1>Cleaning round</h1>
-  <a href="{{ url_for('admin_tasks') }}" class="btn-ghost">Tasks</a>
+  {% if can('admin_tasks') %}<a href="{{ url_for('admin_tasks') }}" class="btn-ghost">Tasks</a>{% endif %}
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
@@ -22,31 +22,31 @@
 <div class="detail-card">
   <h2 class="section-heading">Worst first</h2>
   <div class="table-wrap">
-    <table class="data-table">
+    <table class="data-table phone-cards">
       <thead><tr><th>What</th><th>Where</th><th>Every</th><th>Last done</th><th>Due</th><th></th></tr></thead>
       <tbody>
         {% for r in rounds %}
         <tr class="{{ 'row-alert' if r.overdue }}">
           <th scope="row">{{ r.round['what'] }}
             {% if r.round['note'] %}<span class="upload-hint">{{ r.round['note'] }}</span>{% endif %}</th>
-          <td>{{ r.round['area'] or '—' }}</td>
-          <td>{{ r.round['every_days'] }} days</td>
-          <td>
+          <td data-label="Where">{{ r.round['area'] or '—' }}</td>
+          <td data-label="Every">{{ counted(r.round['every_days'], 'day') }}</td>
+          <td data-label="Last done">
             {% if r.never %}
             {# Never done reads as due now rather than as nothing. A NULL
                sorted on a date would quietly mean "never due". #}
             <span style="color:var(--rust);">never</span>
-            {% else %}{{ r.last }}{% endif %}
+            {% else %}{{ r.last.isoformat()|date_short }}{% endif %}
           </td>
-          <td>
-            {% if r.overdue %}<span style="color:var(--danger);">{{ -r.days }} days late</span>
+          <td data-label="Due">
+            {% if r.overdue %}<span style="color:var(--danger);">{{ counted(-r.days, 'day') }} late</span>
             {% else %}{{ r.days|in_words }}{% endif %}
           </td>
           <td>
             <form method="post" action="{{ url_for('cleaning_round_done', round_id=r.round['id']) }}" style="display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="done_on" value="{{ today }}">
-              <button type="submit" class="small-link" style="background:none;border:0;cursor:pointer;color:var(--steel);">Done</button>
+              <button type="submit" class="btn-mini">Done</button>
             </form>
             {% if is_owner %}
             {# The route has been there since the round was built; nothing

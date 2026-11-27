@@ -10208,6 +10208,8 @@ def init_db():
     apply_extras_sunday_2026_10_19(conn)
     # The Booking.com stay that never arrived, on The Twin Room, once.
     apply_stray_channel_stay_2026_10_18(conn)
+    # The bar on the till under tonight's card (back-end review), once.
+    apply_standing_drinks_2026_11_27(conn)
     # And the names of 16 October, once, LAST: the three above find the rooms
     # by the names they had before it.
     apply_room_names_2026_10_16(conn)
@@ -11547,8 +11549,9 @@ OWNER_MENU = [
         ("Bookings", [
             _nav("admin_bookings", "Bookings", "bookings",
                  ("confirm_booking", "decline_booking", "checkout_booking", "edit_booking",
-                  "admin_booking")),
-            _nav("admin_calendar", "Booking Calendar", "calendar"),
+                  "admin_booking", "management_cancellations")),
+            _nav("admin_calendar", "Booking Calendar", "calendar",
+                 ("empty_nights_page", "fill_a_gap_page")),
             _nav("front_desk", "Front Desk", "bookings", ("check_in_booking",), phone=True),
             _nav("arrivals_sheet_page", "Arrivals", "calendar", phone=True),
             _nav("admin_rooms", "Rooms", "rooms", ("new_room", "edit_room")),
@@ -11574,13 +11577,14 @@ OWNER_MENU = [
         ]),
         ("Booking.com", [
             _nav("management_booking_com", "Booking.com Messages", "bell"),
-            _nav("channel_stays_page", "Booking.com Stays", "guests"),
+            _nav("channel_stays_page", "Booking.com Stays", "guests",
+                 ("channel_stay_page", "save_channel_stay_details")),
             _nav("channel_booking_prices", "Booking.com Prices", "receipt"),
         ]),
     ]),
     ("guestbook", "Guests", "guests", (), (), [
         (None, [
-            _nav("guests", "Guest List", "guests", ("new_guest", "edit_guest")),
+            _nav("guests", "Guest List", "guests", ("new_guest", "edit_guest", "data_requests")),
             _nav("admin_feedback", "Guest Feedback", "contacts"),
             _nav("guest_dates", "Dates Worth Knowing", "calendar"),
             _nav("import_guests", "Import Guests", "guests"),
@@ -11597,16 +11601,25 @@ OWNER_MENU = [
             _nav("restaurant_covers", "Covers Ahead", "restaurant"),
         ]),
         ("Kitchen", [
+            # The back-end review of 27 November 2026 found the kitchen's own
+            # screen, the allergy sheet and the standing menu in no menu at
+            # all: /chef and /chef/shopping linked only to each other, and the
+            # staff, who have no search box, reached the allergy sheet only
+            # through the link in an email.
+            _nav("chef_screen", "The Kitchen", "restaurant", ("chef_shopping_page",)),
+            _nav("kitchen_dietary", "What They Cannot Eat", "restaurant", ("kitchen_day_sheet",)),
+            _nav("admin_restaurant_menu", "The Menu", "receipt",
+                 ("menu_day", "menu_history", "menu_template_sheet", "admin_drink_packages")),
             _nav("admin_dinner_menus", "Dinner Menus", "restaurant",
                  ("admin_dinner_menu", "admin_dinner_menu_new", "admin_dinner_night")),
             _nav("kitchen_prep", "Prep List", "restaurant"),
             _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
             _nav("kitchen_cleaning", "Kitchen Cleaning", "wrench"),
-            _nav("admin_stock", "Stock", "shopping"),
+            _nav("admin_stock", "Stock", "shopping", ("management_buying",)),
         ]),
         ("Planning and set-up", [
             _nav("dinner_covers_page", "Covers Forecast", "restaurant"),
-            _nav("admin_extras", "Extras & Menu", "receipt"),
+            _nav("admin_extras", "Booking Extras", "receipt"),
             _nav("admin_terminal", "Card Reader", "receipt"),
             _nav("admin_restaurant_settings", "Restaurant Settings", "management"),
         ]),
@@ -11664,7 +11677,7 @@ OWNER_MENU = [
         ]),
         ("HR", [
             _nav("admin_hr_notes", "Ask HR", "contacts", (), "open_hr_notes_count"),
-            _nav("admin_hr", "HR & Compliance", "approvals"),
+            _nav("admin_hr", "HR & Compliance", "approvals", ("exit_interviews",)),
             _nav("admin_compliance", "Role Compliance", "shield"),
             _nav("admin_incidents", "Incidents", "wrench"),
             _nav("admin_payroll", "Payroll Pack", "financial"),
@@ -11681,18 +11694,27 @@ OWNER_MENU = [
             _nav("plan_map", "Map of the Grounds", "pin",
                  ("maintenance_job", "maintenance_check")),
             _nav("report_problem", "Report a Problem", "pin", phone=True),
+            # Ramonage, the boiler, the extinguishers: the most "upkeep" page
+            # there is was in no menu (27 Nov 2026).
+            _nav("maintenance_page", "Upkeep Schedule", "wrench"),
+            _nav("weather_jobs_page", "Weather Jobs", "wrench", ("road_notices_page",)),
             _nav("manage_plans", "Plans", "folder", ("place_on_plan",)),
             _nav("pool_book_page", "Pool Book", "wrench", ("answer_pool_reading",)),
         ]),
         ("What the house owns", [
             _nav("admin_assets", "Asset Register", "building"),
             _nav("management_vehicles", "Vehicles", "car"),
-            _nav("admin_access", "Keys & Access", "lock"),
+            _nav("admin_access", "Keys & Access", "lock", ("still_out_page",)),
             _nav("management_meters", "Meter Readings", "building"),
             _nav("room_access_page", "What The House Can Manage", "rooms"),
         ]),
         ("Comings and goings", [
             _nav("management_visitors", "Visitors On Site", "guests"),
+            # The fire roll call: open to anybody signed in, and before 27 Nov
+            # 2026 linked only from the reports index, which no member of staff
+            # can open -- so the page written for whoever is standing outside
+            # at two in the morning could only be found by its address.
+            _nav("roll_call", "Fire Roll Call", "guests"),
             _nav("management_breakages", "Breakages", "wrench"),
             _nav("management_lost_property", "Lost Property", "shopping"),
         ]),
@@ -11710,10 +11732,13 @@ OWNER_MENU = [
         ("The website", [
             _nav("website_analytics", "Website Visitors", "eye"),
             _nav("admin_gallery", "Public Gallery", "folder"),
-            _nav("admin_images", "Site Photographs", "folder"),
+            _nav("admin_images", "Site Photographs", "folder", ("site_photographs",)),
             _nav("admin_photo_mirror", "Photo Mirror", "folder"),
             _nav("admin_languages", "Languages", "megaphone"),
             _nav("admin_promo_codes", "Promo Codes", "receipt"),
+            _nav("admin_whats_on", "What's On", "calendar"),
+            _nav("management_social", "Social Media", "megaphone",
+                 ("social_plans", "connect_social_accounts")),
         ]),
     ]),
     # Grouped by what somebody opening Financial is asking. Unchanged in the
@@ -11723,6 +11748,9 @@ OWNER_MENU = [
             _nav("admin_approvals", "Approvals", "approvals", (), "pending_approvals_count",
                  phone=True),
             _nav("expenses", "Expenses & Invoices", "receipt", ("decide_expense",)),
+            # Staff are told a claim "needs approving before it is paid", and
+            # the owner's menu had no way to it (27 Nov 2026).
+            _nav("mileage", "Mileage", "car"),
             _nav("admin_refunds", "Refunds", "receipt"),
         ]),
         ("Owed to the house", [
@@ -11742,11 +11770,16 @@ OWNER_MENU = [
         ]),
         ("The books", [
             _nav("management_financials", "Financials", "financial"),
+            # The only forward look at the bank, in and out, and in no menu:
+            # reached by search or from its two sibling pages (27 Nov 2026).
+            _nav("money_ahead_page", "Money Ahead", "financial"),
             _nav("admin_transactions", "Transactions", "receipt"),
             _nav("management_cash_banking", "Cash Banking", "financial"),
             _nav("admin_reports", "Reports", "financial", ("admin_report",)),
             _nav("management_break_even", "Break-even", "financial"),
             _nav("admin_tax", "Tax", "financial"),
+            _nav("admin_city_tax", "Taxe de Séjour", "financial"),
+            _nav("admin_vat", "VAT Collected", "financial"),
             _nav("management_bank_details", "Bank Details", "financial"),
         ]),
     ]),
@@ -11757,11 +11790,13 @@ OWNER_MENU = [
             _nav("admin_overview", "Overview", "eye", ("admin_overview_status",)),
         ]),
         ("Settings", [
-            _nav("management", "All Settings", "management"),
+            _nav("management", "All Settings", "management",
+                 ("admin_deposit_rules", "admin_terms", "admin_house_calendar",
+                  "admin_outlook_addin", "admin_retention")),
             _nav("admin_automation", "Automation", "repeat"),
             _nav("admin_access_levels", "Access Levels", "lock",
                  ("save_access_preset", "assign_access_preset")),
-            _nav("management_company_info", "Company & Insurance", "building"),
+            _nav("management_company_info", "Company & Insurance", "building", ("new_company",)),
             _nav("management_vault", "Vault", "lock"),
         ]),
         ("Records", [
@@ -11770,7 +11805,7 @@ OWNER_MENU = [
             _nav("meetings_page", "Meetings", "calendar", ("meeting_page",)),
             _nav("restoration_record", "Restoration Record", "wrench",
                  ("restoration_work_page",)),
-            _nav("camera_roll", "Camera Roll", "camera"),
+            _nav("camera_roll", "Camera Roll", "camera", ("photo_intake", "photo_tray")),
             _nav("vendors", "Vendors", "contacts"),
         ]),
         ("Bringing things in", [
@@ -11804,6 +11839,8 @@ STAFF_MENU = [
             _nav("pos_home", "Till", "receipt", ("pos_order", "pos_kitchen"), phone=True),
             _nav("restaurant_covers", "Covers Ahead", "restaurant"),
             _nav("restaurant_tables", "Tables", "restaurant"),
+            _nav("chef_screen", "The Kitchen", "restaurant", ("chef_shopping_page",)),
+            _nav("kitchen_dietary", "What They Cannot Eat", "restaurant"),
             _nav("kitchen_prep", "Prep List", "restaurant", ("prep_item_done",)),
             _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
             _nav("kitchen_cleaning", "Kitchen Cleaning", "wrench"),
@@ -11819,6 +11856,7 @@ STAFF_MENU = [
                  ("maintenance_job", "maintenance_check")),
             _nav("management_cleaning", "Cleaning Rounds", "wrench", ("cleaning_round_done",)),
             _nav("management_visitors", "Visitors On Site", "guests", ("sign_out_visitor",)),
+            _nav("roll_call", "Fire Roll Call", "guests"),
             _nav("management_breakages", "Breakages", "wrench"),
             _nav("management_lost_property", "Lost Property", "shopping",
                  ("resolve_lost_property",)),
@@ -12246,10 +12284,21 @@ def net_hours_for_entries(conn, entries):
         return {}
     minutes = break_minutes_for_entries(conn, entries)
     return {
-        e["id"]: max(0.0, round(hours_between(e["clock_in_at"], e["clock_out_at"])
-                                - minutes.get(e["id"], 0.0) / 60, 2))
+        e["id"]: to_whole_minutes(hours_between(e["clock_in_at"], e["clock_out_at"])
+                                  - minutes.get(e["id"], 0.0) / 60)
         for e in entries
     }
+
+
+def to_whole_minutes(hours):
+    """Hours, rounded to the minute and never below nothing.
+
+    It was two decimal places of an hour, which is not a unit anybody
+    counts in: 07:58 to 16:05 is 8h 07m, stored as 8.12, and three of them
+    added up to 24.36 -- 24h 22m -- under rows that read 8h 07m each. A
+    week has to add up the way a person adds it, so each shift is whole
+    minutes and a total is just their sum (27 November 2026)."""
+    return max(0.0, round(hours * 60) / 60)
 
 
 def net_hours(entry, conn=None):
@@ -12266,7 +12315,7 @@ def net_hours(entry, conn=None):
     break_minutes = break_minutes_for_entry(conn, entry["id"])
     if owns_conn:
         conn.close()
-    return max(0.0, round(gross - break_minutes / 60, 2))
+    return to_whole_minutes(gross - break_minutes / 60)
 
 
 def labour_hours_by_person(conn, start_iso, end_iso):
@@ -16539,6 +16588,51 @@ app.jinja_env.filters["qty"] = lambda v, places=2: quantity(v, places)
 app.jinja_env.filters["box"] = lambda v, places=None: box_value(v, places)
 
 
+# HOURS AS PEOPLE SAY THEM (27 November 2026). A shift of 07:58 to 16:05 is
+# 8 hours and 7 minutes, and the pages printed it "8.12h" -- which everybody
+# reads as eight hours and twelve minutes. The same week then came out three
+# ways on two pages: "24.35 h" in My Hours' band, "24.4 hours" in the sentence
+# under it, and "24.36h" on the profile, each rounding the same minutes its own
+# way. One spelling now, worked from whole minutes, so a column adds up to its
+# total the way a person adds it: 8h 07m. The payroll pack and its CSV keep
+# decimal hours, which is what a payroll bureau multiplies by a rate.
+def hours_words(hours, none="—"):
+    """8.12 -> "8h 07m"; 8.0 -> "8h"; 0.5 -> "30m"; None -> "—"."""
+    if hours is None or hours == "":
+        return none
+    try:
+        minutes = int(round(float(hours) * 60))
+    except (TypeError, ValueError):
+        return str(hours)
+    sign = "−" if minutes < 0 else ""
+    h, m = divmod(abs(minutes), 60)
+    if h and m:
+        return f"{sign}{h}h {m:02d}m"
+    if h:
+        return f"{sign}{h}h"
+    return f"{sign}{m}m"
+
+
+app.jinja_env.filters["hours"] = hours_words
+
+
+def minutes_words(minutes):
+    """How long, from a count of minutes: "45 min", "2h 10m", "65 days".
+
+    The floor plan printed a forgotten tab as "94635 min"."""
+    if minutes is None:
+        return ""
+    minutes = int(minutes)
+    if minutes < 90:
+        return f"{minutes} min"
+    if minutes < 24 * 60:
+        return hours_words(minutes / 60)
+    return counted(minutes // (24 * 60), "day")
+
+
+app.jinja_env.filters["minutes"] = minutes_words
+
+
 def guests_overview(conn, period, today):
     """Rooms over the chosen window, plus who is physically here right now."""
     occ = report_occupancy(conn, period)
@@ -16910,6 +17004,8 @@ def channel_stays(conn, blocks=True):
                 # nothing rather than left out, so a list reading them finds None.
                 "guest_email": None, "special_requests": None, "estimated_arrival_time": None,
                 "arrival_prepped_at": None, "checked_out_at": None,
+                # Typed on the stay's page from the guest's messages.
+                "dietary_notes": r["dietary_notes"] if "dietary_notes" in r.keys() else None,
             })
             first = False
     if blocks:
@@ -16997,10 +17093,11 @@ def stays_with_status(conn, today, statuses=("confirmed",), channels=True):
                    bookings.special_requests, bookings.reference_code,
                    bookings.status, rooms.name AS room_name, bookings.room_id,
                    guests.id AS profile_id, guests.notes AS profile_notes,
-                   guests.dietary_notes, guests.vip
+                   guests.dietary_notes, guests.vip,
+                   bookings.dietary_notes AS stay_dietary
             FROM bookings
             JOIN rooms ON rooms.id = bookings.room_id
-            LEFT JOIN guests ON guests.id = bookings.linked_guest_id
+            LEFT JOIN guests ON guests.id = {BOOKING_PROFILE_SQL}
             WHERE bookings.status IN ({placeholders})
             ORDER BY bookings.arrival_date, bookings.guest_name""",
         tuple(statuses),
@@ -17027,13 +17124,15 @@ def stays_with_status(conn, today, statuses=("confirmed",), channels=True):
             line for line in (r["profile_notes"] or "").splitlines()
             if not line.strip().startswith("[Former register entry:")
         ).strip() or None
-        note_parts = [p for p in (r["special_requests"], profile_notes, r["dietary_notes"]) if p]
+        dietary = cannot_eat(r["stay_dietary"], r["dietary_notes"])
+        note_parts = [p for p in (r["special_requests"], profile_notes, dietary) if p]
         stays.append({
             "booking_id": r["booking_id"], "profile_id": r["profile_id"],
             "name": r["name"], "email": r["email"], "room_name": r["room_name"],
             "arrival_date": r["arrival_date"], "departure_date": r["departure_date"],
             "party_size": r["party_size"], "reference_code": r["reference_code"],
             "notes": " · ".join(note_parts) or None, "vip": bool(r["vip"]),
+            "dietary": dietary or None, "requests": r["special_requests"] or None,
             "stay_status": status, "stay_status_label": label,
             "room_id": r["room_id"], "channel": None, "ota_reservation_id": None,
         })
@@ -17055,6 +17154,9 @@ def stays_with_status(conn, today, statuses=("confirmed",), channels=True):
                 "arrival_date": st["arrival_date"], "departure_date": st["departure_date"],
                 "party_size": st["party_size"], "reference_code": st["reference_code"],
                 "notes": None, "vip": False,
+                # What a Booking.com guest told the house they cannot eat, typed
+                # on the stay's own page: it reached no list before.
+                "dietary": cannot_eat(st.get("dietary_notes")) or None, "requests": None,
                 "stay_status": status, "stay_status_label": label,
                 "room_id": st["room_id"], "channel": st["channel"],
                 "ota_reservation_id": st["ota_reservation_id"],
@@ -17112,6 +17214,102 @@ def photo_declines(conn, today=None):
             "booking_id": b["booking_id"],
         })
     return out
+
+
+# A STAY'S GUEST PROFILE: the one it is linked to, or else the profile with
+# its email. The Arrivals sheet has matched on email for months; the Front
+# Desk, the booking page, Breakfast, the kitchen's screen and the allergy sheet
+# went through the link alone. So on 22 October Isabelle Dufresne's "No nuts -
+# a real allergy" was on the Arrivals sheet and nowhere a cook or the person at
+# the door would read it (back-end review, 27 November 2026).
+BOOKING_PROFILE_SQL = (
+    "COALESCE(bookings.linked_guest_id, (SELECT gp.id FROM guests gp"
+    " WHERE TRIM(COALESCE(gp.email, '')) != ''"
+    " AND LOWER(TRIM(gp.email)) = LOWER(TRIM(bookings.guest_email))"
+    " AND gp.merged_into_id IS NULL ORDER BY gp.id DESC LIMIT 1))")
+
+
+def cannot_eat(*notes):
+    """Every dietary note said once, in the order given, joined."""
+    out = []
+    for n in notes:
+        n = " ".join(str(n or "").split())
+        if n and n.lower() not in (o.lower() for o in out):
+            out.append(n)
+    return " · ".join(out)
+
+
+def stay_flags(conn, booking_ids):
+    """{booking_id: {"dietary", "vip", "access"}}: what a stay's guest cannot
+    eat (the booking's own note from online check-in first, then the profile's),
+    whether they are a VIP and what they need to get about -- read the way the
+    Arrivals sheet reads it."""
+    ids = [int(i) for i in booking_ids if i]
+    if not ids:
+        return {}
+    marks = ",".join("?" * len(ids))
+    out = {}
+    for r in conn.execute(
+            f"""SELECT bookings.id, bookings.dietary_notes AS stay_dietary,
+                       guests.dietary_notes AS profile_dietary, guests.vip,
+                       guests.access_needs
+                  FROM bookings
+                  LEFT JOIN guests ON guests.id = {BOOKING_PROFILE_SQL}
+                 WHERE bookings.id IN ({marks})""", ids).fetchall():
+        out[r["id"]] = {"dietary": cannot_eat(r["stay_dietary"], r["profile_dietary"]),
+                        "vip": bool(r["vip"]),
+                        "access": " ".join((r["access_needs"] or "").split())}
+    return out
+
+
+def stay_is_here(stay, today_iso):
+    """Whether a stay's guest is in the house now.
+
+    Not "do its dates cover today": at ten in the morning that put HERE NOW on
+    a family whose flight had not landed, and took the badge off a guest still
+    at breakfast on the day she leaves (back-end review, 27 November 2026).
+    In before today and not checked out -- the day they leave included -- or
+    checked in today. A Booking.com stay carries no check-in, so its dates
+    answer."""
+    def get(key):
+        try:
+            return stay[key]
+        except (KeyError, IndexError, TypeError):
+            return None
+    arrive, leave = get("arrival_date") or "", get("departure_date") or ""
+    if not arrive or not leave or get("checked_out_at") or get("no_show_at"):
+        return False
+    if leave < today_iso:
+        return False
+    if arrive < today_iso:
+        return True
+    if arrive == today_iso:
+        try:
+            return bool(stay["checked_in_at"])
+        except (KeyError, IndexError, TypeError):
+            return leave > today_iso
+    return False
+
+
+app.jinja_env.globals["stay_is_here"] = stay_is_here
+
+
+def without_register_lines(text):
+    """A profile note without the "[Former register entry: ...]" lines the
+    5 August migration folded in. stays_with_status already leaves them out;
+    the guest list printed them, ISO dates and all, under To know."""
+    return "\n".join(line for line in str(text or "").splitlines()
+                     if not line.strip().startswith("[Former register entry:")).strip()
+
+
+app.jinja_env.filters["without_register_lines"] = without_register_lines
+
+
+def first_upper(text):
+    """Capital first letter, the rest exactly as written. str.capitalize()
+    lower-cases the rest, which turns SIRET and TVA into "siret" and "tva"."""
+    text = str(text or "")
+    return text[:1].upper() + text[1:]
 
 
 def guests_in_residence(conn, today):
@@ -18320,8 +18518,24 @@ def guest_recognition_cards(conn, today, viewer_role="employee"):
         else:
             when, urgent = "In residence", False
         arriving_today = bool(arrival and arrival == today)
+        # The booking's own row, for what they asked and whether the desk has
+        # checked them in. A Booking.com stay has no booking row to ask; what
+        # the guest asked for there is in their messages, on the Booking.com page.
+        own = conn.execute(
+            "SELECT special_requests, checked_in_at, estimated_arrival_time "
+            "FROM bookings WHERE id = ?", (stay["booking_id"],)
+        ).fetchone() if stay["booking_id"] else None
         if arriving_today:
-            when, urgent = "Arrived today", True
+            # "Arrived today" was said of everybody due today, from first thing
+            # in the morning, so the list told the house a family was in the
+            # building six hours before their flight landed. Arrived once the
+            # desk has checked them in; until then, arriving, and when.
+            if own is not None and not own["checked_in_at"]:
+                eta = (own["estimated_arrival_time"] or "").strip()
+                when = f"Arriving today · about {eta}" if eta else "Arriving today"
+            else:
+                when = "Arrived today"
+            urgent = True
 
         # Which stay this is for them. Counted on email across every confirmed
         # booking, so a returning guest can be greeted as one — this is the
@@ -18338,12 +18552,8 @@ def guest_recognition_cards(conn, today, viewer_role="employee"):
         # stays_with_status() folds requests, dietary and profile notes into one
         # `notes` string, which is right for a list row and wrong here: this
         # screen needs them apart, so the greeting line can differ from what the
-        # kitchen has to know. So fetch the parts.
-        # A Booking.com stay has no booking row to ask; what the guest asked
-        # for there is in their messages, on the Booking.com page.
-        requests = conn.execute(
-            "SELECT special_requests FROM bookings WHERE id = ?", (stay["booking_id"],)
-        ).fetchone()["special_requests"] if stay["booking_id"] else None
+        # kitchen has to know. So the parts, from the booking's own row above.
+        requests = own["special_requests"] if own is not None else None
         profile = None
         if stay["profile_id"]:
             profile = conn.execute(
@@ -22060,7 +22270,8 @@ def build_office_display_queues(conn, today):
     queues.append({
         "key": "leave", "label": "Leave requests", "link": url_for("admin_approvals"),
         "count": len(leave),
-        "preview": [f"{r['employee_name']} — {r['start_date']} to {r['end_date']}" for r in leave[:4]],
+        "preview": [f"{r['employee_name']} — {format_date_range(r['start_date'], r['end_date'])}"
+                    for r in leave[:4]],
     })
 
     expenses = conn.execute(
@@ -23386,9 +23597,10 @@ def pass_service(conn, day=None):
     # together. Both are read, because the profile is where the dietary note
     # lives and the booking is where the name the chef will hear comes from.
     for r in conn.execute(
-        """SELECT bookings.id AS booking_id, bookings.linked_guest_id AS guest_id,
+        f"""SELECT bookings.id AS booking_id, guests.id AS guest_id,
                   COALESCE(guests.name, bookings.guest_name) AS name,
                   guests.dietary_notes, guests.preferences, guests.vip,
+                  bookings.dietary_notes AS stay_dietary,
                   guests.notes, guests.birthday, guests.anniversary,
                   bookings.arrival_date AS arrive,
                   bookings.departure_date AS depart,
@@ -23396,7 +23608,7 @@ def pass_service(conn, day=None):
                   bookings.special_requests,
                   rooms.name AS room_name
              FROM bookings
-             LEFT JOIN guests ON guests.id = bookings.linked_guest_id
+             LEFT JOIN guests ON guests.id = {BOOKING_PROFILE_SQL}
              LEFT JOIN rooms ON rooms.id = bookings.room_id
             WHERE bookings.status = 'confirmed'
               AND bookings.arrival_date <= ?
@@ -23420,7 +23632,13 @@ def pass_service(conn, day=None):
             WHERE restaurant_bookings.status = 'confirmed'
               AND restaurant_bookings.dinner_date = ?""", (iso,)).fetchall():
         if r["booking_id"]:
-            continue          # already on the list above, with their room
+            # Already on the list above, with their room -- and what was
+            # written on the table ("No nuts") goes with them, rather than
+            # being dropped with the duplicate row.
+            for p in people:
+                if p.get("booking_id") == r["booking_id"] and p.get("staying"):
+                    p["table_dietary"] = r["dietary_notes"]
+            continue
         people.append(dict(r, staying=0, last_night=0,
                            arrive=None, depart=None, room_name=None))
 
@@ -23459,7 +23677,8 @@ def pass_service(conn, day=None):
         out.append({
             "id": gid or 0,
             "name": (p.get("name") or "").strip() or "A guest",
-            "dietary_notes": (p.get("dietary_notes") or "").strip(),
+            "dietary_notes": cannot_eat(p.get("stay_dietary"), p.get("dietary_notes"),
+                                        p.get("table_dietary")),
             "preferences": (p.get("preferences") or "").strip(),
             "vip": p.get("vip") or 0,
             "notes": (p.get("notes") or "").strip(),
@@ -24033,7 +24252,7 @@ def _in_house_dining_rate(conn, lookback_days=120):
             nights += (hi - lo).days * (b["party_size"] or 0)
     if nights < 20:
         # Too little to divide by. Saying so beats a rate built on one week.
-        return None, f"only {nights} guest-night(s) in the last {lookback_days} days"
+        return None, f"only {counted(nights, 'guest-night')} in the last {lookback_days} days"
     return (round(seated / nights, 2),
             f"{seated} of {nights} guest-nights sat down, last {lookback_days} days")
 
@@ -24589,15 +24808,31 @@ def money_held_not_earned(conn, *, today=None):
     iso = today.isoformat()
     out = {"rooms": [], "workshops": [], "restaurant": []}
 
+    # PAID IS WHAT THE LEDGER SAYS, and a stay in the house is still partly
+    # unearned (back-end review, 27 November 2026). This read
+    # bookings.amount_paid, which a refund does not lower, and took only
+    # stays arriving after today -- so a guest arriving this afternoon with
+    # €760 paid, and one in the house with three of four nights to come, held
+    # nothing, while On the books, which this page is the cash side of,
+    # counted their nights. What is held is what was paid less what the
+    # nights already slept have earned.
     for r in conn.execute(
         """SELECT id, reference_code, guest_name, arrival_date, departure_date,
-                  COALESCE(total_price, 0) AS total_price,
-                  COALESCE(amount_paid, 0) AS paid
+                  COALESCE(total_price, 0) AS total_price
              FROM bookings
-            WHERE status = 'confirmed' AND arrival_date > ?
-              AND COALESCE(amount_paid, 0) > 0
+            WHERE status = 'confirmed' AND departure_date > ?
             ORDER BY arrival_date""", (iso,)).fetchall():
-        out["rooms"].append(dict(r, on=r["arrival_date"], label=r["guest_name"]))
+        bill = booking_bill(conn, r["id"])
+        paid = round(bill["paid"], 2) if bill else 0.0
+        arrival, departure = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
+        nights = (departure - arrival).days if arrival and departure else 0
+        slept = max(0, min(nights, (today - arrival).days)) if arrival else 0
+        charged = float((bill or {}).get("total") or r["total_price"] or 0)
+        earned = charged * slept / nights if nights else 0.0
+        held = round(max(0.0, paid - earned), 2)
+        if held > 0.005:
+            out["rooms"].append(dict(r, paid=held, on=r["arrival_date"], label=r["guest_name"],
+                                     in_house=slept > 0))
 
     for r in conn.execute(
         """SELECT workshop_bookings.id, workshop_bookings.guest_name,
@@ -24613,9 +24848,12 @@ def money_held_not_earned(conn, *, today=None):
             WHERE workshop_bookings.status NOT IN ('declined', 'cancelled')
               AND workshop_sessions.start_date > ?
             ORDER BY workshop_sessions.start_date""", (iso,)).fetchall():
-        paid = (r["deposit"] if r["deposit_paid_at"] else 0.0) + \
-               (r["balance"] if r["balance_paid_at"] else 0.0)
-        if paid > 0:
+        # The ledger, as every other page reads a registration: "balance_paid_at
+        # is only a stamp" (add_workshop_transaction). The stamps put €5,445
+        # held on four places the ledger, and What we're owed, called unpaid.
+        _owed, _charged, paid = workshop_balance_due(conn, r["id"])
+        paid = round(paid or 0.0, 2)
+        if paid > 0.005:
             out["workshops"].append(dict(r, paid=paid, on=r["start_date"],
                                          label=f"{r['guest_name']} — {r['title']}"))
 
@@ -25064,6 +25302,7 @@ def extras_due(conn, today=None):
     for line in conn.execute(
             """SELECT booking_extras.*, bookings.guest_name, bookings.reference_code,
                       bookings.arrival_date, bookings.departure_date,
+                      bookings.checked_in_at, bookings.checked_out_at,
                       bookings.status AS booking_status, bookings.guest_phone,
                       bookings.party_size, bookings.transfer_flight_number,
                       bookings.transfer_arrival_time,
@@ -25105,8 +25344,7 @@ def extras_due(conn, today=None):
             "when": when,
             "overdue": bool(when) and when < today_iso,
             "today": when == today_iso,
-            "in_house": (line["arrival_date"] or "") <= today_iso
-                        < (line["departure_date"] or ""),
+            "in_house": stay_is_here(line, today_iso),
             "transfer": transfer,
             "needs_arranging": needs_arranging,
             "arranged": arranged,
@@ -25948,6 +26186,31 @@ MENU_COURSES = {
 }
 # The order the kitchen and the floor actually work in.
 COURSE_ORDER = list(MENU_COURSES)
+# What the bar sells whatever the kitchen's card says: the courses a new dish
+# is ticked "every night" for, and the ones the 27 November fix ticked.
+STANDING_COURSES = ("aperitif", "wine", "drink", "coffee")
+app.jinja_env.globals["standing_courses"] = list(STANDING_COURSES)
+
+
+def apply_standing_drinks_2026_11_27(conn):
+    """Once: wine, drinks, coffee and aperitifs stay on the till under a card.
+
+    Nothing could set menu_items.always_available, so the first night a card
+    was published the till lost the whole bar. Ticked for the drink courses,
+    where every row was 0 because no form had ever offered the choice; dishes
+    are left as they are. Returns how many rows changed."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'standing_drinks_2026_11_27'"
+                    ).fetchone():
+        return 0
+    marks = ",".join("?" * len(STANDING_COURSES))
+    changed = conn.execute(
+        f"UPDATE menu_items SET always_available = 1 "
+        f"WHERE course IN ({marks}) AND COALESCE(always_available, 0) = 0",
+        STANDING_COURSES).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('standing_drinks_2026_11_27', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    return changed
 
 # Drink courses are 20% in France; food is 10%. A single rate would be wrong on
 # roughly half of a restaurant's turnover.
@@ -26958,6 +27221,8 @@ POS_JOURNAL_EVENTS = {
     "package_set",
     "receipt_issued", "closure_day", "closure_month", "closure_year",
     "archive_exported",
+    # A table opened by mistake and closed with nothing on it (27 Nov 2026).
+    "tab_closed_empty",
 }
 
 
@@ -28978,7 +29243,7 @@ def working_time_violations(conn, from_date, to_date):
             if hours > MAX_WEEKLY_HOURS:
                 violations.append({
                     "user_id": uid, "employee_name": name, "rule": "weekly_hours",
-                    "detail": f"{hours:.1f}h worked in week {iso_week} "
+                    "detail": f"{hours_words(hours)} worked in week {iso_week} "
                               f"(maximum {MAX_WEEKLY_HOURS}h)",
                     "on_date": date.fromisocalendar(iso_year, iso_week, 1).isoformat(),
                 })
@@ -29002,7 +29267,7 @@ def working_time_violations(conn, from_date, to_date):
             had = f"only {taken:.0f} min" if taken else "no break"
             violations.append({
                 "user_id": uid, "employee_name": name, "rule": "break",
-                "detail": f"{span:.1f}h worked with {had} recorded "
+                "detail": f"{hours_words(span)} worked with {had} recorded "
                           f"(at least {MIN_BREAK_MINUTES} min required after "
                           f"{BREAK_REQUIRED_AFTER_HOURS}h)",
                 "on_date": in_at.astimezone(LOCAL_TZ).date().isoformat(),
@@ -29781,13 +30046,13 @@ def dietary_sheet(conn, on_day=None):
 
     # Sleeping here tonight. Departure day is checkout, so they are not.
     for r in conn.execute(
-        """SELECT bookings.guest_name, bookings.party_size, bookings.reference_code,
+        f"""SELECT bookings.guest_name, bookings.party_size, bookings.reference_code,
                   bookings.special_requests, bookings.dietary_notes AS stay_notes,
                   rooms.name AS room_name,
                   guests.dietary_notes AS profile_notes, guests.name AS profile_name
              FROM bookings
              LEFT JOIN rooms ON rooms.id = bookings.room_id
-             LEFT JOIN guests ON guests.id = bookings.linked_guest_id
+             LEFT JOIN guests ON guests.id = {BOOKING_PROFILE_SQL}
             WHERE bookings.status = 'confirmed'
               AND bookings.arrival_date <= ? AND bookings.departure_date > ?
             ORDER BY bookings.guest_name""", (iso, iso)).fetchall():
@@ -37744,11 +38009,17 @@ def fiche_prefill(booking):
     whole = " ".join(get("guest_name").split())
     surname, first_names = "", ""
     if whole:
-        bits = whole.rsplit(" ", 1)
-        if len(bits) == 2:
-            first_names, surname = bits[0], bits[1]
+        core, family = name_core(whole.split(" "))
+        if family:
+            # "The Okafor family" is a household: the surname is Okafor and
+            # the first names are for whoever fills the fiche in to give.
+            surname = core[-1] if core else whole
         else:
-            surname = whole
+            bits = " ".join(core).rsplit(" ", 1)
+            if len(bits) == 2:
+                first_names, surname = bits[0], bits[1]
+            else:
+                surname = bits[0]
     return {"surname": surname, "first_names": first_names,
             "home_address": address_one_line(booking),
             "phone": get("guest_phone"), "email": get("guest_email"),
@@ -40136,7 +40407,7 @@ def clock_out_action():
     else:
         clock_out(conn, user["id"])
         hours = net_hours(conn.execute("SELECT * FROM time_entries WHERE user_id = ? ORDER BY id DESC LIMIT 1", (user["id"],)).fetchone(), conn)
-        flash(f"Clocked out — {hours:.2f}h worked this shift.", "success")
+        flash(f"Clocked out — {hours_words(hours)} worked this shift.", "success")
     conn.close()
     return redirect(request.referrer or url_for("dashboard"))
 
@@ -40720,10 +40991,14 @@ def handover_notes(conn, *, days=7, today=None, user_id=None):
     """Recent handover notes, newest first, with whether this person read them."""
     today = today or house_today()
     since = (today - timedelta(days=days)).isoformat()
+    # Whoever wrote a note has read it. Marie was told "1 you have not read"
+    # about the note she had just left, with a button to read it, and her own
+    # tap would have counted as somebody on the next shift seeing it.
     rows = conn.execute(
         """SELECT shift_handovers.*, users.name AS written_by,
                   (SELECT COUNT(*) FROM shift_handover_reads
-                    WHERE handover_id = shift_handovers.id) AS read_count
+                    WHERE handover_id = shift_handovers.id
+                      AND user_id IS NOT shift_handovers.written_by_user_id) AS read_count
              FROM shift_handovers
              LEFT JOIN users ON users.id = shift_handovers.written_by_user_id
             WHERE shift_handovers.for_date >= ?
@@ -40734,7 +41009,8 @@ def handover_notes(conn, *, days=7, today=None, user_id=None):
         mine = {r["handover_id"] for r in conn.execute(
             "SELECT handover_id FROM shift_handover_reads WHERE user_id = ?",
             (user_id,)).fetchall()}
-    return [{"note": r, "read_by_me": r["id"] in mine} for r in rows]
+    return [{"note": r, "read_by_me": r["id"] in mine or (
+                 user_id is not None and r["written_by_user_id"] == user_id)} for r in rows]
 
 
 def delivery_shortfalls(conn, *, months=6, today=None):
@@ -42591,7 +42867,7 @@ def owner_home_queue(conn):
         out.append({
             "id": l["id"],
             "kind": "Time off", "who": l["who"], "title": l["who"],
-            "detail": f"{l['start_date']} – {l['end_date']}",
+            "detail": format_date_range(l["start_date"], l["end_date"]),
             "amount": f"{days} day{'s' if days != 1 else ''}",
             "age": house_date_iso(l["requested_at"]),
             "tone": "people", "ok_label": "Approve", "no_label": "Decline",
@@ -44611,6 +44887,10 @@ def staff_dashboard():
         expiring_docs=expiring_docs, overtime=overtime,
         my_open_break=my_open_break, activity=activity, announcements_current=announcements_current,
         my_expiring_docs=my_expiring_docs, my_week_hours=my_week_hours, my_month_hours=my_month_hours,
+        # Worked out at the top of this view and never handed over, so Home
+        # offered "Clock in" to somebody who had clocked in at eight, while
+        # Today and the phone's home screen beside it said Clock out.
+        my_shift=my_shift,
         backup_stale=backup_stale, last_backup_at=last_backup_at,
         current_month_financials=current_month_financials, low_ratings=low_ratings,
         vehicle_alerts=vehicle_alerts, breakfast_low_stock=breakfast_low_stock,
@@ -46638,7 +46918,7 @@ def handle_hr_note(note_id):
 # ---------------------------------------------------------------------------
 
 def timesheet_query(conn, employee_id, start, end):
-    sql = """SELECT time_entries.*, users.name AS user_name
+    sql = """SELECT time_entries.*, users.name AS user_name, users.role AS user_role
              FROM time_entries JOIN users ON users.id = time_entries.user_id
              WHERE clock_in_at >= ? AND clock_in_at < ?"""
     params = [house_moment(start), house_moment(end + timedelta(days=1))]
@@ -46649,18 +46929,43 @@ def timesheet_query(conn, employee_id, start, end):
     return conn.execute(sql, params).fetchall()
 
 
-TIMESHEET_STATES = ["Still clocked in", "Closed for them", "Ends before it starts", "Fine"]
+TIMESHEET_STATES = ["Never clocked out", "Closed by the app", "Ends before it starts",
+                    "At work now", "Fine"]
+# The states a payroll run cannot pay as they stand. "At work now" is not one:
+# it is somebody standing in the building, and the page listed Jean and Marie,
+# in since nine and eight that morning, among the shifts "to fix before
+# payroll", each with a button to void it -- zero hours for a shift still being
+# worked (back-end review, 27 November 2026).
+TIMESHEET_TO_FIX = ("Never clocked out", "Closed by the app", "Ends before it starts")
 
 
-def timesheet_state(entry):
-    """Whether a shift can be paid as it stands, and if not, why."""
+def timesheet_state(entry, at_work_after=None):
+    """Whether a shift can be paid as it stands, and if not, why.
+
+    `at_work_after`: a UTC moment; a clocking still open that began after it
+    is somebody at work now, not a clocking nobody closed. The window is the
+    one the forgotten-clock-out job uses, so the two agree on when "still in"
+    becomes "forgot"."""
     if not entry["clock_out_at"]:
-        return "Still clocked in"
+        started = parse_datetime_iso(entry["clock_in_at"])
+        if at_work_after is not None and started is not None and started >= at_work_after:
+            return "At work now"
+        return "Never clocked out"
     if entry["clock_out_at"] < entry["clock_in_at"]:
         return "Ends before it starts"
     if entry["auto_closed"]:
-        return "Closed for them"
+        return "Closed by the app"
     return "Fine"
+
+
+def at_work_window(conn):
+    """The moment after which an open clocking is somebody at work, not a
+    clocking left open: now, less the hours the forgotten-clock-out job waits."""
+    try:
+        hours = float(get_automation_settings(conn)["automation_stale_shift_hours"])
+    except (TypeError, ValueError, KeyError):
+        hours = 14
+    return datetime.now(timezone.utc) - timedelta(hours=hours)
 
 
 @app.route("/admin/timesheets")
@@ -46699,21 +47004,27 @@ def admin_timesheets():
     # viewed, and counting them would put people with no shifts in the window on
     # the summary and move the labour figure with whatever happens to be broken.
     seen = {e["id"] for e in entries}
+    # Not the owner's: their own clocked time is drawings rather than a wage,
+    # the payroll pack leaves them out, and forty-one of their old test
+    # clockings stood here as "to fix before payroll" against the pack's two.
     outside = [dict(b, in_window=False) for b in conn.execute(
-        """SELECT time_entries.*, users.name AS user_name
+        """SELECT time_entries.*, users.name AS user_name, users.role AS user_role
              FROM time_entries JOIN users ON users.id = time_entries.user_id
             WHERE (time_entries.clock_out_at IS NULL
                    OR time_entries.clock_out_at < time_entries.clock_in_at
                    OR COALESCE(time_entries.auto_closed, 0) = 1)
+              AND users.role != 'owner'
             ORDER BY time_entries.clock_in_at DESC""").fetchall()
         if b["id"] not in seen]
     rows = entries + outside
+    at_work_after = at_work_window(conn)
 
     # One query for all the breaks, not one per row: net_hours() per line
     # opened its own connection, and a fortnight cost 260+ queries.
     hours_by_entry = net_hours_for_entries(conn, entries)
     for r in rows:
-        r["state"] = timesheet_state(r)
+        r["state"] = timesheet_state(r, at_work_after)
+        r["to_fix"] = r["state"] in TIMESHEET_TO_FIX and r.get("user_role") != "owner"
         r["hours"] = hours_by_entry.get(r["id"], 0.0) if r["state"] == "Fine" else 0.0
         r["where"] = "In these dates" if r["in_window"] else "Earlier, still to fix"
 
@@ -46730,7 +47041,7 @@ def admin_timesheets():
         sorts=[
             # What blocks payroll first, so a blocker is never on page two.
             sort_option("fix", "To fix first, then newest",
-                        lambda r: (r["state"] != "Fine", r["clock_in_at"] or ""),
+                        lambda r: (r["to_fix"], r["clock_in_at"] or ""),
                         reverse=True),
             sort_option("newest", "Newest first", lambda r: r["clock_in_at"] or "",
                         reverse=True),
@@ -46765,7 +47076,7 @@ def admin_timesheets():
         if bucket["estimated_cost"] is not None:
             total_estimated_cost += bucket["estimated_cost"]
             any_estimate = True
-    to_fix = sum(1 for r in rows if r["state"] != "Fine")
+    to_fix = sum(1 for r in rows if r["to_fix"])
     pending_corrections_count = conn.execute(
         "SELECT COUNT(*) AS c FROM timesheet_corrections WHERE status = 'pending'"
     ).fetchone()["c"]
@@ -46777,7 +47088,7 @@ def admin_timesheets():
     lv = list_page(lv, request.args)
     overview = [
         overview_cell("Shifts in these dates", sum(t["shifts"] for t in totals_by_user.values())),
-        overview_cell("Hours", round(sum(t["hours"] for t in totals_by_user.values()), 2),
+        overview_cell("Hours", hours_words(sum(t["hours"] for t in totals_by_user.values())),
                       hint="net of breaks"),
         overview_cell("To fix before payroll", to_fix, alert=bool(to_fix),
                       hint="each counts as zero hours until it is"),
@@ -47360,7 +47671,15 @@ def pos_home():
     # Tonight's reservations that have not been sat yet — so a table can be
     # opened against its booking, and the allergy taken at booking travels
     # with it instead of being retyped or forgotten.
-    seated_ids = {o["restaurant_booking_id"] for o in orders if o["restaurant_booking_id"]}
+    # Seated means a tab was ever opened for them, not that one is open now.
+    # Read from the open tabs alone, a party that had paid and gone came back
+    # as "booked in tonight, not seated" with a Seat them button, and seating
+    # them again opened a second tab -- on a prepaid table, holding the dinner
+    # a second time. A tab merged into another still seated its booking.
+    seated_ids = {r["restaurant_booking_id"] for r in conn.execute(
+        """SELECT restaurant_booking_id FROM pos_orders
+            WHERE restaurant_booking_id IS NOT NULL
+              AND (status != 'void' OR merged_into_order_id IS NOT NULL)""").fetchall()}
     expected = [b for b in conn.execute(
         """SELECT * FROM restaurant_bookings
            WHERE dinner_date = ? AND status = 'confirmed' AND no_show_at IS NULL
@@ -48822,6 +49141,7 @@ def pos_day():
     events = conn.execute(
         """SELECT * FROM pos_journal WHERE occurred_at >= ? AND occurred_at < ?
            ORDER BY sequence DESC LIMIT 60""", (win_from, win_to)).fetchall()
+    still_open = [] if closure else pos_tabs_open_through(conn, on)
     conn.close()
     # To the cent. Every other summary strip rounds to whole euros, but this is
     # a cash-up, and a tile saying €135 above a total of €134.50 is the
@@ -48835,10 +49155,71 @@ def pos_day():
                       alert=report["discounts"] > 0),
     ]
     return render_template("pos_day.html", report=report, overview=overview, on=on,
-                           closure=closure, chain=chain, events=events,
+                           closure=closure, chain=chain, events=events, still_open=still_open,
                            payment_methods=POS_PAYMENT_METHODS,
                            is_today=on == service_day(),
                            prev_day=on - timedelta(days=1), next_day=on + timedelta(days=1))
+
+
+def pos_tabs_open_through(conn, on):
+    """The tabs still open from service day `on` or before, oldest first:
+    [{"id", "table_label", "opened_at", "day"}].
+
+    By the service day the tab belongs to, not the UTC day of the moment it
+    was opened: a tab opened between midnight and two in the morning here was
+    filed under the day before and missed (back-end review, 27 Nov 2026). A tab
+    from before service_date was stored is placed by its moment against the
+    end of that service day."""
+    _start, end = service_day_window(on)
+    out = []
+    for r in conn.execute(
+            """SELECT id, table_label, opened_at, service_date FROM pos_orders
+                WHERE status = 'open'
+                  AND (service_date <= ? OR (service_date IS NULL AND opened_at < ?))
+                ORDER BY opened_at""", (on.isoformat(), end)).fetchall():
+        out.append({"id": r["id"], "table_label": r["table_label"],
+                    "opened_at": r["opened_at"],
+                    "day": r["service_date"] or service_day_iso(r["opened_at"])})
+    return out
+
+
+
+@app.route("/pos/<int:order_id>/close-empty", methods=["POST"])
+@login_required
+def pos_close_empty(order_id):
+    """Close a table that was opened and never ordered from.
+
+    One tap on a free table opens a tab, and every control on a tab -- pay, on
+    the house, move, merge -- waits for something to be on it. So a tab opened
+    by mistake could never be closed: one from 17 August sat on the floor plan
+    at "94635 min" and refused every cash-up since. Only an empty tab that has
+    taken no money closes here, and the journal says so.
+    """
+    conn = get_db()
+    user = current_user()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        abort(404)
+    bill = pos_bill(conn, order_id)
+    if order["status"] != "open":
+        conn.close()
+        flash("That table isn't open.", "error")
+        return redirect(url_for("pos_home"))
+    if (bill and bill["live"]) or order_id in pos_money_held(conn, [order_id]):
+        conn.close()
+        flash("There is something on that table. Settle it, or void its lines first.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+    conn.execute("UPDATE pos_orders SET status = 'void', closed_at = ? "
+                 "WHERE id = ? AND status = 'open'",
+                 (datetime.now(timezone.utc).isoformat(), order_id))
+    pos_journal_append(conn, "tab_closed_empty",
+                       {"table": order["table_label"], "covers": order["covers"] or 0},
+                       order_id=order_id, user_id=user["id"] if user else None)
+    conn.commit()
+    conn.close()
+    flash(f"{order['table_label'] or 'The table'} closed: nothing was ordered.", "success")
+    return redirect(url_for("pos_home"))
 
 
 @app.route("/pos/day/close", methods=["POST"])
@@ -48850,13 +49231,12 @@ def pos_close_day():
         flash("That day isn't over. Tick the box if you really mean to close it now.", "error")
         return redirect(url_for("pos_day", date=on.isoformat()))
     conn = get_db()
-    open_tabs = conn.execute(
-        "SELECT COUNT(*) AS c FROM pos_orders WHERE status = 'open' AND date(opened_at) <= ?",
-        (on.isoformat(),)).fetchone()["c"]
-    if open_tabs:
+    still_open = pos_tabs_open_through(conn, on)
+    if still_open:
         conn.close()
-        flash(f"{open_tabs} tab{'' if open_tabs == 1 else 's'} still open. "
-              "Settle or void them before closing the day.", "error")
+        flash(f"{counted(len(still_open), 'tab')} still open: "
+              f"{', '.join(t['table_label'] or 'a table' for t in still_open)}. "
+              "Settle them, or close an empty one, before closing the day.", "error")
         return redirect(url_for("pos_day", date=on.isoformat()))
     def _money(field):
         raw = (request.form.get(field, "") or "").strip().replace(",", ".")
@@ -51686,16 +52066,27 @@ def breakfast():
             "SELECT item_id FROM breakfast_checklist_log WHERE checklist_date = ?", (today.isoformat(),)
         ).fetchall()
     }
-    guests_here = guests_in_residence(conn, today)
+    # WHO IS AT BREAKFAST THIS MORNING: whoever slept here last night -- in
+    # before today, and not gone yet. It counted the stays covering TONIGHT,
+    # so it said "8 guests across 3 rooms" over a table of four: the guests
+    # arriving this afternoon in, the couple leaving after breakfast out. And
+    # its notes were their room requests (a travel cot, flowers) while the
+    # nut allergy was nowhere (back-end review, 27 November 2026).
+    iso = today.isoformat()
+    guests_here = [s for s in stays_with_status(conn, today)
+                   if (s["arrival_date"] or "") < iso <= (s["departure_date"] or "")]
     # `or 1` so a booking with no party size still counts as one person here --
     # this used to be `or 0`, silently under-reporting the breakfast headcount.
     guest_count = sum(g["party_size"] or 1 for g in guests_here)
-    guest_notes = [g for g in guests_here if g["notes"]]
-    occupied_today = occupied_rooms_by_date(conn, today, today + timedelta(days=1)).get(today.isoformat(), 0)
-    # occupied_rooms_by_date is the house's own sold nights, which is right for
-    # the accounts and short by every Booking.com room at the breakfast table.
-    # The guests counted above include those; so do the rooms.
-    occupied_today += sum(1 for g in guests_here if g.get("channel"))
+    guest_notes = sorted(
+        [g for g in guests_here if g.get("dietary") or g.get("requests")],
+        key=lambda g: (not g.get("dietary"), g["room_name"] or ""))
+    occupied_today = len({(g["room_id"], g["room_name"]) for g in guests_here})
+    # And tomorrow's, for the shopping: everybody sleeping here tonight, a
+    # Booking.com party of no stated size counted as one.
+    tonight = guests_in_residence(conn, today)
+    tomorrow_count = sum(g["party_size"] or 1 for g in tonight)
+    tomorrow_rooms = len({(g["room_id"], g["room_name"]) for g in tonight})
     conn.close()
     by_category = {}
     for i in items:
@@ -51703,6 +52094,7 @@ def breakfast():
     return render_template(
         "breakfast.html", by_category=by_category, checked_today=checked_today,
         guest_count=guest_count, occupied_today=occupied_today, guest_notes=guest_notes,
+        tomorrow_count=tomorrow_count, tomorrow_rooms=tomorrow_rooms,
     )
 
 
@@ -62125,7 +62517,7 @@ def guest_detail(guest_id):
     if is_owner:
         overview = [
             overview_cell("Stays", record["stay_count"],
-                          hint=f"{record['nights']} night(s)"),
+                          hint=counted(record["nights"], "night")),
             overview_cell("Spent with us", euro(record["spent"]),
                           hint="gross: stays, ateliers and events"
                                + (f", and {euro(record['at_table'])} at the table"
@@ -62688,6 +63080,8 @@ def decide_expense(expense_id):
     if row is None:
         abort(404)
     flash(message, "success")
+    if request.form.get("next") == "approvals":
+        return redirect(url_for("admin_approvals"))
     return redirect(url_for("expenses"))
 
 
@@ -65010,8 +65404,7 @@ def arrival_card(booking_id):
     return render_template("arrival_card.html", booking=booking, bill=bill,
                            company=company, find_url=find_url,
                            profile=profile, profile_notes=profile_notes,
-                           surname=(booking["guest_name"] or "").split()[-1]
-                           if (booking["guest_name"] or "").strip() else "")
+                           surname=surname_of(booking["guest_name"]))
 
 
 @app.route("/checkin/<manage_token>")
@@ -65742,7 +66135,7 @@ def manage_booking(manage_token):
                 # More nights is more taxe de sejour and a bigger balance.
                 restamp_stay(conn, booking["id"])
                 log_audit(conn, "guest_extended_stay", target=booking["reference_code"],
-                          details=f"+{nights} night(s), +{money(added)}")
+                          details=f"+{counted(nights, 'night')}, +{money(added)}")
                 owner_to = house_address_for(conn, "rooms")
                 conn.commit()      # before send_email, which needs its own write lock
                 if owner_to:
@@ -72359,7 +72752,7 @@ def run_review_invitation_job(conn, days_after=None):
         asked += 1
     if not answers:
         return "nobody new to ask"
-    return f"asked {asked} of {len(answers)} guest(s) for a public review"
+    return f"asked {asked} of {counted(len(answers), 'guest')} for a public review"
 
 
 def run_room_feedback_job(conn, days_after=None):
@@ -72395,7 +72788,7 @@ def run_room_feedback_job(conn, days_after=None):
 
     if not departed:
         return f"nobody left {in_words(-days)} who has not been asked"
-    return f"asked {asked} guest(s) how their stay was"
+    return f"asked {counted(asked, 'guest')} how their stay was"
 
 
 def ask_room_feedback(conn, booking):
@@ -73600,10 +73993,49 @@ def greeting_name(name):
     if not whole or "@" in whole:
         return "there"
     words = whole.split(" ")
+    # A household, not a person: "The Okafor family" was greeted "Hi The,"
+    # in the letters and "Dear The," on the booking page (back-end review,
+    # 27 November 2026). Greeted as a household, without the article.
+    core, family = name_core(words)
+    if family or core != words:
+        return " ".join(core + ([family] if family else [])) or whole
     if (len(words) == 1 or words[0].lower().rstrip(".") in _NAME_TITLES
             or any(w.lower() in _NAME_JOINS for w in words)):
         return whole
     return words[0]
+
+
+# What a booking name can be dressed in that is not the name: an article in
+# front ("The", "La", "Los") and a household word behind ("family").
+_NAME_ARTICLES = frozenset({"the", "la", "le", "les", "los", "las", "el", "die", "der"})
+_NAME_HOUSEHOLD = frozenset({"family", "famille", "familia", "familie", "famiglia"})
+
+
+def name_core(words):
+    """(the name's own words, the household word or None).
+
+    ["The", "Okafor", "family"] -> (["Okafor"], "family"); a name with neither
+    comes back as it was. An article alone, with nothing after it, is left."""
+    words = list(words)
+    family = None
+    if len(words) > 1 and words[-1].lower().strip(".,") in _NAME_HOUSEHOLD:
+        family = words.pop()
+    if len(words) > 1 and words[0].lower() in _NAME_ARTICLES:
+        words = words[1:]
+    return words, family
+
+
+def surname_of(name):
+    """The surname to look a booking up by, or to put on a police fiche.
+
+    The last word, after the household dressing is taken off: the arrival card
+    told the Okafors to enter "the reference above and the surname family"."""
+    words = " ".join(str(name or "").split()).split(" ")
+    core, _family = name_core([w for w in words if w])
+    return core[-1] if core else ""
+
+
+app.jinja_env.filters["greeting"] = greeting_name
 
 
 # "Hi {guest_name}," -- a greeting line whose name is a tag. Only the tag ON
@@ -75319,7 +75751,7 @@ def drain_campaign_queue(conn, *, budget=None, sleep=time.sleep,
 
 def _drain_campaign_queue(conn, budget, sleep, seconds, mind_the_holds):
     maybe = recover_interrupted_campaign_letters(conn)
-    notes = [f"{maybe} letter(s) were going out when the house stopped; not sent again"
+    notes = [f"{counted(maybe, 'letter')} {'was' if maybe == 1 else 'were'} going out when the house stopped; not sent again"
              ] if maybe else []
     runs = conn.execute("SELECT * FROM campaign_runs WHERE state = 'going' "
                         "ORDER BY created_at, send_id").fetchall()
@@ -75404,7 +75836,7 @@ def _drain_campaign_queue(conn, budget, sleep, seconds, mind_the_holds):
         "ON campaign_runs.send_id = campaign_queue.send_id "
         "WHERE campaign_queue.state = 'queued' AND campaign_runs.state = 'going'"
     ).fetchone()["n"]
-    head = f"{sent} campaign letter(s) sent"
+    head = f"{counted(sent, 'campaign letter')} sent"
     if still:
         head += f", {still:,} still to go"
         if budget is None and left <= 0:
@@ -75600,6 +76032,10 @@ def email_health(conn):
         "provider": provider,
         "sender": (RESEND_FROM if resend_enabled() else SMTP_FROM if email_enabled() else None),
         "guests_on": guest_mail_live(),
+        # The second switch, which this page never asked about: with Guest
+        # emails off, only booking confirmations and letters staff write go,
+        # and "Writing to guests is on" was half the answer (27 Nov 2026).
+        "guest_letters_on": guest_emails_on(),
         "redirect": MAIL_REDIRECT_TO,
         "reports_on": bool(RESEND_WEBHOOK_SECRET),
         "last_report": last_report,
@@ -82525,6 +82961,9 @@ def admin_booking(booking_id):
                              (booking["guest_email"].strip(),)).fetchone()
         usual_arrival = (known["usual_arrival_time"] or "") if known else ""
     occasion_prep = occasion_states(conn, [booking_id]).get(booking_id)
+    # What they cannot eat and whether they are a VIP, by the link or the
+    # email, as the Arrivals sheet reads it: this page showed neither.
+    stay_flag = stay_flags(conn, [booking_id]).get(booking_id, {})
     conn.close()
 
     if not arrival or not departure:
@@ -82533,8 +82972,12 @@ def admin_booking(booking_id):
         where = None
     elif booking["no_show_at"]:
         where = "Did not arrive"
-    elif booking["checked_out_at"] or departure <= today:
+    elif booking["checked_out_at"] or departure < today:
         where = "Gone"
+    elif departure == today:
+        where = "Leaving today"
+    elif arrival == today and not booking["checked_in_at"]:
+        where = "Arriving today"
     elif arrival <= today:
         where = "Here now"
     elif arrival == today + timedelta(days=1):
@@ -82559,6 +83002,7 @@ def admin_booking(booking_id):
         group=group, where=where, today_iso=today.isoformat(),
         decline_reasons=DECLINE_REASONS, cancel_reasons=CANCEL_REASONS,
         dinners=dinners, usual_arrival=usual_arrival, occasion_prep=occasion_prep,
+        stay_flag=stay_flag,
     )
 
 
@@ -88919,6 +89363,7 @@ def new_menu_item():
     except ValueError:
         vat = None
     sold_in_pos = 1 if request.form.get("sold_in_pos") else 0
+    always_available = 1 if request.form.get("always_available") else 0
 
     def _bev(field):
         raw = (request.form.get(field, "") or "").strip().replace(",", ".")
@@ -88942,11 +89387,11 @@ def new_menu_item():
     conn.execute(
         """INSERT INTO menu_items (name, description, category, course, dietary_tags, allergens,
            price, vat_rate, prep_minutes, stock_item_id, stock_qty_per_unit, sold_in_pos,
-           container_ml, pour_loss_percent, available, sort_order, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)""",
+           container_ml, pour_loss_percent, available, sort_order, created_at, always_available)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)""",
         (name, description or None, category, course, dietary_tags or None, allergens or None,
          price, vat, prep, stock_item_id, stock_qty, sold_in_pos, container_ml, pour_loss,
-         max_order + 1, datetime.now(timezone.utc).isoformat()),
+         max_order + 1, datetime.now(timezone.utc).isoformat(), always_available),
     )
     conn.commit()
     conn.close()
@@ -89015,11 +89460,13 @@ def edit_menu_item(item_id):
     conn.execute(
         """UPDATE menu_items SET name=?, description=?, category=?, course=?, dietary_tags=?,
            allergens=?, price=?, vat_rate=?, prep_minutes=?, stock_item_id=?,
-           stock_qty_per_unit=?, sold_in_pos=?, container_ml=?, pour_loss_percent=?
+           stock_qty_per_unit=?, sold_in_pos=?, container_ml=?, pour_loss_percent=?,
+           always_available=?
            WHERE id=?""",
         (name, description or None, category, course, dietary_tags or None,
          allergens or None, price, vat, prep, stock_item_id, stock_qty,
-         1 if request.form.get("sold_in_pos") else 0, container_ml, pour_loss, item_id),
+         1 if request.form.get("sold_in_pos") else 0, container_ml, pour_loss,
+         1 if request.form.get("always_available") else 0, item_id),
     )
     # Changing the bottle size or the loss has to move every pour of that wine
     # at once — that is the entire point of computing depletion rather than
@@ -90772,7 +91219,12 @@ def workshop_sitting_rows(conn, workshops, today):
             # A place held while the guest pays is not a deposit to chase.
             if reg_row["money"] == "Deposit unpaid" and not reg_row["holding"]:
                 tally["no_deposit"] += 1
-            if reg_row["owed"] > 0.005 and reg_row["due_date"] and reg_row["due_date"] < iso:
+            # Confirmed places only. A registration still waiting on the owner
+            # owes nothing until it is accepted: counting it put €8,250 "past
+            # due" on the workshops page against €6,600 on Balances to collect,
+            # the extra €1,650 being somebody nobody had yet said yes to.
+            if (reg_row["status"] == "confirmed" and reg_row["owed"] > 0.005
+                    and reg_row["due_date"] and reg_row["due_date"] < iso):
                 tally["past_due"] = round(tally["past_due"] + reg_row["owed"], 2)
             if not reg_row["room"]:
                 tally["no_room"] += 1
@@ -93304,6 +93756,19 @@ GROUP_NO_EMAIL = "no email address"
 GROUP_DO_NOT_EMAIL = "asked not to be emailed"
 GROUP_RESTRICTED = "asked us to stop using their details"
 GROUP_NOTHING_OWING = "nothing owing"
+# A request the house has not said yes to owes nothing yet. "Send statements"
+# on a session wrote to a registration still waiting on the owner, telling
+# them they owed €1,650 before anybody had accepted them.
+GROUP_NOT_ACCEPTED = "not accepted yet, so nothing is owed"
+
+
+def group_member_waiting(member):
+    """Whether this person's place is still a request waiting on the house."""
+    row = member.get("row")
+    try:
+        return row is not None and row["status"] == "pending"
+    except (KeyError, IndexError, TypeError):
+        return False
 
 
 def group_members(conn, kind, key):
@@ -93834,6 +94299,8 @@ def send_statement(conn, member, *, user_id=None):
             log_workshop_message(conn, member["id"], "Statement", email,
                                  f"skipped — {GROUP_DO_NOT_EMAIL}")
         return False, GROUP_DO_NOT_EMAIL
+    if group_member_waiting(member):
+        return False, GROUP_NOT_ACCEPTED
     if member["owed"] <= 0.005:
         return False, GROUP_NOTHING_OWING
     if member["category"] == "workshop":
@@ -93856,6 +94323,8 @@ def group_statement_plan(conn, members):
             skipped.append((m["label"], GROUP_NO_EMAIL))
         elif m["do_not_email"]:
             skipped.append((m["label"], GROUP_DO_NOT_EMAIL))
+        elif group_member_waiting(m):
+            skipped.append((m["label"], GROUP_NOT_ACCEPTED))
         elif m["owed"] <= 0.005:
             skipped.append((m["label"], GROUP_NOTHING_OWING))
         else:
@@ -93989,7 +94458,7 @@ def run_group_letters_job(conn, now=None):
                       result = ?, result_ok = ? WHERE id = ?""",
             (datetime.now(timezone.utc).isoformat(), count, text, ok, row["id"]))
         conn.commit()
-    return f"{len(due)} group letter(s) due, {sent} sent"
+    return f"{counted(len(due), 'group letter')} due, {sent} sent"
 
 
 def _group_page(kind, key, mode):
@@ -95951,9 +96420,12 @@ def money_ahead(conn, *, days=90, today=None):
             """SELECT bookings.*, rooms.name AS room_name FROM bookings
                  LEFT JOIN rooms ON rooms.id = bookings.room_id
                 WHERE bookings.status = 'confirmed'
-                  AND bookings.arrival_date >= ? AND bookings.arrival_date <= ?""",
+                  AND bookings.departure_date >= ? AND bookings.arrival_date <= ?""",
             (today.isoformat(),
              (last + timedelta(days=max(0, reach))).isoformat())).fetchall():
+        # Still in the house counts: a stay that arrived yesterday and leaves
+        # tomorrow owing €680 is the surest money in the window, and the
+        # arrival-date filter left it out (back-end review, 27 Nov 2026).
         # The bill's own figure. This took the discount off total_price a
         # second time -- total_price is already net of it -- so every stay
         # booked with a code was forecast short by its discount, and anything
@@ -95974,8 +96446,13 @@ def money_ahead(conn, *, days=90, today=None):
     # the balance is what the ledger says is left, not the figure fixed the
     # day they booked.
     for x in expected_money_in(conn, today):
-        if x["kind"] == "Workshop" and today.isoformat() <= x["date"] <= last.isoformat():
-            incoming.append({"date": x["date"], "amount": x["amount"],
+        if x["kind"] != "Workshop":
+            continue
+        # Overdue means now, as for a stay or an event above. Dropped instead,
+        # four atelier balances due on the 20th vanished from the forecast.
+        when = max(x["date"], today.isoformat())
+        if when <= last.isoformat():
+            incoming.append({"date": when, "amount": x["amount"],
                              "label": f"{x['who']} — {x['title']} {x['part']}",
                              "kind": "Workshop", "ref": x["ref"]})
 
@@ -96009,8 +96486,9 @@ def money_ahead(conn, *, days=90, today=None):
                   AND dinner_date >= ? AND dinner_date <= ?
                   AND COALESCE(total_price, 0) > 0""",
             (today.isoformat(), last.isoformat())).fetchall():
-        due = round((r["total_price"] or 0) - (r["discount_amount"] or 0)
-                    - (r["deposit_amount"] or 0), 2)
+        # total_price is after the discount (create_restaurant_booking), as
+        # the rooms line above found out about its own figure.
+        due = round((r["total_price"] or 0) - (r["deposit_amount"] or 0), 2)
         if due > 0.01 and r["payment_status"] != "paid":
             incoming.append({"date": r["dinner_date"], "amount": due,
                              "label": f"{r['guest_name']} — dinner, {r['party_size']} covers",
@@ -100237,6 +100715,14 @@ def room_checks_page():
     conn = get_db()
 
     if request.method == "POST":
+        # The house's list is the owner's to write. Anybody signed in could add
+        # a line or take one off, with no confirm and no way to put it back --
+        # so the standard every room is walked against was one stray tap from
+        # losing "Hot water runs hot" (back-end review, 27 November 2026).
+        if not room_standards_editable(current_user()):
+            conn.close()
+            flash("The list is the owner's to change. Tell them what it should say.", "error")
+            return redirect(url_for("room_checks_page"))
         if request.form.get("what") == "standard":
             line = (request.form.get("line", "") or "").strip()[:160]
             if not line:
@@ -100287,6 +100773,18 @@ def room_checks_page():
     ]
     return render_template("room_checks.html", arrivals=arrivals,
                            standards=standards, overview=overview, days=days)
+
+
+def room_standards_editable(user):
+    """Whether this person may change what a room is walked against."""
+    if not user:
+        return False
+    areas = user_access(user)
+    return "*" in areas or "estate" in areas
+
+
+app.jinja_env.globals["room_standards_editable"] = (
+    lambda: room_standards_editable(current_user()))
 
 
 @app.route("/admin/room-checks/<int:booking_id>", methods=["GET", "POST"])
@@ -100813,6 +101311,23 @@ def fridge_unit_change(unit_id):
         conn.close()
         abort(404)
     what = request.form.get("what", "")
+    # The band is whoever runs the kitchen's, not whoever is taking the
+    # readings. Every reading is judged against the band as it stands now, so
+    # widening it to 0-8 made this morning's 7.8 vanish from the tile, the
+    # owner's home and the task list -- one tap for anybody signed in. A unit
+    # emptied for the winter can still be switched off by the kitchen, but not
+    # while a reading is out of range with nothing said (back-end review,
+    # 27 November 2026).
+    if what == "range" and not fridge_settings_allowed(current_user()):
+        conn.close()
+        flash("Only the owner, or whoever runs the restaurant, changes a fridge's range. "
+              "Say what you found beside the reading instead.", "error")
+        return redirect(url_for("kitchen_fridges"))
+    if what == "off" and fridge_unanswered_breaches(conn, unit):
+        conn.close()
+        flash(f"{unit['name']} has a reading out of range that nobody has answered. "
+              "Say what was done beside it first, then switch it off.", "error")
+        return redirect(url_for("kitchen_fridges"))
     if what == "off":
         conn.execute("UPDATE fridge_units SET active = 0 WHERE id = ?", (unit_id,))
         message = f"{unit['name']} is switched off. Its readings are kept."
@@ -100837,6 +101352,28 @@ def fridge_unit_change(unit_id):
     conn.close()
     flash(message, "success")
     return redirect(url_for("kitchen_fridges"))
+
+
+def fridge_settings_allowed(user):
+    """Whether this person may move a fridge's band or switch one off."""
+    if not user:
+        return False
+    areas = user_access(user)
+    return "*" in areas or "restaurant" in areas
+
+
+app.jinja_env.globals["fridge_settings_allowed"] = lambda: fridge_settings_allowed(current_user())
+
+
+def fridge_unanswered_breaches(conn, unit):
+    """Readings from this unit outside its band that nobody has answered."""
+    rows = conn.execute(
+        """SELECT celsius FROM fridge_readings
+            WHERE unit_id = ? AND COALESCE(TRIM(action_taken), '') = ''
+              AND answered_at IS NULL""", (unit["id"],)).fetchall()
+    low, high = unit["min_c"], unit["max_c"]
+    return [r for r in rows if r["celsius"] is not None and (
+        (low is not None and r["celsius"] < low) or (high is not None and r["celsius"] > high))]
 
 
 @app.route("/kitchen/prep", methods=["GET", "POST"])
@@ -103778,7 +104315,7 @@ def run_checkin_letter_job(conn, today=None):
         ok, why = send_direct_checkin_letter(conn, kind, stay_id)
         sent += 1 if ok and not why else 0
         held += 1 if ok and why else 0
-    out = f"sent {sent} check-in letter(s)"
+    out = f"sent {counted(sent, 'check-in letter')}"
     if held:
         out += f", {held} held until mail to guests is switched on"
     if unwritten:
@@ -110704,7 +111241,7 @@ def watch_task_findings(conn, today=None):
     gaps = [g for g in cover_gaps(conn, today, horizon)
             if g["uncovered"] and (g["in_house"] or g["arrivals"])]
     for g in take("cover", gaps):
-        who = (f"{g['in_house']} guest(s) in the house" if g["in_house"]
+        who = (f"{counted(g['in_house'], 'guest')} in the house" if g["in_house"]
                else f"{g['arrivals']} arriving")
         found.append((
             "cover",
@@ -115424,6 +115961,13 @@ def change_log_fields(row):
 
 _CHANGE_LOG_MONEY = ("amount", "price", "paid", "total", "deposit", "fee", "balance",
                      "cost", "premium")
+# Columns that hold 1 or 0 for yes or no, read as Yes and No.
+_CHANGE_LOG_FLAGS = frozenset({
+    "in_booking_total", "vip", "do_not_email", "autocharge_opt_out", "active", "available",
+    "sold_in_pos", "always_available", "repeat_weekly", "bookable", "guest_bookable",
+    "photo_consent", "featured", "publish_consent", "collect_hold", "restaurant_related",
+    "account_claimed", "off_road", "required", "transfers_included", "excursions_included",
+    "wine_included", "chef_on_site", "outside_diners", "auto_closed", "instant_held"})
 
 
 def change_log_value(field, value, people):
@@ -115448,10 +115992,13 @@ def change_log_value(field, value, people):
             return format_date_short(value) or value
         return value
     if isinstance(value, (int, float)):
+        # Yes/no before money: in_booking_total holds 1 or 0, and its name
+        # carries "total", so the log printed "In booking total €1.00". The
+        # other flags printed as 0 and 1 (back-end review, 27 Nov 2026).
+        if f.startswith("is_") or f in _CHANGE_LOG_FLAGS:
+            return "Yes" if value else "No"
         if any(word in f for word in _CHANGE_LOG_MONEY):
             return money(value)
-        if f.startswith("is_"):
-            return "Yes" if value else "No"
         if isinstance(value, float):
             return quantity(value, 6)
     return value
@@ -117602,7 +118149,7 @@ def readiness_checks(conn, *, include_slow=True):
     add("warn", "Legal", "What a receipt has to carry", not missing_identity,
         "Legal name, SIRET, TVA number, form, capital and RCS are all on file."
         if not missing_identity else
-        f"{', '.join(missing_identity).capitalize()} not set. Till receipts and "
+        f"{first_upper(', '.join(missing_identity))} not set. Till receipts and "
         "guest statements both print a VAT breakdown, and both say on the "
         "document itself that the numbers are missing — a guest forwards a "
         "statement to whoever pays them. Management, Company info.")
@@ -119937,7 +120484,17 @@ def my_hours():
            WHERE user_id = ? AND clock_in_at >= ? AND clock_in_at < ?
            ORDER BY clock_in_at DESC""",
         (user["id"], period["start_at"], period["end_at"])).fetchall()
+    # A clocking still open because the person is at work RIGHT NOW is not a
+    # problem to tell anybody about. It was counted as one: an employee who
+    # opened this page mid-shift was told "1 clocking needs a look -- tell
+    # whoever runs the rota", about the shift they were standing in. Open for
+    # longer than the forgotten-clock-out job allows is the real fault.
+    try:
+        stale_hours = float(get_automation_settings(conn)["automation_stale_shift_hours"])
+    except (TypeError, ValueError, KeyError):
+        stale_hours = 14
     conn.close()
+    now = datetime.now(timezone.utc)
 
     # Worked out here rather than in the template: the arithmetic is the same
     # clock-out-minus-clock-in-minus-breaks the costing uses, and a template is
@@ -119963,8 +120520,10 @@ def my_hours():
             "finished_day": house_date_iso(e["clock_out_at"]),
             "break_minutes": int(round(e["break_minutes"] or 0)),
             "hours": hours, "open": finished is None, "impossible": impossible,
+            "on_shift": bool(finished is None and started
+                             and now - started < timedelta(hours=stale_hours)),
         })
-    odd = [e for e in entries if e["open"] or e["impossible"]]
+    odd = [e for e in entries if (e["open"] and not e["on_shift"]) or e["impossible"]]
 
     # The foot row and the band. From the costing for anybody it counts, priced
     # or not, so the figure is the one payroll reads. Anybody it does not count
@@ -119982,8 +120541,7 @@ def my_hours():
         # The same spelling as the rows under it: they said 4.50 and 8.00 over
         # a band that said 12.5, and a total in a coarser unit than its rows
         # cannot be checked by adding them up.
-        overview_cell("Hours", quantity(total_hours), sub="h",
-                      hint="net of breaks taken"),
+        overview_cell("Hours", hours_words(total_hours), hint="net of breaks taken"),
         overview_cell("Shifts", total_shifts),
         overview_cell("At your rate", euro(mine["gross"]) if mine else "—",
                       sub="gross", alert=unpriced,
@@ -120259,7 +120817,26 @@ def my_leave():
     ).fetchall()
     leave = leave_balance(conn, user["id"], user["annual_leave_days"])
     conn.close()
-    return render_template("my_leave.html", requests=requests_, leave=leave)
+    # Coming up first, soonest first; what is over underneath, folded. One
+    # list newest-first put a summer's worth of old holidays between somebody
+    # and the request they had just made.
+    today = house_today()
+    ahead = sorted([r for r in requests_ if (r["end_date"] or "") >= today.isoformat()],
+                   key=lambda r: r["start_date"] or "")
+    past = [r for r in requests_ if (r["end_date"] or "") < today.isoformat()]
+    return render_template("my_leave.html", ahead=ahead, past=past,
+                           leave=leave, today=today)
+
+
+def leave_can_be_cancelled(req, today):
+    """Whether its owner may still call it off: asked for and not yet decided,
+    or approved and not yet over. Taken time off stays on the record."""
+    if req["status"] == "pending":
+        return True
+    return req["status"] == "approved" and (req["end_date"] or "") >= today.isoformat()
+
+
+app.jinja_env.globals["leave_can_be_cancelled"] = leave_can_be_cancelled
 
 
 @app.route("/leave/<int:request_id>/cancel", methods=["POST"])
@@ -120274,6 +120851,14 @@ def cancel_leave_request(request_id):
     if not req:
         conn.close()
         abort(404)
+    # Time off already taken is a record, not a request. The page offered
+    # Cancel on every approved holiday back to the summer, and pressing it
+    # would have wiped days that were taken off the year's count.
+    if not leave_can_be_cancelled(req, house_today()):
+        conn.close()
+        flash("That time off has already been taken, so it stays on the record. "
+              "If it is wrong, ask the owner to correct it.", "error")
+        return redirect(url_for("my_leave"))
     conn.execute(
         "UPDATE leave_requests SET status = 'cancelled', decided_at = ? WHERE id = ?",
         (datetime.now(timezone.utc).isoformat(), request_id),
@@ -120326,12 +120911,20 @@ def admin_approvals():
 @app.route("/admin/approvals/bulk", methods=["POST"])
 @owner_required
 def bulk_approve_queue():
+    """Approve what was ticked: each one through the same helper its own
+    button uses.
+
+    It was a bare UPDATE per row. So an expense approved in a batch told
+    nobody -- no email, no bell, no line in the audit log -- and time off
+    approved in a batch was audited by nobody and emailed "2026-11-09 to
+    2026-11-13", while the same approvals one at a time did all of it
+    (CLAUDE.md: a bulk action must be the same action, done many times;
+    back-end review, 27 November 2026).
+    """
     items = request.form.getlist("items")
     conn = get_db()
-    now = datetime.now(timezone.utc).isoformat()
     leave_count, expense_count = 0, 0
     skipped = []
-    to_notify = []
     for item in items:
         kind, _, raw_id = item.partition(":")
         if not raw_id.isdigit():
@@ -120366,14 +120959,11 @@ def bulk_approve_queue():
                                "so their time off is the owner's to decide",
                 }[why]))
                 continue
-            conn.execute(
-                "UPDATE leave_requests SET status = 'approved', decided_at = ? WHERE id = ?",
-                (now, item_id),
-            )
-            leave_count += 1
-            employee = conn.execute("SELECT * FROM users WHERE id = ?", (req["user_id"],)).fetchone()
-            if employee:
-                to_notify.append((employee["email"], employee["name"], req["start_date"], req["end_date"]))
+            ok, message, _req = apply_leave_decision(conn, item_id, "approved", via="bulk")
+            if ok:
+                leave_count += 1
+            else:
+                skipped.append((who["name"] if who else f"time off #{item_id}", message.rstrip(".")))
         elif kind == "expense":
             row = conn.execute(
                 "SELECT id, status FROM expenses WHERE id = ?", (item_id,)
@@ -120385,24 +120975,17 @@ def bulk_approve_queue():
                 skipped.append((f"expense #{item_id}",
                                 f"already {row['status']}"))
                 continue
-            conn.execute(
-                "UPDATE expenses SET status = 'approved', decided_at = ? WHERE id = ?",
-                (now, item_id),
-            )
-            expense_count += 1
+            ok, message, _row = apply_expense_decision(conn, item_id, "approved", via="bulk")
+            if ok:
+                expense_count += 1
+            else:
+                skipped.append((f"expense #{item_id}", message.rstrip(".")))
         else:
             # Neither kind. Silently ignored before, which meant a stale page
             # posting an item type that no longer exists looked like a success.
             skipped.append((item[:30], "not something this queue approves"))
     conn.commit()
     conn.close()
-    for email, name, start_date, end_date in to_notify:
-        send_email(
-            email, "Your time off request has been approved",
-            f"Hi {name.split(' ')[0]},\n\n"
-            f"Your time off request for {start_date} to {end_date} has been approved.\n\n"
-            f"— Château de Gudanes",
-        )
     # The breakdown stays -- two kinds of thing go through this one queue and
     # the owner wants to know which -- but it is no longer the whole message.
     detail = (f"{leave_count} time off, {expense_count} expense"
@@ -120622,6 +121205,10 @@ def decide_leave(request_id):
     if req is None:
         abort(404)
     flash(message, "success")
+    # Back to the queue it was decided from. Approve on Approvals landed on
+    # the Time off page, and the next decision was a click away again.
+    if request.form.get("next") == "approvals":
+        return redirect(url_for("admin_approvals"))
     return redirect(url_for("admin_leave"))
 
 
@@ -121359,6 +121946,14 @@ def front_desk_day(conn, today=None):
         st["owed"] = round(bill["owed"], 2) if bill else 0.0
     for ch in channel:
         ch["owed"] = 0.0
+    # The desk is where somebody is checked in, so it says what they cannot
+    # eat and whether they are a VIP: it read only the booking's own note.
+    flags = stay_flags(conn, [st["id"] for st in stays])
+    for st in stays:
+        f = flags.get(st["id"], {})
+        st["cannot_eat"], st["vip"] = f.get("dietary", ""), f.get("vip", False)
+    for ch in channel:
+        ch["cannot_eat"], ch["vip"] = cannot_eat(ch.get("dietary_notes")), False
     arriving = [x for x in everyone if x["arrival_date"] == iso]
     leaving = [x for x in everyone if x["departure_date"] == iso]
     staying = [x for x in everyone if x["arrival_date"] < iso < x["departure_date"]]
@@ -121372,9 +121967,13 @@ def front_desk_day(conn, today=None):
         if not keys:
             continue
         marks = ",".join("?" * len(keys))
+        # The room's own checklist counts. Left out, the Family Suite read
+        # "2 jobs to make it ready" -- the cot and the airport run -- with its
+        # eight preparation items open, and would have read ROOM READY once
+        # those two were ticked, towels not out (back-end review, 27 Nov 2026).
         for t in conn.execute(
                 f"""SELECT {col} AS owner, status FROM tasks
-                     WHERE {col} IN ({marks}) AND origin != 'checklist'""", keys).fetchall():
+                     WHERE {col} IN ({marks})""", keys).fetchall():
             tally = prep.setdefault((kind, t["owner"]), {"open": 0, "done": 0})
             tally["done" if t["status"] == "done" else "open"] += 1
     occasions = occasion_states(conn, ids)
@@ -121400,6 +121999,15 @@ def front_desk_day(conn, today=None):
             state = "Free tonight"
         by_room.append({"room": r, "leaving": out, "arriving": inn, "staying": stay,
                         "tonight": tonight, "state": state})
+    # The house lets no more than MAX_ROOMS_LET_PER_NIGHT rooms a night. With
+    # that many let, an empty room is not for sale: the desk said "2 free" and
+    # "Free tonight" on a night Add a booking would refuse as full.
+    let_tonight = sum(1 for r in by_room if r["tonight"])
+    house_full = let_tonight >= MAX_ROOMS_LET_PER_NIGHT
+    if house_full:
+        for r in by_room:
+            if r["state"] == "Free tonight":
+                r["state"] = "Not for sale tonight"
     tomorrow_count = conn.execute(
         "SELECT COUNT(*) FROM bookings WHERE status = 'confirmed' AND arrival_date = ?",
         (tomorrow,)).fetchone()[0] + conn.execute(
@@ -121409,8 +122017,11 @@ def front_desk_day(conn, today=None):
     return {
         "day": today, "rooms": by_room, "arriving": arriving, "leaving": leaving,
         "staying": staying, "tomorrow": tomorrow_count,
-        "let_tonight": sum(1 for r in by_room if r["tonight"]),
-        "free_tonight": sum(1 for r in by_room if not r["tonight"]),
+        "let_tonight": let_tonight,
+        "free_tonight": 0 if house_full else max(
+            0, min(sum(1 for r in by_room if not r["tonight"]),
+                   MAX_ROOMS_LET_PER_NIGHT - let_tonight)),
+        "house_full": house_full,
         "to_collect": to_collect,
         "owed": round(sum(x["owed"] for x in to_collect), 2),
         "checked_in": sum(1 for x in arriving if x.get("checked_in_at")),
@@ -124007,7 +124618,7 @@ def run_room_balance_reminder_job(conn, days_before):
             sent += 1
     if not owing:
         return "nobody arriving soon owes anything"
-    return f"reminded {sent} of {owing} guest(s) with a balance outstanding"
+    return f"reminded {sent} of {counted(owing, 'guest')} with a balance outstanding"
 
 
 # ---------------------------------------------------------------------------
@@ -126528,7 +127139,7 @@ def run_stale_shift_cleanup_job(conn, hours_threshold):
             send_notification(conn, owner_row["id"], "shift_auto_closed", title, body=body, link=f"/directory/{entry['user_id']}")
     if stale:
         conn.commit()
-    return f"auto-closed {len(stale)} stale shift(s)"
+    return f"auto-closed {counted(len(stale), 'stale shift')}"
 
 
 PARAMETERISED_JOBS = ("workshop_balance_reminder", "room_balance_reminder",
@@ -129870,7 +130481,7 @@ def house_calendar_items(conn, start, end, areas=None):
                 f"Flight {f['flight']}" if f.get("flight") else "",
                 f"{_plural(n, 'night')}: {which}" if n else "",
                 f"Leaves {_cal_day(f['departure'])}, by {HOUSE_CALENDAR_CHECK_OUT}",
-                f"{f['party']} guest(s)" if f.get("party") else "",
+                counted(f["party"], "guest") if f.get("party") else "",
                 ("Extras: " + "; ".join(extras_here)) if extras_here else "",
                 f"Booked through {channel}" if channel else "",
                 "Not confirmed yet" if r["status"] == "pending" else "",
@@ -131742,6 +132353,7 @@ AUTOMATION_SWITCHES = [
              "checked in online already. Nothing until you have written the letter.",
      "fields": (("automation_checkin_letter_days_before", "Days before arrival", "days"),)},
     {"key": "automation_waitlist_autonotify_enabled", "job": None,
+     "when": "it happens when a place frees up",
      "runs": ("notify_room_waitlist_opening", "notify_restaurant_waitlist_opening",
               "notify_workshop_waitlist_opening"),
      "group": "guests", "reaches": ("guests",),
@@ -131819,6 +132431,7 @@ AUTOMATION_SWITCHES = [
      "what": "Notifies you the morning a balance falls due, once each — balances "
              "are taken by hand, so this is what collects them."},
     {"key": "automation_atelier_recap_reminder_enabled", "job": None,
+     "when": "it happens when an atelier is over",
      "runs": ("atelier_recaps_to_approve", "generate_watch_tasks"), "group": "house",
      "reaches": ("you",),
      "label": "Remind me when an atelier's recap is ready",
@@ -131855,6 +132468,7 @@ AUTOMATION_SWITCHES = [
                 ("automation_email_scan_lookback_days", "Look back (days)", "days_back")),
      "needs": "graph"},
     {"key": "automation_guest_reply_notice_enabled", "job": None,
+     "when": "it happens when a guest's email arrives",
      "runs": ("notify_guest_replies", "notify_booking_com_guest_reply"), "group": "house",
      "reaches": ("you",),
      "label": "Tell me when a guest replies",
@@ -136452,7 +137066,10 @@ def break_even_month(conn, month=None):
         if not arrival or not departure or departure <= arrival:
             continue
         total_nights = (departure - arrival).days
-        per_night = (float(b["total_price"] or 0) - float(b["discount_amount"] or 0)) / total_nights
+        # total_price is already net of any promo code: taking discount_amount
+        # off again priced every stay booked with a code below what it paid,
+        # and so asked for more room-nights to break even than it needed.
+        per_night = float(b["total_price"] or 0) / total_nights
         for n in range(total_nights):
             night = arrival + timedelta(days=n)
             if first <= night < last:
@@ -136515,7 +137132,10 @@ def revenue_on_the_books(conn, today=None, months=12):
         arrival, departure = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
         if not arrival or not departure or departure <= arrival:
             continue
-        total = float(b["total_price"] or 0) - float(b["discount_amount"] or 0)
+        # Net of the promo code already (create_booking takes it off before
+        # storing). Taking it off a second time put every coded stay on the
+        # books short by its discount, against Financials (27 Nov 2026).
+        total = float(b["total_price"] or 0)
         nights = (departure - arrival).days
         if nights <= 0:
             continue

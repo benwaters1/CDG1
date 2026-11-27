@@ -64,7 +64,7 @@
 
 <div class="detail-card" style="max-width:640px;">
   <h3 style="margin-top:0;">2. Write the message</h3>
-  <form method="post" action="{{ url_for('send_promo_code_blast', code_id=promo['id']) }}" onsubmit="return confirm('Send this to {{ recipient_count }} guest(s)? This can\'t be undone.');">
+  <form method="post" action="{{ url_for('send_promo_code_blast', code_id=promo['id']) }}" onsubmit="return confirm('Send this to {{ counted(recipient_count, 'guest') }}? This can\'t be undone.');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% for s in segments %}<input type="hidden" name="segment" value="{{ s }}">{% endfor %}
     <input type="hidden" name="since_months" value="{{ since_months }}">

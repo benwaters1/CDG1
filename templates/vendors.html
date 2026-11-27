@@ -6,7 +6,7 @@
   <h1>Vendors</h1>
   <div style="display:flex; gap:10px; align-items:center;">
     <a href="{{ url_for('export_vendors_csv') }}" class="btn-mini">Export CSV</a>
-    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel); align-self:center;">← All settings</a>
   </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">Supplier reference — contact info and payment terms, so it's not buried in old invoice emails. For everyday emergency contacts (plumber, electrician), see <a href="{{ url_for('contacts') }}" style="color:inherit;">Contacts</a>.</p>
@@ -31,7 +31,7 @@
         <a href="{{ url_for('record_history_page', kind='vendor', record_id=v['id']) }}" class="small-link" style="color:var(--steel);">What changed</a>
         <form method="post" action="{{ url_for('delete_vendor', vendor_id=v['id']) }}" onsubmit="return confirm('Remove this vendor?');">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="doc-delete">×</button>
+          <button type="submit" class="doc-delete" aria-label="Remove {{ v['name'] }}">Remove</button>
         </form>
       </div>
       {% if v['phone'] %}<a href="tel:{{ v['phone'] }}" style="color:var(--steel); font-weight:600;">{{ v['phone'] }}</a>{% endif %}
@@ -48,8 +48,8 @@
         <strong>{{ money.total|money }}</strong> outstanding across
         {{ money.count }} invoice{{ '' if money.count == 1 else 's' }}
         {%- if money.soonest %} ·
-          {% if money.soonest < today %}<span class="mini-status status-overdue">oldest due {{ money.soonest }}</span>
-          {% else %}next due {{ money.soonest }}{% endif %}
+          {% if money.soonest < today %}<span class="mini-status status-overdue">oldest due {{ money.soonest|date_short }}</span>
+          {% else %}next due {{ money.soonest|date_short }}{% endif %}
         {%- endif %}
       </span>
       {% endif %}

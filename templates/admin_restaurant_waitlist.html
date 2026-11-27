@@ -25,7 +25,7 @@
       </div>
     </div>
     <p class="upload-hint">
-      {{ e['desired_date'] or 'Any date' }}{% if e['party_size'] %} · Party of {{ e['party_size'] }}{% endif %}
+      {{ e['desired_date']|date_short if e['desired_date'] else 'Any date' }}{% if e['party_size'] %} · Party of {{ e['party_size'] }}{% endif %}
     </p>
     <p class="upload-hint">
       <a href="mailto:{{ e['email'] }}" style="color:var(--steel);">{{ e['email'] }}</a>

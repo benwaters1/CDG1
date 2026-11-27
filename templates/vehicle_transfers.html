@@ -14,7 +14,7 @@
   <div class="mini-list" style="margin-bottom:22px;">
     {% for t in transfers %}
     <div class="mini-row">
-      <span class="mini-name">{{ t['guest_name'] or 'Guest' }} — {{ t['direction'] }}</span>
+      <span class="mini-name">{{ t['guest_name'] or 'Guest' }} — {{ {'pickup': 'Pickup', 'dropoff': 'Drop-off'}.get(t['direction'], t['direction']) }}</span>
       <span class="mini-role">{{ local_datetime_str(t['scheduled_at']) }}{% if t['driver_name'] %} · {{ t['driver_name'] }}{% endif %}</span>
       {% if t['notes'] %}<span class="upload-hint">{{ t['notes'] }}</span>{% endif %}
       <form method="post" action="{{ url_for('delete_vehicle_transfer', transfer_id=t['id']) }}" onsubmit="return confirm('Remove this transfer?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>

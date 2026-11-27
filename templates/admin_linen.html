@@ -4,7 +4,7 @@
 <div class="page-head">
   <h1>Enough sheets?</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <a href="{{ url_for('admin_stock') }}" class="btn-ghost">Stock</a>
+    {% if can('admin_stock') %}<a href="{{ url_for('admin_stock') }}" class="btn-ghost">Stock</a>{% endif %}
     <a href="{{ url_for('admin_turnarounds') }}" class="btn-ghost">Changeovers</a>
   </div>
 </div>

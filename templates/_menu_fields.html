@@ -15,7 +15,7 @@
   </div>
   <div>
     <label class="field-label">Course</label>
-    <select aria-label="Course" name="course">
+    <select aria-label="Course" name="course" onchange="standsWithCourse(this)">
       {% for k, v in courses.items() %}
       <option value="{{ k }}" {{ 'selected' if item and item['course'] == k }}>{{ v }}</option>
       {% endfor %}
@@ -85,7 +85,30 @@
       Appears as a button on the till
     </label>
   </div>
+  {# THE STANDING LIST, said on the dish. Once tonight's card is published the
+     till keeps only what is ticked here -- and nothing anywhere could tick it,
+     so publishing a card took every wine, drink and coffee off the till
+     (back-end review, 27 November 2026). Ticked by itself for the drink
+     courses until somebody touches it. #}
+  <div>
+    <label class="field-label">Every night, whatever the card</label>
+    <label style="display:flex; gap:7px; align-items:center; font-size:14px;">
+      <input type="checkbox" name="always_available" value="1" class="stands-box"
+             {{ 'checked' if (item and item['always_available']) or (not item and (courses|list)[0] in standing_courses) }}
+             onchange="this.dataset.touched = '1'">
+      Stays on the till when tonight's card is up
+    </label>
+    <span class="field-hint">For wine, drinks and coffee. Leave a dish unticked if it
+      is only sold when it is on the card.</span>
+  </div>
 </div>
+<script>
+function standsWithCourse(select) {
+  var box = select.form && select.form.querySelector('.stands-box');
+  if (!box || box.dataset.touched) return;
+  box.checked = {{ standing_courses|tojson }}.indexOf(select.value) !== -1;
+}
+</script>
 
 <p class="field-label" style="margin-top:12px;">Allergens — these show on the pass</p>
 {# The fourteen EU allergens as ticks, not a free-text box. A kitchen at speed

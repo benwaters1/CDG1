@@ -4,7 +4,7 @@
 
 <div class="page-head">
   <h1>Documents</h1>
-  <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel); align-self:center;">← Management</a>
+  <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel); align-self:center;">← All settings</a>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">Company-wide paperwork — insurance, registration, bank account details — separate from each employee's own documents on their profile.</p>
 
@@ -22,7 +22,7 @@
         <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleDocEdit({{ d['id'] }})">Edit</span>
         <form method="post" action="{{ url_for('delete_company_document', doc_id=d['id']) }}" onsubmit="return confirm('Delete this document?');">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="doc-delete">×</button>
+          <button type="submit" class="doc-delete" aria-label="Delete {{ d['title'] }}">Delete</button>
         </form>
       </div>
       <form method="post" action="{{ url_for('edit_company_document', doc_id=d['id']) }}" id="edit-doc-{{ d['id'] }}" class="search-bar" style="display:none; margin-top:6px;">

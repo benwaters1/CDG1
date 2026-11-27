@@ -760,6 +760,16 @@ SUITES = [
     "test_guest_reply_notice",
     # And the owner's own Outlook diary among the house's day, time and subject only.
     "test_owner_diary_on_the_day",
+    # 27 November 2026, the back-end review: the pages staff open first, on a day with people in it
+    # -- Home's clock button and checklist, Today's words, hours in minutes, taken leave, links, phones.
+    "test_staff_start_pages",
+    # And the figures and buttons the house acts on: timesheets, workshop statements, bulk
+    # approvals, the till under a card, fridges, room checks, names, the desk, money ahead.
+    "test_what_the_house_relies_on",
+    # And where staff can get to, and what a guest cannot eat on every page that matters.
+    "test_reach_and_allergies",
+    # And the small things said wrong: here now, breakfast's two counts, bare x buttons, words.
+    "test_said_plainly",
 ]
 
 

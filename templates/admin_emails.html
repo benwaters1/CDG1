@@ -33,6 +33,14 @@
     <span>Writing to guests {{ 'is on.' if health.guests_on else 'is switched off: letters to guests are held until it is on.' }}
       <a href="{{ url_for('admin_automation') }}">Change it</a></span>
   </div>
+  {% if health.guests_on %}
+  <div class="mail-health__row">
+    <span class="mini-status status-{{ 'confirmed' if health.guest_letters_on else 'pending' }}">{{ 'On' if health.guest_letters_on else 'Off' }}</span>
+    <span>{% if health.guest_letters_on %}Guest emails are on: the automatic letters you have approved go.
+      {% else %}Guest emails are off: only booking confirmations and letters you write yourself go. Every other automatic letter waits until you approve it.{% endif %}
+      <a href="{{ url_for('admin_guest_emails') }}">Approve letters</a></span>
+  </div>
+  {% endif %}
   {% if health.redirect %}
   <div class="mail-health__row">
     <span class="mini-status status-pending">Test</span>

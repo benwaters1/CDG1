@@ -4,6 +4,13 @@
 
 <div class="page-head">
   <h1>{{ t('My Shifts') }}</h1>
+  <div>
+    <a href="{{ url_for('my_hours') }}" class="small-link">{{ t('My Hours') }}</a>
+    <a href="{{ url_for('my_availability') }}" class="small-link">{{ t('My Availability') }}</a>
+    {# The way to keep a shift off you before the rota is built. Nothing an
+       employee could open linked to it (27 Nov 2026). #}
+    <a href="{{ url_for('cannot_work') }}" class="small-link">{{ t('When you cannot work') }}</a>
+  </div>
 </div>
 
 {% if offered_to_me %}

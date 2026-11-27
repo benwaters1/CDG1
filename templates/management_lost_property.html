@@ -4,7 +4,7 @@
 
 <div class="page-head">
   <h1>Lost property</h1>
-  <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">Bookings</a>
+  {% if can('admin_bookings') %}<a href="{{ url_for('admin_bookings') }}" class="btn-ghost">Bookings</a>{% endif %}
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
@@ -45,19 +45,19 @@
 <div class="detail-card">
   <h2 class="section-heading">What is in it</h2>
   <div class="table-wrap">
-    <table class="data-table">
+    <table class="data-table phone-cards">
       <thead><tr><th>Found</th><th>What</th><th>Where</th><th>Whose</th><th>State</th><th></th></tr></thead>
       <tbody>
         {% for r in rows %}
         <tr class="{{ 'row-alert' if r['id'] in stale_ids }}">
-          <td>{{ r['found_on']|date_short }}</td>
+          <td data-label="Found">{{ r['found_on']|date_short }}</td>
           <th scope="row">{{ r['what'] }}</th>
-          <td>{{ r['found_where'] or '—' }}</td>
-          <td>{{ r['booking_guest'] or r['guest_name'] or '—' }}
+          <td data-label="Where">{{ r['found_where'] or '—' }}</td>
+          <td data-label="Whose">{{ r['booking_guest'] or r['guest_name'] or '—' }}
             {% if r['guest_contact'] %}<span class="upload-hint">{{ r['guest_contact'] }}</span>{% endif %}</td>
-          <td>
+          <td data-label="State">
             {{ states.get(r['status'], r['status']) }}
-            {% if r['resolved_on'] %}<span class="upload-hint">{{ r['resolved_on'] }}{% if r['resolved_note'] %} · {{ r['resolved_note'] }}{% endif %}</span>{% endif %}
+            {% if r['resolved_on'] %}<span class="upload-hint">{{ r['resolved_on']|date_short }}{% if r['resolved_note'] %} · {{ r['resolved_note'] }}{% endif %}</span>{% endif %}
             {% if r['id'] in stale_ids %}<span class="upload-hint">held over {{ keep_days }} days</span>{% endif %}
           </td>
           <td>
@@ -66,11 +66,9 @@
                   style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="text" name="resolved_note" placeholder="Note"
-                 aria-label="Note on {{ r['what'] }}" style="width:110px;">
-              <button type="submit" name="state" value="returned" class="small-link"
-                      style="background:none;border:0;cursor:pointer;color:var(--steel);">Sent back</button>
-              <button type="submit" name="state" value="disposed" class="small-link"
-                      style="background:none;border:0;cursor:pointer;color:var(--steel);">Let go</button>
+                 aria-label="Note on {{ r['what'] }}" style="flex:1 1 8rem; min-width:0;">
+              <button type="submit" name="state" value="returned" class="btn-mini">Sent back</button>
+              <button type="submit" name="state" value="disposed" class="btn-mini">Let go</button>
             </form>
             {% endif %}
           </td>

@@ -51,7 +51,7 @@
   <p style="margin:.35rem 0"><strong>{{ t.guest_name }}</strong>{% if t.room %} · {{ t.room }}{% endif %} · {{ t.party_size }}: {{ t.dietary_notes }}
     {% for x in t.clashes %}<span class="till-tile__flag is-allergy">{{ x.course }}: {{ x.dish }} ({{ x.why }})</span>{% endfor %}</p>
   {% endfor %}
-  <p><a class="btn-mini" href="{{ url_for('admin_dinner_night', day=dinner.day) }}">The whole night</a></p>
+  <p>{% if can('admin_dinner_night') %}<a class="btn-mini" href="{{ url_for('admin_dinner_night', day=dinner.day) }}">The whole night</a>{% endif %}</p>
 </section>
 {% endif %}
 

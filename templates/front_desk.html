@@ -35,8 +35,8 @@
   </a>
   <a class="stat-tile" href="#rooms">
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('rooms', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ d.let_tonight }} of {{ d.rooms|length }}</span>
-      <span class="stat-tile-label">Rooms let tonight · {{ d.free_tonight }} free</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ d.let_tonight }} of {{ max_rooms_let }}</span>
+      <span class="stat-tile-label">Rooms let tonight · {% if d.house_full %}the house is full{% else %}{{ d.free_tonight }} still to sell{% endif %}</span></span>
   </a>
   <a class="stat-tile" href="#collect">
     <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if d.owed else 'stat-tile-icon-success' }}">{{ icon('receipt', 19) }}</span>
@@ -83,8 +83,10 @@
     <tr class="{{ 'fd-done' if x.checked_in_at }}">
       <td>{% if x.kind == 'stay' %}<a href="{{ url_for('admin_booking', booking_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a>
           {% if x.checkin_done_at %}<span class="mini-status status-confirmed">checked in online</span>{% elif not x.checked_in_at %}<span class="mini-status status-pending">not checked in online</span>{% endif %}
-          {% if x.dietary_notes %}<span class="cell-note">Cannot eat: {{ x.dietary_notes }}</span>{% endif %}{% else %}<a href="{{ url_for('channel_stay_page', reservation_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a> <span class="mini-status status-upcoming">Booking.com</span>
+          {% if x.vip %}<span class="mini-status status-confirmed">VIP</span>{% endif %}
+          {% else %}<a href="{{ url_for('channel_stay_page', reservation_id=x.id) }}"><strong>{{ x.guest_name }}</strong></a> <span class="mini-status status-upcoming">Booking.com</span>
           {% if x.checkin_done_at %}<span class="mini-status status-confirmed">checked in online</span>{% else %}<span class="mini-status status-pending">not checked in online</span>{% endif %}{% endif %}
+          {% if x.cannot_eat %}<span class="cell-note owed-flag"><strong>Cannot eat:</strong> {{ x.cannot_eat }}</span>{% endif %}
         <span class="cell-note">{{ x.reference_code }}{% if x.guest_phone %} · <a href="tel:{{ x.guest_phone|replace(' ', '') }}" class="small-link">{{ x.guest_phone }}</a>{% endif %}</span>
         {% if x.special_requests %}<span class="cell-note"><strong>They asked:</strong> {{ x.special_requests }}</span>{% endif %}
         {% if x.special_occasion %}<span class="cell-note"><strong>Celebrating:</strong> {{ x.special_occasion }}

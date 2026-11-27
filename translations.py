@@ -996,6 +996,17 @@ FR = {
         'Un circuit des brocantes de trois jours au départ du château, pour',
     ': the French art of hunting, unhurried, for beautiful old things. Go out to the antique markets, the hidden dealers and the village':
         ' : l’art français de dénicher, sans se presser, les beaux objets anciens. Partez vers les marchés d’antiquités, les marchands cachés et les',
+    # Staff side, back-end review of 27 November 2026.
+    "Not after days off, just a day you cannot do?": "Pas des congés, seulement un jour où vous ne pouvez pas venir ?",
+    "Tell the rota when you cannot work": "Dites au planning quand vous ne pouvez pas travailler",
+    "and nobody puts a shift on you then.": "et personne ne vous mettra de service ce jour-là.",
+    "waiting for an answer": "en attente de réponse",
+    "Coming up": "À venir",
+    "Nothing booked or waiting. Ask for time off above.": "Rien de prévu ni en attente. Demandez un congé ci-dessus.",
+    "Already taken or closed": "Déjà pris ou clos",
+    "My Hours": "Mes heures",
+    "When you cannot work": "Quand vous ne pouvez pas travailler",
+    "A stretch of days you cannot do, like a course or a family visit?": "Plusieurs jours où vous ne pouvez pas venir, pour une formation ou une visite de famille ?",
 }
 
 ES = {
@@ -1834,6 +1845,17 @@ ES = {
         'Una ruta de brocantes de tres días desde el castillo, dedicada a',
     ': the French art of hunting, unhurried, for beautiful old things. Go out to the antique markets, the hidden dealers and the village':
         ': el arte francés de buscar, sin prisa, objetos antiguos hermosos. Vaya a los mercados de antigüedades, a los anticuarios escondidos y a los',
+    # Staff side, back-end review of 27 November 2026.
+    "Not after days off, just a day you cannot do?": "¿No son vacaciones, solo un día que no puede venir?",
+    "Tell the rota when you cannot work": "Diga al cuadrante cuándo no puede trabajar",
+    "and nobody puts a shift on you then.": "y nadie le pondrá un turno ese día.",
+    "waiting for an answer": "esperando respuesta",
+    "Coming up": "Próximos",
+    "Nothing booked or waiting. Ask for time off above.": "Nada previsto ni pendiente. Pida días libres arriba.",
+    "Already taken or closed": "Ya disfrutados o cerrados",
+    "My Hours": "Mis horas",
+    "When you cannot work": "Cuándo no puede trabajar",
+    "A stretch of days you cannot do, like a course or a family visit?": "¿Varios días que no puede venir, por un curso o una visita familiar?",
 }
 
 # The public pages' own prose, kept in its own file because it is 1,900

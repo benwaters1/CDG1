@@ -46,7 +46,7 @@
       <button type="submit" class="btn-mini">Show</button>
     </form>
     <button type="button" class="btn-mini" onclick="window.print()">Print</button>
-    <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">All bookings</a>
+    {% if can('admin_bookings') %}<a href="{{ url_for('admin_bookings') }}" class="btn-ghost">All bookings</a>{% endif %}
   </div>
 </div>
 
@@ -385,9 +385,9 @@
     {% endif %}
 
     <p class="no-print arr-card__links">
-      <a href="{{ url_for('admin_booking', booking_id=b['id']) }}" class="small-link">The booking</a>
-      <a href="{{ url_for('arrival_card', booking_id=b['id']) }}" class="small-link">Arrival card</a>
-      <a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="small-link">Everything about them</a>
+      {% if can('admin_booking') %}<a href="{{ url_for('admin_booking', booking_id=b['id']) }}" class="small-link">The booking</a>{% endif %}
+      {% if can('arrival_card') %}<a href="{{ url_for('arrival_card', booking_id=b['id']) }}" class="small-link">Arrival card</a>{% endif %}
+      {% if can('guest_booking_history') %}<a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="small-link">Everything about them</a>{% endif %}
     </p>
   </div>
   {% endfor %}

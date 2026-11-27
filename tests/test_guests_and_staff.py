@@ -179,23 +179,27 @@ def run():
     notes = m.handover_notes(conn, days=7, user_id=emp["id"] if emp else None)
     mine = [n for n in notes if n["note"]["body"].startswith(TAG)]
     s.check("a note can be left", len(mine) == 1, detail=str(len(mine)))
-    s.check("and the person who wrote it has not 'read' it",
-            not mine[0]["read_by_me"],
-            detail="a note nobody read is the same as no note, so this is "
-                   "recorded rather than assumed")
+    # Whoever wrote it knows what it says, and is not one of its readers:
+    # Marie was told "1 you have not read" about the note she had just left,
+    # and her own tap counted as somebody on the next shift seeing it
+    # (back-end review, 27 November 2026). The count is the next shift's.
+    s.check("the person who wrote it is not asked to read it",
+            mine[0]["read_by_me"],
+            detail="the author was told they had not read their own note")
+    s.check("and is not counted among its readers", mine[0]["note"]["read_count"] == 0,
+            detail=str(mine[0]["note"]["read_count"]))
 
     note_id = mine[0]["note"]["id"]
-    ec.post(f"/handover/{note_id}/read", follow_redirects=True)
-    after = [n for n in m.handover_notes(conn, days=7,
-                                         user_id=emp["id"] if emp else None)
+    oc.post(f"/handover/{note_id}/read", follow_redirects=True)
+    after = [n for n in m.handover_notes(conn, days=7, user_id=_owner["id"])
              if n["note"]["id"] == note_id][0]
-    s.check("reading it is recorded", after["read_by_me"])
+    s.check("somebody else reading it is recorded", after["read_by_me"])
     s.check("and the count goes up", after["note"]["read_count"] == 1,
             detail=str(after["note"]["read_count"]))
     # A double-click, which is what this actually protects against. The
     # UNIQUE index keeps the count right either way; what INSERT OR IGNORE
     # adds is that the second press is not a 500.
-    second = ec.post(f"/handover/{note_id}/read", follow_redirects=False)
+    second = oc.post(f"/handover/{note_id}/read", follow_redirects=False)
     twice = [n for n in m.handover_notes(conn, days=7) if n["note"]["id"] == note_id][0]
     s.check("reading it twice does not count twice",
             twice["note"]["read_count"] == 1,

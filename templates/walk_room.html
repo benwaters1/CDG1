@@ -18,11 +18,11 @@
 <div class="empty-state">There is nothing on the list to check against yet.
   <a href="{{ url_for('room_checks_page') }}">Put something on it</a> first.</div>
 {% else %}
-<form method="post" class="detail-card">
+<form method="post" class="detail-card" onsubmit="return walkUnticked(this);">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 class="section-heading">The list</h2>
   <div class="table-wrap">
-    <table class="data-table">
+    <table class="data-table phone-cards">
       <thead><tr><th>Right</th><th>What</th><th>If not, what is wrong</th></tr></thead>
       <tbody>
         {% for st in standards %}
@@ -36,7 +36,7 @@
             <label for="pass_{{ st['id'] }}">{{ st['what'] }}</label>
             {% if st['area'] %}<div class="upload-hint">{{ st['area'] }}</div>{% endif %}
           </th>
-          <td><input type="text" name="note_{{ st['id'] }}" maxlength="200"
+          <td data-label="If not, what"><input type="text" name="note_{{ st['id'] }}" maxlength="200"
                      aria-label="What is wrong with: {{ st['what'] }}"></td>
         </tr>
         {% endfor %}
@@ -45,13 +45,23 @@
   </div>
   <label class="field-label" for="walk-note">Anything else</label>
   <input type="text" id="walk-note" name="note" maxlength="300">
-  <button type="submit" class="btn-mini">Record the walk</button>
+  <button type="submit" class="btn-primary">Record the walk</button>
   <p class="pay-disclaimer" style="margin-top:6px;">
     Unticked means <em>not right</em>, not <em>not looked at</em>. A half-filled form comes out
     as a room with faults rather than as a clean one, which is the safer way round: somebody who
     stopped halfway through has not said the rest was fine.
   </p>
 </form>
+<script>
+// Unticked is a fault, on purpose. Said before it is recorded, not after:
+// pressing Record with nothing ticked raised twelve room issues in one go.
+function walkUnticked(form) {
+  var left = form.querySelectorAll('input[type=checkbox][name^="pass_"]:not(:checked)').length;
+  if (!left) return true;
+  return confirm(left + (left === 1 ? ' line is' : ' lines are') + ' not ticked. ' +
+                 'Each one is recorded as not right and raised as a room issue. Record anyway?');
+}
+</script>
 {% endif %}
 
 {% if previous %}

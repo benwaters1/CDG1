@@ -99,7 +99,7 @@
     <tbody>
     {% for b in bookings %}
     {% if b['kind'] == 'channel' %}
-      {%- set here = b['status'] == 'confirmed' and b['arrival_date'] <= today_iso < b['departure_date'] -%}
+      {%- set here = b['status'] == 'confirmed' and stay_is_here(b, today_iso) -%}
       <tr class="bk-row-channel{{ ' bk-row-here' if here }}{{ ' bk-row-off' if b['status'] != 'confirmed' }}">
         <td class="bk-tick"></td>
         <td class="bk-guest">
@@ -123,7 +123,7 @@
     {% else %}
       {% set bill = bill_by_booking[b['id']] %}
       {% set owed = owed_by_booking.get(b['id'], 0) %}
-      {% set here = b['status'] == 'confirmed' and b['arrival_date'] <= today_iso < b['departure_date'] and not b['no_show_at'] %}
+      {% set here = b['status'] == 'confirmed' and stay_is_here(b, today_iso) %}
       <tr{% if here %} class="bk-row-here"{% elif b['status'] in ('cancelled', 'declined') %} class="bk-row-off"{% endif %}>
         <td class="bk-tick">
           {% if b['status'] in ('pending', 'confirmed') %}

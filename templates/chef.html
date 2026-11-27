@@ -109,7 +109,7 @@
         <td class="num">
           {%- if m.owed > 0.005 %}<strong>{{ m.owed|money }}</strong>
           {%- else %}<span class="mini-status status-onshift">settled</span>{% endif %}</td>
-        <td>{% if m.sitting_minutes %}{{ m.sitting_minutes }} min{% endif %}</td>
+        <td>{% if m.sitting_minutes %}{{ m.sitting_minutes|minutes }}{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

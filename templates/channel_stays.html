@@ -4,7 +4,6 @@
 
 <div class="page-head">
   <h1>Booking.com stays</h1>
-  <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
   Stays the house did not take itself. They are read from the channel's own
@@ -161,7 +160,7 @@ You will need your Booking.com confirmation number and the day you arrive.
           {% else %}—{% endif %}
         </td>
         <td class="num">
-          {%- if r['amount'] %}{{ r['currency'] or '€' }}{{ '%.2f'|format(r['amount']) }}
+          {%- if r['amount'] %}{% if (r['currency'] or 'EUR') in ('EUR', '€') %}{{ r['amount']|money }}{% else %}{{ '%.2f'|format(r['amount']) }} {{ r['currency'] }}{% endif %}
           {%- if r['commission_amount'] is not none %}<br><span class="upload-hint">commission {{ '%.2f'|format(r['commission_amount']) }}</span>{% endif %}
           {%- else %}—{% endif %}
         </td>

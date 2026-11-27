@@ -42,7 +42,7 @@
     <span class="task-title readiness-label">{{ c.label }}</span>
     <span class="upload-hint readiness-detail">{{ c.detail }}</span>
     {% if not c.ok %}
-      <span class="mini-status {{ 'status-declined' if c.severity == 'blocker' else ('status-pending' if c.severity == 'warn' else 'status-inactive') }}">
+      <span class="mini-status {{ 'status-declined' if c.severity == 'blocker' else ('status-pending' if c.severity == 'warn' else 'status-past') }}">
         {{ 'must fix' if c.severity == 'blocker' else ('worth fixing' if c.severity == 'warn' else 'optional') }}
       </span>
     {% endif %}

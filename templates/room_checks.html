@@ -59,6 +59,7 @@
   {% endif %}
 </div>
 
+{% set can_edit_list = room_standards_editable() %}
 <div class="detail-card">
   <h2 class="section-heading">What somebody looks at</h2>
   {% if not standards %}
@@ -73,11 +74,13 @@
           <th scope="row">{{ st['area'] or '&mdash;'|safe }}</th>
           <td>{{ st['what'] }}</td>
           <td>
-            <form method="post">
+            {% if can_edit_list %}
+            <form method="post" onsubmit="return confirm('Take &quot;{{ st['what']|e }}&quot; off the list? Past checks keep it.');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="standard_id" value="{{ st['id'] }}">
               <button type="submit" class="btn-mini btn-ghost">Take off</button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -90,16 +93,24 @@
   {% endif %}
 </div>
 
+{% if can_edit_list %}
 <form method="post" class="detail-card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="what" value="standard">
   <h2 class="section-heading">Add something to look at</h2>
   <div class="field-row-2">
-    <input aria-label="Every light works, including the bedsides" type="text" name="line" maxlength="160" required
-           placeholder="Every light works, including the bedsides">
-    <input aria-label="Where: Bathroom, Bed, The room" type="text" name="area" maxlength="40" placeholder="Where: Bathroom, Bed, The room">
+    <div>
+      <label class="field-label" for="standard-line">What to look at</label>
+      <input id="standard-line" type="text" name="line" maxlength="160" required
+             placeholder="e.g. Every light works, including the bedsides">
+    </div>
+    <div>
+      <label class="field-label" for="standard-area">Where</label>
+      <input id="standard-area" type="text" name="area" maxlength="40" placeholder="e.g. Bathroom">
+    </div>
   </div>
-  <button type="submit" class="btn-mini">Add it</button>
+  <button type="submit" class="btn-mini">Add it to the list</button>
 </form>
+{% endif %}
 
 {% endblock %}
