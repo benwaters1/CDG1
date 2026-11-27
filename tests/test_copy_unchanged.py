@@ -249,7 +249,9 @@ m = _harness.m
 # "leaves nothing on its booking either.", after "Kept for thirteen months, then deleted." Was: "35b8726"
 # 27 Nov 2026: moved to 5e8718a, the same work merged again with main (Dinner at Gudanes complete, the guest reply
 # notice, a dietary note's copies). Against af954c3 it listed nothing. Was: "af954c3"
-COPY_BASE = "5e8718a"
+# 27 Nov 2026: moved to 40cd047, merged once more with main for the Tour de France 2027 map as an occasion's
+# photograph. Against 5e8718a it listed nothing. Was: "5e8718a"
+COPY_BASE = "40cd047"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
