@@ -4,10 +4,10 @@
 is_range_available asked six questions per call. Three of them took no
 parameters at all — which workshops are running, which events are confirmed,
 which dates are provisionally held — so the answer was identical every time
-it was asked. next_free_nights calls the function once per room per day
-across the horizon, so the public booking page asked those three questions
-seventy times each and got the same answer seventy times: 476 queries, six
-of them different.
+it was asked. What is open next (on /book until 26 Nov 2026) called the
+function once per room per day across the horizon, so the public booking
+page asked those three questions seventy times each and got the same answer
+seventy times: 476 queries, six of them different.
 
 It now builds the picture once and holds it on `g` for the life of the
 request. That is a correctness decision as much as a speed one, and it cuts

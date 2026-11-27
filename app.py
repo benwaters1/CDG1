@@ -20428,9 +20428,10 @@ def _availability_picture(conn, *, fresh=False):
 
     is_range_available used to ask six questions per call and three of them
     took no parameters at all -- the workshops running, the events confirmed,
-    the dates provisionally held. next_free_nights calls it once per room per
-    day, so the public booking page asked those three seventy times each and
-    got the same answer seventy times. 476 queries; six distinct.
+    the dates provisionally held. What is open next (on /book until 26 Nov
+    2026) called it once per room per day, so the public booking page asked
+    those three seventy times each and got the same answer seventy times.
+    476 queries; six distinct.
 
     Held on `g`, so it lives exactly as long as one request. That is the
     right lifetime: a booking taken by somebody else mid-request cannot make
@@ -42577,11 +42578,10 @@ def owner_home_warnings(conn, today):
     except sqlite3.Error:
         missed = []
     for r in missed[:3]:
-        endpoint, arg = GROUP_EMAIL_ENDPOINTS.get(r["kind"], (None, None))
-        if endpoint:
+        page = group_letter_page(r["kind"], r["group_key"])
+        if page:
             add("warn", f"“{r['subject']}”, set for later, did not reach everybody",
-                r["result"] or "", 1, endpoint,
-                **{arg: r["group_key"] if arg == "day" else int(r["group_key"])})
+                r["result"] or "", 1, page[0], **page[1])
 
     # THE POLICE REGISTER, for guests already here: nobody recorded for some
     # of a party, or a foreign guest's fiche not yet signed (R. 814-1 wants it
@@ -61319,8 +61319,9 @@ def book_rooms():
     dinner_notes = dinner_for_form(conn, arrival, departure)[1] if searched else []
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
-    # What is open next (next_free_nights) was drawn under the dates until
-    # 26 November 2026, when the owner had it taken off the page.
+    # What is open next was drawn under the dates until 26 November 2026, when
+    # the owner had it taken off the page; the code that worked it out went on
+    # 27 November.
     # A cached reading or None. Never a network call from a page render: a
     # render that can block on somebody else's network is one that eventually
     # does, and this is the booking page.
@@ -66661,11 +66662,10 @@ def resolve_deposit_percent(conn, category, date_iso, party_size, default_percen
     return best["deposit_percent"] if best else (default_percent or 0)
 
 
-# How soon is too soon to advertise. A page leading with tonight reads as an
-# empty house, and for a guest who has to fly it is not a stay they could
-# reach in any case.
-NEXT_FREE_LEAD_DAYS = 3
-NEXT_FREE_HORIZON_DAYS = 120
+# What is open next (next_free_nights, its lead and horizon) was taken off
+# /book on 26 November 2026 at the owner's word, and the function with it on
+# the 27th: nothing asked it. The "next free from" line on refused dates is
+# next_free_words, which asks the booking gate itself.
 
 
 def guest_own_record(conn, email):
@@ -67831,70 +67831,6 @@ def next_free_words(conn, room, arrival, nights, horizon=60):
             return f" · next free from {format_date_short(day.isoformat())}"
         day += timedelta(days=1)
     return ""
-
-
-def next_free_nights(conn, *, limit=6, today=None):
-    """The next bookable runs, soonest first, one per room.
-
-    ONE PER ROOM on purpose: six entries for the same room in six
-    consecutive weeks is a list that says nothing, and it is what a naive
-    scan produces first.
-
-    A run has to reach the room's own minimum stay. A room with a three-night
-    minimum and two nights free is not an opening -- offering it produces a
-    guest who picks the dates, is refused, and trusts the page less than if
-    it had never been there.
-
-    Availability comes from is_range_available, which is what the booking
-    flow itself refuses on. A second query of my own would agree with it
-    until the day it did not, and the day it did not would be a guest being
-    turned away from dates the front page offered them.
-    """
-    today = today or house_today()
-    start = today + timedelta(days=NEXT_FREE_LEAD_DAYS)
-    rooms = conn.execute(
-        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
-    found = []
-    for room in rooms:
-        need = max(int(room["min_nights"] or 1), 1)
-        day = start
-        limit_day = today + timedelta(days=NEXT_FREE_HORIZON_DAYS)
-        while day <= limit_day:
-            ok, _why = is_range_available(conn, room["id"], day,
-                                          day + timedelta(days=need))
-            if not ok:
-                day += timedelta(days=1)
-                continue
-            # Found a run that meets the minimum. Stretch it while it lasts,
-            # so the page can say "five nights free" rather than repeating
-            # the minimum back at somebody.
-            nights = need
-            while nights < 14:
-                ok2, _ = is_range_available(conn, room["id"], day,
-                                            day + timedelta(days=nights + 1))
-                if not ok2:
-                    break
-                nights += 1
-            found.append({
-                # Built rather than strftime'd: "%-d" is not portable and
-                # "%d" pads, so the platform decided whether a guest read
-                # "5 September" or "05 September". Production is Linux and
-                # this is written on Windows, which is exactly the way round
-                # that never shows up until it is live.
-                "date": f"{day.day} {day.strftime('%B')}",
-                # The heading of its group on /book: "From Saturday 28 November" (24 Nov).
-                "weekday": WEEKDAY_NAMES[day.weekday()],
-                "date_iso": day.isoformat(),
-                "room_name": room["name"],
-                "room_id": room["id"],
-                "nights": nights,
-                "price": room["price_per_night"],
-            })
-            break
-        # else: nothing free for this room inside the horizon, which is a
-        # perfectly good answer and not an error.
-    found.sort(key=lambda f: (f["date_iso"], f["room_name"]))
-    return found[:limit]
 
 
 ROOM_COUNT_WORDS = {
@@ -91969,9 +91905,15 @@ GROUP_EMAIL_ENDPOINTS = {"session": ("workshop_session_email", "session_id"),
                          "dinner": ("dinner_email", "day")}
 
 
-def group_letter_url(kind, key):
-    endpoint, arg = GROUP_EMAIL_ENDPOINTS[kind]
-    return url_for(endpoint, **{arg: key if arg == "day" else int(key)})
+def group_letter_page(kind, key):
+    """(endpoint, arguments) for a group's own Write to the group page, or
+    None for a kind there is no page for. The one place that knows a dinner is
+    keyed by its day and the others by an id -- the owner home's line about a
+    letter that did not reach everybody links through it."""
+    endpoint, arg = GROUP_EMAIL_ENDPOINTS.get(kind, (None, None))
+    if not endpoint:
+        return None
+    return endpoint, {arg: key if arg == "day" else int(key)}
 
 
 def schedule_group_letter(conn, kind, key, subject, body, send_at, *, user_id=None, rich=None):

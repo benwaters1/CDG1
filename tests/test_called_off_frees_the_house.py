@@ -200,12 +200,17 @@ def _listed_empty(room_id, first, span):
 
 
 def _next_free_from(room_id, first_night):
-    """Where next_free_nights starts this room's first opening, asked as if
-    today were NEXT_FREE_LEAD_DAYS before first_night."""
-    today = first_night - timedelta(days=m.NEXT_FREE_LEAD_DAYS)
-    found = _ask(m.next_free_nights, limit=10000, today=today)
-    ours = [f for f in found if f["room_id"] == room_id]
-    return ours[0]["date_iso"] if ours else None
+    """Whether the "next free from" line a guest is shown on refused dates
+    (next_free_words) offers first_night, asked for the night before it: the
+    soonest arrival it names, as an ISO date, or None."""
+    conn = db()
+    try:
+        room = conn.execute("SELECT * FROM rooms WHERE id = ?", (room_id,)).fetchone()
+    finally:
+        conn.close()
+    said = _ask(m.next_free_words, room, first_night - timedelta(days=1), 1)
+    named = f" · next free from {m.format_date_short(first_night.isoformat())}"
+    return first_night.isoformat() if said == named else said or None
 
 
 def run():
@@ -280,7 +285,7 @@ def run():
                 held == {"start_date": off_start.isoformat(),
                          "end_date": (off_end - timedelta(days=1)).isoformat()},
                 detail=f"{held}")
-        s.check("next free nights look past it",
+        s.check("the \"next free from\" line on refused dates looks past it",
                 _next_free_from(room["id"], off_start) != off_start.isoformat(),
                 detail=f"{_next_free_from(room['id'], off_start)}")
         peak = _ask(m.peak_guests_in_house, off_start, off_end + timedelta(days=1))
@@ -323,7 +328,7 @@ def run():
                        "the gaps and named as held")
         held = _ask(m.atelier_holding_the_house, off_start, off_start + timedelta(days=1))
         s.check("nothing is named as holding the house", held is None, detail=f"{held}")
-        s.check("next free nights offer the dates it had",
+        s.check("the \"next free from\" line offers the dates it had",
                 _next_free_from(room["id"], off_start) == off_start.isoformat(),
                 detail=f"{_next_free_from(room['id'], off_start)} against {off_start}")
         peak = _ask(m.peak_guests_in_house, off_start, off_end + timedelta(days=1))

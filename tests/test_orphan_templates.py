@@ -185,6 +185,21 @@ RETIRED_BY_DESIGN = {
 }
 
 
+# Taken off their page BY THE OWNER, and kept for the same reason as the list
+# above: the page that drew it arrives whole from the design side, and a
+# handover that still imports the macro would find a missing file and a page
+# that will not open. With the file there it finds a macro that renders
+# nothing, because nothing gives it a list any more.
+#
+# Same proof: the note on the page that used to draw it, saying it was taken
+# off and on whose word.
+RETIRED_BY_THE_OWNER = {
+    "_availability_strip.html": (
+        "book_rooms.html", "What is open next is no longer drawn here",
+        "What is open next, off /book on the owner's word on 26 November 2026"),
+}
+
+
 def _templates():
     out = set()
     for root, _dirs, files in os.walk(TPL):
@@ -309,22 +324,25 @@ def run():
                 f'render_template("{name}"' not in app_src,
                 detail="somebody has wired it in, so take it off this list")
 
-    s.section("The ones the design side took off their page on purpose")
-    for name, (page, note, what) in sorted(RETIRED_BY_DESIGN.items()):
-        s.check(f"{name} is still on disk ({what})", name in names,
-                detail="the handovers ship it; if it has really gone, take "
-                       "it off this list in the same commit")
-        page_src = (io.open(os.path.join(TPL, page), encoding="utf-8").read()
-                    if page in names else "")
-        s.check(f"and {page} still says why: \"{note}\"", note in page_src,
-                detail="the design's note is the only written reason this "
-                       "file is not rendered; without it the exception is "
-                       "on nobody's authority")
+    for heading, retired in (
+            ("The ones the design side took off their page on purpose", RETIRED_BY_DESIGN),
+            ("The ones the owner had taken off their page", RETIRED_BY_THE_OWNER)):
+        s.section(heading)
+        for name, (page, note, what) in sorted(retired.items()):
+            s.check(f"{name} is still on disk ({what})", name in names,
+                    detail="the handovers ship it; if it has really gone, take "
+                           "it off this list in the same commit")
+            page_src = (io.open(os.path.join(TPL, page), encoding="utf-8").read()
+                        if page in names else "")
+            s.check(f"and {page} still says why: \"{note}\"", note in page_src,
+                    detail="the note on the page is the only written reason this "
+                           "file is not rendered; without it the exception is "
+                           "on nobody's authority")
 
     s.section("Every other template is reached from somewhere")
     orphans = sorted(names - hit - set(DYNAMIC) - set(AWAITING_WIRING)
                      - set(PARTLY_LANDED) - set(SERVED_IN_CODE)
-                     - set(RETIRED_BY_DESIGN))
+                     - set(RETIRED_BY_DESIGN) - set(RETIRED_BY_THE_OWNER))
     s.check("nothing else sits in templates/ unreferenced", not orphans,
             detail="a template nothing renders reads as live code: somebody "
                    "corrects it, changes nothing anybody can see, and goes "
@@ -333,7 +351,8 @@ def run():
     s.section("And the list is exactly the orphans, with nothing stale on it")
     # An exception list that outlives the file it excuses is how the next
     # orphan gets in: it looks like the list is being maintained.
-    stale = sorted((set(AWAITING_WIRING) | set(RETIRED_BY_DESIGN)) & hit)
+    stale = sorted((set(AWAITING_WIRING) | set(RETIRED_BY_DESIGN)
+                    | set(RETIRED_BY_THE_OWNER)) & hit)
     s.check("nothing on the list is actually referenced now", not stale,
             detail="wired in and not taken off: " + ", ".join(stale))
 

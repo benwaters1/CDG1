@@ -1,221 +1,57 @@
-"""The next free nights, so nobody has to guess two dates.
+"""What is open next stays off /book (owner, 26 November 2026).
 
-"Check availability" asks a guest to pick two dates and find out they were
-wrong. This shows the stretches that are actually open, on the booking page,
-before anybody has typed anything.
+The booking page used to list, before anybody had typed a date, the next
+stretch each room had free ("From Sunday 29 November"). The owner had it
+removed: "i wanted this removed". The route stopped working it out that day,
+and next_free_nights itself went on the 27th, when nothing asked it any more.
 
-Three decisions carry the whole thing, and each is a way of being wrong that
-would look fine on the page:
+The macro (_availability_strip.html) and its styles were left where they were,
+because /book and the stylesheets arrive whole from the design side: a
+handover that draws the strip again finds a macro that renders nothing without
+its list, rather than a missing file and a booking page that will not open.
+So this is what says so if it comes back -- before anybody has searched, and
+after.
 
-  - IT MUST BE BOOKABLE. A room with a three-night minimum and two free
-    nights is not an opening. Offering it produces a guest who picks those
-    dates, is refused, and trusts the page less than if it had never been
-    there. The run has to reach the room's own minimum.
-  - ONE PER ROOM. A naive scan finds the same room open in six consecutive
-    weeks and fills the whole list with it, which says nothing at all.
-  - AND IT MUST NOT LEAD WITH TONIGHT. A page offering tomorrow reads as an
-    empty house, which is the wrong thing to say about a château — and for a
-    guest who has to fly, it is not a stay they could reach.
-
-Availability comes from is_range_available, the same function the booking
-flow refuses on. A second query of my own would agree with it right up until
-the day it did not, and that day would be a guest turned away from dates the
-front page had offered them.
+The "next free from" line a guest is shown when their own dates are refused is
+a different thing, and stays: next_free_words, asked of the booking gate
+itself. test_called_off_frees_the_house reads it.
 """
 from datetime import timedelta
 
-from _harness import Suite, db, house_today
+from _harness import Suite, house_today
 
 import _harness
 
 m = _harness.m
-TAG = "ZZFREE"
-
-
-def _cleanup(conn):
-    conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
-    conn.execute(
-        "DELETE FROM blocked_dates WHERE room_id IN "
-        "(SELECT id FROM rooms WHERE name LIKE ?)", (TAG + "%",))
-    conn.execute("DELETE FROM rooms WHERE name LIKE ?", (TAG + "%",))
-    conn.commit()
 
 
 def run():
-    # The suite builds its own rooms and asks what they offer, so the
-    # ateliers on the copied real calendar are stood down for it. On 22
-    # October 2026 one held the whole house across the lead day, the easy
-    # room's first night moved past it, and "not before the lead time" went
-    # red for the date rather than for anything about lead time. With them
-    # stood down the nights before the lead day are free too, which is what
-    # gives that check something to refuse.
-    holding = m.sessions_holding_the_house
-    m.sessions_holding_the_house = lambda conn, *a, **k: []
-    try:
-        return _run()
-    finally:
-        m.sessions_holding_the_house = holding
-
-
-def _run():
-    s = Suite("the next free nights")
+    s = Suite("What is open next stays off /book")
+    anon = m.app.test_client()
     today = house_today()
-    now = m.datetime.now(m.timezone.utc).isoformat()
-    conn = db()
-    _cleanup(conn)
-
-    def add_room(name, min_nights, price=200):
-        conn.execute(
-            """INSERT INTO rooms (name, description, max_occupancy, max_adults,
-                       price_per_night, min_nights, active, sort_order,
-                       export_token)
-               VALUES (?, '', 2, 2, ?, ?, 1, 98, ?)""",
-            (TAG + " " + name, price, min_nights,
-             f"tok-{TAG}-{name}".lower().replace(" ", "-")))
-        return conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-
-    def book(room_id, ref, start_in, nights):
-        start = today + timedelta(days=start_in)
-        conn.execute(
-            """INSERT INTO bookings (room_id, reference_code, manage_token,
-                       guest_name, guest_email, arrival_date, departure_date,
-                       party_size, status, total_price, created_at)
-               VALUES (?, ?, ?, 'Someone', 'x@example.invalid', ?, ?, 2,
-                       'confirmed', 100, ?)""",
-            (room_id, TAG + ref, f"tok-{TAG}-{ref}".lower(), start.isoformat(),
-             (start + timedelta(days=nights)).isoformat(), now))
-
-    # A room free from the lead day onward.
-    easy = add_room("Easy", 1)
-    # Three-night minimum, and only a two-night gap early on: that gap must
-    # NOT be offered. Booked solid until day 40 apart from that gap.
-    fussy = add_room("Fussy", 3)
-    book(fussy, "F1", m.NEXT_FREE_LEAD_DAYS, 2)      # lead .. lead+2
-    book(fussy, "F2", m.NEXT_FREE_LEAD_DAYS + 4, 36)  # lead+4 .. lead+40
-    # Booked for the whole horizon: it simply has nothing to offer.
-    full = add_room("Full", 1)
-    book(full, "FU", 0, m.NEXT_FREE_HORIZON_DAYS + 10)
-    conn.commit()
-
-    runs = {r["room_name"]: r for r in
-            m.next_free_nights(conn, limit=50, today=today)}
-
-    s.section("It offers a stay somebody can actually book")
-    s.check("the easy room is offered", TAG + " Easy" in runs)
-    # Asked from the lead day rather than assumed to BE the lead day: an
-    # event or the five-rooms-a-night limit can still close that night on the
-    # real calendar, and neither has anything to do with lead time.
-    lead = today + timedelta(days=m.NEXT_FREE_LEAD_DAYS)
-    easy_from = lead
-    for _ in range(120):
-        ok, _why = m.is_range_available(conn, easy, easy_from,
-                                        easy_from + timedelta(days=1))
-        if ok:
-            break
-        easy_from += timedelta(days=1)
-    s.check("and not before the lead time",
-            runs[TAG + " Easy"]["date_iso"] == easy_from.isoformat(),
-            detail="a page leading with tonight reads as an empty house, and "
-                   "a guest who has to fly cannot take it anyway")
-
-    s.section("A gap shorter than the minimum stay is not an opening")
-    fussy_run = runs.get(TAG + " Fussy")
-    s.check("the fussy room is offered something", fussy_run is not None,
-            detail="it is free after day 40")
-    s.check("but NOT the two-night gap it cannot sell",
-            fussy_run and fussy_run["date_iso"] !=
-            (today + timedelta(days=m.NEXT_FREE_LEAD_DAYS)).isoformat(),
-            detail="offering it produces a guest who picks those dates, is "
-                   "refused, and trusts the page less than if it had never "
-                   "been there")
-    # Asked, not asserted. The room is free from lead+40 as far as its own
-    # bookings go, but next_free_nights also honours what holds the whole
-    # chateau — an atelier, an event, a held date — and which days those are
-    # moves with the real calendar. Written as a bare offset this check was
-    # true the morning it was typed and false the morning an atelier landed
-    # on it, which is a fuse rather than a test.
-    wants = today + timedelta(days=m.NEXT_FREE_LEAD_DAYS + 40)
-    for _ in range(120):
-        ok, _why = m.is_range_available(conn, fussy, wants,
-                                        wants + timedelta(days=3))
-        if ok:
-            break
-        wants += timedelta(days=1)
-    s.check("it offers the first date it can really take",
-            fussy_run and fussy_run["date_iso"] == wants.isoformat(),
-            detail="%s — the house would take %s"
-                   % (fussy_run["date_iso"] if fussy_run else "nothing",
-                      wants.isoformat()))
-    s.check("and at least its own minimum",
-            fussy_run and fussy_run["nights"] >= 3,
-            detail=str(fussy_run["nights"]) if fussy_run else "")
-
-    s.section("A room with nothing free is simply absent")
-    s.check("the fully booked room is not on the list",
-            TAG + " Full" not in runs,
-            detail="an empty answer for one room is an answer, not an error")
-
-    s.section("One entry per room")
-    # A naive scan finds the easy room open again next week, and the week
-    # after, and fills the list with one room saying nothing.
-    all_runs = m.next_free_nights(conn, limit=50, today=today)
-    names = [r["room_name"] for r in all_runs]
-    s.check("no room appears twice", len(names) == len(set(names)),
-            detail=", ".join(sorted(n for n in names if names.count(n) > 1)))
-
-    s.section("The run says how long it really is")
-    s.check("the easy room's run is longer than one night",
-            runs[TAG + " Easy"]["nights"] > 1,
-            detail="repeating the minimum back at somebody tells them nothing")
-
-    s.section("And it agrees with what the booking flow will accept")
-    # The check that matters. A second availability query of my own would
-    # agree until the day it did not, and that day is a guest refused the
-    # dates the front page offered them.
-    for r in all_runs:
-        if not r["room_name"].startswith(TAG):
-            continue
-        start = m.parse_date(r["date_iso"])
-        ok, why = m.is_range_available(
-            conn, r["room_id"], start, start + timedelta(days=r["nights"]))
-        s.check(f"{r['room_name']}: the dates offered really are available",
-                ok, detail=str(why))
 
     s.section("Not on the booking page")
-    anon = m.app.test_client()
     body = anon.get("/book").get_data(as_text=True)
-    # Taken off /book on 26 November 2026 (owner: "i wanted this removed"). /book arrives whole from
-    # the design side, so this is what says so if a handover draws it again.
-    s.check("What is open next is not on /book, though a room has nights free",
-            runs.get(TAG + " Easy") and "What is open next" not in body
+    s.check("the booking page answers", "<form" in body)
+    s.check("What is open next is not on /book",
+            "What is open next" not in body and "What Is Open Next" not in body
             and "rooms are open from" not in body and 'class="g-nextf' not in body,
             detail="the owner had it removed on 26 November 2026")
 
-    s.section("Once somebody has searched, it goes")
+    s.section("Nor on a page of search results")
     searched = anon.get(
         "/book?arrival=" + (today + timedelta(days=60)).isoformat()
         + "&departure=" + (today + timedelta(days=62)).isoformat()
     ).get_data(as_text=True)
     s.check("it is not on a page of search results",
-            "What Is Open Next" not in searched,
-            detail="somebody just told their dates are taken does not want a "
-                   "second list of dates that are not theirs; they want to "
-                   "change one of their own")
+            "What Is Open Next" not in searched and "What is open next" not in searched
+            and 'class="g-nextf' not in searched)
 
-    s.section("The date reads the same on every machine")
-    # "%-d" is not portable and "%d" pads, so the platform decided whether a
-    # guest read "5 September" or "05 September" -- and this is written on
-    # Windows while production is Linux, which is the way round that never
-    # shows up until it is live.
-    s.check("no leading zero on the day",
-            not any(r["date"].startswith("0") for r in all_runs),
-            detail=str([r["date"] for r in all_runs][:3]))
-    s.check("and the month is named, not numbered",
-            all(any(c.isalpha() for c in r["date"]) for r in all_runs),
-            detail=str([r["date"] for r in all_runs][:3]))
-
-    _cleanup(conn)
-    conn.close()
+    s.section("And the app no longer works it out")
+    s.check("next_free_nights is gone, so nothing can draw it by accident",
+            not hasattr(m, "next_free_nights"))
+    s.check("the line on refused dates is still there",
+            callable(getattr(m, "next_free_words", None)))
     return s
 
 

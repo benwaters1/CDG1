@@ -258,6 +258,21 @@ def run():
             pass
 
     s.section("An edited photograph the size the editor really makes")
+    # The limit below is Werkzeug 3.1's. On a machine still carrying 3.0 the
+    # opt-out form took a 600 KB field and answered 302, and the red said
+    # "HTTP 302" for weeks without saying why: the site was right, the Python
+    # running the suite was not the one Railway installs. Said first, by name.
+    import re as _re
+    from importlib.metadata import version as _version
+    with io.open(os.path.join(_harness.ROOT, "requirements.txt"), encoding="utf-8") as fh:
+        pinned = _re.search(r"(?mi)^werkzeug\s*==\s*(\S+)", fh.read())
+    pinned = pinned.group(1) if pinned else None
+    here = _version("werkzeug")
+    s.check("the Werkzeug running these checks is the one requirements.txt pins",
+            pinned and here == pinned,
+            detail=f"{here} here, {pinned} pinned and on the live site: run "
+                   "python -m pip install -r requirements.txt, or the checks below "
+                   "test a limit this Python does not have")
     # Werkzeug 3.1 refuses any text field over 500 KB, and the editor's data
     # URL is one: a 2048-pixel canvas at JPEG 0.9 is one to three megabytes of
     # base64. The check above posts a 300-pixel square, which fits, so it went
