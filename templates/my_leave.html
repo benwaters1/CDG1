@@ -36,23 +36,27 @@
   </form>
 </div>
 
-<h2 class="section-heading">{{ t('Your requests') }}</h2>
-{% if not requests %}
-  <div class="empty-state">{{ t('No time off requested yet.') }}</div>
-{% else %}
-  {% for r in requests %}
+<p class="upload-hint" style="max-width:520px;">
+  {{ t('Not after days off, just a day you cannot do?') }}
+  <a href="{{ url_for('cannot_work') }}">{{ t('Tell the rota when you cannot work') }}</a>
+  {{ t('and nobody puts a shift on you then.') }}
+</p>
+
+{% macro leave_card(r) %}
   <div class="expense-card">
     <div class="expense-head">
       <div>
         <strong>{{ date_range(r['start_date'], r['end_date']) }}</strong>
-        <span class="mini-status status-{{ 'rejected' if r['status'] == 'declined' else ('inactive' if r['status'] == 'cancelled' else r['status']) }}" style="margin-left:8px;">{{ r['status'] }}</span>
+        <span class="mini-status status-{{ 'rejected' if r['status'] == 'declined' else ('inactive' if r['status'] == 'cancelled' else r['status']) }}" style="margin-left:8px;">{{ t('waiting for an answer') if r['status'] == 'pending' else r['status'] }}</span>
         <span class="upload-hint" style="margin-left:6px;">{{ r['leave_type']|default('vacation', true)|capitalize }}</span>
       </div>
     </div>
     {% if r['reason'] %}<p class="manual-body">{{ r['reason'] }}</p>{% endif %}
     <p class="upload-hint">Requested {{ r['requested_at']|house_day|date_short }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day|date_short }}{% endif %}</p>
     {% if r['owner_note'] %}<p class="upload-hint">Note: {{ r['owner_note'] }}</p>{% endif %}
-    {% if r['status'] in ['pending', 'approved'] %}
+    {# Only what can still be called off. Taken time off is a record: the
+       page offered Cancel on every approved holiday back to the summer. #}
+    {% if leave_can_be_cancelled(r, today) %}
     <div class="expense-actions">
       <form method="post" action="{{ url_for('cancel_leave_request', request_id=r['id']) }}" onsubmit="return confirm('Cancel this time off request?');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -61,7 +65,20 @@
     </div>
     {% endif %}
   </div>
-  {% endfor %}
+{% endmacro %}
+
+<h2 class="section-heading">{{ t('Coming up') }}</h2>
+{% if not ahead %}
+  <div class="empty-state">{{ t('Nothing booked or waiting. Ask for time off above.') }}</div>
+{% else %}
+  {% for r in ahead %}{{ leave_card(r) }}{% endfor %}
+{% endif %}
+
+{% if past %}
+<details style="margin-top:18px;">
+  <summary class="section-heading" style="cursor:pointer;">{{ t('Already taken or closed') }} · {{ past|length }}</summary>
+  {% for r in past %}{{ leave_card(r) }}{% endfor %}
+</details>
 {% endif %}
 
 {% endblock %}

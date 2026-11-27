@@ -53,7 +53,7 @@
     <tr>
       <td>{{ r.date|date_short }}</td>
       <td><a href="{{ url_for('profile', user_id=r.user_id) }}">{{ r.employee_name }}</a></td>
-      <td class="num">{% if r.hours %}{{ '%.1f'|format(r.hours) }}{% else %}—{% endif %}</td>
+      <td class="num">{% if r.hours %}{{ r.hours|hours }}{% else %}—{% endif %}</td>
       <td>{{ r.detail }}</td>
     </tr>
     {% endfor %}

@@ -11573,6 +11573,11 @@ OWNER_MENU = [
         ]),
         ("Comings and goings", [
             _nav("management_visitors", "Visitors On Site", "guests"),
+            # The fire roll call: open to anybody signed in, and before 27 Nov
+            # 2026 linked only from the reports index, which no member of staff
+            # can open -- so the page written for whoever is standing outside
+            # at two in the morning could only be found by its address.
+            _nav("roll_call", "Fire Roll Call", "guests"),
             _nav("management_breakages", "Breakages", "wrench"),
             _nav("management_lost_property", "Lost Property", "shopping"),
         ]),
@@ -11699,6 +11704,7 @@ STAFF_MENU = [
                  ("maintenance_job", "maintenance_check")),
             _nav("management_cleaning", "Cleaning Rounds", "wrench", ("cleaning_round_done",)),
             _nav("management_visitors", "Visitors On Site", "guests", ("sign_out_visitor",)),
+            _nav("roll_call", "Fire Roll Call", "guests"),
             _nav("management_breakages", "Breakages", "wrench"),
             _nav("management_lost_property", "Lost Property", "shopping",
                  ("resolve_lost_property",)),
@@ -12126,10 +12132,21 @@ def net_hours_for_entries(conn, entries):
         return {}
     minutes = break_minutes_for_entries(conn, entries)
     return {
-        e["id"]: max(0.0, round(hours_between(e["clock_in_at"], e["clock_out_at"])
-                                - minutes.get(e["id"], 0.0) / 60, 2))
+        e["id"]: to_whole_minutes(hours_between(e["clock_in_at"], e["clock_out_at"])
+                                  - minutes.get(e["id"], 0.0) / 60)
         for e in entries
     }
+
+
+def to_whole_minutes(hours):
+    """Hours, rounded to the minute and never below nothing.
+
+    It was two decimal places of an hour, which is not a unit anybody
+    counts in: 07:58 to 16:05 is 8h 07m, stored as 8.12, and three of them
+    added up to 24.36 -- 24h 22m -- under rows that read 8h 07m each. A
+    week has to add up the way a person adds it, so each shift is whole
+    minutes and a total is just their sum (27 November 2026)."""
+    return max(0.0, round(hours * 60) / 60)
 
 
 def net_hours(entry, conn=None):
@@ -12146,7 +12163,7 @@ def net_hours(entry, conn=None):
     break_minutes = break_minutes_for_entry(conn, entry["id"])
     if owns_conn:
         conn.close()
-    return max(0.0, round(gross - break_minutes / 60, 2))
+    return to_whole_minutes(gross - break_minutes / 60)
 
 
 def labour_hours_by_person(conn, start_iso, end_iso):
@@ -16435,6 +16452,34 @@ app.jinja_env.filters["qty"] = lambda v, places=2: quantity(v, places)
 app.jinja_env.filters["box"] = lambda v, places=None: box_value(v, places)
 
 
+# HOURS AS PEOPLE SAY THEM (27 November 2026). A shift of 07:58 to 16:05 is
+# 8 hours and 7 minutes, and the pages printed it "8.12h" -- which everybody
+# reads as eight hours and twelve minutes. The same week then came out three
+# ways on two pages: "24.35 h" in My Hours' band, "24.4 hours" in the sentence
+# under it, and "24.36h" on the profile, each rounding the same minutes its own
+# way. One spelling now, worked from whole minutes, so a column adds up to its
+# total the way a person adds it: 8h 07m. The payroll pack and its CSV keep
+# decimal hours, which is what a payroll bureau multiplies by a rate.
+def hours_words(hours, none="—"):
+    """8.12 -> "8h 07m"; 8.0 -> "8h"; 0.5 -> "30m"; None -> "—"."""
+    if hours is None or hours == "":
+        return none
+    try:
+        minutes = int(round(float(hours) * 60))
+    except (TypeError, ValueError):
+        return str(hours)
+    sign = "−" if minutes < 0 else ""
+    h, m = divmod(abs(minutes), 60)
+    if h and m:
+        return f"{sign}{h}h {m:02d}m"
+    if h:
+        return f"{sign}{h}h"
+    return f"{sign}{m}m"
+
+
+app.jinja_env.filters["hours"] = hours_words
+
+
 def guests_overview(conn, period, today):
     """Rooms over the chosen window, plus who is physically here right now."""
     occ = report_occupancy(conn, period)
@@ -18216,8 +18261,24 @@ def guest_recognition_cards(conn, today, viewer_role="employee"):
         else:
             when, urgent = "In residence", False
         arriving_today = bool(arrival and arrival == today)
+        # The booking's own row, for what they asked and whether the desk has
+        # checked them in. A Booking.com stay has no booking row to ask; what
+        # the guest asked for there is in their messages, on the Booking.com page.
+        own = conn.execute(
+            "SELECT special_requests, checked_in_at, estimated_arrival_time "
+            "FROM bookings WHERE id = ?", (stay["booking_id"],)
+        ).fetchone() if stay["booking_id"] else None
         if arriving_today:
-            when, urgent = "Arrived today", True
+            # "Arrived today" was said of everybody due today, from first thing
+            # in the morning, so the list told the house a family was in the
+            # building six hours before their flight landed. Arrived once the
+            # desk has checked them in; until then, arriving, and when.
+            if own is not None and not own["checked_in_at"]:
+                eta = (own["estimated_arrival_time"] or "").strip()
+                when = f"Arriving today · about {eta}" if eta else "Arriving today"
+            else:
+                when = "Arrived today"
+            urgent = True
 
         # Which stay this is for them. Counted on email across every confirmed
         # booking, so a returning guest can be greeted as one — this is the
@@ -18234,12 +18295,8 @@ def guest_recognition_cards(conn, today, viewer_role="employee"):
         # stays_with_status() folds requests, dietary and profile notes into one
         # `notes` string, which is right for a list row and wrong here: this
         # screen needs them apart, so the greeting line can differ from what the
-        # kitchen has to know. So fetch the parts.
-        # A Booking.com stay has no booking row to ask; what the guest asked
-        # for there is in their messages, on the Booking.com page.
-        requests = conn.execute(
-            "SELECT special_requests FROM bookings WHERE id = ?", (stay["booking_id"],)
-        ).fetchone()["special_requests"] if stay["booking_id"] else None
+        # kitchen has to know. So the parts, from the booking's own row above.
+        requests = own["special_requests"] if own is not None else None
         profile = None
         if stay["profile_id"]:
             profile = conn.execute(
@@ -21956,7 +22013,8 @@ def build_office_display_queues(conn, today):
     queues.append({
         "key": "leave", "label": "Leave requests", "link": url_for("admin_approvals"),
         "count": len(leave),
-        "preview": [f"{r['employee_name']} — {r['start_date']} to {r['end_date']}" for r in leave[:4]],
+        "preview": [f"{r['employee_name']} — {format_date_range(r['start_date'], r['end_date'])}"
+                    for r in leave[:4]],
     })
 
     expenses = conn.execute(
@@ -23929,7 +23987,7 @@ def _in_house_dining_rate(conn, lookback_days=120):
             nights += (hi - lo).days * (b["party_size"] or 0)
     if nights < 20:
         # Too little to divide by. Saying so beats a rate built on one week.
-        return None, f"only {nights} guest-night(s) in the last {lookback_days} days"
+        return None, f"only {counted(nights, 'guest-night')} in the last {lookback_days} days"
     return (round(seated / nights, 2),
             f"{seated} of {nights} guest-nights sat down, last {lookback_days} days")
 
@@ -28874,7 +28932,7 @@ def working_time_violations(conn, from_date, to_date):
             if hours > MAX_WEEKLY_HOURS:
                 violations.append({
                     "user_id": uid, "employee_name": name, "rule": "weekly_hours",
-                    "detail": f"{hours:.1f}h worked in week {iso_week} "
+                    "detail": f"{hours_words(hours)} worked in week {iso_week} "
                               f"(maximum {MAX_WEEKLY_HOURS}h)",
                     "on_date": date.fromisocalendar(iso_year, iso_week, 1).isoformat(),
                 })
@@ -28898,7 +28956,7 @@ def working_time_violations(conn, from_date, to_date):
             had = f"only {taken:.0f} min" if taken else "no break"
             violations.append({
                 "user_id": uid, "employee_name": name, "rule": "break",
-                "detail": f"{span:.1f}h worked with {had} recorded "
+                "detail": f"{hours_words(span)} worked with {had} recorded "
                           f"(at least {MIN_BREAK_MINUTES} min required after "
                           f"{BREAK_REQUIRED_AFTER_HOURS}h)",
                 "on_date": in_at.astimezone(LOCAL_TZ).date().isoformat(),
@@ -40032,7 +40090,7 @@ def clock_out_action():
     else:
         clock_out(conn, user["id"])
         hours = net_hours(conn.execute("SELECT * FROM time_entries WHERE user_id = ? ORDER BY id DESC LIMIT 1", (user["id"],)).fetchone(), conn)
-        flash(f"Clocked out — {hours:.2f}h worked this shift.", "success")
+        flash(f"Clocked out — {hours_words(hours)} worked this shift.", "success")
     conn.close()
     return redirect(request.referrer or url_for("dashboard"))
 
@@ -42487,7 +42545,7 @@ def owner_home_queue(conn):
         out.append({
             "id": l["id"],
             "kind": "Time off", "who": l["who"], "title": l["who"],
-            "detail": f"{l['start_date']} – {l['end_date']}",
+            "detail": format_date_range(l["start_date"], l["end_date"]),
             "amount": f"{days} day{'s' if days != 1 else ''}",
             "age": house_date_iso(l["requested_at"]),
             "tone": "people", "ok_label": "Approve", "no_label": "Decline",
@@ -44507,6 +44565,10 @@ def staff_dashboard():
         expiring_docs=expiring_docs, overtime=overtime,
         my_open_break=my_open_break, activity=activity, announcements_current=announcements_current,
         my_expiring_docs=my_expiring_docs, my_week_hours=my_week_hours, my_month_hours=my_month_hours,
+        # Worked out at the top of this view and never handed over, so Home
+        # offered "Clock in" to somebody who had clocked in at eight, while
+        # Today and the phone's home screen beside it said Clock out.
+        my_shift=my_shift,
         backup_stale=backup_stale, last_backup_at=last_backup_at,
         current_month_financials=current_month_financials, low_ratings=low_ratings,
         vehicle_alerts=vehicle_alerts, breakfast_low_stock=breakfast_low_stock,
@@ -46673,7 +46735,7 @@ def admin_timesheets():
     lv = list_page(lv, request.args)
     overview = [
         overview_cell("Shifts in these dates", sum(t["shifts"] for t in totals_by_user.values())),
-        overview_cell("Hours", round(sum(t["hours"] for t in totals_by_user.values()), 2),
+        overview_cell("Hours", hours_words(sum(t["hours"] for t in totals_by_user.values())),
                       hint="net of breaks"),
         overview_cell("To fix before payroll", to_fix, alert=bool(to_fix),
                       hint="each counts as zero hours until it is"),
@@ -61986,7 +62048,7 @@ def guest_detail(guest_id):
     if is_owner:
         overview = [
             overview_cell("Stays", record["stay_count"],
-                          hint=f"{record['nights']} night(s)"),
+                          hint=counted(record["nights"], "night")),
             overview_cell("Spent with us", euro(record["spent"]),
                           hint="gross: stays, ateliers and events"
                                + (f", and {euro(record['at_table'])} at the table"
@@ -65602,7 +65664,7 @@ def manage_booking(manage_token):
                 # More nights is more taxe de sejour and a bigger balance.
                 restamp_stay(conn, booking["id"])
                 log_audit(conn, "guest_extended_stay", target=booking["reference_code"],
-                          details=f"+{nights} night(s), +{money(added)}")
+                          details=f"+{counted(nights, 'night')}, +{money(added)}")
                 owner_to = house_address_for(conn, "rooms")
                 conn.commit()      # before send_email, which needs its own write lock
                 if owner_to:
@@ -72217,7 +72279,7 @@ def run_review_invitation_job(conn, days_after=None):
         asked += 1
     if not answers:
         return "nobody new to ask"
-    return f"asked {asked} of {len(answers)} guest(s) for a public review"
+    return f"asked {asked} of {counted(len(answers), 'guest')} for a public review"
 
 
 def run_room_feedback_job(conn, days_after=None):
@@ -72253,7 +72315,7 @@ def run_room_feedback_job(conn, days_after=None):
 
     if not departed:
         return f"nobody left {in_words(-days)} who has not been asked"
-    return f"asked {asked} guest(s) how their stay was"
+    return f"asked {counted(asked, 'guest')} how their stay was"
 
 
 def ask_room_feedback(conn, booking):
@@ -75172,7 +75234,7 @@ def drain_campaign_queue(conn, *, budget=None, sleep=time.sleep,
 
 def _drain_campaign_queue(conn, budget, sleep, seconds, mind_the_holds):
     maybe = recover_interrupted_campaign_letters(conn)
-    notes = [f"{maybe} letter(s) were going out when the house stopped; not sent again"
+    notes = [f"{counted(maybe, 'letter')} {'was' if maybe == 1 else 'were'} going out when the house stopped; not sent again"
              ] if maybe else []
     runs = conn.execute("SELECT * FROM campaign_runs WHERE state = 'going' "
                         "ORDER BY created_at, send_id").fetchall()
@@ -75257,7 +75319,7 @@ def _drain_campaign_queue(conn, budget, sleep, seconds, mind_the_holds):
         "ON campaign_runs.send_id = campaign_queue.send_id "
         "WHERE campaign_queue.state = 'queued' AND campaign_runs.state = 'going'"
     ).fetchone()["n"]
-    head = f"{sent} campaign letter(s) sent"
+    head = f"{counted(sent, 'campaign letter')} sent"
     if still:
         head += f", {still:,} still to go"
         if budget is None and left <= 0:
@@ -93841,7 +93903,7 @@ def run_group_letters_job(conn, now=None):
                       result = ?, result_ok = ? WHERE id = ?""",
             (datetime.now(timezone.utc).isoformat(), count, text, ok, row["id"]))
         conn.commit()
-    return f"{len(due)} group letter(s) due, {sent} sent"
+    return f"{counted(len(due), 'group letter')} due, {sent} sent"
 
 
 def _group_page(kind, key, mode):
@@ -103630,7 +103692,7 @@ def run_checkin_letter_job(conn, today=None):
         ok, why = send_direct_checkin_letter(conn, kind, stay_id)
         sent += 1 if ok and not why else 0
         held += 1 if ok and why else 0
-    out = f"sent {sent} check-in letter(s)"
+    out = f"sent {counted(sent, 'check-in letter')}"
     if held:
         out += f", {held} held until mail to guests is switched on"
     if unwritten:
@@ -110552,7 +110614,7 @@ def watch_task_findings(conn, today=None):
     gaps = [g for g in cover_gaps(conn, today, horizon)
             if g["uncovered"] and (g["in_house"] or g["arrivals"])]
     for g in take("cover", gaps):
-        who = (f"{g['in_house']} guest(s) in the house" if g["in_house"]
+        who = (f"{counted(g['in_house'], 'guest')} in the house" if g["in_house"]
                else f"{g['arrivals']} arriving")
         found.append((
             "cover",
@@ -119635,7 +119697,17 @@ def my_hours():
            WHERE user_id = ? AND clock_in_at >= ? AND clock_in_at < ?
            ORDER BY clock_in_at DESC""",
         (user["id"], period["start_at"], period["end_at"])).fetchall()
+    # A clocking still open because the person is at work RIGHT NOW is not a
+    # problem to tell anybody about. It was counted as one: an employee who
+    # opened this page mid-shift was told "1 clocking needs a look -- tell
+    # whoever runs the rota", about the shift they were standing in. Open for
+    # longer than the forgotten-clock-out job allows is the real fault.
+    try:
+        stale_hours = float(get_automation_settings(conn)["automation_stale_shift_hours"])
+    except (TypeError, ValueError, KeyError):
+        stale_hours = 14
     conn.close()
+    now = datetime.now(timezone.utc)
 
     # Worked out here rather than in the template: the arithmetic is the same
     # clock-out-minus-clock-in-minus-breaks the costing uses, and a template is
@@ -119661,8 +119733,10 @@ def my_hours():
             "finished_day": house_date_iso(e["clock_out_at"]),
             "break_minutes": int(round(e["break_minutes"] or 0)),
             "hours": hours, "open": finished is None, "impossible": impossible,
+            "on_shift": bool(finished is None and started
+                             and now - started < timedelta(hours=stale_hours)),
         })
-    odd = [e for e in entries if e["open"] or e["impossible"]]
+    odd = [e for e in entries if (e["open"] and not e["on_shift"]) or e["impossible"]]
 
     # The foot row and the band. From the costing for anybody it counts, priced
     # or not, so the figure is the one payroll reads. Anybody it does not count
@@ -119680,8 +119754,7 @@ def my_hours():
         # The same spelling as the rows under it: they said 4.50 and 8.00 over
         # a band that said 12.5, and a total in a coarser unit than its rows
         # cannot be checked by adding them up.
-        overview_cell("Hours", quantity(total_hours), sub="h",
-                      hint="net of breaks taken"),
+        overview_cell("Hours", hours_words(total_hours), hint="net of breaks taken"),
         overview_cell("Shifts", total_shifts),
         overview_cell("At your rate", euro(mine["gross"]) if mine else "—",
                       sub="gross", alert=unpriced,
@@ -119957,7 +120030,26 @@ def my_leave():
     ).fetchall()
     leave = leave_balance(conn, user["id"], user["annual_leave_days"])
     conn.close()
-    return render_template("my_leave.html", requests=requests_, leave=leave)
+    # Coming up first, soonest first; what is over underneath, folded. One
+    # list newest-first put a summer's worth of old holidays between somebody
+    # and the request they had just made.
+    today = house_today()
+    ahead = sorted([r for r in requests_ if (r["end_date"] or "") >= today.isoformat()],
+                   key=lambda r: r["start_date"] or "")
+    past = [r for r in requests_ if (r["end_date"] or "") < today.isoformat()]
+    return render_template("my_leave.html", requests=requests_, ahead=ahead, past=past,
+                           leave=leave, today=today)
+
+
+def leave_can_be_cancelled(req, today):
+    """Whether its owner may still call it off: asked for and not yet decided,
+    or approved and not yet over. Taken time off stays on the record."""
+    if req["status"] == "pending":
+        return True
+    return req["status"] == "approved" and (req["end_date"] or "") >= today.isoformat()
+
+
+app.jinja_env.globals["leave_can_be_cancelled"] = leave_can_be_cancelled
 
 
 @app.route("/leave/<int:request_id>/cancel", methods=["POST"])
@@ -119972,6 +120064,14 @@ def cancel_leave_request(request_id):
     if not req:
         conn.close()
         abort(404)
+    # Time off already taken is a record, not a request. The page offered
+    # Cancel on every approved holiday back to the summer, and pressing it
+    # would have wiped days that were taken off the year's count.
+    if not leave_can_be_cancelled(req, house_today()):
+        conn.close()
+        flash("That time off has already been taken, so it stays on the record. "
+              "If it is wrong, ask the owner to correct it.", "error")
+        return redirect(url_for("my_leave"))
     conn.execute(
         "UPDATE leave_requests SET status = 'cancelled', decided_at = ? WHERE id = ?",
         (datetime.now(timezone.utc).isoformat(), request_id),
@@ -123705,7 +123805,7 @@ def run_room_balance_reminder_job(conn, days_before):
             sent += 1
     if not owing:
         return "nobody arriving soon owes anything"
-    return f"reminded {sent} of {owing} guest(s) with a balance outstanding"
+    return f"reminded {sent} of {counted(owing, 'guest')} with a balance outstanding"
 
 
 # ---------------------------------------------------------------------------
@@ -126226,7 +126326,7 @@ def run_stale_shift_cleanup_job(conn, hours_threshold):
             send_notification(conn, owner_row["id"], "shift_auto_closed", title, body=body, link=f"/directory/{entry['user_id']}")
     if stale:
         conn.commit()
-    return f"auto-closed {len(stale)} stale shift(s)"
+    return f"auto-closed {counted(len(stale), 'stale shift')}"
 
 
 PARAMETERISED_JOBS = ("workshop_balance_reminder", "room_balance_reminder",
@@ -129568,7 +129668,7 @@ def house_calendar_items(conn, start, end, areas=None):
                 f"Flight {f['flight']}" if f.get("flight") else "",
                 f"{_plural(n, 'night')}: {which}" if n else "",
                 f"Leaves {_cal_day(f['departure'])}, by {HOUSE_CALENDAR_CHECK_OUT}",
-                f"{f['party']} guest(s)" if f.get("party") else "",
+                counted(f["party"], "guest") if f.get("party") else "",
                 ("Extras: " + "; ".join(extras_here)) if extras_here else "",
                 f"Booked through {channel}" if channel else "",
                 "Not confirmed yet" if r["status"] == "pending" else "",

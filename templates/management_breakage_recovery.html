@@ -62,7 +62,7 @@
         <th scope="row">{{ r.what }}</th>
         <td>{{ r.room }}</td>
         <td>{{ r.guest }}</td>
-        <td>{{ r.found_on }}</td>
+        <td>{{ r.found_on|date_short }}</td>
         <td class="num">{{ euro(r.replacement) }}</td>
         <td class="num">{{ euro(r.charged) }}</td>
         <td>

@@ -47,7 +47,7 @@
         {% for c in claims %}
         <tr>
           {% if is_owner %}<td>{{ c['who'] or '—' }}</td>{% endif %}
-          <td>{{ c['travelled_on'] }}</td>
+          <td>{{ c['travelled_on']|date_short }}</td>
           <th scope="row">
             {{ c['from_place'] or '?' }} &rarr; {{ c['to_place'] or '?' }}
             {% if c['reason'] %}<span class="upload-hint">{{ c['reason'] }}</span>{% endif %}

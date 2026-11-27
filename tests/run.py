@@ -758,6 +758,9 @@ SUITES = [
     "test_guest_reply_notice",
     # And the owner's own Outlook diary among the house's day, time and subject only.
     "test_owner_diary_on_the_day",
+    # 27 November 2026, the back-end review: the pages staff open first, on a day with people in it
+    # -- Home's clock button and checklist, Today's words, hours in minutes, taken leave, links, phones.
+    "test_staff_start_pages",
 ]
 
 

@@ -56,7 +56,7 @@
       <tr>
         <th scope="row">{{ t.name }}</th>
         <td class="num">{{ t.shifts }}</td>
-        <td class="num">{{ '%.2f'|format(t.hours) }}</td>
+        <td class="num">{{ t.hours|hours }}</td>
         <td>{% if t.estimated_cost is not none %}≈ {{ t.estimated_cost|money }} estimated
             {% elif t.pay_rate %}{{ t.pay_rate }}{% if t.pay_type %} · {{ t.pay_type }}{% endif %}
             {% else %}<span class="muted">none</span>{% endif %}</td>
@@ -87,7 +87,7 @@
         {% if e['clock_out_at'] %}{{ local_time_str(e['clock_out_at']) }}{% else %}<strong>still clocked in</strong>{% endif %}
       </span>
       <span class="upload-hint">
-        {% if e.state == 'Fine' %}{{ '%.2f'|format(e.hours) }}h
+        {% if e.state == 'Fine' %}{{ e.hours|hours }}
         {% else %}<span class="mini-status {{ 'status-declined' if e.state == 'Ends before it starts' else 'status-pending' }}">{{ e.state|lower }}</span>{% endif %}
         {% if not e.in_window %}<span class="mini-status status-inactive">earlier</span>{% endif %}
       </span>

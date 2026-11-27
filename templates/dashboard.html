@@ -27,7 +27,7 @@
   </form>
   {% endif %}
   {% if my_week_hours is not none %}
-  <span class="upload-hint">{{ my_week_hours }}h this week · {{ my_month_hours }}h this month</span>
+  <span class="upload-hint">{{ my_week_hours|hours }} this week · {{ my_month_hours|hours }} this month</span>
   {% endif %}
 </div>
 
@@ -337,7 +337,7 @@ function toggleBreak() {
     <a href="{{ url_for('admin_timesheets') }}" class="mini-row">
       <span class="mini-name">{{ o.name }}</span>
       <span class="mini-role">over 35h this week</span>
-      <span class="mini-status status-pending">{{ o.hours }}h</span>
+      <span class="mini-status status-pending">{{ o.hours|hours }}</span>
     </a>
     {% endfor %}
     {% for d in expiring_docs %}
@@ -443,25 +443,28 @@ function toggleBreak() {
   {% endif %}
 
   <h2 class="section-heading" style="margin-top:0;">What I Need To Do</h2>
-  {% if not my_tasks %}
-    <div class="empty-state">Nothing on your list right now.</div>
-  {% else %}
-    <div class="task-list">
-      {% for t in my_tasks %}
+  {#- One tap moves a task on: open, in progress, done. A room being made ready is
+      eight tasks; they are drawn as one heading with the room, the guest and the
+      urgency said once, as on Today (task_entries). This list printed the whole
+      arrival sentence under each of the eight, sixteen rows for two rooms. #}
+  {% macro task_row(t, title, item=False, subject=None) %}
       <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }} {{ 'task-directed' if t['acknowledgment_status'] == 'pending' }}" data-task-id="{{ t['id'] }}">
         <button type="button" class="task-check"
                 aria-pressed="{{ 'true' if t['status'] == 'done' else 'false' }}"
-                aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ t['title'] }}"
+                aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ title }}"
                 onclick="toggleTask({{ t['id'] }}, this)" title="{{ {'open': 'Mark in progress', 'in_progress': 'Mark done', 'done': 'Reopen'}[t['status']] }}">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
-        <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
+        {% if not item %}<span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>{% endif %}
         <span class="task-title">
-          {% if t['origin'] == 'occasion' %}<a href="{{ url_for('occasions_page') }}#task-{{ t['id'] }}">{{ t['title'] }}</a>{% else %}{{ t['title'] }}{% endif %}
-          {% if t['priority'] == 'high' %}<span class="mini-status status-declined">high priority</span>{% endif %}
+          {% if t['origin'] == 'occasion' %}<a href="{{ url_for('occasions_page') }}#task-{{ t['id'] }}">{{ title }}</a>{% else %}{{ title }}{% endif %}
+          {% if t['priority'] == 'high' and not item %}<span class="mini-status status-declined">high priority</span>{% endif %}
           {% if t['status'] == 'in_progress' %}<span class="mini-status status-pending">in progress</span>{% endif %}
-          {% if t['repeat_weekly'] %}<span title="Repeats weekly">↻</span>{% endif %}
+          {% if t['repeat_weekly'] %}<span class="upload-hint">· every week</span>{% endif %}
+          {% if not item %}
           {% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}
           {% if t['notes'] %} <span class="upload-hint">({{ t['notes'] }})</span>{% endif %}
+          {% endif %}
           {% if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
+          {% if subject %}<a href="{{ subject.url }}" class="check-open">{{ subject.words }}</a>{% endif %}
         </span>
         {% if t['acknowledgment_status'] == 'pending' %}
         <span class="mini-status status-pending">sent to you now</span>
@@ -473,6 +476,28 @@ function toggleBreak() {
         <span class="mini-status status-inactive">rejected</span>
         {% endif %}
       </div>
+  {% endmacro %}
+  {% if not my_tasks %}
+    <div class="empty-state">Nothing on your list right now. Anything you are given appears here, and on Today.</div>
+  {% else %}
+    <div class="task-list">
+      {% for e in task_entries(my_tasks) %}
+      {% if e.group %}
+      <div class="check-group {{ 'check-group-done' if e.done == e.total }}">
+        <div class="check-group-head">
+          <span class="check-text">
+            <span class="check-title">{{ e.heading }}
+              <span class="check-group-count">{{ e.done }} of {{ e.total }} done</span></span>
+            {% if e.note %}<span class="check-sub upload-hint">{{ e.note }}</span>{% endif %}
+            {% if e.subject %}<a href="{{ e.subject.url }}" class="check-open">{{ e.subject.words }}</a>{% endif %}
+          </span>
+          {% if e.urgent %}<span class="mini-status status-declined">high priority</span>{% endif %}
+        </div>
+        {% for it in e['items'] %}{{ task_row(it.task, it.item, item=True) }}{% endfor %}
+      </div>
+      {% else %}
+      {{ task_row(e.task, e.task['title'], subject=e.subject) }}
+      {% endif %}
       {% endfor %}
     </div>
   {% endif %}
@@ -541,7 +566,7 @@ function toggleBreak() {
     {% for s in my_restaurant_shifts %}
     <div class="mini-row">
       <span class="mini-name">{{ s['dinner_date']|date_short }}</span>
-      <span class="mini-role">{{ s['role_note'] or 'Dinner service' }}{% if s['estimated_hours'] %} · {{ s['estimated_hours'] }}h{% endif %}</span>
+      <span class="mini-role">{{ s['role_note'] or 'Dinner service' }}{% if s['estimated_hours'] %} · {{ s['estimated_hours']|hours }}{% endif %}</span>
     </div>
     {% endfor %}
   </div>

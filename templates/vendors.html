@@ -49,7 +49,7 @@
         {{ money.count }} invoice{{ '' if money.count == 1 else 's' }}
         {%- if money.soonest %} ·
           {% if money.soonest < today %}<span class="mini-status status-overdue">oldest due {{ money.soonest }}</span>
-          {% else %}next due {{ money.soonest }}{% endif %}
+          {% else %}next due {{ money.soonest|date_short }}{% endif %}
         {%- endif %}
       </span>
       {% endif %}

@@ -4,29 +4,30 @@
 
 <div class="page-head"><h1>{{ t('My Availability') }}</h1></div>
 <p class="pay-disclaimer" style="margin-top:-10px;">{{ t("Tell us when you're normally free. This doesn't book anything — it just means the rota gets built around you instead of guessing. For a specific date, add an exception below.") }}</p>
+<p class="upload-hint">{{ t('A stretch of days you cannot do, like a course or a family visit?') }} <a href="{{ url_for('cannot_work') }}">{{ t('Tell the rota when you cannot work') }}</a>.</p>
 
 <div class="detail-card">
   <h3 style="margin-top:0;">{{ t('A normal week') }}</h3>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="table-wrap">
-      <table class="data-table">
+      <table class="data-table phone-cards">
         <thead><tr><th>{{ t('Day') }}</th><th>{{ t('Usually free?') }}</th><th>{{ t('From') }}</th><th>{{ t('Until') }}</th></tr></thead>
         <tbody>
           {% for day in weekdays %}
           {% set i = loop.index0 %}
           {% set r = rules.get(i) %}
           <tr>
-            <td>{{ day }}</td>
-            <td>
+            <th scope="row">{{ day }}</th>
+            <td data-label="{{ t('Usually free?') }}">
               <label class="checkbox-row">
                 <input type="checkbox" name="available_{{ i }}" value="1" {% if not r or r['available'] %}checked{% endif %}>
                 <span class="upload-hint">{{ t('available') }}</span>
               </label>
             </td>
-            <td><input type="time" name="from_{{ i }}"
+            <td data-label="{{ t('From') }}"><input type="time" name="from_{{ i }}"
                aria-label="Available from, {{ day }}" value="{{ r['from_time'] if r and r['from_time'] else '' }}"></td>
-            <td><input type="time" name="to_{{ i }}"
+            <td data-label="{{ t('Until') }}"><input type="time" name="to_{{ i }}"
                aria-label="Available until, {{ day }}" value="{{ r['to_time'] if r and r['to_time'] else '' }}"></td>
           </tr>
           {% endfor %}
@@ -44,8 +45,8 @@
 <form method="post" action="{{ url_for('add_availability_exception') }}" class="search-bar">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div>
-    <label class="field-label">{{ t('Date') }}</label>
-    <input type="date" name="on_date" min="{{ today.isoformat() }}" required>
+    <label class="field-label" for="my_availability-date">{{ t('Date') }}</label>
+    <input id="my_availability-date" type="date" name="on_date" min="{{ today.isoformat() }}" required>
   </div>
   <div>
     <label class="field-label" for="my_availability-available">I am…</label>

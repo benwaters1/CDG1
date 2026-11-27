@@ -65,7 +65,7 @@
       <tbody>
         {% for b in summary.rows %}
         <tr>
-          <td>{{ b['found_on'] }}</td>
+          <td>{{ b['found_on']|date_short }}</td>
           <th scope="row">{{ b['what'] }}
             {% if b['note'] %}<span class="upload-hint">{{ b['note'] }}</span>{% endif %}</th>
           <td>{{ b['room_name'] or '—' }}</td>

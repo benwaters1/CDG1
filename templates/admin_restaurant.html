@@ -199,7 +199,7 @@
           {% for s in shifts %}
           <div class="mini-row">
             <span class="mini-name">{{ s['employee_name'] }}</span>
-            <span class="mini-role">{{ s['role_note'] or 'Dinner service' }}{% if s['estimated_hours'] %} · {{ s['estimated_hours'] }}h{% endif %}</span>
+            <span class="mini-role">{{ s['role_note'] or 'Dinner service' }}{% if s['estimated_hours'] %} · {{ s['estimated_hours']|hours }}{% endif %}</span>
             <form method="post" action="{{ url_for('delete_restaurant_shift', shift_id=s['id']) }}" onsubmit="return confirm('Remove this shift?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn-mini btn-mini-danger">Remove</button>
