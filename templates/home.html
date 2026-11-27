@@ -302,7 +302,7 @@
       {%- set _ndused = namespace(seen=[]) %}
       {% for s in upcoming[:3] %}
       {#- 26 Oct (owner, the retreats deck 1d and 5): name, dates, nights and the Admin's price, with a line for each. -#}
-      {%- set _hk = ws_hook(s)|trim %}{% set _an = a_night(s, s) %}
+      {%- set _hk = ws_hook(s)|trim %}
       {%- set _nph = ws_pic(s, ND_PIC, false)|trim %}{% if _nph in _ndused.seen %}{% set _nph = '' %}{% endif %}{% set _ndused.seen = _ndused.seen + [_nph] %}
       {#- 23 Nov (owner: "fix this other one up too its super basic"): each date leads with its photograph. -#}
       <li class="g-full__row"><a href="{{ workshop_page_url(s) }}"{% if _nph %} class="g-full__has-ph"{% endif %}>
@@ -311,7 +311,6 @@
         {% if _hk %}<span class="g-full__hook">{{ _hk }}</span>{% endif %}
         <span class="g-full__d">{{ date_range(s['start_date'], s['end_date']) }}</span>
         <span class="g-full__m">{{ s['nights_label'] or '' }}{% if s['nights_label'] and s['price_per_person'] %} · {% endif %}{% if s['price_per_person'] %}<span data-eur="{{ s['price_per_person']|int }}">€{{ '{:,.0f}'.format(s['price_per_person']) }}</span> per person · nothing to pay at the end{% endif %}</span>
-        {% if s['price_per_person'] and _an %}<span class="g-full__m g-full__night">{{ _an }}</span>{% endif %}
         <span class="g-full__go" aria-hidden="true">→</span>
       </a></li>
       {% endfor %}

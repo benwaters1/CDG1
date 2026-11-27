@@ -13365,11 +13365,12 @@ app.jinja_env.globals["euro"] = lambda v: euro(v)
 app.jinja_env.filters["money"] = lambda v, places=2, up_to=None: money(v, places, up_to)
 
 
-# "about €650 a night" under a workshop's price (owner, 23 Oct 2026). Worked
-# out on the page, the price over the nights to the nearest €10, so a new price
-# or a longer week cannot leave a stale figure behind. A card for one set of
-# dates counts that session's nights; a card for the workshop reads its own
-# "4 nights / 5 days".
+# How many nights a retreat runs, for the names of its days. It also fed an
+# "about €650 a night" line under every retreat's price (owner, 23 Oct 2026),
+# which the owner took off every page on 27 Nov 2026: a retreat is sold on its
+# one price per person, with nothing to pay at the end, and a nightly figure
+# beside it read against a room's rate. Don't bring the figure back; the page
+# sells the total. tests/test_price_a_night.py holds it off.
 NIGHT_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
                "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
                "twelve": 12, "fourteen": 14}
@@ -13392,23 +13393,6 @@ def workshop_nights(workshop, session=None):
         return None
     word = found.group(1)
     return int(word) if word.isdigit() else NIGHT_WORDS.get(word)
-
-
-def about_a_night(price, nights):
-    """'about €650 a night': price ÷ nights, rounded half up to the nearest
-    €10. Empty when either is missing, so the page prints nothing at all."""
-    try:
-        price, nights = Decimal(str(price)), int(nights)
-    except (InvalidOperation, TypeError, ValueError):
-        return ""
-    if price <= 0 or nights <= 0:
-        return ""
-    tens = (price / nights / 10).quantize(Decimal(1), rounding=ROUND_HALF_UP) * 10
-    return f"about {money(tens, 0)} a night"
-
-
-app.jinja_env.globals["a_night"] = lambda workshop, session=None: about_a_night(
-    _row_value(workshop, "price_per_person"), workshop_nights(workshop, session))
 
 
 def reserve_line(workshop, sessions=()):

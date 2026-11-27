@@ -104,7 +104,7 @@
   <dl class="g-facts-list">
     {% if workshop['nights_label'] %}<div><dt>Length</dt><dd>{{ workshop['nights_label'] }}</dd></div>{% endif %}
     {%- set _inc = (workshop['inclusions'] or '')|trim -%}{%- set _basis = _inc if _inc.lower().startswith('per person') else '' -%}
-    {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '{:,.0f}'.format(workshop['price_per_person']) }} {% if _basis %}{{ (_basis|trim('.'))[:1]|lower }}{{ (_basis|trim('.'))[1:] }}{% else %}per person{% endif %}{% set _an = a_night(workshop) %}{% if _an %} ({{ _an }}){% endif %}{#- Site review 25 Nov: without outings or transfers the line ended "..., the classes" and simply stopped. -#}{% set _got = ['every meal and every glass', 'the classes'] + (['the outings'] if _ex else []) + (['the journey from Toulouse'] if _tx else []) %}: {{ _got[:-1]|join(', ') }}, and {{ _got[-1] }}</dd></div>{% endif %}
+    {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '{:,.0f}'.format(workshop['price_per_person']) }} {% if _basis %}{{ (_basis|trim('.'))[:1]|lower }}{{ (_basis|trim('.'))[1:] }}{% else %}per person{% endif %}{#- Site review 25 Nov: without outings or transfers the line ended "..., the classes" and simply stopped. -#}{% set _got = ['every meal and every glass', 'the classes'] + (['the outings'] if _ex else []) + (['the journey from Toulouse'] if _tx else []) %}: {{ _got[:-1]|join(', ') }}, and {{ _got[-1] }}</dd></div>{% endif %}
       {#- Site review 25 Nov: "never done IT before" meant nothing on Noël or Seven Starry Nights, which teach no one craft. -#}
       <div><dt>Experience needed</dt><dd>None. The classes start from the beginning, and every one is optional</dd></div>
     <div><dt>Where you sleep</dt><dd>In the château itself, with fresh flowers in every room: bedrooms, not a nearby hotel</dd></div>
@@ -168,9 +168,7 @@
             <span class="g-fig">€{{ '{:,.0f}'.format(workshop['price_per_person']) }}</span>
             <span>per person · nothing to pay at the end</span>
           </p>
-          {#- 23 Oct (owner): what it comes to a night, from the price and these dates (a_night in app.py). -#}
-          {%- set _an = a_night(workshop, s) %}{% if _an %}
-          <p class="g-pernight">{{ _an }}</p>{% endif %}
+          {#- 27 Nov (owner): no "about €X a night" under the price; the total per person is the price. -#}
           {% endif %}
           {% if s['balance_due_on'] and workshop['price_per_person'] %}<p class="g-pernight">Balance due by {{ s['balance_due_on']|date_human }}</p>{% endif %}
           {#- workshop_register_url carries a private stay's key; its form is a 404 without it. -#}
