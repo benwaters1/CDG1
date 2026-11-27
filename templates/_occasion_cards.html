@@ -13,7 +13,8 @@
     {#- 27 Nov 2026 (owner's brief, "presented beautifully"): a dinner night marked on the photograph with its price,
         on the home page and the occasions' own list alike. -#}
     {% elif o.dinners and o['dinner_price'] %}{% set _dp = o['dinner_price']|float %}<span class="g-sit__flag g-occasion__dinmark">Dinner at Gudanes · <span data-eur="{{ _dp|int if _dp == _dp|int else _dp }}">€{{ '{:,.0f}'.format(_dp) if _dp == _dp|int else '{:,.2f}'.format(_dp) }}</span></span>{% endif %}
-    <img class="g-sit__img" src="{{ o.photo_url }}" alt="{{ o['name'] }}" loading="lazy" decoding="async">
+    {# 27 Nov 2026: a picture with words on it (the Tour de France map) carries g-occasion__whole and is drawn whole. #}
+    <img class="g-sit__img{% if o.photo_whole %} g-occasion__whole{% endif %}" src="{{ o.photo_url }}" alt="{{ o['name'] }}" loading="lazy" decoding="async">
     <div class="g-sit__b">
       <p class="g-sit__name"><a href="{{ url_for('stay_occasion_page', slug=o['slug']) }}">{{ o['name'] }}</a></p>
       <h3 class="g-sit__when">{{ date_range(o['first_night'], o.departure) }}</h3>
