@@ -54507,7 +54507,32 @@ ENGLISH_HOLIDAY_NAMES = {
 }
 
 # The photographs an occasion can carry: the house's own, from static/img.
-STAY_OCCASION_PHOTO_DIRS = ("dining", "views", "more", "life", "grounds", "retreats")
+# "occasions" holds pictures made for one occasion rather than taken of the
+# house -- the first, 27 Nov 2026, the owner's map of the château against the
+# last week of the 2027 Tour de France. First in the list, so it is found.
+STAY_OCCASION_PHOTO_DIRS = ("occasions", "dining", "views", "more", "life", "grounds", "retreats")
+
+# A picture's name in the list where its file name would read wrong
+# ("Occasions: tour de france 2027 map").
+STAY_OCCASION_PHOTO_LABELS = {
+    "img/occasions/tour-de-france-2027-map.jpg": "Occasions: Tour de France 2027 map",
+}
+
+# Pictures with WORDS on them, drawn whole wherever an occasion's photograph
+# goes: contained on the site's sand (the map's own paper is a shade off it),
+# never cropped to fill a frame. A crop of a photograph loses some tablecloth;
+# a crop of the map lost the title, Toulouse and the château itself on the
+# occasion's page (58% of its height shown at 1280px), and left a 104px strip
+# a quarter of its width on a phone's card. Only these: every photograph keeps
+# the crop that fills its card. test_occasion_map_photo measures it in Chrome.
+STAY_OCCASION_WHOLE_PHOTOS = frozenset({
+    "img/occasions/tour-de-france-2027-map.jpg",
+})
+
+
+def stay_occasion_photo_whole(photo):
+    """True for a picture that must be shown whole (it has words on it)."""
+    return (photo or "") in STAY_OCCASION_WHOLE_PHOTOS
 
 
 def stay_occasion_photos():
@@ -54525,7 +54550,8 @@ def stay_occasion_photos():
                 continue
             if re.search(r"-(800|2400)\.\w+$", name):
                 continue
-            out.append((f"img/{folder}/{name}",
+            path = f"img/{folder}/{name}"
+            out.append((path, STAY_OCCASION_PHOTO_LABELS.get(path) or
                         f"{folder.title()}: {name.rsplit('.', 1)[0].replace('-', ' ')}"))
     return out
 
@@ -56629,6 +56655,10 @@ def stay_occasion_card(conn, r):
     d["departure"] = stay_occasion_departure(r)
     d["from_price"] = stay_occasion_from_price(conn, r)
     d["photo_url"] = stay_occasion_photo_url(r["photo"])
+    d["photo_whole"] = stay_occasion_photo_whole(r["photo"])
+    # Its own shape on its page: the site gives every picture in a <figure>
+    # 4:3, which put sand above and below the 3:2 map.
+    d["photo_size"] = pic_size("/static/" + r["photo"]) if d["photo_whole"] else None
     d["chef_tag"] = CHEF_ON_TAG if r["chef_on_site"] else CHEF_OFF_TAG
     d["is_guest_chef"] = r["kind"] == "guest_chef"
     # DINNER AT GUDANES (25 Nov 2026): an occasion with dinner nights says so
@@ -56680,6 +56710,7 @@ def home_banner_occasion(conn, today=None):
     chef = row["kind"] == "guest_chef"
     # The photograph: the chef's for a guest chef, else the one uploaded for
     # the banner, else the occasion's own. Alt text says what it shows.
+    whole = False
     if chef and row["chef_photo"]:
         photo = url_for("static", filename=row["chef_photo"])
         alt = f"Cooking by {row['chef_name'] or 'our guest chef'} at Château de Gudanes"
@@ -56689,6 +56720,7 @@ def home_banner_occasion(conn, today=None):
     else:
         photo = stay_occasion_photo_url(row["photo"])
         alt = f"{row['name']} at Château de Gudanes"
+        whole = stay_occasion_photo_whole(row["photo"])
     words = (row["description"] or "").strip()
     first = re.split(r"(?<=[.])\s", words, maxsplit=1)[0] if words else ""
     return {
@@ -56698,7 +56730,7 @@ def home_banner_occasion(conn, today=None):
         "sentence": first,
         "price": row["dinner_price"] if dinners and row["dinner_price"] else None,
         "wine": bool(row["wine_included"]),
-        "photo": photo, "alt": alt,
+        "photo": photo, "alt": alt, "photo_whole": whole,
         "page_url": url_for("stay_occasion_page", slug=row["slug"]),
         "book_url": url_for("book_rooms", arrival=row["first_night"],
                             departure=stay_occasion_departure(row)),

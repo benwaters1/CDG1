@@ -13,7 +13,15 @@
   <p class="g-eyebrow">At Gudanes · {{ occ.nights }} night{{ '' if occ.nights == 1 else 's' }}</p>
   <h1 class="g-place">{{ occ['name'] }}</h1>
   <p class="g-lede">{{ date_range(occ['first_night'], occ.departure) }}{% if occ.from_price %} · from <span class="g-fig" data-eur="{{ occ.from_price|int }}">€{{ '{:,.0f}'.format(occ.from_price) }}</span> a night{% endif %}</p>
+  {# 27 Nov 2026: a picture with words on it (the Tour de France 2027 map) is drawn whole, at the column's width
+     and from the full-size file, so its place names and drive times can be read. Cut to 28rem as a photograph is,
+     it lost its title, Toulouse and the château at 1280px. At its own shape, not the 4:3 every figure is given.
+     test_occasion_map_photo measures it. #}
+  {% if occ.photo_whole %}{% set _wh = occ.photo_size %}
+  <figure style="margin:var(--s5) 0"><img class="g-occasion__whole" src="{{ url_for('static', filename=occ['photo']) }}" alt="{{ occ['name'] }} at Château de Gudanes"{% if _wh %} width="{{ _wh[0] }}" height="{{ _wh[1] }}"{% endif %} style="width:100%;height:auto;aspect-ratio:{{ '%d / %d'|format(_wh[0], _wh[1]) if _wh else 'auto' }};border-radius:2px" loading="eager" decoding="async"></figure>
+  {% else %}
   <figure style="margin:var(--s5) 0"><img src="{{ occ.photo_url }}" alt="{{ occ['name'] }} at Château de Gudanes" style="width:100%;max-height:28rem;object-fit:cover;border-radius:2px" loading="eager" decoding="async"></figure>
+  {% endif %}
   {% for para in (occ['description'] or '').split('\n') if para.strip() %}<p class="g-p">{{ para }}</p>{% endfor %}
   {#- Second sweep, 26 Nov (2.12): the tag printed "Room and breakfast" and the owner's line, word for word, began with the
       same three words. The line says it, so the tag is left off where it would only repeat it. #}
