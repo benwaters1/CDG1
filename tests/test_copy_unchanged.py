@@ -243,7 +243,15 @@ m = _harness.m
 # after it. Was: "723dfe8" on the dinner side, "4efbf39" on main
 # 27 Nov 2026: moved to 35b8726, the dinner test fixes merged with main (the inbox on the owner home on top, which
 # changes nothing this reads). Against 4efbf39 it listed nothing. Was: "4efbf39"
-COPY_BASE = "35b8726"
+# 27 Nov 2026: moved to af954c3, which joins the visit a booking came from to the booking and says so in the
+# privacy notice (test_booking_attribution), merged with main. Against 35b8726 it listed /privacy alone: "If
+# you book during a visit, the booking itself keeps three words about where that visit came from", through
+# "leaves nothing on its booking either.", after "Kept for thirteen months, then deleted." Was: "35b8726"
+# 27 Nov 2026: moved to 5e8718a, the same work merged again with main (Dinner at Gudanes complete, the guest reply
+# notice, a dietary note's copies). Against af954c3 it listed nothing. Was: "af954c3"
+# 27 Nov 2026: moved to 40cd047, merged once more with main for the Tour de France 2027 map as an occasion's
+# photograph. Against 5e8718a it listed nothing. Was: "5e8718a"
+COPY_BASE = "40cd047"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {

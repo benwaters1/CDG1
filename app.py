@@ -158,7 +158,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
-from urllib.parse import quote, urlencode, urlparse, parse_qsl
+from urllib.parse import quote, urlencode, urlparse, parse_qsl, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 from calendar import monthrange
 
@@ -2170,6 +2170,11 @@ ANALYTICS_GOALS = {"booking_confirmation": "Stay", "workshop_confirmation": "Ate
                    "newsletter_confirm": "Newsletter"}
 # Thirteen months: what audience measurement may keep without asking.
 ANALYTICS_KEEP_DAYS = 395
+# The bookings a confirmation page can hand its visit's source to, and what
+# each is called on the owner's pages. A confirmation names its row by setting
+# g._booked = (table, id); nothing outside this list is ever written to.
+ANALYTICS_BOOKED_TABLES = {"bookings": "Stay", "workshop_bookings": "Atelier",
+                           "restaurant_bookings": "Table", "event_inquiries": "Event"}
 
 
 def analytics_salt(conn, day):
@@ -2272,6 +2277,8 @@ def analytics_view(response):
         "campaign": (args.get("utm_campaign") or "").strip()[:80] or None,
         "device": analytics_device(agent), "language": language,
         "goal": ANALYTICS_GOALS.get(request.endpoint) if response.status_code == 200 else None,
+        # The booking this confirmation is of, when it is one: (table, id).
+        "booked": g.get("_booked") if response.status_code == 200 else None,
         # Used for the day's code and gone with this dict: never written down.
         "address": ((headers.get("X-Forwarded-For") or "").split(",")[0].strip()
                     or request.remote_addr or ""),
@@ -2307,6 +2314,13 @@ def write_page_view(view):
             else:
                 source = view["utm_source"] or view["referrer"] or "Direct"
                 medium, campaign = view["medium"], view["campaign"]
+            if view.get("booked"):
+                # Where the visit came from when it began elsewhere on the site;
+                # when the confirmation was the first page, booked here and not
+                # known from where ("").
+                attribute_booking_to_visit(conn, view["booked"],
+                                           *((source, medium, campaign) if first
+                                             else ("", None, None)))
             goal = view["goal"]
             if goal and first and conn.execute(
                     "SELECT 1 FROM page_views WHERE day = ? AND visitor = ? AND goal = ? LIMIT 1",
@@ -2324,6 +2338,103 @@ def write_page_view(view):
             conn.close()
     except Exception as e:                      # pragma: no cover - last resort
         log_line(f"[page view not counted] {e}")
+
+
+def attribute_booking_to_visit(conn, booked, source, medium, campaign):
+    """Write where a booking's visit came from onto the booking, once.
+
+    A source when the confirmation was NOT the visit's first page: the visit
+    began somewhere else on the site that day, and where it began is where the
+    guest came from. An empty source when it WAS the first page -- opened
+    straight off Stripe after midnight, or the tab closed and the letter's
+    link used instead. Its own "source" would be checkout.stripe.com or
+    Direct, which is the house reporting its own card page as a marketing
+    channel; so it is written as booked here, from somewhere not known.
+
+    Only on the day the booking was made. A guest reading their confirmation
+    again a week later, having come in off a new Instagram post, did not book
+    because of that post. And first wins: a reload changes nothing.
+
+    Only these three words travel. The visit's code, its day and its pages
+    stay in page_views, which are never joined to anybody.
+    """
+    table, row_id = booked
+    if table not in ANALYTICS_BOOKED_TABLES:
+        return
+    since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    conn.execute(
+        f"""UPDATE {table} SET visit_source = ?, visit_medium = ?, visit_campaign = ?
+             WHERE id = ? AND visit_source IS NULL AND created_at >= ?""",
+        ((source or "")[:60], (medium or None) and medium[:60],
+         (campaign or None) and campaign[:80], row_id, since))
+
+
+# A link written in a letter or a caption: up to the first space, bracket or
+# quote. Punctuation that ends a sentence is put back after it, not into it.
+_HOUSE_LINK = re.compile(r"""https?://[^\s<>"'()\[\]]+""")
+
+
+def house_public_hosts():
+    """The names the public site answers to. Never admin. (staff pages) and
+    never the Railway address (the Outlook add-in's), which are not pages a
+    newsletter sends anybody to."""
+    hosts = {"chateaugudanes.com", "www.chateaugudanes.com"}
+    if PUBLIC_BASE_URL:
+        hosts.add((urlparse(PUBLIC_BASE_URL).hostname or "").lower())
+    hosts.discard(ADMIN_HOST)
+    hosts.discard(RAILWAY_PUBLIC_DOMAIN)
+    hosts.discard("")
+    return hosts
+
+
+def campaign_tag(words):
+    """A campaign's name as it goes in a link: "Spring at Gudanes!" is
+    spring-at-gudanes, the same every time it is written, so one letter's
+    bookings add up under one name."""
+    folded = unicodedata.normalize("NFKD", words or "").encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", folded.lower()).strip("-")[:80] or None
+
+
+def tag_house_link(url, source, medium, campaign=None):
+    """One link to the house's public site, with where it was sent from added.
+
+    Left exactly as written: anybody else's site; a staff page; a guest's own
+    page (anything with a key in it -- a private link is nobody's campaign,
+    and is better left byte for byte as the letter that made it wrote it); a
+    file (a photograph in the letter, a PDF); and a link already carrying a
+    campaign, which somebody tagged on purpose and is not second-guessed.
+    """
+    trail = ""
+    while url and url[-1] in ".,;:!?":
+        url, trail = url[:-1], url[-1] + trail
+    try:
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        return url + trail
+    path = parts.path or "/"
+    if (host not in house_public_hosts() or analytics_unkeyed(path) != path
+            or path.startswith(ANALYTICS_SKIP_PREFIXES)
+            or re.search(r"\.(?!html?$)[A-Za-z0-9]{2,5}$", path)):
+        return url + trail
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    if any(k.lower().startswith("utm_") for k, _v in query):
+        return url + trail
+    query += [("utm_source", source), ("utm_medium", medium)]
+    if campaign:
+        query.append(("utm_campaign", campaign))
+    return urlunsplit(parts._replace(query=urlencode(query))) + trail
+
+
+def tag_house_links(text, source, medium, campaign=None):
+    """Every link to the house's public site in a letter or a caption, tagged
+    with where it was sent from, so the visit it brings -- and a booking made
+    in that visit -- is counted against this letter and not just "Gmail"
+    or "Direct", which is all an email app leaves behind it."""
+    if not text:
+        return text
+    return _HOUSE_LINK.sub(
+        lambda m: tag_house_link(m.group(0), source, medium, campaign), text)
 
 
 @app.after_request
@@ -7395,6 +7506,15 @@ def init_db():
         ("page_views_day_index", "CREATE INDEX IF NOT EXISTS page_views_day ON page_views(day)"),
         ("page_views_visit_index",
          "CREATE INDEX IF NOT EXISTS page_views_visit ON page_views(day, visitor)"),
+        # Where a booking made on the site came from: the source, medium and
+        # campaign of the visit it was made in, copied onto the booking when its
+        # confirmation is read (attribute_booking_to_visit). The words only --
+        # never the visit's code, its pages or its day, so the page views stay
+        # what they were: a count nobody can be followed through.
+        *((f"{table}_visit_{part}", f"ALTER TABLE {table} ADD COLUMN visit_{part} TEXT")
+          for table in ("bookings", "workshop_bookings", "restaurant_bookings",
+                        "event_inquiries")
+          for part in ("source", "medium", "campaign")),
         ("mail_log_created_at_index",
          "CREATE INDEX IF NOT EXISTS mail_log_created_at ON mail_log(created_at)"),
         ("mail_log_outbox_index",
@@ -10890,7 +11010,7 @@ NAV_AREAS = {
         "road_notices_page", "road_notice_remove",
     ],
     "comms": [
-        "website_analytics",
+        "website_analytics", "website_bookings_page", "website_bookings_csv",
         "admin_languages", "admin_languages_switcher", "admin_languages_queue",
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
         # Guest emails: the page and its switch stay @owner_required.
@@ -50416,6 +50536,9 @@ PALETTE_PAGES = [
     ("Emails", "admin_emails", "campaigns templates marketing"),
     ("Website visitors", "website_analytics",
      "analytics visitors visits traffic pages referrers sources google seo bookings conversion"),
+    ("Booked on the site", "website_bookings_page",
+     "attribution campaign utm newsletter instagram facebook which post letter brought "
+     "bookings worth revenue by source marketing return"),
     ("Bank details", "management_bank_details", "iban account"),
     ("Recurring costs", "management_recurring_costs", "subscriptions bills"),
     ("Management", "management", "settings admin"),
@@ -64800,6 +64923,7 @@ def booking_confirmation(manage_token):
     conn.close()
     if not booking:
         abort(404)
+    g._booked = ("bookings", booking["id"])      # attribute_booking_to_visit
     return render_template("booking_confirmation.html", booking=booking,
                            recap=booking_recap(booking))
 
@@ -66822,6 +66946,7 @@ def event_confirmation(manage_token):
     conn.close()
     if not inquiry:
         abort(404)
+    g._booked = ("event_inquiries", inquiry["id"])      # attribute_booking_to_visit
     return render_template("event_confirmation.html", inquiry=inquiry)
 
 
@@ -71467,6 +71592,7 @@ def restaurant_confirmation(manage_token):
     conn.close()
     if not booking:
         abort(404)
+    g._booked = ("restaurant_bookings", booking["id"])      # attribute_booking_to_visit
     return render_template("restaurant_confirmation.html", booking=booking)
 
 
@@ -75275,6 +75401,11 @@ def campaign_letter(conn, letter, email, name, *, held_back, opted_out=frozenset
     if pictures:
         context.setdefault("menu_pictures", plain_pictures)
     subject, body = render_campaign(letter["subject"], letter["body"], context)
+    # Links to the site say which letter they came from (tag_house_links), so a
+    # booking made from it is counted against it. Before the footer: the way
+    # out is a private link and is left as it is anyway.
+    body = tag_house_links(body, "newsletter", "email",
+                           campaign_tag(letter["template_name"]))
     # Every marketing message carries its own unsubscribe key, and the row that
     # holds it is written and COMMITTED BEFORE the send: the link in the email
     # always resolves, even for somebody quick off the mark, and nothing is
@@ -77433,6 +77564,7 @@ def workshop_confirmation(manage_token):
         (booking["id"],),
     ).fetchall()
     conn.close()
+    g._booked = ("workshop_bookings", booking["id"])      # attribute_booking_to_visit
     return render_template("workshop_confirmation.html", booking=booking, guests=guests)
 
 
@@ -107128,8 +107260,12 @@ def publish_social_post(conn, post):
                 problems.append("Instagram: %s" % published)
 
     if "facebook" in wanted and page_id:
+        # A link in a Facebook caption can be clicked, so it says which post it
+        # was (tag_house_links). Instagram's cannot, and is left as written.
         ok, said = meta_request("%s/photos" % page_id,
-                                {"url": link, "caption": caption,
+                                {"url": link,
+                                 "caption": tag_house_links(caption, "facebook", "social",
+                                                            "post-%d" % post["id"]),
                                  "access_token": token})
         if ok:
             done.append("the Page")
@@ -115744,7 +115880,12 @@ CHANGE_LOG_TABLES = {
 CHANGE_LOG_NEVER = re.compile(
     r"token|password|hash|secret|stripe|payment_method|customer_id|card"
     r"|dietary|medical|access_need|allerg|health"
-    r"|_sent_at$|_notified_at$|_requested_at$|_noticed_at$|_prepped_at$|_updated_at$")
+    r"|_sent_at$|_notified_at$|_requested_at$|_noticed_at$|_prepped_at$|_updated_at$"
+    # Where the visit a booking was made in came from, written by a guest's
+    # browser reading its confirmation (attribute_booking_to_visit). Not a
+    # change anybody made to the booking, and a log entry for every one would
+    # bury the changes people did make under it.
+    r"|^visit_(?:source|medium|campaign)$")
 
 # What an erasure takes out of the values the log kept: the person, not the
 # change -- who, what and when stay.
@@ -116248,6 +116389,90 @@ def analytics_summary(conn, start_iso, end_iso):
     }
 
 
+# What each kind of booking is worth, read the way the rest of the house
+# reads it: a stay's, an atelier place's and a table's total_price (VAT in,
+# taxe de sejour not -- that belongs to the commune and is a line of its own),
+# an event's quoted price. Worth counts only once it is confirmed: a request
+# that was declined or cancelled brought the house nothing, and adding it in
+# would credit the campaign with money that never came.
+_WEBSITE_BOOKED = (
+    ("bookings", "total_price", "guest_name"),
+    ("workshop_bookings", "total_price", "guest_name"),
+    ("restaurant_bookings", "total_price", "guest_name"),
+    ("event_inquiries", "quoted_price", "contact_name"),
+)
+NOT_KNOWN_SOURCE = "Not known"
+
+
+def website_bookings(conn, start_at, end_at):
+    """Every booking made on the site between two moments, with where its
+    visit came from (attribute_booking_to_visit) -- or "Not known" when the
+    confirmation was the first page the guest read that day.
+
+    Made on the site means a guest's browser read its confirmation the day it
+    was made, which is the only thing the house can know: a stay taken over
+    the telephone or off Booking.com is not here, and is not a gap in this
+    list. Nor is a booking whose guest asks not to be tracked.
+    """
+    rows = []
+    for table, worth_col, name_col in _WEBSITE_BOOKED:
+        kind = ANALYTICS_BOOKED_TABLES[table]
+        for r in conn.execute(
+                f"""SELECT id, reference_code, {name_col} AS name, status,
+                           {worth_col} AS worth, created_at,
+                           visit_source, visit_medium, visit_campaign
+                      FROM {table}
+                     WHERE created_at >= ? AND created_at < ?
+                       AND visit_source IS NOT NULL""",
+                (start_at, end_at)).fetchall():
+            confirmed = r["status"] == "confirmed"
+            rows.append({
+                "kind": kind, "table": table, "id": r["id"],
+                "reference": r["reference_code"], "name": r["name"] or "",
+                "status": r["status"], "confirmed": confirmed,
+                "worth": round(float(r["worth"] or 0), 2) if confirmed else 0.0,
+                "booked_on": house_date_iso(r["created_at"]),
+                "created_at": r["created_at"],
+                "source": r["visit_source"] or NOT_KNOWN_SOURCE,
+                "medium": r["visit_medium"] or "",
+                "campaign": r["visit_campaign"] or "",
+            })
+    rows.sort(key=lambda b: (b["created_at"] or "", b["kind"], b["id"]), reverse=True)
+    return rows
+
+
+def website_booking_totals(rows):
+    """The site's bookings added up by where they came from and by campaign.
+
+    Every row is one booking and is counted in exactly one source line, so the
+    lines add up to the total beneath them -- "Not known" included, as a line
+    of its own and last, never folded into Direct.
+    """
+    def tally(key):
+        out = {}
+        for b in rows:
+            name = key(b)
+            if name is None:
+                continue
+            t = out.setdefault(name, {"bookings": 0, "confirmed": 0, "worth": 0.0})
+            t["bookings"] += 1
+            t["confirmed"] += 1 if b["confirmed"] else 0
+            t["worth"] = round(t["worth"] + b["worth"], 2)
+        return sorted(out.items(), key=lambda kv: (kv[0] == NOT_KNOWN_SOURCE,
+                                                   -kv[1]["worth"], -kv[1]["bookings"],
+                                                   kv[0]))
+    total = {"bookings": len(rows), "confirmed": sum(1 for b in rows if b["confirmed"]),
+             "worth": round(sum(b["worth"] for b in rows), 2)}
+    return {
+        "sources": tally(lambda b: b["source"]),
+        "campaigns": tally(lambda b: " / ".join(
+            p for p in (b["source"], b["medium"], b["campaign"]) if p)
+            if b["campaign"] else None),
+        "total": total,
+        "known": sum(1 for b in rows if b["source"] != NOT_KNOWN_SOURCE),
+    }
+
+
 def purge_page_views(conn, *, today=None):
     """Page views past the thirteen months audience measurement may keep."""
     today = today or house_today()
@@ -116268,6 +116493,10 @@ def website_analytics():
     conn = get_db()
     now = analytics_summary(conn, period["start_iso"], period["end_iso"])
     before = analytics_summary(conn, period["prev_start_iso"], period["prev_end_iso"])
+    booked = website_booking_totals(website_bookings(conn, period["start_at"],
+                                                     period["end_at"]))
+    booked_before = website_booking_totals(website_bookings(conn, period["prev_start_at"],
+                                                            period["prev_end_at"]))
     conn.close()
     change = lambda a, b: (round(a - b, 1) if isinstance(a, float) else a - b)
     cells = [
@@ -116284,6 +116513,9 @@ def website_analytics():
                       delta=change(now["bookings"], before["bookings"])),
         overview_cell("Visits that booked", now["converted"], sub="%",
                       delta=change(now["converted"], before["converted"])),
+        overview_cell("Booked on the site, worth", euro(booked["total"]["worth"]),
+                      hint="confirmed only, VAT in, taxe de séjour not",
+                      endpoint="website_bookings_page"),
     ]
     # Every day of the period, a day nobody came drawn as nobody: a chart that
     # skipped them would put the busiest week next to the quietest.
@@ -116295,7 +116527,61 @@ def website_analytics():
     peak = max((n for _d, n in days), default=0)
     busiest = max(days, key=lambda d: (d[1], d[0])) if peak else None
     return render_template("admin_analytics.html", period=period, s=now, cells=cells,
-                           days=days, peak=peak, busiest=busiest)
+                           days=days, peak=peak, busiest=busiest, booked=booked,
+                           booked_before=booked_before)
+
+
+def website_bookings_list_view(rows, args):
+    return list_view(
+        rows, args,
+        search=["name", "reference", "source", "campaign"],
+        search_hint="Search a name, reference, source or campaign",
+        facets=[facet("kind", "What", lambda b: b["kind"],
+                      order=list(ANALYTICS_BOOKED_TABLES.values())),
+                facet("source", "Came from", lambda b: b["source"]),
+                facet("state", "Where it stands",
+                      lambda b: "Confirmed" if b["confirmed"] else (b["status"] or "").capitalize(),
+                      order=["Confirmed", "Pending", "New", "Contacted", "Quoted",
+                             "Declined", "Cancelled"])],
+        sorts=[
+            sort_option("recent", "Newest first",
+                        lambda b: (b["created_at"] or "", b["id"]), reverse=True),
+            sort_option("worth", "Worth most first", lambda b: (b["worth"], b["created_at"] or ""),
+                        reverse=True),
+            sort_option("source", "By source", lambda b: (b["source"].lower(), b["campaign"])),
+        ],
+        default_sort="recent",
+    )
+
+
+@app.route("/admin/analytics/bookings")
+@owner_required
+def website_bookings_page():
+    """Each booking made on the site, with the source, medium and campaign of
+    the visit it was made in -- the list the totals on the visitors page are
+    the sum of, so a campaign that "brought in 4,200" can be opened and read."""
+    period = period_from_request()
+    conn = get_db()
+    rows = website_bookings(conn, period["start_at"], period["end_at"])
+    conn.close()
+    totals = website_booking_totals(rows)
+    lv = list_page(website_bookings_list_view(rows, request.args), request.args)
+    return render_template("admin_website_bookings.html", period=period, lv=lv,
+                           rows=lv["rows"], totals=totals)
+
+
+@app.route("/admin/analytics/bookings.csv")
+@owner_required
+def website_bookings_csv():
+    period = period_from_request()
+    conn = get_db()
+    lv = website_bookings_list_view(
+        website_bookings(conn, period["start_at"], period["end_at"]), request.args)
+    conn.close()
+    return csv_response(
+        ["booked_on", "kind", "reference", "name", "status", "worth", "source", "medium",
+         "campaign"],
+        lv["rows"], f"website_bookings_{period['start_iso']}.csv")
 
 
 @app.route("/admin/audit-log")

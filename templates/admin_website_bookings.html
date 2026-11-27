@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Booked on the Site{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Booked on the site</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('website_bookings_csv', **request.args.to_dict()) }}" class="btn-ghost">Download as a spreadsheet</a>
+    <a href="{{ url_for('website_analytics', period=period.period, date=period.anchor_iso) }}" class="btn-ghost">Back to website visitors</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every stay, atelier place, table and event booked on the site in {{ period.label }}, with where the
+  visit it was booked in came from: the site that sent the guest, or the campaign their link
+  carried. Only those three words are kept on the booking, never the pages the guest read.
+  &ldquo;Not known&rdquo; is a booking whose confirmation was the first page read that day, so the
+  visit that led to it began somewhere the house did not see. Worth is the confirmed price, VAT
+  in and taxe de séjour not; a request still waiting, declined or cancelled is listed and worth nothing.
+  Not here: anything booked by telephone, at the desk or on Booking.com, and anybody whose browser
+  asks not to be tracked.
+</p>
+
+{% with endpoint = 'website_bookings_page', extra = request.args.to_dict() %}
+{% set _ = extra.pop('period', None) %}{% set _ = extra.pop('date', None) %}{% set _ = extra.pop('page', None) %}
+{% include "_period_selector.html" %}
+{% endwith %}
+
+{% include "_list_toolbar.html" %}
+
+{% if not rows %}
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that. <a href="{{ url_for('website_bookings_page', period=period.period, date=period.anchor_iso) }}">Show all {{ lv.total }}</a>
+    {% else %}
+      Nothing was booked on the site in {{ period.label }}.
+    {% endif %}
+  </div>
+{% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Booked</th><th>What</th><th>Guest</th><th>Where it stands</th>
+        <th>Came from</th><th>Campaign</th><th class="num">Worth</th></tr></thead>
+      <tbody>
+        {% for b in rows %}
+        <tr>
+          <td>{{ b.booked_on|date_short }}</td>
+          <td>{{ b.kind }}</td>
+          <td>{% if b.table == 'bookings' %}<a href="{{ url_for('admin_booking', booking_id=b.id) }}">{{ b.name }}</a>{% elif b.table == 'event_inquiries' %}<a href="{{ url_for('admin_event', event_id=b.id) }}">{{ b.name }}</a>{% else %}{{ b.name }}{% endif %}
+            <div class="upload-hint">{{ b.reference }}</div></td>
+          <td>{{ 'Confirmed' if b.confirmed else (b.status or '')|capitalize }}</td>
+          <td>{{ b.source }}{% if b.medium %} <span class="upload-hint">· {{ b.medium }}</span>{% endif %}</td>
+          <td>{{ b.campaign or '—' }}</td>
+          <td class="num">{{ b.worth|money(0) if b.confirmed else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% with lv = lv %}{% include "_list_pager.html" %}{% endwith %}
+  <p class="upload-hint">In {{ period.label }} altogether: {{ totals.total.bookings }} booking{{ '' if totals.total.bookings == 1 else 's' }}, {{ totals.total.confirmed }} confirmed, worth {{ totals.total.worth|money(0) }}{% if totals.total.bookings %}; where {{ totals.known }} of them came from is known{% endif %}.</p>
+{% endif %}
+
+{% endblock %}
