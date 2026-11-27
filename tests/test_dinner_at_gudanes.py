@@ -44,6 +44,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 from datetime import timedelta
 
 from _harness import Suite, clients, db, ensure_room, flashes, free_window, keep_rows
@@ -504,10 +505,7 @@ def _run(s, oc, owner, conn):
     p0 = anon.get(occ_page).get_data(as_text=True)
     s.check("with no menu, no page mentions one", "See the menu" not in p0 and "menu to come" not in p0.lower()
             and "See the menu" not in anon.get(search).get_data(as_text=True))
-    s.check("the occasion's page says Dinner at Gudanes, the nights, the time and the price",
-            "Dinner is hosted at the château on" in htmllib.unescape(p0)
-            and "€65 a person, wine included" in htmllib.unescape(p0)
-            and "Add it in the extras when you book your room" in htmllib.unescape(p0))
+    _panel_checks(s, anon, conn, occ, occ_page, p0, rid, n1, n2, arrival, departure)
     save = dict(live, **{f"dinner_{n1.isoformat()}": "1"})
     r = oc.post(f"/admin/stay-occasions/{oid}", data=dict(_form(name, n1, n2, **save),
                 menu=(io.BytesIO(b"<html>not a menu</html>"), "menu.pdf")),
@@ -529,7 +527,24 @@ def _run(s, oc, owner, conn):
     got = anon.get(f"{occ_page}/menu")
     s.check("the menu's address answers with the PDF", got.status_code == 200
             and got.mimetype == "application/pdf" and got.data.startswith(b"%PDF"), detail=str(got.status_code))
+    # Live test, 26 Nov 2026: the pop-up opened on Chrome's broken-page icon, because the menu went out with
+    # X-Frame-Options: DENY and frame-ancestors 'none' and the pop-up draws it in an iframe. The house's own pages may
+    # frame it; nobody else's, and nothing else of the house's.
+    csp = got.headers.get("Content-Security-Policy") or ""
+    s.check("the menu may be framed by the house's own pages: frame-ancestors 'self', SAMEORIGIN",
+            "frame-ancestors 'self'" in csp and "'none'" not in csp
+            and got.headers.get("X-Frame-Options") == "SAMEORIGIN",
+            detail=f"{got.headers.get('X-Frame-Options')!r} / {csp!r}")
+    s.check("and keeps the rest of the house's policy", "base-uri 'self'" in csp and "form-action 'self'" in csp
+            and got.headers.get("X-Content-Type-Options") == "nosniff", detail=csp)
     got.close()
+    for label, path in (("the occasion's page", occ_page), ("the home page", "/"), ("/book", "/book")):
+        other = anon.get(path)
+        s.check(f"{label} still refuses every frame: frame-ancestors 'none', DENY",
+                "frame-ancestors 'none'" in (other.headers.get("Content-Security-Policy") or "")
+                and other.headers.get("X-Frame-Options") == "DENY",
+                detail=f"{other.headers.get('X-Frame-Options')!r} / {other.headers.get('Content-Security-Policy')!r}")
+        other.close()
     dl = anon.get(f"{occ_page}/menu?download=1")
     s.check("and Download downloads it", "attachment" in (dl.headers.get("Content-Disposition") or ""))
     dl.close()
@@ -560,7 +575,16 @@ def _run(s, oc, owner, conn):
     night_menu = anon.get(f"{occ_page}/menu/{n2.isoformat()}")
     s.check("served at its own address", night_menu.status_code == 200 and night_menu.data.startswith(b"%PDF"),
             detail=str(night_menu.status_code))
+    s.check("and framed by the house's pages like the occasion's own menu",
+            "frame-ancestors 'self'" in (night_menu.headers.get("Content-Security-Policy") or "")
+            and night_menu.headers.get("X-Frame-Options") == "SAMEORIGIN",
+            detail=f"{night_menu.headers.get('X-Frame-Options')!r}")
     night_menu.close()
+    p3_panel = _panel_of(anon.get(occ_page).get_data(as_text=True))
+    btns_at = p3_panel.find('class="g-dinpanel__btns"')
+    s.check("See the menu is a quiet link inside the panel, under the two buttons",
+            btns_at > 0 and p3_panel.find("See the menu", btns_at) > btns_at
+            and 'class="g-dinpanel__menus"' in p3_panel)
     p3 = htmllib.unescape(anon.get(occ_page).get_data(as_text=True))
     s.check("and named on the occasion's page beside its night",
             f"{words2}: See the menu" in re.sub(r"<[^>]+>", "", p3))
@@ -662,7 +686,15 @@ def _run(s, oc, owner, conn):
     s.check("a photograph of its own takes the banner's left half",
             b and f'src="{occ_page}/banner"' in b.group(0) and photo.status_code == 200
             and photo.mimetype == "image/png", detail=b.group(0)[:300] if b else "no banner")
+    s.check("the banner is only ever an <img>, so it keeps DENY like everything else",
+            photo.headers.get("X-Frame-Options") == "DENY"
+            and "frame-ancestors 'none'" in (photo.headers.get("Content-Security-Policy") or ""),
+            detail=f"{photo.headers.get('X-Frame-Options')!r}")
     photo.close()
+    p_banner = _panel_of(anon.get(occ_page).get_data(as_text=True))
+    s.check("and the dinner panel on the occasion's page shows it, in place of the dining photograph",
+            f'<img src="{occ_page}/banner"' in p_banner and m.DINNER_PANEL_PHOTO not in p_banner,
+            detail=p_banner[:300])
     other = f"{TAG} The later one"
     oc.post("/admin/stay-occasions/new", data=_form(other, n1 + timedelta(days=2), n1 + timedelta(days=2),
                                                     serve_dinner="1", dinner_price="55"))
@@ -991,6 +1023,140 @@ p.textContent = e.data; document.body.appendChild(p); });</script>
 </body></html>"""
 
 
+def _panel_of(page):
+    got = re.search(r'<section class="g-dinpanel".*?</section>', page, re.S)
+    return got.group(0) if got else ""
+
+
+def _href(block, label):
+    got = re.search(r'<a\b[^>]*\bhref="([^"]+)"[^>]*>\s*' + re.escape(label) + r"\s*</a>", block)
+    if not got:
+        return None, {}
+    url = urllib.parse.urlsplit(htmllib.unescape(got.group(1)))
+    return url.path, dict(urllib.parse.parse_qsl(url.query))
+
+
+def _panel_checks(s, anon, conn, occ, occ_page, page, rid, n1, n2, arrival, departure):
+    """The dinner on the occasion's page as a panel (owner, 26 Nov 2026: "where's the price of the dinner, view menu
+    isn't right, it should say stay these nights and book dinner"; "I don't like it being just text"), and the chef
+    line beside it (live test, 26 Nov: "priced on request" sat right above "€95 a person")."""
+    s.section("The occasion's page: the dinner as a panel, priced, with Stay these nights and Book dinner")
+    panel = _panel_of(page)
+    said = " ".join(re.sub(r"<[^>]+>", " ", htmllib.unescape(panel)).split())
+    dinners = m.stay_occasion_dinners(occ, conn)
+    s.check("there is a panel, headed Dinner at Gudanes", bool(panel) and
+            re.search(r'<h2 class="g-dinpanel__h"[^>]*>Dinner at Gudanes</h2>', panel) is not None,
+            detail=panel[:300] or "no panel")
+    s.check("with a photograph: with no banner of its own, the dining one",
+            re.search(r'<figure class="g-dinpanel__ph"><img src="[^"]+" alt="[^"]+"', panel) is not None
+            and m.DINNER_PANEL_PHOTO in panel, detail=panel[:300])
+    s.check("the nights in full and the time",
+            f"Dinner at Gudanes {m.dinner_nights_words(dinners)} 7.30pm €65" in said, detail=said[:200])
+    price = re.search(r'<p class="g-dinpanel__price">(.*?)</p>', panel, re.S)
+    flat = " ".join(re.sub(r"<[^>]+>", "", price.group(1)).split()) if price else ""
+    s.check("the price large and on its own line: '€65 a person'", flat == "€65 a person"
+            and 'class="g-fig" data-eur="65"' in price.group(1), detail=flat or "no price line")
+    s.check("with Wine included under it", '<p class="g-dinpanel__wine">Wine included</p>' in panel)
+    path, q = _href(panel, "Stay these nights")
+    s.check("Stay these nights: /book on the occasion's dates",
+            path == "/book" and q == {"arrival": arrival, "departure": departure}, detail=f"{path} {q}")
+    path, q = _href(panel, "Book dinner")
+    s.check("Book dinner: /book on the same dates, carrying the dinner flag",
+            path == "/book" and q == {"arrival": arrival, "departure": departure, "dinner": "1"},
+            detail=f"{path} {q}")
+    btns = re.search(r'<p class="g-dinpanel__btns">(.*?)</p>', panel, re.S)
+    s.check("the two buttons side by side, in one row", btns and btns.group(1).count('class="g-btn') == 2)
+    s.check("and they are not drawn a second time under the panel", page.count(">Stay these nights<") == 1)
+
+    s.section("The chef line beside a priced dinner")
+    text = " ".join(re.sub(r"<[^>]+>", " ", htmllib.unescape(page)).split())
+    s.check("never 'priced on request' beside the dinner's price", "priced on request" not in text
+            and "€65 a person" in text)
+    s.check("it offers lunch, not dinner, on request", m.CHEF_ON_SITE_DINNER_LINE in text, detail=text[:400])
+    s.check("and no label runs into the sentence", not re.search(
+        r'g-occasion__tag">[^<]*</span>\s*The château', page)
+        and not re.search(r"Dinner at Gudanes\s+The château", text), detail=text[:400])
+    with m.app.test_request_context("/"):
+        card = m.stay_occasion_card(conn, conn.execute("SELECT * FROM stay_occasions WHERE id = ?",
+                                                       (occ["id"],)).fetchone())
+    s.check("the card and the booking page get the same line",
+            card["chef_line"] == m.CHEF_ON_SITE_DINNER_LINE
+            and all(o["chef_line"] == m.CHEF_ON_SITE_DINNER_LINE for o in
+                    _on_stay(conn, n1, n1 + timedelta(days=2)) if o["name"] == occ["name"]))
+
+    s.section("Book dinner lands on the rooms with dinner already in the basket")
+    rooms_page = anon.get(f"/book?arrival={arrival}&departure={departure}&dinner=1").get_data(as_text=True)
+    card_html = _card_of(rooms_page, rid)
+    path, q = _href(card_html, "Book this room")
+    s.check("the room's Book this room carries the flag on", path == f"/book/{rid}" and q.get("dinner") == "1",
+            detail=f"{path} {q}")
+    s.check("and the search form keeps it if the dates or the party change",
+            re.search(r'<form method="get" action="/book#results".*?<input type="hidden" name="dinner" value="1">',
+                      rooms_page, re.S) is not None)
+    plain = anon.get(f"/book?arrival={arrival}&departure={departure}").get_data(as_text=True)
+    path, q = _href(_card_of(plain, rid), "Book this room")
+    s.check("without it, the room's link is as before", path == f"/book/{rid}" and "dinner" not in q,
+            detail=f"{path} {q}")
+    box = f'name="dinner_{n2.isoformat()}"'
+
+    def boxed(url):
+        form = anon.get(url).get_data(as_text=True)
+        got = re.search(r'<input type="number"[^>]*' + re.escape(box) + r'[^>]*value="(\d+)"', form)
+        return (int(got.group(1)) if got else None), form
+
+    room_url = f"/book/{rid}?arrival={arrival}&departure={departure}"
+    two, form = boxed(room_url + "&party_size=2&dinner=1")
+    s.check("the room form arrives with dinner for the party of two", two == 2, detail=str(two))
+    s.check("and the price on the page already counts it",
+            f"Dinner at Gudanes, {m.dinner_night_short(n2.isoformat())}, 2 × €65" in htmllib.unescape(form))
+    s.check("a party of one: dinner for one", boxed(room_url + "&party_size=1&dinner=1")[0] == 1)
+    s.check("with no party said, the form's own two", boxed(room_url + "&dinner=1")[0] == 2)
+    s.check("without the flag, nobody is put down for dinner", boxed(room_url + "&party_size=2")[0] == 0)
+    conn.execute("UPDATE stay_occasions SET dinner_covers = 1 WHERE id = ?", (occ["id"],))
+    conn.commit()
+    s.check("never more than the night has places", boxed(room_url + "&party_size=2&dinner=1")[0] == 1)
+    conn.execute("UPDATE stay_occasions SET dinner_covers = 6 WHERE id = ?", (occ["id"],))
+    conn.commit()
+
+    s.section("Open to diners not staying: said on the panel, and Book dinner books a table")
+    conn.execute("UPDATE stay_occasions SET outside_diners = 1 WHERE id = ?", (occ["id"],))
+    conn.commit()
+    panel = _panel_of(anon.get(occ_page).get_data(as_text=True))
+    s.check("the panel says so", "Open to guests from outside the château too." in htmllib.unescape(panel))
+    path, q = _href(panel, "Book dinner")
+    s.check("and Book dinner goes to the restaurant's booking for that night",
+            path == "/restaurant/book" and q == {"date": dinners[0]}, detail=f"{path} {q} {dinners}")
+    conn.execute("UPDATE stay_occasions SET outside_diners = 0 WHERE id = ?", (occ["id"],))
+    conn.commit()
+    s.check("staying guests only, it does not say so",
+            "from outside the château" not in htmllib.unescape(_panel_of(anon.get(occ_page).get_data(as_text=True))))
+
+    s.section("No dinner, no panel")
+    kept = [r["dinner_date"] for r in conn.execute(
+        "SELECT dinner_date FROM stay_occasion_dinners WHERE occasion_id = ?", (occ["id"],))]
+    conn.execute("DELETE FROM stay_occasion_dinners WHERE occasion_id = ?", (occ["id"],))
+    conn.commit()
+    try:
+        bare = anon.get(occ_page).get_data(as_text=True)
+        s.check("an occasion without dinners draws no panel", 'class="g-dinpanel"' not in bare
+                and "Book dinner" not in bare)
+        s.check("and keeps its one Stay these nights", bare.count(">Stay these nights<") == 1)
+        s.check("with the chef in and no dinner, the owner's own line, label on a line of its own",
+                re.search(r'<p class="g-occasion__label">Chef in the house</p>\s*<p class="g-p">'
+                          + re.escape(htmllib.escape(m.CHEF_ON_SITE_LINE, quote=False)) + "</p>", bare) is not None
+                or re.search(r'<p class="g-occasion__label">Chef in the house</p>\s*<p class="g-p">'
+                             + re.escape(m.CHEF_ON_SITE_LINE) + "</p>", bare) is not None)
+    finally:
+        for d in kept:
+            conn.execute("INSERT INTO stay_occasion_dinners (occasion_id, dinner_date) VALUES (?, ?)", (occ["id"], d))
+        conn.commit()
+
+
+def _on_stay(conn, arrival, departure):
+    with m.app.test_request_context("/"):
+        return m.stay_occasions_on_stay(conn, arrival, departure)
+
+
 def _inline(page):
     """The page with the site's stylesheets inline and nothing fetched."""
     def inline(match):
@@ -1088,6 +1254,94 @@ def _browser(s, anon, conn, oid, name, occ_page):
         ph = got.get("photo") or {}
         s.check(f"{label}: the photograph on top, at 16:9", ph.get("w") and abs(ph["w"] / max(ph["h"], 1) - 16 / 9) < 0.05,
                 detail=str(ph))
+    _live_frame(s, browser, conn, oid, occ_page)
+
+
+# Opens the occasion page's "See the menu" for a PDF and says what the pop-up's frame holds. A frame the browser
+# refused to draw (X-Frame-Options, frame-ancestors) is an error page from another origin, so its document cannot be
+# read from here: doc comes back false. One the browser drew is the house's own menu, at its own address.
+FRAME_PROBE = r"""<script>
+(function () {
+  function report(o) { var p = document.createElement('pre'); p.className = 'r'; p.textContent = JSON.stringify(o);
+    document.body.appendChild(p); }
+  window.addEventListener('load', function () {
+    var a = document.querySelector('.g-dinpanel [data-menu-open][data-menu-pdf="1"]');
+    if (!a) { report({error: 'no PDF menu link in the dinner panel'}); return; }
+    a.click();
+    var dlg = document.getElementById('g-menudlg'), f = dlg && dlg.querySelector('iframe');
+    if (!f) { report({error: 'the pop-up drew no frame'}); return; }
+    var done = false;
+    function look(why) {
+      if (done) return; done = true;
+      var o = {open: dlg.open, why: why};
+      try { var d = f.contentDocument; o.doc = !!d; o.url = d ? d.URL : null; }
+      catch (e) { o.doc = false; o.err = String(e); }
+      report(o);
+    }
+    f.addEventListener('load', function () { setTimeout(function () { look('load'); }, 400); });
+    setTimeout(function () { look('timeout'); }, 6000);
+  });
+})();
+</script>"""
+
+
+class _Probed:
+    """The app as it runs, with FRAME_PROBE added to one page on its way out -- everything else, the menu's own
+    headers included, exactly as the house serves it."""
+
+    def __init__(self, app, path):
+        self.app, self.path = app, path
+
+    def __call__(self, environ, start_response):
+        from werkzeug.wrappers import Response
+        if environ.get("PATH_INFO") != self.path:
+            return self.app(environ, start_response)
+        resp = Response.from_app(self.app, environ)
+        resp.set_data(resp.get_data(as_text=True).replace("</body>", FRAME_PROBE + "</body>", 1))
+        return resp(environ, start_response)
+
+
+def _live_frame(s, browser, conn, oid, occ_page):
+    """The live test of 26 Nov 2026 in a real browser: See the menu opened the pop-up on Chrome's broken-page icon,
+    because the menu was sent with X-Frame-Options: DENY and frame-ancestors 'none'. Only a browser obeys those
+    headers, so the page is served for real, on a local port, and Chrome opens the menu in it."""
+    import logging
+    import threading
+    from werkzeug.serving import make_server
+    s.section("In a browser, served for real: the PDF menu draws inside the pop-up")
+    was = conn.execute("SELECT menu_file FROM stay_occasions WHERE id = ?", (oid,)).fetchone()["menu_file"]
+    fname = f"menu-zdin-live{oid}.pdf"
+    with open(os.path.join(m.OCCASION_FILES_DIR, fname), "wb") as fh:
+        fh.write(_pdf())
+    conn.execute("UPDATE stay_occasions SET menu_file = ? WHERE id = ?", (fname, oid))
+    conn.commit()
+    quiet = logging.getLogger("werkzeug")
+    level = quiet.level
+    quiet.setLevel(logging.ERROR)
+    server = make_server("127.0.0.1", 0, _Probed(m.app, occ_page), threaded=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    work = tempfile.mkdtemp(prefix="gudanes_dinner_live_")
+    try:
+        cmd = [browser, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+               "--disable-extensions", "--user-data-dir=" + os.path.join(work, "profile"), "--hide-scrollbars",
+               "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1", "--virtual-time-budget=15000",
+               "--dump-dom", f"http://127.0.0.1:{server.server_port}{occ_page}"]
+        if sys.platform.startswith("linux"):
+            cmd.insert(1, "--no-sandbox")
+        out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             timeout=300).stdout
+    finally:
+        server.shutdown()
+        quiet.setLevel(level)
+        conn.execute("UPDATE stay_occasions SET menu_file = ? WHERE id = ?", (was, oid))
+        conn.commit()
+        m.remove_occasion_file(fname)
+    found = re.findall(r'<pre class="r">(.*?)</pre>', out, re.S)
+    got = json.loads(htmllib.unescape(found[-1])) if found else {"error": "the page never reported"}
+    s.check("See the menu opens the pop-up on the real page", got.get("open") and not got.get("error"),
+            detail=str(got))
+    s.check("and the PDF is drawn in its frame, not refused: the frame holds the menu's own address",
+            got.get("doc") is True and (got.get("url") or "").endswith(f"{occ_page}/menu"), detail=str(got))
 
 
 if __name__ == "__main__":

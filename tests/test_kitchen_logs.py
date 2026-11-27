@@ -61,6 +61,7 @@ def _cleanup(conn):
     conn.execute("DELETE FROM cleaning_log WHERE round_id IN "
                  "(SELECT id FROM cleaning_rounds WHERE what LIKE ?)", (TAG + "%",))
     conn.execute("DELETE FROM cleaning_rounds WHERE what LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM event_inquiries WHERE reference_code = ?", (f"{TAG}EV",))
     conn.execute("DELETE FROM tasks WHERE origin = ? AND (title LIKE 'Kitchen cleaning:%' "
                  "OR title LIKE 'Fridge temperatures%' OR title LIKE 'A fridge reading%')",
                  (m.WATCH_TASK_ORIGIN,))
@@ -211,29 +212,58 @@ def _fridges(s, oc, ec, conn):
             ec.post("/kitchen/fridges/reading/999999999/answer",
                     data={"action_taken": "x"}).status_code == 404)
 
-    s.section("A fridge nobody read")
+    s.section("A fridge nobody read, while a retreat or event is on")
+    # The fridges with gauges are on only for a retreat or an event (owner,
+    # 26 Nov 2026). An event of this suite's own, far ahead, so the house's
+    # real calendar cannot be on the same days.
+    on = today + timedelta(days=400)
+    begun = on - timedelta(days=3)
+    conn.execute(
+        """INSERT INTO event_inquiries (reference_code, manage_token, event_type, contact_name,
+           contact_email, preferred_date, end_date, guest_count, status, created_at, message)
+           VALUES (?, ?, 'wedding', ?, 'zzklog.event@example.invalid', ?, ?, 40, 'confirmed', ?, ?)""",
+        (f"{TAG}EV", _harness.secrets_token(), f"{TAG} Event", begun.isoformat(),
+         (on + timedelta(days=1)).isoformat(), datetime.now(timezone.utc).isoformat(), TAG))
     cold_room = _unit(conn, "Cold room", 0, 4, days_old=3)
     new_one = _unit(conn, "New", 0, 4, days_old=0)
-    unread = [u["unit"]["name"] for u in m.fridge_problems(conn, today)["unread"]]
-    s.check("not read for two days and more: on the list", f"{TAG} Cold room" in unread,
-            detail=str(unread))
-    s.check("added today: not late yet", f"{TAG} New" not in unread)
-    s.check("read today: not on it", f"{TAG} Fridge" not in unread)
-    home = _home(conn, today)
+    conn.execute("""INSERT INTO fridge_readings (unit_id, read_at, celsius, created_at)
+                    VALUES (?, ?, 3.5, ?)""",
+                 (fridge, datetime.combine(on - timedelta(days=1), datetime.min.time())
+                  .replace(hour=12, tzinfo=timezone.utc).isoformat(),
+                  datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    s.check("the event is what the kitchen is in use for",
+            m.kitchen_in_use_since(conn, on) == begun)
+    quiet = on + timedelta(days=30)
+    s.check("nothing on: nothing asked, however long since a reading",
+            m.kitchen_in_use_since(conn, quiet) is None
+            and not [u for u in m.fridge_problems(conn, quiet)["unread"]
+                     if u["unit"]["name"].startswith(TAG)])
+    s.check("on the day it begins, nobody is late yet",
+            not [u for u in m.fridge_problems(conn, begun)["unread"]
+                 if u["unit"]["name"].startswith(TAG)])
+    unread = [u["unit"]["name"] for u in m.fridge_problems(conn, on)["unread"]]
+    s.check("three days in with no reading: on the list", f"{TAG} Cold room" in unread
+            and f"{TAG} New" in unread, detail=str(unread))
+    s.check("read yesterday: not on it", f"{TAG} Fridge" not in unread)
+    home = _home(conn, on)
     s.check("a warning on the owner home", any(
         "not read for" in w["title"] and f"{TAG} Cold room" in w["detail"] for w in home))
-    m.generate_watch_tasks(conn, today)
+    m.generate_watch_tasks(conn, on)
     s.check("and a task", _task(conn, "Fridge temperatures not taken") is not None)
 
     ec.post(f"/kitchen/fridges/unit/{cold_room}", data={"what": "off"})
     s.check("switched off, it is off the list",
             f"{TAG} Cold room" not in [u["unit"]["name"] for u in
-                                       m.fridge_problems(conn, today)["unread"]])
+                                       m.fridge_problems(conn, on)["unread"]])
     page = ec.get("/kitchen/fridges").get_data(as_text=True)
     s.check("and off the sweep, with a way back",
             f'name="c_{cold_room}"' not in page and "Back in use" in page)
-    m.generate_watch_tasks(conn, today)
+    conn.execute("UPDATE fridge_units SET active = 0 WHERE id IN (?, ?)", (new_one, freezer))
+    conn.commit()
+    m.generate_watch_tasks(conn, on)
     s.check("the task closed itself", _task(conn, "Fridge temperatures not taken") is None)
+    m.generate_watch_tasks(conn, today)
     ec.post(f"/kitchen/fridges/unit/{cold_room}", data={"what": "on"})
     s.check("back in use, it is back on the sweep",
             f'name="c_{cold_room}"' in ec.get("/kitchen/fridges").get_data(as_text=True))

@@ -109,6 +109,10 @@
     number the guest saw was dropped on the way to the form. The bar and every "Book this room" link read this; the
     results line still names a count only when the search gave one, since that is what the rooms were asked for. -#}
 {%- set _party = prefill_party_size or 2 %}
+{#- 26 Nov 2026 (owner: "it should say stay these nights and book dinner"): Book dinner on an occasion's page opens this
+    page with ?dinner=1. The search keeps it and every Book this room passes it on, so the room form arrives with
+    Dinner at Gudanes added for the party (book_room reads it once). -#}
+{%- set _with_dinner = request.args.get('dinner') == '1' %}
 <!-- Availability. Replaces "BOOK IN" per card with a real search. -->
 <section class="g-book-bar" id="book"><div class="g-wrap">
   {#- 24 Nov 2026 (booking-flow brief, 2): the search opens on its results. It posted to /book with no anchor, so the
@@ -131,6 +135,7 @@
         minus and a plus for the guests (_guests.html). Styles in gudanes-pictures.css. -#}
     <div class="g-search__f g-search__f--n"><label for="s_party">Guests</label>
       {{ guests_field('s_party', _party, 15) }}</div>
+    {% if _with_dinner %}<input type="hidden" name="dinner" value="1">{% endif %}
     <button type="submit" class="g-btn g-search__go">Check availability</button>
   </form>
   <p class="g-book-bar__note">
@@ -287,7 +292,7 @@
         {#- Dinner at Gudanes (owner, 25 Nov 2026): the price above is the room's normal one; this says dinner is hosted on
             a night of these dates, at what time and price, and that it is added in the extras. "See the menu" opens it. -#}
         {% if searched and dinner_notes is defined and dinner_notes and availability.get(room['id']) %}
-        <div class="g-dinnernote">{% for n in dinner_notes %}<p class="g-dinnernote__p">{{ n.text }}{% if n.menu %} {{ menu_link(n.menu) }}{% endif %}</p>{% endfor %}</div>
+        <div class="g-dinnernote">{% for n in dinner_notes %}<p class="g-dinnernote__p">{{ n.text }}{% if n.menu %} {{ menu_link(n.menu) }}{% endif %}</p>{% endfor %}{% if _with_dinner %}<p class="g-dinnernote__p">From Book dinner: it is already added for your party on the next page, and can be changed there.</p>{% endif %}</div>
         {% endif %}
         {# Prefer the written description. The database column holds imported
            listing copy — generic, and in one case factually wrong — so it is
@@ -328,7 +333,7 @@
         </ul>
         {% if searched %}
           {% if availability.get(room['id']) %}
-            <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, party_size=_party) }}">Book this room</a>
+            <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, party_size=_party, dinner=1 if _with_dinner else None) }}">Book this room</a>
           {% elif _wstay %}
             <div class="g-winter">
               <p class="g-winter__fr" lang="fr">Une suite pour la belle saison</p>

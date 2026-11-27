@@ -222,9 +222,15 @@ m = _harness.m
 # "The restoration as it happens" on every page; "A guided tour of the brocantes" on /workshops; "Bruce in the
 # hay meadow" on /facilities; "When a page goes wrong" on /privacy; "One price for the full château experience"
 # on the retreat pages; and the brocante tour in the Antique & French Finds title. Was: "067a922"
+# 26 Nov 2026: moved to e56aec2, the dinner test fixes (BRIEF-dinner-test-fixes-26-nov-for-Claude-Code.md): the
+# Dinner at Gudanes panel on an occasion's page, the chef line beside a priced dinner, and /book's note when it is
+# opened from Book dinner. Against c3f0038 it listed nothing: an occasion's page and /book?dinner=1 are not among
+# the pages it reads. Was: "c3f0038"
 # Moved to b5857b2 (owner, 26 Nov, the photo review's safe fixes): two new captions only, travelling with
 # their replacement photographs -- "Gabriel's façade" on /history for "Gabriel's façade, above the roses", and
 # "Across the far lawn" on the Seven Starry Nights page. Was: "c3f0038"
+# 26 Nov 2026, merged: the base is 723dfe8, the merge of the dinner test fixes with main, each side read on its
+# own (the dinner fixes changed nothing this reads). Was: "b5857b2"
 # Moved to 79b7cdf (owner, 26 Nov, two photographs sent in the chat): "The ground dug out at the foot of the
 # château", the digger on /restoration, and "Photograph: Rémi Dargegen", the credit line under the red roadster
 # on /events/private. Was: "b5857b2"
@@ -232,7 +238,12 @@ m = _harness.m
 # / alone: the phone's two cards under the address ("Retreats Three to seven nights, all inclusive" and "Stay the
 # night A room and breakfast, your own dates", the hero tabs' own lines) and "See every date" under the next dates,
 # none of them drawn from 600px up. Was: "79b7cdf"
-COPY_BASE = "4efbf39"
+# 26 Nov 2026, merged again: the base is 4efbf39 for the second merge of the dinner test fixes with main, each
+# side read on its own (the dinner fixes changed nothing this reads). Moved to the merge itself in the commit
+# after it. Was: "723dfe8" on the dinner side, "4efbf39" on main
+# 27 Nov 2026: moved to 35b8726, the dinner test fixes merged with main (the inbox on the owner home on top, which
+# changes nothing this reads). Against 4efbf39 it listed nothing. Was: "4efbf39"
+COPY_BASE = "35b8726"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
