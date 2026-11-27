@@ -247,7 +247,9 @@ m = _harness.m
 # privacy notice (test_booking_attribution), merged with main. Against 35b8726 it listed /privacy alone: "If
 # you book during a visit, the booking itself keeps three words about where that visit came from", through
 # "leaves nothing on its booking either.", after "Kept for thirteen months, then deleted." Was: "35b8726"
-COPY_BASE = "af954c3"
+# 27 Nov 2026: moved to 5e8718a, the same work merged again with main (Dinner at Gudanes complete, the guest reply
+# notice, a dietary note's copies). Against af954c3 it listed nothing. Was: "af954c3"
+COPY_BASE = "5e8718a"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
