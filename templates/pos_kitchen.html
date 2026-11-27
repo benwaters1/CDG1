@@ -34,6 +34,27 @@
 
 {% include "_dietary_clashes.html" %}
 
+{#- DINNER AT GUDANES TONIGHT (27 Nov 2026): the covers each course must make, the time, and every table's notes read
+    against the menu by the till's own reader. The whole night, printable, is one tap away. -#}
+{% if dinner %}
+<section class="detail-card" id="dinner-tonight" style="margin-bottom:1rem">
+  <h2 class="section-heading">Dinner at Gudanes tonight{% if dinner.time %}, {{ dinner.time }}{% endif %}: {{ dinner.covers }} cover{{ '' if dinner.covers == 1 else 's' }}</h2>
+  {% if dinner.view %}
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Course</th><th scope="col">Dish</th><th scope="col">Covers</th></tr></thead>
+    <tbody>{% for c in dinner.view.courses %}<tr><th scope="row">{{ c.course_fr }}</th><td>{{ c.dish_fr }}</td><td>{{ dinner.covers }}</td></tr>{% endfor %}</tbody>
+  </table>
+  </div>
+  {% endif %}
+  {% for t in dinner.tables if t.status == 'confirmed' and (t.dietary_notes or t.clashes) %}
+  <p style="margin:.35rem 0"><strong>{{ t.guest_name }}</strong>{% if t.room %} · {{ t.room }}{% endif %} · {{ t.party_size }}: {{ t.dietary_notes }}
+    {% for x in t.clashes %}<span class="till-tile__flag is-allergy">{{ x.course }}: {{ x.dish }} ({{ x.why }})</span>{% endfor %}</p>
+  {% endfor %}
+  <p><a class="btn-mini" href="{{ url_for('admin_dinner_night', day=dinner.day) }}">The whole night</a></p>
+</section>
+{% endif %}
+
 {% if not tickets %}
   <div class="empty-state">Nothing on. Tickets appear here the moment the floor sends an order.</div>
 {% else %}

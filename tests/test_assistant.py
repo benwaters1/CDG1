@@ -160,19 +160,23 @@ def run():
     s.check("it can say who is arriving on a day",
             TAG + " Almeida" in said, detail=said[:200])
     s.check("with the time they said they would get here", "18:30" in said)
-    # THE ONE THAT MATTERS. An allergy paraphrased is an allergy that can kill
-    # somebody, so it comes back word for word and the system prompt tells the
-    # model to repeat it rather than summarise it.
-    s.check("and their allergy, in the words it was written in",
-            "severe shellfish allergy" in said,
-            detail="a dietary note must reach the answer verbatim")
+    # THE ONE THAT MATTERS, turned round (owner, 27 November 2026). An allergy
+    # paraphrased can kill somebody, so the model is never given one to
+    # paraphrase: these answers go to Anthropic, and the privacy notice says
+    # nothing about anybody's health does. It is told THAT they have a note,
+    # every time, and the system prompt tells it to send the owner to the
+    # kitchen's list, where the words are.
+    s.check("and that they have a dietary note",
+            m.ASSISTANT_NOTE_KEPT in said, detail=said[:300])
+    s.check("but never the note itself",
+            "shellfish" not in said, detail="a dietary note must not reach the model")
 
     found = m.assistant_read_tool(conn, owner, "find_guest",
                                   {"query": TAG + " Almeida"})
     s.check("it can look a guest up by name", TAG + " Almeida" in found,
             detail=found[:200])
-    s.check("and says what they cannot eat",
-            "shellfish" in found, detail=found[:200])
+    s.check("and says that they keep a dietary note, never what it says",
+            m.ASSISTANT_NOTE_KEPT in found and "shellfish" not in found, detail=found[:200])
     # Their one stay is a fortnight away. It came back as "1 stay(s), last"
     # that fortnight, which the model then repeats as a fact about a guest
     # who has never set foot in the house.
@@ -223,9 +227,15 @@ def run():
     kitchen = m.assistant_read_tool(conn, owner, "kitchen", {})
     s.check("it can say what the kitchen needs", isinstance(kitchen, str) and kitchen,
             detail=str(kitchen)[:120])
-    s.check("and an allergy reaches it in the words it was written in",
-            "severe shellfish allergy" in kitchen,
+    s.check("it names who has a note, and never sends the note",
+            TAG + " Almeida" in kitchen and "has a note" in kitchen
+            and "shellfish" not in kitchen, detail=kitchen[:300])
+    s.check("and links the kitchen's list for the day, where the note is",
+            f"/kitchen/dietary?date={m.house_today().isoformat()}" in kitchen,
             detail=kitchen[:300])
+    s.check("the model is told to say a note is there and never guess it",
+            "DIETARY NOTE IS NEVER SENT TO YOU" in m.ASSISTANT_SYSTEM
+            and "never guess what it says" in m.ASSISTANT_SYSTEM)
     s.check("kitchen is a lookup, not a decision",
             "kitchen" not in m.ASSISTANT_ACTION_TOOLS)
 

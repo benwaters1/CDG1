@@ -12978,14 +12978,21 @@ html[lang="fr"] .g-top__in, html[lang="es"] .g-top__in{ max-width: max(var(--wra
 .g .g-dinpanel__wine{ margin: var(--s3) 0 0; font-family: var(--ui); font-size: 13px; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
 .g .g-dinpanel__who{ margin: var(--s4) 0 0; font-size: 16px; line-height: 1.5; color: var(--ink-soft); }
+/* A night full, or closed the evening before (27 Nov 2026): said plainly under the price. */
+.g .g-dinpanel__state{ margin: var(--s3) 0 0; font-family: var(--ui); font-size: 14px; font-weight: 600;
+  letter-spacing: .04em; color: var(--blue-deep); }
+.g .g-dinpanel__state::before{ content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px;
+  border-radius: 50%; background: var(--gilt); vertical-align: 1px; }
 .g .g-dinpanel__btns{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s6) 0 0; }
 .g .g-dinpanel__btns .g-btn{ flex: 1 1 100%; min-width: 0; margin: 0; }   /* a sibling rule gave the second a 12px top margin */
 .g .g-dinpanel__menus{ margin: var(--s4) 0 0; font-size: 16px; color: var(--blue-deep); }
 .g .g-dinpanel__menus p{ margin: var(--s2) 0 0; }
 @media (min-width: 48rem){
-  .g .g-dinpanel{ grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); }
-  .g .g-dinpanel__ph{ padding: 14px 0 14px 14px; }
-  .g .g-dinpanel__ph img{ aspect-ratio: auto; height: 100%; min-height: 22rem; }
+  /* The photograph's column is at most 384px: the 768px photograph is then drawn at half its pixels, sharp on a
+     laptop (it was stretched to 516px and soft: owner, 27 Nov 2026). Not stretched to the panel's height. */
+  .g .g-dinpanel{ grid-template-columns: minmax(0, 384px) minmax(0, 1fr); }
+  .g .g-dinpanel__ph{ padding: 14px 0 14px 14px; align-self: start; }
+  .g .g-dinpanel__ph img{ aspect-ratio: 3 / 4; height: auto; max-width: 384px; }
   .g .g-dinpanel__btns .g-btn{ flex: 1 1 11rem; }
 }
 /* The label over the chef line, on a line of its own (it ran into the sentence: live test, 26 Nov 2026). */
@@ -13047,3 +13054,10 @@ html[lang="fr"] .g-top__in, html[lang="es"] .g-top__in{ max-width: max(var(--wra
 @media (max-width: 599px) and (prefers-reduced-motion: reduce){
   .g .g-footer .g-footer__tog::after{ transition: none; }
 }
+
+/* THE DINNER MARK ON A CARD (owner's brief, 27 Nov 2026: "on the home page and the occasion cards, a dinner night shows
+   a small Dinner at Gudanes mark with the price"). The retreat card's flag, in the panel's gilt on parchment, so it
+   reads as the house's own dinner and not as "few places left". */
+.g .g-occasion__dinmark{ background: var(--parchment, #F3ECDD); color: var(--blue-deep); border-bottom: 2px solid var(--gilt);
+  letter-spacing: .08em; }
+.g .g-occasion__dinmark [data-eur]{ letter-spacing: .02em; }

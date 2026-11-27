@@ -1324,6 +1324,37 @@ def datetime_now():
     return datetime.now(timezone.utc).isoformat()
 
 
+STANDING_MENU = "ZTEST A standing dinner menu"
+
+
+def standing_menu(conn):
+    """A built Dinner at Gudanes menu any suite can give an occasion: since 27
+    November 2026 a dinner cannot go on sale without a menu. One course, made
+    once per run's database and reused."""
+    row = conn.execute("SELECT id FROM dinner_menus WHERE name = ?", (STANDING_MENU,)).fetchone()
+    if row:
+        conn.execute("UPDATE dinner_menus SET status = 'active' WHERE id = ?", (row["id"],))
+        conn.commit()
+        return row["id"]
+    now = datetime_now()
+    menu_id = conn.execute(
+        "INSERT INTO dinner_menus (name, price, wine_included, service_time, created_at, updated_at) "
+        "VALUES (?, 65, 1, '19:30', ?, ?)", (STANDING_MENU, now, now)).lastrowid
+    conn.execute(
+        "INSERT INTO dinner_menu_courses (menu_id, position, course_fr, course_en, dish_fr, dish_en, "
+        "origin_fr, origin_en, country_fr, country_en, allergens, fait_maison) "
+        "VALUES (?, 0, 'Plat', 'Main course', 'Truite de l’Ariège, beurre blanc', "
+        "'Ariège trout, beurre blanc', 'Truite', 'Trout', 'France', 'France', 'fish,milk', 1)", (menu_id,))
+    conn.commit()
+    return menu_id
+
+
+def give_menu(conn, occ_id):
+    """The standing menu, as an occasion's menu for all its nights."""
+    conn.execute("UPDATE stay_occasions SET dinner_menu_id = ? WHERE id = ?", (standing_menu(conn), occ_id))
+    conn.commit()
+
+
 def house_today():
     """What day it is AT THE HOUSE.
 

@@ -1,0 +1,184 @@
+<!doctype html>
+{#- DINNER AT GUDANES, THE MENU AS A PAGE (owner, 27 Nov 2026: "menu easy, presented beautifully"). One menu, drawn
+    three ways from the same data, in the house's printed style (Menus/menu.py and menu_a3.py are the reference: the
+    façade drawing with 1213 · 1741 · 2013 above it, the script heading, each course in French with the English
+    beneath, the wine with its diamond, the origin small and italic):
+
+      mode 'web' -- the guest's page and the pop-up (?embed=1 drops the way back). Readable on a phone.
+      mode 'a4'  -- the table menu, printed or saved as a PDF from the browser: no price, the wine line at the foot.
+      mode 'a3'  -- the board for outside the dining room, with every line the law asks of it (wording copied from
+                    menu_a3.py): the set price, taxes and service, water, the origin of the meat, fait maison, where
+                    the allergens are, and the time of service.
+
+    v is dinner_menu_view(): the price, wine and time are the occasion's when drawn for one, so the menu can never
+    print a figure the guest is not charged. Fonts from Google like the rest of the site, plus Pinyon Script for the
+    heading, which only the menu uses. -#}
+{%- set mode = mode or 'web' %}
+{%- set m = v.menu %}
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ m.name }} · Château de Gudanes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Pinyon+Script&display=swap" rel="stylesheet">
+<style>
+:root{ --ink:#60441D; --paper:#F3EEE5; --s:1; }
+*{ box-sizing:border-box; margin:0; padding:0; }
+html{ background:#E9E1D3; }
+body{ font-family:'EB Garamond', Georgia, serif; color:var(--ink); -webkit-text-size-adjust:100%; }
+.sheet{ position:relative; margin:0 auto; background:var(--paper) url("{{ url_for('static', filename='img/menu/tufted.jpg') }}") center/cover; overflow:hidden; }
+.sheet::after{ content:""; position:absolute; inset:0; background:rgba(243,238,229,.38); pointer-events:none; }
+.l{ position:absolute; border:solid var(--ink); z-index:1; pointer-events:none; }
+.l1{ inset:calc(6.5mm * var(--s)); border-width:calc(.72pt * var(--s)); }
+.l2{ inset:calc(7.77mm * var(--s)); border-width:calc(.95pt * var(--s)); }
+.corner{ position:absolute; width:calc(19mm * var(--s)); height:calc(19.64mm * var(--s)); z-index:2; }
+.c-tl{ left:calc(4.38mm * var(--s)); top:calc(4.43mm * var(--s)); }
+.c-tr{ right:calc(4.38mm * var(--s)); top:calc(4.43mm * var(--s)); }
+.c-bl{ left:calc(4.38mm * var(--s)); bottom:calc(4.43mm * var(--s)); }
+.c-br{ right:calc(4.38mm * var(--s)); bottom:calc(4.43mm * var(--s)); }
+.in{ position:relative; z-index:3; text-align:center; }
+.dates{ font-size:calc(8pt * var(--s)); letter-spacing:.3em; margin-bottom:calc(2mm * var(--s)); }
+.facade{ display:block; width:calc(46mm * var(--s)); height:auto; margin:0 auto; }
+.house{ font-size:calc(7.6pt * var(--s)); letter-spacing:.32em; text-transform:uppercase; font-weight:500; margin-top:calc(1.5mm * var(--s)); }
+.script{ font-family:'Pinyon Script', 'Cormorant Garamond', cursive; font-weight:400; font-size:calc(34pt * var(--s)); line-height:1.05; margin-top:calc(2.5mm * var(--s)); }
+.sub{ font-family:'Cormorant Garamond', Georgia, serif; font-style:italic; font-weight:300; font-size:calc(14pt * var(--s)); margin-top:calc(.5mm * var(--s)); }
+.price{ font-family:'Cormorant Garamond', Georgia, serif; font-weight:300; font-size:calc(17pt * var(--s)); margin-top:calc(2.5mm * var(--s)); }
+.price small{ display:block; font-family:'EB Garamond', Georgia, serif; font-size:calc(6.6pt * var(--s)); letter-spacing:.28em; text-transform:uppercase; font-weight:500; margin-top:calc(1mm * var(--s)); }
+.when{ font-size:calc(8.4pt * var(--s)); line-height:1.45; margin-top:calc(2mm * var(--s)); }
+.when i{ display:block; opacity:.9; }
+.dbl{ border-top:calc(.9pt * var(--s)) solid var(--ink); height:calc(2.1pt * var(--s)); border-bottom:calc(.45pt * var(--s)) solid var(--ink); width:calc(62mm * var(--s)); margin:calc(3mm * var(--s)) auto calc(4.2mm * var(--s)); }
+.c{ margin-bottom:calc(3.3mm * var(--s)); }
+.k{ font-size:calc(7pt * var(--s)); letter-spacing:.3em; text-transform:uppercase; font-weight:500; margin-bottom:calc(1.1mm * var(--s)); }
+.fr{ font-family:'Cormorant Garamond', Georgia, serif; font-weight:300; font-size:calc(14.6pt * var(--s)); line-height:1.15; }
+.en{ font-style:italic; font-size:calc(9.6pt * var(--s)); line-height:1.35; margin-top:calc(.6mm * var(--s)); }
+.w{ font-style:italic; font-size:calc(7.8pt * var(--s)); letter-spacing:.06em; margin-top:calc(1mm * var(--s)); opacity:.92; }
+.w::before{ content:"\25C6"; font-style:normal; font-size:calc(4.5pt * var(--s)); position:relative; top:calc(-1.3pt * var(--s)); margin-right:calc(1.8mm * var(--s)); }
+.o{ font-size:calc(7pt * var(--s)); letter-spacing:.06em; margin-top:calc(.8mm * var(--s)); opacity:.85; font-style:italic; }
+.al{ font-size:calc(6.8pt * var(--s)); letter-spacing:.04em; margin-top:calc(.6mm * var(--s)); opacity:.8; }
+.fm{ display:inline-block; font-family:'EB Garamond', Georgia, serif; font-size:calc(5.4pt * var(--s)); letter-spacing:.12em; text-transform:uppercase; font-weight:500; border:calc(.6pt * var(--s)) solid var(--ink); border-radius:999px; padding:0 .55em; vertical-align:.35em; margin-left:.4em; }
+.wine{ margin-top:calc(5mm * var(--s)); }
+.wine .big{ font-family:'Cormorant Garamond', Georgia, serif; font-style:italic; font-weight:300; font-size:calc(16pt * var(--s)); }
+.wine .sm{ font-size:calc(7pt * var(--s)); letter-spacing:.3em; text-transform:uppercase; font-weight:500; margin-top:calc(1mm * var(--s)); }
+.foot{ font-size:calc(8pt * var(--s)); font-style:italic; line-height:1.45; margin-top:calc(5mm * var(--s)); }
+.legal{ border-top:calc(.6pt * var(--s)) solid var(--ink); padding-top:calc(3.2mm * var(--s)); margin-top:calc(4mm * var(--s)); font-size:calc(6.5pt * var(--s)); line-height:1.5; }
+.legal div + div{ margin-top:calc(.6mm * var(--s)); }
+.legal b{ font-weight:500; letter-spacing:.12em; text-transform:uppercase; font-size:calc(5.8pt * var(--s)); }
+.legal .en2{ font-style:italic; opacity:.92; }
+.tools{ display:flex; flex-wrap:wrap; gap:12px; justify-content:center; padding:16px; font-family:'EB Garamond', Georgia, serif; }
+.tools a, .tools button{ display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 18px; border:1px solid var(--ink); background:#FBF8F2; color:var(--ink); font:inherit; font-size:15px; letter-spacing:.06em; text-decoration:none; cursor:pointer; border-radius:2px; }
+.tools button.primary{ background:var(--ink); color:#FBF8F2; }
+
+/* THE GUEST'S PAGE: a sheet the width of a good page, in px; a phone gets the whole width. */
+.web .sheet{ width:min(46rem, 100%); min-height:100vh; padding:72px 56px 64px; --s:1.32; }
+.web .in{ max-width:36rem; margin:0 auto; }
+@media (min-width:47rem){ body.web:not(.embed){ padding:24px 0; } .web:not(.embed) .sheet{ min-height:0; box-shadow:0 1px 3px rgba(60,40,10,.12), 0 12px 40px rgba(60,40,10,.10); } }
+@media (max-width:30rem){
+  /* Inside the frame's two rules and their corners (about 30px in), with room to breathe. */
+  .web .sheet{ padding:56px 38px 48px; --s:1; }
+  .web .facade{ width:min(56vw, 220px); }
+  .web .price small, .web .wine .sm{ letter-spacing:.18em; }
+}
+.embed .sheet{ min-height:100vh; box-shadow:none; }
+.back{ display:block; text-align:center; padding:14px 16px 0; font-size:15px; }
+.back a{ color:var(--ink); }
+
+/* The tufted wall, at its own size: stretched over a long page it blurred. */
+.web .sheet{ background-size:820px auto; background-repeat:repeat; background-position:center top; }
+
+/* PRINT: the sheet IS the paper. The wine line and the foot (A4), the legal block (A3), sit at the bottom of the
+   frame as they do on the printed menus, however many courses there are. */
+.a4 .sheet{ width:210mm; height:297mm; padding:19mm 24mm 17mm; --s:1; }
+.a3 .sheet{ width:297mm; height:420mm; padding:24mm 32mm 22mm; --s:1.414; }
+.a4 .in, .a3 .in{ display:flex; flex-direction:column; height:100%; }
+.tail{ margin-top:auto; }
+.a3 .facade{ width:68mm; }
+.a3 .price{ font-size:24pt; }
+.a3 .c{ margin-bottom:3.4mm; }
+.a3 .en{ font-size:12.5pt; margin-top:.8mm; }
+.a3 .w{ font-size:10pt; margin-top:1.4mm; }
+.a3 .o{ font-size:9.4pt; }
+.a3 .dbl{ width:90mm; margin:4.5mm auto 5mm; }
+.a3 .legal{ font-size:9.2pt; padding-top:4.5mm; }
+.a3 .legal b{ font-size:8.2pt; }
+@media screen{ body.a4, body.a3{ padding:0 0 48px; } .a4 .sheet, .a3 .sheet{ box-shadow:0 1px 3px rgba(60,40,10,.12), 0 12px 40px rgba(60,40,10,.10); } }
+@media screen and (max-width:900px){ .a4 .sheet, .a3 .sheet{ zoom:calc(100vw / 320mm); } }
+@media print{
+  html, body{ background:none; }
+  .tools, .back{ display:none !important; }
+  .sheet{ box-shadow:none !important; zoom:1 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+}
+{% if mode == 'a4' %}@page{ size:A4; margin:0; }{% elif mode == 'a3' %}@page{ size:A3; margin:0; }{% endif %}
+</style>
+</head>
+<body class="{{ mode }}{{ ' embed' if embed else '' }}">
+{%- if mode in ('a4', 'a3') %}
+<div class="tools"><button type="button" class="primary" onclick="window.print()">Print / Save as PDF</button>{% if back %}<a href="{{ back }}">Back to the menu</a>{% endif %}</div>
+{%- elif back and not embed %}
+<p class="back"><a href="{{ back }}">&larr; {{ back_label or 'Back' }}</a></p>
+{%- endif %}
+<div class="sheet">
+  <div class="l l1"></div><div class="l l2"></div>
+  <img class="corner c-tl" src="{{ url_for('static', filename='img/menu/corner-tl.png') }}" alt="">
+  <img class="corner c-tr" src="{{ url_for('static', filename='img/menu/corner-tr.png') }}" alt="">
+  <img class="corner c-bl" src="{{ url_for('static', filename='img/menu/corner-bl.png') }}" alt="">
+  <img class="corner c-br" src="{{ url_for('static', filename='img/menu/corner-br.png') }}" alt="">
+  <div class="in">
+    <p class="dates">1213 · 1741 · 2013</p>
+    <img class="facade" src="{{ url_for('static', filename='img/menu/facade.png') }}" alt="Château de Gudanes, the façade" width="1400" height="616">
+    <p class="house">Château de Gudanes</p>
+    <h1 class="script">Dîner à Gudanes</h1>
+    <p class="sub">Dinner at Gudanes</p>
+    {%- if mode != 'a4' and v.price_fr %}
+    <p class="price">Menu · {{ v.price_fr }}<small>par personne{{ ', vins compris' if v.wine }} · a person{{ ', wine included' if v.wine }}</small></p>
+    {%- endif %}
+    {%- if mode == 'web' and (v.nights_fr or v.time_fr) %}
+    <p class="when">{{ v.nights_fr|capitalize if v.nights_fr }}{{ ' · ' if v.nights_fr and v.time_fr }}{{ v.time_fr }}<i>{{ v.nights_en }}{{ ', ' if v.nights_en and v.time_en }}{{ v.time_en }}</i></p>
+    {%- endif %}
+    <div class="dbl"></div>
+    {%- for c in v.courses %}
+    <div class="c">
+      <p class="k">{{ c.course_fr }}</p>
+      <p class="fr">{{ c.dish_fr }}{% if v.some_fait_maison and c.fait_maison %}<span class="fm" title="Fait maison · Made here">fait maison</span>{% endif %}</p>
+      {%- if c.dish_en %}<p class="en">{{ c.dish_en }}</p>{% endif %}
+      {%- if c.wine_fr %}<p class="w">{{ c.wine_fr }}{% if mode != 'a4' and c.wine_glass %} · {{ c.wine_glass }}{% endif %}{% if mode == 'web' and c.wine_en and c.wine_en != c.wine_fr %} &nbsp;·&nbsp; {{ c.wine_en }}{% endif %}</p>{% endif %}
+      {%- if c.origin_line_fr %}<p class="o">{{ c.origin_line_fr }}{% if c.origin_line_en %} &nbsp;·&nbsp; {{ c.origin_line_en }}{% endif %}</p>{% endif %}
+      {%- if mode == 'web' and c.allergens_fr %}<p class="al">Allergènes : {{ c.allergens_fr|join(', ')|lower }} &nbsp;·&nbsp; Allergens: {{ c.allergens_en|join(', ')|lower }}</p>{% endif %}
+    </div>
+    {%- endfor %}
+    <div class="tail">
+    {%- if v.wine and v.has_wine and mode != 'a3' %}
+    <div class="wine"><p class="big">Le vin est compris, choisi pour chaque plat</p><p class="sm">Wine is included, chosen for each course</p></div>
+    {%- endif %}
+    {%- if mode == 'a3' %}
+    <div class="legal">
+      {%- if v.price_fr %}
+      <div><b>Menu unique · {{ v.price_fr }} par personne{{ ' · vins compris' if v.wine }}</b> &nbsp;·&nbsp; <span class="en2">Set menu, {{ v.price_en }} a person{{ ', wine included' if v.wine }}</span></div>
+      {%- endif %}
+      <div>Prix nets en euros, taxes comprises. Prix service compris. {{ 'Boissons comprises.' if v.wine else 'Boissons non comprises.' }} Une carafe d’eau est offerte. <span class="en2">Prices in euros, tax and service included.{{ ' Drinks included.' if v.wine else '' }} Tap water is free.</span></div>
+      {%- if v.meat_fr %}
+      <div>Origine des viandes : {{ v.meat_fr }}. L’origine de chaque produit est indiquée sous le plat. <span class="en2">Meat origin: {{ v.meat_en }}. Where each ingredient comes from is shown under each dish.</span></div>
+      {%- endif %}
+      {%- if v.all_fait_maison %}
+      <div>Tous nos plats sont faits maison, élaborés sur place à partir de produits bruts. <span class="en2">Every dish is made here, from raw ingredients.</span></div>
+      {%- elif v.some_fait_maison %}
+      <div>Les plats marqués « fait maison » sont élaborés sur place à partir de produits bruts. <span class="en2">Dishes marked fait maison are made here, from raw ingredients.</span></div>
+      {%- endif %}
+      <div>Les 14 allergènes présents dans chaque plat sont indiqués dans le classeur à l’entrée, en libre consultation. <span class="en2">The allergens in every dish are listed in the folder at the entrance.</span></div>
+      {%- if v.time_fr %}
+      <div>Service le soir à {{ v.time_fr }}, sur réservation. <span class="en2">Dinner at {{ v.time_en }}, by reservation.</span></div>
+      {%- endif %}
+    </div>
+    {%- else %}
+    <p class="foot">Please tell us of any allergies or dietary needs, and the kitchen will gladly adapt.{% if mode == 'web' and v.all_fait_maison %}<br>Every dish is made here, from raw ingredients · tous nos plats sont faits maison.{% endif %}</p>
+    {%- endif %}
+    </div>
+  </div>
+</div>
+{%- if mode == 'web' and not embed %}
+<div class="tools"><button type="button" onclick="window.print()">Print this menu</button></div>
+{%- endif %}
+{%- if autoprint %}<script>addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 300); });</script>{% endif %}
+</body>
+</html>

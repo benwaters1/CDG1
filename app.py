@@ -453,6 +453,10 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_waitlist_autonotify_enabled": "1",
     "automation_workshop_feedback_enabled": "1",
     "automation_email_scan_enabled": "1",
+    # ON (owner, 27 Nov 2026: "just a notification of guest replies"). It
+    # writes only to the owner, and only about somebody with a booking not yet
+    # over or an enquiry still open. See notify_guest_replies.
+    "automation_guest_reply_notice_enabled": "1",
     # ON: it reads nothing until Calendars.Read is granted, and says so.
     "automation_owner_diary_enabled": "1",
     "automation_hr_escalation_enabled": "1",
@@ -9167,6 +9171,97 @@ def init_db():
         # food is taxed at vat_food and wine at vat_alcohol, so a dinner with
         # wine is two pieces on the VAT working, as the extras' split allows.
         ("stay_occasions_wine_share", "ALTER TABLE stay_occasions ADD COLUMN wine_share REAL"),
+        # ---- Dinner at Gudanes menus, built in the app (27 Nov 2026) --------
+        # Owner: "is it easy to create a menu?" The house menu was a script on
+        # a laptop and a PDF uploaded. A menu is now a name, a price, wine
+        # included or not, and courses in order; each course its dish and wine
+        # in French and English, the main product's origin, the 14 allergens
+        # and the meat it holds (whose origin French law requires on any menu
+        # served). Every dish and wine typed is kept in a library to pick from
+        # next time. Never deleted while an occasion uses it: archived.
+        ("dinner_menus", """CREATE TABLE IF NOT EXISTS dinner_menus (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            price REAL,
+            wine_included INTEGER NOT NULL DEFAULT 1,
+            cost_per_cover REAL,
+            service_time TEXT,
+            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','archived')),
+            copied_from INTEGER,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        )"""),
+        ("dinner_dishes", """CREATE TABLE IF NOT EXISTS dinner_dishes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dish_fr TEXT NOT NULL,
+            dish_en TEXT,
+            origin_fr TEXT,
+            origin_en TEXT,
+            country_fr TEXT,
+            country_en TEXT,
+            meat TEXT,
+            allergens TEXT,
+            fait_maison INTEGER NOT NULL DEFAULT 1,
+            uses INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT
+        )"""),
+        ("dinner_dishes_name_idx",
+         "CREATE UNIQUE INDEX IF NOT EXISTS idx_dinner_dishes_name ON dinner_dishes(dish_fr COLLATE NOCASE)"),
+        ("dinner_wines", """CREATE TABLE IF NOT EXISTS dinner_wines (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wine_fr TEXT NOT NULL,
+            wine_en TEXT,
+            glass TEXT,
+            uses INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT
+        )"""),
+        ("dinner_wines_name_idx",
+         "CREATE UNIQUE INDEX IF NOT EXISTS idx_dinner_wines_name ON dinner_wines(wine_fr COLLATE NOCASE)"),
+        ("dinner_menu_courses", """CREATE TABLE IF NOT EXISTS dinner_menu_courses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            menu_id INTEGER NOT NULL REFERENCES dinner_menus(id) ON DELETE CASCADE,
+            position INTEGER NOT NULL DEFAULT 0,
+            course_fr TEXT NOT NULL,
+            course_en TEXT,
+            dish_fr TEXT,
+            dish_en TEXT,
+            wine_fr TEXT,
+            wine_en TEXT,
+            wine_glass TEXT,
+            origin_fr TEXT,
+            origin_en TEXT,
+            country_fr TEXT,
+            country_en TEXT,
+            meat TEXT,
+            allergens TEXT,
+            fait_maison INTEGER NOT NULL DEFAULT 1,
+            dish_id INTEGER REFERENCES dinner_dishes(id) ON DELETE SET NULL,
+            wine_id INTEGER REFERENCES dinner_wines(id) ON DELETE SET NULL
+        )"""),
+        ("dinner_menu_courses_menu_idx",
+         "CREATE INDEX IF NOT EXISTS idx_dinner_menu_courses ON dinner_menu_courses(menu_id, position)"),
+        # Which built menu an occasion serves, for all its nights or for one:
+        # the alternative to an uploaded file (a guest chef's menu still comes
+        # as one). The night's wins over the occasion's, as with the files.
+        ("stay_occasions_dinner_menu_id",
+         "ALTER TABLE stay_occasions ADD COLUMN dinner_menu_id INTEGER "
+         "REFERENCES dinner_menus(id) ON DELETE SET NULL"),
+        ("stay_occasion_dinners_dinner_menu_id",
+         "ALTER TABLE stay_occasion_dinners ADD COLUMN dinner_menu_id INTEGER "
+         "REFERENCES dinner_menus(id) ON DELETE SET NULL"),
+        # A Dinner at Gudanes table seated at the till (27 Nov 2026): its
+        # dinner was paid with the stay, or online in full, so the tab holds
+        # it as a PREPAID set menu -- a line at nothing to pay, carrying what
+        # was paid and for how many, tied to the stay's line -- and the night's
+        # close-out counts those covers apart from what the till took.
+        ("pos_lines_prepaid_value", "ALTER TABLE pos_order_lines ADD COLUMN prepaid_value REAL"),
+        ("pos_lines_prepaid_covers", "ALTER TABLE pos_order_lines ADD COLUMN prepaid_covers INTEGER"),
+        ("pos_lines_prepaid_extra_id",
+         "ALTER TABLE pos_order_lines ADD COLUMN prepaid_extra_id INTEGER "
+         "REFERENCES booking_extras(id) ON DELETE SET NULL"),
+        ("pos_formules_prepaid",
+         "ALTER TABLE pos_order_formules ADD COLUMN prepaid INTEGER NOT NULL DEFAULT 0"),
         # A held letter's pictures (26 Nov 2026): an occasion's newsletter held
         # in the outbox is drawn again with its photograph and menu when sent.
         ("email_outbox_pictures", "ALTER TABLE email_outbox ADD COLUMN pictures TEXT"),
@@ -9317,6 +9412,16 @@ def init_db():
          "ALTER TABLE channel_price_pushes ADD COLUMN uplift REAL"),
         ("channel_price_pushes_previous_uplift",
          "ALTER TABLE channel_price_pushes ADD COLUMN previous_uplift REAL"),
+        # ONE NOTIFICATION FOR EACH EMAIL A GUEST WRITES (owner, 27 Nov 2026:
+        # "just a notification of guest replies"). Keyed on the email's own
+        # Message-ID, which is the same in every inbox it reached and in the
+        # Booking.com reader, so one email is announced once however many
+        # inboxes it landed in. Nothing about who wrote it is kept here.
+        ("guest_reply_notices_table",
+         """CREATE TABLE IF NOT EXISTS guest_reply_notices (
+                message_key TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                notified_at TEXT NOT NULL)"""),
     ):
         try:
             conn.execute(ddl)
@@ -9360,6 +9465,7 @@ def init_db():
     backfill_consent_history(conn)
     redact_stored_links(conn)
     scrub_quoted_dinner_notes(conn)
+    scrub_assistant_health_answers(conn)
     incident_times_to_utc(conn)
     prep_notes_in_words(conn)
 
@@ -10935,7 +11041,7 @@ NAV_AREAS = {
         "admin_whats_on_save", "admin_stay_occasions", "admin_stay_occasion",
         "admin_stay_occasion_new", "admin_stay_occasion_write", "admin_stay_occasion_delete",
         "admin_stay_occasion_suggestion_create", "admin_stay_occasion_suggestion_dismiss",
-        "admin_stay_occasion_retreat",
+        "admin_stay_occasion_retreat", "admin_stay_occasion_panel_preview",
         "assign_email_flag", "delete_gallery_photo", "delete_social_post",
         "dismiss_email_flag", "edit_gallery_photo", "edit_gallery_section", "edit_social_post",
         "mark_social_post_posted", "new_social_post", "record_texting_consent", "resolve_email_flag",
@@ -11033,6 +11139,13 @@ NAV_AREAS = {
         "delete_restaurant_shift", "edit_extra", "edit_menu_day", "edit_menu_item",
         "kitchen_day_sheet", "kitchen_service_times", "kitchen_waste", "mark_restaurant_no_show",
         "menu_day", "menu_history", "menu_template_sheet", "new_drink_package",
+        # The Dinner at Gudanes menus and the night's sheet (27 Nov 2026): the
+        # kitchen builds the menus and reads the night as well as the owner.
+        "admin_dinner_menus", "admin_dinner_menu_new", "admin_dinner_menu",
+        "admin_dinner_menu_duplicate", "admin_dinner_menu_archive", "admin_dinner_menu_delete",
+        "admin_dinner_menu_preview", "admin_dinner_menu_english", "admin_dinner_menu_print",
+        "admin_dinner_menu_pdf",
+        "admin_dinner_night",
         "new_extra", "new_menu_day", "new_menu_item", "new_restaurant_rate_override",
         "new_restaurant_shift", "print_menu_day", "publish_menu_day", "read_menu_upload",
         "remove_dish_ingredient", "restaurant_margins", "restaurant_what_sells", "review_menu_draft",
@@ -11484,6 +11597,8 @@ OWNER_MENU = [
             _nav("restaurant_covers", "Covers Ahead", "restaurant"),
         ]),
         ("Kitchen", [
+            _nav("admin_dinner_menus", "Dinner Menus", "restaurant",
+                 ("admin_dinner_menu", "admin_dinner_menu_new", "admin_dinner_night")),
             _nav("kitchen_prep", "Prep List", "restaurant"),
             _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
             _nav("kitchen_cleaning", "Kitchen Cleaning", "wrench"),
@@ -15196,6 +15311,28 @@ def leave_balance(conn, user_id, entitlement, on_date=None):
             "used": used, "remaining": remaining}
 
 
+# What a stay's total_price does not say about its extras (owner's brief, 27
+# Nov 2026: "does the costing all work?"). total_price is the stay AS AGREED:
+# a line added afterwards -- a Dinner at Gudanes night added from the stay's
+# page, a bottle charged to the room -- was never in it, and one chosen with
+# the stay and since taken off still is. Read beside SUM(total_price), this
+# makes a confirmed stay's revenue what its bill says (booking_bill), by month
+# of arrival like the rest.
+STAY_EXTRAS_SINCE_SQL = """
+    SELECT strftime('%Y-%m', bookings.arrival_date) AS m,
+           SUM(CASE WHEN booking_extras.in_booking_total = 0
+                     AND COALESCE(booking_extras.status, '') != 'cancelled'
+                    THEN booking_extras.unit_price * COALESCE(booking_extras.quantity, 1)
+                    WHEN booking_extras.in_booking_total = 1 AND booking_extras.status = 'cancelled'
+                    THEN -booking_extras.unit_price * COALESCE(booking_extras.quantity, 1)
+                    ELSE 0 END) AS total
+      FROM booking_extras
+      JOIN bookings ON bookings.id = booking_extras.booking_id
+     WHERE booking_extras.category = 'room' AND bookings.status = 'confirmed'
+       AND bookings.arrival_date >= ? AND bookings.arrival_date < ?
+     GROUP BY m"""
+
+
 def financial_trend(conn, months, today=None):
     """Revenue and expenses per month for the last `months` months.
 
@@ -15232,6 +15369,8 @@ def financial_trend(conn, months, today=None):
                   FROM bookings WHERE status = 'confirmed'
                     AND arrival_date >= ? AND arrival_date < ? GROUP BY m""",
                (s_iso, e_iso), "revenue")
+    # The stays' extras as their bills have them (27 Nov 2026).
+    accumulate(STAY_EXTRAS_SINCE_SQL, (s_iso, e_iso), "revenue")
     # A Dinner at Gudanes table added with a stay is inside that stay's
     # total_price above: counted there, not twice.
     accumulate("""SELECT strftime('%Y-%m', dinner_date) AS m, SUM(total_price) AS total
@@ -15285,6 +15424,9 @@ def financial_month_summary(conn, month_start, month_end):
            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
         (month_start.isoformat(), month_end.isoformat()),
     ).fetchone()["total"]
+    # And the stays' extras as their bills have them (STAY_EXTRAS_SINCE_SQL).
+    room_revenue += sum((r["total"] or 0) for r in conn.execute(
+        STAY_EXTRAS_SINCE_SQL, (month_start.isoformat(), month_end.isoformat())))
     # A Dinner at Gudanes table added with a stay is already inside that
     # stay's total_price above: counted there, not twice.
     restaurant_revenue = conn.execute(
@@ -26179,6 +26321,10 @@ def pos_bill(conn, order_id):
     # other line. A discount on the bill then reduces it too, in proportion.
     by_rate = {}
     for l in live:
+        # A dinner paid with the stay (pos_hold_prepaid) is nothing at the
+        # till and no VAT here: its VAT is on the stay's bill.
+        if "prepaid_value" in l.keys() and l["prepaid_value"] is not None:
+            continue
         rate = l["vat_rate"] if l["vat_rate"] is not None else 0
         amount = (l["unit_price"] or 0) * (l["quantity"] or 0)
         b = by_rate.setdefault(float(rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
@@ -27820,6 +27966,15 @@ def pos_day_report(conn, on_date):
               if service_day_iso(o["closed_at"] or o["opened_at"]) == day]
     by_method, gross, vat, covers, service, discounts = {}, 0.0, 0.0, 0, 0.0, 0.0
     owed = package_charged = package_covered = 0.0
+    # Dinners paid before the table sat down -- with the stay, or online --
+    # counted apart (27 Nov 2026): covers fed tonight, not money taken tonight.
+    # Their revenue was counted when it was paid; here it is only said.
+    prepaid_covers, prepaid_value = 0, 0.0
+    for o in orders:
+        for p in conn.execute("SELECT prepaid_covers, prepaid_value FROM pos_order_lines "
+                              "WHERE order_id = ? AND voided = 0 AND prepaid_value IS NOT NULL", (o["id"],)):
+            prepaid_covers += p["prepaid_covers"] or 0
+            prepaid_value += p["prepaid_value"] or 0
     for o in orders:
         bill = pos_bill(conn, o["id"])
         gross += bill["gross"]
@@ -27849,6 +28004,7 @@ def pos_day_report(conn, on_date):
         "package_charged": round(package_charged, 2),
         "package_covered": round(package_covered, 2),
         "owed": round(owed, 2),
+        "prepaid_covers": prepaid_covers, "prepaid_value": round(prepaid_value, 2),
     })
 
 
@@ -27870,9 +28026,12 @@ def pos_day_takings(report):
     comped = round(by_method.get("comp", 0) or 0, 2)
     taken = round(sum(by_method.values()) - comped, 2)
     tabs, covers = report["tabs"], report["covers"]
+    # A cover whose dinner was paid with the stay spent nothing at the till on
+    # it, so it does not dilute what the covers that paid here averaged.
+    paying = max(covers - (report.get("prepaid_covers") or 0), 0)
     return dict(report, taken=taken, comped=comped,
                 settled=round(taken + comped, 2),
-                average_per_cover=round(taken / covers, 2) if covers else 0,
+                average_per_cover=round(taken / paying, 2) if paying else 0,
                 average_per_tab=round(taken / tabs, 2) if tabs else 0)
 
 
@@ -28073,9 +28232,10 @@ def pos_choose_formule_dish(conn, line_id, dish_id, *, notes=None, user_id=None)
 def pos_formules_for(conn, order_id):
     """Every cover's formule, its lines grouped, and whether it is complete —
     for the seat x course grid on the till."""
+    # A prepaid dinner (pos_hold_prepaid) is not a set menu to choose from.
     formules = conn.execute(
-        "SELECT * FROM pos_order_formules WHERE order_id = ? AND voided = 0 ORDER BY seat_number",
-        (order_id,)).fetchall()
+        "SELECT * FROM pos_order_formules WHERE order_id = ? AND voided = 0 AND COALESCE(prepaid, 0) = 0 "
+        "ORDER BY seat_number", (order_id,)).fetchall()
     out = []
     for f in formules:
         lines = conn.execute(
@@ -37447,6 +37607,7 @@ NOTIFICATION_KIND_LABELS = {
     "announcement": "Announcements", "chat": "Messages", "door": "The door",
     "balance_due": "Money owed", "expense_decided": "Expenses",
     "booking_com": "Booking.com", "booking_waiting": "Bookings", "guest_request": "Guest requests",
+    "guest_reply": "Guest replies",
     "event_inquiry": "Events", "restaurant": "Restaurant", "restaurant_booking": "Restaurant",
     "menu": "The menu", "workshop_booking": "Workshops", "workshop_decision": "Workshops",
     "hr_escalation": "HR", "hr_note": "HR", "hr_note_reply": "HR", "hr_reminder": "HR",
@@ -42387,8 +42548,6 @@ def owner_queue_totals(conn, today):
     return row["n"] or 0, row["v"] or 0.0, row["old"] or 0
 
 
-# How many guests "Waiting for a reply" names before "and N more".
-OWNER_HOME_REPLIES_SHOWN = 5
 # A subject that says nothing of what was asked; the email's first words do.
 _SAYS_NOTHING = re.compile(
     r"^(hello|hi|bonjour|bonsoir|hola|enquiry|inquiry|question|demande|request|information|"
@@ -42408,74 +42567,6 @@ def asked_in_a_few_words(subject, preview, words=8):
         s = " ".join((preview or "").split())
     parts = s.split()
     return " ".join(parts[:words]) + ("…" if len(parts) > words else "") if parts else "(nothing written)"
-
-
-def _waited_short(hours):
-    if hours is None:
-        return ""
-    if hours < 48:
-        return f"{max(1, int(hours))} h"
-    return f"{int(hours // 24)} days"
-
-
-def owner_home_replies(conn, now=None):
-    """"Waiting for a reply" on the owner home (26 Nov 2026): the guests and
-    enquirers waiting longest, the Booking.com guests with the days left of
-    Booking.com's fortnight, and any inbox the last scan could not read.
-
-    Nothing from everything else -- a receipt is never here. And nothing to
-    tick: an email answered leaves on the next scan, a Booking.com message
-    answered or past its fortnight leaves too, and an inbox read again takes
-    its line with it. Empty, the panel is not drawn at all."""
-    now = now or datetime.now(timezone.utc)
-    labels = {r["mailbox"].lower(): (r["label"] or r["mailbox"].split("@")[0])
-              for r in conn.execute("SELECT mailbox, label FROM mailbox_routing").fetchall()}
-    rows = conn.execute(
-        """SELECT * FROM email_flags
-            WHERE status = 'open' AND unanswered = 1 AND COALESCE(sender_kind, 'guest') = 'guest'
-            ORDER BY received_at, id""").fetchall()
-    guests = []
-    for r in rows[:OWNER_HOME_REPLIES_SHOWN]:
-        got = parse_datetime_iso(r["received_at"])
-        hours = (now - got).total_seconds() / 3600 if got else None
-        mb = (r["mailbox"] or "").lower()
-        guests.append({
-            "id": r["id"], "name": r["from_name"] or r["from_address"] or "Somebody",
-            "address": r["from_address"], "asked": asked_in_a_few_words(r["subject"], r["preview"]),
-            "inbox": labels.get(mb, mb.split("@")[0] if mb else "inbox"),
-            "waited": _waited_short(hours), "web_link": r["web_link"],
-        })
-    bcom = []
-    for r in booking_com_waiting(conn, now=now):
-        got = parse_datetime_iso(r["received_at"])
-        days = int((now - got).total_seconds() // 86400) if got else 0
-        left = max(0, BOOKING_COM_REPLY_DAYS - days)
-        bcom.append({"id": r["id"], "name": r["guest_name"] or "A guest",
-                     # What the guest wrote: Booking.com's own subject is
-                     # "We received this message from ..." every time.
-                     "asked": asked_in_a_few_words(r["message_text"] or r["subject"], r["subject"]),
-                     "left": left, "urgent": left <= 3})
-    unread = []
-    state = inbox_scan_state(conn) if graph_enabled() else None
-    if state:
-        for u in state.get("unread") or []:
-            unread.append({"mailbox": u.get("mailbox"), "folder": u.get("folder") or "",
-                           "why": u.get("why") or "", "at": state.get("at")})
-        last = parse_datetime_iso(state.get("at"))
-        if last and now - last > timedelta(hours=INBOX_SCAN_STALE_HOURS):
-            unread.append({"mailbox": "every inbox", "folder": "", "at": state.get("at"),
-                           "why": "the scan has not run since"})
-    elif graph_enabled():
-        unread.append({"mailbox": "every inbox", "folder": "", "at": None,
-                       "why": "no scan has read them yet"})
-    return {"guests": guests, "more": max(0, len(rows) - len(guests)), "total": len(rows),
-            "booking_com": bcom, "unread": unread,
-            "empty": not (guests or bcom or unread)}
-
-
-# The inbox scan runs every quarter of an hour; three hours without one is a
-# scan that is not running, and the panel says so rather than look quiet.
-INBOX_SCAN_STALE_HOURS = 3
 
 
 def owner_home_queue(conn):
@@ -43329,10 +43420,6 @@ def owner_home_warnings(conn, today):
             ", ".join(r["guest_name"] or "a guest" for r in written[:4])
             + (f" and {len(written) - 4} more" if len(written) > 4 else ""),
             len(written), "management_booking_com")
-        # The owner home says this under "Waiting for a reply", each guest
-        # with the days left; the daily summary and the assistant still read
-        # it here.
-        out[-1]["in_reply_panel"] = True
 
     # The front door, from the last half-hourly check: a guest cannot open it
     # from their phone, or its batteries are going. Quiet when it is well.
@@ -44455,12 +44542,8 @@ def staff_dashboard():
         # The lines the owner has cleared are held back, and only from this
         # panel; the greeting counts what is shown, so it never says "two
         # things need looking at" over an empty panel.
-        # Booking.com's waiting guests are said under "Waiting for a reply",
-        # each with the days left, so not twice on the one page.
         warnings, warnings_hidden = split_cleared_warnings(
-            conn, [w for w in owner_home_warnings(conn, today) if not w.get("in_reply_panel")],
-            today)
-        replies = owner_home_replies(conn)
+            conn, owner_home_warnings(conn, today), today)
         hour = datetime.now(timezone.utc).hour
         greeting = ("Good morning" if hour < 12 else
                     "Good afternoon" if hour < 18 else "Good evening")
@@ -44480,10 +44563,6 @@ def staff_dashboard():
             word = "needs" if n == 1 else "need"
             bits.append(f"{n} thing {word} looking at" if n == 1
                         else f"{n} things {word} looking at")
-        waiting_n = replies["total"] + len(replies["booking_com"])
-        if waiting_n:
-            bits.append(f"{waiting_n} guest{'' if waiting_n == 1 else 's'} "
-                        f"{'is' if waiting_n == 1 else 'are'} waiting for a reply")
         occ_now = sum(1 for g in owner_home_guests(conn, today) for _ in [1])
         rooms_n = conn.execute(
             "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
@@ -44509,8 +44588,7 @@ def staff_dashboard():
             next_up=owner_home_next_up(conn, today, day_rows),
             queue=queue, warnings=warnings, warnings_hidden=warnings_hidden,
             show_cleared=request.args.get("cleared") == "1",
-            snooze_days=HOME_WARNING_SNOOZE_DAYS, replies=replies,
-            reply_days=BOOKING_COM_REPLY_DAYS,
+            snooze_days=HOME_WARNING_SNOOZE_DAYS,
             queue_money=[q for q in queue if q["tone"] == "money"],
             queue_people=[q for q in queue if q["tone"] != "money"],
             bulk_count=sum(1 for q in queue if q["bulk_eligible"]),
@@ -47304,6 +47382,14 @@ def pos_home():
            WHERE dinner_date = ? AND status = 'confirmed' AND no_show_at IS NULL
            ORDER BY guest_name""", (today.isoformat(),)).fetchall()
         if b["id"] not in seated_ids]
+    # Tonight's Dinner at Gudanes tables (27 Nov 2026): ready to seat with
+    # the guest's room and whether the dinner is already paid -- the night's
+    # sheet reads them the same way.
+    sheet = {t["id"]: t for t in dinner_night_sheet(conn, today.isoformat())["tables"]} if expected else {}
+    expected = [dict(b, room=(sheet.get(b["id"]) or {}).get("room") or "",
+                     prepaid=restaurant_booking_prepaid(conn, b),
+                     dinner_at_gudanes=occasion_dinner_night(conn, today.isoformat()) is not None)
+                for b in expected]
 
     report = pos_day_report(conn, today)
     settled_today = report["taken"]
@@ -47472,6 +47558,52 @@ def restore_dining_table(table_id):
     return redirect(url_for("admin_dining_tables"))
 
 
+def restaurant_booking_prepaid(conn, rb):
+    """What a booked table has already paid for its dinner, or None: a Dinner
+    at Gudanes night added with a stay (paid with the stay, on its bill), or a
+    table paid online in full. {value, covers, label, extra_id, stay_id}.
+    A table that paid only a deposit is not prepaid: the till credits the
+    deposit, as it always has."""
+    if rb is None:
+        return None
+    covers = rb["party_size"] or 0
+    keys = rb.keys()
+    if "booking_extra_id" in keys and rb["booking_extra_id"]:
+        line = conn.execute("SELECT * FROM booking_extras WHERE id = ? AND COALESCE(status, '') != 'cancelled'",
+                            (rb["booking_extra_id"],)).fetchone()
+        if line is not None:
+            return {"value": round((line["unit_price"] or 0) * (line["quantity"] or 0), 2), "covers": covers,
+                    "label": f"{DINNER_AT_GUDANES} × {covers} — prepaid with the stay",
+                    "extra_id": line["id"], "stay_id": rb["booking_id"]}
+    total = float(rb["total_price"] or 0)
+    paid = float(rb["deposit_amount"] or 0) if "deposit_amount" in keys else 0.0
+    if (rb["payment_status"] if "payment_status" in keys else None) == "paid" and total > 0 \
+            and paid >= total - 0.005:
+        occ = occasion_dinner_night(conn, rb["dinner_date"])
+        title = occasion_dinner_title(occ) if occ is not None else "Dinner"
+        return {"value": round(total, 2), "covers": covers,
+                "label": f"{title} × {covers} — paid online", "extra_id": None, "stay_id": None}
+    return None
+
+
+def pos_hold_prepaid(conn, order_id, prepaid, *, user_id=None):
+    """The prepaid dinner on a tab: a set menu at nothing to pay, one line
+    carrying what was paid and for how many. Never money owed at the till."""
+    now = datetime.now(timezone.utc).isoformat()
+    fid = conn.execute(
+        """INSERT INTO pos_order_formules (order_id, menu_id, label, price, seat_number, prepaid,
+               added_by_user_id, created_at) VALUES (?, NULL, ?, 0, NULL, 1, ?, ?)""",
+        (order_id, prepaid["label"], user_id, now)).lastrowid
+    conn.execute(
+        """INSERT INTO pos_order_lines (order_id, formule_id, name, unit_price, quantity, course, state,
+               vat_rate, prepaid_value, prepaid_covers, prepaid_extra_id, added_by_user_id, created_at)
+           VALUES (?, ?, ?, 0, 1, 'main', 'sent', ?, ?, ?, ?, ?, ?)""",
+        (order_id, fid, prepaid["label"], tax_rate(conn, "vat_food"), prepaid["value"], prepaid["covers"],
+         prepaid["extra_id"], user_id, now))
+    pos_journal_append(conn, "line_added", {"prepaid": prepaid["label"], "value": prepaid["value"],
+                                            "covers": prepaid["covers"]}, order_id=order_id, user_id=user_id)
+
+
 @app.route("/pos/open", methods=["POST"])
 @login_required
 def pos_open_tab():
@@ -47529,12 +47661,21 @@ def pos_open_tab():
     # that paid to reserve is not charged for it twice. The old till had no
     # idea a deposit existed.
     deposit = round(booking["deposit_amount"] or 0, 2) if booking else 0
+    # A dinner already paid in full -- with the stay, or online -- is held on
+    # the tab as prepaid instead (27 Nov 2026): crediting it as a deposit as
+    # well would hand the guest their dinner's price back at the table. And a
+    # staying guest's tab is tied to their stay, so what else they have goes
+    # on the room by default.
+    prepaid = restaurant_booking_prepaid(conn, booking) if booking else None
+    if prepaid:
+        deposit = 0
+    stay_id = prepaid["stay_id"] if prepaid else (booking["booking_id"] if booking else None)
     conn.execute(
         """INSERT INTO pos_orders (table_label, table_id, covers, restaurant_booking_id, status,
-           service_state, deposit_credit, service_date, opened_by_user_id, opened_at)
-           VALUES (?, ?, ?, ?, 'open', 'seated', ?, ?, ?, ?)""",
+           service_state, deposit_credit, room_booking_id, service_date, opened_by_user_id, opened_at)
+           VALUES (?, ?, ?, ?, 'open', 'seated', ?, ?, ?, ?, ?)""",
         (label, table["id"] if table else None, covers,
-         booking["id"] if booking else None, deposit,
+         booking["id"] if booking else None, deposit, stay_id,
          # The night it belongs to, fixed at open. A tab started at 23:50 and
          # settled at 00:10 belongs to one service, not two — which is what
          # service_day_iso() gives and the UTC calendar date does not: past
@@ -47545,9 +47686,15 @@ def pos_open_tab():
          service_day_iso(),
          session.get("user_id"), datetime.now(timezone.utc).isoformat()))
     order_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    if prepaid:
+        pos_hold_prepaid(conn, order_id, prepaid, user_id=session.get("user_id"))
     conn.commit()
     conn.close()
-    if deposit:
+    if prepaid:
+        flash(f"Table open. {prepaid['label']}: nothing to pay for it here. "
+              + ("Anything else goes on their room unless they pay at the table." if stay_id else ""),
+              "success")
+    elif deposit:
         flash(f"Table open. {money(deposit)} deposit already paid has been credited.", "success")
     return redirect(url_for("pos_order", order_id=order_id))
 
@@ -48227,11 +48374,17 @@ def pos_take_payment_route(order_id):
             return redirect(url_for("pos_order", order_id=order_id))
         room_booking_id = int(rb)
         # Onto their bill by name, so the guest can see what they had rather
-        # than one lump called "restaurant".
+        # than one lump called "restaurant". Each at the VAT the till sold it
+        # at (a bottle is alcohol, a coffee food), and the dinner already paid
+        # with the stay left off: it is on the bill once already (27 Nov 2026).
         for l in bill["live"]:
-            add_booking_extra(conn, "room", room_booking_id, l["name"], l["quantity"],
-                              unit_price=l["unit_price"], user_id=session.get("user_id"),
-                              notes=f"Table {bill['order']['table_label']}")
+            if ("prepaid_value" in l.keys() and l["prepaid_value"] is not None) or not (l["unit_price"] or 0):
+                continue
+            new_line = add_booking_extra(conn, "room", room_booking_id, l["name"], l["quantity"],
+                                         unit_price=l["unit_price"], user_id=session.get("user_id"),
+                                         notes=f"Table {bill['order']['table_label']}")
+            conn.execute("UPDATE booking_extras SET vat_rate = ?, revenue_category = 'fnb' WHERE id = ?",
+                         (l["vat_rate"], new_line))
 
     reference = (request.form.get("reference", "") or "").strip() or None
     if change_due is not None:
@@ -48607,9 +48760,14 @@ def pos_kitchen():
     capacity = card_capacity(conn, card["id"], today) if card else None
     short = capacity["short"] if capacity else []
     clashes = dietary_clashes(conn, card["id"], today) if card else []
+    # Dinner at Gudanes tonight (27 Nov 2026): the night as the kitchen needs
+    # it -- covers by course, the time, and each table's notes read against
+    # the menu by the same reader the till uses (dinner_night_sheet).
+    dinner = (dinner_night_sheet(conn, today.isoformat())
+              if occasion_dinner_night(conn, today.isoformat()) is not None else None)
     conn.close()
     return render_template("pos_kitchen.html", tickets=tickets, courses=MENU_COURSES,
-                           capacity=capacity, short=short, clashes=clashes)
+                           capacity=capacity, short=short, clashes=clashes, dinner=dinner)
 
 
 @app.route("/chef")
@@ -49895,6 +50053,8 @@ PALETTE_PAGES = [
      "instagram content plan calendar posts ahead"),
     ("Menu of the day", "menu_day",
      "dinner tonight courses service what is on"),
+    ("Dinner menus", "admin_dinner_menus",
+     "dinner at gudanes menu builder courses wine allergens origin print a3 a4"),
     ("Past menus", "menu_history",
      "menus previous served history what we cooked"),
     ("Restaurant menu", "admin_restaurant_menu",
@@ -55263,8 +55423,10 @@ def occasion_dinner_nights_ahead(conn, today=None):
                   stay_occasions.chef_name, stay_occasions.dinner_time,
                   stay_occasions.dinner_price, stay_occasions.dinner_covers,
                   stay_occasions.outside_diners, stay_occasions.wine_included,
-                  COALESCE(stay_occasion_dinners.menu_file, stay_occasions.menu_file) AS menu_file,
-                  stay_occasion_dinners.menu_file IS NOT NULL AS night_menu
+                  COALESCE('built:' || stay_occasion_dinners.dinner_menu_id, stay_occasion_dinners.menu_file,
+                           'built:' || stay_occasions.dinner_menu_id, stay_occasions.menu_file) AS menu_file,
+                  (stay_occasion_dinners.menu_file IS NOT NULL
+                   OR stay_occasion_dinners.dinner_menu_id IS NOT NULL) AS night_menu
              FROM stay_occasion_dinners
              JOIN stay_occasions ON stay_occasions.id = stay_occasion_dinners.occasion_id
             WHERE stay_occasions.status = 'live'
@@ -55290,6 +55452,12 @@ def occasion_dinner_refusal(conn, day, guest_email):
              AND status IN ('pending', 'confirmed')
              AND arrival_date <= ? AND departure_date > ?""",
         (guest_email or "", day.isoformat(), day.isoformat())).fetchone()
+    # A Booking.com guest is staying too, once the address they checked in
+    # with is known (27 Nov 2026, §2.7).
+    staying = staying or (guest_email and conn.execute(
+        """SELECT 1 FROM ota_reservations WHERE lower(guest_email) = lower(?)
+             AND status = 'confirmed' AND arrival_date <= ? AND departure_date > ?""",
+        (guest_email, day.isoformat(), day.isoformat())).fetchone())
     if staying:
         return None
     return (f"{occasion_dinner_title(occ)} on "
@@ -55424,9 +55592,14 @@ def menu_for(slug, menu_file, night=None, nights=None, external=False):
     link = public_link if external else url_for
     url = (link("occasion_menu_night", slug=slug, night=night) if night
            else link("occasion_menu", slug=slug))
-    return {"url": url, "pdf": occasion_file_is_pdf(menu_file),
+    # A menu built in the app (menu_ref_token's 'built:<id>') is a page of its
+    # own, drawn in the house style: the pop-up frames it at a reading width,
+    # and "Print" replaces "Download" (there is no file to download).
+    kind = ("html" if built_menu_id(menu_file) else
+            "pdf" if occasion_file_is_pdf(menu_file) else "image")
+    return {"url": url, "pdf": kind == "pdf", "kind": kind,
             "alt": f"The menu for {DINNER_AT_GUDANES}" + (f", {words}" if words else ""),
-            "download": url + "?download=1"}
+            "download": url + "?download=1" if kind != "html" else url + "?print=1"}
 
 
 app.jinja_env.globals["menu_for"] = menu_for
@@ -55505,6 +55678,24 @@ def dinner_note(offer):
                                if len(menus) == 1 else None),
                       "nights": nights})
     return notes
+
+
+def dinner_served_words(offer):
+    """'Dinner at Gudanes is served on Friday 5 and Saturday 6 November,
+    7.30pm, €95 a person, wine included': what /book says on dates with a
+    dinner night, where it otherwise sends guests to eat elsewhere (owner's
+    brief, 27 Nov 2026, §2.4). One sentence an occasion, joined."""
+    by_occ = {}
+    for n in offer or []:
+        by_occ.setdefault(n["occasion_id"], []).append(n)
+    said = []
+    for nights in by_occ.values():
+        first = nights[0]
+        same = len({(n["price"], n["time"]) for n in nights}) == 1
+        said.append(f"{first['title']} is served on {dinner_nights_words([n['date'] for n in nights])}"
+                    + (f", {first['time_words']}" if same and first["time_words"] else "")
+                    + (f", {first['price_words']}" if same else ""))
+    return "; ".join(said)
 
 
 def dinner_for_form(conn, arrival, departure):
@@ -55714,17 +55905,826 @@ def stay_dinner_lines(conn, booking_id):
             ORDER BY booking_extras.scheduled_for""", (booking_id,))]
 
 
+def retreat_nights_for(conn, booking_id=None, email=None):
+    """The nights a guest's retreat covers, as ISO dates. Every meal is
+    included on a retreat, so on these nights a guest is never offered a paid
+    dinner (owner's brief, 27 Nov 2026, §2.9). Found by the stay the retreat
+    is tied to, or by the guest's email. A session's last day is the morning
+    they leave: not a night."""
+    email = (email or "").strip()
+    rows = conn.execute(
+        """SELECT workshop_sessions.start_date, workshop_sessions.end_date
+             FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+            WHERE workshop_bookings.status IN ('pending', 'confirmed')
+              AND ((? IS NOT NULL AND workshop_bookings.booking_id = ?)
+                   OR (? != '' AND lower(workshop_bookings.guest_email) = lower(?)))""",
+        (booking_id, booking_id, email, email)).fetchall()
+    nights = set()
+    for r in rows:
+        a, b = parse_date(r["start_date"] or ""), parse_date(r["end_date"] or "")
+        while a and b and a < b:
+            nights.add(a.isoformat())
+            a += timedelta(days=1)
+    return nights
+
+
 def stay_dinner_letter(conn, booking, today=None):
     """What a stay's own page and its confirmation say about dinner: the
-    dinners booked, and the dinner nights of the stay not added that can
-    still be (up to the day before)."""
+    dinners booked (each removable up to the evening before), and the dinner
+    nights of the stay not added that can still be (up to the day before),
+    leaving out any night the guest's retreat already feeds them."""
+    today_iso = (today or house_today()).isoformat()
     booked = stay_dinner_lines(conn, booking["id"])
     have = {d["date"] for d in booked}
     offer = dinner_offer(conn, parse_date(booking["arrival_date"]),
                          parse_date(booking["departure_date"]), today=today)
+    fed = retreat_nights_for(conn, booking["id"], booking["guest_email"])
     return {"booked": [dict(d, words=dinner_nights_words([d["date"]]),
-                            short=dinner_night_short(d["date"])) for d in booked],
-            "more": [n for n in offer if n["date"] not in have and n["left"]]}
+                            short=dinner_night_short(d["date"]),
+                            removable=d["date"] > today_iso
+                            and d["table_status"] in ("pending", "confirmed")) for d in booked],
+            "more": [n for n in offer if n["date"] not in have and n["left"] and n["date"] not in fed]}
+
+
+def ota_dinner_letter(conn, stay, today=None):
+    """A Booking.com stay's dinners: the tables already booked under the
+    address they checked in with, and each dinner night of the stay still to
+    book, with the restaurant's page to book and pay it, their details filled."""
+    email = (stay["guest_email"] or "").strip()
+    a, b = parse_date(stay["arrival_date"] or ""), parse_date(stay["departure_date"] or "")
+    if not (email and a and b):
+        return {"booked": [], "more": []}
+    booked = [dict(r, words=dinner_nights_words([r["dinner_date"]])) for r in conn.execute(
+        """SELECT dinner_date, party_size, status FROM restaurant_bookings
+            WHERE lower(guest_email) = lower(?) AND status IN ('pending', 'confirmed')
+              AND dinner_date >= ? AND dinner_date < ? ORDER BY dinner_date""",
+        (email, a.isoformat(), b.isoformat()))]
+    have = {r["dinner_date"] for r in booked}
+    fed = retreat_nights_for(conn, None, email)
+    party = (stay["adults"] or 0) + (stay["children"] or 0) if "adults" in stay.keys() else 0
+    party = party or stay["guests"] or 2
+    more = []
+    for n in dinner_offer(conn, a, b, today=today):
+        if n["date"] in have or n["date"] in fed or not n["left"]:
+            continue
+        more.append(dict(n, book=url_for("restaurant_book", date=n["date"], party_size=min(party, n["left"]),
+                                         name=stay["guest_name"], email=email,
+                                         phone=stay["guest_phone"] or None) + "#restaurant_book-form"))
+    return {"booked": booked, "more": more}
+
+
+DINNER_REMOVE_RULE = ("Dinners, like rooms, are not refunded as standard: the château looks at each one "
+                      "taken off and decides any refund by hand, and will write to you.")
+
+
+def remove_dinner_from_stay(conn, booking, line_id, today=None, user_id=None):
+    """A guest takes a dinner off their stay, up to the evening before: its
+    line cancelled, its table cancelled, the places it held offered to the
+    waitlist. Nothing is refunded here -- refunds are the owner's call (house
+    rule) -- so whatever is now paid over the bill is a task for the owner.
+    Returns (removed line dict or None, why not, overpaid). Does not commit."""
+    today_iso = (today or house_today()).isoformat()
+    line = next((d for d in stay_dinner_lines(conn, booking["id"]) if d["line_id"] == line_id), None)
+    if not line:
+        return None, "That dinner is not on your stay.", 0.0
+    if line["date"] <= today_iso:
+        return None, (f"{DINNER_AT_GUDANES} on {dinner_nights_words([line['date']])} can no longer be "
+                      "taken off: the kitchen has bought for it. Write to us."), 0.0
+    cancel_booking_extra(conn, line_id)
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute("UPDATE restaurant_bookings SET status = 'cancelled', decided_at = ? "
+                 "WHERE booking_extra_id = ? AND status IN ('pending', 'confirmed')", (now, line_id))
+    bill = booking_bill(conn, booking["id"]) or {}
+    overpaid = round(float(bill.get("overpaid") or 0), 2)
+    if overpaid > 0.005:
+        _payment_task(conn, f"Refund to decide: {booking['guest_name']} ({booking['reference_code']})",
+                      f"{booking['guest_name']} took {DINNER_AT_GUDANES} on "
+                      f"{format_date_human(line['date'])} ({line['covers']} × {money(line['price'])}) "
+                      f"off their stay. {money(overpaid)} is now paid over the bill. Nothing has been "
+                      "refunded: whether any is, is your call.")
+    log_audit(conn, "guest_removed_dinner", target=booking["reference_code"],
+              details=f"{line['covers']} x {DINNER_AT_GUDANES}, {line['date']}")
+    return line, None, overpaid
+
+
+# --- Dinner at Gudanes: menus built in the app (27 Nov 2026) --------------------
+#
+# Owner: "is it easy to create a menu?" It was not: the house menu was made
+# with a script on a laptop and uploaded as a PDF. A menu is now data -- a
+# name, a price, wine included or not, and courses in order -- and everything
+# a dinner needs is drawn from it: the page in the pop-up, the A4 table menu,
+# the A3 board for outside the dining room, the allergen sheet for the folder
+# at the door, the kitchen's sheet for the night and the newsletter's menu.
+# Drawn in the house's printed style (Menus/menu.py and menu_a3.py), whose
+# wording for the board is copied here.
+
+MENU_DEFAULT_COURSES = [
+    ("L’apéritif", "Aperitif"), ("Amuse-bouche", "Amuse-bouche"), ("Entrée", "Starter"),
+    ("Plat", "Main course"), ("Fromages", "Cheese"), ("Dessert", "Dessert"),
+    ("Pour finir", "To finish"),
+]
+
+# The English beside ALLERGENS' French, for the guest's page and the sheet.
+ALLERGENS_EN = {
+    "gluten": "Gluten", "crustaceans": "Crustaceans", "eggs": "Eggs", "fish": "Fish",
+    "peanuts": "Peanuts", "soy": "Soy", "milk": "Milk", "nuts": "Tree nuts",
+    "celery": "Celery", "mustard": "Mustard", "sesame": "Sesame",
+    "sulphites": "Sulphites", "lupin": "Lupin", "molluscs": "Molluscs",
+}
+
+# The meats a course can hold. French law requires the origin of any meat on
+# a menu served (owner's brief, 27 Nov 2026, citing décret 2025-141), so a
+# course with one of these cannot be saved without a country.
+MEAT_KINDS = {
+    "boeuf": ("bœuf", "beef"), "veau": ("veau", "veal"), "porc": ("porc", "pork"),
+    "agneau": ("agneau", "lamb"), "mouton": ("mouton", "mutton"),
+    "volaille": ("volaille", "poultry"), "canard": ("canard", "duck"),
+    "gibier": ("gibier", "game"), "autre": ("viande", "meat"),
+}
+
+# What "origine : X" says in English, for the countries a kitchen in the
+# Ariège buys from. Anything else is left for the cook to write.
+COUNTRY_EN = {
+    "france": "France", "espagne": "Spain", "italie": "Italy", "portugal": "Portugal",
+    "belgique": "Belgium", "suisse": "Switzerland", "allemagne": "Germany",
+    "pays-bas": "Netherlands", "royaume-uni": "United Kingdom", "irlande": "Ireland",
+    "écosse": "Scotland", "ecosse": "Scotland", "norvège": "Norway", "norvege": "Norway",
+    "grèce": "Greece", "grece": "Greece", "autriche": "Austria", "pologne": "Poland",
+    "maroc": "Morocco", "tunisie": "Tunisia", "nouvelle-zélande": "New Zealand",
+    "nouvelle-zelande": "New Zealand", "argentine": "Argentina", "uruguay": "Uruguay",
+    "brésil": "Brazil", "bresil": "Brazil", "pérou": "Peru", "perou": "Peru",
+    "colombie": "Colombia", "équateur": "Ecuador", "equateur": "Ecuador",
+    "éthiopie": "Ethiopia", "ethiopie": "Ethiopia", "kenya": "Kenya",
+    "madagascar": "Madagascar", "côte d'ivoire": "Ivory Coast", "côte d’ivoire": "Ivory Coast",
+    "ghana": "Ghana", "inde": "India", "sri lanka": "Sri Lanka", "chine": "China",
+    "japon": "Japan", "vietnam": "Vietnam", "viêt nam": "Vietnam", "mexique": "Mexico",
+    "guatemala": "Guatemala", "union européenne": "European Union",
+    "ue": "European Union", "union europeenne": "European Union",
+}
+
+# The countries offered as the cook types an origin, commonest first.
+MENU_COUNTRIES_FR = [
+    "France", "Espagne", "Italie", "Portugal", "Belgique", "Suisse", "Irlande", "Royaume-Uni",
+    "Écosse", "Norvège", "Pays-Bas", "Allemagne", "Union européenne", "Maroc", "Nouvelle-Zélande",
+    "Argentine", "Pérou", "Équateur", "Colombie", "Éthiopie", "Madagascar", "Inde", "Sri Lanka",
+]
+
+DINNER_MENU_TEXT_MAX = 200
+DINNER_MENU_COURSES_MAX = 14
+
+
+def country_english(fr):
+    """'Éthiopie' -> 'Ethiopia', or '' when the house's list does not know it."""
+    return COUNTRY_EN.get((fr or "").strip().lower().replace("’", "'"), "")
+
+
+def euros_fr(amount):
+    """'95 €', '92,50 €': a price as the French menu says it."""
+    if amount is None or amount == "":
+        return ""
+    a = float(amount)
+    return (f"{int(a)} €" if a == int(a) else f"{a:.2f}".replace(".", ",") + " €")
+
+
+def euros_en(amount):
+    if amount is None or amount == "":
+        return ""
+    a = float(amount)
+    return money(a, 0 if a == int(a) else 2)
+
+
+def clock_fr(hhmm):
+    """'19 h 30', '20 h': a time as a French menu says it."""
+    try:
+        h, m = (int(x) for x in (hhmm or "").split(":")[:2])
+    except ValueError:
+        return ""
+    return f"{h} h {m:02d}" if m else f"{h} h"
+
+
+def _menu_text(value, limit=DINNER_MENU_TEXT_MAX):
+    return " ".join((value or "").split())[:limit]
+
+
+def _menu_money(raw):
+    raw = (raw or "").strip().replace(",", ".").replace("€", "").strip()
+    try:
+        value = round(float(raw), 2)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
+def read_dinner_menu_form(form):
+    """What the builder sent, as {name, price, wine_included, cost_per_cover,
+    service_time, courses: [...]}: the courses in the order the cook put them
+    (each row's c-<i>-pos), the rows left without a dish dropped."""
+    rows = {}
+    for key in form.keys():
+        m = re.match(r"c-(\d+)-(\w+)$", key)
+        if m:
+            rows.setdefault(int(m.group(1)), {})
+    courses = []
+    for i in sorted(rows):
+        get = lambda f, i=i: form.get(f"c-{i}-{f}", "")  # noqa: E731
+        if get("remove") == "1":
+            continue
+        dish_fr = _menu_text(get("dish_fr"))
+        if not dish_fr:
+            continue
+        meat = get("meat") if get("meat") in MEAT_KINDS else ""
+        country_fr = _menu_text(get("country_fr"), 60)
+        try:
+            pos = float(get("pos") or i)
+        except ValueError:
+            pos = i
+        course_fr = _menu_text(get("course_fr"), 60) or "Plat"
+        courses.append({
+            "pos": pos, "course_fr": course_fr,
+            "course_en": _menu_text(get("course_en"), 60) or dict(MENU_DEFAULT_COURSES).get(course_fr, ""),
+            "dish_fr": dish_fr, "dish_en": _menu_text(get("dish_en")),
+            "wine_fr": _menu_text(get("wine_fr")), "wine_en": _menu_text(get("wine_en")),
+            "wine_glass": _menu_text(get("wine_glass"), 20),
+            "origin_fr": _menu_text(get("origin_fr"), 80), "origin_en": _menu_text(get("origin_en"), 80),
+            "country_fr": country_fr,
+            "country_en": _menu_text(get("country_en"), 60) or country_english(country_fr),
+            "meat": meat,
+            "allergens": ",".join(a for a in ALLERGENS if a in form.getlist(f"c-{i}-al")),
+            "fait_maison": 1 if get("fm") == "1" else 0,
+        })
+    courses.sort(key=lambda c: c["pos"])
+    return {
+        "name": _menu_text(form.get("name"), 120),
+        "price": _menu_money(form.get("price")),
+        "wine_included": 1 if form.get("wine_included") == "1" else 0,
+        "cost_per_cover": _menu_money(form.get("cost_per_cover")),
+        "service_time": (form.get("service_time") or "").strip()[:5]
+                        if re.match(r"^\d{1,2}:\d{2}$", (form.get("service_time") or "").strip()) else "",
+        "courses": courses[:DINNER_MENU_COURSES_MAX],
+    }
+
+
+def dinner_menu_problems(v):
+    """What stops this menu being saved, said plainly: [str]. The meat rule
+    first, because it is the law, not a preference."""
+    problems = []
+    if not v["name"]:
+        problems.append("Give the menu a name, for example “Dîner à Gudanes, automne”.")
+    if not v["courses"]:
+        problems.append("Write at least one dish.")
+    for c in v["courses"]:
+        if c["meat"] and not c["country_fr"]:
+            problems.append(
+                f"{c['course_fr']}: {c['dish_fr']} has {MEAT_KINDS[c['meat']][0]} in it, so it must say "
+                f"where it comes from. French law requires the origin of every meat on a menu.")
+    return problems
+
+
+def _upsert_menu_library(conn, c, now):
+    """Keep the dish and the wine for next time: the latest words win."""
+    conn.execute(
+        """INSERT INTO dinner_dishes (dish_fr, dish_en, origin_fr, origin_en, country_fr, country_en,
+                                      meat, allergens, fait_maison, uses, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+           ON CONFLICT(dish_fr) DO UPDATE SET dish_en = excluded.dish_en,
+               origin_fr = excluded.origin_fr, origin_en = excluded.origin_en,
+               country_fr = excluded.country_fr, country_en = excluded.country_en,
+               meat = excluded.meat, allergens = excluded.allergens,
+               fait_maison = excluded.fait_maison, uses = uses + 1, updated_at = excluded.updated_at""",
+        (c["dish_fr"], c["dish_en"], c["origin_fr"], c["origin_en"], c["country_fr"], c["country_en"],
+         c["meat"], c["allergens"], c["fait_maison"], now))
+    dish = conn.execute("SELECT id FROM dinner_dishes WHERE dish_fr = ? COLLATE NOCASE",
+                        (c["dish_fr"],)).fetchone()
+    wine = None
+    if c["wine_fr"]:
+        conn.execute(
+            """INSERT INTO dinner_wines (wine_fr, wine_en, glass, uses, updated_at)
+               VALUES (?, ?, ?, 1, ?)
+               ON CONFLICT(wine_fr) DO UPDATE SET wine_en = excluded.wine_en,
+                   glass = excluded.glass, uses = uses + 1, updated_at = excluded.updated_at""",
+            (c["wine_fr"], c["wine_en"], c["wine_glass"], now))
+        wine = conn.execute("SELECT id FROM dinner_wines WHERE wine_fr = ? COLLATE NOCASE",
+                            (c["wine_fr"],)).fetchone()
+    return (dish["id"] if dish else None), (wine["id"] if wine else None)
+
+
+def save_dinner_menu(conn, menu_id, v, user_id=None):
+    """Write the menu and its courses (replaced whole), and keep every dish
+    and wine in the library. Returns the menu's id. Does not commit."""
+    now = datetime.now(timezone.utc).isoformat()
+    if menu_id:
+        conn.execute(
+            """UPDATE dinner_menus SET name = ?, price = ?, wine_included = ?, cost_per_cover = ?,
+                   service_time = ?, updated_at = ? WHERE id = ?""",
+            (v["name"], v["price"], v["wine_included"], v["cost_per_cover"],
+             v["service_time"] or None, now, menu_id))
+        conn.execute("DELETE FROM dinner_menu_courses WHERE menu_id = ?", (menu_id,))
+    else:
+        menu_id = conn.execute(
+            """INSERT INTO dinner_menus (name, price, wine_included, cost_per_cover, service_time,
+                   created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (v["name"], v["price"], v["wine_included"], v["cost_per_cover"],
+             v["service_time"] or None, user_id, now, now)).lastrowid
+    for n, c in enumerate(v["courses"]):
+        dish_id, wine_id = _upsert_menu_library(conn, c, now)
+        conn.execute(
+            """INSERT INTO dinner_menu_courses (menu_id, position, course_fr, course_en, dish_fr, dish_en,
+                   wine_fr, wine_en, wine_glass, origin_fr, origin_en, country_fr, country_en, meat,
+                   allergens, fait_maison, dish_id, wine_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (menu_id, n, c["course_fr"], c["course_en"], c["dish_fr"], c["dish_en"], c["wine_fr"],
+             c["wine_en"], c["wine_glass"], c["origin_fr"], c["origin_en"], c["country_fr"],
+             c["country_en"], c["meat"], c["allergens"], c["fait_maison"], dish_id, wine_id))
+    return menu_id
+
+
+def duplicate_dinner_menu(conn, menu_id, user_id=None):
+    """A copy to make the next menu from, named as one. Does not commit."""
+    src = conn.execute("SELECT * FROM dinner_menus WHERE id = ?", (menu_id,)).fetchone()
+    if not src:
+        return None
+    now = datetime.now(timezone.utc).isoformat()
+    new_id = conn.execute(
+        """INSERT INTO dinner_menus (name, price, wine_included, cost_per_cover, service_time,
+               copied_from, created_by_user_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (f"{src['name']} (copy)"[:120], src["price"], src["wine_included"], src["cost_per_cover"],
+         src["service_time"], src["id"], user_id, now, now)).lastrowid
+    conn.execute(
+        """INSERT INTO dinner_menu_courses (menu_id, position, course_fr, course_en, dish_fr, dish_en,
+               wine_fr, wine_en, wine_glass, origin_fr, origin_en, country_fr, country_en, meat,
+               allergens, fait_maison, dish_id, wine_id)
+           SELECT ?, position, course_fr, course_en, dish_fr, dish_en, wine_fr, wine_en, wine_glass,
+                  origin_fr, origin_en, country_fr, country_en, meat, allergens, fait_maison,
+                  dish_id, wine_id
+             FROM dinner_menu_courses WHERE menu_id = ? ORDER BY position""", (new_id, menu_id))
+    return new_id
+
+
+def dinner_menu_uses(conn, menu_id):
+    """The occasions serving this menu, for all their nights or one: [{id,
+    name, slug, status, nights}]. A menu in use is archived, never deleted."""
+    rows = conn.execute(
+        """SELECT stay_occasions.id, stay_occasions.name, stay_occasions.slug, stay_occasions.status,
+                  NULL AS night
+             FROM stay_occasions WHERE dinner_menu_id = ?
+           UNION ALL
+           SELECT stay_occasions.id, stay_occasions.name, stay_occasions.slug, stay_occasions.status,
+                  stay_occasion_dinners.dinner_date
+             FROM stay_occasion_dinners
+             JOIN stay_occasions ON stay_occasions.id = stay_occasion_dinners.occasion_id
+            WHERE stay_occasion_dinners.dinner_menu_id = ?""", (menu_id, menu_id)).fetchall()
+    out = {}
+    for r in rows:
+        o = out.setdefault(r["id"], {"id": r["id"], "name": r["name"], "slug": r["slug"],
+                                     "status": r["status"], "nights": []})
+        if r["night"]:
+            o["nights"].append(r["night"])
+    return list(out.values())
+
+
+def dinner_menu_rows(conn, status="active"):
+    """The library's menus, with their course count and where they are used."""
+    menus = [dict(r) for r in conn.execute(
+        """SELECT dinner_menus.*, (SELECT COUNT(*) FROM dinner_menu_courses
+                                    WHERE menu_id = dinner_menus.id) AS course_count,
+                  creator.name AS written_by
+             FROM dinner_menus
+             LEFT JOIN users creator ON creator.id = dinner_menus.created_by_user_id
+            WHERE dinner_menus.status = ? ORDER BY COALESCE(dinner_menus.updated_at, dinner_menus.created_at) DESC""",
+        (status,))]
+    for m in menus:
+        m["uses"] = dinner_menu_uses(conn, m["id"])
+    return menus
+
+
+def _course_view(c):
+    """One course as the pages draw it: the origin, wine and allergen lines
+    already put together, so every output says them the same way."""
+    c = dict(c)
+    al = [a for a in (c.get("allergens") or "").split(",") if a in ALLERGENS]
+    c["allergen_keys"] = al
+    c["allergens_fr"] = [ALLERGENS[a] for a in al]
+    c["allergens_en"] = [ALLERGENS_EN[a] for a in al]
+    product_fr = c.get("origin_fr") or (MEAT_KINDS[c["meat"]][0].capitalize() if c.get("meat") else "")
+    product_en = c.get("origin_en") or (MEAT_KINDS[c["meat"]][1].capitalize() if c.get("meat") else "")
+    country_en = c.get("country_en") or country_english(c.get("country_fr"))
+    c["origin_line_fr"] = (" · ".join(x for x in (product_fr, f"origine : {c['country_fr']}"
+                                                  if c.get("country_fr") else "") if x))
+    c["origin_line_en"] = (" · ".join(x for x in (product_en, f"origin: {country_en}"
+                                                  if country_en else "") if x))
+    c["wine_line"] = " · ".join(x for x in (c.get("wine_fr"), c.get("wine_glass")) if x)
+    return c
+
+
+def dinner_menu_view(conn, menu_id, occ=None, nights=None):
+    """Everything a drawn menu needs, or None: the menu, its courses as
+    _course_view gives them, and the lines the board must carry. With an
+    occasion, its price, wine and time are said -- what the guest is charged
+    is the occasion's, so the menu never prints another figure."""
+    m = conn.execute("SELECT * FROM dinner_menus WHERE id = ?", (menu_id,)).fetchone() if menu_id else None
+    if not m:
+        return None
+    courses = [_course_view(c) for c in conn.execute(
+        "SELECT * FROM dinner_menu_courses WHERE menu_id = ? ORDER BY position, id", (menu_id,))]
+    return dinner_menu_view_of(dict(m), courses, occ=occ, nights=nights)
+
+
+def dinner_menu_view_of(menu, courses, occ=None, nights=None):
+    """dinner_menu_view for a menu not saved yet (the builder's preview)."""
+    price = menu.get("price")
+    wine = bool(menu.get("wine_included"))
+    time = menu.get("service_time") or ""
+    if occ is not None:
+        price = occ["dinner_price"] if occ["dinner_price"] else price
+        wine = bool(occ["wine_included"]) if occ["wine_included"] is not None else wine
+        time = occ["dinner_time"] or time
+    meats = []
+    for c in courses:
+        if c.get("meat") in MEAT_KINDS and c.get("country_fr"):
+            key = (c["meat"], c["country_fr"], c.get("country_en") or "")
+            if key not in meats:
+                meats.append(key)
+    meat_fr = " ; ".join(f"{MEAT_KINDS[k][0]}, origine {fr}" for k, fr, _en in meats)
+    meat_en = "; ".join(f"{MEAT_KINDS[k][1]}, {en or country_english(fr) or fr}" for k, fr, en in meats)
+    dishes = [c for c in courses if c.get("dish_fr")]
+    all_fm = bool(dishes) and all(c.get("fait_maison") for c in dishes)
+    some_fm = any(c.get("fait_maison") for c in dishes)
+    return {
+        "menu": menu, "courses": courses,
+        "price": price, "price_fr": euros_fr(price), "price_en": euros_en(price),
+        "wine": wine, "time": time, "time_fr": clock_fr(time),
+        "time_en": clock_words(time) if time else "",
+        "meat_fr": meat_fr, "meat_en": meat_en,
+        "all_fait_maison": all_fm, "some_fait_maison": some_fm and not all_fm,
+        "nights": list(nights or []),
+        "nights_fr": dinner_nights_words_fr(nights or []),
+        "nights_en": dinner_nights_words(nights or []),
+        "has_wine": any(c.get("wine_fr") for c in courses),
+    }
+
+
+_FR_DAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+_FR_MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+              "septembre", "octobre", "novembre", "décembre"]
+
+
+def dinner_nights_words_fr(days):
+    """'vendredi 5 et samedi 6 novembre': the nights as a French menu says them."""
+    ds = sorted(d for d in (x if isinstance(x, date) else parse_date(x) for x in days if x) if d)
+    if not ds:
+        return ""
+    one_month = len({(d.year, d.month) for d in ds}) == 1
+    words = [f"{_FR_DAYS[d.weekday()]} {d.day}{'er' if d.day == 1 else ''}"
+             + ("" if one_month else f" {_FR_MONTHS[d.month - 1]}") for d in ds]
+    said = words[0] if len(words) == 1 else ", ".join(words[:-1]) + " et " + words[-1]
+    return said + (f" {_FR_MONTHS[ds[0].month - 1]}" if one_month else "")
+
+
+def occasion_menu_ref(occ, night_row=None):
+    """Which menu a night serves: ('built', id), ('file', name) or None. The
+    night's own wins over the occasion's; at each level a built menu and a
+    file are alternatives the form keeps apart."""
+    def at(row):
+        if row is None:
+            return None
+        keys = row.keys()
+        if "dinner_menu_id" in keys and row["dinner_menu_id"]:
+            return ("built", row["dinner_menu_id"])
+        if "menu_file" in keys and row["menu_file"]:
+            return ("file", row["menu_file"])
+        return None
+    return at(night_row) or at(occ)
+
+
+def menu_ref_token(ref):
+    """The one string the menu readers pass around for a menu: a file's name,
+    or 'built:<id>' for a built one."""
+    if not ref:
+        return None
+    return f"built:{ref[1]}" if ref[0] == "built" else ref[1]
+
+
+def built_menu_id(token):
+    """The built menu's id from menu_ref_token, or None for a file."""
+    if token and str(token).startswith("built:") and str(token)[6:].isdigit():
+        return int(str(token)[6:])
+    return None
+
+
+def dinner_menu_for_night(conn, day_iso):
+    """The built menu served on a dinner night, or None (none, or a file)."""
+    occ = occasion_dinner_night(conn, day_iso)
+    if occ is None:
+        return None
+    night = conn.execute("SELECT * FROM stay_occasion_dinners WHERE occasion_id = ? AND dinner_date = ?",
+                         (occ["id"], day_iso)).fetchone()
+    ref = occasion_menu_ref(occ, night)
+    return ref[1] if ref and ref[0] == "built" else None
+
+
+# --- The built menu drawn on the server: a picture and a PDF (27 Nov 2026) -------
+#
+# Owner, 27 Nov 2026: yes to a server-side renderer, so the newsletter can carry
+# the menu itself -- a picture in the letter, the A4 menu attached as a PDF --
+# where it had only its words and a link. Drawn with Pillow (already the app's
+# image library, nothing new to install on Railway) and the menu's own fonts,
+# committed under static/fonts/menu (SIL Open Font License, licences beside
+# them): EB Garamond, Cormorant Garamond and Pinyon Script, as the printed menu
+# and dinner_menu_card.html use. The A4 layout of the house's printed menu, its
+# sizes in millimetres and points (Menus/menu.py); a long menu is set smaller
+# until it fits the page rather than running off it.
+
+MENU_INK = (0x60, 0x44, 0x1D)
+MENU_PAPER = (0xF3, 0xEE, 0xE5)
+MENU_FONT_FILES = {
+    "ebg": "EBGaramond.ttf", "ebg_i": "EBGaramond-Italic.ttf",
+    "corm": "CormorantGaramond.ttf", "corm_i": "CormorantGaramond-Italic.ttf",
+    "script": "PinyonScript-Regular.ttf",
+}
+_MENU_FONT_CACHE = {}
+
+
+def _menu_font(key, px, variation=None):
+    """One of the menu's fonts at a size in pixels, a variable font set to the
+    weight asked ('Medium', 'Light'...)."""
+    from PIL import ImageFont
+    px = max(int(round(px)), 6)
+    k = (key, px, variation)
+    if k not in _MENU_FONT_CACHE:
+        font = ImageFont.truetype(os.path.join(app.static_folder, "fonts", "menu", MENU_FONT_FILES[key]), px)
+        if variation:
+            try:
+                font.set_variation_by_name(variation)
+            except Exception:
+                pass
+        _MENU_FONT_CACHE[k] = font
+    return _MENU_FONT_CACHE[k]
+
+
+def _menu_mix(alpha):
+    """The ink at an opacity, laid on the paper (the printed menu's .85, .9)."""
+    return tuple(int(round(i * alpha + p * (1 - alpha))) for i, p in zip(MENU_INK, MENU_PAPER))
+
+
+def _menu_text_width(font, text, tracking=0.0):
+    if not tracking:
+        return font.getlength(text)
+    return sum(font.getlength(ch) for ch in text) + tracking * max(len(text) - 1, 0)
+
+
+def _menu_wrap(font, text, width, tracking=0.0):
+    """The words of `text` in lines no wider than `width`."""
+    lines, line = [], ""
+    for word in (text or "").split():
+        trial = (line + " " + word) if line else word
+        if line and _menu_text_width(font, trial, tracking) > width:
+            lines.append(line)
+            line = word
+        else:
+            line = trial
+    if line:
+        lines.append(line)
+    return lines or [""]
+
+
+def _menu_blocks(view, s, px, mm, pt):
+    """The menu as blocks to set, top to bottom: (kind, data). `s` scales the
+    type; px/mm/pt turn the printed menu's units into pixels."""
+    P = lambda v: pt(v * s)  # noqa: E731 -- a point size, scaled
+    M = lambda v: mm(v * s)  # noqa: E731
+    ebg, ebg_m, ebg_i = (lambda v: _menu_font("ebg", P(v))), (lambda v: _menu_font("ebg", P(v), "Medium")), \
+        (lambda v: _menu_font("ebg_i", P(v)))
+    corm, corm_i = (lambda v: _menu_font("corm", P(v), "Light")), (lambda v: _menu_font("corm_i", P(v), "Light Italic"))
+    soft, softer = _menu_mix(.9), _menu_mix(.85)
+    head = [
+        ("text", dict(text="1213 · 1741 · 2013", font=ebg(8), tracking=P(8) * .3, gap_after=M(2))),
+        ("facade", dict(width=M(46), gap_after=M(1.5))),
+        ("text", dict(text="CHÂTEAU DE GUDANES", font=ebg_m(7.6), tracking=P(7.6) * .32, gap_after=M(2.5))),
+        ("text", dict(text="Dîner à Gudanes", font=_menu_font("script", P(34)), line=1.05, gap_after=M(.5))),
+        ("text", dict(text="Dinner at Gudanes", font=corm_i(14), gap_after=M(2.5))),
+    ]
+    if view.get("price_fr"):
+        head += [("text", dict(text=f"Menu · {view['price_fr']}", font=corm(17), gap_after=M(1))),
+                 ("text", dict(text=("PAR PERSONNE" + (", VINS COMPRIS" if view["wine"] else "") + " · A PERSON"
+                                     + (", WINE INCLUDED" if view["wine"] else "")),
+                               font=ebg_m(6.6), tracking=P(6.6) * .28, gap_after=M(2)))]
+    if view.get("nights_fr") or view.get("time_fr"):
+        fr = " · ".join(x for x in ((view.get("nights_fr") or "").capitalize(), view.get("time_fr")) if x)
+        en = ", ".join(x for x in (view.get("nights_en"), view.get("time_en")) if x)
+        head += [("text", dict(text=fr, font=ebg(8.4), gap_after=M(.4))),
+                 ("text", dict(text=en, font=ebg_i(8.4), color=soft, gap_after=M(0)))]
+    head.append(("rule", dict(width=M(62), before=M(3), after=M(4.2), top=pt(.9 * s), gap=pt(2.1 * s),
+                              bottom=pt(.45 * s))))
+    courses = []
+    for c in view["courses"]:
+        block = [("text", dict(text=(c["course_fr"] or "").upper(), font=ebg_m(7), tracking=P(7) * .3,
+                               gap_after=M(1.1)))]
+        dish = c["dish_fr"] + (" (fait maison)" if view.get("some_fait_maison") and c.get("fait_maison") else "")
+        block.append(("text", dict(text=dish, font=corm(14.6), line=1.15, gap_after=M(.6))))
+        if c.get("dish_en"):
+            block.append(("text", dict(text=c["dish_en"], font=ebg_i(9.6), line=1.35, gap_after=M(0))))
+        if c.get("wine_fr"):
+            block.append(("text", dict(text=c["wine_line"], font=ebg_i(7.8), color=soft, diamond=True,
+                                       before=M(1), gap_after=M(0))))
+        if c.get("origin_line_fr"):
+            o = c["origin_line_fr"] + (f"  ·  {c['origin_line_en']}" if c.get("origin_line_en") else "")
+            block.append(("text", dict(text=o, font=ebg_i(7), color=softer, before=M(.8), gap_after=M(0))))
+        block.append(("space", dict(h=M(3.3))))
+        courses += block
+    tail = []
+    if view.get("wine") and view.get("has_wine"):
+        tail += [("text", dict(text="Le vin est compris, choisi pour chaque plat", font=corm_i(16), gap_after=M(1))),
+                 ("text", dict(text="WINE IS INCLUDED, CHOSEN FOR EACH COURSE", font=ebg_m(7),
+                               tracking=P(7) * .3, gap_after=M(5)))]
+    tail.append(("text", dict(text="Please tell us of any allergies or dietary needs, and the kitchen will gladly adapt.",
+                              font=ebg_i(8), gap_after=M(0))))
+    if view.get("all_fait_maison"):
+        tail.append(("text", dict(text="Every dish is made here, from raw ingredients · tous nos plats sont faits maison.",
+                                  font=ebg_i(8), color=soft, before=M(.8), gap_after=M(0))))
+    return head, courses, tail
+
+
+def _menu_measure(blocks, width, facade):
+    """How tall these blocks set, in pixels, at this width."""
+    h = 0.0
+    for kind, d in blocks:
+        if kind == "text":
+            asc, desc = d["font"].getmetrics()
+            lines = _menu_wrap(d["font"], d["text"], width, d.get("tracking", 0))
+            h += d.get("before", 0) + len(lines) * (asc + desc) * d.get("line", 1.2) + d.get("gap_after", 0)
+        elif kind == "facade":
+            h += d["width"] * facade.height / facade.width + d["gap_after"]
+        elif kind == "rule":
+            h += d["before"] + d["top"] + d["gap"] + d["bottom"] + d["after"]
+        elif kind == "space":
+            h += d["h"]
+    return h
+
+
+def _menu_set(draw, img, blocks, x0, width, y, facade):
+    """Set the blocks from y down, each line centred in the column. Returns
+    where it stopped."""
+    from PIL import Image
+    for kind, d in blocks:
+        if kind == "text":
+            font, tracking = d["font"], d.get("tracking", 0)
+            asc, desc = font.getmetrics()
+            lh = (asc + desc) * d.get("line", 1.2)
+            y += d.get("before", 0)
+            for line in _menu_wrap(font, d["text"], width, tracking):
+                w = _menu_text_width(font, line, tracking)
+                x = x0 + (width - w) / 2
+                top = y + (lh - (asc + desc)) / 2
+                if d.get("diamond"):
+                    # The printed menu's diamond before a wine, drawn: the
+                    # fonts have no ◆.
+                    r = max(asc * .18, 2)
+                    cx, cy = x - r * 3.2, top + asc * .62
+                    draw.polygon([(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)], fill=d.get("color", MENU_INK))
+                if tracking:
+                    for ch in line:
+                        draw.text((x, top), ch, font=font, fill=d.get("color", MENU_INK))
+                        x += font.getlength(ch) + tracking
+                else:
+                    draw.text((x, top), line, font=font, fill=d.get("color", MENU_INK))
+                y += lh
+            y += d.get("gap_after", 0)
+        elif kind == "facade":
+            w = int(d["width"])
+            h = int(w * facade.height / facade.width)
+            pic = facade.resize((w, h), Image.LANCZOS)
+            img.paste(pic, (int(x0 + (width - w) / 2), int(y)), pic)
+            y += h + d["gap_after"]
+        elif kind == "rule":
+            y += d["before"]
+            left = x0 + (width - d["width"]) / 2
+            draw.rectangle([left, y, left + d["width"], y + d["top"]], fill=MENU_INK)
+            y += d["top"] + d["gap"]
+            draw.rectangle([left, y, left + d["width"], y + d["bottom"]], fill=MENU_INK)
+            y += d["bottom"] + d["after"]
+        elif kind == "space":
+            y += d["h"]
+    return y
+
+
+def render_dinner_menu(view, dpi=150):
+    """The menu on an A4 page, as an RGB image: the house's frame, corners,
+    façade and background, the courses set as the printed menu sets them. A
+    menu too long for the page at full size is set smaller, step by step,
+    until it fits; one that still would not is set at the smallest and
+    clipped by nothing -- the page grows (never on the house's own menus)."""
+    from PIL import Image, ImageDraw
+    px_per_mm = dpi / 25.4
+    mm = lambda v: v * px_per_mm  # noqa: E731
+    pt = lambda v: v * dpi / 72  # noqa: E731
+    W, H = int(round(mm(210))), int(round(mm(297)))
+    static = app.static_folder
+    facade = Image.open(os.path.join(static, "img", "menu", "facade.png")).convert("RGBA")
+    left, right, top, bottom = mm(24), mm(24), mm(19), mm(17)
+    width = W - left - right
+    scale = 1.0
+    while True:
+        head, courses, tail = _menu_blocks(view, scale, None, mm, pt)
+        need = (_menu_measure(head, width, facade) + _menu_measure(courses, width, facade)
+                + _menu_measure(tail, width, facade) + mm(4))
+        if need <= H - top - bottom or scale <= .62:
+            break
+        scale = round(scale - .04, 2)
+    page_h = max(H, int(need + top + bottom))
+    img = Image.new("RGB", (W, page_h), MENU_PAPER)
+    try:
+        bg = Image.open(os.path.join(static, "img", "menu", "tufted.jpg")).convert("RGB")
+        ratio = max(W / bg.width, page_h / bg.height)
+        bg = bg.resize((int(bg.width * ratio) + 1, int(bg.height * ratio) + 1), Image.LANCZOS)
+        bg = bg.crop(((bg.width - W) // 2, (bg.height - page_h) // 2,
+                      (bg.width - W) // 2 + W, (bg.height - page_h) // 2 + page_h))
+        img = Image.blend(bg, Image.new("RGB", (W, page_h), MENU_PAPER), .38)
+    except OSError:
+        pass
+    draw = ImageDraw.Draw(img)
+    for inset, lw in ((6.5, .72), (7.77, .95)):
+        a, w = mm(inset), max(pt(lw), 1)
+        draw.rectangle([a, a, W - a, page_h - a], outline=MENU_INK, width=int(round(w)))
+    for k, (x, y) in {"tl": (4.38, 4.43), "tr": (210 - 4.38 - 18.97, 4.43),
+                      "bl": (4.38, None), "br": (210 - 4.38 - 18.97, None)}.items():
+        c = Image.open(os.path.join(static, "img", "menu", f"corner-{k}.png")).convert("RGBA")
+        cw, ch = int(mm(18.97)), int(mm(19.64))
+        c = c.resize((cw, ch), Image.LANCZOS)
+        cy = int(mm(y)) if y is not None else int(page_h - mm(4.43) - ch)
+        img.paste(c, (int(mm(x)), cy), c)
+    y = _menu_set(draw, img, head, left, width, top, facade)
+    _menu_set(draw, img, courses, left, width, y, facade)
+    tail_h = _menu_measure(tail, width, facade)
+    _menu_set(draw, img, tail, left, width, page_h - bottom - tail_h, facade)
+    return img
+
+
+def dinner_menu_rendering(conn, occ, refresh=False):
+    """(picture path, PDF path) for an occasion's built menu, drawn once and
+    kept beside the occasion's files until the menu, the price, the wine, the
+    time or the nights change -- then drawn again and the old pair removed.
+    None when the occasion's menu is not a built one, or the drawing fails
+    (the newsletter then keeps the menu's words and its link)."""
+    ref = occasion_menu_ref(occ)
+    if not ref or ref[0] != "built":
+        return None
+    nights = stay_occasion_dinners(occ, conn)
+    view = dinner_menu_view(conn, ref[1], occ=occ, nights=nights)
+    if view is None:
+        return None
+    key = hashlib.sha1(json.dumps([ref[1], view["menu"].get("updated_at"), view["price"], view["wine"],
+                                   view["time"], nights, len(view["courses"])],
+                                  default=str).encode()).hexdigest()[:12]
+    stem = f"menu-drawn-{occ['id']}-{key}"
+    # The picture a JPEG (a letter's image, about a fifth of a PNG's weight);
+    # the PDF the A4 page at 200 dots an inch, to print.
+    png = os.path.join(OCCASION_FILES_DIR, stem + ".jpg")
+    pdf = os.path.join(OCCASION_FILES_DIR, stem + ".pdf")
+    if refresh or not (os.path.exists(png) and os.path.exists(pdf)):
+        try:
+            os.makedirs(OCCASION_FILES_DIR, exist_ok=True)
+            img = render_dinner_menu(view, dpi=150)
+            img.save(png + ".part", "JPEG", quality=84, optimize=True, progressive=True)
+            os.replace(png + ".part", png)
+            render_dinner_menu(view, dpi=200).save(pdf + ".part", "PDF", resolution=200, quality=88,
+                                                   title=f"{view['menu']['name']} · Château de Gudanes")
+            os.replace(pdf + ".part", pdf)
+        except Exception as e:
+            log_line(f"[menus] the menu for occasion {occ['id']} was not drawn: {e}")
+            return None
+        # The pair drawn before this one, from an older menu or price, goes.
+        for name in os.listdir(OCCASION_FILES_DIR):
+            if name.startswith(f"menu-drawn-{occ['id']}-") and not name.startswith(stem):
+                remove_occasion_file(name)
+    return png, pdf
+
+
+def dinner_menu_clashes(view, note):
+    """What one table said it cannot eat, read against a built menu: [{course,
+    dish, why}]. parse_dietary is the till's own reader, so the kitchen sheet
+    and the till say the same thing about the same note. A diet is checked
+    against the meat the cook ticked and the fish allergens."""
+    want = parse_dietary(note)
+    avoid, diets = want["allergens"], want["diets"]
+    out = []
+    sea = {"fish", "crustaceans", "molluscs"}
+    for c in (view or {}).get("courses", []):
+        keys = set(c.get("allergen_keys") or [])
+        why = [ALLERGENS_EN[a] for a in sorted(keys & avoid)]
+        meat = c.get("meat")
+        if ("vegetarian" in diets or "vegan" in diets) and (meat or keys & sea):
+            why.append("not vegetarian")
+        elif "pescatarian" in diets and meat:
+            why.append("meat")
+        if "vegan" in diets and keys & {"eggs", "milk"}:
+            why.append("not vegan")
+        if ("halal" in diets or "kosher" in diets) and meat:
+            why.append("pork" if meat == "porc" else f"{MEAT_KINDS[meat][1]}: check how it was prepared")
+        if why:
+            out.append({"course": c["course_fr"], "dish": c["dish_fr"], "why": ", ".join(why)})
+    return out
 
 
 # --- Public -------------------------------------------------------------------
@@ -55761,8 +56761,7 @@ def stay_occasion_card(conn, r):
     d["dinner_when"] = occasion_dinner_when(r, d["dinners"])
     if d["dinners"]:
         d["chef_tag"] = DINNER_AT_GUDANES
-    d["menu"] = menu_for(r["slug"], r["menu_file"] if "menu_file" in r.keys() else None,
-                         nights=d["dinners"])
+    d["menu"] = menu_for(r["slug"], menu_ref_token(occasion_menu_ref(r)), nights=d["dinners"])
     return d
 
 
@@ -55826,7 +56825,8 @@ def home_banner_occasion(conn, today=None):
         "page_url": url_for("stay_occasion_page", slug=row["slug"]),
         "book_url": url_for("book_rooms", arrival=row["first_night"],
                             departure=stay_occasion_departure(row)),
-        "menu": menu_for(row["slug"], row["menu_file"], nights=dinners) if dinners else None,
+        "menu": (menu_for(row["slug"], menu_ref_token(occasion_menu_ref(row)), nights=dinners)
+                 if dinners else None),
     }
 
 
@@ -55858,9 +56858,24 @@ def occasion_newsletter_parts(conn, occ):
     headline = (occ["chef_name"] or occ["name"]) if chef else occ["name"]
     words = (occ["description"] or "").strip().split("\n")[0].strip()
     base = PUBLIC_BASE_URL or ""
+    ref = occasion_menu_ref(occ)
     with letter_drawing_context():
         book = public_link("book_rooms", arrival=occ["first_night"], departure=departure)
-        menu = public_link("occasion_menu", slug=occ["slug"]) if occ["menu_file"] else ""
+        menu = public_link("occasion_menu", slug=occ["slug"]) if ref else ""
+    # A menu built in the app (27 Nov 2026) is IN the letter: each course in
+    # English, and See the menu opens it in the house style. Its last change
+    # is in the fingerprint, so editing the menu redrafts the newsletter.
+    menu_lines, menu_print = "", ""
+    if ref and ref[0] == "built":
+        view = dinner_menu_view(conn, ref[1], occ=occ)
+        if view:
+            # Drawn as a picture where it can be (its courses then in the
+            # picture's words); listed here only when it could not be drawn.
+            if not occasion_newsletter_has_drawn_menu(conn, occ):
+                menu_lines = "On the menu:\n" + "\n".join(
+                    f"{c.get('course_en') or c['course_fr']}: {c.get('dish_en') or c['dish_fr']}"
+                    for c in view["courses"])
+            menu_print = view["menu"].get("updated_at") or ""
     price_bits = []
     if dinners and occ["dinner_price"]:
         price_bits.append(f"Dinner from {dinner_price_words(occ['dinner_price'], occ['wine_included'])}.")
@@ -55870,6 +56885,8 @@ def occasion_newsletter_parts(conn, occ):
     body = [f"{headline}, {dates}.", words]
     if occasion_newsletter_pictures(conn, occ):
         body.append("{{menu_pictures}}")
+    if menu_lines:
+        body.append(menu_lines)
     body.append(" ".join(price_bits))
     body += ["Book your stay:\n" + book]
     if menu:
@@ -55877,7 +56894,8 @@ def occasion_newsletter_parts(conn, occ):
     text = "\n\n".join(b for b in body if b.strip())
     fingerprint = "|".join(str(x) for x in (
         occ["first_night"], occ["last_night"], ",".join(dinners), occ["dinner_price"],
-        occ["wine_included"], occ["menu_file"], occ["banner_file"], line, headline))
+        occ["wine_included"], occ["menu_file"], occ["banner_file"], line, headline)) + (
+        f"|menu:{ref[1]}:{menu_print}" if ref and ref[0] == "built" else "")
     return subject, text, fingerprint, base
 
 
@@ -55901,7 +56919,26 @@ def occasion_newsletter_pictures(conn, occ):
             out.append({"src": public_link("occasion_menu", slug=occ["slug"]),
                         "alt": f"The menu for {DINNER_AT_GUDANES}"
                                + (f", {dinner_nights_words(nights)}" if nights else "")})
+        # A menu built in the app, drawn on the server (27 Nov 2026): the
+        # picture in the letter, its courses in the words a mail app shows
+        # when it shows no pictures. Drawn here first, so a letter never
+        # points at a picture that could not be made.
+        ref = occasion_menu_ref(occ)
+        if ref and ref[0] == "built" and dinner_menu_rendering(conn, occ):
+            nights = stay_occasion_dinners(occ, conn)
+            view = dinner_menu_view(conn, ref[1], occ=occ, nights=nights)
+            courses = "; ".join(f"{c.get('course_en') or c['course_fr']}: {c.get('dish_en') or c['dish_fr']}"
+                                for c in view["courses"])
+            out.append({"src": public_link("occasion_menu_picture", slug=occ["slug"]),
+                        "alt": f"The menu for {DINNER_AT_GUDANES}"
+                               + (f", {dinner_nights_words(nights)}" if nights else "") + f". {courses}"})
     return out
+
+
+def occasion_newsletter_has_drawn_menu(conn, occ):
+    """Whether the newsletter draws the built menu as a picture (and so need
+    not also list its courses in words)."""
+    return any("/menu.jpg" in p["src"] for p in occasion_newsletter_pictures(conn, occ))
 
 
 def occasion_newsletter_sent(conn, template_id):
@@ -55979,9 +57016,28 @@ def campaign_attachments(conn, template_id):
     if not template_id:
         return [], ""
     row = conn.execute(
-        """SELECT stay_occasions.name, stay_occasions.menu_file FROM campaign_templates
+        """SELECT stay_occasions.name, stay_occasions.menu_file, stay_occasions.dinner_menu_id
+             FROM campaign_templates
              JOIN stay_occasions ON stay_occasions.id = campaign_templates.occasion_id
             WHERE campaign_templates.id = ?""", (template_id,)).fetchone()
+    if row and row["dinner_menu_id"]:
+        # A built menu, drawn on the server as the A4 menu (27 Nov 2026), is
+        # attached as a PDF and shown in the letter as a picture.
+        occ = conn.execute("""SELECT stay_occasions.* FROM campaign_templates
+                                JOIN stay_occasions ON stay_occasions.id = campaign_templates.occasion_id
+                               WHERE campaign_templates.id = ?""", (template_id,)).fetchone()
+        drawn = dinner_menu_rendering(conn, occ) if occ is not None else None
+        if not drawn:
+            return [], ("The menu could not be drawn as a PDF, so it is written into the letter and "
+                        "See the menu opens it in the house style.")
+        mb = os.path.getsize(drawn[1]) / (1024 * 1024)
+        name = re.sub(r'[\\/:*?"<>|]+', " ", row["name"]).strip() or "Gudanes"
+        if mb > NEWSLETTER_ATTACHMENT_MAX_MB:
+            return [], (f"The menu's PDF is {mb:.1f} MB, too large to attach to a newsletter, so it is "
+                        "shown in the letter and linked from See the menu.")
+        return ([{"filename": f"{name} - menu.pdf", "path": drawn[1], "mime": "application/pdf"}],
+                f"The menu, drawn from the one built in the app, is attached as a PDF ({max(mb, 0.1):.1f} MB) "
+                "and shown in the letter.")
     if not row or not occasion_file_is_pdf(row["menu_file"]):
         return [], ""
     path = os.path.join(OCCASION_FILES_DIR, row["menu_file"])
@@ -56423,6 +57479,8 @@ def _occasion_form_values(form, rooms, occ=None):
         # default): it says "wine included" to guests, and asks the wine's
         # share for the VAT, so it is never assumed.
         "wine_included": 1 if form.get("wine_included") in ("1", "on", "yes") else 0,
+        # The menu chosen, kept when a refused save draws the form again.
+        "dinner_menu_id": int(form.get("dinner_menu_id")) if (form.get("dinner_menu_id") or "").isdigit() else None,
     }
     if v["kind"] == "guest_chef":
         v["chef_on_site"] = 1
@@ -56490,6 +57548,111 @@ def _occasion_form_values(form, rooms, occ=None):
     return v, error
 
 
+def occasion_dinner_figures(conn, occ):
+    """The owner's figures for each dinner night of an occasion (brief of 27
+    Nov 2026, §3): the covers booked of the covers there are, what they bring
+    in -- gross and net, food and wine, as the bill and the VAT working split
+    them -- and, where the menu says what a cover costs the kitchen, the
+    margin. Confirmed tables only count; a stay not yet confirmed is shown as
+    waiting. Rows add up to the totals row."""
+    if not occ or not occ["id"]:
+        return {"nights": [], "total": None}
+    food_rate = float(tax_rate(conn, "vat_food") or 10)
+    wine_rate = float(tax_rate(conn, "vat_alcohol") or 20)
+    wine_share = float(occ["wine_share"] or 0) if occ["wine_included"] else 0.0
+    rows = []
+    for d in stay_occasion_dinners(occ, conn):
+        night = conn.execute("SELECT * FROM stay_occasion_dinners WHERE occasion_id = ? AND dinner_date = ?",
+                             (occ["id"], d)).fetchone()
+        ref = occasion_menu_ref(occ, night)
+        menu = (conn.execute("SELECT * FROM dinner_menus WHERE id = ?", (ref[1],)).fetchone()
+                if ref and ref[0] == "built" else None)
+        booked = waiting = 0
+        food = wine = 0.0
+        for t in conn.execute(
+                """SELECT restaurant_bookings.*, booking_extras.unit_price AS line_price,
+                          booking_extras.quantity AS line_qty, booking_extras.vat_part_amount,
+                          booking_extras.vat_part_rate, booking_extras.vat_rate, booking_extras.status AS line_status
+                     FROM restaurant_bookings
+                     LEFT JOIN booking_extras ON booking_extras.id = restaurant_bookings.booking_extra_id
+                    WHERE restaurant_bookings.dinner_date = ?
+                      AND restaurant_bookings.status IN ('pending', 'confirmed')""", (d,)):
+            covers = t["party_size"] or 0
+            if t["status"] == "pending":
+                waiting += covers
+                continue
+            booked += covers
+            if t["booking_extra_id"]:
+                # The line on the stay's bill, split as the bill splits it.
+                gross = round((t["line_price"] or 0) * (t["line_qty"] or 0), 2)
+                part = round(min((t["vat_part_amount"] or 0) * (t["line_qty"] or 0), gross), 2)
+            else:
+                gross = round(float(t["total_price"] or 0), 2)
+                part = round(min(wine_share * covers, gross), 2)
+            food += gross - part
+            wine += part
+        gross = round(food + wine, 2)
+        net_food = round(food / (1 + food_rate / 100), 2)
+        net_wine = round(wine / (1 + wine_rate / 100), 2)
+        cost = (round(float(menu["cost_per_cover"]) * booked, 2)
+                if menu is not None and menu["cost_per_cover"] is not None else None)
+        net = round(net_food + net_wine, 2)
+        rows.append({
+            "date": d, "words": dinner_nights_words([d]), "booked": booked, "waiting": waiting,
+            "covers": occ["dinner_covers"] or 0,
+            "left": max((occ["dinner_covers"] or 0) - booked - waiting, 0),
+            "gross": gross, "food": round(food, 2), "wine": round(wine, 2),
+            "net": net, "net_food": net_food, "net_wine": net_wine,
+            "cost": cost, "margin": round(net - cost, 2) if cost is not None else None,
+            "menu_name": menu["name"] if menu is not None else None,
+            "sheet": url_for("admin_dinner_night", day=d),
+        })
+    total = {k: round(sum(r[k] for r in rows), 2)
+             for k in ("gross", "food", "wine", "net", "net_food", "net_wine")}
+    total.update({k: sum(r[k] for r in rows) for k in ("booked", "waiting", "covers", "left")})
+    costed = [r for r in rows if r["cost"] is not None]
+    total["cost"] = round(sum(r["cost"] for r in costed), 2) if costed and len(costed) == len(rows) else None
+    total["margin"] = round(total["net"] - total["cost"], 2) if total["cost"] is not None else None
+    return {"nights": rows, "total": total, "food_rate": food_rate, "wine_rate": wine_rate}
+
+
+def words_and(items):
+    """'a', 'a and b', 'a, b and c'."""
+    items = [i for i in items if i]
+    if len(items) < 2:
+        return items[0] if items else ""
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def occasion_menu_missing_nights(conn, occ, dinners=None):
+    """The dinner nights with no menu at all: neither their own nor the
+    occasion's, built or uploaded."""
+    if occasion_menu_ref(occ):
+        return []
+    dinners = dinners if dinners is not None else stay_occasion_dinners(occ, conn)
+    own = {r["dinner_date"] for r in conn.execute(
+        "SELECT dinner_date FROM stay_occasion_dinners WHERE occasion_id = ? "
+        "AND (menu_file IS NOT NULL OR dinner_menu_id IS NOT NULL)", (occ["id"],))}
+    return [d for d in dinners if d not in own]
+
+
+def dinner_go_live_missing(conn, occ, dinners=None):
+    """What a dinner still needs before it can be sold: [words]."""
+    dinners = dinners if dinners is not None else stay_occasion_dinners(occ, conn)
+    if not dinners:
+        return []
+    missing = []
+    if not occ["dinner_price"]:
+        missing.append("the price a person")
+    if not occ["dinner_covers"]:
+        missing.append("the covers a night")
+    gaps = occasion_menu_missing_nights(conn, occ, dinners)
+    if gaps:
+        missing.append("a menu" if len(gaps) == len(dinners)
+                       else f"a menu for {dinner_nights_words(gaps)}")
+    return missing
+
+
 def _go_live_problem(conn, occ, today):
     """Why this occasion cannot go on sale, or None."""
     if occ["last_night"] < today.isoformat():
@@ -56503,8 +57666,12 @@ def _go_live_problem(conn, occ, today):
     dinners = stay_occasion_dinners(occ, conn)
     if not stay_occasion_from_price(conn, occ) and not dinners:
         return "Set a price for at least one room."
-    if dinners and not occ["dinner_price"]:
-        return "Set the price a person for dinner."
+    # A live dinner needs a price, its covers and a menu (owner's brief, 27
+    # Nov 2026: "any field missing for a live dinner is named before it can go
+    # live"). All of them named at once, not one a save.
+    missing = dinner_go_live_missing(conn, occ, dinners)
+    if missing:
+        return "Before the dinner can go on sale it needs " + words_and(missing) + "."
     if dinners and occ["wine_included"] and not occ["wine_share"]:
         return ("Say how much of the dinner's price a person is the wine: the food is taxed at "
                 f"{float(tax_rate(conn, 'vat_food')):g}% and the wine at "
@@ -56544,8 +57711,8 @@ def _render_occasion_form(conn, occ, values=None, confirm_write=None, price_clas
                     GROUP BY dinner_date""", (occ["id"],)):
             covers[r["dinner_date"]] = r["n"]
         night_menus = {r["dinner_date"]: dict(r) for r in conn.execute(
-            "SELECT dinner_date, menu_file, menu_name FROM stay_occasion_dinners "
-            "WHERE occasion_id = ? AND menu_file IS NOT NULL", (occ["id"],))}
+            "SELECT dinner_date, menu_file, menu_name, dinner_menu_id FROM stay_occasion_dinners "
+            "WHERE occasion_id = ? AND (menu_file IS NOT NULL OR dinner_menu_id IS NOT NULL)", (occ["id"],))}
     # On a retreat's nights: which retreat, which day, and -- once the owner
     # has written the evening -- whether its page really shows it.
     retreat_days = occasion_retreat_days(conn, occ) if occ["id"] else []
@@ -56556,8 +57723,19 @@ def _render_occasion_form(conn, occ, values=None, confirm_write=None, price_clas
             conn, r["workshop"], celebrated, occ["name"])
     saved_dinners = stay_occasion_dinners(occ, conn) if occ["id"] else []
     rs = get_restaurant_settings(conn)
+    # The menus to choose from (27 Nov 2026): the library's, and whichever the
+    # occasion already serves even if it has since been archived.
+    chosen_ids = {occ["dinner_menu_id"] if "dinner_menu_id" in occ.keys() else None} | {
+        n.get("dinner_menu_id") for n in night_menus.values()}
+    dinner_menus = [dict(r) for r in conn.execute(
+        "SELECT id, name, price, wine_included, status FROM dinner_menus "
+        "WHERE status = 'active' OR id IN ({}) ORDER BY status, COALESCE(updated_at, created_at) DESC".format(
+            ",".join(str(int(i)) for i in chosen_ids if i) or "NULL"))]
     return render_template(
         "admin_stay_occasion.html", occ=occ, v=values, rooms=rooms, clashes=clashes,
+        dinner_menus=dinner_menus,
+        dinner_missing=dinner_go_live_missing(conn, occ) if occ["id"] else [],
+        dinner_figures=occasion_dinner_figures(conn, occ) if occ["id"] else {"nights": [], "total": None},
         retreat_days=retreat_days, evening_words=RETREAT_EVENING_WORDS,
         photos=stay_occasion_photos(), kinds=STAY_OCCASION_KINDS,
         nights=[n.isoformat() for n in stay_occasion_nights(occ)] if occ["first_night"] else [],
@@ -56582,7 +57760,7 @@ _BLANK_OCCASION = {"id": None, "name": "", "slug": "", "first_night": "", "last_
                    "dinner_price": None, "outside_diners": 0, "menu_file": None, "menu_name": None,
                    "home_banner": 0, "home_banner_text": "", "banner_file": None,
                    "wine_included": 1, "wine_share": None, "retreat_evening": None,
-                   "retreat_night": None}
+                   "retreat_night": None, "dinner_menu_id": None}
 
 
 def occasion_banner_default(occ):
@@ -56679,9 +57857,10 @@ def _save_occasion_dinner(conn, occ_id, v, uploads, form, notes):
     # The menus: a new one replaces the old only once it is saved, and the old
     # file goes after the commit.
     if uploads["menu"]:
+        # A file uploaded takes the place of a built menu at the same level.
         gone.append(occ["menu_file"])
-        conn.execute("UPDATE stay_occasions SET menu_file = ?, menu_name = ? WHERE id = ?",
-                     (uploads["menu"][0], uploads["menu"][1], occ_id))
+        conn.execute("UPDATE stay_occasions SET menu_file = ?, menu_name = ?, dinner_menu_id = NULL "
+                     "WHERE id = ?", (uploads["menu"][0], uploads["menu"][1], occ_id))
     elif form.get("menu_remove") == "1" and occ["menu_file"]:
         gone.append(occ["menu_file"])
         conn.execute("UPDATE stay_occasions SET menu_file = NULL, menu_name = NULL WHERE id = ?",
@@ -56695,6 +57874,9 @@ def _save_occasion_dinner(conn, occ_id, v, uploads, form, notes):
             conn.execute("UPDATE stay_occasion_dinners SET menu_file = ?, menu_name = ? "
                          "WHERE occasion_id = ? AND dinner_date = ?",
                          (new[0] if new else None, new[1] if new else None, occ_id, night))
+            if new:
+                conn.execute("UPDATE stay_occasion_dinners SET dinner_menu_id = NULL "
+                             "WHERE occasion_id = ? AND dinner_date = ?", (occ_id, night))
     # The home-page banner.
     if uploads["banner"]:
         gone.append(occ["banner_file"])
@@ -56703,12 +57885,91 @@ def _save_occasion_dinner(conn, occ_id, v, uploads, form, notes):
     elif form.get("banner_remove") == "1" and occ["banner_file"]:
         gone.append(occ["banner_file"])
         conn.execute("UPDATE stay_occasions SET banner_file = NULL WHERE id = ?", (occ_id,))
+    # A menu from the library (27 Nov 2026): for every night, or for one. A
+    # menu chosen and a file are alternatives -- a file uploaded in the same
+    # save wins, a menu chosen replaces the file there.
+    if form.get("menu_choice_shown") == "1":
+        gone += _save_occasion_menu_choice(conn, occ_id, sorted(after), uploads, form)
     occ = conn.execute("SELECT * FROM stay_occasions WHERE id = ?", (occ_id,)).fetchone()
     conn.execute("UPDATE stay_occasions SET home_banner = ?, home_banner_text = ?, wine_included = ?, "
                  "wine_share = ? WHERE id = ?",
                  (v["home_banner"], v["home_banner_text"] or occasion_banner_default(occ),
                   v["wine_included"], v["wine_share"] if v["wine_included"] else None, occ_id))
     return [g for g in gone if g]
+
+
+def _chosen_menu_id(conn, raw):
+    raw = (raw or "").strip()
+    if not raw.isdigit():
+        return None
+    row = conn.execute("SELECT id FROM dinner_menus WHERE id = ?", (int(raw),)).fetchone()
+    return row["id"] if row else None
+
+
+def _save_occasion_menu_choice(conn, occ_id, nights, uploads, form):
+    """The occasion's built menu and each night's, from the form. Returns the
+    files a chosen menu replaced, to delete once committed."""
+    gone = []
+    occ = conn.execute("SELECT * FROM stay_occasions WHERE id = ?", (occ_id,)).fetchone()
+    if uploads["menu"]:
+        conn.execute("UPDATE stay_occasions SET dinner_menu_id = NULL WHERE id = ?", (occ_id,))
+    else:
+        chosen = _chosen_menu_id(conn, form.get("dinner_menu_id"))
+        conn.execute("UPDATE stay_occasions SET dinner_menu_id = ? WHERE id = ?", (chosen, occ_id))
+        if chosen and occ["menu_file"]:
+            gone.append(occ["menu_file"])
+            conn.execute("UPDATE stay_occasions SET menu_file = NULL, menu_name = NULL WHERE id = ?",
+                         (occ_id,))
+    for night in nights:
+        row = conn.execute("SELECT * FROM stay_occasion_dinners WHERE occasion_id = ? AND dinner_date = ?",
+                           (occ_id, night)).fetchone()
+        if not row:
+            continue
+        # A night is its occasion and its date: the table has no id of its own.
+        key = (occ_id, night)
+        if uploads["nights"].get(night):
+            conn.execute("UPDATE stay_occasion_dinners SET dinner_menu_id = NULL "
+                         "WHERE occasion_id = ? AND dinner_date = ?", key)
+            continue
+        chosen = _chosen_menu_id(conn, form.get(f"night_menu_{night}"))
+        conn.execute("UPDATE stay_occasion_dinners SET dinner_menu_id = ? "
+                     "WHERE occasion_id = ? AND dinner_date = ?", (chosen,) + key)
+        if chosen and row["menu_file"]:
+            gone.append(row["menu_file"])
+            conn.execute("UPDATE stay_occasion_dinners SET menu_file = NULL, menu_name = NULL "
+                         "WHERE occasion_id = ? AND dinner_date = ?", key)
+    return gone
+
+
+@app.route("/admin/stay-occasions/<int:occ_id>/panel-preview")
+@owner_required
+def admin_stay_occasion_panel_preview(occ_id):
+    """The Dinner at Gudanes panel exactly as the occasion's page draws it,
+    for the preview on the occasion's form: the same template, the same
+    stylesheet, from what is saved."""
+    conn = get_db()
+    occ = conn.execute("SELECT * FROM stay_occasions WHERE id = ?", (occ_id,)).fetchone()
+    if not occ:
+        conn.close()
+        abort(404)
+    card = stay_occasion_card(conn, occ)
+    dinners = card["dinners"]
+    night_menus = {r["dinner_date"]: menu_for(occ["slug"], menu_ref_token(occasion_menu_ref(None, r)),
+                                              r["dinner_date"])
+                   for r in conn.execute(
+                       "SELECT dinner_date, menu_file, dinner_menu_id FROM stay_occasion_dinners "
+                       "WHERE occasion_id = ? AND (menu_file IS NOT NULL OR dinner_menu_id IS NOT NULL)",
+                       (occ_id,))}
+    panel = occasion_dinner_panel(occ, dinners, conn=conn) if dinners and not card["is_guest_chef"] else None
+    conn.close()
+    resp = app.make_response(render_template(
+        "admin_occasion_panel_preview.html", occ=card, panel=panel, dinners=dinners,
+        night_menus=night_menus,
+        dinner_time_words=clock_words(occ["dinner_time"]) if occ["dinner_time"] else ""))
+    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+    resp.headers["Content-Security-Policy"] = HOUSE_CSP_FRAMED_BY_OURS
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.route("/admin/stay-occasions/new", methods=["GET", "POST"])
@@ -57047,6 +58308,369 @@ def admin_stay_occasion_suggestion_dismiss(sid):
     conn.close()
     flash(f"Dismissed {s['name']}. It will not be suggested again.", "success")
     return redirect(url_for("admin_stay_occasions") + "#suggested")
+
+
+# --- The menu builder: /admin/menus (27 Nov 2026) ---------------------------------
+
+def menu_english_ask(text, kind):
+    """The English for a line of the menu, from the assistant, or ''. A
+    suggestion only: the builder shows it in grey and saves it only once the
+    cook has accepted or typed over it."""
+    if not claude_configured():
+        return ""
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, timeout=30)
+    data, _why = claude_structured(
+        client, model="claude-opus-5", max_tokens=300,
+        system=("You translate one line of the French dinner menu of Château de Gudanes, a château in "
+                "the Ariège, into English for its guests. Keep it as short as the French and in the "
+                "same register: a menu line, not a description. Keep proper names, appellations "
+                "(AOP, IGP) and place names as they are; Ariège keeps its accent. British spelling. "
+                "No full stop at the end. If it is a wine, translate only the colour or style "
+                "(Blanc is White, Rouge is Red, Moelleux is Sweet). If it is a product of origin, "
+                "translate the product only."),
+        messages=[{"role": "user", "content": json.dumps({"kind": kind, "french": text})}],
+        schema={"type": "object", "additionalProperties": False, "required": ["english"],
+                "properties": {"english": {"type": "string"}}})
+    return (data or {}).get("english", "")
+
+
+def menu_english_suggestion(conn, text, kind):
+    """{en, from}: the English the library already has for these exact words,
+    else the assistant's, else nothing. Never raises."""
+    text = _menu_text(text)
+    if not text:
+        return {"en": "", "from": None}
+    found = None
+    if kind == "dish":
+        found = conn.execute("SELECT dish_en AS en FROM dinner_dishes WHERE dish_fr = ? COLLATE NOCASE "
+                             "AND COALESCE(dish_en, '') != ''", (text,)).fetchone()
+    elif kind == "wine":
+        found = conn.execute("SELECT wine_en AS en FROM dinner_wines WHERE wine_fr = ? COLLATE NOCASE "
+                             "AND COALESCE(wine_en, '') != ''", (text,)).fetchone()
+    elif kind == "origin":
+        found = conn.execute("SELECT origin_en AS en FROM dinner_dishes WHERE origin_fr = ? COLLATE NOCASE "
+                             "AND COALESCE(origin_en, '') != '' ORDER BY uses DESC LIMIT 1",
+                             (text,)).fetchone()
+    elif kind == "course":
+        en = dict(MENU_DEFAULT_COURSES).get(text)
+        if en:
+            return {"en": en, "from": "library"}
+    elif kind == "country":
+        en = country_english(text)
+        return {"en": en, "from": "library" if en else None}
+    if found:
+        return {"en": found["en"], "from": "library"}
+    try:
+        en = _menu_text(menu_english_ask(text, kind))
+    except Exception as e:
+        log_line(f"[menus] no English suggested: {e}")
+        en = ""
+    return {"en": en, "from": "assistant" if en else None}
+
+
+def _menu_form_values(conn, menu_id):
+    """The builder's starting values: a saved menu's, or a new one with the
+    house's seven courses waiting for their dishes."""
+    if menu_id:
+        m = conn.execute("SELECT * FROM dinner_menus WHERE id = ?", (menu_id,)).fetchone()
+        if not m:
+            return None
+        v = dict(m)
+        v["courses"] = [dict(c) for c in conn.execute(
+            "SELECT * FROM dinner_menu_courses WHERE menu_id = ? ORDER BY position, id", (menu_id,))]
+        return v
+    return {"id": None, "name": "", "price": None, "wine_included": 1, "cost_per_cover": None,
+            "service_time": "19:30", "status": "active",
+            "courses": [{"course_fr": fr, "course_en": en, "fait_maison": 1} for fr, en in MENU_DEFAULT_COURSES]}
+
+
+def _render_menu_builder(conn, v, problems=(), for_occasion=None, night=None):
+    dishes = [dict(r) for r in conn.execute(
+        "SELECT * FROM dinner_dishes ORDER BY uses DESC, dish_fr COLLATE NOCASE LIMIT 400")]
+    wines = [dict(r) for r in conn.execute(
+        "SELECT * FROM dinner_wines ORDER BY uses DESC, wine_fr COLLATE NOCASE LIMIT 200")]
+    occ = (conn.execute("SELECT id, name FROM stay_occasions WHERE id = ?", (for_occasion,)).fetchone()
+           if for_occasion else None)
+    return render_template(
+        "admin_dinner_menu.html", v=v, problems=list(problems), dishes=dishes, wines=wines,
+        allergens=ALLERGENS, allergens_en=ALLERGENS_EN, meats=MEAT_KINDS,
+        default_courses=MENU_DEFAULT_COURSES, countries=COUNTRY_EN, country_names=MENU_COUNTRIES_FR,
+        uses=dinner_menu_uses(conn, v["id"]) if v.get("id") else [],
+        for_occasion=occ, night=night)
+
+
+@app.route("/admin/menus")
+@owner_required
+def admin_dinner_menus():
+    """The Dinner at Gudanes menus: the ones in use and to come, and those put away."""
+    conn = get_db()
+    rows = dinner_menu_rows(conn, "active") + dinner_menu_rows(conn, "archived")
+    dishes = conn.execute("SELECT COUNT(*) AS n FROM dinner_dishes").fetchone()["n"]
+    conn.close()
+    for r in rows:
+        r["state"] = "Archived" if r["status"] == "archived" else ("In use" if r["uses"] else "Not used yet")
+        r["used_by"] = ", ".join(u["name"] for u in r["uses"])
+        r["updated"] = local_datetime_str(r["updated_at"] or r["created_at"])
+    lv = list_view(
+        rows, request.args, search=["name", "used_by"], search_hint="Search a menu or an occasion",
+        facets=[facet("state", "Menus", lambda r: r["state"],
+                      order=["In use", "Not used yet", "Archived"])],
+        sorts=[sort_option("recent", "Most recent", lambda r: r["updated_at"] or r["created_at"], reverse=True),
+               sort_option("name", "Name", lambda r: (r["name"] or "").lower())],
+        default_sort="recent")
+    # The archived ones are a chip away, not in the way of the menus in use.
+    if not request.args.get("state"):
+        lv["rows"] = [r for r in lv["rows"] if r["status"] != "archived"]
+        lv["shown"] = len(lv["rows"])
+    return render_template("admin_dinner_menus.html", lv=lv, dishes=dishes)
+
+
+@app.route("/admin/menus/new", methods=["GET", "POST"])
+@owner_required
+def admin_dinner_menu_new():
+    return _dinner_menu_edit(None)
+
+
+@app.route("/admin/menus/<int:menu_id>", methods=["GET", "POST"])
+@owner_required
+def admin_dinner_menu(menu_id):
+    return _dinner_menu_edit(menu_id)
+
+
+def _dinner_menu_edit(menu_id):
+    conn = get_db()
+    for_occasion = request.values.get("for_occasion", "")
+    for_occasion = int(for_occasion) if for_occasion.isdigit() else None
+    night = request.values.get("night") if parse_date(request.values.get("night", "")) else None
+    v = _menu_form_values(conn, menu_id)
+    if v is None:
+        conn.close()
+        abort(404)
+    if request.method == "POST":
+        new = read_dinner_menu_form(request.form)
+        problems = dinner_menu_problems(new)
+        if problems:
+            new.update({"id": menu_id, "status": v["status"]})
+            page = _render_menu_builder(conn, new, problems, for_occasion, night)
+            conn.close()
+            return page, 400
+        saved = save_dinner_menu(conn, menu_id, new, session.get("user_id"))
+        gone, said = [], f"Saved {new['name']}."
+        if for_occasion and not menu_id:
+            gone, said = _attach_menu_to_occasion(conn, for_occasion, night, saved, new["name"])
+        conn.commit()
+        conn.close()
+        for name in gone:
+            remove_occasion_file(name)
+        flash(said, "success")
+        if for_occasion and not menu_id:
+            return redirect(url_for("admin_stay_occasion", occ_id=for_occasion) + "#dinner")
+        return redirect(url_for("admin_dinner_menu", menu_id=saved))
+    page = _render_menu_builder(conn, v, (), for_occasion, night)
+    conn.close()
+    return page
+
+
+def _attach_menu_to_occasion(conn, occ_id, night, menu_id, name):
+    """A menu built from an occasion's form becomes its menu (or that night's),
+    replacing an uploaded file there. Returns (files to delete, what to say)."""
+    occ = conn.execute("SELECT * FROM stay_occasions WHERE id = ?", (occ_id,)).fetchone()
+    if not occ:
+        return [], f"Saved {name}."
+    if night:
+        row = conn.execute("SELECT * FROM stay_occasion_dinners WHERE occasion_id = ? AND dinner_date = ?",
+                           (occ_id, night)).fetchone()
+        if row:
+            conn.execute("UPDATE stay_occasion_dinners SET dinner_menu_id = ?, menu_file = NULL, "
+                         "menu_name = NULL WHERE occasion_id = ? AND dinner_date = ?", (menu_id, occ_id, night))
+            return ([row["menu_file"]] if row["menu_file"] else [],
+                    f"Saved {name}, now the menu for {occ['name']} on {dinner_nights_words([night])}.")
+    conn.execute("UPDATE stay_occasions SET dinner_menu_id = ?, menu_file = NULL, menu_name = NULL "
+                 "WHERE id = ?", (menu_id, occ_id))
+    return ([occ["menu_file"]] if occ["menu_file"] else [],
+            f"Saved {name}, now the menu for {occ['name']}"
+            + (", in place of the file that was uploaded." if occ["menu_file"] else "."))
+
+
+@app.route("/admin/menus/<int:menu_id>/duplicate", methods=["POST"])
+@owner_required
+def admin_dinner_menu_duplicate(menu_id):
+    conn = get_db()
+    new_id = duplicate_dinner_menu(conn, menu_id, session.get("user_id"))
+    conn.commit()
+    conn.close()
+    if not new_id:
+        abort(404)
+    flash("A copy to make the next menu from. Rename it and change what is new.", "success")
+    return redirect(url_for("admin_dinner_menu", menu_id=new_id))
+
+
+@app.route("/admin/menus/<int:menu_id>/archive", methods=["POST"])
+@owner_required
+def admin_dinner_menu_archive(menu_id):
+    """Put a menu away, or bring it back. An occasion using it keeps it."""
+    conn = get_db()
+    m = conn.execute("SELECT * FROM dinner_menus WHERE id = ?", (menu_id,)).fetchone()
+    if not m:
+        conn.close()
+        abort(404)
+    to = "active" if m["status"] == "archived" else "archived"
+    conn.execute("UPDATE dinner_menus SET status = ?, updated_at = ? WHERE id = ?",
+                 (to, datetime.now(timezone.utc).isoformat(), menu_id))
+    uses = dinner_menu_uses(conn, menu_id)
+    conn.commit()
+    conn.close()
+    if to == "archived":
+        flash(f"Archived {m['name']}." + (f" {', '.join(u['name'] for u in uses)} still "
+                                          f"serve{'s' if len(uses) == 1 else ''} it." if uses else ""),
+              "success")
+    else:
+        flash(f"{m['name']} is back among the menus.", "success")
+    return redirect(url_for("admin_dinner_menus"))
+
+
+@app.route("/admin/menus/<int:menu_id>/delete", methods=["POST"])
+@owner_required
+def admin_dinner_menu_delete(menu_id):
+    """Only a menu nothing serves. One an occasion uses is archived instead."""
+    conn = get_db()
+    m = conn.execute("SELECT * FROM dinner_menus WHERE id = ?", (menu_id,)).fetchone()
+    if not m:
+        conn.close()
+        abort(404)
+    uses = dinner_menu_uses(conn, menu_id)
+    if uses:
+        conn.close()
+        flash(f"{m['name']} is the menu for {', '.join(u['name'] for u in uses)}, so it cannot be "
+              f"deleted. Archive it instead.", "error")
+        return redirect(url_for("admin_dinner_menus"))
+    conn.execute("DELETE FROM dinner_menus WHERE id = ?", (menu_id,))
+    conn.commit()
+    conn.close()
+    flash(f"Deleted {m['name']}. Its dishes stay in the library.", "success")
+    return redirect(url_for("admin_dinner_menus"))
+
+
+@app.route("/admin/menus/preview", methods=["POST"])
+@owner_required
+def admin_dinner_menu_preview():
+    """The menu as the guest will see it, drawn from the form as it stands
+    (nothing saved): the builder shows this beside itself as the cook types."""
+    v = read_dinner_menu_form(request.form)
+    view = dinner_menu_view_of(v, [_course_view(c) for c in v["courses"]])
+    mode = request.form.get("preview_mode") if request.form.get("preview_mode") in ("web", "a4", "a3") else "web"
+    resp = app.make_response(render_template("dinner_menu_card.html", v=view, mode=mode, embed=True))
+    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+    resp.headers["Content-Security-Policy"] = HOUSE_CSP_FRAMED_BY_OURS
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/admin/menus/english", methods=["POST"])
+@owner_required
+def admin_dinner_menu_english():
+    """The English for one French line, as a suggestion: {en, from}."""
+    kind = request.form.get("kind") if request.form.get("kind") in (
+        "dish", "wine", "origin", "course", "country") else "dish"
+    conn = get_db()
+    out = menu_english_suggestion(conn, request.form.get("text", ""), kind)
+    conn.close()
+    return jsonify(out)
+
+
+@app.route("/admin/menus/<int:menu_id>/menu.pdf")
+@owner_required
+def admin_dinner_menu_pdf(menu_id):
+    """The menu drawn on the server as an A4 PDF, at its own price: a file to
+    send to the printer or a guest, made without the browser's print box."""
+    conn = get_db()
+    view = dinner_menu_view(conn, menu_id)
+    conn.close()
+    if view is None:
+        abort(404)
+    buf = io.BytesIO()
+    render_dinner_menu(view, dpi=200).save(buf, "PDF", resolution=200, quality=88,
+                                           title=f"{view['menu']['name']} · Château de Gudanes")
+    buf.seek(0)
+    name = re.sub(r'[\\/:*?"<>|]+', " ", view["menu"]["name"]).strip() or "Menu"
+    return send_file(buf, mimetype="application/pdf", as_attachment=True, download_name=f"{name}.pdf")
+
+
+@app.route("/admin/menus/<int:menu_id>/print/<kind>")
+@owner_required
+def admin_dinner_menu_print(menu_id, kind):
+    """The A4 table menu, the A3 board or the allergen sheet, to print or to
+    save as a PDF from the browser. ?occasion= draws it with that occasion's
+    price, wine and time (what its guests are charged)."""
+    if kind not in ("a4", "a3", "allergens"):
+        abort(404)
+    conn = get_db()
+    occ_id = request.args.get("occasion", "")
+    occ = (conn.execute("SELECT * FROM stay_occasions WHERE id = ?", (int(occ_id),)).fetchone()
+           if occ_id.isdigit() else None)
+    nights = [n for n in request.args.getlist("night") if parse_date(n)] or (
+        stay_occasion_dinners(occ, conn) if occ else [])
+    view = dinner_menu_view(conn, menu_id, occ=occ, nights=nights)
+    conn.close()
+    if view is None:
+        abort(404)
+    back = url_for("admin_dinner_menu", menu_id=menu_id)
+    if kind == "allergens":
+        return render_template("dinner_menu_allergens.html", v=view, allergens=ALLERGENS,
+                               allergens_en=ALLERGENS_EN, back=back)
+    return render_template("dinner_menu_card.html", v=view, mode=kind, back=back)
+
+
+def dinner_night_sheet(conn, day_iso):
+    """The night as the kitchen and the floor need it: who is coming, how
+    many, from which room, at what time, with what they cannot eat read
+    against the menu -- and the covers each course must make."""
+    occ = occasion_dinner_night(conn, day_iso)
+    menu_id = dinner_menu_for_night(conn, day_iso)
+    view = dinner_menu_view(conn, menu_id, occ=occ, nights=[day_iso]) if menu_id else None
+    tables = [dict(r) for r in conn.execute(
+        """SELECT restaurant_bookings.*, bookings.reference_code AS stay_ref,
+                  bookings.arrival_date, bookings.departure_date, rooms.name AS room_name,
+                  -- A Booking.com guest's room, by the address they checked in with.
+                  (SELECT COALESCE(r2.name, ota_reservations.room_label) FROM ota_reservations
+                     LEFT JOIN rooms r2 ON r2.id = ota_reservations.room_id
+                    WHERE lower(ota_reservations.guest_email) = lower(restaurant_bookings.guest_email)
+                      AND ota_reservations.status = 'confirmed'
+                      AND ota_reservations.arrival_date <= restaurant_bookings.dinner_date
+                      AND ota_reservations.departure_date > restaurant_bookings.dinner_date
+                    LIMIT 1) AS ota_room
+             FROM restaurant_bookings
+             LEFT JOIN bookings ON bookings.id = restaurant_bookings.booking_id
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE restaurant_bookings.dinner_date = ?
+              AND restaurant_bookings.status IN ('confirmed', 'pending')
+              AND restaurant_bookings.no_show_at IS NULL
+            ORDER BY restaurant_bookings.status, restaurant_bookings.guest_name""", (day_iso,))]
+    for t in tables:
+        t["room"] = t.get("room_name") or t.get("ota_room") or ""
+        t["staying"] = bool(t.get("booking_id") or t.get("ota_room"))
+        t["prepaid"] = bool(t.get("booking_extra_id")) or (t.get("payment_status") == "paid")
+        t["clashes"] = dinner_menu_clashes(view, t.get("dietary_notes")) if view else []
+    covers = sum(t["party_size"] or 0 for t in tables if t["status"] == "confirmed")
+    pending = sum(t["party_size"] or 0 for t in tables if t["status"] == "pending")
+    return {"day": day_iso, "occ": occ, "view": view, "tables": tables, "covers": covers,
+            "pending": pending,
+            "capacity": covers + pending + max(restaurant_remaining_capacity(conn, day_iso), 0),
+            "time": (occ["dinner_time"] if occ is not None else None) or "",
+            "notes": [t for t in tables if (t.get("dietary_notes") or "").strip()]}
+
+
+@app.route("/admin/dinner-night/<day>")
+@owner_required
+def admin_dinner_night(day):
+    """One dinner night's sheet for the kitchen and the floor, printable."""
+    d = parse_date(day)
+    if not d:
+        abort(404)
+    conn = get_db()
+    sheet = dinner_night_sheet(conn, d.isoformat())
+    conn.close()
+    return render_template("dinner_night_sheet.html", s=sheet, day=d)
 
 
 # --- Booking.com prices, entered by hand -----------------------------------------------
@@ -57932,10 +59556,12 @@ def stay_occasion_page(slug):
     # Any occasion serving dinner, a guest chef's or the house's own.
     dinners = card["dinners"]
     # Each night with a menu of its own keeps it; the rest share the occasion's.
-    night_menus = {r["dinner_date"]: menu_for(occ["slug"], r["menu_file"], r["dinner_date"])
+    night_menus = {r["dinner_date"]: menu_for(occ["slug"], menu_ref_token(occasion_menu_ref(None, r)),
+                                              r["dinner_date"])
                    for r in conn.execute(
-                       "SELECT dinner_date, menu_file FROM stay_occasion_dinners "
-                       "WHERE occasion_id = ? AND menu_file IS NOT NULL", (occ["id"],))}
+                       "SELECT dinner_date, menu_file, dinner_menu_id FROM stay_occasion_dinners "
+                       "WHERE occasion_id = ? AND (menu_file IS NOT NULL OR dinner_menu_id IS NOT NULL)",
+                       (occ["id"],))}
     menu = []
     if dinners:
         menu = conn.execute(
@@ -57946,11 +59572,12 @@ def stay_occasion_page(slug):
                   AND menus.service_date IN ({})
                 ORDER BY menus.service_date, menu_dishes.id""".format(
                 ",".join("?" * len(dinners))), dinners).fetchall()
+    panel = (occasion_dinner_panel(occ, dinners, conn=conn)
+             if dinners and not card["is_guest_chef"] else None)
     conn.close()
     return render_template("stay_occasion.html", occ=card, dinners=dinners, menu=menu,
                            night_menus=night_menus,
-                           panel=(occasion_dinner_panel(occ, dinners)
-                                  if dinners and not card["is_guest_chef"] else None),
+                           panel=panel,
                            dinner_time_words=clock_words(occ["dinner_time"]) if occ["dinner_time"] else "",
                            preview=occ["status"] != "live")
 
@@ -57959,9 +59586,11 @@ def stay_occasion_page(slug):
 # long table lit with tall candles (owner's brief, 26 Nov 2026). Portrait, so
 # it fills the panel's side column without being cut to a sliver.
 DINNER_PANEL_PHOTO = "img/dining/long-table-tall-candles.jpg"
+DINNER_PANEL_PHOTO_SMALL = "img/dining/long-table-tall-candles-384.jpg"
+DINNER_PANEL_PHOTO_SIZE = (768, 1024)
 
 
-def occasion_dinner_panel(occ, dinners, today=None):
+def occasion_dinner_panel(occ, dinners, today=None, conn=None):
     """What the Dinner at Gudanes panel on an occasion's page needs beyond the
     occasion itself (owner, 26 Nov 2026: "where's the price of the dinner ...
     it should say stay these nights and book dinner"):
@@ -57977,19 +59606,56 @@ def occasion_dinner_panel(occ, dinners, today=None):
       outside          -- whether to say it is open to them."""
     today_iso = (today or house_today()).isoformat()
     departure = stay_occasion_departure(occ)
-    if occ["outside_diners"]:
-        ahead = [d for d in dinners if d > today_iso] or dinners[-1:]
-        book = url_for("restaurant_book", date=ahead[0])
-    else:
-        book = url_for("book_rooms", arrival=occ["first_night"], departure=departure, dinner=1)
+    # Each night's state (27 Nov 2026, the owner's "no gaps"): a night is
+    # booked up to the evening before -- the kitchen buys the day before -- and
+    # until its covers are taken. The panel says which nights are full or
+    # closed, Book dinner offers only the nights still open, and with none open
+    # but one full, the waitlist instead.
+    nights = []
+    for d in dinners:
+        if d <= today_iso:
+            state, left = "closed", 0
+        else:
+            left = max(restaurant_remaining_capacity(conn, d), 0) if conn is not None else 1
+            state = "open" if left > 0 else "full"
+        nights.append({"date": d, "words": dinner_nights_words([d]), "state": state, "left": left})
+    open_nights = [n["date"] for n in nights if n["state"] == "open"]
+    full_nights = [n["date"] for n in nights if n["state"] == "full"]
+    book = waitlist = None
+    if open_nights:
+        if occ["outside_diners"]:
+            book = url_for("restaurant_book", date=open_nights[0])
+        else:
+            book = url_for("book_rooms", arrival=occ["first_night"], departure=departure, dinner=1)
+    elif full_nights:
+        waitlist = url_for("restaurant_book", date=full_nights[0], full=1) + "#waitlist"
     banner = occ["banner_file"] if "banner_file" in occ.keys() else None
+    photo_w = photo_h = None
+    if banner:
+        try:
+            from PIL import Image
+            with Image.open(os.path.join(OCCASION_FILES_DIR, banner)) as im:
+                photo_w, photo_h = im.size
+        except Exception:
+            pass
+    else:
+        photo_w, photo_h = DINNER_PANEL_PHOTO_SIZE
     return {
         "photo": (url_for("occasion_banner_photo", slug=occ["slug"]) if banner
                   else url_for("static", filename=DINNER_PANEL_PHOTO)),
+        # The 768px photograph is drawn at most 384px wide on a desk, so it is
+        # sharp at twice the pixels; a screen that needs no more gets the 384.
+        "photo_srcset": (None if banner else
+                         f"{url_for('static', filename=DINNER_PANEL_PHOTO_SMALL)} 384w, "
+                         f"{url_for('static', filename=DINNER_PANEL_PHOTO)} 768w"),
+        "photo_w": photo_w, "photo_h": photo_h,
         "photo_alt": (f"{occ['name']} at Château de Gudanes" if banner
                       else "A long table at the château, lit with tall candles"),
         "stay": url_for("book_rooms", arrival=occ["first_night"], departure=departure),
         "book_dinner": book,
+        "waitlist": waitlist,
+        "nights": nights,
+        "closed_all": bool(nights) and all(n["state"] == "closed" for n in nights),
         "outside": bool(occ["outside_diners"]),
     }
 
@@ -58028,20 +59694,100 @@ def _occasion_file_response(slug, pick, framed_by_ours=False):
     return resp
 
 
+def _occasion_menu_response(slug, night=None):
+    """An occasion's menu, or one night's own: a menu built in the app drawn
+    as a page in the house style, a file served as it came. Who may see it is
+    _occasion_file_response's rule: a live occasion still to come, or the
+    owner looking at a draft."""
+    conn = get_db()
+    occ = conn.execute("SELECT * FROM stay_occasions WHERE slug = ?", (slug,)).fetchone()
+    user = current_user()
+    owner = bool(user and user["role"] == "owner")
+    if not occ or not (owner or (occ["status"] == "live" and occ["last_night"] >= house_today_iso())):
+        conn.close()
+        abort(404)
+    night_row = None
+    if night:
+        night_row = conn.execute("SELECT * FROM stay_occasion_dinners WHERE occasion_id = ? "
+                                 "AND dinner_date = ?", (occ["id"], night)).fetchone()
+        ref = occasion_menu_ref(None, night_row)
+    else:
+        ref = occasion_menu_ref(occ)
+    if not ref:
+        conn.close()
+        abort(404)
+    if ref[0] == "file":
+        conn.close()
+        return _occasion_file_response(slug, lambda c, o: ref[1], framed_by_ours=True)
+    if night:
+        nights = [night]
+    else:
+        own = {r["dinner_date"] for r in conn.execute(
+            "SELECT dinner_date FROM stay_occasion_dinners WHERE occasion_id = ? "
+            "AND (menu_file IS NOT NULL OR dinner_menu_id IS NOT NULL)", (occ["id"],))}
+        nights = [d for d in stay_occasion_dinners(occ, conn) if d not in own]
+    view = dinner_menu_view(conn, ref[1], occ=occ, nights=nights)
+    conn.close()
+    if view is None:
+        abort(404)
+    embed = request.args.get("embed") == "1"
+    resp = app.make_response(render_template(
+        "dinner_menu_card.html", v=view, mode="web", embed=embed,
+        autoprint=request.args.get("print") == "1",
+        back=url_for("stay_occasion_page", slug=slug), back_label=occ["name"]))
+    # Framed by the occasion page's own pop-up, by nobody else's.
+    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+    resp.headers["Content-Security-Policy"] = HOUSE_CSP_FRAMED_BY_OURS
+    resp.headers["Cache-Control"] = "public, max-age=300"
+    return resp
+
+
 @app.route("/whats-on/at-gudanes/<slug>/menu")
 def occasion_menu(slug):
-    """The menu the owner uploaded for an occasion's dinner."""
-    return _occasion_file_response(slug, lambda conn, occ: occ["menu_file"], framed_by_ours=True)
+    """The occasion's menu: built in the app, or the file the owner uploaded."""
+    return _occasion_menu_response(slug)
 
 
 @app.route("/whats-on/at-gudanes/<slug>/menu/<night>")
 def occasion_menu_night(slug, night):
     """One night's own menu, where the nights differ."""
-    def pick(conn, occ):
-        row = conn.execute("SELECT menu_file FROM stay_occasion_dinners WHERE occasion_id = ? "
-                           "AND dinner_date = ?", (occ["id"], night)).fetchone()
-        return row["menu_file"] if row else None
-    return _occasion_file_response(slug, pick, framed_by_ours=True)
+    return _occasion_menu_response(slug, night)
+
+
+def _occasion_menu_drawn(slug, which):
+    """The occasion's built menu drawn on the server: 'picture' (a JPEG, the
+    newsletter's image) or 'pdf' (the A4 menu, to print or attach). The same
+    rule as the menu's page for who may see it."""
+    conn = get_db()
+    occ = conn.execute("SELECT * FROM stay_occasions WHERE slug = ?", (slug,)).fetchone()
+    user = current_user()
+    owner = bool(user and user["role"] == "owner")
+    if not occ or not (owner or (occ["status"] == "live" and occ["last_night"] >= house_today_iso())):
+        conn.close()
+        abort(404)
+    drawn = dinner_menu_rendering(conn, occ)
+    conn.close()
+    if not drawn:
+        abort(404)
+    path = drawn[0] if which == "picture" else drawn[1]
+    resp = send_file(path, mimetype="image/jpeg" if which == "picture" else "application/pdf",
+                     as_attachment=which == "pdf" and request.args.get("download") == "1",
+                     download_name=f"{occ['name']} - menu.pdf" if which == "pdf" else None)
+    resp.headers["Cache-Control"] = "public, max-age=300"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
+
+@app.route("/whats-on/at-gudanes/<slug>/menu.jpg")
+def occasion_menu_picture(slug):
+    """The built menu as a picture, for the newsletter."""
+    return _occasion_menu_drawn(slug, "picture")
+
+
+@app.route("/whats-on/at-gudanes/<slug>/menu.pdf")
+def occasion_menu_pdf(slug):
+    """The built menu as an A4 PDF."""
+    return _occasion_menu_drawn(slug, "pdf")
 
 
 @app.route("/whats-on/at-gudanes/<slug>/banner")
@@ -61467,6 +63213,9 @@ def book_rooms():
     # dinner nights inside the dates searched. The room prices above are the
     # normal ones; dinner is never folded into them.
     dinner_notes = dinner_for_form(conn, arrival, departure)[1] if searched else []
+    # And the page's own words about meals on those dates (27 Nov 2026, §2.4):
+    # "Dinner at Gudanes is served on ...", not the restaurants nearby.
+    dinner_served = dinner_served_words(dinner_offer(conn, arrival, departure)) if searched else ""
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
     # What is open next was drawn under the dates until 26 November 2026, when
@@ -61514,7 +63263,7 @@ def book_rooms():
         blocking_atelier=blocking_atelier, ateliers=ateliers,
         weather=weather, stay_wx=stay_wx,
         wx_nights=[n for d, n in sorted(wx_nights.items()) if d >= house_today()],
-        dinner_notes=dinner_notes,
+        dinner_notes=dinner_notes, dinner_served=dinner_served,
         prefill_party_size=request.args.get("party_size", ""),
         **grid,
     )
@@ -64060,7 +65809,9 @@ def manage_booking(manage_token):
             conn, parse_date(booking["arrival_date"]), parse_date(booking["departure_date"]),
             booking["party_size"], {night: covers} if covers > 0 else {})
         pay_for = None
-        if night in have:
+        if night in retreat_nights_for(conn, booking["id"], booking["guest_email"]):
+            flash(f"Your retreat already includes dinner on {dinner_nights_words([night])}.", "error")
+        elif night in have:
             flash(f"{DINNER_AT_GUDANES} on {dinner_nights_words([night])} is already on your stay. "
                   "To change how many are coming, write to us.", "error")
         elif covers < 1:
@@ -64101,6 +65852,31 @@ def manage_booking(manage_token):
             if card:
                 conn.close()
                 return redirect(card, code=303)
+        conn.close()
+        return redirect(url_for("manage_booking", manage_token=manage_token) + "#dinner-at-gudanes")
+
+    elif action == "remove_dinner" and booking["status"] in ("pending", "confirmed"):
+        # Taking a dinner off, up to the evening before (27 Nov 2026, §2.5):
+        # never refunded here; any amount now paid over is a task for the owner.
+        raw = (request.form.get("line_id") or "").strip()
+        line, why, overpaid = remove_dinner_from_stay(conn, booking, int(raw) if raw.isdigit() else 0)
+        if why:
+            flash(why, "error")
+        else:
+            conn.commit()
+            notify_restaurant_waitlist_opening(conn, line["date"])
+            owner_to = house_address_for(conn, "rooms")
+            if owner_to:
+                send_email(
+                    owner_to, f"Guest took dinner off — {booking['reference_code']}",
+                    f"{booking['guest_name']} took {DINNER_AT_GUDANES} on {format_date_human(line['date'])} "
+                    f"({line['covers']} × {money(line['price'])}) off their stay. Its table is cancelled."
+                    + (f" {money(overpaid)} is now paid over the bill: a refund to decide, on your list. "
+                       "Nothing has been refunded." if overpaid > 0.005 else "")
+                    + "\n\n— Château de Gudanes")
+            flash(f"{DINNER_AT_GUDANES} on {dinner_nights_words([line['date']])} is taken off your stay. "
+                  + (DINNER_REMOVE_RULE if overpaid > 0.005 else ""), "success")
+        conn.commit()
         conn.close()
         return redirect(url_for("manage_booking", manage_token=manage_token) + "#dinner-at-gudanes")
 
@@ -64238,7 +66014,7 @@ def manage_booking(manage_token):
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
-        dinner_letter=dinner_letter,
+        dinner_letter=dinner_letter, dinner_remove_rule=DINNER_REMOVE_RULE,
         door=door, arrival_text=arrival_text, checkin=checkin,
         addable_rooms=addable_rooms,
         group=group,
@@ -68744,7 +70520,10 @@ def restaurant_email_context(booking, refund_note=""):
         "dinner_date": format_date_human(booking["dinner_date"]),
         "party_size": booking["party_size"],
         "reference_code": booking["reference_code"],
-        "dietary_line": f"\nDietary notes: {booking['dietary_notes']}" if booking["dietary_notes"] else "",
+        # On one line, so the kept copy can lose it exactly once the dinner is
+        # over (scrub_dinner_letters): a note's end is the line's end.
+        "dietary_line": (f"\nDietary notes: {note_on_one_line(booking['dietary_notes'])}"
+                         if (booking["dietary_notes"] or "").strip() else ""),
         "price_block": ("\n" + "\n".join(price_lines)) if price_lines else "",
         "refund_note": refund_note,
         "manage_url": url_for("restaurant_manage", manage_token=booking["manage_token"], _external=True),
@@ -69175,7 +70954,10 @@ def restaurant_info():
 def restaurant_book():
     conn = get_db()
     settings = get_restaurant_settings(conn)
-    if not settings or not settings["enabled"]:
+    # An occasion's dinner nights are booked here even with La Table switched
+    # off (27 Nov 2026, §2.8): the page then offers those nights and no other.
+    chef_only = bool(settings and not settings["enabled"] and occasion_dinner_nights_ahead(conn))
+    if not settings or (not settings["enabled"] and not chef_only):
         # NOT a 404. The site links here from the bar on every restaurant page
         # and from the restaurant page itself, so a guest who taps "Reserve"
         # was being told the page does not exist -- which reads as a broken
@@ -69191,7 +70973,7 @@ def restaurant_book():
     chef_nights = occasion_dinner_nights_ahead(conn)
 
     _posted_day = parse_date(request.form.get("dinner_date", "")) if request.method == "POST" else None
-    if request.method == "POST" and dining_mode(conn) != "open" and not (
+    if request.method == "POST" and (dining_mode(conn) != "open" or chef_only) and not (
             _posted_day and occasion_dinner_night(conn, _posted_day.isoformat())):
         # The page draws no form while dining is closed or off; this is for a
         # form saved while it was open, and for anything posting directly.
@@ -69208,7 +70990,7 @@ def restaurant_book():
             # Even a rate-limited attempt keeps what they typed. Being told to
             # wait and losing the form is two punishments for one mistake.
             return render_template(
-                "restaurant_book.html", settings=settings, min_date=min_date, chef_nights=chef_nights,
+                "restaurant_book.html", settings=settings, min_date=min_date, chef_nights=chef_nights, chef_only=chef_only,
                 fully_booked=False, stripe_enabled=stripe_enabled(),
                 **public_form_prefill(request.form, RESTAURANT_PREFILL))
 
@@ -69224,22 +71006,33 @@ def restaurant_book():
 
         error = None
         fully_booked = False
+        # An occasion's dinner night: its own covers, its own cut-off (the
+        # evening before, as with a stay), whatever La Table's settings say.
+        occ_night = occasion_dinner_night(conn, dinner_date.isoformat()) if dinner_date else None
+        seats = (occ_night["dinner_covers"] if occ_night is not None and occ_night["dinner_covers"]
+                 else settings["capacity"])
         if not guest_name or not guest_email:
             error = "Name and email are required."
         elif not EMAIL_RE.match(guest_email):
             error = "Enter a valid email address."
         elif not dinner_date:
             error = "Choose a valid date."
-        elif dinner_date < min_date:
+        elif dinner_date < min_date and occ_night is None:
             error = f"We're not taking reservations before {format_date_human(min_date.isoformat())}."
-        elif restaurant_closed_evening(conn, dinner_date):
+        elif occ_night is not None and dinner_date <= house_today():
+            error = (f"{occasion_dinner_title(occ_night)} on {format_date_human(dinner_date.isoformat())} "
+                     "is booked up to the evening before, so the kitchen can buy for it.")
+        elif occ_night is None and restaurant_closed_evening(conn, dinner_date):
             error = restaurant_closed_evening(conn, dinner_date)
         elif not party_size or party_size < 1:
             error = "Party size is required."
+        elif dinner_date.isoformat() in retreat_nights_for(conn, None, guest_email):
+            error = (f"Your retreat already includes dinner on {format_date_human(dinner_date.isoformat())}, "
+                     "so there is nothing to book.")
         elif occasion_dinner_refusal(conn, dinner_date, guest_email):
             error = occasion_dinner_refusal(conn, dinner_date, guest_email)
-        elif party_size > settings["capacity"]:
-            error = f"We can seat a maximum of {settings['capacity']} at once."
+        elif party_size > seats:
+            error = f"We can seat a maximum of {seats} at once."
         elif restaurant_remaining_capacity(conn, dinner_date.isoformat()) < party_size:
             error = "That date is fully booked — join the waitlist below, or try another date."
             fully_booked = True
@@ -69251,7 +71044,7 @@ def restaurant_book():
             conn.commit()  # persist the rate-limit log entry even on a validation error
             conn.close()
             return render_template(
-                "restaurant_book.html", settings=settings, min_date=min_date, chef_nights=chef_nights,
+                "restaurant_book.html", settings=settings, min_date=min_date, chef_nights=chef_nights, chef_only=chef_only,
                 fully_booked=fully_booked, stripe_enabled=stripe_enabled(),
                 **public_form_prefill(request.form, RESTAURANT_PREFILL),
             )
@@ -69264,6 +71057,10 @@ def restaurant_book():
                 flash(f"Promo code not applied: {promo_error}", "error")
         total_price = round(subtotal - discount_amount, 2)
         deposit_percent = resolve_deposit_percent(conn, "restaurant", dinner_date.isoformat(), party_size, settings["deposit_percent"])
+        # An occasion's dinner is paid in full when booked, as a stay is
+        # (27 Nov 2026): the till then holds it as prepaid, never as owed.
+        if occ_night is not None:
+            deposit_percent = 0
         charge_amount, balance_due_onsite = compute_restaurant_deposit(total_price, deposit_percent)
         if stripe_enabled() and charge_amount > 0:
             line_name = f"Dinner reservation for {party_size} — {format_date_human(dinner_date.isoformat())}"
@@ -69323,7 +71120,7 @@ def restaurant_book():
                 conn.commit()  # persist the rate-limit log entry even when Stripe setup fails
                 conn.close()
                 return render_template(
-                    "restaurant_book.html", settings=settings, min_date=min_date, chef_nights=chef_nights,
+                    "restaurant_book.html", settings=settings, min_date=min_date, chef_nights=chef_nights, chef_only=chef_only,
                     fully_booked=False, stripe_enabled=stripe_enabled(),
                     **public_form_prefill(request.form, RESTAURANT_PREFILL),
                 )
@@ -69342,14 +71139,19 @@ def restaurant_book():
         conn.close()
         return redirect(url_for("restaurant_confirmation", manage_token=manage_token))
 
-    conn.close()
     # A link from elsewhere on the site, so the query string wins here. Every
     # name the template reads is still supplied, blank where the link says
     # nothing — a missing one renders as an undefined, which is empty today and
     # a silent hole the first time somebody adds a filter to it.
+    # Full on an occasion's night (27 Nov 2026, §2.10): its panel's "Join the
+    # waitlist" opens this page on the night with the waitlist drawn.
+    asked = parse_date(request.args.get("date", "")) if request.args.get("full") == "1" else None
+    full = bool(asked and occasion_dinner_night(conn, asked.isoformat()) is not None
+                and restaurant_remaining_capacity(conn, asked.isoformat()) <= 0)
+    conn.close()
     return render_template(
-        "restaurant_book.html", settings=settings, min_date=min_date, chef_nights=chef_nights,
-        fully_booked=False, stripe_enabled=stripe_enabled(),
+        "restaurant_book.html", settings=settings, min_date=min_date, chef_nights=chef_nights, chef_only=chef_only,
+        fully_booked=full, stripe_enabled=stripe_enabled(),
         **public_form_prefill(request.args, {
             **{k: k for k in RESTAURANT_PREFILL},
             "name": "name", "email": "email", "phone": "phone",
@@ -70351,7 +72153,10 @@ def morning_digest(conn, today=None):
     if dinners:
         lines.append(f"Dinner ({len(dinners)} booking(s), {covers} cover(s)):")
         for d in dinners:
-            note = f" — {d['dietary_notes']}" if (d["dietary_notes"] or "").strip() else ""
+            # One line per dinner, so the copy kept of this summary can lose the
+            # note exactly once the dinner is over (scrub_morning_summaries).
+            note = (f" — {note_on_one_line(d['dietary_notes'])}"
+                    if (d["dietary_notes"] or "").strip() else "")
             lines.append(f"  {d['guest_name']}, {d['party_size'] or 1}{note}")
         lines.append("")
     if warnings:
@@ -83314,10 +85119,20 @@ def cancel_booking_extra_line(line_id):
     log_audit(conn, "booking_extra_cancelled", target=line["reference_code"],
               details=f"{line['name']} \u00d7 {line['quantity'] or 1}, "
                       f"\u20ac{(line['unit_price'] or 0) * (line['quantity'] or 1):,.2f}")
+    # Nothing is refunded here (refunds are a manual call): what the stay has
+    # now paid over is put on the owner's list, so it is decided, not lost
+    # (27 Nov 2026 -- a Dinner at Gudanes night taken off is the usual case).
+    stay = conn.execute("SELECT * FROM bookings WHERE id = ?", (line["booking_id"],)).fetchone()
+    over = round(float((booking_bill(conn, line["booking_id"]) or {}).get("overpaid") or 0), 2)
+    if stay is not None and over > 0.005:
+        _payment_task(conn, f"Refund to decide: {stay['guest_name']} ({stay['reference_code']})",
+                      f"{line['name']} was taken off the bill. {money(over)} is now paid over it. "
+                      "Nothing has been refunded: whether any is, is your call.")
     conn.commit()
     conn.close()
     flash(f"{line['name']} taken off the bill, and anything it used put back "
-          "into stock.", "success")
+          "into stock." + (f" {money(over)} is now paid over the bill: a refund to decide, on your list. "
+                           "Nothing was refunded." if over > 0.005 else ""), "success")
     return redirect(request.referrer or url_for("admin_bookings"))
 
 
@@ -101602,8 +103417,15 @@ def channel_checkin(token):
     conn.close()
     details = {k: stay[k] for k in ("guest_address", "guest_city", "guest_postcode", "guest_country")}
     details["guest_country"] = house_country_name(details["guest_country"])
+    # DINNER AT GUDANES for a Booking.com guest (27 Nov 2026, §2.7): they
+    # cannot add it on Booking.com, so once they have checked in (the house
+    # then has their name and address) this page offers the dinner nights of
+    # their stay, booked and paid through the restaurant's own page.
+    conn = get_db()
+    ota_dinners = ota_dinner_letter(conn, stay) if stay["checkin_done_at"] else {"booked": [], "more": []}
+    conn.close()
     return render_template("channel_checkin.html", stay=stay, form=form, token=token,
-                           stay_details=details,
+                           stay_details=details, ota_dinners=ota_dinners,
                            suggested_nationality=nationality_for_country(details["guest_country"]))
 
 
@@ -116199,6 +118021,130 @@ HEALTH_NOTE_FIELDS = [
 ]
 
 
+def note_on_one_line(text):
+    """A guest's note on a single line, its own lines joined by '; '.
+
+    A letter that quotes a note writes it this way, so the end of the note is
+    the end of the line and the copy kept of the letter can lose exactly the
+    note, and nothing after it, once the booking is over.
+    """
+    return "; ".join(part.strip() for part in (text or "").splitlines() if part.strip())
+
+
+# What a kept copy says where a dinner's note was. Neither begins the way the
+# note's own line does, so a copy that has been through is not picked up again.
+LETTER_NOTE_KEPT_AS = "Dietary notes — deleted once the dinner was over."
+SUMMARY_NOTE_KEPT_AS = " — a dietary note, deleted once the dinner was over"
+_LETTER_DIETARY_LINE = re.compile(r"Dietary notes: [^\n]*")
+
+
+def without_dinner_note(body, note=None):
+    """A dinner letter's kept copy, without the note it quoted.
+
+    The note as it is on the booking comes out first, written either way, which
+    catches a note of several lines written before letters put it on one. Then
+    whatever is left on a "Dietary notes:" line, which catches a note the guest
+    changed after the letter went.
+    """
+    if not body:
+        return body
+    for said in {(note or "").strip(), note_on_one_line(note)} - {""}:
+        body = body.replace(f"Dietary notes: {said}", LETTER_NOTE_KEPT_AS)
+    return _LETTER_DIETARY_LINE.sub(LETTER_NOTE_KEPT_AS, body)
+
+
+def without_summary_notes(body, notes=()):
+    """A morning summary's kept copy, with each dinner's note taken off its line.
+
+    The notes of that day's dinners come out first, written either way. Then
+    every line in the Dinner list is cut at its note, and a line inside the list
+    that does not start like a dinner (the rest of a note written over several,
+    before summaries put it on one) goes with the note it belonged to.
+    """
+    if not body:
+        return body
+    for note in notes:
+        for said in {(note or "").strip(), note_on_one_line(note)} - {""}:
+            body = body.replace(f" — {said}", SUMMARY_NOTE_KEPT_AS)
+    out, in_dinner = [], False
+    for line in body.split("\n"):
+        if line.startswith("Dinner ("):
+            in_dinner = True
+        elif in_dinner and not line.strip():
+            in_dinner = False
+        elif in_dinner:
+            if not line.startswith("  "):
+                continue
+            who, sep, _note = line.partition(" — ")
+            line = who + (SUMMARY_NOTE_KEPT_AS if sep else "")
+        out.append(line)
+    return "\n".join(out)
+
+
+def scrub_dinner_letters(conn, today):
+    """Take a dinner's note out of the copies kept of its letters, once it is over.
+
+    The guest's letters about a table (received, confirmed, declined, cancelled)
+    quote their note, which is right while the dinner is coming. But a copy is
+    kept two years, in their correspondence and, for a held letter, the outbox,
+    and the privacy notice says the note goes when the booking is over. Run by
+    purge_health_notes BEFORE it clears the notes, while they can still be
+    matched word for word.
+    """
+    iso = today.isoformat()
+    changed = 0
+    for table, rows in (
+            ("guest_messages", conn.execute(
+                """SELECT gm.id, gm.body, rb.dietary_notes FROM guest_messages gm
+                     JOIN restaurant_bookings rb ON rb.id = gm.about_id
+                    WHERE gm.about_category = 'restaurant' AND rb.dinner_date < ?
+                      AND gm.body LIKE '%Dietary notes: %'""", (iso,)).fetchall()),
+            ("email_outbox", conn.execute(
+                """SELECT eo.id, eo.body, rb.dietary_notes FROM email_outbox eo
+                     JOIN guest_messages gm ON gm.outbox_id = eo.id
+                     JOIN restaurant_bookings rb ON rb.id = gm.about_id
+                    WHERE gm.about_category = 'restaurant' AND rb.dinner_date < ?
+                      AND eo.body LIKE '%Dietary notes: %'""", (iso,)).fetchall())):
+        for r in rows:
+            body = without_dinner_note(r["body"], r["dietary_notes"])
+            if body != r["body"]:
+                conn.execute(f"UPDATE {table} SET body = ? WHERE id = ?", (body, r["id"]))
+                changed += 1
+    return changed
+
+
+def scrub_morning_summaries(conn, today):
+    """Take the dinners' notes out of the copies kept of earlier mornings' summaries.
+
+    The morning summary quotes each dinner's note, which is the point of it on
+    the day. Its copy is kept two years in the mail log (and the outbox, if it
+    could not go), so every summary from a day before today loses them. Run by
+    purge_health_notes before it clears the notes.
+    """
+    changed = 0
+    rows = conn.execute(
+        """SELECT 'mail_log' AS tbl, id, body, created_at FROM mail_log
+            WHERE template_key = 'code:run_morning_digest_job' AND body LIKE '%Dinner (%'
+           UNION ALL
+           SELECT 'email_outbox', eo.id, eo.body, eo.created_at FROM email_outbox eo
+             JOIN mail_log ml ON ml.outbox_id = eo.id
+            WHERE ml.template_key = 'code:run_morning_digest_job'
+              AND eo.body LIKE '%Dinner (%'""").fetchall()
+    for r in rows:
+        day = house_date(r["created_at"])
+        if not day or day >= today:
+            continue
+        notes = [n["dietary_notes"] for n in conn.execute(
+            "SELECT dietary_notes FROM restaurant_bookings WHERE dinner_date = ? "
+            "AND dietary_notes IS NOT NULL AND TRIM(dietary_notes) != ''",
+            (day.isoformat(),))]
+        body = without_summary_notes(r["body"], notes)
+        if body != r["body"]:
+            conn.execute(f"UPDATE {r['tbl']} SET body = ? WHERE id = ?", (body, r["id"]))
+            changed += 1
+    return changed
+
+
 def purge_health_notes(conn, today=None):
     """Clear dietary and medical notes once the thing they were for has passed.
 
@@ -116212,6 +118158,11 @@ def purge_health_notes(conn, today=None):
     today = today or house_today()
     iso = today.isoformat()
     cleared = {}
+
+    # The copies kept of the letters that quoted a dinner's note, FIRST: they
+    # are matched against the note itself, which the next statement clears.
+    cleared["dinner_letters"] = scrub_dinner_letters(conn, today)
+    cleared["morning_summaries"] = scrub_morning_summaries(conn, today)
 
     n = conn.execute(
         """UPDATE restaurant_bookings SET dietary_notes = NULL
@@ -119962,6 +121913,335 @@ def guest_context_for_emails(conn, addresses):
     return out
 
 
+# A NOTIFICATION WHEN A GUEST REPLIES, AND NOTHING ELSE (owner, 27 Nov 2026).
+# "I don't want all the emails on there, it's not needed" -- of the inbox panel
+# on the owner home, which came off that day -- and "just a notification of
+# guest replies". When an email reaches any inbox the house reads from
+# somebody the app knows as a guest -- a booking that is not over, or an
+# enquiry still open -- the owner hears "[Name] replied" on the bell and the
+# phone, once for that email however many inboxes it reached. Nobody else: a
+# newsletter, a shop, a bank, a supplier, the press or a stranger writing to
+# reservations@ is not a guest the app knows, so nothing happens at all.
+GUEST_REPLY_SWITCH = "automation_guest_reply_notice_enabled"
+# The moment from which mail counts. Set by the first scan that runs with the
+# switch on, and moved on by every scan while it is off: the fortnight of mail
+# already in the inboxes the day this went live is never announced in one go,
+# and nor is what arrived while the switch was off.
+GUEST_REPLY_SINCE_KEY = "guest_reply_notice_since"
+# How long an email is remembered as announced, at least: always a month
+# longer than Inbox flags reads back, so an email still inside the scan's
+# window is never announced twice.
+GUEST_REPLY_KEEP_DAYS = 120
+# Mail that is never a guest replying, whoever sent it: the house's own, mail
+# between its own inboxes, a mailing, and an automatic answer (out of office).
+GUEST_REPLY_NEVER = ("own", "internal", "mailing", "machine")
+
+
+def _when_words(first, last=None, today=None):
+    """When something is, in a few words: "5 Dec", "5–9 Dec", "30 Nov–2 Dec",
+    with the year after it when that is not this year ("12–14 Sep 2027")."""
+    a, d = parse_date(first), parse_date(last)
+    if not a:
+        return ""
+    end = d if d and d > a else a
+    words = stay_span_short(first, last) if end != a else f"{a.day} {a:%b}"
+    if end.year != (today or house_today()).year:
+        words += f" {end.year}"
+    return words
+
+
+def _month_words(day):
+    """A month and its year, for an enquiry about a month: "Sep 2027"."""
+    d = parse_date(day)
+    return f"{d:%b %Y}" if d else ""
+
+
+def guests_with_something_on(conn, addresses, today=None):
+    """{address: {"name", "what"}} for those of `addresses` the app knows as a
+    guest with something not yet over -- a stay, a retreat or atelier place,
+    an event, a table, a Booking.com stay -- or with an enquiry or a place on a
+    waiting list still open. "what" is what they are booked for and when, in a
+    few words ("Noël at Gudanes, 5–9 Dec", "Wedding enquiry, Sep 2027"); where
+    an address has several, a booking comes before an enquiry, then the
+    soonest. "name" is what the app calls them, or "" where it has none.
+
+    Everybody else is left out, and that is the point: this is the whole test
+    for whether an email is a guest's reply worth a notification. A finished
+    stay, a cancelled or declined booking, an enquiry for a date gone by, one
+    nobody has touched in a year, and a waiting list for nights gone by are
+    not something on. One question per table for every address together."""
+    wanted = sorted({(a or "").strip().lower() for a in addresses if a and "@" in a})
+    if not wanted:
+        return {}
+    wanted_set = set(wanted)
+    today = today or house_today()
+    today_iso = today.isoformat()
+    year_ago = (today - timedelta(days=365)).isoformat()
+    found = {}      # address -> [(order, name, what)]
+
+    def add(address, booked, start, kind_order, name, what):
+        address = (address or "").strip().lower()
+        if address not in wanted_set or not what:
+            return
+        # A name column that holds the address (the booking page's waiting
+        # list has no name field) is not a name.
+        name = (name or "").strip()
+        found.setdefault(address, []).append(
+            ((0 if booked else 1, start or "9999-12-31", kind_order),
+             "" if "@" in name else name, what))
+
+    def ask(sql, chunk, before=()):
+        marks = ",".join("?" * len(chunk))
+        try:
+            return conn.execute(sql.replace("{marks}", marks), (*before, *chunk)).fetchall()
+        except sqlite3.OperationalError:
+            return []       # a table or column this database does not have yet
+
+    def occasion_over(first, last):
+        try:
+            row = conn.execute(
+                """SELECT name FROM stay_occasions WHERE status = 'live'
+                     AND first_night < ? AND last_night >= ? ORDER BY first_night LIMIT 1""",
+                (last, first)).fetchone()
+        except sqlite3.OperationalError:
+            return None
+        return row["name"] if row else None
+
+    def kind_of(event_type):
+        words = event_type_words(event_type)
+        return words[:1].upper() + words[1:]
+
+    for i in range(0, len(wanted), 300):
+        chunk = wanted[i:i + 300]
+        # A stay: its guest, whoever booked it for them, and its second contact.
+        # Named by the occasion its nights are sold under, or by the room.
+        for col, name_col in (("guest_email", "guest_name"), ("booked_by_email", "booked_by_name"),
+                              ("second_contact_email", "second_contact_name")):
+            for r in ask(
+                    f"""SELECT b.{col} AS address, b.{name_col} AS name, b.arrival_date,
+                               b.departure_date, rooms.name AS room_name
+                          FROM bookings b LEFT JOIN rooms ON rooms.id = b.room_id
+                         WHERE b.status IN ('pending', 'confirmed') AND b.departure_date >= ?
+                           AND b.checked_out_at IS NULL
+                           AND LOWER(TRIM(b.{col})) IN ({{marks}})""", chunk, (today_iso,)):
+                label = (occasion_over(r["arrival_date"], r["departure_date"])
+                         or r["room_name"] or "A stay")
+                add(r["address"], True, r["arrival_date"], 2, r["name"],
+                    f"{label}, {_when_words(r['arrival_date'], r['departure_date'], today)}")
+        # A retreat or atelier place, and the organiser of a private stay.
+        for r in ask("""SELECT wb.guest_email AS address, wb.guest_name, ws.start_date, ws.end_date, w.title
+                          FROM workshop_bookings wb
+                          JOIN workshop_sessions ws ON ws.id = wb.session_id
+                          JOIN workshops w ON w.id = ws.workshop_id
+                         WHERE wb.status IN ('pending', 'confirmed') AND ws.end_date >= ?
+                           AND LOWER(TRIM(wb.guest_email)) IN ({marks})""", chunk, (today_iso,)):
+            add(r["address"], True, r["start_date"], 1, r["guest_name"],
+                f"{r['title']}, {_when_words(r['start_date'], r['end_date'], today)}")
+        for r in ask("""SELECT w.organiser_email AS address, w.title,
+                               MIN(ws.start_date) AS start_date, MAX(ws.end_date) AS end_date
+                          FROM workshops w JOIN workshop_sessions ws ON ws.workshop_id = w.id
+                         WHERE ws.end_date >= ? AND LOWER(TRIM(w.organiser_email)) IN ({marks})
+                         GROUP BY w.id""", chunk, (today_iso,)):
+            add(r["address"], True, r["start_date"], 1, None,
+                f"{r['title']}, {_when_words(r['start_date'], r['end_date'], today)}")
+        # An event: booked until its day is over, an enquiry while it is open.
+        for r in ask("""SELECT contact_email AS address, contact_name, event_type, status,
+                               preferred_date, end_date, created_at
+                          FROM event_inquiries
+                         WHERE status IN ('new', 'contacted', 'quoted', 'confirmed')
+                           AND LOWER(TRIM(contact_email)) IN ({marks})""", chunk):
+            last = r["end_date"] or r["preferred_date"]
+            if last and last < today_iso:
+                continue
+            if r["status"] == "confirmed":
+                when = _when_words(r["preferred_date"], r["end_date"], today)
+                add(r["address"], True, r["preferred_date"], 0, r["contact_name"],
+                    f"{kind_of(r['event_type'])}, {when}" if when else kind_of(r["event_type"]))
+                continue
+            if not last and (r["created_at"] or "") < year_ago:
+                continue
+            month = _month_words(r["preferred_date"])
+            add(r["address"], False, r["preferred_date"], 0, r["contact_name"],
+                f"{kind_of(r['event_type'])} enquiry" + (f", {month}" if month else ""))
+        # A table at the restaurant.
+        for r in ask("""SELECT guest_email AS address, guest_name, dinner_date, party_size
+                          FROM restaurant_bookings
+                         WHERE status IN ('pending', 'confirmed') AND dinner_date >= ?
+                           AND LOWER(TRIM(guest_email)) IN ({marks})""", chunk, (today_iso,)):
+            add(r["address"], True, r["dinner_date"], 3, r["guest_name"],
+                ("Dinner for %s, " % r["party_size"] if r["party_size"] else "Dinner, ")
+                + _when_words(r["dinner_date"], None, today))
+        # A Booking.com stay whose guest has given the house their own address.
+        for r in ask("""SELECT o.guest_email AS address, o.guest_name, o.arrival_date, o.departure_date,
+                               COALESCE(rooms.name, o.room_label) AS room_name
+                          FROM ota_reservations o LEFT JOIN rooms ON rooms.id = o.room_id
+                         WHERE o.status = 'confirmed' AND o.departure_date >= ?
+                           AND LOWER(TRIM(o.guest_email)) IN ({marks})""", chunk, (today_iso,)):
+            add(r["address"], True, r["arrival_date"], 2, r["guest_name"],
+                f"{r['room_name'] or 'A room'} through Booking.com, "
+                f"{_when_words(r['arrival_date'], r['departure_date'], today)}")
+        # An enquiry from Contact, or a place on a waiting list, still open.
+        for r in ask("""SELECT email AS address, name, desired_arrival, desired_departure,
+                               source, created_at
+                          FROM waitlist_entries
+                         WHERE status IN ('open', 'enquiry', 'contacted') AND spam_at IS NULL
+                           AND LOWER(TRIM(email)) IN ({marks})""", chunk):
+            last = r["desired_departure"] or r["desired_arrival"]
+            if (last and last < today_iso) or (not last and (r["created_at"] or "") < year_ago):
+                continue
+            if r["source"] == "contact":
+                month = _month_words(r["desired_arrival"])
+                what = "Enquiry" + (f", {month}" if month else "")
+            else:
+                when = _when_words(r["desired_arrival"], r["desired_departure"], today)
+                what = "Waiting list for a room" + (f", {when}" if when else "")
+            add(r["address"], False, r["desired_arrival"], 2, r["name"], what)
+        for r in ask("""SELECT email AS address, name, desired_date, created_at FROM restaurant_waitlist
+                         WHERE status IN ('open', 'contacted')
+                           AND LOWER(TRIM(email)) IN ({marks})""", chunk):
+            day = r["desired_date"]
+            if (day and day < today_iso) or (not day and (r["created_at"] or "") < year_ago):
+                continue
+            when = _when_words(day, None, today)
+            add(r["address"], False, day, 3, r["name"],
+                "Waiting list for dinner" + (f", {when}" if when else ""))
+        for r in ask("""SELECT ww.email AS address, ww.name, ws.start_date, ws.end_date, w.title
+                          FROM workshop_waitlist ww
+                          JOIN workshop_sessions ws ON ws.id = ww.session_id
+                          JOIN workshops w ON w.id = ws.workshop_id
+                         WHERE ww.status IN ('open', 'contacted') AND ws.end_date >= ?
+                           AND LOWER(TRIM(ww.email)) IN ({marks})""", chunk, (today_iso,)):
+            add(r["address"], False, r["start_date"], 1, r["name"],
+                f"Waiting list for {r['title']}, "
+                f"{_when_words(r['start_date'], r['end_date'], today)}")
+
+    out = {}
+    for address, rows in found.items():
+        rows.sort(key=lambda r: r[0])
+        out[address] = {"name": rows[0][1] or next((n for _o, n, _w in rows if n), ""),
+                        "what": rows[0][2]}
+    return out
+
+
+def guest_reply_key(message_id):
+    """An email's Message-ID as the notices are keyed: the same in every inbox."""
+    return (message_id or "").strip().lower()
+
+
+def claim_guest_reply(conn, key, source, now_iso):
+    """Mark an email announced. True only for the call that did it: the scan
+    and the Booking.com reader can both meet the same email. Not committed:
+    the notification's own write commits it with the notification."""
+    cur = conn.execute("INSERT OR IGNORE INTO guest_reply_notices (message_key, source, notified_at) "
+                       "VALUES (?, ?, ?)", (key, source, now_iso))
+    return cur.rowcount == 1
+
+
+def notify_guest_replies(conn, emails, now=None):
+    """Tell the owner when a guest the app knows has written: "[Name] replied",
+    what they are booked for and when, and the email's subject, opening the
+    email in Outlook. One notification an email (GUEST_REPLY_SWITCH says why).
+
+    `emails` is what the inbox scan read, one entry an email however many
+    inboxes it reached, keyed by guest_reply_key: {"from", "from_name",
+    "subject", "received_at", "web_link", "never"}, where "never" is why the
+    mail is not a person writing ("mailing", "own" ...) or None. Returns how
+    many the owner was told of."""
+    now = now or datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (GUEST_REPLY_SINCE_KEY,)).fetchone()
+    since = parse_datetime_iso(row["value"]) if row and row["value"] else None
+    settings = get_automation_settings(conn)
+    if settings.get(GUEST_REPLY_SWITCH) != "1" or not since:
+        # Off, or the first scan since this came in: what is in the inboxes
+        # now is history. From here on, new mail only.
+        conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                     (GUEST_REPLY_SINCE_KEY, now_iso))
+        conn.commit()
+        return 0
+    owner = conn.execute("SELECT id FROM users WHERE role = 'owner' ORDER BY id LIMIT 1").fetchone()
+    if not owner:
+        return 0
+    try:
+        read_back = int(settings.get("automation_email_scan_lookback_days") or 14)
+    except (TypeError, ValueError):
+        read_back = 14
+    keep_days = max(GUEST_REPLY_KEEP_DAYS, read_back + 30)
+    conn.execute("DELETE FROM guest_reply_notices WHERE notified_at < ?",
+                 ((now - timedelta(days=keep_days)).isoformat(),))
+    conn.commit()
+    fresh = []
+    for key, e in emails.items():
+        got = parse_datetime_iso(e.get("received_at"))
+        if key and got and got >= since and e.get("never") not in GUEST_REPLY_NEVER:
+            fresh.append((got, key, e))
+    if not fresh:
+        return 0
+    known = guests_with_something_on(conn, [e.get("from") for _g, _k, e in fresh])
+    told = 0
+    for _got, key, e in sorted(fresh, key=lambda f: f[0]):
+        guest = known.get((e.get("from") or "").strip().lower())
+        if not guest or not claim_guest_reply(conn, key, "inbox", now_iso):
+            continue
+        name = guest["name"] or (e.get("from_name") or "").strip() or e.get("from")
+        subject = " ".join((e.get("subject") or "").split()) or "(no subject)"
+        send_notification(conn, owner["id"], "guest_reply", f"{name} replied",
+                          body=f"{guest['what']} · {subject[:160]}",
+                          link=e.get("web_link") or None)
+        told += 1
+    conn.commit()
+    return told
+
+
+def notify_booking_com_guest_reply(conn, mail_id, today=None):
+    """The owner's "[Name] replied" for a guest's message through Booking.com:
+    the stay it is about and the first words of what they wrote, opening the
+    stay's page. Not for a stay that is over or cancelled, not while the
+    switch is off, and never for an email already announced. The owner's id
+    when told, else None."""
+    if get_automation_settings(conn).get(GUEST_REPLY_SWITCH) != "1":
+        return None
+    owner = conn.execute("SELECT id FROM users WHERE role = 'owner' ORDER BY id LIMIT 1").fetchone()
+    row = conn.execute("SELECT * FROM ota_mail WHERE id = ?", (mail_id,)).fetchone()
+    if not owner or not row or row["kind"] != "message" or not row["from_booking_com"]:
+        return None
+    # A message is tied to its stay later, by name_booking_com_stays_from_messages;
+    # here it is found by the reservation number the message carries.
+    stay_sql = ("SELECT o.*, COALESCE(rooms.name, o.room_label) AS room_name FROM ota_reservations o "
+                "LEFT JOIN rooms ON rooms.id = o.room_id WHERE ")
+    stay = None
+    if row["ota_reservation_id"]:
+        stay = conn.execute(stay_sql + "o.id = ?", (row["ota_reservation_id"],)).fetchone()
+    elif (row["reservation_number"] or "").strip():
+        stay = conn.execute(stay_sql + "o.channel = 'booking.com' AND o.reservation_number = ?",
+                            (row["reservation_number"].strip(),)).fetchone()
+    today = today or house_today()
+    arrival = (stay["arrival_date"] if stay else None) or row["arrival_date"]
+    departure = (stay["departure_date"] if stay else None) or row["departure_date"]
+    if (stay and stay["status"] == "cancelled") or (departure and departure < today.isoformat()):
+        return None
+    key = guest_reply_key(row["source_id"]) or f"ota:{mail_id}"
+    if not claim_guest_reply(conn, key, "booking.com", datetime.now(timezone.utc).isoformat()):
+        return None
+    name = ((stay["guest_name"] if stay else None) or row["guest_name"] or "").strip() \
+        or "A Booking.com guest"
+    room = (stay["room_name"] if stay else None) or row["room_label"]
+    when = _when_words(arrival, departure, today)
+    what = ", ".join(x for x in ((f"{room} through Booking.com" if room else "Booking.com"), when) if x)
+    # Booking.com's subject is "We received this message from ..." every time:
+    # what the guest wrote says more.
+    said = asked_in_a_few_words(row["message_text"] or row["subject"], row["subject"], words=14)
+    if stay:
+        link = (url_for("channel_stay_page", reservation_id=stay["id"]) if has_request_context()
+                else f"/admin/channel-stays/{stay['id']}")
+    else:
+        link = _ota_page_link(mail_id)
+    send_notification(conn, owner["id"], "guest_reply", f"{name} replied",
+                      body=f"{what} · {said}", link=link)
+    return owner["id"]
+
+
 def escalate_stale_flags(conn):
     """Nudge the owner when a flagged email has sat unresolved past its
     inbox's threshold.
@@ -121838,8 +124118,14 @@ def dinner_offer_evenings(conn, booking, today=None):
         (booking["id"],))}
     open_days = restaurant_open_weekdays(conn)
     party = booking["party_size"] or 1
+    # An occasion's dinner nights are offered as Dinner at Gudanes, priced
+    # with the stay; La Table's own card keeps to the other evenings. And no
+    # evening a retreat already feeds them.
+    occasion_nights = {r["dinner_date"] for r in occasion_dinner_nights_ahead(conn, arrival)}
+    fed = retreat_nights_for(conn, booking["id"], booking["guest_email"])
     return [d for d in stay_days(arrival, departure, earliest=earliest)
-            if d.isoformat() not in taken
+            if d.isoformat() not in taken and d.isoformat() not in occasion_nights
+            and d.isoformat() not in fed
             and (open_days is None or d.weekday() in open_days)
             and restaurant_remaining_capacity(conn, d.isoformat()) >= party]
 
@@ -121869,11 +124155,31 @@ def extras_offers_for_stay(conn, booking, today=None):
         out.append(_extra_offer_card(extra, external_url(
             "manage_booking", manage_token=token, add=extra["id"],
             _anchor=f"add-{extra['id']}")))
+    # DINNER AT GUDANES (27 Nov 2026, §2.6): the stay's dinner nights still to
+    # add, whether or not La Table is open -- an occasion opens its own nights.
+    # Its card goes before La Table's, which keeps the other evenings.
+    if booking["status"] in ("pending", "confirmed"):
+        more = stay_dinner_letter(conn, booking, today=day)["more"]
+        if more:
+            out.append(_occasion_dinner_offer_card(
+                more, external_url("manage_booking", manage_token=token, _anchor="dinner-at-gudanes")))
     if dinner_offer_evenings(conn, booking, day):
         out.append(_dinner_offer_card(
             get_restaurant_settings(conn),
             external_url("manage_booking", manage_token=token, _anchor="dinner")))
     return out
+
+
+def _occasion_dinner_offer_card(nights, url):
+    """The letter's card for Dinner at Gudanes: the nights, the time and the
+    price, and the stay's own page to add it (where it is paid by card)."""
+    first = nights[0]
+    same = len({(n["price"], n["time"]) for n in nights}) == 1
+    return {"kind": "dinner_at_gudanes", "extra_id": None, "name": first["title"],
+            "description": (dinner_nights_words([n["date"] for n in nights])
+                            + (f", {first['time_words']}" if same and first["time_words"] else "")),
+            "price": first["price_words"] if same else "",
+            "notice": "Up to the day before.", "button": "Add dinner", "url": url}
 
 
 def extras_offer_sample(conn, manage_url):
@@ -123652,6 +125958,9 @@ def run_email_inbox_scan_job(conn):
     verdicts = {}
     closed = {}
     raised_new = []
+    # Every email read, once each however many inboxes it reached, for the
+    # owner's notification when a guest writes (notify_guest_replies).
+    guest_mail = {}
 
     def close(flag_id, reason):
         close_flag_by_app(conn, flag_id, reason, now_iso)
@@ -123797,6 +126106,18 @@ def run_email_inbox_scan_job(conn):
                 msg["_headers_read"] = True
         _GRAPH_ANSWER.error = None
         headers_asked += asked_here
+        # Kept by the email's own Message-ID, the same in every inbox, so one
+        # email in three inboxes is one email to tell the owner of.
+        for msg in inbox_messages:
+            if not msg.get("id") or not msg.get("receivedDateTime"):
+                continue
+            key = guest_reply_key(msg.get("internetMessageId")) or f"graph:{msg['id']}"
+            sender = (msg.get("from") or {}).get("emailAddress") or {}
+            guest_mail.setdefault(key, {
+                "from": sender.get("address") or "", "from_name": sender.get("name") or "",
+                "subject": msg.get("subject") or "", "received_at": msg.get("receivedDateTime"),
+                "web_link": msg.get("webLink"),
+                "never": not_waiting_for_a_reply(msg, sender.get("address") or "", never, house)})
         for msg in inbox_messages:
             message_id = msg.get("id")
             received_at = msg.get("receivedDateTime")
@@ -124029,6 +126350,8 @@ def run_email_inbox_scan_job(conn):
                 body=f"From {sender or 'unknown sender'}", link="/admin/inbox-flags",
             )
     conn.commit()
+    # A guest the app knows has written: the owner hears it, once an email.
+    guest_told = notify_guest_replies(conn, guest_mail, now=now)
     # Open flags from before these rules, and older than the window, read
     # again a few at a time.
     rechecked = recheck_older_flags(conn, token, never, house, closed, now_iso)
@@ -124052,6 +126375,8 @@ def run_email_inbox_scan_job(conn):
                          "since": sent_since})))
     conn.commit()
     tail = f", {escalated} escalated" if escalated else ""
+    if guest_told:
+        tail += f"; told you of {guest_told} guest repl{'y' if guest_told == 1 else 'ies'}"
     if closed:
         tail += "; " + inbox_closed_words(closed)
     if replies.sent_as:
@@ -125315,8 +127640,11 @@ def _ota_notify(conn, mail_id, got, received_at):
     when = parse_datetime_iso(received_at)
     if when and datetime.now(timezone.utc) - when > timedelta(days=2):
         return
+    # A guest's message is a guest replying, for the owner (owner, 27 Nov
+    # 2026). Told once: the owner does not hear it a second time below.
+    told = notify_booking_com_guest_reply(conn, mail_id) if got["kind"] == "message" else None
     who = booking_com_handler(conn)
-    if not who:
+    if not who or (told and told == who):
         return
     guest = got.get("guest_name") or "A guest"
     stay = ""
@@ -129509,6 +131837,18 @@ AUTOMATION_SWITCHES = [
      "fields": (("automation_email_unanswered_hours", "Unanswered after (hours)",
                  "hours"),
                 ("automation_email_scan_lookback_days", "Look back (days)", "days_back")),
+     "needs": "graph"},
+    {"key": "automation_guest_reply_notice_enabled", "job": None,
+     "runs": ("notify_guest_replies", "notify_booking_com_guest_reply"), "group": "house",
+     "reaches": ("you",),
+     "label": "Tell me when a guest replies",
+     "what": "When an email reaches any of the house's inboxes from somebody with a booking "
+             "that is not over — a stay, a retreat place, an event, a table — or an enquiry "
+             "still open, tells you once: their name, what they are booked for and when, and "
+             "the subject, opening the email in Outlook. A Booking.com guest's message too, "
+             "opening their stay. Nobody else: not a shop, a bank, a newsletter, a supplier "
+             "or a stranger. One email reaching three inboxes is one notification. Read by "
+             "Inbox flags and the Booking.com reader, so it needs those on.",
      "needs": "graph"},
     {"key": "automation_owner_diary_enabled", "job": "owner_diary",
      "runs": ("run_owner_diary_job",), "group": "house", "reaches": (),
@@ -135038,8 +137378,9 @@ ASSISTANT_TOOLS = [
         "name": "arrivals",
         "description": (
             "Who is arriving and leaving on a given day, with the room, the "
-            "party size, what time they said they would get here, anything "
-            "they cannot eat, whether it is their first stay or their sixth, "
+            "party size, what time they said they would get here, whether "
+            "they have a dietary note (never the note itself: health notes "
+            "are not sent here), whether it is their first stay or their sixth, "
             "and anything still missing from the booking. This is what the "
             "breakfast sheet is printed from. Defaults to today."),
         "input_schema": {
@@ -135061,7 +137402,8 @@ ASSISTANT_TOOLS = [
         "name": "find_guest",
         "description": (
             "Look a person up by name or email: how many times they have "
-            "stayed, when they were last here, what they cannot eat, how they "
+            "stayed, when they were last here, whether they keep a dietary note "
+            "(never the note itself: health notes are not sent here), how they "
             "like to arrive, and any standing note about them. A stay still to "
             "come is reported as booked, never as a stay made. Use this before "
             "saying anything about a particular guest."),
@@ -135077,10 +137419,13 @@ ASSISTANT_TOOLS = [
         "name": "kitchen",
         "description": (
             "What the kitchen needs for one day's service: how many are "
-            "eating, and every single person with something they cannot eat, "
-            "gathered from the stays, the table reservations and the atelier "
-            "places alike. Use this for any question about dinner, covers, "
-            "allergies or what the chef needs to know. Defaults to today."),
+            "eating, and who has something they cannot eat, gathered from the "
+            "stays, the table reservations and the atelier places alike. It "
+            "names them and links the kitchen's list, where the notes are read: "
+            "the notes themselves are health data and are never sent here, so "
+            "point to the list rather than guessing what they say. Use this for "
+            "any question about dinner, covers, allergies or what the chef "
+            "needs to know. Defaults to today."),
         "input_schema": {
             "type": "object",
             "properties": {"day": {
@@ -135231,10 +137576,12 @@ ASSISTANT_SYSTEM = (
     "1. LOOK BEFORE YOU ANSWER. You have tools that read the house's real "
     "figures. Use them rather than guessing, and never state a number, a name "
     "or a date you have not read from a tool in this conversation.\n"
-    "1a. A DIETARY NOTE AND A CAUTION ARE REPEATED WORD FOR WORD, never "
-    "paraphrased and never left out of a summary. Somebody could be allergic, "
-    "and a standing instruction about a guest exists because the house meant "
-    "it.\n"
+    "1a. A CAUTION IS REPEATED WORD FOR WORD, never paraphrased and never "
+    "left out of a summary: a standing instruction about a guest exists "
+    "because the house meant it. A DIETARY NOTE IS NEVER SENT TO YOU, because "
+    "it is health data. When a tool says somebody has one, say so every time, "
+    "never guess what it says, and send the owner to the kitchen's list to "
+    "read it. Somebody could be allergic.\n"
     "2. Be brief. This is read standing up with a coffee. Short sentences, no "
     "headings, no bullet lists unless you are genuinely listing things, and "
     "no restating the question back.\n"
@@ -135336,6 +137683,37 @@ def assistant_messages_for_model(rows):
     return merged
 
 
+# What the assistant is told in place of a guest's dietary note. Its answers go
+# to Anthropic, and the privacy notice says nothing about anybody's health does.
+ASSISTANT_NOTE_KEPT = ("has a dietary note (on the kitchen's list; health notes "
+                       "are not sent to the assistant)")
+ASSISTANT_ANSWER_TAKEN_OUT = (
+    "This answer held guests' dietary notes and has been taken out: health notes "
+    "are not sent to the assistant. Ask again for one without them.")
+
+
+def scrub_assistant_health_answers(conn):
+    """Take the dietary notes out of the assistant's earlier answers. At startup.
+
+    Its kitchen, arrivals and guest lookups used to quote what people cannot
+    eat, and every answer is kept with the conversation and sent back with each
+    new thing the owner says, so an old one went to Anthropic again every turn.
+    Such an answer is replaced whole: a lookup is cheap to ask again, and
+    cutting a note out of free text is how a piece of one gets left behind.
+    Finds nothing once the old answers are through it.
+    """
+    n = conn.execute(
+        """UPDATE assistant_messages SET content = ?
+            WHERE role = 'tool' AND content IS NOT NULL
+              AND ((tool_name IN ('arrivals', 'find_guest') AND content LIKE '%CANNOT EAT:%')
+                OR (tool_name = 'kitchen' AND content LIKE '% cover(s)): %'
+                    AND content NOT LIKE '% cover(s)): has a note%'))""",
+        (ASSISTANT_ANSWER_TAKEN_OUT,)).rowcount
+    if n:
+        conn.commit()
+    return n
+
+
 def assistant_read_tool(conn, user, name, args):
     """Run one of the tools that only looks. Returns text for the model.
 
@@ -135393,7 +137771,7 @@ def assistant_read_tool(conn, user, name, args):
             if r["arrival_time"]:
                 bits.append(f"at {r['arrival_time']}")
             if r["dietary"]:
-                bits.append(f"CANNOT EAT: {r['dietary']}")
+                bits.append(ASSISTANT_NOTE_KEPT)
             if r["requests"]:
                 bits.append(f"asked: {r['requests']}")
             if r["extras"]:
@@ -135468,7 +137846,7 @@ def assistant_read_tool(conn, user, name, args):
                             + (f", {len(split['ahead'])} stays booked in all"
                                if len(split["ahead"]) > 1 else ""))
             if (g["dietary_notes"] or "").strip():
-                bits.append(f"CANNOT EAT: {g['dietary_notes'].strip()}")
+                bits.append(ASSISTANT_NOTE_KEPT)
             if (g["usual_arrival_time"] or "").strip():
                 bits.append(f"usually arrives {g['usual_arrival_time'].strip()}")
             if (g["caution"] or "").strip():
@@ -135486,15 +137864,19 @@ def assistant_read_tool(conn, user, name, args):
         lines = [f"{day.isoformat()}: {sheet['covers']} cover(s). "
                  f"{sheet['with_notes']} person(s) with something they cannot "
                  f"eat, covering {sheet['flagged_covers']} of them."]
+        # NAMED, NEVER SENT. The kitchen's list gives each note in the words
+        # the guest used, because somebody was going to be served the thing
+        # they told us about. This answer goes to Anthropic, and the privacy
+        # notice says nothing about anybody's health does, so it says who has
+        # a note and where to read it, and the words stay on the list.
         for person in sheet["people"]:
             if not person["notes"]:
                 continue
-            # VERBATIM. The whole reason this sheet exists is that somebody
-            # was going to be served the thing they told us about, so the
-            # words they used are the words that come back.
             lines.append(f"{person['who']} ({person['kind']}, "
-                         f"{person['where']}, {person['covers']} cover(s)): "
-                         + " | ".join(person["notes"]))
+                         f"{person['where']}, {person['covers']} cover(s)): has a note")
+        if sheet["with_notes"]:
+            lines.append("What the notes say is on the kitchen's list: "
+                         + external_url("kitchen_dietary", date=day.isoformat()))
         if sheet["silent"]:
             # Said out loud, because "nobody has a note" and "nobody was asked"
             # look identical on a screen and only one of them is safe.

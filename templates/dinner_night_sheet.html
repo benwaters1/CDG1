@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Dinner · {{ day|date_short }}{% endblock %}
+{% block content %}
+{#- ONE DINNER NIGHT, FOR THE KITCHEN AND THE FLOOR (owner's brief, 27 Nov 2026: "the kitchen sees the night: covers by
+    course, dietary notes against the menu's allergens, arrival times"). Every table booked for the night -- a stay's
+    dinner or a diner from outside -- with the room, the covers, whether it is paid, and what each said they cannot
+    eat read against the menu by the till's own reader (parse_dietary), so the till and this sheet never disagree.
+    A pending table is a stay not yet confirmed: listed, not counted. Prints on one page. -#}
+{%- set o = s.occ %}
+<div class="page-head no-print">
+  <h1>Dinner · {{ day|date_short }}</h1>
+  <button type="button" class="btn-mini" onclick="window.print()">Print</button>
+  {% if s.view %}<a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=s.view.menu.id, kind='a4', occasion=o['id'] if o else None, night=s.day) }}" target="_blank" rel="noopener">Table menu (A4)</a>{% endif %}
+  <a class="btn-mini" href="{{ url_for('restaurant_tables', date=s.day) }}">Tables</a>
+  <a class="btn-mini" href="{{ url_for('pos_home') }}">Till</a>
+</div>
+<h2 class="print-only">Dinner at Gudanes · {{ day|date_short }}</h2>
+<p style="margin:.25rem 0 1rem">
+  {% if o %}<strong>{{ o['name'] }}</strong>{% if s.time %}, served at {{ s.time }}{% endif %}.{% else %}No occasion serves dinner on this night.{% endif %}
+  <strong>{{ s.covers }}</strong> cover{{ 's' if s.covers != 1 }} booked of {{ s.capacity }}{% if s.pending %}, and {{ s.pending }} waiting on a stay not yet confirmed{% endif %}.
+</p>
+
+{% if s.view %}
+<section class="detail-card" style="margin-bottom:1rem">
+  <h2 class="section-heading">The menu, and what to make</h2>
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Course</th><th scope="col">Dish</th><th scope="col">Covers</th><th scope="col">Allergens</th></tr></thead>
+    <tbody>
+    {% for c in s.view.courses %}
+    <tr><th scope="row">{{ c.course_fr }}</th><td>{{ c.dish_fr }}{% if c.wine_fr %}<br><span class="upload-hint">{{ c.wine_line }}</span>{% endif %}</td><td>{{ s.covers }}</td><td>{{ c.allergens_en|join(', ') or '—' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% elif o %}
+<p class="wo-problem">This night's menu was uploaded as a file, so nothing here can be read against it. Read the notes below against the menu by hand.</p>
+{% endif %}
+
+<section class="detail-card">
+  <h2 class="section-heading">The tables</h2>
+  {% if s.tables %}
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Covers</th><th scope="col">Paid</th><th scope="col">What they said</th><th scope="col">Against the menu</th></tr></thead>
+    <tbody>
+    {% for t in s.tables %}
+    <tr{% if t.status == 'pending' %} style="opacity:.6"{% endif %}>
+      <th scope="row">{{ t.guest_name }}{% if t.status == 'pending' %} <span class="mini-status status-pending">Stay not confirmed</span>{% endif %}</th>
+      <td>{{ t.room or ('Not staying' if not t.staying else '—') }}</td>
+      <td>{{ t.party_size }}</td>
+      <td>{% if t.booking_extra_id %}With the stay{% elif t.payment_status == 'paid' %}Online{% elif t.deposit_amount %}Deposit {{ t.deposit_amount|money }}{% else %}At the table{% endif %}</td>
+      <td>{{ t.dietary_notes or '' }}</td>
+      <td>{% for x in t.clashes %}<span class="wo-problem" style="display:block;margin:0 0 .25rem">{{ x.course }}: {{ x.dish }} ({{ x.why }})</span>{% else %}{% if t.dietary_notes and s.view %}Nothing on the menu clashes.{% endif %}{% endfor %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty-state">Nobody is booked for dinner on this night yet.</p>
+  {% endif %}
+</section>
+<style>
+.print-only{ display:none; }
+@media print{ .no-print, nav, header, .site-header, .staff-header, footer{ display:none !important; } .print-only{ display:block; } .detail-card{ box-shadow:none; border:0; padding:0; } }
+</style>
+{% endblock %}

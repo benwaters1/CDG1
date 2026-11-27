@@ -147,8 +147,11 @@
   <textarea name="description" rows="4" style="width:100%">{{ o['description'] or '' }}</textarea>
 
   {#- DINNER AT GUDANES (owner, 25 Nov 2026): any occasion can serve dinner -- on the nights ticked, at a price a person,
-      for a number of covers -- and a guest chef is the same thing with a chef's name and bio on top. The menu is a file
-      (PDF, JPG or PNG) guests open in a pop-up wherever dinner is mentioned. -#}
+      for a number of covers -- and a guest chef is the same thing with a chef's name and bio on top.
+      27 Nov 2026 ("very easy to use on the back end"): everything about the dinner in one place, in the order it is
+      decided -- on or off, the nights, the time, the price, the wine, the covers, outside guests, the menu -- and under
+      it the panel exactly as guests will see it, with whether it is live and what it still needs before it can be. The
+      menu is one from the menus built in the app, a new one built from here, or a file (a guest chef's comes as one). -#}
   {%- set _dinner_shown = dinner_on or o['kind'] == 'guest_chef' %}
   <fieldset id="dinner" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
     <legend class="section-heading" style="padding:0 .5rem">Dinner at Gudanes</legend>
@@ -158,58 +161,133 @@
     <div id="so_dinner_body">
       {% if nights %}
       <input type="hidden" name="dinner_nights_shown" value="1">
-      <p class="field-label" style="margin-top:1rem">Dinner nights</p>
+      <p class="field-label" style="margin-top:1rem">1. Which nights</p>
       <div style="display:flex;flex-wrap:wrap;gap:.25rem 1rem">
         {% for n in nights %}
         <label class="checkbox-row"><input type="checkbox" name="dinner_{{ n }}" value="1"{% if n in dinners or not _dinner_shown %} checked{% endif %}> <span>{{ n|date_short }}{% if covers.get(n) %} · {{ covers[n] }} booked{% endif %}</span></label>
         {% endfor %}
       </div>
       {% else %}<p class="upload-hint">Every night of the occasion, until you untick one after saving.</p>{% endif %}
-      <div style="display:flex;flex-wrap:wrap;gap:.25rem 1.5rem;margin-top:.75rem">
-        <label class="checkbox-row"><input type="checkbox" name="wine_included" value="1" id="so_wine"{% if o['wine_included'] is none or o['wine_included'] %} checked{% endif %}> <span>Wine included</span></label>
-        <label class="checkbox-row"><input type="checkbox" name="outside_diners" value="1"{% if o['outside_diners'] %} checked{% endif %}> <span>Open to diners not staying</span></label>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-top:1rem">
-        <div><label for="so_time" class="field-label">Time</label>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-top:1rem;align-items:end">
+        <div><label for="so_time" class="field-label">2. Time</label>
           <input type="time" id="so_time" name="dinner_time" value="{{ o['dinner_time'] if (dinner_on or o['kind'] == 'guest_chef' or v) and o['dinner_time'] else dinner_defaults.time }}"></div>
-        <div><label for="so_dprice" class="field-label">Price a person (€)</label>
+        <div><label for="so_dprice" class="field-label">3. Price a person (€)</label>
           <input type="number" id="so_dprice" name="dinner_price" min="0" step="0.01" value="{{ ((o['dinner_price']|int) if o['dinner_price'] == o['dinner_price']|int else o['dinner_price']) if o['dinner_price'] else '' }}"></div>
-        <div><label for="so_covers" class="field-label">Covers a night</label>
-          <input type="number" id="so_covers" name="dinner_covers" min="1" value="{{ o['dinner_covers'] or dinner_defaults.covers }}"></div>
+        <div><label class="checkbox-row" style="margin-bottom:.5rem"><input type="checkbox" name="wine_included" value="1" id="so_wine"{% if o['wine_included'] is none or o['wine_included'] %} checked{% endif %}> <span>4. Wine included</span></label></div>
         <div id="so_wine_share_box"><label for="so_wine_share" class="field-label">Of which wine, a person (€)</label>
           <input type="number" id="so_wine_share" name="wine_share" min="0" step="0.01"
                  value="{{ ((o['wine_share']|int) if o['wine_share'] == o['wine_share']|int else o['wine_share']) if o['wine_share'] else '' }}">
           <span class="upload-hint">For the VAT: food is {{ vat_food }}%, wine {{ vat_alcohol }}%.</span></div>
+        <div><label for="so_covers" class="field-label">5. Covers a night</label>
+          <input type="number" id="so_covers" name="dinner_covers" min="1" value="{{ o['dinner_covers'] or dinner_defaults.covers }}"></div>
+        <div><label class="checkbox-row" style="margin-bottom:.5rem"><input type="checkbox" name="outside_diners" value="1"{% if o['outside_diners'] %} checked{% endif %}> <span>6. Open to guests not staying</span></label></div>
       </div>
       {% if price_clash and v and v['dinner_price'] %}
       <p class="wo-problem" style="margin:.75rem 0 0"><label class="checkbox-row"><input type="checkbox" name="confirm_dinner_price" value="1"> <span>Serve it at {{ v['dinner_price']|money(0 if v['dinner_price'] == v['dinner_price']|int else 2) }} all the same: the tables already booked keep their price</span></label></p>
       {% endif %}
 
-      {#- The menu: one for the occasion, and one for a night where the nights differ. -#}
-      <p class="field-label" style="margin-top:1.25rem">The menu</p>
+      {#- 7. The menu: one built in the app (or built now), or a file; one for the occasion, one for a night that differs. -#}
+      <input type="hidden" name="menu_choice_shown" value="1">
+      <p class="field-label" style="margin-top:1.25rem">7. The menu</p>
+      {%- set _occ_menu = o['dinner_menu_id'] if 'dinner_menu_id' in o.keys() else None %}
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center">
+        <label for="so_menu_pick" class="visually-hidden">A menu from the menus</label>
+        <select id="so_menu_pick" name="dinner_menu_id" style="min-width:16rem">
+          <option value="">{{ '— a file, below —' if occ['menu_file'] else '— none chosen —' }}</option>
+          {% for mm in dinner_menus %}<option value="{{ mm.id }}" data-price="{{ mm.price or '' }}" data-wine="{{ mm.wine_included }}"{% if _occ_menu == mm.id %} selected{% endif %}>{{ mm.name }}{% if mm.price %} · {{ mm.price|money(0 if mm.price == mm.price|int else 2) }}{% endif %}{% if mm.status == 'archived' %} (archived){% endif %}</option>{% endfor %}
+        </select>
+        {% if _occ_menu %}<a class="btn-mini" href="{{ url_for('admin_dinner_menu', menu_id=_occ_menu) }}">Edit this menu</a>{% endif %}
+        {% if occ['id'] %}<a class="btn-mini" href="{{ url_for('admin_dinner_menu_new', for_occasion=occ['id']) }}">Build a new menu</a>
+        {% else %}<span class="upload-hint">Save the occasion first to build a menu for it here, or <a href="{{ url_for('admin_dinner_menu_new') }}" target="_blank" rel="noopener">build one now</a> and choose it after.</span>{% endif %}
+      </div>
+      <p class="upload-hint" id="so_menu_price_hint" hidden></p>
       {% if occ['menu_file'] %}
-      <p style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin:.25rem 0">
-        {% if occ['menu_file'].endswith('.pdf') %}<span>PDF: {{ occ['menu_name'] or 'menu.pdf' }}</span>
+      <p style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin:.5rem 0 .25rem">
+        {% if occ['menu_file'].endswith('.pdf') %}<span>File: {{ occ['menu_name'] or 'menu.pdf' }}</span>
         {% else %}<img src="{{ url_for('occasion_menu', slug=occ['slug']) }}" alt="The menu for Dinner at Gudanes" style="max-width:120px;max-height:160px;border:1px solid #ddd;border-radius:3px">{% endif %}
         <a href="{{ url_for('occasion_menu', slug=occ['slug']) }}" target="_blank" rel="noopener" class="btn-mini">Open</a>
         <label class="checkbox-row"><input type="checkbox" name="menu_remove" value="1"> <span>Remove</span></label>
       </p>
       {% endif %}
-      <label for="so_menu" class="field-label" style="font-weight:normal">{{ 'Replace the menu' if occ['menu_file'] else 'Upload the menu' }}</label>
-      <input type="file" id="so_menu" name="menu" accept="application/pdf,image/jpeg,image/png">
-      <span class="upload-hint">PDF, JPG or PNG, up to 10 MB. Guests open it from “See the menu”. With none, nothing mentions a menu.</span>
+      <details style="margin-top:.5rem"{% if occ['menu_file'] %} open{% endif %}>
+        <summary class="upload-hint" style="cursor:pointer">{{ 'Replace the file' if occ['menu_file'] else 'Or upload a file instead (a guest chef’s menu, say)' }}</summary>
+        <label for="so_menu" class="visually-hidden">A menu file</label>
+        <input type="file" id="so_menu" name="menu" accept="application/pdf,image/jpeg,image/png">
+        <span class="upload-hint">PDF, JPG or PNG, up to 10 MB. A file uploaded takes the place of a menu chosen above.</span>
+      </details>
       {% if nights %}
       <div style="margin-top:.5rem">
         {% for n in nights if n in dinners %}
         {%- set _nm = night_menus.get(n) %}
         <details{% if _nm %} open{% endif %} style="margin:.25rem 0">
           <summary class="upload-hint" style="cursor:pointer">Different menu on {{ n|date_short }}</summary>
-          {% if _nm %}<p style="margin:.25rem 0"><a href="{{ url_for('occasion_menu_night', slug=occ['slug'], night=n) }}" target="_blank" rel="noopener">{{ _nm['menu_name'] or 'This night’s menu' }}</a>
+          <div style="display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;margin:.25rem 0">
+            <label class="visually-hidden" for="so_nm_{{ n }}">The menu on {{ n|date_short }}</label>
+            <select id="so_nm_{{ n }}" name="night_menu_{{ n }}">
+              <option value="">Same as the other nights</option>
+              {% for mm in dinner_menus %}<option value="{{ mm.id }}"{% if _nm and _nm['dinner_menu_id'] == mm.id %} selected{% endif %}>{{ mm.name }}{% if mm.status == 'archived' %} (archived){% endif %}</option>{% endfor %}
+            </select>
+            {% if occ['id'] %}<a class="btn-mini" href="{{ url_for('admin_dinner_menu_new', for_occasion=occ['id'], night=n) }}">Build one for this night</a>{% endif %}
+          </div>
+          {% if _nm and _nm['menu_file'] %}<p style="margin:.25rem 0"><a href="{{ url_for('occasion_menu_night', slug=occ['slug'], night=n) }}" target="_blank" rel="noopener">{{ _nm['menu_name'] or 'This night’s menu' }}</a>
             <label class="checkbox-row" style="display:inline-flex;margin-left:1rem"><input type="checkbox" name="menu_remove_{{ n }}" value="1"> <span>Remove</span></label></p>{% endif %}
-          <input type="file" name="menu_{{ n }}" accept="application/pdf,image/jpeg,image/png" aria-label="A menu for {{ n|date_short }}">
+          <input type="file" name="menu_{{ n }}" accept="application/pdf,image/jpeg,image/png" aria-label="A menu file for {{ n|date_short }}">
         </details>
         {% endfor %}
       </div>
+      {% endif %}
+
+      {#- 8. What guests will see, and whether they can. -#}
+      {% if occ['id'] and dinners %}
+      <div style="margin-top:1.25rem;border-top:1px solid #eee;padding-top:1rem">
+        <p class="field-label" style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:center">8. As guests will see it
+          {% if occ['status'] == 'live' and not dinner_missing %}<span class="mini-status status-confirmed">Live on the site</span>
+          {% else %}<span class="mini-status status-pending">Draft: not on the site</span>{% endif %}</p>
+        {% if dinner_missing %}<p class="wo-problem" style="margin:.25rem 0 .5rem">Before the dinner can go on sale it needs {{ dinner_missing|join(', ') if dinner_missing|length > 2 else dinner_missing|join(' and ') }}.</p>{% endif %}
+        {#- The nights so far (brief of 27 Nov 2026, §3): covers booked of those there are, what they bring in gross
+            and net, food and wine at their own rates, and the margin where the menu says what a cover costs. -#}
+        {% set _f = dinner_figures|default({'nights': []}) %}
+        {% if _f.nights %}
+        <div class="table-wrap" style="margin:.5rem 0 1rem">
+        <table class="data-table" id="dinner-figures">
+          <caption style="text-align:left;font-weight:600;padding:.25rem 0">The nights so far · prices include VAT; net is without it (food {{ '%g'|format(_f.food_rate) }}%, wine {{ '%g'|format(_f.wine_rate) }}%)</caption>
+          <thead><tr><th scope="col">Night</th><th scope="col">Covers</th><th scope="col">Gross</th><th scope="col">Of which wine</th><th scope="col">Net</th><th scope="col">Cost</th><th scope="col">Margin</th><th scope="col"><span class="visually-hidden">The night's list</span></th></tr></thead>
+          <tbody>
+          {% for r in _f.nights %}
+          <tr>
+            <th scope="row">{{ r.words }}</th>
+            <td>{{ r.booked }} of {{ r.covers }}{% if r.waiting %} <span class="upload-hint">+{{ r.waiting }} waiting</span>{% endif %}</td>
+            <td>{{ r.gross|money }}</td>
+            <td>{{ r.wine|money }}</td>
+            <td>{{ r.net|money }} <span class="upload-hint">food {{ r.net_food|money }}, wine {{ r.net_wine|money }}</span></td>
+            <td>{{ r.cost|money if r.cost is not none else '—' }}</td>
+            <td>{{ r.margin|money if r.margin is not none else '—' }}</td>
+            <td><a class="btn-mini" href="{{ r.sheet }}">The night</a></td>
+          </tr>
+          {% endfor %}
+          </tbody>
+          <tfoot><tr>
+            <th scope="row">Total</th>
+            <td>{{ _f.total.booked }} of {{ _f.total.covers }}</td>
+            <td>{{ _f.total.gross|money }}</td>
+            <td>{{ _f.total.wine|money }}</td>
+            <td>{{ _f.total.net|money }}</td>
+            <td>{{ _f.total.cost|money if _f.total.cost is not none else '—' }}</td>
+            <td>{{ _f.total.margin|money if _f.total.margin is not none else '—' }}</td>
+            <td></td>
+          </tr></tfoot>
+        </table>
+        </div>
+        {% if _f.total.cost is none %}<p class="upload-hint">Give the menu a cost a cover to see the margin.</p>{% endif %}
+        {% endif %}
+        {% if o['kind'] != 'guest_chef' %}
+        <iframe src="{{ url_for('admin_stay_occasion_panel_preview', occ_id=occ['id']) }}" title="The Dinner at Gudanes panel as guests will see it" style="display:block;width:100%;height:40rem;border:1px solid #ddd;border-radius:4px;background:#fff" loading="lazy"></iframe>
+        <p class="upload-hint">From what is saved: save to see a change here. {% if occ['slug'] %}<a href="{{ url_for('stay_occasion_page', slug=occ['slug']) }}#dinpanel-h" target="_blank" rel="noopener">The whole page ↗</a>{% endif %}</p>
+        {% endif %}
+      </div>
+      {% elif not occ['id'] %}
+      <p class="upload-hint" style="margin-top:1rem">Save to see the panel as guests will see it.</p>
       {% endif %}
     </div>
   </fieldset>
@@ -307,6 +385,19 @@
   if(wine){ wine.addEventListener('change', showShare); showShare(); }
   if(kind){ kind.addEventListener('change', showChef); showChef(); }
   document.querySelectorAll('input[name="chef_on_site"]').forEach(function(r){ r.addEventListener('change', showLine); });
+  /* A menu chosen: an empty price takes the menu's, and a price that differs from it is pointed out -- the guest is
+     charged the occasion's price, and the menu is printed with it. */
+  var pick = document.getElementById('so_menu_pick'), price = document.getElementById('so_dprice'),
+      hint = document.getElementById('so_menu_price_hint');
+  function menuPrice(fill){
+    if(!pick || !price || !hint) return;
+    var opt = pick.options[pick.selectedIndex], mp = opt ? Number(opt.getAttribute('data-price') || 0) : 0;
+    if(fill && mp && !price.value){ price.value = mp; }
+    var p = Number(price.value || 0);
+    hint.hidden = !(mp && p && mp !== p);
+    if(!hint.hidden) hint.textContent = 'The menu says €' + mp + '; guests are charged €' + p + ' a person, and the menu is printed with €' + p + '.';
+  }
+  if(pick){ pick.addEventListener('change', function(){ menuPrice(true); }); price && price.addEventListener('input', function(){ menuPrice(false); }); menuPrice(false); }
 })();
 </script>
 {% endblock %}

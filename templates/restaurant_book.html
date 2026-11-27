@@ -6,7 +6,8 @@
 {% set crumbs = [('Dining', url_for('restaurant_info') if (setting(site, 'dining_mode') or 'open')|lower|trim != 'hidden' else None), ('Reserve', None)] %}
 {% block title %}Reserve a Table{% endblock %}
 {% block content %}{#- 24 Nov 2026: a guest chef's nights open La Table even when it is otherwise closed (Occasions at Gudanes). -#}
-{% set _chef_only = _dm != 'open' and chef_nights %}{% if _dm != 'open' and not chef_nights %}
+{#- 27 Nov 2026 (§2.8): La Table switched off (chef_only) still books an occasion's nights, and only those. -#}
+{% set _closed = _dm != 'open' or chef_only|default(false) %}{% set _chef_only = _closed and chef_nights %}{% if _closed and not chef_nights %}
 {# Shown when settings.dining_mode is not "open". #}
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">La Table</p>
@@ -148,7 +149,7 @@
 </div>
 
 {% if fully_booked %}
-<section class="g-sec"><div class="g-wrap">
+<section class="g-sec" id="waitlist"><div class="g-wrap">
   <div class="g-panel" style="max-width:40rem">
     <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>

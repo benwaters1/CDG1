@@ -209,6 +209,8 @@ def _run(s, oc, owner, conn):
     if not occ:
         return
     oid = occ["id"]
+    # Since 27 Nov 2026 a dinner goes on sale only with a menu: the standing one until a file is uploaded below.
+    _harness.give_menu(conn, oid)
     s.check("every night is a dinner night until one is unticked",
             m.stay_occasion_dinners(occ, conn) == [n1.isoformat(), n2.isoformat()],
             detail=str(m.stay_occasion_dinners(occ, conn)))
@@ -502,6 +504,10 @@ def _run(s, oc, owner, conn):
     # ------------------------------------------------------------------
     s.section("The menu: uploaded, checked by what it is, and shown in a pop-up")
     occ_page = f"/whats-on/at-gudanes/{occ['slug']}"
+    # A live dinner cannot be SAVED without a menu since 27 Nov 2026; taken off here only to see that nothing
+    # mentions one when there is none. The file uploaded below is its menu from then on.
+    conn.execute("UPDATE stay_occasions SET dinner_menu_id = NULL WHERE id = ?", (oid,))
+    conn.commit()
     p0 = anon.get(occ_page).get_data(as_text=True)
     s.check("with no menu, no page mentions one", "See the menu" not in p0 and "menu to come" not in p0.lower()
             and "See the menu" not in anon.get(search).get_data(as_text=True))
@@ -670,9 +676,17 @@ def _run(s, oc, owner, conn):
                 detail=alt.group(1) if alt else "no img")
         s.check("not one giant link: two buttons inside it",
                 not re.search(r"<a[^>]*>\s*<section", home) and b.group(0).count("<a ") >= 4)
-    oc.post(f"/admin/stay-occasions/{oid}", data=dict(_form(name, n1, n2, **banner), menu_remove="1"))
+    r = oc.post(f"/admin/stay-occasions/{oid}", data=dict(_form(name, n1, n2, **banner), menu_remove="1"),
+                follow_redirects=True)
+    s.check("with its only menu removed, a live dinner comes off sale, and the form says it needs one",
+            _occ(conn, name)["status"] == "draft"
+            and any("needs a menu" in f for f in flashes(r)), response=r)
+    s.check("and nothing on the home page offers a menu", band(anon.get("/").get_data(as_text=True)) is None)
+    _harness.give_menu(conn, oid)
+    oc.post(f"/admin/stay-occasions/{oid}", data=_form(name, n1, n2, **banner))
     b = band(anon.get("/").get_data(as_text=True))
-    s.check("with the menu removed, no See the menu", b and "See the menu" not in b.group(0))
+    s.check("given a menu again, it is back, with See the menu", b and "See the menu" in b.group(0)
+            and _occ(conn, name)["status"] == "live")
     r = oc.post(f"/admin/stay-occasions/{oid}", data=dict(_form(name, n1, n2, **banner),
                 banner=(io.BytesIO(_pdf()), "banner.jpg")), content_type="multipart/form-data",
                 follow_redirects=True)
@@ -699,6 +713,7 @@ def _run(s, oc, owner, conn):
     oc.post("/admin/stay-occasions/new", data=_form(other, n1 + timedelta(days=2), n1 + timedelta(days=2),
                                                     serve_dinner="1", dinner_price="55"))
     o2 = _occ(conn, other)
+    _harness.give_menu(conn, o2["id"])
     oc.post(f"/admin/stay-occasions/{o2['id']}", data=_form(other, n1 + timedelta(days=2), n1 + timedelta(days=2),
             **dict(status="live", serve_dinner="1", dinner_price="55", home_banner="1",
                    home_banner_text="Chef in residence", dinner_nights_shown="1",
@@ -1048,7 +1063,7 @@ def _panel_checks(s, anon, conn, occ, occ_page, page, rid, n1, n2, arrival, depa
             re.search(r'<h2 class="g-dinpanel__h"[^>]*>Dinner at Gudanes</h2>', panel) is not None,
             detail=panel[:300] or "no panel")
     s.check("with a photograph: with no banner of its own, the dining one",
-            re.search(r'<figure class="g-dinpanel__ph"><img src="[^"]+" alt="[^"]+"', panel) is not None
+            re.search(r'<figure class="g-dinpanel__ph"><img src="[^"]+"[^>]* alt="[^"]+"', panel) is not None
             and m.DINNER_PANEL_PHOTO in panel, detail=panel[:300])
     s.check("the nights in full and the time",
             f"Dinner at Gudanes {m.dinner_nights_words(dinners)} 7.30pm €65" in said, detail=said[:200])

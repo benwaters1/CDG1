@@ -115,11 +115,16 @@ FIELD = re.compile(r"<(input|select|textarea)\b([^>]*)>", re.S | re.I)
 # and the banner's photograph, by an occasion's slug and a night. No id, and no
 # markup back; test_dinner_at_gudanes is what proves each of them answers.
 #
-# Fourteen now: export_report_csv, mirrored_photo, occasion_banner_photo,
-# occasion_menu, occasion_menu_night, photo_at_size, recover_owner_password,
-# room_ics_feed, room_photo, set_language, site_photo, sized_photo,
-# social_photo_public and uploaded_file.
-NO_RULE = 14
+# And two more (27 Nov 2026, the menu drawn on the server): occasion_menu_picture
+# and occasion_menu_pdf, the built menu as a JPEG for the newsletter and as an A4
+# PDF, by an occasion's slug. No id, and no markup back; test_dinner_menu_render
+# is what proves each of them answers.
+#
+# Sixteen now: export_report_csv, mirrored_photo, occasion_banner_photo,
+# occasion_menu, occasion_menu_night, occasion_menu_picture, occasion_menu_pdf,
+# photo_at_size, recover_owner_password, room_ics_feed, room_photo, set_language,
+# site_photo, sized_photo, social_photo_public and uploaded_file.
+NO_RULE = 16
 
 # What the sweep fetched and could not read.
 #
@@ -340,6 +345,14 @@ ENDPOINT_ARGS = {
     ("legacy_atelier_product", "slug"): "seven-starry-nights-2027",
     # The owner may open any occasion's page, a draft included.
     ("stay_occasion_page", "slug"): ("stay_occasions", "slug"),
+    # The Dinner at Gudanes menus (27 Nov 2026) are dinner_menus, not La
+    # Table's dated `menus` that ID_TABLES' menu_id reads; a print is one of
+    # three kinds; a dinner night's sheet answers for any day.
+    ("admin_dinner_menu", "menu_id"): lambda conn: _harness.standing_menu(conn),
+    ("admin_dinner_menu_print", "menu_id"): lambda conn: _harness.standing_menu(conn),
+    ("admin_dinner_menu_print", "kind"): "a4",
+    ("admin_dinner_menu_pdf", "menu_id"): lambda conn: _harness.standing_menu(conn),
+    ("admin_dinner_night", "day"): lambda conn: _harness.house_today().isoformat(),
     ("legacy_celebrations_portfolio_any", "_rest"): "dan-and-carl",
     ("legacy_chateau_ateliers_any", "_rest"): "category/2024",
     # The old press archive (owner's website brief, 23 November 2026).

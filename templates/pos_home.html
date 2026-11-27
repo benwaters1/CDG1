@@ -31,8 +31,11 @@
     <input type="hidden" name="restaurant_booking_id" value="{{ b['id'] }}">
     <span class="till-expected__name">{{ b['guest_name'] }}</span>
     <span class="till-expected__meta">
+      {%- if b['dinner_at_gudanes'] %}Dinner at Gudanes · {% endif %}
+      {%- if b['room'] %}{{ b['room'] }} · {% endif %}
       {{ b['party_size'] }} cover{{ '' if b['party_size'] == 1 else 's' }}
-      {%- if b['deposit_amount'] %} · €{{ '%.2f'|format(b['deposit_amount']) }} deposit{% endif %}
+      {%- if b['prepaid'] %} · {{ 'prepaid with the stay' if b['prepaid']['stay_id'] else 'paid online' }}
+      {%- elif b['deposit_amount'] %} · €{{ '%.2f'|format(b['deposit_amount']) }} deposit{% endif %}
     </span>
     {% if b['dietary_notes'] %}
     <span class="till-tile__flag is-allergy">{{ b['dietary_notes']|truncate(60) }}</span>

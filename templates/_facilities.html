@@ -7,7 +7,7 @@
    breakfast_photo = [src, alt], drawn in the breakfast tile at the tile's width (/book, 23 Nov)
    ============================================================================= #}
 {% from '_illus.html' import illus %}
-{% macro facilities(dm='open', heading='What Is Included', eyebrow='Your Stay', breakfast_photo=None) %}
+{% macro facilities(dm='open', heading='What Is Included', eyebrow='Your Stay', breakfast_photo=None, dinner_served='') %}
 <section class="g-sec g-facil-sec"><div class="g-wrap">
   {#- 24 Nov 2026 (site review, 6): "Les équipements" was said twice, over the heading and again in the frame. The
       frame keeps it. -#}
@@ -47,7 +47,9 @@
       </li>
       {%- endfor %}
     </ul>
-    <p class="g-facil__note">Not included in a stay: lunch, dinner and drinks.{% if dm == 'open' %} {% set _w = when_text()|trim %}Dinner can be booked {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.{% endif %}</p>
+    {#- 27 Nov 2026 (§2.4): on dates with Dinner at Gudanes, dinner is no longer among what is not included. -#}
+    {% if dinner_served %}<p class="g-facil__note">Not included in a stay: lunch and drinks. {{ dinner_served }} &mdash; add it below.</p>{% else %}
+    <p class="g-facil__note">Not included in a stay: lunch, dinner and drinks.{% if dm == 'open' %} {% set _w = when_text()|trim %}Dinner can be booked {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.{% endif %}</p>{% endif %}
   </div>
 </div></section>
 {% endmacro %}

@@ -1,0 +1,68 @@
+<!doctype html>
+{#- THE ALLERGEN SHEET for the folder at the dining room's door (owner's brief, 27 Nov 2026): one A4 page, landscape,
+    every dish of the menu against the 14 allergens the law names, in French with the English beneath. The A3 board
+    says this folder exists ("Les 14 allergènes ... indiqués dans le classeur à l'entrée"), so it is drawn from the
+    same menu and can never disagree with it. -#}
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allergènes · {{ v.menu.name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Pinyon+Script&display=swap" rel="stylesheet">
+{#- The staff stylesheet, as every staff page loads it (its .data-table draws the table); the sheet's own print look
+    below is scoped under .sheet, so it wins. -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+:root{ --ink:#60441D; }
+*{ box-sizing:border-box; }
+html{ background:#E9E1D3; }
+body{ margin:0; font-family:'EB Garamond', Georgia, serif; color:var(--ink); background:#E9E1D3; }
+.sheet{ width:297mm; min-height:210mm; margin:0 auto 48px; background:#FBF8F2; padding:12mm 12mm 10mm; box-shadow:0 1px 3px rgba(60,40,10,.12), 0 12px 40px rgba(60,40,10,.10); }
+h1{ font-family:'Pinyon Script', 'Cormorant Garamond', cursive; font-weight:400; font-size:26pt; margin:0; text-align:center; line-height:1.1; }
+.sub{ text-align:center; font-size:9pt; letter-spacing:.24em; text-transform:uppercase; margin:2mm 0 1mm; font-weight:500; }
+.name{ text-align:center; font-family:'Cormorant Garamond', Georgia, serif; font-style:italic; font-size:12pt; margin:0 0 5mm; }
+.table-wrap{ overflow-x:auto; }
+.sheet .data-table{ width:100%; border-collapse:collapse; font-size:8.6pt; color:var(--ink); background:none; }
+.sheet .data-table th, .sheet .data-table td{ border:.5pt solid rgba(96,68,29,.45); padding:1.6mm 1.2mm; vertical-align:middle; }
+.sheet .data-table thead th{ font-weight:500; font-size:7pt; line-height:1.2; text-align:center; letter-spacing:.02em; text-transform:none; color:var(--ink); background:none; }
+.sheet .data-table thead th small{ display:block; font-style:italic; font-weight:400; opacity:.85; }
+.sheet .data-table tbody th{ text-align:left; font-weight:400; width:30%; }
+.sheet .data-table tbody th .k{ display:block; font-size:6.4pt; letter-spacing:.24em; text-transform:uppercase; font-weight:500; opacity:.85; }
+.sheet .data-table tbody th .en{ display:block; font-style:italic; font-size:7.6pt; opacity:.9; }
+.sheet .data-table td{ text-align:center; font-size:11pt; }
+.sheet .data-table td.y{ background:rgba(96,68,29,.10); font-weight:500; }
+.foot{ font-size:7.6pt; line-height:1.5; margin-top:4mm; text-align:center; font-style:italic; }
+.tools{ display:flex; justify-content:center; gap:12px; padding:16px; }
+.tools a, .tools button{ display:inline-flex; align-items:center; min-height:44px; padding:0 18px; border:1px solid var(--ink); background:#FBF8F2; color:var(--ink); font:inherit; font-size:15px; text-decoration:none; cursor:pointer; border-radius:2px; }
+.tools button{ background:var(--ink); color:#FBF8F2; }
+@page{ size:A4 landscape; margin:0; }
+@media print{ html, body{ background:none; } .tools{ display:none; } .sheet{ box-shadow:none; margin:0; } }
+@media screen and (max-width:1150px){ .sheet{ zoom:calc(100vw / 310mm); } }
+</style>
+</head>
+<body>
+<div class="tools"><button type="button" onclick="window.print()">Print / Save as PDF</button>{% if back %}<a href="{{ back }}">Back to the menu</a>{% endif %}</div>
+<div class="sheet">
+  <h1>Dîner à Gudanes</h1>
+  <p class="sub">Les 14 allergènes · The 14 allergens</p>
+  <p class="name">{{ v.menu.name }}{% if v.nights_fr %} · {{ v.nights_fr }}{% endif %}</p>
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Plat · Dish</th>{% for k, fr in allergens.items() %}<th scope="col">{{ fr }}<small>{{ allergens_en[k] }}</small></th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for c in v.courses %}
+    <tr>
+      <th scope="row"><span class="k">{{ c.course_fr }}</span>{{ c.dish_fr }}{% if c.dish_en %}<span class="en">{{ c.dish_en }}</span>{% endif %}</th>
+      {% for k in allergens %}<td{% if k in c.allergen_keys %} class="y"{% endif %}>{% if k in c.allergen_keys %}●<span class="visually-hidden"> contains {{ allergens_en[k] }}</span>{% endif %}</td>{% endfor %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="foot">● présent dans le plat · in the dish. Demandez-nous pour toute allergie ou régime : la cuisine adapte volontiers. · Please ask about any allergy or diet: the kitchen will gladly adapt.</p>
+</div>
+<style>.visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }</style>
+</body>
+</html>

@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %}{{ v.name or 'New menu' }} · Dinner menus{% endblock %}
+{% block content %}
+{#- THE MENU BUILDER (owner, 27 Nov 2026: "very easy to use on the back end ... menu easy"). The form on the left, the
+    menu as the guest will see it on the right, redrawn as you type (on a phone, below). Courses in order: drag them on
+    a desk, or Up and Down on a phone. A dish or wine typed once is offered again (the library), and picking it fills
+    the English, the origin and the allergens. The English is SUGGESTED in grey when the French is typed -- from the
+    library if it has those words, else from the assistant -- and is saved only once accepted or typed over.
+    A course with meat in it cannot be saved without its country: the law asks it of every menu served. -#}
+{%- macro row(i, c) %}
+<li class="mc" data-i="{{ i }}">
+  <input type="hidden" name="c-{{ i }}-pos" value="{{ i }}" class="mc-pos">
+  <div class="mc-head">
+    <span class="mc-grip" aria-hidden="true" title="Drag to move">⋮⋮</span>
+    <label class="mc-course"><span class="visually-hidden">Course</span>
+      <input type="text" name="c-{{ i }}-course_fr" value="{{ c.course_fr or '' }}" list="dl-courses" placeholder="Course, e.g. Plat" data-en="c-{{ i }}-course_en" data-kind="course" maxlength="60"></label>
+    <input type="hidden" name="c-{{ i }}-course_en" value="{{ c.course_en or '' }}">
+    <span class="mc-move">
+      <button type="button" class="btn-mini mc-up" aria-label="Move this course up">↑</button>
+      <button type="button" class="btn-mini mc-down" aria-label="Move this course down">↓</button>
+    </span>
+    <label class="checkbox-row"><input type="checkbox" name="c-{{ i }}-remove" value="1"> <span>Remove</span></label>
+  </div>
+  <div class="mc-grid">
+    <label><span class="field-label">The dish, in French</span>
+      <input type="text" name="c-{{ i }}-dish_fr" value="{{ c.dish_fr or '' }}" list="dl-dishes" autocomplete="off" class="mc-dish" data-en="c-{{ i }}-dish_en" data-kind="dish" maxlength="200" placeholder="e.g. Agneau des Pyrénées rôti au thym"></label>
+    <label><span class="field-label">In English</span>
+      <input type="text" name="c-{{ i }}-dish_en" value="{{ c.dish_en or '' }}" maxlength="200" class="mc-en">
+      <button type="button" class="mc-sugg" hidden>Use the suggested English</button></label>
+    <label><span class="field-label">Wine, in French</span>
+      <input type="text" name="c-{{ i }}-wine_fr" value="{{ c.wine_fr or '' }}" list="dl-wines" autocomplete="off" class="mc-wine" data-en="c-{{ i }}-wine_en" data-kind="wine" maxlength="200" placeholder="e.g. Rouge · Madiran AOP"></label>
+    <div class="mc-pair">
+      <label><span class="field-label">In English</span>
+        <input type="text" name="c-{{ i }}-wine_en" value="{{ c.wine_en or '' }}" maxlength="200" class="mc-en">
+        <button type="button" class="mc-sugg" hidden>Use the suggested English</button></label>
+      <label><span class="field-label">Glass</span>
+        <input type="text" name="c-{{ i }}-wine_glass" value="{{ c.wine_glass or '' }}" list="dl-glass" maxlength="20" placeholder="12 cl"></label>
+    </div>
+    <label><span class="field-label">Main product, in French</span>
+      <input type="text" name="c-{{ i }}-origin_fr" value="{{ c.origin_fr or '' }}" maxlength="80" data-en="c-{{ i }}-origin_en" data-kind="origin" placeholder="e.g. Agneau"></label>
+    <label><span class="field-label">In English</span>
+      <input type="text" name="c-{{ i }}-origin_en" value="{{ c.origin_en or '' }}" maxlength="80" class="mc-en">
+      <button type="button" class="mc-sugg" hidden>Use the suggested English</button></label>
+    <label><span class="field-label">Origin (country)</span>
+      <input type="text" name="c-{{ i }}-country_fr" value="{{ c.country_fr or '' }}" list="dl-countries" maxlength="60" class="mc-country" data-en="c-{{ i }}-country_en" data-kind="country" placeholder="e.g. France"></label>
+    <input type="hidden" name="c-{{ i }}-country_en" value="{{ c.country_en or '' }}">
+    <label><span class="field-label">Meat in it</span>
+      <select name="c-{{ i }}-meat" class="mc-meat">
+        <option value="">None</option>
+        {% for k, (fr, en) in meats.items() %}<option value="{{ k }}"{% if c.meat == k %} selected{% endif %}>{{ fr|capitalize }} · {{ en }}</option>{% endfor %}
+      </select></label>
+  </div>
+  <p class="mc-law" hidden>Meat on a menu must say where it comes from: French law asks it of every menu served. Write the country.</p>
+  <fieldset class="mc-al">
+    <legend class="field-label">Allergens in it</legend>
+    {%- set _have = (c.allergens or '').split(',') %}
+    {% for k, fr in allergens.items() %}<label class="mc-chip"><input type="checkbox" name="c-{{ i }}-al" value="{{ k }}"{% if k in _have %} checked{% endif %}><span>{{ allergens_en[k] }}</span></label>{% endfor %}
+  </fieldset>
+  <label class="checkbox-row mc-fm"><input type="checkbox" name="c-{{ i }}-fm" value="1"{% if c.fait_maison is none or c.fait_maison %} checked{% endif %}> <span>Fait maison (made here, from raw ingredients)</span></label>
+</li>
+{%- endmacro %}
+
+<div class="page-head">
+  <h1>{{ v.name or 'New menu' }}</h1>
+  <a href="{{ url_for('admin_dinner_menus') }}" class="btn-mini">All menus</a>
+  {% if v.id %}
+  <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=v.id, kind='a4') }}" target="_blank" rel="noopener">Print A4</a>
+  <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=v.id, kind='a3') }}" target="_blank" rel="noopener">Print A3 board</a>
+  <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=v.id, kind='allergens') }}" target="_blank" rel="noopener">Allergen sheet</a>
+  <a class="btn-mini" href="{{ url_for('admin_dinner_menu_pdf', menu_id=v.id) }}">Download PDF</a>
+  <form method="post" action="{{ url_for('admin_dinner_menu_duplicate', menu_id=v.id) }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-mini" type="submit">Duplicate</button></form>
+  {% endif %}
+</div>
+
+{% if for_occasion %}<p class="detail-card" style="margin-bottom:1rem">Building the menu for <strong>{{ for_occasion['name'] }}</strong>{% if night %} on {{ night|date_short }}{% endif %}. Saving makes it that occasion’s menu and takes you back to it.</p>{% endif %}
+{% if uses %}<p class="upload-hint" style="margin-bottom:1rem">Served by {% for u in uses %}<a href="{{ url_for('admin_stay_occasion', occ_id=u.id) }}#dinner">{{ u.name }}</a>{% if u.nights %} on {{ u.nights|map('date_short')|join(', ') }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}: a change shows on {{ 'its' if uses|length == 1 else 'their' }} page at once.</p>{% endif %}
+{% if v.status == 'archived' %}<p class="wo-problem">Archived. It is kept for the occasions that served it; Restore it on the list to offer it again.</p>{% endif %}
+{% if problems %}<div class="wo-problem" role="alert" style="margin-bottom:1rem"><strong>Not saved yet:</strong><ul style="margin:.25rem 0 0 1.25rem">{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></div>{% endif %}
+
+<div class="mb">
+<form method="post" id="menu-form" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if for_occasion %}<input type="hidden" name="for_occasion" value="{{ for_occasion['id'] }}">{% endif %}
+  {% if night %}<input type="hidden" name="night" value="{{ night }}">{% endif %}
+  <div class="mb-top">
+    <label class="mb-name"><span class="field-label">Name</span>
+      <input type="text" name="name" value="{{ v.name or '' }}" maxlength="120" required placeholder="Dîner à Gudanes, automne"></label>
+    <label><span class="field-label">Price a person (€)</span>
+      <input type="text" name="price" inputmode="decimal" value="{{ ((v.price|int) if v.price == v.price|int else v.price) if v.price is not none else '' }}" placeholder="95"></label>
+    <label><span class="field-label">Served at</span>
+      <input type="time" name="service_time" value="{{ v.service_time or '' }}"></label>
+    <label><span class="field-label">Cost a cover (€, optional)</span>
+      <input type="text" name="cost_per_cover" inputmode="decimal" value="{{ ((v.cost_per_cover|int) if v.cost_per_cover == v.cost_per_cover|int else v.cost_per_cover) if v.cost_per_cover is not none else '' }}" placeholder="Food and wine">
+      <span class="upload-hint">What a cover costs the kitchen, food and wine: the occasion shows the margin a night.</span></label>
+    <label class="checkbox-row"><input type="checkbox" name="wine_included" value="1"{% if v.wine_included %} checked{% endif %}> <span>Wine included</span></label>
+  </div>
+
+  <h2 class="section-heading" style="margin-top:1.25rem">Courses</h2>
+  <p class="upload-hint">In the order they are served. A course with no dish written is left off.</p>
+  <ol class="mc-list" id="mc-list">
+    {% for c in v.courses %}{{ row(loop.index0, c) }}{% endfor %}
+    {{ row(v.courses|length, {'course_fr': '', 'fait_maison': 1}) }}
+  </ol>
+  <p><button type="button" class="btn-mini" id="mc-add">+ Add a course</button></p>
+
+  <div class="mb-save">
+    <button type="submit" class="btn-primary">Save the menu</button>
+    {% if v.id %}<span class="upload-hint">Saved menus print from the buttons at the top.</span>{% endif %}
+  </div>
+</form>
+
+<aside class="mb-preview" aria-label="The menu as the guest sees it">
+  <div class="mb-preview-bar">
+    <strong>As the guest sees it</strong>
+    <span class="mb-modes" role="group" aria-label="Preview as">
+      <button type="button" class="btn-mini" data-mode="web" aria-pressed="true">Web</button>
+      <button type="button" class="btn-mini" data-mode="a4" aria-pressed="false">A4</button>
+      <button type="button" class="btn-mini" data-mode="a3" aria-pressed="false">A3 board</button>
+    </span>
+  </div>
+  <iframe id="mb-frame" title="Preview of the menu" src="about:blank"></iframe>
+</aside>
+</div>
+
+<datalist id="dl-courses">{% for fr, en in default_courses %}<option value="{{ fr }}">{% endfor %}</datalist>
+<datalist id="dl-dishes">{% for d in dishes %}<option value="{{ d.dish_fr }}">{% endfor %}</datalist>
+<datalist id="dl-wines">{% for w in wines %}<option value="{{ w.wine_fr }}">{% endfor %}</datalist>
+<datalist id="dl-glass"><option value="12 cl"><option value="10 cl"><option value="8 cl"><option value="6 cl"><option value="4 cl"></datalist>
+<datalist id="dl-countries">{% for name in country_names %}<option value="{{ name }}">{% endfor %}</datalist>
+<template id="mc-new">{{ row('__I__', {'course_fr': '', 'fait_maison': 1}) }}</template>
+
+<style>
+.mb{ display:grid; grid-template-columns:minmax(0,1fr); gap:1.5rem; align-items:start; }
+@media (min-width:1180px){ .mb{ grid-template-columns:minmax(0,1fr) minmax(380px,40%); } .mb-preview{ position:sticky; top:1rem; } }
+.mb-top{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:.75rem 1rem; align-items:end; }
+.mb-top .mb-name{ grid-column:1 / -1; }
+.mb-top input[type=text], .mb-top input[type=time]{ width:100%; }
+.mc-list{ list-style:none; margin:.5rem 0 0; padding:0; counter-reset:mc; }
+.mc{ border:1px solid #ddd; border-radius:6px; padding:.75rem; margin:0 0 .75rem; background:#fff; }
+.mc.dragging{ opacity:.4; }
+.mc.over{ outline:2px dashed #b08d57; }
+.mc-head{ display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin-bottom:.5rem; }
+.mc-grip{ cursor:grab; color:#999; letter-spacing:-2px; padding:0 .25rem; user-select:none; }
+.mc-course{ flex:1 1 12rem; }
+.mc-course input{ width:100%; font-weight:600; letter-spacing:.04em; }
+.mc-move{ display:inline-flex; gap:.25rem; }
+.mc-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.5rem 1rem; }
+.mc-grid label{ display:block; }
+.mc-grid input[type=text], .mc-grid select{ width:100%; }
+.mc-pair{ display:grid; grid-template-columns:minmax(0,1fr) 6rem; gap:.5rem; }
+.mc-en::placeholder{ color:#9a9a9a; font-style:italic; }
+.mc-sugg{ display:block; margin-top:.25rem; border:0; background:none; padding:0; color:#73562D; font:inherit; font-size:.85rem; text-align:left; cursor:pointer; text-decoration:underline; }
+.mc-law{ color:#a1261b; margin:.5rem 0 0; font-size:.9rem; }
+.mc-al{ border:0; padding:0; margin:.75rem 0 0; display:flex; flex-wrap:wrap; gap:.35rem; }
+.mc-al legend{ width:100%; margin-bottom:.25rem; }
+.mc-chip{ display:inline-flex; align-items:center; gap:.3rem; border:1px solid #d6cfc0; border-radius:999px; padding:.15rem .6rem; font-size:.85rem; cursor:pointer; }
+.mc-chip:has(input:checked){ background:#f3ead8; border-color:#b08d57; }
+.mc-fm{ margin-top:.5rem; }
+.mb-save{ display:flex; flex-wrap:wrap; gap:1rem; align-items:center; margin:1rem 0 2rem; }
+.mb-preview{ border:1px solid #ddd; border-radius:6px; background:#E9E1D3; overflow:hidden; }
+.mb-preview-bar{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:.5rem; padding:.5rem .75rem; background:#fff; border-bottom:1px solid #ddd; }
+.mb-modes{ display:inline-flex; gap:.25rem; }
+.mb-modes [aria-pressed=true]{ background:#14305F; color:#fff; }
+#mb-frame{ display:block; width:100%; height:80vh; border:0; }
+@media (max-width:1179px){ #mb-frame{ height:70vh; } }
+@media (pointer:coarse){ .mc-move .btn-mini, .mb-modes .btn-mini, #mc-add{ min-height:44px; min-width:44px; } .mc-chip{ min-height:36px; } }
+</style>
+
+<script>
+(function(){
+  var form = document.getElementById('menu-form'), list = document.getElementById('mc-list'),
+      frame = document.getElementById('mb-frame'), mode = 'web', next = 1000, timer = null;
+  var DISHES = {{ dishes|tojson }}, WINES = {{ wines|tojson }}, COUNTRIES = {{ countries|tojson }};
+  var csrf = form.querySelector('[name=csrf_token]').value;
+  function byName(list, key, value){ value = (value || '').trim().toLowerCase(); for (var i = 0; i < list.length; i++) if ((list[i][key] || '').toLowerCase() === value) return list[i]; return null; }
+  function field(li, f){ return li.querySelector('[name="c-' + li.getAttribute('data-i') + '-' + f + '"]'); }
+
+  /* The preview: the form as it stands, drawn by the same template the guest gets. */
+  function preview(){
+    var data = new FormData(form); data.set('preview_mode', mode);
+    fetch({{ url_for('admin_dinner_menu_preview')|tojson }}, {method: 'POST', body: data, credentials: 'same-origin'})
+      .then(function(r){ return r.text(); }).then(function(html){ frame.srcdoc = html; }).catch(function(){});
+  }
+  function soon(){ clearTimeout(timer); timer = setTimeout(preview, 450); }
+  form.addEventListener('input', soon); form.addEventListener('change', soon);
+  document.querySelectorAll('.mb-modes [data-mode]').forEach(function(b){
+    b.addEventListener('click', function(){
+      mode = b.getAttribute('data-mode');
+      document.querySelectorAll('.mb-modes [data-mode]').forEach(function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      preview();
+    });
+  });
+
+  /* Order: the hidden pos of each course follows where it sits. */
+  function renumber(){ Array.prototype.forEach.call(list.children, function(li, n){ var p = li.querySelector('.mc-pos'); if (p) p.value = n; }); soon(); }
+
+  /* The meat rule, said where it is broken. */
+  function law(li){
+    var meat = li.querySelector('.mc-meat'), country = li.querySelector('.mc-country');
+    li.querySelector('.mc-law').hidden = !(meat && meat.value && country && !country.value.trim());
+  }
+
+  /* An English line, suggested in grey: the placeholder and a link to take it. Saved only if taken or typed. */
+  function suggest(input){
+    var en = form.querySelector('[name="' + input.getAttribute('data-en') + '"]');
+    if (!en || !input.value.trim()) return;
+    var kind = input.getAttribute('data-kind');
+    if (en.type === 'hidden') {   /* course and country: the house's own words, filled quietly */
+      if (kind === 'country') { en.value = COUNTRIES[input.value.trim().toLowerCase()] || ''; return; }
+    }
+    if (en.value.trim() && en.type !== 'hidden') return;
+    var body = new FormData(); body.set('csrf_token', csrf); body.set('kind', kind); body.set('text', input.value);
+    fetch({{ url_for('admin_dinner_menu_english')|tojson }}, {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function(r){ return r.json(); }).then(function(out){
+        if (!out || !out.en) return;
+        if (en.type === 'hidden') { if (!en.value) { en.value = out.en; soon(); } return; }
+        if (en.value.trim()) return;
+        en.placeholder = out.en;
+        var b = en.parentNode.querySelector('.mc-sugg');
+        if (b) { b.hidden = false; b.textContent = 'Use “' + out.en + '”'; b.onclick = function(){ en.value = out.en; b.hidden = true; soon(); }; }
+      }).catch(function(){});
+  }
+
+  function fillDish(li, d){
+    field(li, 'dish_en').value = d.dish_en || '';
+    field(li, 'origin_fr').value = d.origin_fr || ''; field(li, 'origin_en').value = d.origin_en || '';
+    field(li, 'country_fr').value = d.country_fr || ''; field(li, 'country_en').value = d.country_en || '';
+    field(li, 'meat').value = d.meat || '';
+    var have = (d.allergens || '').split(',');
+    li.querySelectorAll('[name$="-al"]').forEach(function(x){ x.checked = have.indexOf(x.value) >= 0; });
+    var fm = field(li, 'fm'); if (fm) fm.checked = !!d.fait_maison;
+    li.querySelectorAll('.mc-sugg').forEach(function(b){ b.hidden = true; });
+  }
+
+  function wire(li){
+    li.querySelector('.mc-up').addEventListener('click', function(){ if (li.previousElementSibling) { list.insertBefore(li, li.previousElementSibling); renumber(); li.querySelector('.mc-up').focus(); } });
+    li.querySelector('.mc-down').addEventListener('click', function(){ if (li.nextElementSibling) { list.insertBefore(li.nextElementSibling, li); renumber(); li.querySelector('.mc-down').focus(); } });
+    li.querySelectorAll('[data-kind]').forEach(function(input){ input.addEventListener('change', function(){
+      if (input.classList.contains('mc-dish')) { var d = byName(DISHES, 'dish_fr', input.value); if (d) { fillDish(li, d); soon(); law(li); return; } }
+      if (input.classList.contains('mc-wine')) { var w = byName(WINES, 'wine_fr', input.value); if (w) { field(li, 'wine_en').value = w.wine_en || ''; field(li, 'wine_glass').value = w.glass || ''; soon(); return; } }
+      suggest(input);
+    }); });
+    li.querySelectorAll('.mc-en').forEach(function(en){ en.addEventListener('input', function(){ var b = en.parentNode.querySelector('.mc-sugg'); if (b) b.hidden = true; }); });
+    li.querySelector('.mc-meat').addEventListener('change', function(){ law(li); });
+    li.querySelector('.mc-country').addEventListener('input', function(){ law(li); });
+    law(li);
+    /* Drag to reorder, on a desk: from the grip only, so selecting words in a box never moves the course. */
+    var grip = li.querySelector('.mc-grip');
+    grip.addEventListener('mousedown', function(){ li.setAttribute('draggable', 'true'); });
+    li.addEventListener('dragstart', function(e){ li.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', ''); } catch (err) {} });
+    li.addEventListener('dragend', function(){ li.removeAttribute('draggable'); li.classList.remove('dragging'); list.querySelectorAll('.over').forEach(function(x){ x.classList.remove('over'); }); renumber(); });
+    li.addEventListener('dragover', function(e){ var d = list.querySelector('.dragging'); if (!d || d === li) return; e.preventDefault(); li.classList.add('over'); });
+    li.addEventListener('dragleave', function(){ li.classList.remove('over'); });
+    li.addEventListener('drop', function(e){ e.preventDefault(); var d = list.querySelector('.dragging'); if (!d || d === li) return; var r = li.getBoundingClientRect(); list.insertBefore(d, (e.clientY > r.top + r.height / 2) ? li.nextSibling : li); });
+  }
+  Array.prototype.forEach.call(list.children, wire);
+
+  document.getElementById('mc-add').addEventListener('click', function(){
+    var t = document.getElementById('mc-new').innerHTML.replace(/__I__/g, String(next++));
+    var holder = document.createElement('ol'); holder.innerHTML = t.trim();
+    var li = holder.firstElementChild; list.appendChild(li); wire(li); renumber();
+    li.querySelector('[name$="-course_fr"]').focus();
+  });
+  preview();
+})();
+</script>
+{% endblock %}

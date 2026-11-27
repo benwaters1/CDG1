@@ -1,0 +1,44 @@
+{#- THE DINNER AT GUDANES PANEL (owner, 26-27 Nov 2026), drawn on an occasion's page and, exactly the same, in the
+    owner's preview on the occasion's form. dinner_panel(occ, panel, dinners, time_words, night_menus):
+
+      the photograph   -- the occasion's banner, else the long table with tall candles, drawn no wider than half
+                          the pixels it has (384px on a desk for the 768px photograph), so it is sharp on a laptop;
+      the nights, the time, the price set large and "Wine included";
+      the nights' state -- "Full on Friday 5 November", or booking closed the evening before (the kitchen buys the
+                          day before), so the panel never takes a booking the kitchen cannot cook for;
+      the buttons      -- Stay these nights, and Book dinner for the nights with places (the room form arrives with
+                          it added), or, for diners from outside, the restaurant's booking for the first night with
+                          places; Join the waitlist when every night still bookable is full;
+      the menu         -- a quiet link under the buttons, opened in the pop-up. -#}
+{% from '_menu_dialog.html' import menu_link %}
+{% macro dinner_panel(occ, panel, dinners, time_words, night_menus) %}
+<section class="g-dinpanel" aria-labelledby="dinpanel-h">
+  <figure class="g-dinpanel__ph"><img src="{{ panel.photo }}"{% if panel.photo_srcset %} srcset="{{ panel.photo_srcset }}" sizes="(min-width: 48rem) 384px, calc(100vw - 60px)"{% endif %}{% if panel.photo_w %} width="{{ panel.photo_w }}" height="{{ panel.photo_h }}"{% endif %} alt="{{ panel.photo_alt }}" loading="lazy" decoding="async"></figure>
+  <div class="g-dinpanel__b">
+    <h2 class="g-dinpanel__h" id="dinpanel-h">Dinner at Gudanes</h2>
+    <p class="g-dinpanel__when">{{ dinner_nights_words(dinners) }}{% if time_words %}<span class="g-dinpanel__time">{{ time_words }}</span>{% endif %}</p>
+    {% if occ['dinner_price'] %}{% set _dp = occ['dinner_price']|float %}
+    <p class="g-dinpanel__price"><span class="g-fig" data-eur="{{ _dp|int if _dp == _dp|int else _dp }}">€{{ '{:,.0f}'.format(_dp) if _dp == _dp|int else '{:,.2f}'.format(_dp) }}</span> <span class="g-dinpanel__u">a person</span></p>
+    {% if occ['wine_included'] %}<p class="g-dinpanel__wine">Wine included</p>{% endif %}
+    {% endif %}
+    {% if panel.outside %}<p class="g-dinpanel__who">Open to guests from outside the château too.</p>{% endif %}
+    {% for n in panel.nights if n.state != 'open' %}
+    <p class="g-dinpanel__state">{% if n.state == 'full' %}Full on {{ n.words }}{% else %}Booking for {{ n.words }} closed the evening before{% endif %}</p>
+    {% endfor %}
+    {% if panel.closed_all %}
+    <p class="g-dinpanel__who">Dinner is booked up to the evening before, so the kitchen can buy for it: booking has closed.</p>
+    {% endif %}
+    <p class="g-dinpanel__btns">
+      <a href="{{ panel.stay }}" class="g-btn g-btn--solid">Stay these nights</a>
+      {% if panel.book_dinner %}<a href="{{ panel.book_dinner }}" class="g-btn">Book dinner</a>
+      {% elif panel.waitlist %}<a href="{{ panel.waitlist }}" class="g-btn">Join the waitlist</a>{% endif %}
+    </p>
+    {% if occ.menu or night_menus %}
+    <div class="g-dinpanel__menus">
+      {% if occ.menu %}<p>{{ menu_link(occ.menu) }}</p>{% endif %}
+      {% for night, m in night_menus|dictsort %}<p>{{ dinner_nights_words([night]) }}: {{ menu_link(m) }}</p>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endmacro %}

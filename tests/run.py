@@ -220,6 +220,11 @@ SUITES = [
     "test_whats_on_kept_up",
     "test_stay_occasions",
     "test_dinner_at_gudanes",
+    "test_dinner_menu_builder",
+    "test_dinner_guest_paths",
+    "test_dinner_costing",
+    "test_dinner_till",
+    "test_dinner_menu_render",
     "test_retreat_celebrations",
     "test_getting_here",
     "test_ateliers",
@@ -311,6 +316,7 @@ SUITES = [
     "test_room_order",
     "test_guest_amendments",
     "test_dinner_dietary_notice",
+    "test_health_notes_in_copies",
     "test_room_balance_reminder",
     "test_extras_offer_letter",
     "test_my_hours",
@@ -746,9 +752,11 @@ SUITES = [
     # 26 November 2026 (owner): five guest rooms said, the room with the plates on the wall, the wallpaper pair.
     "test_owner_notes_26_nov",
     # 26 November 2026, Microsoft 365 on the owner home: a reply kept in any inbox's Sent Items answers
-    # an email in any other; who wrote each flag, guests first; "Waiting for a reply" on the owner home.
+    # an email in any other; who wrote each flag, guests first.
     "test_inbox_replies_everywhere",
-    "test_waiting_for_a_reply",
+    # 27 November 2026 (owner: "I don't want all the emails on there" -- "just a notification of guest
+    # replies"): the inbox panel off the owner home, and one notification an email from a guest the app knows.
+    "test_guest_reply_notice",
     # And the owner's own Outlook diary among the house's day, time and subject only.
     "test_owner_diary_on_the_day",
 ]

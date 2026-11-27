@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Dinner menus{% endblock %}
+{% block content %}
+{#- THE DINNER AT GUDANES MENUS (owner, 27 Nov 2026: "is it easy to create a menu?"). Every menu built here, the ones
+    in use first; a click makes the next one from the last (Duplicate); one an occasion serves is archived, never
+    deleted. Each prints as the A4 table menu, the A3 board and the allergen sheet. -#}
+<div class="page-head">
+  <h1>Dinner menus</h1>
+  <a href="{{ url_for('admin_dinner_menu_new') }}" class="btn-mini">+ New menu</a>
+  <a href="{{ url_for('admin_stay_occasions') }}" class="btn-mini">Stay occasions</a>
+</div>
+<p style="max-width:52rem;color:#666;margin-bottom:1.25rem">
+  The menus for Dinner at Gudanes. Write the French, and the English is suggested for you; every dish and wine you
+  write is kept, so the next menu is mostly picking. An occasion serves one of these (or a file, for a guest chef's
+  menu), and guests see it in the house style from “See the menu”.
+  {% if dishes %}{{ dishes }} dish{{ 'es' if dishes != 1 }} in the library.{% endif %}
+</p>
+
+{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
+
+{% if lv.rows %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th scope="col">Menu</th><th scope="col">Price</th><th scope="col">Courses</th><th scope="col">Served by</th><th scope="col">Changed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+  <tbody>
+  {% for m in lv.rows %}
+  <tr>
+    <th scope="row"><a href="{{ url_for('admin_dinner_menu', menu_id=m.id) }}">{{ m.name }}</a>{% if m.status == 'archived' %} <span class="mini-status status-pending">Archived</span>{% endif %}</th>
+    <td>{% if m.price %}{{ m.price|money(0 if m.price == m.price|int else 2) }}{{ ', wine included' if m.wine_included }}{% else %}<span class="upload-hint">No price</span>{% endif %}</td>
+    <td>{{ m.course_count }}</td>
+    <td>{% for u in m.uses %}<a href="{{ url_for('admin_stay_occasion', occ_id=u.id) }}#dinner">{{ u.name }}</a>{% if u.nights %} ({{ u.nights|map('date_short')|join(', ') }}){% endif %}{{ ', ' if not loop.last }}{% else %}<span class="upload-hint">Not used yet</span>{% endfor %}</td>
+    <td>{{ m.updated }}{% if m.written_by %}<br><span class="upload-hint">written by {{ m.written_by }}</span>{% endif %}</td>
+    <td style="white-space:nowrap">
+      <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=m.id, kind='a4') }}" target="_blank" rel="noopener">A4</a>
+      <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=m.id, kind='a3') }}" target="_blank" rel="noopener">A3</a>
+      <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=m.id, kind='allergens') }}" target="_blank" rel="noopener">Allergens</a>
+      <a class="btn-mini" href="{{ url_for('admin_dinner_menu_pdf', menu_id=m.id) }}">PDF</a>
+      <form method="post" action="{{ url_for('admin_dinner_menu_duplicate', menu_id=m.id) }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-mini" type="submit">Duplicate</button></form>
+      <form method="post" action="{{ url_for('admin_dinner_menu_archive', menu_id=m.id) }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-mini" type="submit">{{ 'Restore' if m.status == 'archived' else 'Archive' }}</button></form>
+      {% if not m.uses %}<form method="post" action="{{ url_for('admin_dinner_menu_delete', menu_id=m.id) }}" style="display:inline" onsubmit="return confirm('Delete {{ m.name|e }}? Its dishes stay in the library.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-mini" type="submit">Delete</button></form>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% elif lv.total %}
+<p class="empty-state">Nothing matches. <a href="{{ url_for('admin_dinner_menus') }}">Show every menu</a>.</p>
+{% else %}
+<p class="empty-state">No menus yet. <a href="{{ url_for('admin_dinner_menu_new') }}">Write the first one</a>: the house's seven courses are laid out for you.</p>
+{% endif %}
+{% endblock %}

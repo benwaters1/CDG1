@@ -5,6 +5,7 @@
 {% block og_desc %}{{ occ['name'] }} at Château de Gudanes, {{ date_range(occ['first_night'], occ.departure) }}.{% endblock %}
 {% block content %}
 {% from '_menu_dialog.html' import menu_link %}
+{% from '_dinner_panel.html' import dinner_panel %}
 {#- One occasion (24 Nov 2026): the words the owner approved, the chef line exactly as the switch sets it, and the
     two ways in. With the chef away nothing here mentions a meal beyond breakfast (test_stay_occasions). -#}
 {% if preview %}<p class="g-hint" style="text-align:center;padding:var(--s3);background:var(--sand-2)">A preview: not on sale, and not shown to guests.</p>{% endif %}
@@ -30,30 +31,7 @@
       the basket (?dinner=1, read once by the room form) -- or, when the dinner is open to diners not staying, on the
       restaurant's booking for the night. The menu is a quiet link under the buttons. What is cooked is in the uploaded
       menu, never in words written here. A guest chef keeps the section below. -#}
-  {% if panel %}
-  <section class="g-dinpanel" aria-labelledby="dinpanel-h">
-    <figure class="g-dinpanel__ph"><img src="{{ panel.photo }}" alt="{{ panel.photo_alt }}" loading="lazy" decoding="async"></figure>
-    <div class="g-dinpanel__b">
-      <h2 class="g-dinpanel__h" id="dinpanel-h">Dinner at Gudanes</h2>
-      <p class="g-dinpanel__when">{{ dinner_nights_words(dinners) }}{% if dinner_time_words %}<span class="g-dinpanel__time">{{ dinner_time_words }}</span>{% endif %}</p>
-      {% if occ['dinner_price'] %}{% set _dp = occ['dinner_price']|float %}
-      <p class="g-dinpanel__price"><span class="g-fig" data-eur="{{ _dp|int if _dp == _dp|int else _dp }}">€{{ '{:,.0f}'.format(_dp) if _dp == _dp|int else '{:,.2f}'.format(_dp) }}</span> <span class="g-dinpanel__u">a person</span></p>
-      {% if occ['wine_included'] %}<p class="g-dinpanel__wine">Wine included</p>{% endif %}
-      {% endif %}
-      {% if panel.outside %}<p class="g-dinpanel__who">Open to guests from outside the château too.</p>{% endif %}
-      <p class="g-dinpanel__btns">
-        <a href="{{ panel.stay }}" class="g-btn g-btn--solid">Stay these nights</a>
-        <a href="{{ panel.book_dinner }}" class="g-btn">Book dinner</a>
-      </p>
-      {% if occ.menu or night_menus %}
-      <div class="g-dinpanel__menus">
-        {% if occ.menu %}<p>{{ menu_link(occ.menu) }}</p>{% endif %}
-        {% for night, m in night_menus|dictsort %}<p>{{ dinner_nights_words([night]) }}: {{ menu_link(m) }}</p>{% endfor %}
-      </div>
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
+  {% if panel %}{{ dinner_panel(occ, panel, dinners, dinner_time_words, night_menus) }}{% endif %}
 
   {% if occ.is_guest_chef %}
   <div class="g-occasion__guest" style="margin-top:var(--s6)">
