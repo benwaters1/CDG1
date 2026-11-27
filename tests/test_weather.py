@@ -92,6 +92,14 @@ def run():
     # when the house has no reading, and that is what stripping scripts asks.
     import re as _re0
     drawn = _re0.sub(r"(?is)<script.*?</script>", "", body)
+    # And the <template>s (the weather card, 25 Nov 2026). The card carries the
+    # cached FORECAST for the coming fortnight in <template> elements, which a
+    # browser does not draw until a guest picks dates inside it -- a separate
+    # cache from the reading cleared above, and every figure in it one the
+    # house fetched. Read as drawn text it looked like a temperature with
+    # nothing behind it, and this check went red on 25 Nov for a page that
+    # showed a guest nothing at all.
+    drawn = _re0.sub(r"(?is)<template\b.*?</template>", "", drawn)
     s.check("and offers no temperature", "&deg;C" not in drawn
             and "°C" not in drawn.split("What Guests Say")[0],
             detail="a figure in the markup with nothing cached behind it")
