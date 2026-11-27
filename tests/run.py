@@ -309,6 +309,7 @@ SUITES = [
     "test_payment_landing",
     "test_room_order",
     "test_guest_amendments",
+    "test_dinner_dietary_notice",
     "test_room_balance_reminder",
     "test_extras_offer_letter",
     "test_my_hours",

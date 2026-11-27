@@ -9239,6 +9239,7 @@ def init_db():
     link_held_letters(conn)
     backfill_consent_history(conn)
     redact_stored_links(conn)
+    scrub_quoted_dinner_notes(conn)
     incident_times_to_utc(conn)
     prep_notes_in_words(conn)
 
@@ -36720,6 +36721,32 @@ def redact_stored_links(conn):
             conn.execute("UPDATE guest_messages SET body = ?, subject = ? WHERE id = ?",
                          (body, subject, r["id"]))
             changed += 1
+    if changed:
+        conn.commit()
+    return changed
+
+
+# The dinner-changed notice used to end its list with the guest's note in full
+# ("- dietary notes now: no shellfish"), and the mail log and the outbox keep
+# the house's letters two years. The note itself runs to the "Total now" line
+# that always followed it, over as many lines as the guest typed.
+_QUOTED_DINNER_NOTE = re.compile(r"- dietary notes now: .*?(?=\n\nTotal now )", re.S)
+QUOTED_DINNER_NOTE_KEPT_AS = ("- Dietary notes: changed. What they said is not kept "
+                              "in this copy.")
+
+
+def scrub_quoted_dinner_notes(conn):
+    """Take the guest's dietary note out of the dinner-changed notices already
+    kept. At startup; finds nothing once the old copies are through it."""
+    changed = 0
+    for table in ("mail_log", "email_outbox"):
+        for r in conn.execute(
+                f"SELECT id, body FROM {table} WHERE subject LIKE 'Dinner reservation changed%' "
+                "AND body LIKE '%- dietary notes now: %'").fetchall():
+            body = _QUOTED_DINNER_NOTE.sub(QUOTED_DINNER_NOTE_KEPT_AS, r["body"])
+            if body != r["body"]:
+                conn.execute(f"UPDATE {table} SET body = ? WHERE id = ?", (body, r["id"]))
+                changed += 1
     if changed:
         conn.commit()
     return changed
@@ -69359,8 +69386,15 @@ def restaurant_manage(manage_token):
             changes = []
             if party_size != was_party:
                 changes.append(f"party of {was_party} → {party_size}")
+            # Named, never quoted: the note is deleted once the dinner is over,
+            # and a copy of this letter would keep it two years. The kitchen's
+            # list for the night is where the privacy notice says it is read.
             if dietary != was_dietary:
-                changes.append(f"dietary notes now: {dietary or '(none)'}")
+                changes.append(health_note_line(
+                    "Dietary notes", was_dietary, dietary,
+                    "on the kitchen's dietary list for that night")
+                    + "\n  " + house_url_for("kitchen_dietary", date=booking["dinner_date"],
+                                             _external=True))
             paid_note = ""
             if booking["payment_status"] == "paid" and party_size != was_party:
                 paid_note = ("\n\nThey have already paid. The total has been "
@@ -75219,6 +75253,20 @@ def write_workshop_details(conn, reg, fields):
     return changed
 
 
+def health_note_line(label, was, now, where):
+    """One line telling the house a health note moved, without what it says.
+
+    The privacy notice promises a dietary or medical note goes when the booking
+    is over, and the house keeps its own letters two years (and its mailbox
+    for ever), so a notice that quotes the note outlives the promise. Every
+    notice to the house about a guest changing one says it through here:
+    whether it was added, changed or taken off, and where to read it.
+    """
+    was, now = (was or "").strip(), (now or "").strip()
+    what = "taken off" if not now else ("added" if not was else "changed")
+    return f"{label}: {what}. Read them {where}; they are not written into emails."
+
+
 def guest_details_changes(booking, fields, changed):
     """The lines the house is told, one per field the guest changed.
 
@@ -75232,9 +75280,7 @@ def guest_details_changes(booking, fields, changed):
             continue
         was, now = (booking[key] or "").strip(), (fields[key] or "").strip()
         if key in WORKSHOP_HEALTH_DETAILS:
-            what = "taken off" if not now else ("added" if not was else "changed")
-            lines.append(f"{label}: {what}. Read them on the registration; "
-                         "they are not written into emails.")
+            lines.append(health_note_line(label, was, now, "on the registration"))
         elif not now:
             lines.append(f"{label}: taken off (was \"{was}\")")
         elif not was:
