@@ -260,9 +260,13 @@
     Château -- three screens of one question. Under 600px it is asked once, here: two picture cards, each opening its
     booking. The hero's card, La Vie de Château's words and the comparison are not drawn on a phone (gudanes.css, THE
     HOME PAGE ON A PHONE); from 600px up this is not drawn and the page is as it was. The tabs' own two lines. Neither
-    photograph is on any other page drawn large (test_site_review_2), nor anywhere else on this one. -#}
+    photograph is on any other page drawn large (test_site_review_2), nor anywhere else on this one.
+    27 Nov 2026 (owner: "the top"): Retreats opens the retreats page at its top, not at its dates. On a phone the dates
+    are fifteen screens down that page, past everything that says what a retreat is, and a guest set down there cannot
+    tell there is anything above. The dates are a tap away still: See every date under the next three dates here, and
+    the button in the retreats page's own opening screen. -#}
 <section class="g-twoways" aria-label="Retreats, or stay the night">
-  <a class="g-twoways__c" href="{{ url_for('workshops_public') }}#dates">
+  <a class="g-twoways__c" href="{{ url_for('workshops_public') }}">
     {{ pic(url_for('static', filename='img/retreats/candlelit-dinner-salon.jpg'), 'The long table laid in the salon, lit by candles', sizes='(max-width: 599px) calc(100vw - 32px), 1px', cls='g-twoways__img', pos='50% 60%') }}
     <span class="g-twoways__b"><b class="g-twoways__t">Retreats</b> <i class="g-twoways__s">Three to seven nights, all inclusive</i></span>
   </a>

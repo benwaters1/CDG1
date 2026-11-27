@@ -12,7 +12,8 @@ WHAT THE PAGE DOES NOW, under 600px (BRIEF-home-on-a-phone-26-nov):
 - the opening screen as it was, with one sentence under the motto, so it
   ends inside the first screen;
 - the choice, asked once: two picture cards, Retreats and Stay the night,
-  each opening its booking (the retreat dates, the date search);
+  Retreats opening the retreats page at its top (owner, 27 Nov: its dates
+  are fifteen screens down it), Stay the night opening the date search;
 - the next three dates, with "See every date" under them;
 - the rooms, one card and the edge of the next, to swipe;
 - the restoration in one photograph, one paragraph and its link;
@@ -514,9 +515,10 @@ def run():
     s.check("two picture cards ask it", len(cards) == 2, detail=str(d["cards"]))
     if len(cards) == 2:
         retreat, stay = cards
-        s.check("Retreats, three to seven nights, all inclusive, opening the retreat dates",
+        # 27 Nov 2026 (owner: "the top"): the retreats page from its top, not fifteen screens down at its dates.
+        s.check("Retreats, three to seven nights, all inclusive, opening the retreats page at its top",
                 retreat["words"] == "Retreats Three to seven nights, all inclusive"
-                and retreat["href"].endswith("/workshops#dates"), detail=str(retreat))
+                and retreat["href"].endswith("/workshops"), detail=str(retreat))
         s.check("Stay the night, a room and breakfast, your own dates, opening the date search",
                 stay["words"] == "Stay the night A room and breakfast, your own dates"
                 and stay["href"].rstrip("/").endswith("/book"),
