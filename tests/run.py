@@ -44,6 +44,7 @@ SUITES = [
     "test_retreatguru_import",
     "test_rg_second_run",
     "test_workshop_register",
+    "test_workshop_guest_details",
     "test_lists_open_on_now",
     "test_owed_everywhere",
     "test_customer_record",

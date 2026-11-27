@@ -11173,6 +11173,16 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-cancel-fold > summary::after{ content: "›"; display: inline-block; color: var(--gilt); transition: transform .2s ease; }
 .g .g-cancel-fold[open] > summary::after{ content: "›"; transform: rotate(90deg); }
 .g .g-cancel-fold .btn-text-danger{ font-size: 15px; text-decoration: underline; text-underline-offset: 3px; }
+
+/* 27 Nov - RETREAT PAGE: the guest's own details, changed by them. Folded under what they told us, opened by a real link, the form inside it at the card's width */
+.g .g-details-fold{ margin-top: var(--s4); }
+.g .g-details-fold > summary{ cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: .45rem; min-height: 44px; font-family: var(--ui); font-size: 16px; color: var(--blue-deep); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
+.g .g-details-fold > summary::-webkit-details-marker{ display: none; }
+.g .g-details-fold > summary::after{ content: "›"; display: inline-block; color: var(--gilt); transition: transform .2s ease; }
+.g .g-details-fold[open] > summary::after{ transform: rotate(90deg); }
+.g .g-details-fold form{ margin-top: var(--s3); }
+.g .g-details-fold .g-field{ margin-bottom: var(--s4); }
+.g .g-details-fold input, .g .g-details-fold textarea{ width: 100%; max-width: 100%; }
 .g .g-mb-end{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s5); margin-top: var(--s6); }
 .g .g-mb-end .g-link{ font-size: 16px; }
 .g .g-mb-end{ margin-top: var(--s4); }
