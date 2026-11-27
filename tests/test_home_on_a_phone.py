@@ -43,7 +43,11 @@ home page's own part would have had to fit in about 4,100px, five screens for
 the nine things the brief lists to keep, the opening screen and Come and see
 it among them. What is held instead is the brief's "about six screens" for
 the page's own part: six and a half screens of 812, against fourteen before.
-The footer is a question for every page, not this one.
+The footer is a question for every page, not this one. It was answered the
+next day (27 Nov 2026, the owner's yes to a shorter footer on a phone): Visit
+and Help each a button over its list, and 1,955px became about 1,220 under
+every page, so the home page at 375 is about 6,370px in all, against 12,591.
+test_footer_on_a_phone holds that.
 
 THE PICTURES ARE THE LIVE SITE'S. The page's photographs from Squarespace and
 Booking.com are served live from the house's own copies (the photo mirror);

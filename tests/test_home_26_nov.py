@@ -166,7 +166,12 @@ def _checks(s, Image, img_dir, made):
     art = Image.open(os.path.join(img_dir, "chateau-de-gudanes-crest.png"))
     s.check("drawn on nothing, so it sits on the band rather than in a box",
             art.convert("RGBA").getpixel((2, 2))[3] == 0)
-    band = _last_rule(css, ".g .g-footer .g-crest--foot")
+    # The last rule that says what the band is drawn on, not the last rule of any kind: the footer on a phone
+    # (27 Nov 2026) gives the band less padding below 600px and says nothing of its colour, and nothing after the
+    # parchment may say a different one.
+    sel = ".g .g-footer .g-crest--foot"
+    painted = [mm.group(1) for mm in re.finditer(re.escape(sel) + r"\s*\{([^}]*)\}", css) if "background" in mm.group(1)]
+    band = painted[-1] if painted else ""
     s.check("on a parchment band of its own, where its slate blue reads",
             "background: #F6F1E7" in band, detail=band)
 
