@@ -2768,8 +2768,6 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .oh-col--rail{ display:flex; flex-direction:column; gap:16px; }
 .oh-sec__head{ display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap; }
 .oh-sec__head--day{ margin:26px 0 10px; }
-/* "Waiting for a reply", under the decision queue (26 Nov 2026). */
-.oh-sec__head--replies{ margin:26px 0 10px; }
 .oh .oh-h2{ font-family:var(--oh-fig); font-size:16px; font-weight:600;
   letter-spacing:-0.015em; margin:0; white-space:nowrap; }
 .oh .oh-h3{ font-family:var(--oh-fig); font-size:13.5px; font-weight:600; margin:0; }
