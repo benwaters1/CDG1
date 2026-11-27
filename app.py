@@ -453,6 +453,10 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_waitlist_autonotify_enabled": "1",
     "automation_workshop_feedback_enabled": "1",
     "automation_email_scan_enabled": "1",
+    # ON (owner, 27 Nov 2026: "just a notification of guest replies"). It
+    # writes only to the owner, and only about somebody with a booking not yet
+    # over or an enquiry still open. See notify_guest_replies.
+    "automation_guest_reply_notice_enabled": "1",
     # ON: it reads nothing until Calendars.Read is granted, and says so.
     "automation_owner_diary_enabled": "1",
     "automation_hr_escalation_enabled": "1",
@@ -9288,6 +9292,16 @@ def init_db():
          "ALTER TABLE channel_price_pushes ADD COLUMN uplift REAL"),
         ("channel_price_pushes_previous_uplift",
          "ALTER TABLE channel_price_pushes ADD COLUMN previous_uplift REAL"),
+        # ONE NOTIFICATION FOR EACH EMAIL A GUEST WRITES (owner, 27 Nov 2026:
+        # "just a notification of guest replies"). Keyed on the email's own
+        # Message-ID, which is the same in every inbox it reached and in the
+        # Booking.com reader, so one email is announced once however many
+        # inboxes it landed in. Nothing about who wrote it is kept here.
+        ("guest_reply_notices_table",
+         """CREATE TABLE IF NOT EXISTS guest_reply_notices (
+                message_key TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                notified_at TEXT NOT NULL)"""),
     ):
         try:
             conn.execute(ddl)
@@ -9330,6 +9344,7 @@ def init_db():
     link_held_letters(conn)
     backfill_consent_history(conn)
     redact_stored_links(conn)
+    scrub_quoted_dinner_notes(conn)
     incident_times_to_utc(conn)
     prep_notes_in_words(conn)
 
@@ -36869,6 +36884,32 @@ def redact_stored_links(conn):
     return changed
 
 
+# The dinner-changed notice used to end its list with the guest's note in full
+# ("- dietary notes now: no shellfish"), and the mail log and the outbox keep
+# the house's letters two years. The note itself runs to the "Total now" line
+# that always followed it, over as many lines as the guest typed.
+_QUOTED_DINNER_NOTE = re.compile(r"- dietary notes now: .*?(?=\n\nTotal now )", re.S)
+QUOTED_DINNER_NOTE_KEPT_AS = ("- Dietary notes: changed. What they said is not kept "
+                              "in this copy.")
+
+
+def scrub_quoted_dinner_notes(conn):
+    """Take the guest's dietary note out of the dinner-changed notices already
+    kept. At startup; finds nothing once the old copies are through it."""
+    changed = 0
+    for table in ("mail_log", "email_outbox"):
+        for r in conn.execute(
+                f"SELECT id, body FROM {table} WHERE subject LIKE 'Dinner reservation changed%' "
+                "AND body LIKE '%- dietary notes now: %'").fetchall():
+            body = _QUOTED_DINNER_NOTE.sub(QUOTED_DINNER_NOTE_KEPT_AS, r["body"])
+            if body != r["body"]:
+                conn.execute(f"UPDATE {table} SET body = ? WHERE id = ?", (body, r["id"]))
+                changed += 1
+    if changed:
+        conn.commit()
+    return changed
+
+
 # What became of a letter's words, for the mail log. Where they are is where
 # they may be: a guest's letter is read from their correspondence rather than
 # kept twice, the house's own letters are kept here, and two kinds are never
@@ -37444,6 +37485,7 @@ NOTIFICATION_KIND_LABELS = {
     "announcement": "Announcements", "chat": "Messages", "door": "The door",
     "balance_due": "Money owed", "expense_decided": "Expenses",
     "booking_com": "Booking.com", "booking_waiting": "Bookings", "guest_request": "Guest requests",
+    "guest_reply": "Guest replies",
     "event_inquiry": "Events", "restaurant": "Restaurant", "restaurant_booking": "Restaurant",
     "menu": "The menu", "workshop_booking": "Workshops", "workshop_decision": "Workshops",
     "hr_escalation": "HR", "hr_note": "HR", "hr_note_reply": "HR", "hr_reminder": "HR",
@@ -42384,8 +42426,6 @@ def owner_queue_totals(conn, today):
     return row["n"] or 0, row["v"] or 0.0, row["old"] or 0
 
 
-# How many guests "Waiting for a reply" names before "and N more".
-OWNER_HOME_REPLIES_SHOWN = 5
 # A subject that says nothing of what was asked; the email's first words do.
 _SAYS_NOTHING = re.compile(
     r"^(hello|hi|bonjour|bonsoir|hola|enquiry|inquiry|question|demande|request|information|"
@@ -42405,74 +42445,6 @@ def asked_in_a_few_words(subject, preview, words=8):
         s = " ".join((preview or "").split())
     parts = s.split()
     return " ".join(parts[:words]) + ("…" if len(parts) > words else "") if parts else "(nothing written)"
-
-
-def _waited_short(hours):
-    if hours is None:
-        return ""
-    if hours < 48:
-        return f"{max(1, int(hours))} h"
-    return f"{int(hours // 24)} days"
-
-
-def owner_home_replies(conn, now=None):
-    """"Waiting for a reply" on the owner home (26 Nov 2026): the guests and
-    enquirers waiting longest, the Booking.com guests with the days left of
-    Booking.com's fortnight, and any inbox the last scan could not read.
-
-    Nothing from everything else -- a receipt is never here. And nothing to
-    tick: an email answered leaves on the next scan, a Booking.com message
-    answered or past its fortnight leaves too, and an inbox read again takes
-    its line with it. Empty, the panel is not drawn at all."""
-    now = now or datetime.now(timezone.utc)
-    labels = {r["mailbox"].lower(): (r["label"] or r["mailbox"].split("@")[0])
-              for r in conn.execute("SELECT mailbox, label FROM mailbox_routing").fetchall()}
-    rows = conn.execute(
-        """SELECT * FROM email_flags
-            WHERE status = 'open' AND unanswered = 1 AND COALESCE(sender_kind, 'guest') = 'guest'
-            ORDER BY received_at, id""").fetchall()
-    guests = []
-    for r in rows[:OWNER_HOME_REPLIES_SHOWN]:
-        got = parse_datetime_iso(r["received_at"])
-        hours = (now - got).total_seconds() / 3600 if got else None
-        mb = (r["mailbox"] or "").lower()
-        guests.append({
-            "id": r["id"], "name": r["from_name"] or r["from_address"] or "Somebody",
-            "address": r["from_address"], "asked": asked_in_a_few_words(r["subject"], r["preview"]),
-            "inbox": labels.get(mb, mb.split("@")[0] if mb else "inbox"),
-            "waited": _waited_short(hours), "web_link": r["web_link"],
-        })
-    bcom = []
-    for r in booking_com_waiting(conn, now=now):
-        got = parse_datetime_iso(r["received_at"])
-        days = int((now - got).total_seconds() // 86400) if got else 0
-        left = max(0, BOOKING_COM_REPLY_DAYS - days)
-        bcom.append({"id": r["id"], "name": r["guest_name"] or "A guest",
-                     # What the guest wrote: Booking.com's own subject is
-                     # "We received this message from ..." every time.
-                     "asked": asked_in_a_few_words(r["message_text"] or r["subject"], r["subject"]),
-                     "left": left, "urgent": left <= 3})
-    unread = []
-    state = inbox_scan_state(conn) if graph_enabled() else None
-    if state:
-        for u in state.get("unread") or []:
-            unread.append({"mailbox": u.get("mailbox"), "folder": u.get("folder") or "",
-                           "why": u.get("why") or "", "at": state.get("at")})
-        last = parse_datetime_iso(state.get("at"))
-        if last and now - last > timedelta(hours=INBOX_SCAN_STALE_HOURS):
-            unread.append({"mailbox": "every inbox", "folder": "", "at": state.get("at"),
-                           "why": "the scan has not run since"})
-    elif graph_enabled():
-        unread.append({"mailbox": "every inbox", "folder": "", "at": None,
-                       "why": "no scan has read them yet"})
-    return {"guests": guests, "more": max(0, len(rows) - len(guests)), "total": len(rows),
-            "booking_com": bcom, "unread": unread,
-            "empty": not (guests or bcom or unread)}
-
-
-# The inbox scan runs every quarter of an hour; three hours without one is a
-# scan that is not running, and the panel says so rather than look quiet.
-INBOX_SCAN_STALE_HOURS = 3
 
 
 def owner_home_queue(conn):
@@ -43326,10 +43298,6 @@ def owner_home_warnings(conn, today):
             ", ".join(r["guest_name"] or "a guest" for r in written[:4])
             + (f" and {len(written) - 4} more" if len(written) > 4 else ""),
             len(written), "management_booking_com")
-        # The owner home says this under "Waiting for a reply", each guest
-        # with the days left; the daily summary and the assistant still read
-        # it here.
-        out[-1]["in_reply_panel"] = True
 
     # The front door, from the last half-hourly check: a guest cannot open it
     # from their phone, or its batteries are going. Quiet when it is well.
@@ -44452,12 +44420,8 @@ def staff_dashboard():
         # The lines the owner has cleared are held back, and only from this
         # panel; the greeting counts what is shown, so it never says "two
         # things need looking at" over an empty panel.
-        # Booking.com's waiting guests are said under "Waiting for a reply",
-        # each with the days left, so not twice on the one page.
         warnings, warnings_hidden = split_cleared_warnings(
-            conn, [w for w in owner_home_warnings(conn, today) if not w.get("in_reply_panel")],
-            today)
-        replies = owner_home_replies(conn)
+            conn, owner_home_warnings(conn, today), today)
         hour = datetime.now(timezone.utc).hour
         greeting = ("Good morning" if hour < 12 else
                     "Good afternoon" if hour < 18 else "Good evening")
@@ -44477,10 +44441,6 @@ def staff_dashboard():
             word = "needs" if n == 1 else "need"
             bits.append(f"{n} thing {word} looking at" if n == 1
                         else f"{n} things {word} looking at")
-        waiting_n = replies["total"] + len(replies["booking_com"])
-        if waiting_n:
-            bits.append(f"{waiting_n} guest{'' if waiting_n == 1 else 's'} "
-                        f"{'is' if waiting_n == 1 else 'are'} waiting for a reply")
         occ_now = sum(1 for g in owner_home_guests(conn, today) for _ in [1])
         rooms_n = conn.execute(
             "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
@@ -44506,8 +44466,7 @@ def staff_dashboard():
             next_up=owner_home_next_up(conn, today, day_rows),
             queue=queue, warnings=warnings, warnings_hidden=warnings_hidden,
             show_cleared=request.args.get("cleared") == "1",
-            snooze_days=HOME_WARNING_SNOOZE_DAYS, replies=replies,
-            reply_days=BOOKING_COM_REPLY_DAYS,
+            snooze_days=HOME_WARNING_SNOOZE_DAYS,
             queue_money=[q for q in queue if q["tone"] == "money"],
             queue_people=[q for q in queue if q["tone"] != "money"],
             bulk_count=sum(1 for q in queue if q["bulk_eligible"]),
@@ -70857,8 +70816,15 @@ def restaurant_manage(manage_token):
             changes = []
             if party_size != was_party:
                 changes.append(f"party of {was_party} → {party_size}")
+            # Named, never quoted: the note is deleted once the dinner is over,
+            # and a copy of this letter would keep it two years. The kitchen's
+            # list for the night is where the privacy notice says it is read.
             if dietary != was_dietary:
-                changes.append(f"dietary notes now: {dietary or '(none)'}")
+                changes.append(health_note_line(
+                    "Dietary notes", was_dietary, dietary,
+                    "on the kitchen's dietary list for that night")
+                    + "\n  " + house_url_for("kitchen_dietary", date=booking["dinner_date"],
+                                             _external=True))
             paid_note = ""
             if booking["payment_status"] == "paid" and party_size != was_party:
                 paid_note = ("\n\nThey have already paid. The total has been "
@@ -76717,6 +76683,20 @@ def write_workshop_details(conn, reg, fields):
     return changed
 
 
+def health_note_line(label, was, now, where):
+    """One line telling the house a health note moved, without what it says.
+
+    The privacy notice promises a dietary or medical note goes when the booking
+    is over, and the house keeps its own letters two years (and its mailbox
+    for ever), so a notice that quotes the note outlives the promise. Every
+    notice to the house about a guest changing one says it through here:
+    whether it was added, changed or taken off, and where to read it.
+    """
+    was, now = (was or "").strip(), (now or "").strip()
+    what = "taken off" if not now else ("added" if not was else "changed")
+    return f"{label}: {what}. Read them {where}; they are not written into emails."
+
+
 def guest_details_changes(booking, fields, changed):
     """The lines the house is told, one per field the guest changed.
 
@@ -76730,9 +76710,7 @@ def guest_details_changes(booking, fields, changed):
             continue
         was, now = (booking[key] or "").strip(), (fields[key] or "").strip()
         if key in WORKSHOP_HEALTH_DETAILS:
-            what = "taken off" if not now else ("added" if not was else "changed")
-            lines.append(f"{label}: {what}. Read them on the registration; "
-                         "they are not written into emails.")
+            lines.append(health_note_line(label, was, now, "on the registration"))
         elif not now:
             lines.append(f"{label}: taken off (was \"{was}\")")
         elif not was:
@@ -121145,6 +121123,335 @@ def guest_context_for_emails(conn, addresses):
     return out
 
 
+# A NOTIFICATION WHEN A GUEST REPLIES, AND NOTHING ELSE (owner, 27 Nov 2026).
+# "I don't want all the emails on there, it's not needed" -- of the inbox panel
+# on the owner home, which came off that day -- and "just a notification of
+# guest replies". When an email reaches any inbox the house reads from
+# somebody the app knows as a guest -- a booking that is not over, or an
+# enquiry still open -- the owner hears "[Name] replied" on the bell and the
+# phone, once for that email however many inboxes it reached. Nobody else: a
+# newsletter, a shop, a bank, a supplier, the press or a stranger writing to
+# reservations@ is not a guest the app knows, so nothing happens at all.
+GUEST_REPLY_SWITCH = "automation_guest_reply_notice_enabled"
+# The moment from which mail counts. Set by the first scan that runs with the
+# switch on, and moved on by every scan while it is off: the fortnight of mail
+# already in the inboxes the day this went live is never announced in one go,
+# and nor is what arrived while the switch was off.
+GUEST_REPLY_SINCE_KEY = "guest_reply_notice_since"
+# How long an email is remembered as announced, at least: always a month
+# longer than Inbox flags reads back, so an email still inside the scan's
+# window is never announced twice.
+GUEST_REPLY_KEEP_DAYS = 120
+# Mail that is never a guest replying, whoever sent it: the house's own, mail
+# between its own inboxes, a mailing, and an automatic answer (out of office).
+GUEST_REPLY_NEVER = ("own", "internal", "mailing", "machine")
+
+
+def _when_words(first, last=None, today=None):
+    """When something is, in a few words: "5 Dec", "5–9 Dec", "30 Nov–2 Dec",
+    with the year after it when that is not this year ("12–14 Sep 2027")."""
+    a, d = parse_date(first), parse_date(last)
+    if not a:
+        return ""
+    end = d if d and d > a else a
+    words = stay_span_short(first, last) if end != a else f"{a.day} {a:%b}"
+    if end.year != (today or house_today()).year:
+        words += f" {end.year}"
+    return words
+
+
+def _month_words(day):
+    """A month and its year, for an enquiry about a month: "Sep 2027"."""
+    d = parse_date(day)
+    return f"{d:%b %Y}" if d else ""
+
+
+def guests_with_something_on(conn, addresses, today=None):
+    """{address: {"name", "what"}} for those of `addresses` the app knows as a
+    guest with something not yet over -- a stay, a retreat or atelier place,
+    an event, a table, a Booking.com stay -- or with an enquiry or a place on a
+    waiting list still open. "what" is what they are booked for and when, in a
+    few words ("Noël at Gudanes, 5–9 Dec", "Wedding enquiry, Sep 2027"); where
+    an address has several, a booking comes before an enquiry, then the
+    soonest. "name" is what the app calls them, or "" where it has none.
+
+    Everybody else is left out, and that is the point: this is the whole test
+    for whether an email is a guest's reply worth a notification. A finished
+    stay, a cancelled or declined booking, an enquiry for a date gone by, one
+    nobody has touched in a year, and a waiting list for nights gone by are
+    not something on. One question per table for every address together."""
+    wanted = sorted({(a or "").strip().lower() for a in addresses if a and "@" in a})
+    if not wanted:
+        return {}
+    wanted_set = set(wanted)
+    today = today or house_today()
+    today_iso = today.isoformat()
+    year_ago = (today - timedelta(days=365)).isoformat()
+    found = {}      # address -> [(order, name, what)]
+
+    def add(address, booked, start, kind_order, name, what):
+        address = (address or "").strip().lower()
+        if address not in wanted_set or not what:
+            return
+        # A name column that holds the address (the booking page's waiting
+        # list has no name field) is not a name.
+        name = (name or "").strip()
+        found.setdefault(address, []).append(
+            ((0 if booked else 1, start or "9999-12-31", kind_order),
+             "" if "@" in name else name, what))
+
+    def ask(sql, chunk, before=()):
+        marks = ",".join("?" * len(chunk))
+        try:
+            return conn.execute(sql.replace("{marks}", marks), (*before, *chunk)).fetchall()
+        except sqlite3.OperationalError:
+            return []       # a table or column this database does not have yet
+
+    def occasion_over(first, last):
+        try:
+            row = conn.execute(
+                """SELECT name FROM stay_occasions WHERE status = 'live'
+                     AND first_night < ? AND last_night >= ? ORDER BY first_night LIMIT 1""",
+                (last, first)).fetchone()
+        except sqlite3.OperationalError:
+            return None
+        return row["name"] if row else None
+
+    def kind_of(event_type):
+        words = event_type_words(event_type)
+        return words[:1].upper() + words[1:]
+
+    for i in range(0, len(wanted), 300):
+        chunk = wanted[i:i + 300]
+        # A stay: its guest, whoever booked it for them, and its second contact.
+        # Named by the occasion its nights are sold under, or by the room.
+        for col, name_col in (("guest_email", "guest_name"), ("booked_by_email", "booked_by_name"),
+                              ("second_contact_email", "second_contact_name")):
+            for r in ask(
+                    f"""SELECT b.{col} AS address, b.{name_col} AS name, b.arrival_date,
+                               b.departure_date, rooms.name AS room_name
+                          FROM bookings b LEFT JOIN rooms ON rooms.id = b.room_id
+                         WHERE b.status IN ('pending', 'confirmed') AND b.departure_date >= ?
+                           AND b.checked_out_at IS NULL
+                           AND LOWER(TRIM(b.{col})) IN ({{marks}})""", chunk, (today_iso,)):
+                label = (occasion_over(r["arrival_date"], r["departure_date"])
+                         or r["room_name"] or "A stay")
+                add(r["address"], True, r["arrival_date"], 2, r["name"],
+                    f"{label}, {_when_words(r['arrival_date'], r['departure_date'], today)}")
+        # A retreat or atelier place, and the organiser of a private stay.
+        for r in ask("""SELECT wb.guest_email AS address, wb.guest_name, ws.start_date, ws.end_date, w.title
+                          FROM workshop_bookings wb
+                          JOIN workshop_sessions ws ON ws.id = wb.session_id
+                          JOIN workshops w ON w.id = ws.workshop_id
+                         WHERE wb.status IN ('pending', 'confirmed') AND ws.end_date >= ?
+                           AND LOWER(TRIM(wb.guest_email)) IN ({marks})""", chunk, (today_iso,)):
+            add(r["address"], True, r["start_date"], 1, r["guest_name"],
+                f"{r['title']}, {_when_words(r['start_date'], r['end_date'], today)}")
+        for r in ask("""SELECT w.organiser_email AS address, w.title,
+                               MIN(ws.start_date) AS start_date, MAX(ws.end_date) AS end_date
+                          FROM workshops w JOIN workshop_sessions ws ON ws.workshop_id = w.id
+                         WHERE ws.end_date >= ? AND LOWER(TRIM(w.organiser_email)) IN ({marks})
+                         GROUP BY w.id""", chunk, (today_iso,)):
+            add(r["address"], True, r["start_date"], 1, None,
+                f"{r['title']}, {_when_words(r['start_date'], r['end_date'], today)}")
+        # An event: booked until its day is over, an enquiry while it is open.
+        for r in ask("""SELECT contact_email AS address, contact_name, event_type, status,
+                               preferred_date, end_date, created_at
+                          FROM event_inquiries
+                         WHERE status IN ('new', 'contacted', 'quoted', 'confirmed')
+                           AND LOWER(TRIM(contact_email)) IN ({marks})""", chunk):
+            last = r["end_date"] or r["preferred_date"]
+            if last and last < today_iso:
+                continue
+            if r["status"] == "confirmed":
+                when = _when_words(r["preferred_date"], r["end_date"], today)
+                add(r["address"], True, r["preferred_date"], 0, r["contact_name"],
+                    f"{kind_of(r['event_type'])}, {when}" if when else kind_of(r["event_type"]))
+                continue
+            if not last and (r["created_at"] or "") < year_ago:
+                continue
+            month = _month_words(r["preferred_date"])
+            add(r["address"], False, r["preferred_date"], 0, r["contact_name"],
+                f"{kind_of(r['event_type'])} enquiry" + (f", {month}" if month else ""))
+        # A table at the restaurant.
+        for r in ask("""SELECT guest_email AS address, guest_name, dinner_date, party_size
+                          FROM restaurant_bookings
+                         WHERE status IN ('pending', 'confirmed') AND dinner_date >= ?
+                           AND LOWER(TRIM(guest_email)) IN ({marks})""", chunk, (today_iso,)):
+            add(r["address"], True, r["dinner_date"], 3, r["guest_name"],
+                ("Dinner for %s, " % r["party_size"] if r["party_size"] else "Dinner, ")
+                + _when_words(r["dinner_date"], None, today))
+        # A Booking.com stay whose guest has given the house their own address.
+        for r in ask("""SELECT o.guest_email AS address, o.guest_name, o.arrival_date, o.departure_date,
+                               COALESCE(rooms.name, o.room_label) AS room_name
+                          FROM ota_reservations o LEFT JOIN rooms ON rooms.id = o.room_id
+                         WHERE o.status = 'confirmed' AND o.departure_date >= ?
+                           AND LOWER(TRIM(o.guest_email)) IN ({marks})""", chunk, (today_iso,)):
+            add(r["address"], True, r["arrival_date"], 2, r["guest_name"],
+                f"{r['room_name'] or 'A room'} through Booking.com, "
+                f"{_when_words(r['arrival_date'], r['departure_date'], today)}")
+        # An enquiry from Contact, or a place on a waiting list, still open.
+        for r in ask("""SELECT email AS address, name, desired_arrival, desired_departure,
+                               source, created_at
+                          FROM waitlist_entries
+                         WHERE status IN ('open', 'enquiry', 'contacted') AND spam_at IS NULL
+                           AND LOWER(TRIM(email)) IN ({marks})""", chunk):
+            last = r["desired_departure"] or r["desired_arrival"]
+            if (last and last < today_iso) or (not last and (r["created_at"] or "") < year_ago):
+                continue
+            if r["source"] == "contact":
+                month = _month_words(r["desired_arrival"])
+                what = "Enquiry" + (f", {month}" if month else "")
+            else:
+                when = _when_words(r["desired_arrival"], r["desired_departure"], today)
+                what = "Waiting list for a room" + (f", {when}" if when else "")
+            add(r["address"], False, r["desired_arrival"], 2, r["name"], what)
+        for r in ask("""SELECT email AS address, name, desired_date, created_at FROM restaurant_waitlist
+                         WHERE status IN ('open', 'contacted')
+                           AND LOWER(TRIM(email)) IN ({marks})""", chunk):
+            day = r["desired_date"]
+            if (day and day < today_iso) or (not day and (r["created_at"] or "") < year_ago):
+                continue
+            when = _when_words(day, None, today)
+            add(r["address"], False, day, 3, r["name"],
+                "Waiting list for dinner" + (f", {when}" if when else ""))
+        for r in ask("""SELECT ww.email AS address, ww.name, ws.start_date, ws.end_date, w.title
+                          FROM workshop_waitlist ww
+                          JOIN workshop_sessions ws ON ws.id = ww.session_id
+                          JOIN workshops w ON w.id = ws.workshop_id
+                         WHERE ww.status IN ('open', 'contacted') AND ws.end_date >= ?
+                           AND LOWER(TRIM(ww.email)) IN ({marks})""", chunk, (today_iso,)):
+            add(r["address"], False, r["start_date"], 1, r["name"],
+                f"Waiting list for {r['title']}, "
+                f"{_when_words(r['start_date'], r['end_date'], today)}")
+
+    out = {}
+    for address, rows in found.items():
+        rows.sort(key=lambda r: r[0])
+        out[address] = {"name": rows[0][1] or next((n for _o, n, _w in rows if n), ""),
+                        "what": rows[0][2]}
+    return out
+
+
+def guest_reply_key(message_id):
+    """An email's Message-ID as the notices are keyed: the same in every inbox."""
+    return (message_id or "").strip().lower()
+
+
+def claim_guest_reply(conn, key, source, now_iso):
+    """Mark an email announced. True only for the call that did it: the scan
+    and the Booking.com reader can both meet the same email. Not committed:
+    the notification's own write commits it with the notification."""
+    cur = conn.execute("INSERT OR IGNORE INTO guest_reply_notices (message_key, source, notified_at) "
+                       "VALUES (?, ?, ?)", (key, source, now_iso))
+    return cur.rowcount == 1
+
+
+def notify_guest_replies(conn, emails, now=None):
+    """Tell the owner when a guest the app knows has written: "[Name] replied",
+    what they are booked for and when, and the email's subject, opening the
+    email in Outlook. One notification an email (GUEST_REPLY_SWITCH says why).
+
+    `emails` is what the inbox scan read, one entry an email however many
+    inboxes it reached, keyed by guest_reply_key: {"from", "from_name",
+    "subject", "received_at", "web_link", "never"}, where "never" is why the
+    mail is not a person writing ("mailing", "own" ...) or None. Returns how
+    many the owner was told of."""
+    now = now or datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (GUEST_REPLY_SINCE_KEY,)).fetchone()
+    since = parse_datetime_iso(row["value"]) if row and row["value"] else None
+    settings = get_automation_settings(conn)
+    if settings.get(GUEST_REPLY_SWITCH) != "1" or not since:
+        # Off, or the first scan since this came in: what is in the inboxes
+        # now is history. From here on, new mail only.
+        conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                     (GUEST_REPLY_SINCE_KEY, now_iso))
+        conn.commit()
+        return 0
+    owner = conn.execute("SELECT id FROM users WHERE role = 'owner' ORDER BY id LIMIT 1").fetchone()
+    if not owner:
+        return 0
+    try:
+        read_back = int(settings.get("automation_email_scan_lookback_days") or 14)
+    except (TypeError, ValueError):
+        read_back = 14
+    keep_days = max(GUEST_REPLY_KEEP_DAYS, read_back + 30)
+    conn.execute("DELETE FROM guest_reply_notices WHERE notified_at < ?",
+                 ((now - timedelta(days=keep_days)).isoformat(),))
+    conn.commit()
+    fresh = []
+    for key, e in emails.items():
+        got = parse_datetime_iso(e.get("received_at"))
+        if key and got and got >= since and e.get("never") not in GUEST_REPLY_NEVER:
+            fresh.append((got, key, e))
+    if not fresh:
+        return 0
+    known = guests_with_something_on(conn, [e.get("from") for _g, _k, e in fresh])
+    told = 0
+    for _got, key, e in sorted(fresh, key=lambda f: f[0]):
+        guest = known.get((e.get("from") or "").strip().lower())
+        if not guest or not claim_guest_reply(conn, key, "inbox", now_iso):
+            continue
+        name = guest["name"] or (e.get("from_name") or "").strip() or e.get("from")
+        subject = " ".join((e.get("subject") or "").split()) or "(no subject)"
+        send_notification(conn, owner["id"], "guest_reply", f"{name} replied",
+                          body=f"{guest['what']} · {subject[:160]}",
+                          link=e.get("web_link") or None)
+        told += 1
+    conn.commit()
+    return told
+
+
+def notify_booking_com_guest_reply(conn, mail_id, today=None):
+    """The owner's "[Name] replied" for a guest's message through Booking.com:
+    the stay it is about and the first words of what they wrote, opening the
+    stay's page. Not for a stay that is over or cancelled, not while the
+    switch is off, and never for an email already announced. The owner's id
+    when told, else None."""
+    if get_automation_settings(conn).get(GUEST_REPLY_SWITCH) != "1":
+        return None
+    owner = conn.execute("SELECT id FROM users WHERE role = 'owner' ORDER BY id LIMIT 1").fetchone()
+    row = conn.execute("SELECT * FROM ota_mail WHERE id = ?", (mail_id,)).fetchone()
+    if not owner or not row or row["kind"] != "message" or not row["from_booking_com"]:
+        return None
+    # A message is tied to its stay later, by name_booking_com_stays_from_messages;
+    # here it is found by the reservation number the message carries.
+    stay_sql = ("SELECT o.*, COALESCE(rooms.name, o.room_label) AS room_name FROM ota_reservations o "
+                "LEFT JOIN rooms ON rooms.id = o.room_id WHERE ")
+    stay = None
+    if row["ota_reservation_id"]:
+        stay = conn.execute(stay_sql + "o.id = ?", (row["ota_reservation_id"],)).fetchone()
+    elif (row["reservation_number"] or "").strip():
+        stay = conn.execute(stay_sql + "o.channel = 'booking.com' AND o.reservation_number = ?",
+                            (row["reservation_number"].strip(),)).fetchone()
+    today = today or house_today()
+    arrival = (stay["arrival_date"] if stay else None) or row["arrival_date"]
+    departure = (stay["departure_date"] if stay else None) or row["departure_date"]
+    if (stay and stay["status"] == "cancelled") or (departure and departure < today.isoformat()):
+        return None
+    key = guest_reply_key(row["source_id"]) or f"ota:{mail_id}"
+    if not claim_guest_reply(conn, key, "booking.com", datetime.now(timezone.utc).isoformat()):
+        return None
+    name = ((stay["guest_name"] if stay else None) or row["guest_name"] or "").strip() \
+        or "A Booking.com guest"
+    room = (stay["room_name"] if stay else None) or row["room_label"]
+    when = _when_words(arrival, departure, today)
+    what = ", ".join(x for x in ((f"{room} through Booking.com" if room else "Booking.com"), when) if x)
+    # Booking.com's subject is "We received this message from ..." every time:
+    # what the guest wrote says more.
+    said = asked_in_a_few_words(row["message_text"] or row["subject"], row["subject"], words=14)
+    if stay:
+        link = (url_for("channel_stay_page", reservation_id=stay["id"]) if has_request_context()
+                else f"/admin/channel-stays/{stay['id']}")
+    else:
+        link = _ota_page_link(mail_id)
+    send_notification(conn, owner["id"], "guest_reply", f"{name} replied",
+                      body=f"{what} · {said}", link=link)
+    return owner["id"]
+
+
 def escalate_stale_flags(conn):
     """Nudge the owner when a flagged email has sat unresolved past its
     inbox's threshold.
@@ -124861,6 +125168,9 @@ def run_email_inbox_scan_job(conn):
     verdicts = {}
     closed = {}
     raised_new = []
+    # Every email read, once each however many inboxes it reached, for the
+    # owner's notification when a guest writes (notify_guest_replies).
+    guest_mail = {}
 
     def close(flag_id, reason):
         close_flag_by_app(conn, flag_id, reason, now_iso)
@@ -125006,6 +125316,18 @@ def run_email_inbox_scan_job(conn):
                 msg["_headers_read"] = True
         _GRAPH_ANSWER.error = None
         headers_asked += asked_here
+        # Kept by the email's own Message-ID, the same in every inbox, so one
+        # email in three inboxes is one email to tell the owner of.
+        for msg in inbox_messages:
+            if not msg.get("id") or not msg.get("receivedDateTime"):
+                continue
+            key = guest_reply_key(msg.get("internetMessageId")) or f"graph:{msg['id']}"
+            sender = (msg.get("from") or {}).get("emailAddress") or {}
+            guest_mail.setdefault(key, {
+                "from": sender.get("address") or "", "from_name": sender.get("name") or "",
+                "subject": msg.get("subject") or "", "received_at": msg.get("receivedDateTime"),
+                "web_link": msg.get("webLink"),
+                "never": not_waiting_for_a_reply(msg, sender.get("address") or "", never, house)})
         for msg in inbox_messages:
             message_id = msg.get("id")
             received_at = msg.get("receivedDateTime")
@@ -125238,6 +125560,8 @@ def run_email_inbox_scan_job(conn):
                 body=f"From {sender or 'unknown sender'}", link="/admin/inbox-flags",
             )
     conn.commit()
+    # A guest the app knows has written: the owner hears it, once an email.
+    guest_told = notify_guest_replies(conn, guest_mail, now=now)
     # Open flags from before these rules, and older than the window, read
     # again a few at a time.
     rechecked = recheck_older_flags(conn, token, never, house, closed, now_iso)
@@ -125261,6 +125585,8 @@ def run_email_inbox_scan_job(conn):
                          "since": sent_since})))
     conn.commit()
     tail = f", {escalated} escalated" if escalated else ""
+    if guest_told:
+        tail += f"; told you of {guest_told} guest repl{'y' if guest_told == 1 else 'ies'}"
     if closed:
         tail += "; " + inbox_closed_words(closed)
     if replies.sent_as:
@@ -126524,8 +126850,11 @@ def _ota_notify(conn, mail_id, got, received_at):
     when = parse_datetime_iso(received_at)
     if when and datetime.now(timezone.utc) - when > timedelta(days=2):
         return
+    # A guest's message is a guest replying, for the owner (owner, 27 Nov
+    # 2026). Told once: the owner does not hear it a second time below.
+    told = notify_booking_com_guest_reply(conn, mail_id) if got["kind"] == "message" else None
     who = booking_com_handler(conn)
-    if not who:
+    if not who or (told and told == who):
         return
     guest = got.get("guest_name") or "A guest"
     stay = ""
@@ -130718,6 +131047,18 @@ AUTOMATION_SWITCHES = [
      "fields": (("automation_email_unanswered_hours", "Unanswered after (hours)",
                  "hours"),
                 ("automation_email_scan_lookback_days", "Look back (days)", "days_back")),
+     "needs": "graph"},
+    {"key": "automation_guest_reply_notice_enabled", "job": None,
+     "runs": ("notify_guest_replies", "notify_booking_com_guest_reply"), "group": "house",
+     "reaches": ("you",),
+     "label": "Tell me when a guest replies",
+     "what": "When an email reaches any of the house's inboxes from somebody with a booking "
+             "that is not over — a stay, a retreat place, an event, a table — or an enquiry "
+             "still open, tells you once: their name, what they are booked for and when, and "
+             "the subject, opening the email in Outlook. A Booking.com guest's message too, "
+             "opening their stay. Nobody else: not a shop, a bank, a newsletter, a supplier "
+             "or a stranger. One email reaching three inboxes is one notification. Read by "
+             "Inbox flags and the Booking.com reader, so it needs those on.",
      "needs": "graph"},
     {"key": "automation_owner_diary_enabled", "job": "owner_diary",
      "runs": ("run_owner_diary_job",), "group": "house", "reaches": (),

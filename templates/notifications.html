@@ -20,7 +20,8 @@
 {% else %}
   <div class="mini-list">
     {% for n in items %}
-    <a href="{{ n['link'] or '#' }}" class="mini-row" style="align-items:flex-start; flex-direction:column; gap:2px; {{ '' if n['id'] in unread else 'opacity:0.65;' }}">
+    {# A guest's email opens in Outlook (27 Nov 2026), beside this page rather than over it. #}
+    <a href="{{ n['link'] or '#' }}"{% if (n['link'] or '').startswith('https://') %} target="_blank" rel="noopener"{% endif %} class="mini-row"style="align-items:flex-start; flex-direction:column; gap:2px; {{ '' if n['id'] in unread else 'opacity:0.65;' }}">
       <div style="display:flex; width:100%; align-items:center; gap:8px;">
         <span class="mini-name" style="flex:1;">{{ n['title']|house_words }}</span>
         <span class="upload-hint">{{ local_datetime_str(n['created_at']) }}</span>
