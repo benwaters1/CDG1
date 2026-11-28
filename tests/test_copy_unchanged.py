@@ -257,7 +257,10 @@ m = _harness.m
 # helper put back for the base side only, the word diff across all 30 sitemap pages was those six pages and only
 # the nightly line: under each price on /workshops and the home page's next dates, under each retreat's dates, and
 # "sharing a room (about €690 a night):" to "sharing a room:" in At a Glance. Was: "40cd047"
-COPY_BASE = "d68ee89"
+# 28 Nov 2026: moved to 96c121f, the dinner follow-ups merged with main: Les Gîtes de Beille "next door, a short walk
+# up our lane" (owner, 27 Nov). Against d68ee89 it listed /events/weddings, /events/private and /events/photoshoots,
+# each only at the gîtes' line, and nothing else. Was: "d68ee89"
+COPY_BASE = "96c121f"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
