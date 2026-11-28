@@ -21,11 +21,11 @@
     the second tab with the count still to decide. The tab chosen is the address's hash (static/tabs.js), so Dismiss
     brings you back to Suggested. -#}
 <div class="page-tabs" role="tablist" aria-label="Stay occasions" data-tabs>
-  <a class="page-tab" role="tab" href="#yours" id="tab-yours" data-tab="yours" aria-controls="tp-yours">Your occasions</a>
-  <a class="page-tab" role="tab" href="#suggested" id="tab-suggested" data-tab="suggested" aria-controls="tp-suggested" data-label="Suggested">Suggested <span class="page-tab__n">({{ suggestions|length }})</span></a>
+  <a class="page-tab" role="tab" href="#yours" id="tab-yours" data-tab="yours" aria-controls="yours">Your occasions</a>
+  <a class="page-tab" role="tab" href="#suggested" id="tab-suggested" data-tab="suggested" aria-controls="suggested" data-label="Suggested">Suggested <span class="page-tab__n">({{ suggestions|length }})</span></a>
 </div>
 
-<section id="tp-yours" role="tabpanel" aria-labelledby="tab-yours" data-tab-panel="yours">
+<section id="yours" role="tabpanel" aria-labelledby="tab-yours" data-tab-panel="yours">
 <h2 class="section-heading">Your occasions</h2>
 {% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
 {% if lv.rows %}
@@ -59,7 +59,7 @@
 </section>
 
 {#- What the calendar, the school holidays, What's On and the news suggest. A clash greys one out. -#}
-<section class="detail-card" style="margin-bottom:1.5rem" id="tp-suggested" role="tabpanel" aria-labelledby="tab-suggested" data-tab-panel="suggested">
+<section class="detail-card" style="margin-bottom:1.5rem" id="suggested" role="tabpanel" aria-labelledby="tab-suggested" data-tab-panel="suggested">
   <h2 class="section-heading">Suggested</h2>
   <p class="upload-hint">
     {% if last_run %}Last looked {{ last_run['last_ran_at']|house_when }}{% if last_run['last_message'] %}: {{ last_run['last_message'] }}{% endif %}.

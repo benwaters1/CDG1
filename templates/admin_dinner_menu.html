@@ -48,7 +48,7 @@
     <label class="checkbox-row"><input type="checkbox" name="c-{{ i }}-remove" value="1"> <span>Remove</span></label>
   </div>
   {{ line_boxes(i, c, 'dish', 'The dish', 'dl-dishes') }}
-  <div class="mc-wine">
+  <div>
     {{ line_boxes(i, c, 'wine', 'The wine', 'dl-wines') }}
     <label class="mc-glass"><span class="field-label">Glass</span>
       <input type="text" name="c-{{ i }}-wine_glass" value="{{ c.wine_glass or '' }}" list="dl-glass" maxlength="20" placeholder="12 cl"></label>

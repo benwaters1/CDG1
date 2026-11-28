@@ -155,8 +155,8 @@ def _tabs(s, oc, conn):
     s.check("the form answers", r.status_code == 200, r)
     s.check("with its two tabs", 'href="#the-stay"' in page and ">The stay</a>" in page
             and 'href="#chef-and-dinner"' in page and ">Chef &amp; dinner</a>" in page)
-    stay = _between(page, 'id="tp-stay"', 'id="tp-dinner"')
-    dinner = _between(page, 'id="tp-dinner"', "</form>")
+    stay = _between(page, 'id="the-stay"', 'id="chef-and-dinner"')
+    dinner = _between(page, 'id="chef-and-dinner"', "</form>")
     for name, what in [("name", "the name"), ("first_night", "the dates"), ("kind", "what it is"),
                        ("photo", "the photograph"), ("status", "the state"), ("fill_uplift", "the rooms' prices"),
                        ("description", "the words"), ("home_banner", "the home page")]:
@@ -166,7 +166,7 @@ def _tabs(s, oc, conn):
                        ("dinner_covers", "the covers"), ("chef_name", "the guest chef")]:
         s.check(f"Chef & dinner holds {what}", f'name="{name}"' in dinner and f'name="{name}"' not in stay)
     s.check("one form across both, so one Save keeps both", page.count('id="occasion-form"') == 1
-            and page.find('id="occasion-form"') < page.find('id="tp-stay"') < page.find('id="tp-dinner"')
+            and page.find('id="occasion-form"') < page.find('id="the-stay"') < page.find('id="chef-and-dinner"')
             < page.find("Saves both tabs"))
     s.check("nothing is opened for you when nothing is wrong", "data-open=" not in page)
 
@@ -621,6 +621,7 @@ def _in_chrome(s, oc, conn):
         s.check("a save refused for the dinner, from The stay: Chef & dinner open", f.get("tab") == "dinner"
                 and f.get("stay_hidden") is True, detail=f)
         s.check("saying so", "The problem is on Chef & dinner" in (f.get("note") or ""), detail=f)
+        s.check("at the top, where the refusal is said", f.get("y") == 0, detail=f"scrolled {f.get('y')}px")
         lst = probe("list.html")
         lst_s, lst_c = lst.get("start") or {}, lst.get("clicked") or {}
         s.check("the list opens on Your occasions, the suggestions hidden", lst_s.get("tab") == "yours"

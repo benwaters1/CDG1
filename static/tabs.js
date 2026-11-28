@@ -3,16 +3,18 @@
 
    Markup: a [data-tabs] bar of links, each [data-tab="key"] with href="#hash";
    any number of elements carry [data-tab-panel="key"] (a tab can span two
-   forms). Without script every panel shows and the links jump to them.
+   forms), the first of them id="hash". Without script every panel shows and
+   the links jump to them.
 
-   - The hash names the TAB, never an element: a panel's id is not its tab's
-     hash (#the-stay opens the panel id="tp-stay"). Were they the same, the
-     browser would scroll the page to the panel as it finished loading, past
-     the tabs and under the header -- which it did, on every visit, when this
-     script first wrote the hash in (27 Nov 2026).
    - The tab chosen is the address's hash, so it survives a reload, and a save:
      each form on the page is sent with the hash on its address, and a browser
      carries that fragment through the redirect that follows a save.
+   - The page opens at the TOP, whatever tab its address names. A hash that
+     names a panel is one the browser scrolls to as the page loads, which put
+     the tabs under the header and the "Saved" or the refusal above them out of
+     sight, on every visit (27 Nov 2026). So the hash is written in only once
+     the page has loaded (writing it then scrolls nothing), and a page that
+     arrives with a tab's hash goes back to the top.
    - A hash naming something INSIDE a panel (#dinner, #description, #retreat,
      as older links and redirects say) opens that panel and goes to it.
    - The server can open a tab itself (data-open, with data-why to say why):
@@ -21,6 +23,19 @@
      first; otherwise the browser cannot show it and the Save button seems to
      do nothing at all. */
 (function () {
+  var loaded = document.readyState === 'complete', pending = null, toTop = false;
+  function writeHash(hash) {
+    if (!history.replaceState) return;
+    if (!loaded) { pending = hash; return; }
+    history.replaceState(null, '', location.pathname + location.search + '#' + hash);
+  }
+  window.addEventListener('load', function () {
+    loaded = true;
+    if (pending !== null) writeHash(pending);
+    /* After the browser's own scroll to the hash, which happens as the page finishes loading. */
+    if (toTop) setTimeout(function () { window.scrollTo(0, 0); }, 0);
+  });
+
   document.querySelectorAll('[data-tabs]').forEach(function (bar) {
     var tabs = Array.prototype.slice.call(bar.querySelectorAll('[data-tab]'));
     if (!tabs.length) return;
@@ -42,9 +57,7 @@
       keys.forEach(function (k) { panels(k).forEach(function (p) { p.hidden = k !== key; }); });
       /* The server hears which tab was in front (a hidden tab_shown), to say "opened for you" only when it moves. */
       document.querySelectorAll('[data-tab-shown]').forEach(function (i) { i.value = key; });
-      if (!keepHash && history.replaceState) {
-        history.replaceState(null, '', location.pathname + location.search + '#' + hashOf(key));
-      }
+      if (!keepHash) writeHash(hashOf(key));
       return key;
     }
 
@@ -68,12 +81,17 @@
     });
 
     var forced = bar.getAttribute('data-open');
+    var start = resolve(location.hash);
+    if (start && !start.el) {
+      /* Arrived with a tab's own hash: the browser has scrolled, or will, to the panel. Back to the top. */
+      toTop = true;
+      window.scrollTo(0, 0);
+    }
     if (forced && keys.indexOf(forced) >= 0) {
       show(forced);
       tabs[keys.indexOf(forced)].classList.add('page-tab--problem');
       say(bar.getAttribute('data-why') || '');
     } else {
-      var start = resolve(location.hash);
       show(start ? start.key : keys[0], false, !!(start && start.el));
       if (start && start.el) start.el.scrollIntoView();
     }
@@ -88,7 +106,8 @@
     document.querySelectorAll('form').forEach(function (form) {
       form.addEventListener('submit', function () {
         var action = form.getAttribute('action') || location.pathname + location.search;
-        if (action.indexOf('#') < 0 && location.hash) form.setAttribute('action', action + location.hash);
+        var hash = location.hash || (pending !== null ? '#' + pending : '');
+        if (action.indexOf('#') < 0 && hash) form.setAttribute('action', action + hash);
       });
       /* A box the browser refuses on a hidden tab: open that tab, so it can be shown. */
       form.addEventListener('invalid', function (e) {

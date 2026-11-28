@@ -50440,6 +50440,8 @@ PALETTE_PAGES = [
      "dinner tonight courses service what is on"),
     ("Dinner menus", "admin_dinner_menus",
      "dinner at gudanes menu builder courses wine allergens origin print a3 a4"),
+    ("Dish library", "admin_dinner_library",
+     "dishes wines library menu builder edit remove mistake offered french english spanish"),
     ("Past menus", "menu_history",
      "menus previous served history what we cooked"),
     ("Restaurant menu", "admin_restaurant_menu",

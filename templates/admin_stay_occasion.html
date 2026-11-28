@@ -26,8 +26,8 @@
     figures. One form across both, so one Save keeps both. The tab is the address's hash, so it survives a save and a
     reload; a save refused for something on the other tab opens that tab and says so (open_tab, tab_why). -#}
 <div class="page-tabs" role="tablist" aria-label="This occasion" data-tabs data-note="occ-tabs-note" style="margin-top:1rem"{% if open_tab %} data-open="{{ open_tab }}" data-why="{{ tab_why }}"{% endif %}>
-  <a class="page-tab" role="tab" href="#the-stay" id="tab-stay" data-tab="stay" aria-controls="tp-stay">The stay</a>
-  <a class="page-tab" role="tab" href="#chef-and-dinner" id="tab-dinner" data-tab="dinner" aria-controls="tp-dinner">Chef &amp; dinner</a>
+  <a class="page-tab" role="tab" href="#the-stay" id="tab-stay" data-tab="stay" aria-controls="the-stay">The stay</a>
+  <a class="page-tab" role="tab" href="#chef-and-dinner" id="tab-dinner" data-tab="dinner" aria-controls="chef-and-dinner">Chef &amp; dinner</a>
 </div>
 <p class="page-tabs__note" id="occ-tabs-note" role="status"{% if not tab_why %} hidden{% endif %}>{{ tab_why or '' }}</p>
 
@@ -80,7 +80,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="tab_shown" value="" data-tab-shown>
 
-  <div id="tp-stay" role="tabpanel" aria-labelledby="tab-stay" data-tab-panel="stay">
+  <div id="the-stay" role="tabpanel" aria-labelledby="tab-stay" data-tab-panel="stay">
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
     <div>
       <label for="so_name" class="field-label">Name</label>
@@ -171,7 +171,7 @@
   </fieldset>
   </div>
 
-  <div id="tp-dinner" role="tabpanel" aria-labelledby="tab-dinner" data-tab-panel="dinner">
+  <div id="chef-and-dinner" role="tabpanel" aria-labelledby="tab-dinner" data-tab-panel="dinner">
   <div>
     <span class="field-label">Will the chef be on site?</span>
     <label class="checkbox-row"><input type="radio" name="chef_on_site" value="1"{% if o['chef_on_site'] %} checked{% endif %}> <span>Yes</span></label>
