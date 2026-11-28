@@ -203,7 +203,8 @@
         {#- 23 Nov (owner's retreats brief, 3 and 4): what is included first, then the price, then "10% reserves your
             place" beside it. The cards led with the price and "about €800 a night" under it, which a guest read
             against a room at €270 before seeing what the retreat includes. The per-night figure (owner, 23 Oct)
-            stays, below all three. What is included is this retreat's own (owner, 1 Oct). -#}
+            stayed below all three until 27 Nov, when the owner took it off every retreat page: the total per
+            person, with nothing to pay at the end, is the price. What is included is this retreat's own (owner, 1 Oct). -#}
         <p class="g-wscard__inc">{{ ws_includes(w) }}</p>
         {% if w['price_per_person'] %}
         {#- The figure is the Admin's, never typed into the words: the owner lowered every price on 26 Oct. -#}
@@ -213,9 +214,6 @@
         </p>
         {%- set _rl = reserve_line(w, rows|map(attribute='session')|list) %}{% if _rl %}
         <p class="g-toreserve">{{ _rl }}</p>{% endif %}
-        {#- 23 Oct (owner): what it comes to a night, from the price and the nights (a_night in app.py). -#}
-        {%- set _an = a_night(w) %}{% if _an %}
-        <p class="g-pernight">{{ _an }}</p>{% endif %}
         {% endif %}
         <a href="{{ workshop_page_url(w) }}" class="g-btn">See this retreat</a>
       </div>
@@ -361,8 +359,6 @@
         </p>
         {%- set _rl = reserve_line(w, [r.session]) %}{% if _rl %}
         <p class="g-toreserve">{{ _rl }}</p>{% endif %}
-        {%- set _an = a_night(w, r.session) %}{% if _an %}
-        <p class="g-pernight">{{ _an }}</p>{% endif %}
         {% endif %}
         {% if r.remaining > 0 %}
         <a href="{{ url_for('workshop_register', session_id=r.session['id']) }}" class="g-btn g-btn--solid">Book these dates</a>

@@ -236,8 +236,9 @@ def run():
                 rline = words(block[block.find(">", res) + 1:block.find("</p>", res)]) if res > -1 else ""
                 s.check(f"{kind_name} {t}: 'reserves your place' or the whole amount",
                         "reserves your place" in rline or "paid in full" in rline, detail=rline)
-                night = block.find('class="g-pernight"')
-                s.check(f"{kind_name} {t}: the per-night figure, if any, comes last", night < 0 or res < night)
+                # 27 Nov (owner): the per-night figure that used to come last is gone from every card.
+                s.check(f"{kind_name} {t}: no figure a night under the price",
+                        not re.search(r"€\s?[\d,]+\s+a night", words(block)), detail=words(block)[-160:])
     for block in cards:
         t = words((re.search(r'<h3 class="g-wscard__name">(.*?)</h3>', block, re.S) or re.match("", "")).group(0))
         w = next((x for x in offer if x["title"] == t), None)

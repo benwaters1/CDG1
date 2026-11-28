@@ -251,7 +251,13 @@ m = _harness.m
 # notice, a dietary note's copies). Against af954c3 it listed nothing. Was: "af954c3"
 # 27 Nov 2026: moved to 40cd047, merged once more with main for the Tour de France 2027 map as an occasion's
 # photograph. Against 5e8718a it listed nothing. Was: "5e8718a"
-COPY_BASE = "40cd047"
+# 27 Nov 2026: moved to d68ee89, which takes "about €X a night" off every retreat at the owner's request. It could
+# not list that by itself: the templates at 40cd047 call a_night, which d68ee89 removes, so /, /workshops and the
+# four retreat pages raised on the base side and were skipped as "did not exist" (now a failure, below). With the
+# helper put back for the base side only, the word diff across all 30 sitemap pages was those six pages and only
+# the nightly line: under each price on /workshops and the home page's next dates, under each retreat's dates, and
+# "sharing a room (about €690 a night):" to "sharing a room:" in At a Glance. Was: "40cd047"
+COPY_BASE = "d68ee89"
 
 # Words the brief adds, each only inside its own element.
 ALLOWED = {
@@ -456,9 +462,16 @@ def run():
         for path in paths:
             code_now, html_now = now[path]
             code_then, html_then = then[path]
-            if code_then != 200:
+            if code_then == 404:
                 # A page that did not exist at COPY_BASE has nothing to compare.
                 s.check(f"{path} loads", code_now == 200, detail=str(code_now))
+                continue
+            if code_then != 200:
+                # 27 Nov: the base templates CAN'T be drawn by today's app (they call a helper it no longer has).
+                # That was skipped as "did not exist", so every word on the page went unread and the run was green.
+                # Move COPY_BASE to the commit that removed the helper, once its word changes are read.
+                s.check(f"{path}: the templates at {COPY_BASE} can still be drawn", False,
+                        detail=f"HTTP {code_then} on the base side; now {code_now}")
                 continue
             if code_now != 200:
                 s.check(f"{path} still loads", False, detail=str(code_now))
