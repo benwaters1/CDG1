@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Dish library · Dinner menus{% endblock %}
+{% block content %}
+{#- THE DISH LIBRARY (brief of 27 Nov 2026, §4). Every dish and wine a menu has held is offered again as the cook types,
+    so a mistake kept being offered too: deleting a menu keeps its dishes, by design. Each can be put right (Edit) or
+    taken out (Remove). A menu that already serves one keeps its own words: they belong to the menu. -#}
+<div class="page-head">
+  <h1>Dish library</h1>
+  <a href="{{ url_for('admin_dinner_menus') }}" class="btn-mini">← Dinner menus</a>
+  <a href="{{ url_for('admin_dinner_menu_new') }}" class="btn-mini">+ New menu</a>
+</div>
+<p style="max-width:52rem;color:#666;margin-bottom:1.25rem">
+  The dishes and wines the menu builder offers as you type, kept from every menu written. Put one right here and the
+  builder offers it that way from now on; remove one and it is no longer offered. A menu that already serves it keeps
+  it as written: change it in that menu.
+</p>
+
+{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
+
+{% if lv.rows %}
+<div class="table-wrap">
+<table class="data-table" id="library">
+  <thead><tr><th scope="col">In French</th><th scope="col">English · Spanish</th><th scope="col">What</th><th scope="col">Used</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+  <tbody>
+  {% for r in lv.rows %}
+  <tr>
+    <th scope="row"><a href="{{ url_for('admin_dinner_library_item', kind=r.kind, item_id=r.id) }}">{{ r.fr }}</a>
+      {% if (r.kind ~ '_fr') in r.unchecked %}<br><span class="mini-status status-pending">French suggested, not checked</span>{% endif %}
+      {% if r.detail %}<br><span class="upload-hint">{{ r.detail }}</span>{% endif %}</th>
+    <td>{{ r.en or '—' }}{% if r.es %}<br><span class="upload-hint" lang="es">{{ r.es }}</span>{% endif %}</td>
+    <td>{{ 'Dish' if r.kind == 'dish' else 'Wine' }}</td>
+    <td>{{ r.uses }} time{{ '' if r.uses == 1 else 's' }}{% if r.menus %}<br><span class="upload-hint">on {{ r.menus }} menu{{ '' if r.menus == 1 else 's' }}</span>{% endif %}</td>
+    <td style="white-space:nowrap">
+      <a class="btn-mini" href="{{ url_for('admin_dinner_library_item', kind=r.kind, item_id=r.id) }}">Edit</a>
+      <form method="post" action="{{ url_for('admin_dinner_library_remove', kind=r.kind, item_id=r.id) }}" style="display:inline"
+            onsubmit="return confirm({{ ('Remove ' ~ r.fr ~ ' from the library? It will no longer be offered.' ~ (' The menus that serve it keep it as written.' if r.menus else ''))|tojson|forceescape }})">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn-text-danger" type="submit">Remove</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% elif lv.total %}
+<p class="empty-state">Nothing matches that. <a href="{{ url_for('admin_dinner_library') }}">Show all {{ lv.total }}</a>.</p>
+{% else %}
+<p class="empty-state">Nothing in the library yet. Every dish and wine a menu holds is kept here as it is saved.</p>
+{% endif %}
+{% endblock %}

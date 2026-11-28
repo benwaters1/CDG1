@@ -226,6 +226,7 @@ SUITES = [
     "test_dinner_costing",
     "test_dinner_till",
     "test_dinner_menu_render",
+    "test_dinner_followups",
     "test_retreat_celebrations",
     "test_getting_here",
     "test_ateliers",

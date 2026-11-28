@@ -8,6 +8,8 @@
     13 Oct (owner): add Camping du Pays de Beille - "next to us", "a walk up the private drive to the château", "it's not
     actually camping, there are villas". Listing: Route du camping, 09310 Les Cabannes, by the river, open all year.
     14 Oct (owner): Pays de Beille and Les Gîtes de Beille are the same place - named as guests will find it online.
+    27 Nov (owner): the château owns the lane down its side, its gates at the bottom; the gîtes' gate is under a hundred
+    metres from those gates, then a short walk up. Called Les Gîtes de Beille everywhere.
     All three have given permission for their photographs (owner, 14 Oct: "they are friends, they have said yes").
     PHOTOS: each place's own photographs need its permission - set PLACE_PHOTOS[name] = (url, alt) once they send them. -#}
 {%- set PLACE_PHOTOS = {'Maison Beaucoup': (url_for('static', filename='img/nearby/maison-beaucoup-room-800.jpg'), 'A room at Maison Beaucoup, under the roof timbers'), 'Les Granges de Léo': (url_for('static', filename='img/nearby/granges-de-leo-chalet-800.jpg'), 'A wooden chalet at Les Granges de Léo, the mountains behind'), 'Les Gîtes de Beille': (url_for('static', filename='img/nearby/gites-de-beille-below-the-chateau-800.jpg'), 'Les Gîtes de Beille among the trees, the château just above')} -%}
@@ -32,7 +34,7 @@
   {% if intro %}<p class="g-p g-intro">{{ intro }}</p>{% endif %}
   <div class="g-nearby__grid">
     {%- for name, far, how, where, text in [
-      ('Les Gîtes de Beille', 'Next door', 'a walk up the château’s private drive', 'Les Cabannes, by the river', 'Villas at the foot of the drive, so ' ~ who ~ ' can walk up to the château and home again at the end of ' ~ day_end ~ '.'),
+      ('Les Gîtes de Beille', 'Next door', 'a short walk up our lane', 'Les Cabannes, by the river', 'Villas next door: under a hundred metres to our gates at the foot of the lane, then a short walk up, so ' ~ who ~ ' can walk to the château and home again at the end of ' ~ day_end ~ '.'),
       ('Maison Beaucoup', 'About 1 km', 'two minutes by car', 'Les Cabannes, the village by the château', 'Three very large rooms in a fully restored nineteenth-century presbytery, with its own restaurant. Up to six guests.'),
       ('Les Granges de Léo', 'About 2 km', 'five minutes by car', 'Aston, a neighbouring village', 'Six wooden chalets of two bedrooms each, and three large houses of stone and wood, with a pool in summer.')
     ] %}

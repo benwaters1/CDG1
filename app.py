@@ -9250,6 +9250,23 @@ def init_db():
         ("stay_occasion_dinners_dinner_menu_id",
          "ALTER TABLE stay_occasion_dinners ADD COLUMN dinner_menu_id INTEGER "
          "REFERENCES dinner_menus(id) ON DELETE SET NULL"),
+        # A menu in any language the cook knows (owner, 27 Nov 2026: "do I have
+        # to type in French, we don't all speak French"). A line may be typed in
+        # French, English or Spanish; what is missing is suggested, and the
+        # French -- always on the guest's menu -- is saved from the suggestion
+        # when nobody wrote it. `unchecked` is the JSON {field: words} of what
+        # was saved that way, marked on the builder until someone confirms or
+        # edits it; the printed menus never show it. Spanish is kept as typed
+        # and matched in the library, never printed.
+        ("dinner_menu_courses_dish_es", "ALTER TABLE dinner_menu_courses ADD COLUMN dish_es TEXT"),
+        ("dinner_menu_courses_wine_es", "ALTER TABLE dinner_menu_courses ADD COLUMN wine_es TEXT"),
+        ("dinner_menu_courses_origin_es", "ALTER TABLE dinner_menu_courses ADD COLUMN origin_es TEXT"),
+        ("dinner_menu_courses_unchecked", "ALTER TABLE dinner_menu_courses ADD COLUMN unchecked TEXT"),
+        ("dinner_dishes_dish_es", "ALTER TABLE dinner_dishes ADD COLUMN dish_es TEXT"),
+        ("dinner_dishes_origin_es", "ALTER TABLE dinner_dishes ADD COLUMN origin_es TEXT"),
+        ("dinner_dishes_unchecked", "ALTER TABLE dinner_dishes ADD COLUMN unchecked TEXT"),
+        ("dinner_wines_wine_es", "ALTER TABLE dinner_wines ADD COLUMN wine_es TEXT"),
+        ("dinner_wines_unchecked", "ALTER TABLE dinner_wines ADD COLUMN unchecked TEXT"),
         # A Dinner at Gudanes table seated at the till (27 Nov 2026): its
         # dinner was paid with the stay, or online in full, so the tab holds
         # it as a PREPAID set menu -- a line at nothing to pay, carrying what
@@ -10243,6 +10260,9 @@ def init_db():
     apply_room_occupancy_2026_10_18(conn)
     # And the Twin Room (Ground Floor) back to three, once (owner, 12 November).
     apply_ground_floor_twin_sleeps_three_2026_11_12(conn)
+    # The two dishes the live check of the menu builder left in its library,
+    # once (brief of 27 Nov 2026, §4).
+    remove_live_check_dishes_2026_11_27(conn)
     # Booking.com's own two prices and extranet name for each room, once, by
     # the names of 16 October (owner, 26 November); and the uplift of every
     # price line written before lines had one.
@@ -11145,8 +11165,9 @@ NAV_AREAS = {
         # kitchen builds the menus and reads the night as well as the owner.
         "admin_dinner_menus", "admin_dinner_menu_new", "admin_dinner_menu",
         "admin_dinner_menu_duplicate", "admin_dinner_menu_archive", "admin_dinner_menu_delete",
-        "admin_dinner_menu_preview", "admin_dinner_menu_english", "admin_dinner_menu_print",
-        "admin_dinner_menu_pdf",
+        "admin_dinner_menu_preview", "admin_dinner_menu_suggest", "admin_dinner_menu_print",
+        "admin_dinner_menu_pdf", "admin_dinner_library", "admin_dinner_library_item",
+        "admin_dinner_library_remove",
         "admin_dinner_night",
         "new_extra", "new_menu_day", "new_menu_item", "new_restaurant_rate_override",
         "new_restaurant_shift", "print_menu_day", "publish_menu_day", "read_menu_upload",
@@ -56497,6 +56518,199 @@ def country_english(fr):
     return COUNTRY_EN.get((fr or "").strip().lower().replace("’", "'"), "")
 
 
+# ---- A menu in any language the cook knows (owner, 27 Nov 2026) -----------------
+# "Do I have to type in French? We don't all speak French." Each line of a
+# course -- the dish, the wine, the main product -- takes French, English or
+# Spanish in whichever box the cook knows; what is missing is suggested (the
+# library first, then the assistant). The French is always on the guest's menu,
+# so a line saved without it gets the suggested French, marked "French
+# suggested, not checked" on the builder until someone confirms or edits it.
+# The English is saved from a suggestion only when nobody wrote the French
+# either (a line typed in Spanish alone): a cook who wrote the French and left
+# the English blank is not overruled. Spanish is kept as typed, never printed.
+MENU_LANGS = ("fr", "en", "es")
+MENU_LANG_NAMES = {"fr": "French", "en": "English", "es": "Spanish"}
+MENU_LANG_LABELS = {"fr": "Français", "en": "English", "es": "Español"}
+MENU_LINE_KINDS = ("dish", "wine", "origin")
+MENU_LINE_MAX = {"dish": DINNER_MENU_TEXT_MAX, "wine": DINNER_MENU_TEXT_MAX, "origin": 80, "course": 60,
+                 "country": 60}
+
+# The house's seven courses in the three languages, so a course typed as
+# "Starter" or "Postre" is the house's Entrée or Dessert.
+MENU_COURSE_ES = {"L’apéritif": "Aperitivo", "Amuse-bouche": "Amuse-bouche", "Entrée": "Entrante",
+                  "Plat": "Plato principal", "Fromages": "Quesos", "Dessert": "Postre",
+                  "Pour finir": "Para terminar"}
+MENU_COURSE_WORDS = {}
+for _fr, _en in MENU_DEFAULT_COURSES:
+    for _w in (_fr, _fr.replace("’", "'"), _en, MENU_COURSE_ES[_fr]):
+        MENU_COURSE_WORDS[_w.lower()] = (_fr, _en)
+MENU_COURSE_WORDS.update({
+    "apéritif": ("L’apéritif", "Aperitif"), "aperitif": ("L’apéritif", "Aperitif"),
+    "main": ("Plat", "Main course"), "primer plato": ("Entrée", "Starter"),
+    "entrada": ("Entrée", "Starter"), "segundo plato": ("Plat", "Main course"),
+    "queso": ("Fromages", "Cheese"), "cheeses": ("Fromages", "Cheese"),
+    "para acabar": ("Pour finir", "To finish")})
+
+# The French name of every country COUNTRY_EN knows, as a menu writes it.
+COUNTRY_FR_NAMES = MENU_COUNTRIES_FR + [
+    "Grèce", "Autriche", "Pologne", "Tunisie", "Uruguay", "Brésil", "Mexique", "Japon", "Chine",
+    "Vietnam", "Kenya", "Ghana", "Guatemala", "Côte d’Ivoire"]
+# A country typed in Spanish.
+COUNTRY_ES = {
+    "españa": "Espagne", "espana": "Espagne", "francia": "France", "italia": "Italie",
+    "portugal": "Portugal", "bélgica": "Belgique", "belgica": "Belgique", "suiza": "Suisse",
+    "irlanda": "Irlande", "reino unido": "Royaume-Uni", "escocia": "Écosse", "noruega": "Norvège",
+    "países bajos": "Pays-Bas", "paises bajos": "Pays-Bas", "holanda": "Pays-Bas",
+    "alemania": "Allemagne", "unión europea": "Union européenne", "union europea": "Union européenne",
+    "marruecos": "Maroc", "nueva zelanda": "Nouvelle-Zélande", "argentina": "Argentine",
+    "perú": "Pérou", "peru": "Pérou", "ecuador": "Équateur", "colombia": "Colombie",
+    "etiopía": "Éthiopie", "etiopia": "Éthiopie", "madagascar": "Madagascar", "india": "Inde",
+    "sri lanka": "Sri Lanka", "grecia": "Grèce", "austria": "Autriche", "polonia": "Pologne",
+    "túnez": "Tunisie", "tunez": "Tunisie", "uruguay": "Uruguay", "brasil": "Brésil",
+    "méxico": "Mexique", "mexico": "Mexique", "japón": "Japon", "japon": "Japon", "china": "Chine",
+    "vietnam": "Vietnam", "kenia": "Kenya", "ghana": "Ghana", "costa de marfil": "Côte d’Ivoire",
+    "guatemala": "Guatemala"}
+
+
+def country_french(text):
+    """'Spain', 'España', 'espagne' -> 'Espagne': the French that a menu's
+    "origine :" needs, from a country typed in any of the three languages, or
+    the words as typed when no list knows them."""
+    typed = " ".join((text or "").split())
+    key = typed.lower().replace("’", "'")
+    if not key:
+        return ""
+    named = {n.lower().replace("’", "'"): n for n in COUNTRY_FR_NAMES}
+    if key in named:
+        return named[key]
+    if key in COUNTRY_ES:
+        return COUNTRY_ES[key]
+    english = COUNTRY_EN.get(key) or next((en for en in COUNTRY_EN.values() if en.lower() == key), None)
+    if english:
+        return next((n for n in COUNTRY_FR_NAMES if country_english(n) == english), typed)
+    return typed
+
+
+def menu_course_words(typed):
+    """(course_fr, course_en) for one of the house's courses typed in any of
+    the three languages, or None."""
+    key = " ".join((typed or "").split()).lower()
+    return MENU_COURSE_WORDS.get(key) or MENU_COURSE_WORDS.get(key.replace("'", "’"))
+
+
+def _menu_library_line(conn, kind, known):
+    """The library's words for a line typed in any language: {lang: words},
+    or {} when it has never seen them."""
+    table, col = {"dish": ("dinner_dishes", "dish"), "wine": ("dinner_wines", "wine"),
+                  "origin": ("dinner_dishes", "origin")}[kind]
+    uses = "uses DESC," if kind != "origin" else ""
+    for lang in MENU_LANGS:
+        if not known.get(lang):
+            continue
+        row = conn.execute(
+            f"SELECT {col}_fr AS fr, {col}_en AS en, {col}_es AS es FROM {table} "
+            f"WHERE {col}_{lang} = ? COLLATE NOCASE ORDER BY {uses} id DESC LIMIT 1",
+            (known[lang],)).fetchone()
+        if row:
+            return {lang_: (row[lang_] or "") for lang_ in MENU_LANGS}
+    return {}
+
+
+MENU_LINES_SYSTEM = (
+    "You write the lines of the dinner menu of Château de Gudanes, a château in the Ariège, in French, "
+    "English and Spanish. Each line comes in the language or languages the cook knew; give it in each "
+    "language asked for, and leave the others empty. Keep it as short as the original and in the same "
+    "register: a menu line, not a description. French as a French menu writes it: a capital only at the "
+    "start and for proper names, no full stop. English: British spelling, no full stop. Spanish: as a "
+    "Spanish menu writes it, no full stop. Keep proper names, appellations (AOP, IGP, DOP) and place "
+    "names as they are; Ariège keeps its accent. A wine: translate only the colour or style (Blanc, White, "
+    "Blanco; Rouge, Red, Tinto; Moelleux, Sweet, Dulce) and keep the appellation. A main product: the "
+    "product only (Agneau, Lamb, Cordero). A course: the name of the course only.")
+
+
+def menu_lines_ask(items):
+    """[{kind, known: {lang: words}, want: [lang]}] -> [{fr, en, es}], from the
+    assistant in ONE request however many lines are missing; [] when it is
+    not set up. A suggestion only: the builder shows it in grey, and the save
+    marks whatever it keeps as not checked."""
+    if not items or not claude_configured():
+        return []
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, timeout=45)
+    data, _why = claude_structured(
+        client, model="claude-opus-5", max_tokens=200 + 160 * len(items),
+        system=MENU_LINES_SYSTEM,
+        messages=[{"role": "user", "content": json.dumps(
+            {"lines": [dict(it, i=n) for n, it in enumerate(items)]}, ensure_ascii=False)}],
+        schema={"type": "object", "additionalProperties": False, "required": ["lines"],
+                "properties": {"lines": {"type": "array", "items": {
+                    "type": "object", "additionalProperties": False, "required": ["i", "fr", "en", "es"],
+                    "properties": {"i": {"type": "integer"}, "fr": {"type": "string"},
+                                   "en": {"type": "string"}, "es": {"type": "string"}}}}}})
+    by_i = {line.get("i"): line for line in (data or {}).get("lines", []) if isinstance(line, dict)}
+    return [{lang: (by_i.get(n) or {}).get(lang, "") for lang in MENU_LANGS} for n in range(len(items))]
+
+
+def menu_line_suggestions(conn, lines):
+    """For each line {kind, fr, en, es}: {fr, en, es, from: {lang: 'library' |
+    'assistant'}} -- the words for each language left empty, from the house's
+    own lists and the library first, then the assistant (every line still
+    missing something in one request). '' where nothing is known. Never raises.
+
+    A course or a country is the house's own list only; a course the list does
+    not know may ask the assistant for its English, as before."""
+    out, ask = [], []
+    for n, line in enumerate(lines):
+        kind = line.get("kind")
+        known = {lang: _menu_text(line.get(lang), MENU_LINE_MAX.get(kind, 200)) for lang in MENU_LANGS}
+        got = {"fr": "", "en": "", "es": "", "from": {}}
+        out.append(got)
+        want = [lang for lang in MENU_LANGS if not known[lang]]
+        first = next((known[lang] for lang in MENU_LANGS if known[lang]), "")
+        if not want or not first:
+            continue
+        found = {}
+        if kind == "course":
+            hit = next((menu_course_words(known[lang]) for lang in MENU_LANGS
+                        if known[lang] and menu_course_words(known[lang])), None)
+            if hit:
+                found = {"fr": hit[0], "en": hit[1], "es": MENU_COURSE_ES.get(hit[0], "")}
+        elif kind == "country":
+            fr = country_french(first)
+            en = country_english(fr)
+            if en:
+                es = next((k for k, v in COUNTRY_ES.items() if v == fr), "")
+                found = {"fr": fr, "en": en, "es": es[:1].upper() + es[1:] if es else ""}
+        elif kind in MENU_LINE_KINDS:
+            found = _menu_library_line(conn, kind, known)
+        for lang in want:
+            if found.get(lang):
+                got[lang], got["from"][lang] = found[lang], "library"
+        missing = [lang for lang in want if not got[lang]]
+        if found and set(missing) <= {"es"}:
+            # The library knows the line in the two languages the menu prints;
+            # the Spanish alone is not worth a request.
+            missing = []
+        if kind == "course":
+            # A course of the cook's own naming: the box is the French, and only
+            # its English is asked for, as it always was.
+            missing = ["en"] if "en" in missing and known["fr"] else []
+        if missing and kind in MENU_LINE_KINDS + ("course",):
+            ask.append((n, kind, {k: v for k, v in known.items() if v}, missing))
+    if ask:
+        try:
+            answers = menu_lines_ask([{"kind": kind, "known": known, "want": missing}
+                                      for _n, kind, known, missing in ask])
+        except Exception as e:
+            log_line(f"[menus] nothing suggested: {e}")
+            answers = []
+        for (n, kind, _known, missing), answer in zip(ask, answers or []):
+            for lang in missing:
+                words = _menu_text((answer or {}).get(lang), MENU_LINE_MAX.get(kind, 200))
+                if words:
+                    out[n][lang], out[n]["from"][lang] = words, "assistant"
+    return out
+
+
 def euros_fr(amount):
     """'95 €', '92,50 €': a price as the French menu says it."""
     if amount is None or amount == "":
@@ -56534,13 +56748,47 @@ def _menu_money(raw):
     return value if value >= 0 else None
 
 
+def _menu_line_words(get, line):
+    """One line of a course (the dish, the wine or the main product) in its
+    three languages, and which of them are a suggestion nobody has checked:
+    ({lang: words}, {field: words}).
+
+    Each French or English box posts what it says and, beside it, the
+    suggestion it was showing (c-<i>-sugg-<field>): the grey words the builder
+    offered for an empty box, or the words saved last time without anyone
+    checking them. A box left empty takes its suggestion, marked; a marked one
+    stays marked until it is edited or ticked as right (c-<i>-ok-<field>). An
+    English box is filled that way only when nobody wrote the French either:
+    a cook who wrote the French and left the English empty is not overruled."""
+    limit = MENU_LINE_MAX[line]
+    words, unchecked = {}, {}
+    for lang in MENU_LANGS:
+        f = f"{line}_{lang}"
+        typed = _menu_text(get(f), limit)
+        sugg = _menu_text(get(f"sugg-{f}"), limit) if lang != "es" else ""
+        if get(f"ok-{f}") == "1":
+            words[lang] = typed or sugg
+            continue
+        if lang == "en" and not typed and sugg and words.get("fr") and f"{line}_fr" not in unchecked:
+            sugg = ""
+        if not typed and sugg:
+            words[lang], unchecked[f] = sugg, sugg
+        elif typed and sugg and typed == sugg:
+            words[lang], unchecked[f] = typed, sugg
+        else:
+            words[lang] = typed
+    return words, unchecked
+
+
 def read_dinner_menu_form(form):
     """What the builder sent, as {name, price, wine_included, cost_per_cover,
     service_time, courses: [...]}: the courses in the order the cook put them
-    (each row's c-<i>-pos), the rows left without a dish dropped."""
+    (each row's c-<i>-pos), the rows left without a dish in any language
+    dropped. A course typed as one of the house's seven in English or Spanish
+    is that course; a country in any of the three is its French name."""
     rows = {}
     for key in form.keys():
-        m = re.match(r"c-(\d+)-(\w+)$", key)
+        m = re.match(r"c-(\d+)-(\w+)", key)
         if m:
             rows.setdefault(int(m.group(1)), {})
     courses = []
@@ -56548,28 +56796,36 @@ def read_dinner_menu_form(form):
         get = lambda f, i=i: form.get(f"c-{i}-{f}", "")  # noqa: E731
         if get("remove") == "1":
             continue
-        dish_fr = _menu_text(get("dish_fr"))
-        if not dish_fr:
+        lines, unchecked = {}, {}
+        for line in MENU_LINE_KINDS:
+            lines[line], marks = _menu_line_words(get, line)
+            unchecked.update(marks)
+        if not any(lines["dish"].values()):
             continue
         meat = get("meat") if get("meat") in MEAT_KINDS else ""
-        country_fr = _menu_text(get("country_fr"), 60)
+        country_fr = country_french(_menu_text(get("country_fr"), 60))
         try:
             pos = float(get("pos") or i)
         except ValueError:
             pos = i
         course_fr = _menu_text(get("course_fr"), 60) or "Plat"
+        house = menu_course_words(course_fr)
+        if house:
+            course_fr = house[0]
         courses.append({
             "pos": pos, "course_fr": course_fr,
-            "course_en": _menu_text(get("course_en"), 60) or dict(MENU_DEFAULT_COURSES).get(course_fr, ""),
-            "dish_fr": dish_fr, "dish_en": _menu_text(get("dish_en")),
-            "wine_fr": _menu_text(get("wine_fr")), "wine_en": _menu_text(get("wine_en")),
+            "course_en": (house[1] if house else "") or _menu_text(get("course_en"), 60),
+            "dish_fr": lines["dish"]["fr"], "dish_en": lines["dish"]["en"], "dish_es": lines["dish"]["es"],
+            "wine_fr": lines["wine"]["fr"], "wine_en": lines["wine"]["en"], "wine_es": lines["wine"]["es"],
             "wine_glass": _menu_text(get("wine_glass"), 20),
-            "origin_fr": _menu_text(get("origin_fr"), 80), "origin_en": _menu_text(get("origin_en"), 80),
+            "origin_fr": lines["origin"]["fr"], "origin_en": lines["origin"]["en"],
+            "origin_es": lines["origin"]["es"],
             "country_fr": country_fr,
-            "country_en": _menu_text(get("country_en"), 60) or country_english(country_fr),
+            "country_en": country_english(country_fr) or _menu_text(get("country_en"), 60),
             "meat": meat,
             "allergens": ",".join(a for a in ALLERGENS if a in form.getlist(f"c-{i}-al")),
             "fait_maison": 1 if get("fm") == "1" else 0,
+            "unchecked": unchecked,
         })
     courses.sort(key=lambda c: c["pos"])
     return {
@@ -56583,6 +56839,36 @@ def read_dinner_menu_form(form):
     }
 
 
+def fill_menu_languages(conn, v):
+    """Before a menu is saved: every line that has words in some language but
+    no French gets the suggested French, and a line nobody wrote in French or
+    English (Spanish alone) gets the English too -- each marked as not checked.
+    The builder has usually suggested them already as the cook typed (and
+    posted them beside each box); this asks only for what is still missing,
+    the library first and then the assistant, in one request. Changes v in
+    place; a line still without its French is for dinner_menu_problems."""
+    asks, where = [], []
+    for c in v["courses"]:
+        marks = c.setdefault("unchecked", {})
+        for line in MENU_LINE_KINDS:
+            have = {lang: c.get(f"{line}_{lang}") or "" for lang in MENU_LANGS}
+            if not any(have.values()):
+                continue
+            fr_written = bool(have["fr"]) and f"{line}_fr" not in marks
+            want = [lang for lang in ("fr", "en") if not have[lang] and (lang == "fr" or not fr_written)]
+            if want:
+                asks.append(dict(have, kind=line))
+                where.append((c, line, want))
+    if not asks:
+        return v
+    for (c, line, want), got in zip(where, menu_line_suggestions(conn, asks)):
+        for lang in want:
+            if got.get(lang):
+                c[f"{line}_{lang}"] = got[lang]
+                c["unchecked"][f"{line}_{lang}"] = got[lang]
+    return v
+
+
 def dinner_menu_problems(v):
     """What stops this menu being saved, said plainly: [str]. The meat rule
     first, because it is the law, not a preference."""
@@ -56591,37 +56877,73 @@ def dinner_menu_problems(v):
         problems.append("Give the menu a name, for example “Dîner à Gudanes, automne”.")
     if not v["courses"]:
         problems.append("Write at least one dish.")
+    what = {"dish": "the dish", "wine": "the wine", "origin": "the main product"}
+    for c in v["courses"]:
+        for line in MENU_LINE_KINDS:
+            other = c.get(f"{line}_en") or c.get(f"{line}_es")
+            if other and not c.get(f"{line}_fr"):
+                problems.append(
+                    f"{c['course_fr']}: write {what[line]} in French. No French could be suggested for "
+                    f"“{other}”, and the guest’s menu is always in French.")
     for c in v["courses"]:
         if c["meat"] and not c["country_fr"]:
             problems.append(
-                f"{c['course_fr']}: {c['dish_fr']} has {MEAT_KINDS[c['meat']][0]} in it, so it must say "
+                f"{c['course_fr']}: {c['dish_fr'] or c.get('dish_en') or c.get('dish_es')} has "
+                f"{MEAT_KINDS[c['meat']][0]} in it, so it must say "
                 f"where it comes from. French law requires the origin of every meat on a menu.")
     return problems
 
 
+def _marks_json(marks, fields):
+    """The not-checked marks for these fields, as stored: JSON, or None."""
+    kept = {f: w for f, w in (marks or {}).items() if f in fields and w}
+    return json.dumps(kept, ensure_ascii=False) if kept else None
+
+
+def _marks(raw):
+    """A stored `unchecked` as {field: words}."""
+    if isinstance(raw, dict):
+        return raw
+    try:
+        out = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return out if isinstance(out, dict) else {}
+
+
 def _upsert_menu_library(conn, c, now):
-    """Keep the dish and the wine for next time: the latest words win."""
+    """Keep the dish and the wine for next time: the latest words win. A
+    Spanish left empty this time keeps the one the library had; whether the
+    French was a suggestion nobody checked travels with it."""
+    marks = c.get("unchecked") or {}
     conn.execute(
-        """INSERT INTO dinner_dishes (dish_fr, dish_en, origin_fr, origin_en, country_fr, country_en,
-                                      meat, allergens, fait_maison, uses, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        """INSERT INTO dinner_dishes (dish_fr, dish_en, dish_es, origin_fr, origin_en, origin_es, country_fr,
+                                      country_en, meat, allergens, fait_maison, unchecked, uses, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
            ON CONFLICT(dish_fr) DO UPDATE SET dish_en = excluded.dish_en,
+               dish_es = COALESCE(NULLIF(excluded.dish_es, ''), dish_es),
                origin_fr = excluded.origin_fr, origin_en = excluded.origin_en,
+               origin_es = COALESCE(NULLIF(excluded.origin_es, ''), origin_es),
                country_fr = excluded.country_fr, country_en = excluded.country_en,
                meat = excluded.meat, allergens = excluded.allergens,
-               fait_maison = excluded.fait_maison, uses = uses + 1, updated_at = excluded.updated_at""",
-        (c["dish_fr"], c["dish_en"], c["origin_fr"], c["origin_en"], c["country_fr"], c["country_en"],
-         c["meat"], c["allergens"], c["fait_maison"], now))
+               fait_maison = excluded.fait_maison, unchecked = excluded.unchecked,
+               uses = uses + 1, updated_at = excluded.updated_at""",
+        (c["dish_fr"], c["dish_en"], c.get("dish_es") or "", c["origin_fr"], c["origin_en"],
+         c.get("origin_es") or "", c["country_fr"], c["country_en"], c["meat"], c["allergens"],
+         c["fait_maison"], _marks_json(marks, ("dish_fr", "dish_en", "origin_fr", "origin_en")), now))
     dish = conn.execute("SELECT id FROM dinner_dishes WHERE dish_fr = ? COLLATE NOCASE",
                         (c["dish_fr"],)).fetchone()
     wine = None
     if c["wine_fr"]:
         conn.execute(
-            """INSERT INTO dinner_wines (wine_fr, wine_en, glass, uses, updated_at)
-               VALUES (?, ?, ?, 1, ?)
+            """INSERT INTO dinner_wines (wine_fr, wine_en, wine_es, glass, unchecked, uses, updated_at)
+               VALUES (?, ?, ?, ?, ?, 1, ?)
                ON CONFLICT(wine_fr) DO UPDATE SET wine_en = excluded.wine_en,
-                   glass = excluded.glass, uses = uses + 1, updated_at = excluded.updated_at""",
-            (c["wine_fr"], c["wine_en"], c["wine_glass"], now))
+                   wine_es = COALESCE(NULLIF(excluded.wine_es, ''), wine_es),
+                   glass = excluded.glass, unchecked = excluded.unchecked,
+                   uses = uses + 1, updated_at = excluded.updated_at""",
+            (c["wine_fr"], c["wine_en"], c.get("wine_es") or "", c["wine_glass"],
+             _marks_json(marks, ("wine_fr", "wine_en")), now))
         wine = conn.execute("SELECT id FROM dinner_wines WHERE wine_fr = ? COLLATE NOCASE",
                             (c["wine_fr"],)).fetchone()
     return (dish["id"] if dish else None), (wine["id"] if wine else None)
@@ -56648,12 +56970,15 @@ def save_dinner_menu(conn, menu_id, v, user_id=None):
         dish_id, wine_id = _upsert_menu_library(conn, c, now)
         conn.execute(
             """INSERT INTO dinner_menu_courses (menu_id, position, course_fr, course_en, dish_fr, dish_en,
-                   wine_fr, wine_en, wine_glass, origin_fr, origin_en, country_fr, country_en, meat,
-                   allergens, fait_maison, dish_id, wine_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (menu_id, n, c["course_fr"], c["course_en"], c["dish_fr"], c["dish_en"], c["wine_fr"],
-             c["wine_en"], c["wine_glass"], c["origin_fr"], c["origin_en"], c["country_fr"],
-             c["country_en"], c["meat"], c["allergens"], c["fait_maison"], dish_id, wine_id))
+                   dish_es, wine_fr, wine_en, wine_es, wine_glass, origin_fr, origin_en, origin_es,
+                   country_fr, country_en, meat, allergens, fait_maison, unchecked, dish_id, wine_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (menu_id, n, c["course_fr"], c["course_en"], c["dish_fr"], c["dish_en"], c.get("dish_es") or None,
+             c["wine_fr"], c["wine_en"], c.get("wine_es") or None, c["wine_glass"], c["origin_fr"],
+             c["origin_en"], c.get("origin_es") or None, c["country_fr"], c["country_en"], c["meat"],
+             c["allergens"], c["fait_maison"],
+             _marks_json(c.get("unchecked"), [f"{line}_{lang}" for line in MENU_LINE_KINDS for lang in ("fr", "en")]),
+             dish_id, wine_id))
     return menu_id
 
 
@@ -56670,12 +56995,12 @@ def duplicate_dinner_menu(conn, menu_id, user_id=None):
         (f"{src['name']} (copy)"[:120], src["price"], src["wine_included"], src["cost_per_cover"],
          src["service_time"], src["id"], user_id, now, now)).lastrowid
     conn.execute(
-        """INSERT INTO dinner_menu_courses (menu_id, position, course_fr, course_en, dish_fr, dish_en,
-               wine_fr, wine_en, wine_glass, origin_fr, origin_en, country_fr, country_en, meat,
-               allergens, fait_maison, dish_id, wine_id)
-           SELECT ?, position, course_fr, course_en, dish_fr, dish_en, wine_fr, wine_en, wine_glass,
-                  origin_fr, origin_en, country_fr, country_en, meat, allergens, fait_maison,
-                  dish_id, wine_id
+        """INSERT INTO dinner_menu_courses (menu_id, position, course_fr, course_en, dish_fr, dish_en, dish_es,
+               wine_fr, wine_en, wine_es, wine_glass, origin_fr, origin_en, origin_es, country_fr, country_en,
+               meat, allergens, fait_maison, unchecked, dish_id, wine_id)
+           SELECT ?, position, course_fr, course_en, dish_fr, dish_en, dish_es, wine_fr, wine_en, wine_es,
+                  wine_glass, origin_fr, origin_en, origin_es, country_fr, country_en, meat, allergens,
+                  fait_maison, unchecked, dish_id, wine_id
              FROM dinner_menu_courses WHERE menu_id = ? ORDER BY position""", (new_id, menu_id))
     return new_id
 
@@ -57929,7 +58254,9 @@ def _occasion_form_values(form, rooms, occ=None):
     moved = bool(occ and occ["id"]) and (v["first_night"], v["last_night"]) != (
         occ["first_night"], occ["last_night"])
     photos = {p for p, _l in stay_occasion_photos()}
-    error = None
+    # Each refusal says which of the form's two tabs it is on (brief of 27 Nov
+    # 2026, §1): "stay" or "dinner". A refused save opens that tab and says so.
+    error, tab = None, "stay"
     if not v["name"]:
         error = "Give the occasion a name."
     elif not (a and b):
@@ -57941,18 +58268,18 @@ def _occasion_form_values(form, rooms, occ=None):
     elif v["photo"] and v["photo"] not in photos:
         error = "Choose a photograph from the list."
     elif v["chef_photo"] and v["chef_photo"] not in photos:
-        error = "Choose the chef's photograph from the list."
+        error, tab = "Choose the chef's photograph from the list.", "dinner"
     elif v["chef_link"] and not re.match(r"^https?://\S+$", v["chef_link"]):
-        error = "The chef's link should start with https://."
+        error, tab = "The chef's link should start with https://.", "dinner"
     elif v["dinner_asked"] and not v["dinner_price"]:
-        error = "Dinner at Gudanes needs a price a person."
+        error, tab = "Dinner at Gudanes needs a price a person.", "dinner"
     elif v["wine_share"] and v["dinner_price"] and v["wine_share"] >= v["dinner_price"]:
-        error = "The wine's share must be less than the dinner's price a person."
+        error, tab = "The wine's share must be less than the dinner's price a person.", "dinner"
     elif v["dinner_time"] and not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", v["dinner_time"]):
-        error = "Give the dinner time as hours and minutes, for example 19:30."
+        error, tab = "Give the dinner time as hours and minutes, for example 19:30.", "dinner"
     elif (v["dinner_on"] and not moved and a and b
           and any(not parse_date(d) or not (a <= parse_date(d) <= b) for d in v["dinners"])):
-        error = "A dinner night must be one of the occasion's own nights."
+        error, tab = "A dinner night must be one of the occasion's own nights.", "dinner"
     else:
         # Serving dinner puts the chef on site, so the words may speak of it.
         error = stay_occasion_words_problem(
@@ -57964,12 +58291,22 @@ def _occasion_form_values(form, rooms, occ=None):
                 v["dinner_asked"] or v["kind"] != "guest_chef"):
             v["dinners"] = [n.isoformat() for n in stay_occasion_nights(v)]
         elif v["dinner_asked"] and not v["dinners"]:
-            error = "Tick at least one night for dinner, or untick Serve dinner."
+            error, tab = "Tick at least one night for dinner, or untick Serve dinner.", "dinner"
     if not v["dinner_on"]:
         v["dinners"] = []
     if v["dinner_on"]:
         v["chef_on_site"] = 1
+    v["error_tab"] = tab if error else None
     return v, error
+
+
+# The occasion form's two tabs (brief of 27 Nov 2026, §1), as the page names them.
+OCCASION_TABS = {"stay": "The stay", "dinner": "Chef & dinner"}
+
+
+def occasion_tab_why(tab):
+    """What the page says when a save opens a tab for the person."""
+    return (f"The problem is on {OCCASION_TABS[tab]}, so it is open." if tab in OCCASION_TABS else "")
 
 
 def occasion_dinner_figures(conn, occ):
@@ -58078,39 +58415,55 @@ def dinner_go_live_missing(conn, occ, dinners=None):
 
 
 def _go_live_problem(conn, occ, today):
-    """Why this occasion cannot go on sale, or None."""
+    """Why this occasion cannot go on sale, and the tab of its form that is on
+    ("stay" or "dinner"): (words, tab), or (None, None)."""
     if occ["last_night"] < today.isoformat():
-        return "Its dates have passed."
+        return "Its dates have passed.", "stay"
     blocked = stay_occasion_blocked(stay_occasion_clashes(
         conn, occ["first_night"], occ["last_night"], own_id=occ["id"]))
     if blocked:
-        return "It clashes: " + "; ".join(blocked) + "."
+        return "It clashes: " + "; ".join(blocked) + ".", "stay"
     # Dinner at Gudanes needs no room price of its own: left blank, the rooms
     # stay at their usual rate and the occasion sells the dinner (25 Nov 2026).
     dinners = stay_occasion_dinners(occ, conn)
     if not stay_occasion_from_price(conn, occ) and not dinners:
-        return "Set a price for at least one room."
+        return "Set a price for at least one room.", "stay"
     # A live dinner needs a price, its covers and a menu (owner's brief, 27
     # Nov 2026: "any field missing for a live dinner is named before it can go
     # live"). All of them named at once, not one a save.
     missing = dinner_go_live_missing(conn, occ, dinners)
     if missing:
-        return "Before the dinner can go on sale it needs " + words_and(missing) + "."
+        return "Before the dinner can go on sale it needs " + words_and(missing) + ".", "dinner"
     if dinners and occ["wine_included"] and not occ["wine_share"]:
         return ("Say how much of the dinner's price a person is the wine: the food is taxed at "
                 f"{float(tax_rate(conn, 'vat_food')):g}% and the wine at "
-                f"{float(tax_rate(conn, 'vat_alcohol')):g}%.")
+                f"{float(tax_rate(conn, 'vat_alcohol')):g}%."), "dinner"
     if occ["kind"] == "guest_chef":
         if not occ["chef_name"]:
-            return "Name the guest chef."
+            return "Name the guest chef.", "dinner"
         if not stay_occasion_dinners(occ, conn):
-            return "Tick the nights dinner is served."
+            return "Tick the nights dinner is served.", "dinner"
         if not (occ["dinner_price"] and occ["dinner_covers"]):
-            return "Set the dinner price per person and the covers each night."
-    return None
+            return "Set the dinner price per person and the covers each night.", "dinner"
+    return None, None
 
 
-def _render_occasion_form(conn, occ, values=None, confirm_write=None, price_clash=False):
+def _occasion_refusal_tab(v, error, clash=False, upload_why=None, shown=None):
+    """(the tab to open, what to say) for a refused save: the tab the problem
+    is on, said only when the person was looking at the other one."""
+    if not error:
+        return None, ""
+    if clash:
+        tab = "dinner"
+    elif upload_why:
+        tab = "stay" if upload_why.startswith("The banner photograph") else "dinner"
+    else:
+        tab = (v or {}).get("error_tab") or "stay"
+    return tab, (occasion_tab_why(tab) if shown in OCCASION_TABS and shown != tab else "")
+
+
+def _render_occasion_form(conn, occ, values=None, confirm_write=None, price_clash=False, open_tab=None,
+                          tab_why=""):
     rooms = stay_occasion_rooms(conn, occ)
     if values:
         for r in rooms:
@@ -58168,7 +58521,7 @@ def _render_occasion_form(conn, occ, values=None, confirm_write=None, price_clas
         dinner_on=bool(values.get("dinner_on")) if values else bool(saved_dinners),
         dinner_defaults={"time": (rs["dinner_time"] if rs and rs["dinner_time"] else "19:30"),
                          "covers": (rs["capacity"] if rs and rs["capacity"] else 20)},
-        night_menus=night_menus, price_clash=price_clash,
+        night_menus=night_menus, price_clash=price_clash, open_tab=open_tab, tab_why=tab_why,
         covers=covers, who=who, uplift=STAY_OCCASION_UPLIFT, chef_on=CHEF_ON_SITE_LINE,
         chef_on_dinner=CHEF_ON_SITE_DINNER_LINE, chef_off=CHEF_OFF_SITE_LINE, confirm_write=confirm_write,
         banner_default=occasion_banner_default(occ), dining=dining_mode(conn),
@@ -58404,16 +58757,18 @@ def admin_stay_occasion_new():
     if request.method == "POST":
         rooms = stay_occasion_rooms(conn)
         v, error = _occasion_form_values(request.form, rooms)
-        clash, uploads = False, None
+        clash, uploads, upload_why = False, None, None
         if not error:
             error = _dinner_price_clash(conn, None, v)
             clash = bool(error)
         if not error:
             uploads, error = _occasion_uploads(request.files, v)
+            upload_why = error
         if error:
             flash(error, "error")
+            tab, why = _occasion_refusal_tab(v, error, clash, upload_why, request.form.get("tab_shown"))
             out = _render_occasion_form(conn, dict(blank, **{k: v[k] for k in blank if k in v}), v,
-                                        price_clash=clash)
+                                        price_clash=clash, open_tab=tab, tab_why=why)
             conn.close()
             return out
         occ_id = create_stay_occasion(
@@ -58451,7 +58806,12 @@ def admin_stay_occasion(occ_id):
     conn = get_db()
     occ = _occasion_or_404(conn, occ_id)
     if request.method == "GET":
-        out = _render_occasion_form(conn, occ, confirm_write=request.args.get("confirm_write"))
+        # ?problem=dinner: a save went through as a draft because the dinner
+        # still needs something, so Chef & dinner opens and says so.
+        problem = request.args.get("problem")
+        out = _render_occasion_form(conn, occ, confirm_write=request.args.get("confirm_write"),
+                                    open_tab=problem if problem in OCCASION_TABS else None,
+                                    tab_why=occasion_tab_why(problem))
         conn.close()
         return out
     rooms = stay_occasion_rooms(conn, occ)
@@ -58472,16 +58832,18 @@ def admin_stay_occasion(occ_id):
             return out
     # The price question and the files before anything is written: either can
     # refuse, and a refusal leaves the occasion exactly as it was.
-    clash, uploads = False, None
+    clash, uploads, upload_why = False, None, None
     if not error:
         error = _dinner_price_clash(conn, occ_id, v)
         clash = bool(error)
     if not error:
         uploads, error = _occasion_uploads(request.files, v)
+        upload_why = error
     if error:
         flash(error, "error")
+        tab, why = _occasion_refusal_tab(v, error, clash, upload_why, request.form.get("tab_shown"))
         out = _render_occasion_form(conn, dict(occ, **{k: v[k] for k in _BLANK_OCCASION if k in v}), v,
-                                    price_clash=clash)
+                                    price_clash=clash, open_tab=tab, tab_why=why)
         conn.close()
         return out
     today = house_today()
@@ -58526,12 +58888,16 @@ def admin_stay_occasion(occ_id):
         conn.execute("UPDATE stay_occasions SET chef_bio = ? WHERE id = ?", (fallback_chef_bio(occ, conn), occ_id))
     # The status last, once everything it depends on is saved.
     occ = conn.execute("SELECT * FROM stay_occasions WHERE id = ?", (occ_id,)).fetchone()
-    status = v["status"]
+    status, problem_tab = v["status"], None
     if status == "live":
-        problem = _go_live_problem(conn, occ, today)
+        problem, where = _go_live_problem(conn, occ, today)
         if problem:
             status = "draft"
             flash(f"Saved as a draft, not on sale. {problem}", "error")
+            # Opened for the person only when they were looking at the other tab.
+            shown = request.form.get("tab_shown")
+            if shown in OCCASION_TABS and shown != where:
+                problem_tab = where
     conn.execute("UPDATE stay_occasions SET status = ? WHERE id = ?", (status, occ_id))
     # 3c: on sale with dinner or a banner, the newsletter drafts itself -- or
     # is redrafted when the dates, the price or the menu changed. Never sent.
@@ -58553,6 +58919,10 @@ def admin_stay_occasion(occ_id):
         remove_occasion_file(name)
     flash(f"Saved {v['name']}" + (" (on sale)" if status == "live" else "")
           + (f"; {'; '.join(notes)}" if notes else "") + ".", "success")
+    if problem_tab:
+        # It could not go on sale for something on the other tab: open it there.
+        return redirect(url_for("admin_stay_occasion", occ_id=occ_id, problem=problem_tab)
+                        + ("#chef-and-dinner" if problem_tab == "dinner" else "#the-stay"))
     return redirect(url_for("admin_stay_occasion", occ_id=occ_id))
 
 
@@ -58736,62 +59106,6 @@ def admin_stay_occasion_suggestion_dismiss(sid):
 
 # --- The menu builder: /admin/menus (27 Nov 2026) ---------------------------------
 
-def menu_english_ask(text, kind):
-    """The English for a line of the menu, from the assistant, or ''. A
-    suggestion only: the builder shows it in grey and saves it only once the
-    cook has accepted or typed over it."""
-    if not claude_configured():
-        return ""
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, timeout=30)
-    data, _why = claude_structured(
-        client, model="claude-opus-5", max_tokens=300,
-        system=("You translate one line of the French dinner menu of Château de Gudanes, a château in "
-                "the Ariège, into English for its guests. Keep it as short as the French and in the "
-                "same register: a menu line, not a description. Keep proper names, appellations "
-                "(AOP, IGP) and place names as they are; Ariège keeps its accent. British spelling. "
-                "No full stop at the end. If it is a wine, translate only the colour or style "
-                "(Blanc is White, Rouge is Red, Moelleux is Sweet). If it is a product of origin, "
-                "translate the product only."),
-        messages=[{"role": "user", "content": json.dumps({"kind": kind, "french": text})}],
-        schema={"type": "object", "additionalProperties": False, "required": ["english"],
-                "properties": {"english": {"type": "string"}}})
-    return (data or {}).get("english", "")
-
-
-def menu_english_suggestion(conn, text, kind):
-    """{en, from}: the English the library already has for these exact words,
-    else the assistant's, else nothing. Never raises."""
-    text = _menu_text(text)
-    if not text:
-        return {"en": "", "from": None}
-    found = None
-    if kind == "dish":
-        found = conn.execute("SELECT dish_en AS en FROM dinner_dishes WHERE dish_fr = ? COLLATE NOCASE "
-                             "AND COALESCE(dish_en, '') != ''", (text,)).fetchone()
-    elif kind == "wine":
-        found = conn.execute("SELECT wine_en AS en FROM dinner_wines WHERE wine_fr = ? COLLATE NOCASE "
-                             "AND COALESCE(wine_en, '') != ''", (text,)).fetchone()
-    elif kind == "origin":
-        found = conn.execute("SELECT origin_en AS en FROM dinner_dishes WHERE origin_fr = ? COLLATE NOCASE "
-                             "AND COALESCE(origin_en, '') != '' ORDER BY uses DESC LIMIT 1",
-                             (text,)).fetchone()
-    elif kind == "course":
-        en = dict(MENU_DEFAULT_COURSES).get(text)
-        if en:
-            return {"en": en, "from": "library"}
-    elif kind == "country":
-        en = country_english(text)
-        return {"en": en, "from": "library" if en else None}
-    if found:
-        return {"en": found["en"], "from": "library"}
-    try:
-        en = _menu_text(menu_english_ask(text, kind))
-    except Exception as e:
-        log_line(f"[menus] no English suggested: {e}")
-        en = ""
-    return {"en": en, "from": "assistant" if en else None}
-
-
 def _menu_form_values(conn, menu_id):
     """The builder's starting values: a saved menu's, or a new one with the
     house's seven courses waiting for their dishes."""
@@ -58800,7 +59114,7 @@ def _menu_form_values(conn, menu_id):
         if not m:
             return None
         v = dict(m)
-        v["courses"] = [dict(c) for c in conn.execute(
+        v["courses"] = [dict(c, unchecked=_marks(c["unchecked"])) for c in conn.execute(
             "SELECT * FROM dinner_menu_courses WHERE menu_id = ? ORDER BY position, id", (menu_id,))]
         return v
     return {"id": None, "name": "", "price": None, "wine_included": 1, "cost_per_cover": None,
@@ -58815,10 +59129,17 @@ def _render_menu_builder(conn, v, problems=(), for_occasion=None, night=None):
         "SELECT * FROM dinner_wines ORDER BY uses DESC, wine_fr COLLATE NOCASE LIMIT 200")]
     occ = (conn.execute("SELECT id, name FROM stay_occasions WHERE id = ?", (for_occasion,)).fetchone()
            if for_occasion else None)
+    # The three boxes of a line, the reader's own language first: a cook
+    # reading the staff side in Spanish meets the Spanish box first.
+    mine = current_language()
+    lang_order = ([mine] if mine in MENU_LANGS else []) + [lang for lang in MENU_LANGS if lang != mine]
     return render_template(
         "admin_dinner_menu.html", v=v, problems=list(problems), dishes=dishes, wines=wines,
         allergens=ALLERGENS, allergens_en=ALLERGENS_EN, meats=MEAT_KINDS,
-        default_courses=MENU_DEFAULT_COURSES, countries=COUNTRY_EN, country_names=MENU_COUNTRIES_FR,
+        default_courses=MENU_DEFAULT_COURSES, countries=COUNTRY_EN, country_names=COUNTRY_FR_NAMES,
+        course_words={k: list(v_) for k, v_ in MENU_COURSE_WORDS.items()},
+        lang_order=lang_order, lang_labels=MENU_LANG_LABELS, lang_names=MENU_LANG_NAMES,
+        line_max=MENU_LINE_MAX,
         uses=dinner_menu_uses(conn, v["id"]) if v.get("id") else [],
         for_occasion=occ, night=night)
 
@@ -58871,7 +59192,7 @@ def _dinner_menu_edit(menu_id):
         conn.close()
         abort(404)
     if request.method == "POST":
-        new = read_dinner_menu_form(request.form)
+        new = fill_menu_languages(conn, read_dinner_menu_form(request.form))
         problems = dinner_menu_problems(new)
         if problems:
             new.update({"id": menu_id, "status": v["status"]})
@@ -58990,16 +59311,215 @@ def admin_dinner_menu_preview():
     return resp
 
 
-@app.route("/admin/menus/english", methods=["POST"])
+@app.route("/admin/menus/suggest", methods=["POST"])
 @owner_required
-def admin_dinner_menu_english():
-    """The English for one French line, as a suggestion: {en, from}."""
+def admin_dinner_menu_suggest():
+    """One line of a menu in the languages it was not typed in, as a
+    suggestion: {fr, en, es, from: {lang: 'library' | 'assistant'}}. The line
+    is posted as whatever the cook has written of it (fr, en, es)."""
     kind = request.form.get("kind") if request.form.get("kind") in (
-        "dish", "wine", "origin", "course", "country") else "dish"
+        MENU_LINE_KINDS + ("course", "country")) else "dish"
     conn = get_db()
-    out = menu_english_suggestion(conn, request.form.get("text", ""), kind)
+    out = menu_line_suggestions(conn, [{
+        "kind": kind, **{lang: request.form.get(lang, "") for lang in MENU_LANGS}}])[0]
     conn.close()
     return jsonify(out)
+
+
+# --- The dish library (27 Nov 2026) -------------------------------------------------
+# Every dish and wine a menu has held is kept, so the next menu is mostly
+# picking -- and a mistake kept being offered too. The library lists them with
+# Edit and Remove. Removing one takes it off the list offered as the cook types;
+# a menu that already serves it keeps its words, which belong to the menu.
+
+def dinner_library_rows(conn):
+    """Every dish and wine in the library, with the menus they are on."""
+    on = {}
+    for r in conn.execute(
+            """SELECT dish_id, wine_id, menu_id FROM dinner_menu_courses
+                WHERE dish_id IS NOT NULL OR wine_id IS NOT NULL"""):
+        if r["dish_id"]:
+            on.setdefault(("dish", r["dish_id"]), set()).add(r["menu_id"])
+        if r["wine_id"]:
+            on.setdefault(("wine", r["wine_id"]), set()).add(r["menu_id"])
+    rows = []
+    for d in conn.execute("SELECT * FROM dinner_dishes"):
+        rows.append({"kind": "dish", "id": d["id"], "fr": d["dish_fr"], "en": d["dish_en"] or "",
+                     "es": d["dish_es"] or "", "uses": d["uses"] or 0, "updated_at": d["updated_at"] or "",
+                     "detail": " · ".join(x for x in (
+                         d["origin_fr"], f"origine : {d['country_fr']}" if d["country_fr"] else "",
+                         MEAT_KINDS[d["meat"]][0] if d["meat"] in MEAT_KINDS else "") if x),
+                     "unchecked": _marks(d["unchecked"]),
+                     "menus": len(on.get(("dish", d["id"]), ()))})
+    for w in conn.execute("SELECT * FROM dinner_wines"):
+        rows.append({"kind": "wine", "id": w["id"], "fr": w["wine_fr"], "en": w["wine_en"] or "",
+                     "es": w["wine_es"] or "", "uses": w["uses"] or 0, "updated_at": w["updated_at"] or "",
+                     "detail": w["glass"] or "", "unchecked": _marks(w["unchecked"]),
+                     "menus": len(on.get(("wine", w["id"]), ()))})
+    return rows
+
+
+@app.route("/admin/menus/library")
+@owner_required
+def admin_dinner_library():
+    """The dishes and wines the builder offers, each with Edit and Remove."""
+    conn = get_db()
+    rows = dinner_library_rows(conn)
+    conn.close()
+    lv = list_view(
+        rows, request.args, search=["fr", "en", "es", "detail"], search_hint="Search a dish or a wine",
+        facets=[facet("kind", "What", lambda r: "Dishes" if r["kind"] == "dish" else "Wines",
+                      order=["Dishes", "Wines"]),
+                facet("french", "The French", lambda r: (
+                    "Suggested, not checked" if f"{r['kind']}_fr" in r["unchecked"] else "Written"),
+                      order=["Written", "Suggested, not checked"])],
+        sorts=[sort_option("used", "Most used", lambda r: (-r["uses"], r["fr"].lower())),
+               sort_option("name", "A to Z", lambda r: r["fr"].lower()),
+               sort_option("recent", "Most recent", lambda r: r["updated_at"], reverse=True)],
+        default_sort="used")
+    return render_template("admin_dinner_library.html", lv=lv)
+
+
+def _library_item(conn, kind, item_id):
+    table = "dinner_dishes" if kind == "dish" else "dinner_wines"
+    return conn.execute(f"SELECT * FROM {table} WHERE id = ?", (item_id,)).fetchone()
+
+
+@app.route("/admin/menus/library/<kind>/<int:item_id>", methods=["GET", "POST"])
+@owner_required
+def admin_dinner_library_item(kind, item_id):
+    """One dish or wine of the library, to put right. What changes here is what
+    the builder offers next time; menus already written keep their words."""
+    if kind not in ("dish", "wine"):
+        abort(404)
+    conn = get_db()
+    row = _library_item(conn, kind, item_id)
+    if not row:
+        conn.close()
+        abort(404)
+    v, problems = dict(row), []
+    if request.method == "POST":
+        f = request.form
+        col = "dish" if kind == "dish" else "wine"
+        for lang in MENU_LANGS:
+            v[f"{col}_{lang}"] = _menu_text(f.get(f"{col}_{lang}"))
+        if kind == "dish":
+            for lang in MENU_LANGS:
+                v[f"origin_{lang}"] = _menu_text(f.get(f"origin_{lang}"), 80)
+            v["country_fr"] = country_french(_menu_text(f.get("country_fr"), 60))
+            v["country_en"] = country_english(v["country_fr"])
+            v["meat"] = f.get("meat") if f.get("meat") in MEAT_KINDS else ""
+            v["allergens"] = ",".join(a for a in ALLERGENS if a in f.getlist("al"))
+            v["fait_maison"] = 1 if f.get("fm") == "1" else 0
+        else:
+            v["glass"] = _menu_text(f.get("glass"), 20)
+        if not v[f"{col}_fr"]:
+            problems.append("The French is what the guest’s menu prints: it cannot be empty.")
+        clash = conn.execute(
+            f"SELECT id FROM {'dinner_dishes' if kind == 'dish' else 'dinner_wines'} "
+            f"WHERE {col}_fr = ? COLLATE NOCASE AND id != ?", (v[f"{col}_fr"], item_id)).fetchone()
+        if clash:
+            problems.append(f"The library already has “{v[col + '_fr']}”. Remove one of the two instead.")
+        if kind == "dish" and v["meat"] and not v["country_fr"]:
+            problems.append("Meat on a menu must say where it comes from: French law asks it of every menu "
+                            "served. Write the country.")
+        if not problems:
+            # Saved here by a person who read it: whatever was a suggestion is checked now.
+            now = datetime.now(timezone.utc).isoformat()
+            if kind == "dish":
+                conn.execute(
+                    """UPDATE dinner_dishes SET dish_fr = ?, dish_en = ?, dish_es = ?, origin_fr = ?,
+                           origin_en = ?, origin_es = ?, country_fr = ?, country_en = ?, meat = ?,
+                           allergens = ?, fait_maison = ?, unchecked = NULL, updated_at = ? WHERE id = ?""",
+                    (v["dish_fr"], v["dish_en"], v["dish_es"], v["origin_fr"], v["origin_en"],
+                     v["origin_es"], v["country_fr"], v["country_en"], v["meat"], v["allergens"],
+                     v["fait_maison"], now, item_id))
+            else:
+                conn.execute(
+                    """UPDATE dinner_wines SET wine_fr = ?, wine_en = ?, wine_es = ?, glass = ?,
+                           unchecked = NULL, updated_at = ? WHERE id = ?""",
+                    (v["wine_fr"], v["wine_en"], v["wine_es"], v["glass"], now, item_id))
+            log_audit(conn, "dinner_library_edited", target=v[f"{col}_fr"], details=kind)
+            conn.commit()
+            conn.close()
+            flash(f"Saved {v[col + '_fr']}. Menus already written keep their own words; the builder "
+                  f"offers these from now on.", "success")
+            return redirect(url_for("admin_dinner_library"))
+    menus = [dict(r) for r in conn.execute(
+        f"""SELECT DISTINCT dinner_menus.id, dinner_menus.name FROM dinner_menu_courses
+              JOIN dinner_menus ON dinner_menus.id = dinner_menu_courses.menu_id
+             WHERE dinner_menu_courses.{'dish_id' if kind == 'dish' else 'wine_id'} = ?
+             ORDER BY dinner_menus.name""", (item_id,))]
+    conn.close()
+    page = render_template(
+        "admin_dinner_library_item.html", kind=kind, v=v, problems=problems, menus=menus,
+        allergens=ALLERGENS, allergens_en=ALLERGENS_EN, meats=MEAT_KINDS, country_names=COUNTRY_FR_NAMES,
+        lang_labels=MENU_LANG_LABELS,
+        unchecked_langs=[MENU_LANG_NAMES[f.rsplit("_", 1)[1]] for f in _marks(row["unchecked"])
+                         if f.rsplit("_", 1)[0] == ("dish" if kind == "dish" else "wine")
+                         and f.rsplit("_", 1)[1] in MENU_LANG_NAMES])
+    return (page, 400) if problems else page
+
+
+@app.route("/admin/menus/library/<kind>/<int:item_id>/remove", methods=["POST"])
+@owner_required
+def admin_dinner_library_remove(kind, item_id):
+    """Take a dish or a wine out of the library, so it is no longer offered.
+    A menu that serves it keeps it as written."""
+    if kind not in ("dish", "wine"):
+        abort(404)
+    conn = get_db()
+    row = _library_item(conn, kind, item_id)
+    if not row:
+        conn.close()
+        flash("That is no longer in the library.", "error")
+        return redirect(url_for("admin_dinner_library"))
+    name = row["dish_fr"] if kind == "dish" else row["wine_fr"]
+    menus = remove_from_dinner_library(conn, kind, item_id)
+    log_audit(conn, "dinner_library_removed", target=name, details=kind)
+    conn.commit()
+    conn.close()
+    flash(f"Removed {name} from the library: it is no longer offered."
+          + (f" {menus} menu{'s that serve' if menus != 1 else ' that serves'} it keep"
+             f"{'' if menus != 1 else 's'} it as written." if menus else ""), "success")
+    return redirect(url_for("admin_dinner_library"))
+
+
+def remove_from_dinner_library(conn, kind, item_id):
+    """Delete one dish or wine from the library; the courses that came from it
+    keep their words and lose only the link. Returns how many menus served it.
+    Does not commit."""
+    col, table = ("dish_id", "dinner_dishes") if kind == "dish" else ("wine_id", "dinner_wines")
+    menus = conn.execute(f"SELECT COUNT(DISTINCT menu_id) AS n FROM dinner_menu_courses WHERE {col} = ?",
+                         (item_id,)).fetchone()["n"]
+    conn.execute(f"UPDATE dinner_menu_courses SET {col} = NULL WHERE {col} = ?", (item_id,))
+    conn.execute(f"DELETE FROM {table} WHERE id = ?", (item_id,))
+    return menus
+
+
+# The two dishes the live check of 27 Nov 2026 left in the library when its
+# menu was deleted (brief of 27 Nov, §4), removed once. Matched by their exact
+# French; a menu that serves one keeps its words.
+LIVE_CHECK_DISHES_2026_11_27 = ("Agneau des Pyrénées rôti au thym", "Velouté de potimarron, huile de noisette")
+
+
+def remove_live_check_dishes_2026_11_27(conn):
+    """Once, recorded in app_settings, so the house can write either dish again
+    and keep it."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'live_check_dishes_removed_2026_11_27'").fetchone():
+        return 0
+    gone = 0
+    for name in LIVE_CHECK_DISHES_2026_11_27:
+        row = conn.execute("SELECT id FROM dinner_dishes WHERE dish_fr = ? COLLATE NOCASE", (name,)).fetchone()
+        if row:
+            remove_from_dinner_library(conn, "dish", row["id"])
+            gone += 1
+    conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('live_check_dishes_removed_2026_11_27', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if gone:
+        log_line(f"[menus] {gone} dish(es) the live check left removed from the library")
+    return gone
 
 
 @app.route("/admin/menus/<int:menu_id>/menu.pdf")

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ v[('dish' if kind == 'dish' else 'wine') ~ '_fr'] }} · Dish library{% endblock %}
+{% block content %}
+{%- set col = 'dish' if kind == 'dish' else 'wine' %}
+{#- One dish or wine of the library, put right (brief of 27 Nov 2026, §4). What changes here is what the builder
+    offers next time; the menus that serve it keep their own words. Saved by a person who read it, so a French that
+    was only a suggestion is checked once saved here. -#}
+<div class="page-head">
+  <h1>{{ v[col ~ '_fr'] }}</h1>
+  <a href="{{ url_for('admin_dinner_library') }}" class="btn-mini">← Dish library</a>
+</div>
+{% if problems %}<div class="wo-problem" role="alert" style="margin-bottom:1rem"><strong>Not saved yet:</strong><ul style="margin:.25rem 0 0 1.25rem">{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></div>{% endif %}
+{% if unchecked_langs %}<p class="mini-status status-pending" style="display:inline-block;margin-bottom:1rem">{{ unchecked_langs|join(' and ') }} suggested, not checked: saving here checks it.</p>{% endif %}
+<p class="upload-hint" style="max-width:52rem">
+  {% if menus %}On {{ menus|length }} menu{{ '' if menus|length == 1 else 's' }}:
+    {% for mm in menus %}<a href="{{ url_for('admin_dinner_menu', menu_id=mm.id) }}">{{ mm.name }}</a>{{ ', ' if not loop.last }}{% endfor %}.
+    {{ 'It keeps' if menus|length == 1 else 'They keep' }} {{ 'its' if menus|length == 1 else 'their' }} own words: what changes here is what the builder offers next time.
+  {% else %}On no menu now. What changes here is what the builder offers next time.{% endif %}
+</p>
+
+<form method="post" class="detail-card" style="margin-top:1rem;max-width:56rem">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <fieldset style="border:0;padding:0;margin:0">
+    <legend class="section-heading">{{ 'The dish' if kind == 'dish' else 'The wine' }}</legend>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem 1rem">
+      {% for lang in ('fr', 'en', 'es') %}
+      <div><label for="lib_{{ col }}_{{ lang }}" class="field-label">{{ lang_labels[lang] }}{% if lang == 'fr' %} <span class="upload-hint">(printed on the menu)</span>{% endif %}</label>
+        <input type="text" id="lib_{{ col }}_{{ lang }}" name="{{ col }}_{{ lang }}" value="{{ v[col ~ '_' ~ lang] or '' }}" maxlength="200" lang="{{ lang }}" style="width:100%"{% if lang == 'fr' %} required{% endif %}></div>
+      {% endfor %}
+    </div>
+  </fieldset>
+  {% if kind == 'dish' %}
+  <fieldset style="border:0;padding:0;margin:1rem 0 0">
+    <legend class="field-label">The main product</legend>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem 1rem">
+      {% for lang in ('fr', 'en', 'es') %}
+      <div><label for="lib_origin_{{ lang }}" class="upload-hint">{{ lang_labels[lang] }}</label>
+        <input type="text" id="lib_origin_{{ lang }}" name="origin_{{ lang }}" value="{{ v['origin_' ~ lang] or '' }}" maxlength="80" lang="{{ lang }}" style="width:100%"></div>
+      {% endfor %}
+    </div>
+  </fieldset>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem 1rem;margin-top:1rem">
+    <div><label for="lib_country" class="field-label">Origin (country)</label>
+      <input type="text" id="lib_country" name="country_fr" value="{{ v.country_fr or '' }}" list="dl-countries" maxlength="60" style="width:100%"></div>
+    <div><label for="lib_meat" class="field-label">Meat in it</label>
+      <select id="lib_meat" name="meat" style="width:100%"><option value="">None</option>
+        {% for k, (fr, en) in meats.items() %}<option value="{{ k }}"{% if v.meat == k %} selected{% endif %}>{{ fr|capitalize }} · {{ en }}</option>{% endfor %}
+      </select></div>
+  </div>
+  <fieldset style="border:0;padding:0;margin:1rem 0 0;display:flex;flex-wrap:wrap;gap:.35rem">
+    <legend class="field-label" style="width:100%">Allergens in it</legend>
+    {%- set _have = (v.allergens or '').split(',') %}
+    {% for k, fr in allergens.items() %}<label class="checkbox-row" style="margin-right:.75rem"><input type="checkbox" name="al" value="{{ k }}"{% if k in _have %} checked{% endif %}> <span>{{ allergens_en[k] }}</span></label>{% endfor %}
+  </fieldset>
+  <label class="checkbox-row" style="margin-top:.75rem"><input type="checkbox" name="fm" value="1"{% if v.fait_maison %} checked{% endif %}> <span>Fait maison (made here, from raw ingredients)</span></label>
+  <datalist id="dl-countries">{% for name in country_names %}<option value="{{ name }}">{% endfor %}</datalist>
+  {% else %}
+  <div style="margin-top:1rem;max-width:12rem"><label for="lib_glass" class="field-label">Glass</label>
+    <input type="text" id="lib_glass" name="glass" value="{{ v.glass or '' }}" maxlength="20" placeholder="12 cl" style="width:100%"></div>
+  {% endif %}
+  <p style="margin-top:1.25rem"><button type="submit" class="btn-primary">Save</button></p>
+</form>
+
+<form method="post" action="{{ url_for('admin_dinner_library_remove', kind=kind, item_id=v.id) }}" style="margin-top:1rem"
+      onsubmit="return confirm({{ ('Remove ' ~ v[col ~ '_fr'] ~ ' from the library? It will no longer be offered.')|tojson|forceescape }})">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn-text-danger">Remove from the library</button>
+</form>
+{% endblock %}

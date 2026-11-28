@@ -1355,6 +1355,22 @@ def give_menu(conn, occ_id):
     conn.commit()
 
 
+def library_dish(conn):
+    """A dish in the menus' library (27 Nov 2026), for a page that shows one:
+    the standing menu's dish, put there once per run's database."""
+    standing_menu(conn)
+    dish = "Truite de l’Ariège, beurre blanc"
+    row = conn.execute("SELECT id FROM dinner_dishes WHERE dish_fr = ?", (dish,)).fetchone()
+    if row:
+        return row["id"]
+    dish_id = conn.execute(
+        "INSERT INTO dinner_dishes (dish_fr, dish_en, origin_fr, origin_en, country_fr, country_en, allergens, "
+        "fait_maison, uses, updated_at) VALUES (?, 'Ariège trout, beurre blanc', 'Truite', 'Trout', 'France', "
+        "'France', 'fish,milk', 1, 1, ?)", (dish, datetime_now())).lastrowid
+    conn.commit()
+    return dish_id
+
+
 def house_today():
     """What day it is AT THE HOUSE.
 

@@ -7,13 +7,15 @@
 <div class="page-head">
   <h1>Dinner menus</h1>
   <a href="{{ url_for('admin_dinner_menu_new') }}" class="btn-mini">+ New menu</a>
+  <a href="{{ url_for('admin_dinner_library') }}" class="btn-mini">Dish library</a>
   <a href="{{ url_for('admin_stay_occasions') }}" class="btn-mini">Stay occasions</a>
 </div>
+{#- 27 Nov 2026 (owner: "do I have to type in French, we don't all speak French"): any of the three languages. -#}
 <p style="max-width:52rem;color:#666;margin-bottom:1.25rem">
-  The menus for Dinner at Gudanes. Write the French, and the English is suggested for you; every dish and wine you
-  write is kept, so the next menu is mostly picking. An occasion serves one of these (or a file, for a guest chef's
-  menu), and guests see it in the house style from “See the menu”.
-  {% if dishes %}{{ dishes }} dish{{ 'es' if dishes != 1 }} in the library.{% endif %}
+  The menus for Dinner at Gudanes. Write each dish in the language you know; the others are suggested. Every dish
+  and wine you write is kept, so the next menu is mostly picking. An occasion serves one of these (or a file, for a
+  guest chef's menu), and guests see it in the house style from “See the menu”.
+  {% if dishes %}<a href="{{ url_for('admin_dinner_library') }}">{{ dishes }} dish{{ 'es' if dishes != 1 }} in the library</a>.{% endif %}
 </p>
 
 {% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
@@ -45,8 +47,8 @@
 </table>
 </div>
 {% elif lv.total %}
-<p class="empty-state">Nothing matches. <a href="{{ url_for('admin_dinner_menus') }}">Show every menu</a>.</p>
+<p class="empty-state" id="menus-empty">Nothing matches. <a href="{{ url_for('admin_dinner_menus') }}">Show every menu</a>.</p>
 {% else %}
-<p class="empty-state">No menus yet. <a href="{{ url_for('admin_dinner_menu_new') }}">Write the first one</a>: the house's seven courses are laid out for you.</p>
+<p class="empty-state" id="menus-empty">No menus yet. <a href="{{ url_for('admin_dinner_menu_new') }}">Write the first one</a>: the house’s seven courses are laid out for you.</p>
 {% endif %}
 {% endblock %}

@@ -109,11 +109,11 @@ def run():
     conn.execute("UPDATE stay_occasions SET status = 'draft' WHERE status = 'live'")
     conn.commit()
     _cleanup(conn)
-    was_ask = m.menu_english_ask
+    was_ask = m.menu_lines_ask
     try:
         _run(s, oc, conn)
     finally:
-        m.menu_english_ask = was_ask
+        m.menu_lines_ask = was_ask
         _cleanup(conn)
         for p in reversed(put_back):
             p()
@@ -189,24 +189,32 @@ def _run(s, oc, conn):
     s.section("The next menu is mostly picking: the library and the English")
     r = oc.get(f"/admin/menus/{menu['id']}")
     page = r.get_data(as_text=True)
-    s.check("the builder offers the saved dishes as you type", '<datalist id="dl-dishes">' in page
+    s.check("the builder offers the saved dishes as you type", '<datalist id="dl-dishes-fr">' in page
             and f'<option value="{HOUSE[2][1]}">' in page)
     asked = []
-    m.menu_english_ask = lambda text, kind: asked.append((text, kind)) or "Duck breast, cherries"
-    got = oc.post("/admin/menus/english", data={"kind": "dish", "text": HOUSE[2][1]}).get_json()
-    s.check("words the library knows: its English, the assistant not asked",
-            got == {"en": HOUSE[2][2], "from": "library"} and not asked, detail=(got, asked))
-    got = oc.post("/admin/menus/english", data={"kind": "dish", "text": "Magret de canard aux cerises"}).get_json()
-    s.check("new words: the assistant's, as a suggestion", got == {"en": "Duck breast, cherries", "from": "assistant"}
-            and asked == [("Magret de canard aux cerises", "dish")], detail=(got, asked))
-    s.check("a country: the house's own list", oc.post("/admin/menus/english", data={
-        "kind": "country", "text": "Éthiopie"}).get_json()["en"] == "Ethiopia")
 
-    def _boom(text, kind):
+    def _ask(items):
+        asked.extend(items)
+        return [{"fr": "", "en": "Duck breast, cherries", "es": "Magret de pato con cerezas"} for _ in items]
+    m.menu_lines_ask = _ask
+    got = oc.post("/admin/menus/suggest", data={"kind": "dish", "fr": HOUSE[2][1]}).get_json()
+    s.check("words the library knows: its English, the assistant not asked",
+            got["en"] == HOUSE[2][2] and got["from"] == {"en": "library"} and not asked, detail=(got, asked))
+    got = oc.post("/admin/menus/suggest", data={"kind": "dish", "fr": "Magret de canard aux cerises"}).get_json()
+    s.check("new words: the assistant's, as a suggestion, in one request for both languages",
+            got["en"] == "Duck breast, cherries" and got["es"] == "Magret de pato con cerezas"
+            and got["from"] == {"en": "assistant", "es": "assistant"}
+            and asked == [{"kind": "dish", "known": {"fr": "Magret de canard aux cerises"}, "want": ["en", "es"]}],
+            detail=(got, asked))
+    s.check("a country: the house's own list", oc.post("/admin/menus/suggest", data={
+        "kind": "country", "fr": "Éthiopie"}).get_json()["en"] == "Ethiopia")
+
+    def _boom(items):
         raise RuntimeError("no network here")
-    m.menu_english_ask = _boom
-    got = oc.post("/admin/menus/english", data={"kind": "dish", "text": "Pigeon rôti"}).get_json()
-    s.check("the assistant failing suggests nothing, and the page still answers", got == {"en": "", "from": None}, detail=got)
+    m.menu_lines_ask = _boom
+    got = oc.post("/admin/menus/suggest", data={"kind": "dish", "fr": "Pigeon rôti"}).get_json()
+    s.check("the assistant failing suggests nothing, and the page still answers",
+            got == {"fr": "", "en": "", "es": "", "from": {}}, detail=got)
     s.check("nothing suggested is saved unseen: an English left blank stays blank",
             m.read_dinner_menu_form(MultiDict({"name": "x", "c-0-dish_fr": "Pigeon rôti", "c-0-course_fr": "Plat"}))
             ["courses"][0]["dish_en"] == "")

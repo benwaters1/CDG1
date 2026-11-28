@@ -352,6 +352,9 @@ ENDPOINT_ARGS = {
     ("admin_dinner_menu_print", "menu_id"): lambda conn: _harness.standing_menu(conn),
     ("admin_dinner_menu_print", "kind"): "a4",
     ("admin_dinner_menu_pdf", "menu_id"): lambda conn: _harness.standing_menu(conn),
+    # One dish of the menus' library (27 Nov 2026): the standing menu's, put there once.
+    ("admin_dinner_library_item", "kind"): "dish",
+    ("admin_dinner_library_item", "item_id"): lambda conn: _harness.library_dish(conn),
     ("admin_dinner_night", "day"): lambda conn: _harness.house_today().isoformat(),
     ("legacy_celebrations_portfolio_any", "_rest"): "dan-and-carl",
     ("legacy_chateau_ateliers_any", "_rest"): "category/2024",

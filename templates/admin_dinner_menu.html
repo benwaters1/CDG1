@@ -4,16 +4,42 @@
 {#- THE MENU BUILDER (owner, 27 Nov 2026: "very easy to use on the back end ... menu easy"). The form on the left, the
     menu as the guest will see it on the right, redrawn as you type (on a phone, below). Courses in order: drag them on
     a desk, or Up and Down on a phone. A dish or wine typed once is offered again (the library), and picking it fills
-    the English, the origin and the allergens. The English is SUGGESTED in grey when the French is typed -- from the
-    library if it has those words, else from the assistant -- and is saved only once accepted or typed over.
+    the other languages, the origin and the allergens.
+    ANY LANGUAGE (owner, 27 Nov 2026: "do I have to type in French, we don't all speak French"): each line -- the dish,
+    the wine, the main product -- has a box for French, English and Spanish, the reader's own language first. Write in
+    whichever you know; the others are SUGGESTED in grey (the library first, then the assistant), taken with a click
+    or typed over. The guest's menu is always in French, so a French left empty is saved from its suggestion and
+    marked "French suggested, not checked" here until someone ticks it or edits it; the printed menus never show the
+    mark. An English is saved from a suggestion only when nobody wrote the French either.
     A course with meat in it cannot be saved without its country: the law asks it of every menu served. -#}
+{%- macro line_boxes(i, c, line, label, list_base=None) %}
+{%- set _u = c.unchecked if c.unchecked is mapping else {} %}
+<fieldset class="mc-line" data-line="{{ line }}">
+  <legend class="field-label">{{ label }}</legend>
+  <div class="mc-langs">
+    {%- for lang in lang_order %}{%- set f = line ~ '_' ~ lang %}
+    <div class="mc-lang">
+      <label class="mc-lang-k" for="c-{{ i }}-{{ f }}">{{ lang_labels[lang] }}</label>
+      <input type="text" id="c-{{ i }}-{{ f }}" name="c-{{ i }}-{{ f }}" value="{{ c[f] or '' }}" maxlength="{{ line_max[line] }}" lang="{{ lang }}" class="mc-in" data-line="{{ line }}" data-lang="{{ lang }}"{% if list_base %} list="{{ list_base }}-{{ lang }}" autocomplete="off"{% endif %}>
+      <button type="button" class="mc-sugg" hidden>Use the suggested {{ lang_names[lang] }}</button>
+      {%- if lang != 'es' %}
+      <input type="hidden" name="c-{{ i }}-sugg-{{ f }}" value="{{ _u.get(f, '') }}" class="mc-sv">
+      {%- if _u.get(f) %}
+      <label class="mc-unchecked"><input type="checkbox" name="c-{{ i }}-ok-{{ f }}" value="1"> <span><strong>{{ lang_names[lang] }} suggested, not checked.</strong> Tick when it is right.</span></label>
+      {%- endif %}
+      {%- endif %}
+    </div>
+    {%- endfor %}
+  </div>
+</fieldset>
+{%- endmacro %}
 {%- macro row(i, c) %}
 <li class="mc" data-i="{{ i }}">
   <input type="hidden" name="c-{{ i }}-pos" value="{{ i }}" class="mc-pos">
   <div class="mc-head">
     <span class="mc-grip" aria-hidden="true" title="Drag to move">⋮⋮</span>
     <label class="mc-course"><span class="visually-hidden">Course</span>
-      <input type="text" name="c-{{ i }}-course_fr" value="{{ c.course_fr or '' }}" list="dl-courses" placeholder="Course, e.g. Plat" data-en="c-{{ i }}-course_en" data-kind="course" maxlength="60"></label>
+      <input type="text" name="c-{{ i }}-course_fr" value="{{ c.course_fr or '' }}" list="dl-courses" placeholder="Course, e.g. Plat" data-kind="course" maxlength="60"></label>
     <input type="hidden" name="c-{{ i }}-course_en" value="{{ c.course_en or '' }}">
     <span class="mc-move">
       <button type="button" class="btn-mini mc-up" aria-label="Move this course up">↑</button>
@@ -21,28 +47,16 @@
     </span>
     <label class="checkbox-row"><input type="checkbox" name="c-{{ i }}-remove" value="1"> <span>Remove</span></label>
   </div>
+  {{ line_boxes(i, c, 'dish', 'The dish', 'dl-dishes') }}
+  <div class="mc-wine">
+    {{ line_boxes(i, c, 'wine', 'The wine', 'dl-wines') }}
+    <label class="mc-glass"><span class="field-label">Glass</span>
+      <input type="text" name="c-{{ i }}-wine_glass" value="{{ c.wine_glass or '' }}" list="dl-glass" maxlength="20" placeholder="12 cl"></label>
+  </div>
+  {{ line_boxes(i, c, 'origin', 'The main product') }}
   <div class="mc-grid">
-    <label><span class="field-label">The dish, in French</span>
-      <input type="text" name="c-{{ i }}-dish_fr" value="{{ c.dish_fr or '' }}" list="dl-dishes" autocomplete="off" class="mc-dish" data-en="c-{{ i }}-dish_en" data-kind="dish" maxlength="200" placeholder="e.g. Agneau des Pyrénées rôti au thym"></label>
-    <label><span class="field-label">In English</span>
-      <input type="text" name="c-{{ i }}-dish_en" value="{{ c.dish_en or '' }}" maxlength="200" class="mc-en">
-      <button type="button" class="mc-sugg" hidden>Use the suggested English</button></label>
-    <label><span class="field-label">Wine, in French</span>
-      <input type="text" name="c-{{ i }}-wine_fr" value="{{ c.wine_fr or '' }}" list="dl-wines" autocomplete="off" class="mc-wine" data-en="c-{{ i }}-wine_en" data-kind="wine" maxlength="200" placeholder="e.g. Rouge · Madiran AOP"></label>
-    <div class="mc-pair">
-      <label><span class="field-label">In English</span>
-        <input type="text" name="c-{{ i }}-wine_en" value="{{ c.wine_en or '' }}" maxlength="200" class="mc-en">
-        <button type="button" class="mc-sugg" hidden>Use the suggested English</button></label>
-      <label><span class="field-label">Glass</span>
-        <input type="text" name="c-{{ i }}-wine_glass" value="{{ c.wine_glass or '' }}" list="dl-glass" maxlength="20" placeholder="12 cl"></label>
-    </div>
-    <label><span class="field-label">Main product, in French</span>
-      <input type="text" name="c-{{ i }}-origin_fr" value="{{ c.origin_fr or '' }}" maxlength="80" data-en="c-{{ i }}-origin_en" data-kind="origin" placeholder="e.g. Agneau"></label>
-    <label><span class="field-label">In English</span>
-      <input type="text" name="c-{{ i }}-origin_en" value="{{ c.origin_en or '' }}" maxlength="80" class="mc-en">
-      <button type="button" class="mc-sugg" hidden>Use the suggested English</button></label>
     <label><span class="field-label">Origin (country)</span>
-      <input type="text" name="c-{{ i }}-country_fr" value="{{ c.country_fr or '' }}" list="dl-countries" maxlength="60" class="mc-country" data-en="c-{{ i }}-country_en" data-kind="country" placeholder="e.g. France"></label>
+      <input type="text" name="c-{{ i }}-country_fr" value="{{ c.country_fr or '' }}" list="dl-countries" maxlength="60" class="mc-country" data-kind="country" placeholder="e.g. France"></label>
     <input type="hidden" name="c-{{ i }}-country_en" value="{{ c.country_en or '' }}">
     <label><span class="field-label">Meat in it</span>
       <select name="c-{{ i }}-meat" class="mc-meat">
@@ -63,6 +77,7 @@
 <div class="page-head">
   <h1>{{ v.name or 'New menu' }}</h1>
   <a href="{{ url_for('admin_dinner_menus') }}" class="btn-mini">All menus</a>
+  <a href="{{ url_for('admin_dinner_library') }}" class="btn-mini">Dish library</a>
   {% if v.id %}
   <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=v.id, kind='a4') }}" target="_blank" rel="noopener">Print A4</a>
   <a class="btn-mini" href="{{ url_for('admin_dinner_menu_print', menu_id=v.id, kind='a3') }}" target="_blank" rel="noopener">Print A3 board</a>
@@ -97,6 +112,7 @@
 
   <h2 class="section-heading" style="margin-top:1.25rem">Courses</h2>
   <p class="upload-hint">In the order they are served. A course with no dish written is left off.</p>
+  <p class="upload-hint" id="mb-langs-hint">Write each dish in the language you know; the others are suggested in grey. Take one with a click, or type over it. The guest’s menu is always in French: a French left empty is saved from its suggestion and marked until someone checks it.</p>
   <ol class="mc-list" id="mc-list">
     {% for c in v.courses %}{{ row(loop.index0, c) }}{% endfor %}
     {{ row(v.courses|length, {'course_fr': '', 'fait_maison': 1}) }}
@@ -123,8 +139,10 @@
 </div>
 
 <datalist id="dl-courses">{% for fr, en in default_courses %}<option value="{{ fr }}">{% endfor %}</datalist>
-<datalist id="dl-dishes">{% for d in dishes %}<option value="{{ d.dish_fr }}">{% endfor %}</datalist>
-<datalist id="dl-wines">{% for w in wines %}<option value="{{ w.wine_fr }}">{% endfor %}</datalist>
+{%- for lang in ('fr', 'en', 'es') %}
+<datalist id="dl-dishes-{{ lang }}">{% for d in dishes if d['dish_' ~ lang] %}<option value="{{ d['dish_' ~ lang] }}">{% endfor %}</datalist>
+<datalist id="dl-wines-{{ lang }}">{% for w in wines if w['wine_' ~ lang] %}<option value="{{ w['wine_' ~ lang] }}">{% endfor %}</datalist>
+{%- endfor %}
 <datalist id="dl-glass"><option value="12 cl"><option value="10 cl"><option value="8 cl"><option value="6 cl"><option value="4 cl"></datalist>
 <datalist id="dl-countries">{% for name in country_names %}<option value="{{ name }}">{% endfor %}</datalist>
 <template id="mc-new">{{ row('__I__', {'course_fr': '', 'fait_maison': 1}) }}</template>
@@ -144,12 +162,21 @@
 .mc-course{ flex:1 1 12rem; }
 .mc-course input{ width:100%; font-weight:600; letter-spacing:.04em; }
 .mc-move{ display:inline-flex; gap:.25rem; }
-.mc-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.5rem 1rem; }
+.mc-line{ border:0; padding:0; margin:.5rem 0 0; min-width:0; }
+.mc-line legend{ padding:0; margin-bottom:.15rem; }
+.mc-langs{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.4rem .75rem; }
+@media (max-width:560px){ .mc-langs{ grid-template-columns:minmax(0,1fr); } }
+.mc-lang{ min-width:0; }
+.mc-lang-k{ display:block; font-size:.75rem; letter-spacing:.06em; text-transform:uppercase; color:#73562D; }
+.mc-in{ width:100%; }
+.mc-in::placeholder{ color:#9a9a9a; font-style:italic; }
+.mc-glass{ display:block; max-width:8rem; margin-top:.4rem; }
+.mc-glass input{ width:100%; }
+.mc-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.5rem 1rem; margin-top:.5rem; }
 .mc-grid label{ display:block; }
 .mc-grid input[type=text], .mc-grid select{ width:100%; }
-.mc-pair{ display:grid; grid-template-columns:minmax(0,1fr) 6rem; gap:.5rem; }
-.mc-en::placeholder{ color:#9a9a9a; font-style:italic; }
 .mc-sugg{ display:block; margin-top:.25rem; border:0; background:none; padding:0; color:#73562D; font:inherit; font-size:.85rem; text-align:left; cursor:pointer; text-decoration:underline; }
+.mc-unchecked{ display:flex; gap:.35rem; align-items:flex-start; margin-top:.25rem; font-size:.85rem; color:#8a4b00; background:#fff6e5; border-radius:4px; padding:.2rem .4rem; }
 .mc-law{ color:#a1261b; margin:.5rem 0 0; font-size:.9rem; }
 .mc-al{ border:0; padding:0; margin:.75rem 0 0; display:flex; flex-wrap:wrap; gap:.35rem; }
 .mc-al legend{ width:100%; margin-bottom:.25rem; }
@@ -163,17 +190,20 @@
 .mb-modes [aria-pressed=true]{ background:#14305F; color:#fff; }
 #mb-frame{ display:block; width:100%; height:80vh; border:0; }
 @media (max-width:1179px){ #mb-frame{ height:70vh; } }
-@media (pointer:coarse){ .mc-move .btn-mini, .mb-modes .btn-mini, #mc-add{ min-height:44px; min-width:44px; } .mc-chip{ min-height:36px; } }
+@media (pointer:coarse){ .mc-move .btn-mini, .mb-modes .btn-mini, #mc-add{ min-height:44px; min-width:44px; } .mc-chip{ min-height:36px; } .mc-sugg{ min-height:32px; } }
 </style>
 
 <script>
 (function(){
   var form = document.getElementById('menu-form'), list = document.getElementById('mc-list'),
       frame = document.getElementById('mb-frame'), mode = 'web', next = 1000, timer = null;
-  var DISHES = {{ dishes|tojson }}, WINES = {{ wines|tojson }}, COUNTRIES = {{ countries|tojson }};
+  var DISHES = {{ dishes|tojson }}, WINES = {{ wines|tojson }}, COUNTRIES = {{ countries|tojson }},
+      COURSES = {{ course_words|tojson }}, LANGS = ['fr', 'en', 'es'];
+  var SUGGEST = {{ url_for('admin_dinner_menu_suggest')|tojson }};
   var csrf = form.querySelector('[name=csrf_token]').value;
-  function byName(list, key, value){ value = (value || '').trim().toLowerCase(); for (var i = 0; i < list.length; i++) if ((list[i][key] || '').toLowerCase() === value) return list[i]; return null; }
+  function byName(list, key, value){ value = (value || '').trim().toLowerCase(); if (!value) return null; for (var i = 0; i < list.length; i++) if ((list[i][key] || '').toLowerCase() === value) return list[i]; return null; }
   function field(li, f){ return li.querySelector('[name="c-' + li.getAttribute('data-i') + '-' + f + '"]'); }
+  function marks(raw){ try { var m = JSON.parse(raw || '{}'); return (m && typeof m === 'object') ? m : {}; } catch (e) { return {}; } }
 
   /* The preview: the form as it stands, drawn by the same template the guest gets. */
   function preview(){
@@ -200,49 +230,93 @@
     li.querySelector('.mc-law').hidden = !(meat && meat.value && country && !country.value.trim());
   }
 
-  /* An English line, suggested in grey: the placeholder and a link to take it. Saved only if taken or typed. */
-  function suggest(input){
-    var en = form.querySelector('[name="' + input.getAttribute('data-en') + '"]');
-    if (!en || !input.value.trim()) return;
-    var kind = input.getAttribute('data-kind');
-    if (en.type === 'hidden') {   /* course and country: the house's own words, filled quietly */
-      if (kind === 'country') { en.value = COUNTRIES[input.value.trim().toLowerCase()] || ''; return; }
+  /* A suggestion for an empty box: grey in the box, "Use ..." under it, and (French and English) posted beside the box
+     as c-<i>-sugg-<field>, which the save keeps -- marked as not checked -- only where the guest's menu needs it. */
+  function sv(input){ return input.parentNode.querySelector('.mc-sv'); }
+  function offer(input, words){
+    input.placeholder = words || '';
+    var s = sv(input); if (s) s.value = words || '';
+    var b = input.parentNode.querySelector('.mc-sugg');
+    if (b) {
+      b.hidden = !words; if (words) b.textContent = 'Use “' + words + '”';
+      b.onclick = function(){ input.value = words; settle(input); soon(); input.focus(); };
     }
-    if (en.value.trim() && en.type !== 'hidden') return;
-    var body = new FormData(); body.set('csrf_token', csrf); body.set('kind', kind); body.set('text', input.value);
-    fetch({{ url_for('admin_dinner_menu_english')|tojson }}, {method: 'POST', body: body, credentials: 'same-origin'})
+  }
+  /* Written, taken or edited by a person: no longer a suggestion, and checked. */
+  function settle(input){
+    input.placeholder = '';
+    var s = sv(input); if (s) s.value = '';
+    var b = input.parentNode.querySelector('.mc-sugg'); if (b) b.hidden = true;
+    var mark = input.parentNode.querySelector('.mc-unchecked'); if (mark) mark.hidden = true;
+  }
+  function boxes(li, line){ var out = {}; LANGS.forEach(function(l){ out[l] = field(li, line + '_' + l); }); return out; }
+
+  /* What the other boxes of a line should say, from what is written in it: the library first, then the assistant. */
+  function suggestLine(li, line){
+    var bx = boxes(li, line), known = {}, empty = [];
+    LANGS.forEach(function(l){ var v = bx[l] && bx[l].value.trim(); if (v) known[l] = v; else if (bx[l]) empty.push(l); });
+    if (!Object.keys(known).length) { empty.forEach(function(l){ offer(bx[l], ''); }); return; }
+    if (!empty.length) return;
+    var asked = JSON.stringify(known); li.setAttribute('data-asked-' + line, asked);
+    var body = new FormData(); body.set('csrf_token', csrf); body.set('kind', line);
+    Object.keys(known).forEach(function(l){ body.set(l, known[l]); });
+    fetch(SUGGEST, {method: 'POST', body: body, credentials: 'same-origin'})
       .then(function(r){ return r.json(); }).then(function(out){
-        if (!out || !out.en) return;
-        if (en.type === 'hidden') { if (!en.value) { en.value = out.en; soon(); } return; }
-        if (en.value.trim()) return;
-        en.placeholder = out.en;
-        var b = en.parentNode.querySelector('.mc-sugg');
-        if (b) { b.hidden = false; b.textContent = 'Use “' + out.en + '”'; b.onclick = function(){ en.value = out.en; b.hidden = true; soon(); }; }
+        if (li.getAttribute('data-asked-' + line) !== asked) return;   /* the line changed since: a newer answer is coming */
+        empty.forEach(function(l){ if (!bx[l].value.trim()) offer(bx[l], (out && out[l]) || ''); });
+        soon();
       }).catch(function(){});
   }
 
+  /* A dish or a wine the library knows, picked in any language: the whole line from it. A French the library itself
+     was only ever given as a suggestion stays marked. */
+  function fillFrom(li, line, row){
+    var u = marks(row.unchecked);
+    LANGS.forEach(function(l){
+      var b = field(li, line + '_' + l); if (!b) return;
+      b.value = row[line + '_' + l] || ''; settle(b);
+      var s = sv(b); if (s && u[line + '_' + l] && u[line + '_' + l] === b.value) s.value = b.value;
+    });
+  }
   function fillDish(li, d){
-    field(li, 'dish_en').value = d.dish_en || '';
-    field(li, 'origin_fr').value = d.origin_fr || ''; field(li, 'origin_en').value = d.origin_en || '';
+    fillFrom(li, 'dish', d); fillFrom(li, 'origin', d);
     field(li, 'country_fr').value = d.country_fr || ''; field(li, 'country_en').value = d.country_en || '';
     field(li, 'meat').value = d.meat || '';
     var have = (d.allergens || '').split(',');
     li.querySelectorAll('[name$="-al"]').forEach(function(x){ x.checked = have.indexOf(x.value) >= 0; });
     var fm = field(li, 'fm'); if (fm) fm.checked = !!d.fait_maison;
-    li.querySelectorAll('.mc-sugg').forEach(function(b){ b.hidden = true; });
   }
+  function fillWine(li, w){ fillFrom(li, 'wine', w); field(li, 'wine_glass').value = w.glass || ''; }
 
   function wire(li){
     li.querySelector('.mc-up').addEventListener('click', function(){ if (li.previousElementSibling) { list.insertBefore(li, li.previousElementSibling); renumber(); li.querySelector('.mc-up').focus(); } });
     li.querySelector('.mc-down').addEventListener('click', function(){ if (li.nextElementSibling) { list.insertBefore(li.nextElementSibling, li); renumber(); li.querySelector('.mc-down').focus(); } });
-    li.querySelectorAll('[data-kind]').forEach(function(input){ input.addEventListener('change', function(){
-      if (input.classList.contains('mc-dish')) { var d = byName(DISHES, 'dish_fr', input.value); if (d) { fillDish(li, d); soon(); law(li); return; } }
-      if (input.classList.contains('mc-wine')) { var w = byName(WINES, 'wine_fr', input.value); if (w) { field(li, 'wine_en').value = w.wine_en || ''; field(li, 'wine_glass').value = w.glass || ''; soon(); return; } }
-      suggest(input);
-    }); });
-    li.querySelectorAll('.mc-en').forEach(function(en){ en.addEventListener('input', function(){ var b = en.parentNode.querySelector('.mc-sugg'); if (b) b.hidden = true; }); });
+    li.querySelectorAll('.mc-in').forEach(function(input){
+      var line = input.getAttribute('data-line'), lang = input.getAttribute('data-lang');
+      input.addEventListener('input', function(){ if (input.value.trim()) settle(input); });
+      input.addEventListener('change', function(){
+        var v = input.value.trim();
+        if (v && line === 'dish') { var d = byName(DISHES, 'dish_' + lang, v); if (d) { fillDish(li, d); soon(); law(li); return; } }
+        if (v && line === 'wine') { var w = byName(WINES, 'wine_' + lang, v); if (w) { fillWine(li, w); soon(); return; } }
+        suggestLine(li, line);
+      });
+    });
+    /* The course: one of the house's seven in any language is that course; another is the cook's own, its English asked. */
+    var course = field(li, 'course_fr'), courseEn = field(li, 'course_en');
+    course.addEventListener('change', function(){
+      var v = course.value.trim(), hit = COURSES[v.toLowerCase()];
+      if (hit) { course.value = hit[0]; courseEn.value = hit[1]; soon(); return; }
+      courseEn.value = '';
+      if (!v) return;
+      var body = new FormData(); body.set('csrf_token', csrf); body.set('kind', 'course'); body.set('fr', v);
+      fetch(SUGGEST, {method: 'POST', body: body, credentials: 'same-origin'}).then(function(r){ return r.json(); })
+        .then(function(out){ if (out && out.en && course.value.trim() === v) { courseEn.value = out.en; soon(); } }).catch(function(){});
+    });
+    var country = li.querySelector('.mc-country');
+    country.addEventListener('change', function(){ field(li, 'country_en').value = COUNTRIES[country.value.trim().toLowerCase()] || ''; });
     li.querySelector('.mc-meat').addEventListener('change', function(){ law(li); });
-    li.querySelector('.mc-country').addEventListener('input', function(){ law(li); });
+    country.addEventListener('input', function(){ law(li); });
+    li.querySelectorAll('.mc-unchecked input').forEach(function(ok){ ok.addEventListener('change', soon); });
     law(li);
     /* Drag to reorder, on a desk: from the grip only, so selecting words in a box never moves the course. */
     var grip = li.querySelector('.mc-grip');

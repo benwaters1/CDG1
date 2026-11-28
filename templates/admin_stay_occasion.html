@@ -21,6 +21,16 @@
 {% if occ['why'] %}<p class="upload-hint" style="max-width:52rem">Why these dates: {{ occ['why'] }}{% if occ['source_url'] %} <a href="{{ occ['source_url'] }}" target="_blank" rel="noopener">Source</a>{% endif %}</p>{% endif %}
 {% for c in clashes %}<p class="{{ 'wo-problem' if c.blocks else 'upload-hint' }}" style="margin:.25rem 0">{{ 'Clash: ' if c.blocks else '' }}{{ c.why }}</p>{% endfor %}
 
+{#- Two tabs (brief of 27 Nov 2026, §1): The stay -- name, dates, what it is, photograph, state, the rooms and their
+    prices, the words, the home page -- and Chef & dinner -- the chef, the dinner, its menu, price and covers, and the
+    figures. One form across both, so one Save keeps both. The tab is the address's hash, so it survives a save and a
+    reload; a save refused for something on the other tab opens that tab and says so (open_tab, tab_why). -#}
+<div class="page-tabs" role="tablist" aria-label="This occasion" data-tabs data-note="occ-tabs-note" style="margin-top:1rem"{% if open_tab %} data-open="{{ open_tab }}" data-why="{{ tab_why }}"{% endif %}>
+  <a class="page-tab" role="tab" href="#the-stay" id="tab-stay" data-tab="stay" aria-controls="tp-stay">The stay</a>
+  <a class="page-tab" role="tab" href="#chef-and-dinner" id="tab-dinner" data-tab="dinner" aria-controls="tp-dinner">Chef &amp; dinner</a>
+</div>
+<p class="page-tabs__note" id="occ-tabs-note" role="status"{% if not tab_why %} hidden{% endif %}>{{ tab_why or '' }}</p>
+
 {#- 25 Nov 2026 (owner): "add those dates to the itineraries of the retreats, put on celebration for them". An
     occasion on a retreat's nights cannot be sold, but it can be that retreat's celebration on the day: one line, in
     place of the evening the retreat's page had. Whether the page really shows it is checked by drawing that page
@@ -28,7 +38,7 @@
 {% if retreat_days %}
 {%- set _opts = [] -%}{%- for r in retreat_days -%}{%- for n in r.nights -%}{%- set _ = _opts.append((n.night, r, n)) -%}{%- endfor -%}{%- endfor -%}
 {%- set _chosen = occ['retreat_night'] if occ['retreat_night'] else _opts[-1][0] -%}
-<section class="detail-card" id="retreat" style="margin-top:1rem">
+<section class="detail-card" id="retreat" style="margin-top:1rem" data-tab-panel="stay">
   <h2 class="section-heading">On a retreat</h2>
   {% for r in retreat_days %}
   <p style="margin:.25rem 0">
@@ -68,7 +78,9 @@
 
 <form method="post" action="{{ url_for('admin_stay_occasion', occ_id=occ['id']) if editing else url_for('admin_stay_occasion_new') }}" class="detail-card" id="occasion-form" style="margin-top:1rem" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="tab_shown" value="" data-tab-shown>
 
+  <div id="tp-stay" role="tabpanel" aria-labelledby="tab-stay" data-tab-panel="stay">
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
     <div>
       <label for="so_name" class="field-label">Name</label>
@@ -99,12 +111,6 @@
         {% for p, label in photos %}<option value="{{ p }}"{% if o['photo'] == p %} selected{% endif %}>{{ label }}</option>{% endfor %}
       </select>
       {% if o['photo'] %}<img src="{{ url_for('static', filename=o['photo']) }}" alt="" style="margin-top:.5rem;max-width:220px;border-radius:4px">{% endif %}
-    </div>
-    <div>
-      <span class="field-label">Will the chef be on site?</span>
-      <label class="checkbox-row"><input type="radio" name="chef_on_site" value="1"{% if o['chef_on_site'] %} checked{% endif %}> <span>Yes</span></label>
-      <label class="checkbox-row"><input type="radio" name="chef_on_site" value="0"{% if not o['chef_on_site'] %} checked{% endif %}> <span>No</span></label>
-      <p class="upload-hint" id="chef-line">Guests read: “{{ (chef_on_dinner if dinner_on else chef_on) if o['chef_on_site'] else chef_off }}”</p>
     </div>
     {% if editing %}
     <div>
@@ -145,6 +151,33 @@
   <h2 class="section-heading" style="margin-top:1.5rem" id="description">The description</h2>
   <p class="upload-hint">Written for you from the name, the dates and why they were chosen; yours to change. With the chef away it cannot mention lunch, dinner or a chef. The chef line above is added after it on its own.</p>
   <textarea name="description" rows="4" style="width:100%">{{ o['description'] or '' }}</textarea>
+
+  {#- 3b (owner, 25 Nov 2026): "like an advertisement", under the video on the home page, until its last dinner night
+      (or last night) has passed. One band only: the soonest of those ticked. -#}
+  <fieldset id="home-banner" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
+    <legend class="section-heading" style="padding:0 .5rem">On the home page</legend>
+    <label class="checkbox-row"><input type="checkbox" name="home_banner" value="1"{% if o['home_banner'] %} checked{% endif %}> <span>Show on the home page, under the video</span></label>
+    <p class="upload-hint">A panel with a photograph, this line, the name, the dates, the price and Book your stay. Only while it is on sale, and it takes itself down after its last night. If two are ticked, the sooner shows.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-top:.5rem">
+      <div><label for="so_bline" class="field-label">The line above the name</label>
+        <input type="text" id="so_bline" name="home_banner_text" maxlength="80" value="{{ o['home_banner_text'] or banner_default }}"></div>
+      <div><label for="so_banner" class="field-label">{{ 'Replace the photograph' if occ['banner_file'] else 'A photograph of its own' }} <span class="upload-hint">optional</span></label>
+        <input type="file" id="so_banner" name="banner" accept="image/jpeg,image/png">
+        <span class="upload-hint">JPG or PNG, up to 10 MB. Without one, the {{ 'chef’s photograph or the ' if o['kind'] == 'guest_chef' else '' }}occasion’s photograph is used.</span>
+        {% if occ['banner_file'] %}<p style="display:flex;gap:1rem;align-items:center;margin:.5rem 0 0"><img src="{{ url_for('occasion_banner_photo', slug=occ['slug']) }}" alt="The banner photograph" style="max-width:160px;border-radius:3px">
+          <label class="checkbox-row"><input type="checkbox" name="banner_remove" value="1"> <span>Remove</span></label></p>{% endif %}
+      </div>
+    </div>
+  </fieldset>
+  </div>
+
+  <div id="tp-dinner" role="tabpanel" aria-labelledby="tab-dinner" data-tab-panel="dinner">
+  <div>
+    <span class="field-label">Will the chef be on site?</span>
+    <label class="checkbox-row"><input type="radio" name="chef_on_site" value="1"{% if o['chef_on_site'] %} checked{% endif %}> <span>Yes</span></label>
+    <label class="checkbox-row"><input type="radio" name="chef_on_site" value="0"{% if not o['chef_on_site'] %} checked{% endif %}> <span>No</span></label>
+    <p class="upload-hint" id="chef-line">Guests read: “{{ (chef_on_dinner if dinner_on else chef_on) if o['chef_on_site'] else chef_off }}”</p>
+  </div>
 
   {#- DINNER AT GUDANES (owner, 25 Nov 2026): any occasion can serve dinner -- on the nights ticked, at a price a person,
       for a number of covers -- and a guest chef is the same thing with a chef's name and bio on top.
@@ -308,33 +341,17 @@
     <label for="so_bio" class="field-label" style="margin-top:1rem" id="chef_bio">A short bio</label>
     <textarea id="so_bio" name="chef_bio" rows="3" style="width:100%">{{ o['chef_bio'] or '' }}</textarea>
   </fieldset>
+  </div>
 
-  {#- 3b (owner, 25 Nov 2026): "like an advertisement", under the video on the home page, until its last dinner night
-      (or last night) has passed. One band only: the soonest of those ticked. -#}
-  <fieldset id="home-banner" style="margin-top:1.5rem;border:1px solid #ddd;padding:1rem;border-radius:6px">
-    <legend class="section-heading" style="padding:0 .5rem">On the home page</legend>
-    <label class="checkbox-row"><input type="checkbox" name="home_banner" value="1"{% if o['home_banner'] %} checked{% endif %}> <span>Show on the home page, under the video</span></label>
-    <p class="upload-hint">A panel with a photograph, this line, the name, the dates, the price and Book your stay. Only while it is on sale, and it takes itself down after its last night. If two are ticked, the sooner shows.</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-top:.5rem">
-      <div><label for="so_bline" class="field-label">The line above the name</label>
-        <input type="text" id="so_bline" name="home_banner_text" maxlength="80" value="{{ o['home_banner_text'] or banner_default }}"></div>
-      <div><label for="so_banner" class="field-label">{{ 'Replace the photograph' if occ['banner_file'] else 'A photograph of its own' }} <span class="upload-hint">optional</span></label>
-        <input type="file" id="so_banner" name="banner" accept="image/jpeg,image/png">
-        <span class="upload-hint">JPG or PNG, up to 10 MB. Without one, the {{ 'chef’s photograph or the ' if o['kind'] == 'guest_chef' else '' }}occasion’s photograph is used.</span>
-        {% if occ['banner_file'] %}<p style="display:flex;gap:1rem;align-items:center;margin:.5rem 0 0"><img src="{{ url_for('occasion_banner_photo', slug=occ['slug']) }}" alt="The banner photograph" style="max-width:160px;border-radius:3px">
-          <label class="checkbox-row"><input type="checkbox" name="banner_remove" value="1"> <span>Remove</span></label></p>{% endif %}
-      </div>
-    </div>
-  </fieldset>
-
-  <p style="margin-top:1.5rem"><button type="submit" class="btn-primary">{{ 'Save' if editing else 'Create the draft' }}</button></p>
+  <p style="margin-top:1.5rem"><button type="submit" class="btn-primary">{{ 'Save' if editing else 'Create the draft' }}</button>
+    <span class="upload-hint">Saves both tabs.</span></p>
 </form>
 
 {% if editing %}
 <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem">
   {% for field, label in [('description', 'the description'), ('chef_bio', "the chef's bio")] %}
   {% if field == 'description' or occ['kind'] == 'guest_chef' %}
-  <form method="post" action="{{ url_for('admin_stay_occasion_write', occ_id=occ['id']) }}">
+  <form method="post" action="{{ url_for('admin_stay_occasion_write', occ_id=occ['id']) }}" data-tab-panel="{{ 'stay' if field == 'description' else 'dinner' }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="field" value="{{ field }}">
     {% if confirm_write == field %}
@@ -400,4 +417,5 @@
   if(pick){ pick.addEventListener('change', function(){ menuPrice(true); }); price && price.addEventListener('input', function(){ menuPrice(false); }); menuPrice(false); }
 })();
 </script>
+<script src="{{ url_for('static', filename='tabs.js') }}"></script>
 {% endblock %}
