@@ -145,6 +145,45 @@
       </div>
       <p class="upload-hint" id="nb_rooms_none" {{ 'hidden' if options|selectattr('free')|selectattr('fits')|list }}>
         Nothing free for those nights and that party. Try other dates.</p>
+      {#- Another room, typed: not on the Rooms list, never on the website.
+          Outside #nb_rooms, which the script redraws as the dates change. #}
+      {%- set other = f.get('room_id') == 'custom' %}
+      {%- set ticked = f.getlist('custom_blocks') if f.getlist is defined else [] %}
+      <div class="room-pick room-pick--other">
+        <label class="room-pick__tile">
+          <input type="radio" name="room_id" value="custom" {{ 'checked' if other }}>
+          <span class="room-pick__name">Another room (type the name)</span>
+          <span class="room-pick__note">A room not on the list, or two listed rooms sold together. You set the price.</span>
+        </label>
+      </div>
+      <fieldset class="nb-other" id="nb_other" {{ '' if other else 'hidden' }}>
+        <legend class="field-label">Another room</legend>
+        <div class="field-row-2">
+          <div>
+            <label class="field-label" for="wi_other_name">Room name</label>
+            <input id="wi_other_name" type="text" name="custom_room_name" maxlength="80"
+                   value="{{ f.get('custom_room_name', '') }}" placeholder="Les Chambres Communicantes"
+                   autocomplete="off" autocapitalize="words">
+          </div>
+          <div>
+            <label class="field-label" for="wi_other_sleeps">Sleeps</label>
+            <input id="wi_other_sleeps" type="number" name="custom_sleeps" min="1" max="20" step="1"
+                   inputmode="numeric" class="nb-short" value="{{ f.get('custom_sleeps') or (adults + under) }}">
+          </div>
+        </div>
+        <p class="field-label" id="nb_blocks_h">Blocks these rooms <span class="nb-opt">(optional)</span></p>
+        <div class="nb-blocks" id="nb_blocks" role="group" aria-labelledby="nb_blocks_h">
+          {% for o in options %}
+          <label class="nb-block {{ 'is-taken' if not o.free }}">
+            <input type="checkbox" name="custom_blocks" value="{{ o.room['id'] }}"
+                   {{ 'disabled' if not o.free }}
+                   {{ 'checked' if o.free and o.room['id']|string in ticked }}>
+            <span>{{ o.room['name'] }}{% if not o.free %} <span class="nb-opt">— taken</span>{% endif %}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <p class="upload-hint">Tick any listed room it physically uses: those are taken for these nights, here and on Booking.com. The name is kept on this booking only — it is not added to the Rooms list or the website.</p>
+      </fieldset>
       <noscript>
         <p><button type="submit" formmethod="get" class="btn-mini">Show what's free for these dates</button></p>
       </noscript>
@@ -243,7 +282,8 @@
   var $ = function(id){ return document.getElementById(id); };
   var arrival = $('wi_arrival'), departure = $('wi_departure'), adults = $('wi_adults'),
       under = $('wi_under18'), party = $('wi_party'), price = $('wi_price'), taken = $('wi_taken'),
-      email = $('wi_email'), name = $('wi_name'), hold = $('nb_hold');
+      email = $('wi_email'), name = $('wi_name'), hold = $('nb_hold'),
+      otherName = $('wi_other_name'), otherSleeps = $('wi_other_sleeps');
   var tax = null, nights = 0, timer = null, asked = 0;
 
   function euro(n){ return '€' + (Math.round(n * 100) / 100).toLocaleString('en-GB', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
@@ -261,6 +301,9 @@
     return d.toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC'});
   }
   function chosen(){ return form.querySelector('[name=room_id]:checked'); }
+  function isOther(){ var r = chosen(); return !!r && r.value === 'custom'; }
+  /* Another room: its own fields open only when it is the one chosen. */
+  function showOther(){ $('nb_other').hidden = !isOther(); }
 
   /* The three ways: what shows, what is needed, what the button says. */
   function showMode(){
@@ -281,9 +324,11 @@
   }
 
   function sums(){
-    var r = chosen(), rack = r ? parseFloat(r.getAttribute('data-price')) : null;
+    var r = chosen(), other = isOther();
+    var rack = r && !other ? parseFloat(r.getAttribute('data-price')) : null;
     var agreed = num(price), cost = agreed !== null ? agreed : rack;
-    $('s_room').textContent = r ? r.getAttribute('data-name') : 'Choose a room';
+    $('s_room').textContent = !r ? 'Choose a room'
+      : other ? (otherName.value.trim() || 'Another room') : r.getAttribute('data-name');
     $('s_dates').textContent = arrival.value && departure.value && nights > 0
       ? pretty(arrival.value) + ' → ' + pretty(departure.value) + ' · ' + nights + (nights === 1 ? ' night' : ' nights') : '—';
     var a = int(adults), u = int(under);
@@ -295,6 +340,9 @@
            : d > 0 ? euro(d) + ' above the rate card (' + euro(rack) + '). It is charged as the room price.'
            : 'The rate card, ' + euro(rack) + '.';
     } else if(rack !== null){ note = 'The rate card for these nights is ' + euro(rack) + '. Leave it blank for that, or put in what you agreed.'; }
+    if(other) note = agreed !== null ? 'Charged as the room price, for the whole stay.'
+                                     : 'Needed: another room has no rate card. Put in what you agreed for the whole stay.';
+    price.placeholder = other ? 'Needed' : 'The rate card';
     $('nb_price_note').textContent = note;
     $('s_price').textContent = cost !== null ? euro(cost) : '—';
     $('s_tax').textContent = tax !== null ? (tax ? euro(tax) : 'none') : '—';
@@ -325,6 +373,22 @@
     } else { span('room-pick__note', o.why || 'Not free'); }
     return lab;
   }
+  /* The listed rooms another room can take, free or not for these nights.
+     Whether the party fits does not matter here: it is not their room. */
+  function blocks(rooms){
+    var wrap = $('nb_blocks'), was = {};
+    wrap.querySelectorAll('input:checked').forEach(function(i){ was[i.value] = true; });
+    wrap.innerHTML = '';
+    rooms.forEach(function(o){
+      var lab = document.createElement('label'), inp = document.createElement('input'), s = document.createElement('span');
+      lab.className = 'nb-block' + (o.free ? '' : ' is-taken');
+      inp.type = 'checkbox'; inp.name = 'custom_blocks'; inp.value = o.id;
+      inp.disabled = !o.free; inp.checked = o.free && !!was[String(o.id)];
+      s.textContent = o.name;
+      if(!o.free){ var t = document.createElement('span'); t.className = 'nb-opt'; t.textContent = ' — taken'; s.appendChild(t); }
+      lab.appendChild(inp); lab.appendChild(s); wrap.appendChild(lab);
+    });
+  }
   function ask(){
     clearTimeout(timer);
     timer = setTimeout(function(){
@@ -344,6 +408,7 @@
             if(o.free && o.fits){ any = true; if(String(o.id) === keep) t.querySelector('input').checked = true; }
           });
           $('nb_rooms_none').hidden = any || nights <= 0;
+          blocks(d.rooms);
           sums();
         }).catch(function(){});
     }, 180);
@@ -351,8 +416,9 @@
 
   form.addEventListener('change', function(e){
     if(e.target.name === 'mode' || e.target === hold) showMode();
-    else if(e.target.name === 'room_id') sums();
+    else if(e.target.name === 'room_id'){ showOther(); sums(); }
   });
+  otherName.addEventListener('input', sums);
   [arrival, departure].forEach(function(el){ el.addEventListener('change', function(){
     if(el === arrival && arrival.value && (!departure.value || departure.value <= arrival.value)){
       var d = at(arrival.value); d.setUTCDate(d.getUTCDate() + 1); departure.value = day(d);
@@ -386,6 +452,10 @@
     if(e.submitter && e.submitter.getAttribute('formmethod') === 'get') return;
     var why = '';
     if(!chosen()) why = 'Choose a room.';
+    else if(isOther() && !otherName.value.trim()) why = 'Give the room a name.';
+    else if(isOther() && int(otherSleeps) < int(adults) + int(under))
+      why = 'It sleeps ' + int(otherSleeps) + ', and that is ' + (int(adults) + int(under)) + ' guests.';
+    else if(isOther() && num(price) === null) why = 'Put in the price for the stay: another room has no rate card.';
     else if(mode() !== 'reserve' && !name.value.trim()) why = 'Put a name on it, even if it is only a surname.';
     else if(mode() !== 'book' && email.value.indexOf('@') < 1) why = 'Their email address is needed: the link goes there.';
     var p = $('nb_problem');
@@ -393,7 +463,7 @@
     else { p.hidden = true; $('nb_go').disabled = true; $('nb_go').textContent = 'Saving…'; }
   });
 
-  partySync(); showMode(); ask();
+  partySync(); showOther(); showMode(); ask();
 })();
 </script>
 {% endblock %}

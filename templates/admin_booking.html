@@ -152,7 +152,8 @@
   <div class="detail-card">
     <h3>The stay</h3>
     <dl class="bk-facts">
-      <dt>Room</dt><dd>{{ b['room_name'] }}</dd>
+      <dt>Room</dt><dd>{{ b['room_name'] }}{% if one_off_uses is not none %}
+        <br><span class="upload-hint">Typed at the desk, not on the Rooms list{% if one_off_uses %} · takes {{ one_off_uses|join(' and ') }} for these nights{% endif %}</span>{% endif %}</dd>
       {#- The day, then the guest's time said as theirs and the house's hour
           beside it; a bare "17:45" after the date read as either. -#}
       <dt>Arrives</dt><dd>{{ b['arrival_date']|date_short }}<br>{{ arrival_line(arrival_words(b['estimated_arrival_time'], usual_arrival)) }}</dd>

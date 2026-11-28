@@ -9439,6 +9439,24 @@ def init_db():
                 message_key TEXT PRIMARY KEY,
                 source TEXT NOT NULL,
                 notified_at TEXT NOT NULL)"""),
+        # ANOTHER ROOM, TYPED AT THE DESK (owner, 28 Nov 2026): "Les Chambres
+        # Communicantes", two listed rooms sold together, or anything else the
+        # house lets that is not on the Rooms list. Each is a room row of its
+        # own, made for the one stay and never listed (one_off = 1, active =
+        # 0): bookings.room_id is NOT NULL and some eighty queries join rooms
+        # to say which room a stay is in, so a stay with no room would vanish
+        # from the calendar, the arrivals and the reports without an error.
+        # A row of its own puts the name the desk typed everywhere a room's
+        # name already goes. See ONE_OFF_ROOMS.
+        ("rooms_one_off", "ALTER TABLE rooms ADD COLUMN one_off INTEGER NOT NULL DEFAULT 0"),
+        # The listed rooms a one-off room physically uses. Taken for as long
+        # as its stay is, and only then: the stay's own dates and status say
+        # when, so a cancelled, declined or lapsed stay frees them by itself.
+        ("one_off_room_blocks_table",
+         """CREATE TABLE IF NOT EXISTS one_off_room_blocks (
+                one_off_room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                PRIMARY KEY (one_off_room_id, room_id))"""),
     ):
         try:
             conn.execute(ddl)
@@ -13759,8 +13777,9 @@ def occupied_rooms_by_date(conn, start, end):
         counts[d.isoformat()] = 0
         d += timedelta(days=1)
     bookings = conn.execute(
-        """SELECT arrival_date, departure_date FROM bookings
-           WHERE status = 'confirmed' AND room_id IN (SELECT id FROM rooms WHERE active = 1)
+        # The rooms on sale, a one-off stay counted once per room it takes.
+        f"""SELECT arrival_date, departure_date FROM {STAYS_BY_LISTED_ROOM}
+           WHERE status = 'confirmed'
            AND arrival_date < ? AND departure_date > ?""",
         (end.isoformat(), start.isoformat()),
     ).fetchall()
@@ -15615,14 +15634,21 @@ def expense_category_breakdown(conn, month_start, month_end):
 
 def room_revenue_breakdown(conn, month_start, month_end):
     """Confirmed-booking revenue per active room for one calendar month,
-    same attribution rule as financial_month_summary (by arrival date)."""
+    same attribution rule as financial_month_summary (by arrival date).
+
+    And a room typed at the desk (ONE_OFF_ROOMS), under its own name, when it
+    took money in the window: left out, its stay was revenue the rows above
+    the total did not add up to. Grouped by name, so the same pair sold three
+    times is one line."""
     return conn.execute(
         """SELECT rooms.name AS room_name, COALESCE(SUM(bookings.total_price), 0) AS revenue,
                COUNT(bookings.id) AS booking_count
            FROM rooms LEFT JOIN bookings ON bookings.room_id = rooms.id
                AND bookings.status = 'confirmed' AND bookings.arrival_date >= ? AND bookings.arrival_date < ?
-           WHERE rooms.active = 1
-           GROUP BY rooms.id ORDER BY revenue DESC""",
+           WHERE rooms.active = 1 OR (rooms.one_off = 1 AND bookings.id IS NOT NULL)
+           GROUP BY CASE WHEN rooms.one_off = 1 THEN 'one-off ' || rooms.name
+                         ELSE CAST(rooms.id AS TEXT) END
+           ORDER BY revenue DESC""",
         (month_start.isoformat(), month_end.isoformat()),
     ).fetchall()
 
@@ -20936,7 +20962,7 @@ def _availability_picture(conn, *, fresh=False):
     # the whole refusal. Keyed rather than kept as a second list, so the two
     # cannot fall out of step.
     picture = {"bookings": {}, "blocked": {}, "manual": {}, "house": [],
-               "night_label": {}}
+               "night_label": {}, "one_off": {}}
 
     # Per room, but read for every room at once rather than one room at a
     # time. Status and id are kept so the callers that exclude a booking or
@@ -20947,6 +20973,16 @@ def _availability_picture(conn, *, fresh=False):
         picture["bookings"].setdefault(row["room_id"], []).append(
             (row["id"], row["status"], parse_date(row["arrival_date"]),
              parse_date(row["departure_date"])))
+    # A one-off room's stay is entered under each listed room it uses as
+    # well, so everything that reads this picture -- the gate, a room page's
+    # calendar, the public date picker, the gaps report, the channel feed --
+    # has those rooms taken for exactly its nights (ONE_OFF_ROOMS). Its own
+    # entry stays too, for the questions asked of the one-off room itself.
+    picture["one_off"] = one_off_room_uses(conn)
+    for one_off_id, uses in picture["one_off"].items():
+        for entry in picture["bookings"].get(one_off_id, ()):
+            for rid, _name in uses:
+                picture["bookings"].setdefault(rid, []).append(entry)
     # A channel's night the owner has chosen to keep selling here does not
     # close it here. The export to the channel is untouched.
     kept_open = {(r["room_id"], r["start_date"], r["end_date"]) for r in conn.execute(
@@ -21122,6 +21158,10 @@ def _rooms_let_index(conn, picture):
             day += timedelta(days=1)
 
     for rid, rows in picture["bookings"].items():
+        # A one-off room that uses listed rooms is counted under them, where
+        # the picture has entered its stay as well -- not a third time here.
+        if picture.get("one_off", {}).get(rid):
+            continue
         for bid, status, a, b in rows:
             add(rid, a, b, ("booking", bid, status))
 
@@ -21678,25 +21718,33 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
 
     picture = _availability_picture(conn)
 
-    for bid, status, b_start, b_end in picture["bookings"].get(room_id, ()):
-        if not include_pending and status != "confirmed":
-            continue
-        if exclude_booking_id and bid == exclude_booking_id:
-            continue
-        if b_start and b_end and arrival < b_end and b_start < departure:
-            return False, DATES_OVERLAP_BOOKING
+    # A one-off room is taken wherever the listed rooms it uses are, so it is
+    # asked of each of them as well as of itself (ONE_OFF_ROOMS). Staff words
+    # only: a guest is never offered a one-off room.
+    uses = picture["one_off"].get(room_id) or ()
+    for rid, used in [(room_id, None)] + list(uses):
+        def said(why):
+            return f"it uses {used}, and {why[0].lower()}{why[1:]}" if used else why
 
-    for b_start, b_end in picture["blocked"].get(room_id, ()):
-        if (b_start, b_end) in ignore_spans:
-            continue
-        if b_start and b_end and arrival < b_end and b_start < departure:
-            return False, DATES_BLOCKED_CHANNEL
+        for bid, status, b_start, b_end in picture["bookings"].get(rid, ()):
+            if not include_pending and status != "confirmed":
+                continue
+            if exclude_booking_id and bid == exclude_booking_id:
+                continue
+            if b_start and b_end and arrival < b_end and b_start < departure:
+                return False, said(DATES_OVERLAP_BOOKING)
 
-    for b_start, b_end, mode, note in picture["manual"].get(room_id, ()):
-        if b_start and b_end and arrival < b_end and b_start < departure:
-            if mode == "season":
-                return False, note or "The room is closed for the season on those dates."
-            return False, "Those dates aren't available."
+        for b_start, b_end in picture["blocked"].get(rid, ()):
+            if (b_start, b_end) in ignore_spans:
+                continue
+            if b_start and b_end and arrival < b_end and b_start < departure:
+                return False, said(DATES_BLOCKED_CHANNEL)
+
+        for b_start, b_end, mode, note in picture["manual"].get(rid, ()):
+            if b_start and b_end and arrival < b_end and b_start < departure:
+                if mode == "season":
+                    return False, said(note or "The room is closed for the season on those dates.")
+                return False, said("Those dates aren't available.")
 
     # A workshop, a confirmed event or a live hold takes the whole château,
     # so these apply to every room. Each span is end-inclusive, as the
@@ -21712,11 +21760,15 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
     # five. Asked here, the one check the search, the room page, the quote,
     # "What Is Open Next" and the booking itself all refuse from, so none of
     # them can offer a sixth room the others would turn down (z28 item 1).
+    # A one-off room counts as the rooms it uses -- two for the communicating
+    # pair -- or as one room when it uses none of the listed ones.
+    counts_as = {rid for rid, _name in uses} or {room_id}
     day = arrival
     while day < departure:
-        if len(rooms_let_on(picture, day, besides=room_id,
-                            exclude_booking_id=exclude_booking_id,
-                            include_pending=include_pending)) >= MAX_ROOMS_LET_PER_NIGHT:
+        others = rooms_let_on(picture, day, besides=room_id,
+                              exclude_booking_id=exclude_booking_id,
+                              include_pending=include_pending) - counts_as
+        if len(others) + len(counts_as) > MAX_ROOMS_LET_PER_NIGHT:
             return False, house_full_reason(day)
         day += timedelta(days=1)
 
@@ -21873,7 +21925,18 @@ def room_month_rows(conn, first_day, today=None):
     next_month = (date(first_day.year + 1, 1, 1) if first_day.month == 12
                   else date(first_day.year, first_day.month + 1, 1))
     days = [first_day + timedelta(days=i) for i in range((next_month - first_day).days)]
-    rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
+    # The listed rooms, and a room typed at the desk only in a month its stay
+    # is in, and only when it takes none of the listed ones: one that does is
+    # drawn on their rows, under its own name (ONE_OFF_ROOMS).
+    rooms = conn.execute(
+        """SELECT * FROM rooms
+            WHERE one_off = 0
+               OR (id NOT IN (SELECT one_off_room_id FROM one_off_room_blocks)
+                   AND id IN (SELECT room_id FROM bookings
+                               WHERE status IN ('pending','confirmed')
+                                 AND arrival_date < ? AND departure_date > ?))
+            ORDER BY one_off, sort_order, name""",
+        (next_month.isoformat(), first_day.isoformat())).fetchall()
     # The calendar sync blocks a Booking.com stay's nights and knows nothing
     # else; the emails know who it is. So the named stay is drawn first, and the
     # anonymous block under it only where no email has said who is coming.
@@ -21885,10 +21948,13 @@ def room_month_rows(conn, first_day, today=None):
         "SELECT room_id, start_date, end_date FROM ical_keep_open")}
     room_rows = []
     for room in rooms:
+        # Its own stays, and those of a room typed at the desk that takes it.
         bookings = conn.execute(
-            """SELECT * FROM bookings WHERE room_id = ? AND status IN ('pending','confirmed')
-               AND arrival_date < ? AND departure_date > ?""",
-            (room["id"], next_month.isoformat(), first_day.isoformat()),
+            f"""SELECT bookings.*, rooms.name AS room_name, rooms.one_off
+                  FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+                 WHERE {bookings_in_room_sql()} AND bookings.status IN ('pending','confirmed')
+                   AND bookings.arrival_date < ? AND bookings.departure_date > ?""",
+            (room["id"], room["id"], next_month.isoformat(), first_day.isoformat()),
         ).fetchall()
         blocked = conn.execute(
             """SELECT blocked_dates.*, ical_sources.label AS source_label
@@ -21908,6 +21974,8 @@ def room_month_rows(conn, first_day, today=None):
                 b_start, b_end = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
                 if b_start <= d < b_end:
                     status, label = b["status"], b["guest_name"]
+                    if b["one_off"] and b["room_id"] != room["id"]:
+                        label = f"{b['guest_name']} · {b['room_name']}"
                     key, link = f"b{b['id']}", url_for("admin_booking", booking_id=b["id"])
                     break
             if status == "free":
@@ -22157,8 +22225,9 @@ def compute_month_stats(conn, today):
     room_count = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
 
     overlapping = conn.execute(
-        """SELECT arrival_date, departure_date FROM bookings
-           WHERE status = 'confirmed' AND room_id IN (SELECT id FROM rooms WHERE active = 1)
+        # The rooms on sale, a one-off stay counted once per room it takes.
+        f"""SELECT arrival_date, departure_date FROM {STAYS_BY_LISTED_ROOM}
+           WHERE status = 'confirmed'
            AND arrival_date < ? AND departure_date > ?""",
         (month_end.isoformat(), month_start.isoformat()),
     ).fetchall()
@@ -22453,10 +22522,10 @@ def build_office_display_stats(conn, today, who_is_here):
     # so the board could read "1 room occupied / 0 guests in residence" for the
     # same day, and a booking in a deactivated room could push the numerator
     # above the total.
+    # The rooms on sale, a one-off stay counted once per room it takes.
     occupied = conn.execute(
-        """SELECT COUNT(*) AS c FROM bookings
+        f"""SELECT COUNT(*) AS c FROM {STAYS_BY_LISTED_ROOM}
            WHERE status = 'confirmed'
-             AND room_id IN (SELECT id FROM rooms WHERE active = 1)
              AND arrival_date <= ? AND departure_date > ?""",
         (iso, iso),
     ).fetchone()["c"]
@@ -23502,6 +23571,7 @@ def room_economics(conn, *, months=12, today=None):
         "id": r["id"], "name": r["name"], "price_per_night": r["price_per_night"],
         "active": bool(r["active"]), "nights": 0, "room_revenue": 0.0,
         "extras_revenue": 0.0, "stays": 0, "guests": 0, "open_faults": 0,
+        "one_off": bool(r["one_off"]),
     } for r in conn.execute("SELECT * FROM rooms").fetchall()}
 
     # Extras per booking, so the room's own earnings can be separated from
@@ -23566,6 +23636,10 @@ def room_economics(conn, *, months=12, today=None):
 
     out = []
     for room in rooms.values():
+        # A room typed at the desk is a row only while its stay is in the
+        # window: it was made for that one stay (ONE_OFF_ROOMS).
+        if room["one_off"] and not room["nights"]:
+            continue
         room["room_revenue"] = round(room["room_revenue"], 2)
         room["extras_revenue"] = round(room["extras_revenue"], 2)
         room["nightly"] = (round(room["room_revenue"] / room["nights"], 2)
@@ -30888,8 +30962,13 @@ def room_league(conn, start=None, end=None):
 
     total_revenue = sum(v["revenue"] for v in tally.values())
     out = []
+    one_off = {r["id"] for r in conn.execute("SELECT id FROM rooms WHERE one_off = 1")}
     for room in rooms:
         slot = tally.get(room["id"], {"nights": 0, "revenue": 0.0})
+        # A room typed at the desk is a row only while its stay is in the
+        # window (ONE_OFF_ROOMS); its money is in the total either way.
+        if room["id"] in one_off and not slot["nights"]:
+            continue
         out.append({
             "id": room["id"], "name": room["name"],
             "active": bool(room["active"]),
@@ -35912,10 +35991,13 @@ def ical_escape(text):
 
 
 def generate_room_ics(conn, room):
+    # Its own stays, and a stay in a room typed at the desk that takes this
+    # one (ONE_OFF_ROOMS): Booking.com must not sell half of the pair.
     rows = conn.execute(
-        """SELECT * FROM bookings WHERE room_id = ? AND status IN ('pending','confirmed')
-           ORDER BY arrival_date""",
-        (room["id"],),
+        f"""SELECT * FROM bookings WHERE {bookings_in_room_sql()}
+              AND status IN ('pending','confirmed')
+            ORDER BY arrival_date""",
+        (room["id"], room["id"]),
     ).fetchall()
     lines = [
         "BEGIN:VCALENDAR", "VERSION:2.0",
@@ -45136,7 +45218,7 @@ def _search_sources():
         {
             "key": "rooms",
             "label": "Rooms",
-            "sql": "SELECT * FROM rooms",
+            "sql": "SELECT * FROM rooms WHERE one_off = 0",
             "fields": ["name", "description"],
             "order": "sort_order",
             "name": lambda r: r["name"],
@@ -60419,7 +60501,7 @@ def channel_booking_names():
     changed, refused = [], []
     for room in conn.execute(
             """SELECT id, name, booking_extranet_name, booking_nr_price, booking_std_price
-                 FROM rooms ORDER BY sort_order, name""").fetchall():
+                 FROM rooms WHERE one_off = 0 ORDER BY sort_order, name""").fetchall():
         sets = {}
         key = f"booking_name_{room['id']}"
         if key in request.form:
@@ -80331,7 +80413,9 @@ def room_photo(filename):
 def admin_rooms():
     """The bedrooms the house lets, and everything a guest is told about them."""
     conn = get_db()
-    rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
+    # Not the rooms typed at the desk for one stay (ONE_OFF_ROOMS).
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE one_off = 0 ORDER BY sort_order, name").fetchall()
     sources_by_room, ics_urls, blocks_by_room = {}, {}, {}
     now = datetime.now(timezone.utc)
     for room in rooms:
@@ -81425,17 +81509,20 @@ def admin_calendar():
     # we?" without the owner counting coloured squares by eye. Over the nights
     # the house was SELLING: a room closed for the winter is not a room that
     # was full, and counting its nights as taken read a shut month as a busy one.
-    selling = sum(1 for row in room_rows for c in row["cells"] if c["status"] != "manual-block")
-    filled = sum(1 for row in room_rows for c in row["cells"]
+    # Over the listed rooms: a room typed at the desk has a row only for its
+    # own stay, and the rest of its month is not a night anybody could sell.
+    listed = [row for row in room_rows if not row["room"]["one_off"]]
+    selling = sum(1 for row in listed for c in row["cells"] if c["status"] != "manual-block")
+    filled = sum(1 for row in listed for c in row["cells"]
                  if c["status"] not in ("free", "manual-block"))
     occupancy_rate = round(filled / selling * 100) if selling else 0
     confirmed_nights = sum(
-        1 for row in room_rows for c in row["cells"] if c["status"] == "confirmed"
+        1 for row in listed for c in row["cells"] if c["status"] == "confirmed"
     )
     pending_nights = sum(
-        1 for row in room_rows for c in row["cells"] if c["status"] == "pending"
+        1 for row in listed for c in row["cells"] if c["status"] == "pending"
     )
-    closed_nights = len(room_rows) * len(days) - selling
+    closed_nights = len(listed) * len(days) - selling
 
     return render_template(
         "admin_calendar.html", days=days, room_rows=room_rows, first_day=first_day, today=today,
@@ -82244,7 +82331,7 @@ def move_room(room_id):
 
     conn = get_db()
     rooms = conn.execute(
-        "SELECT id FROM rooms ORDER BY sort_order, price_per_night, id").fetchall()
+        "SELECT id FROM rooms WHERE one_off = 0 ORDER BY sort_order, price_per_night, id").fetchall()
     order = [r["id"] for r in rooms]
     if room_id not in order:
         conn.close()
@@ -82930,7 +83017,8 @@ def admin_bookings():
     q = request.args.get("q", "").strip()
 
     conn = get_db()
-    rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE one_off = 0 ORDER BY sort_order, name").fetchall()
 
     # Needed by the facets below, which run before the block that used to
     # compute it.
@@ -83396,6 +83484,11 @@ def admin_booking(booking_id):
     nights = (departure - arrival).days if arrival and departure else 0
     bill = booking_bill(conn, booking_id)
     refund = refund_desk_context(conn, "room", booking)
+    # A room typed at the desk, and the listed rooms it takes (ONE_OFF_ROOMS).
+    one_off = conn.execute("SELECT one_off FROM rooms WHERE id = ?",
+                           (booking["room_id"],)).fetchone()
+    one_off_uses = ([n for _i, n in one_off_rooms_used(conn, booking["room_id"])]
+                    if one_off and one_off["one_off"] else None)
 
     # The extras, each on its own line with the day it is wanted.
     catalogue = {e["id"]: e for e in conn.execute("SELECT * FROM extras").fetchall()}
@@ -83524,7 +83617,7 @@ def admin_booking(booking_id):
         group=group, where=where, today_iso=today.isoformat(),
         decline_reasons=DECLINE_REASONS, cancel_reasons=CANCEL_REASONS,
         dinners=dinners, usual_arrival=usual_arrival, occasion_prep=occasion_prep,
-        stay_flag=stay_flag,
+        stay_flag=stay_flag, one_off_uses=one_off_uses,
     )
 
 
@@ -88665,7 +88758,7 @@ def edit_booking(booking_id):
         if error:
             flash(error, "error")
             group = booking_group(conn, booking["id"])
-            rooms = _edit_rooms(conn)
+            rooms = _edit_rooms(conn, booking["room_id"])
             conn.close()
             return render_template("edit_booking.html", booking=booking,
                                group=group, booking_sources=BOOKING_SOURCES,
@@ -88786,17 +88879,21 @@ def edit_booking(booking_id):
         return redirect(url_for("admin_booking", booking_id=booking_id))
 
     group = booking_group(conn, booking["id"])
-    rooms = _edit_rooms(conn)
+    rooms = _edit_rooms(conn, booking["room_id"])
     conn.close()
     return render_template("edit_booking.html", booking=booking,
                                group=group, booking_sources=BOOKING_SOURCES,
                                heard_via_options=HEARD_VIA, rooms=rooms)
 
 
-def _edit_rooms(conn):
-    """The rooms a stay can be moved into from its edit page."""
-    return conn.execute("SELECT id, name, max_occupancy FROM rooms WHERE active = 1 "
-                        "ORDER BY sort_order, name").fetchall()
+def _edit_rooms(conn, current=None):
+    """The rooms a stay can be moved into from its edit page, and the one it
+    is in now even when that is not on sale: a room typed at the desk
+    (ONE_OFF_ROOMS), or one taken off sale. Missing from the list, nothing
+    was selected, the browser chose the first room, and saving any other
+    change on the form moved the stay into it."""
+    return conn.execute("SELECT id, name, max_occupancy FROM rooms WHERE active = 1 OR id = ? "
+                        "ORDER BY one_off, sort_order, name", (current,)).fetchall()
 
 
 @app.route("/admin/bookings/<int:booking_id>/refund", methods=["POST"])
@@ -97224,6 +97321,124 @@ def management_outlook():
     return redirect(url_for("money_ahead_page", days=days))
 
 
+# ONE_OFF_ROOMS -- "Another room (type the name)" on Add a booking (owner, 28
+# November 2026). The house sometimes lets something that is not on the Rooms
+# list: two listed rooms opened into each other and sold as one ("Les
+# Chambres Communicantes"), or a space that is never sold online. The desk
+# types its name, how many it sleeps, the price, and which listed rooms (if
+# any) it physically takes.
+#
+# HOW IT IS KEPT. A room row made for that one stay: one_off = 1, active = 0,
+# no price of its own, never on the Rooms list, the public site, a channel or
+# a drop-down. bookings.room_id is NOT NULL and about eighty queries join
+# rooms for the room's name, so a stay with no room would drop silently out of
+# the calendar, the arrivals and the reports; its own row puts the typed name
+# on every page, letter, bill and export that names a room already.
+#
+# WHAT IT TAKES. The listed rooms ticked (one_off_room_blocks) are taken for
+# the stay's nights, read from the stay itself: _availability_picture enters
+# the stay under each of them, so the gate, the calendars, the public date
+# picker and the channel feeds all see them taken, and a cancelled, declined
+# or lapsed stay frees them with no clean-up anywhere. For the three-rooms-a-
+# night limit it counts as the rooms it uses, or as one room if it uses none.
+LISTED_ROOM = "(COALESCE(rooms.one_off, 0) = 0)"
+
+# One row per stay and listed room it occupies: a room on sale's own stays,
+# and a stay in a one-off room once for each listed room it takes. For
+# counting room-nights against the rooms on sale (occupancy); never for money,
+# which would count a one-off stay once per room it takes.
+STAYS_BY_LISTED_ROOM = """(
+    SELECT bookings.id, bookings.room_id AS listed_room_id, bookings.status,
+           bookings.arrival_date, bookings.departure_date
+      FROM bookings JOIN rooms ON rooms.id = bookings.room_id AND rooms.active = 1
+    UNION ALL
+    SELECT bookings.id, x.room_id AS listed_room_id, bookings.status,
+           bookings.arrival_date, bookings.departure_date
+      FROM bookings JOIN one_off_room_blocks x ON x.one_off_room_id = bookings.room_id
+      JOIN rooms ON rooms.id = x.room_id AND rooms.active = 1)"""
+
+
+def one_off_room_uses(conn):
+    """{one-off room id: [(listed room id, its name), ...]} for every one-off
+    room, in Rooms-list order; an empty list for one that uses none."""
+    out = {r["id"]: [] for r in conn.execute("SELECT id FROM rooms WHERE one_off = 1")}
+    if out:
+        for r in conn.execute(
+                """SELECT x.one_off_room_id, x.room_id, rooms.name
+                     FROM one_off_room_blocks x JOIN rooms ON rooms.id = x.room_id
+                    ORDER BY rooms.sort_order, rooms.name"""):
+            if r["one_off_room_id"] in out:
+                out[r["one_off_room_id"]].append((r["room_id"], r["name"]))
+    return out
+
+
+def one_off_rooms_used(conn, room_id):
+    """The listed rooms a one-off room takes, as [(id, name)]; [] for a listed
+    room or a one-off that takes none."""
+    return [(r["id"], r["name"]) for r in conn.execute(
+        """SELECT rooms.id, rooms.name FROM one_off_room_blocks x
+             JOIN rooms ON rooms.id = x.room_id
+            WHERE x.one_off_room_id = ? ORDER BY rooms.sort_order, rooms.name""",
+        (room_id,))]
+
+
+def bookings_in_room_sql(alias="bookings"):
+    """A WHERE fragment for "the stays in room ?": its own, and those of any
+    one-off room that takes it. Takes the room id twice."""
+    return (f"({alias}.room_id = ? OR {alias}.room_id IN "
+            "(SELECT one_off_room_id FROM one_off_room_blocks WHERE room_id = ?))")
+
+
+def one_off_room_problem(conn, name, sleeps, block_ids):
+    """What is wrong with a room typed at the desk, or None."""
+    if not name:
+        return "Give the room a name, for example Les Chambres Communicantes."
+    if len(name) > 80:
+        return "That room name is too long: keep it under 80 characters."
+    if not sleeps or sleeps < 1:
+        return "Say how many the room sleeps."
+    if sleeps > 20:
+        return "A room for more than twenty is not one room."
+    listed = {r["id"]: r["name"] for r in conn.execute(
+        f"SELECT id, name FROM rooms WHERE {LISTED_ROOM}")}
+    # The name keys several of the room-list repairs and the channels' mail
+    # (by name), and two rooms called the same thing would be read as one.
+    if any(_room_key(n) == _room_key(name) for n in listed.values()):
+        return (f"{name} is already on the Rooms list: choose it above, or give this "
+                "room a name of its own.")
+    unknown = [b for b in block_ids if b not in listed]
+    if unknown:
+        return "One of the rooms ticked to block is not on the Rooms list."
+    return None
+
+
+def make_one_off_room(conn, name, sleeps, block_ids, *, price=0.0, nights=0):
+    """Write a one-off room and the listed rooms it takes; return its row.
+    Not committed: the caller checks the dates under the booking lock and
+    rolls the room back with everything else if they are refused.
+
+    Its rate is the price agreed for the stay, a night: what the stay is
+    priced at again if its dates are moved, which re-prices from the room's
+    rate (move_booking_dates). Rounded DOWN to the cent, so the nights never
+    come to more than the price agreed and the desk's figure is never shown
+    to the guest as a discount off a rate card that does not exist."""
+    sleeps = int(sleeps)
+    nightly = (int(round(float(price or 0) * 100)) // nights) / 100 if nights > 0 else 0.0
+    cur = conn.execute(
+        """INSERT INTO rooms (name, description, max_occupancy, max_adults, max_children,
+                              price_per_night, active, export_token, sort_order, one_off)
+           VALUES (?, '', ?, ?, ?, ?, 0, ?, 100000, 1)""",
+        # max_children is everyone but the one adult a room needs, so the
+        # party is held to "sleeps" and nothing else.
+        (name, sleeps, sleeps, max(0, sleeps - 1), nightly, secrets.token_urlsafe(24)))
+    for rid in sorted(set(block_ids)):
+        conn.execute("INSERT OR IGNORE INTO one_off_room_blocks (one_off_room_id, room_id) "
+                     "VALUES (?, ?)", (cur.lastrowid, rid))
+    if has_request_context():
+        g.pop("_availability_picture", None)
+    return conn.execute("SELECT * FROM rooms WHERE id = ?", (cur.lastrowid,)).fetchone()
+
+
 def walk_in_options(conn, rooms, arrival, departure, party=None, under_18=0):
     """Each room with what it would cost for these nights and whether it can be
     had -- free, and able to take this party.
@@ -97907,13 +98122,40 @@ def walk_in_booking():
                   f"{caution['name']}: {caution['caution']}", "error")
         notes = (request.form.get("special_requests", "") or "").strip()
 
+        # ANOTHER ROOM, typed rather than chosen (ONE_OFF_ROOMS). Its row is
+        # written only once everything else here has passed, and is rolled
+        # back with the rest if the dates are then refused.
+        custom = room_raw == "custom"
+        custom_name = " ".join((request.form.get("custom_room_name", "") or "").split())
+        try:
+            custom_sleeps = int((request.form.get("custom_sleeps", "") or "0").strip() or 0)
+        except ValueError:
+            custom_sleeps = 0
+        custom_blocks = sorted({int(x) for x in request.form.getlist("custom_blocks")
+                                if (x or "").strip().isdigit()})
+        price_raw = (request.form.get("total_price", "") or "").strip().replace(",", ".")
+        try:
+            price_typed = round(float(price_raw), 2) if price_raw else None
+        except ValueError:
+            price_typed = None
+
         room = None
         if room_raw.isdigit():
-            room = conn.execute("SELECT * FROM rooms WHERE id = ?", (int(room_raw),)).fetchone()
+            # Only a room on the list: an old one-off's id posted again would
+            # put a second stay in somebody else's room.
+            room = conn.execute(f"SELECT * FROM rooms WHERE id = ? AND {LISTED_ROOM}",
+                                (int(room_raw),)).fetchone()
 
         problem = None
-        if not room:
+        if custom:
+            problem = one_off_room_problem(conn, custom_name, custom_sleeps, custom_blocks)
+            if not problem and (price_typed is None or price_typed < 0):
+                problem = ("Put in the price for the stay: another room has no rate card "
+                           "to fill it in.")
+        elif not room:
             problem = "Choose a room."
+        if problem:
+            pass
         elif not name:
             problem = "Put a name on it, even if it is only a surname."
         elif not (arrival and departure):
@@ -97924,19 +98166,31 @@ def walk_in_booking():
             problem = "That email address does not look right — or leave it blank."
         elif reserve and not email:
             problem = "A reservation needs their email address: the link to finish goes there."
-        elif room_party_problem(room, party, under_18):
+        elif custom and party > custom_sleeps:
+            problem = (f"{custom_name} sleeps {custom_sleeps}, and that is {party} guests: "
+                       "change how many it sleeps or the party.")
+        elif not custom and room_party_problem(room, party, under_18):
             problem = f"{room['name']}: {room_party_problem(room, party, under_18)}"
+        if not problem and custom:
+            room = make_one_off_room(conn, custom_name, custom_sleeps, custom_blocks,
+                                     price=price_typed, nights=(departure - arrival).days)
         if not problem:
             # Unpacked, not tested for truth: is_range_available returns
             # (ok, reason), and a two-item tuple is always truthy — so
             # `if not is_range_available(...)` reads as available every
             # single time, including when it is saying no. The suite let
             # the same room for the same nights twice before this.
+            # For another room this asks every listed room it takes, and
+            # the house's limit counting it as those rooms (ONE_OFF_ROOMS).
             available, why = claim_range(conn, room["id"], arrival, departure)
             if not available:
                 problem = (f"{room['name']} is already taken for those nights"
                            + (f" — {why}" if why else "."))
         if problem:
+            # Nothing here is committed yet: a one-off room written above goes
+            # with the refusal, as does the booking lock.
+            conn.rollback()
+            g.pop("_availability_picture", None)
             conn.close()
             flash(problem, "error")
             return render_template(
@@ -98013,17 +98267,22 @@ def walk_in_booking():
                  session.get("user_id"), datetime.now(timezone.utc).isoformat()))
             record_booking_payment(conn, booking["id"], taken)
 
+        uses = one_off_rooms_used(conn, room["id"]) if custom else []
         log_audit(conn, "reserved_for_guest" if reserve else "walk_in_booking",
                   target=reference_code,
                   details=f"{room['name']}, {arrival} to {departure}, {money(charge)}"
-                          + (f", {money(taken)} taken" if taken else ""))
+                          + (f", {money(taken)} taken" if taken else "")
+                          + ((", another room, sleeps " + str(custom_sleeps)
+                              + (", taking " + ", ".join(n for _i, n in uses) if uses else ""))
+                             if custom else ""))
         conn.commit()
 
         if reserve:
             sent = send_reservation_link(conn, booking["id"])
             conn.close()
             flash(f"{room['name']} reserved for {email}, {money(charge)} for the stay"
-                  + (f" ({money(charge - rack)} above the rate card)" if charge > rack + 0.005 else "")
+                  + (f" ({money(charge - rack)} above the rate card)"
+                     if not custom and charge > rack + 0.005 else "")
                   + ". " + ("The link to finish and pay has gone to them."
                             if sent else "The link is held until guest mail is switched on.")
                   + " It goes back on sale if they have not paid by the end of the hold.",
@@ -100587,8 +100846,9 @@ def annual_summary():
     room_count = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
     days_in_year = (year_end - year_start).days
     overlapping = conn.execute(
-        """SELECT arrival_date, departure_date FROM bookings
-           WHERE status = 'confirmed' AND room_id IN (SELECT id FROM rooms WHERE active = 1)
+        # The rooms on sale, a one-off stay counted once per room it takes.
+        f"""SELECT arrival_date, departure_date FROM {STAYS_BY_LISTED_ROOM}
+           WHERE status = 'confirmed'
            AND arrival_date < ? AND departure_date > ?""",
         (year_end.isoformat(), year_start.isoformat()),
     ).fetchall()
@@ -102832,7 +103092,7 @@ def management_breakages():
     today = house_today()
     summary = breakage_summary(conn, today=today)
     rooms = conn.execute(
-        "SELECT id, name FROM rooms ORDER BY sort_order, name").fetchall()
+        "SELECT id, name FROM rooms WHERE one_off = 0 ORDER BY sort_order, name").fetchall()
     # Stays that have recently ended, to attach one to. A breakage found in
     # a room nobody has been in belongs to no stay, which is why the field
     # is optional.
@@ -103611,7 +103871,7 @@ def channel_stays_page():
                      for st in booking_com_calendar_only_stays(conn)
                      if st["departure_date"] > today.isoformat()]
     room_choices = conn.execute(
-        "SELECT id, name FROM rooms ORDER BY sort_order, name").fetchall()
+        "SELECT id, name FROM rooms WHERE one_off = 0 ORDER BY sort_order, name").fetchall()
     sources = booking_com_ical_sources(conn)
     conn.close()
 
@@ -103831,7 +104091,7 @@ def apply_booking_com_statement(conn, rows, *, user_id=None, filename=""):
     each naming the stays, so nothing it did or did not do is a bare count."""
     now_iso = datetime.now(timezone.utc).isoformat()
     names = {}
-    for r in conn.execute("SELECT id, name, channel_name FROM rooms"):
+    for r in conn.execute("SELECT id, name, channel_name FROM rooms WHERE one_off = 0"):
         for label in (r["channel_name"], r["name"],
                       re.sub(r"(?i)^the\s+", "", r["name"] or "")):
             if (label or "").strip():
@@ -104287,7 +104547,7 @@ def channel_stay_page(reservation_id):
     held = [dict(h, name=names.get(h["room_id"], "A room since removed"))
             for h in ota_rooms(stay, ota_extra_rooms(conn, reservation_id))]
     room_choices = [r for r in conn.execute(
-        "SELECT id, name FROM rooms ORDER BY sort_order, name").fetchall()
+        "SELECT id, name FROM rooms WHERE one_off = 0 ORDER BY sort_order, name").fetchall()
         if r["id"] not in {h["room_id"] for h in held}]
     candidates = (channel_stay_candidates(conn, stay)
                   if stay["status"] == "confirmed" else [])
@@ -105200,7 +105460,7 @@ def restoration_record():
     rows = [dict(r) for r in restoration_works(conn)]
     summary = restoration_summary(conn, today)
     rooms = conn.execute(
-        "SELECT id, name FROM rooms ORDER BY sort_order, name").fetchall()
+        "SELECT id, name FROM rooms WHERE one_off = 0 ORDER BY sort_order, name").fetchall()
     vendors = conn.execute(
         "SELECT id, name FROM vendors ORDER BY name").fetchall()
     conn.close()
@@ -105322,7 +105582,7 @@ def restoration_work_page(work_id):
                      COALESCE(invoice_date, spent_on, submitted_at) DESC
             LIMIT 200""").fetchall()
     rooms = conn.execute(
-        "SELECT id, name FROM rooms ORDER BY sort_order, name").fetchall()
+        "SELECT id, name FROM rooms WHERE one_off = 0 ORDER BY sort_order, name").fetchall()
     vendors = conn.execute(
         "SELECT id, name FROM vendors ORDER BY name").fetchall()
     conn.close()
@@ -110994,19 +111254,20 @@ def room_board(conn, today=None):
         # morning — they are the reason it has to be ready. Counting them as
         # occupied is how a changeover room disappears off the board on the
         # one morning it matters.
+        # Its own stays, and a room typed at the desk that takes it.
         here = conn.execute(
-            """SELECT * FROM bookings
-                WHERE room_id = ? AND status = 'confirmed'
+            f"""SELECT * FROM bookings
+                WHERE {bookings_in_room_sql()} AND status = 'confirmed'
                   AND arrival_date < ? AND departure_date > ?""",
-            (room["id"], iso, iso)).fetchone()
+            (room["id"], room["id"], iso, iso)).fetchone()
         leaving = conn.execute(
-            """SELECT * FROM bookings
-                WHERE room_id = ? AND status = 'confirmed' AND departure_date = ?""",
-            (room["id"], iso)).fetchone()
+            f"""SELECT * FROM bookings
+                WHERE {bookings_in_room_sql()} AND status = 'confirmed' AND departure_date = ?""",
+            (room["id"], room["id"], iso)).fetchone()
         arriving = conn.execute(
-            """SELECT * FROM bookings
-                WHERE room_id = ? AND status = 'confirmed' AND arrival_date = ?""",
-            (room["id"], iso)).fetchone()
+            f"""SELECT * FROM bookings
+                WHERE {bookings_in_room_sql()} AND status = 'confirmed' AND arrival_date = ?""",
+            (room["id"], room["id"], iso)).fetchone()
         open_work = room_open_work(conn, room, iso)
         for st in by_room.get(room["id"], []):
             if not here and st["arrival_date"] < iso < st["departure_date"]:
@@ -121847,15 +122108,25 @@ def arrivals_calendar(conn, start, end, channel=None):
         "SELECT id, name FROM rooms WHERE active = 1 ORDER BY sort_order, name")]
     names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
     occupants = []   # (room key, first night, night it leaves, occupant)
+    # A room typed at the desk sleeps in the listed rooms it takes, one cell
+    # in each, its party counted on the first like a channel stay's second
+    # room; one that takes none has a row of its own below (ONE_OFF_ROOMS).
+    uses = one_off_room_uses(conn)
     for b in conn.execute(
             """SELECT id, room_id, guest_name, party_size, arrival_date, departure_date,
                       status, reference_code FROM bookings
                 WHERE status IN ('confirmed', 'pending') AND no_show_at IS NULL
                   AND arrival_date < ? AND departure_date > ?""", (after, first)).fetchall():
-        occupants.append((b["room_id"], b["arrival_date"], b["departure_date"], {
+        occupant = {
             "key": f"b{b['id']}", "name": b["guest_name"], "party": b["party_size"],
             "kind": "stay" if b["status"] == "confirmed" else "pending",
-            "ref": b["reference_code"]}))
+            "ref": b["reference_code"]}
+        takes = [rid for rid, _n in uses.get(b["room_id"], [])]
+        for i, rid in enumerate(takes or [b["room_id"]]):
+            occupants.append((rid, b["arrival_date"], b["departure_date"], dict(
+                occupant, **({"key": f"b{b['id']}r{rid}", "party": occupant["party"] if i == 0 else 0,
+                              "ref": f"{b['reference_code']} · {names.get(b['room_id'], '')}"}
+                             if takes else {}))))
     if channel is None:
         channel = channel_stays(conn)
     for st in channel:
@@ -122463,7 +122734,11 @@ def front_desk_day(conn, today=None):
                 reference_code=o["reservation_number"],
                 checked_in_at=None, checked_out_at=None))
     everyone = stays + channel
+    # A room typed at the desk is in the listed rooms it takes, so the house
+    # tonight shows them occupied, under its name (ONE_OFF_ROOMS).
+    uses = one_off_room_uses(conn)
     for st in stays:
+        st["takes"] = [rid for rid, _n in uses.get(st["room_id"], [])] or [st["room_id"]]
         bill = booking_bill(conn, st["id"])
         st["owed"] = round(bill["owed"], 2) if bill else 0.0
     for ch in channel:
@@ -122504,10 +122779,14 @@ def front_desk_day(conn, today=None):
         x["occasion_prep"] = occasions.get(x["id"]) if x["kind"] == "stay" else None
     # The house as a whole tonight, room by room.
     by_room = []
+
+    def in_room(x, rid):
+        return rid in (x.get("takes") or [x.get("room_id")])
+
     for r in rooms:
-        out = next((x for x in leaving if x.get("room_id") == r["id"]), None)
-        inn = next((x for x in arriving if x.get("room_id") == r["id"]), None)
-        stay = next((x for x in staying if x.get("room_id") == r["id"]), None)
+        out = next((x for x in leaving if in_room(x, r["id"])), None)
+        inn = next((x for x in arriving if in_room(x, r["id"])), None)
+        stay = next((x for x in staying if in_room(x, r["id"])), None)
         tonight = inn or stay
         if out and inn:
             state = "Turnaround"
@@ -122525,6 +122804,11 @@ def front_desk_day(conn, today=None):
     # that many let, an empty room is not for sale: the desk said "2 free" and
     # "Free tonight" on a night Add a booking would refuse as full.
     let_tonight = sum(1 for r in by_room if r["tonight"])
+    # And a room typed at the desk that takes none of the listed ones: a room
+    # let, with no row of its own above.
+    let_tonight += sum(1 for x in arriving + staying
+                       if x.get("kind") == "stay" and x["room_id"] in uses
+                       and not uses[x["room_id"]])
     house_full = let_tonight >= MAX_ROOMS_LET_PER_NIGHT
     if house_full:
         for r in by_room:
@@ -128427,7 +128711,7 @@ def reread_undated_booking_com_stays(conn):
     changed. The ids of stays that gained an arrival are returned.
     """
     rooms = [(r["id"], r["name"], r["channel_name"])
-             for r in conn.execute("SELECT id, name, channel_name FROM rooms").fetchall()]
+             for r in conn.execute("SELECT id, name, channel_name FROM rooms WHERE one_off = 0").fetchall()]
     kinds = ",".join("?" * len(OTA_RESERVATION_KINDS))
     filled, now_iso = [], datetime.now(timezone.utc).isoformat()
     for stay in conn.execute(
@@ -128843,7 +129127,7 @@ def ingest_booking_com_email(conn, *, source, source_id, received_at, from_addre
         links = [{"text": "", "href": u.rstrip(".,;:)>]")}
                  for u in LETTER_URL.findall(text)][:60]
     rooms = [(r["id"], r["name"], r["channel_name"])
-             for r in conn.execute("SELECT id, name, channel_name FROM rooms").fetchall()]
+             for r in conn.execute("SELECT id, name, channel_name FROM rooms WHERE one_off = 0").fetchall()]
     got = parse_booking_com_email(subject, from_address, from_name, reply_to, body, links, rooms)
     now_iso = datetime.now(timezone.utc).isoformat()
     # One spelling of a moment. Graph writes "...Z", an .eml file "+01:00", and
