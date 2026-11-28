@@ -165,7 +165,7 @@
                    value="{{ f.get('custom_room_name', '') }}" placeholder="Les Chambres Communicantes"
                    autocomplete="off" autocapitalize="words">
           </div>
-          <div>
+          <div class="nb-count">
             <label class="field-label" for="wi_other_sleeps">Sleeps</label>
             <input id="wi_other_sleeps" type="number" name="custom_sleeps" min="1" max="20" step="1"
                    inputmode="numeric" class="nb-short" value="{{ f.get('custom_sleeps') or (adults + under) }}">
